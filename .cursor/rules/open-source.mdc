@@ -1,0 +1,60 @@
+---
+description: Open source development principles
+alwaysApply: true
+---
+
+# Open Source Principles
+
+## License
+
+Apache License 2.0. See `LICENSE` file.
+
+## Community Files
+
+| File | Purpose |
+|------|---------|
+| `LICENSE` | Apache License 2.0 text |
+| `SECURITY.md` | Vulnerability reporting process |
+| `CODE_OF_CONDUCT.md` | Contributor Covenant 2.1 |
+| `CONTRIBUTING.md` | How to contribute |
+| `CHANGELOG.md` | Release history |
+| `.github/ISSUE_TEMPLATE/bug_report.md` | Bug report template |
+| `.github/ISSUE_TEMPLATE/feature_request.md` | Feature request template |
+| `.github/PULL_REQUEST_TEMPLATE.md` | PR checklist |
+
+## Principles for AI Agent
+
+### Code must be public-safe
+
+- No hardcoded credentials, API keys, internal URLs
+- No proprietary branding in core (use `brand.*` for white-label)
+- No internal company references (use generic examples in docs)
+- Error messages: generic, not leaking internal architecture
+
+### Every change must be reviewable
+
+- Clear commit messages (Conventional Commits)
+- Self-documenting code + module-level JSDoc
+- ADR for architectural decisions
+- Tests for new logic
+
+### Respect contributors
+
+- English comments in code (international community)
+- i18n for UI strings (multiple languages)
+- Accessible UI (jsx-a11y, keyboard navigation)
+- Documentation for everything non-obvious
+
+### Security first
+
+- SECURITY.md for responsible disclosure
+- Pre-commit hooks block secrets
+- DOMPurify for XSS, input validation for all user input
+- CSP headers, sandboxed iframes, permission checks
+
+### Low barrier to entry
+
+- README with quick start (3 commands)
+- `.nvmrc` + `.npmrc` + `.editorconfig` for consistent env
+- VS Code launch configs, extensions recommendations
+- `npm run check` validates everything

@@ -1,54 +1,125 @@
-# Workspace — кастомный Zulip-клиент
+# Workspace UI
 
-Монорепозиторий (Lerna): фронтенд `web` и опциональный `mock-server`.
+Open-source corporate messenger built on the [Zulip](https://zulip.com/) API.
 
-## Запуск для разработки (без mock-server)
+Single React codebase, multiple targets:
 
-### Требования
+- Web SPA
+- PWA
+- Electron desktop app (Windows, macOS, Linux)
+- Embedded WebView shell (mobile hosts)
 
-- Node.js 18+
-- npm или yarn
+## Highlights
 
-### 1. Установка зависимостей
+- React 19 + TypeScript 5.6 (`strict`, `noUncheckedIndexedAccess`)
+- Feature-Sliced Design (FSD): `app -> pages -> widgets -> features -> entities -> shared`
+- Zustand domain stores + API middleware pipeline
+- Tailwind design tokens (dark/light + multiple palettes)
+- i18n (English + Russian)
+- 2100+ tests (Vitest + Testing Library + MSW + Playwright)
+- Security-focused defaults: CSP, sanitization, guarded APIs, secret checks in hooks
 
-Из корня репозитория:
+## Requirements
+
+- Node.js 22+
+- npm 10+
+
+Use `.nvmrc`:
 
 ```bash
+nvm use
+```
+
+## Quick Start
+
+```bash
+git clone https://github.com/workspace/workspace-ui.git
+cd workspace-ui
 npm install
-npm run bootstrap
-```
-
-### 2. Переменные окружения
-
-В `packages/web/` скопируйте пример и заполните под свой стенд:
-
-```bash
-cd packages/web
-cp .env.example .env
-```
-
-В `.env` задайте:
-
-- **`VITE_WORKSPACE_API_ORIGIN`** — URL бэкенда/API (например `https://api.example.com`). Без него запросы к API не будут проксироваться/работать.
-- **`VITE_JITSI_MEET_DOMAIN`** — домен Jitsi Meet без протокола (например `meet.jit.si`), если используете видеозвонки.
-
-### 3. Запуск фронтенда
-
-Из **корня** репозитория:
-
-```bash
+cp packages/web/.env.example packages/web/.env
 npm run dev:web
 ```
 
-Или из `packages/web`:
+Default app URL: `http://localhost:5173`
 
-```bash
-cd packages/web
-npm run dev
+## Main Scripts
+
+| Command                    | Purpose                            |
+| -------------------------- | ---------------------------------- |
+| `npm run dev:web`          | Web app in Vite dev mode           |
+| `npm run dev:electron`     | Web + Electron desktop shell       |
+| `npm run dev`              | Monorepo dev mode (parallel)       |
+| `npm run dev:mock`         | Mock backend only                  |
+| `npm run check`            | Typecheck + lint + tests           |
+| `npm run test`             | Unit/integration tests             |
+| `npm run e2e`              | Playwright E2E                     |
+| `npm run lint`             | ESLint                             |
+| `npm run typecheck`        | TypeScript checks                  |
+| `npm run package:electron` | Build desktop package (current OS) |
+
+## Architecture
+
+Workspace UI uses Feature-Sliced Design with strict downward dependencies:
+
+```text
+app -> pages -> widgets -> features -> entities -> shared
 ```
 
-Приложение откроется по адресу из вывода Vite (обычно `http://localhost:5173`).
+Core flow:
 
----
+1. `main.tsx` mounts the app shell and routes
+2. `app/app.event-loop.ts` starts Zulip event queue polling
+3. `shared/api/client.ts` handles auth/logging/retry middleware
+4. Entity stores (`entities/*`) provide domain state
+5. UI subscribes through minimal selectors
 
-**Примечание:** без mock-server нужен реальный бэкенд; укажите его в `VITE_WORKSPACE_API_ORIGIN`.
+## Repository Structure
+
+```text
+workspace_ui/
+├── packages/
+│   ├── web/          React SPA
+│   ├── electron/     Electron shell
+│   └── mock-server/  Local mock API
+├── docs/             Technical docs + ADRs
+├── e2e/              Playwright tests
+├── scripts/          Tooling utilities
+└── .cursor/          Agent rules, skills, prompts
+```
+
+## Documentation Map
+
+### Project Docs
+
+- `AGENTS.md` — architecture and coding standards for AI/dev workflows
+- `CONTRIBUTING.md` — contribution process and quality gates
+- `SECURITY.md` — vulnerability reporting process
+- `CHANGELOG.md` — release history
+- `CODE_OF_CONDUCT.md` — community guidelines
+
+### Technical Docs
+
+- `docs/fsd-architecture.md`
+- `docs/STORES_REFERENCE.md`
+- `docs/API_CLIENT_REFERENCE.md`
+- `docs/COMPONENT_CATALOG.md`
+- `docs/INTEGRATION_GUIDE.md`
+- `docs/USE_CASES.md`
+- `docs/MACOS_SIGNING.md`
+- `docs/SECURITY_ARCHITECTURE.md`
+
+## Development Rules (Short)
+
+- Use public slice APIs (`index.ts`) only
+- No hardcoded UI strings (`t("key")` for all user-facing text)
+- No hardcoded brand values (use `brand.*`)
+- No `console.log` in app code (use logger)
+- Sanitize untrusted HTML before render
+- Add or adjust tests for behavior changes
+- Run `npm run check` before commit
+
+## Open Source
+
+Project license: [Apache 2.0](LICENSE).
+
+Contributions are welcome via pull requests and issues. Start from `CONTRIBUTING.md`.

@@ -1,0 +1,272 @@
+---
+description: Security architecture — XSS, auth, CSP, Electron, validation, logging
+alwaysApply: true
+---
+
+# Security Architecture
+
+## 1. XSS Prevention
+
+### HTML Sanitization
+
+MANDATORY before rendering HTML from Zulip:
+
+```typescript
+import { sanitizeHtml } from "~/shared/lib/html";
+const safe = sanitizeHtml(message.content, getRealmBaseUrl());
+```
+
+- NEVER use `dangerouslySetInnerHTML` with raw HTML
+- DOMPurify whitelist: `p, br, strong, b, em, i, a, ul, ol, li, blockquote, code, pre, span, div, img`
+- Allowed attributes: `src`, `alt`
+- `<script>`, `<iframe>`, `<style>`, event handlers — removed automatically
+
+### ESLint Enforcement
+
+```
+no-eval: error
+no-implied-eval: error
+no-new-func: error
+no-script-url: error
+```
+
+## 2. Input Validation
+
+Use utilities from `~/shared/lib/validation`:
+
+```typescript
+import { isValidUrl, isValidRealmUrl, isValidEmail, validateFileUpload, sanitizeFilename, detectImageMime } from "~/shared/lib/validation";
+
+if (!isValidUrl(userInput)) return;            // https: / http: only
+if (!isValidRealmUrl(serverUrl)) return;       // https: with hostname only
+if (!isValidEmail(email)) return;              // basic format check
+const { valid, error } = validateFileUpload(file);  // size, non-empty
+const safeName = sanitizeFilename(file.name);   // strips <>:"/\|?* and path traversal
+const mime = detectImageMime(buffer);           // magic bytes, not extension
+```
+
+## 3. Auth & Credentials
+
+| Data | Storage | Transmission |
+|------|---------|--------------|
+| API Key | `localStorage` (plain JSON) | ONLY `Authorization: Basic` header |
+| Password | NEVER stored | POST to /fetch_api_key only |
+| Realm URL | `localStorage` | Open |
+| Theme/UI | `localStorage` | — |
+
+### Auth Header Construction
+
+Single point: `buildAuthHeader()` from `~/shared/lib/auth-guard`:
+
+```typescript
+import { buildAuthHeader } from "~/shared/lib/auth-guard";
+const headers = buildAuthHeader();  // { Authorization: "Basic ..." } or {}
+```
+
+DO NOT construct auth headers manually in new code. The middleware client (`shared/api/client.ts`) uses `authMiddleware` which calls `buildAuthHeader`.
+
+### Secure Logout
+
+```typescript
+import { wipeCredentials } from "~/shared/lib/auth-guard";
+wipeCredentials();  // Clears localStorage + Zustand store
+```
+
+### Session Timeout
+
+`initAuthGuard()` — auto-logout after 24h of inactivity.
+Activity tracking: mousemove, keydown, click, scroll, touch.
+
+### Known Risk: localStorage + XSS
+
+API Key is stored in localStorage as plain text. If an XSS attack executes JS code, it can read the apiKey. Mitigation:
+- **CSP** blocks script injection
+- **DOMPurify** sanitizes all HTML from Zulip
+- **ESLint** forbids eval/new Function/script URL
+- **Session timeout** limits session lifetime
+- **Sentry/Logger** redact credentials
+
+Full localStorage encryption provides no protection against XSS (JS that can read localStorage can also decrypt it).
+
+### Rules
+
+- API Key NEVER in URL query params
+- API Key NEVER in logs
+- On logout → `wipeCredentials()` (not manual cleanup)
+- `JSON.parse(localStorage.getItem(...))` — always in `try/catch`
+- New code: use `buildAuthHeader()`, don't construct manually
+
+## 4. Content Security Policy
+
+### Electron (main.ts — already implemented)
+
+Prod CSP:
+```
+default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
+connect-src 'self' https: wss:; img-src 'self' data: https:;
+font-src 'self'; media-src 'self' https:; frame-src https:
+```
+
+### Web (index.html)
+
+Security meta tags:
+```html
+<meta http-equiv="X-Content-Type-Options" content="nosniff" />
+<meta name="referrer" content="strict-origin-when-cross-origin" />
+```
+
+Vite dev/preview server adds:
+- `X-Content-Type-Options: nosniff`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `Permissions-Policy: camera=self, microphone=self, fullscreen=self, geolocation=()`
+- Preview: `X-Frame-Options: DENY`
+
+### Production web server (nginx/CDN)
+
+Add to configuration:
+```
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+Referrer-Policy: strict-origin-when-cross-origin
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+Permissions-Policy: camera=self, microphone=self, fullscreen=self, geolocation=()
+Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; ...
+```
+
+## 5. Electron Security
+
+### Required Settings (already in main.ts)
+
+```typescript
+webPreferences: {
+  contextIsolation: true,     // REQUIRED — isolates preload from renderer
+  nodeIntegration: false,     // REQUIRED — no Node.js in renderer
+  sandbox: true,              // REQUIRED — restricts renderer privileges
+}
+```
+
+### Navigation Guard (already implemented)
+
+```typescript
+mainWindow.webContents.on("will-navigate", (event, url) => {
+  if (!url.startsWith(appOrigin)) {
+    event.preventDefault();         // block navigation
+    if (isSafeExternalUrl(url)) {
+      shell.openExternal(url);      // open in system browser
+    }
+  }
+});
+```
+
+### URL Validation for shell.openExternal
+
+```typescript
+function isSafeExternalUrl(url: string): boolean {
+  const parsed = new URL(url);
+  return parsed.protocol === "https:" || parsed.protocol === "http:" || parsed.protocol === "mailto:";
+}
+```
+
+Blocked: `javascript:`, `file:`, `data:`, `ftp:`, `vbscript:`, custom protocols.
+
+### IPC
+
+- Expose ONLY a minimal API via `contextBridge`
+- Every IPC handler — validate input data
+- Don't pass filesystem paths through IPC
+
+## 6. Sensitive Data in Logs
+
+Logger (`~/shared/lib/logger`) automatically redacts:
+- **Keys**: apiKey, password, token, authorization, secret, csrf, session, cookie
+- **Values**: `Basic ...`, `Bearer ...`, long base64 strings
+
+Rules:
+- DO NOT log HTTP request/response bodies (PII)
+- DO NOT log message content
+- DO NOT display stack traces to the user in production
+- Use `logger` instead of `console.log` (ESLint `no-console`)
+
+## 7. Dependencies
+
+- `npm audit --audit-level=high` — fail CI on critical/high
+- Dependabot (`.github/dependabot.yml`) — weekly npm check, monthly for GH Actions
+- `save-exact=true` in `.npmrc` — pin versions
+- DOMPurify — update with priority (critical for XSS)
+
+## 8. Deep Link / IPC Input Validation
+
+### Deep Links
+
+All incoming deep link routes are validated by `isSafeDeeplinkRoute()` in `main.ts`:
+- Rejects `javascript:`, `data:`, `vbscript:` protocols
+- Rejects URLs containing `//` (prevents protocol-relative injection)
+- Enforces max length (512 chars)
+- Applied in `handleDeepLink()` and `pendingDeepLink` delivery
+
+### IPC Input Validation (Electron main.ts)
+
+Every IPC handler validates its input:
+
+| Channel | Validation |
+|---------|-----------|
+| `theme:set` | Only accepts `"light"`, `"dark"`, `"system"` |
+| `notifications:show` | Title/body type-checked + truncated to 200 chars |
+| `os:setBadgeCount` | Non-negative integer, clamped |
+| `os:setProgressBar` | Float 0-1 or -1 (reset) |
+| `os:setLoginItemSettings` | Boolean only |
+| `call:start` | Room string sanitized (control chars removed, max 128) |
+
+### WebView Bridge
+
+Auth tokens passed via `postMessage` bridge only — NEVER in URL params.
+`handleIncomingMessage()` checks `event.data.type` is a known value.
+
+## 9. Push Notification Security
+
+- FCM tokens are NEVER logged (token prefix only: `abc123...`)
+- Push payload goes through middleware pipeline: decrypt → parse → validate → dedup
+- Encrypted payloads that cannot be decrypted are dropped (not displayed)
+- Notification display text is truncated (no full message body in system notifications)
+- Push token is unregistered on logout via `unregisterPushToken()`
+
+## 10. Analytics & Monitoring Privacy
+
+- PII keys auto-stripped before sending: `email`, `password`, `token`, `phone`, `ssn`, `creditcard`
+- Message content NEVER sent to analytics
+- User ID sent as numeric ID only (not email)
+- Consent required before any analytics data is sent
+- Sentry: `beforeSend` strips auth headers, cookies, and PII from error reports
+
+## 11. Secure Coding Principles
+
+These principles are enforced at compile time, lint time, pre-commit, and runtime:
+
+| Principle | Enforcement |
+|-----------|-------------|
+| No raw HTML rendering | Pre-commit hook blocks `dangerouslySetInnerHTML` without `sanitizeHtml` |
+| No code execution from strings | ESLint: `no-eval`, `no-implied-eval`, `no-new-func`, `no-script-url` |
+| No hardcoded secrets | Pre-commit secret detection + `.gitignore` for `.env`, `.pem`, `.key` |
+| Input validation at boundaries | `guard.*` functions + `invariant()` + `isValidUrl()` |
+| Minimal IPC surface | `contextBridge` exposes only documented methods |
+| Credential redaction in logs | Logger auto-redacts 15 sensitive key patterns |
+| Defense in depth | CSP + DOMPurify + ESLint + Pre-commit + Runtime guards |
+
+## 12. Security Review Checklist
+
+### For every PR:
+
+- [ ] No `dangerouslySetInnerHTML` without `sanitizeHtml()`
+- [ ] URLs from user input validated with `isValidUrl()` or `guard.url()`
+- [ ] Files validated via `validateFileUpload()` + `detectImageMime()`
+- [ ] No credentials in logs, comments, error messages, URLs
+- [ ] No `eval()`, `new Function()`, `document.write()`
+- [ ] IPC handlers validate and sanitize all input
+- [ ] External URLs opened via `isSafeExternalUrl()` → `shell.openExternal()`
+- [ ] `localStorage` access wrapped in `try/catch`
+- [ ] New env vars are NOT secrets (Vite exposes `VITE_*` to client)
+- [ ] `JSON.parse()` on external data wrapped in `try/catch`
+- [ ] Push tokens not logged (only prefix)
+- [ ] Deep link routes validated before navigation
+- [ ] Role checks (`hasPermission()`) for admin-only actions
+- [ ] No `Math.random()` for security-sensitive values (use `crypto.randomUUID()`)

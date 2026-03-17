@@ -1,0 +1,178 @@
+---
+description: Focus management and tabIndex policy (WCAG 2.2)
+globs: "packages/web/src/**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# Focus & tabIndex Policy
+
+## Core Rules
+
+### tabIndex values — only 0 and -1, NEVER positive
+
+| Value | Meaning | When to use |
+|-------|---------|-------------|
+| `tabIndex={0}` | In natural tab order | Custom interactive elements (`div` acting as button, custom widget) |
+| `tabIndex={-1}` | Programmatically focusable, NOT in tab order | Scroll containers, group wrappers, focus targets for `element.focus()` |
+| `tabIndex={1+}` | **FORBIDDEN** | Never. Breaks natural DOM order, creates accessibility nightmare |
+| *(no tabIndex)* | Default behavior | Native interactive elements (`<button>`, `<a>`, `<input>`) — already focusable |
+
+### Decision tree
+
+```
+Is it a native interactive element (button, a, input, select, textarea)?
+  YES → Do NOT add tabIndex. It's already focusable.
+  NO  → Should it be keyboard-accessible?
+          YES → tabIndex={0} + role + aria-label + keydown handler
+          NO  → Should code .focus() it programmatically?
+                  YES → tabIndex={-1}
+                  NO  → No tabIndex needed
+```
+
+## Focus Zones (F6 cycling)
+
+The app is divided into focus zones — keyboard users press **F6** to cycle between them (like Slack, Teams, VS Code):
+
+| Zone | `data-focus-zone` | ARIA role | Component |
+|------|------------------|-----------|-----------|
+| Top bar | `topbar` | `banner` | `TopBar` |
+| Sidebar | `sidebar` | `navigation` | `Sidebar` |
+| Main content | `main` | `main` | `<main>` in Layout |
+| Composer | `composer` | `form` | `MessageComposer` |
+| Info panel | `panel` | `complementary` | `RightDrawer` |
+
+```tsx
+<header data-focus-zone="topbar" role="banner" aria-label="Top bar">
+<aside data-focus-zone="sidebar" role="navigation" aria-label="Chat list">
+<main data-focus-zone="main" role="main" aria-label="Content">
+<div data-focus-zone="composer" role="form" aria-label="Message composer">
+<aside data-focus-zone="panel" role="complementary" aria-label="Info panel">
+```
+
+**F6** cycles forward, **Shift+F6** cycles backward. Implemented in `shared/lib/focus.ts`.
+
+## Focus Trap (Modals/Dialogs)
+
+When a modal or dialog is open, focus must be trapped inside:
+
+```tsx
+import { useFocusTrap } from "~/shared/lib/focus";
+
+function SearchModal({ open }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useFocusTrap(ref, open);
+
+  return <div ref={ref} role="dialog" aria-modal="true">...</div>;
+}
+```
+
+Behavior:
+- On open: saves previous focus, moves to first focusable inside
+- Tab wraps within modal (last → first, shift+tab first → last)
+- On close: restores focus to the element that opened the modal
+
+## Roving tabIndex (Lists, Toolbars, Tabs)
+
+For lists where arrow keys navigate between items:
+
+```tsx
+import { useRovingTabindex } from "~/shared/lib/focus";
+
+function ChatList() {
+  const listRef = useRef<HTMLDivElement>(null);
+  useRovingTabindex(listRef, { orientation: "vertical", loop: true });
+
+  return (
+    <div ref={listRef} role="listbox">
+      <div role="option" data-roving-item>Chat 1</div>
+      <div role="option" data-roving-item>Chat 2</div>
+      <div role="option" data-roving-item>Chat 3</div>
+    </div>
+  );
+}
+```
+
+Behavior:
+- First item: `tabIndex={0}`, rest: `tabIndex={-1}`
+- Arrow keys move focus between items
+- Home/End jump to first/last
+- Only ONE item in the group is in the tab order at any time
+
+### Where to use roving tabindex
+
+| Widget | Orientation | Items |
+|--------|-------------|-------|
+| Section tabs in TopBar | horizontal | `role="tab"` |
+| Folder rail | vertical | `role="option"` |
+| Chat list in sidebar | vertical | `role="option"` |
+| Message action toolbar | horizontal | `role="menuitem"` |
+| Emoji reaction bar | horizontal | `role="menuitem"` |
+
+## Skip-to-Content Link
+
+A visually hidden link appears at the top of the page when Tab is pressed:
+
+```
+[Tab] → "Skip to content" link appears → [Enter] → focus moves to main content
+```
+
+Implemented in `app/app.tsx` with `.skip-link` CSS class.
+
+## ARIA Landmarks
+
+Every major section has a landmark role:
+
+```
+role="application"      → root app container
+role="banner"           → top bar (header)
+role="navigation"       → sidebar
+role="main"             → page content
+role="form"             → message composer
+role="complementary"    → right info panel
+role="dialog"           → modals (with aria-modal="true")
+```
+
+## Module Reference
+
+```
+shared/lib/focus.ts
+├── initFocusManagement()      — F6 zone cycling setup
+├── focusZone(name)            — focus first element in a zone
+├── cycleToNextZone()          — F6 handler
+├── cycleToPrevZone()          — Shift+F6 handler
+├── getFocusableElements(el)   — query all focusable children
+├── getFirstFocusable(el)      — first focusable child
+├── getLastFocusable(el)       — last focusable child
+├── useFocusTrap(ref, active)  — trap focus in modal
+├── useRovingTabindex(ref, opts) — arrow key navigation in lists
+├── useFocusRestore()          — save/restore focus pair
+└── focusMainContent()         — skip-to-content target
+```
+
+## Rules for AI Agent
+
+### MUST
+
+1. **Never use `tabIndex > 0`** — always 0 or -1
+2. **Native elements first** — prefer `<button>` over `<div onClick>`. If you must use div, add `tabIndex={0}`, `role="button"`, `onKeyDown` for Enter/Space
+3. **Every interactive custom element** needs: `tabIndex`, `role`, `aria-label`, keyboard handler
+4. **Every modal/dialog** must use `useFocusTrap` and `role="dialog" aria-modal="true"`
+5. **Every list with arrow navigation** must use `useRovingTabindex`
+6. **Focus zones** — new major UI sections need `data-focus-zone`
+
+### MUST NOT
+
+- Do NOT remove `outline` on `:focus-visible` — it's critical for keyboard users
+- Do NOT add `tabIndex={0}` to non-interactive containers (div, section, article)
+- Do NOT use `autofocus` attribute — use `useEffect` + `ref.focus()` instead
+- Do NOT break tab order with `tabIndex > 0`
+- Do NOT trap focus without an escape mechanism (Escape key)
+
+### Checklist for new components
+
+- [ ] Interactive elements are keyboard-accessible (Enter/Space activate)
+- [ ] Custom widgets have appropriate `role` and `aria-*` attributes
+- [ ] Lists use roving tabindex if navigable by arrow keys
+- [ ] Modals trap focus and restore on close
+- [ ] No `tabIndex > 0` anywhere
+- [ ] Focus is visible (`:focus-visible` outline)

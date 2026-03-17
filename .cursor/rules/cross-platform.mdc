@@ -1,0 +1,73 @@
+---
+description: Cross-platform and cross-IDE development guidelines
+alwaysApply: true
+---
+
+# Cross-Platform & Cross-IDE
+
+## Supported IDEs
+
+| IDE | Configuration |
+|-----|--------------|
+| **VS Code** | `.vscode/settings.json` + `.vscode/extensions.json` |
+| **Cursor** | Same + `.cursor/rules/*.mdc` + `.cursor/skills/` |
+| **VSCodium** | Same as VS Code (compatible format) |
+| **WebStorm** | `.editorconfig` + ESLint + Prettier (native support) |
+
+Shared settings via `.editorconfig` (works in all IDEs).
+ESLint flat config (`eslint.config.js`) is supported by all IDEs.
+
+## Supported Operating Systems
+
+| OS | Dev environment | Notes |
+|----|----------------|-------|
+| **Windows 11** | WSL2 (Ubuntu) | Project runs in WSL2, IDE connects via Remote |
+| **macOS 26** | Native | `Cmd` instead of `Ctrl` in shortcuts |
+| **Ubuntu 24** | Native | Primary CI platform |
+| **Fedora 43** | Native | RPM packages for Electron |
+
+## Target Browsers
+
+```
+last 2 Chrome versions    → Chrome 130+
+last 2 Edge versions      → Edge 130+ (Chromium)
+Electron 35               → Chromium 134
+```
+
+Defined in `.browserslistrc`. Autoprefixer and Tailwind use these targets.
+
+## Cross-platform rules
+
+### Line endings
+
+- `.gitattributes`: `* text=auto eol=lf` — all text files in LF
+- `.editorconfig`: `end_of_line = lf`
+- Prettier: `endOfLine: "lf"`
+- TypeScript: `forceConsistentCasingInFileNames: true` (macOS is case-insensitive!)
+
+### Shell scripts
+
+- All scripts in `package.json` are cross-platform npm/node commands
+- `cross-env` for env variables in scripts: `cross-env ELECTRON=1 vite build`
+- DO NOT use bash-specific syntax in package.json scripts (except `&` for parallel, which works in WSL2)
+- Python scripts in `scripts/` — Python 3.9+ (installed on all platforms)
+
+### File paths
+
+- Use `path.resolve()` / `path.join()` — never string concatenation
+- In TypeScript: `import.meta.dirname` instead of `__dirname` for ESM
+- Case-sensitivity: `forceConsistentCasingInFileNames` catches errors on macOS
+
+### Node.js version
+
+- `.nvmrc: 22` — nvm (Linux/macOS), nvm-windows, fnm (all read .nvmrc)
+- `.npmrc: engine-strict=true` — npm will refuse on wrong version
+- `engines.node: ">=22"` in root package.json
+
+## For AI Agent
+
+When writing code:
+- No hardcoded paths with `/` or `\` — use `path.join()`
+- No `process.platform` checks without fallback
+- `import.meta.dirname` instead of `fileURLToPath(import.meta.url)` + `path.dirname()`
+- Shell commands in scripts: only via node (`node scripts/x.mjs`), not bash

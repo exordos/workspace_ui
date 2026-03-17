@@ -1,0 +1,113 @@
+---
+description: Code commenting principles — what to comment, how, and when
+alwaysApply: true
+---
+
+# Commenting Principles
+
+## Philosophy
+
+Code should be self-documenting. Comments explain **why**, not **what**.
+
+## Three levels of comments
+
+### 1. Module header (required for every file in `shared/lib/`)
+
+```typescript
+/**
+ * Unified notification service.
+ *
+ * Three runtimes:
+ * - Electron → ipcRenderer (native OS notifications)
+ * - PWA/Browser → Web Notifications API
+ *
+ * Usage:
+ *   import { notificationService } from "~/shared/lib/notifications";
+ *   await notificationService.show({ title: "New message", body: "Hello!" });
+ */
+```
+
+Format: `/**` JSDoc, first line — what the module does, then key details, usage example.
+
+Required for: `shared/lib/*.ts`, `entities/*/*.model.ts`, `shared/api/*.ts`, `i18n/index.ts`.
+Not needed for: `*.ui.tsx` components (component name = documentation), `*.types.ts`, `index.ts` barrel files.
+
+### 2. Section separator (for files >100 lines)
+
+```typescript
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+```
+
+Separates logical blocks in long files. 75 characters wide, one word/phrase.
+
+### 3. Inline comment (only when non-obvious)
+
+```typescript
+// BAD_EVENT_QUEUE_ID: server restarted, queue expired — re-register
+if (result.code === "BAD_EVENT_QUEUE_ID") {
+```
+
+## What to comment
+
+| Situation | Comment needed? | Example |
+|----------|----------------|--------|
+| Non-obvious business logic | ✅ Yes | `// Zulip API: 100=Owner, 200=Admin (not the other way around!)` |
+| Workaround or hack | ✅ Yes | `// Workaround: tinyexec exports .mjs but package.json declares .js` |
+| Why a specific approach was chosen | ✅ Yes | `// Long-poll fetch is not throttled in background tabs (unlike setTimeout)` |
+| Edge case handling | ✅ Yes | `// DM key may be invalid if userId is not yet loaded` |
+| What a function does | ❌ JSDoc header | Function name should be self-documenting |
+| What a line of code does | ❌ No | `const count = items.length; // get count` — NEVER |
+| Imports | ❌ No | Do not comment import lines |
+| Obvious operations | ❌ No | `set({ loading: true }); // set loading to true` — NEVER |
+
+## What NOT to comment
+
+```typescript
+// ❌ Narrative (explains what, not why)
+// Set the user name
+const name = user.full_name;
+
+// ❌ Journal-style (who, when changed)
+// Added by @developer on 2026-03-13
+// Fixed bug #123
+
+// ❌ Commented-out code
+// const oldValue = computeOld();
+// if (oldValue) { ... }
+
+// ❌ Separators without content
+// ================================
+// END OF FILE
+// ================================
+```
+
+## JSDoc format for exported functions
+
+For **public API** functions in `shared/lib/`:
+
+```typescript
+/** Sanitizes HTML from Zulip messages. Strips unsafe tags, rewrites relative image URLs. */
+export function sanitizeHtml(html: string, baseUrl?: string): string {
+```
+
+One line if the function is simple. Multi-line JSDoc if:
+- There are non-obvious parameters
+- Important side effects
+- Throws specific errors
+
+```typescript
+/**
+ * Registers event queue and starts long-polling loop.
+ * Automatically re-registers on BAD_EVENT_QUEUE_ID.
+ * Loop runs until signal.abort() is called.
+ */
+export function startZulipEventLoop(options: StartZulipEventLoopOptions): void {
+```
+
+## Language
+
+- Comments: **English** (for consistency with code, i18n keys, and the international team)
+- Exception: comments in i18n JSON files may be in Russian
+- TODO/FIXME: `// TODO: description` or `// FIXME: description`

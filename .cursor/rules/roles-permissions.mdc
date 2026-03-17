@@ -1,0 +1,82 @@
+---
+description: Zulip role model and permissions system
+globs: "packages/web/src/**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# Roles & Permissions
+
+## Zulip Role Hierarchy
+
+```
+Owner (100) > Admin (200) > Moderator (300) > Member (400) > Guest (600)
+```
+
+**NOTE**: Zulip API codes 100=Owner, 200=Admin (not the other way around!).
+
+## Usage
+
+```typescript
+import { UserRole, parseRole, hasPermission, canEditMessage, canDeleteMessage, getRoleLabel, getRoleColor } from "~/shared/lib/roles";
+
+// Parse from Zulip API response
+const role = parseRole(user.role); // 200 → UserRole.Admin
+
+// Check permission
+if (hasPermission(role, "message:delete:any")) { /* admin+ */ }
+if (hasPermission(role, "channel:create")) { /* member+ */ }
+
+// Check for message UI
+const showEdit = canEditMessage(role, isOwnMessage);
+const showDelete = canDeleteMessage(role, isOwnMessage);
+
+// Display
+getRoleLabel(role);  // "Administrator"
+getRoleColor(role);  // "text-indicator-pink" (Tailwind class)
+```
+
+## Permission Map
+
+| Permission | Min. role | Description |
+|-----------|-----------|-------------|
+| `message:send` | Guest | Send messages |
+| `message:edit:own` | Guest | Edit own messages |
+| `message:delete:own` | Member | Delete own messages |
+| `message:edit:any` | Admin | Edit others' messages |
+| `message:delete:any` | Admin | Delete others' messages |
+| `message:move` | Moderator | Move messages |
+| `message:pin` | Moderator | Pin messages |
+| `channel:create` | Member | Create channels |
+| `channel:delete` | Admin | Delete channels |
+| `channel:edit` | Admin | Edit channels |
+| `channel:subscribe:others` | Admin | Subscribe others |
+| `topic:create` | Member | Create topics |
+| `topic:mute` | Guest | Mute topics |
+| `topic:resolve` | Moderator | Mark topics resolved |
+| `user:invite` | Admin | Invite users |
+| `user:deactivate` | Admin | Deactivate users |
+| `user:change-role` | Owner | Change roles |
+| `org:settings` | Admin | Organization settings |
+
+## Rules for AI Agent
+
+### When implementing UI elements
+
+- Action buttons (edit, delete, pin) → check `canEditMessage()` / `hasPermission()` before rendering
+- Context menu → filter actions by `hasPermission(userRole, permission)`
+- Admin panels → wrap in `if (hasRole(userRole, UserRole.Admin))`
+
+### When fetching data from the API
+
+```typescript
+// GET /users or GET /users/me returns role: number
+const user = await fetchCurrentUser();
+const role = parseRole(user.role);  // number → UserRole enum
+```
+
+### Guest Role
+
+- Can see and write ONLY to channels they are subscribed to
+- Cannot see the full list of channels and users
+- Cannot create channels or delete messages
+- UI: hide creation buttons, show a limited menu

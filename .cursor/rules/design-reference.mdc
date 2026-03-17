@@ -1,0 +1,33 @@
+---
+description: Design handoff reference for UI implementation
+globs: "packages/web/src/**/*.tsx"
+alwaysApply: false
+---
+
+# Design Reference
+
+Use design materials provided in the current task (Figma links, screenshots, SVG exports, or existing UI state in the app).
+
+## Source Priority
+
+1. **Design system tokens** (semantic colors, spacing scale, typography scale)
+2. **Component contracts** (existing props/APIs in `shared/ui`, `widgets`, `features`)
+3. **Design mockup intent** (layout hierarchy and interaction behavior)
+
+If mockup values conflict with the design system, the design system wins.
+
+## Implementation Rules
+
+1. Use semantic Tailwind tokens only (no hardcoded color hex classes)
+2. Keep spacing on the 4px grid
+3. Use existing icon/component primitives before creating new ones
+4. Ensure dark and light theme compatibility
+5. Preserve accessibility (focus, keyboard, aria labels)
+
+## Verification Checklist
+
+- Layout and spacing match intended hierarchy
+- Interactive states are present and consistent
+- Text overflow is handled predictably (ellipsis/wrap where needed)
+- No visual regressions in adjacent UI blocks
+- Works across supported themes/palettes

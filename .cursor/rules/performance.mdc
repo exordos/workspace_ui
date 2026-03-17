@@ -1,0 +1,271 @@
+---
+description: Performance control — budgets, patterns, monitoring
+alwaysApply: true
+---
+
+# Performance
+
+## Bundle Budget
+
+| Chunk | Limit (raw) | Limit (gzip) | Current |
+|-------|-------------|--------------|---------|
+| `index` (main) | 400 KB | 130 KB | 400 KB / 125 KB |
+| Page chunk (each) | 350 KB | 90 KB | ChatPage 345 KB / 86 KB |
+| Vendor chunk | 100 KB | 30 KB | Radix 81 KB / 27 KB |
+| CSS | 50 KB | 10 KB | 27 KB / 6 KB |
+
+Vite warns at `> 400 KB` (raw) per chunk. If a chunk grows — decompose via `React.lazy` or `manualChunks`.
+
+## Code Rules
+
+### Lazy Loading
+
+All page-level components — React.lazy:
+
+```typescript
+const DraftsPage = React.lazy(() =>
+  import("~/pages/drafts").then((m) => ({ default: m.DraftsPage })),
+);
+```
+
+Heavy libraries — dynamic import:
+
+```typescript
+const EmojiPicker = React.lazy(() => import("emoji-picker-react"));
+```
+
+### Zustand Selectors
+
+Subscribe to the minimum:
+
+```typescript
+// ✅ Single field — re-render only when loading changes
+const loading = useStore((s) => s.loading);
+
+// ❌ Entire store — re-render on any change
+const store = useStore();
+```
+
+For derived data — functions outside the component:
+
+```typescript
+// ✅ selector computes outside render
+const unreadCount = useStore((s) => s.drafts.filter((d) => !d.read).length);
+```
+
+### Memoization
+
+Only when actually needed:
+
+```typescript
+// ✅ Filtering a large list
+const filtered = useMemo(() => items.filter(predicate), [items, predicate]);
+
+// ✅ Callback passed to child component
+const handleClick = useCallback(() => doSomething(id), [id]);
+
+// ❌ Don't memoize simple computations
+const fullName = `${first} ${last}`;  // no useMemo
+```
+
+### Lists
+
+- `key` — stable ID (not index)
+- Long lists (>100 items) — virtualization (react-virtuoso)
+- `React.memo()` for item components in lists
+
+### Images
+
+- `loading="lazy"` on images outside viewport
+- Dimensions in attributes (`width`, `height`) to prevent layout shift
+- Avatars: fixed sizes via Tailwind (`w-10 h-10`)
+
+### Event Handlers
+
+```typescript
+// ❌ Inline function in map — recreated on every render
+{items.map(item => <Item onClick={() => handleClick(item.id)} />)}
+
+// ✅ Pass id, handler inside Item
+{items.map(item => <Item key={item.id} id={item.id} onClick={handleClick} />)}
+```
+
+### Effects
+
+```typescript
+// ✅ Cleanup subscriptions
+useEffect(() => {
+  const unsub = subscribe();
+  return () => unsub();
+}, []);
+
+// ❌ Leak — no cleanup
+useEffect(() => {
+  subscribe();
+}, []);
+```
+
+## Performance Monitoring
+
+### API call timing
+
+```typescript
+import { perf } from "~/shared/lib/perf";
+
+const end = perf.startTimer("api:fetchMessages");
+const data = await fetchMessages();
+end();  // auto-warning if >1s
+```
+
+### Web Vitals
+
+```typescript
+import { perf } from "~/shared/lib/perf";
+
+// In main.tsx — once
+perf.reportWebVitals();
+// Logs LCP, FID, CLS, Long Tasks → logger
+```
+
+### App startup
+
+```typescript
+perf.mark("app:init");
+// ... init code
+perf.mark("app:ready");
+perf.measure("app:startup", "app:init", "app:ready");
+```
+
+## Thresholds
+
+| Metric | Target | Action if exceeded |
+|--------|--------|-------------------|
+| LCP | < 2.5s | Optimize initial render, lazy load |
+| FID | < 100ms | Reduce main thread work |
+| CLS | < 0.1 | Set image dimensions, no layout shifts |
+| API response | < 1s | Show skeleton, `perf` warns in log |
+| Long task | < 50ms | Break into microtasks |
+| Bundle chunk | < 400KB | Split with React.lazy |
+| Zustand selectors | 1 field | Minimize re-renders |
+
+## Render Performance Anti-Patterns (CRITICAL)
+
+These patterns were found and fixed during the project audit. Each one caused cascading re-renders affecting the entire UI. **Do NOT reintroduce them.**
+
+### Anti-Pattern 1: Zustand getter returning new array/object
+
+```typescript
+// ❌ CRITICAL: creates new array on EVERY subscription check
+// Triggers re-render of every component that calls streams()
+streams: () => Array.from(streamsMap.values()).sort(...)
+
+// ✅ FIXED: cache by Map reference, return same array if Map hasn't changed
+let cachedRef: Map<...> | null = null;
+let cachedResult: StreamWithLast[] = [];
+streams: () => {
+  const map = get().streamsMap;
+  if (map !== cachedRef) {
+    cachedRef = map;
+    cachedResult = Array.from(map.values()).sort(...);
+  }
+  return cachedResult;
+}
+```
+
+**Rule: Zustand getters that derive data (sort, filter, map) MUST cache by input reference.**
+
+### Anti-Pattern 2: React.memo missing on list items
+
+```tsx
+// ❌ MessageBubble renders 100+ times in a chat — without memo, ALL re-render when parent updates
+export const MessageBubble: React.FC<Props> = ({ message }) => { ... };
+
+// ✅ Wrapped in React.memo — only re-renders when its own props change
+export const MessageBubble = React.memo<Props>(({ message }) => { ... });
+```
+
+**Rule: Components rendered in a list (`.map()`) MUST be wrapped in `React.memo`.**
+
+### Anti-Pattern 3: Empty array constant as selector result
+
+```tsx
+// ❌ Returns [] (new empty array) — new reference on every render
+const participants = useCallStore((s) => s.getParticipants(roomId));
+// getParticipants: return rooms.get(id) ?? [];  ← new [] every time!
+
+// ✅ Module-level constant for empty fallback
+const EMPTY: Participant[] = [];
+// getParticipants: return rooms.get(id) ?? EMPTY;
+```
+
+**Rule: Never return `[]`, `{}`, or `new Map()` as fallback in selectors/getters. Use a module-level constant.**
+
+### Anti-Pattern 4: Inline objects/functions in JSX
+
+```tsx
+// ❌ New function + new object on every render → child re-renders needlessly
+<TopBar
+  onOpenProfile={() => setProfileDrawerOpen(true)}
+  style={{ padding: 8 }}
+/>
+
+// ✅ Stable references
+const openProfile = useCallback(() => setProfileDrawerOpen(true), []);
+const style = useMemo(() => ({ padding: 8 }), []);
+<TopBar onOpenProfile={openProfile} style={style} />
+```
+
+**Rule: Functions and objects passed as props to child components MUST be memoized with `useCallback`/`useMemo`.**
+
+### Anti-Pattern 5: Expensive computation in render body
+
+```tsx
+// ❌ Sorts + groups on EVERY render (O(n log n) per render)
+const groups = messages.reduce((acc, msg) => { /* group by date */ }, []);
+
+// ✅ Memoized — only recalculates when messages change
+const groups = useMemo(() =>
+  messages.reduce((acc, msg) => { /* group by date */ }, []),
+  [messages]
+);
+```
+
+**Rule: `.sort()`, `.filter()`, `.reduce()`, `.map()` on arrays with >10 items MUST be inside `useMemo`.**
+
+### Anti-Pattern 6: Zustand selector returning multiple fields as object
+
+```tsx
+// ❌ Creates new object on every store update → always re-renders
+const { activityOpen, setActivityOpen } = useSidebarConfigStore();
+
+// ✅ Separate selectors — only re-renders when the specific field changes
+const activityOpen = useSidebarConfigStore((s) => s.activityOpen);
+const setActivityOpen = useSidebarConfigStore((s) => s.setActivityOpen);
+```
+
+**Rule: Never destructure from `useStore()` without a selector. Always use individual `(s) => s.field` selectors.**
+
+## Performance Checklist (for AI Agent)
+
+### Every new component:
+- [ ] List items wrapped in `React.memo`
+- [ ] Callbacks passed to children wrapped in `useCallback`
+- [ ] Objects/arrays passed as props wrapped in `useMemo`
+- [ ] Zustand selectors use `(s) => s.singleField`, not destructuring
+
+### Every new store getter:
+- [ ] If it derives data (sort/filter/map), cache by input reference
+- [ ] Never return `[]`, `{}`, `new Map()` as default — use module-level constant
+- [ ] Getters are pure (no side effects)
+
+### Every new page/widget:
+- [ ] Page component loaded via `React.lazy()`
+- [ ] Heavy libs (emoji picker, Jitsi) loaded via dynamic `import()`
+- [ ] Lists >50 items use virtualization (react-virtuoso)
+- [ ] Images have `loading="lazy"` and explicit dimensions
+- [ ] API calls wrapped in `perf.startTimer()`
+
+### Pre-merge check:
+- [ ] `npm run build` → no chunks > 400KB
+- [ ] React DevTools Profiler → no unnecessary re-renders
+- [ ] Chrome DevTools Performance → no long tasks > 50ms

@@ -1,0 +1,140 @@
+---
+description: Sticker system architecture and implementation guide
+globs: "packages/web/src/**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# Sticker System
+
+> Backend API is NOT ready yet. The frontend foundation is in place for when the server adds sticker support.
+
+## Architecture
+
+```
+entities/sticker/
+├── sticker.types.ts      ← Sticker, StickerPack, StickerFormat, API contracts
+├── sticker.model.ts      ← Zustand store: packs, recent, favorites, search
+├── sticker.api.ts        ← API stubs + markdown helpers (build/parse/detect)
+└── index.ts              ← Public barrel
+
+features/sticker-picker/
+├── sticker-picker.ui.tsx ← Telegram-style picker panel (search, pack tabs, grid)
+└── index.ts
+
+shared/ui/
+└── sticker-message.tsx   ← Renders sticker in message bubble
+```
+
+## Message Format
+
+Stickers are sent as regular Zulip messages with a special markdown format:
+
+```
+[sticker:pack_id:sticker_id](https://cdn.example.com/stickers/pack/sticker.webp)
+```
+
+This degrades gracefully in clients without sticker support — they see a linked image.
+
+### Helpers
+
+```ts
+import {
+  buildStickerMarkdown,   // Sticker → markdown string
+  parseStickerFromContent, // markdown → { packId, stickerId, url } | null
+  isStickerMessage,        // is content a sticker-only message?
+} from "~/entities/sticker";
+```
+
+## Store (useStickerStore)
+
+```ts
+import { useStickerStore } from "~/entities/sticker";
+
+// Read
+const packs = useStickerStore(s => s.packs);
+const sticker = useStickerStore(s => s.getSticker("s1"));
+const results = useStickerStore(s => s.searchByEmoji("👍"));
+const recent = useStickerStore(s => s.getRecentStickers());
+const favs = useStickerStore(s => s.getFavoriteStickers());
+
+// Write
+useStickerStore.getState().setPacks(packsFromApi);
+useStickerStore.getState().addPack(newPack);
+useStickerStore.getState().removePack("p1");
+useStickerStore.getState().addRecent("s1", "p1");
+useStickerStore.getState().toggleFavorite("s1");
+```
+
+Recent (up to 30) and favorites (up to 50) persist in localStorage.
+
+## Sticker Formats
+
+| Format | Extension | Rendering | Status |
+|--------|-----------|-----------|--------|
+| `webp` | `.webp` | `<img>` | Ready |
+| `png` | `.png` | `<img>` | Ready |
+| `lottie` | `.json` / `.tgs` | `lottie-web` (future) | Placeholder |
+| `webm` | `.webm` | `<video>` (future) | Placeholder |
+
+## StickerPicker (UI)
+
+```tsx
+import { StickerPicker } from "~/features/sticker-picker";
+
+<StickerPicker
+  onSelect={(sticker) => {
+    const md = buildStickerMarkdown(sticker);
+    sendMessage({ content: md, stream, subject });
+  }}
+  onClose={() => setPickerOpen(false)}
+/>
+```
+
+Layout:
+1. Search bar (filters by emoji / alt text)
+2. Pack tabs (horizontal scroll, cover sticker as icon, Recent tab)
+3. Sticker grid (4 columns, lazy-loaded thumbnails)
+
+## StickerMessage (Rendering)
+
+```tsx
+import { shouldRenderAsSticker, StickerMessage } from "~/shared/ui";
+
+// In MessageBubble:
+if (shouldRenderAsSticker(message.content)) {
+  return <StickerMessage content={message.content} maxSize={180} />;
+}
+```
+
+Sticker-only messages render without the message bubble background (larger, standalone).
+Mixed content messages render the sticker inline (smaller).
+
+## When Backend is Ready
+
+Replace stubs in `sticker.api.ts`:
+
+1. `fetchStickerPacks()` → `GET /sticker-packs`
+2. `fetchStickerPack(id)` → `GET /sticker-packs/{id}`
+3. `installStickerPack(id)` → `POST /sticker-packs/{id}/install`
+4. `uninstallStickerPack(id)` → `DELETE /sticker-packs/{id}/install`
+5. `searchStickers(query)` → `GET /stickers/search?q=...`
+
+Add event loop handler for `sticker_pack` events (new pack available, pack updated).
+
+## Rules for AI Agent
+
+### When implementing sticker features
+
+1. **Sticker = regular message** — use `buildStickerMarkdown()`, send via normal `sendMessage()`
+2. **Detection** — use `isStickerMessage()` / `parseStickerFromContent()` to identify stickers
+3. **Rendering** — use `<StickerMessage>` in message bubble; switch rendering mode via `shouldRenderAsSticker()`
+4. **Store** — all sticker state lives in `useStickerStore`; no ad-hoc state
+5. **Formats** — WebP/PNG now, Lottie/WebM as future extensions
+6. **Accessibility** — every sticker needs `alt` text (emoji or description)
+
+### Do NOT
+
+- Do NOT send sticker files as regular file uploads — use the markdown format
+- Do NOT store full sticker images in localStorage — only IDs and metadata
+- Do NOT hardcode sticker URLs — they come from the API/pack data
+- Do NOT block on backend — all API functions are stubbed and return empty results

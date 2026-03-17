@@ -1,0 +1,83 @@
+---
+description: AI agent integration — context bridge, commands, events
+alwaysApply: false
+globs: "packages/web/src/**/*.{ts,tsx}"
+---
+
+# AI Agent Integration
+
+## Context Bridge (`window.__ai__`)
+
+Structured interface for AI agents (MCP servers, browser extensions, copilot sidepanels).
+
+### Read context
+
+```javascript
+__ai__.context.getCurrentChat()
+// { type: "stream", streamName: "general", topic: "bugs", messageCount: 42 }
+
+__ai__.context.getCurrentUser()
+// { userId: 1, email: "user@example.com", fullName: "John", realm: "https://..." }
+
+__ai__.context.getAppState()
+// { locale: "ru", theme: { palette: "orange-warm", mode: "dark" }, unreadCount: 15, online: true }
+
+__ai__.context.getRecentMessages(10)
+// [{ id, content, sender, timestamp }, ...]
+```
+
+### Subscribe to events
+
+```javascript
+__ai__.events.onNewMessage((msg) => {
+  // { id: 123, content: "<p>Hello</p>", senderId: 42, timestamp: 1710000000 }
+  // Use for: AI summarization, auto-reply, sentiment analysis
+});
+
+__ai__.events.onStateChange((state) => {
+  // { locale, theme, unreadCount, online, runtime, version }
+  // Use for: adaptive AI behavior
+});
+```
+
+### Register commands
+
+```javascript
+const unsub = __ai__.commands.register({
+  id: "summarize-chat",
+  label: "Summarize chat",
+  description: "Generate AI summary of current conversation",
+  handler: async (args) => {
+    const messages = __ai__.context.getRecentMessages(50);
+    const summary = await callAI(messages);
+    return summary;
+  },
+});
+
+// Execute command
+await __ai__.commands.execute("summarize-chat");
+
+// List all registered commands
+__ai__.commands.list();
+```
+
+## Use Cases
+
+| Integration | How |
+|-------------|-----|
+| **Chat summarization** | `getRecentMessages()` → LLM → display summary |
+| **Smart compose** | `getCurrentChat()` context → suggest reply |
+| **Unread triage** | `getAppState().unreadCount` → prioritize channels |
+| **Sentiment alert** | `onNewMessage()` → analyze → notify if negative |
+| **Auto-translate** | `onNewMessage()` → detect language → translate |
+| **Command palette** | `commands.register()` → user triggers via UI |
+| **MCP server** | Read context → expose as MCP resources/tools |
+
+## For AI Agent (code changes)
+
+When adding new AI-relevant features:
+1. Expose read-only state through `__ai__.context`
+2. Notify `notifyAiNewMessage()` / `notifyAiStateChange()` from event handlers
+3. Use `commands.register()` for AI-triggered actions
+4. NEVER expose write access to stores directly — only through defined actions
+5. Sanitize message content before exposing (it's HTML from Zulip)

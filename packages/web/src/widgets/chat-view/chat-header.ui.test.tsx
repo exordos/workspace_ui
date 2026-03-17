@@ -1,0 +1,78 @@
+import { screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import { renderWithProviders } from "~/test/render";
+import { ChatHeader } from "./chat-header.ui";
+
+describe("ChatHeader", () => {
+  it("shows typing status for DM partner when typing flag is set", () => {
+    const dmPartner = {
+      name: "Alice",
+      avatarUrl: null,
+      presenceState: "active" as const,
+      isTyping: true,
+    };
+
+    renderWithProviders(
+      <ChatHeader channelName="unused" dmPartner={dmPartner} hideParticipants hideTopic />,
+    );
+
+    expect(screen.getByText(/typing|печатает/i)).toBeInTheDocument();
+    expect(screen.queryByText(/^typing$/)).not.toBeInTheDocument();
+  });
+
+  it("falls back to presence status when typing flag is absent", () => {
+    renderWithProviders(
+      <ChatHeader
+        channelName="unused"
+        dmPartner={{ name: "Alice", avatarUrl: null, presenceState: "active" }}
+        hideParticipants
+        hideTopic
+      />,
+    );
+
+    expect(screen.getByText(/online|в сети/i)).toBeInTheDocument();
+  });
+
+  it("shows group dm title and participant count", () => {
+    renderWithProviders(
+      <ChatHeader
+        channelName="unused"
+        dmGroup={{ name: "Alice, Bob, Me", participantsCount: 3 }}
+        hideParticipants
+        hideTopic
+      />,
+    );
+
+    expect(screen.getByText("Alice, Bob, Me")).toBeInTheDocument();
+    expect(screen.getByText(/3 (members?|участник|участника|участников)/i)).toBeInTheDocument();
+  });
+
+  it("uses flat shell, compact metadata typography and topbar-aligned height", () => {
+    renderWithProviders(
+      <ChatHeader
+        channelName="unused"
+        dmPartner={{ name: "Alice", avatarUrl: null, presenceState: "active" }}
+        hideParticipants
+        hideTopic
+      />,
+    );
+
+    const header = screen.getByText("Alice").closest("header");
+    const status = screen.getByText(/online|в сети/i);
+
+    expect(header).not.toHaveClass("rounded-xl");
+    expect(header).toHaveClass("py-2");
+    expect(status).toHaveClass("text-xs");
+  });
+
+  it("places chat actions button inside right controls cluster", () => {
+    renderWithProviders(<ChatHeader channelName="general" hideTopic hideParticipants />);
+
+    const searchButton = screen.getByRole("button", { name: /search/i });
+    const actionButton = screen.getByRole("button", { name: /hide panel/i });
+    const controlsCluster = searchButton.parentElement;
+
+    expect(controlsCluster).not.toBeNull();
+    expect(controlsCluster).toContainElement(actionButton);
+  });
+});

@@ -17,7 +17,7 @@ app.use(
 app.use(json());
 app.use(urlencoded({ extended: true }));
 
-// Basic auth для совместимости с zulip-js (любые учётные данные принимаются в dev)
+// Basic auth for zulip-js compatibility (any credentials accepted in dev)
 app.use("/api/v1", (_req, _res, next) => next());
 
 registerApiRoutes(app);

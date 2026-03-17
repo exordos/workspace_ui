@@ -1,0 +1,62 @@
+---
+description: Semantic versioning and release process
+alwaysApply: false
+globs: "{package.json,CHANGELOG.md,scripts/version.mjs}"
+---
+
+# Versioning
+
+## Semantic Versioning
+
+```
+MAJOR.MINOR.PATCH
+
+1.0.0  → breaking changes, major redesign
+0.2.0  → new features, backward-compatible
+0.1.1  → bug fixes, patches
+```
+
+## When to Bump
+
+| Change | Bump | Example |
+|--------|------|---------|
+| New screen/page | minor | `feat: add drafts page` |
+| New feature in existing screen | minor | `feat(chat): add forwarding` |
+| Bug fix | patch | `fix: correct unread count` |
+| Performance improvement | patch | `perf: virtualize message list` |
+| Dependency update | patch | `chore: update React to 19.1` |
+| Breaking API/data change | major | `feat!: change store format` |
+| i18n: add new language | minor | `feat(i18n): add German` |
+| New theme palette | minor | `feat(theme): add green palette` |
+
+## Release Process
+
+```bash
+# 1. Bump version across all packages + update CHANGELOG
+npm run version:bump patch    # or minor, major, or explicit 1.2.3
+
+# 2. Review generated CHANGELOG.md
+
+# 3. Commit and tag
+git add -A
+git commit -m "chore: release v$(node -p 'require(\"./package.json\").version')"
+git tag "v$(node -p 'require(\"./package.json\").version')"
+
+# 4. Push
+git push origin main --tags
+```
+
+## Version is used in
+
+| Where | How |
+|-------|-----|
+| `package.json` (root, web, electron) | `version` field |
+| Electron auto-updater | reads from package.json |
+| Sentry releases | `VITE_APP_VERSION` (CI sets from git tag) |
+| CHANGELOG.md | auto-generated section header |
+| PWA cache | Workbox precache manifest changes |
+| About screen (planned) | `brand.appName + version` |
+
+## Monorepo sync
+
+All 3 packages share ONE version number. `scripts/version.mjs` bumps all simultaneously.

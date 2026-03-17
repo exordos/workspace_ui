@@ -1,0 +1,65 @@
+---
+description: CI/CD pipelines — GitHub Actions + GitLab CI
+alwaysApply: false
+globs: ".github/**/*.yml,.gitlab-ci.yml"
+---
+
+# CI/CD
+
+## Two pipelines — one logic
+
+| | GitHub Actions | GitLab CI |
+|---|---|---|
+| Config | `.github/workflows/ci.yml` | `.gitlab-ci.yml` |
+| Trigger | push/PR to main, develop | push/MR to main, develop |
+| Runner | GitHub-hosted | GitLab runners (tagged) |
+
+All logic lives in npm scripts — CI files only orchestrate.
+
+## Stages
+
+```
+check → e2e → build (Electron)
+```
+
+### check (on every push/PR)
+
+| Step | npm command |
+|------|-----------|
+| TypeScript | `npm run typecheck` |
+| ESLint | `npm run lint` |
+| Prettier | `npm run format:check` |
+| Unit tests | `npm run test` |
+| Build web | `npm run build --workspace=web` |
+| Security audit | `npm audit --audit-level=high` |
+
+### e2e (after check)
+
+| Step | npm command |
+|------|-----------|
+| Install browsers | `npx playwright install --with-deps chromium` |
+| Run tests | `npm run e2e -- --project=chromium` |
+
+### build (main only)
+
+| Platform | npm command | Runner tag |
+|----------|-----------|-----------|
+| Linux | `npm run package:electron:linux` | `linux` |
+| Windows | `npm run package:electron:win` | `windows` |
+| macOS | `npm run package:electron:mac` | `macos` |
+
+## Synchronization rule
+
+When modifying the pipeline:
+1. Update BOTH files (`.github/workflows/ci.yml` + `.gitlab-ci.yml`)
+2. Both must call the same npm scripts
+3. Do not add logic to CI files — only to npm scripts
+
+## Env vars in CI
+
+| Variable | GitHub | GitLab |
+|----------|--------|--------|
+| Commit SHA | `${{ github.sha }}` | `$CI_COMMIT_SHA` |
+| Branch | `${{ github.ref_name }}` | `$CI_COMMIT_BRANCH` |
+| Is main | `github.ref == 'refs/heads/main'` | `$CI_COMMIT_BRANCH == "main"` |
+| Artifacts | `actions/upload-artifact@v4` | `artifacts: paths:` |

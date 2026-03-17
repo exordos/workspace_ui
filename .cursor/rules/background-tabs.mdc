@@ -1,0 +1,112 @@
+---
+description: Background tab resilience — timers, reconnection, visibility
+alwaysApply: false
+globs: "packages/web/src/**/*.{ts,tsx}"
+---
+
+# Background Tab Resilience
+
+## Problem
+
+Browsers aggressively conserve resources for inactive tabs:
+- `setTimeout`/`setInterval` throttled to ≥1000ms (Chrome)
+- After 5 min, full timer freeze (Page Lifecycle freeze)
+- Fetch requests are not throttled, but responses may be delayed
+
+## Solution: `~/shared/lib/visibility`
+
+### Page Visibility API
+
+```typescript
+import { isTabVisible, onVisibilityChange, onTabResume } from "~/shared/lib/visibility";
+
+// Check current state
+if (isTabVisible()) { /* active tab */ }
+
+// Subscribe to changes
+onVisibilityChange((visible) => {
+  if (!visible) { /* tab hidden — pause non-critical work */ }
+});
+
+// Recovery after >30s in background
+onTabResume((hiddenDurationMs) => {
+  // Re-fetch data, reconnect WebSocket, sync state
+  reloadMessages();
+  refreshPresence();
+});
+```
+
+### Resilient Interval
+
+`setInterval` is throttled in background. Use `createResilientInterval` — fires immediately on return to foreground if overdue:
+
+```typescript
+import { createResilientInterval } from "~/shared/lib/visibility";
+
+const stop = createResilientInterval(() => {
+  fetchPresence();  // 90s polling
+}, 90_000);
+
+// cleanup
+stop();
+```
+
+## Current Integrations
+
+### Event Loop (`app/app.event-loop.ts`)
+
+- Long-poll fetch works in background (not dependent on timers)
+- On `BAD_EVENT_QUEUE_ID` → auto re-registration
+- `interruptibleSleep()` — sleep via setTimeout, but can be interrupted by `onTabResume`
+- On return from background → immediately resumes polling without waiting for timer
+- `onReconnect` callback — for full sync after connection loss
+
+### Presence Polling (`widgets/layout/`)
+
+- Uses `setInterval(90_000)` → recommended to replace with `createResilientInterval`
+
+## Rules for AI Agent
+
+### Do not use
+
+```typescript
+// ❌ Throttled in background
+setInterval(callback, 5000);
+setTimeout(callback, longDelay);
+```
+
+### Use instead
+
+```typescript
+// ✅ Resilient — catchup on resume
+createResilientInterval(callback, intervalMs);
+
+// ✅ For one-time tasks — interruptible sleep
+onTabResume(() => refetchData());
+```
+
+### Fetch/API calls — OK
+
+Fetch requests are NOT throttled in background. Long-poll works normally.
+
+### Animations in background — skip
+
+```typescript
+// CSS animations and requestAnimationFrame pause in background — this is normal.
+// DO NOT attempt to work around this.
+```
+
+## Page Lifecycle States
+
+```
+Active → Hidden → Frozen → Discarded
+                    ↓          ↓
+                  resume    reload (state lost)
+```
+
+| State | Timers | Fetch | Our behavior |
+|-------|--------|-------|-------------|
+| Active | Normal | Normal | Full operation |
+| Hidden | Throttled (1s) | OK | Long-poll continues, timers slowed |
+| Frozen | Suspended | Suspended | `onTabResume()` for recovery |
+| Discarded | Dead | Dead | Full application reload |

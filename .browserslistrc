@@ -1,0 +1,10 @@
+# Production: latest 2 versions of Chrome and Edge (desktop focus)
+# Covers: Chrome 130+, Edge 130+ (Chromium-based)
+# Also covers Electron 35 (Chromium 134)
+
+last 2 Chrome versions
+last 2 Edge versions
+
+# Exclude mobile browsers (native apps handle mobile)
+not op_mini all
+not ie 11

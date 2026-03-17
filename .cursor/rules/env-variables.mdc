@@ -1,0 +1,66 @@
+---
+description: Environment variables — access, validation, security
+globs: "packages/web/src/**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# Environment Variables
+
+## Access
+
+The single access point for env vars is `~/shared/lib/env`:
+
+```typescript
+import { env } from "~/shared/lib/env";
+
+env.WORKSPACE_API_ORIGIN    // "https://zulip.example.com"
+env.WORKSPACE_API_BASE      // dev: "/workspace-api/api/v1", prod: "https://…/api/v1"
+env.JITSI_MEET_DOMAIN       // "meet.example.com" or ""
+env.JITSI_MEET_BASE_URL     // "https://meet.example.com" or ""
+env.WORKSPACE_UPLOADS_ORIGIN // "https://…/api/v1" (for img src)
+env.ZULIP_API_PATH          // "/api/v1" (default) or custom
+env.WORKSPACE_API_PATH      // "/api/v1" (default) or custom
+env.CDN_URL                 // "https://cdn.example.com/workspace" or ""
+env.BASE_URL                // Vite resolved base ("/" or CDN URL)
+env.DEV                     // true in dev, false in prod
+env.PROD                    // true in prod
+```
+
+## Rules
+
+- NEVER write `import.meta.env.VITE_*` in components/stores — only through `env`
+- `constants.ts` re-exports from `env` for backward compatibility
+- New env vars: add in 3 places:
+  1. `ImportMetaEnv` in `vite-env.d.ts` (TypeScript types)
+  2. `shared/lib/env.ts` (parsing + validation)
+  3. `.env.example` (documentation)
+
+## Variables
+
+| Variable | Required | Runtime | Description |
+|----------|----------|---------|------------|
+| `VITE_WORKSPACE_API_ORIGIN` | Yes | client | Zulip/Workspace API origin |
+| `VITE_JITSI_MEET_DOMAIN` | No | client | Jitsi Meet domain (without protocol) |
+| `VITE_WORKSPACE_API_BASE_URL` | No | client | Override for API base URL |
+| `VITE_ZULIP_API_PATH` | No | client | Zulip API path (default `/api/v1`) |
+| `VITE_WORKSPACE_API_PATH` | No | client | Workspace API path (default `/api/v1`) |
+| `VITE_CDN_URL` | No | build-time | CDN origin for static assets (JS, CSS, images) |
+| `VITE_SENTRY_DSN` | No | client | Sentry DSN for error tracking |
+| `VITE_APP_VERSION` | No | build-time | Version for Sentry releases (set by CI) |
+| `ELECTRON` | No | build-only | Disables PWA, enables HashRouter |
+
+## Security
+
+- `VITE_*` variables end up in the client bundle — DO NOT store secrets
+- API Key is stored in localStorage, not in env vars
+- `ELECTRON` does NOT have the `VITE_` prefix — not included in the bundle
+
+## Environment files (Vite order)
+
+```
+.env                 ← always loaded
+.env.local           ← always, gitignored
+.env.development     ← only npm run dev
+.env.production      ← only npm run build
+.env.[mode].local    ← mode-specific, gitignored
+```

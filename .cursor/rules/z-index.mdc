@@ -1,0 +1,77 @@
+---
+description: Z-index stacking system — semantic layers, never hardcode
+alwaysApply: true
+---
+
+# Z-Index Layers
+
+## The Scale
+
+```
+z-pip      70   Picture-in-picture (minimized Jitsi call)
+z-toast    60   Toast notifications, snackbars
+z-modal    50   Modal/dialog content
+z-overlay  40   Modal backdrop, dim overlay
+z-dropdown 30   Dropdowns, context menus, popovers
+z-float    20   Floating buttons (scroll-to-bottom, FAB)
+z-sticky   10   Sticky headers, date separators
+z-base      0   Default layer (everything else)
+```
+
+## Rules
+
+### ALWAYS use semantic tokens
+
+```tsx
+// ✅ Semantic token
+<div className="z-modal" />
+<div className="z-dropdown" />
+<div className="z-sticky" />
+
+// ❌ NEVER hardcode numeric z-index
+<div className="z-50" />
+<div className="z-[999]" />
+<div style={{ zIndex: 100 }} />
+```
+
+### Stacking order for overlapping UI
+
+```
+pip (70)       ← Jitsi minimized call (always on top)
+  toast (60)   ← "Copied!", "Failed to send"
+    modal (50) ← Edit dialog, Forward dialog, Search
+      overlay (40) ← Dark backdrop behind modal
+        dropdown (30) ← Context menu, emoji picker, instance switcher
+          float (20) ← Scroll-to-bottom button
+            sticky (10) ← Date header in message list
+              base (0) ← Everything else
+```
+
+### Dropdown inside modal?
+
+Radix UI handles this via Portals — dropdown renders in a portal at body level.
+Both modal (50) and its inner dropdown (30) render at body level, so dropdown's z-30 < modal's z-50. 
+If a dropdown must appear ABOVE a modal, render it as a Radix Portal with `z-modal`.
+
+### Adding a new layer
+
+If needed (rare), add to `tailwind.config.ts` → `theme.extend.zIndex`.
+Never use `z-[arbitrary]` — add a named token instead.
+
+## Token reference
+
+Defined in `tailwind.config.ts`:
+
+```typescript
+zIndex: {
+  base: "0",
+  sticky: "10",
+  float: "20",
+  dropdown: "30",
+  overlay: "40",
+  modal: "50",
+  toast: "60",
+  pip: "70",
+  max: "9999",  // emergency only — document why if used
+}
+```

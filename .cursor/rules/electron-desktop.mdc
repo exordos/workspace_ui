@@ -1,0 +1,98 @@
+---
+description: Electron desktop app conventions
+globs: "packages/electron/**/*.{ts,mjs}"
+alwaysApply: false
+---
+
+# Electron Conventions
+
+## Architecture
+
+```
+Main process (Node.js)     ←→ IPC ←→     Renderer (React SPA)
+  packages/electron/src/main.ts           packages/web/src/
+  packages/electron/src/preload.ts        window.electronAPI
+```
+
+- **contextIsolation: true, sandbox: true** — always
+- **nodeIntegration: false** — never enable
+
+## IPC API Reference
+
+### `electronAPI.os` — OS Integration
+
+```typescript
+api.os.setBadgeCount(5);          // macOS dock / Windows overlay / Linux launcher
+api.os.setProgressBar(0.75);      // Taskbar/dock progress (0..1)
+api.os.setProgressBar(-1);        // Clear progress
+api.os.requestAttention();        // macOS dock bounce / Windows taskbar flash
+api.os.setLoginItemSettings(true); // Open at login
+const { openAtLogin } = await api.os.getLoginItemSettings();
+```
+
+### Unified wrapper (for React):
+
+```typescript
+import { osIntegration } from "~/shared/lib/os-integration";
+
+osIntegration.setBadgeCount(5);     // Electron → IPC, PWA → navigator.setAppBadge
+osIntegration.setProgressBar(0.75); // Electron → taskbar, PWA → no-op
+osIntegration.requestAttention();   // Electron → flash/bounce, PWA → no-op
+osIntegration.clearProgressBar();
+```
+
+### OS-specific behavior
+
+| Feature | Windows 11 | macOS 26 | Linux |
+|---------|-----------|----------|-------|
+| Badge count | Overlay icon on taskbar | Dock badge number | Unity/GNOME badge |
+| Progress bar | Taskbar progress | Dock progress | Unity launcher |
+| Attention | Flash taskbar | Bounce dock icon | Flash (if WM supports) |
+| Tray icon | System tray | Menu bar | System tray |
+| Startup | Registry | Login items | Autostart |
+
+### Tray Icon
+
+System tray icon with context menu (Open / Quit). Click → focus window.
+
+Resources needed: `resources/tray-icon.png` (16×16), `resources/tray-icon-mac.png` (16×16 template).
+
+## Build Targets
+
+| Platform | Format | Arch | Signing |
+|----------|--------|------|---------|
+| Windows 11 | NSIS | x64, arm64 | Code signing (future) |
+| macOS 26 | DMG, ZIP | x64, arm64 | Developer ID + Notarization |
+| Ubuntu 24 | DEB, AppImage | x64, arm64 | N/A |
+| Fedora 43 | RPM, AppImage | x64, arm64 | N/A |
+
+## macOS Code Signing & Notarization
+
+Full guide: `docs/MACOS_SIGNING.md`
+
+### Environment variables (CI secrets)
+
+| Variable | Purpose |
+|----------|---------|
+| `CSC_LINK` | Base64 .p12 certificate (Developer ID Application) |
+| `CSC_KEY_PASSWORD` | Password for the .p12 file |
+| `APPLE_ID` | Apple Developer account email |
+| `APPLE_APP_PASSWORD` | App-specific password for notarization |
+| `APPLE_TEAM_ID` | 10-character Apple Team ID |
+
+Without these vars, the build runs unsigned (for local development). In CI, they're passed from GitHub Secrets.
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `resources/entitlements.mac.plist` | Main process: network, camera, mic, files |
+| `resources/entitlements.mac.inherit.plist` | Child processes: JIT, network |
+| `scripts/notarize.mjs` | afterSign hook → Apple notary service |
+
+### For AI Agent
+
+- **Never hardcode** signing credentials in code or config
+- **Always skip** signing when env vars are absent (graceful degradation)
+- **Entitlements** must be updated when adding new OS capabilities (e.g., Bluetooth, location)
+- **Test unsigned** builds locally, signing only happens in CI

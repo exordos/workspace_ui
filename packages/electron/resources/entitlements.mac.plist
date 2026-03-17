@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Hardened Runtime: required for notarization since macOS 10.14.5 -->
+
+    <!-- JIT compilation (V8 engine in Electron/Chromium) -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+
+    <!-- Unsigned executable memory (V8 JIT + WebAssembly) -->
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+
+    <!-- Load unsigned plugins / dylibs (Electron native modules) -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+
+    <!-- Network: outbound connections (Zulip API, FCM, Jitsi, auto-update) -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+
+    <!-- File access: user-selected files (attachments, downloads) -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+
+    <!-- Downloads folder (default download location) -->
+    <key>com.apple.security.files.downloads.read-write</key>
+    <true/>
+
+    <!-- Camera: video calls via Jitsi -->
+    <key>com.apple.security.device.camera</key>
+    <true/>
+
+    <!-- Microphone: voice/video calls via Jitsi -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+
+    <!-- User notifications (push + local) -->
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+    <true/>
+</dict>
+</plist>

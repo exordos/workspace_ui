@@ -1,0 +1,147 @@
+---
+description: Caching strategy — service worker, API, avatars, stale data prevention
+globs: "packages/web/**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# Caching & Stale Data Prevention
+
+## The 5 Cache Layers
+
+```
+Browser HTTP cache  →  Service Worker (Workbox)  →  API middleware  →  Zustand store  →  Derived data
+```
+
+Each layer can serve stale data if not managed correctly.
+
+## Layer 1: Service Worker (Workbox in vite.config.ts)
+
+### Cache tiers
+
+| Cache name | Strategy | TTL | Matches |
+|------------|----------|-----|---------|
+| `api-realtime-cache` | NetworkFirst (10s timeout) | 60s | `/messages`, `/events`, `/typing`, `/presence` |
+| `api-static-cache` | NetworkFirst (15s timeout) | 300s | `/users`, `/server_settings`, `/realm` |
+| `api-cache` | NetworkFirst | 120s | All other `/api/v1/` |
+| `avatar-cache` | StaleWhileRevalidate | 24h | `/avatar/`, gravatar |
+| `uploads-cache` | CacheFirst | 30 days | `/user_uploads/` |
+| precache | Precache (hash-versioned) | Until next deploy | JS, CSS, HTML, fonts, icons |
+
+### Key settings
+
+- `navigateFallback: "/index.html"` — SPA routing works offline
+- `cleanupOutdatedCaches: true` — removes old cache buckets on SW update
+- `registerType: "prompt"` — user must confirm SW update (no silent replacement)
+
+### When to update cache tiers
+
+- Adding a new real-time endpoint → add to `api-realtime-cache` pattern
+- Adding a new static resource endpoint → add to `api-static-cache`
+- Never use `CacheFirst` for data that changes (messages, presence, users)
+
+## Layer 2: API Client Middleware
+
+`noCacheMiddleware` adds `Cache-Control: no-cache, no-store` + `Pragma: no-cache` to all API requests. This prevents reverse proxies and CDNs from caching API responses.
+
+```typescript
+// Already in the middleware pipeline — no action needed
+const noCacheMiddleware: Middleware = async (req, next) => {
+  req.headers["Cache-Control"] = "no-cache, no-store";
+  req.headers["Pragma"] = "no-cache";
+  return next(req);
+};
+```
+
+## Layer 3: Event Loop Reconnect
+
+When the event loop loses connection and reconnects (BAD_EVENT_QUEUE_ID, network loss), events during the gap are lost. The `onReconnect` and `onBadQueue` callbacks trigger a full data refresh:
+
+```
+Event loop disconnects → events lost → reconnect →
+  1. Re-fetch recent messages (fills the gap)
+  2. Re-fetch realm presence (updates stale status)
+  3. Re-register event queue (resume real-time)
+```
+
+## Layer 4: Tab Resume
+
+After the tab is hidden for >30 seconds, `onTabResume` callbacks fire:
+- Event loop is nudged to poll immediately
+- Presence polling fires immediately (via `createResilientInterval`)
+- Any stale timer-based data is refreshed
+
+**Rule: Use `createResilientInterval` instead of `setInterval` for any polling that must stay fresh.**
+
+```typescript
+import { createResilientInterval } from "~/shared/lib/visibility";
+
+// Instead of:
+const id = setInterval(poll, 90_000);
+// Use:
+const cleanup = createResilientInterval(poll, 90_000);
+```
+
+## Layer 5: Avatar Cache Busting
+
+Avatar URLs include a version parameter `?_av={version}` that increments on:
+- Bulk user refresh (login, reconnect)
+- Individual user profile update
+
+```typescript
+import { resolveAvatarUrl } from "~/shared/lib/avatar";
+
+const url = resolveAvatarUrl(user.avatar_url);
+// → "https://zulip.example.com/avatar/user@email?_av=3"
+```
+
+**Rule: Always use `resolveAvatarUrl()` for avatars. Never construct avatar URLs manually.**
+
+## Common Stale Data Bugs and Prevention
+
+### Bug 1: User sees old messages after long background
+
+**Cause:** Event loop was paused, events were lost.
+**Prevention:** `onReconnect` callback re-fetches recent messages.
+
+### Bug 2: Presence shows "online" for offline user
+
+**Cause:** `setInterval` was throttled in background, presence data is 5+ min stale.
+**Prevention:** `createResilientInterval` fires immediately on tab resume.
+
+### Bug 3: User sees old app version after deploy
+
+**Cause:** Service Worker serves cached index.html.
+**Prevention:** `registerType: "prompt"` shows update banner; user clicks to reload.
+
+### Bug 4: Avatar doesn't update after profile change
+
+**Cause:** Browser HTTP cache serves old image.
+**Prevention:** `?_av={version}` param busts the cache on refresh.
+
+### Bug 5: API response cached by corporate proxy
+
+**Cause:** Proxy caches GET responses without `Cache-Control`.
+**Prevention:** `noCacheMiddleware` adds `no-cache, no-store` to all requests.
+
+### Bug 6: Zustand derived data stale after store update
+
+**Cause:** `streams()` getter returned cached array even after `streamsMap` changed.
+**Prevention:** Derived data caches are keyed on input Map reference (see performance rule).
+
+## Rules for AI Agent
+
+### MUST
+
+1. **`createResilientInterval`** for any periodic polling (not `setInterval`)
+2. **`resolveAvatarUrl()`** for all avatar images (not raw URL)
+3. **`noCacheMiddleware`** stays first in the API pipeline (before auth)
+4. **`onReconnect` + `onBadQueue`** in event loop must re-fetch critical data
+5. **New real-time endpoints** must be added to `api-realtime-cache` in Workbox config
+
+### MUST NOT
+
+- Do NOT use `CacheFirst` for any data that changes (messages, presence, users)
+- Do NOT use raw `setInterval` for data polling — it breaks in background tabs
+- Do NOT construct avatar URLs manually — always go through `resolveAvatarUrl`
+- Do NOT add API endpoints to precache — they must use runtime caching
+- Do NOT set long TTL (>5 min) for any API cache except file uploads

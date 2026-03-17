@@ -1,0 +1,59 @@
+---
+description: Network connectivity detection and offline resilience
+globs: "packages/web/src/**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# Network Awareness
+
+## API
+
+```typescript
+import { network } from "~/shared/lib/network";
+
+network.isOnline();                    // true/false (navigator.onLine)
+
+network.onStatusChange((online) => {   // fires on every online↔offline change
+  if (!online) showOfflineBanner();
+});
+
+network.onReconnect(() => {            // fires ONCE on offline→online transition
+  refetchCriticalData();
+});
+
+await network.waitForOnline();         // resolves when online (instant if already online)
+```
+
+## How It Works
+
+```
+     offline event                  online event
+          │                              │
+          ▼                              ▼
+  wasOffline = true              fire statusListeners(true)
+  fire statusListeners(false)    if (wasOffline) → fire reconnectListeners()
+  log: "Network offline"         log: "Network online" + downtime
+```
+
+## Integration: Event Loop
+
+`app/app.event-loop.ts` is network-aware:
+
+1. Before each request: checks `isOnline()` → if offline, calls `waitForOnline()` instead of retrying
+2. On fetch error while offline: pauses loop, waits for network
+3. On reconnect: immediately re-registers queue, resets retry count
+4. Exponential backoff: 2s → 3s → 4.5s → ... → max 30s (only when online)
+
+## Integration: API Middleware
+
+The `retryMiddleware` in `shared/api/client.ts` retries on 429/5xx.
+For network errors, it should check `isOnline()` before retrying.
+
+## For AI Agent
+
+When making API calls:
+- Use `zulipApi`/`workspaceApi` — retries are handled by middleware
+- For custom fetch calls: wrap in `try/catch`, check `network.isOnline()` before retry
+- For periodic polling: use `createResilientInterval()` from visibility + check `isOnline()`
+- Show offline indicator in UI when `!network.isOnline()`
+- On reconnect: re-fetch critical data (messages, presence, folders)

@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+renderer/
+release/
+coverage/
+*.tsbuildinfo
+
+# Lock files
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
+# Generated / binary
+*.min.js
+*.min.css
+*.fig
+*.ico
+*.icns
+
+# Public assets (binary placeholders)
+packages/web/public/*.png
+packages/web/public/*.ico

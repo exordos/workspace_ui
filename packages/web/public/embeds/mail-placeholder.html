@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mail Placeholder</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --page-bg: #f4f7fc;
+        --panel-bg: #ffffff;
+        --panel-border: #d9e2f0;
+        --text: #162033;
+        --muted: #64738d;
+        --accent: #4a73ff;
+        --accent-soft: #eaf0ff;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+        background: radial-gradient(circle at top, #ffffff 0%, var(--page-bg) 62%);
+        color: var(--text);
+        padding: 18px;
+      }
+
+      .shell {
+        width: min(1120px, 100%);
+        margin: 0 auto;
+        border: 1px solid var(--panel-border);
+        border-radius: 16px;
+        overflow: hidden;
+        background: var(--panel-bg);
+        box-shadow: 0 14px 34px rgba(21, 40, 84, 0.12);
+      }
+
+      .demo-banner {
+        display: inline-block;
+        margin: 14px 18px 0;
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #2540a1;
+        background: #e4ebff;
+        border: 1px solid #cfdcff;
+      }
+
+      .header {
+        padding: 12px 18px 16px;
+        border-bottom: 1px solid var(--panel-border);
+      }
+
+      .header-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 23px;
+      }
+
+      .search {
+        border: 1px solid var(--panel-border);
+        border-radius: 10px;
+        padding: 8px 12px;
+        min-width: 260px;
+        color: var(--muted);
+        background: #f8faff;
+        font-size: 13px;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: 220px 1fr 1fr;
+        min-height: 470px;
+      }
+
+      .col {
+        border-right: 1px solid var(--panel-border);
+      }
+
+      .col:last-child {
+        border-right: none;
+      }
+
+      .sidebar {
+        padding: 14px;
+        background: #fbfcff;
+      }
+
+      .folder {
+        border: 1px solid transparent;
+        border-radius: 9px;
+        padding: 8px 10px;
+        margin-bottom: 6px;
+        font-size: 13px;
+        color: #364866;
+      }
+
+      .folder.active {
+        background: var(--accent-soft);
+        border-color: #d2dcff;
+        color: #2347a7;
+        font-weight: 600;
+      }
+
+      .threads {
+        padding: 10px;
+      }
+
+      .thread {
+        border: 1px solid var(--panel-border);
+        border-radius: 10px;
+        padding: 10px 12px;
+        margin-bottom: 8px;
+        background: #fff;
+      }
+
+      .thread.active {
+        background: #f4f7ff;
+        border-color: #cdd9ff;
+      }
+
+      .sender {
+        font-size: 12px;
+        color: #5b6c89;
+        margin-bottom: 3px;
+      }
+
+      .subject {
+        font-size: 14px;
+        font-weight: 600;
+        margin-bottom: 4px;
+      }
+
+      .snippet {
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .preview {
+        padding: 16px;
+      }
+
+      .preview .label {
+        font-size: 12px;
+        color: var(--muted);
+        margin-bottom: 8px;
+      }
+
+      .preview .title {
+        margin: 0 0 10px;
+        font-size: 18px;
+      }
+
+      .preview p {
+        margin: 0;
+        color: #3c4d6c;
+        line-height: 1.45;
+      }
+
+      .note {
+        padding: 0 18px 16px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      code {
+        background: #eef3ff;
+        border: 1px solid #d8e2ff;
+        border-radius: 6px;
+        padding: 2px 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <span class="demo-banner">Demo Placeholder</span>
+      <header class="header">
+        <div class="header-row">
+          <h1>Mail</h1>
+          <div class="search">Search mail...</div>
+        </div>
+      </header>
+
+      <section class="layout">
+        <aside class="col sidebar">
+          <div class="folder active">Inbox (12)</div>
+          <div class="folder">Sent</div>
+          <div class="folder">Drafts</div>
+          <div class="folder">Archive</div>
+          <div class="folder">Spam</div>
+        </aside>
+
+        <div class="col threads">
+          <article class="thread active">
+            <div class="sender">Build Bot</div>
+            <div class="subject">Release 0.5.0 checks passed</div>
+            <div class="snippet">All pipelines are green and artifacts are ready.</div>
+          </article>
+          <article class="thread">
+            <div class="sender">Product Team</div>
+            <div class="subject">Demo agenda for Friday</div>
+            <div class="snippet">Please review talking points before 15:00.</div>
+          </article>
+          <article class="thread">
+            <div class="sender">Design</div>
+            <div class="subject">Light theme polish proposal</div>
+            <div class="snippet">Attached updated spacing and color recommendations.</div>
+          </article>
+        </div>
+
+        <section class="preview">
+          <div class="label">Preview</div>
+          <h2 class="title">Release 0.5.0 checks passed</h2>
+          <p>
+            Hello team,<br /><br />
+            CI pipeline has completed successfully for all targets. This mailbox
+            UI is a static demo placeholder rendered from HTML only.
+          </p>
+        </section>
+      </section>
+
+      <p class="note">Demo-only HTML page. Configure real source with <code>VITE_MAIL_EMBED_URL</code>.</p>
+    </main>
+  </body>
+</html>

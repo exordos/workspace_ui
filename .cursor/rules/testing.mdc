@@ -1,0 +1,231 @@
+---
+description: Test-Driven Development — TDD cycle, conventions, factories, templates
+globs: "packages/web/src/**/*.{ts,tsx,test.ts,test.tsx}"
+alwaysApply: true
+---
+
+# Test-Driven Development (TDD)
+
+## The TDD Cycle
+
+```
+1. RED    → Write a failing test that describes the desired behavior
+2. GREEN  → Write the MINIMUM code to make the test pass
+3. REFACTOR → Clean up code while keeping ALL tests green
+```
+
+**This is non-negotiable for new features.** Tests come FIRST.
+
+## When to Write Tests FIRST (mandatory)
+
+| Situation | TDD? |
+|-----------|------|
+| New pure function (lib/, shared/lib/) | **YES** — write tests first |
+| New Zustand store action | **YES** — write tests first |
+| New API integration | **YES** — write tests + MSW handler first |
+| New feature (features/*) | **YES** — write behavior tests first |
+| Bug fix | **YES** — write failing test that reproduces the bug first |
+| Refactoring existing code | Write characterization tests first if missing |
+| Trivial change (rename, typo) | No TDD needed |
+
+## Stack
+
+- **Vitest 4** — test runner (Jest-compatible API)
+- **@testing-library/react** — component testing
+- **@testing-library/user-event** — realistic user interactions
+- **MSW 2** — API mocking (service worker)
+- **Playwright** — E2E (separate, see `e2e-testing.mdc`)
+
+## File Organization
+
+```
+feature.ts         → feature.test.ts       (same directory)
+Component.tsx      → Component.test.tsx     (same directory)
+feature.model.ts   → feature.test.ts       (FSD: one test per slice)
+```
+
+Tests live NEXT TO the source file. No `__tests__/` directories.
+
+## Test Data Factories
+
+```typescript
+import { createMessage, createUser, createStream, createInstance } from "~/test/factories";
+
+const msg = createMessage({ content: "Hello", sender_id: 42 });
+const user = createUser({ full_name: "Alice" });
+const stream = createStream({ name: "engineering" });
+const instance = createInstance({ realm: "https://zulip.example.com" });
+```
+
+Factories create valid objects with sensible defaults. Override only what matters for the test.
+
+Batch:
+```typescript
+import { createMessages, createUsers } from "~/test/factories";
+const messages = createMessages(50, { stream_id: 10 });
+```
+
+## Test Structure
+
+```typescript
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+
+describe("moduleName", () => {
+  // Setup / teardown
+  beforeEach(() => { /* reset state */ });
+  afterEach(() => { localStorage.clear(); });
+
+  describe("functionName", () => {
+    it("returns expected result for valid input", () => {
+      // Arrange
+      const input = createMessage({ content: "test" });
+      // Act
+      const result = processMessage(input);
+      // Assert
+      expect(result).toBe("expected");
+    });
+
+    it("handles edge case", () => { ... });
+    it("throws for invalid input", () => { ... });
+  });
+});
+```
+
+## TDD by Code Category
+
+### Pure functions (shared/lib/)
+
+```
+RED:   Write test → expect(formatTime(3600)).toBe("1h ago")
+GREEN: Implement formatTime with hardcoded return
+REFACTOR: Generalize, add edge cases
+```
+
+### Zustand stores (entities/)
+
+```
+RED:   Write test → store.addItem(item); expect(store.items).toHaveLength(1)
+GREEN: Implement addItem action
+REFACTOR: Add deduplication, derived getters
+```
+
+```typescript
+afterEach(() => {
+  useMyStore.setState({ items: [], loading: false });
+  localStorage.clear();
+});
+```
+
+### API functions (*.api.ts)
+
+```
+RED:   Write test with MSW handler → expect fetchItems() to return parsed data
+GREEN: Implement fetchItems
+REFACTOR: Add error handling, retries
+```
+
+```typescript
+const server = setupServer(...handlers);
+beforeAll(() => server.listen());
+afterEach(() => server.resetHandlers());
+afterAll(() => server.close());
+```
+
+### Features (features/)
+
+```
+RED:   Write behavior test → "when user sends a message, draft is cleared"
+GREEN: Implement the feature
+REFACTOR: Extract shared logic, add analytics
+```
+
+### Bug fixes
+
+```
+RED:   Write test that REPRODUCES the bug (fails with current code)
+GREEN: Fix the bug (test now passes)
+REFACTOR: Add related edge case tests
+```
+
+## Test Quality Rules
+
+### MUST
+
+1. **Test behavior, not implementation** — assert on output, not how it's computed
+2. **One assertion per logical concept** — avoid asserting 10 things in one test
+3. **Descriptive test names** — `it("returns null when user not found")` not `it("test1")`
+4. **Independent tests** — each test sets up its own state, no order dependency
+5. **Clean up state** — `afterEach` resets stores, localStorage, timers
+6. **Use factories** — `createMessage()` not manual `{ id: 1, ... }` everywhere
+
+### MUST NOT
+
+- Do NOT test React internal state (`component.state.x`) — test visible behavior
+- Do NOT mock what you don't own (mock the boundary, not the library)
+- Do NOT write tests that pass when the code is broken
+- Do NOT skip tests (`it.skip`) without a ticket reference
+- Do NOT use `any` in test files — use `unknown` + type guards or factories
+
+## Coverage Targets
+
+| Category | Target | Current |
+|----------|--------|---------|
+| shared/lib/ | 90%+ | ~85% |
+| entities/ (stores) | 85%+ | ~81% |
+| features/ | 80%+ | ~70% |
+| Overall (src/) | 60%+ | ~45% |
+
+Run coverage: `npm run test:coverage`
+
+## Mocking Patterns
+
+```typescript
+// Mock a module
+vi.mock("~/shared/lib/electron", () => ({
+  isElectron: () => false,
+  getElectronAPI: () => null,
+}));
+
+// Mock a function
+const onSend = vi.fn();
+// Assert: expect(onSend).toHaveBeenCalledWith("Hello");
+
+// Mock timers
+vi.useFakeTimers();
+vi.setSystemTime(new Date("2026-03-14T12:00:00Z"));
+// ... test ... 
+vi.useRealTimers();
+
+// Mock fetch
+vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: () => ({}) }));
+```
+
+## Commands
+
+```bash
+npm run test              # Single run (all tests)
+npm run test:watch        # Watch mode (re-runs on file change)
+npm run test:coverage     # With V8 coverage report
+npm run check             # typecheck + lint + test (full CI check)
+```
+
+## Templates
+
+See `src/test/tdd-templates.ts` for copy-paste templates for each code category.
+
+## For AI Agent — TDD Workflow
+
+When implementing a new feature:
+
+```
+1. CREATE test file first (feature.test.ts)
+2. WRITE failing tests for the expected behavior
+3. RUN tests → verify they FAIL (red)
+4. IMPLEMENT the minimum code to pass
+5. RUN tests → verify they PASS (green)
+6. REFACTOR if needed, keep tests green
+7. ADD edge case tests
+8. RUN full suite: npm run check
+```
+
+**Never write code without a test. Never commit code with failing tests.**
