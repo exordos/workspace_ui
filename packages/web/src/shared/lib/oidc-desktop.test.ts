@@ -101,6 +101,20 @@ describe("oidc-desktop helpers", () => {
     });
   });
 
+  it("loads flow state when expected realm differs only by case or api suffix", () => {
+    clearDesktopFlowState();
+    saveDesktopFlowState({
+      realm: "https://SYS.Platform.Example.Com/api/v1/",
+      otp: "b".repeat(64),
+      createdAt: Date.now(),
+    });
+
+    expect(loadDesktopFlowState("https://sys.platform.example.com")).toMatchObject({
+      realm: "https://sys.platform.example.com",
+      otp: "b".repeat(64),
+    });
+  });
+
   it("decrypts pasted desktop flow payload", async () => {
     const otp = generateDesktopFlowOtp();
     const encrypted = await encryptDesktopFlowPayload(

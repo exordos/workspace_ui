@@ -35,7 +35,6 @@ export const PasteTokenPage: React.FC = () => {
   const redirectTarget = useMemo(() => {
     return sanitizeInternalRedirectTarget(searchParams.get("redirectTo")) ?? "/";
   }, [searchParams]);
-  const flowState = useMemo(() => loadDesktopFlowState(realm), [realm]);
 
   const handlePaste = useCallback(async () => {
     try {
@@ -55,19 +54,25 @@ export const PasteTokenPage: React.FC = () => {
       setError(t("auth.invalidServerUrl"));
       return;
     }
-    if (!flowState) {
-      setError(t("auth.pasteTokenMissingFlow"));
-      return;
-    }
-    if (!code.trim()) {
+    const trimmedCode = code.trim();
+    if (!trimmedCode) {
       setError(t("auth.fillAllFields"));
       return;
     }
 
     setLoading(true);
     try {
-      const decrypted = await decryptDesktopFlowToken(code, flowState.otp);
-      const credentials = parseDesktopFlowCredentials(decrypted);
+      const flowState = loadDesktopFlowState(realm) ?? loadDesktopFlowState();
+      let payload = trimmedCode;
+      if (flowState) {
+        try {
+          payload = await decryptDesktopFlowToken(trimmedCode, flowState.otp);
+        } catch {
+          payload = trimmedCode;
+        }
+      }
+
+      const credentials = parseDesktopFlowCredentials(payload);
       if (credentials) {
         addInstance({
           realm,
@@ -76,8 +81,12 @@ export const PasteTokenPage: React.FC = () => {
           authType: "api_key",
         });
       } else {
-        const loginToken = parseDesktopFlowLoginToken(decrypted);
+        const loginToken = parseDesktopFlowLoginToken(payload);
         if (!loginToken) {
+          if (!flowState) {
+            setError(t("auth.pasteTokenMissingFlow"));
+            return;
+          }
           setError(t("auth.pasteTokenUnsupported"));
           return;
         }
@@ -96,7 +105,7 @@ export const PasteTokenPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [addInstance, code, flowState, navigate, realm, redirectTarget]);
+  }, [addInstance, code, navigate, realm, redirectTarget]);
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-bg p-4">

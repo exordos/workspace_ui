@@ -66,8 +66,8 @@ export const LoginPage: React.FC = () => {
       login_url: string;
     }[];
   } | null>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fetchIdRef = useRef(0);
+  const prefillAutoFetchRef = useRef<string | null>(null);
   const realmPrefill = useMemo(() => {
     const raw = new URLSearchParams(location.search).get("realm");
     return raw?.trim() ? raw : null;
@@ -123,20 +123,17 @@ export const LoginPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    const prefilledRealm = realmPrefill?.trim() ?? "";
     const realmTrim = realm.trim();
-    if (!realmTrim) {
-      setServerSettings(null);
+    if (prefilledRealm.length === 0 || realmTrim !== prefilledRealm) {
       return;
     }
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => fetchSettings(realmTrim), 1000);
-    return () => {
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
-        debounceRef.current = null;
-      }
-    };
-  }, [realm, fetchSettings]);
+    if (prefillAutoFetchRef.current === prefilledRealm) {
+      return;
+    }
+    prefillAutoFetchRef.current = prefilledRealm;
+    fetchSettings(realmTrim);
+  }, [fetchSettings, realm, realmPrefill]);
 
   const handleRealmBlur = useCallback(() => {
     const realmTrim = realm.trim();

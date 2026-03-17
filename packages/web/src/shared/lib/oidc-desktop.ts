@@ -58,7 +58,31 @@ function isHexString(value: string, expectedLength?: number): boolean {
 }
 
 function normalizeRealm(realm: string): string {
-  return realm.trim().replace(/\/+$/, "");
+  const trimmedRealm = realm.trim();
+  if (trimmedRealm.length === 0) {
+    return "";
+  }
+
+  try {
+    const withProtocol = /^https?:\/\//i.test(trimmedRealm)
+      ? trimmedRealm
+      : `https://${trimmedRealm}`;
+    const parsed = new URL(withProtocol);
+    const normalizedPath = parsed.pathname
+      .replace(/\/+$/, "")
+      .replace(/\/api\/v1$/i, "")
+      .replace(/\/api$/i, "");
+    const port = parsed.port.length > 0 ? `:${parsed.port}` : "";
+    return `${parsed.protocol}//${parsed.hostname.toLowerCase()}${port}${normalizedPath}`.replace(
+      /\/+$/,
+      "",
+    );
+  } catch {
+    return trimmedRealm
+      .replace(/\/+$/, "")
+      .replace(/\/api\/v1$/i, "")
+      .replace(/\/api$/i, "");
+  }
 }
 
 export function generateDesktopFlowOtp(): string {

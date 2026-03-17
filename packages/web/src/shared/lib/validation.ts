@@ -7,6 +7,16 @@
 
 const SAFE_PROTOCOLS = new Set(["https:", "http:"]);
 
+function hasValidHostnameLabels(hostname: string): boolean {
+  if (hostname.length === 0) {
+    return false;
+  }
+  if (hostname.startsWith(".") || hostname.endsWith(".")) {
+    return false;
+  }
+  return !hostname.includes("..");
+}
+
 export function isValidUrl(input: string): boolean {
   try {
     const url = new URL(input);
@@ -20,7 +30,11 @@ export function isValidRealmUrl(input: string): boolean {
   if (!isValidUrl(input)) return false;
   try {
     const url = new URL(input);
-    return url.protocol === "https:" && url.hostname.length > 0 && !url.hostname.includes(" ");
+    return (
+      url.protocol === "https:" &&
+      !url.hostname.includes(" ") &&
+      hasValidHostnameLabels(url.hostname)
+    );
   } catch {
     return false;
   }

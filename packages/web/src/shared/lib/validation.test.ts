@@ -43,6 +43,12 @@ describe("isValidRealmUrl", () => {
   it("rejects http", () => expect(isValidRealmUrl("http://zulip.example.com")).toBe(false));
   // A URL without hostname can't point to a real server
   it("rejects no hostname", () => expect(isValidRealmUrl("https://")).toBe(false));
+  // Trailing-dot hostnames are often incomplete input and produce broken API URLs.
+  it("rejects hostname ending with dot", () =>
+    expect(isValidRealmUrl("https://chat.example.com.")).toBe(false));
+  // Empty labels (double dots) indicate malformed hostnames.
+  it("rejects hostname with empty labels", () =>
+    expect(isValidRealmUrl("https://chat..example.com")).toBe(false));
 });
 
 // Email validation — used in login form and user profile fields

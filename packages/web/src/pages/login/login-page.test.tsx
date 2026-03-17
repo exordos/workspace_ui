@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useInstancesStore } from "~/entities/instance";
 import type * as ZulipApiModule from "~/shared/api/zulip";
 import { renderWithProviders } from "~/test/render";
@@ -28,6 +28,10 @@ vi.mock("~/shared/api/zulip", async () => {
 });
 
 describe("LoginPage", () => {
+  beforeEach(() => {
+    fetchServerSettings.mockResolvedValue(null);
+  });
+
   afterEach(() => {
     useInstancesStore.setState({ instances: [], currentInstanceId: null });
     localStorage.removeItem("zulip-web-instances");
@@ -57,6 +61,25 @@ describe("LoginPage", () => {
     expect(screen.getByPlaceholderText("https://chat.example.com")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("email@example.com")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("••••••••")).toBeInTheDocument();
+  });
+
+  it("requests server settings only after realm input blur", async () => {
+    fetchServerSettings.mockResolvedValue(null);
+
+    renderWithProviders(<LoginPage />, { route: "/login" });
+
+    const realmInput = screen.getByLabelText(/zulip server address/i);
+    fireEvent.change(realmInput, {
+      target: { value: "https://sys.pla" },
+    });
+
+    expect(fetchServerSettings).not.toHaveBeenCalled();
+
+    fireEvent.blur(realmInput);
+
+    await waitFor(() => {
+      expect(fetchServerSettings).toHaveBeenCalledWith("https://sys.pla");
+    });
   });
 
   it("navigates to redirectTo after a successful login", async () => {

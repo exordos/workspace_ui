@@ -15,7 +15,7 @@ import { getBasicAuthValue } from "~/shared/lib/auth-guard";
 import { env } from "~/shared/lib/env";
 import { guard, invariant } from "~/shared/lib/guards";
 import { toResolvedTopicName, toUnresolvedTopicName } from "~/shared/lib/topic-resolve";
-import { isValidEmail, validateFileUpload } from "~/shared/lib/validation";
+import { isValidEmail, isValidRealmUrl, validateFileUpload } from "~/shared/lib/validation";
 import { getCurrentInstance, refreshZulipApiBase, zulipApi } from "./client";
 import { parseUnreadMessagesCount } from "./zulip-unread.lib";
 
@@ -327,11 +327,15 @@ export async function fetchServerSettings(realmUrl: string): Promise<{
   }[];
 } | null> {
   try {
-    const base = realmUrl
-      .trim()
+    if (!isValidRealmUrl(realmUrl)) {
+      return null;
+    }
+    const parsedRealm = new URL(realmUrl.trim());
+    const normalizedPath = parsedRealm.pathname
       .replace(/\/+$/, "")
       .replace(/\/api\/v1$/, "")
       .replace(/\/api$/, "");
+    const base = `${parsedRealm.origin}${normalizedPath}`.replace(/\/+$/, "");
     if (!base) return null;
     const url = `${base}${env.ZULIP_API_PATH}/server_settings`;
     const res = await fetch(url);

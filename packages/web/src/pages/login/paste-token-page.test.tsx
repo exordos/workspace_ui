@@ -138,6 +138,36 @@ describe("PasteTokenPage", () => {
     });
   });
 
+  it("accepts direct login token when flow state is missing", async () => {
+    const rawCode = "direct-login-token-abc12345";
+    exchangeDesktopFlowToken.mockResolvedValue({
+      authType: "session",
+      email: "session-user@example.com",
+    });
+
+    renderWithProviders(<PasteTokenPage />, {
+      route: "/paste-token?realm=https%3A%2F%2Fchat.example.com",
+    });
+
+    fireEvent.change(screen.getByLabelText(/authentication code/i), {
+      target: { value: rawCode },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /login/i }));
+
+    await waitFor(() => {
+      expect(exchangeDesktopFlowToken).toHaveBeenCalledWith("https://chat.example.com", rawCode);
+    });
+    await waitFor(() => {
+      expect(useInstancesStore.getState().instances[0]).toMatchObject({
+        realm: "https://chat.example.com",
+        email: "session-user@example.com",
+        apiKey: "",
+        authType: "session",
+      });
+    });
+    expect(navigateSpy).toHaveBeenCalledWith("/", { replace: true });
+  });
+
   it("ignores external redirectTo and navigates to root", async () => {
     const otp = "fedcba9876543210".repeat(4);
     const runtimeApiKey = `oidc-runtime-${Date.now()}`;

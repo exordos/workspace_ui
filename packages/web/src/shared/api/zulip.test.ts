@@ -326,6 +326,12 @@ describe("fetchServerSettings", () => {
     await fetchServerSettings("https://zulip.example.com/api/v1");
     expect(mockFetch).toHaveBeenCalledWith("https://zulip.example.com/api/v1/server_settings");
   });
+
+  it("skips request for malformed realm hostname ending with dot", async () => {
+    const result = await fetchServerSettings("https://chat.example.com.");
+    expect(result).toBeNull();
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
 });
 
 // ---------------------------------------------------------------------------
