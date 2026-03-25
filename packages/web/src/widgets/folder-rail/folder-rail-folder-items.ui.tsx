@@ -1,0 +1,294 @@
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import React, { useCallback, useState } from "react";
+import { Badge, Icon } from "~/shared/ui";
+import { FolderContextMenuContent } from "./folder-rail-context-menu.ui";
+import { getFolderItemVisualState, isContextMenuKeyboardTrigger } from "./folder-rail.utils";
+import type { FolderRailFolder } from "./folder-rail.types";
+
+/** Общий контракт для horizontal/vertical item. */
+interface FolderItemProps {
+  folder: FolderRailFolder;
+  index: number;
+  isSelected: boolean;
+  onSelectFolder: (id: string) => void;
+  onToggleLayout: () => void;
+  onRequestRename: (folder: FolderRailFolder) => void;
+  onRequestDelete: (folder: FolderRailFolder) => void;
+}
+
+/** Аргументы общего хука интеракций папки. */
+interface UseFolderItemActionsArgs {
+  folder: FolderRailFolder;
+  onSelectFolder: (id: string) => void;
+  onToggleLayout: () => void;
+  onRequestRename: (folder: FolderRailFolder) => void;
+  onRequestDelete: (folder: FolderRailFolder) => void;
+}
+
+/**
+ * Общий обработчик действий item:
+ * - открытие/закрытие контекстного меню;
+ * - выбор папки;
+ * - rename/delete;
+ * - переключение layout.
+ *
+ * За счет этого и horizontal, и vertical item не дублируют обработчики.
+ */
+function useFolderItemActions({
+  folder,
+  onSelectFolder,
+  onToggleLayout,
+  onRequestRename,
+  onRequestDelete,
+}: UseFolderItemActionsArgs) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setMenuOpen(true);
+  }, []);
+
+  const handleKeyboardContextMenu = useCallback((e: React.KeyboardEvent<HTMLElement>) => {
+    if (!isContextMenuKeyboardTrigger(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setMenuOpen(true);
+  }, []);
+
+  const handleSelect = useCallback(
+    (e: React.MouseEvent) => {
+      // Не отдаем click вверх, чтобы не конфликтовать с click-capture у горизонтального drag-контейнера.
+      e.stopPropagation();
+      setMenuOpen(false);
+      onSelectFolder(folder.id);
+    },
+    [folder.id, onSelectFolder],
+  );
+
+  const handleRename = useCallback(() => {
+    setMenuOpen(false);
+    onRequestRename(folder);
+  }, [folder, onRequestRename]);
+
+  const handleDelete = useCallback(() => {
+    setMenuOpen(false);
+    onRequestDelete(folder);
+  }, [folder, onRequestDelete]);
+
+  const handleToggleLayout = useCallback(() => {
+    setMenuOpen(false);
+    onToggleLayout();
+  }, [onToggleLayout]);
+
+  return {
+    menuOpen,
+    setMenuOpen,
+    isHovered,
+    setIsHovered,
+    handleContextMenu,
+    handleKeyboardContextMenu,
+    handleSelect,
+    handleRename,
+    handleDelete,
+    handleToggleLayout,
+  };
+}
+
+export const HorizontalFolderItem: React.FC<FolderItemProps> = React.memo(
+  function HorizontalFolderItem({
+    folder,
+    index,
+    isSelected,
+    onSelectFolder,
+    onToggleLayout,
+    onRequestRename,
+    onRequestDelete,
+  }) {
+    const {
+      menuOpen,
+      setMenuOpen,
+      isHovered,
+      setIsHovered,
+      handleContextMenu,
+      handleKeyboardContextMenu,
+      handleSelect,
+      handleRename,
+      handleDelete,
+      handleToggleLayout,
+    } = useFolderItemActions({
+      folder,
+      onSelectFolder,
+      onToggleLayout,
+      onRequestRename,
+      onRequestDelete,
+    });
+
+    const visualState = getFolderItemVisualState({ folder, index, isSelected, isHovered });
+    const buttonTextColor = visualState.labelUsesCustomColor
+      ? "text-current"
+      : visualState.labelUsesAccent
+        ? "text-accent"
+        : isSelected
+          ? "text-text-primary"
+          : "text-text-muted";
+    const buttonColorStyle = visualState.labelUsesCustomColor
+      ? { color: visualState.folderColor }
+      : undefined;
+    const horizontalButtonStyle =
+      buttonColorStyle != null || visualState.folderSurfaceStyle != null
+        ? { ...(buttonColorStyle ?? {}), ...(visualState.folderSurfaceStyle ?? {}) }
+        : undefined;
+
+    return (
+      <DropdownMenu.Root open={menuOpen} onOpenChange={setMenuOpen}>
+        <DropdownMenu.Trigger asChild>
+          <div className="shrink-0">
+            <button
+              type="button"
+              // Гасим pointer-down, чтобы drag-контейнер не считал это началом перетаскивания.
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={handleSelect}
+              onContextMenu={handleContextMenu}
+              onKeyDown={handleKeyboardContextMenu}
+              onMouseEnter={() => setIsHovered(true)}
+              onMouseLeave={() => setIsHovered(false)}
+              className={`relative flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-transparent px-2.5 text-xs transition-colors ${buttonTextColor} ${
+                isSelected ? "bg-bg-elevated" : "hover:bg-bg/60"
+              }`}
+              title={folder.label}
+              style={horizontalButtonStyle}
+            >
+              <span
+                className={`inline-flex shrink-0 ${visualState.iconTextColor}`}
+                style={visualState.iconColorStyle}
+              >
+                <Icon name={visualState.iconName} size={18} className="shrink-0" />
+              </span>
+              <span className="max-w-[112px] truncate">{folder.label}</span>
+              {folder.badge !== undefined && (
+                <span className="absolute -right-1 -top-1">
+                  <Badge count={folder.badge} variant="unread" />
+                </span>
+              )}
+            </button>
+          </div>
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Portal>
+          <FolderContextMenuContent
+            isSystemFolder={visualState.isSystemFolder}
+            layout="horizontal"
+            onRename={handleRename}
+            onToggleLayout={handleToggleLayout}
+            onDelete={handleDelete}
+          />
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>
+    );
+  },
+);
+
+export const VerticalFolderItem: React.FC<FolderItemProps> = React.memo(
+  function VerticalFolderItem({
+    folder,
+    index,
+    isSelected,
+    onSelectFolder,
+    onToggleLayout,
+    onRequestRename,
+    onRequestDelete,
+  }) {
+    const {
+      menuOpen,
+      setMenuOpen,
+      isHovered,
+      setIsHovered,
+      handleContextMenu,
+      handleKeyboardContextMenu,
+      handleSelect,
+      handleRename,
+      handleDelete,
+      handleToggleLayout,
+    } = useFolderItemActions({
+      folder,
+      onSelectFolder,
+      onToggleLayout,
+      onRequestRename,
+      onRequestDelete,
+    });
+    const visualState = getFolderItemVisualState({ folder, index, isSelected, isHovered });
+
+    return (
+      <DropdownMenu.Root open={menuOpen} onOpenChange={setMenuOpen}>
+        <DropdownMenu.Trigger asChild>
+          <div className="flex flex-col items-center gap-1">
+            <button
+              type="button"
+              // Аналогично horizontal: pointer-down не должен пробрасываться наружу.
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={handleSelect}
+              onContextMenu={handleContextMenu}
+              onKeyDown={handleKeyboardContextMenu}
+              onMouseEnter={() => setIsHovered(true)}
+              onMouseLeave={() => setIsHovered(false)}
+              className={`relative flex h-10 w-10 items-center justify-center rounded-lg border border-transparent transition-colors ${
+                !isSelected ? "hover:bg-bg/60" : ""
+              }`}
+              title={folder.label}
+              style={visualState.folderSurfaceStyle}
+            >
+              <span
+                className={`inline-flex shrink-0 ${visualState.iconTextColor}`}
+                style={visualState.iconColorStyle}
+              >
+                <Icon name={visualState.iconName} size={40} className="shrink-0" />
+              </span>
+              {folder.badge !== undefined && (
+                <span className="absolute -right-0.5 -top-0.5">
+                  <Badge count={folder.badge} variant="unread" />
+                </span>
+              )}
+            </button>
+            <span
+              className={`max-w-[78px] cursor-pointer truncate text-center text-[11px] ${visualState.labelTextColor}`}
+              title={folder.label}
+              role="button"
+              tabIndex={0}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={handleSelect}
+              onContextMenu={handleContextMenu}
+              onMouseEnter={() => setIsHovered(true)}
+              onMouseLeave={() => setIsHovered(false)}
+              style={visualState.labelColorStyle}
+              onKeyDown={(e) => {
+                if (isContextMenuKeyboardTrigger(e)) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setMenuOpen(true);
+                  return;
+                }
+                // Поддерживаем клавиатурный выбор папки, чтобы label вел себя как интерактивная кнопка.
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onSelectFolder(folder.id);
+                }
+              }}
+            >
+              {folder.label}
+            </span>
+          </div>
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Portal>
+          <FolderContextMenuContent
+            isSystemFolder={visualState.isSystemFolder}
+            layout="vertical"
+            onRename={handleRename}
+            onToggleLayout={handleToggleLayout}
+            onDelete={handleDelete}
+          />
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>
+    );
+  },
+);

@@ -53,7 +53,7 @@ function createDefaultSettings(): AppSettings {
     prioritizeUnmutedUnreadChannels: false,
     notificationSound: "default",
     language: resolveBrowserLanguage(),
-    folderRailLayout: "horizontal",
+    folderRailLayout: "vertical",
     chatListDensity: "standard",
   };
 }

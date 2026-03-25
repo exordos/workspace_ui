@@ -183,6 +183,33 @@ describe("FolderRail visual parity", () => {
     expect(addIconPath?.getAttribute("fill")).toBe("currentColor");
   });
 
+  it("renders vertical view composition and keeps folder selection clickable", async () => {
+    const user = userEvent.setup();
+    const onSelectFolder = vi.fn();
+
+    render(
+      <FolderRail
+        folders={[
+          { id: "all", label: "All", backgroundColor: 0xff8438 },
+          { id: "custom", label: "Team", backgroundColor: 0x3a92ff },
+        ]}
+        selectedFolderId="all"
+        onSelectFolder={onSelectFolder}
+      />,
+    );
+
+    const verticalRoot = screen.getByTestId("folder-rail-vertical");
+    expect(verticalRoot).toHaveAttribute("data-folder-rail-view", "vertical");
+
+    const teamButton = screen
+      .getAllByRole("button", { name: "Team" })
+      .find((node) => node.tagName === "BUTTON");
+    expect(teamButton).toBeDefined();
+
+    await user.click(teamButton!);
+    expect(onSelectFolder).toHaveBeenCalledWith("custom");
+  });
+
   it("renders horizontal layout variant and keeps folder selection clickable", async () => {
     const user = userEvent.setup();
     const onSelectFolder = vi.fn();
@@ -203,6 +230,7 @@ describe("FolderRail visual parity", () => {
     expect(horizontalRoot).toHaveClass("overflow-x-auto");
     expect(horizontalRoot).toHaveClass("scrollbar-none");
     expect(horizontalRoot).toHaveClass("overflow-y-hidden");
+    expect(horizontalRoot).toHaveAttribute("data-folder-rail-view", "horizontal");
 
     await user.click(screen.getByRole("button", { name: "Team" }));
     expect(onSelectFolder).toHaveBeenCalledWith("custom");
