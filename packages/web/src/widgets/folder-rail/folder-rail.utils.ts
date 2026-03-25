@@ -101,7 +101,7 @@ export function getFolderItemVisualState({
   const iconTextColor = isCustomFolder
     ? "text-current"
     : isSelected
-      ? "text-accent"
+      ? "text-text-primary"
       : "text-text-muted";
   const labelTextColor = labelUsesCustomColor
     ? "text-current"

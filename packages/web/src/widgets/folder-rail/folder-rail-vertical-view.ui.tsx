@@ -83,6 +83,16 @@ export const FolderRailVerticalView: React.FC<FolderRailVerticalViewProps> = Rea
               onRequestDelete={onRequestDelete}
             />
           ))}
+
+          <button
+            type="button"
+            onClick={onOpenCreateDialog}
+            data-folder-rail-action="add-folder"
+            className="mt-3 flex h-10 w-10 shrink-0 items-center justify-center text-text-primary"
+            aria-label={t("a11y.addFolder")}
+          >
+            <Icon name="add" size={40} className="shrink-0" />
+          </button>
         </div>
 
         {showQuickList && (
@@ -92,16 +102,6 @@ export const FolderRailVerticalView: React.FC<FolderRailVerticalViewProps> = Rea
             onSelectFolder={onSelectFolder}
           />
         )}
-
-        <button
-          type="button"
-          onClick={onOpenCreateDialog}
-          data-folder-rail-action="add-folder"
-          className="flex h-10 w-10 items-center justify-center rounded-lg border border-border-subtle"
-          aria-label={t("a11y.addFolder")}
-        >
-          <Icon name="add" size={40} className="shrink-0" />
-        </button>
       </div>
     );
   },

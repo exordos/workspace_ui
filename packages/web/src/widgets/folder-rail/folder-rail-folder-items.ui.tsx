@@ -128,7 +128,9 @@ export const HorizontalFolderItem: React.FC<FolderItemProps> = React.memo(
     const buttonTextColor = visualState.labelUsesCustomColor
       ? "text-current"
       : visualState.labelUsesAccent
-        ? "text-accent"
+        ? isSelected
+          ? "text-text-primary"
+          : "text-accent"
         : isSelected
           ? "text-text-primary"
           : "text-text-muted";
@@ -217,11 +219,7 @@ export const VerticalFolderItem: React.FC<FolderItemProps> = React.memo(
       onRequestDelete,
     });
     const visualState = getFolderItemVisualState({ folder, index, isSelected, isHovered });
-    const verticalToneClass = isSelected
-      ? visualState.isSystemFolder
-        ? "text-accent"
-        : "text-text-primary"
-      : "text-text-muted";
+    const verticalToneClass = isSelected ? "text-text-primary" : "text-text-muted";
     const verticalOuterSlotClass = isSelected ? "h-[85px] w-[67px] p-1" : "h-[77px] w-[59px]";
 
     return (

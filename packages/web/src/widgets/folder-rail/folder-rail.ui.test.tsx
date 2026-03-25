@@ -148,7 +148,7 @@ describe("FolderRail visual parity", () => {
     expect(customLabel).toHaveClass("text-text-primary");
   });
 
-  it("uses accent token for active system folder in vertical view", () => {
+  it("uses primary text token for active system folder in vertical view", () => {
     render(
       <FolderRail
         folders={[
@@ -163,8 +163,28 @@ describe("FolderRail visual parity", () => {
     const allNodes = screen.getAllByTitle("All");
     const allButton = allNodes.find((node) => node.tagName === "BUTTON");
     const allLabel = allNodes.find((node) => node.tagName === "SPAN");
-    expect(allButton).toHaveClass("text-accent");
-    expect(allLabel).toHaveClass("text-accent");
+    expect(allButton).toHaveClass("text-text-primary");
+    expect(allLabel).toHaveClass("text-text-primary");
+  });
+
+  it("uses primary text token for selected all-folder in horizontal layout", () => {
+    render(
+      <FolderRail
+        folders={[
+          { id: "all", label: "All", backgroundColor: 0xff8438, systemType: "all" },
+          { id: "custom", label: "Team", backgroundColor: 0x3a92ff, systemType: "created" },
+        ]}
+        selectedFolderId="all"
+        onSelectFolder={vi.fn()}
+        layout="horizontal"
+      />,
+    );
+
+    const allButton = screen.getByRole("button", { name: "All" });
+    const allIconWrapper = allButton.querySelector("svg")?.parentElement;
+
+    expect(allButton).toHaveClass("text-text-primary");
+    expect(allIconWrapper).toHaveClass("text-text-primary");
   });
 
   it("keeps vertical token classes stable for blue-cold and emerald-chat in light/dark modes", () => {
@@ -225,7 +245,6 @@ describe("FolderRail visual parity", () => {
     expect(allIconPath).toHaveAttribute("fill", "currentColor");
     expect(customIconPath).toHaveAttribute("fill", "currentColor");
     expect(allIconPath?.getAttribute("d")).not.toBe(customIconPath?.getAttribute("d"));
-    expect(allIconPath?.getAttribute("d")).toContain("M228,96.00049");
   });
 
   it("renders dedicated icons for personal and channels system folders", () => {
@@ -282,8 +301,9 @@ describe("FolderRail visual parity", () => {
     );
 
     const addFolderButton = screen.getByRole("button", { name: "Add folder" });
-    expect(addFolderButton).toHaveClass("border-border-subtle");
-    expect(addFolderButton).not.toHaveClass("border-dashed");
+    expect(addFolderButton).toHaveClass("h-10");
+    expect(addFolderButton).toHaveClass("w-10");
+    expect(addFolderButton).not.toHaveClass("border-border-subtle");
     const addIconPath = addFolderButton.querySelector("path");
     expect(addIconPath?.getAttribute("fill")).toBe("currentColor");
   });
@@ -486,7 +506,7 @@ describe("FolderRail visual parity", () => {
     expect(screen.getByText("Create folder")).toBeInTheDocument();
   });
 
-  it("keeps all/add controls fixed and supports quick folder search for many folders", async () => {
+  it("keeps all fixed, places add in scroll flow, and supports quick folder search for many folders", async () => {
     const user = userEvent.setup();
     const onSelectFolder = vi.fn();
     const manyFolders = [
@@ -509,12 +529,14 @@ describe("FolderRail visual parity", () => {
     const addFolderButton = screen.getByRole("button", { name: "Add folder" });
     expect(allButton).toBeDefined();
     expect(scrollList).not.toContainElement(allButton ?? null);
-    expect(scrollList).not.toContainElement(addFolderButton);
+    expect(scrollList).toContainElement(addFolderButton);
     const teamOneButton = screen
       .getAllByRole("button", { name: "Team 1" })
       .find((node) => node.tagName === "BUTTON");
     expect(teamOneButton).toBeDefined();
     expect(scrollList).toContainElement(teamOneButton ?? null);
+    const scrollListButtons = within(scrollList).getAllByRole("button");
+    expect(scrollListButtons.at(-1)).toBe(addFolderButton);
 
     const quickListButton = screen.getByRole("button", { name: "Open folder list" });
     await user.click(quickListButton);

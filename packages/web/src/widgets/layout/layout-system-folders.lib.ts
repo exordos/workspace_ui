@@ -78,10 +78,11 @@ export function withDefaultSystemFolders(
   const allFolderIndex = normalizedBaseFolders.findIndex((folder) => folder.systemType === "all");
   const insertIndex = allFolderIndex + 1;
 
-  return [
-    ...normalizedBaseFolders.slice(0, insertIndex),
-    createPersonalFolder(labels),
-    createChannelsFolder(labels),
-    ...normalizedBaseFolders.slice(insertIndex),
-  ];
+  return normalizedBaseFolders;
+  // return [
+  //   ...normalizedBaseFolders.slice(0, insertIndex),
+  //   createPersonalFolder(labels),
+  //   createChannelsFolder(labels),
+  //   ...normalizedBaseFolders.slice(insertIndex),
+  // ];
 }
