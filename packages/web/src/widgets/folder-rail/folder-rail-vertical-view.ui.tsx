@@ -10,8 +10,10 @@ import type { FolderRailFolder } from "./folder-rail.types";
 interface FolderRailVerticalViewProps {
   indexedFolders: IndexedFolderEntry[];
   selectedFolderId: string;
+  showSystemFolders: boolean;
   onSelectFolder: (id: string) => void;
   onToggleLayout: () => void;
+  onToggleShowSystemFolders: () => void;
   onRequestRename: (folder: FolderRailFolder) => void;
   onRequestDelete: (folder: FolderRailFolder) => void;
   onOpenCreateDialog: () => void;
@@ -21,8 +23,10 @@ export const FolderRailVerticalView: React.FC<FolderRailVerticalViewProps> = Rea
   function FolderRailVerticalView({
     indexedFolders,
     selectedFolderId,
+    showSystemFolders,
     onSelectFolder,
     onToggleLayout,
+    onToggleShowSystemFolders,
     onRequestRename,
     onRequestDelete,
     onOpenCreateDialog,
@@ -60,8 +64,10 @@ export const FolderRailVerticalView: React.FC<FolderRailVerticalViewProps> = Rea
             folder={allFolderEntry.folder}
             index={allFolderEntry.index}
             isSelected={selectedFolderId === allFolderEntry.folder.id}
+            showSystemFolders={showSystemFolders}
             onSelectFolder={onSelectFolder}
             onToggleLayout={onToggleLayout}
+            onToggleShowSystemFolders={onToggleShowSystemFolders}
             onRequestRename={onRequestRename}
             onRequestDelete={onRequestDelete}
           />
@@ -77,8 +83,10 @@ export const FolderRailVerticalView: React.FC<FolderRailVerticalViewProps> = Rea
               folder={folder}
               index={index}
               isSelected={selectedFolderId === folder.id}
+              showSystemFolders={showSystemFolders}
               onSelectFolder={onSelectFolder}
               onToggleLayout={onToggleLayout}
+              onToggleShowSystemFolders={onToggleShowSystemFolders}
               onRequestRename={onRequestRename}
               onRequestDelete={onRequestDelete}
             />

@@ -11,12 +11,16 @@ const DELETE_MENU_ITEM_CLASS =
 
 /** Унифицированный контент меню папки для двух layout-режимов. */
 interface FolderContextMenuContentProps {
-  /** Для системных папок отключаем destructive-операции (rename/delete). */
+  /** Флаг именно текущей папки в открытом меню: для системных item отключаем rename/delete. */
   isSystemFolder: boolean;
   /** Нужен, чтобы показать корректный текст переключения layout. */
   layout: FolderRailLayout;
+  /** Глобальная настройка показа системных папок в rail (Show/Hide).
+   * Не дублирует `isSystemFolder`: это другой уровень состояния (весь список, а не текущий item).*/
+  showSystemFolders: boolean;
   onRename: () => void;
   onToggleLayout: () => void;
+  onToggleShowSystemFolders: () => void;
   onDelete: () => void;
 }
 
@@ -24,13 +28,18 @@ export const FolderContextMenuContent: React.FC<FolderContextMenuContentProps> =
   function FolderContextMenuContent({
     isSystemFolder,
     layout,
+    showSystemFolders,
     onRename,
     onToggleLayout,
+    onToggleShowSystemFolders,
     onDelete,
   }) {
     // Текст пункта всегда предлагает противоположный текущему режим.
     const toggleLayoutLabel =
       layout === "horizontal" ? t("folder.displayVertical") : t("folder.displayHorizontal");
+    const toggleSystemFoldersLabel = showSystemFolders
+      ? t("folder.hideSystemFolders")
+      : t("folder.showSystemFolders");
 
     return (
       <DropdownMenu.Content
@@ -49,6 +58,10 @@ export const FolderContextMenuContent: React.FC<FolderContextMenuContentProps> =
         <DropdownMenu.Item className={MENU_ITEM_CLASS} onSelect={onToggleLayout}>
           <Icon name="folders" size={14} />
           {toggleLayoutLabel}
+        </DropdownMenu.Item>
+        <DropdownMenu.Item className={MENU_ITEM_CLASS} onSelect={onToggleShowSystemFolders}>
+          <Icon name="folder" size={14} />
+          {toggleSystemFoldersLabel}
         </DropdownMenu.Item>
         <DropdownMenu.Item
           className={DELETE_MENU_ITEM_CLASS}

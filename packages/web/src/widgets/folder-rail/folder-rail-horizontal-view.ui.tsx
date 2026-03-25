@@ -9,8 +9,10 @@ import type { IndexedFolderEntry } from "./folder-rail.utils";
 interface FolderRailHorizontalViewProps {
   indexedFolders: IndexedFolderEntry[];
   selectedFolderId: string;
+  showSystemFolders: boolean;
   onSelectFolder: (id: string) => void;
   onToggleLayout: () => void;
+  onToggleShowSystemFolders: () => void;
   onRequestRename: (folder: FolderRailFolder) => void;
   onRequestDelete: (folder: FolderRailFolder) => void;
   onOpenCreateDialog: () => void;
@@ -20,8 +22,10 @@ export const FolderRailHorizontalView: React.FC<FolderRailHorizontalViewProps> =
   function FolderRailHorizontalView({
     indexedFolders,
     selectedFolderId,
+    showSystemFolders,
     onSelectFolder,
     onToggleLayout,
+    onToggleShowSystemFolders,
     onRequestRename,
     onRequestDelete,
     onOpenCreateDialog,
@@ -152,8 +156,10 @@ export const FolderRailHorizontalView: React.FC<FolderRailHorizontalViewProps> =
             folder={folder}
             index={index}
             isSelected={selectedFolderId === folder.id}
+            showSystemFolders={showSystemFolders}
             onSelectFolder={onSelectFolder}
             onToggleLayout={onToggleLayout}
+            onToggleShowSystemFolders={onToggleShowSystemFolders}
             onRequestRename={onRequestRename}
             onRequestDelete={onRequestDelete}
           />

@@ -49,6 +49,7 @@ function isPersonalOrChannelsSystemFolder(folder: WorkspaceFolderForRail): boole
 export function withDefaultSystemFolders(
   folders: readonly WorkspaceFolderForRail[],
   labels: LayoutSystemFolderLabels,
+  showSystemFolders = false,
 ): WorkspaceFolderForRail[] {
   const baseFolders = folders.filter((folder) => !isPersonalOrChannelsSystemFolder(folder));
   const preferredAllFolder =
@@ -68,21 +69,19 @@ export function withDefaultSystemFolders(
           .filter((folder) => folder.systemType !== "all" || folder === preferredAllFolder)
           .map((folder) => (folder === preferredAllFolder ? normalizedAllFolder : folder));
 
-  const includePersonalAndChannels = baseFolders.some(
-    (folder) => folder.id !== SYSTEM_ALL_FOLDER_ID,
-  );
+  const includePersonalAndChannels =
+    showSystemFolders && baseFolders.some((folder) => folder.id !== SYSTEM_ALL_FOLDER_ID);
   if (!includePersonalAndChannels) {
-    return [normalizedAllFolder];
+    return normalizedBaseFolders;
   }
 
   const allFolderIndex = normalizedBaseFolders.findIndex((folder) => folder.systemType === "all");
   const insertIndex = allFolderIndex + 1;
 
-  return normalizedBaseFolders;
-  // return [
-  //   ...normalizedBaseFolders.slice(0, insertIndex),
-  //   createPersonalFolder(labels),
-  //   createChannelsFolder(labels),
-  //   ...normalizedBaseFolders.slice(insertIndex),
-  // ];
+  return [
+    ...normalizedBaseFolders.slice(0, insertIndex),
+    createPersonalFolder(labels),
+    createChannelsFolder(labels),
+    ...normalizedBaseFolders.slice(insertIndex),
+  ];
 }

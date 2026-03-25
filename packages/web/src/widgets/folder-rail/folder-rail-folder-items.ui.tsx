@@ -10,8 +10,10 @@ interface FolderItemProps {
   folder: FolderRailFolder;
   index: number;
   isSelected: boolean;
+  showSystemFolders: boolean;
   onSelectFolder: (id: string) => void;
   onToggleLayout: () => void;
+  onToggleShowSystemFolders: () => void;
   onRequestRename: (folder: FolderRailFolder) => void;
   onRequestDelete: (folder: FolderRailFolder) => void;
 }
@@ -100,8 +102,10 @@ export const HorizontalFolderItem: React.FC<FolderItemProps> = React.memo(
     folder,
     index,
     isSelected,
+    showSystemFolders,
     onSelectFolder,
     onToggleLayout,
+    onToggleShowSystemFolders,
     onRequestRename,
     onRequestDelete,
   }) {
@@ -180,8 +184,10 @@ export const HorizontalFolderItem: React.FC<FolderItemProps> = React.memo(
           <FolderContextMenuContent
             isSystemFolder={visualState.isSystemFolder}
             layout="horizontal"
+            showSystemFolders={showSystemFolders}
             onRename={handleRename}
             onToggleLayout={handleToggleLayout}
+            onToggleShowSystemFolders={onToggleShowSystemFolders}
             onDelete={handleDelete}
           />
         </DropdownMenu.Portal>
@@ -195,8 +201,10 @@ export const VerticalFolderItem: React.FC<FolderItemProps> = React.memo(
     folder,
     index,
     isSelected,
+    showSystemFolders,
     onSelectFolder,
     onToggleLayout,
+    onToggleShowSystemFolders,
     onRequestRename,
     onRequestDelete,
   }) {
@@ -284,8 +292,10 @@ export const VerticalFolderItem: React.FC<FolderItemProps> = React.memo(
           <FolderContextMenuContent
             isSystemFolder={visualState.isSystemFolder}
             layout="vertical"
+            showSystemFolders={showSystemFolders}
             onRename={handleRename}
             onToggleLayout={handleToggleLayout}
+            onToggleShowSystemFolders={onToggleShowSystemFolders}
             onDelete={handleDelete}
           />
         </DropdownMenu.Portal>

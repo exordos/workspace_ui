@@ -47,7 +47,9 @@ export const FolderRail: React.FC<FolderRailProps> = ({
   const [renamingFolder, setRenamingFolder] = useState<FolderRailFolder | null>(null);
   const [deletingFolder, setDeletingFolder] = useState<FolderRailFolder | null>(null);
   const [isDeletingFolder, setIsDeletingFolder] = useState(false);
+  const showSystemFolders = useSettingsStore((s) => s.showSystemFolders);
   const setFolderRailLayout = useSettingsStore((s) => s.setFolderRailLayout);
+  const setShowSystemFolders = useSettingsStore((s) => s.setShowSystemFolders);
 
   const handleCreate = useCallback(
     async ({ name, backgroundColor }: { name: string; backgroundColor: number }) => {
@@ -117,6 +119,10 @@ export const FolderRail: React.FC<FolderRailProps> = ({
     setFolderRailLayout(layout === "horizontal" ? "vertical" : "horizontal");
   }, [layout, onToggleLayout, setFolderRailLayout]);
 
+  const handleToggleShowSystemFolders = useCallback(() => {
+    setShowSystemFolders(!showSystemFolders);
+  }, [setShowSystemFolders, showSystemFolders]);
+
   // Единая структура для обоих view, чтобы не дублировать map + передачу индекса.
   const indexedFolders = useMemo<IndexedFolderEntry[]>(
     () => folders.map((folder, index) => ({ folder, index })),
@@ -129,8 +135,10 @@ export const FolderRail: React.FC<FolderRailProps> = ({
         <FolderRailHorizontalView
           indexedFolders={indexedFolders}
           selectedFolderId={selectedFolderId}
+          showSystemFolders={showSystemFolders}
           onSelectFolder={onSelectFolder}
           onToggleLayout={handleToggleLayout}
+          onToggleShowSystemFolders={handleToggleShowSystemFolders}
           onRequestRename={handleRequestRename}
           onRequestDelete={handleRequestDelete}
           onOpenCreateDialog={() => setCreateDialogOpen(true)}
@@ -139,8 +147,10 @@ export const FolderRail: React.FC<FolderRailProps> = ({
         <FolderRailVerticalView
           indexedFolders={indexedFolders}
           selectedFolderId={selectedFolderId}
+          showSystemFolders={showSystemFolders}
           onSelectFolder={onSelectFolder}
           onToggleLayout={handleToggleLayout}
+          onToggleShowSystemFolders={handleToggleShowSystemFolders}
           onRequestRename={handleRequestRename}
           onRequestDelete={handleRequestDelete}
           onOpenCreateDialog={() => setCreateDialogOpen(true)}

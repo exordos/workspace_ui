@@ -460,6 +460,8 @@
     "rename": "Rename",
     "displayVertical": "Display vertically",
     "displayHorizontal": "Display horizontally",
+    "showSystemFolders": "Show system folders",
+    "hideSystemFolders": "Hide system folders",
     "emptyFolder": "Folder is empty",
     "emptyFolderHint": "Add chats from a chat menu to populate this folder.",
     "noPinnedChats": "No pinned chats in this folder",

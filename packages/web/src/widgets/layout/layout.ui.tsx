@@ -246,6 +246,7 @@ export const Layout: React.FC = () => {
   );
   const language = useSettingsStore((s) => s.language);
   const folderRailLayout = useSettingsStore((s) => s.folderRailLayout);
+  const showSystemFolders = useSettingsStore((s) => s.showSystemFolders);
   const setFolderRailLayout = useSettingsStore((s) => s.setFolderRailLayout);
   const mutedStreamIds = useMuteStore((s) => s.mutedStreamIds);
   const chatsSortedByLastMessage = useMemo(
@@ -496,6 +497,7 @@ export const Layout: React.FC = () => {
         const foldersWithSystemDefaults = withDefaultSystemFolders(
           mapWorkspaceFoldersToRail(f),
           getSystemFolderLabels(),
+          showSystemFolders,
         );
         setFolders(foldersWithSystemDefaults);
         saveOfflineFolders(currentInstanceId, foldersWithSystemDefaults);
@@ -524,10 +526,14 @@ export const Layout: React.FC = () => {
       })
       .catch(() => {
         setFolders(
-          withDefaultSystemFolders(loadOfflineFolders(currentInstanceId), getSystemFolderLabels()),
+          withDefaultSystemFolders(
+            loadOfflineFolders(currentInstanceId),
+            getSystemFolderLabels(),
+            showSystemFolders,
+          ),
         );
       });
-  }, [currentInstanceId]);
+  }, [currentInstanceId, showSystemFolders]);
   const handleSetRightDrawerOpen = useCallback((open: boolean) => {
     setRightDrawerOpen(open);
     if (!open) {
@@ -941,6 +947,7 @@ export const Layout: React.FC = () => {
     const cachedFolders = withDefaultSystemFolders(
       loadOfflineFolders(currentInstanceId),
       getSystemFolderLabels(),
+      showSystemFolders,
     );
     if (cachedFolders.length > 0) {
       void Promise.resolve().then(() => {
@@ -953,6 +960,7 @@ export const Layout: React.FC = () => {
         const foldersWithSystemDefaults = withDefaultSystemFolders(
           mapWorkspaceFoldersToRail(f),
           getSystemFolderLabels(),
+          showSystemFolders,
         );
         setFolders(foldersWithSystemDefaults);
         saveOfflineFolders(currentInstanceId, foldersWithSystemDefaults);
@@ -987,6 +995,7 @@ export const Layout: React.FC = () => {
             withDefaultSystemFolders(
               loadOfflineFolders(currentInstanceId),
               getSystemFolderLabels(),
+              showSystemFolders,
             ),
           );
         }
@@ -994,13 +1003,13 @@ export const Layout: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [currentInstanceId, currentUserStatus]);
+  }, [currentInstanceId, currentUserStatus, showSystemFolders]);
 
   useEffect(() => {
     setFolders((currentFolders) =>
-      withDefaultSystemFolders(currentFolders, getSystemFolderLabels()),
+      withDefaultSystemFolders(currentFolders, getSystemFolderLabels(), showSystemFolders),
     );
-  }, [language]);
+  }, [language, showSystemFolders]);
 
   useEffect(() => {
     return startFolderPolling({

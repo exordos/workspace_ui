@@ -43,7 +43,8 @@ describe("useSettingsStore", () => {
       expect(state.prioritizeUnmutedUnreadChannels).toBe(false);
       expect(state.notificationSound).toBe("default");
       expect(state.language).toBe("en");
-      expect(state.folderRailLayout).toBe("horizontal");
+      expect(state.folderRailLayout).toBe("vertical");
+      expect(state.showSystemFolders).toBe(false);
       expect(state.chatListDensity).toBe("standard");
     });
   });
@@ -130,6 +131,7 @@ describe("useSettingsStore", () => {
       useSettingsStore.getState().setPrioritizeUnmutedUnreadChannels(true);
       useSettingsStore.getState().setNotificationSound("none");
       useSettingsStore.getState().setLanguage("ru");
+      useSettingsStore.getState().setShowSystemFolders(true);
       useSettingsStore.getState().setChatListDensity("compact");
 
       useSettingsStore.getState().resetToDefaults();
@@ -140,6 +142,7 @@ describe("useSettingsStore", () => {
       expect(state.prioritizeUnmutedUnreadChannels).toBe(false);
       expect(state.notificationSound).toBe("default");
       expect(state.language).toBe("en");
+      expect(state.showSystemFolders).toBe(false);
       expect(state.chatListDensity).toBe("standard");
     });
 
@@ -187,6 +190,20 @@ describe("useSettingsStore", () => {
     });
   });
 
+  describe("setShowSystemFolders", () => {
+    it("updates showSystemFolders flag", () => {
+      useSettingsStore.getState().setShowSystemFolders(true);
+      expect(useSettingsStore.getState().showSystemFolders).toBe(true);
+    });
+
+    it("persists showSystemFolders flag to localStorage", () => {
+      useSettingsStore.getState().setShowSystemFolders(true);
+      const raw = localStorage.getItem("workspace-settings");
+      const parsed = JSON.parse(raw!);
+      expect(parsed.showSystemFolders).toBe(true);
+    });
+  });
+
   describe("setChatListDensity", () => {
     it("updates chat list density", () => {
       useSettingsStore.getState().setChatListDensity("compact");
@@ -208,6 +225,7 @@ describe("useSettingsStore", () => {
       useSettingsStore.getState().setNotificationSound("none");
       useSettingsStore.getState().setLanguage("ru");
       useSettingsStore.getState().setFolderRailLayout("horizontal");
+      useSettingsStore.getState().setShowSystemFolders(true);
       useSettingsStore.getState().setChatListDensity("compact");
 
       const raw = localStorage.getItem("workspace-settings");
@@ -218,6 +236,7 @@ describe("useSettingsStore", () => {
       expect(parsed.notificationSound).toBe("none");
       expect(parsed.language).toBe("ru");
       expect(parsed.folderRailLayout).toBe("horizontal");
+      expect(parsed.showSystemFolders).toBe(true);
       expect(parsed.chatListDensity).toBe("compact");
     });
   });
@@ -295,7 +314,8 @@ describe("loadSettings (module reload)", () => {
     expect(state.prioritizeUnmutedUnreadChannels).toBe(false);
     expect(state.notificationSound).toBe("default");
     expect(state.language).toBe("en");
-    expect(state.folderRailLayout).toBe("horizontal");
+    expect(state.folderRailLayout).toBe("vertical");
+    expect(state.showSystemFolders).toBe(false);
     expect(state.chatListDensity).toBe("standard");
   });
 
@@ -310,6 +330,7 @@ describe("loadSettings (module reload)", () => {
     expect(state.notificationSound).toBe("default");
     expect(state.language).toBe("en");
     expect(state.folderRailLayout).toBe("horizontal");
+    expect(state.showSystemFolders).toBe(false);
     expect(state.chatListDensity).toBe("standard");
   });
 
@@ -340,7 +361,8 @@ describe("loadSettings (module reload)", () => {
     expect(state.prioritizeUnmutedUnreadChannels).toBe(false);
     expect(state.notificationSound).toBe("default");
     expect(state.language).toBe("en");
-    expect(state.folderRailLayout).toBe("horizontal");
+    expect(state.folderRailLayout).toBe("vertical");
+    expect(state.showSystemFolders).toBe(false);
     expect(state.chatListDensity).toBe("standard");
   });
 
@@ -354,6 +376,7 @@ describe("loadSettings (module reload)", () => {
         notificationSound: "none",
         language: "ru",
         folderRailLayout: "horizontal",
+        showSystemFolders: true,
         chatListDensity: "compact",
       }),
     );
@@ -366,6 +389,7 @@ describe("loadSettings (module reload)", () => {
     expect(state.notificationSound).toBe("none");
     expect(state.language).toBe("ru");
     expect(state.folderRailLayout).toBe("horizontal");
+    expect(state.showSystemFolders).toBe(true);
     expect(state.chatListDensity).toBe("compact");
   });
 

@@ -768,6 +768,54 @@ describe("FolderRail visual parity", () => {
     expect(useSettingsStore.getState().folderRailLayout).toBe("vertical");
   });
 
+  it("shows 'Show system folders' and toggles settings flag from folder menu", () => {
+    useSettingsStore.getState().setShowSystemFolders(false);
+
+    render(
+      <FolderRail
+        folders={[
+          { id: "all", label: "All", backgroundColor: 0xff8438 },
+          { id: "custom", label: "Team", backgroundColor: 0x3a92ff },
+        ]}
+        selectedFolderId="all"
+        onSelectFolder={vi.fn()}
+      />,
+    );
+
+    const customNodes = screen.getAllByTitle("Team");
+    const customButton = customNodes.find((node) => node.tagName === "BUTTON");
+    expect(customButton).toBeDefined();
+
+    fireEvent.contextMenu(customButton!);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Show system folders" }));
+
+    expect(useSettingsStore.getState().showSystemFolders).toBe(true);
+  });
+
+  it("shows 'Hide system folders' when flag is enabled and toggles it off", () => {
+    useSettingsStore.getState().setShowSystemFolders(true);
+
+    render(
+      <FolderRail
+        folders={[
+          { id: "all", label: "All", backgroundColor: 0xff8438 },
+          { id: "custom", label: "Team", backgroundColor: 0x3a92ff },
+        ]}
+        selectedFolderId="all"
+        onSelectFolder={vi.fn()}
+      />,
+    );
+
+    const customNodes = screen.getAllByTitle("Team");
+    const customButton = customNodes.find((node) => node.tagName === "BUTTON");
+    expect(customButton).toBeDefined();
+
+    fireEvent.contextMenu(customButton!);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Hide system folders" }));
+
+    expect(useSettingsStore.getState().showSystemFolders).toBe(false);
+  });
+
   it("selects folder on pointer click of folder icon button", async () => {
     const user = userEvent.setup();
     const onSelectFolder = vi.fn();
