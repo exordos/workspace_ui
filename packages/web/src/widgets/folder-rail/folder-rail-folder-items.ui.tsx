@@ -217,66 +217,67 @@ export const VerticalFolderItem: React.FC<FolderItemProps> = React.memo(
       onRequestDelete,
     });
     const visualState = getFolderItemVisualState({ folder, index, isSelected, isHovered });
+    const verticalToneClass = isSelected
+      ? visualState.isSystemFolder
+        ? "text-accent"
+        : "text-text-primary"
+      : "text-text-muted";
+    const verticalOuterSlotClass = isSelected ? "h-[85px] w-[67px] p-1" : "h-[77px] w-[59px]";
 
     return (
       <DropdownMenu.Root open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenu.Trigger asChild>
-          <div className="flex flex-col items-center gap-1">
-            <button
-              type="button"
-              // Аналогично horizontal: pointer-down не должен пробрасываться наружу.
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={handleSelect}
-              onContextMenu={handleContextMenu}
-              onKeyDown={handleKeyboardContextMenu}
-              onMouseEnter={() => setIsHovered(true)}
-              onMouseLeave={() => setIsHovered(false)}
-              className={`relative flex h-10 w-10 items-center justify-center rounded-lg border border-transparent transition-colors ${
-                !isSelected ? "hover:bg-bg/60" : ""
-              }`}
-              title={folder.label}
-              style={visualState.folderSurfaceStyle}
-            >
-              <span
-                className={`inline-flex shrink-0 ${visualState.iconTextColor}`}
-                style={visualState.iconColorStyle}
+          <div className={verticalOuterSlotClass}>
+            <div className="relative h-[77px] w-[59px]">
+              <button
+                type="button"
+                // Аналогично horizontal: pointer-down не должен пробрасываться наружу.
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={handleSelect}
+                onContextMenu={handleContextMenu}
+                onKeyDown={handleKeyboardContextMenu}
+                onMouseEnter={() => setIsHovered(true)}
+                onMouseLeave={() => setIsHovered(false)}
+                className={`absolute left-1/2 top-[17px] flex h-10 w-10 -translate-x-1/2 items-center justify-center rounded-lg transition-colors ${verticalToneClass}`}
+                title={folder.label}
               >
-                <Icon name={visualState.iconName} size={40} className="shrink-0" />
-              </span>
+                <span className="inline-flex shrink-0">
+                  <Icon name={visualState.iconName} size={40} className="shrink-0" />
+                </span>
+              </button>
               {folder.badge !== undefined && (
-                <span className="absolute -right-0.5 -top-0.5">
+                <span className="pointer-events-none absolute left-1/2 top-0 -translate-x-1/2">
                   <Badge count={folder.badge} variant="unread" />
                 </span>
               )}
-            </button>
-            <span
-              className={`max-w-[78px] cursor-pointer truncate text-center text-[11px] ${visualState.labelTextColor}`}
-              title={folder.label}
-              role="button"
-              tabIndex={0}
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={handleSelect}
-              onContextMenu={handleContextMenu}
-              onMouseEnter={() => setIsHovered(true)}
-              onMouseLeave={() => setIsHovered(false)}
-              style={visualState.labelColorStyle}
-              onKeyDown={(e) => {
-                if (isContextMenuKeyboardTrigger(e)) {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setMenuOpen(true);
-                  return;
-                }
-                // Поддерживаем клавиатурный выбор папки, чтобы label вел себя как интерактивная кнопка.
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onSelectFolder(folder.id);
-                }
-              }}
-            >
-              {folder.label}
-            </span>
+              <span
+                className={`absolute left-1/2 top-[57px] w-[62px] -translate-x-1/2 cursor-pointer truncate text-center text-sm leading-5 transition-colors ${verticalToneClass}`}
+                title={folder.label}
+                role="button"
+                tabIndex={0}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={handleSelect}
+                onContextMenu={handleContextMenu}
+                onMouseEnter={() => setIsHovered(true)}
+                onMouseLeave={() => setIsHovered(false)}
+                onKeyDown={(e) => {
+                  if (isContextMenuKeyboardTrigger(e)) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setMenuOpen(true);
+                    return;
+                  }
+                  // Поддерживаем клавиатурный выбор папки, чтобы label вел себя как интерактивная кнопка.
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onSelectFolder(folder.id);
+                  }
+                }}
+              >
+                {folder.label}
+              </span>
+            </div>
           </div>
         </DropdownMenu.Trigger>
         <DropdownMenu.Portal>
