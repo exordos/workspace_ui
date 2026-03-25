@@ -220,13 +220,15 @@ export const VerticalFolderItem: React.FC<FolderItemProps> = React.memo(
     });
     const visualState = getFolderItemVisualState({ folder, index, isSelected, isHovered });
     const verticalToneClass = isSelected ? "text-text-primary" : "text-text-muted";
-    const verticalOuterSlotClass = isSelected ? "h-[85px] w-[67px] p-1" : "h-[77px] w-[59px]";
+    const verticalScaleClass = isSelected ? "scale-110" : "scale-100";
 
     return (
       <DropdownMenu.Root open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenu.Trigger asChild>
-          <div className={verticalOuterSlotClass}>
-            <div className="relative h-[77px] w-[59px]">
+          <div className="flex h-[85px] w-[67px] items-center justify-center p-1">
+            <div
+              className={`relative h-[77px] w-[59px] origin-center transform-gpu transition-transform duration-150 ease-out motion-reduce:transition-none ${verticalScaleClass}`}
+            >
               <button
                 type="button"
                 // Аналогично horizontal: pointer-down не должен пробрасываться наружу.

@@ -92,7 +92,7 @@ describe("FolderRail visual parity", () => {
     expect(allButton).toHaveClass("text-accent");
   });
 
-  it("renders vertical passive custom folder with muted token styling and without custom inline surface", () => {
+  it("renders vertical passive custom folder with muted token styling and stable slot size", () => {
     render(
       <FolderRail
         folders={[
@@ -110,10 +110,13 @@ describe("FolderRail visual parity", () => {
     expect(customButton).toBeDefined();
     expect(customLabel).toBeDefined();
 
+    const visualWrapper = customButton?.parentElement;
     const outerSlot = customButton?.parentElement?.parentElement;
-    expect(outerSlot).toHaveClass("h-[77px]");
-    expect(outerSlot).toHaveClass("w-[59px]");
-    expect(outerSlot).not.toHaveClass("p-1");
+    expect(outerSlot).toHaveClass("h-[85px]");
+    expect(outerSlot).toHaveClass("w-[67px]");
+    expect(outerSlot).toHaveClass("p-1");
+    expect(visualWrapper).toHaveClass("scale-100");
+    expect(visualWrapper).not.toHaveClass("scale-110");
     expect(customButton).toHaveClass("text-text-muted");
     expect(customLabel).toHaveClass("text-text-muted");
     expect(customLabel).toHaveClass("text-sm");
@@ -122,7 +125,7 @@ describe("FolderRail visual parity", () => {
     expect(customLabel?.getAttribute("style")).toBeNull();
   });
 
-  it("renders vertical active custom folder with contrast styling and expanded slot", () => {
+  it("renders vertical active custom folder with contrast styling and scale highlight", () => {
     render(
       <FolderRail
         folders={[
@@ -140,10 +143,13 @@ describe("FolderRail visual parity", () => {
     expect(customButton).toBeDefined();
     expect(customLabel).toBeDefined();
 
+    const visualWrapper = customButton?.parentElement;
     const outerSlot = customButton?.parentElement?.parentElement;
     expect(outerSlot).toHaveClass("h-[85px]");
     expect(outerSlot).toHaveClass("w-[67px]");
     expect(outerSlot).toHaveClass("p-1");
+    expect(visualWrapper).toHaveClass("scale-110");
+    expect(visualWrapper).not.toHaveClass("scale-100");
     expect(customButton).toHaveClass("text-text-primary");
     expect(customLabel).toHaveClass("text-text-primary");
   });
