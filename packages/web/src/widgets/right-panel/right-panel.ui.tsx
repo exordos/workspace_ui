@@ -665,6 +665,15 @@ const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
   const [editOpen, setEditOpen] = useState(false);
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
+  // Инвалидируем chat-info кэш только для текущего активного stream-контекста.
+  const invalidateCurrentStreamChatInfo = useCallback((targetStreamId: number) => {
+    const chatInfoState = useChatInfoStore.getState();
+    const context = chatInfoState.context;
+    if (context.kind !== "stream" || context.streamId !== targetStreamId) {
+      return;
+    }
+    chatInfoState.invalidateStream(context.instanceId, targetStreamId);
+  }, []);
 
   const handleToggleMute = useCallback(async () => {
     if (streamId == null || mutePending) return;
@@ -804,6 +813,8 @@ const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
       description: editDescription.trim(),
     });
     if (ok) {
+      // После редактирования канала сбрасываем кэш, чтобы подтянуть свежую metadata.
+      invalidateCurrentStreamChatInfo(streamId);
       useChatListStore.getState().renameStream(streamId, trimmedName);
       const nextInfo = useChatInfoStore.getState().data;
       if (nextInfo?.type === "stream") {
@@ -830,6 +841,8 @@ const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
     setChannelActionError(null);
     const ok = await deleteStream(streamId);
     if (ok) {
+      // После удаления канала очищаем кэш, чтобы исключить stale-данные.
+      invalidateCurrentStreamChatInfo(streamId);
       const chatList = useChatListStore.getState();
       chatList.removeStream(streamId);
       useChatInfoStore.getState().clear();

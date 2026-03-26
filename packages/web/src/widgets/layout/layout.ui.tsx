@@ -7,7 +7,11 @@ import { useInboxStore } from "~/entities/inbox";
 import { useInstancesStore } from "~/entities/instance";
 import { useCurrentChatMessagesStore, isMessageForContext } from "~/entities/message";
 import { ensureUserStatusLoaded, formatUserStatusLabel, useUsersStore } from "~/entities/user";
-import { useChatInfoStore } from "~/features/chat-info";
+import {
+  getChatInfoNetworkKey,
+  useChatInfoStore,
+  type ChatInfoContext,
+} from "~/features/chat-info";
 import { InstanceSwitcher } from "~/features/instance-switch";
 import { useMediaViewerStore } from "~/features/media-viewer";
 import { useMuteStore } from "~/features/mute-chat";
@@ -30,8 +34,6 @@ import {
   fetchRecentMessages,
   fetchUsers,
   fetchRealmPresence,
-  fetchStreams,
-  fetchStreamMembers,
   fetchSubscriptions,
   fetchUserTopics,
   getCurrentUser,
@@ -81,11 +83,6 @@ import {
 import { TopBar, type TopBarSection } from "~/widgets/top-bar";
 import { getSectionFromPathname } from "./layout-active-section.lib";
 import { getNewestMessageId, loadDeepHistoryMessages } from "./layout-chat-history-sync.lib";
-import {
-  buildDmChatInfoData,
-  buildStreamChatInfoData,
-  hasChatInfoContext,
-} from "./layout-chat-info.lib";
 import { shouldRenderChatShell } from "./layout-chat-shell.lib";
 import { resolveChatShortcutRoute } from "./layout-chat-shortcuts.lib";
 import { DESKTOP_MIN_VIEWPORT_STYLE } from "./layout-desktop-viewport.lib";
@@ -239,6 +236,7 @@ export const Layout: React.FC = () => {
   const dmsFromStore = useChatListStore((s) => s.dms());
   const streamsMap = useChatListStore((s) => s.streamsMap);
   const dmsMap = useChatListStore((s) => s.dmsMap);
+  const usersMapForChatInfo = useUsersStore((s) => s.users);
   const chatSorting = useSettingsStore((s) => s.chatSorting);
   const prioritizePersonalUnread = useSettingsStore((s) => s.prioritizePersonalUnread);
   const prioritizeUnmutedUnreadChannels = useSettingsStore(
@@ -1250,9 +1248,10 @@ export const Layout: React.FC = () => {
   );
 
   const parsedStream = activeStreamSlug ? parseStreamSlug(activeStreamSlug) : null;
+  const activeStreamId = parsedStream?.stream_id ?? null;
   const activeStreamName =
-    parsedStream?.stream_id != null
-      ? (streamsMap.get(parsedStream.stream_id)?.name ?? parsedStream.stream_name)
+    activeStreamId != null
+      ? (streamsMap.get(activeStreamId)?.name ?? parsedStream?.stream_name ?? "")
       : parsedStream?.stream_name;
   const dmChat =
     dmIdParam != null && dmIdParam !== "" ? getDmById(dmIdParam, dmsFromStore) : undefined;
@@ -1427,61 +1426,68 @@ export const Layout: React.FC = () => {
     currentInstanceId,
   ]);
 
-  // Populate chat-info store with live data for the active chat context.
-  // Header counters and right drawer both consume this store.
-  useEffect(() => {
-    const streamId = parsedStream?.stream_id;
-    if (!hasChatInfoContext({ hasDmChat: dmChat != null, streamId })) {
-      useChatInfoStore.getState().clear();
-      return;
+  // Собираем топики активного стрима из chat-list store (без сети).
+  const chatInfoTopics = useMemo(() => {
+    if (activeStreamId == null) return [];
+    return Array.from(streamsMap.get(activeStreamId)?.topics.values() ?? []).map((topic) => ({
+      name: topic.subject,
+      unreadCount: topic.unreadCount,
+    }));
+  }, [activeStreamId, streamsMap]);
+
+  // Единый контекст chat-info для none/dm/stream веток.
+  const chatInfoContext = useMemo<ChatInfoContext>(() => {
+    if (!currentInstanceId) {
+      return { kind: "none", instanceId: null };
     }
-
-    const usersState = useUsersStore.getState();
-    const allUsers = usersState.users;
-
     if (dmChat) {
-      const members = dmParticipantIds
-        .map((id) => allUsers.get(id))
-        .filter((user): user is NonNullable<typeof user> => user != null);
-      useChatInfoStore
-        .getState()
-        .setData(buildDmChatInfoData(dmChat.name, members, dmParticipantIds.length));
-    } else if (streamId != null) {
-      let cancelled = false;
-      const streamTopics = Array.from(streamsMap.get(streamId)?.topics.values() ?? []).map(
-        (topic) => ({
-          name: topic.subject,
-          unreadCount: topic.unreadCount,
-        }),
-      );
-      Promise.all([fetchStreamMembers(streamId), fetchStreams()])
-        .then(([memberIds, streams]) => {
-          if (cancelled) return;
-          const usersState = useUsersStore.getState();
-          const members = memberIds
-            .map((id) => usersState.getUser(id))
-            .filter((u): u is NonNullable<typeof u> => u != null);
-          const description =
-            streams.find((stream) => stream.stream_id === streamId)?.description ?? null;
-          useChatInfoStore.getState().setData(
-            buildStreamChatInfoData(
-              activeStreamName ?? "",
-              memberIds,
-              members,
-              useMuteStore.getState().isStreamMuted(streamId),
-              {
-                description,
-                topics: streamTopics,
-              },
-            ),
-          );
-        })
-        .catch(() => {});
-      return () => {
-        cancelled = true;
+      return {
+        kind: "dm",
+        instanceId: currentInstanceId,
+        dmName: dmChat.name,
+        participantIds: dmParticipantIds,
       };
     }
-  }, [dmChat, dmParticipantIds, parsedStream, activeStreamName, streamsMap]);
+    if (activeStreamId != null) {
+      return {
+        kind: "stream",
+        instanceId: currentInstanceId,
+        streamId: activeStreamId,
+        streamName: activeStreamName ?? "",
+        isMuted: mutedStreamIds.has(activeStreamId),
+        topics: chatInfoTopics,
+      };
+    }
+    return { kind: "none", instanceId: currentInstanceId };
+  }, [
+    activeStreamId,
+    activeStreamName,
+    chatInfoTopics,
+    currentInstanceId,
+    dmChat,
+    dmParticipantIds,
+    mutedStreamIds,
+  ]);
+  // Стабильный ключ контекста нужен для контроля частоты hydrate.
+  const chatInfoNetworkKey = useMemo(
+    () => getChatInfoNetworkKey(chatInfoContext),
+    [chatInfoContext],
+  );
+  const hydratedChatInfoKeyRef = useRef<string | null>(null);
+
+  // Сетевой hydrate запускаем только при смене ключа контекста.
+  useEffect(() => {
+    if (hydratedChatInfoKeyRef.current === chatInfoNetworkKey) {
+      return;
+    }
+    hydratedChatInfoKeyRef.current = chatInfoNetworkKey;
+    void useChatInfoStore.getState().hydrate(chatInfoContext);
+  }, [chatInfoContext, chatInfoNetworkKey]);
+
+  // Локальный derived-пересчет (topics/mute/presence) без HTTP.
+  useEffect(() => {
+    useChatInfoStore.getState().syncDerived(chatInfoContext);
+  }, [chatInfoContext, usersMapForChatInfo]);
 
   const chatInfoData = useChatInfoStore((s) => s.data);
 
