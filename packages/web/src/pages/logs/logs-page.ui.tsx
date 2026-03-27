@@ -21,6 +21,7 @@ import { downloadLogsAsFile } from "./logs-export.lib";
 
 type RuntimeFilter = string;
 type ScopeFilter = string;
+const REDACTED_IDENTIFIER = "[REDACTED]";
 
 export const LogsPage: React.FC = () => {
   const location = useLocation();
@@ -176,8 +177,8 @@ export const LogsPage: React.FC = () => {
       instances: {
         count: instancesCount,
         currentInstanceId,
-        currentRealm: currentInstance?.realm ?? null,
-        currentEmail: currentInstance?.email ?? null,
+        currentRealm: currentInstance?.realm ? REDACTED_IDENTIFIER : null,
+        currentEmail: currentInstance?.email ? REDACTED_IDENTIFIER : null,
         unreadCountsByInstance,
       },
       logs: {

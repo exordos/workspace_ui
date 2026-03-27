@@ -1,5 +1,6 @@
 import { fireEvent, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useInstancesStore } from "~/entities/instance";
 import { clearLogHistory, createLogger, setMinLevel } from "~/shared/lib/logger";
 import { renderWithProviders } from "~/test/render";
 import { LogsPage } from "./logs-page.ui";
@@ -21,6 +22,11 @@ describe("LogsPage", () => {
 
   afterEach(() => {
     clearLogHistory();
+    useInstancesStore.setState({
+      instances: [],
+      currentInstanceId: null,
+      unreadCountsByInstance: {},
+    });
     vi.restoreAllMocks();
   });
 
@@ -125,5 +131,25 @@ describe("LogsPage", () => {
     expect(row).not.toBeNull();
     expect(row).toHaveClass("p-2");
     expect(entryMessage).toHaveClass("text-xs");
+  });
+
+  it("redacts account identifiers from the diagnostics snapshot", () => {
+    const instanceId = useInstancesStore.getState().addInstance({
+      realm: "https://sensitive.example.com",
+      email: "security@example.com",
+      apiKey: "super-secret-key",
+    });
+    useInstancesStore.getState().setCurrentInstanceId(instanceId);
+
+    renderWithProviders(<LogsPage />);
+
+    const snapshot = document.querySelector("details pre")?.textContent;
+
+    expect(snapshot).toBeTruthy();
+    expect(snapshot).toContain('"currentInstanceId"');
+    expect(snapshot).toContain('"currentRealm": "[REDACTED]"');
+    expect(snapshot).toContain('"currentEmail": "[REDACTED]"');
+    expect(snapshot).not.toContain("sensitive.example.com");
+    expect(snapshot).not.toContain("security@example.com");
   });
 });
