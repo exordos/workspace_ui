@@ -8,8 +8,7 @@
 
 import { getCurrentInstance, refreshZulipApiBase, zulipApi } from "~/shared/api/client";
 import { createLogger } from "~/shared/lib/logger";
-import { useUsersStore } from "./user.model";
-import type { UserStatus } from "./user.model";
+import { type UserStatusReactionType, useUsersStore, type UserStatus } from "./user.model";
 
 interface ZulipStatusEmojiDisplayInfo {
   emoji_name?: string;

@@ -584,6 +584,53 @@ describe("workspace-client", () => {
     expect(workspaceApi.setBaseUrl).toHaveBeenLastCalledWith("/workspace-api/workspace/v1");
   });
 
+  it("maps folder items even when backend returns relaxed fields", async () => {
+    // Проверяем, что клиент не теряет элементы при "мягком" формате ответа backend.
+    workspaceApi.get.mockResolvedValue({
+      ok: true,
+      status: 200,
+      raw: { statusText: "OK" },
+      data: [
+        {
+          uuid: "item-relaxed-1",
+          chat_id: "dm:42,7",
+          folder_uuid: "folder-1",
+          order_index: "3",
+          pinned_at: 0,
+        },
+        {
+          uuid: "item-relaxed-2",
+          chat_id: 11,
+          folder_uuid: "folder-1",
+          order_index: null,
+          created_at: "2026-03-18T00:00:00Z",
+        },
+      ],
+    });
+
+    const { getFolderItems } = await import("./workspace-client");
+    await expect(getFolderItems("folder-1")).resolves.toEqual([
+      {
+        uuid: "item-relaxed-1",
+        chatId: "dm:42,7",
+        folderUuid: "folder-1",
+        orderIndex: 3,
+        pinnedAt: null,
+        createdAt: "",
+        updatedAt: "",
+      },
+      {
+        uuid: "item-relaxed-2",
+        chatId: "11",
+        folderUuid: "folder-1",
+        orderIndex: 0,
+        pinnedAt: null,
+        createdAt: "2026-03-18T00:00:00Z",
+        updatedAt: "2026-03-18T00:00:00Z",
+      },
+    ]);
+  });
+
   it("delegates folder assignment to workspaceApi.postJson", async () => {
     workspaceApi.postJson.mockResolvedValue({ ok: true, data: {} });
 

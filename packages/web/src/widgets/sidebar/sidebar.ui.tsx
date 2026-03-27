@@ -34,6 +34,7 @@ export const Sidebar: React.FC<SidebarUiProps> = ({
   activeDmIdParam = null,
   sidebarDms,
   sidebarChats,
+  sidebarChatsLoading = false,
   pinReorderMode = false,
   onExitPinReorderMode,
   onFolderAssignmentsChanged,
@@ -106,6 +107,7 @@ export const Sidebar: React.FC<SidebarUiProps> = ({
   );
   const filteredFolderChats = useMemo(() => {
     if (!pinReorderMode) return filteredChats;
+    // В режиме reorder показываем только закрепленные чаты текущей папки.
     return filteredChats.filter((chat) =>
       pinnedChatIdSetForReorder.has(chatToWorkspaceChatId(chat)),
     );
@@ -199,6 +201,7 @@ export const Sidebar: React.FC<SidebarUiProps> = ({
             onToggleStream={handleToggleStream}
             onNewTopic={handleNewTopic}
             reorderPinnedOnly={pinReorderMode}
+            loading={sidebarChatsLoading}
             showEmptyState={sidebarChats != null && normalizedQuery.length === 0}
             onFolderAssignmentsChanged={onFolderAssignmentsChanged}
           />

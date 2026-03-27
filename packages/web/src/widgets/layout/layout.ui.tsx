@@ -12,6 +12,7 @@ import {
   useChatInfoStore,
   type ChatInfoContext,
 } from "~/features/chat-info";
+import { selectSidebarChatsLoading, useFolderSyncStore } from "~/features/folder-sync";
 import { InstanceSwitcher } from "~/features/instance-switch";
 import { useMediaViewerStore } from "~/features/media-viewer";
 import { useMuteStore } from "~/features/mute-chat";
@@ -21,13 +22,6 @@ import { useTypingIndicatorStore, resolveTypingEventRoute } from "~/features/typ
 import { useUserProfileStore } from "~/features/user-profile";
 import { t } from "~/i18n";
 import { setAuthErrorHandler } from "~/shared/api/client";
-import {
-  getFolders,
-  getFolderItems,
-  mapWorkspaceFoldersToRail,
-  type FolderItemForClient,
-  type WorkspaceFolderForRail,
-} from "~/shared/api/workspace-client";
 import {
   fetchMessagesAfterAnchor,
   fetchMessagesBeforeAnchor,
@@ -55,7 +49,6 @@ import { stripHtml } from "~/shared/lib/html";
 import { isOnline, onStatusChange } from "~/shared/lib/network";
 import { playNotificationSound } from "~/shared/lib/notification-sound";
 import { notificationService } from "~/shared/lib/notifications";
-import { loadOfflineFolders, saveOfflineFolders } from "~/shared/lib/offline-folders";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { syncOrganizationFavicon } from "~/shared/lib/organization-branding";
 import { pushService } from "~/shared/lib/push";
@@ -78,7 +71,6 @@ import {
   parseDmSlugToUserIds,
   slugForStream,
   getDmById,
-  chatToWorkspaceChatId,
 } from "~/widgets/sidebar";
 import { TopBar, type TopBarSection } from "~/widgets/top-bar";
 import { getSectionFromPathname } from "./layout-active-section.lib";
@@ -87,10 +79,6 @@ import { shouldRenderChatShell } from "./layout-chat-shell.lib";
 import { resolveChatShortcutRoute } from "./layout-chat-shortcuts.lib";
 import { DESKTOP_MIN_VIEWPORT_STYLE } from "./layout-desktop-viewport.lib";
 import { startFolderPolling } from "./layout-folder-polling.lib";
-import {
-  resolveSelectedFolderId,
-  shouldLoadFolderItemsForSelection,
-} from "./layout-folder-selection.lib";
 import {
   buildActiveChatWindowTitle,
   computeInstanceUnreadCount,
@@ -106,11 +94,7 @@ import {
   formatRightPanelLocalTime,
 } from "./layout-right-panel.lib";
 import { resolveShortcutPanelToggle } from "./layout-shortcuts.lib";
-import {
-  SYSTEM_CHANNELS_FOLDER_ID,
-  SYSTEM_PERSONAL_FOLDER_ID,
-  withDefaultSystemFolders,
-} from "./layout-system-folders.lib";
+import { SYSTEM_CHANNELS_FOLDER_ID, SYSTEM_PERSONAL_FOLDER_ID } from "./layout-system-folders.lib";
 
 const MediaViewerOverlay: React.FC = () => {
   const isOpen = useMediaViewerStore((s) => s.isOpen);
@@ -292,10 +276,18 @@ export const Layout: React.FC = () => {
     [activeDmChatForTitle?.name, activeStreamNameForTitle, activeTopic],
   );
 
-  const [folders, setFolders] = useState<WorkspaceFolderForRail[]>([]);
-  const [selectedFolderId, setSelectedFolderId] = useState("1");
+  const folders = useFolderSyncStore((s) => s.folders);
+  const selectedFolderId = useFolderSyncStore((s) => s.selectedFolderId);
+  const selectedFolderChatIds = useFolderSyncStore((s) => s.selectedFolderChatIds);
+  const folderItemsByFolderId = useFolderSyncStore((s) => s.folderItemsByFolderId);
+  const selectedFolderSidebarChats = useFolderSyncStore((s) => s.selectedFolderSidebarChats);
+  const sidebarChatsLoading = useFolderSyncStore(selectSidebarChatsLoading);
+  const bootstrapFolderSync = useFolderSyncStore((s) => s.bootstrap);
+  const refreshFolderSync = useFolderSyncStore((s) => s.refresh);
+  const selectFolderSync = useFolderSyncStore((s) => s.selectFolder);
+  const syncFolderSyncSidebarProjection = useFolderSyncStore((s) => s.syncSidebarProjection);
+  const syncFolderSyncDerived = useFolderSyncStore((s) => s.syncDerived);
   const [pinReorderMode, setPinReorderMode] = useState(false);
-  const [folderChatIds, setFolderChatIds] = useState<Set<string> | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
   const [rightDrawerOpen, setRightDrawerOpen] = useState(false);
@@ -312,6 +304,10 @@ export const Layout: React.FC = () => {
     null,
   );
   const latestMessageIdRef = useRef<number | null>(null);
+  const folderSyncConfigRef = useRef({
+    showSystemFolders,
+    labels: getSystemFolderLabels(),
+  });
 
   const loadMuteSnapshot = useCallback(async () => {
     const [subs, userTopics] = await Promise.all([fetchSubscriptions(), fetchUserTopics()]);
@@ -433,42 +429,52 @@ export const Layout: React.FC = () => {
   }, [instances, currentInstanceId, currentUserStatus, online, setInstanceUnreadCount]);
 
   useEffect(() => {
-    const nextFolderId = resolveSelectedFolderId(folders, selectedFolderId);
-    if (nextFolderId == null || nextFolderId === selectedFolderId) return;
-    let cancelled = false;
-    void Promise.resolve().then(() => {
-      if (cancelled) return;
-      setPinReorderMode(false);
-      setSelectedFolderId((currentFolderId) =>
-        currentFolderId === nextFolderId ? currentFolderId : nextFolderId,
-      );
-    });
-    return () => {
-      cancelled = true;
+    folderSyncConfigRef.current = {
+      showSystemFolders,
+      labels: getSystemFolderLabels(),
     };
-  }, [folders, selectedFolderId]);
+  }, [showSystemFolders, language]);
 
   useEffect(() => {
-    let cancelled = false;
-    if (!shouldLoadFolderItemsForSelection(folders, selectedFolderId)) {
-      void Promise.resolve().then(() => {
-        if (!cancelled) setFolderChatIds(null);
-      });
-      return () => {
-        cancelled = true;
-      };
+    const rows: {
+      folderUuid: string;
+      folderItemUuid: string;
+      chatId: string;
+      orderIndex: number;
+      pinnedAt: string | null;
+    }[] = [];
+    for (const [folderUuid, items] of folderItemsByFolderId) {
+      for (const item of items) {
+        rows.push({
+          folderUuid,
+          folderItemUuid: item.uuid,
+          chatId: item.chatId,
+          orderIndex: item.orderIndex,
+          pinnedAt: item.pinnedAt,
+        });
+      }
     }
-    getFolderItems(selectedFolderId)
-      .then((items) => {
-        if (!cancelled) setFolderChatIds(new Set(items.map((i) => i.chatId)));
-      })
-      .catch(() => {
-        if (!cancelled) setFolderChatIds(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedFolderId, folders]);
+    usePinStore.getState().setFromServer(rows);
+  }, [folderItemsByFolderId]);
+
+  useEffect(() => {
+    // Триггерим пересчет проекции sidebar в orchestrator при изменении входных данных.
+    syncFolderSyncSidebarProjection({
+      chatsSortedByLastMessage,
+      streamsMap,
+      usersMapForChatInfo,
+      currentUserId,
+    });
+  }, [
+    chatsSortedByLastMessage,
+    currentUserId,
+    folderItemsByFolderId,
+    selectedFolderChatIds,
+    selectedFolderId,
+    streamsMap,
+    syncFolderSyncSidebarProjection,
+    usersMapForChatInfo,
+  ]);
 
   const openSearch = React.useCallback(() => setSearchOpen(true), []);
   const handleOpenProfile = useCallback(() => {
@@ -476,62 +482,43 @@ export const Layout: React.FC = () => {
     setRightDrawerUserIdOverride(null);
     setRightDrawerOpen(true);
   }, []);
-  const handleSelectFolder = useCallback((folderId: string) => {
-    setPinReorderMode(false);
-    setSelectedFolderId(folderId);
-  }, []);
+  const handleSelectFolder = useCallback(
+    (folderId: string) => {
+      setPinReorderMode(false);
+      void selectFolderSync(folderId);
+    },
+    [selectFolderSync],
+  );
   const handleToggleFolderRailLayout = useCallback(() => {
     setFolderRailLayout(folderRailLayout === "horizontal" ? "vertical" : "horizontal");
   }, [folderRailLayout, setFolderRailLayout]);
-  const handleStartOrderPinning = useCallback((folderId: string) => {
-    setSelectedFolderId(folderId);
-    setPinReorderMode(true);
-  }, []);
+  const handleStartOrderPinning = useCallback(
+    (folderId: string) => {
+      void selectFolderSync(folderId);
+      setPinReorderMode(true);
+    },
+    [selectFolderSync],
+  );
   const handleExitPinReorderMode = useCallback(() => setPinReorderMode(false), []);
-  const handleFoldersChanged = useCallback(() => {
-    if (!currentInstanceId) return;
-    getFolders()
-      .then(async (f) => {
-        const foldersWithSystemDefaults = withDefaultSystemFolders(
-          mapWorkspaceFoldersToRail(f),
-          getSystemFolderLabels(),
-          showSystemFolders,
-        );
-        setFolders(foldersWithSystemDefaults);
-        saveOfflineFolders(currentInstanceId, foldersWithSystemDefaults);
-
-        const allFolderItems: FolderItemForClient[] = [];
-        await Promise.all(
-          f.map(async (folder) => {
-            try {
-              const items = await getFolderItems(folder.uuid);
-              allFolderItems.push(...items);
-            } catch {
-              /* folder items fetch is best-effort */
-            }
-          }),
-        );
-
-        usePinStore.getState().setFromServer(
-          allFolderItems.map((item) => ({
-            folderUuid: item.folderUuid,
-            folderItemUuid: item.uuid,
-            chatId: item.chatId,
-            orderIndex: item.orderIndex,
-            pinnedAt: item.pinnedAt,
-          })),
-        );
-      })
-      .catch(() => {
-        setFolders(
-          withDefaultSystemFolders(
-            loadOfflineFolders(currentInstanceId),
-            getSystemFolderLabels(),
-            showSystemFolders,
-          ),
-        );
-      });
-  }, [currentInstanceId, showSystemFolders]);
+  const previousSelectedFolderIdRef = useRef(selectedFolderId);
+  useEffect(() => {
+    if (previousSelectedFolderIdRef.current === selectedFolderId) {
+      return;
+    }
+    previousSelectedFolderIdRef.current = selectedFolderId;
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (!cancelled) {
+        setPinReorderMode(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedFolderId]);
+  const handleFoldersChanged = useCallback(async () => {
+    await refreshFolderSync("mutation");
+  }, [refreshFolderSync]);
   const handleSetRightDrawerOpen = useCallback((open: boolean) => {
     setRightDrawerOpen(open);
     if (!open) {
@@ -941,81 +928,25 @@ export const Layout: React.FC = () => {
 
   useEffect(() => {
     if (!currentInstanceId || currentUserStatus !== "ready") return;
-    let cancelled = false;
-    const cachedFolders = withDefaultSystemFolders(
-      loadOfflineFolders(currentInstanceId),
-      getSystemFolderLabels(),
+    const { showSystemFolders, labels } = folderSyncConfigRef.current;
+    void bootstrapFolderSync({
+      instanceId: currentInstanceId,
       showSystemFolders,
-    );
-    if (cachedFolders.length > 0) {
-      void Promise.resolve().then(() => {
-        if (!cancelled) setFolders(cachedFolders);
-      });
-    }
-    getFolders()
-      .then(async (f) => {
-        if (cancelled) return;
-        const foldersWithSystemDefaults = withDefaultSystemFolders(
-          mapWorkspaceFoldersToRail(f),
-          getSystemFolderLabels(),
-          showSystemFolders,
-        );
-        setFolders(foldersWithSystemDefaults);
-        saveOfflineFolders(currentInstanceId, foldersWithSystemDefaults);
-
-        // Hydrate pin store from folder items with pinned metadata + persisted order.
-        const allFolderItems: FolderItemForClient[] = [];
-        await Promise.all(
-          f.map(async (folder) => {
-            try {
-              const items = await getFolderItems(folder.uuid);
-              allFolderItems.push(...items);
-            } catch {
-              /* folder items fetch is best-effort */
-            }
-          }),
-        );
-        if (!cancelled) {
-          usePinStore.getState().setFromServer(
-            allFolderItems.map((item) => ({
-              folderUuid: item.folderUuid,
-              folderItemUuid: item.uuid,
-              chatId: item.chatId,
-              orderIndex: item.orderIndex,
-              pinnedAt: item.pinnedAt,
-            })),
-          );
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setFolders(
-            withDefaultSystemFolders(
-              loadOfflineFolders(currentInstanceId),
-              getSystemFolderLabels(),
-              showSystemFolders,
-            ),
-          );
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [currentInstanceId, currentUserStatus, showSystemFolders]);
+      labels,
+    });
+  }, [currentInstanceId, currentUserStatus, bootstrapFolderSync]);
 
   useEffect(() => {
-    setFolders((currentFolders) =>
-      withDefaultSystemFolders(currentFolders, getSystemFolderLabels(), showSystemFolders),
-    );
-  }, [language, showSystemFolders]);
+    syncFolderSyncDerived(showSystemFolders, getSystemFolderLabels());
+  }, [language, showSystemFolders, syncFolderSyncDerived]);
 
   useEffect(() => {
     return startFolderPolling({
       enabled: currentInstanceId != null && currentUserStatus === "ready" && online,
-      refreshFolders: handleFoldersChanged,
+      refreshFolders: () => refreshFolderSync("polling"),
       runImmediately: false,
     });
-  }, [currentInstanceId, currentUserStatus, online, handleFoldersChanged]);
+  }, [currentInstanceId, currentUserStatus, online, refreshFolderSync]);
 
   // F06: Hydrate mute store from subscription data and user_topics on load
   useEffect(() => {
@@ -1162,18 +1093,6 @@ export const Layout: React.FC = () => {
     },
     [navigate],
   );
-  const filteredSidebarChats = useMemo(() => {
-    if (selectedFolderId === SYSTEM_PERSONAL_FOLDER_ID) {
-      return chatsSortedByLastMessage.filter((chat) => chat.type === "dm");
-    }
-    if (selectedFolderId === SYSTEM_CHANNELS_FOLDER_ID) {
-      return chatsSortedByLastMessage.filter((chat) => chat.type === "stream");
-    }
-    if (folderChatIds == null) return chatsSortedByLastMessage;
-    return chatsSortedByLastMessage.filter((chat) =>
-      folderChatIds.has(chatToWorkspaceChatId(chat)),
-    );
-  }, [chatsSortedByLastMessage, folderChatIds, selectedFolderId]);
   const allFolderId = useMemo(
     () => folders.find((folder) => folder.systemType === "all")?.id ?? null,
     [folders],
@@ -1199,7 +1118,7 @@ export const Layout: React.FC = () => {
   const navigateToAdjacentChatShortcut = useCallback(
     (direction: "next" | "prev") => {
       const route = resolveChatShortcutRoute({
-        sidebarChats: filteredSidebarChats,
+        sidebarChats: selectedFolderSidebarChats,
         direction,
         activeStreamSlug,
         activeDmIdParam: dmIdParam,
@@ -1207,7 +1126,7 @@ export const Layout: React.FC = () => {
       if (!route) return;
       void navigate(route);
     },
-    [filteredSidebarChats, activeStreamSlug, dmIdParam, navigate],
+    [selectedFolderSidebarChats, activeStreamSlug, dmIdParam, navigate],
   );
   const navigateToPreviousChatShortcut = useCallback(() => {
     navigateToAdjacentChatShortcut("prev");
@@ -1226,11 +1145,11 @@ export const Layout: React.FC = () => {
   });
   useShortcut("alt+arrowup", navigateToPreviousChatShortcut, {
     context: "sidebar",
-    enabled: shouldShowChatShell && filteredSidebarChats.length > 1,
+    enabled: shouldShowChatShell && selectedFolderSidebarChats.length > 1,
   });
   useShortcut("alt+arrowdown", navigateToNextChatShortcut, {
     context: "sidebar",
-    enabled: shouldShowChatShell && filteredSidebarChats.length > 1,
+    enabled: shouldShowChatShell && selectedFolderSidebarChats.length > 1,
   });
 
   const handleSectionChange = useCallback(
@@ -1560,7 +1479,8 @@ export const Layout: React.FC = () => {
                       activeTopic={activeTopic}
                       activeDmIdParam={dmIdParam ?? null}
                       sidebarDms={dmsFromStore}
-                      sidebarChats={filteredSidebarChats}
+                      sidebarChats={selectedFolderSidebarChats}
+                      sidebarChatsLoading={sidebarChatsLoading}
                       pinReorderMode={pinReorderMode}
                       onExitPinReorderMode={handleExitPinReorderMode}
                       onFolderAssignmentsChanged={handleFoldersChanged}
@@ -1594,7 +1514,8 @@ export const Layout: React.FC = () => {
                         activeTopic={activeTopic}
                         activeDmIdParam={dmIdParam ?? null}
                         sidebarDms={dmsFromStore}
-                        sidebarChats={filteredSidebarChats}
+                        sidebarChats={selectedFolderSidebarChats}
+                        sidebarChatsLoading={sidebarChatsLoading}
                         pinReorderMode={pinReorderMode}
                         onExitPinReorderMode={handleExitPinReorderMode}
                         onFolderAssignmentsChanged={handleFoldersChanged}

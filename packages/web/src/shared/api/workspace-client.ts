@@ -15,7 +15,9 @@ import type { ApiResponse } from "./client";
 
 const log = createLogger("workspace-client");
 
-const DEFAULT_WORKSPACE_API_SUFFIX = "/api/v1";
+// Временно фиксируем дефолт на legacy-базу: /workspace/v1.
+// const DEFAULT_WORKSPACE_API_SUFFIX = "/api/v1";
+const DEFAULT_WORKSPACE_API_SUFFIX = "/workspace/v1";
 const LEGACY_WORKSPACE_API_SUFFIX = "/workspace/v1";
 const ZULIP_HOST_PREFIX = "zulip.";
 const WORKSPACE_HOST_PREFIX = "workspace.";
@@ -429,32 +431,6 @@ export function mapWorkspaceFoldersToRail(folders: WorkspaceFolder[]): Workspace
 // Folder chat assignment (items within a folder)
 // ---------------------------------------------------------------------------
 
-interface WorkspaceFolderItemResponse {
-  uuid: string;
-  chat_id: string | number;
-  folder_uuid: string;
-  order_index: number;
-  pinned_at: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-function isWorkspaceFolderItemResponse(value: unknown): value is WorkspaceFolderItemResponse {
-  return (
-    isRecord(value) &&
-    typeof value.uuid === "string" &&
-    (typeof value.chat_id === "string" ||
-      (typeof value.chat_id === "number" &&
-        Number.isSafeInteger(value.chat_id) &&
-        value.chat_id > 0)) &&
-    typeof value.folder_uuid === "string" &&
-    typeof value.order_index === "number" &&
-    (typeof value.pinned_at === "string" || value.pinned_at === null) &&
-    typeof value.created_at === "string" &&
-    typeof value.updated_at === "string"
-  );
-}
-
 export interface FolderItemForClient {
   uuid: string;
   chatId: string;
@@ -465,15 +441,54 @@ export interface FolderItemForClient {
   updatedAt: string;
 }
 
-function mapToFolderItemForClient(raw: WorkspaceFolderItemResponse): FolderItemForClient {
+function parseFolderItemOrderIndex(value: unknown): number {
+  // Допускаем число и строку-число; при любом шуме откатываемся к 0.
+  if (typeof value === "number" && Number.isInteger(value) && value >= 0) {
+    return value;
+  }
+  if (typeof value === "string" && /^[0-9]+$/.test(value.trim())) {
+    const parsed = Number(value.trim());
+    if (Number.isInteger(parsed) && parsed >= 0) {
+      return parsed;
+    }
+  }
+  return 0;
+}
+
+function parseFolderItemChatId(value: unknown): string | null {
+  // Поддерживаем строковый и числовой chat_id из разных версий backend-контрактов.
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) {
+    return String(value);
+  }
+  return null;
+}
+
+function mapToFolderItemForClient(raw: unknown): FolderItemForClient | null {
+  // Нормализуем "мягкий" формат ответа и отбрасываем только явно битые записи.
+  if (!isRecord(raw)) {
+    return null;
+  }
+  const uuid = typeof raw.uuid === "string" ? raw.uuid.trim() : "";
+  const folderUuid = typeof raw.folder_uuid === "string" ? raw.folder_uuid.trim() : "";
+  const chatId = parseFolderItemChatId(raw.chat_id);
+  if (uuid.length === 0 || folderUuid.length === 0 || chatId == null) {
+    return null;
+  }
+  const createdAt = typeof raw.created_at === "string" ? raw.created_at : "";
+  const updatedAt = typeof raw.updated_at === "string" ? raw.updated_at : createdAt;
+  const pinnedAt = typeof raw.pinned_at === "string" ? raw.pinned_at : null;
   return {
-    uuid: raw.uuid,
-    chatId: String(raw.chat_id),
-    folderUuid: raw.folder_uuid,
-    orderIndex: raw.order_index,
-    pinnedAt: raw.pinned_at,
-    createdAt: raw.created_at,
-    updatedAt: raw.updated_at,
+    uuid,
+    chatId,
+    folderUuid,
+    orderIndex: parseFolderItemOrderIndex(raw.order_index),
+    pinnedAt,
+    createdAt,
+    updatedAt,
   };
 }
 
@@ -582,9 +597,19 @@ export async function getFolderItems(folderUuid: string): Promise<FolderItemForC
     workspaceApi.get(`/folders/${safeFolderUuid}/items/`),
   );
   assertWorkspaceResponseOk(response);
-  return Array.isArray(response.data)
-    ? response.data.filter(isWorkspaceFolderItemResponse).map(mapToFolderItemForClient)
-    : [];
+  if (!Array.isArray(response.data)) {
+    return [];
+  }
+
+  const result: FolderItemForClient[] = [];
+  // Здесь намеренно не падаем на частично невалидных элементах — собираем максимум полезных данных.
+  for (const rawItem of response.data) {
+    const mapped = mapToFolderItemForClient(rawItem);
+    if (mapped != null) {
+      result.push(mapped);
+    }
+  }
+  return result;
 }
 
 /** Assigns a chat to a folder. Returns true on success. */

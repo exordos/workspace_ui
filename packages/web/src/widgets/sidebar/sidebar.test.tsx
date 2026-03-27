@@ -6,6 +6,7 @@ import { usePinStore } from "~/features/pin-chat";
 import type * as PinChatModule from "~/features/pin-chat";
 import { useSettingsStore } from "~/features/settings";
 import { buildDmTypingChatKey, useTypingIndicatorStore } from "~/features/typing-indicator";
+import { t } from "~/i18n";
 import type * as WorkspaceApiModule from "~/shared/api";
 import type * as ZulipApiModule from "~/shared/api/zulip";
 import type { SidebarChat } from "~/shared/types/sidebar-chat";
@@ -137,6 +138,21 @@ describe("Sidebar", () => {
 
     expect(screen.queryByText(/direct messages/i)).not.toBeInTheDocument();
     expect(screen.getByText("Alice")).toBeInTheDocument();
+  });
+
+  it("renders loading state for folder chat list", () => {
+    // При явной загрузке списка папки должен показываться текстовый loading-state.
+    renderWithProviders(
+      <Sidebar
+        streams={[]}
+        selectedFolderId="folder-1"
+        sidebarChats={[]}
+        sidebarChatsLoading
+        sidebarDms={[DM_CHAT]}
+      />,
+    );
+
+    expect(screen.getByText(t("app.loading"))).toBeInTheDocument();
   });
 
   it("does not render legacy chats-and-channels heading", () => {

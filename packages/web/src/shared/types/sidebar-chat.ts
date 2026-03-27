@@ -45,6 +45,8 @@ export interface SidebarProps {
   activeDmIdParam?: string | null;
   sidebarDms?: Extract<SidebarChat, { type: "dm" }>[];
   sidebarChats?: SidebarChat[];
+  // Признак загрузки списка чатов выбранной папки.
+  sidebarChatsLoading?: boolean;
   pinReorderMode?: boolean;
   onExitPinReorderMode?: () => void;
   onFolderAssignmentsChanged?: () => void;
