@@ -143,9 +143,68 @@ function loadResolvedBaseCache(): Record<string, string> {
   }
 }
 
+function isAllowedCachedWorkspaceBase(baseUrl: string): boolean {
+  const normalizedBase = baseUrl.trim().replace(/\/+$/, "");
+  if (!normalizedBase) {
+    return false;
+  }
+
+  if (!/^https?:\/\//i.test(normalizedBase)) {
+    return getWorkspaceBaseCandidates(workspaceApi.getBaseUrl()).includes(normalizedBase);
+  }
+
+  if (!isValidUrl(normalizedBase)) {
+    return false;
+  }
+
+  const currentInstance = getCurrentInstance();
+  const currentRealm = currentInstance?.realm?.trim();
+  const currentRealmOrigin = (() => {
+    if (!currentRealm || !isValidUrl(currentRealm)) {
+      return null;
+    }
+    try {
+      return new URL(currentRealm).origin;
+    } catch {
+      return null;
+    }
+  })();
+
+  try {
+    const parsedBase = new URL(normalizedBase);
+    if (
+      !parsedBase.pathname.endsWith(DEFAULT_WORKSPACE_API_SUFFIX) &&
+      !parsedBase.pathname.endsWith(LEGACY_WORKSPACE_API_SUFFIX)
+    ) {
+      return false;
+    }
+
+    if (currentRealmOrigin == null) {
+      return false;
+    }
+
+    if (parsedBase.origin === currentRealmOrigin) {
+      return true;
+    }
+
+    const workspaceRealmBase = deriveWorkspaceRealmBase();
+    if (!workspaceRealmBase) {
+      return false;
+    }
+
+    return parsedBase.origin === new URL(workspaceRealmBase).origin;
+  } catch {
+    return false;
+  }
+}
+
 function readResolvedBaseForInstance(instanceId: string): string | null {
   const cache = loadResolvedBaseCache();
-  return cache[instanceId] ?? null;
+  const cachedBase = cache[instanceId];
+  if (!cachedBase || !isAllowedCachedWorkspaceBase(cachedBase)) {
+    return null;
+  }
+  return cachedBase;
 }
 
 function writeResolvedBaseForInstance(instanceId: string, baseUrl: string): void {
@@ -154,7 +213,7 @@ function writeResolvedBaseForInstance(instanceId: string, baseUrl: string): void
   }
 
   const normalizedBase = baseUrl.trim();
-  if (!normalizedBase) {
+  if (!normalizedBase || !isAllowedCachedWorkspaceBase(normalizedBase)) {
     return;
   }
 

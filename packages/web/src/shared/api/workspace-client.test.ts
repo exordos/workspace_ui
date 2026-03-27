@@ -432,6 +432,100 @@ describe("workspace-client", () => {
     expect(requestLog.some((entry) => entry.base.endsWith("/api/v1"))).toBe(false);
   });
 
+  it("ignores cached workspace base from an unexpected absolute origin", async () => {
+    localStorage.setItem(
+      WORKSPACE_BASE_CACHE_KEY,
+      JSON.stringify({
+        "instance-1": "https://attacker.example.com/workspace/v1",
+      }),
+    );
+    const requestLog: { path: string; base: string }[] = [];
+    workspaceApi.get.mockImplementation((path: string) => {
+      const base = workspaceApi.getBaseUrl();
+      requestLog.push({ path, base });
+
+      if (base === "/workspace-api/api/v1") {
+        return {
+          ok: true,
+          status: 200,
+          raw: { statusText: "OK" },
+          data: [
+            {
+              uuid: "svc-default",
+              name: "Default Base",
+              description: "Uses trusted default base",
+              service_url: "https://services.example.com/default",
+              icon: "",
+            },
+          ],
+        };
+      }
+
+      return { ok: false, status: 500, raw: { statusText: "Unexpected" }, data: [] };
+    });
+
+    const { getWorkspaceServices } = await import("./workspace-client");
+    await expect(getWorkspaceServices()).resolves.toEqual([
+      {
+        id: "svc-default",
+        name: "Default Base",
+        description: "Uses trusted default base",
+        url: "https://services.example.com/default",
+        iconUrl: null,
+      },
+    ]);
+
+    expect(requestLog[0]?.base).toBe("/workspace-api/api/v1");
+    expect(requestLog.some((entry) => entry.base.includes("attacker.example.com"))).toBe(false);
+  });
+
+  it("ignores cached workspace base with an unexpected relative path suffix", async () => {
+    localStorage.setItem(
+      WORKSPACE_BASE_CACHE_KEY,
+      JSON.stringify({
+        "instance-1": "/workspace-api/evil/v1",
+      }),
+    );
+    const requestLog: { path: string; base: string }[] = [];
+    workspaceApi.get.mockImplementation((path: string) => {
+      const base = workspaceApi.getBaseUrl();
+      requestLog.push({ path, base });
+
+      if (base === "/workspace-api/api/v1") {
+        return {
+          ok: true,
+          status: 200,
+          raw: { statusText: "OK" },
+          data: [
+            {
+              uuid: "svc-relative",
+              name: "Relative Default",
+              description: "Rejects poisoned relative cache",
+              service_url: "https://services.example.com/relative",
+              icon: "",
+            },
+          ],
+        };
+      }
+
+      return { ok: false, status: 500, raw: { statusText: "Unexpected" }, data: [] };
+    });
+
+    const { getWorkspaceServices } = await import("./workspace-client");
+    await expect(getWorkspaceServices()).resolves.toEqual([
+      {
+        id: "svc-relative",
+        name: "Relative Default",
+        description: "Rejects poisoned relative cache",
+        url: "https://services.example.com/relative",
+        iconUrl: null,
+      },
+    ]);
+
+    expect(requestLog[0]?.base).toBe("/workspace-api/api/v1");
+    expect(requestLog.some((entry) => entry.base.includes("/evil/"))).toBe(false);
+  });
+
   it("persists resolved fallback base for subsequent bootstrap", async () => {
     workspaceApi.get.mockImplementation(() => {
       const base = workspaceApi.getBaseUrl();
