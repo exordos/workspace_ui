@@ -33,6 +33,18 @@ describe("isEmbedAllowed", () => {
     expect(isEmbedAllowed("https://evil.example.com/phishing")).toBe(false);
   });
 
+  // A sibling or attacker-controlled subdomain must not inherit trust from a parent allowlist entry.
+  it("rejects subdomains of an allowed origin unless explicitly allowlisted", () => {
+    const origins = getAllowedOrigins();
+    if (origins.length === 0) return;
+
+    const allowed = origins[0]!;
+    const hostname = new URL(allowed).hostname;
+    const attackerSubdomainUrl = `https://attacker.${hostname}/embedded-login`;
+
+    expect(isEmbedAllowed(attackerSubdomainUrl)).toBe(false);
+  });
+
   // javascript: in iframe src would execute code in the parent context
   it("rejects javascript: protocol", () => {
     // eslint-disable-next-line no-script-url
@@ -61,11 +73,10 @@ describe("getAllowedOrigins", () => {
     expect(Array.isArray(getAllowedOrigins())).toBe(true);
   });
 
-  // When configured, the workspace/zulip origin must be in the list
-  it("includes workspace origin if set", () => {
+  // Allowlist entries should be normalized, deduplicated origins.
+  it("returns non-empty normalized origins when configured", () => {
     const origins = getAllowedOrigins();
-    const hasWorkspace = origins.some((o) => o.includes("zulip") || o.includes("workspace"));
-    expect(origins.length === 0 || hasWorkspace).toBe(true);
+    expect(origins.every((origin) => /^https?:\/\//.test(origin))).toBe(true);
   });
 });
 

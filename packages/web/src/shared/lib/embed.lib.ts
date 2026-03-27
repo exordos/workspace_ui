@@ -42,6 +42,10 @@ function parseAllowedOrigins(): string[] {
 
 const allowedOrigins = parseAllowedOrigins();
 
+function isExactAllowedOrigin(origin: string, allowedOrigin: string): boolean {
+  return origin === allowedOrigin;
+}
+
 /** Check if a URL is allowed for embedding. */
 export function isEmbedAllowed(url: string): boolean {
   try {
@@ -50,9 +54,7 @@ export function isEmbedAllowed(url: string): boolean {
       return false;
     }
     const origin = parsed.origin;
-    return allowedOrigins.some(
-      (allowed) => origin === allowed || origin.endsWith(`.${new URL(allowed).hostname}`),
-    );
+    return allowedOrigins.some((allowed) => isExactAllowedOrigin(origin, allowed));
   } catch {
     return false;
   }
