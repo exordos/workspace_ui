@@ -1,7 +1,7 @@
 import EmojiPicker, { Theme, type EmojiClickData } from "emoji-picker-react";
 import React, { useState, useRef, useMemo, useCallback } from "react";
 import { buildStickerMarkdown } from "~/entities/sticker";
-import { ensureUserStatusLoaded, formatUserStatusLabel, useUsersStore } from "~/entities/user";
+import { formatUserStatusLabel, useUsersStore } from "~/entities/user";
 import type { AiMessageContext, AiReplyRequest } from "~/features/ai-reply";
 import { AiComposerButton, AiActionMenu, SmartReplySuggestions } from "~/features/ai-reply";
 import { filterUsers, useMentionSuggestStore } from "~/features/mention-suggest";
@@ -703,15 +703,6 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     if (!showMentions) return;
     setMentionResults(filterUsers(mentionQuery, mentionUsers));
   }, [showMentions, mentionQuery, mentionUsers, setMentionResults]);
-
-  React.useEffect(() => {
-    if (!showMentions || mentionSuggestions.length === 0) {
-      return;
-    }
-    for (const suggestion of mentionSuggestions) {
-      void ensureUserStatusLoaded(suggestion.userId);
-    }
-  }, [showMentions, mentionSuggestions]);
 
   React.useEffect(() => {
     if (!showMentions) {

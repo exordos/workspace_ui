@@ -1,9 +1,8 @@
-/**
- * Users store — manages user profiles, presence, and avatar URLs.
- *
- * Populated from message senders and DM recipients; presence updated via real-time events.
- * Provides an email→userId reverse index for presence lookups by email.
- */
+// Файл отвечает за users store:
+// - хранит профиль пользователя
+// - хранит presence (online/idle)
+// - хранит custom status и метаданные его загрузки
+// - держит индекс email -> userId для быстрых обновлений presence
 import { create } from "zustand";
 import type { ZulipRawMessage, AvatarUrlByUserId } from "~/shared/api/zulip";
 import { bumpAvatarVersion } from "~/shared/lib/avatar";
@@ -18,12 +17,22 @@ export interface UserPresence {
 export type UserStatusReactionType = "unicode_emoji" | "realm_emoji" | "zulip_extra_emoji";
 
 export interface UserStatus {
+  // Обычный текстовый статус.
   text: string;
+  // Имя emoji (если есть).
   emojiName?: string;
+  // Код emoji от сервера (если есть).
   emojiCode?: string;
+  // Тип emoji в Zulip.
   reactionType?: UserStatusReactionType;
+  // Признак "отошел".
   away: boolean;
 }
+
+// Состояние загрузки custom status для конкретного пользователя.
+export type UserStatusFetchState = "idle" | "loading" | "ready" | "error" | "invalid_user";
+// Вид ошибки: временная или невалидный пользователь.
+export type UserStatusErrorKind = "transient" | "invalid_user";
 
 export interface UserRecord {
   user_id: number;
@@ -33,7 +42,21 @@ export interface UserRecord {
   role?: number;
   presence?: UserPresence;
   status?: UserStatus;
+  // Время последнего успешного получения статуса.
   statusFetchedAt?: number;
+  // Текущее состояние загрузки статуса.
+  statusFetchState?: UserStatusFetchState;
+  // До какого времени не надо повторять запрос (backoff/negative cache).
+  statusNextRetryAt?: number;
+  // Какая была последняя ошибка загрузки.
+  statusErrorKind?: UserStatusErrorKind;
+}
+
+export interface UserStatusFetchMeta {
+  fetchState?: UserStatusFetchState;
+  nextRetryAt?: number | null;
+  errorKind?: UserStatusErrorKind | null;
+  fetchedAt?: number;
 }
 
 interface UsersState {
@@ -45,7 +68,10 @@ interface UsersState {
   mergeFromMessage: (msg: ZulipRawMessage) => void;
   setPresenceByEmail: (email: string, presence: UserPresence) => void;
   setPresence: (userId: number, presence: UserPresence) => void;
+  // Сохраняет результат статуса и сбрасывает ошибку/backoff.
   setStatus: (userId: number, status: UserStatus | null, fetchedAt?: number) => void;
+  // Обновляет служебные поля загрузки статуса.
+  setStatusFetchMeta: (userId: number, meta: UserStatusFetchMeta) => void;
   getUser: (userId: number) => UserRecord | undefined;
   getAvatarUrl: (userId: number) => string | undefined;
   getDisplayName: (userId: number) => string;
@@ -69,6 +95,9 @@ function normalizeUser(payload: Partial<UserRecord> & { user_id: number }): User
     presence: payload.presence,
     status: payload.status,
     statusFetchedAt: payload.statusFetchedAt,
+    statusFetchState: payload.statusFetchState,
+    statusNextRetryAt: payload.statusNextRetryAt,
+    statusErrorKind: payload.statusErrorKind,
   };
 }
 
@@ -93,6 +122,9 @@ export const useUsersStore = create<UsersState>((set, get) => ({
         presence: payload.presence ?? existing?.presence,
         status: payload.status ?? existing?.status,
         statusFetchedAt: payload.statusFetchedAt ?? existing?.statusFetchedAt,
+        statusFetchState: payload.statusFetchState ?? existing?.statusFetchState,
+        statusNextRetryAt: payload.statusNextRetryAt ?? existing?.statusNextRetryAt,
+        statusErrorKind: payload.statusErrorKind ?? existing?.statusErrorKind,
       };
       next.set(user_id, merged);
       const nextEmail = new Map(state.emailToUserId);
@@ -122,6 +154,9 @@ export const useUsersStore = create<UsersState>((set, get) => ({
           presence: u.presence ?? existing?.presence,
           status: u.status ?? existing?.status,
           statusFetchedAt: u.statusFetchedAt ?? existing?.statusFetchedAt,
+          statusFetchState: u.statusFetchState ?? existing?.statusFetchState,
+          statusNextRetryAt: u.statusNextRetryAt ?? existing?.statusNextRetryAt,
+          statusErrorKind: u.statusErrorKind ?? existing?.statusErrorKind,
         };
         next.set(u.user_id, merged);
         if (merged.email) {
@@ -178,6 +213,29 @@ export const useUsersStore = create<UsersState>((set, get) => ({
         ...existing,
         status: status ?? undefined,
         statusFetchedAt: fetchedAt,
+        statusFetchState: "ready",
+        statusNextRetryAt: undefined,
+        statusErrorKind: undefined,
+      });
+      return { users: next };
+    });
+  },
+
+  setStatusFetchMeta(userId, meta) {
+    set((state) => {
+      const existing = state.users.get(userId);
+      if (!existing) return state;
+      const next = new Map(state.users);
+      next.set(userId, {
+        ...existing,
+        statusFetchState: meta.fetchState ?? existing.statusFetchState,
+        statusNextRetryAt:
+          meta.nextRetryAt === undefined
+            ? existing.statusNextRetryAt
+            : (meta.nextRetryAt ?? undefined),
+        statusErrorKind:
+          meta.errorKind === undefined ? existing.statusErrorKind : (meta.errorKind ?? undefined),
+        statusFetchedAt: meta.fetchedAt ?? existing.statusFetchedAt,
       });
       return { users: next };
     });

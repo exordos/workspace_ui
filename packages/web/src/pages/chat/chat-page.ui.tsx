@@ -10,7 +10,7 @@ import {
 } from "~/entities/draft";
 import type { DraftType } from "~/entities/draft";
 import { useCurrentChatMessagesStore } from "~/entities/message";
-import { ensureUserStatusLoaded, formatUserStatusLabel, useUsersStore } from "~/entities/user";
+import { formatUserStatusLabel, useUsersStore } from "~/entities/user";
 import type { AiMessageContext, AiReplyRequest } from "~/features/ai-reply";
 import { useChatInfoStore } from "~/features/chat-info";
 import { JitsiCallModal } from "~/features/jitsi-call";
@@ -203,15 +203,6 @@ function ForwardMessageModalBody({
       (u) => u.full_name.toLowerCase().includes(q) || (u.email?.toLowerCase().includes(q) ?? false),
     );
   }, [allUsers, dmSearch]);
-
-  useEffect(() => {
-    if (tab !== "dm") {
-      return;
-    }
-    for (const user of userList) {
-      void ensureUserStatusLoaded(user.user_id);
-    }
-  }, [tab, userList]);
 
   return (
     <>
@@ -440,11 +431,6 @@ export const ChatPage: React.FC = () => {
     };
   }, [partnerUserId, isDmView, isGroupDmView]);
 
-  useEffect(() => {
-    if (!partnerUserId || !isDmView || isGroupDmView) return;
-    void ensureUserStatusLoaded(partnerUserId);
-  }, [partnerUserId, isDmView, isGroupDmView]);
-
   const messages = useCurrentChatMessagesStore((s) => s.messages);
   const streams = useChatListStore((s) => s.streams());
   const firstUnreadId = useMemo(
@@ -516,15 +502,6 @@ export const ChatPage: React.FC = () => {
       }),
     [readersUserIds, allUsers],
   );
-
-  useEffect(() => {
-    if (!readReceiptsOpen) {
-      return;
-    }
-    for (const uid of readersUserIds) {
-      void ensureUserStatusLoaded(uid);
-    }
-  }, [readReceiptsOpen, readersUserIds]);
 
   useEffect(() => {
     if (forwardMessageId == null) {

@@ -6,7 +6,7 @@ import { useHydrateDrafts } from "~/entities/draft";
 import { useInboxStore } from "~/entities/inbox";
 import { useInstancesStore } from "~/entities/instance";
 import { useCurrentChatMessagesStore, isMessageForContext } from "~/entities/message";
-import { ensureUserStatusLoaded, formatUserStatusLabel, useUsersStore } from "~/entities/user";
+import { requestUserStatus, selectUserStatusSnapshot, useUsersStore } from "~/entities/user";
 import {
   getChatInfoNetworkKey,
   useChatInfoStore,
@@ -814,6 +814,8 @@ export const Layout: React.FC = () => {
                 }
               }
             } else if (event.type === "user_status") {
+              // Основной источник статусов: realtime-событие из event loop.
+              // Здесь сразу обновляем store и не делаем HTTP fallback.
               const userId = event.user_id as number | undefined;
               if (userId != null) {
                 const statusText =
@@ -1226,12 +1228,6 @@ export const Layout: React.FC = () => {
   const userFromStore = useUsersStore((s) =>
     rightDrawerTargetUserId != null ? s.getUser(rightDrawerTargetUserId) : undefined,
   );
-  useEffect(() => {
-    if (rightDrawerTargetUserId == null) {
-      return;
-    }
-    void ensureUserStatusLoaded(rightDrawerTargetUserId);
-  }, [rightDrawerTargetUserId]);
   const detailedProfile = useUserProfileStore((s) => s.profile);
   const currentChatMessages = useCurrentChatMessagesStore((s) => s.messages);
   const rightPanelMedia = useMemo(
@@ -1243,7 +1239,7 @@ export const Layout: React.FC = () => {
     const groups = buildRightPanelCommonGroups(dmsFromStore, rightDrawerTargetUserId, dmChat?.slug);
     return groups.length > 0 ? groups : undefined;
   }, [rightDrawerTargetUserId, dmsFromStore, dmChat?.slug]);
-  const userStatusLabel = formatUserStatusLabel(userFromStore?.status) ?? undefined;
+  const userStatusLabel = selectUserStatusSnapshot(userFromStore).statusLabel;
   const profileForRightPanelUser =
     rightDrawerTargetUserId != null && detailedProfile?.userId === rightDrawerTargetUserId
       ? detailedProfile
@@ -1409,6 +1405,62 @@ export const Layout: React.FC = () => {
   }, [chatInfoContext, usersMapForChatInfo]);
 
   const chatInfoData = useChatInfoStore((s) => s.data);
+  const rightPanelMemberStatusIds = useMemo(() => {
+    if (!rightDrawerOpen) return [];
+    if (chatInfoData?.type !== "stream" && chatInfoData?.type !== "dm") {
+      return [];
+    }
+    return chatInfoData.members
+      .slice(0, 40)
+      .map((member) => member.userId)
+      .filter((userId) => Number.isFinite(userId) && userId > 0);
+  }, [chatInfoData, rightDrawerOpen]);
+
+  useEffect(() => {
+    if (currentUserStatus !== "ready" || currentUserId == null) {
+      return;
+    }
+    // Точечный fallback для текущего пользователя (верхняя панель).
+    void requestUserStatus(currentUserId, {
+      reason: "top_bar",
+      priority: "high",
+    });
+  }, [currentUserId, currentUserStatus]);
+
+  useEffect(() => {
+    if (currentUserStatus !== "ready" || partnerUserId == null) {
+      return;
+    }
+    // Точечный fallback для собеседника в активном DM.
+    void requestUserStatus(partnerUserId, {
+      reason: "dm_header",
+      priority: "high",
+    });
+  }, [currentUserStatus, partnerUserId]);
+
+  useEffect(() => {
+    if (currentUserStatus !== "ready" || !rightDrawerOpen || rightDrawerTargetUserId == null) {
+      return;
+    }
+    // Точечный fallback для карточки пользователя в right panel.
+    void requestUserStatus(rightDrawerTargetUserId, {
+      reason: "right_panel",
+      priority: "high",
+    });
+  }, [currentUserStatus, rightDrawerOpen, rightDrawerTargetUserId]);
+
+  useEffect(() => {
+    if (currentUserStatus !== "ready" || !rightDrawerOpen) {
+      return;
+    }
+    // Фоновый fallback для списка участников справа (ограниченный список).
+    for (const userId of rightPanelMemberStatusIds) {
+      void requestUserStatus(userId, {
+        reason: "right_panel",
+        priority: "low",
+      });
+    }
+  }, [currentUserStatus, rightDrawerOpen, rightPanelMemberStatusIds]);
 
   if (showFullscreenLoader) {
     return (

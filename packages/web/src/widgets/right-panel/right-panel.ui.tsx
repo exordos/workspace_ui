@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list";
 import { useCurrentChatMessagesStore } from "~/entities/message";
-import { ensureUserStatusLoaded, formatUserStatusLabel, useUsersStore } from "~/entities/user";
+import { formatUserStatusLabel, useUsersStore } from "~/entities/user";
 import { useChatInfoStore, type ChatInfoData } from "~/features/chat-info";
 import { useMediaViewerStore } from "~/features/media-viewer";
 import { useMuteStore, muteStream, unmuteStream } from "~/features/mute-chat";
@@ -301,13 +301,6 @@ function RightPanelUser({
       },
     ]);
   }, [avatarSrc, openMediaViewer, user.name]);
-
-  useEffect(() => {
-    if (user.userId == null) {
-      return;
-    }
-    void ensureUserStatusLoaded(user.userId);
-  }, [user.userId]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden text-text-primary">
@@ -719,22 +712,6 @@ const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
     },
     [rightDrawer],
   );
-  const memberStatusIds = useMemo(() => {
-    if (chatInfoData?.type !== "dm" && chatInfoData?.type !== "stream") {
-      return [];
-    }
-    const ids = chatInfoData.members
-      .map((member) => member.userId)
-      .filter((userId) => Number.isFinite(userId) && userId > 0);
-    return Array.from(new Set(ids));
-  }, [chatInfoData]);
-
-  useEffect(() => {
-    for (const userId of memberStatusIds) {
-      void ensureUserStatusLoaded(userId);
-    }
-  }, [memberStatusIds]);
-
   const streamInfoName = chatInfoData?.type === "stream" ? chatInfoData.name : undefined;
   const handleOpenTopic = useCallback(
     (topicName: string) => {

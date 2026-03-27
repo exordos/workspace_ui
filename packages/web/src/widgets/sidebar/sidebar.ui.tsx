@@ -2,7 +2,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import React, { useState, useMemo, useEffect, useCallback, useId, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list";
-import { ensureUserStatusLoaded, formatUserStatusLabel, useUsersStore } from "~/entities/user";
+import { formatUserStatusLabel, useUsersStore } from "~/entities/user";
 import { createChannel } from "~/features/create-chat";
 import { usePinStore } from "~/features/pin-chat";
 import { t } from "~/i18n";
@@ -340,15 +340,6 @@ function CreateChatDialog({
       setCreating(false);
     });
   }, [open]);
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    for (const user of filteredUsers.slice(0, 40)) {
-      void ensureUserStatusLoaded(user.user_id);
-    }
-  }, [open, filteredUsers]);
 
   const handleCreateGroup = useCallback(() => {
     if (groupSelectedUserIds.size === 0 || currentUserId == null) return;

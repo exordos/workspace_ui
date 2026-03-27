@@ -11,7 +11,7 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list";
-import { ensureUserStatusLoaded, formatUserStatusLabel, useUsersStore } from "~/entities/user";
+import { formatUserStatusLabel, useUsersStore } from "~/entities/user";
 import {
   useMuteStore,
   muteStream,
@@ -91,13 +91,6 @@ const DmChatRow = React.memo(function DmChatRow({
   const rowClass = compact
     ? "flex items-start gap-2 rounded-md px-2 py-1.5 transition-colors"
     : "flex items-start gap-3 rounded-lg px-2.5 py-2.5 transition-colors";
-
-  useEffect(() => {
-    if (partnerUserId == null) {
-      return;
-    }
-    void ensureUserStatusLoaded(partnerUserId);
-  }, [partnerUserId]);
 
   return (
     <Link

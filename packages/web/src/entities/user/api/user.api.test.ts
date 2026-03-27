@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useUsersStore } from "./user.model";
+import { useUsersStore } from "../user.model";
 
 const { mockGet, mockPost, getCurrentInstance, refreshZulipApiBase } = vi.hoisted(() => ({
   mockGet: vi.fn(),
@@ -81,17 +81,17 @@ describe("user presence api", () => {
   it("fetches and normalizes user status payload", async () => {
     const { fetchUserStatus } = await import("./user.api");
     mockGet.mockResolvedValue({
+      ok: true,
+      status: 200,
       data: {
-        status_text: "WFH",
-        status_emoji: "house",
-        away: true,
-        status_emoji_display_info: [
-          {
-            emoji_name: "house",
-            emoji_code: "1f3e0",
-            reaction_type: "unicode_emoji",
-          },
-        ],
+        result: "success",
+        status: {
+          status_text: "WFH",
+          emoji_name: "house",
+          emoji_code: "1f3e0",
+          reaction_type: "unicode_emoji",
+          away: true,
+        },
       },
     });
 
@@ -109,7 +109,26 @@ describe("user presence api", () => {
 
   it("returns null when status payload is empty", async () => {
     const { fetchUserStatus } = await import("./user.api");
-    mockGet.mockResolvedValue({ data: { status_text: "", status_emoji: "", away: false } });
+    mockGet.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { result: "success", status: { status_text: "", emoji_name: "", away: false } },
+    });
+
+    const result = await fetchUserStatus(101);
+
+    expect(result).toBeNull();
+  });
+
+  it("returns null when status payload shape is unexpected", async () => {
+    const { fetchUserStatus } = await import("./user.api");
+    mockGet.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+      },
+    });
 
     const result = await fetchUserStatus(101);
 
@@ -165,10 +184,15 @@ describe("user presence api", () => {
     const { ensureUserStatusLoaded } = await import("./user.api");
     useUsersStore.getState().mergeUser({ user_id: 7, full_name: "Alice" });
     mockGet.mockResolvedValue({
+      ok: true,
+      status: 200,
       data: {
-        status_text: "Heads down",
-        status_emoji: "speech_balloon",
-        away: false,
+        result: "success",
+        status: {
+          status_text: "Heads down",
+          emoji_name: "speech_balloon",
+          away: false,
+        },
       },
     });
 
@@ -178,5 +202,24 @@ describe("user presence api", () => {
     expect(mockGet).toHaveBeenCalledTimes(1);
     expect(useUsersStore.getState().getUser(7)?.status?.text).toBe("Heads down");
     expect(useUsersStore.getState().getUser(7)?.statusFetchedAt).toEqual(expect.any(Number));
+  });
+
+  it("applies negative-cache backoff for invalid users (400)", async () => {
+    const { requestUserStatus } = await import("./user.api");
+    useUsersStore.getState().mergeUser({ user_id: 77, full_name: "Unknown user" });
+    mockGet.mockResolvedValue({
+      ok: false,
+      status: 400,
+      data: { result: "error", code: "BAD_REQUEST", msg: "No such user" },
+    });
+
+    await requestUserStatus(77);
+    await requestUserStatus(77);
+
+    expect(mockGet).toHaveBeenCalledTimes(1);
+    const user = useUsersStore.getState().getUser(77);
+    expect(user?.statusFetchState).toBe("invalid_user");
+    expect(user?.statusErrorKind).toBe("invalid_user");
+    expect(user?.statusNextRetryAt).toBeTypeOf("number");
   });
 });
