@@ -20,6 +20,29 @@ firebase.initializeApp({
 });
 
 const messaging = firebase.messaging();
+const DEDUP_WINDOW = 200;
+const recentMessageIds = new Set();
+const recentMessageQueue = [];
+
+function toPositiveInteger(value) {
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    return null;
+  }
+  return parsed;
+}
+
+function pushRecentMessageId(messageId) {
+  recentMessageIds.add(messageId);
+  recentMessageQueue.push(messageId);
+
+  if (recentMessageQueue.length > DEDUP_WINDOW) {
+    const removed = recentMessageQueue.shift();
+    if (removed != null) {
+      recentMessageIds.delete(removed);
+    }
+  }
+}
 
 function slugifyStreamName(streamName) {
   return String(streamName || "")
@@ -34,15 +57,29 @@ function buildMessageRedirectRoute(messageId, realmUri) {
   return realmUri ? `${base}?realm=${encodeURIComponent(realmUri)}` : base;
 }
 
-messaging.onBackgroundMessage((payload) => {
-  const data = payload.data || {};
-  const notification = payload.notification || {};
-
+function validateBackgroundPayload(payload) {
+  const data = payload?.data || {};
+  const notification = payload?.notification || {};
   const event = data.event || data.type || "message";
 
   if (event === "remove" || event === "test") {
-    return;
+    return null;
   }
+
+  if (data.encrypted_payload && !data.event && !data.type) {
+    return null;
+  }
+
+  const messageId = toPositiveInteger(data.message_id);
+  const senderId = toPositiveInteger(data.sender_id);
+  if (messageId == null || senderId == null) {
+    return null;
+  }
+
+  if (recentMessageIds.has(messageId)) {
+    return null;
+  }
+  pushRecentMessageId(messageId);
 
   const title = notification.title || data.sender_full_name || "Workspace";
   const body =
@@ -52,26 +89,36 @@ messaging.onBackgroundMessage((payload) => {
       ? `#${data.stream_name} > ${data.topic || "message"}`
       : "New message");
 
-  const options = {
-    body,
-    icon: data.sender_avatar_url || "/pwa-192x192.png",
-    badge: "/pwa-192x192.png",
-    tag: `zulip-msg-${data.message_id || Date.now()}`,
-    data: {
-      messageId: data.message_id,
-      messageType: data.message_type,
-      streamId: data.stream_id,
-      streamName: data.stream_name || data.stream,
-      topic: data.topic,
-      senderId: data.sender_id,
-      realmUri: data.realm_uri || data.realm_url,
+  return {
+    title,
+    options: {
+      body,
+      icon: data.sender_avatar_url || "/pwa-192x192.png",
+      badge: "/pwa-192x192.png",
+      tag: `zulip-msg-${messageId}`,
+      data: {
+        messageId,
+        messageType: data.message_type,
+        streamId: toPositiveInteger(data.stream_id),
+        streamName: data.stream_name || data.stream,
+        topic: data.topic,
+        senderId,
+        realmUri: data.realm_uri || data.realm_url,
+      },
+      actions: [{ action: "open", title: "Open" }],
+      renotify: true,
+      requireInteraction: false,
     },
-    actions: [{ action: "open", title: "Open" }],
-    renotify: true,
-    requireInteraction: false,
   };
+}
 
-  self.registration.showNotification(title, options);
+messaging.onBackgroundMessage((payload) => {
+  const validated = validateBackgroundPayload(payload);
+  if (!validated) {
+    return;
+  }
+
+  self.registration.showNotification(validated.title, validated.options);
 });
 
 self.addEventListener("notificationclick", (event) => {
