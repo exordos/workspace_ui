@@ -1091,17 +1091,32 @@ export const ChatPage: React.FC = () => {
     setHasNewerMessages,
   ]);
 
-  // Load messages only when DM opens: depends on dmIdParam (string), not activeDmUserIds array
+  // Синхронизируем контекст активного DM с маршрутом и текущим пользователем.
   useEffect(() => {
     if (!dmIdParam || dmIdParam === "") {
       if (!streamSlug) setContext(null);
       return;
     }
+    if (currentUserId == null) return;
+
     const routeUserIds = parseDmSlugToUserIds(dmIdParam);
     const userIds = normalizeDmRouteUserIds(routeUserIds, currentUserId);
     if (userIds.length === 0) return;
+
     const dmKey = dmRouteKey(userIds, currentUserId);
     setContext({ type: "dm", dmKey });
+  }, [dmIdParam, streamSlug, currentUserId, setContext]);
+
+  // Загружаем сообщения DM при изменении маршрута или фокуса на сообщении.
+  useEffect(() => {
+    if (!dmIdParam || dmIdParam === "") return;
+
+    const routeUserIds = parseDmSlugToUserIds(dmIdParam);
+    const userIds = Array.from(new Set(routeUserIds)).filter(
+      (userId) => Number.isSafeInteger(userId) && userId > 0,
+    );
+    if (userIds.length === 0) return;
+
     setMessagesLoading(true);
     let cancelled = false;
     const id = userIds.length === 1 ? userIds[0]! : userIds;
@@ -1131,16 +1146,7 @@ export const ChatPage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [
-    dmIdParam,
-    currentUserId,
-    setContext,
-    setMessagesInStore,
-    focusedMessageId,
-    setHasOlderMessages,
-    setHasNewerMessages,
-    streamSlug,
-  ]);
+  }, [dmIdParam, setMessagesInStore, focusedMessageId, setHasOlderMessages, setHasNewerMessages]);
 
   const PAGE_SIZE = 50;
 

@@ -1576,26 +1576,41 @@ export async function fetchAllMessagesPage(
   };
 }
 
-/** DM narrow format: operand is an array of participant user_ids, e.g. [427]. */
+/** Формат DM narrow: operand — массив user_id участников, например [427]. */
 interface DmNarrow {
   negated: false;
   operator: "dm";
   operand: number[];
 }
 
-// Synthetic ID offset for group DMs in the sidebar — must not be sent to the API
+// Смещение synthetic-id для групповых DM в sidebar — такие id нельзя отправлять в API.
 
 const GROUP_DM_ID_OFFSET = 2_000_000;
+// Карта in-flight запросов DM-истории для дедупликации параллельных вызовов.
+const dmMessagesInFlight = new Map<string, Promise<MockMessage[]>>();
 
-/** Fetches DM messages (1-on-1 or group). Pass the other user's [userId] for 1-on-1. */
+function buildDmMessagesInFlightKey(userIds: readonly number[]): string {
+  return Array.from(new Set(userIds))
+    .sort((a, b) => a - b)
+    .join(",");
+}
+
+/** Загружает сообщения DM (1:1 или групповой). Для 1:1 передайте id собеседника. */
 export async function fetchDmMessages(userIds: number | number[]): Promise<MockMessage[]> {
-  const client = await getClient();
   const rawIds = Array.isArray(userIds) ? userIds : [userIds];
   if (rawIds.length === 0) return [];
-  const ids = rawIds.map((userId, index) =>
+  const validatedIds = rawIds.map((userId, index) =>
     guard.userId(userId, `fetchDmMessages.userIds[${index}]`),
   );
+  const ids = Array.from(new Set(validatedIds)).sort((a, b) => a - b);
   if (ids.some((id) => id >= GROUP_DM_ID_OFFSET)) return [];
+
+  const requestKey = buildDmMessagesInFlightKey(ids);
+  const inFlight = dmMessagesInFlight.get(requestKey);
+  if (inFlight) {
+    return inFlight;
+  }
+
   const params = {
     narrow: [{ negated: false, operator: "dm", operand: ids }] as DmNarrow[],
     anchor: "newest",
@@ -1604,17 +1619,27 @@ export async function fetchDmMessages(userIds: number | number[]): Promise<MockM
     client_gravatar: true,
     allow_empty_topic_name: true,
   };
-  try {
-    const data = await client.messages.retrieve(
-      params as Parameters<ZulipClient["messages"]["retrieve"]>[0],
-    );
-    const raw = data as { result?: string; messages?: Parameters<typeof mapZulipMessage>[0][] };
-    if (raw.result === "error") return [];
-    const list = raw.messages ?? [];
-    return list.map(mapZulipMessage);
-  } catch {
-    return [];
-  }
+  const request = (async () => {
+    try {
+      const client = await getClient();
+      const data = await client.messages.retrieve(
+        params as Parameters<ZulipClient["messages"]["retrieve"]>[0],
+      );
+      const raw = data as { result?: string; messages?: Parameters<typeof mapZulipMessage>[0][] };
+      if (raw.result === "error") return [];
+      const list = raw.messages ?? [];
+      return list.map(mapZulipMessage);
+    } catch {
+      return [];
+    }
+  })();
+
+  dmMessagesInFlight.set(requestKey, request);
+  return request.finally(() => {
+    if (dmMessagesInFlight.get(requestKey) === request) {
+      dmMessagesInFlight.delete(requestKey);
+    }
+  });
 }
 
 /** Fetches a single message by id. Returns null on non-ok/error response. */
