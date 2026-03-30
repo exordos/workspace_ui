@@ -3,29 +3,16 @@
  *
  * Uses the shared `workspaceApi` pipeline so auth, logging, retries,
  * and no-cache behavior stay aligned with the documented API architecture.
+ * Base path comes only from env/config (`VITE_WORKSPACE_API_PATH` / `VITE_WORKSPACE_API_BASE_URL`).
  *
  * Usage:
  *   import { getFolders, mapWorkspaceFoldersToRail } from "~/lib/api/workspaceClient";
  */
 import { guard, invariant } from "~/shared/lib/guards";
-import { createLogger } from "~/shared/lib/logger";
 import { isValidUrl } from "~/shared/lib/validation";
 import { getCurrentInstance, workspaceApi } from "./client";
 import type { ApiResponse } from "./client";
 
-const log = createLogger("workspace-client");
-
-// Временно фиксируем дефолт на legacy-базу: /workspace/v1.
-// const DEFAULT_WORKSPACE_API_SUFFIX = "/api/v1";
-const DEFAULT_WORKSPACE_API_SUFFIX = "/workspace/v1";
-const LEGACY_WORKSPACE_API_SUFFIX = "/workspace/v1";
-const ZULIP_HOST_PREFIX = "zulip.";
-const WORKSPACE_HOST_PREFIX = "workspace.";
-const WORKSPACE_BASE_CACHE_KEY = "workspace.api.resolved-base.v1";
-
-let workspaceBaseResolved = false;
-let resolvedInstanceId: string | null = null;
-let workspaceBaseResolutionPromise: Promise<WorkspaceBaseResolution> | null = null;
 const inFlightWorkspaceGets = new Map<string, Promise<WorkspaceGetResponse>>();
 
 type WorkspaceFolderSystemType = "created" | "all";
@@ -117,218 +104,20 @@ function assertWorkspaceResponseOk(response: {
 }
 
 type WorkspaceGetResponse = Awaited<ReturnType<typeof workspaceApi.get>>;
-interface WorkspaceBaseResolution {
-  path: string;
-  response: WorkspaceGetResponse;
+function getWorkspaceRequestKey(path: string): string {
+  // Изолируем in-flight dedupe по инстансу, чтобы не склеивать запросы между аккаунтами.
+  const instanceId = getCurrentInstance()?.id ?? "none";
+  return `${instanceId}::${path}`;
 }
 
-function loadResolvedBaseCache(): Record<string, string> {
-  if (typeof window === "undefined") {
-    return {};
-  }
-
-  try {
-    const raw = window.localStorage.getItem(WORKSPACE_BASE_CACHE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as unknown;
-    if (!isRecord(parsed)) return {};
-
-    const next: Record<string, string> = {};
-    for (const [instanceId, base] of Object.entries(parsed)) {
-      if (typeof base === "string" && base.trim().length > 0) {
-        next[instanceId] = base.trim();
-      }
-    }
-    return next;
-  } catch {
-    return {};
-  }
-}
-
-function readResolvedBaseForInstance(instanceId: string): string | null {
-  const cache = loadResolvedBaseCache();
-  return cache[instanceId] ?? null;
-}
-
-function writeResolvedBaseForInstance(instanceId: string, baseUrl: string): void {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  const normalizedBase = baseUrl.trim();
-  if (!normalizedBase) {
-    return;
-  }
-
-  try {
-    const cache = loadResolvedBaseCache();
-    if (cache[instanceId] === normalizedBase) {
-      return;
-    }
-    cache[instanceId] = normalizedBase;
-    window.localStorage.setItem(WORKSPACE_BASE_CACHE_KEY, JSON.stringify(cache));
-  } catch {
-    // localStorage persistence is best-effort
-  }
-}
-
-function syncResolutionWithCurrentInstance(): void {
-  const currentInstanceId = getCurrentInstance()?.id ?? null;
-  if (currentInstanceId !== resolvedInstanceId) {
-    resolvedInstanceId = currentInstanceId;
-    workspaceBaseResolved = false;
-    workspaceBaseResolutionPromise = null;
-    if (!currentInstanceId) {
-      return;
-    }
-
-    const cachedBase = readResolvedBaseForInstance(currentInstanceId);
-    if (cachedBase) {
-      workspaceApi.setBaseUrl(cachedBase);
-    }
-  }
-}
-
-function replaceBaseSuffix(baseUrl: string, fromSuffix: string, toSuffix: string): string | null {
-  const normalizedBase = baseUrl.replace(/\/+$/, "");
-  if (!normalizedBase.endsWith(fromSuffix)) {
-    return null;
-  }
-  return `${normalizedBase.slice(0, -fromSuffix.length)}${toSuffix}`;
-}
-
-function deriveWorkspaceRealmBase(): string | null {
-  const realm = getCurrentInstance()?.realm?.trim();
-  if (!realm) {
-    return null;
-  }
-
-  try {
-    const parsedRealm = new URL(realm);
-    if (!parsedRealm.hostname.startsWith(ZULIP_HOST_PREFIX)) {
-      return null;
-    }
-    const workspaceHostname = `${WORKSPACE_HOST_PREFIX}${parsedRealm.hostname.slice(ZULIP_HOST_PREFIX.length)}`;
-    return `${parsedRealm.protocol}//${workspaceHostname}${LEGACY_WORKSPACE_API_SUFFIX}`;
-  } catch {
-    return null;
-  }
-}
-
-function getWorkspaceBaseCandidates(initialBase: string): string[] {
-  const normalizedInitialBase = initialBase.replace(/\/+$/, "");
-  const isAbsoluteInitialBase = /^https?:\/\//i.test(normalizedInitialBase);
-  const candidates = [normalizedInitialBase];
-
-  const legacyPathCandidate = replaceBaseSuffix(
-    normalizedInitialBase,
-    DEFAULT_WORKSPACE_API_SUFFIX,
-    LEGACY_WORKSPACE_API_SUFFIX,
-  );
-  if (legacyPathCandidate) {
-    candidates.push(legacyPathCandidate);
-  }
-
-  const defaultPathCandidate = replaceBaseSuffix(
-    normalizedInitialBase,
-    LEGACY_WORKSPACE_API_SUFFIX,
-    DEFAULT_WORKSPACE_API_SUFFIX,
-  );
-  if (defaultPathCandidate) {
-    candidates.push(defaultPathCandidate);
-  }
-
-  if (isAbsoluteInitialBase) {
-    const workspaceRealmCandidate = deriveWorkspaceRealmBase();
-    if (workspaceRealmCandidate) {
-      candidates.push(workspaceRealmCandidate);
-    }
-  }
-
-  return [...new Set(candidates.filter((candidate) => candidate.length > 0))];
-}
-
-async function resolveWorkspaceBase(path: string): Promise<WorkspaceBaseResolution> {
-  const originalBase = workspaceApi.getBaseUrl();
-  const normalizedOriginalBase = originalBase.replace(/\/+$/, "");
-  const candidates = workspaceBaseResolved
-    ? [normalizedOriginalBase]
-    : getWorkspaceBaseCandidates(originalBase);
-
-  let lastError: unknown = null;
-  let lastResponse: WorkspaceGetResponse | null = null;
-
-  for (const candidate of candidates) {
-    workspaceApi.setBaseUrl(candidate);
-    try {
-      const response = await workspaceApi.get(path);
-      if (response.ok || response.status !== 404) {
-        workspaceBaseResolved = true;
-        const currentInstanceId = getCurrentInstance()?.id;
-        if (currentInstanceId) {
-          writeResolvedBaseForInstance(currentInstanceId, candidate);
-        }
-        if (candidate !== normalizedOriginalBase) {
-          log.warn("Workspace API base switched after 404 fallback", {
-            from: originalBase,
-            to: candidate,
-            path,
-            status: response.status,
-          });
-        }
-        return { path, response };
-      }
-      lastResponse = response;
-    } catch (error) {
-      lastError = error;
-    }
-  }
-
-  workspaceBaseResolved = true;
-  workspaceApi.setBaseUrl(originalBase);
-
-  if (lastResponse) {
-    return { path, response: lastResponse };
-  }
-  if (lastError) {
-    if (lastError instanceof Error) {
-      throw lastError;
-    }
-    throw new Error("Workspace API request failed");
-  }
-  throw new Error(`Workspace API request failed for ${path}`);
-}
-
-async function workspaceGetWithFallback(path: string): Promise<WorkspaceGetResponse> {
-  syncResolutionWithCurrentInstance();
-  const requestKey = `${resolvedInstanceId ?? "none"}::${path}`;
+async function workspaceGet(path: string): Promise<WorkspaceGetResponse> {
+  const requestKey = getWorkspaceRequestKey(path);
   const inFlight = inFlightWorkspaceGets.get(requestKey);
   if (inFlight) {
     return inFlight;
   }
 
-  const nextRequest = (async () => {
-    if (workspaceBaseResolved) {
-      return workspaceApi.get(path);
-    }
-
-    if (!workspaceBaseResolutionPromise) {
-      const nextResolutionPromise = resolveWorkspaceBase(path);
-      workspaceBaseResolutionPromise = nextResolutionPromise;
-      void nextResolutionPromise.finally(() => {
-        if (workspaceBaseResolutionPromise === nextResolutionPromise) {
-          workspaceBaseResolutionPromise = null;
-        }
-      });
-    }
-
-    const resolution = await workspaceBaseResolutionPromise;
-    if (resolution.path === path) {
-      return resolution.response;
-    }
-    return workspaceApi.get(path);
-  })();
-
+  const nextRequest = workspaceApi.get(path);
   inFlightWorkspaceGets.set(requestKey, nextRequest);
   try {
     return await nextRequest;
@@ -386,7 +175,7 @@ function mapWorkspaceService(raw: WorkspaceServiceResponse): WorkspaceServiceFor
 
 /** Fetches all services from the workspace catalog. */
 export async function getWorkspaceServices(): Promise<WorkspaceServiceForClient[]> {
-  const response = await workspaceGetWithFallback("/services/");
+  const response = await workspaceGet("/services/");
   assertWorkspaceResponseOk(response);
   if (!Array.isArray(response.data)) {
     return [];
@@ -400,7 +189,7 @@ export async function getWorkspaceServices(): Promise<WorkspaceServiceForClient[
 
 /** Fetches all workspace folders. */
 export async function getFolders(): Promise<WorkspaceFolder[]> {
-  const response = await workspaceGetWithFallback("/folders/");
+  const response = await workspaceGet("/folders/");
   assertWorkspaceResponseOk(response);
   return Array.isArray(response.data) ? response.data.filter(isWorkspaceFolder) : [];
 }
@@ -543,59 +332,10 @@ function isIntegerTypeMismatchResponse(response: ApiResponse): boolean {
   return message.includes("Invalid type value") && message.includes("Integer");
 }
 
-function getFolderBaseCandidates(originalBase: string): string[] {
-  const normalizedOriginalBase = originalBase.replace(/\/+$/, "");
-  const defaultBaseCandidate = replaceBaseSuffix(
-    normalizedOriginalBase,
-    LEGACY_WORKSPACE_API_SUFFIX,
-    DEFAULT_WORKSPACE_API_SUFFIX,
-  );
-  if (defaultBaseCandidate == null || defaultBaseCandidate === normalizedOriginalBase) {
-    return [normalizedOriginalBase];
-  }
-  return [defaultBaseCandidate, normalizedOriginalBase];
-}
-
-async function requestWithFolderBaseFallback<TResponse extends ApiResponse>(
-  request: () => Promise<TResponse>,
-): Promise<TResponse> {
-  const originalBase = workspaceApi.getBaseUrl();
-  const candidates = getFolderBaseCandidates(originalBase);
-  let lastResponse: TResponse | null = null;
-  let lastError: unknown = null;
-
-  try {
-    for (const candidate of candidates) {
-      workspaceApi.setBaseUrl(candidate);
-      try {
-        const response = await request();
-        if (response.ok || response.status !== 404) {
-          return response;
-        }
-        lastResponse = response;
-      } catch (error) {
-        lastError = error;
-      }
-    }
-  } finally {
-    workspaceApi.setBaseUrl(originalBase);
-  }
-
-  if (lastResponse != null) {
-    return lastResponse;
-  }
-  if (lastError instanceof Error) {
-    throw lastError;
-  }
-  throw new Error("Workspace folder request failed");
-}
-
 /** Fetches all chat assignments within a folder. */
 export async function getFolderItems(folderUuid: string): Promise<FolderItemForClient[]> {
   const safeFolderUuid = validateFolderUuid(folderUuid);
-  const response = await requestWithFolderBaseFallback(() =>
-    workspaceApi.get(`/folders/${safeFolderUuid}/items/`),
-  );
+  const response = await workspaceApi.get(`/folders/${safeFolderUuid}/items/`);
   assertWorkspaceResponseOk(response);
   if (!Array.isArray(response.data)) {
     return [];
@@ -617,11 +357,9 @@ export async function addChatToFolder(folderUuid: string, chatId: string): Promi
   try {
     const safeFolderUuid = validateFolderUuid(folderUuid);
     const safeChatId = validateChatId(chatId);
-    const response = await requestWithFolderBaseFallback(() =>
-      workspaceApi.postJson(`/folders/${safeFolderUuid}/items/`, {
-        chat_id: safeChatId,
-      }),
-    );
+    const response = await workspaceApi.postJson(`/folders/${safeFolderUuid}/items/`, {
+      chat_id: safeChatId,
+    });
     if (response.ok) {
       return true;
     }
@@ -631,10 +369,11 @@ export async function addChatToFolder(folderUuid: string, chatId: string): Promi
       return false;
     }
 
-    const numericFallbackResponse = await requestWithFolderBaseFallback(() =>
-      workspaceApi.postJson(`/folders/${safeFolderUuid}/items/`, {
+    const numericFallbackResponse = await workspaceApi.postJson(
+      `/folders/${safeFolderUuid}/items/`,
+      {
         chat_id: numericChatId,
-      }),
+      },
     );
     return numericFallbackResponse.ok;
   } catch {
@@ -647,9 +386,7 @@ export async function removeChatFromFolder(folderUuid: string, itemUuid: string)
   try {
     const safeFolderUuid = validateFolderUuid(folderUuid);
     const safeItemUuid = validateFolderItemUuid(itemUuid);
-    const response = await requestWithFolderBaseFallback(() =>
-      workspaceApi.delete(`/folders/${safeFolderUuid}/items/${safeItemUuid}`),
-    );
+    const response = await workspaceApi.delete(`/folders/${safeFolderUuid}/items/${safeItemUuid}`);
     return response.ok;
   } catch {
     return false;
@@ -666,10 +403,11 @@ export async function updateFolderItemOrder(
     const safeFolderUuid = validateFolderUuid(folderUuid);
     const safeItemUuid = validateFolderItemUuid(itemUuid);
     const safeOrderIndex = validateOrderIndex(orderIndex);
-    const response = await requestWithFolderBaseFallback(() =>
-      workspaceApi.putJson(`/folders/${safeFolderUuid}/items/${safeItemUuid}`, {
+    const response = await workspaceApi.putJson(
+      `/folders/${safeFolderUuid}/items/${safeItemUuid}`,
+      {
         order_index: safeOrderIndex,
-      }),
+      },
     );
     return response.ok;
   } catch {
