@@ -12,6 +12,19 @@ import { createLogger } from "~/shared/lib/logger";
 import { isValidUrl } from "~/shared/lib/validation";
 import { getCurrentInstance, workspaceApi } from "./client";
 import type { ApiResponse } from "./client";
+import type {
+  FolderItemForClient,
+  WorkspaceFolderForRail,
+  WorkspaceFolderRailSystemType,
+  WorkspaceFolderSystemType,
+  WorkspaceServiceForClient,
+} from "./workspace-client.types";
+export type {
+  FolderItemForClient,
+  WorkspaceFolderForRail,
+  WorkspaceFolderRailSystemType,
+  WorkspaceServiceForClient,
+} from "./workspace-client.types";
 
 const log = createLogger("workspace-client");
 
@@ -25,9 +38,6 @@ let workspaceBaseResolved = false;
 let resolvedInstanceId: string | null = null;
 let workspaceBaseResolutionPromise: Promise<WorkspaceBaseResolution> | null = null;
 const inFlightWorkspaceGets = new Map<string, Promise<WorkspaceGetResponse>>();
-
-type WorkspaceFolderSystemType = "created" | "all";
-export type WorkspaceFolderRailSystemType = WorkspaceFolderSystemType | "personal" | "channels";
 
 interface WorkspaceFolder {
   uuid: string;
@@ -360,14 +370,6 @@ function isWorkspaceServiceResponse(value: unknown): value is WorkspaceServiceRe
   );
 }
 
-export interface WorkspaceServiceForClient {
-  id: string;
-  name: string;
-  description: string;
-  url: string;
-  iconUrl: string | null;
-}
-
 function mapWorkspaceService(raw: WorkspaceServiceResponse): WorkspaceServiceForClient | null {
   if (!isValidUrl(raw.service_url)) {
     return null;
@@ -401,15 +403,6 @@ export async function getFolders(): Promise<WorkspaceFolder[]> {
   const response = await workspaceGetWithFallback("/folders/");
   assertWorkspaceResponseOk(response);
   return Array.isArray(response.data) ? response.data.filter(isWorkspaceFolder) : [];
-}
-
-/** Folder shape for the FolderRail component. */
-export interface WorkspaceFolderForRail {
-  id: string;
-  label: string;
-  backgroundColor: number;
-  badge?: number;
-  systemType?: WorkspaceFolderRailSystemType;
 }
 
 export function mapWorkspaceFoldersToRail(folders: WorkspaceFolder[]): WorkspaceFolderForRail[] {
@@ -453,16 +446,6 @@ function isWorkspaceFolderItemResponse(value: unknown): value is WorkspaceFolder
     typeof value.created_at === "string" &&
     typeof value.updated_at === "string"
   );
-}
-
-export interface FolderItemForClient {
-  uuid: string;
-  chatId: string;
-  folderUuid: string;
-  orderIndex: number;
-  pinnedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
 }
 
 function mapToFolderItemForClient(raw: WorkspaceFolderItemResponse): FolderItemForClient {

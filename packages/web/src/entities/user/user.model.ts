@@ -5,7 +5,7 @@
  * Provides an email→userId reverse index for presence lookups by email.
  */
 import { create } from "zustand";
-import type { ZulipRawMessage, AvatarUrlByUserId } from "~/shared/api/zulip";
+import type { AvatarUrlByUserId, ZulipRawMessage } from "~/shared/api/zulip.types";
 import { bumpAvatarVersion } from "~/shared/lib/avatar";
 
 export type PresenceStatus = "active" | "idle";

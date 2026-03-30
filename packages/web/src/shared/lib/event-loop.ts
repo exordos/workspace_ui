@@ -10,13 +10,12 @@
  * - On tab resume: nudges event loop to continue without timer delay
  */
 import {
-  registerQueue,
-  registerQueueForCredentials,
   getEvents,
   getEventsForCredentials,
-  type ZulipCredentials,
-  type ZulipEvent,
-} from "~/shared/api/zulip";
+  registerQueue,
+  registerQueueForCredentials,
+} from "~/shared/api/zulip-queue";
+import type { ZulipCredentials, ZulipEvent } from "~/shared/api/zulip.types";
 import { createLogger } from "~/shared/lib/logger";
 import { isOnline, waitForOnline, onReconnect } from "~/shared/lib/network";
 import { onTabResume } from "~/shared/lib/visibility";

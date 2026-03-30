@@ -6,12 +6,12 @@
  * logic, sorting, and error handling.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { MockMessage } from "~/shared/api/zulip";
-import { fetchMessagesWithNarrow } from "~/shared/api/zulip";
+import type { MockMessage } from "~/shared/api/zulip.types";
+import { fetchMessagesWithNarrow } from "~/shared/api/zulip-messages";
 import { createMessage } from "~/test/factories";
 import { fetchInboxEntries } from "./inbox.api";
 
-vi.mock("~/shared/api/zulip", () => ({
+vi.mock("~/shared/api/zulip-messages", () => ({
   fetchMessagesWithNarrow: vi.fn(),
 }));
 

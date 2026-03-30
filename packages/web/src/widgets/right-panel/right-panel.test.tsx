@@ -11,7 +11,7 @@ import * as muteChat from "~/features/mute-chat";
 import { useMuteStore } from "~/features/mute-chat";
 import { useSettingsStore } from "~/features/settings";
 import { setLocale } from "~/i18n";
-import * as zulipApi from "~/shared/api/zulip";
+import * as zulipStreams from "~/shared/api/zulip-streams";
 import { RightDrawerContext } from "~/shared/contexts/right-drawer";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { renderWithProviders } from "~/test/render";
@@ -790,7 +790,7 @@ describe("RightPanel truthfulness", () => {
   });
 
   it("shows channel edit/delete actions for admin role and submits edit changes", async () => {
-    const updateStreamSpy = vi.spyOn(zulipApi, "updateStream").mockResolvedValue(true);
+    const updateStreamSpy = vi.spyOn(zulipStreams, "updateStream").mockResolvedValue(true);
 
     act(() => {
       useCurrentChatMessagesStore.setState({

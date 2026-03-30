@@ -15,9 +15,8 @@ import { t } from "~/i18n";
 import {
   fetchActivityMessagesPage,
   removeMessageFlag,
-  type ZulipRawMessage,
-  type ActivityFilter,
-} from "~/shared/api/zulip";
+} from "~/shared/api/zulip-messages";
+import type { ActivityFilter, ZulipRawMessage } from "~/shared/api/zulip.types";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { formatMessageTime } from "~/shared/lib/format";
 import { stripHtml } from "~/shared/lib/html";

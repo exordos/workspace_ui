@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback } from "react";
 import { useUsersStore } from "~/entities/user";
 import { t } from "~/i18n";
-import type { MockMessage } from "~/shared/api/zulip";
+import type { MockMessage } from "~/shared/api/zulip.types";
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
 import { getPresenceState } from "~/shared/lib/format";
 import { Avatar, Icon, PresenceIndicator } from "~/shared/ui";

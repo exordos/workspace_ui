@@ -9,7 +9,6 @@ import { useCurrentChatMessagesStore, isMessageForContext } from "~/entities/mes
 import { ensureUserStatusLoaded, formatUserStatusLabel, useUsersStore } from "~/entities/user";
 import { useChatInfoStore } from "~/features/chat-info";
 import { InstanceSwitcher } from "~/features/instance-switch";
-import { useMediaViewerStore } from "~/features/media-viewer";
 import { useMuteStore } from "~/features/mute-chat";
 import { usePinStore } from "~/features/pin-chat";
 import { useSettingsStore } from "~/features/settings";
@@ -28,20 +27,24 @@ import {
   fetchMessagesAfterAnchor,
   fetchMessagesBeforeAnchor,
   fetchRecentMessages,
-  fetchUsers,
-  fetchRealmPresence,
-  fetchStreams,
-  fetchStreamMembers,
-  fetchSubscriptions,
-  fetchUserTopics,
-  getCurrentUser,
   rawMessageToMockMessage,
+} from "~/shared/api/zulip-messages";
+import {
   deleteQueue,
   fetchUnreadMessagesCountForCredentials,
-  type MockMessage,
-  type ZulipRawMessage,
-  type ZulipEvent,
-} from "~/shared/api/zulip";
+  fetchUserTopics,
+} from "~/shared/api/zulip-queue";
+import {
+  fetchStreamMembers,
+  fetchStreams,
+  fetchSubscriptions,
+} from "~/shared/api/zulip-streams";
+import type { MockMessage, ZulipEvent, ZulipRawMessage } from "~/shared/api/zulip.types";
+import {
+  fetchRealmPresence,
+  fetchUsers,
+  getCurrentUser,
+} from "~/shared/api/zulip-users";
 import { OpenSearchContext } from "~/shared/contexts/open-search";
 import { RightDrawerContext } from "~/shared/contexts/right-drawer";
 import { initAuthGuard } from "~/shared/lib/auth-guard";
@@ -109,132 +112,16 @@ import {
   formatRightPanelLocalTime,
 } from "./layout-right-panel.lib";
 import { resolveShortcutPanelToggle } from "./layout-shortcuts.lib";
-
-const MediaViewerOverlay: React.FC = () => {
-  const isOpen = useMediaViewerStore((s) => s.isOpen);
-  const items = useMediaViewerStore((s) => s.items);
-  const currentIndex = useMediaViewerStore((s) => s.currentIndex);
-  const [zoom, setZoom] = useState(1);
-
-  useEffect(() => {
-    setZoom(1);
-  }, [currentIndex]);
-
-  if (!isOpen || items.length === 0) return null;
-
-  const item = items[currentIndex];
-  if (!item) return null;
-
-  const { close, next, prev } = useMediaViewerStore.getState();
-
-  const handleWheel = (e: React.WheelEvent) => {
-    e.stopPropagation();
-    setZoom((z) => Math.max(0.5, Math.min(3, z + e.deltaY * -0.001)));
-  };
-
-  return (
-    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- backdrop click-to-dismiss is standard dialog UX
-    <div
-      className="fixed inset-0 z-max flex items-center justify-center bg-black/90"
-      onClick={close}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") close();
-      }}
-      role="dialog"
-      aria-label={t("a11y.mediaViewer")}
-      tabIndex={-1}
-    >
-      {item.type === "video" ? (
-        // eslint-disable-next-line jsx-a11y/media-has-caption -- user-uploaded media without caption tracks
-        <video
-          src={item.url}
-          controls
-          autoPlay
-          className="max-h-[90vh] max-w-[90vw]"
-          onClick={(e) => e.stopPropagation()}
-        />
-      ) : (
-        <img
-          src={item.url}
-          alt={item.alt ?? ""}
-          role="presentation"
-          className="max-h-[90vh] max-w-[90vw] object-contain transition-transform"
-          style={{ transform: `scale(${zoom})` }}
-          onClick={(e) => e.stopPropagation()}
-          onWheel={handleWheel}
-        />
-      )}
-      {items.length > 1 && (
-        <div className="absolute bottom-4 flex gap-4">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              prev();
-            }}
-            className="bg-bg-elevated/80 rounded-lg px-4 py-2 text-sm text-text-primary transition-colors hover:bg-bg-elevated"
-          >
-            ← {t("common.prev")}
-          </button>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              next();
-            }}
-            className="bg-bg-elevated/80 rounded-lg px-4 py-2 text-sm text-text-primary transition-colors hover:bg-bg-elevated"
-          >
-            {t("common.next")} →
-          </button>
-        </div>
-      )}
-    </div>
-  );
-};
+import {
+  SYSTEM_CHANNELS_FOLDER_ID,
+  SYSTEM_PERSONAL_FOLDER_ID,
+  withDefaultSystemFolders,
+} from "./layout-folders-default.lib";
+import { LayoutMediaViewerOverlay } from "./layout-media-viewer-overlay.ui";
 
 const CHAT_HISTORY_BATCH_SIZE = 5000;
 const CHAT_HISTORY_MAX_BATCHES = 5;
 const RECONNECT_DELTA_BATCH_SIZE = 5000;
-const SYSTEM_PERSONAL_FOLDER_ID = "system:personal";
-const SYSTEM_CHANNELS_FOLDER_ID = "system:channels";
-
-function withDefaultSystemFolders(folders: WorkspaceFolderForRail[]): WorkspaceFolderForRail[] {
-  if (folders.length === 0) {
-    return folders;
-  }
-
-  const baseFolders = folders.filter(
-    (folder) =>
-      folder.id !== SYSTEM_PERSONAL_FOLDER_ID &&
-      folder.id !== SYSTEM_CHANNELS_FOLDER_ID &&
-      folder.systemType !== "personal" &&
-      folder.systemType !== "channels",
-  );
-
-  const allFolderIndex = baseFolders.findIndex((folder) => folder.systemType === "all");
-  const insertAfterIndex = allFolderIndex >= 0 ? allFolderIndex : 0;
-  const insertIndex = insertAfterIndex + 1;
-
-  const personalFolder: WorkspaceFolderForRail = {
-    id: SYSTEM_PERSONAL_FOLDER_ID,
-    label: t("folder.personal"),
-    backgroundColor: 0,
-    systemType: "personal",
-  };
-  const channelsFolder: WorkspaceFolderForRail = {
-    id: SYSTEM_CHANNELS_FOLDER_ID,
-    label: t("folder.channels"),
-    backgroundColor: 0,
-    systemType: "channels",
-  };
-
-  return [
-    ...baseFolders.slice(0, insertIndex),
-    personalFolder,
-    channelsFolder,
-    ...baseFolders.slice(insertIndex),
-  ];
-}
 
 export const Layout: React.FC = () => {
   const location = useLocation();
@@ -1527,7 +1414,7 @@ export const Layout: React.FC = () => {
               {t("app.offline")}
             </div>
           )}
-          <MediaViewerOverlay />
+          <LayoutMediaViewerOverlay />
           <SearchModal
             open={searchOpen}
             onOpenChange={setSearchOpen}

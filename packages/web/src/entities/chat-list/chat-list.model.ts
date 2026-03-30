@@ -6,7 +6,7 @@
  */
 import { create } from "zustand";
 import { useUsersStore } from "~/entities/user";
-import type { ZulipRawMessage } from "~/shared/api/zulip";
+import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
 import { saveRecentDmPartners } from "~/shared/lib/recent-dms";
 import type {
@@ -21,6 +21,7 @@ import {
   messageToDmEntry,
   isUnread,
 } from "./chat-list.lib";
+import type { ChatListState, MessageLocation } from "./chat-list.model.types";
 
 function streamsMapToSortedStreams(streamsMap: Map<number, StreamEntryInternal>): StreamWithLast[] {
   return Array.from(streamsMap.values())
@@ -115,30 +116,6 @@ function mergeStreamEntry(
   };
 }
 
-interface ChatListState {
-  streamsMap: Map<number, StreamEntryInternal>;
-  dmsMap: Map<string, DmEntryInternal>;
-  currentUserId: number | null;
-  /** Cached messages for sidebar rebuild when currentUserId loads after initial messages */
-  lastAppliedMessages: ZulipRawMessage[] | null;
-  /** message_id → location index for update_message_flags and delete_message handling */
-  messageIdToLocation: Map<number, MessageLocation>;
-  setFromMessages: (messages: ZulipRawMessage[], currentUserId: number | null) => void;
-  addMessage: (message: ZulipRawMessage) => void;
-  addMessages: (messages: ZulipRawMessage[]) => void;
-  setCurrentUserId: (id: number | null) => void;
-  renameStream: (streamId: number, nextName: string) => void;
-  removeStream: (streamId: number) => void;
-  clear: () => void;
-  decrementUnreadForMessages: (messageIds: number[]) => void;
-  decrementUnreadForTopic: (streamId: number, topic: string, count: number) => void;
-  decrementUnreadForDmKey: (dmKey: string, count: number) => void;
-  incrementUnreadForMessages: (messageIds: number[]) => void;
-  handleDeleteMessages: (messageIds: number[]) => void;
-  streams: () => StreamWithLast[];
-  dms: () => Extract<SidebarChat, { type: "dm" }>[];
-}
-
 const emptyStreamsMap = () => new Map<number, StreamEntryInternal>();
 const emptyDmsMap = () => new Map<string, DmEntryInternal>();
 
@@ -148,10 +125,6 @@ let _cachedStreamsMapRef: Map<number, StreamEntryInternal> | null = null;
 
 let _cachedDms: Extract<SidebarChat, { type: "dm" }>[] | null = null;
 let _cachedDmsMapRef: Map<string, DmEntryInternal> | null = null;
-
-export type MessageLocation =
-  | { type: "stream"; stream_id: number; topic: string }
-  | { type: "dm"; dmKey: string };
 
 function getAvatarMap() {
   return useUsersStore.getState().getAvatarMap();

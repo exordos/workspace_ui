@@ -8,7 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setInstanceProvider } from "~/shared/api/client";
-import type { MockMessage, Reaction, ZulipRawMessage } from "~/shared/api/zulip";
+import type { MockMessage, Reaction, ZulipRawMessage } from "~/shared/api/zulip.types";
 import {
   useCurrentChatMessagesStore,
   isMessageForContext,

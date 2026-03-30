@@ -2,7 +2,7 @@ import React, { useCallback, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useInstancesStore } from "~/entities/instance";
 import { t } from "~/i18n";
-import { exchangeDesktopFlowToken } from "~/shared/api/zulip";
+import { exchangeDesktopFlowToken } from "~/shared/api/zulip-auth";
 import {
   clearDesktopFlowState,
   decryptDesktopFlowToken,

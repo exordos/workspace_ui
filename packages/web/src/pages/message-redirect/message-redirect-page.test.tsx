@@ -18,8 +18,11 @@ vi.mock("react-router-dom", async () => {
   };
 });
 
-vi.mock("~/shared/api/zulip", () => ({
+vi.mock("~/shared/api/zulip-messages", () => ({
   fetchMessageById,
+}));
+
+vi.mock("~/shared/api/zulip-users", () => ({
   getCurrentUser,
 }));
 

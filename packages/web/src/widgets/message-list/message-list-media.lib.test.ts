@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { MockMessage } from "~/shared/api/zulip";
+import type { MockMessage } from "~/shared/api/zulip.types";
 import { buildMessageMediaGallery } from "./message-list-media.lib";
 
 function msg(id: number, content: string): MockMessage {

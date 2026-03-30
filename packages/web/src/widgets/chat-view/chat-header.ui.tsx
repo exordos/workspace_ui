@@ -1,6 +1,6 @@
 import React from "react";
 import { t } from "~/i18n";
-import { getRealmBaseUrl } from "~/shared/api/zulip";
+import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
 import { resolveAvatarUrl } from "~/shared/lib/avatar";
 import { Avatar, Icon } from "~/shared/ui";
 

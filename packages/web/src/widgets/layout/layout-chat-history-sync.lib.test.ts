@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ZulipRawMessage } from "~/shared/api/zulip";
+import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import { loadDeepHistoryMessages } from "./layout-chat-history-sync.lib";
 
 function createMessage(id: number): ZulipRawMessage {

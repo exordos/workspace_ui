@@ -4,7 +4,7 @@
  */
 import { useUsersStore } from "~/entities/user";
 import { t, getLocale } from "~/i18n";
-import type { ZulipRawMessage } from "~/shared/api/zulip";
+import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
 import type {
   SidebarChat,

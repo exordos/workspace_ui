@@ -6,12 +6,12 @@ import { useDownloadStore } from "~/entities/download";
 import { ensureUserStatusLoaded, formatUserStatusLabel, useUsersStore } from "~/entities/user";
 import { useMediaViewerStore } from "~/features/media-viewer";
 import { t } from "~/i18n";
-import {
-  getRealmBaseUrl,
-  type MockMessage,
-  type MockMessageDeliveryStatus,
-  type Reaction,
-} from "~/shared/api/zulip";
+import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
+import type {
+  MockMessage,
+  MockMessageDeliveryStatus,
+  Reaction,
+} from "~/shared/api/zulip.types";
 import { WORKSPACE_ORIGIN, WORKSPACE_UPLOADS_ORIGIN } from "~/shared/config/constants";
 import { buildAuthHeader } from "~/shared/lib/auth-guard";
 import { formatMessageTime, getPresenceState } from "~/shared/lib/format";
@@ -26,6 +26,7 @@ import {
 import { resolveAvatarSrc } from "./message-avatar.lib";
 import { resolveJitsiLocationName } from "./message-jitsi-location.lib";
 import { normalizeMediaUrl, type MessageMediaGallery } from "./message-list-media.lib";
+import { EMOJI_NAME_TO_CHAR, QUICK_REACTIONS, groupReactions } from "./message-bubble-emoji.lib";
 
 /** Base URL for message images (uploads): when realm === workspace, use origin + api/v1. */
 function getMessageImagesBaseUrl(): string | undefined {
@@ -70,46 +71,6 @@ interface MessageBubbleProps {
   callbacks?: MessageBubbleCallbacks;
 }
 
-/** Common emoji_name → character map (fallback when emoji_code cannot be converted). */
-const EMOJI_NAME_TO_CHAR: Record<string, string> = {
-  thumbs_up: "👍",
-  heart: "❤️",
-  smile: "😄",
-  joy: "😂",
-  open_mouth: "😮",
-  cry: "😢",
-  clap: "👏",
-  "+1": "👍",
-  eyes: "👀",
-  tada: "🎉",
-  wave: "👋",
-};
-
-const QUICK_REACTIONS = [
-  { emojiName: "heart", a11yLabelKey: "a11y.like" },
-  { emojiName: "thumbs_up", a11yLabelKey: "a11y.thumbsUp" },
-  { emojiName: "joy", a11yLabelKey: "a11y.joy" },
-  { emojiName: "open_mouth", a11yLabelKey: "a11y.surprised" },
-  { emojiName: "cry", a11yLabelKey: "a11y.crying" },
-  { emojiName: "clap", a11yLabelKey: "a11y.clap" },
-] as const;
-
-function emojiCodeToChar(emojiCode: string): string {
-  try {
-    const codePoints = emojiCode.split("-").map((hex) => parseInt(hex, 16));
-    if (codePoints.some((n) => Number.isNaN(n))) return "";
-    return String.fromCodePoint(...codePoints);
-  } catch {
-    return "";
-  }
-}
-
-function getReactionDisplayChar(reaction: Reaction): string {
-  const fromCode = emojiCodeToChar(reaction.emoji_code);
-  if (fromCode) return fromCode;
-  return EMOJI_NAME_TO_CHAR[reaction.emoji_name] ?? reaction.emoji_name;
-}
-
 function formatJitsiRoomName(jitsiUrl: string): string {
   const parsed = parseJitsiUrl(jitsiUrl);
   const roomName = parsed?.roomName?.trim() ?? "";
@@ -125,29 +86,6 @@ function getAvatarInitials(name: string): string {
   const second = parts[1]?.[0] ?? "";
   const initials = `${first}${second}`.toUpperCase();
   return initials.length > 0 ? initials : "?";
-}
-
-/** Group reactions by (emoji_name, reaction_type): { count, userIds, displayChar }. */
-function groupReactions(
-  reactions: Reaction[],
-): { key: string; count: number; userIds: number[]; displayChar: string }[] {
-  const map = new Map<string, { userIds: number[]; displayChar: string }>();
-  for (const r of reactions) {
-    const key = `${r.reaction_type}:${r.emoji_name}`;
-    const displayChar = getReactionDisplayChar(r);
-    const existing = map.get(key);
-    if (existing) {
-      if (!existing.userIds.includes(r.user_id)) existing.userIds.push(r.user_id);
-    } else {
-      map.set(key, { userIds: [r.user_id], displayChar });
-    }
-  }
-  return Array.from(map.entries()).map(([key, { userIds, displayChar }]) => ({
-    key,
-    count: userIds.length,
-    userIds,
-    displayChar,
-  }));
 }
 
 const CONTEXT_ITEMS_BY_LABEL = {

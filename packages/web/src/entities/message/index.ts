@@ -3,4 +3,4 @@ export {
   isMessageForContext,
   contextFromMessage,
 } from "./message.model";
-export type { CurrentChatContext } from "./message.model";
+export type { CurrentChatContext } from "./message.model.types";

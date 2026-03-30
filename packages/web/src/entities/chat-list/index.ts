@@ -1,5 +1,5 @@
 export { useChatListStore } from "./chat-list.model";
-export type { MessageLocation } from "./chat-list.model";
+export type { MessageLocation, ChatListState } from "./chat-list.model.types";
 export {
   buildSidebarFromMessages,
   messageToStreamEntry,

@@ -6,7 +6,7 @@
  * route slug (for private messages). Returns InboxEntry[] sorted by most recent.
  */
 
-import { fetchMessagesWithNarrow } from "~/shared/api/zulip";
+import { fetchMessagesWithNarrow } from "~/shared/api/zulip-messages";
 import { createLogger, logApiCall } from "~/shared/lib/logger";
 import { buildInboxEntries } from "./inbox.lib";
 import type { InboxEntry } from "./inbox.types";

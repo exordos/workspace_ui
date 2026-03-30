@@ -7,7 +7,7 @@
  */
 
 import { create } from "zustand";
-import type { MockMessage } from "~/shared/api/zulip";
+import type { MockMessage } from "~/shared/api/zulip.types";
 import { logStoreAction } from "~/shared/lib/logger";
 
 // ---------------------------------------------------------------------------

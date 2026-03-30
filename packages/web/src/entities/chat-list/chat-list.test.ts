@@ -7,7 +7,7 @@
  * Correctness here is critical because the sidebar is the primary navigation surface.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { ZulipRawMessage } from "~/shared/api/zulip";
+import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import { sortChatsByLastMessage } from "~/shared/lib/chat-sorting";
 import { useUsersStore } from "../user/user.model";
 import { useChatListStore } from "./chat-list.model";

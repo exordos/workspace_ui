@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { MockMessage } from "~/shared/api/zulip";
+import type { MockMessage } from "~/shared/api/zulip.types";
 import { groupInboxEntries } from "./inbox.lib";
 import type { InboxEntry } from "./inbox.types";
 

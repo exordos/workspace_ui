@@ -2,7 +2,6 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useUsersStore } from "~/entities/user";
 import { useMentionSuggestStore } from "~/features/mention-suggest";
-import type * as ZulipApiModule from "~/shared/api/zulip";
 import { createUser } from "~/test/factories";
 import { renderWithProviders } from "~/test/render";
 import { computeFloatingPickerPosition } from "./message-composer-picker-position.lib";
@@ -31,8 +30,10 @@ vi.mock("~/shared/lib/touch", async () => {
   };
 });
 
-vi.mock("~/shared/api/zulip", async () => {
-  const actual = await vi.importActual<typeof ZulipApiModule>("~/shared/api/zulip");
+vi.mock("~/shared/api/zulip-messages", async () => {
+  const actual = await vi.importActual<typeof import("~/shared/api/zulip-messages")>(
+    "~/shared/api/zulip-messages",
+  );
   return {
     ...actual,
     renderMessageContent: (...args: unknown[]) => renderMessageContentMock(...args),

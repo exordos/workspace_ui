@@ -7,7 +7,6 @@ import type * as PinChatModule from "~/features/pin-chat";
 import { useSettingsStore } from "~/features/settings";
 import { buildDmTypingChatKey, useTypingIndicatorStore } from "~/features/typing-indicator";
 import type * as WorkspaceApiModule from "~/shared/api";
-import type * as ZulipApiModule from "~/shared/api/zulip";
 import type { SidebarChat } from "~/shared/types/sidebar-chat";
 import { createUser } from "~/test/factories";
 import { renderWithProviders } from "~/test/render";
@@ -28,8 +27,8 @@ vi.mock("~/features/create-chat", () => ({
   createChannel: (...args: unknown[]) => createChannelMock(...args),
 }));
 
-vi.mock("~/shared/api/zulip", async (importOriginal) => {
-  const actual = await importOriginal<typeof ZulipApiModule>();
+vi.mock("~/shared/api/zulip-read-state", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("~/shared/api/zulip-read-state")>();
   return {
     ...actual,
     markDmAsRead: (...args: unknown[]) => markDmAsReadMock(...args),

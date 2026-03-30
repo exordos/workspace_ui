@@ -1,4 +1,4 @@
-import type { MockMessage } from "~/shared/api/zulip";
+import type { MockMessage } from "~/shared/api/zulip.types";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 
 function normalizeRealmForComparison(realm: string): string {

@@ -6,7 +6,7 @@
  * for presence updates that arrive keyed by email (Zulip presence events).
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { ZulipRawMessage } from "~/shared/api/zulip";
+import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import { useUsersStore } from "./user.model";
 
 function resetStore() {

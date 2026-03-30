@@ -114,9 +114,28 @@ interface ApiResponse {
 }
 ```
 
+## Zulip split modules
+
+There is no `zulip.ts` barrel — import from the concrete module:
+
+| Import from | Module |
+|-------------|--------|
+| Types, `ZulipAuthError` | `./zulip.types` |
+| Auth, server settings | `./zulip-auth` |
+| Realm / client helpers | `./zulip-client.internal` (or other `zulip-*.internal.ts`) |
+| Queue, events | `./zulip-queue` |
+| Read/mark/topic resolve | `./zulip-read-state` |
+| Users | `./zulip-users` |
+| Streams | `./zulip-streams` |
+| Messages, reactions | `./zulip-messages` |
+| Upload | `./zulip-upload` |
+
+Tests should mock the same module path the code under test imports (e.g. `~/shared/api/zulip-messages`).
+
 ## For AI Agent
 
 - New API calls: use `zulipApi.get/post/patch/delete`
 - Custom interceptors: create a `Middleware` function + `zulipApi.use()`
 - `req.meta` — for passing data between middleware (e.g. `req.meta.skipRetry = true`)
 - DO NOT duplicate auth/URL logic — everything goes through the middleware pipeline
+- New Zulip API usage and tests: import from concrete `zulip-*.ts` modules only

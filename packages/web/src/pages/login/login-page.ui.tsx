@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { useLocation, useNavigate } from "react-router-dom";
 import { useInstancesStore } from "~/entities/instance";
 import { t } from "~/i18n";
-import { fetchApiKey, fetchServerSettings, ZulipAuthError } from "~/shared/api/zulip";
+import { fetchApiKey, fetchServerSettings } from "~/shared/api/zulip-auth";
+import { ZulipAuthError } from "~/shared/api/zulip.types";
 import {
   buildDesktopFlowLoginUrl,
   generateDesktopFlowOtp,

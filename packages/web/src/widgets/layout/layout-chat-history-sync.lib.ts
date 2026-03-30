@@ -1,4 +1,4 @@
-import type { ZulipRawMessage } from "~/shared/api/zulip";
+import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 
 interface LoadDeepHistoryMessagesOptions {
   initialMessages: readonly ZulipRawMessage[];

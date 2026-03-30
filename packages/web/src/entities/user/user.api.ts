@@ -9,7 +9,7 @@
 import { getCurrentInstance, refreshZulipApiBase, zulipApi } from "~/shared/api/client";
 import { createLogger } from "~/shared/lib/logger";
 import { useUsersStore } from "./user.model";
-import type { UserStatus } from "./user.model";
+import type { UserStatus, UserStatusReactionType } from "./user.model";
 
 interface ZulipStatusEmojiDisplayInfo {
   emoji_name?: string;
@@ -48,9 +48,8 @@ function normalizeStatusResponse(data: ZulipUserStatusResponse): UserStatus | nu
   const emojiName =
     rawEmojiName || (typeof emojiInfo?.emoji_name === "string" ? emojiInfo.emoji_name : "");
   const emojiCode = typeof emojiInfo?.emoji_code === "string" ? emojiInfo.emoji_code : undefined;
-  const reactionType = isReactionType(emojiInfo?.reaction_type)
-    ? emojiInfo.reaction_type
-    : undefined;
+  const rawReactionType = emojiInfo?.reaction_type;
+  const reactionType = isReactionType(rawReactionType) ? rawReactionType : undefined;
   if (!text && !emojiName && !away) {
     return null;
   }

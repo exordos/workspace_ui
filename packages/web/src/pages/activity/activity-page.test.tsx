@@ -6,7 +6,6 @@ import { useActivityStore } from "~/entities/activity";
 import { useChatListStore } from "~/entities/chat-list";
 import { useDraftStore } from "~/entities/draft";
 import type * as DraftModule from "~/entities/draft";
-import type * as ZulipApiModule from "~/shared/api/zulip";
 import { createMessage } from "~/test/factories";
 import { ActivityPage } from "./activity-page.ui";
 import type * as ReactRouterDom from "react-router-dom";
@@ -37,8 +36,10 @@ vi.mock("~/entities/draft", async () => {
   };
 });
 
-vi.mock("~/shared/api/zulip", async () => {
-  const actual = await vi.importActual<typeof ZulipApiModule>("~/shared/api/zulip");
+vi.mock("~/shared/api/zulip-messages", async () => {
+  const actual = await vi.importActual<typeof import("~/shared/api/zulip-messages")>(
+    "~/shared/api/zulip-messages",
+  );
   return {
     ...actual,
     fetchActivityMessages,

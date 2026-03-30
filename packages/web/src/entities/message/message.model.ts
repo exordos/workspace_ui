@@ -11,33 +11,12 @@ import type {
   MockMessageDeliveryStatus,
   Reaction,
   ZulipRawMessage,
-} from "~/shared/api/zulip";
+} from "~/shared/api/zulip.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
 
-export type CurrentChatContext =
-  | { type: "stream"; streamId: number; streamName: string; topic: string }
-  | { type: "dm"; dmKey: string };
+import type { CurrentChatContext, CurrentChatMessagesState } from "./message.model.types";
 
-interface CurrentChatMessagesState {
-  context: CurrentChatContext | null;
-  messages: MockMessage[];
-  isLoadingMore: boolean;
-  hasOlderMessages: boolean;
-  hasNewerMessages: boolean;
-  setContext: (context: CurrentChatContext | null) => void;
-  setMessages: (messages: MockMessage[]) => void;
-  prependMessages: (msgs: MockMessage[]) => void;
-  appendMessages: (msgs: MockMessage[]) => void;
-  appendMessage: (msg: MockMessage) => void;
-  removeMessage: (messageId: number) => void;
-  removeMessages: (messageIds: number[]) => void;
-  updateMessageReaction: (messageId: number, reaction: Reaction, op: "add" | "remove") => void;
-  updateMessageFlags: (messageIds: number[], flag: string, op: "add" | "remove") => void;
-  updateMessageContent: (messageId: number, content: string) => void;
-  setIsLoadingMore: (loading: boolean) => void;
-  setHasOlderMessages: (has: boolean) => void;
-  setHasNewerMessages: (has: boolean) => void;
-}
+export type { CurrentChatContext } from "./message.model.types";
 
 export function isMessageForContext(
   msg: {

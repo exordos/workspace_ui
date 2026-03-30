@@ -1,4 +1,4 @@
-import type { MockMessage } from "~/shared/api/zulip";
+import type { MockMessage } from "~/shared/api/zulip.types";
 
 export function resolveJitsiLocationName(message: MockMessage): string {
   if (message.stream_id != null) {

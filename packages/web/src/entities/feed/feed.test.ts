@@ -5,7 +5,7 @@
  * Messages are fetched oldest-first with anchor-based pagination.
  */
 import { afterEach, describe, expect, it } from "vitest";
-import type { MockMessage } from "~/shared/api/zulip";
+import type { MockMessage } from "~/shared/api/zulip.types";
 import { createMessage, createMessages } from "~/test/factories";
 import { useFeedStore } from "./feed.model";
 

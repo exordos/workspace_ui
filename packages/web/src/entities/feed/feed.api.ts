@@ -5,8 +5,8 @@
  * and anchor-based pagination for infinite scroll.
  */
 
-import { fetchAllMessagesPage } from "~/shared/api/zulip";
-import type { MessagesPageResult } from "~/shared/api/zulip";
+import { fetchAllMessagesPage } from "~/shared/api/zulip-messages";
+import type { MessagesPageResult } from "~/shared/api/zulip.types";
 import { createLogger, logApiCall } from "~/shared/lib/logger";
 
 const log = createLogger("feed:api");
