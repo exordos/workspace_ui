@@ -1469,29 +1469,56 @@ export async function fetchMessages(
   if (normalizedTopic !== undefined && normalizedStream === undefined) {
     throw new Error("fetchMessages.stream is required when topic is provided");
   }
-  const client = await getClient();
-  const narrow: { operator: string; operand: string }[] = [];
+  const narrow: MessagesApiNarrow[] = [];
   if (normalizedStream) narrow.push({ operator: "stream", operand: normalizedStream });
   if (normalizedTopic) narrow.push({ operator: "topic", operand: normalizedTopic });
   if (q?.trim()) narrow.push({ operator: "search", operand: q.trim() });
-  try {
-    const data = (await client.messages.retrieve({
-      narrow: narrow.length ? narrow : undefined,
-      anchor: "newest",
-      num_before: 100,
-      num_after: 0,
-    })) as { result?: string; messages?: Parameters<typeof mapZulipMessage>[0][] };
-    if (data.result === "error") return [];
-    const list = data.messages ?? [];
-    return list.map(mapZulipMessage);
-  } catch {
-    return [];
-  }
+  const page = await fetchMessagesWithNarrowPage(narrow, "newest", 100, 0);
+  return page.messages;
 }
 
-/** Generic narrow-based message fetch with configurable anchor and counts. */
+interface MessagesApiNarrow {
+  operator: string;
+  operand: string | number | number[];
+}
+
+// Карта in-flight запросов страниц сообщений для дедупликации параллельных вызовов.
+const messagesPageInFlight = new Map<string, Promise<MessagesPageResult>>();
+
+function normalizeNarrowOperandForInFlightKey(
+  operand: string | number | number[],
+): string | number {
+  if (!Array.isArray(operand)) {
+    return operand;
+  }
+  return Array.from(new Set(operand))
+    .sort((a, b) => a - b)
+    .join(",");
+}
+
+function buildMessagesPageInFlightKey(
+  narrow: readonly MessagesApiNarrow[],
+  anchor: string | number,
+  numBefore: number,
+  numAfter: number,
+): string {
+  const instanceId = getCurrentInstance()?.id ?? "__no_instance__";
+  const normalizedNarrow = narrow.map((entry) => ({
+    operator: entry.operator,
+    operand: normalizeNarrowOperandForInFlightKey(entry.operand),
+  }));
+  return JSON.stringify({
+    instanceId,
+    narrow: normalizedNarrow,
+    anchor,
+    numBefore,
+    numAfter,
+  });
+}
+
+/** Универсальная загрузка сообщений по narrow с настраиваемыми anchor и лимитами. */
 export async function fetchMessagesWithNarrow(
-  narrow: { operator: string; operand: string | number | number[] }[],
+  narrow: MessagesApiNarrow[],
   anchor: string | number = "newest",
   numBefore = 100,
   numAfter = 0,
@@ -1505,9 +1532,9 @@ export interface MessagesPageResult {
   foundOldest: boolean;
 }
 
-/** Generic narrow-based message fetch with pagination metadata. */
+/** Универсальная загрузка страницы сообщений по narrow с метаданными пагинации. */
 export async function fetchMessagesWithNarrowPage(
-  narrow: { operator: string; operand: string | number | number[] }[],
+  narrow: MessagesApiNarrow[],
   anchor: string | number = "newest",
   numBefore = 100,
   numAfter = 0,
@@ -1515,27 +1542,47 @@ export async function fetchMessagesWithNarrowPage(
   const validatedAnchor = validateMessagesApiAnchor(anchor, "fetchMessagesWithNarrowPage");
   const validatedNumBefore = validateNonNegativeInteger(numBefore, "numBefore");
   const validatedNumAfter = validateNonNegativeInteger(numAfter, "numAfter");
-  const client = await getClient();
-  try {
-    const data = (await client.messages.retrieve({
-      narrow: narrow.length > 0 ? narrow : undefined,
-      anchor: validatedAnchor,
-      num_before: validatedNumBefore,
-      num_after: validatedNumAfter,
-    })) as {
-      result?: string;
-      messages?: Parameters<typeof mapZulipMessage>[0][];
-      found_oldest?: boolean;
-      foundOldest?: boolean;
-    };
-    if (data.result === "error") return { messages: [], foundOldest: false };
-    return {
-      messages: (data.messages ?? []).map(mapZulipMessage),
-      foundOldest: data.found_oldest ?? data.foundOldest ?? false,
-    };
-  } catch {
-    return { messages: [], foundOldest: false };
+  const requestKey = buildMessagesPageInFlightKey(
+    narrow,
+    validatedAnchor,
+    validatedNumBefore,
+    validatedNumAfter,
+  );
+  const inFlight = messagesPageInFlight.get(requestKey);
+  if (inFlight) {
+    return inFlight;
   }
+
+  const request = (async () => {
+    const client = await getClient();
+    try {
+      const data = (await client.messages.retrieve({
+        narrow: narrow.length > 0 ? narrow : undefined,
+        anchor: validatedAnchor,
+        num_before: validatedNumBefore,
+        num_after: validatedNumAfter,
+      })) as {
+        result?: string;
+        messages?: Parameters<typeof mapZulipMessage>[0][];
+        found_oldest?: boolean;
+        foundOldest?: boolean;
+      };
+      if (data.result === "error") return { messages: [], foundOldest: false };
+      return {
+        messages: (data.messages ?? []).map(mapZulipMessage),
+        foundOldest: data.found_oldest ?? data.foundOldest ?? false,
+      };
+    } catch {
+      return { messages: [], foundOldest: false };
+    }
+  })();
+
+  messagesPageInFlight.set(requestKey, request);
+  return request.finally(() => {
+    if (messagesPageInFlight.get(requestKey) === request) {
+      messagesPageInFlight.delete(requestKey);
+    }
+  });
 }
 
 /** Fetches a page of all messages (no narrow) via API pipeline. */

@@ -1507,6 +1507,40 @@ describe("fetchMessages", () => {
     );
     expect(mockZulipClient.messages.retrieve).not.toHaveBeenCalled();
   });
+
+  it("deduplicates concurrent requests with identical filters", async () => {
+    let resolveRetrieve!: (value: { messages: unknown[] }) => void;
+    const retrievePromise = new Promise<{ messages: unknown[] }>((resolve) => {
+      resolveRetrieve = resolve;
+    });
+    mockZulipClient.messages.retrieve.mockReturnValue(retrievePromise as never);
+
+    const first = fetchMessages("general", "topic1");
+    const second = fetchMessages("general", "topic1");
+
+    await Promise.resolve();
+    expect(mockZulipClient.messages.retrieve).toHaveBeenCalledTimes(1);
+
+    resolveRetrieve({ messages: [] });
+    await Promise.all([first, second]);
+  });
+
+  it("does not deduplicate requests with different filters", async () => {
+    mockZulipClient.messages.retrieve.mockResolvedValue({ messages: [] });
+
+    await Promise.all([fetchMessages("general", "topic1"), fetchMessages("general", "topic2")]);
+
+    expect(mockZulipClient.messages.retrieve).toHaveBeenCalledTimes(2);
+  });
+
+  it("starts a new request after previous in-flight request settles", async () => {
+    mockZulipClient.messages.retrieve.mockResolvedValue({ messages: [] });
+
+    await fetchMessages("general", "topic1");
+    await fetchMessages("general", "topic1");
+
+    expect(mockZulipClient.messages.retrieve).toHaveBeenCalledTimes(2);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1556,6 +1590,87 @@ describe("fetchMessagesWithNarrow", () => {
       /numAfter must be a non-negative integer/i,
     );
     expect(mockZulipClient.messages.retrieve).not.toHaveBeenCalled();
+  });
+
+  it("deduplicates concurrent requests with identical narrow parameters", async () => {
+    let resolveRetrieve!: (value: { messages: unknown[] }) => void;
+    const retrievePromise = new Promise<{ messages: unknown[] }>((resolve) => {
+      resolveRetrieve = resolve;
+    });
+    mockZulipClient.messages.retrieve.mockReturnValue(retrievePromise as never);
+
+    const first = fetchMessagesWithNarrow(
+      [{ operator: "is", operand: "unread" }],
+      "newest",
+      200,
+      0,
+    );
+    const second = fetchMessagesWithNarrow(
+      [{ operator: "is", operand: "unread" }],
+      "newest",
+      200,
+      0,
+    );
+
+    await Promise.resolve();
+    expect(mockZulipClient.messages.retrieve).toHaveBeenCalledTimes(1);
+
+    resolveRetrieve({ messages: [] });
+    await Promise.all([first, second]);
+  });
+
+  it("does not deduplicate requests when anchor differs", async () => {
+    mockZulipClient.messages.retrieve.mockResolvedValue({ messages: [] });
+
+    await Promise.all([
+      fetchMessagesWithNarrow([{ operator: "is", operand: "unread" }], "newest", 200, 0),
+      fetchMessagesWithNarrow([{ operator: "is", operand: "unread" }], "oldest", 200, 0),
+    ]);
+
+    expect(mockZulipClient.messages.retrieve).toHaveBeenCalledTimes(2);
+  });
+
+  it("starts a new request after previous in-flight request settles", async () => {
+    mockZulipClient.messages.retrieve.mockResolvedValue({ messages: [] });
+
+    await fetchMessagesWithNarrow([{ operator: "is", operand: "unread" }], "newest", 200, 0);
+    await fetchMessagesWithNarrow([{ operator: "is", operand: "unread" }], "newest", 200, 0);
+
+    expect(mockZulipClient.messages.retrieve).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not deduplicate requests between different instances", async () => {
+    const resolves: ((value: { messages: unknown[] }) => void)[] = [];
+    mockZulipClient.messages.retrieve.mockImplementation(
+      () =>
+        new Promise<{ messages: unknown[] }>((resolve) => {
+          resolves.push(resolve);
+        }) as never,
+    );
+
+    vi.mocked(getCurrentInstance).mockReturnValue({ ...TEST_INSTANCE, id: "instance-1" });
+    const first = fetchMessagesWithNarrow(
+      [{ operator: "is", operand: "unread" }],
+      "newest",
+      200,
+      0,
+    );
+
+    vi.mocked(getCurrentInstance).mockReturnValue({ ...TEST_INSTANCE, id: "instance-2" });
+    const second = fetchMessagesWithNarrow(
+      [{ operator: "is", operand: "unread" }],
+      "newest",
+      200,
+      0,
+    );
+
+    await Promise.resolve();
+    expect(mockZulipClient.messages.retrieve).toHaveBeenCalledTimes(2);
+
+    for (const resolve of resolves) {
+      resolve({ messages: [] });
+    }
+    await Promise.all([first, second]);
   });
 });
 

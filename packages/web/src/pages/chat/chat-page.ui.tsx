@@ -376,10 +376,25 @@ export const ChatPage: React.FC = () => {
   const streamsMap = useChatListStore((s) => s.streamsMap);
   const dmsFromStore = useChatListStore((s) => s.dms());
   const parsedStream = streamSlug ? parseStreamSlug(streamSlug) : null;
-  const activeStream =
-    parsedStream?.stream_id != null
-      ? (streamsMap.get(parsedStream.stream_id)?.name ?? parsedStream.stream_name)
-      : parsedStream?.stream_name;
+  const resolvedStreamName = useMemo(() => {
+    if (!parsedStream) return "";
+    if (parsedStream.stream_id != null) {
+      return streamsMap.get(parsedStream.stream_id)?.name ?? parsedStream.stream_name;
+    }
+    return parsedStream.stream_name;
+  }, [parsedStream, streamsMap]);
+  const resolvedStreamId = useMemo(() => {
+    if (!parsedStream) return null;
+    if (parsedStream.stream_id != null) return parsedStream.stream_id;
+    if (!resolvedStreamName) return null;
+    return (
+      Array.from(streamsMap.entries()).find(
+        ([, stream]) => stream.name === resolvedStreamName,
+      )?.[0] ?? null
+    );
+  }, [parsedStream, resolvedStreamName, streamsMap]);
+  const streamRouteTopic = topicName ?? "general";
+  const activeStream = parsedStream ? resolvedStreamName : undefined;
   const rawDmUserIds: number[] | null =
     dmIdParam == null || dmIdParam === "" ? null : parseDmSlugToUserIds(dmIdParam);
   const setExpandedStreamSlug = useSidebarConfigStore((s) => s.setExpandedStreamSlug);
@@ -1020,44 +1035,54 @@ export const ChatPage: React.FC = () => {
     return () => clearTimeout(t);
   }, [toastMessage]);
 
-  // Load messages only when channel opens: depends only on URL (streamSlug, topicName)
+  // Синхронизируем stream-контекст с маршрутом без загрузки сообщений.
   useEffect(() => {
     if (!streamSlug) {
+      if (!dmIdParam || dmIdParam === "") {
+        setContext(null);
+      }
+      return;
+    }
+    if (!resolvedStreamName || resolvedStreamId == null) {
       setContext(null);
+      return;
+    }
+    setContext({
+      type: "stream",
+      streamId: resolvedStreamId,
+      streamName: resolvedStreamName,
+      topic: streamRouteTopic,
+    });
+  }, [dmIdParam, streamSlug, setContext, resolvedStreamId, resolvedStreamName, streamRouteTopic]);
+
+  // Загружаем стартовую порцию stream-сообщений только по параметрам маршрута и фокусу.
+  useEffect(() => {
+    if (!streamSlug) {
       setMessagesLoading(false);
       return;
     }
-    const parsed = parseStreamSlug(streamSlug);
-    const streamName =
-      parsed.stream_id != null
-        ? (streamsMap.get(parsed.stream_id)?.name ?? parsed.stream_name)
-        : parsed.stream_name;
-    const streamId =
-      parsed.stream_id ??
-      (streamName
-        ? Array.from(streamsMap.entries()).find(([, s]) => s.name === streamName)?.[0]
-        : undefined);
-    const topic = topicName ?? "general";
-    if (streamName && streamId != null) {
-      setContext({ type: "stream", streamId, streamName, topic });
-      setMessagesLoading(true);
-    } else {
-      setContext(null);
+    if (!resolvedStreamName) {
+      setMessagesLoading(false);
+      return;
     }
-    if (!streamName) return;
+
+    setMessagesLoading(true);
     let cancelled = false;
     const loadPromise =
       focusedMessageId != null
         ? fetchMessagesWithNarrow(
             [
-              { operator: "stream", operand: streamName },
-              { operator: "topic", operand: topic },
+              { operator: "stream", operand: resolvedStreamName },
+              { operator: "topic", operand: streamRouteTopic },
             ],
             focusedMessageId,
             60,
             60,
           )
-        : fetchMessages(streamName, topic === "general" ? undefined : topic);
+        : fetchMessages(
+            resolvedStreamName,
+            streamRouteTopic === "general" ? undefined : streamRouteTopic,
+          );
     loadPromise
       .then((m) => {
         if (!cancelled) {
@@ -1082,9 +1107,8 @@ export const ChatPage: React.FC = () => {
     };
   }, [
     streamSlug,
-    topicName,
-    streamsMap,
-    setContext,
+    resolvedStreamName,
+    streamRouteTopic,
     setMessagesInStore,
     focusedMessageId,
     setHasOlderMessages,
