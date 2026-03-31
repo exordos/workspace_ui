@@ -19,6 +19,26 @@ export interface ChatInfoTopic {
   unreadCount: number;
 }
 
+export type ChatInfoContext =
+  | {
+      kind: "none";
+      instanceId: string | null;
+    }
+  | {
+      kind: "dm";
+      instanceId: string;
+      dmName: string;
+      participantIds: number[];
+    }
+  | {
+      kind: "stream";
+      instanceId: string;
+      streamId: number;
+      streamName: string;
+      isMuted: boolean;
+      topics: ChatInfoTopic[];
+    };
+
 export interface ChatInfoData {
   /** Discriminant: "dm" for direct messages, "stream" for channels/topics. */
   type: "dm" | "stream";

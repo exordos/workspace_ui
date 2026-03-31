@@ -10,7 +10,7 @@ import {
 } from "~/entities/draft";
 import type { DraftType } from "~/entities/draft";
 import { useCurrentChatMessagesStore } from "~/entities/message";
-import { ensureUserStatusLoaded, formatUserStatusLabel, useUsersStore } from "~/entities/user";
+import { formatUserStatusLabel, useUsersStore } from "~/entities/user";
 import type { AiMessageContext, AiReplyRequest } from "~/features/ai-reply";
 import { useChatInfoStore } from "~/features/chat-info";
 import { JitsiCallModal } from "~/features/jitsi-call";
@@ -204,15 +204,6 @@ function ForwardMessageModalBody({
     );
   }, [allUsers, dmSearch]);
 
-  useEffect(() => {
-    if (tab !== "dm") {
-      return;
-    }
-    for (const user of userList) {
-      void ensureUserStatusLoaded(user.user_id);
-    }
-  }, [tab, userList]);
-
   return (
     <>
       <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
@@ -385,10 +376,25 @@ export const ChatPage: React.FC = () => {
   const streamsMap = useChatListStore((s) => s.streamsMap);
   const dmsFromStore = useChatListStore((s) => s.dms());
   const parsedStream = streamSlug ? parseStreamSlug(streamSlug) : null;
-  const activeStream =
-    parsedStream?.stream_id != null
-      ? (streamsMap.get(parsedStream.stream_id)?.name ?? parsedStream.stream_name)
-      : parsedStream?.stream_name;
+  const resolvedStreamName = useMemo(() => {
+    if (!parsedStream) return "";
+    if (parsedStream.stream_id != null) {
+      return streamsMap.get(parsedStream.stream_id)?.name ?? parsedStream.stream_name;
+    }
+    return parsedStream.stream_name;
+  }, [parsedStream, streamsMap]);
+  const resolvedStreamId = useMemo(() => {
+    if (!parsedStream) return null;
+    if (parsedStream.stream_id != null) return parsedStream.stream_id;
+    if (!resolvedStreamName) return null;
+    return (
+      Array.from(streamsMap.entries()).find(
+        ([, stream]) => stream.name === resolvedStreamName,
+      )?.[0] ?? null
+    );
+  }, [parsedStream, resolvedStreamName, streamsMap]);
+  const streamRouteTopic = topicName ?? "general";
+  const activeStream = parsedStream ? resolvedStreamName : undefined;
   const rawDmUserIds: number[] | null =
     dmIdParam == null || dmIdParam === "" ? null : parseDmSlugToUserIds(dmIdParam);
   const setExpandedStreamSlug = useSidebarConfigStore((s) => s.setExpandedStreamSlug);
@@ -438,11 +444,6 @@ export const ChatPage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [partnerUserId, isDmView, isGroupDmView]);
-
-  useEffect(() => {
-    if (!partnerUserId || !isDmView || isGroupDmView) return;
-    void ensureUserStatusLoaded(partnerUserId);
   }, [partnerUserId, isDmView, isGroupDmView]);
 
   const messages = useCurrentChatMessagesStore((s) => s.messages);
@@ -516,15 +517,6 @@ export const ChatPage: React.FC = () => {
       }),
     [readersUserIds, allUsers],
   );
-
-  useEffect(() => {
-    if (!readReceiptsOpen) {
-      return;
-    }
-    for (const uid of readersUserIds) {
-      void ensureUserStatusLoaded(uid);
-    }
-  }, [readReceiptsOpen, readersUserIds]);
 
   useEffect(() => {
     if (forwardMessageId == null) {
@@ -1043,44 +1035,54 @@ export const ChatPage: React.FC = () => {
     return () => clearTimeout(t);
   }, [toastMessage]);
 
-  // Load messages only when channel opens: depends only on URL (streamSlug, topicName)
+  // Синхронизируем stream-контекст с маршрутом без загрузки сообщений.
   useEffect(() => {
     if (!streamSlug) {
+      if (!dmIdParam || dmIdParam === "") {
+        setContext(null);
+      }
+      return;
+    }
+    if (!resolvedStreamName || resolvedStreamId == null) {
       setContext(null);
+      return;
+    }
+    setContext({
+      type: "stream",
+      streamId: resolvedStreamId,
+      streamName: resolvedStreamName,
+      topic: streamRouteTopic,
+    });
+  }, [dmIdParam, streamSlug, setContext, resolvedStreamId, resolvedStreamName, streamRouteTopic]);
+
+  // Загружаем стартовую порцию stream-сообщений только по параметрам маршрута и фокусу.
+  useEffect(() => {
+    if (!streamSlug) {
       setMessagesLoading(false);
       return;
     }
-    const parsed = parseStreamSlug(streamSlug);
-    const streamName =
-      parsed.stream_id != null
-        ? (streamsMap.get(parsed.stream_id)?.name ?? parsed.stream_name)
-        : parsed.stream_name;
-    const streamId =
-      parsed.stream_id ??
-      (streamName
-        ? Array.from(streamsMap.entries()).find(([, s]) => s.name === streamName)?.[0]
-        : undefined);
-    const topic = topicName ?? "general";
-    if (streamName && streamId != null) {
-      setContext({ type: "stream", streamId, streamName, topic });
-      setMessagesLoading(true);
-    } else {
-      setContext(null);
+    if (!resolvedStreamName) {
+      setMessagesLoading(false);
+      return;
     }
-    if (!streamName) return;
+
+    setMessagesLoading(true);
     let cancelled = false;
     const loadPromise =
       focusedMessageId != null
         ? fetchMessagesWithNarrow(
             [
-              { operator: "stream", operand: streamName },
-              { operator: "topic", operand: topic },
+              { operator: "stream", operand: resolvedStreamName },
+              { operator: "topic", operand: streamRouteTopic },
             ],
             focusedMessageId,
             60,
             60,
           )
-        : fetchMessages(streamName, topic === "general" ? undefined : topic);
+        : fetchMessages(
+            resolvedStreamName,
+            streamRouteTopic === "general" ? undefined : streamRouteTopic,
+          );
     loadPromise
       .then((m) => {
         if (!cancelled) {
@@ -1105,26 +1107,40 @@ export const ChatPage: React.FC = () => {
     };
   }, [
     streamSlug,
-    topicName,
-    streamsMap,
-    setContext,
+    resolvedStreamName,
+    streamRouteTopic,
     setMessagesInStore,
     focusedMessageId,
     setHasOlderMessages,
     setHasNewerMessages,
   ]);
 
-  // Load messages only when DM opens: depends on dmIdParam (string), not activeDmUserIds array
+  // Синхронизируем контекст активного DM с маршрутом и текущим пользователем.
   useEffect(() => {
     if (!dmIdParam || dmIdParam === "") {
       if (!streamSlug) setContext(null);
       return;
     }
+    if (currentUserId == null) return;
+
     const routeUserIds = parseDmSlugToUserIds(dmIdParam);
     const userIds = normalizeDmRouteUserIds(routeUserIds, currentUserId);
     if (userIds.length === 0) return;
+
     const dmKey = dmRouteKey(userIds, currentUserId);
     setContext({ type: "dm", dmKey });
+  }, [dmIdParam, streamSlug, currentUserId, setContext]);
+
+  // Загружаем сообщения DM при изменении маршрута или фокуса на сообщении.
+  useEffect(() => {
+    if (!dmIdParam || dmIdParam === "") return;
+
+    const routeUserIds = parseDmSlugToUserIds(dmIdParam);
+    const userIds = Array.from(new Set(routeUserIds)).filter(
+      (userId) => Number.isSafeInteger(userId) && userId > 0,
+    );
+    if (userIds.length === 0) return;
+
     setMessagesLoading(true);
     let cancelled = false;
     const id = userIds.length === 1 ? userIds[0]! : userIds;
@@ -1154,16 +1170,7 @@ export const ChatPage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [
-    dmIdParam,
-    currentUserId,
-    setContext,
-    setMessagesInStore,
-    focusedMessageId,
-    setHasOlderMessages,
-    setHasNewerMessages,
-    streamSlug,
-  ]);
+  }, [dmIdParam, setMessagesInStore, focusedMessageId, setHasOlderMessages, setHasNewerMessages]);
 
   const PAGE_SIZE = 50;
 

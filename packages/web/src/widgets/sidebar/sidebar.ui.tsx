@@ -2,7 +2,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import React, { useState, useMemo, useEffect, useCallback, useId, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list";
-import { ensureUserStatusLoaded, formatUserStatusLabel, useUsersStore } from "~/entities/user";
+import { formatUserStatusLabel, useUsersStore } from "~/entities/user";
 import { createChannel } from "~/features/create-chat";
 import { usePinStore } from "~/features/pin-chat";
 import { t } from "~/i18n";
@@ -34,6 +34,7 @@ export const Sidebar: React.FC<SidebarUiProps> = ({
   activeDmIdParam = null,
   sidebarDms,
   sidebarChats,
+  sidebarChatsLoading = false,
   pinReorderMode = false,
   onExitPinReorderMode,
   onFolderAssignmentsChanged,
@@ -106,6 +107,7 @@ export const Sidebar: React.FC<SidebarUiProps> = ({
   );
   const filteredFolderChats = useMemo(() => {
     if (!pinReorderMode) return filteredChats;
+    // В режиме reorder показываем только закрепленные чаты текущей папки.
     return filteredChats.filter((chat) =>
       pinnedChatIdSetForReorder.has(chatToWorkspaceChatId(chat)),
     );
@@ -199,6 +201,7 @@ export const Sidebar: React.FC<SidebarUiProps> = ({
             onToggleStream={handleToggleStream}
             onNewTopic={handleNewTopic}
             reorderPinnedOnly={pinReorderMode}
+            loading={sidebarChatsLoading}
             showEmptyState={sidebarChats != null && normalizedQuery.length === 0}
             onFolderAssignmentsChanged={onFolderAssignmentsChanged}
           />
@@ -337,15 +340,6 @@ function CreateChatDialog({
       setCreating(false);
     });
   }, [open]);
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    for (const user of filteredUsers.slice(0, 40)) {
-      void ensureUserStatusLoaded(user.user_id);
-    }
-  }, [open, filteredUsers]);
 
   const handleCreateGroup = useCallback(() => {
     if (groupSelectedUserIds.size === 0 || currentUserId == null) return;

@@ -198,6 +198,9 @@ describe("usersStore", () => {
         away: false,
       });
       expect(useUsersStore.getState().getUser(1)?.statusFetchedAt).toBe(12345);
+      expect(useUsersStore.getState().getUser(1)?.statusFetchState).toBe("ready");
+      expect(useUsersStore.getState().getUser(1)?.statusErrorKind).toBeUndefined();
+      expect(useUsersStore.getState().getUser(1)?.statusNextRetryAt).toBeUndefined();
     });
 
     it("setStatus clears status when null is passed", () => {
@@ -216,6 +219,23 @@ describe("usersStore", () => {
     it("setStatus is a no-op for unknown users", () => {
       useUsersStore.getState().setStatus(999, { text: "Ghost", away: false });
       expect(useUsersStore.getState().users.size).toBe(0);
+    });
+
+    it("setStatusFetchMeta updates fetch-state metadata", () => {
+      useUsersStore.getState().mergeUser({ user_id: 1, full_name: "Alice" });
+
+      useUsersStore.getState().setStatusFetchMeta(1, {
+        fetchState: "error",
+        errorKind: "transient",
+        nextRetryAt: 999_000,
+        fetchedAt: 777_000,
+      });
+
+      const user = useUsersStore.getState().getUser(1);
+      expect(user?.statusFetchState).toBe("error");
+      expect(user?.statusErrorKind).toBe("transient");
+      expect(user?.statusNextRetryAt).toBe(999_000);
+      expect(user?.statusFetchedAt).toBe(777_000);
     });
   });
 

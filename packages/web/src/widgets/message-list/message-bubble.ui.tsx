@@ -3,7 +3,7 @@ import EmojiPicker, { type EmojiClickData, Theme } from "emoji-picker-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCallParticipantsStore } from "~/entities/call";
 import { useDownloadStore } from "~/entities/download";
-import { ensureUserStatusLoaded, formatUserStatusLabel, useUsersStore } from "~/entities/user";
+import { formatUserStatusLabel, useUsersStore } from "~/entities/user";
 import { useMediaViewerStore } from "~/features/media-viewer";
 import { t } from "~/i18n";
 import {
@@ -445,13 +445,6 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
         attachmentStatuses.clear();
       };
     }, []);
-
-    useEffect(() => {
-      if (!Number.isFinite(message.sender_id) || message.sender_id <= 0) {
-        return;
-      }
-      void ensureUserStatusLoaded(message.sender_id);
-    }, [message.sender_id]);
 
     // Load protected uploads with authenticated fetch to avoid browser auth popups.
     useEffect(() => {

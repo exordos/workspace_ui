@@ -1469,29 +1469,56 @@ export async function fetchMessages(
   if (normalizedTopic !== undefined && normalizedStream === undefined) {
     throw new Error("fetchMessages.stream is required when topic is provided");
   }
-  const client = await getClient();
-  const narrow: { operator: string; operand: string }[] = [];
+  const narrow: MessagesApiNarrow[] = [];
   if (normalizedStream) narrow.push({ operator: "stream", operand: normalizedStream });
   if (normalizedTopic) narrow.push({ operator: "topic", operand: normalizedTopic });
   if (q?.trim()) narrow.push({ operator: "search", operand: q.trim() });
-  try {
-    const data = (await client.messages.retrieve({
-      narrow: narrow.length ? narrow : undefined,
-      anchor: "newest",
-      num_before: 100,
-      num_after: 0,
-    })) as { result?: string; messages?: Parameters<typeof mapZulipMessage>[0][] };
-    if (data.result === "error") return [];
-    const list = data.messages ?? [];
-    return list.map(mapZulipMessage);
-  } catch {
-    return [];
-  }
+  const page = await fetchMessagesWithNarrowPage(narrow, "newest", 100, 0);
+  return page.messages;
 }
 
-/** Generic narrow-based message fetch with configurable anchor and counts. */
+interface MessagesApiNarrow {
+  operator: string;
+  operand: string | number | number[];
+}
+
+// Карта in-flight запросов страниц сообщений для дедупликации параллельных вызовов.
+const messagesPageInFlight = new Map<string, Promise<MessagesPageResult>>();
+
+function normalizeNarrowOperandForInFlightKey(
+  operand: string | number | number[],
+): string | number {
+  if (!Array.isArray(operand)) {
+    return operand;
+  }
+  return Array.from(new Set(operand))
+    .sort((a, b) => a - b)
+    .join(",");
+}
+
+function buildMessagesPageInFlightKey(
+  narrow: readonly MessagesApiNarrow[],
+  anchor: string | number,
+  numBefore: number,
+  numAfter: number,
+): string {
+  const instanceId = getCurrentInstance()?.id ?? "__no_instance__";
+  const normalizedNarrow = narrow.map((entry) => ({
+    operator: entry.operator,
+    operand: normalizeNarrowOperandForInFlightKey(entry.operand),
+  }));
+  return JSON.stringify({
+    instanceId,
+    narrow: normalizedNarrow,
+    anchor,
+    numBefore,
+    numAfter,
+  });
+}
+
+/** Универсальная загрузка сообщений по narrow с настраиваемыми anchor и лимитами. */
 export async function fetchMessagesWithNarrow(
-  narrow: { operator: string; operand: string | number | number[] }[],
+  narrow: MessagesApiNarrow[],
   anchor: string | number = "newest",
   numBefore = 100,
   numAfter = 0,
@@ -1505,9 +1532,9 @@ export interface MessagesPageResult {
   foundOldest: boolean;
 }
 
-/** Generic narrow-based message fetch with pagination metadata. */
+/** Универсальная загрузка страницы сообщений по narrow с метаданными пагинации. */
 export async function fetchMessagesWithNarrowPage(
-  narrow: { operator: string; operand: string | number | number[] }[],
+  narrow: MessagesApiNarrow[],
   anchor: string | number = "newest",
   numBefore = 100,
   numAfter = 0,
@@ -1515,27 +1542,47 @@ export async function fetchMessagesWithNarrowPage(
   const validatedAnchor = validateMessagesApiAnchor(anchor, "fetchMessagesWithNarrowPage");
   const validatedNumBefore = validateNonNegativeInteger(numBefore, "numBefore");
   const validatedNumAfter = validateNonNegativeInteger(numAfter, "numAfter");
-  const client = await getClient();
-  try {
-    const data = (await client.messages.retrieve({
-      narrow: narrow.length > 0 ? narrow : undefined,
-      anchor: validatedAnchor,
-      num_before: validatedNumBefore,
-      num_after: validatedNumAfter,
-    })) as {
-      result?: string;
-      messages?: Parameters<typeof mapZulipMessage>[0][];
-      found_oldest?: boolean;
-      foundOldest?: boolean;
-    };
-    if (data.result === "error") return { messages: [], foundOldest: false };
-    return {
-      messages: (data.messages ?? []).map(mapZulipMessage),
-      foundOldest: data.found_oldest ?? data.foundOldest ?? false,
-    };
-  } catch {
-    return { messages: [], foundOldest: false };
+  const requestKey = buildMessagesPageInFlightKey(
+    narrow,
+    validatedAnchor,
+    validatedNumBefore,
+    validatedNumAfter,
+  );
+  const inFlight = messagesPageInFlight.get(requestKey);
+  if (inFlight) {
+    return inFlight;
   }
+
+  const request = (async () => {
+    const client = await getClient();
+    try {
+      const data = (await client.messages.retrieve({
+        narrow: narrow.length > 0 ? narrow : undefined,
+        anchor: validatedAnchor,
+        num_before: validatedNumBefore,
+        num_after: validatedNumAfter,
+      })) as {
+        result?: string;
+        messages?: Parameters<typeof mapZulipMessage>[0][];
+        found_oldest?: boolean;
+        foundOldest?: boolean;
+      };
+      if (data.result === "error") return { messages: [], foundOldest: false };
+      return {
+        messages: (data.messages ?? []).map(mapZulipMessage),
+        foundOldest: data.found_oldest ?? data.foundOldest ?? false,
+      };
+    } catch {
+      return { messages: [], foundOldest: false };
+    }
+  })();
+
+  messagesPageInFlight.set(requestKey, request);
+  return request.finally(() => {
+    if (messagesPageInFlight.get(requestKey) === request) {
+      messagesPageInFlight.delete(requestKey);
+    }
+  });
 }
 
 /** Fetches a page of all messages (no narrow) via API pipeline. */
@@ -1576,26 +1623,41 @@ export async function fetchAllMessagesPage(
   };
 }
 
-/** DM narrow format: operand is an array of participant user_ids, e.g. [427]. */
+/** Формат DM narrow: operand — массив user_id участников, например [427]. */
 interface DmNarrow {
   negated: false;
   operator: "dm";
   operand: number[];
 }
 
-// Synthetic ID offset for group DMs in the sidebar — must not be sent to the API
+// Смещение synthetic-id для групповых DM в sidebar — такие id нельзя отправлять в API.
 
 const GROUP_DM_ID_OFFSET = 2_000_000;
+// Карта in-flight запросов DM-истории для дедупликации параллельных вызовов.
+const dmMessagesInFlight = new Map<string, Promise<MockMessage[]>>();
 
-/** Fetches DM messages (1-on-1 or group). Pass the other user's [userId] for 1-on-1. */
+function buildDmMessagesInFlightKey(userIds: readonly number[]): string {
+  return Array.from(new Set(userIds))
+    .sort((a, b) => a - b)
+    .join(",");
+}
+
+/** Загружает сообщения DM (1:1 или групповой). Для 1:1 передайте id собеседника. */
 export async function fetchDmMessages(userIds: number | number[]): Promise<MockMessage[]> {
-  const client = await getClient();
   const rawIds = Array.isArray(userIds) ? userIds : [userIds];
   if (rawIds.length === 0) return [];
-  const ids = rawIds.map((userId, index) =>
+  const validatedIds = rawIds.map((userId, index) =>
     guard.userId(userId, `fetchDmMessages.userIds[${index}]`),
   );
+  const ids = Array.from(new Set(validatedIds)).sort((a, b) => a - b);
   if (ids.some((id) => id >= GROUP_DM_ID_OFFSET)) return [];
+
+  const requestKey = buildDmMessagesInFlightKey(ids);
+  const inFlight = dmMessagesInFlight.get(requestKey);
+  if (inFlight) {
+    return inFlight;
+  }
+
   const params = {
     narrow: [{ negated: false, operator: "dm", operand: ids }] as DmNarrow[],
     anchor: "newest",
@@ -1604,17 +1666,27 @@ export async function fetchDmMessages(userIds: number | number[]): Promise<MockM
     client_gravatar: true,
     allow_empty_topic_name: true,
   };
-  try {
-    const data = await client.messages.retrieve(
-      params as Parameters<ZulipClient["messages"]["retrieve"]>[0],
-    );
-    const raw = data as { result?: string; messages?: Parameters<typeof mapZulipMessage>[0][] };
-    if (raw.result === "error") return [];
-    const list = raw.messages ?? [];
-    return list.map(mapZulipMessage);
-  } catch {
-    return [];
-  }
+  const request = (async () => {
+    try {
+      const client = await getClient();
+      const data = await client.messages.retrieve(
+        params as Parameters<ZulipClient["messages"]["retrieve"]>[0],
+      );
+      const raw = data as { result?: string; messages?: Parameters<typeof mapZulipMessage>[0][] };
+      if (raw.result === "error") return [];
+      const list = raw.messages ?? [];
+      return list.map(mapZulipMessage);
+    } catch {
+      return [];
+    }
+  })();
+
+  dmMessagesInFlight.set(requestKey, request);
+  return request.finally(() => {
+    if (dmMessagesInFlight.get(requestKey) === request) {
+      dmMessagesInFlight.delete(requestKey);
+    }
+  });
 }
 
 /** Fetches a single message by id. Returns null on non-ok/error response. */

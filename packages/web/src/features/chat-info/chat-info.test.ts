@@ -54,11 +54,7 @@ const STREAM_INFO: ChatInfoData = {
 
 describe("useChatInfoStore", () => {
   afterEach(() => {
-    useChatInfoStore.setState({
-      data: null,
-      loading: false,
-      error: null,
-    });
+    useChatInfoStore.getState().clear();
   });
 
   it("starts with null data and no loading", () => {

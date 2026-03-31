@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list";
 import { useCurrentChatMessagesStore } from "~/entities/message";
-import { ensureUserStatusLoaded, formatUserStatusLabel, useUsersStore } from "~/entities/user";
+import { formatUserStatusLabel, useUsersStore } from "~/entities/user";
 import { useChatInfoStore, type ChatInfoData } from "~/features/chat-info";
 import { useMediaViewerStore } from "~/features/media-viewer";
 import { useMuteStore, muteStream, unmuteStream } from "~/features/mute-chat";
@@ -301,13 +301,6 @@ function RightPanelUser({
       },
     ]);
   }, [avatarSrc, openMediaViewer, user.name]);
-
-  useEffect(() => {
-    if (user.userId == null) {
-      return;
-    }
-    void ensureUserStatusLoaded(user.userId);
-  }, [user.userId]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden text-text-primary">
@@ -665,6 +658,15 @@ const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
   const [editOpen, setEditOpen] = useState(false);
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
+  // Инвалидируем chat-info кэш только для текущего активного stream-контекста.
+  const invalidateCurrentStreamChatInfo = useCallback((targetStreamId: number) => {
+    const chatInfoState = useChatInfoStore.getState();
+    const context = chatInfoState.context;
+    if (context.kind !== "stream" || context.streamId !== targetStreamId) {
+      return;
+    }
+    chatInfoState.invalidateStream(context.instanceId, targetStreamId);
+  }, []);
 
   const handleToggleMute = useCallback(async () => {
     if (streamId == null || mutePending) return;
@@ -710,22 +712,6 @@ const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
     },
     [rightDrawer],
   );
-  const memberStatusIds = useMemo(() => {
-    if (chatInfoData?.type !== "dm" && chatInfoData?.type !== "stream") {
-      return [];
-    }
-    const ids = chatInfoData.members
-      .map((member) => member.userId)
-      .filter((userId) => Number.isFinite(userId) && userId > 0);
-    return Array.from(new Set(ids));
-  }, [chatInfoData]);
-
-  useEffect(() => {
-    for (const userId of memberStatusIds) {
-      void ensureUserStatusLoaded(userId);
-    }
-  }, [memberStatusIds]);
-
   const streamInfoName = chatInfoData?.type === "stream" ? chatInfoData.name : undefined;
   const handleOpenTopic = useCallback(
     (topicName: string) => {
@@ -804,6 +790,8 @@ const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
       description: editDescription.trim(),
     });
     if (ok) {
+      // После редактирования канала сбрасываем кэш, чтобы подтянуть свежую metadata.
+      invalidateCurrentStreamChatInfo(streamId);
       useChatListStore.getState().renameStream(streamId, trimmedName);
       const nextInfo = useChatInfoStore.getState().data;
       if (nextInfo?.type === "stream") {
@@ -830,6 +818,8 @@ const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
     setChannelActionError(null);
     const ok = await deleteStream(streamId);
     if (ok) {
+      // После удаления канала очищаем кэш, чтобы исключить stale-данные.
+      invalidateCurrentStreamChatInfo(streamId);
       const chatList = useChatListStore.getState();
       chatList.removeStream(streamId);
       useChatInfoStore.getState().clear();
