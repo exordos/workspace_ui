@@ -128,16 +128,82 @@ describe("folder-sync model orchestration", () => {
     expect(selectedIds?.has("stream:11:general")).toBe(true);
   });
 
-  it("selectFolder refreshes selected folder from network even when cache exists", async () => {
+  it("selectFolder uses cached folder items and skips network fetch", async () => {
+    // Cache-first: если items уже есть (даже если они старые), переключаемся без запроса.
     useFolderSyncStore.setState({
       instanceId: "inst-a",
       labels: { allChats: "All", personal: "Personal", channels: "Channels" },
       showSystemFolders: false,
+      folders: [
+        {
+          id: "folder-7",
+          label: "Team",
+          backgroundColor: 0,
+          systemType: "created",
+        },
+      ],
+      folderItemsByFolderId: new Map([
+        [
+          "folder-7",
+          [
+            {
+              uuid: "item-cached",
+              chatId: "dm:cached",
+              folderUuid: "folder-7",
+              orderIndex: 0,
+              pinnedAt: null,
+              createdAt: "2026-01-01T00:00:00Z",
+              updatedAt: "2026-01-01T00:00:00Z",
+            },
+          ],
+        ],
+      ]),
     });
-    vi.mocked(loadFolderSyncSnapshot).mockResolvedValue(
-      makeFolderSnapshot({ folderId: "folder-7" }),
-    );
-    vi.mocked(loadFolderItemsForSelection).mockResolvedValue([
+    await useFolderSyncStore.getState().selectFolder("folder-7");
+
+    expect(loadFolderItemsForSelection).not.toHaveBeenCalled();
+    expect(useFolderSyncStore.getState().selectedFolderChatIds?.has("dm:cached")).toBe(true);
+  });
+
+  it("selectFolder performs one fetch on cache miss and keeps loading disabled", async () => {
+    // Cache miss: разрешаем ровно один fallback-запрос, но без включения loader.
+    const itemsRequest = deferred<
+      {
+        uuid: string;
+        chatId: string;
+        folderUuid: string;
+        orderIndex: number;
+        pinnedAt: null;
+        createdAt: string;
+        updatedAt: string;
+      }[]
+    >();
+    vi.mocked(loadFolderItemsForSelection).mockReturnValue(itemsRequest.promise);
+    useFolderSyncStore.setState({
+      instanceId: "inst-a",
+      labels: { allChats: "All", personal: "Personal", channels: "Channels" },
+      showSystemFolders: false,
+      folders: [
+        {
+          id: "folder-7",
+          label: "Team",
+          backgroundColor: 0,
+          systemType: "created",
+        },
+      ],
+      selectedFolderId: "folder-1",
+      folderItemsByFolderId: new Map(),
+      loading: false,
+    });
+
+    const selectPromise = useFolderSyncStore.getState().selectFolder("folder-7");
+
+    expect(loadFolderItemsForSelection).toHaveBeenCalledTimes(1);
+    expect(loadFolderItemsForSelection).toHaveBeenCalledWith("folder-7");
+    expect(useFolderSyncStore.getState().loading).toBe(false);
+    expect(useFolderSyncStore.getState().selectedFolderChatIds?.size).toBe(0);
+
+    itemsRequest.resolve([
       {
         uuid: "item-net",
         chatId: "dm:net",
@@ -148,13 +214,38 @@ describe("folder-sync model orchestration", () => {
         updatedAt: "2026-01-01T00:00:00Z",
       },
     ]);
+    await selectPromise;
 
-    await useFolderSyncStore.getState().refresh("mutation");
-    await useFolderSyncStore.getState().selectFolder("folder-7");
-
-    expect(loadFolderItemsForSelection).toHaveBeenCalledTimes(1);
-    expect(loadFolderItemsForSelection).toHaveBeenCalledWith("folder-7");
+    expect(useFolderSyncStore.getState().loading).toBe(false);
     expect(useFolderSyncStore.getState().selectedFolderChatIds?.has("dm:net")).toBe(true);
+  });
+
+  it("selectFolder caches empty array after miss error and does not retry on repeat select", async () => {
+    // Ошибка fallback фиксируется как [] в кэше, чтобы не дергать сеть при повторном выборе.
+    vi.mocked(loadFolderItemsForSelection).mockRejectedValueOnce(new Error("network"));
+    useFolderSyncStore.setState({
+      instanceId: "inst-a",
+      labels: { allChats: "All", personal: "Personal", channels: "Channels" },
+      showSystemFolders: false,
+      folders: [
+        {
+          id: "folder-7",
+          label: "Team",
+          backgroundColor: 0,
+          systemType: "created",
+        },
+      ],
+      folderItemsByFolderId: new Map(),
+    });
+
+    await useFolderSyncStore.getState().selectFolder("folder-7");
+    expect(loadFolderItemsForSelection).toHaveBeenCalledTimes(1);
+    expect(useFolderSyncStore.getState().selectedFolderChatIds?.size).toBe(0);
+    expect(useFolderSyncStore.getState().folderItemsByFolderId.get("folder-7")).toEqual([]);
+
+    await useFolderSyncStore.getState().selectFolder("folder-7");
+    expect(loadFolderItemsForSelection).toHaveBeenCalledTimes(1);
+    expect(useFolderSyncStore.getState().selectedFolderChatIds?.size).toBe(0);
   });
 
   it("performs exactly one fallback fetch when selected folder items failed in snapshot", async () => {

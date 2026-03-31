@@ -154,23 +154,33 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
         stateBeforeSelect.folders,
         nextFolderId,
       );
-      const cachedItemsForSelectedFolder = shouldLoadSelectedFolderItems
-        ? stateBeforeSelect.folderItemsByFolderId.get(nextFolderId)
+      // Cache hit определяем через Map.has, чтобы отличать "нет данных" от "кэшировано пусто".
+      const hasCachedItemsForSelectedFolder =
+        shouldLoadSelectedFolderItems && stateBeforeSelect.folderItemsByFolderId.has(nextFolderId);
+      const cachedItemsForSelectedFolder = hasCachedItemsForSelectedFolder
+        ? (stateBeforeSelect.folderItemsByFolderId.get(nextFolderId) ?? [])
         : undefined;
 
       set({
         selectedFolderId: nextFolderId,
         error: null,
         selectedFolderChatIds:
-          shouldLoadSelectedFolderItems && cachedItemsForSelectedFolder
+          shouldLoadSelectedFolderItems && cachedItemsForSelectedFolder != null
             ? toChatIdSet(cachedItemsForSelectedFolder)
-            : null,
-        // Для created-папок включаем loading до сетевого ответа.
-        loading: shouldLoadSelectedFolderItems,
+            : shouldLoadSelectedFolderItems
+              ? // При cache miss сразу показываем "пустую папку", чтобы не светить чаты из all.
+                new Set<string>()
+              : null,
+        // Переключение папки всегда без loader: сначала cache-first, затем best-effort fallback.
+        loading: false,
       });
 
       if (!shouldLoadSelectedFolderItems) {
         // Для системных папок items не нужны: список строится из общего chat-list.
+        return;
+      }
+      // Для created-папки с кэшем сеть не трогаем.
+      if (hasCachedItemsForSelectedFolder) {
         return;
       }
 
@@ -195,10 +205,12 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
           if (state.selectedFolderId !== nextFolderId) {
             return state;
           }
-          // На ошибке оставляем stale items, если они уже были в кэше.
-          const staleItems = state.folderItemsByFolderId.get(nextFolderId);
+          const nextFolderItemsByFolderId = new Map(state.folderItemsByFolderId);
+          // Фиксируем miss как пустой кэш до следующего фонового refresh.
+          nextFolderItemsByFolderId.set(nextFolderId, []);
           return {
-            selectedFolderChatIds: staleItems ? toChatIdSet(staleItems) : null,
+            folderItemsByFolderId: nextFolderItemsByFolderId,
+            selectedFolderChatIds: new Set<string>(),
             loading: false,
             error: "folder-sync:select_failed",
           };
