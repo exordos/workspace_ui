@@ -1,0 +1,44 @@
+import React from "react";
+import { t } from "~/i18n/i18n";
+
+export interface ChatPageDeleteConfirmBarProps {
+  mode: "single" | "bulk";
+  bulkCount?: number;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+export const ChatPageDeleteConfirmBar = React.memo(function ChatPageDeleteConfirmBar({
+  mode,
+  bulkCount,
+  onConfirm,
+  onCancel,
+}: ChatPageDeleteConfirmBarProps) {
+  return (
+    <div
+      className="bg-notice-base/10 flex flex-shrink-0 items-center gap-3 border-t border-border-subtle px-4 py-2"
+      role="alertdialog"
+      aria-label={t("message.deleteConfirm")}
+    >
+      <span className="flex-1 text-sm text-text-primary">
+        {mode === "bulk" && bulkCount != null
+          ? t("message.deleteSelectedConfirm", { count: bulkCount })
+          : t("message.deleteConfirm")}
+      </span>
+      <button
+        type="button"
+        className="hover:bg-notice-base/90 text-badge-text rounded-lg bg-notice-base px-3 py-1 text-sm"
+        onClick={onConfirm}
+      >
+        {t("message.delete")}
+      </button>
+      <button
+        type="button"
+        className="rounded-lg px-3 py-1 text-sm text-text-muted hover:text-text-primary"
+        onClick={onCancel}
+      >
+        {t("common.cancel")}
+      </button>
+    </div>
+  );
+});

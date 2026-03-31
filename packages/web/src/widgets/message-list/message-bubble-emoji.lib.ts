@@ -43,10 +43,15 @@ export function getReactionDisplayChar(reaction: Reaction): string {
   return EMOJI_NAME_TO_CHAR[reaction.emoji_name] ?? reaction.emoji_name;
 }
 
+export type GroupedReaction = {
+  key: string;
+  count: number;
+  userIds: number[];
+  displayChar: string;
+};
+
 /** Group reactions by (emoji_name, reaction_type): { count, userIds, displayChar }. */
-export function groupReactions(
-  reactions: Reaction[],
-): { key: string; count: number; userIds: number[]; displayChar: string }[] {
+export function groupReactions(reactions: Reaction[]): GroupedReaction[] {
   const map = new Map<string, { userIds: number[]; displayChar: string }>();
   for (const r of reactions) {
     const key = `${r.reaction_type}:${r.emoji_name}`;

@@ -1,25 +1,19 @@
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import EmojiPicker, { type EmojiClickData, Theme } from "emoji-picker-react";
+import type { EmojiClickData } from "emoji-picker-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useCallParticipantsStore } from "~/entities/call/call.model";
 import { useDownloadStore } from "~/entities/download/download.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
 import { t } from "~/i18n/i18n";
 import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
-import type {
-  MockMessage,
-  MockMessageDeliveryStatus,
-  Reaction,
-} from "~/shared/api/zulip.types";
+import type { MockMessage, MockMessageDeliveryStatus } from "~/shared/api/zulip.types";
 import { WORKSPACE_ORIGIN, WORKSPACE_UPLOADS_ORIGIN } from "~/shared/config/constants";
 import { buildAuthHeader } from "~/shared/lib/auth-guard";
 import { formatMessageTime, getPresenceState } from "~/shared/lib/format";
 import { sanitizeHtml } from "~/shared/lib/html";
-import { getJitsiMeetingUrl, parseJitsiUrl } from "~/shared/lib/jitsi";
+import { getJitsiMeetingUrl } from "~/shared/lib/jitsi";
 import { Avatar } from "~/shared/ui/avatar";
-import { Icon, type IconName } from "~/shared/ui/icon";
+import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import {
   deriveAttachmentFileName,
@@ -29,7 +23,24 @@ import {
 import { resolveAvatarSrc } from "./message-avatar.lib";
 import { resolveJitsiLocationName } from "./message-jitsi-location.lib";
 import { normalizeMediaUrl, type MessageMediaGallery } from "./message-list-media.lib";
-import { EMOJI_NAME_TO_CHAR, QUICK_REACTIONS, groupReactions } from "./message-bubble-emoji.lib";
+import {
+  BASE_CONTEXT_SECTIONS,
+  JITSI_CONTEXT_SECTIONS,
+  LABEL_TO_ACTION,
+  type ContextItemLabel,
+} from "./message-bubble-context.lib";
+import { MessageBubbleContextMenu } from "./message-bubble-context-menu.ui";
+import type { MessageBubbleCallbacks, MessageBubbleProps } from "./message-bubble.types";
+import { groupReactions } from "./message-bubble-emoji.lib";
+import { MessageBubbleJitsiCard } from "./message-bubble-jitsi-card.ui";
+import { MessageBubbleOwnDeliveryIndicator } from "./message-bubble-own-delivery-indicator.ui";
+import {
+  AUTH_MEDIA_POSTER_DATA_ATTR,
+  AUTH_MEDIA_SRC_DATA_ATTR,
+  fetchProtectedUploadBlob,
+  protectUserUploadMediaSources,
+} from "./message-bubble-protected-media.lib";
+import { MessageBubbleReactionsRow } from "./message-bubble-reactions-row.ui";
 
 /** Base URL for message images (uploads): when realm === workspace, use origin + api/v1. */
 function getMessageImagesBaseUrl(): string | undefined {
@@ -40,105 +51,8 @@ function getMessageImagesBaseUrl(): string | undefined {
   return realm || WORKSPACE_UPLOADS_ORIGIN || undefined;
 }
 
-export interface MessageBubbleCallbacks {
-  onReply?: (message: MockMessage, selectedText?: string) => void;
-  onEdit?: (message: MockMessage) => void;
-  onDelete?: (message: MockMessage) => void;
-  onCopy?: (message: MockMessage) => void;
-  onForward?: (message: MockMessage, selectedText?: string) => void;
-  onStar?: (message: MockMessage) => void;
-  onSelect?: (message: MockMessage) => void;
-  onToggleSelect?: (message: MockMessage) => void;
-  onAddReaction?: (messageId: number, emojiName: string) => void;
-  onRemoveReaction?: (messageId: number, emojiName: string) => void;
-  onOpenJitsiCall?: (url: string, locationName?: string) => void;
-  onViews?: (message: MockMessage) => void;
-  onOpenInChat?: (message: MockMessage) => void;
-  onAuthorClick?: (userId: number) => void;
-}
+export type { MessageBubbleCallbacks, MessageBubbleProps } from "./message-bubble.types";
 
-interface MessageBubbleProps {
-  message: MockMessage;
-  isOwn?: boolean;
-  /** Show avatar (for a standalone message; in a group the avatar is rendered by the outer block). */
-  showAvatar?: boolean;
-  /** Show sender name (only for the first message in a consecutive group). */
-  showSenderName?: boolean;
-  /** Message inside a sender group: avatar is rendered outside, content has no avatar column. */
-  inSenderGroup?: boolean;
-  currentUserId?: number;
-  selectionMode?: boolean;
-  isSelected?: boolean;
-  isFocused?: boolean;
-  mediaGallery?: MessageMediaGallery;
-  callbacks?: MessageBubbleCallbacks;
-}
-
-function formatJitsiRoomName(jitsiUrl: string): string {
-  const parsed = parseJitsiUrl(jitsiUrl);
-  const roomName = parsed?.roomName?.trim() ?? "";
-  if (roomName.length === 0) return "";
-  return roomName.replace(/[-_]+/g, " ").trim();
-}
-
-function getAvatarInitials(name: string): string {
-  const trimmed = name.trim();
-  if (trimmed.length === 0) return "?";
-  const parts = trimmed.split(/\s+/).filter((part) => part.length > 0);
-  const first = parts[0]?.[0] ?? "";
-  const second = parts[1]?.[0] ?? "";
-  const initials = `${first}${second}`.toUpperCase();
-  return initials.length > 0 ? initials : "?";
-}
-
-const CONTEXT_ITEMS_BY_LABEL = {
-  joinCall: { iconName: "phone" },
-  copyCallLink: { iconName: "copy" },
-  reply: { iconName: "reply" },
-  forward: { iconName: "forward" },
-  openInChat: { iconName: "chatBubble" },
-  copy: { iconName: "copy" },
-  views: { iconName: "visibility" },
-  star: { iconName: "star" },
-  select: { iconName: "check" },
-  edit: { iconName: "pen" },
-  delete: { iconName: "delete" },
-} as const satisfies Record<string, { iconName: IconName }>;
-
-type ContextItemLabel = keyof typeof CONTEXT_ITEMS_BY_LABEL;
-
-const BASE_CONTEXT_SECTIONS = [
-  ["reply", "forward", "openInChat"],
-  ["copy", "views"],
-  ["star", "select"],
-  ["edit", "delete"],
-] as const satisfies readonly (readonly ContextItemLabel[])[];
-
-const JITSI_CONTEXT_SECTIONS = [
-  ["joinCall", "copyCallLink"],
-  ["reply", "forward", "openInChat"],
-  ["copy", "views"],
-  ["star", "select"],
-  ["edit", "delete"],
-] as const satisfies readonly (readonly ContextItemLabel[])[];
-
-const LABEL_TO_ACTION = {
-  views: "onViews",
-  reply: "onReply",
-  edit: "onEdit",
-  copy: "onCopy",
-  forward: "onForward",
-  star: "onStar",
-  delete: "onDelete",
-  select: "onSelect",
-  openInChat: "onOpenInChat",
-} as const satisfies Partial<Record<ContextItemLabel, keyof MessageBubbleCallbacks>>;
-
-const EMPTY_PARTICIPANTS: never[] = [];
-const AUTH_MEDIA_SRC_DATA_ATTR = "data-auth-src";
-const AUTH_MEDIA_POSTER_DATA_ATTR = "data-auth-poster";
-const AUTH_IMAGE_PLACEHOLDER_SRC =
-  "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
 const ATTACHMENT_LINK_BASE_CLASSES = [
   "inline-flex",
   "max-w-[220px]",
@@ -175,120 +89,6 @@ function resolveOwnMessageDeliveryStatus(message: MockMessage): OwnMessageDelive
     return message.delivery_status;
   }
   return message.id > 0 ? "sent" : "sending";
-}
-
-function isProtectedUserUploadUrl(url: string): boolean {
-  const value = url.trim();
-  if (value.length === 0) return false;
-  if (value.includes("/user_uploads/")) return true;
-  try {
-    const base = typeof window !== "undefined" ? window.location.origin : "https://localhost";
-    return new URL(value, base).pathname.includes("/user_uploads/");
-  } catch {
-    return false;
-  }
-}
-
-function normalizeProtectedUploadPath(url: string): string | null {
-  const value = url.trim();
-  if (value.length === 0) return null;
-  try {
-    const base = typeof window !== "undefined" ? window.location.origin : "https://localhost";
-    const parsed = new URL(value, base);
-    if (parsed.pathname.includes("/user_uploads/")) {
-      const normalizedPath = parsed.pathname.replace(/^\/api\/v1(?=\/user_uploads\/)/, "");
-      return `${normalizedPath}${parsed.search}`;
-    }
-  } catch {
-    if (value.includes("/user_uploads/")) {
-      return value.replace(/^\/api\/v1(?=\/user_uploads\/)/, "");
-    }
-  }
-  return null;
-}
-
-function buildProtectedUploadFetchCandidates(url: string): string[] {
-  const value = url.trim();
-  const normalizedPath = normalizeProtectedUploadPath(value);
-  if (!normalizedPath) {
-    return value.length > 0 ? [value] : [];
-  }
-  const realmBase = getRealmBaseUrl().trim().replace(/\/+$/, "");
-  const candidates = [
-    normalizedPath,
-    value,
-    realmBase ? `${realmBase}${normalizedPath}` : "",
-  ].filter((candidate) => candidate.length > 0);
-  return Array.from(new Set(candidates));
-}
-
-function resolveProtectedUploadFetchOptions(
-  candidate: string,
-  headers: Record<string, string>,
-): RequestInit {
-  try {
-    const base = typeof window !== "undefined" ? window.location.origin : "https://localhost";
-    const parsed = new URL(candidate, base);
-    const isCrossOrigin = typeof window !== "undefined" && parsed.origin !== window.location.origin;
-    if (isCrossOrigin) {
-      // Cross-origin authenticated fetches trigger CORS preflight in dev.
-      // Fall back to an anonymous request for this candidate.
-      return { credentials: "omit" };
-    }
-  } catch {
-    // Ignore parse failures and use the authenticated same-origin options.
-  }
-  return { headers, credentials: "include" };
-}
-
-async function fetchProtectedUploadBlob(
-  rawValue: string,
-  headers: Record<string, string>,
-): Promise<Blob | null> {
-  for (const candidate of buildProtectedUploadFetchCandidates(rawValue)) {
-    try {
-      const response = await fetch(
-        candidate,
-        resolveProtectedUploadFetchOptions(candidate, headers),
-      );
-      if (!response.ok) continue;
-      return await response.blob();
-    } catch {
-      // Try the next candidate URL.
-    }
-  }
-  return null;
-}
-
-function protectUserUploadMediaSources(html: string): string {
-  if (!html.includes("/user_uploads/") || typeof document === "undefined") return html;
-
-  const container = document.createElement("div");
-  container.innerHTML = html;
-
-  const elementsWithSrc = container.querySelectorAll<HTMLElement>("[src]");
-  for (const element of elementsWithSrc) {
-    const src = element.getAttribute("src");
-    if (!src || !isProtectedUserUploadUrl(src)) continue;
-
-    element.setAttribute(AUTH_MEDIA_SRC_DATA_ATTR, src);
-    if (element instanceof HTMLImageElement) {
-      element.dataset.originalSrc = src;
-      element.setAttribute("src", AUTH_IMAGE_PLACEHOLDER_SRC);
-    } else {
-      element.removeAttribute("src");
-    }
-  }
-
-  const videosWithPoster = container.querySelectorAll<HTMLVideoElement>("video[poster]");
-  for (const video of videosWithPoster) {
-    const poster = video.getAttribute("poster");
-    if (!poster || !isProtectedUserUploadUrl(poster)) continue;
-    video.setAttribute(AUTH_MEDIA_POSTER_DATA_ATTR, poster);
-    video.removeAttribute("poster");
-  }
-
-  return container.innerHTML;
 }
 
 export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
@@ -584,7 +384,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       handleNativeTouchMove,
     ]);
 
-    const handleMenuAction = (label: ContextItemLabel) => {
+    const handleMenuAction = (label: ContextItemLabel): void => {
       if (label === "joinCall") {
         if (jitsiUrl) {
           callbacks?.onOpenJitsiCall?.(jitsiUrl, jitsiLocationName);
@@ -738,79 +538,21 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     const jitsiLocationName = isJitsiCall ? resolveJitsiLocationName(message) : "";
     const ownDeliveryStatus = isOwn ? resolveOwnMessageDeliveryStatus(message) : null;
     const ownDeliveryIndicator =
-      ownDeliveryStatus === "sent" ? (
-        callbacks?.onViews ? (
-          <button
-            type="button"
-            data-testid={`message-delivery-${message.id}`}
-            className="inline-flex items-center text-xs text-call-green focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
-            title={t("message.sentToServer")}
-            aria-label={t("message.sentToServer")}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              callbacks.onViews?.(message);
-            }}
-          >
-            <Icon name="check" size={12} className="shrink-0 text-current" />
-          </button>
-        ) : (
-          <span
-            data-testid={`message-delivery-${message.id}`}
-            className="inline-flex items-center text-xs text-call-green"
-            title={t("message.sentToServer")}
-            aria-label={t("message.sentToServer")}
-          >
-            <Icon name="check" size={12} className="shrink-0 text-current" />
-          </span>
-        )
-      ) : ownDeliveryStatus === "sending" ? (
-        <span
-          data-testid={`message-delivery-${message.id}`}
-          className="text-[11px] text-text-muted"
-          title={t("message.sending")}
-        >
-          {t("message.sending")}
-        </span>
-      ) : ownDeliveryStatus === "failed" ? (
-        <span
-          data-testid={`message-delivery-${message.id}`}
-          className="text-[11px] text-notice-base"
-          title={t("message.notDelivered")}
-        >
-          {t("message.notDelivered")}
-        </span>
+      ownDeliveryStatus === "sent" ||
+      ownDeliveryStatus === "sending" ||
+      ownDeliveryStatus === "failed" ? (
+        <MessageBubbleOwnDeliveryIndicator
+          message={message}
+          status={
+            ownDeliveryStatus === "sent"
+              ? "sent"
+              : ownDeliveryStatus === "sending"
+                ? "sending"
+                : "failed"
+          }
+          onViews={callbacks?.onViews}
+        />
       ) : null;
-    const callParticipants = useCallParticipantsStore((s) =>
-      jitsiUrl ? (s.participantsByUrl[jitsiUrl] ?? EMPTY_PARTICIPANTS) : EMPTY_PARTICIPANTS,
-    );
-    const jitsiCallName = useMemo(() => {
-      if (!jitsiUrl) return "";
-      const roomName = formatJitsiRoomName(jitsiUrl);
-      return roomName.length > 0 ? roomName : t("call.callName");
-    }, [jitsiUrl]);
-    const jitsiTopicName = useMemo(() => {
-      const topic = message.subject.trim();
-      return topic.length > 0 ? topic : "";
-    }, [message.subject]);
-    const callParticipantNames = useMemo(() => {
-      const names = callParticipants
-        .map((participant) => participant.displayName.trim())
-        .filter((name) => name.length > 0);
-      if (names.length > 0) return names;
-      const fallback = message.sender_full_name.trim();
-      return fallback.length > 0 ? [fallback] : [];
-    }, [callParticipants, message.sender_full_name]);
-    const visibleCallParticipantNames = useMemo(
-      () => callParticipantNames.slice(0, 3),
-      [callParticipantNames],
-    );
-    const hiddenCallParticipantsCount = Math.max(
-      callParticipantNames.length - visibleCallParticipantNames.length,
-      0,
-    );
-    const participantBorderClass = isOwn ? "border-msg-own-bg" : "border-bg-elevated";
-
     const bubbleSurfaceClass = "rounded-[18px]";
     const ownBubbleTailClass = "rounded-br-[6px]";
     const peerBubbleTailClass = "rounded-bl-[6px]";
@@ -830,174 +572,32 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       .filter((section) => section.length > 0);
 
     const contextMenu = (
-      <DropdownMenu.Root open={open} onOpenChange={handleContextMenuOpenChange}>
-        <DropdownMenu.Trigger asChild>
-          <button
-            type="button"
-            className={`hover:bg-bg/50 absolute -top-2 z-float rounded p-1 text-text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:text-text-primary ${isOwn ? "-left-8" : "-right-8"}`}
-            aria-label={t("a11y.messageMenu")}
-          >
-            <Icon name="more" size={16} className="text-current" />
-          </button>
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Portal>
-          <DropdownMenu.Content
-            className="z-dropdown min-w-[200px] rounded-lg border border-border-subtle bg-bg-elevated py-1 shadow-lg"
-            sideOffset={4}
-            align={isOwn ? "end" : "start"}
-          >
-            <div className="flex items-center gap-0.5 border-b border-border-subtle px-3 py-2">
-              {QUICK_REACTIONS.map((reaction) => (
-                <button
-                  key={reaction.emojiName}
-                  type="button"
-                  className="hover:bg-bg/50 flex h-6 w-6 items-center justify-center rounded p-1 text-current"
-                  aria-label={t(reaction.a11yLabelKey)}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    handleReaction(reaction.emojiName);
-                  }}
-                >
-                  <span className="text-[15px] leading-none">
-                    {EMOJI_NAME_TO_CHAR[reaction.emojiName] ?? reaction.emojiName}
-                  </span>
-                </button>
-              ))}
-              <div className="relative">
-                <button
-                  type="button"
-                  className="hover:bg-bg/50 flex h-6 w-6 items-center justify-center rounded p-1 text-text-muted hover:text-text-primary"
-                  aria-label={t("a11y.moreReactions")}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setEmojiPickerOpen((v) => !v);
-                  }}
-                >
-                  <Icon name="plus" size={14} className="text-current" />
-                </button>
-                {emojiPickerOpen && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-overlay"
-                      aria-hidden
-                      onClick={() => setEmojiPickerOpen(false)}
-                    />
-                    <div className="absolute left-0 top-full z-dropdown mt-1 overflow-hidden rounded-xl border border-border-subtle bg-bg-elevated shadow-xl">
-                      <EmojiPicker
-                        onEmojiClick={handleEmojiPick}
-                        theme={
-                          document.documentElement.dataset.theme === "light"
-                            ? Theme.LIGHT
-                            : Theme.DARK
-                        }
-                        width={320}
-                        height={360}
-                        searchDisabled={false}
-                        previewConfig={{ showPreview: false }}
-                      />
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-            {visibleContextSections.map((section, sectionIndex) => (
-              <React.Fragment key={`context-section-${sectionIndex}`}>
-                {sectionIndex > 0 && (
-                  <DropdownMenu.Separator className="mx-2 my-1 h-px bg-border-subtle" />
-                )}
-                {section.map((label) => (
-                  <DropdownMenu.Item
-                    key={label}
-                    className="hover:bg-bg/80 data-[highlighted]:bg-accent/20 flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-text-primary outline-none"
-                    onSelect={(e) => {
-                      e.preventDefault();
-                      handleMenuAction(label);
-                    }}
-                  >
-                    <Icon
-                      name={CONTEXT_ITEMS_BY_LABEL[label].iconName}
-                      size={14}
-                      className="text-current opacity-70"
-                    />
-                    {t(`message.${label}`)}
-                  </DropdownMenu.Item>
-                ))}
-              </React.Fragment>
-            ))}
-          </DropdownMenu.Content>
-        </DropdownMenu.Portal>
-      </DropdownMenu.Root>
+      <MessageBubbleContextMenu
+        open={open}
+        onOpenChange={handleContextMenuOpenChange}
+        isOwn={isOwn}
+        emojiPickerOpen={emojiPickerOpen}
+        onEmojiPickerOpenChange={setEmojiPickerOpen}
+        visibleContextSections={visibleContextSections}
+        onMenuItem={handleMenuAction}
+        onQuickReaction={handleReaction}
+        onEmojiPick={handleEmojiPick}
+      />
     );
 
     const bubbleInner = isJitsiCall ? (
       <>
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={() => callbacks?.onOpenJitsiCall?.(jitsiUrl, jitsiLocationName)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              callbacks?.onOpenJitsiCall?.(jitsiUrl, jitsiLocationName);
-            }
-          }}
-          className={`relative flex cursor-pointer flex-col gap-2 px-3 py-2 ${bubbleSurfaceClass} ${
-            isOwn
-              ? `${ownBubbleTailClass} bg-msg-call-bg text-text-primary`
-              : `${peerBubbleTailClass} bg-msg-call-bg text-text-primary`
-          }`}
-        >
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex min-w-0 flex-1 items-center gap-2">
-              <span className="shrink-0 text-[15px] font-semibold leading-tight text-call-green">
-                {t("call.callMessage")}
-              </span>
-              <span className="truncate text-[15px] font-medium leading-tight text-text-primary">
-                {jitsiCallName}
-              </span>
-              {jitsiTopicName.length > 0 && (
-                <>
-                  <span className="h-4 w-1 shrink-0 rounded-full bg-accent" aria-hidden />
-                  <span className="truncate text-[15px] leading-tight text-text-muted">
-                    # {jitsiTopicName}
-                  </span>
-                </>
-              )}
-            </div>
-            <Icon name="phone" size={18} className="mt-0.5 shrink-0 text-call-green" />
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex min-w-0 flex-1 items-center gap-2 text-text-muted">
-              <Icon name="chevron-right" size={12} className="shrink-0 rotate-45 text-current" />
-              <span className="shrink-0 text-[11px]">0:47</span>
-              <div
-                data-testid={`jitsi-call-participants-${message.id}`}
-                className="ml-0.5 flex min-w-0 items-center -space-x-2"
-              >
-                {visibleCallParticipantNames.map((participantName, idx) => (
-                  <Avatar
-                    key={`${participantName}-${idx}`}
-                    size="sm"
-                    className={`border-2 ${participantBorderClass} bg-bg text-[10px]`}
-                  >
-                    {getAvatarInitials(participantName)}
-                  </Avatar>
-                ))}
-                {hiddenCallParticipantsCount > 0 && (
-                  <span
-                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full border-2 ${participantBorderClass} bg-bg text-[10px] font-semibold text-text-primary`}
-                  >
-                    +{hiddenCallParticipantsCount}
-                  </span>
-                )}
-              </div>
-            </div>
-            <div className="flex shrink-0 items-center gap-1 text-[11px] text-text-muted">
-              <span>{time}</span>
-              {ownDeliveryIndicator}
-            </div>
-          </div>
-        </div>
+        <MessageBubbleJitsiCard
+          message={message}
+          jitsiUrl={jitsiUrl}
+          isOwn={isOwn}
+          time={time}
+          ownDeliveryIndicator={ownDeliveryIndicator}
+          bubbleSurfaceClass={bubbleSurfaceClass}
+          ownBubbleTailClass={ownBubbleTailClass}
+          peerBubbleTailClass={peerBubbleTailClass}
+          callbacks={callbacks}
+        />
         {contextMenu}
       </>
     ) : (
@@ -1022,46 +622,14 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
             <span>{time}</span>
             {ownDeliveryIndicator}
           </div>
-          {hasReactions && (
-            <div
-              className={`absolute bottom-2 left-2 right-14 flex flex-wrap items-end gap-1 ${
-                isOwn ? "justify-end" : "justify-start"
-              }`}
-            >
-              {reactionGroups.map(({ key, count, userIds, displayChar }) => {
-                const emojiName = key.split(":")[1] ?? key;
-                const hasCurrentUser = currentUserId != null && userIds.includes(currentUserId);
-                const reactionAuthors = userIds.map(resolveReactionAuthorLabel).join(", ");
-                const reactionTitle =
-                  reactionAuthors.length > 0
-                    ? `${displayChar} ${count} - ${reactionAuthors}`
-                    : count > 0
-                      ? `${displayChar} ${count}`
-                      : undefined;
-                return (
-                  <button
-                    type="button"
-                    key={key}
-                    className={`inline-flex cursor-pointer items-center gap-0.5 rounded-full border-0 px-1.5 py-0.5 text-sm transition-colors ${
-                      hasCurrentUser ? "bg-accent/25 hover:bg-accent/35" : "bg-bg/50 hover:bg-bg/80"
-                    }`}
-                    title={reactionTitle}
-                    aria-label={reactionTitle}
-                    onClick={() => {
-                      if (hasCurrentUser) {
-                        callbacks?.onRemoveReaction?.(message.id, emojiName);
-                      } else {
-                        callbacks?.onAddReaction?.(message.id, emojiName);
-                      }
-                    }}
-                  >
-                    <span>{displayChar}</span>
-                    {count > 1 && <span className="text-[11px] text-text-muted">{count}</span>}
-                  </button>
-                );
-              })}
-            </div>
-          )}
+          <MessageBubbleReactionsRow
+            message={message}
+            isOwn={isOwn}
+            currentUserId={currentUserId}
+            reactionGroups={reactionGroups}
+            resolveReactionAuthorLabel={resolveReactionAuthorLabel}
+            callbacks={callbacks}
+          />
         </div>
         {contextMenu}
       </>

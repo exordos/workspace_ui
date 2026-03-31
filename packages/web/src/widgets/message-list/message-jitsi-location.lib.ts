@@ -1,4 +1,13 @@
 import type { MockMessage } from "~/shared/api/zulip.types";
+import { parseJitsiUrl } from "~/shared/lib/jitsi";
+
+/** Human-readable room title from a Jitsi meeting URL (for call bubbles). */
+export function formatJitsiRoomDisplayName(jitsiUrl: string): string {
+  const parsed = parseJitsiUrl(jitsiUrl);
+  const roomName = parsed?.roomName?.trim() ?? "";
+  if (roomName.length === 0) return "";
+  return roomName.replace(/[-_]+/g, " ").trim();
+}
 
 export function resolveJitsiLocationName(message: MockMessage): string {
   if (message.stream_id != null) {

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useNavigate, useLocation, Outlet } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useActivityStore } from "~/entities/activity/activity.model";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useHydrateDrafts } from "~/entities/draft/draft-hydration";
@@ -60,8 +60,6 @@ import { useShortcut } from "~/shared/lib/shortcuts";
 import { isValidRealmUrl } from "~/shared/lib/validation";
 import { createResilientInterval } from "~/shared/lib/visibility";
 import { useRightDrawerStore, type RightDrawerMode } from "~/widgets/right-panel/right-drawer.model";
-import { RightDrawer } from "~/widgets/right-panel/right-drawer.ui";
-import { RightPanelShell as RightPanel } from "~/widgets/right-panel/right-panel-shell.ui";
 import type { RightPanelUserInfo } from "~/widgets/right-panel/right-panel.types";
 import { SearchModal } from "~/widgets/search-modal/search-modal.ui";
 import {
@@ -70,13 +68,14 @@ import {
   slugForStream,
   getDmById,
 } from "~/widgets/sidebar/sidebar.lib";
-import { SidebarShell } from "~/widgets/sidebar/sidebar-shell.ui";
 import { TopBar, type TopBarSection } from "~/widgets/top-bar/top-bar.ui";
 import { getSectionFromPathname } from "./layout-active-section.lib";
 import { getNewestMessageId, loadDeepHistoryMessages } from "./layout-chat-history-sync.lib";
 import { shouldRenderChatShell } from "./layout-chat-shell.lib";
 import { resolveChatShortcutRoute } from "./layout-chat-shortcuts.lib";
 import { DESKTOP_MIN_VIEWPORT_STYLE } from "./layout-desktop-viewport.lib";
+import { LayoutFullscreenError, LayoutFullscreenLoading } from "./layout-loading-state.ui";
+import { LayoutMainWorkspace } from "./layout-main-workspace.ui";
 import { startFolderPolling } from "./layout-folder-polling.lib";
 import { useLayoutShortcuts } from "./layout-shortcuts.hook";
 import { useLayoutUnreadAndTitle } from "./layout-unread-title.hook";
@@ -562,25 +561,11 @@ export const Layout: React.FC = () => {
   });
 
   if (showFullscreenLoader) {
-    return (
-      <div
-        className="flex h-screen max-h-[100dvh] min-h-[400px] items-center justify-center bg-bg text-text-primary"
-        style={DESKTOP_MIN_VIEWPORT_STYLE}
-      >
-        <p className="text-sm text-text-muted">{t("app.loading")}</p>
-      </div>
-    );
+    return <LayoutFullscreenLoading />;
   }
 
   if (showError) {
-    return (
-      <div
-        className="flex h-screen max-h-[100dvh] min-h-[400px] items-center justify-center bg-bg text-text-primary"
-        style={DESKTOP_MIN_VIEWPORT_STYLE}
-      >
-        <p className="text-sm text-text-muted">{t("app.pageLoadError")}</p>
-      </div>
-    );
+    return <LayoutFullscreenError />;
   }
 
   return (
@@ -617,49 +602,28 @@ export const Layout: React.FC = () => {
             onOpenProfile={handleOpenProfile}
             leftContent={<InstanceSwitcher />}
           />
-          <div className="flex min-h-0 flex-1 items-stretch justify-center">
-            <div className="flex min-h-0 w-full min-w-0 max-w-[1920px] gap-1">
-              {shouldShowChatShell && sidebarOpen && (
-                <>
-                  <SidebarShell />
-                </>
-              )}
-              <main
-                className="flex min-h-0 min-w-0 flex-1 items-stretch justify-start overflow-hidden"
-                data-focus-zone="main"
-                role="main"
-                aria-label={t("nav.messenger")}
-              >
-                <Outlet />
-              </main>
-              {rightDrawerOpen &&
-                (rightDrawerMode === "settings" ||
-                  rightDrawerMode === "user-menu" ||
-                  rightDrawerMode === "about" ||
-                  shouldShowChatShell) && (
-                  <RightDrawer onClose={handleCloseRightDrawer}>
-                    <RightPanel
-                      mode={rightDrawerMode}
-                      title={
-                        rightDrawerMode === "settings"
-                          ? t("settings.settings")
-                          : rightDrawerMode === "user-menu"
-                            ? t("nav.profile")
-                            : rightDrawerMode === "about"
-                              ? t("settings.appVersion")
-                              : rightDrawerTitle
-                      }
-                      participantsCount={chatInfoData?.memberCount ?? 0}
-                      onlineCount={chatInfoData?.onlineCount ?? 0}
-                      user={rightPanelUser}
-                      onSelectCommonGroup={(slug: string) => handleSelectDm(slug)}
-                      onOpenSettingsDrawer={openRightDrawerSettings}
-                      onOpenAboutDrawer={openRightDrawerAbout}
-                    />
-                  </RightDrawer>
-                )}
-            </div>
-          </div>
+          <LayoutMainWorkspace
+            shouldShowChatShell={shouldShowChatShell}
+            sidebarOpen={sidebarOpen}
+            rightDrawerOpen={rightDrawerOpen}
+            rightDrawerMode={rightDrawerMode}
+            onCloseRightDrawer={handleCloseRightDrawer}
+            rightPanelTitle={
+              rightDrawerMode === "settings"
+                ? t("settings.settings")
+                : rightDrawerMode === "user-menu"
+                  ? t("nav.profile")
+                  : rightDrawerMode === "about"
+                    ? t("settings.appVersion")
+                    : rightDrawerTitle
+            }
+            participantsCount={chatInfoData?.memberCount ?? 0}
+            onlineCount={chatInfoData?.onlineCount ?? 0}
+            rightPanelUser={rightPanelUser ?? undefined}
+            onSelectCommonGroup={(slug: string) => handleSelectDm(slug)}
+            onOpenSettingsDrawer={openRightDrawerSettings}
+            onOpenAboutDrawer={openRightDrawerAbout}
+          />
         </div>
       </RightDrawerContext.Provider>
     </OpenSearchContext.Provider>

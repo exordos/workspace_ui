@@ -34,14 +34,10 @@ import {
   markMessagesAsRead,
   updateMessage,
   deleteMessage,
-  addReaction,
   markDmAsRead,
-  removeReaction,
   markStreamAsRead,
   markTopicAsRead,
   uploadFile,
-  addMessageFlag,
-  removeMessageFlag,
   type MockMessage,
 } from "~/shared/api/zulip";
 import { useOpenSearch } from "~/shared/contexts/open-search";
@@ -52,16 +48,8 @@ import { stripHtml } from "~/shared/lib/html";
 import { buildJitsiMeetingUrl } from "~/shared/lib/jitsi";
 import { createLogger } from "~/shared/lib/logger";
 import { useShortcut } from "~/shared/lib/shortcuts";
-import { Icon } from "~/shared/ui/icon";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
-import { MessageComposer } from "~/widgets/message-composer/message-composer.ui";
-import { MessageList, type MessageListCallbacks } from "~/widgets/message-list/message-list.ui";
-import {
-  getDmById,
-  parseStreamSlug,
-  parseDmSlugToUserIds,
-  slugForStream,
-} from "~/widgets/sidebar/sidebar.lib";
+import { getDmById, parseStreamSlug, parseDmSlugToUserIds } from "~/widgets/sidebar/sidebar.lib";
 import { useSidebarConfigStore } from "~/widgets/sidebar/sidebar-config.model";
 import type { StreamWithLast } from "~/widgets/sidebar/sidebar.types";
 import {
@@ -93,13 +81,18 @@ import {
   markOutgoingMessageFailed,
   markOutgoingMessageSent,
 } from "./chat-send-delivery.lib";
-import {
-  TOPIC_PROMPT_BUTTON_CLASS_NAME,
-  TOPIC_PROMPT_ICON_HOVER_MODE,
-} from "./chat-topic-prompt-button.lib";
 import { uploadComposerFiles, type ComposerUploadProgressState } from "./chat-upload.lib";
 import { EditMessageModalBody } from "./chat-page-edit-message-modal.ui";
 import { ForwardMessageModalBody } from "./chat-page-forward-modal.ui";
+import { ChatPageComposerSection } from "./chat-page-composer-section.ui";
+import { ChatPageDeleteConfirmBar } from "./chat-page-delete-confirm-bar.ui";
+import { ChatPageFloatingToast } from "./chat-page-floating-toast.ui";
+import { ChatPageInlineAlerts } from "./chat-page-inline-alerts.ui";
+import { ChatPageMessageListSection } from "./chat-page-message-list-section.ui";
+import { ChatPageReadReceiptsDialog } from "./chat-page-read-receipts-dialog.ui";
+import { ChatPageSelectionBar } from "./chat-page-selection-bar.ui";
+import { ChatPageTypingLine } from "./chat-page-typing-line.ui";
+import { useChatMessageListCallbacks } from "./use-chat-message-list-callbacks.hook";
 
 const log = createLogger("chat-page");
 const AI_CONTEXT_MESSAGES_LIMIT = 30;
@@ -1041,132 +1034,28 @@ export const ChatPage: React.FC = () => {
     controller.abort();
   }, []);
 
-  const messageCallbacks: MessageListCallbacks = useMemo(
-    () => ({
-      onMessageReply(msg, selectedText) {
-        const trimmedSelectedText = selectedText?.trim();
-        setReplyQuote({
-          id: msg.id,
-          content:
-            trimmedSelectedText != null && trimmedSelectedText.length > 0
-              ? trimmedSelectedText
-              : msg.content,
-          sender_full_name: msg.sender_full_name,
-        });
-      },
-      onMessageEdit(msg) {
-        setEditingMessage(msg);
-      },
-      onMessageDelete(msg) {
-        setDeleteConfirm({ type: "single", messageId: msg.id });
-      },
-      onMessageCopy(msg) {
-        const text = stripHtml(msg.content);
-        navigator.clipboard.writeText(text).then(
-          () => setToastMessage(t("message.copied")),
-          () => setToastMessage(t("message.copyFailed")),
-        );
-      },
-      onMessageForward(msg, selectedText) {
-        setForwardMessages([msg]);
-        const normalizedSelectedText = selectedText?.trim();
-        setForwardSelectedText(
-          normalizedSelectedText != null && normalizedSelectedText.length > 0
-            ? normalizedSelectedText
-            : undefined,
-        );
-      },
-      onMessageStar(msg) {
-        const hasStar = msg.flags?.includes("starred");
-        setActionError(null);
-        (hasStar ? removeMessageFlag([msg.id], "starred") : addMessageFlag([msg.id], "starred"))
-          .then(() => {
-            updateMessageFlagsInStore([msg.id], "starred", hasStar ? "remove" : "add");
-          })
-          .catch((err) => setActionError(err instanceof Error ? err.message : t("app.error")));
-      },
-      onMessageSelect(msg) {
-        setSelectedMessageIds((prev) => {
-          const next = new Set(prev);
-          if (next.has(msg.id)) next.delete(msg.id);
-          else next.add(msg.id);
-          return next;
-        });
-        if (!selectionMode) setSelectionMode(true);
-      },
-      onMessageAddReaction(messageId, emojiName) {
-        setActionError(null);
-        addReaction(messageId, emojiName)
-          .then(() => {
-            updateMessageReactionInStore(
-              messageId,
-              {
-                emoji_name: emojiName,
-                emoji_code: "",
-                reaction_type: "unicode_emoji",
-                user_id: currentUserId ?? 0,
-              },
-              "add",
-            );
-          })
-          .catch((err) =>
-            setActionError(err instanceof Error ? err.message : t("message.reactionError")),
-          );
-      },
-      onMessageRemoveReaction(messageId, emojiName) {
-        setActionError(null);
-        removeReaction(messageId, emojiName)
-          .then(() => {
-            updateMessageReactionInStore(
-              messageId,
-              {
-                emoji_name: emojiName,
-                emoji_code: "",
-                reaction_type: "unicode_emoji",
-                user_id: currentUserId ?? 0,
-              },
-              "remove",
-            );
-          })
-          .catch((err) =>
-            setActionError(err instanceof Error ? err.message : t("message.reactionError")),
-          );
-      },
-      onOpenJitsiCall(url: string, locationName?: string) {
-        setJitsiModalUrl(url);
-        setJitsiLocationName(locationName?.trim() ?? "");
-      },
-      onMessageViews(msg) {
-        void useMessageReadersStore.getState().fetchReadReceipts(msg.id);
-        setReadReceiptsOpen(true);
-      },
-      onTopicSeparatorClick(msg) {
-        if (msg.stream_id == null || msg.subject == null) return;
-        const topic = msg.subject.trim();
-        if (topic.length === 0) return;
-        const streamName =
-          streams.find((stream) => stream.stream_id === msg.stream_id)?.name ??
-          (typeof msg.display_recipient === "string" ? msg.display_recipient : undefined);
-        if (!streamName) return;
-        const route = `/stream/${slugForStream({ stream_id: msg.stream_id, name: streamName })}/topic/${encodeURIComponent(topic)}`;
-        if (route === location.pathname) return;
-        void navigate(route);
-      },
-      onMessageAuthorClick(userId) {
-        rightDrawer?.openUserProfile?.(userId);
-      },
-    }),
-    [
-      selectionMode,
-      currentUserId,
-      updateMessageFlagsInStore,
-      updateMessageReactionInStore,
-      streams,
-      location.pathname,
-      navigate,
-      rightDrawer,
-    ],
-  );
+  const messageCallbacks = useChatMessageListCallbacks({
+    selectionMode,
+    currentUserId,
+    streams,
+    locationPathname: location.pathname,
+    navigate,
+    rightDrawer,
+    setReplyQuote,
+    setEditingMessage,
+    setDeleteConfirm,
+    setToastMessage,
+    setForwardMessages,
+    setForwardSelectedText,
+    setActionError,
+    setSelectedMessageIds,
+    setSelectionMode,
+    updateMessageFlagsInStore,
+    updateMessageReactionInStore,
+    setJitsiModalUrl,
+    setJitsiLocationName,
+    setReadReceiptsOpen,
+  });
 
   const handleSaveEdit = useCallback(
     (content: string) => {
@@ -1323,6 +1212,49 @@ export const ChatPage: React.FC = () => {
     };
   }, [isGroupDmView, dmChat, currentUserId, dmRecipientIds]);
 
+  const handleSelectionForward = useCallback(() => {
+    if (forwardableSelectedMessages.length === 0) return;
+    setForwardMessages(forwardableSelectedMessages);
+    setForwardSelectedText(undefined);
+  }, [forwardableSelectedMessages, setForwardMessages, setForwardSelectedText]);
+
+  const handleSelectionDelete = useCallback(() => {
+    if (deletableSelectedMessageIds.length === 0) return;
+    setDeleteConfirm({ type: "bulk", messageIds: deletableSelectedMessageIds });
+  }, [deletableSelectedMessageIds]);
+
+  const handleSelectionCancel = useCallback(() => {
+    setSelectionMode(false);
+    setSelectedMessageIds(new Set());
+  }, []);
+
+  const handleDeleteConfirm = useCallback(() => {
+    setActionError(null);
+    if (!deleteConfirm) return;
+    if (deleteConfirm.type === "single") {
+      const messageId = deleteConfirm.messageId;
+      deleteMessage(messageId)
+        .then(() => removeMessageFromStore(messageId))
+        .catch((err) =>
+          setActionError(err instanceof Error ? err.message : t("message.deleteError")),
+        );
+    } else {
+      const ids = deleteConfirm.messageIds;
+      Promise.all(ids.map((id) => deleteMessage(id)))
+        .then(() => {
+          removeMessagesFromStore(ids);
+          setSelectedMessageIds(new Set());
+          setSelectionMode(false);
+        })
+        .catch((err) => setActionError(err instanceof Error ? err.message : t("app.error")));
+    }
+    setDeleteConfirm(null);
+  }, [deleteConfirm, removeMessageFromStore, removeMessagesFromStore, t]);
+
+  const handleDeleteCancel = useCallback(() => {
+    setDeleteConfirm(null);
+  }, []);
+
   return (
     <div className="flex max-h-full min-h-0 min-w-0 max-w-[1199px] flex-1 flex-col overflow-hidden">
       {/* Edit message modal */}
@@ -1377,78 +1309,13 @@ export const ChatPage: React.FC = () => {
         </Dialog.Portal>
       </Dialog.Root>
 
-      {/* Read receipts modal */}
-      <Dialog.Root
+      <ChatPageReadReceiptsDialog
         open={readReceiptsOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            setReadReceiptsOpen(false);
-            useMessageReadersStore.getState().clear();
-          }
-        }}
-      >
-        <Dialog.Portal>
-          <Dialog.Overlay className="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-overlay bg-black/50" />
-          <Dialog.Content
-            className="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed left-1/2 top-1/2 z-modal flex max-h-[60vh] w-full max-w-sm -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl border border-border-subtle bg-bg-elevated shadow-xl"
-            onCloseAutoFocus={(e) => e.preventDefault()}
-          >
-            <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
-              <Dialog.Title className="text-sm font-semibold text-text-primary">
-                {t("message.readBy")}
-              </Dialog.Title>
-              <Dialog.Close asChild>
-                <button
-                  type="button"
-                  className="hover:bg-bg/50 rounded p-1 text-text-muted"
-                  aria-label={t("common.close")}
-                >
-                  <Icon name="close" size={18} />
-                </button>
-              </Dialog.Close>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4">
-              {readersLoading && (
-                <div className="flex items-center justify-center py-6">
-                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-border-subtle border-t-accent" />
-                </div>
-              )}
-              {readersError && (
-                <p className="py-4 text-center text-sm text-notice-base">
-                  {t("message.readReceiptsError")}
-                </p>
-              )}
-              {!readersLoading && !readersError && readerEntries.length === 0 && (
-                <p className="py-4 text-center text-sm text-text-muted">
-                  {t("message.noReadReceipts")}
-                </p>
-              )}
-              {!readersLoading && !readersError && readerEntries.length > 0 && (
-                <ul className="space-y-2">
-                  {readerEntries.map((entry) => (
-                    <li
-                      key={entry.userId}
-                      className="flex items-start gap-2 text-sm text-text-primary"
-                    >
-                      <span className="bg-accent/20 flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium text-accent">
-                        {entry.name.slice(0, 1)}
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block truncate">{entry.name}</span>
-                        {entry.statusLabel != null && entry.statusLabel.length > 0 ? (
-                          <span className="block truncate text-[11px] text-text-secondary">
-                            {entry.statusLabel}
-                          </span>
-                        ) : null}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
+        onOpenChange={setReadReceiptsOpen}
+        readersLoading={readersLoading}
+        readersError={readersError}
+        readerEntries={readerEntries}
+      />
 
       <ChatHeader
         channelName={activeStream ? `#${activeStream}` : t("channel.channelName")}
@@ -1467,208 +1334,72 @@ export const ChatPage: React.FC = () => {
         dmGroup={dmGroup}
       />
       <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        {messagesLoading ? (
-          <div
-            className="flex min-h-[200px] flex-1 items-center justify-center"
-            aria-busy="true"
-            aria-label={t("chat.loadingMessages")}
-          >
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-subtle border-t-accent" />
-          </div>
-        ) : isDmView ? (
-          <MessageList
-            messages={messages}
-            currentUserId={currentUserId ?? undefined}
-            scrollToBottomKey={
-              activeDmUserIds !== null ? `dm-${activeDmUserIds.join(",")}` : undefined
-            }
-            callbacks={messageCallbacks}
-            selectionMode={selectionMode}
-            selectedMessageIds={selectedMessageIds}
-            onLoadMore={loadOlderMessages}
-            isLoadingMore={isLoadingMore}
-            onLoadNewer={loadNewerMessages}
-            hasNewerMessages={hasNewerMessages}
-            firstUnreadId={firstUnreadId}
-            unreadCount={unreadCount}
-            focusedMessageId={focusedMessageId}
-            onUnreadMessagesVisible={handleUnreadMessagesVisible}
-            onUnreadMessagesAtBottom={handleUnreadMessagesAtBottom}
-          />
-        ) : (
-          <MessageList
-            messages={messages}
-            currentUserId={currentUserId ?? undefined}
-            scrollToBottomKey={[activeStream ?? "", activeTopic ?? ""].join("|")}
-            callbacks={messageCallbacks}
-            selectionMode={selectionMode}
-            selectedMessageIds={selectedMessageIds}
-            onLoadMore={loadOlderMessages}
-            isLoadingMore={isLoadingMore}
-            onLoadNewer={loadNewerMessages}
-            hasNewerMessages={hasNewerMessages}
-            firstUnreadId={firstUnreadId}
-            unreadCount={unreadCount}
-            focusedMessageId={focusedMessageId}
-            onUnreadMessagesVisible={handleUnreadMessagesVisible}
-            onUnreadMessagesAtBottom={handleUnreadMessagesAtBottom}
-          />
-        )}
+        <ChatPageMessageListSection
+          messagesLoading={messagesLoading}
+          isDmView={isDmView}
+          activeDmUserIds={activeDmUserIds}
+          activeStream={activeStream}
+          activeTopic={activeTopic}
+          messages={messages}
+          currentUserId={currentUserId ?? undefined}
+          callbacks={messageCallbacks}
+          selectionMode={selectionMode}
+          selectedMessageIds={selectedMessageIds}
+          onLoadMore={loadOlderMessages}
+          isLoadingMore={isLoadingMore}
+          onLoadNewer={loadNewerMessages}
+          hasNewerMessages={hasNewerMessages}
+          firstUnreadId={firstUnreadId}
+          unreadCount={unreadCount}
+          focusedMessageId={focusedMessageId}
+          onUnreadMessagesVisible={handleUnreadMessagesVisible}
+          onUnreadMessagesAtBottom={handleUnreadMessagesAtBottom}
+        />
         {selectionMode && selectedMessageIds.size > 0 && (
-          <div className="flex items-center justify-between border-t border-border-subtle bg-bg-elevated px-4 py-2">
-            <span className="text-sm text-text-muted">
-              {t("message.selected", { count: selectedMessageIds.size })}
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className="rounded-lg bg-bg px-3 py-1.5 text-sm text-text-muted"
-                disabled={forwardableSelectedMessages.length === 0}
-                onClick={() => {
-                  if (forwardableSelectedMessages.length === 0) return;
-                  setForwardMessages(forwardableSelectedMessages);
-                  setForwardSelectedText(undefined);
-                }}
-              >
-                {t("message.forward")}
-              </button>
-              <button
-                type="button"
-                disabled={deletableSelectedMessageIds.length === 0}
-                className="bg-notice-base/10 rounded-lg px-3 py-1.5 text-sm text-notice-base disabled:opacity-50"
-                onClick={() => {
-                  if (deletableSelectedMessageIds.length === 0) return;
-                  setDeleteConfirm({ type: "bulk", messageIds: deletableSelectedMessageIds });
-                }}
-              >
-                {t("common.delete")}
-              </button>
-              <button
-                type="button"
-                className="rounded-lg bg-bg px-3 py-1.5 text-sm text-text-muted"
-                onClick={() => {
-                  setSelectionMode(false);
-                  setSelectedMessageIds(new Set());
-                }}
-              >
-                {t("common.cancel")}
-              </button>
-            </div>
-          </div>
+          <ChatPageSelectionBar
+            selectedCount={selectedMessageIds.size}
+            forwardDisabled={forwardableSelectedMessages.length === 0}
+            deleteDisabled={deletableSelectedMessageIds.length === 0}
+            onForward={handleSelectionForward}
+            onDelete={handleSelectionDelete}
+            onCancel={handleSelectionCancel}
+          />
         )}
         {deleteConfirm && (
-          <div
-            className="bg-notice-base/10 flex flex-shrink-0 items-center gap-3 border-t border-border-subtle px-4 py-2"
-            role="alertdialog"
-            aria-label={t("message.deleteConfirm")}
-          >
-            <span className="flex-1 text-sm text-text-primary">
-              {deleteConfirm.type === "bulk"
-                ? t("message.deleteSelectedConfirm", { count: deleteConfirm.messageIds.length })
-                : t("message.deleteConfirm")}
-            </span>
-            <button
-              type="button"
-              className="hover:bg-notice-base/90 text-badge-text rounded-lg bg-notice-base px-3 py-1 text-sm"
-              onClick={() => {
-                setActionError(null);
-                if (deleteConfirm.type === "single") {
-                  deleteMessage(deleteConfirm.messageId)
-                    .then(() => removeMessageFromStore(deleteConfirm.messageId))
-                    .catch((err) =>
-                      setActionError(err instanceof Error ? err.message : t("message.deleteError")),
-                    );
-                } else {
-                  Promise.all(deleteConfirm.messageIds.map((id) => deleteMessage(id)))
-                    .then(() => {
-                      removeMessagesFromStore(deleteConfirm.messageIds);
-                      setSelectedMessageIds(new Set());
-                      setSelectionMode(false);
-                    })
-                    .catch((err) =>
-                      setActionError(err instanceof Error ? err.message : t("app.error")),
-                    );
-                }
-                setDeleteConfirm(null);
-              }}
-            >
-              {t("message.delete")}
-            </button>
-            <button
-              type="button"
-              className="rounded-lg px-3 py-1 text-sm text-text-muted hover:text-text-primary"
-              onClick={() => setDeleteConfirm(null)}
-            >
-              {t("common.cancel")}
-            </button>
-          </div>
-        )}
-        {actionError && (
-          <div
-            className="bg-notice-base/10 flex-shrink-0 border-t border-border-subtle px-4 py-2 text-sm text-notice-base"
-            role="alert"
-          >
-            {actionError}
-          </div>
-        )}
-        {sendError && (
-          <div
-            className="bg-notice-base/10 flex-shrink-0 border-t border-border-subtle px-4 py-2 text-sm text-notice-base"
-            role="alert"
-          >
-            {sendError}
-          </div>
-        )}
-        {toastMessage && (
-          <div className="fixed bottom-20 left-1/2 z-toast -translate-x-1/2 rounded-lg border border-border-subtle bg-bg-elevated px-4 py-2 text-sm text-text-primary shadow-lg">
-            {toastMessage}
-          </div>
-        )}
-        {typingText && !(isOneToOneDm && dmPartnerIsTyping) && (
-          <div className="flex-shrink-0 px-4 py-1">
-            <span className="text-xs italic text-text-muted">{typingText}</span>
-          </div>
-        )}
-        {!isDmView && !activeTopic ? (
-          <button
-            type="button"
-            onClick={handleExpandCurrentStreamTopics}
-            disabled={!streamSlug}
-            data-icon-hover={TOPIC_PROMPT_ICON_HOVER_MODE}
-            className={TOPIC_PROMPT_BUTTON_CLASS_NAME}
-            aria-label={t("chat.selectTopic")}
-          >
-            <span className="mr-2 inline-flex align-middle">
-              <Icon name="marker" size={20} className="text-current" />
-            </span>
-            <span>{t("chat.selectTopic")}</span>
-          </button>
-        ) : (
-          <MessageComposer
-            onSend={handleSend}
-            onCreateCallLink={canStartCall ? buildCurrentCallLink : undefined}
-            onCancelUpload={handleCancelUpload}
-            disabled={sending || (isDmView ? !activeDmUserIds?.length : !activeStream)}
-            uploadProgress={uploadProgress}
-            placeholder={
-              isDmView
-                ? activeDmUserIds?.length
-                  ? t("chat.sendPlaceholder")
-                  : t("chat.selectChat")
-                : activeStream
-                  ? t("chat.sendPlaceholder")
-                  : t("chat.selectChannel")
-            }
-            activeTopic={activeTopic ?? undefined}
-            replyQuote={replyQuote}
-            onClearReply={() => setReplyQuote(null)}
-            initialValue={draftInitialValue}
-            onValueChange={handleComposerValueChange}
-            onEditLastMessage={handleEditLastMessage}
-            aiMessagesContext={aiMessagesContext}
-            aiChatContext={aiChatContext}
+          <ChatPageDeleteConfirmBar
+            mode={deleteConfirm.type}
+            bulkCount={deleteConfirm.type === "bulk" ? deleteConfirm.messageIds.length : undefined}
+            onConfirm={handleDeleteConfirm}
+            onCancel={handleDeleteCancel}
           />
         )}
+        <ChatPageInlineAlerts actionError={actionError} sendError={sendError} />
+        <ChatPageFloatingToast message={toastMessage} />
+        <ChatPageTypingLine
+          text={typingText}
+          visible={Boolean(typingText && !(isOneToOneDm && dmPartnerIsTyping))}
+        />
+        <ChatPageComposerSection
+          isDmView={isDmView}
+          activeDmUserIds={activeDmUserIds}
+          activeStream={activeStream}
+          showTopicPrompt={!isDmView && !activeTopic}
+          streamSlug={streamSlug}
+          onExpandStreamTopics={handleExpandCurrentStreamTopics}
+          sending={sending}
+          uploadProgress={uploadProgress}
+          onSend={handleSend}
+          onCreateCallLink={canStartCall ? buildCurrentCallLink : undefined}
+          onCancelUpload={handleCancelUpload}
+          activeTopic={activeTopic}
+          replyQuote={replyQuote}
+          onClearReply={() => setReplyQuote(null)}
+          draftInitialValue={draftInitialValue}
+          onComposerValueChange={handleComposerValueChange}
+          onEditLastMessage={handleEditLastMessage}
+          aiMessagesContext={aiMessagesContext}
+          aiChatContext={aiChatContext}
+        />
       </section>
       {jitsiModalUrl && (
         <JitsiCallModal
