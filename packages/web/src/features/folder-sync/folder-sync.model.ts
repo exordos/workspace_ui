@@ -209,6 +209,7 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
     async refresh(reason) {
       const instanceId = get().instanceId;
       if (!instanceId) return;
+      const shouldToggleLoading = reason !== "polling";
 
       const inFlight = inFlightRefreshByInstance.get(instanceId);
       if (inFlight) {
@@ -219,7 +220,11 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
       const refreshPromise = (async () => {
         const requestVersion = get().requestVersion + 1;
         logStoreAction("folderSync", "refresh:start", { reason, requestVersion, instanceId });
-        set({ loading: true, error: null, requestVersion });
+        set({
+          error: null,
+          requestVersion,
+          ...(shouldToggleLoading ? { loading: true } : {}),
+        });
 
         try {
           const snapshot = await loadFolderSyncSnapshot(instanceId, {
@@ -271,12 +276,14 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
             selectedFolderId,
             selectedFolderChatIds,
             folderItemsByFolderId: nextFolderItemsByFolderId,
-            loading: needsFallbackSelectedLoad,
             error: null,
+            ...(shouldToggleLoading ? { loading: needsFallbackSelectedLoad } : {}),
           });
 
           if (!needsFallbackSelectedLoad) {
-            set({ loading: false });
+            if (shouldToggleLoading) {
+              set({ loading: false });
+            }
             return;
           }
 
@@ -291,8 +298,8 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
             set({
               folderItemsByFolderId: nextAfterFallback,
               selectedFolderChatIds: toChatIdSet(selectedItems),
-              loading: false,
               error: null,
+              ...(shouldToggleLoading ? { loading: false } : {}),
             });
           } catch {
             const stateAfterFallback = get();
@@ -300,7 +307,10 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
               return;
             }
             // Сохраняем предыдущее состояние выбранной папки, если fallback тоже неуспешен.
-            set({ loading: false, error: null });
+            set({
+              error: null,
+              ...(shouldToggleLoading ? { loading: false } : {}),
+            });
           }
         } catch {
           const stateOnFailure = get();
@@ -328,12 +338,15 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
             folders: offlineFolders,
             selectedFolderId,
             selectedFolderChatIds,
-            loading: false,
             error: "folder-sync:refresh_failed",
+            ...(shouldToggleLoading ? { loading: false } : {}),
           });
         } finally {
           const stateAfterFinish = get();
-          if (isCurrentRequest(stateAfterFinish, instanceId, requestVersion)) {
+          if (
+            shouldToggleLoading &&
+            isCurrentRequest(stateAfterFinish, instanceId, requestVersion)
+          ) {
             // Гарантированно выключаем loading для актуального запроса.
             set({ loading: false });
           }

@@ -201,6 +201,80 @@ describe("folder-sync model orchestration", () => {
     expect(useFolderSyncStore.getState().selectedFolderChatIds?.has("dm:fallback")).toBe(true);
   });
 
+  it("keeps loading disabled during polling refresh, including selected-folder fallback", async () => {
+    const snapshotDeferred = deferred<ReturnType<typeof makeFolderSnapshot>>();
+    const fallbackDeferred = deferred<
+      {
+        uuid: string;
+        chatId: string;
+        folderUuid: string;
+        orderIndex: number;
+        pinnedAt: null;
+        createdAt: string;
+        updatedAt: string;
+      }[]
+    >();
+    vi.mocked(loadFolderSyncSnapshot).mockReturnValue(snapshotDeferred.promise);
+    vi.mocked(loadFolderItemsForSelection).mockReturnValue(fallbackDeferred.promise);
+
+    useFolderSyncStore.setState({
+      instanceId: "inst-a",
+      labels: { allChats: "All", personal: "Personal", channels: "Channels" },
+      showSystemFolders: false,
+      selectedFolderId: "folder-1",
+      loading: false,
+    });
+
+    const refreshPromise = useFolderSyncStore.getState().refresh("polling");
+    expect(useFolderSyncStore.getState().loading).toBe(false);
+
+    snapshotDeferred.resolve(makeFolderSnapshot({ selectedItemsOk: false }));
+    await Promise.resolve();
+
+    expect(loadFolderItemsForSelection).toHaveBeenCalledTimes(1);
+    expect(useFolderSyncStore.getState().loading).toBe(false);
+
+    fallbackDeferred.resolve([
+      {
+        uuid: "item-fallback",
+        chatId: "dm:fallback",
+        folderUuid: "folder-1",
+        orderIndex: 0,
+        pinnedAt: null,
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T00:00:00Z",
+      },
+    ]);
+
+    await refreshPromise;
+
+    const state = useFolderSyncStore.getState();
+    expect(state.loading).toBe(false);
+    expect(state.selectedFolderChatIds?.has("dm:fallback")).toBe(true);
+  });
+
+  it("enables loading for mutation refresh while request is in flight", async () => {
+    const snapshotDeferred = deferred<ReturnType<typeof makeFolderSnapshot>>();
+    vi.mocked(loadFolderSyncSnapshot).mockReturnValue(snapshotDeferred.promise);
+
+    useFolderSyncStore.setState({
+      instanceId: "inst-a",
+      labels: { allChats: "All", personal: "Personal", channels: "Channels" },
+      showSystemFolders: false,
+      selectedFolderId: "folder-1",
+      loading: false,
+    });
+
+    const refreshPromise = useFolderSyncStore.getState().refresh("mutation");
+
+    expect(useFolderSyncStore.getState().loading).toBe(true);
+
+    snapshotDeferred.resolve(makeFolderSnapshot({}));
+    await refreshPromise;
+
+    expect(useFolderSyncStore.getState().loading).toBe(false);
+  });
+
   it("ignores stale refresh response after instance switch", async () => {
     const stale = deferred<ReturnType<typeof makeFolderSnapshot>>();
     vi.mocked(loadFolderSyncSnapshot).mockImplementation(async (instanceId: string) => {
