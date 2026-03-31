@@ -6,6 +6,11 @@
  */
 import { create } from "zustand";
 import { getCurrentInstance } from "~/shared/api/client";
+import {
+  fetchDmMessages,
+  fetchMessages,
+  fetchMessagesWithNarrow,
+} from "~/shared/api/zulip";
 import type {
   MockMessage,
   MockMessageDeliveryStatus,
@@ -13,6 +18,7 @@ import type {
   ZulipRawMessage,
 } from "~/shared/api/zulip.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
+import { useUsersStore } from "~/entities/user";
 
 import type { CurrentChatContext, CurrentChatMessagesState } from "./message.model.types";
 
@@ -249,6 +255,45 @@ function persistMessagesForContext(context: CurrentChatContext, messages: MockMe
   saveMessageCache(storage, storageKey, prunedCache);
 }
 
+function deriveFocusedPaginationFlags(
+  messages: readonly { id: number }[],
+  focusedMessageId: number | null,
+): { hasOlderMessages: boolean; hasNewerMessages: boolean } {
+  if (focusedMessageId == null) {
+    return { hasOlderMessages: true, hasNewerMessages: false };
+  }
+
+  let hasOlderMessages = false;
+  let hasNewerMessages = false;
+  for (const message of messages) {
+    if (message.id < focusedMessageId) hasOlderMessages = true;
+    else if (message.id > focusedMessageId) hasNewerMessages = true;
+    if (hasOlderMessages && hasNewerMessages) break;
+  }
+  return { hasOlderMessages, hasNewerMessages };
+}
+
+function parseDmKeyToUserIds(dmKey: string, currentUserId: number | null): number[] {
+  const parts = dmKey
+    .split(",")
+    .map((p) => Number(p))
+    .filter((n) => Number.isSafeInteger(n) && n > 0);
+  const uniqueValidIds = Array.from(new Set(parts));
+  if (currentUserId == null) return uniqueValidIds;
+  const withoutCurrentUser = uniqueValidIds.filter((id) => id !== currentUserId);
+  return withoutCurrentUser.length > 0 ? withoutCurrentUser : uniqueValidIds;
+}
+
+function mergeUsersFromMessages(messages: readonly MockMessage[]): void {
+  const store = useUsersStore.getState();
+  for (const msg of messages) {
+    store.mergeUser({
+      user_id: msg.sender_id,
+      full_name: msg.sender_full_name ?? "",
+    });
+  }
+}
+
 export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set, get) => ({
   context: null,
   messages: [],
@@ -265,6 +310,10 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       hasOlderMessages: true,
       hasNewerMessages: false,
     });
+  },
+
+  setContextFromNavigation(context) {
+    get().setContext(context);
   },
 
   setMessages(messages) {
@@ -402,5 +451,105 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
 
   setHasNewerMessages(has) {
     set({ hasNewerMessages: has });
+  },
+
+  async loadInitialMessagesForContext({ context, focusedMessageId, currentUserId }) {
+    const load =
+      context.type === "stream"
+        ? focusedMessageId != null
+          ? fetchMessagesWithNarrow(
+              [
+                { operator: "stream", operand: context.streamName },
+                { operator: "topic", operand: context.topic },
+              ],
+              focusedMessageId,
+              60,
+              60,
+            )
+          : fetchMessages(
+              context.streamName,
+              context.topic === "general" ? undefined : context.topic,
+            )
+        : focusedMessageId != null
+          ? fetchMessagesWithNarrow(
+              [{ operator: "dm", operand: parseDmKeyToUserIds(context.dmKey, currentUserId) }],
+              focusedMessageId,
+              60,
+              60,
+            )
+          : fetchDmMessages(parseDmKeyToUserIds(context.dmKey, currentUserId));
+
+    const messages = await load;
+    mergeUsersFromMessages(messages);
+    const flags = deriveFocusedPaginationFlags(messages, focusedMessageId);
+    set({
+      messages,
+      hasOlderMessages: flags.hasOlderMessages,
+      hasNewerMessages: flags.hasNewerMessages,
+    });
+  },
+
+  async loadOlderBoundaryPage({ pageSize, currentUserId }) {
+    const state = get();
+    if (state.isLoadingMore || !state.hasOlderMessages || state.messages.length === 0) return;
+    const oldest = state.messages[0];
+    const ctx = state.context;
+    if (!oldest || !ctx) return;
+
+    set({ isLoadingMore: true });
+    try {
+      const narrow =
+        ctx.type === "stream"
+          ? [
+              { operator: "stream", operand: ctx.streamName },
+              { operator: "topic", operand: ctx.topic },
+            ]
+          : [{ operator: "dm", operand: parseDmKeyToUserIds(ctx.dmKey, currentUserId) }];
+      const older = await fetchMessagesWithNarrow(narrow, oldest.id, pageSize, 0);
+      const withoutAnchor = older.filter((m) => m.id !== oldest.id);
+      if (withoutAnchor.length < pageSize) {
+        set({ hasOlderMessages: false });
+      }
+      if (withoutAnchor.length > 0) {
+        mergeUsersFromMessages(withoutAnchor);
+        set((s) => ({ messages: [...withoutAnchor, ...s.messages] }));
+      }
+    } catch {
+      // best-effort; keep boundary flags unchanged
+    } finally {
+      set({ isLoadingMore: false });
+    }
+  },
+
+  async loadNewerBoundaryPage({ pageSize, currentUserId }) {
+    const state = get();
+    if (state.isLoadingMore || !state.hasNewerMessages || state.messages.length === 0) return;
+    const newest = state.messages[state.messages.length - 1];
+    const ctx = state.context;
+    if (!newest || !ctx) return;
+
+    set({ isLoadingMore: true });
+    try {
+      const narrow =
+        ctx.type === "stream"
+          ? [
+              { operator: "stream", operand: ctx.streamName },
+              { operator: "topic", operand: ctx.topic },
+            ]
+          : [{ operator: "dm", operand: parseDmKeyToUserIds(ctx.dmKey, currentUserId) }];
+      const newer = await fetchMessagesWithNarrow(narrow, newest.id, 0, pageSize);
+      const withoutAnchor = newer.filter((m) => m.id !== newest.id);
+      if (withoutAnchor.length < pageSize) {
+        set({ hasNewerMessages: false });
+      }
+      if (withoutAnchor.length > 0) {
+        mergeUsersFromMessages(withoutAnchor);
+        set((s) => ({ messages: [...s.messages, ...withoutAnchor] }));
+      }
+    } catch {
+      // best-effort; keep boundary flags unchanged
+    } finally {
+      set({ isLoadingMore: false });
+    }
   },
 }));

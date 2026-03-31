@@ -11,28 +11,10 @@ import { useSettingsStore } from "~/features/settings";
 import { t } from "~/i18n";
 import { FolderRailHorizontalView } from "./folder-rail-horizontal-view.ui";
 import { FolderRailVerticalView } from "./folder-rail-vertical-view.ui";
-import type { FolderRailFolder, FolderRailLayout } from "./folder-rail.types";
+import type { FolderRailFolder, FolderRailLayout, FolderRailProps } from "./folder-rail.types";
 import type { IndexedFolderEntry } from "./folder-rail.utils";
 
 export type { FolderRailFolder, FolderRailLayout } from "./folder-rail.types";
-
-/** Публичные пропсы `FolderRail` (контракт должен оставаться стабильным для layout/sidebar). */
-interface FolderRailProps {
-  /** Полный список папок в текущем порядке отображения. */
-  folders: FolderRailFolder[];
-  /** Id текущей выбранной папки. */
-  selectedFolderId: string;
-  /** Обработчик выбора папки. */
-  onSelectFolder: (id: string) => void;
-  /** Legacy-prop, пока сохраняем для обратной совместимости API. */
-  onOrderPinning?: (id: string) => void;
-  /** Внешний переключатель layout; если не передан, используется settings store. */
-  onToggleLayout?: () => void;
-  /** Сигнал наверх, что список папок изменился (create/rename/delete). */
-  onFoldersChanged?: () => void;
-  /** Текущий режим отображения rail. */
-  layout?: FolderRailLayout;
-}
 
 export const FolderRail: React.FC<FolderRailProps> = ({
   folders,

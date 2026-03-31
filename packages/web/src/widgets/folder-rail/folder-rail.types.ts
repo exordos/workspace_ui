@@ -23,3 +23,21 @@ export interface FolderRailFolder {
  * `vertical` и `horizontal` имеют разные UX-сценарии и разную внутреннюю реализацию.
  */
 export type FolderRailLayout = "vertical" | "horizontal";
+
+/** Public props for `FolderRail` (stable contract for layout/sidebar). */
+export interface FolderRailProps {
+  /** Full list of folders in display order. */
+  folders: FolderRailFolder[];
+  /** Id of currently selected folder. */
+  selectedFolderId: string;
+  /** Folder selection handler. */
+  onSelectFolder: (id: string) => void;
+  /** Legacy prop kept for backward compatibility. */
+  onOrderPinning?: (id: string) => void;
+  /** External layout toggle; if not provided, settings store is used. */
+  onToggleLayout?: () => void;
+  /** Signal that folders list changed (create/rename/delete). */
+  onFoldersChanged?: () => void;
+  /** Current rail layout mode. */
+  layout?: FolderRailLayout;
+}

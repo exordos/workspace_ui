@@ -670,8 +670,8 @@ interface SidebarFolderChatListProps {
   chats: SidebarChat[];
   selectedFolderId?: string;
   pinFolderId?: string;
-  activeStreamSlug: string | null;
-  activeDmIdParam: string | null;
+  activeStreamSlug?: string | null;
+  activeDmIdParam?: string | null;
   activeTopic?: string | null;
   expandedStreamSlug?: string | null;
   onToggleStream?: (slug: string) => void;
@@ -692,9 +692,9 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
   chats,
   selectedFolderId,
   pinFolderId,
-  activeStreamSlug,
-  activeDmIdParam,
-  activeTopic,
+  activeStreamSlug: activeStreamSlugProp,
+  activeDmIdParam: activeDmIdParamProp,
+  activeTopic: activeTopicProp,
   expandedStreamSlug,
   onToggleStream,
   onNewTopic,
@@ -703,6 +703,9 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
   showEmptyState = false,
   onFolderAssignmentsChanged,
 }) => {
+  const activeStreamSlug = activeStreamSlugProp ?? null;
+  const activeTopic = activeTopicProp ?? null;
+  const activeDmIdParam = activeDmIdParamProp ?? null;
   const [topicDialogState, setTopicDialogState] = useState<NewTopicDialogState | null>(null);
   const [newTopicName, setNewTopicName] = useState("");
   const [muteTopicOnCreate, setMuteTopicOnCreate] = useState(false);

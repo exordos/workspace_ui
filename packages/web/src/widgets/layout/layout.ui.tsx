@@ -46,11 +46,9 @@ import { sortChatsByLastMessage } from "~/shared/lib/chat-sorting";
 import { getElectronAPI } from "~/shared/lib/electron";
 import { startZulipEventLoop, startZulipEventLoopForCredentials } from "~/shared/lib/event-loop";
 import { stripHtml } from "~/shared/lib/html";
-import { isOnline, onStatusChange } from "~/shared/lib/network";
 import { playNotificationSound } from "~/shared/lib/notification-sound";
 import { notificationService } from "~/shared/lib/notifications";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
-import { syncOrganizationFavicon } from "~/shared/lib/organization-branding";
 import { pushService } from "~/shared/lib/push";
 import {
   buildRouteFromPushNotificationClick,
@@ -84,17 +82,29 @@ import {
   computeInstanceUnreadCount,
   formatWebWindowTitleWithUnreadCount,
 } from "./layout-instance-unread.lib";
+import {
+  buildLayoutNotificationsActions,
+  dispatchZulipEvent,
+} from "./layout-zulip-event-dispatch.lib";
 import { buildRightPanelMedia } from "./layout-media.lib";
 import { startInactiveInstanceEventStreams } from "./layout-multi-org-event-streams.lib";
 import { startInactiveInstanceUnreadPolling } from "./layout-multi-org-polling.lib";
 import { closeReadMessageNotifications } from "./layout-notification-tags.lib";
 import {
   buildRightPanelCommonGroups,
+  buildRightPanelUserInfo,
   formatRightPanelLastSeen,
   formatRightPanelLocalTime,
 } from "./layout-right-panel.lib";
 import { resolveShortcutPanelToggle } from "./layout-shortcuts.lib";
 import { SYSTEM_CHANNELS_FOLDER_ID, SYSTEM_PERSONAL_FOLDER_ID } from "./layout-system-folders.lib";
+import { useLayoutAuthErrorHandler } from "./layout-auth-error-handler.hook";
+import { useLayoutAuthGuard } from "./layout-auth-guard.hook";
+import { useInactiveInstancesBackgroundWork } from "./layout-inactive-instances-background-work.hook";
+import { useLayoutOnlineStatus } from "./layout-online-status.hook";
+import { useLayoutPushClickRouting } from "./layout-push-click-routing.hook";
+import { useSyncChatContextFromLocation } from "./layout-sync-chat-context.hook";
+import { useLayoutWindowBranding } from "./layout-window-branding.hook";
 
 const MediaViewerOverlay: React.FC = () => {
   const isOpen = useMediaViewerStore((s) => s.isOpen);
@@ -334,8 +344,7 @@ export const Layout: React.FC = () => {
     });
   }, []);
 
-  const [online, setOnline] = useState(isOnline());
-  useEffect(() => onStatusChange(setOnline), []);
+  const online = useLayoutOnlineStatus();
   useHydrateDrafts(currentInstanceId, currentUserStatus);
 
   useEffect(() => {
@@ -343,90 +352,19 @@ export const Layout: React.FC = () => {
     setInstanceUnreadCount(currentInstanceId, unreadCountForCurrentInstance);
   }, [currentInstanceId, unreadCountForCurrentInstance, setInstanceUnreadCount]);
 
-  useEffect(() => {
-    if (getElectronAPI() != null) return;
-    document.title = formatWebWindowTitleWithUnreadCount(
-      unreadCountForCurrentInstance,
-      brand.appName,
-      activeChatWindowTitle,
-    );
-  }, [unreadCountForCurrentInstance, activeChatWindowTitle]);
+  useLayoutWindowBranding({
+    unreadCount: unreadCountForCurrentInstance,
+    activeChatWindowTitle: activeChatWindowTitle ?? "",
+    realmIcon: currentInstanceRealmIcon,
+  });
 
-  useEffect(() => {
-    if (getElectronAPI() != null) return;
-    return syncOrganizationFavicon(currentInstanceRealmIcon);
-  }, [currentInstanceRealmIcon]);
-
-  useEffect(() => {
-    return startInactiveInstanceEventStreams({
-      instances,
-      currentInstanceId,
-      enabled: currentUserStatus === "ready",
-      online,
-      refreshUnreadForInstance: async (instance) => {
-        const unreadCount = await fetchUnreadMessagesCountForCredentials({
-          realm: instance.realm,
-          email: instance.email,
-          apiKey: instance.apiKey,
-        });
-        if (unreadCount != null) {
-          setInstanceUnreadCount(instance.id, unreadCount);
-        }
-      },
-      startEventLoop: ({ credentials, onEvent, onBadQueue, onReconnect }) => {
-        const controller = new AbortController();
-        let queueId: string | null = null;
-        let stopped = false;
-        startZulipEventLoopForCredentials({
-          credentials,
-          signal: controller.signal,
-          onEvent,
-          onBadQueue,
-          onReconnect,
-          eventTypes: [
-            "message",
-            "update_message_flags",
-            "delete_message",
-            "subscription",
-            "user_topic",
-          ],
-          onQueueRegistered: (id) => {
-            if (stopped) {
-              deleteQueue(id, credentials).catch(() => {});
-              return;
-            }
-            queueId = id;
-          },
-        });
-        return () => {
-          stopped = true;
-          if (queueId) {
-            deleteQueue(queueId, credentials).catch(() => {});
-          }
-          controller.abort();
-        };
-      },
-    });
-  }, [instances, currentInstanceId, currentUserStatus, online, setInstanceUnreadCount]);
-
-  useEffect(() => {
-    return startInactiveInstanceUnreadPolling({
-      instances,
-      currentInstanceId,
-      enabled: currentUserStatus === "ready",
-      online,
-      setUnreadCount: setInstanceUnreadCount,
-      fetchUnreadCount: (instance, signal) =>
-        fetchUnreadMessagesCountForCredentials(
-          {
-            realm: instance.realm,
-            email: instance.email,
-            apiKey: instance.apiKey,
-          },
-          { signal },
-        ),
-    });
-  }, [instances, currentInstanceId, currentUserStatus, online, setInstanceUnreadCount]);
+  useInactiveInstancesBackgroundWork({
+    instances,
+    currentInstanceId,
+    enabled: currentUserStatus === "ready",
+    online,
+    setUnreadCount: setInstanceUnreadCount,
+  });
 
   useEffect(() => {
     folderSyncConfigRef.current = {
@@ -679,210 +617,44 @@ export const Layout: React.FC = () => {
           onEvent(event: ZulipEvent) {
             const chatList = useChatListStore.getState();
             const currentChat = useCurrentChatMessagesStore.getState();
-            const currentUserId = chatList.currentUserId;
+            const users = useUsersStore.getState();
+            const mute = useMuteStore.getState();
+            const typing = useTypingIndicatorStore.getState();
+            const activity = useActivityStore.getState();
+            const inbox = useInboxStore.getState();
 
-            if (event.type === "message" && event.message) {
-              const raw = event.message as unknown as ZulipRawMessage;
-              useUsersStore.getState().mergeFromMessage(raw);
-              chatList.addMessage(raw);
-              if (latestMessageIdRef.current == null || raw.id > latestMessageIdRef.current) {
-                latestMessageIdRef.current = raw.id;
-              }
-              useActivityStore.getState().markStale();
-              const isForCurrentChat =
-                currentChat.context && isMessageForContext(raw, currentChat.context, currentUserId);
-              if (isForCurrentChat) {
-                currentChat.appendMessage(rawMessageToMockMessage(raw));
-              }
-
-              useInboxStore.getState().markStale();
-
-              const isFromSelf = raw.sender_id === currentUserId;
-              if (!isFromSelf && !isForCurrentChat) {
-                let isMuted = false;
-                if (raw.type === "stream" && raw.stream_id != null) {
-                  const topic = (raw.subject ?? "").trim() || "general";
-                  isMuted = useMuteStore.getState().isEffectivelyMuted(raw.stream_id, topic);
-                }
-
-                if (!isMuted) {
-                  const senderName = raw.sender_full_name ?? "New message";
-                  const contentPreview = stripHtml(raw.content ?? "").slice(0, 100);
-                  notificationService
-                    .show({
-                      title: senderName,
-                      body: contentPreview,
-                      tag: `msg-${raw.id}`,
-                    })
-                    .catch(() => {});
-
-                  const soundPreset = useSettingsStore.getState().notificationSound;
-                  if (soundPreset !== "none") {
-                    playNotificationSound(soundPreset);
+            dispatchZulipEvent(event, {
+              chatList,
+              currentChat,
+              users,
+              mute,
+              typing,
+              activity,
+              inbox,
+              notifications: buildLayoutNotificationsActions({
+                show: notificationService.show,
+                closeByTag: notificationService.closeByTag,
+                playSound: (preset) => {
+                  if (
+                    preset === "default" ||
+                    preset === "subtle" ||
+                    preset === "digital" ||
+                    preset === "glass" ||
+                    preset === "pulse" ||
+                    preset === "none" ||
+                    preset == null
+                  ) {
+                    playNotificationSound(preset);
                   }
-
-                  if (typeof document !== "undefined" && !document.hasFocus()) {
-                    getElectronAPI()?.os?.requestAttention?.();
-                  }
+                },
+                getSoundPreset: () => useSettingsStore.getState().notificationSound,
+              }),
+              updateLatestMessageId: (id) => {
+                if (latestMessageIdRef.current == null || id > latestMessageIdRef.current) {
+                  latestMessageIdRef.current = id;
                 }
-              }
-            } else if (event.type === "update_message_flags") {
-              const op = event.op as "add" | "remove";
-              const flag = event.flag as string;
-              const messageIds = (event.messages ?? []) as number[];
-              if (messageIds.length === 0) return;
-              useActivityStore.getState().markStale();
-              if (flag === "read") {
-                useInboxStore.getState().markStale();
-                if (op === "add") {
-                  closeReadMessageNotifications(notificationService.closeByTag, messageIds);
-                  chatList.decrementUnreadForMessages(messageIds);
-                  currentChat.updateMessageFlags(messageIds, "read", "add");
-                } else {
-                  chatList.incrementUnreadForMessages(messageIds);
-                  currentChat.updateMessageFlags(messageIds, "read", "remove");
-                }
-              }
-            } else if (event.type === "reaction") {
-              useActivityStore.getState().markStale();
-              const messageId = event.message_id as number;
-              const reaction =
-                event.emoji_name != null
-                  ? {
-                      emoji_name: event.emoji_name as string,
-                      emoji_code: (event.emoji_code as string) ?? "",
-                      reaction_type:
-                        (event.reaction_type as
-                          | "unicode_emoji"
-                          | "realm_emoji"
-                          | "zulip_extra_emoji") ?? "unicode_emoji",
-                      user_id: event.user_id as number,
-                    }
-                  : null;
-              if (reaction) {
-                const op = (event.op as "add" | "remove") ?? "add";
-                currentChat.updateMessageReaction(messageId, reaction, op);
-              }
-            } else if (event.type === "delete_message") {
-              useActivityStore.getState().markStale();
-              const messageIds = event.message_ids
-                ? (event.message_ids as number[])
-                : event.message_id != null
-                  ? [event.message_id as number]
-                  : [];
-              if (messageIds.length > 0) {
-                chatList.handleDeleteMessages(messageIds);
-                currentChat.removeMessages(messageIds);
-              }
-            } else if (event.type === "typing") {
-              const sender = event.sender as { user_id: number } | undefined;
-              const recipients = event.recipients as { user_id: number }[] | undefined;
-              const currentUserId = useChatListStore.getState().currentUserId;
-              const route = resolveTypingEventRoute({
-                op: event.op as string | undefined,
-                messageType: event.message_type as string | undefined,
-                senderUserId: sender?.user_id,
-                recipients,
-                streamId: event.stream_id as number | undefined,
-                topic: event.topic as string | undefined,
-                currentUserId,
-              });
-              if (route) {
-                useTypingIndicatorStore
-                  .getState()
-                  .setTyping(route.chatKey, route.userId, route.isTyping);
-              }
-            } else if (event.type === "update_message") {
-              useActivityStore.getState().markStale();
-              const messageId = event.message_id as number | undefined;
-              const newContent = event.rendered_content as string | undefined;
-              if (messageId != null && newContent != null) {
-                currentChat.updateMessageContent(messageId, newContent);
-              }
-            } else if (event.type === "presence") {
-              const email = event.email as string | undefined;
-              const presenceData = event.presence as
-                | Record<string, { status?: string; timestamp?: number }>
-                | undefined;
-              if (email && presenceData) {
-                const agg = presenceData.aggregated ?? presenceData.website;
-                if (agg?.status != null && agg?.timestamp != null) {
-                  useUsersStore.getState().setPresenceByEmail(email, {
-                    status: agg.status === "idle" ? "idle" : "active",
-                    timestamp: agg.timestamp,
-                  });
-                }
-              }
-            } else if (event.type === "user_status") {
-              // Основной источник статусов: realtime-событие из event loop.
-              // Здесь сразу обновляем store и не делаем HTTP fallback.
-              const userId = event.user_id as number | undefined;
-              if (userId != null) {
-                const statusText =
-                  typeof event.status_text === "string" ? event.status_text.trim() : "";
-                const emojiName =
-                  typeof event.emoji_name === "string" ? event.emoji_name.trim() : "";
-                const emojiCode =
-                  typeof event.emoji_code === "string" ? event.emoji_code.trim() : "";
-                const reactionTypeRaw =
-                  typeof event.reaction_type === "string" ? event.reaction_type : undefined;
-                const reactionType =
-                  reactionTypeRaw === "unicode_emoji" ||
-                  reactionTypeRaw === "realm_emoji" ||
-                  reactionTypeRaw === "zulip_extra_emoji"
-                    ? reactionTypeRaw
-                    : undefined;
-                const away = event.away === true;
-                const hasStatus = statusText.length > 0 || emojiName.length > 0 || away;
-                useUsersStore.getState().setStatus(
-                  userId,
-                  hasStatus
-                    ? {
-                        text: statusText,
-                        emojiName: emojiName || undefined,
-                        emojiCode: emojiCode || undefined,
-                        reactionType,
-                        away,
-                      }
-                    : null,
-                  Date.now(),
-                );
-              }
-            } else if (event.type === "subscription") {
-              const op = event.op as
-                | "update"
-                | "add"
-                | "remove"
-                | "peer_add"
-                | "peer_remove"
-                | undefined;
-              if (op === "update") {
-                const streamId = event.stream_id as number | undefined;
-                const property = event.property as string | undefined;
-                const value = event.value as boolean | undefined;
-                if (streamId != null && property === "is_muted" && value != null) {
-                  if (value) {
-                    useMuteStore.getState().muteStream(streamId);
-                  } else {
-                    useMuteStore.getState().unmuteStream(streamId);
-                  }
-                }
-              }
-            } else if (event.type === "user_topic") {
-              const streamId = event.stream_id as number | undefined;
-              const topicName = event.topic_name as string | undefined;
-              const visibilityPolicy = event.visibility_policy as number | undefined;
-              if (streamId != null && topicName != null && visibilityPolicy != null) {
-                const muteStore = useMuteStore.getState();
-                if (visibilityPolicy === 1) {
-                  muteStore.muteTopic(streamId, topicName);
-                } else if (visibilityPolicy === 2) {
-                  muteStore.unmuteTopic(streamId, topicName);
-                } else {
-                  muteStore.unmuteTopic(streamId, topicName);
-                }
-              }
-            }
+              },
+            });
           },
         });
       })
@@ -968,34 +740,9 @@ export const Layout: React.FC = () => {
     };
   }, [currentInstanceId, currentUserStatus, loadMuteSnapshot]);
 
-  // Session timeout: auto-logout after 24h inactivity when user is authenticated
-  useEffect(() => {
-    if (!currentInstanceId || currentUserStatus !== "ready") return;
-    const cleanup = initAuthGuard({
-      onBeforeSessionExpired: () => {
-        void pushService.unregister().catch(() => {});
-      },
-      onSessionExpired: () => {
-        void navigate(withCurrentOrgRoute("/login"));
-      },
-    });
-    return cleanup;
-  }, [currentInstanceId, currentUserStatus, navigate]);
-
-  // Auth expiry: auto-logout on protected API 401 responses.
-  useEffect(() => {
-    if (!currentInstanceId || currentUserStatus !== "ready") {
-      setAuthErrorHandler(null);
-      return;
-    }
-    setAuthErrorHandler(() => {
-      void pushService.unregister().catch(() => {});
-      void navigate(withCurrentOrgRoute("/login"));
-    });
-    return () => {
-      setAuthErrorHandler(null);
-    };
-  }, [currentInstanceId, currentUserStatus, navigate]);
+  useLayoutAuthGuard({ currentInstanceId, currentUserStatus, navigate });
+  useLayoutAuthErrorHandler({ currentInstanceId, currentUserStatus, navigate });
+  useSyncChatContextFromLocation();
 
   // Request push permission after user is authenticated (don't block UI)
   useEffect(() => {
@@ -1013,30 +760,12 @@ export const Layout: React.FC = () => {
     return () => clearTimeout(timer);
   }, [currentUserStatus]);
 
-  useEffect(() => {
-    const sw = navigator.serviceWorker;
-    if (!sw) return;
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === "PUSH_NOTIFICATION_CLICK") {
-        const nextInstanceId = findInstanceIdByRealmUri(instances, event.data.realmUri);
-        if (nextInstanceId != null && nextInstanceId !== currentInstanceId) {
-          setCurrentInstanceId(nextInstanceId);
-        }
-        const route = buildRouteFromPushNotificationClick({
-          messageId: event.data.messageId,
-          messageType: event.data.messageType,
-          streamId: event.data.streamId,
-          streamName: event.data.streamName,
-          topic: event.data.topic,
-          senderId: event.data.senderId,
-          realmUri: event.data.realmUri,
-        });
-        void navigate(route);
-      }
-    };
-    sw.addEventListener("message", handleMessage);
-    return () => sw.removeEventListener("message", handleMessage);
-  }, [currentInstanceId, instances, navigate, setCurrentInstanceId]);
+  useLayoutPushClickRouting({
+    currentInstanceId,
+    instances,
+    setCurrentInstanceId,
+    navigate,
+  });
 
   const PRESENCE_POLL_MS = 90_000;
   useEffect(() => {
@@ -1240,105 +969,36 @@ export const Layout: React.FC = () => {
     return groups.length > 0 ? groups : undefined;
   }, [rightDrawerTargetUserId, dmsFromStore, dmChat?.slug]);
   const userStatusLabel = selectUserStatusSnapshot(userFromStore).statusLabel;
-  const profileForRightPanelUser =
-    rightDrawerTargetUserId != null && detailedProfile?.userId === rightDrawerTargetUserId
-      ? detailedProfile
-      : undefined;
+  const currentInstanceRealm = useMemo(
+    () => instances.find((instance) => instance.id === currentInstanceId)?.realm,
+    [instances, currentInstanceId],
+  );
   const rightPanelUser = useMemo<RightPanelUserInfo | undefined>(() => {
-    const userPresence = userFromStore?.presence;
-    if (
-      profileForRightPanelUser != null ||
-      userFromStore != null ||
-      rightDrawerTargetUserId != null
-    ) {
-      const profileName = profileForRightPanelUser?.fullName?.trim();
-      const userName = userFromStore?.full_name?.trim();
-      const dmName = dmChat?.name?.trim();
-      const resolvedName =
-        profileName != null && profileName.length > 0
-          ? profileName
-          : userName != null && userName.length > 0
-            ? userName
-            : dmName != null && dmName.length > 0
-              ? dmName
-              : rightDrawerTargetUserId != null
-                ? `User #${rightDrawerTargetUserId}`
-                : "";
-      const profileAvatarUrl = profileForRightPanelUser?.avatarUrl;
-      const resolvedAvatarUrl =
-        profileAvatarUrl != null && profileAvatarUrl.length > 0
-          ? profileAvatarUrl
-          : (userFromStore?.avatar_url ?? undefined);
-      const profileEmail = profileForRightPanelUser?.email?.trim();
-      const userEmail = userFromStore?.email?.trim();
-      const resolvedEmail =
-        profileEmail != null && profileEmail.length > 0
-          ? profileEmail
-          : userEmail != null && userEmail.length > 0
-            ? userEmail
-            : undefined;
-      const resolvedUserId =
-        profileForRightPanelUser?.userId ?? userFromStore?.user_id ?? rightDrawerTargetUserId;
-      const currentInstanceRealm = instances
-        .find((instance) => instance.id === currentInstanceId)
-        ?.realm?.trim();
-      const profileLink =
-        resolvedUserId != null &&
-        currentInstanceRealm != null &&
-        currentInstanceRealm.length > 0 &&
-        isValidRealmUrl(currentInstanceRealm)
-          ? `${currentInstanceRealm.replace(/\/+$/, "")}/#user/${resolvedUserId}`
-          : undefined;
-
-      return {
-        name: resolvedName,
-        status: userStatusLabel,
-        lastSeen: formatRightPanelLastSeen(userPresence),
-        avatarUrl: resolvedAvatarUrl,
-        userId: resolvedUserId,
-        email: resolvedEmail,
-        username: userFromStore?.email ?? undefined,
-        role:
-          profileForRightPanelUser?.role != null
-            ? getRoleLabel(parseRole(profileForRightPanelUser.role))
-            : userFromStore?.role != null
-              ? getRoleLabel(parseRole(userFromStore.role))
-              : undefined,
-        timezone: profileForRightPanelUser?.timezone ?? undefined,
-        dateJoined: profileForRightPanelUser?.dateJoined ?? undefined,
-        isBot: profileForRightPanelUser?.isBot ?? undefined,
-        isActive: profileForRightPanelUser?.isActive ?? undefined,
-        profileLink,
-        phone: profileForRightPanelUser?.phone ?? undefined,
-        jobTitle: profileForRightPanelUser?.jobTitle ?? undefined,
-        manager: profileForRightPanelUser?.manager ?? undefined,
-        birthday: profileForRightPanelUser?.birthday ?? undefined,
-        localTime: formatRightPanelLocalTime(profileForRightPanelUser?.timezone),
-        media: rightPanelMedia,
-        commonGroups: rightPanelCommonGroups,
-      };
-    }
-
-    if (dmChat && !dmChat.isGroup) {
-      return {
-        name: dmChat.name,
-        status: userStatusLabel,
-        lastSeen: formatRightPanelLastSeen(userPresence),
-        commonGroups: rightPanelCommonGroups,
-      };
-    }
-
-    return undefined;
+    return buildRightPanelUserInfo({
+      userFromStore:
+        userFromStore == null
+          ? undefined
+          : {
+              ...userFromStore,
+              avatar_url: userFromStore.avatar_url ?? undefined,
+            },
+      detailedProfile: detailedProfile ?? undefined,
+      dmChat,
+      rightDrawerTargetUserId: rightDrawerTargetUserId ?? null,
+      userStatusLabel,
+      currentInstanceRealm,
+      media: rightPanelMedia,
+      commonGroups: rightPanelCommonGroups,
+    });
   }, [
     userFromStore,
-    profileForRightPanelUser,
+    detailedProfile,
     dmChat,
+    rightDrawerTargetUserId,
+    userStatusLabel,
+    currentInstanceRealm,
     rightPanelMedia,
     rightPanelCommonGroups,
-    userStatusLabel,
-    rightDrawerTargetUserId,
-    instances,
-    currentInstanceId,
   ]);
 
   // Собираем топики активного стрима из chat-list store (без сети).
@@ -1522,58 +1182,7 @@ export const Layout: React.FC = () => {
             <div className="flex min-h-0 w-full min-w-0 max-w-[1920px] gap-1">
               {shouldShowChatShell && sidebarOpen && (
                 <>
-                  {folderRailLayout === "horizontal" ? (
-                    <Sidebar
-                      streams={streamsFromStore}
-                      selectedFolderId={selectedFolderId}
-                      pinFolderId={pinFolderIdForSelection}
-                      activeStreamSlug={activeStreamSlug ?? null}
-                      activeTopic={activeTopic}
-                      activeDmIdParam={dmIdParam ?? null}
-                      sidebarDms={dmsFromStore}
-                      sidebarChats={selectedFolderSidebarChats}
-                      sidebarChatsLoading={sidebarChatsLoading}
-                      pinReorderMode={pinReorderMode}
-                      onExitPinReorderMode={handleExitPinReorderMode}
-                      onFolderAssignmentsChanged={handleFoldersChanged}
-                      activityPanelBottomSlot={
-                        <FolderRail
-                          folders={folders}
-                          selectedFolderId={selectedFolderId}
-                          onSelectFolder={handleSelectFolder}
-                          onOrderPinning={handleStartOrderPinning}
-                          onToggleLayout={handleToggleFolderRailLayout}
-                          onFoldersChanged={handleFoldersChanged}
-                          layout="horizontal"
-                        />
-                      }
-                    />
-                  ) : (
-                    <>
-                      <FolderRail
-                        folders={folders}
-                        selectedFolderId={selectedFolderId}
-                        onSelectFolder={handleSelectFolder}
-                        onOrderPinning={handleStartOrderPinning}
-                        onToggleLayout={handleToggleFolderRailLayout}
-                        onFoldersChanged={handleFoldersChanged}
-                      />
-                      <Sidebar
-                        streams={streamsFromStore}
-                        selectedFolderId={selectedFolderId}
-                        pinFolderId={pinFolderIdForSelection}
-                        activeStreamSlug={activeStreamSlug ?? null}
-                        activeTopic={activeTopic}
-                        activeDmIdParam={dmIdParam ?? null}
-                        sidebarDms={dmsFromStore}
-                        sidebarChats={selectedFolderSidebarChats}
-                        sidebarChatsLoading={sidebarChatsLoading}
-                        pinReorderMode={pinReorderMode}
-                        onExitPinReorderMode={handleExitPinReorderMode}
-                        onFolderAssignmentsChanged={handleFoldersChanged}
-                      />
-                    </>
-                  )}
+                  <Sidebar />
                 </>
               )}
               <main

@@ -19,6 +19,16 @@ const DEFAULT_CONFIG: SidebarConfig = {
   expandedStreamSlug: null,
 };
 
+interface SidebarUiState {
+  selectedFolderId: string;
+  pinReorderMode: boolean;
+}
+
+const DEFAULT_UI_STATE: SidebarUiState = {
+  selectedFolderId: "1",
+  pinReorderMode: false,
+};
+
 function getStorageKeyForOrganization(organizationId: string | null): string {
   return buildOrgScopedStorageKey(SIDEBAR_CONFIG_STORAGE_KEY, organizationId);
 }
@@ -58,13 +68,16 @@ function saveConfig(
   }
 }
 
-interface SidebarConfigState extends SidebarConfig {
+interface SidebarConfigState extends SidebarConfig, SidebarUiState {
   setActivityOpen: (open: boolean) => void;
   setExpandedStreamSlug: (slug: string | null) => void;
   setConfig: (patch: Partial<SidebarConfig>) => void;
+  setSelectedFolderId: (folderId: string) => void;
+  setPinReorderMode: (enabled: boolean) => void;
 }
 
 export const useSidebarConfigStore = create<SidebarConfigState>((set) => ({
+  ...DEFAULT_UI_STATE,
   ...loadConfig(),
 
   setActivityOpen: (activityOpen) =>
@@ -87,6 +100,15 @@ export const useSidebarConfigStore = create<SidebarConfigState>((set) => ({
       saveConfig(next);
       return next;
     }),
+
+  setSelectedFolderId: (selectedFolderId) =>
+    set((state) => ({
+      ...state,
+      selectedFolderId,
+      pinReorderMode: false,
+    })),
+
+  setPinReorderMode: (pinReorderMode) => set((state) => ({ ...state, pinReorderMode })),
 }));
 
 if (typeof window !== "undefined") {
@@ -98,6 +120,12 @@ if (typeof window !== "undefined") {
     }
 
     previousOrganizationId = nextOrganizationId;
-    useSidebarConfigStore.setState(loadConfig(nextOrganizationId));
+    useSidebarConfigStore.setState((prev) => ({
+      ...DEFAULT_UI_STATE,
+      ...loadConfig(nextOrganizationId),
+      // Preserve non-persisted UI state only if it belongs to the same organization.
+      selectedFolderId: prev.selectedFolderId,
+      pinReorderMode: false,
+    }));
   });
 }

@@ -27,4 +27,13 @@ export interface CurrentChatMessagesState {
   setIsLoadingMore: (loading: boolean) => void;
   setHasOlderMessages: (has: boolean) => void;
   setHasNewerMessages: (has: boolean) => void;
+  setContextFromNavigation: (context: CurrentChatContext | null) => void;
+
+  loadInitialMessagesForContext: (options: {
+    context: CurrentChatContext;
+    focusedMessageId: number | null;
+    currentUserId: number | null;
+  }) => Promise<void>;
+  loadOlderBoundaryPage: (options: { pageSize: number; currentUserId: number | null }) => Promise<void>;
+  loadNewerBoundaryPage: (options: { pageSize: number; currentUserId: number | null }) => Promise<void>;
 }
