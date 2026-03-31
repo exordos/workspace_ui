@@ -1,22 +1,38 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   createFolder,
-  updateFolder,
   deleteFolder,
   CreateFolderModal,
+  updateFolder,
   UpdateFolderModal,
 } from "~/features/manage-folders";
 import { useSettingsStore } from "~/features/settings";
 import { t } from "~/i18n";
-import { Icon } from "~/shared/ui";
-
-import { FolderRailFolderItem } from "./folder-rail-folder-item.ui";
-import { FOLDER_QUICK_LIST_THRESHOLD } from "./folder-rail.lib";
-import { FolderRailQuickList } from "./folder-rail-quick-list.ui";
-import type { FolderRailFolder, FolderRailProps } from "./folder-rail.types";
+import { FolderRailHorizontalView } from "./folder-rail-horizontal-view.ui";
+import { FolderRailVerticalView } from "./folder-rail-vertical-view.ui";
+import type { FolderRailFolder, FolderRailLayout } from "./folder-rail.types";
+import type { IndexedFolderEntry } from "./folder-rail.utils";
 
 export type { FolderRailFolder, FolderRailLayout } from "./folder-rail.types";
+
+/** Публичные пропсы `FolderRail` (контракт должен оставаться стабильным для layout/sidebar). */
+interface FolderRailProps {
+  /** Полный список папок в текущем порядке отображения. */
+  folders: FolderRailFolder[];
+  /** Id текущей выбранной папки. */
+  selectedFolderId: string;
+  /** Обработчик выбора папки. */
+  onSelectFolder: (id: string) => void;
+  /** Legacy-prop, пока сохраняем для обратной совместимости API. */
+  onOrderPinning?: (id: string) => void;
+  /** Внешний переключатель layout; если не передан, используется settings store. */
+  onToggleLayout?: () => void;
+  /** Сигнал наверх, что список папок изменился (create/rename/delete). */
+  onFoldersChanged?: () => void;
+  /** Текущий режим отображения rail. */
+  layout?: FolderRailLayout;
+}
 
 export const FolderRail: React.FC<FolderRailProps> = ({
   folders,
@@ -31,22 +47,9 @@ export const FolderRail: React.FC<FolderRailProps> = ({
   const [renamingFolder, setRenamingFolder] = useState<FolderRailFolder | null>(null);
   const [deletingFolder, setDeletingFolder] = useState<FolderRailFolder | null>(null);
   const [isDeletingFolder, setIsDeletingFolder] = useState(false);
-  const [isHorizontalDragging, setIsHorizontalDragging] = useState(false);
+  const showSystemFolders = useSettingsStore((s) => s.showSystemFolders);
   const setFolderRailLayout = useSettingsStore((s) => s.setFolderRailLayout);
-  const horizontalDragStateRef = useRef<{
-    active: boolean;
-    pointerId: number | null;
-    startX: number;
-    startScrollLeft: number;
-    moved: boolean;
-  }>({
-    active: false,
-    pointerId: null,
-    startX: 0,
-    startScrollLeft: 0,
-    moved: false,
-  });
-  const suppressHorizontalClickRef = useRef(false);
+  const setShowSystemFolders = useSettingsStore((s) => s.setShowSystemFolders);
 
   const handleCreate = useCallback(
     async ({ name, backgroundColor }: { name: string; backgroundColor: number }) => {
@@ -107,227 +110,52 @@ export const FolderRail: React.FC<FolderRailProps> = ({
     }
   }, [deletingFolder, isDeletingFolder, onFoldersChanged]);
 
-  const isHorizontal = layout === "horizontal";
   const handleToggleLayout = useCallback(() => {
+    // Приоритет у внешнего callback; fallback — локальная смена через settings store.
     if (onToggleLayout != null) {
       onToggleLayout();
       return;
     }
     setFolderRailLayout(layout === "horizontal" ? "vertical" : "horizontal");
   }, [layout, onToggleLayout, setFolderRailLayout]);
-  const endHorizontalDrag = useCallback((pointerId: number | null) => {
-    const dragState = horizontalDragStateRef.current;
-    if (!dragState.active) return;
-    if (pointerId != null && dragState.pointerId !== pointerId) return;
-    suppressHorizontalClickRef.current = dragState.moved;
-    horizontalDragStateRef.current = {
-      active: false,
-      pointerId: null,
-      startX: 0,
-      startScrollLeft: 0,
-      moved: false,
-    };
-    setIsHorizontalDragging(false);
-  }, []);
-  const handleHorizontalPointerDownCapture = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      if (!isHorizontal || e.pointerType !== "mouse" || e.button !== 0) return;
-      const target = e.target;
-      if (!(target instanceof Node) || !e.currentTarget.contains(target)) {
-        return;
-      }
-      if (
-        target instanceof Element &&
-        target.closest("[data-folder-rail-action='add-folder']") != null
-      ) {
-        return;
-      }
-      const rail = e.currentTarget;
-      horizontalDragStateRef.current = {
-        active: true,
-        pointerId: e.pointerId,
-        startX: e.clientX,
-        startScrollLeft: rail.scrollLeft,
-        moved: false,
-      };
-      suppressHorizontalClickRef.current = false;
-      setIsHorizontalDragging(true);
-    },
-    [isHorizontal],
-  );
-  const handleHorizontalPointerMoveCapture = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      if (!isHorizontal) return;
-      const dragState = horizontalDragStateRef.current;
-      if (!dragState.active || dragState.pointerId !== e.pointerId) return;
-      const deltaX = e.clientX - dragState.startX;
-      if (!dragState.moved && Math.abs(deltaX) >= 3) {
-        dragState.moved = true;
-      }
-      if (!dragState.moved) return;
-      e.currentTarget.scrollLeft = dragState.startScrollLeft - deltaX;
-      e.preventDefault();
-    },
-    [isHorizontal],
-  );
-  const handleHorizontalPointerUpCapture = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      if (!isHorizontal) return;
-      const dragState = horizontalDragStateRef.current;
-      if (!dragState.active || dragState.pointerId !== e.pointerId) return;
-      endHorizontalDrag(e.pointerId);
-    },
-    [endHorizontalDrag, isHorizontal],
-  );
-  const handleHorizontalPointerCancelCapture = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      if (!isHorizontal) return;
-      endHorizontalDrag(e.pointerId);
-    },
-    [endHorizontalDrag, isHorizontal],
-  );
-  const handleHorizontalClickCapture = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      if (!isHorizontal || !suppressHorizontalClickRef.current) return;
-      const target = e.target;
-      if (!(target instanceof Node) || !e.currentTarget.contains(target)) {
-        suppressHorizontalClickRef.current = false;
-        return;
-      }
-      if (
-        target instanceof Element &&
-        target.closest("[data-folder-rail-action='add-folder']") != null
-      ) {
-        suppressHorizontalClickRef.current = false;
-        return;
-      }
-      suppressHorizontalClickRef.current = false;
-      e.preventDefault();
-      e.stopPropagation();
-    },
-    [isHorizontal],
-  );
-  useEffect(() => {
-    if (isHorizontal) return;
-    horizontalDragStateRef.current = {
-      active: false,
-      pointerId: null,
-      startX: 0,
-      startScrollLeft: 0,
-      moved: false,
-    };
-    suppressHorizontalClickRef.current = false;
-    setIsHorizontalDragging(false);
-  }, [isHorizontal]);
-  const indexedFolders = useMemo(
+
+  const handleToggleShowSystemFolders = useCallback(() => {
+    setShowSystemFolders(!showSystemFolders);
+  }, [setShowSystemFolders, showSystemFolders]);
+
+  // Единая структура для обоих view, чтобы не дублировать map + передачу индекса.
+  const indexedFolders = useMemo<IndexedFolderEntry[]>(
     () => folders.map((folder, index) => ({ folder, index })),
     [folders],
   );
-  const allFolderEntry = useMemo(() => {
-    if (isHorizontal) return null;
-    return (
-      indexedFolders.find(
-        ({ folder, index }) =>
-          folder.systemType === "all" || (folder.systemType == null && index === 0),
-      ) ??
-      indexedFolders[0] ??
-      null
-    );
-  }, [indexedFolders, isHorizontal]);
-  const scrollableFolderEntries = useMemo(() => {
-    if (isHorizontal) return indexedFolders;
-    if (allFolderEntry == null) return [];
-    return indexedFolders.filter(({ folder }) => folder.id !== allFolderEntry.folder.id);
-  }, [allFolderEntry, indexedFolders, isHorizontal]);
-  const showQuickList = !isHorizontal && indexedFolders.length > FOLDER_QUICK_LIST_THRESHOLD;
 
   return (
-    <div
-      data-testid={isHorizontal ? "folder-rail-horizontal" : "folder-rail-vertical"}
-      onPointerDownCapture={handleHorizontalPointerDownCapture}
-      onPointerMoveCapture={handleHorizontalPointerMoveCapture}
-      onPointerUpCapture={handleHorizontalPointerUpCapture}
-      onPointerCancelCapture={handleHorizontalPointerCancelCapture}
-      onClickCapture={handleHorizontalClickCapture}
-      className={
-        isHorizontal
-          ? `flex h-11 w-full flex-shrink-0 select-none items-center gap-1 overflow-x-auto overflow-y-hidden px-2 py-1 scrollbar-none ${
-              isHorizontalDragging ? "cursor-grabbing" : "cursor-grab"
-            }`
-          : "flex min-h-0 w-[90px] flex-shrink-0 flex-col items-center gap-1 py-3"
-      }
-    >
-      {isHorizontal ? (
-        indexedFolders.map(({ folder, index }) => (
-          <FolderRailFolderItem
-            key={folder.id}
-            folder={folder}
-            index={index}
-            layout={layout}
-            isSelected={selectedFolderId === folder.id}
-            onSelectFolder={onSelectFolder}
-            onToggleLayout={handleToggleLayout}
-            onRequestRename={handleRequestRename}
-            onRequestDelete={handleRequestDelete}
-          />
-        ))
-      ) : (
-        <>
-          {allFolderEntry && (
-            <FolderRailFolderItem
-              key={allFolderEntry.folder.id}
-              folder={allFolderEntry.folder}
-              index={allFolderEntry.index}
-              layout={layout}
-              isSelected={selectedFolderId === allFolderEntry.folder.id}
-              onSelectFolder={onSelectFolder}
-              onToggleLayout={handleToggleLayout}
-              onRequestRename={handleRequestRename}
-              onRequestDelete={handleRequestDelete}
-            />
-          )}
-          <div
-            data-testid="folder-rail-scroll-list"
-            className="mt-1 flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto px-1"
-          >
-            {scrollableFolderEntries.map(({ folder, index }) => (
-              <FolderRailFolderItem
-                key={folder.id}
-                folder={folder}
-                index={index}
-                layout={layout}
-                isSelected={selectedFolderId === folder.id}
-                onSelectFolder={onSelectFolder}
-                onToggleLayout={handleToggleLayout}
-                onRequestRename={handleRequestRename}
-                onRequestDelete={handleRequestDelete}
-              />
-            ))}
-          </div>
-        </>
-      )}
-
-      {showQuickList && (
-        <FolderRailQuickList
-          folders={indexedFolders}
+    <>
+      {layout === "horizontal" ? (
+        <FolderRailHorizontalView
+          indexedFolders={indexedFolders}
           selectedFolderId={selectedFolderId}
+          showSystemFolders={showSystemFolders}
           onSelectFolder={onSelectFolder}
+          onToggleLayout={handleToggleLayout}
+          onToggleShowSystemFolders={handleToggleShowSystemFolders}
+          onRequestRename={handleRequestRename}
+          onRequestDelete={handleRequestDelete}
+          onOpenCreateDialog={() => setCreateDialogOpen(true)}
+        />
+      ) : (
+        <FolderRailVerticalView
+          indexedFolders={indexedFolders}
+          selectedFolderId={selectedFolderId}
+          showSystemFolders={showSystemFolders}
+          onSelectFolder={onSelectFolder}
+          onToggleLayout={handleToggleLayout}
+          onToggleShowSystemFolders={handleToggleShowSystemFolders}
+          onRequestRename={handleRequestRename}
+          onRequestDelete={handleRequestDelete}
+          onOpenCreateDialog={() => setCreateDialogOpen(true)}
         />
       )}
-
-      <button
-        type="button"
-        onClick={() => setCreateDialogOpen(true)}
-        data-folder-rail-action="add-folder"
-        className={
-          isHorizontal
-            ? "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border-subtle"
-            : "flex h-10 w-10 items-center justify-center rounded-lg border border-border-subtle"
-        }
-        aria-label={t("a11y.addFolder")}
-      >
-        <Icon name="add" size={isHorizontal ? 24 : 40} className="shrink-0" />
-      </button>
 
       <CreateFolderModal
         open={createDialogOpen}
@@ -387,6 +215,6 @@ export const FolderRail: React.FC<FolderRailProps> = ({
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
-    </div>
+    </>
   );
 };

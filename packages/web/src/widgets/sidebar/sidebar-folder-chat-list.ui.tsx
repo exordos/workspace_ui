@@ -11,6 +11,7 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list";
+import { formatUserStatusLabel, useUsersStore } from "~/entities/user";
 import {
   useMuteStore,
   muteStream,
@@ -20,10 +21,17 @@ import {
 } from "~/features/mute-chat";
 import { pinChatInFolder, unpinChatInFolder, usePinStore } from "~/features/pin-chat";
 import { useSettingsStore } from "~/features/settings";
+import { useTypingIndicatorStore } from "~/features/typing-indicator";
 import { t } from "~/i18n";
 import { getFolderItems, updateFolderItemOrder } from "~/shared/api";
-import { markDmAsRead, markStreamAsRead, setTopicResolvedState } from "~/shared/api/zulip-read-state";
-import { sidebarRowClass } from "~/shared/lib/format";
+import {
+  getRealmBaseUrl,
+  markDmAsRead,
+  markStreamAsRead,
+  setTopicResolvedState,
+} from "~/shared/api/zulip";
+import { resolveAvatarUrl } from "~/shared/lib/avatar";
+import { sidebarRowClass, getPresenceState } from "~/shared/lib/format";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import {
   isTopicResolved,
@@ -31,6 +39,7 @@ import {
   toUnresolvedTopicName,
 } from "~/shared/lib/topic-resolve";
 import { Avatar, Badge, Icon } from "~/shared/ui";
+import { isDmPartnerTyping } from "./sidebar-dm-list.lib";
 import { loadFolderAssignments, toggleFolderAssignment } from "./sidebar-folder-assignment.lib";
 import {
   slugForStream,
@@ -39,7 +48,102 @@ import {
   parseDmSlugToUserIds,
 } from "./sidebar.lib";
 import type { SidebarChat } from "./sidebar.types";
-import { DmChatRow } from "./sidebar-folder-dm-chat-row.ui";
+
+function getAvatarUrl(avatarUrl: string | undefined): string | null {
+  return resolveAvatarUrl(avatarUrl, getRealmBaseUrl()) ?? null;
+}
+
+const DmChatRow = React.memo(function DmChatRow({
+  chat,
+  isActive,
+  isPinned,
+  compact,
+  onContextMenu,
+  onKeyDown,
+}: {
+  chat: Extract<SidebarChat, { type: "dm" }>;
+  isActive: boolean;
+  isPinned: boolean;
+  compact: boolean;
+  onContextMenu?: React.MouseEventHandler;
+  onKeyDown?: React.KeyboardEventHandler;
+}) {
+  const partnerUserId = chat.isGroup ? null : chat.id;
+  const currentUserId = useChatListStore((s) => s.currentUserId);
+  const typingMap = useTypingIndicatorStore((s) => s.typingMap);
+  const user = useUsersStore((s) => (partnerUserId != null ? s.getUser(partnerUserId) : undefined));
+  const partnerIsTyping = isDmPartnerTyping({
+    partnerUserId,
+    currentUserId,
+    typingMap,
+  });
+  const statusLabel = formatUserStatusLabel(user?.status);
+  const secondaryText = partnerIsTyping
+    ? t("chat.typing")
+    : statusLabel != null && statusLabel.length > 0
+      ? chat.lastMessage != null && chat.lastMessage.length > 0
+        ? `${statusLabel} · ${chat.lastMessage}`
+        : statusLabel
+      : (chat.lastMessage ?? "");
+  const presenceState =
+    user?.presence != null ? getPresenceState(user.presence.timestamp, user.presence.status) : null;
+  const avatarSrc = !chat.isGroup ? getAvatarUrl(chat.avatar_url) : null;
+  const rowClass = compact
+    ? "flex items-start gap-2 rounded-md px-2 py-1.5 transition-colors"
+    : "flex items-start gap-3 rounded-lg px-2.5 py-2.5 transition-colors";
+
+  return (
+    <Link
+      to={`/dm/${chat.slug}`}
+      className={`${rowClass} ${sidebarRowClass(isActive)}`}
+      onContextMenu={onContextMenu}
+      onKeyDown={onKeyDown}
+    >
+      <div className="relative shrink-0">
+        <Avatar size={compact ? "sm" : "md"} src={avatarSrc ?? undefined}>
+          {chat.isGroup ? (
+            <span data-testid={`group-avatar-icon-${chat.slug}`}>
+              <Icon name="group" size={16} className="text-text-primary" />
+            </span>
+          ) : (
+            chat.name.slice(0, 1)
+          )}
+        </Avatar>
+        {presenceState === "active" && (
+          <span
+            className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-bg bg-indicator-green"
+            aria-label={t("a11y.online")}
+          />
+        )}
+        {presenceState === "idle" && (
+          <span
+            className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-bg bg-indicator-orange"
+            aria-label={t("a11y.away")}
+          />
+        )}
+      </div>
+      <div className="flex min-w-0 flex-1 flex-col justify-center">
+        <span className="block truncate text-sm font-medium text-text-primary">{chat.name}</span>
+        {!compact && (
+          <span
+            className={`mt-0.5 block truncate text-[11px] ${
+              partnerIsTyping ? "italic text-text-primary" : "text-text-secondary"
+            }`}
+          >
+            {secondaryText}
+          </span>
+        )}
+      </div>
+      <div className={`flex flex-shrink-0 flex-col items-end ${compact ? "gap-0.5" : "gap-1"}`}>
+        <div className="flex items-center gap-1">
+          {isPinned && <Icon name="pin" size={12} className="text-text-muted" />}
+          <span className="text-xs text-text-muted">{chat.time ?? "10:13"}</span>
+          {chat.badge !== undefined && <Badge count={chat.badge} variant="unread" />}
+        </div>
+      </div>
+    </Link>
+  );
+});
 
 const TopicMuteButton = React.memo<{ streamId: number; topic: string }>(({ streamId, topic }) => {
   const isMuted = useMuteStore((s) => s.isTopicMuted(streamId, topic));
@@ -573,6 +677,7 @@ interface SidebarFolderChatListProps {
   onToggleStream?: (slug: string) => void;
   onNewTopic?: (streamSlug: string, topicName: string) => void;
   reorderPinnedOnly?: boolean;
+  loading?: boolean;
   showEmptyState?: boolean;
   onFolderAssignmentsChanged?: () => void;
 }
@@ -594,6 +699,7 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
   onToggleStream,
   onNewTopic,
   reorderPinnedOnly = false,
+  loading = false,
   showEmptyState = false,
   onFolderAssignmentsChanged,
 }) => {
@@ -712,6 +818,17 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
 
     closeTopicDialog();
   }, [closeTopicDialog, muteTopicOnCreate, newTopicName, onNewTopic, topicDialogState]);
+
+  if (loading) {
+    // Плейсхолдер списка чатов на время переключения/дозагрузки выбранной папки.
+    return (
+      <div className="px-3 py-4">
+        <div className="bg-bg-elevated/40 flex items-center justify-center rounded-lg border border-dashed border-border-subtle px-3 py-5 text-center">
+          <p className="text-sm text-text-muted">{t("app.loading")}</p>
+        </div>
+      </div>
+    );
+  }
 
   if (visibleChats.length === 0) {
     if (!showEmptyState) return null;

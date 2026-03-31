@@ -1,17 +1,17 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import EmojiPicker, { Theme, type EmojiClickData } from "emoji-picker-react";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list";
 import { useInstancesStore } from "~/entities/instance";
 import { useThemeStore } from "~/entities/theme";
 import {
   encodeEmojiToCode,
-  ensureUserStatusLoaded,
   formatUserStatusLabel,
   getUserStatusEmoji,
   normalizeStatusEmojiName,
   updateOwnStatus,
+  useUserStatus,
   useUsersStore,
 } from "~/entities/user";
 import {
@@ -209,9 +209,10 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
     () => resolveRealmIconUrl(currentInstance?.realmIcon),
     [currentInstance?.realmIcon],
   );
+  const currentStatus = useUserStatus(currentUserId);
   const currentStatusLabel = useMemo(
-    () => formatUserStatusLabel(currentUser?.status),
-    [currentUser?.status],
+    () => currentStatus.statusLabel ?? formatUserStatusLabel(currentUser?.status),
+    [currentStatus.statusLabel, currentUser?.status],
   );
   const selectedStatusEmoji = useMemo(
     () =>
@@ -231,13 +232,6 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   const closeDrawer = useCallback(() => {
     rightDrawer?.setOpen(false);
   }, [rightDrawer]);
-
-  useEffect(() => {
-    if (currentUserId == null) {
-      return;
-    }
-    void ensureUserStatusLoaded(currentUserId);
-  }, [currentUserId]);
 
   const openStatusDialog = useCallback(() => {
     const status = currentUser?.status;
@@ -286,11 +280,9 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
           hasEmoji: statusEmojiNameDraft.trim().length > 0,
           away: statusAwayDraft,
         });
-        await ensureUserStatusLoaded(currentUserId, { force: true });
         return;
       }
       useUsersStore.getState().setStatus(currentUserId, nextStatus, Date.now());
-      await ensureUserStatusLoaded(currentUserId, { force: true });
       setStatusDialogOpen(false);
     } finally {
       setStatusSubmitting(false);

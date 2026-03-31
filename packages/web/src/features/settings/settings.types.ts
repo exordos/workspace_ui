@@ -22,5 +22,6 @@ export interface AppSettings {
   notificationSound: NotificationSound;
   language: AppLanguage;
   folderRailLayout: FolderRailLayout;
+  showSystemFolders: boolean;
   chatListDensity: ChatListDensity;
 }

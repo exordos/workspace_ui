@@ -15,6 +15,7 @@ const unsortedFoldersWithSystemAll = [
   { id: "folder-1", systemType: "created" as const },
   { id: "all", systemType: "all" as const },
 ] as const;
+const onlyAllFolder = [{ id: "system:all", systemType: "all" as const }] as const;
 
 describe("layout-folder-selection", () => {
   describe("resolveSelectedFolderId", () => {
@@ -24,6 +25,10 @@ describe("layout-folder-selection", () => {
 
     it("keeps existing selection when folder id exists", () => {
       expect(resolveSelectedFolderId(folders, "folder-1")).toBe("folder-1");
+    });
+
+    it("falls back to all-folder when it is the only available folder", () => {
+      expect(resolveSelectedFolderId(onlyAllFolder, "unknown")).toBe("system:all");
     });
   });
 
@@ -52,6 +57,10 @@ describe("layout-folder-selection", () => {
       expect(shouldLoadFolderItemsForSelection(unsortedFoldersWithSystemAll, "folder-1")).toBe(
         true,
       );
+    });
+
+    it("does not load folder items when only all-folder exists", () => {
+      expect(shouldLoadFolderItemsForSelection(onlyAllFolder, "system:all")).toBe(false);
     });
   });
 });

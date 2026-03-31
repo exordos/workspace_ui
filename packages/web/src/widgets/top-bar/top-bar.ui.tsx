@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useChatListStore } from "~/entities/chat-list";
 import { useDownloadStore } from "~/entities/download";
 import type { DownloadEntry } from "~/entities/download";
-import { ensureUserStatusLoaded, formatUserStatusLabel, useUsersStore } from "~/entities/user";
+import { useUserStatus, useUsersStore } from "~/entities/user";
 import { t } from "~/i18n";
 import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
 import { resolveAvatarUrl } from "~/shared/lib/avatar";
@@ -70,10 +70,8 @@ export const TopBar: React.FC<TopBarProps> = ({
       : t("nav.profile");
   const trimmedEmail = currentUser?.email?.trim();
   const displayEmail = trimmedEmail != null && trimmedEmail.length > 0 ? trimmedEmail : undefined;
-  const currentStatusLabel = useMemo(
-    () => formatUserStatusLabel(currentUser?.status),
-    [currentUser?.status],
-  );
+  const currentStatus = useUserStatus(currentUserId);
+  const currentStatusLabel = currentStatus.statusLabel;
   const emailMaxWidth = `${Math.max(displayName.length, 1)}ch`;
   const avatarLetter = displayName[0]?.toUpperCase() ?? "?";
   const avatarSrc = resolveAvatarSrc(currentUser?.avatar_url ?? undefined);
@@ -145,13 +143,6 @@ export const TopBar: React.FC<TopBarProps> = ({
       document.removeEventListener("keydown", handleEscape);
     };
   }, [downloadCenterOpen]);
-
-  useEffect(() => {
-    if (currentUserId == null) {
-      return;
-    }
-    void ensureUserStatusLoaded(currentUserId);
-  }, [currentUserId]);
 
   return (
     <header

@@ -1,19 +1,20 @@
 import EmojiPicker, { Theme, type EmojiClickData } from "emoji-picker-react";
 import React, { useState, useRef, useMemo, useCallback } from "react";
 import { buildStickerMarkdown } from "~/entities/sticker";
-import { ensureUserStatusLoaded, formatUserStatusLabel, useUsersStore } from "~/entities/user";
+import { formatUserStatusLabel, useUsersStore } from "~/entities/user";
+import type { AiMessageContext, AiReplyRequest } from "~/features/ai-reply";
 import { AiComposerButton, AiActionMenu, SmartReplySuggestions } from "~/features/ai-reply";
 import { filterUsers, useMentionSuggestStore } from "~/features/mention-suggest";
 import type { MentionSuggestion } from "~/features/mention-suggest";
 import { StickerPicker } from "~/features/sticker-picker";
 import { t } from "~/i18n";
-import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
 import {
   createSavedSnippet,
   fetchSavedSnippets,
+  getRealmBaseUrl,
   renderMessageContent,
-} from "~/shared/api/zulip-messages";
-import type { SavedSnippet } from "~/shared/api/zulip.types";
+  type SavedSnippet,
+} from "~/shared/api/zulip";
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
 import { getPresenceState } from "~/shared/lib/format";
 import { sanitizeHtml, stripHtml } from "~/shared/lib/html";
@@ -21,22 +22,382 @@ import { useViewportKeyboard } from "~/shared/lib/touch";
 import { isWebView } from "~/shared/lib/webview";
 import { Icon, PresenceIndicator } from "~/shared/ui";
 import { resolveComposerKeyboardInsetPx } from "./message-composer-keyboard-inset.lib";
-import { wrapSelection } from "./message-composer-selection.lib";
-import { TOOLBAR_BTN } from "./message-composer-styles.lib";
 import { computeFloatingPickerPosition } from "./message-composer-picker-position.lib";
 import {
   applySyntaxHighlighting,
   renderMarkdownFallbackHtml,
 } from "./message-composer-preview.lib";
-import { ComposerModeTabs } from "./message-composer-mode-tabs.ui";
-import { FormattingToolbar } from "./message-composer-toolbar.ui";
-import type {
-  ComposerMode,
-  MediaPickerTab,
-  MessageComposerProps,
-  ReplyQuote,
-  ScheduledComposerMessage,
-} from "./message-composer.types";
+
+export interface ReplyQuote {
+  id: number;
+  content: string;
+  sender_full_name: string;
+}
+
+interface ComposerUploadProgress {
+  completed: number;
+  total: number;
+  activeFileName: string | null;
+}
+
+interface ScheduledComposerMessage {
+  id: string;
+  content: string;
+  subject: string;
+  files: File[];
+  sendAt: number;
+}
+
+interface MessageComposerProps {
+  onSend?: (content: string, subject?: string, files?: File[]) => void | Promise<void>;
+  onCreateCallLink?: () => string | null;
+  onCancelUpload?: () => void;
+  disabled?: boolean;
+  uploadProgress?: ComposerUploadProgress | null;
+  placeholder?: string;
+  /** Topic comes from the sidebar selection, not chosen in the composer */
+  activeTopic?: string;
+  /** Reply quote (shown above the input, prepended to the body on send) */
+  replyQuote?: ReplyQuote | null;
+  onClearReply?: () => void;
+  /** Pre-fill the composer (e.g. from a saved draft) */
+  initialValue?: string;
+  /** Called whenever the composer text changes (for draft persistence) */
+  onValueChange?: (value: string) => void;
+  /** Trigger edit mode for the latest own message when composer is empty. */
+  onEditLastMessage?: () => void;
+  /** Recent chat messages used as AI context. */
+  aiMessagesContext?: AiMessageContext[];
+  /** Current chat metadata used by AI provider. */
+  aiChatContext?: AiReplyRequest["chatContext"];
+}
+
+const TOOLBAR_BTN =
+  "flex h-7 w-7 items-center justify-center rounded text-text-muted transition-colors hover:bg-bg-elevated hover:text-text-primary";
+const TOOLBAR_GLYPH = "select-none text-[11px] font-medium leading-none text-current";
+const MODE_TAB_BTN = "flex h-7 w-7 items-center justify-center rounded transition-colors";
+const MODE_TAB_ACTIVE = "bg-accent text-on-accent";
+const MODE_TAB_INACTIVE = "text-composer-icon hover:bg-bg-elevated/60 hover:text-text-primary";
+
+interface SelectionMutation {
+  text: string;
+  selectionStartOffset: number;
+  selectionEndOffset: number;
+}
+
+function mutateSelection(
+  textareaRef: React.RefObject<HTMLTextAreaElement | null>,
+  onValueChange: (value: string) => void,
+  mutate: (selected: string) => SelectionMutation,
+): void {
+  const textarea = textareaRef.current;
+  if (!textarea) return;
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  const text = textarea.value;
+  const selected = text.slice(start, end);
+  const mutation = mutate(selected);
+  const nextValue = text.slice(0, start) + mutation.text + text.slice(end);
+  onValueChange(nextValue);
+  requestAnimationFrame(() => {
+    textarea.focus();
+    textarea.setSelectionRange(
+      start + mutation.selectionStartOffset,
+      start + mutation.selectionEndOffset,
+    );
+  });
+}
+
+function wrapSelection(
+  textareaRef: React.RefObject<HTMLTextAreaElement | null>,
+  marker: string,
+  onValueChange: (value: string) => void,
+) {
+  mutateSelection(textareaRef, onValueChange, (selected) => {
+    if (selected.length > 0) {
+      return {
+        text: `${marker}${selected}${marker}`,
+        selectionStartOffset: marker.length + selected.length + marker.length,
+        selectionEndOffset: marker.length + selected.length + marker.length,
+      };
+    }
+    return {
+      text: `${marker}${marker}`,
+      selectionStartOffset: marker.length,
+      selectionEndOffset: marker.length,
+    };
+  });
+}
+
+const FormattingToolbar = React.memo(function FormattingToolbar({
+  textareaRef,
+  onValueChange,
+  fileTrigger,
+  callLinkTrigger,
+  scheduleTrigger,
+  snippetsTrigger,
+  aiTrigger,
+}: {
+  textareaRef: React.RefObject<HTMLTextAreaElement | null>;
+  onValueChange: (value: string) => void;
+  fileTrigger?: React.ReactNode;
+  callLinkTrigger?: React.ReactNode;
+  scheduleTrigger?: React.ReactNode;
+  snippetsTrigger?: React.ReactNode;
+  aiTrigger?: React.ReactNode;
+}) {
+  const wrap = useCallback(
+    (marker: string) => wrapSelection(textareaRef, marker, onValueChange),
+    [textareaRef, onValueChange],
+  );
+  const quote = useCallback(() => {
+    mutateSelection(textareaRef, onValueChange, (selected) => {
+      if (selected.length > 0) {
+        const quoted = selected
+          .split("\n")
+          .map((line) => `> ${line}`)
+          .join("\n");
+        return {
+          text: quoted,
+          selectionStartOffset: quoted.length,
+          selectionEndOffset: quoted.length,
+        };
+      }
+      return {
+        text: "> ",
+        selectionStartOffset: 2,
+        selectionEndOffset: 2,
+      };
+    });
+  }, [onValueChange, textareaRef]);
+  const codeBlock = useCallback(() => {
+    mutateSelection(textareaRef, onValueChange, (selected) => {
+      if (selected.length > 0) {
+        const block = `\`\`\`\n${selected}\n\`\`\``;
+        return {
+          text: block,
+          selectionStartOffset: block.length,
+          selectionEndOffset: block.length,
+        };
+      }
+      return {
+        text: "```\n\n```",
+        selectionStartOffset: 4,
+        selectionEndOffset: 4,
+      };
+    });
+  }, [onValueChange, textareaRef]);
+  const bulletedList = useCallback(() => {
+    mutateSelection(textareaRef, onValueChange, (selected) => {
+      if (selected.length > 0) {
+        const list = selected
+          .split("\n")
+          .map((line) => `- ${line}`)
+          .join("\n");
+        return {
+          text: list,
+          selectionStartOffset: list.length,
+          selectionEndOffset: list.length,
+        };
+      }
+      return {
+        text: "- ",
+        selectionStartOffset: 2,
+        selectionEndOffset: 2,
+      };
+    });
+  }, [onValueChange, textareaRef]);
+  const numberedList = useCallback(() => {
+    mutateSelection(textareaRef, onValueChange, (selected) => {
+      if (selected.length > 0) {
+        const list = selected
+          .split("\n")
+          .map((line, index) => `${index + 1}. ${line}`)
+          .join("\n");
+        return {
+          text: list,
+          selectionStartOffset: list.length,
+          selectionEndOffset: list.length,
+        };
+      }
+      return {
+        text: "1. ",
+        selectionStartOffset: 3,
+        selectionEndOffset: 3,
+      };
+    });
+  }, [onValueChange, textareaRef]);
+  const link = useCallback(() => {
+    mutateSelection(textareaRef, onValueChange, (selected) => {
+      if (selected.length > 0) {
+        const linkText = `[${selected}](https://)`;
+        const urlStart = linkText.indexOf("https://");
+        return {
+          text: linkText,
+          selectionStartOffset: urlStart,
+          selectionEndOffset: linkText.length - 1,
+        };
+      }
+      const fallback = `[${t("composer.linkText")}](https://)`;
+      const urlStart = fallback.indexOf("https://");
+      return {
+        text: fallback,
+        selectionStartOffset: urlStart,
+        selectionEndOffset: fallback.length - 1,
+      };
+    });
+  }, [onValueChange, textareaRef]);
+  const hasMediaActions = fileTrigger != null || callLinkTrigger != null;
+  const hasAssistActions = scheduleTrigger != null || snippetsTrigger != null || aiTrigger != null;
+
+  return (
+    <div
+      className="flex min-w-0 flex-1 items-center gap-0.5 py-1"
+      role="toolbar"
+      aria-label={t("a11y.messageComposer")}
+    >
+      <button
+        type="button"
+        className={TOOLBAR_BTN}
+        onClick={() => wrap("**")}
+        title={t("composer.bold")}
+        aria-label={t("composer.bold")}
+      >
+        <span className={`${TOOLBAR_GLYPH} font-semibold`}>B</span>
+      </button>
+      <button
+        type="button"
+        className={TOOLBAR_BTN}
+        onClick={() => wrap("*")}
+        title={t("composer.italic")}
+        aria-label={t("composer.italic")}
+      >
+        <span className={`${TOOLBAR_GLYPH} italic`}>I</span>
+      </button>
+      <button
+        type="button"
+        className={TOOLBAR_BTN}
+        onClick={() => wrap("~~")}
+        title={t("composer.strikethrough")}
+        aria-label={t("composer.strikethrough")}
+      >
+        <span className={`${TOOLBAR_GLYPH} line-through`}>S</span>
+      </button>
+      <span className="mx-1 h-4 w-px bg-border-subtle" aria-hidden />
+      <button
+        type="button"
+        className={TOOLBAR_BTN}
+        onClick={quote}
+        title={t("composer.quote")}
+        aria-label={t("composer.quote")}
+      >
+        <span className={`${TOOLBAR_GLYPH} font-semibold`}>&gt;</span>
+      </button>
+      <button
+        type="button"
+        className={TOOLBAR_BTN}
+        onClick={bulletedList}
+        title={t("composer.bulletedList")}
+        aria-label={t("composer.bulletedList")}
+      >
+        <Icon name="list_bulleted" size={14} className="text-current" />
+      </button>
+      <button
+        type="button"
+        className={TOOLBAR_BTN}
+        onClick={numberedList}
+        title={t("composer.numberedList")}
+        aria-label={t("composer.numberedList")}
+      >
+        <span className={TOOLBAR_GLYPH}>1.</span>
+      </button>
+      <span className="mx-1 h-4 w-px bg-border-subtle" aria-hidden />
+      <button
+        type="button"
+        className={TOOLBAR_BTN}
+        onClick={() => wrap("`")}
+        title={t("composer.code")}
+        aria-label={t("composer.code")}
+      >
+        <span className="font-mono text-[11px] leading-none text-current">&lt;/&gt;</span>
+      </button>
+      <button
+        type="button"
+        className={TOOLBAR_BTN}
+        onClick={() => wrap("||")}
+        title={t("composer.spoiler")}
+        aria-label={t("composer.spoiler")}
+      >
+        <span className="font-mono text-[11px] leading-none text-current">||</span>
+      </button>
+      <button
+        type="button"
+        className={TOOLBAR_BTN}
+        onClick={codeBlock}
+        title={t("composer.codeBlock")}
+        aria-label={t("composer.codeBlock")}
+      >
+        <span className="font-mono text-[11px] leading-none text-current">{"{ }"}</span>
+      </button>
+      <button
+        type="button"
+        className={TOOLBAR_BTN}
+        onClick={link}
+        title={t("composer.link")}
+        aria-label={t("composer.link")}
+      >
+        <Icon name="links" size={14} className="text-current" />
+      </button>
+      {(hasMediaActions || hasAssistActions) && (
+        <>
+          <span className="mx-1 h-4 w-px bg-border-subtle" aria-hidden />
+          {fileTrigger}
+          {callLinkTrigger}
+          {hasMediaActions && hasAssistActions && (
+            <span className="mx-1 h-4 w-px bg-border-subtle" aria-hidden />
+          )}
+          {scheduleTrigger}
+          {snippetsTrigger}
+          {aiTrigger}
+        </>
+      )}
+    </div>
+  );
+});
+
+type ComposerMode = "write" | "preview";
+type MediaPickerTab = "emoji" | "sticker";
+
+const ComposerModeTabs = React.memo(function ComposerModeTabs({
+  mode,
+  onChange,
+}: {
+  mode: ComposerMode;
+  onChange: (mode: ComposerMode) => void;
+}) {
+  return (
+    <div className="inline-flex flex-shrink-0 items-center gap-1 rounded-lg bg-card-bg p-0.5">
+      <button
+        type="button"
+        className={`${MODE_TAB_BTN} ${mode === "write" ? MODE_TAB_ACTIVE : MODE_TAB_INACTIVE}`}
+        onClick={() => onChange("write")}
+        aria-label={t("composer.write")}
+        title={t("composer.write")}
+      >
+        <Icon name="pen" size={16} className="text-current" />
+      </button>
+      <button
+        type="button"
+        className={`${MODE_TAB_BTN} ${mode === "preview" ? MODE_TAB_ACTIVE : MODE_TAB_INACTIVE}`}
+        onClick={() => onChange("preview")}
+        aria-label={t("composer.preview")}
+        title={t("composer.preview")}
+      >
+        <Icon name="visibility" size={16} className="text-current" />
+      </button>
+    </div>
+  );
+});
 
 const QUOTE_PREVIEW_MAX = 80;
 const EMOJI_PICKER_WIDTH = 320;
@@ -342,15 +703,6 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     if (!showMentions) return;
     setMentionResults(filterUsers(mentionQuery, mentionUsers));
   }, [showMentions, mentionQuery, mentionUsers, setMentionResults]);
-
-  React.useEffect(() => {
-    if (!showMentions || mentionSuggestions.length === 0) {
-      return;
-    }
-    for (const suggestion of mentionSuggestions) {
-      void ensureUserStatusLoaded(suggestion.userId);
-    }
-  }, [showMentions, mentionSuggestions]);
 
   React.useEffect(() => {
     if (!showMentions) {

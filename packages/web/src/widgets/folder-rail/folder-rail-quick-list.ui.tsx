@@ -4,24 +4,28 @@ import { folderColorValueToCssHex } from "~/features/manage-folders";
 import { t } from "~/i18n";
 import { useShortcut } from "~/shared/lib/shortcuts";
 import { Badge, Icon } from "~/shared/ui";
+import {
+  FOLDER_QUICK_LIST_SHORTCUT,
+  resolveFolderSystemType,
+  type IndexedFolderEntry,
+} from "./folder-rail.utils";
 
-import { FOLDER_QUICK_LIST_SHORTCUT, resolveFolderSystemType } from "./folder-rail.lib";
-import type { FolderRailFolder } from "./folder-rail.types";
-
-export interface FolderRailQuickListProps {
-  folders: { folder: FolderRailFolder; index: number }[];
+/** Quick-list для быстрого переключения между большим числом папок. */
+interface FolderQuickListProps {
+  folders: IndexedFolderEntry[];
   selectedFolderId: string;
   onSelectFolder: (id: string) => void;
 }
 
-export const FolderRailQuickList = React.memo(function FolderRailQuickList({
+export const FolderQuickList: React.FC<FolderQuickListProps> = React.memo(function FolderQuickList({
   folders,
   selectedFolderId,
   onSelectFolder,
-}: FolderRailQuickListProps) {
+}) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [activeIndex, setActiveIndex] = useState(-1);
+  // null означает "активный элемент не зафиксирован вручную", используем вычисление по selectedFolderId.
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const activeItemRef = useRef<HTMLButtonElement | null>(null);
   const normalizedQuery = query.trim().toLowerCase();
@@ -34,7 +38,7 @@ export const FolderRailQuickList = React.memo(function FolderRailQuickList({
   const closeAndReset = useCallback(() => {
     setMenuOpen(false);
     setQuery("");
-    setActiveIndex(-1);
+    setActiveIndex(null);
   }, []);
 
   const handleFolderSelect = useCallback(
@@ -47,6 +51,8 @@ export const FolderRailQuickList = React.memo(function FolderRailQuickList({
 
   const openQuickList = useCallback(() => {
     setMenuOpen(true);
+    // При открытии всегда сбрасываем ручной индекс, чтобы стартовать из актуального selected.
+    setActiveIndex(null);
   }, []);
 
   useShortcut(FOLDER_QUICK_LIST_SHORTCUT, openQuickList, {
@@ -56,6 +62,7 @@ export const FolderRailQuickList = React.memo(function FolderRailQuickList({
 
   useEffect(() => {
     if (!menuOpen) return;
+    // Фокус ставим в следующем кадре, чтобы контент меню успел смонтироваться.
     const frameId = window.requestAnimationFrame(() => {
       searchInputRef.current?.focus();
       searchInputRef.current?.select();
@@ -63,30 +70,37 @@ export const FolderRailQuickList = React.memo(function FolderRailQuickList({
     return () => window.cancelAnimationFrame(frameId);
   }, [menuOpen]);
 
-  useEffect(() => {
-    if (!menuOpen) return;
+  const resolvedActiveIndex = useMemo(() => {
+    if (!menuOpen) return -1;
     if (filteredFolders.length === 0) {
-      setActiveIndex(-1);
-      return;
+      return -1;
     }
+    if (activeIndex != null) {
+      // Защита от выхода индекса за границы после изменения фильтра.
+      return Math.min(Math.max(activeIndex, 0), filteredFolders.length - 1);
+    }
+    // Пока пользователь не двигал фокус стрелками, активируем текущую выбранную папку.
     const selectedIndex = filteredFolders.findIndex(({ folder }) => folder.id === selectedFolderId);
-    setActiveIndex(selectedIndex >= 0 ? selectedIndex : 0);
-  }, [filteredFolders, menuOpen, selectedFolderId]);
+    return selectedIndex >= 0 ? selectedIndex : 0;
+  }, [activeIndex, filteredFolders, menuOpen, selectedFolderId]);
 
   useEffect(() => {
-    if (activeIndex < 0) return;
+    if (resolvedActiveIndex < 0) return;
     const activeItem = activeItemRef.current;
     if (!activeItem || typeof activeItem.scrollIntoView !== "function") return;
     activeItem.scrollIntoView({ block: "nearest" });
-  }, [activeIndex]);
+  }, [resolvedActiveIndex]);
 
   const handleSearchKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === "ArrowDown") {
         e.preventDefault();
         setActiveIndex((currentIndex) => {
-          if (filteredFolders.length === 0) return -1;
-          if (currentIndex < 0) return 0;
+          if (filteredFolders.length === 0) return null;
+          if (currentIndex == null || currentIndex < 0) {
+            // Первый ArrowDown двигает на следующий элемент относительно auto-выбранного.
+            return Math.min(Math.max(resolvedActiveIndex, 0) + 1, filteredFolders.length - 1);
+          }
           return Math.min(currentIndex + 1, filteredFolders.length - 1);
         });
         return;
@@ -94,15 +108,19 @@ export const FolderRailQuickList = React.memo(function FolderRailQuickList({
       if (e.key === "ArrowUp") {
         e.preventDefault();
         setActiveIndex((currentIndex) => {
-          if (filteredFolders.length === 0) return -1;
-          if (currentIndex < 0) return 0;
+          if (filteredFolders.length === 0) return null;
+          if (currentIndex == null || currentIndex < 0) {
+            // Первый ArrowUp двигает на предыдущий элемент относительно auto-выбранного.
+            return Math.max(Math.max(resolvedActiveIndex, 0) - 1, 0);
+          }
           return Math.max(currentIndex - 1, 0);
         });
         return;
       }
       if (e.key === "Enter") {
         e.preventDefault();
-        const activeFolder = activeIndex >= 0 ? filteredFolders[activeIndex] : undefined;
+        const activeFolder =
+          resolvedActiveIndex >= 0 ? filteredFolders[resolvedActiveIndex] : undefined;
         if (!activeFolder) return;
         handleFolderSelect(activeFolder.folder.id);
         return;
@@ -112,7 +130,7 @@ export const FolderRailQuickList = React.memo(function FolderRailQuickList({
         closeAndReset();
       }
     },
-    [activeIndex, closeAndReset, filteredFolders, handleFolderSelect],
+    [closeAndReset, filteredFolders, handleFolderSelect, resolvedActiveIndex],
   );
 
   return (
@@ -122,7 +140,7 @@ export const FolderRailQuickList = React.memo(function FolderRailQuickList({
         setMenuOpen(nextOpen);
         if (!nextOpen) {
           setQuery("");
-          setActiveIndex(-1);
+          setActiveIndex(null);
         }
       }}
     >
@@ -152,7 +170,11 @@ export const FolderRailQuickList = React.memo(function FolderRailQuickList({
               ref={searchInputRef}
               type="search"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                // При изменении запроса пересчитываем активный элемент заново из выбранной папки.
+                setActiveIndex(null);
+              }}
               onKeyDown={handleSearchKeyDown}
               placeholder={t("folder.searchFolders")}
               className="w-full bg-transparent text-sm text-text-primary outline-none placeholder:text-text-muted"
@@ -175,7 +197,7 @@ export const FolderRailQuickList = React.memo(function FolderRailQuickList({
                       ? "channels"
                       : "folder";
               const isSelected = selectedFolderId === folder.id;
-              const isActive = activeIndex === listIndex;
+              const isActive = resolvedActiveIndex === listIndex;
               return (
                 <button
                   key={folder.id}

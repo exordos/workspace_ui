@@ -1,6 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ensureUserStatusLoaded, formatUserStatusLabel, useUsersStore } from "~/entities/user";
+import { formatUserStatusLabel, useUsersStore } from "~/entities/user";
 import { t } from "~/i18n";
 import { fetchMessages } from "~/shared/api/zulip-messages";
 import type { MockMessage } from "~/shared/api/zulip.types";
@@ -184,15 +184,6 @@ export const SearchModal: React.FC<SearchModalProps> = ({
       setDateFilter("");
     }
   }, [open]);
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    for (const user of userResults) {
-      void ensureUserStatusLoaded(user.userId);
-    }
-  }, [open, userResults]);
 
   useEffect(() => {
     if (!open) return;

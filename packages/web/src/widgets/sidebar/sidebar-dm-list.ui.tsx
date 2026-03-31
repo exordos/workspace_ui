@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list";
-import { ensureUserStatusLoaded, formatUserStatusLabel, useUsersStore } from "~/entities/user";
+import { formatUserStatusLabel, useUsersStore } from "~/entities/user";
 import { useSettingsStore } from "~/features/settings";
 import { useTypingIndicatorStore } from "~/features/typing-indicator";
 import { t } from "~/i18n";
@@ -42,24 +42,6 @@ export const SidebarDmList: React.FC<SidebarDmListProps> = ({ activeDmId, dms })
     if (tab !== "all") return [];
     return sortDmAllUsersForDisplay(Array.from(allUsers.values()), unreadByUserId, currentUserId);
   }, [allUsers, currentUserId, tab, unreadByUserId]);
-
-  useEffect(() => {
-    for (const chat of recentDms) {
-      if (!Number.isFinite(chat.id) || chat.id <= 0) {
-        continue;
-      }
-      void ensureUserStatusLoaded(chat.id);
-    }
-  }, [recentDms]);
-
-  useEffect(() => {
-    if (tab !== "all") {
-      return;
-    }
-    for (const user of allUsersList) {
-      void ensureUserStatusLoaded(user.user_id);
-    }
-  }, [tab, allUsersList]);
 
   return (
     <div className="px-3">

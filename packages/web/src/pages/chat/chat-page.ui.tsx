@@ -10,7 +10,7 @@ import {
 } from "~/entities/draft";
 import type { DraftType } from "~/entities/draft";
 import { useCurrentChatMessagesStore } from "~/entities/message";
-import { ensureUserStatusLoaded, formatUserStatusLabel, useUsersStore } from "~/entities/user";
+import { formatUserStatusLabel, useUsersStore } from "~/entities/user";
 import type { AiMessageContext, AiReplyRequest } from "~/features/ai-reply";
 import { useChatInfoStore } from "~/features/chat-info";
 import { JitsiCallModal } from "~/features/jitsi-call";
@@ -28,27 +28,25 @@ import {
 } from "~/features/typing-indicator";
 import { t } from "~/i18n";
 import {
-  addMessageFlag,
-  addReaction,
-  deleteMessage,
-  fetchDmMessages,
-  fetchMessageById,
   fetchMessages,
   fetchMessagesWithNarrow,
-  removeMessageFlag,
-  removeReaction,
+  fetchDmMessages,
+  fetchMessageById,
+  fetchUser,
   sendMessage,
-  updateMessage,
-} from "~/shared/api/zulip-messages";
-import {
-  markDmAsRead,
   markMessagesAsRead,
+  updateMessage,
+  deleteMessage,
+  addReaction,
+  markDmAsRead,
+  removeReaction,
   markStreamAsRead,
   markTopicAsRead,
-} from "~/shared/api/zulip-read-state";
-import { uploadFile } from "~/shared/api/zulip-upload";
-import type { MockMessage } from "~/shared/api/zulip.types";
-import { fetchUser } from "~/shared/api/zulip-users";
+  uploadFile,
+  addMessageFlag,
+  removeMessageFlag,
+  type MockMessage,
+} from "~/shared/api/zulip";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { dmRouteKey } from "~/shared/lib/dm-key";
@@ -68,6 +66,7 @@ import {
   slugForStream,
   useSidebarConfigStore,
 } from "~/widgets/sidebar";
+import type { StreamWithLast } from "~/widgets/sidebar";
 import {
   buildCallRoomName,
   canStartCallFromHeader,
@@ -82,6 +81,7 @@ import {
   mergeForwardDraftContent,
   resolveForwardDraftTarget,
   setPendingForwardPrefill,
+  toggleForwardRecipient,
 } from "./chat-forward.lib";
 import { collectUnreadMessageIds, resolveMarkAllAsReadTarget } from "./chat-mark-all-read.lib";
 import { createMarkAsReadBatcher } from "./chat-mark-as-read.lib";
@@ -105,16 +105,259 @@ import {
   TOPIC_PROMPT_ICON_HOVER_MODE,
 } from "./chat-topic-prompt-button.lib";
 import { uploadComposerFiles, type ComposerUploadProgressState } from "./chat-upload.lib";
-import {
-  AI_CONTEXT_MESSAGES_LIMIT,
-  AI_CONTEXT_MESSAGE_MAX_CHARS,
-  isAbortLikeError,
-  normalizeAiContextContent,
-} from "./chat-page-ai.lib";
-import { EditMessageModalBody } from "./chat-page-edit-message-modal.ui";
-import { ForwardMessageModalBody } from "./chat-page-forward-modal.ui";
 
 const log = createLogger("chat-page");
+const AI_CONTEXT_MESSAGES_LIMIT = 30;
+const AI_CONTEXT_MESSAGE_MAX_CHARS = 500;
+
+function isAbortLikeError(error: unknown): boolean {
+  return (
+    (error instanceof DOMException && error.name === "AbortError") ||
+    (error instanceof Error && error.name === "AbortError")
+  );
+}
+
+function normalizeAiContextContent(content: string): string {
+  return stripHtml(content).replace(/\s+/g, " ").trim().slice(0, AI_CONTEXT_MESSAGE_MAX_CHARS);
+}
+
+function EditMessageModalBody({
+  initialContent,
+  onSave,
+  onClose,
+}: {
+  initialContent: string;
+  onSave: (content: string) => void;
+  onClose: () => void;
+}) {
+  const [content, setContent] = useState(initialContent);
+  return (
+    <>
+      <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
+        <Dialog.Title className="text-sm font-semibold text-text-primary">
+          {t("message.edit")}
+        </Dialog.Title>
+        <Dialog.Close asChild>
+          <button
+            type="button"
+            onClick={onClose}
+            className="hover:bg-bg/50 rounded p-1 text-text-muted"
+            aria-label={t("common.close")}
+          >
+            <Icon name="close" size={18} />
+          </button>
+        </Dialog.Close>
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
+        <textarea
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          className="min-h-[120px] w-full flex-1 resize-none rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted"
+          placeholder={t("message.editPlaceholder")}
+        />
+        <div className="flex justify-end gap-2">
+          <Dialog.Close asChild>
+            <button
+              type="button"
+              onClick={onClose}
+              className="hover:bg-bg/50 rounded-lg px-3 py-1.5 text-sm text-text-muted"
+            >
+              {t("common.cancel")}
+            </button>
+          </Dialog.Close>
+          <button
+            type="button"
+            onClick={() => onSave(content)}
+            className="rounded-lg bg-accent px-3 py-1.5 text-sm text-bg hover:opacity-90"
+          >
+            {t("common.save")}
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function ForwardMessageModalBody({
+  streams,
+  onForward,
+  onClose,
+}: {
+  streams: StreamWithLast[];
+  onForward: (stream: string, topic: string, to?: number[]) => void;
+  onClose: () => void;
+}) {
+  const [tab, setTab] = useState<"channel" | "dm">("channel");
+  const [selectedStream, setSelectedStream] = useState<string>("");
+  const [topic, setTopic] = useState("general");
+  const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
+  const [dmSearch, setDmSearch] = useState("");
+  const stream = streams.find((s) => s.name === selectedStream);
+  const topics = stream?.topics?.map((tp) => tp.subject) ?? [];
+  const allUsers = useUsersStore((s) => s.users);
+  const userList = useMemo(() => {
+    const list = Array.from(allUsers.values());
+    if (!dmSearch.trim()) return list;
+    const q = dmSearch.trim().toLowerCase();
+    return list.filter(
+      (u) => u.full_name.toLowerCase().includes(q) || (u.email?.toLowerCase().includes(q) ?? false),
+    );
+  }, [allUsers, dmSearch]);
+
+  return (
+    <>
+      <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
+        <Dialog.Title className="text-sm font-semibold text-text-primary">
+          {tab === "channel" ? t("message.forwardToChannel") : t("message.forwardToDm")}
+        </Dialog.Title>
+        <Dialog.Close asChild>
+          <button
+            type="button"
+            onClick={onClose}
+            className="hover:bg-bg/50 rounded p-1 text-text-muted"
+            aria-label={t("common.close")}
+          >
+            <Icon name="close" size={18} />
+          </button>
+        </Dialog.Close>
+      </div>
+      <div className="flex border-b border-border-subtle">
+        <button
+          type="button"
+          className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
+            tab === "channel"
+              ? "border-b-2 border-accent text-accent"
+              : "text-text-muted hover:text-text-primary"
+          }`}
+          onClick={() => setTab("channel")}
+        >
+          {t("message.channel")}
+        </button>
+        <button
+          type="button"
+          className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
+            tab === "dm"
+              ? "border-b-2 border-accent text-accent"
+              : "text-text-muted hover:text-text-primary"
+          }`}
+          onClick={() => setTab("dm")}
+        >
+          {t("message.directMessage")}
+        </button>
+      </div>
+      <div className="flex flex-col gap-3 overflow-hidden p-4">
+        {tab === "channel" ? (
+          <>
+            <label className="text-sm text-text-muted">{t("channel.name")}</label>
+            <select
+              value={selectedStream}
+              onChange={(e) => {
+                setSelectedStream(e.target.value);
+                setTopic("general");
+              }}
+              className="w-full rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none"
+            >
+              <option value="">{t("channel.selectChannel")}</option>
+              {streams.map((s) => (
+                <option key={s.stream_id} value={s.name}>
+                  #{s.name}
+                </option>
+              ))}
+            </select>
+            <label className="text-sm text-text-muted">{t("channel.topicName")}</label>
+            <input
+              type="text"
+              value={topic}
+              onChange={(e) => setTopic(e.target.value)}
+              list="forward-topics"
+              className="w-full rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted"
+              placeholder={t("channel.newTopic")}
+            />
+            {topics.length > 0 && (
+              <datalist id="forward-topics">
+                {topics.map((subj) => (
+                  <option key={subj} value={subj} />
+                ))}
+              </datalist>
+            )}
+          </>
+        ) : (
+          <>
+            <input
+              type="text"
+              value={dmSearch}
+              onChange={(e) => setDmSearch(e.target.value)}
+              className="w-full rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted"
+              placeholder={t("message.searchUsers")}
+            />
+            <div className="max-h-48 overflow-y-auto rounded-lg border border-border-subtle">
+              {userList.length === 0 ? (
+                <p className="px-3 py-4 text-center text-sm text-text-muted">
+                  {t("search.noResults")}
+                </p>
+              ) : (
+                userList.map((u) => {
+                  const statusLabel = formatUserStatusLabel(u.status);
+                  return (
+                    <button
+                      type="button"
+                      key={u.user_id}
+                      className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors ${
+                        selectedUserIds.includes(u.user_id)
+                          ? "bg-accent/20 text-text-primary"
+                          : "text-text-primary hover:bg-bg-elevated"
+                      }`}
+                      onClick={() =>
+                        setSelectedUserIds((prev) => toggleForwardRecipient(prev, u.user_id))
+                      }
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-medium">{u.full_name}</span>
+                        {(statusLabel != null && statusLabel.length > 0) || u.email ? (
+                          <span className="block truncate text-[11px] text-text-secondary">
+                            {statusLabel ?? u.email ?? ""}
+                          </span>
+                        ) : null}
+                      </span>
+                      {selectedUserIds.includes(u.user_id) ? (
+                        <Icon name="check" size={14} className="ml-auto text-accent" />
+                      ) : null}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </>
+        )}
+        <div className="flex justify-end gap-2 pt-2">
+          <Dialog.Close asChild>
+            <button
+              type="button"
+              onClick={onClose}
+              className="hover:bg-bg/50 rounded-lg px-3 py-1.5 text-sm text-text-muted"
+            >
+              {t("common.cancel")}
+            </button>
+          </Dialog.Close>
+          <button
+            type="button"
+            disabled={tab === "channel" ? !selectedStream : selectedUserIds.length === 0}
+            onClick={() => {
+              if (tab === "dm" && selectedUserIds.length > 0) {
+                onForward("", "", selectedUserIds);
+              } else {
+                onForward(selectedStream, topic || "general");
+              }
+            }}
+            className="rounded-lg bg-accent px-3 py-1.5 text-sm text-bg hover:opacity-90 disabled:opacity-50"
+          >
+            {t("message.forwardTo")}
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
 
 export const ChatPage: React.FC = () => {
   const navigate = useNavigate();
@@ -133,10 +376,25 @@ export const ChatPage: React.FC = () => {
   const streamsMap = useChatListStore((s) => s.streamsMap);
   const dmsFromStore = useChatListStore((s) => s.dms());
   const parsedStream = streamSlug ? parseStreamSlug(streamSlug) : null;
-  const activeStream =
-    parsedStream?.stream_id != null
-      ? (streamsMap.get(parsedStream.stream_id)?.name ?? parsedStream.stream_name)
-      : parsedStream?.stream_name;
+  const resolvedStreamName = useMemo(() => {
+    if (!parsedStream) return "";
+    if (parsedStream.stream_id != null) {
+      return streamsMap.get(parsedStream.stream_id)?.name ?? parsedStream.stream_name;
+    }
+    return parsedStream.stream_name;
+  }, [parsedStream, streamsMap]);
+  const resolvedStreamId = useMemo(() => {
+    if (!parsedStream) return null;
+    if (parsedStream.stream_id != null) return parsedStream.stream_id;
+    if (!resolvedStreamName) return null;
+    return (
+      Array.from(streamsMap.entries()).find(
+        ([, stream]) => stream.name === resolvedStreamName,
+      )?.[0] ?? null
+    );
+  }, [parsedStream, resolvedStreamName, streamsMap]);
+  const streamRouteTopic = topicName ?? "general";
+  const activeStream = parsedStream ? resolvedStreamName : undefined;
   const rawDmUserIds: number[] | null =
     dmIdParam == null || dmIdParam === "" ? null : parseDmSlugToUserIds(dmIdParam);
   const setExpandedStreamSlug = useSidebarConfigStore((s) => s.setExpandedStreamSlug);
@@ -186,11 +444,6 @@ export const ChatPage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [partnerUserId, isDmView, isGroupDmView]);
-
-  useEffect(() => {
-    if (!partnerUserId || !isDmView || isGroupDmView) return;
-    void ensureUserStatusLoaded(partnerUserId);
   }, [partnerUserId, isDmView, isGroupDmView]);
 
   const messages = useCurrentChatMessagesStore((s) => s.messages);
@@ -264,15 +517,6 @@ export const ChatPage: React.FC = () => {
       }),
     [readersUserIds, allUsers],
   );
-
-  useEffect(() => {
-    if (!readReceiptsOpen) {
-      return;
-    }
-    for (const uid of readersUserIds) {
-      void ensureUserStatusLoaded(uid);
-    }
-  }, [readReceiptsOpen, readersUserIds]);
 
   useEffect(() => {
     if (forwardMessageId == null) {
@@ -791,44 +1035,54 @@ export const ChatPage: React.FC = () => {
     return () => clearTimeout(t);
   }, [toastMessage]);
 
-  // Load messages only when channel opens: depends only on URL (streamSlug, topicName)
+  // Синхронизируем stream-контекст с маршрутом без загрузки сообщений.
   useEffect(() => {
     if (!streamSlug) {
+      if (!dmIdParam || dmIdParam === "") {
+        setContext(null);
+      }
+      return;
+    }
+    if (!resolvedStreamName || resolvedStreamId == null) {
       setContext(null);
+      return;
+    }
+    setContext({
+      type: "stream",
+      streamId: resolvedStreamId,
+      streamName: resolvedStreamName,
+      topic: streamRouteTopic,
+    });
+  }, [dmIdParam, streamSlug, setContext, resolvedStreamId, resolvedStreamName, streamRouteTopic]);
+
+  // Загружаем стартовую порцию stream-сообщений только по параметрам маршрута и фокусу.
+  useEffect(() => {
+    if (!streamSlug) {
       setMessagesLoading(false);
       return;
     }
-    const parsed = parseStreamSlug(streamSlug);
-    const streamName =
-      parsed.stream_id != null
-        ? (streamsMap.get(parsed.stream_id)?.name ?? parsed.stream_name)
-        : parsed.stream_name;
-    const streamId =
-      parsed.stream_id ??
-      (streamName
-        ? Array.from(streamsMap.entries()).find(([, s]) => s.name === streamName)?.[0]
-        : undefined);
-    const topic = topicName ?? "general";
-    if (streamName && streamId != null) {
-      setContext({ type: "stream", streamId, streamName, topic });
-      setMessagesLoading(true);
-    } else {
-      setContext(null);
+    if (!resolvedStreamName) {
+      setMessagesLoading(false);
+      return;
     }
-    if (!streamName) return;
+
+    setMessagesLoading(true);
     let cancelled = false;
     const loadPromise =
       focusedMessageId != null
         ? fetchMessagesWithNarrow(
             [
-              { operator: "stream", operand: streamName },
-              { operator: "topic", operand: topic },
+              { operator: "stream", operand: resolvedStreamName },
+              { operator: "topic", operand: streamRouteTopic },
             ],
             focusedMessageId,
             60,
             60,
           )
-        : fetchMessages(streamName, topic === "general" ? undefined : topic);
+        : fetchMessages(
+            resolvedStreamName,
+            streamRouteTopic === "general" ? undefined : streamRouteTopic,
+          );
     loadPromise
       .then((m) => {
         if (!cancelled) {
@@ -853,26 +1107,40 @@ export const ChatPage: React.FC = () => {
     };
   }, [
     streamSlug,
-    topicName,
-    streamsMap,
-    setContext,
+    resolvedStreamName,
+    streamRouteTopic,
     setMessagesInStore,
     focusedMessageId,
     setHasOlderMessages,
     setHasNewerMessages,
   ]);
 
-  // Load messages only when DM opens: depends on dmIdParam (string), not activeDmUserIds array
+  // Синхронизируем контекст активного DM с маршрутом и текущим пользователем.
   useEffect(() => {
     if (!dmIdParam || dmIdParam === "") {
       if (!streamSlug) setContext(null);
       return;
     }
+    if (currentUserId == null) return;
+
     const routeUserIds = parseDmSlugToUserIds(dmIdParam);
     const userIds = normalizeDmRouteUserIds(routeUserIds, currentUserId);
     if (userIds.length === 0) return;
+
     const dmKey = dmRouteKey(userIds, currentUserId);
     setContext({ type: "dm", dmKey });
+  }, [dmIdParam, streamSlug, currentUserId, setContext]);
+
+  // Загружаем сообщения DM при изменении маршрута или фокуса на сообщении.
+  useEffect(() => {
+    if (!dmIdParam || dmIdParam === "") return;
+
+    const routeUserIds = parseDmSlugToUserIds(dmIdParam);
+    const userIds = Array.from(new Set(routeUserIds)).filter(
+      (userId) => Number.isSafeInteger(userId) && userId > 0,
+    );
+    if (userIds.length === 0) return;
+
     setMessagesLoading(true);
     let cancelled = false;
     const id = userIds.length === 1 ? userIds[0]! : userIds;
@@ -902,16 +1170,7 @@ export const ChatPage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [
-    dmIdParam,
-    currentUserId,
-    setContext,
-    setMessagesInStore,
-    focusedMessageId,
-    setHasOlderMessages,
-    setHasNewerMessages,
-    streamSlug,
-  ]);
+  }, [dmIdParam, setMessagesInStore, focusedMessageId, setHasOlderMessages, setHasNewerMessages]);
 
   const PAGE_SIZE = 50;
 

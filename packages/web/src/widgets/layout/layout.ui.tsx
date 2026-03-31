@@ -6,9 +6,15 @@ import { useHydrateDrafts } from "~/entities/draft";
 import { useInboxStore } from "~/entities/inbox";
 import { useInstancesStore } from "~/entities/instance";
 import { useCurrentChatMessagesStore, isMessageForContext } from "~/entities/message";
-import { ensureUserStatusLoaded, formatUserStatusLabel, useUsersStore } from "~/entities/user";
-import { useChatInfoStore } from "~/features/chat-info";
+import { requestUserStatus, selectUserStatusSnapshot, useUsersStore } from "~/entities/user";
+import {
+  getChatInfoNetworkKey,
+  useChatInfoStore,
+  type ChatInfoContext,
+} from "~/features/chat-info";
+import { selectSidebarChatsLoading, useFolderSyncStore } from "~/features/folder-sync";
 import { InstanceSwitcher } from "~/features/instance-switch";
+import { useMediaViewerStore } from "~/features/media-viewer";
 import { useMuteStore } from "~/features/mute-chat";
 import { usePinStore } from "~/features/pin-chat";
 import { useSettingsStore } from "~/features/settings";
@@ -17,34 +23,21 @@ import { useUserProfileStore } from "~/features/user-profile";
 import { t } from "~/i18n";
 import { setAuthErrorHandler } from "~/shared/api/client";
 import {
-  getFolders,
-  getFolderItems,
-  mapWorkspaceFoldersToRail,
-  type FolderItemForClient,
-  type WorkspaceFolderForRail,
-} from "~/shared/api/workspace-client";
-import {
   fetchMessagesAfterAnchor,
   fetchMessagesBeforeAnchor,
   fetchRecentMessages,
+  fetchUsers,
+  fetchRealmPresence,
+  fetchSubscriptions,
+  fetchUserTopics,
+  getCurrentUser,
   rawMessageToMockMessage,
-} from "~/shared/api/zulip-messages";
-import {
   deleteQueue,
   fetchUnreadMessagesCountForCredentials,
-  fetchUserTopics,
-} from "~/shared/api/zulip-queue";
-import {
-  fetchStreamMembers,
-  fetchStreams,
-  fetchSubscriptions,
-} from "~/shared/api/zulip-streams";
-import type { MockMessage, ZulipEvent, ZulipRawMessage } from "~/shared/api/zulip.types";
-import {
-  fetchRealmPresence,
-  fetchUsers,
-  getCurrentUser,
-} from "~/shared/api/zulip-users";
+  type MockMessage,
+  type ZulipRawMessage,
+  type ZulipEvent,
+} from "~/shared/api/zulip";
 import { OpenSearchContext } from "~/shared/contexts/open-search";
 import { RightDrawerContext } from "~/shared/contexts/right-drawer";
 import { initAuthGuard } from "~/shared/lib/auth-guard";
@@ -56,7 +49,6 @@ import { stripHtml } from "~/shared/lib/html";
 import { isOnline, onStatusChange } from "~/shared/lib/network";
 import { playNotificationSound } from "~/shared/lib/notification-sound";
 import { notificationService } from "~/shared/lib/notifications";
-import { loadOfflineFolders, saveOfflineFolders } from "~/shared/lib/offline-folders";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { syncOrganizationFavicon } from "~/shared/lib/organization-branding";
 import { pushService } from "~/shared/lib/push";
@@ -79,24 +71,14 @@ import {
   parseDmSlugToUserIds,
   slugForStream,
   getDmById,
-  chatToWorkspaceChatId,
 } from "~/widgets/sidebar";
 import { TopBar, type TopBarSection } from "~/widgets/top-bar";
 import { getSectionFromPathname } from "./layout-active-section.lib";
 import { getNewestMessageId, loadDeepHistoryMessages } from "./layout-chat-history-sync.lib";
-import {
-  buildDmChatInfoData,
-  buildStreamChatInfoData,
-  hasChatInfoContext,
-} from "./layout-chat-info.lib";
 import { shouldRenderChatShell } from "./layout-chat-shell.lib";
 import { resolveChatShortcutRoute } from "./layout-chat-shortcuts.lib";
 import { DESKTOP_MIN_VIEWPORT_STYLE } from "./layout-desktop-viewport.lib";
 import { startFolderPolling } from "./layout-folder-polling.lib";
-import {
-  resolveSelectedFolderId,
-  shouldLoadFolderItemsForSelection,
-} from "./layout-folder-selection.lib";
 import {
   buildActiveChatWindowTitle,
   computeInstanceUnreadCount,
@@ -112,16 +94,101 @@ import {
   formatRightPanelLocalTime,
 } from "./layout-right-panel.lib";
 import { resolveShortcutPanelToggle } from "./layout-shortcuts.lib";
-import {
-  SYSTEM_CHANNELS_FOLDER_ID,
-  SYSTEM_PERSONAL_FOLDER_ID,
-  withDefaultSystemFolders,
-} from "./layout-folders-default.lib";
-import { LayoutMediaViewerOverlay } from "./layout-media-viewer-overlay.ui";
+import { SYSTEM_CHANNELS_FOLDER_ID, SYSTEM_PERSONAL_FOLDER_ID } from "./layout-system-folders.lib";
+
+const MediaViewerOverlay: React.FC = () => {
+  const isOpen = useMediaViewerStore((s) => s.isOpen);
+  const items = useMediaViewerStore((s) => s.items);
+  const currentIndex = useMediaViewerStore((s) => s.currentIndex);
+  const [zoom, setZoom] = useState(1);
+
+  useEffect(() => {
+    setZoom(1);
+  }, [currentIndex]);
+
+  if (!isOpen || items.length === 0) return null;
+
+  const item = items[currentIndex];
+  if (!item) return null;
+
+  const { close, next, prev } = useMediaViewerStore.getState();
+
+  const handleWheel = (e: React.WheelEvent) => {
+    e.stopPropagation();
+    setZoom((z) => Math.max(0.5, Math.min(3, z + e.deltaY * -0.001)));
+  };
+
+  return (
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- backdrop click-to-dismiss is standard dialog UX
+    <div
+      className="fixed inset-0 z-max flex items-center justify-center bg-black/90"
+      onClick={close}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") close();
+      }}
+      role="dialog"
+      aria-label={t("a11y.mediaViewer")}
+      tabIndex={-1}
+    >
+      {item.type === "video" ? (
+        // eslint-disable-next-line jsx-a11y/media-has-caption -- user-uploaded media without caption tracks
+        <video
+          src={item.url}
+          controls
+          autoPlay
+          className="max-h-[90vh] max-w-[90vw]"
+          onClick={(e) => e.stopPropagation()}
+        />
+      ) : (
+        <img
+          src={item.url}
+          alt={item.alt ?? ""}
+          role="presentation"
+          className="max-h-[90vh] max-w-[90vw] object-contain transition-transform"
+          style={{ transform: `scale(${zoom})` }}
+          onClick={(e) => e.stopPropagation()}
+          onWheel={handleWheel}
+        />
+      )}
+      {items.length > 1 && (
+        <div className="absolute bottom-4 flex gap-4">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              prev();
+            }}
+            className="bg-bg-elevated/80 rounded-lg px-4 py-2 text-sm text-text-primary transition-colors hover:bg-bg-elevated"
+          >
+            ← {t("common.prev")}
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              next();
+            }}
+            className="bg-bg-elevated/80 rounded-lg px-4 py-2 text-sm text-text-primary transition-colors hover:bg-bg-elevated"
+          >
+            {t("common.next")} →
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const CHAT_HISTORY_BATCH_SIZE = 5000;
 const CHAT_HISTORY_MAX_BATCHES = 5;
 const RECONNECT_DELTA_BATCH_SIZE = 5000;
+
+function getSystemFolderLabels() {
+  return {
+    allChats: t("folder.allChats"),
+    personal: t("folder.personal"),
+    channels: t("folder.channels"),
+  };
+}
 
 export const Layout: React.FC = () => {
   const location = useLocation();
@@ -153,6 +220,7 @@ export const Layout: React.FC = () => {
   const dmsFromStore = useChatListStore((s) => s.dms());
   const streamsMap = useChatListStore((s) => s.streamsMap);
   const dmsMap = useChatListStore((s) => s.dmsMap);
+  const usersMapForChatInfo = useUsersStore((s) => s.users);
   const chatSorting = useSettingsStore((s) => s.chatSorting);
   const prioritizePersonalUnread = useSettingsStore((s) => s.prioritizePersonalUnread);
   const prioritizeUnmutedUnreadChannels = useSettingsStore(
@@ -160,6 +228,7 @@ export const Layout: React.FC = () => {
   );
   const language = useSettingsStore((s) => s.language);
   const folderRailLayout = useSettingsStore((s) => s.folderRailLayout);
+  const showSystemFolders = useSettingsStore((s) => s.showSystemFolders);
   const setFolderRailLayout = useSettingsStore((s) => s.setFolderRailLayout);
   const mutedStreamIds = useMuteStore((s) => s.mutedStreamIds);
   const chatsSortedByLastMessage = useMemo(
@@ -207,10 +276,18 @@ export const Layout: React.FC = () => {
     [activeDmChatForTitle?.name, activeStreamNameForTitle, activeTopic],
   );
 
-  const [folders, setFolders] = useState<WorkspaceFolderForRail[]>([]);
-  const [selectedFolderId, setSelectedFolderId] = useState("1");
+  const folders = useFolderSyncStore((s) => s.folders);
+  const selectedFolderId = useFolderSyncStore((s) => s.selectedFolderId);
+  const selectedFolderChatIds = useFolderSyncStore((s) => s.selectedFolderChatIds);
+  const folderItemsByFolderId = useFolderSyncStore((s) => s.folderItemsByFolderId);
+  const selectedFolderSidebarChats = useFolderSyncStore((s) => s.selectedFolderSidebarChats);
+  const sidebarChatsLoading = useFolderSyncStore(selectSidebarChatsLoading);
+  const bootstrapFolderSync = useFolderSyncStore((s) => s.bootstrap);
+  const refreshFolderSync = useFolderSyncStore((s) => s.refresh);
+  const selectFolderSync = useFolderSyncStore((s) => s.selectFolder);
+  const syncFolderSyncSidebarProjection = useFolderSyncStore((s) => s.syncSidebarProjection);
+  const syncFolderSyncDerived = useFolderSyncStore((s) => s.syncDerived);
   const [pinReorderMode, setPinReorderMode] = useState(false);
-  const [folderChatIds, setFolderChatIds] = useState<Set<string> | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
   const [rightDrawerOpen, setRightDrawerOpen] = useState(false);
@@ -227,6 +304,10 @@ export const Layout: React.FC = () => {
     null,
   );
   const latestMessageIdRef = useRef<number | null>(null);
+  const folderSyncConfigRef = useRef({
+    showSystemFolders,
+    labels: getSystemFolderLabels(),
+  });
 
   const loadMuteSnapshot = useCallback(async () => {
     const [subs, userTopics] = await Promise.all([fetchSubscriptions(), fetchUserTopics()]);
@@ -348,42 +429,52 @@ export const Layout: React.FC = () => {
   }, [instances, currentInstanceId, currentUserStatus, online, setInstanceUnreadCount]);
 
   useEffect(() => {
-    const nextFolderId = resolveSelectedFolderId(folders, selectedFolderId);
-    if (nextFolderId == null || nextFolderId === selectedFolderId) return;
-    let cancelled = false;
-    void Promise.resolve().then(() => {
-      if (cancelled) return;
-      setPinReorderMode(false);
-      setSelectedFolderId((currentFolderId) =>
-        currentFolderId === nextFolderId ? currentFolderId : nextFolderId,
-      );
-    });
-    return () => {
-      cancelled = true;
+    folderSyncConfigRef.current = {
+      showSystemFolders,
+      labels: getSystemFolderLabels(),
     };
-  }, [folders, selectedFolderId]);
+  }, [showSystemFolders, language]);
 
   useEffect(() => {
-    let cancelled = false;
-    if (!shouldLoadFolderItemsForSelection(folders, selectedFolderId)) {
-      void Promise.resolve().then(() => {
-        if (!cancelled) setFolderChatIds(null);
-      });
-      return () => {
-        cancelled = true;
-      };
+    const rows: {
+      folderUuid: string;
+      folderItemUuid: string;
+      chatId: string;
+      orderIndex: number;
+      pinnedAt: string | null;
+    }[] = [];
+    for (const [folderUuid, items] of folderItemsByFolderId) {
+      for (const item of items) {
+        rows.push({
+          folderUuid,
+          folderItemUuid: item.uuid,
+          chatId: item.chatId,
+          orderIndex: item.orderIndex,
+          pinnedAt: item.pinnedAt,
+        });
+      }
     }
-    getFolderItems(selectedFolderId)
-      .then((items) => {
-        if (!cancelled) setFolderChatIds(new Set(items.map((i) => i.chatId)));
-      })
-      .catch(() => {
-        if (!cancelled) setFolderChatIds(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedFolderId, folders]);
+    usePinStore.getState().setFromServer(rows);
+  }, [folderItemsByFolderId]);
+
+  useEffect(() => {
+    // Триггерим пересчет проекции sidebar в orchestrator при изменении входных данных.
+    syncFolderSyncSidebarProjection({
+      chatsSortedByLastMessage,
+      streamsMap,
+      usersMapForChatInfo,
+      currentUserId,
+    });
+  }, [
+    chatsSortedByLastMessage,
+    currentUserId,
+    folderItemsByFolderId,
+    selectedFolderChatIds,
+    selectedFolderId,
+    streamsMap,
+    syncFolderSyncSidebarProjection,
+    usersMapForChatInfo,
+  ]);
 
   const openSearch = React.useCallback(() => setSearchOpen(true), []);
   const handleOpenProfile = useCallback(() => {
@@ -391,52 +482,43 @@ export const Layout: React.FC = () => {
     setRightDrawerUserIdOverride(null);
     setRightDrawerOpen(true);
   }, []);
-  const handleSelectFolder = useCallback((folderId: string) => {
-    setPinReorderMode(false);
-    setSelectedFolderId(folderId);
-  }, []);
+  const handleSelectFolder = useCallback(
+    (folderId: string) => {
+      setPinReorderMode(false);
+      void selectFolderSync(folderId);
+    },
+    [selectFolderSync],
+  );
   const handleToggleFolderRailLayout = useCallback(() => {
     setFolderRailLayout(folderRailLayout === "horizontal" ? "vertical" : "horizontal");
   }, [folderRailLayout, setFolderRailLayout]);
-  const handleStartOrderPinning = useCallback((folderId: string) => {
-    setSelectedFolderId(folderId);
-    setPinReorderMode(true);
-  }, []);
+  const handleStartOrderPinning = useCallback(
+    (folderId: string) => {
+      void selectFolderSync(folderId);
+      setPinReorderMode(true);
+    },
+    [selectFolderSync],
+  );
   const handleExitPinReorderMode = useCallback(() => setPinReorderMode(false), []);
-  const handleFoldersChanged = useCallback(() => {
-    if (!currentInstanceId) return;
-    getFolders()
-      .then(async (f) => {
-        const foldersWithSystemDefaults = withDefaultSystemFolders(mapWorkspaceFoldersToRail(f));
-        setFolders(foldersWithSystemDefaults);
-        saveOfflineFolders(currentInstanceId, foldersWithSystemDefaults);
-
-        const allFolderItems: FolderItemForClient[] = [];
-        await Promise.all(
-          f.map(async (folder) => {
-            try {
-              const items = await getFolderItems(folder.uuid);
-              allFolderItems.push(...items);
-            } catch {
-              /* folder items fetch is best-effort */
-            }
-          }),
-        );
-
-        usePinStore.getState().setFromServer(
-          allFolderItems.map((item) => ({
-            folderUuid: item.folderUuid,
-            folderItemUuid: item.uuid,
-            chatId: item.chatId,
-            orderIndex: item.orderIndex,
-            pinnedAt: item.pinnedAt,
-          })),
-        );
-      })
-      .catch(() => {
-        setFolders(withDefaultSystemFolders(loadOfflineFolders(currentInstanceId)));
-      });
-  }, [currentInstanceId]);
+  const previousSelectedFolderIdRef = useRef(selectedFolderId);
+  useEffect(() => {
+    if (previousSelectedFolderIdRef.current === selectedFolderId) {
+      return;
+    }
+    previousSelectedFolderIdRef.current = selectedFolderId;
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (!cancelled) {
+        setPinReorderMode(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedFolderId]);
+  const handleFoldersChanged = useCallback(async () => {
+    await refreshFolderSync("mutation");
+  }, [refreshFolderSync]);
   const handleSetRightDrawerOpen = useCallback((open: boolean) => {
     setRightDrawerOpen(open);
     if (!open) {
@@ -732,6 +814,8 @@ export const Layout: React.FC = () => {
                 }
               }
             } else if (event.type === "user_status") {
+              // Основной источник статусов: realtime-событие из event loop.
+              // Здесь сразу обновляем store и не делаем HTTP fallback.
               const userId = event.user_id as number | undefined;
               if (userId != null) {
                 const statusText =
@@ -846,65 +930,25 @@ export const Layout: React.FC = () => {
 
   useEffect(() => {
     if (!currentInstanceId || currentUserStatus !== "ready") return;
-    let cancelled = false;
-    const cachedFolders = withDefaultSystemFolders(loadOfflineFolders(currentInstanceId));
-    if (cachedFolders.length > 0) {
-      void Promise.resolve().then(() => {
-        if (!cancelled) setFolders(cachedFolders);
-      });
-    }
-    getFolders()
-      .then(async (f) => {
-        if (cancelled) return;
-        const foldersWithSystemDefaults = withDefaultSystemFolders(mapWorkspaceFoldersToRail(f));
-        setFolders(foldersWithSystemDefaults);
-        saveOfflineFolders(currentInstanceId, foldersWithSystemDefaults);
-
-        // Hydrate pin store from folder items with pinned metadata + persisted order.
-        const allFolderItems: FolderItemForClient[] = [];
-        await Promise.all(
-          f.map(async (folder) => {
-            try {
-              const items = await getFolderItems(folder.uuid);
-              allFolderItems.push(...items);
-            } catch {
-              /* folder items fetch is best-effort */
-            }
-          }),
-        );
-        if (!cancelled) {
-          usePinStore.getState().setFromServer(
-            allFolderItems.map((item) => ({
-              folderUuid: item.folderUuid,
-              folderItemUuid: item.uuid,
-              chatId: item.chatId,
-              orderIndex: item.orderIndex,
-              pinnedAt: item.pinnedAt,
-            })),
-          );
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setFolders(withDefaultSystemFolders(loadOfflineFolders(currentInstanceId)));
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [currentInstanceId, currentUserStatus]);
+    const { showSystemFolders, labels } = folderSyncConfigRef.current;
+    void bootstrapFolderSync({
+      instanceId: currentInstanceId,
+      showSystemFolders,
+      labels,
+    });
+  }, [currentInstanceId, currentUserStatus, bootstrapFolderSync]);
 
   useEffect(() => {
-    setFolders((currentFolders) => withDefaultSystemFolders(currentFolders));
-  }, [language]);
+    syncFolderSyncDerived(showSystemFolders, getSystemFolderLabels());
+  }, [language, showSystemFolders, syncFolderSyncDerived]);
 
   useEffect(() => {
     return startFolderPolling({
       enabled: currentInstanceId != null && currentUserStatus === "ready" && online,
-      refreshFolders: handleFoldersChanged,
+      refreshFolders: () => refreshFolderSync("polling"),
       runImmediately: false,
     });
-  }, [currentInstanceId, currentUserStatus, online, handleFoldersChanged]);
+  }, [currentInstanceId, currentUserStatus, online, refreshFolderSync]);
 
   // F06: Hydrate mute store from subscription data and user_topics on load
   useEffect(() => {
@@ -1051,18 +1095,6 @@ export const Layout: React.FC = () => {
     },
     [navigate],
   );
-  const filteredSidebarChats = useMemo(() => {
-    if (selectedFolderId === SYSTEM_PERSONAL_FOLDER_ID) {
-      return chatsSortedByLastMessage.filter((chat) => chat.type === "dm");
-    }
-    if (selectedFolderId === SYSTEM_CHANNELS_FOLDER_ID) {
-      return chatsSortedByLastMessage.filter((chat) => chat.type === "stream");
-    }
-    if (folderChatIds == null) return chatsSortedByLastMessage;
-    return chatsSortedByLastMessage.filter((chat) =>
-      folderChatIds.has(chatToWorkspaceChatId(chat)),
-    );
-  }, [chatsSortedByLastMessage, folderChatIds, selectedFolderId]);
   const allFolderId = useMemo(
     () => folders.find((folder) => folder.systemType === "all")?.id ?? null,
     [folders],
@@ -1088,7 +1120,7 @@ export const Layout: React.FC = () => {
   const navigateToAdjacentChatShortcut = useCallback(
     (direction: "next" | "prev") => {
       const route = resolveChatShortcutRoute({
-        sidebarChats: filteredSidebarChats,
+        sidebarChats: selectedFolderSidebarChats,
         direction,
         activeStreamSlug,
         activeDmIdParam: dmIdParam,
@@ -1096,7 +1128,7 @@ export const Layout: React.FC = () => {
       if (!route) return;
       void navigate(route);
     },
-    [filteredSidebarChats, activeStreamSlug, dmIdParam, navigate],
+    [selectedFolderSidebarChats, activeStreamSlug, dmIdParam, navigate],
   );
   const navigateToPreviousChatShortcut = useCallback(() => {
     navigateToAdjacentChatShortcut("prev");
@@ -1115,11 +1147,11 @@ export const Layout: React.FC = () => {
   });
   useShortcut("alt+arrowup", navigateToPreviousChatShortcut, {
     context: "sidebar",
-    enabled: shouldShowChatShell && filteredSidebarChats.length > 1,
+    enabled: shouldShowChatShell && selectedFolderSidebarChats.length > 1,
   });
   useShortcut("alt+arrowdown", navigateToNextChatShortcut, {
     context: "sidebar",
-    enabled: shouldShowChatShell && filteredSidebarChats.length > 1,
+    enabled: shouldShowChatShell && selectedFolderSidebarChats.length > 1,
   });
 
   const handleSectionChange = useCallback(
@@ -1137,9 +1169,10 @@ export const Layout: React.FC = () => {
   );
 
   const parsedStream = activeStreamSlug ? parseStreamSlug(activeStreamSlug) : null;
+  const activeStreamId = parsedStream?.stream_id ?? null;
   const activeStreamName =
-    parsedStream?.stream_id != null
-      ? (streamsMap.get(parsedStream.stream_id)?.name ?? parsedStream.stream_name)
+    activeStreamId != null
+      ? (streamsMap.get(activeStreamId)?.name ?? parsedStream?.stream_name ?? "")
       : parsedStream?.stream_name;
   const dmChat =
     dmIdParam != null && dmIdParam !== "" ? getDmById(dmIdParam, dmsFromStore) : undefined;
@@ -1195,12 +1228,6 @@ export const Layout: React.FC = () => {
   const userFromStore = useUsersStore((s) =>
     rightDrawerTargetUserId != null ? s.getUser(rightDrawerTargetUserId) : undefined,
   );
-  useEffect(() => {
-    if (rightDrawerTargetUserId == null) {
-      return;
-    }
-    void ensureUserStatusLoaded(rightDrawerTargetUserId);
-  }, [rightDrawerTargetUserId]);
   const detailedProfile = useUserProfileStore((s) => s.profile);
   const currentChatMessages = useCurrentChatMessagesStore((s) => s.messages);
   const rightPanelMedia = useMemo(
@@ -1212,7 +1239,7 @@ export const Layout: React.FC = () => {
     const groups = buildRightPanelCommonGroups(dmsFromStore, rightDrawerTargetUserId, dmChat?.slug);
     return groups.length > 0 ? groups : undefined;
   }, [rightDrawerTargetUserId, dmsFromStore, dmChat?.slug]);
-  const userStatusLabel = formatUserStatusLabel(userFromStore?.status) ?? undefined;
+  const userStatusLabel = selectUserStatusSnapshot(userFromStore).statusLabel;
   const profileForRightPanelUser =
     rightDrawerTargetUserId != null && detailedProfile?.userId === rightDrawerTargetUserId
       ? detailedProfile
@@ -1314,63 +1341,126 @@ export const Layout: React.FC = () => {
     currentInstanceId,
   ]);
 
-  // Populate chat-info store with live data for the active chat context.
-  // Header counters and right drawer both consume this store.
-  useEffect(() => {
-    const streamId = parsedStream?.stream_id;
-    if (!hasChatInfoContext({ hasDmChat: dmChat != null, streamId })) {
-      useChatInfoStore.getState().clear();
-      return;
+  // Собираем топики активного стрима из chat-list store (без сети).
+  const chatInfoTopics = useMemo(() => {
+    if (activeStreamId == null) return [];
+    return Array.from(streamsMap.get(activeStreamId)?.topics.values() ?? []).map((topic) => ({
+      name: topic.subject,
+      unreadCount: topic.unreadCount,
+    }));
+  }, [activeStreamId, streamsMap]);
+
+  // Единый контекст chat-info для none/dm/stream веток.
+  const chatInfoContext = useMemo<ChatInfoContext>(() => {
+    if (!currentInstanceId) {
+      return { kind: "none", instanceId: null };
     }
-
-    const usersState = useUsersStore.getState();
-    const allUsers = usersState.users;
-
     if (dmChat) {
-      const members = dmParticipantIds
-        .map((id) => allUsers.get(id))
-        .filter((user): user is NonNullable<typeof user> => user != null);
-      useChatInfoStore
-        .getState()
-        .setData(buildDmChatInfoData(dmChat.name, members, dmParticipantIds.length));
-    } else if (streamId != null) {
-      let cancelled = false;
-      const streamTopics = Array.from(streamsMap.get(streamId)?.topics.values() ?? []).map(
-        (topic) => ({
-          name: topic.subject,
-          unreadCount: topic.unreadCount,
-        }),
-      );
-      Promise.all([fetchStreamMembers(streamId), fetchStreams()])
-        .then(([memberIds, streams]) => {
-          if (cancelled) return;
-          const usersState = useUsersStore.getState();
-          const members = memberIds
-            .map((id) => usersState.getUser(id))
-            .filter((u): u is NonNullable<typeof u> => u != null);
-          const description =
-            streams.find((stream) => stream.stream_id === streamId)?.description ?? null;
-          useChatInfoStore.getState().setData(
-            buildStreamChatInfoData(
-              activeStreamName ?? "",
-              memberIds,
-              members,
-              useMuteStore.getState().isStreamMuted(streamId),
-              {
-                description,
-                topics: streamTopics,
-              },
-            ),
-          );
-        })
-        .catch(() => {});
-      return () => {
-        cancelled = true;
+      return {
+        kind: "dm",
+        instanceId: currentInstanceId,
+        dmName: dmChat.name,
+        participantIds: dmParticipantIds,
       };
     }
-  }, [dmChat, dmParticipantIds, parsedStream, activeStreamName, streamsMap]);
+    if (activeStreamId != null) {
+      return {
+        kind: "stream",
+        instanceId: currentInstanceId,
+        streamId: activeStreamId,
+        streamName: activeStreamName ?? "",
+        isMuted: mutedStreamIds.has(activeStreamId),
+        topics: chatInfoTopics,
+      };
+    }
+    return { kind: "none", instanceId: currentInstanceId };
+  }, [
+    activeStreamId,
+    activeStreamName,
+    chatInfoTopics,
+    currentInstanceId,
+    dmChat,
+    dmParticipantIds,
+    mutedStreamIds,
+  ]);
+  // Стабильный ключ контекста нужен для контроля частоты hydrate.
+  const chatInfoNetworkKey = useMemo(
+    () => getChatInfoNetworkKey(chatInfoContext),
+    [chatInfoContext],
+  );
+  const hydratedChatInfoKeyRef = useRef<string | null>(null);
+
+  // Сетевой hydrate запускаем только при смене ключа контекста.
+  useEffect(() => {
+    if (hydratedChatInfoKeyRef.current === chatInfoNetworkKey) {
+      return;
+    }
+    hydratedChatInfoKeyRef.current = chatInfoNetworkKey;
+    void useChatInfoStore.getState().hydrate(chatInfoContext);
+  }, [chatInfoContext, chatInfoNetworkKey]);
+
+  // Локальный derived-пересчет (topics/mute/presence) без HTTP.
+  useEffect(() => {
+    useChatInfoStore.getState().syncDerived(chatInfoContext);
+  }, [chatInfoContext, usersMapForChatInfo]);
 
   const chatInfoData = useChatInfoStore((s) => s.data);
+  const rightPanelMemberStatusIds = useMemo(() => {
+    if (!rightDrawerOpen) return [];
+    if (chatInfoData?.type !== "stream" && chatInfoData?.type !== "dm") {
+      return [];
+    }
+    return chatInfoData.members
+      .slice(0, 40)
+      .map((member) => member.userId)
+      .filter((userId) => Number.isFinite(userId) && userId > 0);
+  }, [chatInfoData, rightDrawerOpen]);
+
+  useEffect(() => {
+    if (currentUserStatus !== "ready" || currentUserId == null) {
+      return;
+    }
+    // Точечный fallback для текущего пользователя (верхняя панель).
+    void requestUserStatus(currentUserId, {
+      reason: "top_bar",
+      priority: "high",
+    });
+  }, [currentUserId, currentUserStatus]);
+
+  useEffect(() => {
+    if (currentUserStatus !== "ready" || partnerUserId == null) {
+      return;
+    }
+    // Точечный fallback для собеседника в активном DM.
+    void requestUserStatus(partnerUserId, {
+      reason: "dm_header",
+      priority: "high",
+    });
+  }, [currentUserStatus, partnerUserId]);
+
+  useEffect(() => {
+    if (currentUserStatus !== "ready" || !rightDrawerOpen || rightDrawerTargetUserId == null) {
+      return;
+    }
+    // Точечный fallback для карточки пользователя в right panel.
+    void requestUserStatus(rightDrawerTargetUserId, {
+      reason: "right_panel",
+      priority: "high",
+    });
+  }, [currentUserStatus, rightDrawerOpen, rightDrawerTargetUserId]);
+
+  useEffect(() => {
+    if (currentUserStatus !== "ready" || !rightDrawerOpen) {
+      return;
+    }
+    // Фоновый fallback для списка участников справа (ограниченный список).
+    for (const userId of rightPanelMemberStatusIds) {
+      void requestUserStatus(userId, {
+        reason: "right_panel",
+        priority: "low",
+      });
+    }
+  }, [currentUserStatus, rightDrawerOpen, rightPanelMemberStatusIds]);
 
   if (showFullscreenLoader) {
     return (
@@ -1414,7 +1504,7 @@ export const Layout: React.FC = () => {
               {t("app.offline")}
             </div>
           )}
-          <LayoutMediaViewerOverlay />
+          <MediaViewerOverlay />
           <SearchModal
             open={searchOpen}
             onOpenChange={setSearchOpen}
@@ -1441,7 +1531,8 @@ export const Layout: React.FC = () => {
                       activeTopic={activeTopic}
                       activeDmIdParam={dmIdParam ?? null}
                       sidebarDms={dmsFromStore}
-                      sidebarChats={filteredSidebarChats}
+                      sidebarChats={selectedFolderSidebarChats}
+                      sidebarChatsLoading={sidebarChatsLoading}
                       pinReorderMode={pinReorderMode}
                       onExitPinReorderMode={handleExitPinReorderMode}
                       onFolderAssignmentsChanged={handleFoldersChanged}
@@ -1475,7 +1566,8 @@ export const Layout: React.FC = () => {
                         activeTopic={activeTopic}
                         activeDmIdParam={dmIdParam ?? null}
                         sidebarDms={dmsFromStore}
-                        sidebarChats={filteredSidebarChats}
+                        sidebarChats={selectedFolderSidebarChats}
+                        sidebarChatsLoading={sidebarChatsLoading}
                         pinReorderMode={pinReorderMode}
                         onExitPinReorderMode={handleExitPinReorderMode}
                         onFolderAssignmentsChanged={handleFoldersChanged}
