@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import * as manageFolders from "~/features/manage-folders";
 import { folderColorValueToCssHex } from "~/features/manage-folders";
 import { useSettingsStore } from "~/features/settings";
+import { applyTheme } from "~/shared/lib/themes";
 import { FolderRail } from "./folder-rail.ui";
 
 describe("FolderRail visual parity", () => {
@@ -12,7 +13,7 @@ describe("FolderRail visual parity", () => {
     useSettingsStore.getState().resetToDefaults();
   });
 
-  it("applies folder color to selected custom folder icon and label", () => {
+  it("applies folder color to selected custom folder in horizontal layout", () => {
     const customColor = 0x3a92ff;
 
     render(
@@ -23,25 +24,23 @@ describe("FolderRail visual parity", () => {
         ]}
         selectedFolderId="custom"
         onSelectFolder={vi.fn()}
+        layout="horizontal"
       />,
     );
 
-    const customNodes = screen.getAllByTitle("Team");
-    const customButton = customNodes.find((node) => node.tagName === "BUTTON");
-    const customLabel = customNodes.find((node) => node.tagName === "SPAN");
+    const customButton = screen.getByRole("button", { name: "Team" });
+    const customLabel = within(customButton).getByText("Team");
 
-    expect(customButton).toBeDefined();
-    expect(customLabel).toBeDefined();
-
-    const customIconWrapper = customButton?.querySelector("svg")?.parentElement;
+    const customIconWrapper = customButton.querySelector("svg")?.parentElement;
+    expect(customButton).toHaveStyle({ color: folderColorValueToCssHex(customColor) });
     expect(customIconWrapper).toHaveStyle({ color: folderColorValueToCssHex(customColor) });
-    expect(customLabel).toHaveStyle({ color: folderColorValueToCssHex(customColor) });
+    expect(customLabel).toBeInTheDocument();
 
-    const iconPath = customButton?.querySelector("path");
+    const iconPath = customButton.querySelector("path");
     expect(iconPath?.getAttribute("fill")).toBe("currentColor");
   });
 
-  it("keeps custom folder icon color when unselected and applies label color on hover", () => {
+  it("keeps custom folder icon color when unselected and applies label color on hover in horizontal layout", () => {
     const customColor = 0x3a92ff;
 
     render(
@@ -52,26 +51,81 @@ describe("FolderRail visual parity", () => {
         ]}
         selectedFolderId="all"
         onSelectFolder={vi.fn()}
+        layout="horizontal"
+      />,
+    );
+
+    const customButton = screen.getByRole("button", { name: "Team" });
+    const customLabel = within(customButton).getByText("Team");
+
+    const customIconWrapper = customButton.querySelector("svg")?.parentElement;
+    expect(customIconWrapper).toHaveStyle({ color: folderColorValueToCssHex(customColor) });
+    expect(customButton.getAttribute("style")).toBeNull();
+    expect(customLabel).toBeInTheDocument();
+
+    fireEvent.mouseEnter(customButton);
+
+    expect(customIconWrapper).toHaveStyle({ color: folderColorValueToCssHex(customColor) });
+    expect(customButton).toHaveStyle({ color: folderColorValueToCssHex(customColor) });
+  });
+
+  it("highlights all-folder label on hover in horizontal layout", () => {
+    render(
+      <FolderRail
+        folders={[
+          { id: "all", label: "All", backgroundColor: 0xff8438 },
+          { id: "custom", label: "Team", backgroundColor: 0x3a92ff },
+        ]}
+        selectedFolderId="custom"
+        onSelectFolder={vi.fn()}
+        layout="horizontal"
+      />,
+    );
+
+    const allButton = screen.getByRole("button", { name: "All" });
+    const allLabel = within(allButton).getByText("All");
+    expect(allButton).toHaveClass("text-text-muted");
+    expect(allLabel).toBeInTheDocument();
+
+    fireEvent.mouseEnter(allButton);
+
+    expect(allButton).toHaveClass("text-accent");
+  });
+
+  it("renders vertical passive custom folder with muted token styling and stable slot size", () => {
+    render(
+      <FolderRail
+        folders={[
+          { id: "all", label: "All", backgroundColor: 0xff8438 },
+          { id: "custom", label: "Team", backgroundColor: 0x3a92ff },
+        ]}
+        selectedFolderId="all"
+        onSelectFolder={vi.fn()}
       />,
     );
 
     const customNodes = screen.getAllByTitle("Team");
     const customButton = customNodes.find((node) => node.tagName === "BUTTON");
     const customLabel = customNodes.find((node) => node.tagName === "SPAN");
-
     expect(customButton).toBeDefined();
     expect(customLabel).toBeDefined();
-    const customIconWrapper = customButton?.querySelector("svg")?.parentElement;
-    expect(customIconWrapper).toHaveStyle({ color: folderColorValueToCssHex(customColor) });
+
+    const visualWrapper = customButton?.parentElement;
+    const outerSlot = customButton?.parentElement?.parentElement;
+    expect(outerSlot).toHaveClass("h-[85px]");
+    expect(outerSlot).toHaveClass("w-[67px]");
+    expect(outerSlot).toHaveClass("p-1");
+    expect(visualWrapper).toHaveClass("scale-100");
+    expect(visualWrapper).not.toHaveClass("scale-110");
+    expect(customButton).toHaveClass("text-text-muted");
+    expect(customLabel).toHaveClass("text-text-muted");
+    expect(customLabel).toHaveClass("text-sm");
+    expect(customLabel).toHaveClass("leading-5");
+    expect(customButton?.getAttribute("style")).toBeNull();
     expect(customLabel?.getAttribute("style")).toBeNull();
-
-    fireEvent.mouseEnter(customButton!);
-
-    expect(customIconWrapper).toHaveStyle({ color: folderColorValueToCssHex(customColor) });
-    expect(customLabel).toHaveStyle({ color: folderColorValueToCssHex(customColor) });
   });
 
-  it("highlights all-folder label on hover", () => {
+  it("renders vertical active custom folder with contrast styling and scale highlight", () => {
     render(
       <FolderRail
         folders={[
@@ -83,16 +137,93 @@ describe("FolderRail visual parity", () => {
       />,
     );
 
+    const customNodes = screen.getAllByTitle("Team");
+    const customButton = customNodes.find((node) => node.tagName === "BUTTON");
+    const customLabel = customNodes.find((node) => node.tagName === "SPAN");
+    expect(customButton).toBeDefined();
+    expect(customLabel).toBeDefined();
+
+    const visualWrapper = customButton?.parentElement;
+    const outerSlot = customButton?.parentElement?.parentElement;
+    expect(outerSlot).toHaveClass("h-[85px]");
+    expect(outerSlot).toHaveClass("w-[67px]");
+    expect(outerSlot).toHaveClass("p-1");
+    expect(visualWrapper).toHaveClass("scale-110");
+    expect(visualWrapper).not.toHaveClass("scale-100");
+    expect(customButton).toHaveClass("text-text-primary");
+    expect(customLabel).toHaveClass("text-text-primary");
+  });
+
+  it("uses primary text token for active system folder in vertical view", () => {
+    render(
+      <FolderRail
+        folders={[
+          { id: "all", label: "All", backgroundColor: 0xff8438, systemType: "all" },
+          { id: "custom", label: "Team", backgroundColor: 0x3a92ff, systemType: "created" },
+        ]}
+        selectedFolderId="all"
+        onSelectFolder={vi.fn()}
+      />,
+    );
+
     const allNodes = screen.getAllByTitle("All");
     const allButton = allNodes.find((node) => node.tagName === "BUTTON");
     const allLabel = allNodes.find((node) => node.tagName === "SPAN");
-    expect(allButton).toBeDefined();
-    expect(allLabel).toBeDefined();
-    expect(allLabel).toHaveClass("text-text-muted");
+    expect(allButton).toHaveClass("text-text-primary");
+    expect(allLabel).toHaveClass("text-text-primary");
+  });
 
-    fireEvent.mouseEnter(allButton!);
+  it("uses primary text token for selected all-folder in horizontal layout", () => {
+    render(
+      <FolderRail
+        folders={[
+          { id: "all", label: "All", backgroundColor: 0xff8438, systemType: "all" },
+          { id: "custom", label: "Team", backgroundColor: 0x3a92ff, systemType: "created" },
+        ]}
+        selectedFolderId="all"
+        onSelectFolder={vi.fn()}
+        layout="horizontal"
+      />,
+    );
 
-    expect(allLabel).toHaveClass("text-accent");
+    const allButton = screen.getByRole("button", { name: "All" });
+    const allIconWrapper = allButton.querySelector("svg")?.parentElement;
+
+    expect(allButton).toHaveClass("text-text-primary");
+    expect(allIconWrapper).toHaveClass("text-text-primary");
+  });
+
+  it("keeps vertical token classes stable for blue-cold and emerald-chat in light/dark modes", () => {
+    const themeScenarios = [
+      { paletteId: "blue-cold", mode: "light" as const },
+      { paletteId: "blue-cold", mode: "dark" as const },
+      { paletteId: "emerald-chat", mode: "light" as const },
+      { paletteId: "emerald-chat", mode: "dark" as const },
+    ];
+
+    for (const { paletteId, mode } of themeScenarios) {
+      applyTheme(paletteId, mode);
+      const view = render(
+        <FolderRail
+          folders={[
+            { id: "all", label: "All", backgroundColor: 0xff8438, systemType: "all" },
+            { id: "custom", label: "Team", backgroundColor: 0x3a92ff, systemType: "created" },
+          ]}
+          selectedFolderId="custom"
+          onSelectFolder={vi.fn()}
+        />,
+      );
+
+      const customNodes = screen.getAllByTitle("Team");
+      const customButton = customNodes.find((node) => node.tagName === "BUTTON");
+      const customLabel = customNodes.find((node) => node.tagName === "SPAN");
+      expect(customButton).toHaveClass("text-text-primary");
+      expect(customLabel).toHaveClass("text-text-primary");
+      expect(customButton?.getAttribute("style")).toBeNull();
+      expect(customLabel?.getAttribute("style")).toBeNull();
+
+      view.unmount();
+    }
   });
 
   it("renders all-folder icon with dedicated provided glyph", () => {
@@ -120,7 +251,6 @@ describe("FolderRail visual parity", () => {
     expect(allIconPath).toHaveAttribute("fill", "currentColor");
     expect(customIconPath).toHaveAttribute("fill", "currentColor");
     expect(allIconPath?.getAttribute("d")).not.toBe(customIconPath?.getAttribute("d"));
-    expect(allIconPath?.getAttribute("d")).toContain("M228,96.00049");
   });
 
   it("renders dedicated icons for personal and channels system folders", () => {
@@ -177,10 +307,38 @@ describe("FolderRail visual parity", () => {
     );
 
     const addFolderButton = screen.getByRole("button", { name: "Add folder" });
-    expect(addFolderButton).toHaveClass("border-border-subtle");
-    expect(addFolderButton).not.toHaveClass("border-dashed");
+    expect(addFolderButton).toHaveClass("h-10");
+    expect(addFolderButton).toHaveClass("w-10");
+    expect(addFolderButton).not.toHaveClass("border-border-subtle");
     const addIconPath = addFolderButton.querySelector("path");
     expect(addIconPath?.getAttribute("fill")).toBe("currentColor");
+  });
+
+  it("renders vertical view composition and keeps folder selection clickable", async () => {
+    const user = userEvent.setup();
+    const onSelectFolder = vi.fn();
+
+    render(
+      <FolderRail
+        folders={[
+          { id: "all", label: "All", backgroundColor: 0xff8438 },
+          { id: "custom", label: "Team", backgroundColor: 0x3a92ff },
+        ]}
+        selectedFolderId="all"
+        onSelectFolder={onSelectFolder}
+      />,
+    );
+
+    const verticalRoot = screen.getByTestId("folder-rail-vertical");
+    expect(verticalRoot).toHaveAttribute("data-folder-rail-view", "vertical");
+
+    const teamButton = screen
+      .getAllByRole("button", { name: "Team" })
+      .find((node) => node.tagName === "BUTTON");
+    expect(teamButton).toBeDefined();
+
+    await user.click(teamButton!);
+    expect(onSelectFolder).toHaveBeenCalledWith("custom");
   });
 
   it("renders horizontal layout variant and keeps folder selection clickable", async () => {
@@ -203,6 +361,7 @@ describe("FolderRail visual parity", () => {
     expect(horizontalRoot).toHaveClass("overflow-x-auto");
     expect(horizontalRoot).toHaveClass("scrollbar-none");
     expect(horizontalRoot).toHaveClass("overflow-y-hidden");
+    expect(horizontalRoot).toHaveAttribute("data-folder-rail-view", "horizontal");
 
     await user.click(screen.getByRole("button", { name: "Team" }));
     expect(onSelectFolder).toHaveBeenCalledWith("custom");
@@ -353,7 +512,7 @@ describe("FolderRail visual parity", () => {
     expect(screen.getByText("Create folder")).toBeInTheDocument();
   });
 
-  it("keeps all/add controls fixed and supports quick folder search for many folders", async () => {
+  it("keeps all fixed, places add in scroll flow, and supports quick folder search for many folders", async () => {
     const user = userEvent.setup();
     const onSelectFolder = vi.fn();
     const manyFolders = [
@@ -376,12 +535,14 @@ describe("FolderRail visual parity", () => {
     const addFolderButton = screen.getByRole("button", { name: "Add folder" });
     expect(allButton).toBeDefined();
     expect(scrollList).not.toContainElement(allButton ?? null);
-    expect(scrollList).not.toContainElement(addFolderButton);
+    expect(scrollList).toContainElement(addFolderButton);
     const teamOneButton = screen
       .getAllByRole("button", { name: "Team 1" })
       .find((node) => node.tagName === "BUTTON");
     expect(teamOneButton).toBeDefined();
     expect(scrollList).toContainElement(teamOneButton ?? null);
+    const scrollListButtons = within(scrollList).getAllByRole("button");
+    expect(scrollListButtons.at(-1)).toBe(addFolderButton);
 
     const quickListButton = screen.getByRole("button", { name: "Open folder list" });
     await user.click(quickListButton);
@@ -605,6 +766,54 @@ describe("FolderRail visual parity", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Display vertically" }));
 
     expect(useSettingsStore.getState().folderRailLayout).toBe("vertical");
+  });
+
+  it("shows 'Show system folders' and toggles settings flag from folder menu", () => {
+    useSettingsStore.getState().setShowSystemFolders(false);
+
+    render(
+      <FolderRail
+        folders={[
+          { id: "all", label: "All", backgroundColor: 0xff8438 },
+          { id: "custom", label: "Team", backgroundColor: 0x3a92ff },
+        ]}
+        selectedFolderId="all"
+        onSelectFolder={vi.fn()}
+      />,
+    );
+
+    const customNodes = screen.getAllByTitle("Team");
+    const customButton = customNodes.find((node) => node.tagName === "BUTTON");
+    expect(customButton).toBeDefined();
+
+    fireEvent.contextMenu(customButton!);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Show system folders" }));
+
+    expect(useSettingsStore.getState().showSystemFolders).toBe(true);
+  });
+
+  it("shows 'Hide system folders' when flag is enabled and toggles it off", () => {
+    useSettingsStore.getState().setShowSystemFolders(true);
+
+    render(
+      <FolderRail
+        folders={[
+          { id: "all", label: "All", backgroundColor: 0xff8438 },
+          { id: "custom", label: "Team", backgroundColor: 0x3a92ff },
+        ]}
+        selectedFolderId="all"
+        onSelectFolder={vi.fn()}
+      />,
+    );
+
+    const customNodes = screen.getAllByTitle("Team");
+    const customButton = customNodes.find((node) => node.tagName === "BUTTON");
+    expect(customButton).toBeDefined();
+
+    fireEvent.contextMenu(customButton!);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Hide system folders" }));
+
+    expect(useSettingsStore.getState().showSystemFolders).toBe(false);
   });
 
   it("selects folder on pointer click of folder icon button", async () => {

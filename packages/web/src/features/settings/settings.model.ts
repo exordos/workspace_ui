@@ -53,7 +53,8 @@ function createDefaultSettings(): AppSettings {
     prioritizeUnmutedUnreadChannels: false,
     notificationSound: "default",
     language: resolveBrowserLanguage(),
-    folderRailLayout: "horizontal",
+    folderRailLayout: "vertical",
+    showSystemFolders: false,
     chatListDensity: "standard",
   };
 }
@@ -66,6 +67,7 @@ const FALLBACK_SETTINGS: Omit<AppSettings, "language"> = {
   prioritizeUnmutedUnreadChannels: false,
   notificationSound: "default",
   folderRailLayout: "horizontal",
+  showSystemFolders: false,
   chatListDensity: "standard",
 };
 
@@ -135,6 +137,10 @@ function resolveNotificationSound(value: unknown): NotificationSound {
   return FALLBACK_SETTINGS.notificationSound;
 }
 
+function resolveShowSystemFolders(value: unknown): boolean {
+  return value === true;
+}
+
 function resolveChatListDensity(value: unknown): ChatListDensity {
   return value === "compact" ? "compact" : FALLBACK_SETTINGS.chatListDensity;
 }
@@ -162,6 +168,7 @@ function loadSettings(organizationId: string | null = getActiveOrganizationId())
       notificationSound: resolveNotificationSound(parsed.notificationSound),
       language,
       folderRailLayout: resolveFolderRailLayout(parsed.folderRailLayout),
+      showSystemFolders: resolveShowSystemFolders(parsed.showSystemFolders),
       chatListDensity: resolveChatListDensity(parsed.chatListDensity),
     };
   } catch {
@@ -189,6 +196,7 @@ interface SettingsState extends AppSettings {
   setNotificationSound: (sound: NotificationSound) => void;
   setLanguage: (language: AppLanguage) => void;
   setFolderRailLayout: (layout: FolderRailLayout) => void;
+  setShowSystemFolders: (enabled: boolean) => void;
   setChatListDensity: (density: ChatListDensity) => void;
   resetToDefaults: () => void;
 }
@@ -249,6 +257,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     logStoreAction("settings", "setFolderRailLayout", { folderRailLayout });
     set({ folderRailLayout });
     persistSettings({ ...get(), folderRailLayout });
+  },
+
+  setShowSystemFolders(showSystemFolders) {
+    logStoreAction("settings", "setShowSystemFolders", { showSystemFolders });
+    set({ showSystemFolders });
+    persistSettings({ ...get(), showSystemFolders });
   },
 
   setChatListDensity(chatListDensity) {

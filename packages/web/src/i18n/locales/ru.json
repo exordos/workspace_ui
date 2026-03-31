@@ -464,6 +464,8 @@
     "rename": "Переименовать",
     "displayVertical": "Отобразить вертикально",
     "displayHorizontal": "Отобразить горизонтально",
+    "showSystemFolders": "Показать системные папки",
+    "hideSystemFolders": "Скрыть системные папки",
     "emptyFolder": "Папка пуста",
     "emptyFolderHint": "Добавьте чаты через меню чата, чтобы заполнить папку.",
     "noPinnedChats": "В этой папке пока нет закреплённых чатов",

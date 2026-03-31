@@ -109,6 +109,11 @@ import {
   formatRightPanelLocalTime,
 } from "./layout-right-panel.lib";
 import { resolveShortcutPanelToggle } from "./layout-shortcuts.lib";
+import {
+  SYSTEM_CHANNELS_FOLDER_ID,
+  SYSTEM_PERSONAL_FOLDER_ID,
+  withDefaultSystemFolders,
+} from "./layout-system-folders.lib";
 
 const MediaViewerOverlay: React.FC = () => {
   const isOpen = useMediaViewerStore((s) => s.isOpen);
@@ -195,45 +200,13 @@ const MediaViewerOverlay: React.FC = () => {
 const CHAT_HISTORY_BATCH_SIZE = 5000;
 const CHAT_HISTORY_MAX_BATCHES = 5;
 const RECONNECT_DELTA_BATCH_SIZE = 5000;
-const SYSTEM_PERSONAL_FOLDER_ID = "system:personal";
-const SYSTEM_CHANNELS_FOLDER_ID = "system:channels";
 
-function withDefaultSystemFolders(folders: WorkspaceFolderForRail[]): WorkspaceFolderForRail[] {
-  if (folders.length === 0) {
-    return folders;
-  }
-
-  const baseFolders = folders.filter(
-    (folder) =>
-      folder.id !== SYSTEM_PERSONAL_FOLDER_ID &&
-      folder.id !== SYSTEM_CHANNELS_FOLDER_ID &&
-      folder.systemType !== "personal" &&
-      folder.systemType !== "channels",
-  );
-
-  const allFolderIndex = baseFolders.findIndex((folder) => folder.systemType === "all");
-  const insertAfterIndex = allFolderIndex >= 0 ? allFolderIndex : 0;
-  const insertIndex = insertAfterIndex + 1;
-
-  const personalFolder: WorkspaceFolderForRail = {
-    id: SYSTEM_PERSONAL_FOLDER_ID,
-    label: t("folder.personal"),
-    backgroundColor: 0,
-    systemType: "personal",
+function getSystemFolderLabels() {
+  return {
+    allChats: t("folder.allChats"),
+    personal: t("folder.personal"),
+    channels: t("folder.channels"),
   };
-  const channelsFolder: WorkspaceFolderForRail = {
-    id: SYSTEM_CHANNELS_FOLDER_ID,
-    label: t("folder.channels"),
-    backgroundColor: 0,
-    systemType: "channels",
-  };
-
-  return [
-    ...baseFolders.slice(0, insertIndex),
-    personalFolder,
-    channelsFolder,
-    ...baseFolders.slice(insertIndex),
-  ];
 }
 
 export const Layout: React.FC = () => {
@@ -273,6 +246,7 @@ export const Layout: React.FC = () => {
   );
   const language = useSettingsStore((s) => s.language);
   const folderRailLayout = useSettingsStore((s) => s.folderRailLayout);
+  const showSystemFolders = useSettingsStore((s) => s.showSystemFolders);
   const setFolderRailLayout = useSettingsStore((s) => s.setFolderRailLayout);
   const mutedStreamIds = useMuteStore((s) => s.mutedStreamIds);
   const chatsSortedByLastMessage = useMemo(
@@ -520,7 +494,11 @@ export const Layout: React.FC = () => {
     if (!currentInstanceId) return;
     getFolders()
       .then(async (f) => {
-        const foldersWithSystemDefaults = withDefaultSystemFolders(mapWorkspaceFoldersToRail(f));
+        const foldersWithSystemDefaults = withDefaultSystemFolders(
+          mapWorkspaceFoldersToRail(f),
+          getSystemFolderLabels(),
+          showSystemFolders,
+        );
         setFolders(foldersWithSystemDefaults);
         saveOfflineFolders(currentInstanceId, foldersWithSystemDefaults);
 
@@ -547,9 +525,15 @@ export const Layout: React.FC = () => {
         );
       })
       .catch(() => {
-        setFolders(withDefaultSystemFolders(loadOfflineFolders(currentInstanceId)));
+        setFolders(
+          withDefaultSystemFolders(
+            loadOfflineFolders(currentInstanceId),
+            getSystemFolderLabels(),
+            showSystemFolders,
+          ),
+        );
       });
-  }, [currentInstanceId]);
+  }, [currentInstanceId, showSystemFolders]);
   const handleSetRightDrawerOpen = useCallback((open: boolean) => {
     setRightDrawerOpen(open);
     if (!open) {
@@ -960,7 +944,11 @@ export const Layout: React.FC = () => {
   useEffect(() => {
     if (!currentInstanceId || currentUserStatus !== "ready") return;
     let cancelled = false;
-    const cachedFolders = withDefaultSystemFolders(loadOfflineFolders(currentInstanceId));
+    const cachedFolders = withDefaultSystemFolders(
+      loadOfflineFolders(currentInstanceId),
+      getSystemFolderLabels(),
+      showSystemFolders,
+    );
     if (cachedFolders.length > 0) {
       void Promise.resolve().then(() => {
         if (!cancelled) setFolders(cachedFolders);
@@ -969,7 +957,11 @@ export const Layout: React.FC = () => {
     getFolders()
       .then(async (f) => {
         if (cancelled) return;
-        const foldersWithSystemDefaults = withDefaultSystemFolders(mapWorkspaceFoldersToRail(f));
+        const foldersWithSystemDefaults = withDefaultSystemFolders(
+          mapWorkspaceFoldersToRail(f),
+          getSystemFolderLabels(),
+          showSystemFolders,
+        );
         setFolders(foldersWithSystemDefaults);
         saveOfflineFolders(currentInstanceId, foldersWithSystemDefaults);
 
@@ -999,17 +991,25 @@ export const Layout: React.FC = () => {
       })
       .catch(() => {
         if (!cancelled) {
-          setFolders(withDefaultSystemFolders(loadOfflineFolders(currentInstanceId)));
+          setFolders(
+            withDefaultSystemFolders(
+              loadOfflineFolders(currentInstanceId),
+              getSystemFolderLabels(),
+              showSystemFolders,
+            ),
+          );
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [currentInstanceId, currentUserStatus]);
+  }, [currentInstanceId, currentUserStatus, showSystemFolders]);
 
   useEffect(() => {
-    setFolders((currentFolders) => withDefaultSystemFolders(currentFolders));
-  }, [language]);
+    setFolders((currentFolders) =>
+      withDefaultSystemFolders(currentFolders, getSystemFolderLabels(), showSystemFolders),
+    );
+  }, [language, showSystemFolders]);
 
   useEffect(() => {
     return startFolderPolling({
