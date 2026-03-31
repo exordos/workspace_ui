@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useInstancesStore } from "~/entities/instance";
+import { useInstancesStore } from "~/entities/instance/instance.model";
 import { renderWithProviders } from "~/test/render";
 import { LoginPage } from "./login-page.ui";
 import type * as ReactRouterDom from "react-router-dom";

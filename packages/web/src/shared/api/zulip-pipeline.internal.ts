@@ -1,7 +1,7 @@
 /**
  * Zulip HTTP pipeline helpers (auth middleware client). Internal to shared/api zulip modules.
  */
-import { t } from "~/i18n";
+import { t } from "~/i18n/i18n";
 import { getCurrentInstance, refreshZulipApiBase, zulipApi } from "./client";
 
 function normalizeApiPath(path: string): string {

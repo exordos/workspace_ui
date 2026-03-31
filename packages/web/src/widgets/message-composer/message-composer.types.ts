@@ -2,7 +2,7 @@
  * Types for the message composer widget.
  */
 import type { RefObject, ReactNode } from "react";
-import type { AiMessageContext, AiReplyRequest } from "~/features/ai-reply";
+import type { AiMessageContext, AiReplyRequest } from "~/features/ai-reply/ai-reply.types";
 
 export interface ReplyQuote {
   id: number;

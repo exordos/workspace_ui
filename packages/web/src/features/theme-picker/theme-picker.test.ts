@@ -5,7 +5,7 @@
  * and that selection delegates to the underlying theme store.
  */
 import { afterEach, describe, expect, it } from "vitest";
-import { useThemeStore } from "~/entities/theme";
+import { useThemeStore } from "~/entities/theme/theme.model";
 import { getAvailablePalettes, selectPalette, selectMode, toggleMode } from "./theme-picker.model";
 
 describe("Theme Picker", () => {

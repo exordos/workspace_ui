@@ -5,7 +5,15 @@ import "./zulip.test.setup";
 import { describe, expect, it, vi } from "vitest";
 import { getCurrentInstance } from "./client";
 import { uploadFile } from "./zulip-upload";
-import { jsonResponse, mockFetch, mockRefreshZulipApiBase, mockZulipApi } from "./zulip.test.setup";
+import {
+  getMockRefreshZulipApiBase,
+  getMockZulipApi,
+  jsonResponse,
+  mockFetch,
+} from "./zulip.test.setup";
+
+const mockZulipApi = getMockZulipApi();
+const mockRefreshZulipApiBase = getMockRefreshZulipApiBase();
 
 describe("uploadFile", () => {
   it("returns URI on success", async () => {

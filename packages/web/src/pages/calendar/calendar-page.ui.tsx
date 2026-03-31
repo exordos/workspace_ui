@@ -1,8 +1,8 @@
 import React from "react";
-import { t } from "~/i18n";
+import { t } from "~/i18n/i18n";
 import { EmbedFrame, isEmbedAllowed } from "~/shared/lib/embed";
 import { env } from "~/shared/lib/env";
-import { Icon } from "~/shared/ui";
+import { Icon } from "~/shared/ui/icon";
 
 function resolveEmbedUrl(configuredUrl: string, fallbackPath: string): string {
   const configured = configuredUrl.trim();

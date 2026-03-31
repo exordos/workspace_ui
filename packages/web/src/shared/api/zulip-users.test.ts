@@ -10,7 +10,10 @@ import {
   fetchUsersAvatarMap,
   getCurrentUser,
 } from "./zulip-users";
-import { mockZulipApi, mockRefreshZulipApiBase } from "./zulip.test.setup";
+import { getMockRefreshZulipApiBase, getMockZulipApi } from "./zulip.test.setup";
+
+const mockZulipApi = getMockZulipApi();
+const mockRefreshZulipApiBase = getMockRefreshZulipApiBase();
 
 describe("getCurrentUser", () => {
   it("delegates through zulipApi.get and refreshes base URL first", async () => {

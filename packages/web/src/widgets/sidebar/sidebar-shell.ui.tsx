@@ -1,13 +1,16 @@
 import React, { useCallback } from "react";
-import { useFolderSyncStore } from "~/features/folder-sync";
-import { useSettingsStore } from "~/features/settings";
-import { FolderRail } from "~/widgets/folder-rail";
+import { selectSidebarChatsLoading } from "~/features/folder-sync/folder-sync.selectors";
+import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
+import { useSettingsStore } from "~/features/settings/settings.model";
+import { FolderRail } from "~/widgets/folder-rail/folder-rail.ui";
 import { useSidebarConfigStore } from "./sidebar-config.model";
 import { Sidebar } from "./sidebar.ui";
 
 export const SidebarShell: React.FC = () => {
   const folderRailLayout = useSettingsStore((s) => s.folderRailLayout);
   const folders = useFolderSyncStore((s) => s.folders);
+  const sidebarChats = useFolderSyncStore((s) => s.selectedFolderSidebarChats);
+  const sidebarChatsLoading = useFolderSyncStore(selectSidebarChatsLoading);
   const refreshFolderSync = useFolderSyncStore((s) => s.refresh);
   const selectFolderSync = useFolderSyncStore((s) => s.selectFolder);
   const selectedFolderId = useSidebarConfigStore((s) => s.selectedFolderId);
@@ -47,13 +50,15 @@ export const SidebarShell: React.FC = () => {
             layout="vertical"
           />
         </div>
-        <Sidebar />
+        <Sidebar sidebarChats={sidebarChats} sidebarChatsLoading={sidebarChatsLoading} />
       </>
     );
   }
 
   return (
     <Sidebar
+      sidebarChats={sidebarChats}
+      sidebarChatsLoading={sidebarChatsLoading}
       activityPanelBottomSlot={
         <>
           <FolderRail
@@ -64,9 +69,6 @@ export const SidebarShell: React.FC = () => {
             onFoldersChanged={handleFoldersChanged}
             layout="horizontal"
           />
-          <div className="my-2">
-            <div className="bg-border-subtle/70 h-px" />
-          </div>
         </>
       }
     />

@@ -1,11 +1,11 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
-import { useChatListStore } from "~/entities/chat-list";
-import { useDraftStore } from "~/entities/draft";
-import { useSettingsStore } from "~/features/settings";
-import { t } from "~/i18n";
-import { Badge, Icon } from "~/shared/ui";
-import type { IconName } from "~/shared/ui";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useDraftStore } from "~/entities/draft/draft.model";
+import { useSettingsStore } from "~/features/settings/settings.model";
+import { t } from "~/i18n/i18n";
+import { Badge } from "~/shared/ui/badge";
+import { Icon, type IconName } from "~/shared/ui/icon";
 import { MY_ACTIVITY } from "./sidebar.lib";
 
 interface SidebarActivityProps {

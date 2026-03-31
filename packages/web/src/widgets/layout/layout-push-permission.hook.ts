@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { pushService } from "~/shared/lib/push";
+import { pushService } from "~/shared/lib/push/push.service";
 
 export function useLayoutPushPermission(options: { enabled: boolean; delayMs?: number }): void {
   const { enabled, delayMs = 5000 } = options;

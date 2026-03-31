@@ -23,7 +23,6 @@ slice-name/
   slice-name.lib.ts       # Pure utilities
   slice-name.ui.tsx       # React component
   slice-name.test.ts      # Tests
-  index.ts                # Public API (single import point)
 ```
 
 ## Current slices
@@ -91,8 +90,8 @@ slice-name/
 
 ## Rules
 
-- Import a slice only through `index.ts`: `import { X } from '~/entities/user'`
-- Do not import internals: ~~`from '~/entities/user/user.model'`~~
+- No barrel `index.ts` re-exports (see `no-barrel-index.mdc`).
+- Import from concrete files (e.g. `import { useUsersStore } from "~/entities/user/user.model"`).
 - Cross-store access — only downward or at the same level
 - New features — create as FSD features from the start
 - Tests live next to source: `slice-name.test.ts` inside the slice directory

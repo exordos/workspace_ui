@@ -1,13 +1,16 @@
 import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback } from "react";
-import { useUsersStore } from "~/entities/user";
-import { t } from "~/i18n";
+import { useUsersStore } from "~/entities/user/user.model";
+import { t } from "~/i18n/i18n";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
 import { getPresenceState } from "~/shared/lib/format";
-import { Avatar, Icon, PresenceIndicator } from "~/shared/ui";
+import { Avatar } from "~/shared/ui/avatar";
+import { Icon } from "~/shared/ui/icon";
+import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { resolveAvatarSrc } from "./message-avatar.lib";
 import { MessageBubble, type MessageBubbleCallbacks } from "./message-bubble.ui";
 import { buildMessageMediaGallery, type MessageMediaGallery } from "./message-list-media.lib";
+import { getSenderGroups, scrollToBottom } from "./message-list-grouping.lib";
 
 const SCROLL_AT_BOTTOM_THRESHOLD = 80;
 
@@ -60,22 +63,6 @@ function getDateKey(ts: number): string {
   yesterday.setDate(yesterday.getDate() - 1);
   if (d.toDateString() === yesterday.toDateString()) return t("chat.yesterday");
   return d.toLocaleDateString(undefined, { day: "numeric", month: "long" });
-}
-
-function scrollToBottom(el: HTMLElement | null) {
-  if (!el) return;
-  el.scrollTop = el.scrollHeight;
-}
-
-/** Splits the message array into groups of consecutive messages from the same sender. */
-function getSenderGroups(items: MockMessage[]): MockMessage[][] {
-  const result: MockMessage[][] = [];
-  for (const msg of items) {
-    const last = result[result.length - 1];
-    if (last?.[0]?.sender_id === msg.sender_id) last.push(msg);
-    else result.push([msg]);
-  }
-  return result;
 }
 
 /** Group of messages from the same sender: single avatar at the bottom edge of the block. */

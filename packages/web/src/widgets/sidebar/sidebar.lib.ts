@@ -6,7 +6,7 @@ export {
   messageToStreamEntry,
   messageToDmEntry,
   isUnread,
-} from "~/entities/chat-list";
+} from "~/entities/chat-list/chat-list.lib";
 
 /**
  * Sidebar activity metadata.

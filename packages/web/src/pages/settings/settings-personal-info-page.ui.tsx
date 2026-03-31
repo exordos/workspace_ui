@@ -1,21 +1,20 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useChatListStore } from "~/entities/chat-list";
-import { useInstancesStore } from "~/entities/instance";
-import { useUsersStore } from "~/entities/user";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useInstancesStore } from "~/entities/instance/instance.model";
+import { useUsersStore } from "~/entities/user/user.model";
 import {
-  fetchOwnStatus,
-  fetchUserProfile,
-  updateOwnProfile,
-  updateOwnStatus,
   type OwnStatusData,
   type UserProfileData,
-} from "~/features/user-profile";
-import { t } from "~/i18n";
+} from "~/features/user-profile/user-profile.types";
+import { useUserProfileStore } from "~/features/user-profile/user-profile.model";
+import { fetchOwnStatus, fetchUserProfile, updateOwnProfile, updateOwnStatus } from "~/features/user-profile/user-profile.api";
+import { t } from "~/i18n/i18n";
 import { getRoleLabel, parseRole } from "~/shared/lib/roles";
 import { isValidRealmUrl } from "~/shared/lib/validation";
-import { Avatar, Icon } from "~/shared/ui";
-import { ChatHeader } from "~/widgets/chat-view";
+import { Avatar } from "~/shared/ui/avatar";
+import { Icon } from "~/shared/ui/icon";
+import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
 
 function formatDateJoined(dateJoined: string | undefined): string | undefined {
   if (!dateJoined) return undefined;

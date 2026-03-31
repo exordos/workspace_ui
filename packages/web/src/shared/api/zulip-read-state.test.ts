@@ -11,7 +11,9 @@ import {
   markTopicAsRead,
   setTopicResolvedState,
 } from "./zulip-read-state";
-import { mockZulipApi } from "./zulip.test.setup";
+import { getMockZulipApi } from "./zulip.test.setup";
+
+const mockZulipApi = getMockZulipApi();
 
 describe("markMessagesAsRead", () => {
   it("posts flag update for message IDs", async () => {

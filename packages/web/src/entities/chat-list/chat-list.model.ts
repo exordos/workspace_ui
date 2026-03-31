@@ -5,7 +5,7 @@
  * Tracks unread counts per topic/DM and a message-to-location index for flag/delete handling.
  */
 import { create } from "zustand";
-import { useUsersStore } from "~/entities/user";
+import { useUsersStore } from "~/entities/user/user.model";
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
 import { saveRecentDmPartners } from "~/shared/lib/recent-dms";

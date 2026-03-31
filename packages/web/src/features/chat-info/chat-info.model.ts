@@ -7,7 +7,7 @@
  */
 
 import { create } from "zustand";
-import { useUsersStore } from "~/entities/user";
+import { useUsersStore } from "~/entities/user/user.model";
 import { logStoreAction } from "~/shared/lib/logger";
 import {
   invalidateInstance,

@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import type { NavigateFunction } from "react-router-dom";
 import { initAuthGuard } from "~/shared/lib/auth-guard";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
-import { pushService } from "~/shared/lib/push";
+import { pushService } from "~/shared/lib/push/push.service";
 
 export function useLayoutAuthGuard(options: {
   currentInstanceId: string | null;

@@ -1,8 +1,9 @@
 import { fireEvent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { useChatListStore } from "~/entities/chat-list";
-import { useUsersStore } from "~/entities/user";
-import { buildDmTypingChatKey, useTypingIndicatorStore } from "~/features/typing-indicator";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useUsersStore } from "~/entities/user/user.model";
+import { buildDmTypingChatKey } from "~/features/typing-indicator/typing-key";
+import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indicator.model";
 import { createUser } from "~/test/factories";
 import { renderWithProviders } from "~/test/render";
 import { SidebarDmList } from "./sidebar-dm-list.ui";

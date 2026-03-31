@@ -1,9 +1,9 @@
 import { useMemo } from "react";
-import type { ZulipInstance } from "~/entities/instance";
-import type { StreamWithLast } from "~/widgets/sidebar";
+import type { ZulipInstance } from "~/entities/instance/instance.model";
+import type { StreamWithLast } from "~/widgets/sidebar/sidebar.types";
 import { computeInstanceUnreadCount } from "./layout-instance-unread.lib";
 import { buildActiveChatWindowTitle } from "./layout-instance-unread.lib";
-import { getDmById, parseStreamSlug } from "~/widgets/sidebar";
+import { getDmById, parseStreamSlug } from "~/widgets/sidebar/sidebar.lib";
 import type { SidebarChat } from "~/shared/types/sidebar-chat";
 
 export function useLayoutUnreadAndTitle(options: {

@@ -1,15 +1,15 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useChatListStore } from "~/entities/chat-list";
-import { JitsiCallModal } from "~/features/jitsi-call";
-import { t } from "~/i18n";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { JitsiCallModal } from "~/features/jitsi-call/jitsi-call.ui";
+import { t } from "~/i18n/i18n";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { fetchAllMessagesPage } from "~/shared/api/zulip-messages";
 import { formatMessageTime } from "~/shared/lib/format";
 import { getJitsiMeetingUrl, parseJitsiUrl } from "~/shared/lib/jitsi";
 import { createLogger } from "~/shared/lib/logger";
 import { buildNavigableRouteFromMessage } from "~/shared/lib/push-click";
-import { Icon } from "~/shared/ui";
+import { Icon } from "~/shared/ui/icon";
 
 const log = createLogger("calls-page");
 const CALLS_SCAN_LIMIT = 250;

@@ -9,14 +9,14 @@ alwaysApply: true
 
 ```typescript
 // Outside React
-import { t, setLocale, getLocale } from "~/i18n";
+import { t, setLocale, getLocale } from "~/i18n/i18n";
 
 t("auth.login")                          // "Войти" / "Login"
 t("presence.minutesAgo", { count: 5 })   // "5 мин назад"
 t("channel.participants", { count: 3 })  // "3 участника" (plural)
 
 // In React
-import { useTranslation } from "~/i18n";
+import { useTranslation } from "~/i18n/i18n";
 
 const { t, locale, setLocale, supportedLocales } = useTranslation();
 ```
@@ -87,7 +87,7 @@ Invocation: `t("settings.newVersion", { version: "1.2.3" })`
 ## Adding a new language
 
 1. Create `src/i18n/locales/<code>.json` (copy `en.json`, translate)
-2. Import in `src/i18n/index.ts`:
+2. Import in `src/i18n/i18n.ts`:
    ```typescript
    import deMessages from "./locales/de.json";
    const MESSAGES = { ru: ..., en: ..., de: deMessages };

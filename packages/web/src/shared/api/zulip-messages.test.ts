@@ -22,7 +22,15 @@ import {
   sendMessage,
   updateMessage,
 } from "./zulip-messages";
-import { mockRefreshZulipApiBase, mockZulipApi, mockZulipClient } from "./zulip.test.setup";
+import {
+  getMockRefreshZulipApiBase,
+  getMockZulipApi,
+  getMockZulipClient,
+} from "./zulip.test.setup";
+
+const mockZulipApi = getMockZulipApi();
+const mockRefreshZulipApiBase = getMockRefreshZulipApiBase();
+const mockZulipClient = getMockZulipClient();
 
 describe("rawMessageToMockMessage", () => {
   it("maps a stream message", () => {

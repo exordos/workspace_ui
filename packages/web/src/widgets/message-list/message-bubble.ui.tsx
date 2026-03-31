@@ -1,11 +1,12 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import EmojiPicker, { type EmojiClickData, Theme } from "emoji-picker-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useCallParticipantsStore } from "~/entities/call";
-import { useDownloadStore } from "~/entities/download";
-import { formatUserStatusLabel, useUsersStore } from "~/entities/user";
-import { useMediaViewerStore } from "~/features/media-viewer";
-import { t } from "~/i18n";
+import { useCallParticipantsStore } from "~/entities/call/call.model";
+import { useDownloadStore } from "~/entities/download/download.model";
+import { useUsersStore } from "~/entities/user/user.model";
+import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
+import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
+import { t } from "~/i18n/i18n";
 import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
 import type {
   MockMessage,
@@ -17,7 +18,9 @@ import { buildAuthHeader } from "~/shared/lib/auth-guard";
 import { formatMessageTime, getPresenceState } from "~/shared/lib/format";
 import { sanitizeHtml } from "~/shared/lib/html";
 import { getJitsiMeetingUrl, parseJitsiUrl } from "~/shared/lib/jitsi";
-import { Avatar, Icon, PresenceIndicator, type IconName } from "~/shared/ui";
+import { Avatar } from "~/shared/ui/avatar";
+import { Icon, type IconName } from "~/shared/ui/icon";
+import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import {
   deriveAttachmentFileName,
   downloadUserUploadAttachment,

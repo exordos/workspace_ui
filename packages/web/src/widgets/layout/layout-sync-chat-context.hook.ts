@@ -1,9 +1,9 @@
 import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
-import { useChatListStore } from "~/entities/chat-list";
-import { useCurrentChatMessagesStore, type CurrentChatContext } from "~/entities/message";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useCurrentChatMessagesStore, type CurrentChatContext } from "~/entities/message/message.model";
 import { dmRouteKey } from "~/shared/lib/dm-key";
-import { parseDmSlugToUserIds, parseStreamSlug } from "~/widgets/sidebar";
+import { parseDmSlugToUserIds, parseStreamSlug } from "~/widgets/sidebar/sidebar.lib";
 
 function isSameContext(a: CurrentChatContext | null, b: CurrentChatContext | null): boolean {
   if (a === b) return true;

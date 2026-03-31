@@ -1,8 +1,12 @@
 import React, { useMemo } from "react";
-import { formatUserStatusLabel, useUsersStore } from "~/entities/user";
-import { type ChatInfoData } from "~/features/chat-info";
-import { t } from "~/i18n";
-import { Avatar, Icon, PresenceIndicator, ScrollArea } from "~/shared/ui";
+import { useUsersStore } from "~/entities/user/user.model";
+import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
+import type { ChatInfoData } from "~/features/chat-info/chat-info.types";
+import { t } from "~/i18n/i18n";
+import { Avatar } from "~/shared/ui/avatar";
+import { Icon } from "~/shared/ui/icon";
+import { PresenceIndicator } from "~/shared/ui/presence-indicator";
+import { ScrollArea } from "~/shared/ui/scroll-area";
 
 import { resolveAvatarSrc } from "./right-panel.lib";
 

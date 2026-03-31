@@ -1,8 +1,8 @@
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Routes, Route, useLocation, useNavigate, Navigate, useParams } from "react-router-dom";
-import { useInstancesStore } from "~/entities/instance";
-import { useThemeStore } from "~/entities/theme";
-import { t } from "~/i18n";
+import { useInstancesStore } from "~/entities/instance/instance.model";
+import { useThemeStore } from "~/entities/theme/theme.model";
+import { t } from "~/i18n/i18n";
 import { usePageView } from "~/shared/lib/analytics/usePageView";
 import { getElectronAPI } from "~/shared/lib/electron";
 import { initFocusManagement, focusMainContent } from "~/shared/lib/focus";
@@ -17,45 +17,47 @@ import {
   withCurrentOrgRoute,
   withOrgRoutePrefix,
 } from "~/shared/lib/org-route";
-import { setPluginNavigate } from "~/shared/lib/plugins";
+import { setPluginNavigate } from "~/shared/lib/plugins/api";
 import { useShortcut } from "~/shared/lib/shortcuts";
 import { useAppUpdate } from "~/shared/lib/updater";
 import { isWebView } from "~/shared/lib/webview";
-import { ErrorBoundary, PageErrorFallback, PageLoader } from "~/shared/ui";
-import { Layout } from "~/widgets/layout";
+import { ErrorBoundary, PageErrorFallback, PageLoader } from "~/shared/ui/error-boundary";
+import { Layout } from "~/widgets/layout/layout.ui";
 import { normalizeElectronDeeplinkRoute } from "./app-deeplink.lib";
 import { isForceUpdateRequiredStatus, shouldRedirectToForceUpdate } from "./app-force-update.lib";
 import { buildShortcutHelpSections } from "./app-shortcuts-help.lib";
 import { resolveGlobalNavigationRoute, resolveGlobalShortcutAction } from "./app-shortcuts.lib";
 import { WebViewShell } from "./webview-shell";
 
-const LoginPage = React.lazy(() => import("~/pages/login").then((m) => ({ default: m.LoginPage })));
-const PasteTokenPage = React.lazy(() =>
-  import("~/pages/login").then((m) => ({ default: m.PasteTokenPage })),
+const LoginPage = React.lazy(() =>
+  import("~/pages/login/login-page.ui").then((m) => ({ default: m.LoginPage })),
 );
-const ChatPage = React.lazy(() => import("~/pages/chat").then((m) => ({ default: m.ChatPage })));
+const PasteTokenPage = React.lazy(() =>
+  import("~/pages/login/paste-token-page.ui").then((m) => ({ default: m.PasteTokenPage })),
+);
+const ChatPage = React.lazy(() => import("~/pages/chat/chat-page.ui").then((m) => ({ default: m.ChatPage })));
 const ActivityPage = React.lazy(() =>
-  import("~/pages/activity").then((m) => ({ default: m.ActivityPage })),
+  import("~/pages/activity/activity-page.ui").then((m) => ({ default: m.ActivityPage })),
 );
 const CalendarPage = React.lazy(() =>
-  import("~/pages/calendar").then((m) => ({ default: m.CalendarPage })),
+  import("~/pages/calendar/calendar-page.ui").then((m) => ({ default: m.CalendarPage })),
 );
-const MailPage = React.lazy(() => import("~/pages/mail").then((m) => ({ default: m.MailPage })));
-const CallsPage = React.lazy(() => import("~/pages/calls").then((m) => ({ default: m.CallsPage })));
-const LogsPage = React.lazy(() => import("~/pages/logs").then((m) => ({ default: m.LogsPage })));
+const MailPage = React.lazy(() => import("~/pages/mail/mail-page.ui").then((m) => ({ default: m.MailPage })));
+const CallsPage = React.lazy(() => import("~/pages/calls/calls-page.ui").then((m) => ({ default: m.CallsPage })));
+const LogsPage = React.lazy(() => import("~/pages/logs/logs-page.ui").then((m) => ({ default: m.LogsPage })));
 const ServicesPage = React.lazy(() =>
-  import("~/pages/services").then((m) => ({ default: m.ServicesPage })),
+  import("~/pages/services/services-page.ui").then((m) => ({ default: m.ServicesPage })),
 );
 const LicensesPage = React.lazy(() =>
-  import("~/pages/licenses").then((m) => ({ default: m.LicensesPage })),
+  import("~/pages/licenses/licenses-page.ui").then((m) => ({ default: m.LicensesPage })),
 );
-const InboxPage = React.lazy(() => import("~/pages/inbox").then((m) => ({ default: m.InboxPage })));
-const FeedPage = React.lazy(() => import("~/pages/feed").then((m) => ({ default: m.FeedPage })));
+const InboxPage = React.lazy(() => import("~/pages/inbox/inbox-page.ui").then((m) => ({ default: m.InboxPage })));
+const FeedPage = React.lazy(() => import("~/pages/feed/feed-page.ui").then((m) => ({ default: m.FeedPage })));
 const UpdatePage = React.lazy(() =>
-  import("~/pages/update").then((m) => ({ default: m.UpdatePage })),
+  import("~/pages/update/update-page.ui").then((m) => ({ default: m.UpdatePage })),
 );
 const MessageRedirectPage = React.lazy(() =>
-  import("~/pages/message-redirect").then((m) => ({ default: m.MessageRedirectPage })),
+  import("~/pages/message-redirect/message-redirect-page.ui").then((m) => ({ default: m.MessageRedirectPage })),
 );
 
 const DEFAULT_STREAM = "general";

@@ -1,6 +1,8 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { Avatar, Badge, Icon } from "~/shared/ui";
+import { Avatar } from "~/shared/ui/avatar";
+import { Badge } from "~/shared/ui/badge";
+import { Icon } from "~/shared/ui/icon";
 import { MOCK_GROUPS } from "./sidebar.lib";
 import type { SidebarChat } from "./sidebar.types";
 

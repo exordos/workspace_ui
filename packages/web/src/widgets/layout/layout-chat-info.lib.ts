@@ -1,5 +1,5 @@
-import type { UserRecord } from "~/entities/user";
-import type { ChatInfoData, ChatInfoMember, ChatInfoTopic } from "~/features/chat-info";
+import type { UserRecord } from "~/entities/user/user.model";
+import type { ChatInfoData, ChatInfoMember, ChatInfoTopic } from "~/features/chat-info/chat-info.types";
 
 interface ChatInfoContextInput {
   hasDmChat: boolean;

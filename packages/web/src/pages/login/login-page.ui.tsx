@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useInstancesStore } from "~/entities/instance";
-import { t } from "~/i18n";
+import { useInstancesStore } from "~/entities/instance/instance.model";
+import { t } from "~/i18n/i18n";
 import { fetchApiKey, fetchServerSettings } from "~/shared/api/zulip-auth";
 import { ZulipAuthError } from "~/shared/api/zulip.types";
 import {
@@ -15,7 +15,8 @@ import {
   ORGANIZATION_FALLBACK_LOGO_URL,
 } from "~/shared/lib/organization-branding";
 import { isValidRealmUrl, isValidUrl } from "~/shared/lib/validation";
-import { Button, Icon } from "~/shared/ui";
+import { Button } from "~/shared/ui/button";
+import { Icon } from "~/shared/ui/icon";
 import { sanitizeInternalRedirectTarget } from "./login-redirect.lib";
 
 function resolveIconUrl(realmBase: string, icon: string): string {

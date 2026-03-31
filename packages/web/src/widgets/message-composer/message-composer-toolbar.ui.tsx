@@ -1,6 +1,6 @@
 import React, { useCallback } from "react";
-import { t } from "~/i18n";
-import { Icon } from "~/shared/ui";
+import { t } from "~/i18n/i18n";
+import { Icon } from "~/shared/ui/icon";
 import { mutateSelection, wrapSelection } from "./message-composer-selection.lib";
 import { TOOLBAR_BTN, TOOLBAR_GLYPH } from "./message-composer-styles.lib";
 import type { FormattingToolbarProps } from "./message-composer.types";

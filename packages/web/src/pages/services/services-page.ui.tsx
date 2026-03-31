@@ -1,8 +1,8 @@
 import React, { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { t } from "~/i18n";
+import { t } from "~/i18n/i18n";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
-import { Icon, type IconName } from "~/shared/ui";
+import { Icon, type IconName } from "~/shared/ui/icon";
 
 interface PlannedServiceCard {
   id: string;

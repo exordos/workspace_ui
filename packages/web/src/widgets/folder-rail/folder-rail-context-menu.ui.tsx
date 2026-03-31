@@ -1,7 +1,7 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import React from "react";
-import { t } from "~/i18n";
-import { Icon } from "~/shared/ui";
+import { t } from "~/i18n/i18n";
+import { Icon } from "~/shared/ui/icon";
 import type { FolderRailLayout } from "./folder-rail.types";
 
 const MENU_ITEM_CLASS =

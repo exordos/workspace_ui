@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useDownloadStore } from "~/entities/download";
+import { useDownloadStore } from "~/entities/download/download.model";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import type * as AuthGuardModule from "~/shared/lib/auth-guard";
 import { MessageBubble } from "./message-bubble.ui";

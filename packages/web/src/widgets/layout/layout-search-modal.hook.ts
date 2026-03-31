@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import type { NavigateFunction } from "react-router-dom";
-import { useChatListStore } from "~/entities/chat-list";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import type { MockMessage } from "~/shared/api/zulip";
 import { buildRouteFromMessage } from "~/shared/lib/push-click";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";

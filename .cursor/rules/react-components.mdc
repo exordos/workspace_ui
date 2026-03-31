@@ -50,8 +50,8 @@ export const MyComponent: React.FC<MyComponentProps> = ({ title, onAction }) => 
 - Event handlers: `handleXxx` naming convention
 - Conditional rendering: `{condition && <Component />}`, not ternaries for JSX blocks
 - Cleanup in useEffect — always return cleanup function for subscriptions
-- Import stores via public API: `from "~/entities/user"`, not `from "~/entities/user/user.model"`
-- Import shared UI via: `from "~/shared/ui"`
+- Import stores from concrete files: `from "~/entities/user/user.model"` (no barrel `index.ts`)
+- Import shared UI from concrete files: `from "~/shared/ui/icon"`, `from "~/shared/ui/button"`, etc.
 
 ## Layout
 

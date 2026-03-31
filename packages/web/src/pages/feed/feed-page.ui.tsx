@@ -1,17 +1,18 @@
 import React, { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { useChatListStore } from "~/entities/chat-list";
-import { useFeedStore, fetchFeedMessages } from "~/entities/feed";
-import { useInstancesStore } from "~/entities/instance";
-import { useUsersStore } from "~/entities/user";
-import { t } from "~/i18n";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { fetchFeedMessages } from "~/entities/feed/feed.api";
+import { useFeedStore } from "~/entities/feed/feed.model";
+import { useInstancesStore } from "~/entities/instance/instance.model";
+import { useUsersStore } from "~/entities/user/user.model";
+import { t } from "~/i18n/i18n";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { formatMessageTime } from "~/shared/lib/format";
 import { stripHtml } from "~/shared/lib/html";
 import { createLogger } from "~/shared/lib/logger";
 import { buildNavigableRouteFromMessage } from "~/shared/lib/push-click";
-import { Icon } from "~/shared/ui";
-import { ChatHeader } from "~/widgets/chat-view";
+import { Icon } from "~/shared/ui/icon";
+import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
 import { appendForwardIntentQuery } from "./feed-forward-intent.lib";
 import { computeFeedScrollTopAfterPrepend, shouldRequestOlderFeedPage } from "./feed-scroll.lib";
 

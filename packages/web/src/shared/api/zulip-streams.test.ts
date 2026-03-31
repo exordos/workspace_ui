@@ -13,7 +13,10 @@ import {
   fetchTopics,
   updateStream,
 } from "./zulip-streams";
-import { mockZulipApi, mockZulipClient, TEST_INSTANCE } from "./zulip.test.setup";
+import { getMockZulipApi, getMockZulipClient, TEST_INSTANCE } from "./zulip.test.setup";
+
+const mockZulipApi = getMockZulipApi();
+const mockZulipClient = getMockZulipClient();
 
 describe("fetchSubscriptions", () => {
   it("maps subscriptions and derives muted state", async () => {

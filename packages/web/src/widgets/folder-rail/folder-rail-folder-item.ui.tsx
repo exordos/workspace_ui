@@ -1,8 +1,9 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import React, { useCallback, useState } from "react";
-import { folderColorValueToCssHex, folderColorValueToCssRgba } from "~/features/manage-folders";
-import { t } from "~/i18n";
-import { Badge, Icon } from "~/shared/ui";
+import { folderColorValueToCssHex, folderColorValueToCssRgba } from "~/features/manage-folders/folder-colors";
+import { t } from "~/i18n/i18n";
+import { Badge } from "~/shared/ui/badge";
+import { Icon } from "~/shared/ui/icon";
 
 import {
   DELETE_MENU_ITEM_CLASS,

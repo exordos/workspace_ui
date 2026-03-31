@@ -2,8 +2,8 @@
  * Chat-list building helpers — pure functions that transform
  * Zulip raw messages into sidebar-ready structures.
  */
-import { useUsersStore } from "~/entities/user";
-import { t, getLocale } from "~/i18n";
+import { useUsersStore } from "~/entities/user/user.model";
+import { t, getLocale } from "~/i18n/i18n";
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
 import type {

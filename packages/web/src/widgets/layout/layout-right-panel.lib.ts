@@ -2,7 +2,7 @@ import { formatLastSeen } from "~/shared/lib/format";
 import { isValidRealmUrl } from "~/shared/lib/validation";
 import { getRoleLabel, parseRole } from "~/shared/lib/roles";
 import type { SidebarChat } from "~/shared/types/sidebar-chat";
-import type { RightPanelUserInfo } from "~/widgets/right-panel";
+import type { RightPanelUserInfo } from "~/widgets/right-panel/right-panel.types";
 
 export interface RightPanelCommonGroup {
   name: string;

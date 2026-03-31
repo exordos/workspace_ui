@@ -1,22 +1,20 @@
 import React, { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useChatListStore } from "~/entities/chat-list";
-import { useThemeStore } from "~/entities/theme";
-import {
-  useSettingsStore,
-  type FolderRailLayout,
-  type NotificationSound,
-} from "~/features/settings";
-import { getAvailablePalettes, selectPalette, selectMode } from "~/features/theme-picker";
-import { useTranslation } from "~/i18n";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useThemeStore } from "~/entities/theme/theme.model";
+import type { FolderRailLayout, NotificationSound } from "~/features/settings/settings.types";
+import { useSettingsStore } from "~/features/settings/settings.model";
+import { getAvailablePalettes, selectMode, selectPalette } from "~/features/theme-picker/theme-picker.model";
+import { useTranslation } from "~/i18n/i18n";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { wipeCredentials } from "~/shared/lib/auth-guard";
 import { createLogger } from "~/shared/lib/logger";
 import { playNotificationSound } from "~/shared/lib/notification-sound";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
-import { pushService } from "~/shared/lib/push";
+import { pushService } from "~/shared/lib/push/push.service";
 import type { ThemeMode } from "~/shared/lib/themes/tokens";
-import { Icon, ScrollArea } from "~/shared/ui";
+import { Icon } from "~/shared/ui/icon";
+import { ScrollArea } from "~/shared/ui/scroll-area";
 
 const log = createLogger("right-panel-settings");
 const APP_VERSION = import.meta.env.VITE_APP_VERSION ?? "dev";

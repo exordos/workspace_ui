@@ -1,14 +1,16 @@
 import React, { useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useChatListStore } from "~/entities/chat-list";
-import { useInboxStore, fetchInboxEntries, groupInboxEntries } from "~/entities/inbox";
-import type { InboxEntry } from "~/entities/inbox";
-import { t } from "~/i18n";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { fetchInboxEntries } from "~/entities/inbox/inbox.api";
+import { groupInboxEntries } from "~/entities/inbox/inbox.lib";
+import { useInboxStore } from "~/entities/inbox/inbox.model";
+import type { InboxEntry } from "~/entities/inbox/inbox.types";
+import { t } from "~/i18n/i18n";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { formatMessageTime } from "~/shared/lib/format";
 import { createLogger } from "~/shared/lib/logger";
-import { Icon } from "~/shared/ui";
-import { ChatHeader } from "~/widgets/chat-view";
+import { Icon } from "~/shared/ui/icon";
+import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
 import { buildInboxEntryRoute } from "./inbox-navigation.lib";
 
 const log = createLogger("inbox-page");

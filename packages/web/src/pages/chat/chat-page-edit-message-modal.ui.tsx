@@ -1,7 +1,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import React, { useState } from "react";
-import { t } from "~/i18n";
-import { Icon } from "~/shared/ui";
+import { t } from "~/i18n/i18n";
+import { Icon } from "~/shared/ui/icon";
 import type { EditMessageModalBodyProps } from "./chat-page.types";
 
 export const EditMessageModalBody = React.memo<EditMessageModalBodyProps>(function EditMessageModalBody({

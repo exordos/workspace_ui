@@ -1,6 +1,7 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import React, { useCallback, useState } from "react";
-import { Badge, Icon } from "~/shared/ui";
+import { Badge } from "~/shared/ui/badge";
+import { Icon } from "~/shared/ui/icon";
 import { FolderContextMenuContent } from "./folder-rail-context-menu.ui";
 import { getFolderItemVisualState, isContextMenuKeyboardTrigger } from "./folder-rail.utils";
 import type { FolderRailFolder } from "./folder-rail.types";

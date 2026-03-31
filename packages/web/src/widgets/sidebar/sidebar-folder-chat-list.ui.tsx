@@ -10,20 +10,22 @@ import * as Dialog from "@radix-ui/react-dialog";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useChatListStore } from "~/entities/chat-list";
-import { formatUserStatusLabel, useUsersStore } from "~/entities/user";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useUsersStore } from "~/entities/user/user.model";
+import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import {
-  useMuteStore,
   muteStream,
   unmuteStream,
   muteTopic,
   unmuteTopic,
-} from "~/features/mute-chat";
-import { pinChatInFolder, unpinChatInFolder, usePinStore } from "~/features/pin-chat";
-import { useSettingsStore } from "~/features/settings";
-import { useTypingIndicatorStore } from "~/features/typing-indicator";
-import { t } from "~/i18n";
-import { getFolderItems, updateFolderItemOrder } from "~/shared/api";
+} from "~/features/mute-chat/mute-chat.api";
+import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
+import { pinChatInFolder, unpinChatInFolder } from "~/features/pin-chat/pin-chat.api";
+import { usePinStore } from "~/features/pin-chat/pin-chat.model";
+import { useSettingsStore } from "~/features/settings/settings.model";
+import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indicator.model";
+import { t } from "~/i18n/i18n";
+import { getFolderItems, updateFolderItemOrder } from "~/shared/api/workspace-client";
 import {
   getRealmBaseUrl,
   markDmAsRead,
@@ -38,9 +40,12 @@ import {
   toResolvedTopicName,
   toUnresolvedTopicName,
 } from "~/shared/lib/topic-resolve";
-import { Avatar, Badge, Icon } from "~/shared/ui";
+import { Avatar } from "~/shared/ui/avatar";
+import { Badge } from "~/shared/ui/badge";
+import { Icon } from "~/shared/ui/icon";
 import { isDmPartnerTyping } from "./sidebar-dm-list.lib";
 import { loadFolderAssignments, toggleFolderAssignment } from "./sidebar-folder-assignment.lib";
+import { DmContextMenu, StreamContextMenu } from "./sidebar-chat-context-menu.ui";
 import {
   slugForStream,
   TOPIC_BAR_COLORS,
@@ -362,7 +367,7 @@ const FolderAssignmentsSubmenu = React.memo(function FolderAssignmentsSubmenu({
   );
 });
 
-const StreamContextMenu = React.memo(function StreamContextMenu({
+const StreamContextMenuLegacy = React.memo(function StreamContextMenu({
   streamId,
   chat,
   folderId,
@@ -527,7 +532,7 @@ const StreamContextMenu = React.memo(function StreamContextMenu({
   );
 });
 
-const DmContextMenu = React.memo(function DmContextMenu({
+const DmContextMenuLegacy = React.memo(function DmContextMenu({
   chat,
   folderId,
   onFolderAssignmentsChanged,

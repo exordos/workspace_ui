@@ -3,7 +3,7 @@
  */
 import { Buffer } from "buffer";
 import zulipInitDefault from "zulip-js";
-import { t } from "~/i18n";
+import { t } from "~/i18n/i18n";
 import { getCurrentInstance } from "./client";
 import {
   zulipPipelineGet,

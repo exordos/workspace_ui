@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useUsersStore } from "~/entities/user";
-import { useMentionSuggestStore } from "~/features/mention-suggest";
+import { useUsersStore } from "~/entities/user/user.model";
+import { useMentionSuggestStore } from "~/features/mention-suggest/mention-suggest.model";
 import { createUser } from "~/test/factories";
 import { renderWithProviders } from "~/test/render";
 import { computeFloatingPickerPosition } from "./message-composer-picker-position.lib";
@@ -63,7 +63,7 @@ vi.mock("emoji-picker-react", () => ({
 
 const aiActionMenuMock = vi.fn();
 
-vi.mock("~/features/ai-reply", () => ({
+vi.mock("~/features/ai-reply/ai-reply.ui", () => ({
   AiComposerButton: ({ onClick }: { onClick: () => void }) => (
     <button type="button" onClick={onClick}>
       AI
@@ -76,11 +76,11 @@ vi.mock("~/features/ai-reply", () => ({
   SmartReplySuggestions: () => null,
 }));
 
-vi.mock("~/features/sticker-picker", () => ({
+vi.mock("~/features/sticker-picker/sticker-picker.ui", () => ({
   StickerPicker: () => <div data-testid="sticker-picker-mock">Sticker picker</div>,
 }));
 
-vi.mock("~/entities/sticker", () => ({
+vi.mock("~/entities/sticker/sticker.api", () => ({
   buildStickerMarkdown: () => ":sticker:",
 }));
 

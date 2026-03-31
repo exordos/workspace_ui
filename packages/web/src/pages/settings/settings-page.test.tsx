@@ -1,8 +1,8 @@
 import { act, fireEvent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useThemeStore } from "~/entities/theme";
-import { useSettingsStore } from "~/features/settings";
-import { setLocale } from "~/i18n";
+import { useThemeStore } from "~/entities/theme/theme.model";
+import { useSettingsStore } from "~/features/settings/settings.model";
+import { setLocale } from "~/i18n/i18n";
 import { renderWithProviders } from "~/test/render";
 import { SettingsPage } from "./settings-page.ui";
 import type * as ReactRouterDom from "react-router-dom";
@@ -19,7 +19,7 @@ vi.mock("react-router-dom", async () => {
   };
 });
 
-vi.mock("~/shared/lib/push", () => ({
+vi.mock("~/shared/lib/push/push.service", () => ({
   pushService: {
     unregister: unregisterSpy,
   },

@@ -1,10 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { useMuteStore, muteTopic, unmuteTopic } from "~/features/mute-chat";
-import { useSettingsStore } from "~/features/settings";
-import { t } from "~/i18n";
+import { muteTopic, unmuteTopic } from "~/features/mute-chat/mute-chat.api";
+import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
+import { useSettingsStore } from "~/features/settings/settings.model";
+import { t } from "~/i18n/i18n";
 import { sidebarRowClass } from "~/shared/lib/format";
-import { Avatar, Badge, Icon } from "~/shared/ui";
+import { Avatar } from "~/shared/ui/avatar";
+import { Badge } from "~/shared/ui/badge";
+import { Icon } from "~/shared/ui/icon";
 import { slugForStream, TOPIC_BAR_COLORS } from "./sidebar.lib";
 import type { SidebarChat } from "./sidebar.types";
 

@@ -18,7 +18,7 @@ import type {
   ZulipRawMessage,
 } from "~/shared/api/zulip.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
-import { useUsersStore } from "~/entities/user";
+import { useUsersStore } from "~/entities/user/user.model";
 
 import type { CurrentChatContext, CurrentChatMessagesState } from "./message.model.types";
 

@@ -1,7 +1,7 @@
 /**
  * Zulip messages: fetch, send, edit, reactions, flags, snippets, activity narrow.
  */
-import { t } from "~/i18n";
+import { t } from "~/i18n/i18n";
 import { guard } from "~/shared/lib/guards";
 import { getClient, type ZulipClient } from "./zulip-client.internal";
 import {

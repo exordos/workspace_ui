@@ -1,13 +1,13 @@
 import { useEffect, useRef } from "react";
-import { useActivityStore } from "~/entities/activity";
-import { useChatListStore } from "~/entities/chat-list";
-import { useInboxStore } from "~/entities/inbox";
-import { useInstancesStore } from "~/entities/instance";
-import { useCurrentChatMessagesStore } from "~/entities/message";
-import { useUsersStore } from "~/entities/user";
-import { useMuteStore } from "~/features/mute-chat";
-import { useSettingsStore } from "~/features/settings";
-import { useTypingIndicatorStore } from "~/features/typing-indicator";
+import { useActivityStore } from "~/entities/activity/activity.model";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useInboxStore } from "~/entities/inbox/inbox.model";
+import { useInstancesStore } from "~/entities/instance/instance.model";
+import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
+import { useUsersStore } from "~/entities/user/user.model";
+import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
+import { useSettingsStore } from "~/features/settings/settings.model";
+import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indicator.model";
 import {
   deleteQueue,
   fetchRecentMessages,

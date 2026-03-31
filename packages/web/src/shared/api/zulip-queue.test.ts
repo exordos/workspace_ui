@@ -12,7 +12,15 @@ import {
   registerQueue,
   registerQueueForCredentials,
 } from "./zulip-queue";
-import { jsonResponse, mockFetch, mockRefreshZulipApiBase, mockZulipApi } from "./zulip.test.setup";
+import {
+  getMockRefreshZulipApiBase,
+  getMockZulipApi,
+  jsonResponse,
+  mockFetch,
+} from "./zulip.test.setup";
+
+const mockZulipApi = getMockZulipApi();
+const mockRefreshZulipApiBase = getMockRefreshZulipApiBase();
 
 describe("registerQueue", () => {
   it("returns queue_id and last_event_id on success", async () => {

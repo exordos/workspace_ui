@@ -4,7 +4,7 @@
  * Stores collapsible section states (e.g. activity panel). Persisted to localStorage.
  */
 import { create } from "zustand";
-import { useInstancesStore } from "~/entities/instance";
+import { useInstancesStore } from "~/entities/instance/instance.model";
 import { buildOrgScopedStorageKey } from "~/shared/lib/org-scoped-storage";
 
 const SIDEBAR_CONFIG_STORAGE_KEY = "zulip-web-sidebar-config";
@@ -22,11 +22,15 @@ const DEFAULT_CONFIG: SidebarConfig = {
 interface SidebarUiState {
   selectedFolderId: string;
   pinReorderMode: boolean;
+  searchQuery: string;
+  createChatOpen: boolean;
 }
 
 const DEFAULT_UI_STATE: SidebarUiState = {
   selectedFolderId: "1",
   pinReorderMode: false,
+  searchQuery: "",
+  createChatOpen: false,
 };
 
 function getStorageKeyForOrganization(organizationId: string | null): string {
@@ -74,6 +78,8 @@ interface SidebarConfigState extends SidebarConfig, SidebarUiState {
   setConfig: (patch: Partial<SidebarConfig>) => void;
   setSelectedFolderId: (folderId: string) => void;
   setPinReorderMode: (enabled: boolean) => void;
+  setSearchQuery: (value: string) => void;
+  setCreateChatOpen: (open: boolean) => void;
 }
 
 export const useSidebarConfigStore = create<SidebarConfigState>((set) => ({
@@ -109,6 +115,10 @@ export const useSidebarConfigStore = create<SidebarConfigState>((set) => ({
     })),
 
   setPinReorderMode: (pinReorderMode) => set((state) => ({ ...state, pinReorderMode })),
+
+  setSearchQuery: (searchQuery) => set((state) => ({ ...state, searchQuery })),
+
+  setCreateChatOpen: (createChatOpen) => set((state) => ({ ...state, createChatOpen })),
 }));
 
 if (typeof window !== "undefined") {

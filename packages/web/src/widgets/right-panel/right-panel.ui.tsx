@@ -1,12 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useChatListStore } from "~/entities/chat-list";
-import { useCurrentChatMessagesStore } from "~/entities/message";
-import { formatUserStatusLabel, useUsersStore } from "~/entities/user";
-import { useChatInfoStore, type ChatInfoData } from "~/features/chat-info";
-import { useMediaViewerStore } from "~/features/media-viewer";
-import { useMuteStore, muteStream, unmuteStream } from "~/features/mute-chat";
-import { t } from "~/i18n";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
+import { useUsersStore } from "~/entities/user/user.model";
+import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
+import { useChatInfoStore } from "~/features/chat-info/chat-info.model";
+import type { ChatInfoData } from "~/features/chat-info/chat-info.types";
+import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
+import { muteStream, unmuteStream } from "~/features/mute-chat/mute-chat.api";
+import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
+import { t } from "~/i18n/i18n";
 import { deleteStream, getRealmBaseUrl, updateStream } from "~/shared/api/zulip";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { resolveAvatarUrl } from "~/shared/lib/avatar";
@@ -14,10 +17,14 @@ import { createLogger } from "~/shared/lib/logger";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { hasPermission, parseRole } from "~/shared/lib/roles";
 import { isValidEmail, isValidUrl } from "~/shared/lib/validation";
-import { Avatar, Icon, PresenceIndicator, ScrollArea } from "~/shared/ui";
+import { Avatar } from "~/shared/ui/avatar";
+import { Icon } from "~/shared/ui/icon";
+import { PresenceIndicator } from "~/shared/ui/presence-indicator";
+import { ScrollArea } from "~/shared/ui/scroll-area";
 import { RightPanelAbout } from "./right-panel-about.ui";
 import { RightPanelBuilds } from "./right-panel-builds.ui";
 import { RightPanelUserMenu } from "./right-panel-user-menu.ui";
+import { RightPanelShell } from "./right-panel-shell.ui";
 
 const log = createLogger("right-panel");
 
@@ -1062,52 +1069,5 @@ const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
 };
 
 export const RightPanel: React.FC<RightPanelProps> = ({ mode = "info", ...props }) => {
-  const [menuSubview, setMenuSubview] = useState<"menu" | "about" | "builds">("menu");
-
-  useEffect(() => {
-    setMenuSubview("menu");
-  }, [mode]);
-
-  const handleOpenAbout = useCallback(() => {
-    if (props.onOpenAboutDrawer != null) {
-      props.onOpenAboutDrawer();
-      return;
-    }
-    setMenuSubview("about");
-  }, [props.onOpenAboutDrawer]);
-
-  const handleOpenBuilds = useCallback(() => {
-    if (props.onOpenBuildsDrawer != null) {
-      props.onOpenBuildsDrawer();
-      return;
-    }
-    setMenuSubview("builds");
-  }, [props.onOpenBuildsDrawer]);
-
-  if (mode === "settings" || mode === "user-menu") {
-    if (menuSubview === "about") {
-      return <RightPanelAbout />;
-    }
-    if (menuSubview === "builds") {
-      return <RightPanelBuilds />;
-    }
-
-    return (
-      <RightPanelUserMenu
-        heading={mode === "settings" ? t("settings.settings") : undefined}
-        onOpenAboutDrawer={handleOpenAbout}
-        onOpenBuildsDrawer={handleOpenBuilds}
-      />
-    );
-  }
-
-  if (mode === "about") {
-    return <RightPanelAbout />;
-  }
-
-  if (mode === "builds") {
-    return <RightPanelBuilds />;
-  }
-
-  return <RightPanelInfo {...props} />;
+  return <RightPanelShell mode={mode} {...props} />;
 };

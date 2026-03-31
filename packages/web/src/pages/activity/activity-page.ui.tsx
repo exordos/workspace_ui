@@ -1,17 +1,17 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useActivityStore } from "~/entities/activity";
-import { useChatListStore } from "~/entities/chat-list";
+import { useActivityStore } from "~/entities/activity/activity.model";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import {
-  useDraftStore,
   fetchDrafts,
   deleteDraftOnServer,
   updateDraftOnServer,
-} from "~/entities/draft";
-import type { Draft } from "~/entities/draft";
-import { useUsersStore } from "~/entities/user";
-import { t } from "~/i18n";
+} from "~/entities/draft/draft.api";
+import { useDraftStore } from "~/entities/draft/draft.model";
+import type { Draft } from "~/entities/draft/draft.types";
+import { useUsersStore } from "~/entities/user/user.model";
+import { t } from "~/i18n/i18n";
 import {
   fetchActivityMessagesPage,
   removeMessageFlag,
@@ -23,9 +23,9 @@ import { stripHtml } from "~/shared/lib/html";
 import { createLogger } from "~/shared/lib/logger";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { buildNavigableRouteFromMessage } from "~/shared/lib/push-click";
-import { Icon } from "~/shared/ui";
-import { ChatHeader } from "~/widgets/chat-view";
-import { slugForStream, messageToDmEntry, MY_ACTIVITY } from "~/widgets/sidebar";
+import { Icon } from "~/shared/ui/icon";
+import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
+import { MY_ACTIVITY, messageToDmEntry, slugForStream } from "~/widgets/sidebar/sidebar.lib";
 
 const log = createLogger("activity-page");
 

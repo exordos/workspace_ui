@@ -1,5 +1,5 @@
 import React from "react";
-import { t } from "~/i18n";
+import { t } from "~/i18n/i18n";
 import { createLogger } from "~/shared/lib/logger";
 import { captureException } from "~/shared/lib/sentry";
 

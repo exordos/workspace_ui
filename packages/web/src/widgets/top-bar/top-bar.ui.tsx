@@ -1,13 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useChatListStore } from "~/entities/chat-list";
-import { useDownloadStore } from "~/entities/download";
-import type { DownloadEntry } from "~/entities/download";
-import { useUserStatus, useUsersStore } from "~/entities/user";
-import { t } from "~/i18n";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useDownloadStore } from "~/entities/download/download.model";
+import type { DownloadEntry } from "~/entities/download/download.types";
+import { useUsersStore } from "~/entities/user/user.model";
+import { useUserStatus } from "~/entities/user/user-status.hooks";
+import { t } from "~/i18n/i18n";
 import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
 import { resolveAvatarUrl } from "~/shared/lib/avatar";
 import { getPresenceState } from "~/shared/lib/format";
-import { Avatar, Icon } from "~/shared/ui";
+import { Avatar } from "~/shared/ui/avatar";
+import { Icon } from "~/shared/ui/icon";
 import type { ReactNode } from "react";
 
 function resolveAvatarSrc(url: string | undefined | null): string | undefined {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ZulipInstance } from "~/entities/instance";
+import type { ZulipInstance } from "~/entities/instance/instance.model";
 import {
   startInactiveInstanceEventStreams,
   type StartCredentialEventLoopFn,

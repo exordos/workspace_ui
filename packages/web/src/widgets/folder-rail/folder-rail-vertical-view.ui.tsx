@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
-import { t } from "~/i18n";
-import { Icon } from "~/shared/ui";
+import { t } from "~/i18n/i18n";
+import { Icon } from "~/shared/ui/icon";
 import { VerticalFolderItem } from "./folder-rail-folder-items.ui";
 import { FolderQuickList } from "./folder-rail-quick-list.ui";
 import { FOLDER_QUICK_LIST_THRESHOLD, type IndexedFolderEntry } from "./folder-rail.utils";

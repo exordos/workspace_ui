@@ -1,8 +1,9 @@
 import React from "react";
-import { t } from "~/i18n";
+import { t } from "~/i18n/i18n";
 import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
 import { resolveAvatarUrl } from "~/shared/lib/avatar";
-import { Avatar, Icon } from "~/shared/ui";
+import { Avatar } from "~/shared/ui/avatar";
+import { Icon } from "~/shared/ui/icon";
 
 /** DM partner data for the chat header: avatar, name, online status */
 export interface ChatHeaderDmPartner {

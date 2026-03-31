@@ -1,32 +1,28 @@
 import EmojiPicker, { Theme, type EmojiClickData } from "emoji-picker-react";
 import React, { useState, useRef, useMemo, useCallback } from "react";
-import { buildStickerMarkdown } from "~/entities/sticker";
-import { formatUserStatusLabel, useUsersStore } from "~/entities/user";
-import type { AiMessageContext, AiReplyRequest } from "~/features/ai-reply";
-import { AiComposerButton, AiActionMenu, SmartReplySuggestions } from "~/features/ai-reply";
-import { filterUsers, useMentionSuggestStore } from "~/features/mention-suggest";
-import type { MentionSuggestion } from "~/features/mention-suggest";
-import { StickerPicker } from "~/features/sticker-picker";
-import { t } from "~/i18n";
-import {
-  createSavedSnippet,
-  fetchSavedSnippets,
-  getRealmBaseUrl,
-  renderMessageContent,
-  type SavedSnippet,
-} from "~/shared/api/zulip";
+import { buildStickerMarkdown } from "~/entities/sticker/sticker.api";
+import { useUsersStore } from "~/entities/user/user.model";
+import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
+import type { AiMessageContext, AiReplyRequest } from "~/features/ai-reply/ai-reply.types";
+import { AiActionMenu, AiComposerButton, SmartReplySuggestions } from "~/features/ai-reply/ai-reply.ui";
+import { filterUsers } from "~/features/mention-suggest/mention-suggest.lib";
+import { useMentionSuggestStore } from "~/features/mention-suggest/mention-suggest.model";
+import type { MentionSuggestion } from "~/features/mention-suggest/mention-suggest.types";
+import { StickerPicker } from "~/features/sticker-picker/sticker-picker.ui";
+import { t } from "~/i18n/i18n";
+import { createSavedSnippet, fetchSavedSnippets } from "~/shared/api/zulip-messages";
+import { getRealmBaseUrl, type SavedSnippet } from "~/shared/api/zulip";
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
 import { getPresenceState } from "~/shared/lib/format";
 import { sanitizeHtml, stripHtml } from "~/shared/lib/html";
 import { useViewportKeyboard } from "~/shared/lib/touch";
 import { isWebView } from "~/shared/lib/webview";
-import { Icon, PresenceIndicator } from "~/shared/ui";
+import { Icon } from "~/shared/ui/icon";
+import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { resolveComposerKeyboardInsetPx } from "./message-composer-keyboard-inset.lib";
 import { computeFloatingPickerPosition } from "./message-composer-picker-position.lib";
-import {
-  applySyntaxHighlighting,
-  renderMarkdownFallbackHtml,
-} from "./message-composer-preview.lib";
+import { useMessageComposerPreview } from "./use-message-composer-preview.hook";
+import { useMessageComposerUpload } from "./use-message-composer-upload.hook";
 
 export interface ReplyQuote {
   id: number;
@@ -444,22 +440,6 @@ function buildOutgoingMessageBody(value: string, replyQuote?: ReplyQuote | null)
   return body;
 }
 
-function hasFileDragPayload(dataTransfer: DataTransfer | null): boolean {
-  if (dataTransfer == null) return false;
-  const types = Array.from(dataTransfer.types ?? []);
-  return types.includes("Files");
-}
-
-function createAttachmentPreviewUrl(file: File): string | null {
-  if (!file.type.startsWith("image/")) return null;
-  if (typeof URL === "undefined" || typeof URL.createObjectURL !== "function") return null;
-  try {
-    return URL.createObjectURL(file);
-  } catch {
-    return null;
-  }
-}
-
 function getAttachmentExtensionLabel(fileName: string): string {
   const parts = fileName.split(".");
   const extension = parts.length > 1 ? (parts.at(-1) ?? "") : "";
@@ -544,9 +524,6 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   const [savedSnippetsReloadToken, setSavedSnippetsReloadToken] = useState(0);
   const [scheduledMessages, setScheduledMessages] = useState<ScheduledComposerMessage[]>([]);
   const [aiMenuOpen, setAiMenuOpen] = useState(false);
-  const [previewHtml, setPreviewHtml] = useState("");
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [previewError, setPreviewError] = useState<string | null>(null);
   const mentionQuery = useMentionSuggestStore((s) => s.query);
   const mentionSuggestions = useMentionSuggestStore((s) => s.results);
   const showMentions = useMentionSuggestStore((s) => s.visible);
@@ -581,28 +558,25 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
       setValue(initialValue ?? "");
     }
   }, [initialValue]);
-  const [files, setFiles] = useState<File[]>([]);
-  const filePreviewUrls = useMemo(
-    () => files.map((file) => createAttachmentPreviewUrl(file)),
-    [files],
-  );
-  const [isDragOver, setIsDragOver] = useState(false);
+  const {
+    files,
+    setFiles,
+    filePreviewUrls,
+    isDragOver,
+    onDragOver: handleDragOver,
+    onDragLeave: handleDragLeave,
+    onDrop: handleDrop,
+    onFileInputChange: handleFileChange,
+    removeFileByIndex: removeFile,
+    uploadProgressPercent,
+    isUploadInProgress,
+  } = useMessageComposerUpload({ disabled, uploadProgress });
   const [isComposerFocusWithin, setIsComposerFocusWithin] = useState(false);
-  const uploadProgressPercent = useMemo(() => {
-    if (uploadProgress == null || uploadProgress.total <= 0) return 0;
-    return Math.round((uploadProgress.completed / uploadProgress.total) * 100);
-  }, [uploadProgress]);
-  const isUploadInProgress = useMemo(
-    () =>
-      uploadProgress != null &&
-      uploadProgress.total > 0 &&
-      uploadProgress.completed < uploadProgress.total,
-    [uploadProgress],
-  );
   const outgoingBody = useMemo(
     () => buildOutgoingMessageBody(value, replyQuote),
     [value, replyQuote],
   );
+  const preview = useMessageComposerPreview({ mode, outgoingBody });
   const scheduleOptions = useMemo(
     () => [
       {
@@ -659,33 +633,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     [onValueChange],
   );
 
-  const handleDragOver = useCallback(
-    (e: React.DragEvent) => {
-      if (disabled) return;
-      if (!hasFileDragPayload(e.dataTransfer)) return;
-      e.preventDefault();
-      setIsDragOver(true);
-    },
-    [disabled],
-  );
-
-  const handleDragLeave = useCallback(() => {
-    setIsDragOver(false);
-  }, []);
-
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      if (!hasFileDragPayload(e.dataTransfer)) return;
-      e.preventDefault();
-      setIsDragOver(false);
-      if (disabled) return;
-      const droppedFiles = Array.from(e.dataTransfer.files);
-      if (droppedFiles.length > 0) {
-        setFiles((prev) => [...prev, ...droppedFiles]);
-      }
-    },
-    [disabled],
-  );
+  void filePreviewUrls;
 
   const allUsers = useUsersStore((s) => s.users);
   const mentionUsers: MentionSuggestion[] = useMemo(
@@ -716,54 +664,9 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
 
   React.useEffect(() => clearMentionState, [clearMentionState]);
 
-  React.useEffect(() => {
-    return () => {
-      if (typeof URL === "undefined" || typeof URL.revokeObjectURL !== "function") {
-        return;
-      }
-      for (const previewUrl of filePreviewUrls) {
-        if (previewUrl != null) {
-          URL.revokeObjectURL(previewUrl);
-        }
-      }
-    };
-  }, [filePreviewUrls]);
-
-  React.useEffect(() => {
-    if (mode !== "preview") return;
-    if (outgoingBody.trim().length === 0) {
-      setPreviewHtml("");
-      setPreviewError(null);
-      setPreviewLoading(false);
-      return;
-    }
-    let cancelled = false;
-    setPreviewLoading(true);
-    setPreviewError(null);
-    void renderMessageContent(outgoingBody)
-      .then((rendered) => {
-        if (cancelled) return;
-        setPreviewHtml(applySyntaxHighlighting(rendered));
-      })
-      .catch(() => {
-        if (cancelled) return;
-        try {
-          const fallbackPreview = renderMarkdownFallbackHtml(outgoingBody);
-          setPreviewHtml(applySyntaxHighlighting(fallbackPreview));
-          setPreviewError(null);
-        } catch {
-          setPreviewHtml("");
-          setPreviewError(t("composer.previewError"));
-        }
-      })
-      .finally(() => {
-        if (cancelled) return;
-        setPreviewLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [mode, outgoingBody]);
+  const previewHtml = preview.html;
+  const previewLoading = preview.loading;
+  const previewError = preview.error;
 
   const detectMention = useCallback(
     (text: string, cursorPos: number) => {
@@ -1167,16 +1070,6 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     };
   }, [processDueScheduledMessage, scheduledMessages.length]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = e.target.files;
-    if (!selected?.length) return;
-    setFiles((prev) => [...prev, ...Array.from(selected)]);
-    e.target.value = "";
-  };
-
-  const removeFile = (index: number) => {
-    setFiles((prev) => prev.filter((_, i) => i !== index));
-  };
   const isToolbarVisible = isComposerFocusWithin || value.length > 0 || mode === "preview";
 
   const handleComposerFocusCapture = useCallback(() => {
@@ -1904,7 +1797,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
               void handleSend();
             }}
             disabled={disabled}
-            className="flex h-9 w-9 flex-shrink-0 items-center justify-center gap-0 self-center rounded-[13px] bg-composer-send text-on-accent transition-opacity hover:opacity-90 disabled:opacity-50"
+            className="flex h-9 w-9 flex-shrink-0 items-center justify-center gap-0 self-center rounded-r-xl rounded-l-xl bg-composer-send text-on-accent transition-opacity hover:opacity-90 disabled:opacity-50"
             aria-label={t("chat.sendPlaceholder")}
           >
             <Icon name="send" size={18} className="text-on-accent" />

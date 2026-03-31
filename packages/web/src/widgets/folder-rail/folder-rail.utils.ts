@@ -1,4 +1,4 @@
-import { folderColorValueToCssHex, folderColorValueToCssRgba } from "~/features/manage-folders";
+import { folderColorValueToCssHex, folderColorValueToCssRgba } from "~/features/manage-folders/folder-colors";
 import type { FolderRailFolder } from "./folder-rail.types";
 import type { CSSProperties, KeyboardEvent } from "react";
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect } from "react";
-import { useMuteStore } from "~/features/mute-chat";
+import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { fetchSubscriptions, fetchUserTopics } from "~/shared/api/zulip";
 
 export interface LayoutMuteSnapshot {

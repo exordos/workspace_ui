@@ -1,7 +1,7 @@
 /**
  * Types for chat page UI subcomponents.
  */
-import type { StreamWithLast } from "~/widgets/sidebar";
+import type { StreamWithLast } from "~/widgets/sidebar/sidebar.types";
 
 export interface EditMessageModalBodyProps {
   initialContent: string;

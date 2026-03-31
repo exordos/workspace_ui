@@ -5,7 +5,7 @@
  * and delegates actual palette/mode changes to the theme entity.
  */
 
-import { useThemeStore } from "~/entities/theme";
+import { useThemeStore } from "~/entities/theme/theme.model";
 import { logStoreAction } from "~/shared/lib/logger";
 import { palettes } from "~/shared/lib/themes/registry";
 import type { ThemeMode } from "~/shared/lib/themes/tokens";

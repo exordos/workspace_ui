@@ -6,8 +6,8 @@
  */
 
 import { create } from "zustand";
-import { useInstancesStore } from "~/entities/instance";
-import { setLocale } from "~/i18n";
+import { useInstancesStore } from "~/entities/instance/instance.model";
+import { setLocale } from "~/i18n/i18n";
 import { logStoreAction } from "~/shared/lib/logger";
 import { buildOrgScopedStorageKey } from "~/shared/lib/org-scoped-storage";
 import type {

@@ -3,8 +3,8 @@ import { rawMessageToMockMessage } from "~/shared/api/zulip";
 import { stripHtml } from "~/shared/lib/html";
 import { getElectronAPI } from "~/shared/lib/electron";
 import { shouldNotify } from "~/shared/lib/notifications-policy";
-import { resolveTypingEventRoute } from "~/features/typing-indicator";
-import { isMessageForContext, type CurrentChatContext } from "~/entities/message";
+import { resolveTypingEventRoute } from "~/features/typing-indicator/typing-event-routing";
+import { isMessageForContext, type CurrentChatContext } from "~/entities/message/message.model";
 import { closeReadMessageNotifications } from "./layout-notification-tags.lib";
 
 type MessageFlagOp = "add" | "remove";

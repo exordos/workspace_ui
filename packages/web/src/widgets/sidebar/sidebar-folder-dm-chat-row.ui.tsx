@@ -1,13 +1,17 @@
 import React, { useEffect } from "react";
 import { Link } from "react-router-dom";
-import { useChatListStore } from "~/entities/chat-list";
-import { ensureUserStatusLoaded, formatUserStatusLabel, useUsersStore } from "~/entities/user";
-import { useTypingIndicatorStore } from "~/features/typing-indicator";
-import { t } from "~/i18n";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { ensureUserStatusLoaded } from "~/entities/user/api/user.api";
+import { useUsersStore } from "~/entities/user/user.model";
+import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
+import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indicator.model";
+import { t } from "~/i18n/i18n";
 import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
 import { resolveAvatarUrl } from "~/shared/lib/avatar";
 import { sidebarRowClass, getPresenceState } from "~/shared/lib/format";
-import { Avatar, Badge, Icon } from "~/shared/ui";
+import { Avatar } from "~/shared/ui/avatar";
+import { Badge } from "~/shared/ui/badge";
+import { Icon } from "~/shared/ui/icon";
 import { isDmPartnerTyping } from "./sidebar-dm-list.lib";
 import type { SidebarChat } from "./sidebar.types";
 

@@ -1,9 +1,9 @@
 import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
-import { useChatListStore } from "~/entities/chat-list";
-import { useDraftStore } from "~/entities/draft";
-import { useSettingsStore } from "~/features/settings";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useDraftStore } from "~/entities/draft/draft.model";
+import { useSettingsStore } from "~/features/settings/settings.model";
 import { SidebarActivity } from "./sidebar-activity.ui";
 import { MY_ACTIVITY } from "./sidebar.lib";
 

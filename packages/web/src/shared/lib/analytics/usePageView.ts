@@ -7,7 +7,7 @@
 
 import { useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
-import { analytics } from "./index";
+import { analytics } from "./analytics";
 
 export function usePageView(): void {
   const location = useLocation();

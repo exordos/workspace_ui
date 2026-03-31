@@ -1,7 +1,7 @@
 /**
  * Credential helpers for cross-instance Zulip API calls. Internal to zulip API modules.
  */
-import { t } from "~/i18n";
+import { t } from "~/i18n/i18n";
 import { getBasicAuthValue } from "~/shared/lib/auth-guard";
 import { guard } from "~/shared/lib/guards";
 import { normalizeRealm } from "./zulip-realm.internal";

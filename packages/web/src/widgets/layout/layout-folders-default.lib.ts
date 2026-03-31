@@ -1,7 +1,7 @@
 /**
  * Injects default personal/channels system folders into the workspace folder rail list.
  */
-import { t } from "~/i18n";
+import { t } from "~/i18n/i18n";
 import type { WorkspaceFolderForRail } from "~/shared/api/workspace-client";
 
 export const SYSTEM_PERSONAL_FOLDER_ID = "system:personal";

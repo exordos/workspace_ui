@@ -43,7 +43,7 @@ vi.mock("../widgets/sidebar/sidebar-config.model", () => ({
 vi.mock("../entities/call/call.model", () => ({
   useCallParticipantsStore: { getState: vi.fn(() => ({})) },
 }));
-vi.mock("../i18n", () => ({
+vi.mock("../i18n/i18n", () => ({
   t: vi.fn((key: string) => key),
   setLocale: vi.fn(),
   getLocale: vi.fn(() => "ru"),

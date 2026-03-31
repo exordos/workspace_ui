@@ -1,7 +1,7 @@
 /**
  * Zulip real-time event queue: register, poll, delete; unread count for credentials.
  */
-import { t } from "~/i18n";
+import { t } from "~/i18n/i18n";
 import { getBasicAuthValue } from "~/shared/lib/auth-guard";
 import { getCurrentInstance, zulipApi } from "./client";
 import { env } from "~/shared/lib/env";

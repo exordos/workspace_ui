@@ -2,10 +2,9 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { act } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useActivityStore } from "~/entities/activity";
-import { useChatListStore } from "~/entities/chat-list";
-import { useDraftStore } from "~/entities/draft";
-import type * as DraftModule from "~/entities/draft";
+import { useActivityStore } from "~/entities/activity/activity.model";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useDraftStore } from "~/entities/draft/draft.model";
 import { createMessage } from "~/test/factories";
 import { ActivityPage } from "./activity-page.ui";
 import type * as ReactRouterDom from "react-router-dom";
@@ -26,8 +25,10 @@ vi.mock("react-router-dom", async () => {
   };
 });
 
-vi.mock("~/entities/draft", async () => {
-  const actual = await vi.importActual<typeof DraftModule>("~/entities/draft");
+vi.mock("~/entities/draft/draft.api", async () => {
+  const actual = await vi.importActual<typeof import("~/entities/draft/draft.api")>(
+    "~/entities/draft/draft.api",
+  );
   return {
     ...actual,
     fetchDrafts,

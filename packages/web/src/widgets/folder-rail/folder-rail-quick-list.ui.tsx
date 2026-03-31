@@ -1,9 +1,10 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { folderColorValueToCssHex } from "~/features/manage-folders";
-import { t } from "~/i18n";
+import { folderColorValueToCssHex } from "~/features/manage-folders/folder-colors";
+import { t } from "~/i18n/i18n";
 import { useShortcut } from "~/shared/lib/shortcuts";
-import { Badge, Icon } from "~/shared/ui";
+import { Badge } from "~/shared/ui/badge";
+import { Icon } from "~/shared/ui/icon";
 import {
   FOLDER_QUICK_LIST_SHORTCUT,
   resolveFolderSystemType,

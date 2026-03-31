@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef } from "react";
-import { t } from "~/i18n";
+import { t } from "~/i18n/i18n";
 import { useAppUpdate, type UpdateState } from "~/shared/lib/updater";
-import { ChatHeader } from "~/widgets/chat-view";
+import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
 
 const APP_VERSION = import.meta.env.VITE_APP_VERSION ?? "dev";
 

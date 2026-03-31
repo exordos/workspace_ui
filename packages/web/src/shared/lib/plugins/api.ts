@@ -5,8 +5,8 @@
  * is gated by the permissions declared in the plugin manifest.
  */
 
-import { getLocale } from "~/i18n";
-import { analytics } from "../analytics";
+import { getLocale } from "~/i18n/i18n";
+import { analytics } from "../analytics/analytics";
 import { showDesktopNotification } from "../electron";
 import { createLogger } from "../logger";
 import { getRuntime } from "../pwa";

@@ -1,0 +1,39 @@
+---
+description: "Disallow barrel re-exports via index.ts"
+globs:
+  - "packages/web/src/**"
+---
+
+# No barrel `index.ts`
+
+## Rule
+
+Do **NOT** create `index.ts` / `index.tsx` files that only re-export symbols (barrel files).
+
+Examples of forbidden barrels:
+
+```ts
+// ❌ forbidden
+export * from "./foo";
+export { Bar } from "./bar";
+export type { Baz } from "./baz";
+```
+
+## Imports
+
+- Import from the **concrete module file** instead of the folder.
+- Do **not** rely on folder-level exports.
+
+Examples:
+
+```ts
+// ✅ correct
+import { useUsersStore } from "~/entities/user/user.model";
+import { Icon } from "~/shared/ui/icon";
+```
+
+## Exceptions
+
+An `index.ts` is allowed **only** if it contains real implementation (not just re-exports) and is the natural entrypoint for a subsystem.
+If in doubt — avoid `index.ts` and pick an explicit filename instead (e.g. `push.service.ts`, `themes.ts`).
+

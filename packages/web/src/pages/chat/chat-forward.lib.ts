@@ -1,6 +1,6 @@
 import { stripHtml } from "~/shared/lib/html";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
-import { slugForStream } from "~/widgets/sidebar";
+import { slugForStream } from "~/widgets/sidebar/sidebar.lib";
 
 export interface ForwardableMessage {
   id: number;

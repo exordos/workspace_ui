@@ -6,7 +6,7 @@
  * Active state has a subtle pulse animation.
  */
 import React from "react";
-import { t } from "~/i18n";
+import { t } from "~/i18n/i18n";
 
 export type PresenceVisual = "active" | "idle" | "offline" | null;
 

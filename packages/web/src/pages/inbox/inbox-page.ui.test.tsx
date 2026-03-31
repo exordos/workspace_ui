@@ -1,8 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useInboxStore } from "~/entities/inbox";
-import type * as InboxModule from "~/entities/inbox";
+import { useInboxStore } from "~/entities/inbox/inbox.model";
 import { InboxPage } from "./inbox-page.ui";
 import type * as ReactRouterDom from "react-router-dom";
 
@@ -17,8 +16,10 @@ vi.mock("react-router-dom", async () => {
   };
 });
 
-vi.mock("~/entities/inbox", async () => {
-  const actual = await vi.importActual<typeof InboxModule>("~/entities/inbox");
+vi.mock("~/entities/inbox/inbox.api", async () => {
+  const actual = await vi.importActual<typeof import("~/entities/inbox/inbox.api")>(
+    "~/entities/inbox/inbox.api",
+  );
   return {
     ...actual,
     fetchInboxEntries,

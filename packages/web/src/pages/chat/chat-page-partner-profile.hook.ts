@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useUsersStore } from "~/entities/user";
+import { useUsersStore } from "~/entities/user/user.model";
 import { fetchUser } from "~/shared/api/zulip";
 
 export function useChatPartnerProfileHydration(options: {

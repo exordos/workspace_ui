@@ -1,10 +1,14 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { ensureUserStatusLoaded, formatUserStatusLabel, useUsersStore } from "~/entities/user";
-import { useMediaViewerStore } from "~/features/media-viewer";
-import { t } from "~/i18n";
+import { ensureUserStatusLoaded } from "~/entities/user/api/user.api";
+import { useUsersStore } from "~/entities/user/user.model";
+import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
+import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
+import { t } from "~/i18n/i18n";
 import { createLogger } from "~/shared/lib/logger";
 import { isValidUrl } from "~/shared/lib/validation";
-import { Avatar, Icon, ScrollArea } from "~/shared/ui";
+import { Avatar } from "~/shared/ui/avatar";
+import { Icon } from "~/shared/ui/icon";
+import { ScrollArea } from "~/shared/ui/scroll-area";
 
 import {
   buildMailtoHref,

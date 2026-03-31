@@ -1,9 +1,8 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useFeedStore } from "~/entities/feed";
-import type * as FeedModule from "~/entities/feed";
-import { useInstancesStore } from "~/entities/instance";
+import { useFeedStore } from "~/entities/feed/feed.model";
+import { useInstancesStore } from "~/entities/instance/instance.model";
 import { createMessage } from "~/test/factories";
 import { FeedPage } from "./feed-page.ui";
 import type * as ReactRouterDom from "react-router-dom";
@@ -19,8 +18,10 @@ vi.mock("react-router-dom", async () => {
   };
 });
 
-vi.mock("~/entities/feed", async () => {
-  const actual = await vi.importActual<typeof FeedModule>("~/entities/feed");
+vi.mock("~/entities/feed/feed.api", async () => {
+  const actual = await vi.importActual<typeof import("~/entities/feed/feed.api")>(
+    "~/entities/feed/feed.api",
+  );
   return {
     ...actual,
     fetchFeedMessages,

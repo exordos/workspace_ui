@@ -1,8 +1,8 @@
 import { act, fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useChatListStore } from "~/entities/chat-list";
-import { useDownloadStore } from "~/entities/download";
-import { useUsersStore } from "~/entities/user";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useDownloadStore } from "~/entities/download/download.model";
+import { useUsersStore } from "~/entities/user/user.model";
 import { renderWithProviders } from "~/test/render";
 import { TopBar } from "./top-bar.ui";
 

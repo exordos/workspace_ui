@@ -1,6 +1,6 @@
 import React from "react";
-import { t } from "~/i18n";
-import { Icon } from "~/shared/ui";
+import { t } from "~/i18n/i18n";
+import { Icon } from "~/shared/ui/icon";
 import { MODE_TAB_ACTIVE, MODE_TAB_BTN, MODE_TAB_INACTIVE } from "./message-composer-styles.lib";
 import type { ComposerModeTabsProps } from "./message-composer.types";
 

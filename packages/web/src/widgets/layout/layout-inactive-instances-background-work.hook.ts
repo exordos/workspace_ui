@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import type { ZulipInstance } from "~/entities/instance";
+import type { ZulipInstance } from "~/entities/instance/instance.model";
 import {
   deleteQueue,
   fetchUnreadMessagesCountForCredentials,

@@ -1,7 +1,7 @@
 /**
  * Zulip auth and server discovery (no active instance required for server_settings).
  */
-import { t } from "~/i18n";
+import { t } from "~/i18n/i18n";
 import { env } from "~/shared/lib/env";
 import { isValidEmail, isValidRealmUrl } from "~/shared/lib/validation";
 import { normalizeRealm } from "./zulip-realm.internal";

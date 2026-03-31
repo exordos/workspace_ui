@@ -5,7 +5,7 @@
  * Listens to OS prefers-color-scheme changes when mode is "system".
  */
 import { create } from "zustand";
-import { useInstancesStore } from "~/entities/instance";
+import { useInstancesStore } from "~/entities/instance/instance.model";
 import { buildOrgScopedStorageKey } from "~/shared/lib/org-scoped-storage";
 import { applyTheme, getResolvedMode } from "~/shared/lib/themes/engine";
 import { defaultPaletteId } from "~/shared/lib/themes/registry";

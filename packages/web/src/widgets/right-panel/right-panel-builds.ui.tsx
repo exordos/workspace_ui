@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { t } from "~/i18n";
+import { t } from "~/i18n/i18n";
 import DownloadIcon from "~/shared/assets/icons/download.svg?react";
 import { createLogger } from "~/shared/lib/logger";
 import {
@@ -9,7 +9,8 @@ import {
   type UpdateVersionCatalog,
   type UpdateVersionCatalogEntry,
 } from "~/shared/lib/updater";
-import { Icon, ScrollArea } from "~/shared/ui";
+import { Icon } from "~/shared/ui/icon";
+import { ScrollArea } from "~/shared/ui/scroll-area";
 
 const log = createLogger("right-panel-builds");
 const APP_VERSION = import.meta.env.VITE_APP_VERSION ?? "dev";

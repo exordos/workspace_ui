@@ -2,19 +2,20 @@ import { JitsiMeeting } from "@jitsi/react-sdk";
 import * as Dialog from "@radix-ui/react-dialog";
 import React, { useRef, useState, useEffect } from "react";
 import { Rnd } from "react-rnd";
-import { useCallParticipantsStore } from "~/entities/call";
-import { useChatListStore } from "~/entities/chat-list";
-import { useUsersStore } from "~/entities/user";
-import { t } from "~/i18n";
+import { useCallParticipantsStore } from "~/entities/call/call.model";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useUsersStore } from "~/entities/user/user.model";
+import { t } from "~/i18n/i18n";
 import { callState } from "~/shared/lib/call-state";
 import { parseJitsiUrl } from "~/shared/lib/jitsi";
-import { Icon } from "~/shared/ui";
+import { Icon } from "~/shared/ui/icon";
+import { configureJitsiIframe } from "./jitsi-call-permissions.lib";
+import { getDefaultPipWindowBounds, type PipWindowBounds } from "./jitsi-call-pip.lib";
+import { parseJitsiMeetingUrlLoose } from "./jitsi-call-url.lib";
+import { useJitsiParticipantCount, type JitsiExternalApi } from "./use-jitsi-participant-count.hook";
 
-/** Minimal type for Jitsi External API. */
-interface JitsiExternalApi {
-  getNumberOfParticipants: () => number;
+interface JitsiExternalApiWithParticipants extends JitsiExternalApi {
   getParticipantsInfo: () => object[];
-  on: (event: string, callback: () => void) => void;
 }
 
 export interface JitsiCallModalProps {
@@ -22,70 +23,6 @@ export interface JitsiCallModalProps {
   meetingUrl: string;
   locationName?: string;
   onClose: () => void;
-}
-
-interface PipWindowBounds {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-const DEFAULT_PIP_WIDTH = 320;
-const DEFAULT_PIP_HEIGHT = 220;
-const PIP_WINDOW_MARGIN = 20;
-const JITSI_IFRAME_ALLOW_POLICY = "camera; microphone; fullscreen; display-capture";
-
-function configureJitsiIframe(iframeElement: HTMLElement | null, minimized: boolean): void {
-  if (!iframeElement || !("style" in iframeElement)) return;
-  iframeElement.style.width = "100%";
-  iframeElement.style.height = "100%";
-  iframeElement.style.minHeight = minimized ? "0" : "400px";
-  iframeElement.setAttribute("allow", JITSI_IFRAME_ALLOW_POLICY);
-}
-
-function getDefaultPipWindowBounds(): PipWindowBounds {
-  if (typeof window === "undefined") {
-    return {
-      x: 0,
-      y: 0,
-      width: DEFAULT_PIP_WIDTH,
-      height: DEFAULT_PIP_HEIGHT,
-    };
-  }
-  return {
-    x: Math.max(PIP_WINDOW_MARGIN, window.innerWidth - DEFAULT_PIP_WIDTH - PIP_WINDOW_MARGIN),
-    y: Math.max(PIP_WINDOW_MARGIN, window.innerHeight - DEFAULT_PIP_HEIGHT - PIP_WINDOW_MARGIN),
-    width: DEFAULT_PIP_WIDTH,
-    height: DEFAULT_PIP_HEIGHT,
-  };
-}
-
-function useParticipantCount(open: boolean, _parsed: { domain: string; roomName: string } | null) {
-  const [participantCount, setParticipantCount] = useState<number | null>(null);
-  const apiRef = useRef<JitsiExternalApi | null>(null);
-
-  const updateCount = () => {
-    const n = apiRef.current?.getNumberOfParticipants?.();
-    if (typeof n === "number") setParticipantCount(n);
-  };
-
-  const onApiReady = (api: JitsiExternalApi) => {
-    apiRef.current = api;
-    setParticipantCount(api.getNumberOfParticipants());
-    api.on("participantJoined", updateCount);
-    api.on("participantLeft", updateCount);
-  };
-
-  useEffect(() => {
-    if (open) return;
-    apiRef.current = null;
-    void Promise.resolve().then(() => {
-      setParticipantCount(null);
-    });
-  }, [open]);
-
-  return { participantCount, onApiReady };
 }
 
 export const JitsiCallModal: React.FC<JitsiCallModalProps> = ({
@@ -101,8 +38,8 @@ export const JitsiCallModal: React.FC<JitsiCallModalProps> = ({
   const [isNativeFullscreen, setIsNativeFullscreen] = useState(false);
   const [pipWindowBounds, setPipWindowBounds] =
     useState<PipWindowBounds>(getDefaultPipWindowBounds);
-  const parsed = meetingUrl ? parseJitsiUrl(meetingUrl) : null;
-  const { participantCount, onApiReady } = useParticipantCount(open, parsed);
+  const parsed = meetingUrl ? parseJitsiUrl(meetingUrl) ?? parseJitsiMeetingUrlLoose(meetingUrl) : null;
+  const { participantCount, onApiReady } = useJitsiParticipantCount(open);
   const setParticipants = useCallParticipantsStore((s) => s.setParticipants);
   const clearParticipants = useCallParticipantsStore((s) => s.clearParticipants);
   const participantPollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -179,7 +116,7 @@ export const JitsiCallModal: React.FC<JitsiCallModalProps> = ({
     if (!o && !isMinimized) setIsMinimized(true);
   };
 
-  const handleApiReady = (api: JitsiExternalApi) => {
+  const handleApiReady = (api: JitsiExternalApiWithParticipants) => {
     onApiReady(api);
     const updateParticipants = () => {
       try {
@@ -301,7 +238,7 @@ export const JitsiCallModal: React.FC<JitsiCallModalProps> = ({
             onApiReady={handleApiReady}
             getIFrameRef={(ref) => {
               iframeRef.current = ref;
-              if (ref && containerRef.current) {
+              if (ref) {
                 configureJitsiIframe(ref, isMinimized);
               }
             }}

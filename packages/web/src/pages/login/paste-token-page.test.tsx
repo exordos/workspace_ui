@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useInstancesStore } from "~/entities/instance";
+import { useInstancesStore } from "~/entities/instance/instance.model";
 import { saveDesktopFlowState } from "~/shared/lib/oidc-desktop";
 import { renderWithProviders } from "~/test/render";
 import { PasteTokenPage } from "./paste-token-page.ui";

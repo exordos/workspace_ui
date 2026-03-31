@@ -1,4 +1,4 @@
-import type { ZulipInstance } from "~/entities/instance";
+import type { ZulipInstance } from "~/entities/instance/instance.model";
 
 interface StartInactiveInstanceUnreadPollingOptions {
   instances: readonly ZulipInstance[];

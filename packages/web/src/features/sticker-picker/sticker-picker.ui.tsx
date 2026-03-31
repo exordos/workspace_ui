@@ -11,9 +11,10 @@
  * The composer converts it to markdown via `buildStickerMarkdown()`.
  */
 import React, { useState, useMemo, useRef } from "react";
-import { useStickerStore, type Sticker, type StickerPack } from "~/entities/sticker";
-import { t } from "~/i18n";
-import { Icon } from "~/shared/ui";
+import { useStickerStore } from "~/entities/sticker/sticker.model";
+import type { Sticker, StickerPack } from "~/entities/sticker/sticker.types";
+import { t } from "~/i18n/i18n";
+import { Icon } from "~/shared/ui/icon";
 
 // ---------------------------------------------------------------------------
 // Sticker grid item

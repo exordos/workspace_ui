@@ -3,7 +3,7 @@
  * individual setting updates, and reset to defaults.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useInstancesStore } from "~/entities/instance";
+import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useSettingsStore } from "./settings.model";
 
 function resetInstanceScope(): void {

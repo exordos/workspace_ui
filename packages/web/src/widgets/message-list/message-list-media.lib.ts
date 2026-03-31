@@ -1,4 +1,4 @@
-import type { MediaItem } from "~/features/media-viewer";
+import type { MediaItem } from "~/features/media-viewer/media-viewer.types";
 import type { MockMessage } from "~/shared/api/zulip.types";
 
 const IMG_SRC_REGEX = /<img\b[^>]*\bsrc\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/gi;

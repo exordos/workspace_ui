@@ -1,4 +1,4 @@
-import type { ZulipInstance } from "~/entities/instance";
+import type { ZulipInstance } from "~/entities/instance/instance.model";
 import type { ZulipCredentials, ZulipEvent } from "~/shared/api/zulip.types";
 
 export interface StartCredentialEventLoopOptions {

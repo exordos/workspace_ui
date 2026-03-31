@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
-import { useUsersStore } from "~/entities/user";
+import { useUsersStore } from "~/entities/user/user.model";
 import { fetchRealmPresence } from "~/shared/api/zulip";
 import { createResilientInterval } from "~/shared/lib/visibility";
 

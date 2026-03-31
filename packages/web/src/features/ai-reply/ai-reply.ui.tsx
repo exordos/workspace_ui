@@ -6,7 +6,7 @@
  * - AiStreamingPreview: shows token-by-token generation preview
  */
 import React from "react";
-import { Icon } from "~/shared/ui";
+import { Icon } from "~/shared/ui/icon";
 import { useAiReplyStore } from "./ai-reply.model";
 import type {
   AiAction,

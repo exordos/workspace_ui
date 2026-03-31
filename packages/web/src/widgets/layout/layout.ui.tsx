@@ -1,26 +1,28 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate, useLocation, Outlet } from "react-router-dom";
-import { useActivityStore } from "~/entities/activity";
-import { useChatListStore } from "~/entities/chat-list";
-import { useHydrateDrafts } from "~/entities/draft";
-import { useInboxStore } from "~/entities/inbox";
-import { useInstancesStore } from "~/entities/instance";
-import { useCurrentChatMessagesStore, isMessageForContext } from "~/entities/message";
-import { requestUserStatus, selectUserStatusSnapshot, useUsersStore } from "~/entities/user";
+import { useActivityStore } from "~/entities/activity/activity.model";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useHydrateDrafts } from "~/entities/draft/draft-hydration";
+import { useInboxStore } from "~/entities/inbox/inbox.model";
+import { useInstancesStore } from "~/entities/instance/instance.model";
+import { isMessageForContext, useCurrentChatMessagesStore } from "~/entities/message/message.model";
+import { useUsersStore } from "~/entities/user/user.model";
 import {
-  getChatInfoNetworkKey,
-  useChatInfoStore,
   type ChatInfoContext,
-} from "~/features/chat-info";
-import { selectSidebarChatsLoading, useFolderSyncStore } from "~/features/folder-sync";
-import { InstanceSwitcher } from "~/features/instance-switch";
-import { MediaViewerOverlay } from "~/features/media-viewer";
-import { useMuteStore } from "~/features/mute-chat";
-import { usePinStore } from "~/features/pin-chat";
-import { useSettingsStore } from "~/features/settings";
-import { useTypingIndicatorStore, resolveTypingEventRoute } from "~/features/typing-indicator";
-import { useUserProfileStore } from "~/features/user-profile";
-import { t } from "~/i18n";
+} from "~/features/chat-info/chat-info.types";
+import { getChatInfoNetworkKey } from "~/features/chat-info/chat-info.lib";
+import { useChatInfoStore } from "~/features/chat-info/chat-info.model";
+import { selectSidebarChatsLoading } from "~/features/folder-sync/folder-sync.selectors";
+import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
+import { InstanceSwitcher } from "~/features/instance-switch/instance-switch.ui";
+import { MediaViewerOverlay } from "~/features/media-viewer/media-viewer-overlay.ui";
+import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
+import { usePinStore } from "~/features/pin-chat/pin-chat.model";
+import { useSettingsStore } from "~/features/settings/settings.model";
+import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indicator.model";
+import { resolveTypingEventRoute } from "~/features/typing-indicator/typing-event-routing";
+import { useUserProfileStore } from "~/features/user-profile/user-profile.model";
+import { t } from "~/i18n/i18n";
 import { setAuthErrorHandler } from "~/shared/api/client";
 import {
   fetchMessagesAfterAnchor,
@@ -47,7 +49,7 @@ import { stripHtml } from "~/shared/lib/html";
 import { playNotificationSound } from "~/shared/lib/notification-sound";
 import { notificationService } from "~/shared/lib/notifications";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
-import { pushService } from "~/shared/lib/push";
+import { pushService } from "~/shared/lib/push/push.service";
 import {
   buildRouteFromPushNotificationClick,
   buildRouteFromMessage,
@@ -57,22 +59,19 @@ import { getRoleLabel, parseRole } from "~/shared/lib/roles";
 import { useShortcut } from "~/shared/lib/shortcuts";
 import { isValidRealmUrl } from "~/shared/lib/validation";
 import { createResilientInterval } from "~/shared/lib/visibility";
+import { useRightDrawerStore, type RightDrawerMode } from "~/widgets/right-panel/right-drawer.model";
+import { RightDrawer } from "~/widgets/right-panel/right-drawer.ui";
+import { RightPanelShell as RightPanel } from "~/widgets/right-panel/right-panel-shell.ui";
+import type { RightPanelUserInfo } from "~/widgets/right-panel/right-panel.types";
+import { SearchModal } from "~/widgets/search-modal/search-modal.ui";
 import {
-  RightDrawer,
-  RightPanel,
-  useRightDrawerStore,
-  type RightDrawerMode,
-  type RightPanelUserInfo,
-} from "~/widgets/right-panel";
-import { SearchModal } from "~/widgets/search-modal";
-import {
-  SidebarShell,
   parseStreamSlug,
   parseDmSlugToUserIds,
   slugForStream,
   getDmById,
-} from "~/widgets/sidebar";
-import { TopBar, type TopBarSection } from "~/widgets/top-bar";
+} from "~/widgets/sidebar/sidebar.lib";
+import { SidebarShell } from "~/widgets/sidebar/sidebar-shell.ui";
+import { TopBar, type TopBarSection } from "~/widgets/top-bar/top-bar.ui";
 import { getSectionFromPathname } from "./layout-active-section.lib";
 import { getNewestMessageId, loadDeepHistoryMessages } from "./layout-chat-history-sync.lib";
 import { shouldRenderChatShell } from "./layout-chat-shell.lib";
@@ -95,8 +94,6 @@ import { startInactiveInstanceEventStreams } from "./layout-multi-org-event-stre
 import { startInactiveInstanceUnreadPolling } from "./layout-multi-org-polling.lib";
 import { closeReadMessageNotifications } from "./layout-notification-tags.lib";
 import {
-  buildRightPanelCommonGroups,
-  buildRightPanelUserInfo,
   formatRightPanelLastSeen,
   formatRightPanelLocalTime,
 } from "./layout-right-panel.lib";
@@ -111,6 +108,11 @@ import { useLayoutSearchModal } from "./layout-search-modal.hook";
 import { useLayoutPushPermission } from "./layout-push-permission.hook";
 import { useLayoutPresencePolling } from "./layout-presence-polling.hook";
 import { useLayoutPushClickRouting } from "./layout-push-click-routing.hook";
+import { useLayoutChatInfoSync } from "./layout-chat-info-sync.hook";
+import { useLayoutRightDrawerContext } from "./layout-right-drawer-context.hook";
+import { useLayoutRightPanelUser } from "./layout-right-panel-user.hook";
+import { useLayoutUserProfileAutoload } from "./layout-user-profile-autoload.hook";
+import { useLayoutUserStatusFallback } from "./layout-user-status-fallback.hook";
 import { useSyncChatContextFromLocation } from "./layout-sync-chat-context.hook";
 import { useLayoutWindowBranding } from "./layout-window-branding.hook";
 import { useLayoutZulipEventLoop } from "./layout-zulip-event-loop.hook";
@@ -474,108 +476,51 @@ export const Layout: React.FC = () => {
   );
 
   const parsedStream = activeStreamSlug ? parseStreamSlug(activeStreamSlug) : null;
-  const activeStreamId = parsedStream?.stream_id ?? null;
-  const activeStreamName =
-    activeStreamId != null
-      ? (streamsMap.get(activeStreamId)?.name ?? parsedStream?.stream_name ?? "")
-      : parsedStream?.stream_name;
-  const dmChat =
-    dmIdParam != null && dmIdParam !== "" ? getDmById(dmIdParam, dmsFromStore) : undefined;
-  const isGroupDm = dmChat?.isGroup === true;
-  const partnerUserId = dmChat && !dmChat.isGroup ? dmChat.id : undefined;
   const rightDrawerOverrideUser = useUsersStore((s) =>
     rightDrawerUserIdOverride != null ? s.getUser(rightDrawerUserIdOverride) : undefined,
   );
   const rightDrawerOverrideUserName = rightDrawerOverrideUser?.full_name?.trim();
-  const rightDrawerTitle =
-    rightDrawerUserIdOverride != null
-      ? rightDrawerOverrideUserName != null && rightDrawerOverrideUserName.length > 0
-        ? rightDrawerOverrideUserName
-        : `User #${rightDrawerUserIdOverride}`
-      : dmIdParam != null && dmIdParam !== ""
-        ? isGroupDm
-          ? (dmChat?.name?.trim() ?? "") || t("dm.groupChat")
-          : t("dm.privateChat")
-        : activeStreamName
-          ? `#${activeStreamName}`
-          : t("chat.generalChat");
-  const rightDrawerTargetUserId = rightDrawerUserIdOverride ?? partnerUserId;
-  const dmParticipantIds = useMemo(() => {
-    if (!dmChat) return [];
-    if (dmChat.userIds != null && dmChat.userIds.length > 0) {
-      return dmChat.userIds;
-    }
-    const parsedUserIds = parseDmSlugToUserIds(dmChat.slug);
-    if (dmChat.isGroup && currentUserId != null) {
-      return Array.from(new Set([...parsedUserIds, currentUserId]));
-    }
-    return parsedUserIds;
-  }, [dmChat, currentUserId]);
 
-  useEffect(() => {
-    if (
-      rightDrawerMode === "settings" ||
-      rightDrawerMode === "user-menu" ||
-      rightDrawerMode === "about" ||
-      !rightDrawerTargetUserId ||
-      !rightDrawerOpen
-    ) {
-      useUserProfileStore.getState().clear();
-      return;
-    }
+  const {
+    title: rightDrawerTitle,
+    rightDrawerTargetUserId,
+    partnerUserId,
+    dmChat,
+    dmParticipantIds,
+    activeStreamId,
+    activeStreamName,
+  } = useLayoutRightDrawerContext({
+    streams: streamsFromStore,
+    dms: dmsFromStore,
+    streamsMap,
+    activeStreamSlug,
+    activeTopic,
+    dmIdParam,
+    currentUserId,
+    rightDrawerMode,
+    rightDrawerUserIdOverride,
+    rightDrawerOverrideUserName,
+    rightDrawerOpen,
+  });
 
-    void useUserProfileStore.getState().loadProfile(rightDrawerTargetUserId);
-    return () => {
-      useUserProfileStore.getState().clear();
-    };
-  }, [currentInstanceId, rightDrawerMode, rightDrawerTargetUserId, rightDrawerOpen]);
+  useLayoutUserProfileAutoload({
+    currentInstanceId,
+    rightDrawerMode,
+    rightDrawerTargetUserId,
+    rightDrawerOpen,
+  });
 
-  const userFromStore = useUsersStore((s) =>
-    rightDrawerTargetUserId != null ? s.getUser(rightDrawerTargetUserId) : undefined,
-  );
-  const detailedProfile = useUserProfileStore((s) => s.profile);
-  const currentChatMessages = useCurrentChatMessagesStore((s) => s.messages);
-  const rightPanelMedia = useMemo(
-    () => (rightDrawerTargetUserId != null ? buildRightPanelMedia(currentChatMessages) : undefined),
-    [rightDrawerTargetUserId, currentChatMessages],
-  );
-  const rightPanelCommonGroups = useMemo(() => {
-    if (rightDrawerTargetUserId == null) return undefined;
-    const groups = buildRightPanelCommonGroups(dmsFromStore, rightDrawerTargetUserId, dmChat?.slug);
-    return groups.length > 0 ? groups : undefined;
-  }, [rightDrawerTargetUserId, dmsFromStore, dmChat?.slug]);
-  const userStatusLabel = selectUserStatusSnapshot(userFromStore).statusLabel;
   const currentInstanceRealm = useMemo(
     () => instances.find((instance) => instance.id === currentInstanceId)?.realm,
     [instances, currentInstanceId],
   );
-  const rightPanelUser = useMemo<RightPanelUserInfo | undefined>(() => {
-    return buildRightPanelUserInfo({
-      userFromStore:
-        userFromStore == null
-          ? undefined
-          : {
-              ...userFromStore,
-              avatar_url: userFromStore.avatar_url ?? undefined,
-            },
-      detailedProfile: detailedProfile ?? undefined,
-      dmChat,
-      rightDrawerTargetUserId: rightDrawerTargetUserId ?? null,
-      userStatusLabel,
-      currentInstanceRealm,
-      media: rightPanelMedia,
-      commonGroups: rightPanelCommonGroups,
-    });
-  }, [
-    userFromStore,
-    detailedProfile,
-    dmChat,
+
+  const rightPanelUser = useLayoutRightPanelUser({
     rightDrawerTargetUserId,
-    userStatusLabel,
+    dmChat,
+    dms: dmsFromStore,
     currentInstanceRealm,
-    rightPanelMedia,
-    rightPanelCommonGroups,
-  ]);
+  });
 
   // Собираем топики активного стрима из chat-list store (без сети).
   const chatInfoTopics = useMemo(() => {
@@ -586,61 +531,16 @@ export const Layout: React.FC = () => {
     }));
   }, [activeStreamId, streamsMap]);
 
-  // Единый контекст chat-info для none/dm/stream веток.
-  const chatInfoContext = useMemo<ChatInfoContext>(() => {
-    if (!currentInstanceId) {
-      return { kind: "none", instanceId: null };
-    }
-    if (dmChat) {
-      return {
-        kind: "dm",
-        instanceId: currentInstanceId,
-        dmName: dmChat.name,
-        participantIds: dmParticipantIds,
-      };
-    }
-    if (activeStreamId != null) {
-      return {
-        kind: "stream",
-        instanceId: currentInstanceId,
-        streamId: activeStreamId,
-        streamName: activeStreamName ?? "",
-        isMuted: mutedStreamIds.has(activeStreamId),
-        topics: chatInfoTopics,
-      };
-    }
-    return { kind: "none", instanceId: currentInstanceId };
-  }, [
-    activeStreamId,
-    activeStreamName,
-    chatInfoTopics,
+  const { chatInfoData } = useLayoutChatInfoSync({
     currentInstanceId,
     dmChat,
     dmParticipantIds,
+    activeStreamId,
+    activeStreamName,
     mutedStreamIds,
-  ]);
-  // Стабильный ключ контекста нужен для контроля частоты hydrate.
-  const chatInfoNetworkKey = useMemo(
-    () => getChatInfoNetworkKey(chatInfoContext),
-    [chatInfoContext],
-  );
-  const hydratedChatInfoKeyRef = useRef<string | null>(null);
-
-  // Сетевой hydrate запускаем только при смене ключа контекста.
-  useEffect(() => {
-    if (hydratedChatInfoKeyRef.current === chatInfoNetworkKey) {
-      return;
-    }
-    hydratedChatInfoKeyRef.current = chatInfoNetworkKey;
-    void useChatInfoStore.getState().hydrate(chatInfoContext);
-  }, [chatInfoContext, chatInfoNetworkKey]);
-
-  // Локальный derived-пересчет (topics/mute/presence) без HTTP.
-  useEffect(() => {
-    useChatInfoStore.getState().syncDerived(chatInfoContext);
-  }, [chatInfoContext, usersMapForChatInfo]);
-
-  const chatInfoData = useChatInfoStore((s) => s.data);
+    topics: chatInfoTopics,
+    usersMapForChatInfo,
+  });
   const rightPanelMemberStatusIds = useMemo(() => {
     if (!rightDrawerOpen) return [];
     if (chatInfoData?.type !== "stream" && chatInfoData?.type !== "dm") {
@@ -652,51 +552,14 @@ export const Layout: React.FC = () => {
       .filter((userId) => Number.isFinite(userId) && userId > 0);
   }, [chatInfoData, rightDrawerOpen]);
 
-  useEffect(() => {
-    if (currentUserStatus !== "ready" || currentUserId == null) {
-      return;
-    }
-    // Точечный fallback для текущего пользователя (верхняя панель).
-    void requestUserStatus(currentUserId, {
-      reason: "top_bar",
-      priority: "high",
-    });
-  }, [currentUserId, currentUserStatus]);
-
-  useEffect(() => {
-    if (currentUserStatus !== "ready" || partnerUserId == null) {
-      return;
-    }
-    // Точечный fallback для собеседника в активном DM.
-    void requestUserStatus(partnerUserId, {
-      reason: "dm_header",
-      priority: "high",
-    });
-  }, [currentUserStatus, partnerUserId]);
-
-  useEffect(() => {
-    if (currentUserStatus !== "ready" || !rightDrawerOpen || rightDrawerTargetUserId == null) {
-      return;
-    }
-    // Точечный fallback для карточки пользователя в right panel.
-    void requestUserStatus(rightDrawerTargetUserId, {
-      reason: "right_panel",
-      priority: "high",
-    });
-  }, [currentUserStatus, rightDrawerOpen, rightDrawerTargetUserId]);
-
-  useEffect(() => {
-    if (currentUserStatus !== "ready" || !rightDrawerOpen) {
-      return;
-    }
-    // Фоновый fallback для списка участников справа (ограниченный список).
-    for (const userId of rightPanelMemberStatusIds) {
-      void requestUserStatus(userId, {
-        reason: "right_panel",
-        priority: "low",
-      });
-    }
-  }, [currentUserStatus, rightDrawerOpen, rightPanelMemberStatusIds]);
+  useLayoutUserStatusFallback({
+    enabled: currentUserStatus === "ready",
+    currentUserId,
+    partnerUserId,
+    rightDrawerOpen,
+    rightDrawerTargetUserId,
+    rightPanelMemberStatusIds,
+  });
 
   if (showFullscreenLoader) {
     return (
@@ -789,7 +652,7 @@ export const Layout: React.FC = () => {
                       participantsCount={chatInfoData?.memberCount ?? 0}
                       onlineCount={chatInfoData?.onlineCount ?? 0}
                       user={rightPanelUser}
-                      onSelectCommonGroup={(slug) => handleSelectDm(slug)}
+                      onSelectCommonGroup={(slug: string) => handleSelectDm(slug)}
                       onOpenSettingsDrawer={openRightDrawerSettings}
                       onOpenAboutDrawer={openRightDrawerAbout}
                     />

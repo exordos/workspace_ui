@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import type { Location } from "react-router-dom";
 import { dmRouteKey } from "~/shared/lib/dm-key";
-import { getDmById, parseDmSlugToUserIds, parseStreamSlug } from "~/widgets/sidebar";
+import { getDmById, parseDmSlugToUserIds, parseStreamSlug } from "~/widgets/sidebar/sidebar.lib";
 import { normalizeDmRouteUserIds } from "./chat-dm-route.lib";
 
 function parsePositiveIntFromSearch(location: Location, key: string): number | null {

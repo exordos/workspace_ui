@@ -1,4 +1,4 @@
-import { addChatToFolder, getFolderItems, getFolders, removeChatFromFolder } from "~/shared/api";
+import { addChatToFolder, getFolderItems, getFolders, removeChatFromFolder } from "~/shared/api/workspace-client";
 
 export interface FolderAssignment {
   folderUuid: string;

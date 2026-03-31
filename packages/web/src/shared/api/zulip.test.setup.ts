@@ -4,10 +4,9 @@
  * Import this module first in each test file so `vi.mock` runs before `./zulip` loads.
  */
 import { afterEach, beforeEach, vi } from "vitest";
-
 import { getCurrentInstance } from "./client";
 
-export const mockZulipClient = vi.hoisted(() => ({
+const mockZulipClient = vi.hoisted(() => ({
   streams: {
     retrieve: vi.fn(),
     topics: { retrieve: vi.fn() },
@@ -18,7 +17,11 @@ export const mockZulipClient = vi.hoisted(() => ({
   },
 }));
 
-export const mockZulipApi = vi.hoisted(() => ({
+export function getMockZulipClient() {
+  return mockZulipClient;
+}
+
+const mockZulipApi = vi.hoisted(() => ({
   get: vi.fn(),
   post: vi.fn(),
   postFormData: vi.fn(),
@@ -26,7 +29,15 @@ export const mockZulipApi = vi.hoisted(() => ({
   delete: vi.fn(),
 }));
 
-export const mockRefreshZulipApiBase = vi.hoisted(() => vi.fn());
+const mockRefreshZulipApiBase = vi.hoisted(() => vi.fn());
+
+export function getMockZulipApi() {
+  return mockZulipApi;
+}
+
+export function getMockRefreshZulipApiBase() {
+  return mockRefreshZulipApiBase;
+}
 
 vi.mock("./client", () => ({
   getCurrentInstance: vi.fn(),
@@ -40,7 +51,7 @@ vi.mock("~/shared/lib/auth-guard", () => ({
   setAuthInstanceGetter: vi.fn(),
 }));
 
-vi.mock("~/i18n", () => ({
+vi.mock("~/i18n/i18n", () => ({
   t: (key: string) => key,
 }));
 

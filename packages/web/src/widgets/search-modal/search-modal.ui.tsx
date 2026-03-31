@@ -1,12 +1,16 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { formatUserStatusLabel, useUsersStore } from "~/entities/user";
-import { t } from "~/i18n";
+import { useUsersStore } from "~/entities/user/user.model";
+import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
+import { t } from "~/i18n/i18n";
 import { fetchMessages } from "~/shared/api/zulip-messages";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { getPresenceState } from "~/shared/lib/format";
 import { stripHtml } from "~/shared/lib/html";
-import { Icon, PresenceIndicator, ScrollArea } from "~/shared/ui";
+import { Icon } from "~/shared/ui/icon";
+import { PresenceIndicator } from "~/shared/ui/presence-indicator";
+import { ScrollArea } from "~/shared/ui/scroll-area";
+import { useSearchModalStore } from "./search-modal.model";
 
 const DEBOUNCE_MS = 300;
 const MAX_USER_RESULTS = 20;
@@ -97,12 +101,19 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   onSelectMessage,
   onSelectUser,
 }) => {
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<MockMessage[]>([]);
-  const [streamFilter, setStreamFilter] = useState("");
-  const [senderFilter, setSenderFilter] = useState("");
-  const [dateFilter, setDateFilter] = useState("");
-  const [loading, setLoading] = useState(false);
+  const query = useSearchModalStore((s) => s.query);
+  const setQuery = useSearchModalStore((s) => s.setQuery);
+  const results = useSearchModalStore((s) => s.results);
+  const setResults = useSearchModalStore((s) => s.setResults);
+  const streamFilter = useSearchModalStore((s) => s.streamFilter);
+  const setStreamFilter = useSearchModalStore((s) => s.setStreamFilter);
+  const senderFilter = useSearchModalStore((s) => s.senderFilter);
+  const setSenderFilter = useSearchModalStore((s) => s.setSenderFilter);
+  const dateFilter = useSearchModalStore((s) => s.dateFilter);
+  const setDateFilter = useSearchModalStore((s) => s.setDateFilter);
+  const loading = useSearchModalStore((s) => s.loading);
+  const setLoading = useSearchModalStore((s) => s.setLoading);
+  const resetStore = useSearchModalStore((s) => s.reset);
   const inputRef = useRef<HTMLInputElement>(null);
   const users = useUsersStore((s) => s.users);
 
@@ -177,13 +188,9 @@ export const SearchModal: React.FC<SearchModalProps> = ({
 
   useEffect(() => {
     if (!open) {
-      setQuery("");
-      setResults([]);
-      setStreamFilter("");
-      setSenderFilter("");
-      setDateFilter("");
+      resetStore();
     }
-  }, [open]);
+  }, [open, resetStore]);
 
   useEffect(() => {
     if (!open) return;

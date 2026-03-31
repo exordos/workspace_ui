@@ -1,6 +1,6 @@
 import React from "react";
-import { t } from "~/i18n";
-import { Icon } from "~/shared/ui";
+import { t } from "~/i18n/i18n";
+import { Icon } from "~/shared/ui/icon";
 
 interface RightDrawerProps {
   onClose: () => void;
