@@ -8,7 +8,7 @@
  */
 import { renderHook, act } from "@testing-library/react";
 import { describe, expect, it, beforeEach, vi } from "vitest";
-import { t, setLocale, getLocale, getSupportedLocales, useTranslation } from "./index";
+import { t, setLocale, getLocale, getSupportedLocales, useTranslation } from "./i18n";
 
 // Core translation function, plural rules, locale switching, and React hook.
 describe("i18n", () => {
@@ -154,7 +154,7 @@ describe("i18n", () => {
       localStorage.setItem("workspace-locale:org-2", "ru");
 
       vi.resetModules();
-      const { getLocale: getFreshLocale } = await import("./index");
+      const { getLocale: getFreshLocale } = await import("./i18n");
       expect(getFreshLocale()).toBe("ru");
     });
   });

@@ -10,7 +10,7 @@
  * 6. Background: Service Worker shows system notification
  *
  * Usage:
- *   import { pushService } from "~/shared/lib/push";
+ *   import { pushService } from "~/shared/lib/push/push.service";
  *
  *   await pushService.requestPermission();
  *   await pushService.register();
@@ -18,7 +18,7 @@
  */
 
 import { useSyncExternalStore } from "react";
-import { analytics, AnalyticsEvent } from "../analytics";
+import { analytics, AnalyticsEvent } from "../analytics/analytics";
 import { isElectron } from "../electron";
 import { createLogger } from "../logger";
 import { createFcmProvider } from "./fcm";

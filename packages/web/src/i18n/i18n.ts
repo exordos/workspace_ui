@@ -5,14 +5,14 @@
  * Supports: nested keys, interpolation ({{var}}), plurals (_one/_few/_many/_other).
  *
  * Usage:
- *   import { t, setLocale, getLocale } from "~/i18n";
+ *   import { t, setLocale, getLocale } from "~/i18n/i18n";
  *
  *   t("auth.login")                        → "Login"
  *   t("presence.minutesAgo", { count: 5 }) → "5 min ago"
  *   t("message.selected", { count: 3 })    → "3 messages" (plural)
  *
  * React hook:
- *   import { useTranslation } from "~/i18n";
+ *   import { useTranslation } from "~/i18n/i18n";
  *   const { t, locale, setLocale } = useTranslation();
  */
 
