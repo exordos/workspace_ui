@@ -14,7 +14,7 @@ import {
 } from "~/features/chat-info";
 import { selectSidebarChatsLoading, useFolderSyncStore } from "~/features/folder-sync";
 import { InstanceSwitcher } from "~/features/instance-switch";
-import { useMediaViewerStore } from "~/features/media-viewer";
+import { MediaViewerOverlay } from "~/features/media-viewer";
 import { useMuteStore } from "~/features/mute-chat";
 import { usePinStore } from "~/features/pin-chat";
 import { useSettingsStore } from "~/features/settings";
@@ -28,8 +28,6 @@ import {
   fetchRecentMessages,
   fetchUsers,
   fetchRealmPresence,
-  fetchSubscriptions,
-  fetchUserTopics,
   getCurrentUser,
   rawMessageToMockMessage,
   deleteQueue,
@@ -59,12 +57,16 @@ import { getRoleLabel, parseRole } from "~/shared/lib/roles";
 import { useShortcut } from "~/shared/lib/shortcuts";
 import { isValidRealmUrl } from "~/shared/lib/validation";
 import { createResilientInterval } from "~/shared/lib/visibility";
-import { FolderRail } from "~/widgets/folder-rail";
-import { RightDrawer } from "~/widgets/right-panel";
-import { RightPanel, type RightPanelUserInfo } from "~/widgets/right-panel";
+import {
+  RightDrawer,
+  RightPanel,
+  useRightDrawerStore,
+  type RightDrawerMode,
+  type RightPanelUserInfo,
+} from "~/widgets/right-panel";
 import { SearchModal } from "~/widgets/search-modal";
 import {
-  Sidebar,
+  SidebarShell,
   parseStreamSlug,
   parseDmSlugToUserIds,
   slugForStream,
@@ -77,6 +79,8 @@ import { shouldRenderChatShell } from "./layout-chat-shell.lib";
 import { resolveChatShortcutRoute } from "./layout-chat-shortcuts.lib";
 import { DESKTOP_MIN_VIEWPORT_STYLE } from "./layout-desktop-viewport.lib";
 import { startFolderPolling } from "./layout-folder-polling.lib";
+import { useLayoutShortcuts } from "./layout-shortcuts.hook";
+import { useLayoutUnreadAndTitle } from "./layout-unread-title.hook";
 import {
   buildActiveChatWindowTitle,
   computeInstanceUnreadCount,
@@ -100,93 +104,16 @@ import { resolveShortcutPanelToggle } from "./layout-shortcuts.lib";
 import { SYSTEM_CHANNELS_FOLDER_ID, SYSTEM_PERSONAL_FOLDER_ID } from "./layout-system-folders.lib";
 import { useLayoutAuthErrorHandler } from "./layout-auth-error-handler.hook";
 import { useLayoutAuthGuard } from "./layout-auth-guard.hook";
+import { useLayoutInstanceBootstrap } from "./layout-instance-bootstrap.hook";
 import { useInactiveInstancesBackgroundWork } from "./layout-inactive-instances-background-work.hook";
 import { useLayoutOnlineStatus } from "./layout-online-status.hook";
+import { useLayoutSearchModal } from "./layout-search-modal.hook";
+import { useLayoutPushPermission } from "./layout-push-permission.hook";
+import { useLayoutPresencePolling } from "./layout-presence-polling.hook";
 import { useLayoutPushClickRouting } from "./layout-push-click-routing.hook";
 import { useSyncChatContextFromLocation } from "./layout-sync-chat-context.hook";
 import { useLayoutWindowBranding } from "./layout-window-branding.hook";
-
-const MediaViewerOverlay: React.FC = () => {
-  const isOpen = useMediaViewerStore((s) => s.isOpen);
-  const items = useMediaViewerStore((s) => s.items);
-  const currentIndex = useMediaViewerStore((s) => s.currentIndex);
-  const [zoom, setZoom] = useState(1);
-
-  useEffect(() => {
-    setZoom(1);
-  }, [currentIndex]);
-
-  if (!isOpen || items.length === 0) return null;
-
-  const item = items[currentIndex];
-  if (!item) return null;
-
-  const { close, next, prev } = useMediaViewerStore.getState();
-
-  const handleWheel = (e: React.WheelEvent) => {
-    e.stopPropagation();
-    setZoom((z) => Math.max(0.5, Math.min(3, z + e.deltaY * -0.001)));
-  };
-
-  return (
-    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- backdrop click-to-dismiss is standard dialog UX
-    <div
-      className="fixed inset-0 z-max flex items-center justify-center bg-black/90"
-      onClick={close}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") close();
-      }}
-      role="dialog"
-      aria-label={t("a11y.mediaViewer")}
-      tabIndex={-1}
-    >
-      {item.type === "video" ? (
-        // eslint-disable-next-line jsx-a11y/media-has-caption -- user-uploaded media without caption tracks
-        <video
-          src={item.url}
-          controls
-          autoPlay
-          className="max-h-[90vh] max-w-[90vw]"
-          onClick={(e) => e.stopPropagation()}
-        />
-      ) : (
-        <img
-          src={item.url}
-          alt={item.alt ?? ""}
-          role="presentation"
-          className="max-h-[90vh] max-w-[90vw] object-contain transition-transform"
-          style={{ transform: `scale(${zoom})` }}
-          onClick={(e) => e.stopPropagation()}
-          onWheel={handleWheel}
-        />
-      )}
-      {items.length > 1 && (
-        <div className="absolute bottom-4 flex gap-4">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              prev();
-            }}
-            className="bg-bg-elevated/80 rounded-lg px-4 py-2 text-sm text-text-primary transition-colors hover:bg-bg-elevated"
-          >
-            ← {t("common.prev")}
-          </button>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              next();
-            }}
-            className="bg-bg-elevated/80 rounded-lg px-4 py-2 text-sm text-text-primary transition-colors hover:bg-bg-elevated"
-          >
-            {t("common.next")} →
-          </button>
-        </div>
-      )}
-    </div>
-  );
-};
+import { useLayoutZulipEventLoop } from "./layout-zulip-event-loop.hook";
 
 const CHAT_HISTORY_BATCH_SIZE = 5000;
 const CHAT_HISTORY_MAX_BATCHES = 5;
@@ -207,10 +134,6 @@ export const Layout: React.FC = () => {
   const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
   const setCurrentInstanceId = useInstancesStore((s) => s.setCurrentInstanceId);
   const setInstanceUnreadCount = useInstancesStore((s) => s.setInstanceUnreadCount);
-  const currentInstanceRealmIcon = useMemo(
-    () => instances.find((instance) => instance.id === currentInstanceId)?.realmIcon,
-    [instances, currentInstanceId],
-  );
   const {
     streamSlug,
     topicName,
@@ -256,35 +179,17 @@ export const Layout: React.FC = () => {
       prioritizeUnmutedUnreadChannels,
     ],
   );
-  const unreadCountForCurrentInstance = useMemo(
-    () =>
-      computeInstanceUnreadCount({
-        streams: streamsFromStore,
-        dms: dmsFromStore,
-      }),
-    [streamsFromStore, dmsFromStore],
-  );
-  const activeStreamNameForTitle = useMemo(() => {
-    if (!activeStreamSlug) return null;
-    const parsedActiveStream = parseStreamSlug(activeStreamSlug);
-    if (parsedActiveStream.stream_id != null) {
-      return streamsMap.get(parsedActiveStream.stream_id)?.name ?? parsedActiveStream.stream_name;
-    }
-    return parsedActiveStream.stream_name;
-  }, [activeStreamSlug, streamsMap]);
-  const activeDmChatForTitle = useMemo(
-    () => (dmIdParam != null && dmIdParam !== "" ? getDmById(dmIdParam, dmsFromStore) : undefined),
-    [dmIdParam, dmsFromStore],
-  );
-  const activeChatWindowTitle = useMemo(
-    () =>
-      buildActiveChatWindowTitle({
-        dmName: activeDmChatForTitle?.name,
-        streamName: activeStreamNameForTitle,
-        topicName: activeTopic,
-      }),
-    [activeDmChatForTitle?.name, activeStreamNameForTitle, activeTopic],
-  );
+  const { realmIcon: currentInstanceRealmIcon, unreadCount: unreadCountForCurrentInstance, activeChatWindowTitle } =
+    useLayoutUnreadAndTitle({
+      instances,
+      currentInstanceId,
+      streams: streamsFromStore,
+      dms: dmsFromStore,
+      streamsMap,
+      activeStreamSlug,
+      activeTopic,
+      dmIdParam,
+    });
 
   const folders = useFolderSyncStore((s) => s.folders);
   const selectedFolderId = useFolderSyncStore((s) => s.selectedFolderId);
@@ -299,40 +204,26 @@ export const Layout: React.FC = () => {
   const syncFolderSyncDerived = useFolderSyncStore((s) => s.syncDerived);
   const [pinReorderMode, setPinReorderMode] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [rightDrawerOpen, setRightDrawerOpen] = useState(false);
-  const [rightDrawerMode, setRightDrawerMode] = useState<
-    "info" | "settings" | "user-menu" | "about"
-  >("info");
-  const [rightDrawerUserIdOverride, setRightDrawerUserIdOverride] = useState<number | null>(null);
+  const rightDrawerOpen = useRightDrawerStore((s) => s.open);
+  const setRightDrawerOpen = useRightDrawerStore((s) => s.setOpen);
+  const rightDrawerMode = useRightDrawerStore((s) => s.mode);
+  const rightDrawerUserIdOverride = useRightDrawerStore((s) => s.userIdOverride);
+  const openRightDrawerUserMenu = useRightDrawerStore((s) => s.openUserMenu);
+  const openRightDrawerUserProfile = useRightDrawerStore((s) => s.openUserProfile);
+  const openRightDrawerSettings = useRightDrawerStore((s) => s.openSettings);
+  const openRightDrawerAbout = useRightDrawerStore((s) => s.openAbout);
   const [currentUserStatus, setCurrentUserStatus] = useState<
     "idle" | "loading" | "ready" | "error"
   >("idle");
-  const eventLoopAbortRef = useRef<AbortController | null>(null);
-  const queueIdRef = useRef<string | null>(null);
-  const instanceAtLoopStartRef = useRef<{ realm: string; email: string; apiKey: string } | null>(
-    null,
-  );
-  const latestMessageIdRef = useRef<number | null>(null);
   const folderSyncConfigRef = useRef({
     showSystemFolders,
     labels: getSystemFolderLabels(),
   });
 
-  const loadMuteSnapshot = useCallback(async () => {
-    const [subs, userTopics] = await Promise.all([fetchSubscriptions(), fetchUserTopics()]);
-    const mutedStreamIds = subs.filter((s) => s.is_muted).map((s) => s.stream_id);
-    const mutedTopics: { streamId: number; topic: string }[] = [];
-    const unmutedTopics: { streamId: number; topic: string }[] = [];
-    for (const ut of userTopics) {
-      if (ut.visibility_policy === 1) {
-        mutedTopics.push({ streamId: ut.stream_id, topic: ut.topic_name });
-      } else if (ut.visibility_policy === 2) {
-        unmutedTopics.push({ streamId: ut.stream_id, topic: ut.topic_name });
-      }
-    }
-    return { mutedStreamIds, mutedTopics, unmutedTopics };
-  }, []);
+  const { loadMuteSnapshot } = useLayoutInstanceBootstrap({
+    currentInstanceId,
+    currentUserStatus,
+  });
 
   const loadBootstrapMessages = useCallback(async () => {
     const initialMessages = await fetchRecentMessages();
@@ -414,12 +305,16 @@ export const Layout: React.FC = () => {
     usersMapForChatInfo,
   ]);
 
-  const openSearch = React.useCallback(() => setSearchOpen(true), []);
+  const {
+    open: searchOpen,
+    setOpen: setSearchOpen,
+    openSearch,
+    onSelectMessage: handleSearchSelectMessage,
+    onSelectUser: handleSearchSelectUser,
+  } = useLayoutSearchModal({ navigate });
   const handleOpenProfile = useCallback(() => {
-    setRightDrawerMode("user-menu");
-    setRightDrawerUserIdOverride(null);
-    setRightDrawerOpen(true);
-  }, []);
+    openRightDrawerUserMenu();
+  }, [openRightDrawerUserMenu]);
   const handleSelectFolder = useCallback(
     (folderId: string) => {
       setPinReorderMode(false);
@@ -457,233 +352,18 @@ export const Layout: React.FC = () => {
   const handleFoldersChanged = useCallback(async () => {
     await refreshFolderSync("mutation");
   }, [refreshFolderSync]);
-  const handleSetRightDrawerOpen = useCallback((open: boolean) => {
-    setRightDrawerOpen(open);
-    if (!open) {
-      setRightDrawerMode("info");
-      setRightDrawerUserIdOverride(null);
-    }
-  }, []);
-  const handleOpenRightDrawerUserProfile = useCallback((userId: number) => {
-    setRightDrawerMode("info");
-    setRightDrawerUserIdOverride(userId);
-    setRightDrawerOpen(true);
-  }, []);
-  const handleOpenSettingsDrawer = useCallback(() => {
-    setRightDrawerMode("settings");
-    setRightDrawerUserIdOverride(null);
-    setRightDrawerOpen(true);
-  }, []);
-  const handleOpenAboutDrawer = useCallback(() => {
-    setRightDrawerMode("about");
-    setRightDrawerUserIdOverride(null);
-    setRightDrawerOpen(true);
-  }, []);
   const handleCloseRightDrawer = useCallback(() => {
-    handleSetRightDrawerOpen(false);
-  }, [handleSetRightDrawerOpen]);
+    setRightDrawerOpen(false);
+  }, [setRightDrawerOpen]);
 
-  // Current user is a prerequisite for the UI; users and messages load in parallel
-  useEffect(() => {
-    if (!currentInstanceId) return;
-    let cancelled = false;
-    void Promise.resolve().then(() => {
-      if (!cancelled) setCurrentUserStatus("loading");
-    });
-    useUsersStore.getState().clear();
-    useChatListStore.getState().clear();
-    useActivityStore.getState().clear();
-    useCurrentChatMessagesStore.getState().setContext(null);
-    useCurrentChatMessagesStore.getState().setMessages([]);
-    latestMessageIdRef.current = null;
-
-    const pUsers = fetchUsers();
-    const pMessages = loadBootstrapMessages();
-
-    getCurrentUser()
-      .then((user) => {
-        if (cancelled) return;
-        if (user?.user_id != null) {
-          useUsersStore.getState().mergeUser(user);
-          setCurrentUserId(user.user_id);
-          setCurrentUserStatus("ready");
-        } else {
-          setCurrentUserStatus("error");
-          useUsersStore.getState().clear();
-          useChatListStore.getState().clear();
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setCurrentUserStatus("error");
-          useUsersStore.getState().clear();
-          useChatListStore.getState().clear();
-        }
-      });
-
-    Promise.all([pUsers, pMessages])
-      .then(([members, messages]) => {
-        if (cancelled) return;
-        const msgs = messages ?? [];
-        useUsersStore.getState().mergeUsers(members ?? []);
-        for (const m of msgs) {
-          useUsersStore.getState().mergeFromMessage(m);
-        }
-        const uid = useChatListStore.getState().currentUserId ?? null;
-        setFromMessages(msgs, uid);
-        latestMessageIdRef.current = getNewestMessageId(msgs);
-
-        eventLoopAbortRef.current?.abort();
-        eventLoopAbortRef.current = new AbortController();
-        queueIdRef.current = null;
-        const inst = useInstancesStore.getState().getCurrentInstance();
-        instanceAtLoopStartRef.current = inst
-          ? { realm: inst.realm, email: inst.email, apiKey: inst.apiKey }
-          : null;
-
-        const refreshStaleData = () => {
-          if (cancelled) return;
-          const uid = useChatListStore.getState().currentUserId ?? null;
-          const hydrateFromRecentWindow = () => {
-            fetchRecentMessages()
-              .then((freshMsgs) => {
-                if (cancelled) return;
-                for (const m of freshMsgs) {
-                  useUsersStore.getState().mergeFromMessage(m);
-                }
-                setFromMessages(freshMsgs, uid);
-                latestMessageIdRef.current = getNewestMessageId(freshMsgs);
-              })
-              .catch(() => {});
-          };
-
-          const latestMessageId = latestMessageIdRef.current;
-          if (latestMessageId == null) {
-            hydrateFromRecentWindow();
-          } else {
-            fetchMessagesAfterAnchor(latestMessageId, RECONNECT_DELTA_BATCH_SIZE)
-              .then((deltaMessages) => {
-                if (cancelled) return;
-                if (deltaMessages.length === 0) return;
-
-                const usersStore = useUsersStore.getState();
-                const chatListStore = useChatListStore.getState();
-                for (const message of deltaMessages) {
-                  usersStore.mergeFromMessage(message);
-                  chatListStore.addMessage(message);
-                }
-
-                latestMessageIdRef.current =
-                  getNewestMessageId(deltaMessages) ?? latestMessageIdRef.current;
-                useActivityStore.getState().markStale();
-                useInboxStore.getState().markStale();
-              })
-              .catch(() => {
-                hydrateFromRecentWindow();
-              });
-          }
-
-          fetchRealmPresence()
-            .then((data) => {
-              if (cancelled || data.result === "error" || !data.presences) return;
-              const store = useUsersStore.getState();
-              for (const [email, entry] of Object.entries(data.presences)) {
-                const agg = entry.aggregated ?? entry.website;
-                if (agg?.status != null && agg?.timestamp != null) {
-                  store.setPresenceByEmail(email, {
-                    status: agg.status === "idle" ? "idle" : "active",
-                    timestamp: agg.timestamp,
-                  });
-                }
-              }
-            })
-            .catch(() => {});
-        };
-
-        startZulipEventLoop({
-          signal: eventLoopAbortRef.current.signal,
-          onReconnect: refreshStaleData,
-          onBadQueue: refreshStaleData,
-          onQueueRegistered: (id) => {
-            queueIdRef.current = id;
-            void loadMuteSnapshot()
-              .then((snapshot) => {
-                if (!cancelled) {
-                  useMuteStore.getState().setFromServer(snapshot);
-                }
-              })
-              .catch(() => {});
-          },
-          onEvent(event: ZulipEvent) {
-            const chatList = useChatListStore.getState();
-            const currentChat = useCurrentChatMessagesStore.getState();
-            const users = useUsersStore.getState();
-            const mute = useMuteStore.getState();
-            const typing = useTypingIndicatorStore.getState();
-            const activity = useActivityStore.getState();
-            const inbox = useInboxStore.getState();
-
-            dispatchZulipEvent(event, {
-              chatList,
-              currentChat,
-              users,
-              mute,
-              typing,
-              activity,
-              inbox,
-              notifications: buildLayoutNotificationsActions({
-                show: notificationService.show,
-                closeByTag: notificationService.closeByTag,
-                playSound: (preset) => {
-                  if (
-                    preset === "default" ||
-                    preset === "subtle" ||
-                    preset === "digital" ||
-                    preset === "glass" ||
-                    preset === "pulse" ||
-                    preset === "none" ||
-                    preset == null
-                  ) {
-                    playNotificationSound(preset);
-                  }
-                },
-                getSoundPreset: () => useSettingsStore.getState().notificationSound,
-              }),
-              updateLatestMessageId: (id) => {
-                if (latestMessageIdRef.current == null || id > latestMessageIdRef.current) {
-                  latestMessageIdRef.current = id;
-                }
-              },
-            });
-          },
-        });
-      })
-      .catch(() => {
-        if (!cancelled) {
-          // Don't reset stores — current user may have already loaded
-        }
-      });
-
-    return () => {
-      cancelled = true;
-      const qid = queueIdRef.current;
-      const creds = instanceAtLoopStartRef.current;
-      if (qid && creds) {
-        deleteQueue(qid, creds).catch(() => {});
-      }
-      eventLoopAbortRef.current?.abort();
-      eventLoopAbortRef.current = null;
-      queueIdRef.current = null;
-      instanceAtLoopStartRef.current = null;
-      latestMessageIdRef.current = null;
-    };
-  }, [
+  useLayoutZulipEventLoop({
     currentInstanceId,
     loadBootstrapMessages,
     loadMuteSnapshot,
     setFromMessages,
     setCurrentUserId,
-  ]);
+    setCurrentUserStatus,
+  });
 
   const showFullscreenLoader =
     currentInstanceId != null && (currentUserStatus === "loading" || currentUserStatus === "idle");
@@ -722,43 +402,11 @@ export const Layout: React.FC = () => {
     });
   }, [currentInstanceId, currentUserStatus, online, refreshFolderSync]);
 
-  // F06: Hydrate mute store from subscription data and user_topics on load
-  useEffect(() => {
-    if (!currentInstanceId || currentUserStatus !== "ready") return;
-    let cancelled = false;
-
-    loadMuteSnapshot()
-      .then((snapshot) => {
-        if (!cancelled) {
-          useMuteStore.getState().setFromServer(snapshot);
-        }
-      })
-      .catch(() => {});
-
-    return () => {
-      cancelled = true;
-    };
-  }, [currentInstanceId, currentUserStatus, loadMuteSnapshot]);
-
   useLayoutAuthGuard({ currentInstanceId, currentUserStatus, navigate });
   useLayoutAuthErrorHandler({ currentInstanceId, currentUserStatus, navigate });
   useSyncChatContextFromLocation();
 
-  // Request push permission after user is authenticated (don't block UI)
-  useEffect(() => {
-    if (currentUserStatus !== "ready") return;
-    const timer = setTimeout(() => {
-      void pushService
-        .requestPermission()
-        .then((perm) => {
-          if (perm === "granted") {
-            void pushService.register();
-          }
-        })
-        .catch(() => {});
-    }, 5000);
-    return () => clearTimeout(timer);
-  }, [currentUserStatus]);
+  useLayoutPushPermission({ enabled: currentUserStatus === "ready" });
 
   useLayoutPushClickRouting({
     currentInstanceId,
@@ -767,35 +415,9 @@ export const Layout: React.FC = () => {
     navigate,
   });
 
-  const PRESENCE_POLL_MS = 90_000;
-  useEffect(() => {
-    if (!currentInstanceId || currentUserStatus !== "ready") return;
-    let cancelled = false;
-    const applyPresence = () => {
-      if (cancelled) return;
-      void fetchRealmPresence()
-        .then((data) => {
-          if (cancelled || data.result === "error" || !data.presences) return;
-          const store = useUsersStore.getState();
-          for (const [email, entry] of Object.entries(data.presences)) {
-            const agg = entry.aggregated ?? entry.website;
-            if (agg?.status != null && agg?.timestamp != null) {
-              store.setPresenceByEmail(email, {
-                status: agg.status === "idle" ? "idle" : "active",
-                timestamp: agg.timestamp,
-              });
-            }
-          }
-        })
-        .catch(() => {});
-    };
-    applyPresence();
-    const stopInterval = createResilientInterval(applyPresence, PRESENCE_POLL_MS);
-    return () => {
-      cancelled = true;
-      stopInterval();
-    };
-  }, [currentInstanceId, currentUserStatus]);
+  useLayoutPresencePolling({
+    enabled: currentInstanceId != null && currentUserStatus === "ready",
+  });
 
   const handleSelectDm = useCallback(
     (slug: string | null) => {
@@ -808,22 +430,7 @@ export const Layout: React.FC = () => {
     [navigate],
   );
 
-  const handleSearchSelectMessage = useCallback(
-    (msg: MockMessage) => {
-      const currentUserId = useChatListStore.getState().currentUserId ?? null;
-      const route = buildRouteFromMessage(msg, currentUserId);
-      if (route) {
-        void navigate(route);
-      }
-    },
-    [navigate],
-  );
-  const handleSearchSelectUser = useCallback(
-    (userId: number) => {
-      void navigate(withCurrentOrgRoute(`/dm/${userId}`));
-    },
-    [navigate],
-  );
+  // Search modal callbacks are provided by useLayoutSearchModal()
   const allFolderId = useMemo(
     () => folders.find((folder) => folder.systemType === "all")?.id ?? null,
     [folders],
@@ -840,47 +447,16 @@ export const Layout: React.FC = () => {
 
   const activeSection = getSectionFromPathname(location.pathname);
   const shouldShowChatShell = shouldRenderChatShell(location.pathname, activeSection);
-  const toggleSidebarShortcut = useCallback(() => {
-    setSidebarOpen((currentOpen) => resolveShortcutPanelToggle(currentOpen, activeSection));
-  }, [activeSection]);
-  const toggleInfoPanelShortcut = useCallback(() => {
-    handleSetRightDrawerOpen(resolveShortcutPanelToggle(rightDrawerOpen, activeSection));
-  }, [activeSection, handleSetRightDrawerOpen, rightDrawerOpen]);
-  const navigateToAdjacentChatShortcut = useCallback(
-    (direction: "next" | "prev") => {
-      const route = resolveChatShortcutRoute({
-        sidebarChats: selectedFolderSidebarChats,
-        direction,
-        activeStreamSlug,
-        activeDmIdParam: dmIdParam,
-      });
-      if (!route) return;
-      void navigate(route);
-    },
-    [selectedFolderSidebarChats, activeStreamSlug, dmIdParam, navigate],
-  );
-  const navigateToPreviousChatShortcut = useCallback(() => {
-    navigateToAdjacentChatShortcut("prev");
-  }, [navigateToAdjacentChatShortcut]);
-  const navigateToNextChatShortcut = useCallback(() => {
-    navigateToAdjacentChatShortcut("next");
-  }, [navigateToAdjacentChatShortcut]);
-
-  useShortcut("mod+\\", toggleSidebarShortcut, {
-    context: "global",
+  useLayoutShortcuts({
     enabled: shouldShowChatShell,
-  });
-  useShortcut("mod+.", toggleInfoPanelShortcut, {
-    context: "global",
-    enabled: shouldShowChatShell,
-  });
-  useShortcut("alt+arrowup", navigateToPreviousChatShortcut, {
-    context: "sidebar",
-    enabled: shouldShowChatShell && selectedFolderSidebarChats.length > 1,
-  });
-  useShortcut("alt+arrowdown", navigateToNextChatShortcut, {
-    context: "sidebar",
-    enabled: shouldShowChatShell && selectedFolderSidebarChats.length > 1,
+    activeSection,
+    rightDrawerOpen,
+    setRightDrawerOpen,
+    setSidebarOpen,
+    sidebarChats: selectedFolderSidebarChats,
+    activeStreamSlug: activeStreamSlug ?? null,
+    activeDmIdParam: dmIdParam ?? null,
+    navigate,
   });
 
   const handleSectionChange = useCallback(
@@ -1149,8 +725,8 @@ export const Layout: React.FC = () => {
       <RightDrawerContext.Provider
         value={{
           open: rightDrawerOpen,
-          setOpen: handleSetRightDrawerOpen,
-          openUserProfile: handleOpenRightDrawerUserProfile,
+          setOpen: setRightDrawerOpen,
+          openUserProfile: openRightDrawerUserProfile,
         }}
       >
         <div
@@ -1182,7 +758,7 @@ export const Layout: React.FC = () => {
             <div className="flex min-h-0 w-full min-w-0 max-w-[1920px] gap-1">
               {shouldShowChatShell && sidebarOpen && (
                 <>
-                  <Sidebar />
+                  <SidebarShell />
                 </>
               )}
               <main
@@ -1214,8 +790,8 @@ export const Layout: React.FC = () => {
                       onlineCount={chatInfoData?.onlineCount ?? 0}
                       user={rightPanelUser}
                       onSelectCommonGroup={(slug) => handleSelectDm(slug)}
-                      onOpenSettingsDrawer={handleOpenSettingsDrawer}
-                      onOpenAboutDrawer={handleOpenAboutDrawer}
+                      onOpenSettingsDrawer={openRightDrawerSettings}
+                      onOpenAboutDrawer={openRightDrawerAbout}
                     />
                   </RightDrawer>
                 )}

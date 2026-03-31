@@ -6,12 +6,10 @@ import { formatUserStatusLabel, useUsersStore } from "~/entities/user";
 import { createChannel } from "~/features/create-chat";
 import { useFolderSyncStore, selectSidebarChatsLoading } from "~/features/folder-sync";
 import { usePinStore } from "~/features/pin-chat";
-import { useSettingsStore } from "~/features/settings";
 import { t } from "~/i18n";
 import { getPresenceState } from "~/shared/lib/format";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { Icon, PresenceIndicator, ScrollArea } from "~/shared/ui";
-import { FolderRail } from "~/widgets/folder-rail";
 import { SidebarActivity } from "./sidebar-activity.ui";
 import { useSidebarConfigStore } from "./sidebar-config.model";
 import { SidebarDmList } from "./sidebar-dm-list.ui";
@@ -52,7 +50,6 @@ export const Sidebar: React.FC<SidebarUiProps> = ({
 
   const streams = streamsProp ?? useChatListStore((s) => s.streams());
   const sidebarDms = sidebarDmsProp ?? useChatListStore((s) => s.dms());
-  const folders = useFolderSyncStore((s) => s.folders);
   const selectedFolderIdFromUi = useSidebarConfigStore((s) => s.selectedFolderId);
   const setSelectedFolderIdFromUi = useSidebarConfigStore((s) => s.setSelectedFolderId);
   const pinReorderModeFromUi = useSidebarConfigStore((s) => s.pinReorderMode);
@@ -76,7 +73,6 @@ export const Sidebar: React.FC<SidebarUiProps> = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [createChatOpen, setCreateChatOpen] = useState(false);
   const users = useUsersStore((s) => s.users);
-  const folderRailLayout = useSettingsStore((s) => s.folderRailLayout);
   const pinnedChatIdsForSelectedFolder = usePinStore((s) =>
     pinReorderMode ? s.getPinnedChatIds(selectedFolderId) : EMPTY_PIN_REORDER_CHAT_IDS,
   );
@@ -170,21 +166,6 @@ export const Sidebar: React.FC<SidebarUiProps> = ({
     setPinReorderModeFromUi(false);
   }, [onExitPinReorderMode, setPinReorderModeFromUi]);
 
-  const handleSelectFolder = useCallback(
-    (folderId: string) => {
-      setSelectedFolderIdFromUi(folderId);
-      void selectFolderSync(folderId);
-    },
-    [selectFolderSync, setSelectedFolderIdFromUi],
-  );
-  const handleStartOrderPinning = useCallback(
-    (folderId: string) => {
-      setSelectedFolderIdFromUi(folderId);
-      setPinReorderModeFromUi(true);
-      void selectFolderSync(folderId);
-    },
-    [selectFolderSync, setSelectedFolderIdFromUi, setPinReorderModeFromUi],
-  );
   const handleFoldersChanged = useCallback(async () => {
     await refreshFolderSync("mutation");
     await onFolderAssignmentsChanged?.();
@@ -192,7 +173,7 @@ export const Sidebar: React.FC<SidebarUiProps> = ({
 
   return (
     <aside
-      className="flex min-h-0 w-sidebar min-w-sidebar max-w-sidebar flex-shrink-0 flex-col overflow-hidden rounded-xl bg-sidebar-bg"
+      className="flex min-h-0 w-sidebar min-w-sidebar max-w-sidebar flex-shrink-0 overflow-hidden rounded-xl bg-sidebar-bg"
       data-focus-zone="sidebar"
       role="navigation"
       aria-label="Chat list"
@@ -222,17 +203,6 @@ export const Sidebar: React.FC<SidebarUiProps> = ({
           </div>
           <SidebarActivity open={activityOpen} onToggle={handleToggleActivity} />
           {activityPanelBottomSlot != null && activityPanelBottomSlot}
-          <FolderRail
-            folders={folders}
-            selectedFolderId={selectedFolderId}
-            onSelectFolder={handleSelectFolder}
-            onOrderPinning={handleStartOrderPinning}
-            onFoldersChanged={handleFoldersChanged}
-            layout={folderRailLayout}
-          />
-          <div className="my-2">
-            <div className="bg-border-subtle/70 h-px" />
-          </div>
           {pinReorderMode && (
             <div className="mx-3 mb-2 flex items-center justify-between rounded-lg border border-border-subtle bg-bg-elevated px-2.5 py-1.5">
               <span className="text-xs font-medium text-text-primary">

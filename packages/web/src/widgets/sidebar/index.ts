@@ -1,4 +1,5 @@
 export { Sidebar } from "./sidebar.ui";
+export { SidebarShell } from "./sidebar-shell.ui";
 export { useSidebarConfigStore } from "./sidebar-config.model";
 export type {
   SidebarProps,
