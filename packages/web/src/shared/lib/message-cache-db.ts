@@ -24,6 +24,9 @@ const DB_VERSION = 2;
 /** Default max messages retained per chat (last N by id). */
 export const MESSAGE_CACHE_DEFAULT_WINDOW_SIZE = 200;
 
+/** How many messages newer than cached max id to request on chat open (incremental IDB bootstrap). */
+export const MESSAGE_CACHE_INITIAL_DELTA_NUM_AFTER = 200;
+
 const STORE_MESSAGES = "messages";
 const STORE_CHAT_META = "chatMeta";
 const STORE_CHAT_LIST_SNAPSHOT = "chatListSnapshot";
@@ -48,6 +51,10 @@ export interface ChatMetaRow {
   windowSizeN: number;
   lastEventIdApplied: number | null;
   lastSyncedAt: number | null;
+  /** Narrow has no older messages on server (GET /messages found_oldest). */
+  reachedOldest?: boolean;
+  /** Narrow has no newer messages on server (GET /messages found_newest). */
+  reachedNewest?: boolean;
 }
 
 let dbPromise: Promise<IDBDatabase> | null = null;
@@ -142,6 +149,22 @@ export async function getChatMessagesAscending(
   }
 }
 
+/** All message ids currently stored for the chat (for pagination dedup). */
+export async function getExistingMessageIdsInChat(
+  instanceId: string,
+  chatKey: string,
+): Promise<Set<number>> {
+  if (!isIndexedDBAvailable()) return new Set();
+  try {
+    const db = await openMessageCacheDb();
+    const iKey = instanceChatKey(instanceId, chatKey);
+    const rows = await readAllMessagesInChat(db, iKey);
+    return new Set(rows.map((r) => r.messageId));
+  } catch {
+    return new Set();
+  }
+}
+
 export async function getChatMessageBounds(
   instanceId: string,
   chatKey: string,
@@ -217,6 +240,10 @@ export async function applyRetentionForChat(
       store.delete(r.id);
     }
   });
+
+  if (toRemove.length > 0) {
+    await updateChatMetaPatch(instanceId, chatKey, { reachedOldest: false });
+  }
 }
 
 function mergeChatMetaAfterUpsert(
@@ -240,6 +267,8 @@ function mergeChatMetaAfterUpsert(
     windowSizeN: prev?.windowSizeN ?? windowSizeN,
     lastEventIdApplied: prev?.lastEventIdApplied ?? null,
     lastSyncedAt: now,
+    reachedOldest: prev?.reachedOldest ?? false,
+    reachedNewest: prev?.reachedNewest ?? false,
   };
 }
 
@@ -300,7 +329,13 @@ export async function updateChatMetaPatch(
   patch: Partial<
     Pick<
       ChatMetaRow,
-      "hasGaps" | "windowSizeN" | "lastEventIdApplied" | "newestMessageId" | "oldestMessageId"
+      | "hasGaps"
+      | "windowSizeN"
+      | "lastEventIdApplied"
+      | "newestMessageId"
+      | "oldestMessageId"
+      | "reachedOldest"
+      | "reachedNewest"
     >
   >,
 ): Promise<void> {
@@ -316,6 +351,8 @@ export async function updateChatMetaPatch(
     windowSizeN: patch.windowSizeN ?? prev?.windowSizeN ?? 200,
     lastEventIdApplied: patch.lastEventIdApplied ?? prev?.lastEventIdApplied ?? null,
     lastSyncedAt: Date.now(),
+    reachedOldest: patch.reachedOldest ?? prev?.reachedOldest ?? false,
+    reachedNewest: patch.reachedNewest ?? prev?.reachedNewest ?? false,
   };
   await putChatMetaRow(db, next);
   notifyMessageCache(iKey);

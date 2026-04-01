@@ -2,7 +2,7 @@ import type { MockMessage } from "~/shared/api/zulip.types";
 
 export function scrollToBottom(el: HTMLElement | null): void {
   if (!el) return;
-  el.scrollTop = el.scrollHeight;
+  el.scrollTo({ top: el.scrollHeight, behavior: "instant" });
 }
 
 /** Splits the message array into groups of consecutive messages from the same sender. */

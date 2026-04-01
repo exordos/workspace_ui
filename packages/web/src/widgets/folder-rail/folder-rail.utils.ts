@@ -14,6 +14,31 @@ export interface IndexedFolderEntry {
 }
 
 /**
+ * Порядок отображения rail: папка «Все» (или legacy-первый слот) всегда первая,
+ * остальные — в исходном относительном порядке. Совпадает с vertical rail и
+ * применяется в horizontal, чтобы оба режима совпадали.
+ */
+export function orderedIndexedFoldersForRail(
+  indexedFolders: readonly IndexedFolderEntry[],
+): IndexedFolderEntry[] {
+  if (indexedFolders.length === 0) {
+    return [];
+  }
+  const allFolderEntry =
+    indexedFolders.find(
+      ({ folder, index }) =>
+        folder.systemType === "all" || (folder.systemType == null && index === 0),
+    ) ??
+    indexedFolders[0] ??
+    null;
+  if (allFolderEntry == null) {
+    return [...indexedFolders];
+  }
+  const rest = indexedFolders.filter(({ folder }) => folder.id !== allFolderEntry.folder.id);
+  return [allFolderEntry, ...rest];
+}
+
+/**
  * Единая проверка клавиш вызова контекстного меню:
  * - отдельная клавиша ContextMenu;
  * - Shift+F10 как стандартный fallback для accessibility.

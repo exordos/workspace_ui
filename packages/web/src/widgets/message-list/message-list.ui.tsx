@@ -349,7 +349,7 @@ export const MessageList: React.FC<MessageListProps> = ({
     if (!el) return;
     const target = el.querySelector<HTMLElement>(`[data-message-id="${focusedMessageId}"]`);
     if (target) {
-      target.scrollIntoView({ block: "center" });
+      target.scrollIntoView({ block: "center", behavior: "instant" });
     }
   }, [focusedMessageId, messages.length]);
 
@@ -363,7 +363,7 @@ export const MessageList: React.FC<MessageListProps> = ({
 
     const target = el.querySelector<HTMLElement>(`[data-message-id="${firstUnreadId}"]`);
     if (!target) return;
-    target.scrollIntoView({ block: "center" });
+    target.scrollIntoView({ block: "center", behavior: "instant" });
     unreadScrollKeyRef.current = unreadScrollKey;
   }, [focusedMessageId, firstUnreadId, scrollToBottomKey, messages.length]);
 
@@ -391,7 +391,7 @@ export const MessageList: React.FC<MessageListProps> = ({
     <div className="relative flex min-h-0 flex-1 flex-col">
       <div
         ref={scrollRef}
-        className={`overscroll-behavior-contain min-h-0 flex-1 overflow-y-auto ${SCROLL_AREA_CLASS}`}
+        className={`scroll-auto overscroll-behavior-contain min-h-0 flex-1 overflow-y-auto ${SCROLL_AREA_CLASS}`}
         onScroll={handleScroll}
         role="feed"
         aria-label={t("a11y.conversation")}

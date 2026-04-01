@@ -1,9 +1,9 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import { t } from "~/i18n/i18n";
 import { Icon } from "~/shared/ui/icon";
 import { HorizontalFolderItem } from "./folder-rail-folder-items.ui";
 import type { FolderRailFolder } from "./folder-rail.types";
-import type { IndexedFolderEntry } from "./folder-rail.utils";
+import { orderedIndexedFoldersForRail, type IndexedFolderEntry } from "./folder-rail.utils";
 
 /** Пропсы только для horizontal-представления; бизнес-логика остается в контейнере `FolderRail`. */
 interface FolderRailHorizontalViewProps {
@@ -47,6 +47,11 @@ export const FolderRailHorizontalView: React.FC<FolderRailHorizontalViewProps> =
     });
     // После drag блокируем один следующий click, чтобы не срабатывать на "клик после протяжки".
     const suppressHorizontalClickRef = useRef(false);
+
+    const displayFolders = useMemo(
+      () => orderedIndexedFoldersForRail(indexedFolders),
+      [indexedFolders],
+    );
 
     const endHorizontalDrag = useCallback((pointerId: number | null) => {
       const dragState = horizontalDragStateRef.current;
@@ -150,7 +155,7 @@ export const FolderRailHorizontalView: React.FC<FolderRailHorizontalViewProps> =
           isDragging ? "cursor-grabbing" : "cursor-grab"
         }`}
       >
-        {indexedFolders.map(({ folder, index }) => (
+        {displayFolders.map(({ folder, index }) => (
           <HorizontalFolderItem
             key={folder.id}
             folder={folder}

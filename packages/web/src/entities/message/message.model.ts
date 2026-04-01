@@ -11,6 +11,7 @@ import {
   fetchDmMessages,
   fetchMessages,
   fetchMessagesWithNarrow,
+  fetchMessagesWithNarrowPage,
 } from "~/shared/api/zulip";
 import type {
   MockMessage,
@@ -21,19 +22,36 @@ import type {
 import { dmConversationKey } from "~/shared/lib/dm-key";
 import { env } from "~/shared/lib/env";
 import {
+  computeHasMoreNewerAfterIdbDeltaFetch,
+  filterDeltaMessagesNotInCache,
+  mergeCachedMessagesWithDelta,
+} from "~/shared/lib/message-bootstrap-merge.lib";
+import {
   deleteMessagesByIds,
   getChatMessageBounds,
+  getChatMessagesAscending,
+  getChatMeta,
+  getExistingMessageIdsInChat,
   MESSAGE_CACHE_DEFAULT_WINDOW_SIZE,
+  MESSAGE_CACHE_INITIAL_DELTA_NUM_AFTER,
   patchMessageContentInCache,
   patchMessageFlagsInCache,
   patchMessageReactionInCache,
   putSingleMessage,
+  updateChatMetaPatch,
   upsertChatMessages,
 } from "~/shared/lib/message-cache-db";
 import {
   logMessageFlow,
   summarizeChatContextForLog,
 } from "~/shared/lib/message-flow-debug.lib";
+import { createLogger } from "~/shared/lib/logger";
+import {
+  computeHasNewerAfterLoadNewerIdbPage,
+  computeHasNewerAfterLoadNewerMemoryPage,
+  computeHasOlderAfterLoadOlderIdbPage,
+  computeHasOlderAfterLoadOlderMemoryPage,
+} from "~/shared/lib/message-pagination-boundary.lib";
 import {
   chatKeyFromContext,
   chatKeyFromMockMessage,
@@ -336,6 +354,8 @@ function mergeUsersFromMessages(messages: readonly MockMessage[]): void {
   }
 }
 
+const idbPaginationLog = createLogger("messages:idb-pagination");
+
 export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set, get) => ({
   context: null,
   messages: [],
@@ -617,46 +637,105 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       idbSource: isIndexedDbMessageSource(),
     });
 
-    const load =
-      context.type === "stream"
-        ? focusedMessageId != null
-          ? fetchMessagesWithNarrow(
-              [
+    const inst = getCurrentInstance()?.id;
+    /** Assigned by incremental branch or full fetch below before use. */
+    let messages!: MockMessage[];
+    let idbIncremental: {
+      toUpsert: MockMessage[];
+      foundNewest: boolean;
+      withoutAnchorCount: number;
+    } | null = null;
+
+    const tryIdbIncremental =
+      isIndexedDbMessageSource() && inst != null && focusedMessageId == null;
+
+    if (tryIdbIncremental) {
+      const chatKey = chatKeyFromContext(context);
+      const cached = await getChatMessagesAscending(inst, chatKey).catch(() => [] as MockMessage[]);
+      if (cached.length > 0) {
+        const newestCachedId = cached[cached.length - 1]!.id;
+        const narrow =
+          context.type === "stream"
+            ? [
                 { operator: "stream", operand: context.streamName },
                 { operator: "topic", operand: context.topic },
-              ],
-              focusedMessageId,
-              60,
-              60,
-            )
-          : fetchMessages(
-              context.streamName,
-              context.topic === "general" ? undefined : context.topic,
-            )
-        : focusedMessageId != null
-          ? fetchMessagesWithNarrow(
-              [{ operator: "dm", operand: parseDmKeyToUserIds(context.dmKey, currentUserId) }],
-              focusedMessageId,
-              60,
-              60,
-            )
-          : fetchDmMessages(parseDmKeyToUserIds(context.dmKey, currentUserId));
-
-    let messages: MockMessage[];
-    try {
-      messages = await load;
-    } catch (e) {
-      logMessageFlow("store:loadInitial fetch failed", {
-        context: summarizeChatContextForLog(context),
-        error: String(e),
-      });
-      throw e;
+              ]
+            : [{ operator: "dm", operand: parseDmKeyToUserIds(context.dmKey, currentUserId) }];
+        try {
+          const page = await fetchMessagesWithNarrowPage(
+            narrow,
+            newestCachedId,
+            0,
+            MESSAGE_CACHE_INITIAL_DELTA_NUM_AFTER,
+          );
+          const withoutAnchor = page.messages.filter((m) => m.id !== newestCachedId);
+          const cachedIds = new Set(cached.map((m) => m.id));
+          const toUpsert = filterDeltaMessagesNotInCache(cachedIds, withoutAnchor);
+          messages = mergeCachedMessagesWithDelta(cached, withoutAnchor);
+          mergeUsersFromMessages(messages);
+          idbIncremental = {
+            toUpsert,
+            foundNewest: page.foundNewest,
+            withoutAnchorCount: withoutAnchor.length,
+          };
+          logMessageFlow("store:loadInitial idb incremental", {
+            chatKey,
+            cachedCount: cached.length,
+            deltaCount: withoutAnchor.length,
+            toUpsertCount: toUpsert.length,
+            foundNewest: page.foundNewest,
+          });
+        } catch (e) {
+          logMessageFlow("store:loadInitial incremental failed, full fetch", {
+            error: String(e),
+            chatKey,
+          });
+        }
+      }
     }
-    mergeUsersFromMessages(messages);
+
+    if (idbIncremental == null) {
+      const load =
+        context.type === "stream"
+          ? focusedMessageId != null
+            ? fetchMessagesWithNarrow(
+                [
+                  { operator: "stream", operand: context.streamName },
+                  { operator: "topic", operand: context.topic },
+                ],
+                focusedMessageId,
+                60,
+                60,
+              )
+            : fetchMessages(
+                context.streamName,
+                context.topic === "general" ? undefined : context.topic,
+              )
+          : focusedMessageId != null
+            ? fetchMessagesWithNarrow(
+                [{ operator: "dm", operand: parseDmKeyToUserIds(context.dmKey, currentUserId) }],
+                focusedMessageId,
+                60,
+                60,
+              )
+            : fetchDmMessages(parseDmKeyToUserIds(context.dmKey, currentUserId));
+
+      try {
+        messages = await load;
+      } catch (e) {
+        logMessageFlow("store:loadInitial fetch failed", {
+          context: summarizeChatContextForLog(context),
+          error: String(e),
+        });
+        throw e;
+      }
+      mergeUsersFromMessages(messages);
+    }
+
     const flags = deriveFocusedPaginationFlags(messages, focusedMessageId);
 
     if (isIndexedDbMessageSource()) {
-      const inst = getCurrentInstance()?.id;
+      const instIdb = getCurrentInstance()?.id;
       let nextContext: CurrentChatContext = context;
       if (messages.length > 0) {
         const first = messages[0]!;
@@ -671,34 +750,71 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
           }
         }
       }
-      // Mirror API result in store first so the list renders immediately; IDB upsert + hook may lag behind notify ordering.
+      const chatKeyForMeta =
+        messages.length > 0
+          ? (chatKeyFromMockMessage(messages[0]!, currentUserId) ?? chatKeyFromContext(nextContext))
+          : chatKeyFromContext(nextContext);
+      if (instIdb) {
+        await updateChatMetaPatch(instIdb, chatKeyForMeta, {
+          reachedOldest: false,
+          reachedNewest: false,
+        });
+      }
+
+      let hasOlderMessages = flags.hasOlderMessages;
+      let hasNewerMessages = flags.hasNewerMessages;
+      if (idbIncremental != null && instIdb) {
+        const meta = await getChatMeta(instIdb, chatKeyForMeta);
+        hasOlderMessages = !meta?.reachedOldest;
+        hasNewerMessages = computeHasMoreNewerAfterIdbDeltaFetch({
+          foundNewest: idbIncremental.foundNewest,
+          deltaReturnedCount: idbIncremental.withoutAnchorCount,
+          numAfterRequested: MESSAGE_CACHE_INITIAL_DELTA_NUM_AFTER,
+        });
+      }
+
       set({
         context: nextContext,
         messages,
-        hasOlderMessages: flags.hasOlderMessages,
-        hasNewerMessages: flags.hasNewerMessages,
+        hasOlderMessages,
+        hasNewerMessages,
       });
-      if (inst && messages.length > 0) {
-        const first = messages[0]!;
-        const chatKey =
-          chatKeyFromMockMessage(first, currentUserId) ?? chatKeyFromContext(nextContext);
-        logMessageFlow("store:loadInitial idb upsert", {
-          chatKey,
-          instanceId: inst,
-          count: messages.length,
-          nextContext: summarizeChatContextForLog(nextContext),
-        });
-        await upsertChatMessages({
-          instanceId: inst,
-          chatKey,
-          messages,
-          windowSizeN: MAX_MESSAGES_PER_CONTEXT,
-        });
+      if (instIdb && messages.length > 0) {
+        if (idbIncremental != null) {
+          if (idbIncremental.toUpsert.length > 0) {
+            logMessageFlow("store:loadInitial idb upsert incremental", {
+              chatKey: chatKeyForMeta,
+              instanceId: instIdb,
+              count: idbIncremental.toUpsert.length,
+              nextContext: summarizeChatContextForLog(nextContext),
+            });
+            await upsertChatMessages({
+              instanceId: instIdb,
+              chatKey: chatKeyForMeta,
+              messages: idbIncremental.toUpsert,
+              windowSizeN: MAX_MESSAGES_PER_CONTEXT,
+            });
+          }
+        } else {
+          logMessageFlow("store:loadInitial idb upsert", {
+            chatKey: chatKeyForMeta,
+            instanceId: instIdb,
+            count: messages.length,
+            nextContext: summarizeChatContextForLog(nextContext),
+          });
+          await upsertChatMessages({
+            instanceId: instIdb,
+            chatKey: chatKeyForMeta,
+            messages,
+            windowSizeN: MAX_MESSAGES_PER_CONTEXT,
+          });
+        }
       }
       logMessageFlow("store:loadInitial done(idb)", {
         storeMessagesLen: messages.length,
-        hasOlder: flags.hasOlderMessages,
-        hasNewer: flags.hasNewerMessages,
+        hasOlder: hasOlderMessages,
+        hasNewer: hasNewerMessages,
+        incremental: idbIncremental != null,
       });
       return;
     }
@@ -724,6 +840,11 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       const inst = getCurrentInstance()?.id;
       if (!inst) return;
       const chatKey = chatKeyFromContext(ctx);
+      const meta = await getChatMeta(inst, chatKey);
+      if (meta?.reachedOldest) {
+        set({ hasOlderMessages: false });
+        return;
+      }
       const bounds = await getChatMessageBounds(inst, chatKey);
       if (bounds.oldestId == null) return;
 
@@ -736,20 +857,39 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
                 { operator: "topic", operand: ctx.topic },
               ]
             : [{ operator: "dm", operand: parseDmKeyToUserIds(ctx.dmKey, currentUserId) }];
-        const older = await fetchMessagesWithNarrow(narrow, bounds.oldestId, pageSize, 0);
-        const withoutAnchor = older.filter((m) => m.id !== bounds.oldestId);
-        if (withoutAnchor.length < pageSize) {
-          set({ hasOlderMessages: false });
+        const existingIds = await getExistingMessageIdsInChat(inst, chatKey);
+        const page = await fetchMessagesWithNarrowPage(narrow, bounds.oldestId, pageSize, 0);
+        const withoutAnchor = page.messages.filter((m) => m.id !== bounds.oldestId);
+        const toUpsert = withoutAnchor.filter((m) => !existingIds.has(m.id));
+
+        if (page.foundOldest) {
+          await updateChatMetaPatch(inst, chatKey, { reachedOldest: true });
         }
-        if (withoutAnchor.length > 0) {
-          mergeUsersFromMessages(withoutAnchor);
+
+        if (toUpsert.length > 0) {
+          mergeUsersFromMessages(toUpsert);
           await upsertChatMessages({
             instanceId: inst,
             chatKey,
-            messages: withoutAnchor,
+            messages: toUpsert,
             windowSizeN: MAX_MESSAGES_PER_CONTEXT,
           });
         }
+
+        if (toUpsert.length === 0 && withoutAnchor.length > 0) {
+          idbPaginationLog.warn("loadOlder: only duplicate ids vs IndexedDB", {
+            chatKey,
+            anchorOldest: bounds.oldestId,
+          });
+        }
+        set({
+          hasOlderMessages: computeHasOlderAfterLoadOlderIdbPage({
+            foundOldest: page.foundOldest,
+            withoutAnchorCount: withoutAnchor.length,
+            pageSize,
+            toUpsertCount: toUpsert.length,
+          }),
+        });
       } catch {
         // best-effort; keep boundary flags unchanged
       } finally {
@@ -771,11 +911,15 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
               { operator: "topic", operand: ctx.topic },
             ]
           : [{ operator: "dm", operand: parseDmKeyToUserIds(ctx.dmKey, currentUserId) }];
-      const older = await fetchMessagesWithNarrow(narrow, oldest.id, pageSize, 0);
-      const withoutAnchor = older.filter((m) => m.id !== oldest.id);
-      if (withoutAnchor.length < pageSize) {
-        set({ hasOlderMessages: false });
-      }
+      const page = await fetchMessagesWithNarrowPage(narrow, oldest.id, pageSize, 0);
+      const withoutAnchor = page.messages.filter((m) => m.id !== oldest.id);
+      set({
+        hasOlderMessages: computeHasOlderAfterLoadOlderMemoryPage({
+          foundOldest: page.foundOldest,
+          withoutAnchorCount: withoutAnchor.length,
+          pageSize,
+        }),
+      });
       if (withoutAnchor.length > 0) {
         mergeUsersFromMessages(withoutAnchor);
         set((s) => ({ messages: [...withoutAnchor, ...s.messages] }));
@@ -796,6 +940,11 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       const inst = getCurrentInstance()?.id;
       if (!inst) return;
       const chatKey = chatKeyFromContext(ctx);
+      const meta = await getChatMeta(inst, chatKey);
+      if (meta?.reachedNewest) {
+        set({ hasNewerMessages: false });
+        return;
+      }
       const bounds = await getChatMessageBounds(inst, chatKey);
       if (bounds.newestId == null) return;
 
@@ -808,20 +957,39 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
                 { operator: "topic", operand: ctx.topic },
               ]
             : [{ operator: "dm", operand: parseDmKeyToUserIds(ctx.dmKey, currentUserId) }];
-        const newer = await fetchMessagesWithNarrow(narrow, bounds.newestId, 0, pageSize);
-        const withoutAnchor = newer.filter((m) => m.id !== bounds.newestId);
-        if (withoutAnchor.length < pageSize) {
-          set({ hasNewerMessages: false });
+        const existingIds = await getExistingMessageIdsInChat(inst, chatKey);
+        const page = await fetchMessagesWithNarrowPage(narrow, bounds.newestId, 0, pageSize);
+        const withoutAnchor = page.messages.filter((m) => m.id !== bounds.newestId);
+        const toUpsert = withoutAnchor.filter((m) => !existingIds.has(m.id));
+
+        if (page.foundNewest) {
+          await updateChatMetaPatch(inst, chatKey, { reachedNewest: true });
         }
-        if (withoutAnchor.length > 0) {
-          mergeUsersFromMessages(withoutAnchor);
+
+        if (toUpsert.length > 0) {
+          mergeUsersFromMessages(toUpsert);
           await upsertChatMessages({
             instanceId: inst,
             chatKey,
-            messages: withoutAnchor,
+            messages: toUpsert,
             windowSizeN: MAX_MESSAGES_PER_CONTEXT,
           });
         }
+
+        if (toUpsert.length === 0 && withoutAnchor.length > 0) {
+          idbPaginationLog.warn("loadNewer: only duplicate ids vs IndexedDB", {
+            chatKey,
+            anchorNewest: bounds.newestId,
+          });
+        }
+        set({
+          hasNewerMessages: computeHasNewerAfterLoadNewerIdbPage({
+            foundNewest: page.foundNewest,
+            withoutAnchorCount: withoutAnchor.length,
+            pageSize,
+            toUpsertCount: toUpsert.length,
+          }),
+        });
       } catch {
         // best-effort; keep boundary flags unchanged
       } finally {
@@ -843,11 +1011,15 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
               { operator: "topic", operand: ctx.topic },
             ]
           : [{ operator: "dm", operand: parseDmKeyToUserIds(ctx.dmKey, currentUserId) }];
-      const newer = await fetchMessagesWithNarrow(narrow, newest.id, 0, pageSize);
-      const withoutAnchor = newer.filter((m) => m.id !== newest.id);
-      if (withoutAnchor.length < pageSize) {
-        set({ hasNewerMessages: false });
-      }
+      const page = await fetchMessagesWithNarrowPage(narrow, newest.id, 0, pageSize);
+      const withoutAnchor = page.messages.filter((m) => m.id !== newest.id);
+      set({
+        hasNewerMessages: computeHasNewerAfterLoadNewerMemoryPage({
+          foundNewest: page.foundNewest,
+          withoutAnchorCount: withoutAnchor.length,
+          pageSize,
+        }),
+      });
       if (withoutAnchor.length > 0) {
         mergeUsersFromMessages(withoutAnchor);
         set((s) => ({ messages: [...s.messages, ...withoutAnchor] }));

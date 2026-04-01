@@ -186,6 +186,8 @@ export interface ZulipSubscription {
 export interface MessagesPageResult {
   messages: MockMessage[];
   foundOldest: boolean;
+  /** Present when `num_after > 0`; Zulip `found_newest`. */
+  foundNewest: boolean;
 }
 
 export interface SendMessageParams {

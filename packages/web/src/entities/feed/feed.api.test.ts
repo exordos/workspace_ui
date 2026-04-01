@@ -38,16 +38,18 @@ describe("fetchFeedMessages", () => {
     vi.mocked(fetchAllMessagesPage).mockResolvedValue({
       messages: msgs,
       foundOldest: false,
+      foundNewest: false,
     });
 
     const result = await fetchFeedMessages();
-    expect(result).toEqual({ messages: msgs, foundOldest: false });
+    expect(result).toEqual({ messages: msgs, foundOldest: false, foundNewest: false });
   });
 
   it("passes default anchor and numBefore", async () => {
     vi.mocked(fetchAllMessagesPage).mockResolvedValue({
       messages: [],
       foundOldest: false,
+      foundNewest: false,
     });
     await fetchFeedMessages();
     expect(fetchAllMessagesPage).toHaveBeenCalledWith("newest", 50);
@@ -57,6 +59,7 @@ describe("fetchFeedMessages", () => {
     vi.mocked(fetchAllMessagesPage).mockResolvedValue({
       messages: [],
       foundOldest: false,
+      foundNewest: false,
     });
     await fetchFeedMessages(42, 100);
     expect(fetchAllMessagesPage).toHaveBeenCalledWith(42, 100);
@@ -71,9 +74,10 @@ describe("fetchFeedMessages", () => {
     vi.mocked(fetchAllMessagesPage).mockResolvedValue({
       messages: [],
       foundOldest: true,
+      foundNewest: false,
     });
     const result = await fetchFeedMessages();
-    expect(result).toEqual({ messages: [], foundOldest: true });
+    expect(result).toEqual({ messages: [], foundOldest: true, foundNewest: false });
   });
 
   it("passes numeric anchor for pagination", async () => {
@@ -81,9 +85,10 @@ describe("fetchFeedMessages", () => {
     vi.mocked(fetchAllMessagesPage).mockResolvedValue({
       messages: [msg],
       foundOldest: true,
+      foundNewest: false,
     });
     const result = await fetchFeedMessages(500, 25);
-    expect(result).toEqual({ messages: [msg], foundOldest: true });
+    expect(result).toEqual({ messages: [msg], foundOldest: true, foundNewest: false });
     expect(fetchAllMessagesPage).toHaveBeenCalledWith(500, 25);
   });
 
@@ -91,6 +96,7 @@ describe("fetchFeedMessages", () => {
     vi.mocked(fetchAllMessagesPage).mockResolvedValue({
       messages: [],
       foundOldest: true,
+      foundNewest: false,
     });
 
     const result = await fetchFeedMessages();

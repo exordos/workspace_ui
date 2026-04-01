@@ -15,6 +15,7 @@ import {
   fetchMessagesAfterAnchor,
   fetchMessagesBeforeAnchor,
   fetchMessagesWithNarrow,
+  fetchMessagesWithNarrowPage,
   fetchRecentMessages,
   rawMessageToMockMessage,
   removeReaction,
@@ -429,6 +430,18 @@ describe("fetchMessagesWithNarrow", () => {
       /numAfter must be a non-negative integer/i,
     );
     expect(mockZulipClient.messages.retrieve).not.toHaveBeenCalled();
+  });
+
+  it("fetchMessagesWithNarrowPage returns foundOldest and foundNewest from server", async () => {
+    mockZulipClient.messages.retrieve.mockResolvedValue({
+      messages: [{ id: 1, sender_id: 1, content: "x", timestamp: 1, type: "stream", stream_id: 1 }],
+      found_oldest: true,
+      found_newest: true,
+    });
+    const page = await fetchMessagesWithNarrowPage([{ operator: "is", operand: "unread" }], "newest", 1, 1);
+    expect(page.foundOldest).toBe(true);
+    expect(page.foundNewest).toBe(true);
+    expect(page.messages).toHaveLength(1);
   });
 });
 

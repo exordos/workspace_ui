@@ -242,14 +242,18 @@ export async function fetchMessagesWithNarrowPage(
       messages?: RawMessageToMockInput[];
       found_oldest?: boolean;
       foundOldest?: boolean;
+      found_newest?: boolean;
+      foundNewest?: boolean;
     };
-    if (data.result === "error") return { messages: [], foundOldest: false };
+    if (data.result === "error")
+      return { messages: [], foundOldest: false, foundNewest: false };
     return {
       messages: (data.messages ?? []).map(mapZulipMessage),
       foundOldest: data.found_oldest ?? data.foundOldest ?? false,
+      foundNewest: data.found_newest ?? data.foundNewest ?? false,
     };
   } catch {
-    return { messages: [], foundOldest: false };
+    return { messages: [], foundOldest: false, foundNewest: false };
   }
 }
 
@@ -270,7 +274,7 @@ export async function fetchAllMessagesPage(
   });
 
   if (!res?.ok) {
-    return { messages: [], foundOldest: false };
+    return { messages: [], foundOldest: false, foundNewest: false };
   }
 
   const data = res.data as {
@@ -279,15 +283,18 @@ export async function fetchAllMessagesPage(
     messages?: ZulipRawMessage[];
     found_oldest?: boolean;
     foundOldest?: boolean;
+    found_newest?: boolean;
+    foundNewest?: boolean;
   };
 
   if (!data || data.result === "error") {
-    return { messages: [], foundOldest: false };
+    return { messages: [], foundOldest: false, foundNewest: false };
   }
 
   return {
     messages: (data.messages ?? []).map(rawMessageToMockMessage),
     foundOldest: data.found_oldest ?? data.foundOldest ?? false,
+    foundNewest: data.found_newest ?? data.foundNewest ?? false,
   };
 }
 
