@@ -1,28 +1,8 @@
 import React from "react";
 import { t } from "~/i18n/i18n";
-import type { SavedSnippet } from "~/shared/api/zulip";
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
 import { SavedSnippetRow } from "./message-composer-saved-snippet-row.ui";
-
-export interface MessageComposerSavedSnippetsDialogProps {
-  dialogStyle: React.CSSProperties;
-  createMode: boolean;
-  savedSnippetTitle: string;
-  savedSnippetContent: string;
-  savedSnippetsFilter: string;
-  savedSnippetsLoading: boolean;
-  savedSnippetsError: string | null;
-  filteredSnippets: SavedSnippet[];
-  canSaveSnippet: boolean;
-  onCloseBackdrop: () => void;
-  onTitleChange: (value: string) => void;
-  onContentChange: (value: string) => void;
-  onFilterChange: (value: string) => void;
-  onCancelCreate: () => void;
-  onSubmitCreate: () => void;
-  onSelectSnippet: (snippet: SavedSnippet) => void;
-  onStartCreate: () => void;
-}
+import type { MessageComposerSavedSnippetsDialogProps } from "./message-composer-saved-snippets-dialog.types";
 
 export const MessageComposerSavedSnippetsDialog = React.memo(
   function MessageComposerSavedSnippetsDialog({

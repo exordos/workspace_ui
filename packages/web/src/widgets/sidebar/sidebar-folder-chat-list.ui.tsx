@@ -28,6 +28,7 @@ import { TopicMuteButton, TopicResolvedButton } from "./sidebar-folder-topic-but
 import { DmContextMenu, StreamContextMenu } from "./sidebar-chat-context-menu.ui";
 import { slugForStream, TOPIC_BAR_COLORS, chatToWorkspaceChatId } from "./sidebar.lib";
 import type { SidebarChat } from "./sidebar.types";
+import type { NewTopicDialogState, SidebarFolderChatListProps } from "./sidebar-folder-chat-list.types";
 
 function getAvatarUrl(avatarUrl: string | undefined): string | null {
   return resolveAvatarUrl(avatarUrl, getRealmBaseUrl()) ?? null;
@@ -43,28 +44,6 @@ function SortablePinnedItem({ id, children }: { id: string; children: React.Reac
       {children}
     </div>
   );
-}
-
-interface SidebarFolderChatListProps {
-  chats: SidebarChat[];
-  selectedFolderId?: string;
-  pinFolderId?: string;
-  activeStreamSlug?: string | null;
-  activeDmIdParam?: string | null;
-  activeTopic?: string | null;
-  expandedStreamSlug?: string | null;
-  onToggleStream?: (slug: string) => void;
-  onNewTopic?: (streamSlug: string, topicName: string) => void;
-  reorderPinnedOnly?: boolean;
-  loading?: boolean;
-  showEmptyState?: boolean;
-  onFolderAssignmentsChanged?: () => void;
-}
-
-interface NewTopicDialogState {
-  streamId: number;
-  streamSlug: string;
-  streamName: string;
 }
 
 export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({

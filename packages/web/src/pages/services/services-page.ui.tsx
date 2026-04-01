@@ -2,14 +2,8 @@ import React, { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { t } from "~/i18n/i18n";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
-import { Icon, type IconName } from "~/shared/ui/icon";
-
-interface PlannedServiceCard {
-  id: string;
-  icon: IconName;
-  titleKey: string;
-  descriptionKey: string;
-}
+import { Icon } from "~/shared/ui/icon";
+import type { PlannedServiceCard, ServiceStubCardProps } from "./services-page.types";
 
 const PLANNED_SERVICE_CARDS: PlannedServiceCard[] = [
   {
@@ -49,10 +43,6 @@ const PLANNED_SERVICE_CARDS: PlannedServiceCard[] = [
     descriptionKey: "settings.servicesPlaceholderIntegrationsHint",
   },
 ];
-
-interface ServiceStubCardProps {
-  card: PlannedServiceCard;
-}
 
 const ServiceStubCard = React.memo<ServiceStubCardProps>(({ card }) => {
   return (

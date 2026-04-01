@@ -62,10 +62,11 @@ import ThumbsUpIcon from "../assets/icons/thumbs-up.svg?react";
 import VideosIcon from "../assets/icons/videos.svg?react";
 import VisibilityIcon from "../assets/icons/visibility.svg?react";
 import VolumeUpIcon from "../assets/icons/volume_up.svg?react";
+import type { IconSvgComponent } from "./icon.types";
 
-type SvgComponent = React.FC<React.SVGProps<SVGSVGElement>>;
+export type { IconSvgComponent } from "./icon.types";
 
-const ICONS: Record<string, SvgComponent> = {
+const ICONS: Record<string, IconSvgComponent> = {
   accountCircle: AccountCircleIcon,
   home: HomeIcon,
   flag: FlagIcon,
@@ -134,13 +135,13 @@ const ICONS: Record<string, SvgComponent> = {
 export type IconName = keyof typeof ICONS;
 export const ICON_NAMES = Object.freeze(Object.keys(ICONS));
 
-interface IconProps {
+interface IconComponentProps {
   name: IconName;
   size?: number;
   className?: string;
 }
 
-export const Icon = React.memo<IconProps>(({ name, size = 20, className = "" }) => {
+export const Icon = React.memo<IconComponentProps>(({ name, size = 20, className = "" }) => {
   const SvgIcon = ICONS[name];
   if (!SvgIcon) return null;
   return (

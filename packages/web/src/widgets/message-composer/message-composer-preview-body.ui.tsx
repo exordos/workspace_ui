@@ -3,13 +3,7 @@ import { t } from "~/i18n/i18n";
 import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
 import { sanitizeHtml } from "~/shared/lib/html";
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
-
-export interface MessageComposerPreviewBodyProps {
-  outgoingBodyTrim: string;
-  previewLoading: boolean;
-  previewError: string | null;
-  previewHtml: string;
-}
+import type { MessageComposerPreviewBodyProps } from "./message-composer-preview-body.types";
 
 export const MessageComposerPreviewBody = React.memo(function MessageComposerPreviewBody({
   outgoingBodyTrim,

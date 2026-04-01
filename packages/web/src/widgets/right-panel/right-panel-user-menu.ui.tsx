@@ -29,8 +29,13 @@ import { playNotificationSound } from "~/shared/lib/notification-sound";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import type { ThemeMode } from "~/shared/lib/themes/tokens";
 import { isValidUrl } from "~/shared/lib/validation";
-import { Icon, type IconName } from "~/shared/ui/icon";
+import { Icon } from "~/shared/ui/icon";
 import { ScrollArea } from "~/shared/ui/scroll-area";
+import type {
+  MenuButtonProps,
+  OptionButtonProps,
+  RightPanelUserMenuProps,
+} from "./right-panel-user-menu.types";
 
 const log = createLogger("right-panel-user-menu");
 const APP_VERSION = import.meta.env.VITE_APP_VERSION ?? "dev";
@@ -74,26 +79,6 @@ const STATUS_EMOJI_PRESETS = [
   { name: "helmet_with_white_cross", code: "26d1-fe0f", symbol: "⛑️" },
   { name: "spiral_calendar_pad", code: "1f5d3-fe0f", symbol: "🗓️" },
 ] as const;
-
-interface RightPanelUserMenuProps {
-  heading?: string;
-  onOpenAboutDrawer?: () => void;
-  onOpenBuildsDrawer?: () => void;
-}
-
-interface MenuButtonProps {
-  label: string;
-  icon: IconName;
-  subtitle?: string;
-  right?: React.ReactNode;
-  onClick: () => void;
-}
-
-interface OptionButtonProps {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}
 
 function getInstanceLabel(realm: string, email: string): string {
   try {

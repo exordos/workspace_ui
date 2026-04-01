@@ -1,10 +1,6 @@
 import React, { useCallback } from "react";
 import { t } from "~/i18n/i18n";
-
-export interface MediaViewerBackdropProps {
-  onClose: () => void;
-  children: React.ReactNode;
-}
+import type { MediaViewerBackdropProps } from "./media-viewer-backdrop.types";
 
 export const MediaViewerBackdrop: React.FC<MediaViewerBackdropProps> = ({ onClose, children }) => {
   const handleKeyDown = useCallback(

@@ -7,17 +7,7 @@ import {
   folderColorValueToCssHex,
   folderColorValueToCssRgba,
 } from "./folder-colors";
-
-interface CreateFolderPayload {
-  name: string;
-  backgroundColor: number;
-}
-
-interface CreateFolderModalProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onCreate: (payload: CreateFolderPayload) => Promise<boolean>;
-}
+import type { CreateFolderModalProps } from "./create-folder-modal.types";
 
 export const CreateFolderModal: React.FC<CreateFolderModalProps> = ({
   open,

@@ -1,7 +1,6 @@
 import React, { useMemo } from "react";
 import { useUsersStore } from "~/entities/user/user.model";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
-import type { ChatInfoData } from "~/features/chat-info/chat-info.types";
 import { t } from "~/i18n/i18n";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
@@ -9,12 +8,7 @@ import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 
 import { resolveAvatarSrc } from "./right-panel.lib";
-
-export interface RightPanelDmGroupProps {
-  title: string;
-  data: ChatInfoData;
-  onOpenUserProfile?: (userId: number) => void;
-}
+import type { RightPanelDmGroupProps } from "./right-panel-dm-group.types";
 
 export const RightPanelDmGroup = React.memo(function RightPanelDmGroup({
   title,

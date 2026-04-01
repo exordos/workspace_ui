@@ -3,24 +3,8 @@ import { Outlet } from "react-router-dom";
 import { t } from "~/i18n/i18n";
 import { RightDrawer } from "~/widgets/right-panel/right-drawer.ui";
 import { RightPanelShell as RightPanel } from "~/widgets/right-panel/right-panel-shell.ui";
-import type { RightPanelUserInfo } from "~/widgets/right-panel/right-panel.types";
-import type { RightDrawerMode } from "~/widgets/right-panel/right-drawer.model";
 import { SidebarShell } from "~/widgets/sidebar/sidebar-shell.ui";
-
-export interface LayoutMainWorkspaceProps {
-  shouldShowChatShell: boolean;
-  sidebarOpen: boolean;
-  rightDrawerOpen: boolean;
-  rightDrawerMode: RightDrawerMode;
-  onCloseRightDrawer: () => void;
-  rightPanelTitle: string;
-  participantsCount: number;
-  onlineCount: number;
-  rightPanelUser: RightPanelUserInfo | undefined;
-  onSelectCommonGroup: (slug: string) => void;
-  onOpenSettingsDrawer: () => void;
-  onOpenAboutDrawer: () => void;
-}
+import type { LayoutMainWorkspaceProps } from "./layout-main-workspace.types";
 
 export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
   shouldShowChatShell,

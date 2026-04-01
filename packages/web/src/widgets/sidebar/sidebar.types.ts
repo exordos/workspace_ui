@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type {
   DmEntryInternal,
   SidebarChat,
@@ -27,4 +28,8 @@ export interface SidebarProps {
   pinReorderMode?: boolean;
   onExitPinReorderMode?: () => void;
   onFolderAssignmentsChanged?: () => void | Promise<void>;
+}
+
+export interface SidebarUiProps extends SidebarProps {
+  activityPanelBottomSlot?: ReactNode;
 }

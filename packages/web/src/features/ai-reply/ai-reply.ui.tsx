@@ -10,19 +10,17 @@ import { Icon } from "~/shared/ui/icon";
 import { useAiReplyStore } from "./ai-reply.model";
 import type {
   AiAction,
+  AiActionMenuProps,
+  AiComposerButtonProps,
   AiMessageContext,
-  AiReplyRequest,
   AiSuggestion,
   AiTone,
+  SmartReplySuggestionsProps,
 } from "./ai-reply.types";
 
 // ---------------------------------------------------------------------------
 // Smart Reply Suggestions (chips above composer)
 // ---------------------------------------------------------------------------
-
-interface SmartReplySuggestionsProps {
-  onAccept: (text: string) => void;
-}
 
 export const SmartReplySuggestions: React.FC<SmartReplySuggestionsProps> = ({ onAccept }) => {
   const suggestions = useAiReplyStore((s) => s.suggestions);
@@ -67,15 +65,6 @@ export const SmartReplySuggestions: React.FC<SmartReplySuggestionsProps> = ({ on
 // ---------------------------------------------------------------------------
 // AI Action Menu (dropdown in composer toolbar)
 // ---------------------------------------------------------------------------
-
-interface AiActionMenuProps {
-  draft: string;
-  onInsert: (text: string) => void;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  messagesContext?: AiMessageContext[];
-  chatContext?: AiReplyRequest["chatContext"];
-}
 
 const AI_ACTIONS: {
   action: AiAction;
@@ -278,11 +267,6 @@ export const AiActionMenu: React.FC<AiActionMenuProps> = ({
 // ---------------------------------------------------------------------------
 // AI Composer Button (trigger for the action menu)
 // ---------------------------------------------------------------------------
-
-interface AiComposerButtonProps {
-  onClick: () => void;
-  active: boolean;
-}
 
 export const AiComposerButton: React.FC<AiComposerButtonProps> = ({ onClick, active }) => (
   <button

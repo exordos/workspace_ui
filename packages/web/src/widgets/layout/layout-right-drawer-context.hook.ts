@@ -1,31 +1,12 @@
 import { useMemo } from "react";
 import { t } from "~/i18n/i18n";
 import { getDmById, parseDmSlugToUserIds, parseStreamSlug } from "~/widgets/sidebar/sidebar.lib";
-import type { SidebarChat, StreamWithLast } from "~/widgets/sidebar/sidebar.types";
+import type { SidebarChat } from "~/widgets/sidebar/sidebar.types";
+import type { LayoutRightDrawerContext, UseLayoutRightDrawerContextOptions } from "./layout-right-drawer-context.types";
 
-export interface LayoutRightDrawerContext {
-  title: string;
-  rightDrawerTargetUserId: number | undefined;
-  partnerUserId: number | undefined;
-  dmChat: Extract<SidebarChat, { type: "dm" }> | undefined;
-  dmParticipantIds: number[];
-  activeStreamId: number | null;
-  activeStreamName: string | null;
-}
+export type { LayoutRightDrawerContext } from "./layout-right-drawer-context.types";
 
-export function useLayoutRightDrawerContext(options: {
-  streams: StreamWithLast[];
-  dms: SidebarChat[];
-  streamsMap: Map<number, { name: string }>;
-  activeStreamSlug: string | undefined;
-  activeTopic: string | null;
-  dmIdParam: string | undefined;
-  currentUserId: number | null;
-  rightDrawerMode: "info" | "settings" | "user-menu" | "about" | "builds";
-  rightDrawerUserIdOverride: number | null;
-  rightDrawerOverrideUserName: string | undefined;
-  rightDrawerOpen: boolean;
-}): LayoutRightDrawerContext {
+export function useLayoutRightDrawerContext(options: UseLayoutRightDrawerContextOptions): LayoutRightDrawerContext {
   const {
     streams,
     dms,

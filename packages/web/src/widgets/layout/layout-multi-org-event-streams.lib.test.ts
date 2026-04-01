@@ -1,9 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ZulipInstance } from "~/entities/instance/instance.model";
-import {
-  startInactiveInstanceEventStreams,
-  type StartCredentialEventLoopFn,
-} from "./layout-multi-org-event-streams.lib";
+import { startInactiveInstanceEventStreams } from "./layout-multi-org-event-streams.lib";
+import type { StartCredentialEventLoopFn } from "./layout-multi-org-event-streams.types";
 
 const INSTANCES: ZulipInstance[] = [
   { id: "inst-1", realm: "https://a.example.com", email: "a@example.com", apiKey: "k1" },

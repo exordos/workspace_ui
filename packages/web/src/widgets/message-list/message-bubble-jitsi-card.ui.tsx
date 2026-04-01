@@ -1,11 +1,10 @@
 import React, { useMemo } from "react";
 import { type CallParticipant, useCallParticipantsStore } from "~/entities/call/call.model";
 import { t } from "~/i18n/i18n";
-import type { MockMessage } from "~/shared/api/zulip.types";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { formatJitsiRoomDisplayName, resolveJitsiLocationName } from "./message-jitsi-location.lib";
-import type { MessageBubbleCallbacks } from "./message-bubble.types";
+import type { MessageBubbleJitsiCardProps } from "./message-bubble-jitsi-card.types";
 
 const EMPTY_PARTICIPANTS: CallParticipant[] = [];
 
@@ -17,18 +16,6 @@ function getAvatarInitials(name: string): string {
   const second = parts[1]?.[0] ?? "";
   const initials = `${first}${second}`.toUpperCase();
   return initials.length > 0 ? initials : "?";
-}
-
-export interface MessageBubbleJitsiCardProps {
-  message: MockMessage;
-  jitsiUrl: string;
-  isOwn: boolean;
-  time: string;
-  ownDeliveryIndicator: React.ReactNode;
-  bubbleSurfaceClass: string;
-  ownBubbleTailClass: string;
-  peerBubbleTailClass: string;
-  callbacks?: MessageBubbleCallbacks;
 }
 
 export const MessageBubbleJitsiCard = React.memo(function MessageBubbleJitsiCard({

@@ -65,7 +65,8 @@ import {
   slugForStream,
   getDmById,
 } from "~/widgets/sidebar/sidebar.lib";
-import { TopBar, type TopBarSection } from "~/widgets/top-bar/top-bar.ui";
+import { TopBar } from "~/widgets/top-bar/top-bar.ui";
+import type { TopBarSection } from "~/widgets/top-bar/top-bar.types";
 import { getSectionFromPathname } from "./layout-active-section.lib";
 import { runChatListBootstrap } from "./layout-chat-list-bootstrap.lib";
 import { shouldRenderChatShell } from "./layout-chat-shell.lib";

@@ -1,14 +1,7 @@
 import React from "react";
 import { t } from "~/i18n/i18n";
-import type { MockMessage } from "~/shared/api/zulip.types";
 import { Icon } from "~/shared/ui/icon";
-import type { MessageBubbleCallbacks } from "./message-bubble.types";
-
-export interface MessageBubbleOwnDeliveryIndicatorProps {
-  message: MockMessage;
-  status: "sent" | "sending" | "failed";
-  onViews?: MessageBubbleCallbacks["onViews"];
-}
+import type { MessageBubbleOwnDeliveryIndicatorProps } from "./message-bubble-own-delivery-indicator.types";
 
 export const MessageBubbleOwnDeliveryIndicator = React.memo(
   function MessageBubbleOwnDeliveryIndicator({

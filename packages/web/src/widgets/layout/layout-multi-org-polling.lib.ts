@@ -1,15 +1,5 @@
 import type { ZulipInstance } from "~/entities/instance/instance.model";
-
-interface StartInactiveInstanceUnreadPollingOptions {
-  instances: readonly ZulipInstance[];
-  currentInstanceId: string | null;
-  enabled: boolean;
-  online: boolean;
-  fetchUnreadCount: (instance: ZulipInstance, signal: AbortSignal) => Promise<number | null>;
-  setUnreadCount: (instanceId: string, unreadCount: number) => void;
-  onError?: (instanceId: string, error: unknown) => void;
-  pollIntervalMs?: number;
-}
+import type { StartInactiveInstanceUnreadPollingOptions } from "./layout-multi-org-polling.types";
 
 const DEFAULT_POLL_INTERVAL_MS = 60_000;
 

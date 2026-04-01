@@ -17,15 +17,9 @@ import {
   resolveAvatarSrc,
   resolveMentionNickname,
 } from "./right-panel.lib";
-import type { RightPanelUserInfo } from "./right-panel.types";
+import type { RightPanelUserProps } from "./right-panel-user.types";
 
 const log = createLogger("right-panel");
-
-export interface RightPanelUserProps {
-  user: RightPanelUserInfo;
-  onSelectCommonGroup?: (slug: string) => void;
-  onOpenDirectMessage?: (userId: number) => void;
-}
 
 export const RightPanelUser = React.memo(function RightPanelUser({
   user,

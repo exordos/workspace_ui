@@ -1,16 +1,5 @@
 import React from "react";
-import type { MockMessage } from "~/shared/api/zulip.types";
-import type { MessageBubbleCallbacks } from "./message-bubble.types";
-import type { GroupedReaction } from "./message-bubble-emoji.lib";
-
-export interface MessageBubbleReactionsRowProps {
-  message: MockMessage;
-  isOwn: boolean;
-  currentUserId: number | undefined;
-  reactionGroups: GroupedReaction[];
-  resolveReactionAuthorLabel: (userId: number) => string;
-  callbacks?: MessageBubbleCallbacks;
-}
+import type { MessageBubbleReactionsRowProps } from "./message-bubble-reactions-row.types";
 
 /** Grouped reaction chips shown at the bottom of the message bubble. */
 export const MessageBubbleReactionsRow = React.memo(function MessageBubbleReactionsRow({

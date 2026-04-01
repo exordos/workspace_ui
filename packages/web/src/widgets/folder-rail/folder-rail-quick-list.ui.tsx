@@ -10,13 +10,7 @@ import {
   resolveFolderSystemType,
   type IndexedFolderEntry,
 } from "./folder-rail.utils";
-
-/** Quick-list для быстрого переключения между большим числом папок. */
-interface FolderQuickListProps {
-  folders: IndexedFolderEntry[];
-  selectedFolderId: string;
-  onSelectFolder: (id: string) => void;
-}
+import type { FolderQuickListProps } from "./folder-rail-quick-list.types";
 
 export const FolderQuickList: React.FC<FolderQuickListProps> = React.memo(function FolderQuickList({
   folders,

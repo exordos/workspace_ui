@@ -1,10 +1,7 @@
 import { addChatToFolder, getFolderItems, getFolders, removeChatFromFolder } from "~/shared/api/workspace-client";
+import type { FolderAssignment } from "./sidebar-folder-assignment.types";
 
-export interface FolderAssignment {
-  folderUuid: string;
-  label: string;
-  itemUuid: string | null;
-}
+export type { FolderAssignment };
 
 interface FolderAssignmentApi {
   getFolders: typeof getFolders;

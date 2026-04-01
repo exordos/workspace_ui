@@ -11,11 +11,10 @@ import {
 } from "~/shared/lib/updater";
 import { Icon } from "~/shared/ui/icon";
 import { ScrollArea } from "~/shared/ui/scroll-area";
+import type { RightPanelBuildsReleaseChannel } from "./right-panel-builds.types";
 
 const log = createLogger("right-panel-builds");
 const APP_VERSION = import.meta.env.VITE_APP_VERSION ?? "dev";
-
-type ReleaseChannel = "stable" | "dev";
 
 function getUpdateStatusText(update: UpdateState): string {
   switch (update.status) {
@@ -58,7 +57,7 @@ function resolveDownloadUrl(entry: UpdateVersionCatalogEntry): string {
 function isLatestBuild(
   entry: UpdateVersionCatalogEntry,
   catalog: UpdateVersionCatalog | null,
-  channel: ReleaseChannel,
+  channel: RightPanelBuildsReleaseChannel,
 ): boolean {
   if (catalog == null) {
     return false;
@@ -75,7 +74,7 @@ function isLatestBuild(
 export const RightPanelBuilds: React.FC = () => {
   const update = useAppUpdate();
   const autoCheckTriggeredRef = useRef(false);
-  const [activeChannel, setActiveChannel] = useState<ReleaseChannel>("stable");
+  const [activeChannel, setActiveChannel] = useState<RightPanelBuildsReleaseChannel>("stable");
   const [catalog, setCatalog] = useState<UpdateVersionCatalog | null>(null);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState<string | null>(null);

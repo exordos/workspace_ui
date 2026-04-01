@@ -3,14 +3,8 @@ import React from "react";
 import { t } from "~/i18n/i18n";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
+import type { CreateChatDialogProps } from "./create-chat-dialog.types";
 import { useCreateChatDialog } from "./use-create-chat-dialog.hook";
-
-export interface CreateChatDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onNavigateDm: (slug: string) => void;
-  onChannelCreated: () => void;
-}
 
 export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
   open,

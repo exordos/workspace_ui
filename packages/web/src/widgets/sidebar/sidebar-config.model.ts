@@ -6,25 +6,14 @@
 import { create } from "zustand";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { buildOrgScopedStorageKey } from "~/shared/lib/org-scoped-storage";
+import type { SidebarConfig, SidebarConfigState, SidebarUiState } from "./sidebar-config.types";
 
 const SIDEBAR_CONFIG_STORAGE_KEY = "zulip-web-sidebar-config";
-
-interface SidebarConfig {
-  activityOpen: boolean;
-  expandedStreamSlug: string | null;
-}
 
 const DEFAULT_CONFIG: SidebarConfig = {
   activityOpen: false,
   expandedStreamSlug: null,
 };
-
-interface SidebarUiState {
-  selectedFolderId: string;
-  pinReorderMode: boolean;
-  searchQuery: string;
-  createChatOpen: boolean;
-}
 
 const DEFAULT_UI_STATE: SidebarUiState = {
   selectedFolderId: "1",
@@ -70,16 +59,6 @@ function saveConfig(
   } catch {
     // ignore
   }
-}
-
-interface SidebarConfigState extends SidebarConfig, SidebarUiState {
-  setActivityOpen: (open: boolean) => void;
-  setExpandedStreamSlug: (slug: string | null) => void;
-  setConfig: (patch: Partial<SidebarConfig>) => void;
-  setSelectedFolderId: (folderId: string) => void;
-  setPinReorderMode: (enabled: boolean) => void;
-  setSearchQuery: (value: string) => void;
-  setCreateChatOpen: (open: boolean) => void;
 }
 
 export const useSidebarConfigStore = create<SidebarConfigState>((set) => ({

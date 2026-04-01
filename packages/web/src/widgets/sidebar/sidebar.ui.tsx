@@ -18,13 +18,9 @@ import { SidebarSearchHeader } from "./sidebar-search-header.ui";
 import { SidebarStreamList } from "./sidebar-stream-list.ui";
 import { chatToWorkspaceChatId, getStreamChats, parseDmSlugToUserIds } from "./sidebar.lib";
 import { doesSidebarChatMatchQuery, normalizeSidebarSearchQuery } from "./sidebar-filtering.lib";
-import type { SidebarChat, SidebarProps, StreamWithLast } from "./sidebar.types";
+import type { SidebarChat, SidebarUiProps, StreamWithLast } from "./sidebar.types";
 
 const EMPTY_PIN_REORDER_CHAT_IDS: string[] = [];
-
-interface SidebarUiProps extends SidebarProps {
-  activityPanelBottomSlot?: React.ReactNode;
-}
 
 export const Sidebar: React.FC<SidebarUiProps> = ({
   streams: streamsProp,

@@ -3,49 +3,13 @@ import { isValidRealmUrl } from "~/shared/lib/validation";
 import { getRoleLabel, parseRole } from "~/shared/lib/roles";
 import type { SidebarChat } from "~/shared/types/sidebar-chat";
 import type { RightPanelUserInfo } from "~/widgets/right-panel/right-panel.types";
+import type {
+  BuildRightPanelUserInfoOptions,
+  RightPanelCommonGroup,
+  RightPanelPresenceLike,
+} from "./layout-right-panel.types";
 
-export interface RightPanelCommonGroup {
-  name: string;
-  lastMessage?: string;
-  unread?: number;
-  slug?: string;
-}
-
-interface RightPanelPresenceLike {
-  status?: "active" | "idle";
-  timestamp: number;
-}
-
-interface RightPanelUserFromStoreLike {
-  user_id?: number;
-  full_name?: string;
-  email?: string;
-  avatar_url?: string | null;
-  presence?: RightPanelPresenceLike;
-  role?: number;
-}
-
-interface RightPanelDetailedProfileLike {
-  userId: number;
-  fullName?: string;
-  email?: string;
-  avatarUrl?: string;
-  role?: number;
-  timezone?: string;
-  dateJoined?: string;
-  isBot?: boolean;
-  isActive?: boolean;
-  phone?: string;
-  jobTitle?: string;
-  manager?: string;
-  birthday?: string;
-}
-
-interface RightPanelDmChatLike {
-  name: string;
-  slug?: string;
-  isGroup?: boolean;
-}
+export type { RightPanelCommonGroup };
 
 export function formatRightPanelLocalTime(
   timezone: string | undefined,
@@ -89,16 +53,7 @@ export function formatRightPanelLastSeen(
   return formatLastSeen(presence.timestamp, presence.status);
 }
 
-export function buildRightPanelUserInfo(options: {
-  userFromStore: RightPanelUserFromStoreLike | undefined;
-  detailedProfile: RightPanelDetailedProfileLike | null | undefined;
-  dmChat: RightPanelDmChatLike | undefined;
-  rightDrawerTargetUserId: number | null | undefined;
-  userStatusLabel: string | undefined;
-  currentInstanceRealm: string | undefined;
-  media: RightPanelUserInfo["media"] | undefined;
-  commonGroups: RightPanelUserInfo["commonGroups"] | undefined;
-}): RightPanelUserInfo | undefined {
+export function buildRightPanelUserInfo(options: BuildRightPanelUserInfoOptions): RightPanelUserInfo | undefined {
   const {
     userFromStore,
     detailedProfile,

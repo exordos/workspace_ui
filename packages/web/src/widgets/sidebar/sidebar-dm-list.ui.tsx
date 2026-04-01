@@ -14,20 +14,14 @@ import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { isDmPartnerTyping, sortDmAllUsersForDisplay } from "./sidebar-dm-list.lib";
 import { MOCK_DMS } from "./sidebar.lib";
 import type { SidebarChat } from "./sidebar.types";
-
-interface SidebarDmListProps {
-  activeDmId: number | null;
-  dms?: Extract<SidebarChat, { type: "dm" }>[];
-}
+import type { SidebarDmListProps, SidebarDmTab } from "./sidebar-dm-list.types";
 
 function isDm(chat: SidebarChat): chat is Extract<SidebarChat, { type: "dm" }> {
   return chat.type === "dm" && !chat.isGroup;
 }
 
-type DmTab = "recent" | "all";
-
 export const SidebarDmList: React.FC<SidebarDmListProps> = ({ activeDmId, dms }) => {
-  const [tab, setTab] = useState<DmTab>("recent");
+  const [tab, setTab] = useState<SidebarDmTab>("recent");
   const currentUserId = useChatListStore((s) => s.currentUserId);
   const allUsers = useUsersStore((s) => s.users);
   const isCompactDensity = useSettingsStore((s) => s.chatListDensity === "compact");

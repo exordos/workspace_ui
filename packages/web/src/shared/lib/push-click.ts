@@ -1,5 +1,8 @@
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
+import type { PushClickTargetInput, PushNotificationClickPayload } from "./push-click.types";
+
+export type { PushClickTargetInput, PushNotificationClickPayload };
 
 function normalizeRealmForComparison(realm: string): string {
   return realm
@@ -16,25 +19,6 @@ function slugifyStreamName(streamName: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/-+$/, "")
     .replace(/^-+/, "");
-}
-
-interface PushClickTargetInput {
-  type?: "stream" | "private";
-  messageId?: number;
-  streamId?: number;
-  streamName?: string;
-  topic?: string;
-  senderId?: number;
-}
-
-export interface PushNotificationClickPayload {
-  messageId?: number | string;
-  messageType?: string;
-  streamId?: number | string;
-  streamName?: string;
-  topic?: string;
-  senderId?: number | string;
-  realmUri?: string;
 }
 
 function parsePositiveInt(value: number | string | undefined): number | undefined {

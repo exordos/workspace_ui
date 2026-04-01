@@ -1,17 +1,10 @@
 import React from "react";
 import { useUsersStore } from "~/entities/user/user.model";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
-import type { MentionSuggestion } from "~/features/mention-suggest/mention-suggest.types";
 import { t } from "~/i18n/i18n";
 import { getPresenceState } from "~/shared/lib/format";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
-
-export interface ComposerMentionDropdownProps {
-  suggestions: MentionSuggestion[];
-  activeIndex: number;
-  onSelect: (user: MentionSuggestion) => void;
-  onHoverIndex: (index: number) => void;
-}
+import type { ComposerMentionDropdownProps } from "./message-composer-mention-dropdown.types";
 
 export const ComposerMentionDropdown = React.memo(function ComposerMentionDropdown({
   suggestions,

@@ -2,14 +2,7 @@ import React, { useMemo, useState } from "react";
 import licensesData from "~/generated/licenses.json";
 import { t } from "~/i18n/i18n";
 import { brand } from "~/shared/lib/brand";
-
-interface LicenseEntry {
-  name: string;
-  version: string;
-  license: string;
-  repository: string;
-  publisher: string;
-}
+import type { LicenseEntry } from "./licenses-page.types";
 
 const licenses = licensesData as LicenseEntry[];
 

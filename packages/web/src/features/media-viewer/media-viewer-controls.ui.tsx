@@ -1,11 +1,6 @@
 import React from "react";
 import { t } from "~/i18n/i18n";
-
-export interface MediaViewerControlsProps {
-  show: boolean;
-  onPrev: () => void;
-  onNext: () => void;
-}
+import type { MediaViewerControlsProps } from "./media-viewer-controls.types";
 
 export const MediaViewerControls: React.FC<MediaViewerControlsProps> = ({ show, onPrev, onNext }) => {
   if (!show) return null;

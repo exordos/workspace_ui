@@ -1,9 +1,6 @@
 import React from "react";
 import { t } from "~/i18n/i18n";
-
-export interface SidebarPinReorderBannerProps {
-  onClose: () => void;
-}
+import type { SidebarPinReorderBannerProps } from "./sidebar-pin-reorder-banner.types";
 
 export const SidebarPinReorderBanner: React.FC<SidebarPinReorderBannerProps> = ({ onClose }) => {
   return (

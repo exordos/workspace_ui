@@ -1,9 +1,5 @@
 import React from "react";
-
-export interface ChatPageInlineAlertsProps {
-  actionError: string | null;
-  sendError: string | null;
-}
+import type { ChatPageInlineAlertsProps } from "./chat-page-inline-alerts.types";
 
 export const ChatPageInlineAlerts = React.memo(function ChatPageInlineAlerts({
   actionError,

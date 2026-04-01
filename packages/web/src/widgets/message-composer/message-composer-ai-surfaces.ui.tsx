@@ -1,25 +1,15 @@
 import React from "react";
 import { AiActionMenu, SmartReplySuggestions } from "~/features/ai-reply/ai-reply.ui";
-import type { AiMessageContext, AiReplyRequest } from "~/features/ai-reply/ai-reply.types";
-
-export interface MessageComposerSmartReplyStripProps {
-  onAccept: (text: string) => void;
-}
+import type {
+  MessageComposerAiActionMenuLayerProps,
+  MessageComposerSmartReplyStripProps,
+} from "./message-composer-ai-surfaces.types";
 
 export const MessageComposerSmartReplyStrip = React.memo(function MessageComposerSmartReplyStrip({
   onAccept,
 }: MessageComposerSmartReplyStripProps) {
   return <SmartReplySuggestions onAccept={onAccept} />;
 });
-
-export interface MessageComposerAiActionMenuLayerProps {
-  open: boolean;
-  draft: string;
-  onInsert: (text: string) => void;
-  onOpenChange: (open: boolean) => void;
-  messagesContext: AiMessageContext[];
-  chatContext: AiReplyRequest["chatContext"] | undefined;
-}
 
 export const MessageComposerAiActionMenuLayer = React.memo(function MessageComposerAiActionMenuLayer({
   open,

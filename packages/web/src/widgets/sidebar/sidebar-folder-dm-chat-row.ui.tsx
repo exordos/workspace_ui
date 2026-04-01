@@ -13,19 +13,10 @@ import { Avatar } from "~/shared/ui/avatar";
 import { Badge } from "~/shared/ui/badge";
 import { Icon } from "~/shared/ui/icon";
 import { isDmPartnerTyping } from "./sidebar-dm-list.lib";
-import type { SidebarChat } from "./sidebar.types";
+import type { DmChatRowProps } from "./sidebar-folder-dm-chat-row.types";
 
 function getAvatarUrl(avatarUrl: string | undefined): string | null {
   return resolveAvatarUrl(avatarUrl, getRealmBaseUrl()) ?? null;
-}
-
-export interface DmChatRowProps {
-  chat: Extract<SidebarChat, { type: "dm" }>;
-  isActive: boolean;
-  isPinned: boolean;
-  compact: boolean;
-  onContextMenu?: React.MouseEventHandler;
-  onKeyDown?: React.KeyboardEventHandler;
 }
 
 export const DmChatRow = React.memo<DmChatRowProps>(function DmChatRow({

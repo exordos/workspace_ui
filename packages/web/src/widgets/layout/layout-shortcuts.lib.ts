@@ -1,4 +1,4 @@
-import type { TopBarSection } from "~/widgets/top-bar/top-bar.ui";
+import type { TopBarSection } from "~/widgets/top-bar/top-bar.types";
 
 export function resolveShortcutPanelToggle(
   currentOpen: boolean,

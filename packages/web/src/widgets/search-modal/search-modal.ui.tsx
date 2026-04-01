@@ -11,6 +11,7 @@ import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import { useSearchModalStore } from "./search-modal.model";
+import type { SearchModalProps } from "./search-modal.types";
 
 const DEBOUNCE_MS = 300;
 const MAX_USER_RESULTS = 20;
@@ -87,13 +88,6 @@ const UserResultItem = React.memo(function UserResultItem({
     </li>
   );
 });
-
-interface SearchModalProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onSelectMessage: (msg: MockMessage) => void;
-  onSelectUser?: (userId: number) => void;
-}
 
 export const SearchModal: React.FC<SearchModalProps> = ({
   open,

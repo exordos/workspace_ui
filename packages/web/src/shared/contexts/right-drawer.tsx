@@ -1,10 +1,5 @@
 import React from "react";
-
-interface RightDrawerContextValue {
-  open: boolean;
-  setOpen: (open: boolean) => void;
-  openUserProfile?: (userId: number) => void;
-}
+import type { RightDrawerContextValue } from "./right-drawer.types";
 
 export const RightDrawerContext = React.createContext<RightDrawerContextValue | null>(null);
 

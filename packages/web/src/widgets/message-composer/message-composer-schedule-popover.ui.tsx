@@ -1,19 +1,7 @@
 import React from "react";
 import { t } from "~/i18n/i18n";
 import { Icon } from "~/shared/ui/icon";
-
-export interface ScheduleMenuOption {
-  id: string;
-  label: string;
-  resolveSendAt: (nowMs: number) => number;
-}
-
-export interface MessageComposerSchedulePopoverProps {
-  scheduleMenuStyle: React.CSSProperties;
-  options: ScheduleMenuOption[];
-  onPick: (sendAt: number) => void;
-  onCloseBackdrop: () => void;
-}
+import type { MessageComposerSchedulePopoverProps } from "./message-composer-schedule-popover.types";
 
 export const MessageComposerSchedulePopover = React.memo(function MessageComposerSchedulePopover({
   scheduleMenuStyle,

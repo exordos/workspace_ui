@@ -3,14 +3,7 @@ import React from "react";
 import { useMessageReadersStore } from "~/features/message-readers/message-readers.model";
 import { t } from "~/i18n/i18n";
 import { Icon } from "~/shared/ui/icon";
-
-export interface ChatPageReadReceiptsDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  readersLoading: boolean;
-  readersError: string | null;
-  readerEntries: { userId: number; name: string; statusLabel: string | null | undefined }[];
-}
+import type { ChatPageReadReceiptsDialogProps } from "./chat-page-read-receipts-dialog.types";
 
 export const ChatPageReadReceiptsDialog: React.FC<ChatPageReadReceiptsDialogProps> = ({
   open,

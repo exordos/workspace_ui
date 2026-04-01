@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef } from "react";
 import { t } from "~/i18n/i18n";
 import { useAppUpdate, type UpdateState } from "~/shared/lib/updater";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
+import type { UpdatePageProps } from "./update-page.types";
 
 const APP_VERSION = import.meta.env.VITE_APP_VERSION ?? "dev";
 
@@ -23,10 +24,6 @@ function getUpdateStatusText(update: UpdateState): string {
     default:
       return t("update.upToDate");
   }
-}
-
-interface UpdatePageProps {
-  forceMode?: boolean;
 }
 
 export const UpdatePage: React.FC<UpdatePageProps> = ({ forceMode = false }) => {

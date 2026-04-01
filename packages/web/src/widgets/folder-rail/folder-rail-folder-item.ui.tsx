@@ -11,18 +11,7 @@ import {
   MENU_ITEM_CLASS,
   resolveFolderSystemType,
 } from "./folder-rail.lib";
-import type { FolderRailFolder, FolderRailLayout } from "./folder-rail.types";
-
-export interface FolderRailFolderItemProps {
-  folder: FolderRailFolder;
-  index: number;
-  layout: FolderRailLayout;
-  isSelected: boolean;
-  onSelectFolder: (id: string) => void;
-  onToggleLayout: () => void;
-  onRequestRename: (folder: FolderRailFolder) => void;
-  onRequestDelete: (folder: FolderRailFolder) => void;
-}
+import type { FolderRailFolderItemProps } from "./folder-rail-folder-item.types";
 
 export const FolderRailFolderItem = React.memo(function FolderRailFolderItem({
   folder,

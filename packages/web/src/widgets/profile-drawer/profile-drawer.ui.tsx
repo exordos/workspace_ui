@@ -15,27 +15,11 @@ import { createLogger } from "~/shared/lib/logger";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { pushService } from "~/shared/lib/push/push.service";
 import { isValidUrl } from "~/shared/lib/validation";
-import { Icon, type IconName } from "~/shared/ui/icon";
+import { Icon } from "~/shared/ui/icon";
+import type { MenuItem, ProfileDrawerProps } from "./profile-drawer.types";
 
 const log = createLogger("profile-drawer");
 const APP_VERSION = import.meta.env.VITE_APP_VERSION ?? "dev";
-
-interface ProfileDrawerProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onOpenSettingsDrawer?: () => void;
-}
-
-interface MenuItem {
-  label: string;
-  subtitle?: string;
-  icon?: IconName;
-  right?: React.ReactNode;
-  highlighted?: boolean;
-  destructive?: boolean;
-  navigateTo?: string;
-  action?: string;
-}
 
 const NOTIFICATION_SOUNDS: NotificationSound[] = [
   "default",

@@ -1,12 +1,6 @@
 import React from "react";
 import { t } from "~/i18n/i18n";
-
-export interface ChatPageDeleteConfirmBarProps {
-  mode: "single" | "bulk";
-  bulkCount?: number;
-  onConfirm: () => void;
-  onCancel: () => void;
-}
+import type { ChatPageDeleteConfirmBarProps } from "./chat-page-delete-confirm-bar.types";
 
 export const ChatPageDeleteConfirmBar = React.memo(function ChatPageDeleteConfirmBar({
   mode,

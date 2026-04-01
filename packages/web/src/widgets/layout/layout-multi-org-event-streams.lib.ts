@@ -1,25 +1,14 @@
 import type { ZulipInstance } from "~/entities/instance/instance.model";
-import type { ZulipCredentials, ZulipEvent } from "~/shared/api/zulip.types";
+import type { ZulipEvent } from "~/shared/api/zulip.types";
+import type {
+  StartCredentialEventLoopFn,
+  StartInactiveInstanceEventStreamsOptions,
+} from "./layout-multi-org-event-streams.types";
 
-export interface StartCredentialEventLoopOptions {
-  credentials: ZulipCredentials;
-  onEvent: (event: ZulipEvent) => void;
-  onBadQueue?: () => void;
-  onReconnect?: () => void;
-}
-
-export type StartCredentialEventLoopFn = (options: StartCredentialEventLoopOptions) => () => void;
-
-interface StartInactiveInstanceEventStreamsOptions {
-  instances: readonly ZulipInstance[];
-  currentInstanceId: string | null;
-  enabled: boolean;
-  online: boolean;
-  refreshUnreadForInstance: (instance: ZulipInstance) => Promise<void> | void;
-  startEventLoop: StartCredentialEventLoopFn;
-  onError?: (instanceId: string, error: unknown) => void;
-  debounceMs?: number;
-}
+export type {
+  StartCredentialEventLoopFn,
+  StartCredentialEventLoopOptions,
+} from "./layout-multi-org-event-streams.types";
 
 const DEFAULT_DEBOUNCE_MS = 300;
 

@@ -1,8 +1,5 @@
 import React from "react";
-
-export interface ChatPageFloatingToastProps {
-  message: string | null;
-}
+import type { ChatPageFloatingToastProps } from "./chat-page-floating-toast.types";
 
 export const ChatPageFloatingToast = React.memo(function ChatPageFloatingToast({
   message,

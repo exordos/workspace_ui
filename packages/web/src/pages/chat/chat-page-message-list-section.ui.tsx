@@ -1,30 +1,7 @@
 import React from "react";
 import { t } from "~/i18n/i18n";
-import type { MockMessage } from "~/shared/api/zulip.types";
 import { MessageList } from "~/widgets/message-list/message-list.ui";
-import type { MessageListCallbacks } from "~/widgets/message-list/message-list.ui";
-
-export interface ChatPageMessageListSectionProps {
-  messagesLoading: boolean;
-  isDmView: boolean;
-  activeDmUserIds: number[] | null;
-  activeStream: string | null | undefined;
-  activeTopic: string | null | undefined;
-  messages: MockMessage[];
-  currentUserId: number | undefined;
-  callbacks: MessageListCallbacks;
-  selectionMode: boolean;
-  selectedMessageIds: Set<number>;
-  onLoadMore: () => void;
-  isLoadingMore: boolean;
-  onLoadNewer: () => void;
-  hasNewerMessages: boolean;
-  firstUnreadId: number | undefined;
-  unreadCount: number;
-  focusedMessageId: number | null | undefined;
-  onUnreadMessagesVisible: (messageIds: number[]) => void;
-  onUnreadMessagesAtBottom: (messageIds: number[]) => void;
-}
+import type { ChatPageMessageListSectionProps } from "./chat-page-message-list-section.types";
 
 export const ChatPageMessageListSection = React.memo(function ChatPageMessageListSection({
   messagesLoading,

@@ -9,7 +9,7 @@ import { getFolderItems } from "~/shared/api/workspace-client";
 import { markDmAsRead, markStreamAsRead } from "~/shared/api/zulip";
 import { Icon } from "~/shared/ui/icon";
 import { chatToWorkspaceChatId, parseDmSlugToUserIds } from "./sidebar.lib";
-import type { FolderAssignment } from "./sidebar-folder-assignment.lib";
+import type { FolderAssignment } from "./sidebar-folder-assignment.types";
 import type { SidebarChat } from "./sidebar.types";
 import { loadFolderAssignments, toggleFolderAssignment } from "./sidebar-folder-assignment.lib";
 

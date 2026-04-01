@@ -1,12 +1,7 @@
 import React, { useCallback } from "react";
 import { t } from "~/i18n/i18n";
 import { Icon } from "~/shared/ui/icon";
-
-export interface SidebarSearchHeaderProps {
-  searchQuery: string;
-  onSearchQueryChange: (value: string) => void;
-  onOpenCreateChat: () => void;
-}
+import type { SidebarSearchHeaderProps } from "./sidebar-search-header.types";
 
 export const SidebarSearchHeader: React.FC<SidebarSearchHeaderProps> = ({
   searchQuery,

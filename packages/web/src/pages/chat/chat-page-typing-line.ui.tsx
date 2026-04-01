@@ -1,9 +1,5 @@
 import React from "react";
-
-export interface ChatPageTypingLineProps {
-  text: string | null;
-  visible: boolean;
-}
+import type { ChatPageTypingLineProps } from "./chat-page-typing-line.types";
 
 export const ChatPageTypingLine = React.memo(function ChatPageTypingLine({
   text,

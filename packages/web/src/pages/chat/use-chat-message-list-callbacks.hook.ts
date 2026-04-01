@@ -1,8 +1,7 @@
 /**
  * Message list action callbacks for the chat page (reply, edit, reactions, navigation).
  */
-import { useMemo, type Dispatch, type SetStateAction } from "react";
-import type { NavigateFunction } from "react-router-dom";
+import { useMemo } from "react";
 import { useMessageReadersStore } from "~/features/message-readers/message-readers.model";
 import { t } from "~/i18n/i18n";
 import {
@@ -10,51 +9,11 @@ import {
   addReaction,
   removeMessageFlag,
   removeReaction,
-  type MockMessage,
-  type Reaction,
 } from "~/shared/api/zulip";
 import { stripHtml } from "~/shared/lib/html";
-import type { MessageListCallbacks } from "~/widgets/message-list/message-list.ui";
+import type { MessageListCallbacks } from "~/widgets/message-list/message-list.types";
 import { slugForStream } from "~/widgets/sidebar/sidebar.lib";
-
-export interface UseChatMessageListCallbacksParams {
-  selectionMode: boolean;
-  currentUserId: number | null;
-  streams: { stream_id: number; name: string }[];
-  locationPathname: string;
-  navigate: NavigateFunction;
-  rightDrawer: { openUserProfile?: (userId: number) => void } | null;
-  setReplyQuote: Dispatch<
-    SetStateAction<{
-      id: number;
-      content: string;
-      sender_full_name: string;
-    } | null>
-  >;
-  setEditingMessage: Dispatch<SetStateAction<MockMessage | null>>;
-  setDeleteConfirm: Dispatch<
-    SetStateAction<
-      | { type: "single"; messageId: number }
-      | { type: "bulk"; messageIds: number[] }
-      | null
-    >
-  >;
-  setToastMessage: Dispatch<SetStateAction<string | null>>;
-  setForwardMessages: Dispatch<SetStateAction<MockMessage[]>>;
-  setForwardSelectedText: Dispatch<SetStateAction<string | undefined>>;
-  setActionError: Dispatch<SetStateAction<string | null>>;
-  setSelectedMessageIds: Dispatch<SetStateAction<Set<number>>>;
-  setSelectionMode: Dispatch<SetStateAction<boolean>>;
-  updateMessageFlagsInStore: (
-    ids: number[],
-    flag: string,
-    op: "add" | "remove",
-  ) => void;
-  updateMessageReactionInStore: (messageId: number, reaction: Reaction, op: "add" | "remove") => void;
-  setJitsiModalUrl: Dispatch<SetStateAction<string | null>>;
-  setJitsiLocationName: Dispatch<SetStateAction<string>>;
-  setReadReceiptsOpen: Dispatch<SetStateAction<boolean>>;
-}
+import type { UseChatMessageListCallbacksParams } from "./use-chat-message-list-callbacks.types";
 
 export function useChatMessageListCallbacks(
   params: UseChatMessageListCallbacksParams,

@@ -10,6 +10,7 @@ import { getJitsiMeetingUrl, parseJitsiUrl } from "~/shared/lib/jitsi";
 import { createLogger } from "~/shared/lib/logger";
 import { buildNavigableRouteFromMessage } from "~/shared/lib/push-click";
 import { Icon } from "~/shared/ui/icon";
+import type { CallsRowProps, RecentJitsiCallEntry } from "./calls-page.types";
 
 const log = createLogger("calls-page");
 const CALLS_SCAN_LIMIT = 250;
@@ -20,21 +21,6 @@ const CALLS_ROW_CLASS =
   "group flex items-start gap-2 rounded-xl border border-border-subtle bg-card-bg p-2.5 transition-colors hover:border-accent-soft/40 hover:bg-bg-elevated";
 const CALLS_ACTION_BUTTON_CLASS =
   "rounded-md p-1.5 text-text-muted transition-colors hover:bg-card-bg-active hover:text-text-primary";
-
-interface RecentJitsiCallEntry {
-  id: number;
-  meetingUrl: string;
-  roomLabel: string;
-  locationName: string;
-  contextLabel: string;
-  message: MockMessage;
-}
-
-interface CallsRowProps {
-  entry: RecentJitsiCallEntry;
-  onJoin: (entry: RecentJitsiCallEntry) => void;
-  onOpenInChat: (entry: RecentJitsiCallEntry) => void;
-}
 
 function resolveCallLocationName(message: MockMessage): string {
   if (message.stream_id != null) {

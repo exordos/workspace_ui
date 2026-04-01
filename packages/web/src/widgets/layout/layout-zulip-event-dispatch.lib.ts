@@ -1,7 +1,7 @@
-import { isMessageForContext, type CurrentChatContext } from "~/entities/message/message.model";
+import { isMessageForContext } from "~/entities/message/message.model";
 import { resolveTypingEventRoute } from "~/features/typing-indicator/typing-event-routing";
 import { getCurrentInstance } from "~/shared/api/client";
-import type { MockMessage, ZulipEvent, ZulipRawMessage } from "~/shared/api/zulip";
+import type { ZulipEvent, ZulipRawMessage } from "~/shared/api/zulip";
 import { rawMessageToMockMessage } from "~/shared/api/zulip";
 import { getElectronAPI } from "~/shared/lib/electron";
 import { stripHtml } from "~/shared/lib/html";
@@ -11,95 +11,13 @@ import {
 } from "~/shared/lib/message-idb-from-zulip.lib";
 import { shouldNotify } from "~/shared/lib/notifications-policy";
 import { closeReadMessageNotifications } from "./layout-notification-tags.lib";
+import type {
+  LayoutMessageFlagOp,
+  LayoutNotificationsActions,
+  LayoutZulipEventDispatchContext,
+} from "./layout-zulip-event-dispatch.types";
 
-type MessageFlagOp = "add" | "remove";
-
-interface LayoutChatListActions {
-  currentUserId: number | null;
-  addMessage: (message: ZulipRawMessage) => void;
-  decrementUnreadForMessages: (messageIds: number[]) => void;
-  incrementUnreadForMessages: (messageIds: number[]) => void;
-  handleDeleteMessages: (messageIds: number[]) => void;
-}
-
-interface LayoutCurrentChatActions {
-  context: CurrentChatContext | null;
-  appendMessage: (message: MockMessage) => void;
-  updateMessageFlags: (messageIds: number[], flag: string, op: MessageFlagOp) => void;
-  updateMessageReaction: (
-    messageId: number,
-    reaction: {
-      emoji_name: string;
-      emoji_code: string;
-      reaction_type: "unicode_emoji" | "realm_emoji" | "zulip_extra_emoji";
-      user_id: number;
-    },
-    op: MessageFlagOp,
-  ) => void;
-  removeMessages: (messageIds: number[]) => void;
-  updateMessageContent: (messageId: number, content: string) => void;
-}
-
-interface LayoutUsersActions {
-  mergeFromMessage: (message: ZulipRawMessage) => void;
-  setPresenceByEmail: (email: string, presence: { status: "active" | "idle"; timestamp: number }) => void;
-  setStatus: (
-    userId: number,
-    status:
-      | {
-          text: string;
-          emojiName?: string;
-          emojiCode?: string;
-          reactionType?: "unicode_emoji" | "realm_emoji" | "zulip_extra_emoji";
-          away: boolean;
-        }
-      | null,
-    updatedAtMs: number,
-  ) => void;
-}
-
-interface LayoutTypingActions {
-  setTyping: (chatKey: string, userId: number, isTyping: boolean) => void;
-}
-
-interface LayoutMuteActions {
-  isEffectivelyMuted: (streamId: number, topic: string) => boolean;
-  muteStream: (streamId: number) => void;
-  unmuteStream: (streamId: number) => void;
-  muteTopic: (streamId: number, topic: string) => void;
-  unmuteTopic: (streamId: number, topic: string) => void;
-}
-
-interface LayoutActivityActions {
-  markStale: () => void;
-}
-
-interface LayoutInboxActions {
-  markStale: () => void;
-}
-
-interface LayoutNotificationsActions {
-  show: (options: { title: string; body: string; tag: string }) => Promise<void>;
-  closeByTag: (tag: string) => void;
-  playSound: (preset?: string) => void;
-  getSoundPreset: () => string;
-  requestAttentionIfNotFocused: () => void;
-}
-
-export function dispatchZulipEvent(
-  event: ZulipEvent,
-  ctx: {
-    chatList: LayoutChatListActions;
-    currentChat: LayoutCurrentChatActions;
-    users: LayoutUsersActions;
-    typing: LayoutTypingActions;
-    mute: LayoutMuteActions;
-    activity: LayoutActivityActions;
-    inbox: LayoutInboxActions;
-    notifications: LayoutNotificationsActions;
-    updateLatestMessageId: (id: number) => void;
-  },
-): void {
+export function dispatchZulipEvent(event: ZulipEvent, ctx: LayoutZulipEventDispatchContext): void {
   const { chatList, currentChat, users, typing, mute, activity, inbox, notifications } = ctx;
 
   const instance = getCurrentInstance();
@@ -160,7 +78,7 @@ export function dispatchZulipEvent(
   }
 
   if (event.type === "update_message_flags") {
-    const op = event.op as MessageFlagOp;
+    const op = event.op as LayoutMessageFlagOp;
     const flag = event.flag as string;
     const messageIds = (event.messages ?? []) as number[];
     if (messageIds.length === 0) return;
@@ -198,7 +116,7 @@ export function dispatchZulipEvent(
           }
         : null;
     if (reaction) {
-      const op = (event.op as MessageFlagOp) ?? "add";
+      const op = (event.op as LayoutMessageFlagOp) ?? "add";
       if (!skipMemoryChat) {
         currentChat.updateMessageReaction(messageId, reaction, op);
       }

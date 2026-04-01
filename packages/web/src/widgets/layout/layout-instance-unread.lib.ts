@@ -1,6 +1,4 @@
-interface BadgeHolder {
-  badge?: number | null;
-}
+import type { LayoutBuildActiveChatWindowTitleInput, LayoutComputeInstanceUnreadInput } from "./layout-instance-unread.types";
 
 function toSafeUnreadCount(value: number | null | undefined): number {
   if (!Number.isFinite(value)) return 0;
@@ -11,10 +9,7 @@ function toSafeUnreadCount(value: number | null | undefined): number {
 export function computeInstanceUnreadCount({
   streams,
   dms,
-}: {
-  streams: readonly BadgeHolder[];
-  dms: readonly BadgeHolder[];
-}): number {
+}: LayoutComputeInstanceUnreadInput): number {
   const streamUnread = streams.reduce((sum, stream) => sum + toSafeUnreadCount(stream.badge), 0);
   const dmUnread = dms.reduce((sum, dm) => sum + toSafeUnreadCount(dm.badge), 0);
   return streamUnread + dmUnread;
@@ -45,11 +40,7 @@ export function buildActiveChatWindowTitle({
   dmName,
   streamName,
   topicName,
-}: {
-  dmName?: string | null;
-  streamName?: string | null;
-  topicName?: string | null;
-}): string | null {
+}: LayoutBuildActiveChatWindowTitleInput): string | null {
   return buildDmTitleSegment(dmName) ?? buildStreamTitleSegment(streamName, topicName);
 }
 

@@ -1,5 +1,5 @@
 import { extractOrgRouteFromPathname } from "~/shared/lib/org-route";
-import type { TopBarSection } from "~/widgets/top-bar/top-bar.ui";
+import type { TopBarSection } from "~/widgets/top-bar/top-bar.types";
 
 export function getSectionFromPathname(pathname: string): TopBarSection {
   const { scopedPathname } = extractOrgRouteFromPathname(pathname);

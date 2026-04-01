@@ -44,7 +44,7 @@ import { MessageComposerWriteBody } from "./message-composer-write-body.ui";
 import { MessageComposerMediaPickerPopover } from "./message-composer-media-picker-popover.ui";
 import { ComposerModeTabs } from "./message-composer-mode-tabs.ui";
 import { MessageComposerSchedulePopover } from "./message-composer-schedule-popover.ui";
-import type { ScheduleMenuOption } from "./message-composer-schedule-popover.ui";
+import type { ScheduleMenuOption } from "./message-composer-schedule-popover.types";
 import { MessageComposerSavedSnippetsDialog } from "./message-composer-saved-snippets-dialog.ui";
 import { wrapSelection } from "./message-composer-selection.lib";
 import { TOOLBAR_BTN } from "./message-composer-styles.lib";

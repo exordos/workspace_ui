@@ -8,20 +8,7 @@ import {
   orderedIndexedFoldersForRail,
   type IndexedFolderEntry,
 } from "./folder-rail.utils";
-import type { FolderRailFolder } from "./folder-rail.types";
-
-/** Пропсы vertical-представления; state/CRUD остаются в контейнере `FolderRail`. */
-interface FolderRailVerticalViewProps {
-  indexedFolders: IndexedFolderEntry[];
-  selectedFolderId: string;
-  showSystemFolders: boolean;
-  onSelectFolder: (id: string) => void;
-  onToggleLayout: () => void;
-  onToggleShowSystemFolders: () => void;
-  onRequestRename: (folder: FolderRailFolder) => void;
-  onRequestDelete: (folder: FolderRailFolder) => void;
-  onOpenCreateDialog: () => void;
-}
+import type { FolderRailVerticalViewProps } from "./folder-rail-vertical-view.types";
 
 export const FolderRailVerticalView: React.FC<FolderRailVerticalViewProps> = React.memo(
   function FolderRailVerticalView({

@@ -8,16 +8,7 @@ import {
   EMOJI_PICKER_WIDTH,
   MEDIA_PICKER_CONTENT_HEIGHT,
 } from "./message-composer-constants.lib";
-import type { MediaPickerTab } from "./message-composer.types";
-
-export interface MessageComposerMediaPickerPopoverProps {
-  mediaPickerStyle: React.CSSProperties;
-  mediaPickerTab: MediaPickerTab;
-  onClose: () => void;
-  onTabChange: (tab: MediaPickerTab) => void;
-  onEmojiClick: (data: EmojiClickData) => void;
-  onStickerSelect: (markdown: string) => void;
-}
+import type { MessageComposerMediaPickerPopoverProps } from "./message-composer-media-picker-popover.types";
 
 export const MessageComposerMediaPickerPopover = React.memo(
   function MessageComposerMediaPickerPopover({

@@ -1,27 +1,8 @@
-import React, { type RefObject } from "react";
-import type { MentionSuggestion } from "~/features/mention-suggest/mention-suggest.types";
+import React from "react";
 import { t } from "~/i18n/i18n";
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
 import { ComposerMentionDropdown } from "./message-composer-mention-dropdown.ui";
-
-export interface MessageComposerWriteBodyProps {
-  value: string;
-  placeholder: string;
-  disabled: boolean;
-  textareaRef: RefObject<HTMLTextAreaElement | null>;
-  showMentions: boolean;
-  mentionSuggestions: MentionSuggestion[];
-  activeMentionIndex: number;
-  onActiveMentionIndexChange: React.Dispatch<React.SetStateAction<number>>;
-  onMentionSelect: (suggestion: MentionSuggestion) => void;
-  onHideMentionDropdown: () => void;
-  onValueChange: (next: string) => void;
-  onDetectMention: (text: string, cursorPosition: number) => void;
-  applyFormattingShortcut: (delimiter: string) => void;
-  onPaste: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
-  onSend: () => void | Promise<void>;
-  onEditLastMessage?: () => void;
-}
+import type { MessageComposerWriteBodyProps } from "./message-composer-write-body.types";
 
 export const MessageComposerWriteBody = React.memo(function MessageComposerWriteBody({
   value,

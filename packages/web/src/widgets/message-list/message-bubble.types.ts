@@ -1,5 +1,10 @@
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage, MockMessageDeliveryStatus } from "~/shared/api/zulip.types";
 import type { MessageMediaGallery } from "./message-list-media.lib";
+
+/** Download chip state for user-upload attachment links in the bubble. */
+export type MessageBubbleAttachmentDownloadStatus = "idle" | "downloading" | "downloaded" | "error";
+
+export type MessageBubbleOwnDeliveryStatus = MockMessageDeliveryStatus | "sent";
 
 export interface MessageBubbleCallbacks {
   onReply?: (message: MockMessage, selectedText?: string) => void;

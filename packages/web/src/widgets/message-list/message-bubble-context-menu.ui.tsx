@@ -5,18 +5,7 @@ import { t } from "~/i18n/i18n";
 import { Icon } from "~/shared/ui/icon";
 import { CONTEXT_ITEMS_BY_LABEL, type ContextItemLabel } from "./message-bubble-context.lib";
 import { EMOJI_NAME_TO_CHAR, QUICK_REACTIONS } from "./message-bubble-emoji.lib";
-
-export interface MessageBubbleContextMenuProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  isOwn: boolean;
-  emojiPickerOpen: boolean;
-  onEmojiPickerOpenChange: (open: boolean) => void;
-  visibleContextSections: readonly (readonly ContextItemLabel[])[];
-  onMenuItem: (label: ContextItemLabel) => void;
-  onQuickReaction: (emojiName: string) => void;
-  onEmojiPick: (data: EmojiClickData) => void;
-}
+import type { MessageBubbleContextMenuProps } from "./message-bubble-context-menu.types";
 
 export const MessageBubbleContextMenu = React.memo(function MessageBubbleContextMenu({
   open,

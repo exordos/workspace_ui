@@ -10,7 +10,7 @@ import { resolveAvatarUrl } from "~/shared/lib/avatar";
 import { getPresenceState } from "~/shared/lib/format";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
-import type { ReactNode } from "react";
+import type { TopBarProps, TopBarSection } from "./top-bar.types";
 
 function resolveAvatarSrc(url: string | undefined | null): string | undefined {
   return resolveAvatarUrl(url, getRealmBaseUrl());
@@ -27,18 +27,6 @@ function formatDownloadBytes(bytes: number): string {
   }
   const precision = unitIndex === 0 ? 0 : value >= 10 ? 1 : 2;
   return `${value.toFixed(precision)} ${units[unitIndex]}`;
-}
-
-export type TopBarSection = "chat" | "calendar" | "mail" | "calls" | "services";
-
-interface TopBarProps {
-  activeSection: TopBarSection;
-  onSectionChange: (section: TopBarSection) => void;
-  onOpenSearch?: () => void;
-  /** Open the current user's profile drawer */
-  onOpenProfile?: () => void;
-  /** Left content (e.g. the instance switcher) */
-  leftContent?: ReactNode;
 }
 
 const SECTIONS: {

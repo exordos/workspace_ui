@@ -26,14 +26,14 @@ import { buildNavigableRouteFromMessage } from "~/shared/lib/push-click";
 import { Icon } from "~/shared/ui/icon";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
 import { MY_ACTIVITY, messageToDmEntry, slugForStream } from "~/widgets/sidebar/sidebar.lib";
+import type { ActivityPageExtendedFilter } from "./activity-page.types";
 
 const log = createLogger("activity-page");
 
 const ACTIVITY_FILTERS: ActivityFilter[] = ["starred", "mentions", "reactions"];
-const ALL_FILTERS = [...ACTIVITY_FILTERS, "drafts"] as const;
-type ExtendedFilter = (typeof ALL_FILTERS)[number];
+const ALL_FILTERS = [...ACTIVITY_FILTERS, "drafts"] as const satisfies readonly ActivityPageExtendedFilter[];
 
-function getActivityTitle(filter: ExtendedFilter): string {
+function getActivityTitle(filter: ActivityPageExtendedFilter): string {
   const item = MY_ACTIVITY.find(
     (i) =>
       (filter === "starred" && i.key === "favorites") ||
@@ -91,9 +91,9 @@ export const ActivityPage: React.FC = () => {
   const drafts = useDraftStore((s) => s.drafts);
   const activityStaleVersion = useActivityStore((s) => s.staleVersion);
 
-  const validFilter: ExtendedFilter | null =
+  const validFilter: ActivityPageExtendedFilter | null =
     filter && (ALL_FILTERS as readonly string[]).includes(filter)
-      ? (filter as ExtendedFilter)
+      ? (filter as ActivityPageExtendedFilter)
       : null;
 
   const isDrafts = validFilter === "drafts";

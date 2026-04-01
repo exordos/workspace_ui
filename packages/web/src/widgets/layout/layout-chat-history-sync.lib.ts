@@ -1,11 +1,5 @@
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
-
-interface LoadDeepHistoryMessagesOptions {
-  initialMessages: readonly ZulipRawMessage[];
-  fetchOlderMessages: (anchorId: number, numBefore: number) => Promise<ZulipRawMessage[]>;
-  pageSize?: number;
-  maxBatches?: number;
-}
+import type { LoadDeepHistoryMessagesOptions } from "./layout-chat-history-sync.types";
 
 const DEFAULT_PAGE_SIZE = 5000;
 const DEFAULT_MAX_BATCHES = 5;

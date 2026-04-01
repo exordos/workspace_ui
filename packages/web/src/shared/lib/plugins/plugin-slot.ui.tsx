@@ -1,16 +1,6 @@
 import React from "react";
 import { useSlot } from "./hooks";
-import type { SlotName } from "./types";
-
-interface PluginSlotProps<T = unknown> {
-  name: SlotName;
-  /** Props passed to each contribution's render function. */
-  context?: T;
-  /** Wrapper className for the slot container. */
-  className?: string;
-  /** Fallback when no plugins contribute to this slot. */
-  fallback?: React.ReactNode;
-}
+import type { PluginSlotProps } from "./plugin-slot.types";
 
 export function PluginSlot<T = unknown>({
   name,

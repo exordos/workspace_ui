@@ -10,15 +10,7 @@ import { Badge } from "~/shared/ui/badge";
 import { Icon } from "~/shared/ui/icon";
 import { slugForStream, TOPIC_BAR_COLORS } from "./sidebar.lib";
 import type { SidebarChat } from "./sidebar.types";
-
-interface SidebarStreamListProps {
-  streamChats: SidebarChat[];
-  activeStreamSlug: string | null;
-  activeTopic?: string | null;
-  expandedStreamSlug: string | null;
-  onToggleStream: (slug: string) => void;
-  onNewTopic?: (streamSlug: string, topicName: string) => void;
-}
+import type { SidebarStreamListProps } from "./sidebar-stream-list.types";
 
 function isStream(chat: SidebarChat): chat is Extract<SidebarChat, { type: "stream" }> {
   return chat.type === "stream";

@@ -6,7 +6,7 @@ import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
 import { t } from "~/i18n/i18n";
 import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
-import type { MockMessage, MockMessageDeliveryStatus } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/zulip.types";
 import { WORKSPACE_ORIGIN, WORKSPACE_UPLOADS_ORIGIN } from "~/shared/config/constants";
 import { buildAuthHeader } from "~/shared/lib/auth-guard";
 import { formatMessageTime, getPresenceState } from "~/shared/lib/format";
@@ -30,7 +30,12 @@ import {
   type ContextItemLabel,
 } from "./message-bubble-context.lib";
 import { MessageBubbleContextMenu } from "./message-bubble-context-menu.ui";
-import type { MessageBubbleCallbacks, MessageBubbleProps } from "./message-bubble.types";
+import type {
+  MessageBubbleAttachmentDownloadStatus,
+  MessageBubbleCallbacks,
+  MessageBubbleOwnDeliveryStatus,
+  MessageBubbleProps,
+} from "./message-bubble.types";
 import { groupReactions } from "./message-bubble-emoji.lib";
 import { MessageBubbleJitsiCard } from "./message-bubble-jitsi-card.ui";
 import { MessageBubbleOwnDeliveryIndicator } from "./message-bubble-own-delivery-indicator.ui";
@@ -80,11 +85,7 @@ const ATTACHMENT_LINK_STATUS_CLASSES = {
   error: ["border-border-subtle", "bg-bg/20", "text-text-muted"],
 } as const;
 
-type AttachmentDownloadStatus = keyof typeof ATTACHMENT_LINK_STATUS_CLASSES;
-
-type OwnMessageDeliveryStatus = MockMessageDeliveryStatus | "sent";
-
-function resolveOwnMessageDeliveryStatus(message: MockMessage): OwnMessageDeliveryStatus {
+function resolveOwnMessageDeliveryStatus(message: MockMessage): MessageBubbleOwnDeliveryStatus {
   if (message.delivery_status != null) {
     return message.delivery_status;
   }
@@ -149,12 +150,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     const messageBodyRef = useRef<HTMLDivElement>(null);
     const groupedContainerRef = useRef<HTMLDivElement>(null);
     const regularContainerRef = useRef<HTMLDivElement>(null);
-    const attachmentStatusRef = useRef<Map<string, AttachmentDownloadStatus>>(new Map());
+    const attachmentStatusRef = useRef<Map<string, MessageBubbleAttachmentDownloadStatus>>(new Map());
     const attachmentTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
     const [attachmentStatusVersion, setAttachmentStatusVersion] = useState(0);
     const replySelectionRef = useRef<string | undefined>(undefined);
 
-    const setAttachmentStatus = useCallback((path: string, status: AttachmentDownloadStatus) => {
+    const setAttachmentStatus = useCallback((path: string, status: MessageBubbleAttachmentDownloadStatus) => {
       attachmentStatusRef.current.set(path, status);
       setAttachmentStatusVersion((value) => value + 1);
     }, []);

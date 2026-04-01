@@ -7,15 +7,9 @@
  */
 import React from "react";
 import { t } from "~/i18n/i18n";
+import type { PresenceIndicatorProps, PresenceVisual } from "./presence-indicator.types";
 
-export type PresenceVisual = "active" | "idle" | "offline" | null;
-
-interface PresenceIndicatorProps {
-  status: PresenceVisual;
-  size?: "sm" | "md" | "lg";
-  className?: string;
-  withBorder?: boolean;
-}
+export type { PresenceVisual } from "./presence-indicator.types";
 
 const SIZE_MAP = {
   sm: "h-2 w-2",

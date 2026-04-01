@@ -2,23 +2,14 @@ import React from "react";
 import { t } from "~/i18n/i18n";
 import { createLogger } from "~/shared/lib/logger";
 import { captureException } from "~/shared/lib/sentry";
+import type { ErrorBoundaryProps, ErrorBoundaryState } from "./error-boundary.types";
 
 const log = createLogger("error-boundary");
 
-interface Props {
-  fallback?: React.ReactNode;
-  onError?: (error: Error, info: React.ErrorInfo) => void;
-  children: React.ReactNode;
-}
+export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  state: ErrorBoundaryState = { error: null };
 
-interface State {
-  error: Error | null;
-}
-
-export class ErrorBoundary extends React.Component<Props, State> {
-  state: State = { error: null };
-
-  static getDerivedStateFromError(error: Error): State {
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { error };
   }
 

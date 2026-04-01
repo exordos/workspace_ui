@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   loadFolderAssignments,
   toggleFolderAssignment,
-  type FolderAssignment,
 } from "./sidebar-folder-assignment.lib";
+import type { FolderAssignment } from "./sidebar-folder-assignment.types";
 
 describe("loadFolderAssignments", () => {
   it("excludes system all folder from assignment rows", async () => {

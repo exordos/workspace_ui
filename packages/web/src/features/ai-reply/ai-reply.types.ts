@@ -109,3 +109,25 @@ export interface AiReplyProvider {
   /** Generate reply with streaming (token-by-token). Returns abort function. */
   generateStream?(request: AiReplyRequest, onChunk: AiStreamCallback): Promise<() => void>;
 }
+
+// ---------------------------------------------------------------------------
+// UI (ai-reply.ui.tsx)
+// ---------------------------------------------------------------------------
+
+export interface SmartReplySuggestionsProps {
+  onAccept: (text: string) => void;
+}
+
+export interface AiActionMenuProps {
+  draft: string;
+  onInsert: (text: string) => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  messagesContext?: AiMessageContext[];
+  chatContext?: AiReplyRequest["chatContext"];
+}
+
+export interface AiComposerButtonProps {
+  onClick: () => void;
+  active: boolean;
+}

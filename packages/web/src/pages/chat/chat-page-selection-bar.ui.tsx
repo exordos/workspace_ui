@@ -1,14 +1,6 @@
 import React from "react";
 import { t } from "~/i18n/i18n";
-
-export interface ChatPageSelectionBarProps {
-  selectedCount: number;
-  forwardDisabled: boolean;
-  deleteDisabled: boolean;
-  onForward: () => void;
-  onDelete: () => void;
-  onCancel: () => void;
-}
+import type { ChatPageSelectionBarProps } from "./chat-page-selection-bar.types";
 
 export const ChatPageSelectionBar = React.memo(function ChatPageSelectionBar({
   selectedCount,

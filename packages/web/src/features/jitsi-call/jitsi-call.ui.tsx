@@ -12,18 +12,8 @@ import { Icon } from "~/shared/ui/icon";
 import { configureJitsiIframe } from "./jitsi-call-permissions.lib";
 import { getDefaultPipWindowBounds, type PipWindowBounds } from "./jitsi-call-pip.lib";
 import { parseJitsiMeetingUrlLoose } from "./jitsi-call-url.lib";
-import { useJitsiParticipantCount, type JitsiExternalApi } from "./use-jitsi-participant-count.hook";
-
-interface JitsiExternalApiWithParticipants extends JitsiExternalApi {
-  getParticipantsInfo: () => object[];
-}
-
-export interface JitsiCallModalProps {
-  open: boolean;
-  meetingUrl: string;
-  locationName?: string;
-  onClose: () => void;
-}
+import type { JitsiCallModalProps, JitsiExternalApiWithParticipants } from "./jitsi-call.types";
+import { useJitsiParticipantCount } from "./use-jitsi-participant-count.hook";
 
 export const JitsiCallModal: React.FC<JitsiCallModalProps> = ({
   open,

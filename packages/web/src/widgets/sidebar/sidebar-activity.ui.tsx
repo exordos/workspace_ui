@@ -7,11 +7,7 @@ import { t } from "~/i18n/i18n";
 import { Badge } from "~/shared/ui/badge";
 import { Icon, type IconName } from "~/shared/ui/icon";
 import { MY_ACTIVITY } from "./sidebar.lib";
-
-interface SidebarActivityProps {
-  open: boolean;
-  onToggle: () => void;
-}
+import type { SidebarActivityProps } from "./sidebar-activity.types";
 
 const compactRowClass =
   "relative flex h-8 w-8 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-sidebar-hover hover:text-text-primary";
