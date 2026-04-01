@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadFolderItemsForSelection, loadFolderSyncSnapshot } from "./folder-sync.api";
+import { SYSTEM_ALL_FOLDER_ID } from "./folder-sync.lib";
 import { useFolderSyncStore } from "./folder-sync.model";
 
 vi.mock("./folder-sync.api", () => ({
@@ -92,6 +93,12 @@ describe("folder-sync model orchestration", () => {
 
   afterEach(() => {
     useFolderSyncStore.getState().clear();
+  });
+
+  it("clear resets selected folder to synthetic «all chats» id", () => {
+    useFolderSyncStore.setState({ selectedFolderId: "custom-folder" });
+    useFolderSyncStore.getState().clear();
+    expect(useFolderSyncStore.getState().selectedFolderId).toBe(SYSTEM_ALL_FOLDER_ID);
   });
 
   it("refresh does not trigger extra selected-folder fetch when snapshot already has selected items", async () => {

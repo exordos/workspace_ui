@@ -5,10 +5,12 @@ import { persistChatListSnapshotToIndexedDb } from "~/entities/chat-list/chat-li
 import { useInboxStore } from "~/entities/inbox/inbox.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
+import { persistUsersDirectoryToIndexedDb } from "~/entities/user/user-directory-snapshot-persist.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indicator.model";
+import type { ZulipUserMember } from "~/shared/api/zulip.types";
 import {
   deleteQueue,
   fetchRecentMessages,
@@ -18,6 +20,7 @@ import {
   getCurrentUser,
   type ZulipEvent,
 } from "~/shared/api/zulip";
+import { loadUsersDirectoryRow } from "~/shared/lib/users-directory-snapshot-db";
 import { startZulipEventLoop } from "~/shared/lib/event-loop";
 import { playNotificationSound } from "~/shared/lib/notification-sound";
 import { notificationService } from "~/shared/lib/notifications";
@@ -90,38 +93,50 @@ export function useLayoutZulipEventLoop(options: {
       latestMessageIdRef.current = null;
     }
 
-    void Promise.resolve().then(() => {
-      if (!cancelled) setCurrentUserStatusRef.current("loading");
-    });
-
-    const pUsers = fetchUsers();
-    const pMessages = loadBootstrapMessagesRef.current();
-
-    getCurrentUser()
-      .then((user) => {
+    void (async () => {
+      if (instanceSwitched) {
+        const row = await loadUsersDirectoryRow(currentInstanceId);
         if (cancelled) return;
-        if (user?.user_id != null) {
-          useUsersStore.getState().mergeUser(user);
-          setCurrentUserIdRef.current(user.user_id);
-          setCurrentUserStatusRef.current("ready");
-        } else {
+        if (row?.members?.length) {
+          useUsersStore.getState().mergeUsers(row.members);
+        }
+      }
+
+      if (cancelled) return;
+
+      void Promise.resolve().then(() => {
+        if (!cancelled) setCurrentUserStatusRef.current("loading");
+      });
+
+      const pUsers = fetchUsers();
+      const pMessages = loadBootstrapMessagesRef.current();
+
+      getCurrentUser()
+        .then((user) => {
+          if (cancelled) return;
+          if (user?.user_id != null) {
+            useUsersStore.getState().mergeUser(user);
+            setCurrentUserIdRef.current(user.user_id);
+            setCurrentUserStatusRef.current("ready");
+          } else {
+            setCurrentUserStatusRef.current("error");
+            useUsersStore.getState().clear();
+            useChatListStore.getState().clear();
+          }
+        })
+        .catch(() => {
+          if (cancelled) return;
           setCurrentUserStatusRef.current("error");
           useUsersStore.getState().clear();
           useChatListStore.getState().clear();
-        }
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setCurrentUserStatusRef.current("error");
-        useUsersStore.getState().clear();
-        useChatListStore.getState().clear();
-      });
+        });
 
-    Promise.all([pUsers, pMessages])
-      .then(([members, bootstrap]) => {
+      try {
+        const [members, bootstrap] = await Promise.all([pUsers, pMessages]);
         if (cancelled) return;
         const result = bootstrap as ChatListBootstrapResult;
-        useUsersStore.getState().mergeUsers((members as any[]) ?? []);
+        const apiMembers: ZulipUserMember[] = members ?? [];
+        useUsersStore.getState().mergeUsers(apiMembers);
 
         const uid = useChatListStore.getState().currentUserId ?? null;
 
@@ -150,6 +165,7 @@ export function useLayoutZulipEventLoop(options: {
         const instanceIdPersist = useInstancesStore.getState().currentInstanceId;
         if (instanceIdPersist != null) {
           void persistChatListSnapshotToIndexedDb(instanceIdPersist);
+          void persistUsersDirectoryToIndexedDb(instanceIdPersist, apiMembers);
         }
 
         eventLoopAbortRef.current?.abort();
@@ -282,10 +298,10 @@ export function useLayoutZulipEventLoop(options: {
             });
           },
         });
-      })
-      .catch(() => {
-        // ignore: user may already be loaded
-      });
+      } catch {
+        // ignore: bootstrap / users fetch may fail
+      }
+    })().catch(() => {});
 
     return () => {
       cancelled = true;

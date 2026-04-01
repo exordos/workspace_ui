@@ -4,6 +4,7 @@
  * Stores collapsible section states (e.g. activity panel). Persisted to localStorage.
  */
 import { create } from "zustand";
+import { SYSTEM_ALL_FOLDER_ID } from "~/features/folder-sync/folder-sync.lib";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { buildOrgScopedStorageKey } from "~/shared/lib/org-scoped-storage";
 import type { SidebarConfig, SidebarConfigState, SidebarUiState } from "./sidebar-config.types";
@@ -16,7 +17,7 @@ const DEFAULT_CONFIG: SidebarConfig = {
 };
 
 const DEFAULT_UI_STATE: SidebarUiState = {
-  selectedFolderId: "1",
+  selectedFolderId: SYSTEM_ALL_FOLDER_ID,
   pinReorderMode: false,
   searchQuery: "",
   createChatOpen: false,

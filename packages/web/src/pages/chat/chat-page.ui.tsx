@@ -181,12 +181,34 @@ export const ChatPage: React.FC = () => {
           : messagesFromIdb.length > 0
             ? "idb"
             : "store-fallback";
+    const firstId = messages[0]?.id;
+    const lastId = messages[messages.length - 1]?.id;
+    const storeFirst = messagesFromStore[0]?.id;
+    const storeLast = messagesFromStore[messagesFromStore.length - 1]?.id;
+    const idbFirst = messagesFromIdb[0]?.id;
+    const idbLast = messagesFromIdb[messagesFromIdb.length - 1]?.id;
     logMessageFlow("ui:resolved message list", {
       source,
       context: summarizeChatContextForLog(chatContextForMessages),
       storeCount: messagesFromStore.length,
       idbCount: messagesFromIdb.length,
       effectiveCount: messages.length,
+      effectiveFirstId: firstId,
+      effectiveLastId: lastId,
+      storeFirstId: storeFirst,
+      storeLastId: storeLast,
+      idbFirstId: idbFirst,
+      idbLastId: idbLast,
+      storeLongerThanIdb: messagesFromStore.length > messagesFromIdb.length,
+    });
+    logMessageFlow("ui:messages id range compare", {
+      source,
+      sameBoundsAsStore:
+        source === "store-prefer-longer" ||
+        (storeFirst === firstId && storeLast === lastId && messagesFromStore.length === messages.length),
+      sameBoundsAsIdb:
+        source === "idb" ||
+        (idbFirst === firstId && idbLast === lastId && messagesFromIdb.length === messages.length),
     });
   }, [
     useIdbAsMessageSource,
@@ -829,18 +851,32 @@ export const ChatPage: React.FC = () => {
 
   const loadOlderMessages = useCallback(() => {
     const store = useCurrentChatMessagesStore.getState();
-    const messagesLength = useIndexedDbMessageSourceEnabled() ? messages.length : store.messages.length;
-    if (
-      !shouldLoadBoundaryPage({
-        isLoadingMore: store.isLoadingMore,
-        hasBoundaryMessages: store.hasOlderMessages,
-        messagesLength,
-      })
-    ) {
+    const messagesLength = useIdbAsMessageSource ? messages.length : store.messages.length;
+    const gate = {
+      isLoadingMore: store.isLoadingMore,
+      hasBoundaryMessages: store.hasOlderMessages,
+      messagesLength,
+    };
+    if (!shouldLoadBoundaryPage(gate)) {
+      logMessageFlow("ui:loadOlder skipped", {
+        ...gate,
+        context: summarizeChatContextForLog(store.context),
+        useIdbSource: useIdbAsMessageSource,
+      });
       return;
     }
+    logMessageFlow("ui:loadOlder invoke", {
+      pageSize: PAGE_SIZE,
+      messagesLength,
+      context: summarizeChatContextForLog(store.context),
+      useIdbSource: useIdbAsMessageSource,
+      storeHasOlderMessages: store.hasOlderMessages,
+      storeMessageCount: store.messages.length,
+      storeFirstId: store.messages[0]?.id,
+      storeLastId: store.messages[store.messages.length - 1]?.id,
+    });
     void loadOlderBoundaryPage({ pageSize: PAGE_SIZE, currentUserId });
-  }, [PAGE_SIZE, currentUserId, loadOlderBoundaryPage, messages.length]);
+  }, [PAGE_SIZE, currentUserId, loadOlderBoundaryPage, messages.length, useIdbAsMessageSource]);
 
   const loadNewerMessages = useCallback(() => {
     const store = useCurrentChatMessagesStore.getState();

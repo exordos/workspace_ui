@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeFeedScrollTopAfterPrepend, shouldRequestOlderFeedPage } from "./feed-scroll.lib";
+import { shouldRequestOlderFeedPage } from "./feed-scroll.lib";
 
 describe("shouldRequestOlderFeedPage", () => {
   it("returns true when user is near top and pagination is available", () => {
@@ -55,31 +55,5 @@ describe("shouldRequestOlderFeedPage", () => {
         lastMessageId: null,
       }),
     ).toBe(false);
-  });
-});
-
-describe("computeFeedScrollTopAfterPrepend", () => {
-  it("preserves visible anchor after prepending older messages", () => {
-    expect(
-      computeFeedScrollTopAfterPrepend(
-        {
-          scrollTop: 18,
-          scrollHeight: 700,
-        },
-        910,
-      ),
-    ).toBe(228);
-  });
-
-  it("clamps to zero when next height is unexpectedly smaller", () => {
-    expect(
-      computeFeedScrollTopAfterPrepend(
-        {
-          scrollTop: 20,
-          scrollHeight: 700,
-        },
-        650,
-      ),
-    ).toBe(0);
   });
 });

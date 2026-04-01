@@ -4,6 +4,7 @@ import {
   computeHasNewerAfterLoadNewerMemoryPage,
   computeHasOlderAfterLoadOlderIdbPage,
   computeHasOlderAfterLoadOlderMemoryPage,
+  mergeOlderLoadAnchor,
 } from "./message-pagination-boundary.lib";
 
 describe("computeHasOlderAfterLoadOlderIdbPage", () => {
@@ -29,7 +30,7 @@ describe("computeHasOlderAfterLoadOlderIdbPage", () => {
     ).toBe(false);
   });
 
-  it("returns false when all rows were already in IndexedDB (overlap)", () => {
+  it("returns true on full page even when all rows were already in IndexedDB (overlap)", () => {
     expect(
       computeHasOlderAfterLoadOlderIdbPage({
         foundOldest: false,
@@ -37,7 +38,7 @@ describe("computeHasOlderAfterLoadOlderIdbPage", () => {
         pageSize: 50,
         toUpsertCount: 0,
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("returns true when full page with new ids", () => {
@@ -64,7 +65,7 @@ describe("computeHasNewerAfterLoadNewerIdbPage", () => {
     ).toBe(false);
   });
 
-  it("returns false on duplicate-only page", () => {
+  it("returns true on full duplicate-only page when not foundNewest", () => {
     expect(
       computeHasNewerAfterLoadNewerIdbPage({
         foundNewest: false,
@@ -72,7 +73,25 @@ describe("computeHasNewerAfterLoadNewerIdbPage", () => {
         pageSize: 50,
         toUpsertCount: 0,
       }),
-    ).toBe(false);
+    ).toBe(true);
+  });
+});
+
+describe("mergeOlderLoadAnchor", () => {
+  it("prefers lower id when store is ahead of idb", () => {
+    expect(mergeOlderLoadAnchor(4154137, 4288890)).toBe(4154137);
+  });
+
+  it("uses idb when store is empty", () => {
+    expect(mergeOlderLoadAnchor(null, 4288890)).toBe(4288890);
+  });
+
+  it("uses store when idb has no oldest", () => {
+    expect(mergeOlderLoadAnchor(100, null)).toBe(100);
+  });
+
+  it("returns null when both missing", () => {
+    expect(mergeOlderLoadAnchor(null, null)).toBe(null);
   });
 });
 

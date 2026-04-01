@@ -8,12 +8,15 @@ import { useInstancesStore } from "~/entities/instance/instance.model";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { env } from "~/shared/lib/env";
 import { logMessageFlow } from "~/shared/lib/message-flow-debug.lib";
+import { createLogger } from "~/shared/lib/logger";
 import { getChatMessagesAscending } from "~/shared/lib/message-cache-db";
 import { subscribeMessageCache } from "~/shared/lib/message-cache-bus";
 import { chatKeyFromContext, instanceChatKey } from "~/shared/lib/message-cache-keys.lib";
 import type { CurrentChatContext } from "./message.model.types";
 
 const EMPTY: MockMessage[] = [];
+
+const idbHookLog = createLogger("idb:chat-messages-hook");
 
 export function useIndexedDbMessageSourceEnabled(): boolean {
   return env.CHAT_MESSAGES_SOURCE_INDEXEDDB;
@@ -54,14 +57,31 @@ export function useIndexedDbChatMessages(options: {
         .then((rows) => {
           if (cancelled) return;
           const serialized = rows.map((m) => m.id).join(",");
-          if (serialized === lastSerializedRef.current) return;
+          if (serialized === lastSerializedRef.current) {
+            idbHookLog.debug("skip setState: same id sequence as last read", {
+              iKey,
+              rowCount: rows.length,
+            });
+            logMessageFlow("idb:hook skip same serialized ids", {
+              iKey,
+              chatKey,
+              rowCount: rows.length,
+              firstId: rows[0]?.id,
+              lastId: rows[rows.length - 1]?.id,
+              idSequenceLen: serialized.length,
+            });
+            return;
+          }
+          const prevSerialized = lastSerializedRef.current;
           lastSerializedRef.current = serialized;
-          logMessageFlow("idb:hook rows", {
+          logMessageFlow("idb:hook rows applied", {
             iKey,
             chatKey,
             rowCount: rows.length,
             firstId: rows[0]?.id,
             lastId: rows[rows.length - 1]?.id,
+            prevIdSequenceLen: prevSerialized.length,
+            newIdSequenceLen: serialized.length,
           });
           setMessages(rows);
         })

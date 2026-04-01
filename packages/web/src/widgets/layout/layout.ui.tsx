@@ -38,6 +38,7 @@ import { OpenSearchContext } from "~/shared/contexts/open-search";
 import { RightDrawerContext } from "~/shared/contexts/right-drawer";
 import { initAuthGuard } from "~/shared/lib/auth-guard";
 import { brand } from "~/shared/lib/brand";
+import { createLogger } from "~/shared/lib/logger";
 import { sortChatsByLastMessage } from "~/shared/lib/chat-sorting";
 import { getElectronAPI } from "~/shared/lib/electron";
 import { startZulipEventLoop, startZulipEventLoopForCredentials } from "~/shared/lib/event-loop";
@@ -118,6 +119,8 @@ function getSystemFolderLabels() {
     channels: t("folder.channels"),
   };
 }
+
+const layoutFolderSyncLog = createLogger("layout:folderSync");
 
 export const Layout: React.FC = () => {
   const location = useLocation();
@@ -277,6 +280,18 @@ export const Layout: React.FC = () => {
 
   useEffect(() => {
     // Триггерим пересчет проекции sidebar в orchestrator при изменении входных данных.
+    layoutFolderSyncLog.debug("sidebarProjectionEffect", {
+      chatsSortedLength: chatsSortedByLastMessage.length,
+      streamsMapSize: streamsMap.size,
+      dmsMapSize: dmsMap.size,
+      selectedFolderId,
+      selectedFolderChatIds:
+        selectedFolderChatIds === null
+          ? "null"
+          : selectedFolderChatIds.size === 0
+            ? "empty"
+            : `size:${selectedFolderChatIds.size}`,
+    });
     syncFolderSyncSidebarProjection({
       chatsSortedByLastMessage,
       streamsMap,

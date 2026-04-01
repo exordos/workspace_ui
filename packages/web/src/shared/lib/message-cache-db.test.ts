@@ -26,6 +26,12 @@ function msg(id: number): MockMessage {
 }
 
 afterEach(async () => {
+  try {
+    const db = await openMessageCacheDb();
+    db.close();
+  } catch {
+    // no open DB
+  }
   resetMessageCacheDbSingletonForTests();
   await new Promise<void>((resolve, reject) => {
     const req = indexedDB.deleteDatabase("workspace-message-cache-v1");

@@ -296,23 +296,21 @@ export function withDefaultSystemFolders(
   showSystemFolders = false,
 ): WorkspaceFolderForRail[] {
   // Нормализуем "all" и при необходимости вставляем personal/channels сразу после all.
+  // Виртуальный id `system:all` всегда — папка «Все чаты» из API не подменяет rail (badge переносим).
   const baseFolders = folders.filter((folder) => !isPersonalOrChannelsSystemFolder(folder));
   const preferredAllFolder =
     baseFolders.find(
       (folder) => folder.systemType === "all" && folder.id !== SYSTEM_ALL_FOLDER_ID,
     ) ?? baseFolders.find((folder) => folder.systemType === "all");
 
-  const normalizedAllFolder =
-    preferredAllFolder != null && preferredAllFolder.id !== SYSTEM_ALL_FOLDER_ID
-      ? preferredAllFolder
-      : createSyntheticAllFolder(labels);
+  const syntheticAll = createSyntheticAllFolder(labels);
+  const normalizedAllFolder: WorkspaceFolderForRail =
+    preferredAllFolder != null && preferredAllFolder.badge !== undefined
+      ? { ...syntheticAll, badge: preferredAllFolder.badge }
+      : syntheticAll;
 
-  const normalizedBaseFolders =
-    preferredAllFolder == null
-      ? [normalizedAllFolder, ...baseFolders]
-      : baseFolders
-          .filter((folder) => folder.systemType !== "all" || folder === preferredAllFolder)
-          .map((folder) => (folder === preferredAllFolder ? normalizedAllFolder : folder));
+  const foldersWithoutApiAll = baseFolders.filter((folder) => folder.systemType !== "all");
+  const normalizedBaseFolders = [normalizedAllFolder, ...foldersWithoutApiAll];
 
   const includePersonalAndChannels =
     showSystemFolders && baseFolders.some((folder) => folder.id !== SYSTEM_ALL_FOLDER_ID);

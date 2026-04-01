@@ -50,8 +50,9 @@ export const Sidebar: React.FC<SidebarUiProps> = ({
   const setSelectedFolderIdFromUi = useSidebarConfigStore((s) => s.setSelectedFolderId);
   const pinReorderModeFromUi = useSidebarConfigStore((s) => s.pinReorderMode);
   const setPinReorderModeFromUi = useSidebarConfigStore((s) => s.setPinReorderMode);
+  const selectedFolderIdFromSync = useFolderSyncStore((s) => s.selectedFolderId);
   const selectedFolderId =
-    selectedFolderIdProp ?? selectedFolderIdFromUi ?? useFolderSyncStore((s) => s.selectedFolderId);
+    selectedFolderIdProp ?? selectedFolderIdFromSync ?? selectedFolderIdFromUi;
   const sidebarChats = sidebarChatsProp ?? null;
   const sidebarChatsLoading = sidebarChatsLoadingProp || false;
   const selectFolderSync = useFolderSyncStore((s) => s.selectFolder);

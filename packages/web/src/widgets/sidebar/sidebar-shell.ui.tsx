@@ -13,7 +13,7 @@ export const SidebarShell: React.FC = () => {
   const sidebarChatsLoading = useFolderSyncStore(selectSidebarChatsLoading);
   const refreshFolderSync = useFolderSyncStore((s) => s.refresh);
   const selectFolderSync = useFolderSyncStore((s) => s.selectFolder);
-  const selectedFolderId = useSidebarConfigStore((s) => s.selectedFolderId);
+  const selectedFolderId = useFolderSyncStore((s) => s.selectedFolderId);
   const setSelectedFolderId = useSidebarConfigStore((s) => s.setSelectedFolderId);
   const setPinReorderMode = useSidebarConfigStore((s) => s.setPinReorderMode);
 

@@ -4,7 +4,7 @@ import {
   type FolderItemForClient,
   type WorkspaceFolderForRail,
 } from "~/shared/api/workspace-client";
-import { logStoreAction } from "~/shared/lib/logger";
+import { createLogger, logStoreAction } from "~/shared/lib/logger";
 import { loadOfflineFolders, saveOfflineFolders } from "~/shared/lib/offline-folders";
 import type { SidebarChat, StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import {
@@ -17,12 +17,25 @@ import {
   mergeFolderItemsSnapshot,
   resolveSelectedFolderId,
   shouldLoadFolderItemsForSelection,
+  SYSTEM_ALL_FOLDER_ID,
   toChatIdSet,
   withDefaultSystemFolders,
   type FolderSyncSystemLabels,
 } from "./folder-sync.lib";
 
 export type FolderRefreshReason = "bootstrap" | "polling" | "mutation";
+
+const folderSyncLog = createLogger("folderSync");
+
+function describeFolderChatIds(value: Set<string> | null): "null" | "empty" | `size:${number}` {
+  if (value === null) {
+    return "null";
+  }
+  if (value.size === 0) {
+    return "empty";
+  }
+  return `size:${value.size}`;
+}
 
 interface FolderSyncBootstrapOptions {
   instanceId: string;
@@ -60,7 +73,8 @@ interface FolderSyncState {
   clear: () => void;
 }
 
-const DEFAULT_SELECTED_FOLDER_ID = "1";
+/** Aligns with synthetic «All chats» id from `withDefaultSystemFolders` before API folders arrive. */
+const DEFAULT_SELECTED_FOLDER_ID = SYSTEM_ALL_FOLDER_ID;
 const DEFAULT_LABELS: FolderSyncSystemLabels = {
   allChats: "All chats",
   personal: "Personal",
@@ -139,6 +153,18 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
         // При смене инстанса очищаем кэш items, иначе переиспользуем текущий.
         folderItemsByFolderId: isInstanceChanged ? new Map() : state.folderItemsByFolderId,
       }));
+
+      const afterBootstrap = get();
+      folderSyncLog.debug("bootstrap:cacheApplied", {
+        instanceId,
+        folderCount: afterBootstrap.folders.length,
+        selectedFolderId: afterBootstrap.selectedFolderId,
+        folderChatIds: describeFolderChatIds(afterBootstrap.selectedFolderChatIds),
+        shouldLoadItems: shouldLoadFolderItemsForSelection(
+          cachedFolders,
+          resolvedSelectedFolderId,
+        ),
+      });
 
       // После загрузки кэша всегда запускаем сетевой refresh для актуализации данных.
       await get().refresh("bootstrap");
@@ -292,6 +318,17 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
             ...(shouldToggleLoading ? { loading: needsFallbackSelectedLoad } : {}),
           });
 
+          folderSyncLog.debug("refresh:snapshotApplied", {
+            reason,
+            instanceId,
+            requestVersion,
+            folderCount: foldersWithSystemDefaults.length,
+            selectedFolderId,
+            shouldLoadSelectedItems,
+            folderChatIds: describeFolderChatIds(selectedFolderChatIds),
+            needsFallbackSelectedLoad,
+          });
+
           if (!needsFallbackSelectedLoad) {
             if (shouldToggleLoading) {
               set({ loading: false });
@@ -353,6 +390,13 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
             error: "folder-sync:refresh_failed",
             ...(shouldToggleLoading ? { loading: false } : {}),
           });
+          folderSyncLog.warn("refresh:failedUsingOfflineFolders", {
+            instanceId,
+            requestVersion,
+            folderCount: offlineFolders.length,
+            selectedFolderId,
+            folderChatIds: describeFolderChatIds(selectedFolderChatIds),
+          });
         } finally {
           const stateAfterFinish = get();
           if (
@@ -378,6 +422,8 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
 
     syncSidebarProjection(input) {
       const state = get();
+      const inputChatCount = input.chatsSortedByLastMessage.length;
+      const streamsCount = input.streamsMap.size;
       const nextChats = buildSelectedFolderSidebarChats({
         selectedFolderId: state.selectedFolderId,
         folderChatIds: state.selectedFolderChatIds,
@@ -390,6 +436,27 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
       set({
         selectedFolderSidebarChats: nextChats,
       });
+
+      folderSyncLog.debug("sidebarProjection", {
+        selectedFolderId: state.selectedFolderId,
+        folderChatIds: describeFolderChatIds(state.selectedFolderChatIds),
+        loading: state.loading,
+        inputChatCount,
+        streamsCount,
+        sidebarChatCount: nextChats.length,
+        folderItemsForSelectedCount:
+          state.folderItemsByFolderId.get(state.selectedFolderId)?.length ?? 0,
+      });
+
+      if (inputChatCount > 0 && nextChats.length === 0) {
+        folderSyncLog.warn("sidebarProjection:emptyDespiteInputChats", {
+          selectedFolderId: state.selectedFolderId,
+          folderChatIds: describeFolderChatIds(state.selectedFolderChatIds),
+          loading: state.loading,
+          inputChatCount,
+          streamsCount,
+        });
+      }
     },
 
     syncDerived(showSystemFolders, labels) {
@@ -411,6 +478,12 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
         selectedFolderChatIds,
         showSystemFolders,
         labels,
+      });
+
+      folderSyncLog.debug("syncDerived:applied", {
+        folderCount: nextFolders.length,
+        selectedFolderId,
+        folderChatIds: describeFolderChatIds(selectedFolderChatIds),
       });
     },
 

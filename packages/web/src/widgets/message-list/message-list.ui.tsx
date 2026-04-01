@@ -3,7 +3,10 @@ import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
+import { computeScrollTopAfterPrepend } from "~/shared/lib/scroll-prepend-anchor.lib";
 import { getPresenceState } from "~/shared/lib/format";
+import { createLogger } from "~/shared/lib/logger";
+import { logMessageFlow } from "~/shared/lib/message-flow-debug.lib";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
@@ -119,6 +122,8 @@ const UnreadMarker: React.FC<{ unreadCount: number }> = ({ unreadCount }) => (
 
 const LOAD_MORE_THRESHOLD = 100;
 
+const messageListLog = createLogger("ui:message-list");
+
 export const MessageList: React.FC<MessageListProps> = ({
   messages,
   currentUserId,
@@ -159,11 +164,29 @@ export const MessageList: React.FC<MessageListProps> = ({
     [callbacks],
   );
   const scrollRef = useRef<HTMLDivElement>(null);
+  const pendingPrependScrollRef = useRef<{
+    scrollTop: number;
+    scrollHeight: number;
+    messageCount: number;
+  } | null>(null);
   const wasAtBottomRef = useRef(true);
   const pendingScrollToBottomKeyRef = useRef<string | null>(null);
   const unreadScrollKeyRef = useRef<string | null>(null);
   const bottomReadDispatchKeyRef = useRef<string | null>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
+
+  const messageTailLen = messages.length;
+  const messageFirstId = messages[0]?.id;
+  const messageLastId = messageTailLen > 0 ? messages[messageTailLen - 1]?.id : undefined;
+  useEffect(() => {
+    logMessageFlow("ui:MessageList snapshot", {
+      messageLen: messageTailLen,
+      firstId: messageFirstId,
+      lastId: messageLastId,
+      isLoadingMore,
+      scrollToBottomKey,
+    });
+  }, [messageTailLen, messageFirstId, messageLastId, isLoadingMore, scrollToBottomKey]);
 
   const dispatchUnreadAtBottom = useCallback(() => {
     if (!onUnreadMessagesVisible && !onUnreadMessagesAtBottom) return;
@@ -221,6 +244,16 @@ export const MessageList: React.FC<MessageListProps> = ({
     setIsAtBottom(atBottom);
 
     if (el.scrollTop < LOAD_MORE_THRESHOLD && !isLoadingMore && onLoadMore) {
+      const snap = {
+        scrollTop: el.scrollTop,
+        scrollHeight: el.scrollHeight,
+        messageCount: messages.length,
+      };
+      pendingPrependScrollRef.current = snap;
+      messageListLog.debug("prepend scroll snapshot before loadOlder", {
+        ...snap,
+        clientHeight: el.clientHeight,
+      });
       onLoadMore();
     }
 
@@ -235,7 +268,50 @@ export const MessageList: React.FC<MessageListProps> = ({
     if (atBottom) {
       dispatchUnreadAtBottom();
     }
-  }, [isLoadingMore, onLoadMore, hasNewerMessages, onLoadNewer, dispatchUnreadAtBottom]);
+  }, [isLoadingMore, onLoadMore, hasNewerMessages, onLoadNewer, dispatchUnreadAtBottom, messages.length]);
+
+  useLayoutEffect(() => {
+    const pending = pendingPrependScrollRef.current;
+    if (!pending || isLoadingMore) return;
+    const el = scrollRef.current;
+    if (!el) return;
+
+    if (messages.length < pending.messageCount) {
+      messageListLog.debug("prepend restore dropped pending (message list shrank)", {
+        messagesLen: messages.length,
+        pendingMessageCount: pending.messageCount,
+      });
+      pendingPrependScrollRef.current = null;
+      return;
+    }
+
+    const snapshot = { scrollTop: pending.scrollTop, scrollHeight: pending.scrollHeight };
+    const nextTop = computeScrollTopAfterPrepend(snapshot, el.scrollHeight);
+    if (messages.length > pending.messageCount) {
+      messageListLog.debug("prepend restore apply (length increased)", {
+        messagesLen: messages.length,
+        pendingMessageCount: pending.messageCount,
+        prevScrollHeight: pending.scrollHeight,
+        nextScrollHeight: el.scrollHeight,
+        prevScrollTop: pending.scrollTop,
+        nextScrollTop: nextTop,
+      });
+      el.scrollTop = nextTop;
+      pendingPrependScrollRef.current = null;
+      return;
+    }
+
+    messageListLog.debug("prepend restore apply (same length, spinner or duplicates)", {
+      messagesLen: messages.length,
+      pendingMessageCount: pending.messageCount,
+      prevScrollHeight: pending.scrollHeight,
+      nextScrollHeight: el.scrollHeight,
+      prevScrollTop: pending.scrollTop,
+      nextScrollTop: nextTop,
+    });
+    el.scrollTop = nextTop;
+    pendingPrependScrollRef.current = null;
+  }, [isLoadingMore, messages.length]);
 
   useEffect(() => {
     if (!isAtBottom) {
@@ -318,7 +394,7 @@ export const MessageList: React.FC<MessageListProps> = ({
     const el = scrollRef.current;
     if (!el) return;
 
-    const unreadScrollKey = `${scrollToBottomKey ?? "__default__"}:${firstUnreadId}:${messages.length}`;
+    const unreadScrollKey = `${scrollToBottomKey ?? "__default__"}:${firstUnreadId}`;
     if (unreadScrollKeyRef.current === unreadScrollKey) return;
 
     const target = el.querySelector<HTMLElement>(`[data-message-id="${firstUnreadId}"]`);

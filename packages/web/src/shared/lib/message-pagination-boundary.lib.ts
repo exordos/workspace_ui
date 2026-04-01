@@ -12,10 +12,11 @@ export function computeHasOlderAfterLoadOlderIdbPage(input: {
   pageSize: number;
   toUpsertCount: number;
 }): boolean {
-  const { foundOldest, withoutAnchorCount, pageSize, toUpsertCount } = input;
+  const { foundOldest, withoutAnchorCount, pageSize } = input;
   if (foundOldest) return false;
   if (withoutAnchorCount < pageSize) return false;
-  if (toUpsertCount === 0 && withoutAnchorCount > 0) return false;
+  // Full page from API implies more older history may exist, even when every row was
+  // already in IndexedDB (overlap). Stopping here cleared hasOlder and blocked further loads.
   return true;
 }
 
@@ -26,10 +27,9 @@ export function computeHasNewerAfterLoadNewerIdbPage(input: {
   pageSize: number;
   toUpsertCount: number;
 }): boolean {
-  const { foundNewest, withoutAnchorCount, pageSize, toUpsertCount } = input;
+  const { foundNewest, withoutAnchorCount, pageSize } = input;
   if (foundNewest) return false;
   if (withoutAnchorCount < pageSize) return false;
-  if (toUpsertCount === 0 && withoutAnchorCount > 0) return false;
   return true;
 }
 
@@ -48,4 +48,19 @@ export function computeHasNewerAfterLoadNewerMemoryPage(input: {
   pageSize: number;
 }): boolean {
   return !input.foundNewest && input.withoutAnchorCount >= input.pageSize;
+}
+
+/**
+ * Oldest message id for the next "load older" request when the Zustand list can
+ * run ahead of IndexedDB (store prepends before IDB read catches up). Uses the
+ * minimum id so the API anchor matches the true oldest row in memory or cache.
+ */
+export function mergeOlderLoadAnchor(
+  storeOldestId: number | null | undefined,
+  idbOldestId: number | null | undefined,
+): number | null {
+  if (storeOldestId != null && idbOldestId != null) return Math.min(storeOldestId, idbOldestId);
+  if (storeOldestId != null) return storeOldestId;
+  if (idbOldestId != null) return idbOldestId;
+  return null;
 }
