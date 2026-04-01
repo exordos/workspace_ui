@@ -16,6 +16,10 @@ import type {
   DmEntryInternal,
 } from "~/shared/types/sidebar-chat";
 import {
+  deserializeStreamEntry,
+  type ChatListSnapshotSerialized,
+} from "~/shared/lib/chat-list-snapshot-serialize.lib";
+import {
   buildSidebarFromMessages,
   messageToStreamEntry,
   messageToDmEntry,
@@ -165,6 +169,34 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
       currentUserId: effectiveUserId,
       lastAppliedMessages: messages,
       messageIdToLocation,
+    });
+    const partnerIds = Array.from(dmsMap.values())
+      .filter((d) => !d.isGroup)
+      .sort((a, b) => (b.ts ?? 0) - (a.ts ?? 0))
+      .map((d) => d.id)
+      .slice(0, 50);
+    saveRecentDmPartners(partnerIds);
+  },
+
+  hydrateFromIndexedDbSnapshot(snapshot: ChatListSnapshotSerialized) {
+    const streamsMap = new Map<number, StreamEntryInternal>();
+    for (const [id, s] of snapshot.streamsEntries) {
+      streamsMap.set(id, deserializeStreamEntry(s));
+    }
+    const dmsMap = new Map(snapshot.dmsEntries);
+    const messageIdToLocation = new Map<number, MessageLocation>(
+      snapshot.messageIdToLocationEntries as [number, MessageLocation][],
+    );
+    _cachedStreams = null;
+    _cachedStreamsMapRef = null;
+    _cachedDms = null;
+    _cachedDmsMapRef = null;
+    set({
+      streamsMap,
+      dmsMap,
+      messageIdToLocation,
+      currentUserId: snapshot.currentUserId ?? get().currentUserId,
+      lastAppliedMessages: null,
     });
     const partnerIds = Array.from(dmsMap.values())
       .filter((d) => !d.isGroup)

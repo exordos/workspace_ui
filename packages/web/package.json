@@ -65,6 +65,7 @@
     "eslint-plugin-jsx-a11y": "^6.10.2",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
+    "fake-indexeddb": "6.0.0",
     "globals": "^17.4.0",
     "jsdom": "^28.1.0",
     "license-checker": "25.0.1",

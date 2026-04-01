@@ -1,10 +1,15 @@
+import { isMessageForContext, type CurrentChatContext } from "~/entities/message/message.model";
+import { resolveTypingEventRoute } from "~/features/typing-indicator/typing-event-routing";
+import { getCurrentInstance } from "~/shared/api/client";
 import type { MockMessage, ZulipEvent, ZulipRawMessage } from "~/shared/api/zulip";
 import { rawMessageToMockMessage } from "~/shared/api/zulip";
-import { stripHtml } from "~/shared/lib/html";
 import { getElectronAPI } from "~/shared/lib/electron";
+import { stripHtml } from "~/shared/lib/html";
+import {
+  applyZulipEventToMessageIndexedDb,
+  isIndexedDbMessageSourceEnabled,
+} from "~/shared/lib/message-idb-from-zulip.lib";
 import { shouldNotify } from "~/shared/lib/notifications-policy";
-import { resolveTypingEventRoute } from "~/features/typing-indicator/typing-event-routing";
-import { isMessageForContext, type CurrentChatContext } from "~/entities/message/message.model";
 import { closeReadMessageNotifications } from "./layout-notification-tags.lib";
 
 type MessageFlagOp = "add" | "remove";
@@ -97,6 +102,16 @@ export function dispatchZulipEvent(
 ): void {
   const { chatList, currentChat, users, typing, mute, activity, inbox, notifications } = ctx;
 
+  const instance = getCurrentInstance();
+  if (instance?.id && isIndexedDbMessageSourceEnabled()) {
+    void applyZulipEventToMessageIndexedDb({
+      instanceId: instance.id,
+      currentUserId: chatList.currentUserId,
+      event,
+    }).catch(() => {});
+  }
+  const skipMemoryChat = isIndexedDbMessageSourceEnabled();
+
   if (event.type === "message" && event.message) {
     const raw = event.message as unknown as ZulipRawMessage;
     users.mergeFromMessage(raw);
@@ -108,7 +123,7 @@ export function dispatchZulipEvent(
     const isForCurrentChat = currentChat.context
       ? isMessageForContext(raw, currentChat.context, currentUserId)
       : false;
-    if (isForCurrentChat) {
+    if (isForCurrentChat && !skipMemoryChat) {
       currentChat.appendMessage(rawMessageToMockMessage(raw));
     }
 
@@ -155,10 +170,14 @@ export function dispatchZulipEvent(
       if (op === "add") {
         closeReadMessageNotifications(notifications.closeByTag, messageIds);
         chatList.decrementUnreadForMessages(messageIds);
-        currentChat.updateMessageFlags(messageIds, "read", "add");
+        if (!skipMemoryChat) {
+          currentChat.updateMessageFlags(messageIds, "read", "add");
+        }
       } else {
         chatList.incrementUnreadForMessages(messageIds);
-        currentChat.updateMessageFlags(messageIds, "read", "remove");
+        if (!skipMemoryChat) {
+          currentChat.updateMessageFlags(messageIds, "read", "remove");
+        }
       }
     }
     return;
@@ -180,7 +199,9 @@ export function dispatchZulipEvent(
         : null;
     if (reaction) {
       const op = (event.op as MessageFlagOp) ?? "add";
-      currentChat.updateMessageReaction(messageId, reaction, op);
+      if (!skipMemoryChat) {
+        currentChat.updateMessageReaction(messageId, reaction, op);
+      }
     }
     return;
   }
@@ -194,7 +215,9 @@ export function dispatchZulipEvent(
         : [];
     if (messageIds.length > 0) {
       chatList.handleDeleteMessages(messageIds);
-      currentChat.removeMessages(messageIds);
+      if (!skipMemoryChat) {
+        currentChat.removeMessages(messageIds);
+      }
     }
     return;
   }
@@ -223,7 +246,9 @@ export function dispatchZulipEvent(
     const messageId = event.message_id as number | undefined;
     const newContent = event.rendered_content as string | undefined;
     if (messageId != null && newContent != null) {
-      currentChat.updateMessageContent(messageId, newContent);
+      if (!skipMemoryChat) {
+        currentChat.updateMessageContent(messageId, newContent);
+      }
     }
     return;
   }

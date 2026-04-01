@@ -5,6 +5,7 @@
  * for reactions, flags, content edits, and deletions.
  */
 import { create } from "zustand";
+import { useUsersStore } from "~/entities/user/user.model";
 import { getCurrentInstance } from "~/shared/api/client";
 import {
   fetchDmMessages,
@@ -18,11 +19,46 @@ import type {
   ZulipRawMessage,
 } from "~/shared/api/zulip.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
-import { useUsersStore } from "~/entities/user/user.model";
-
+import { env } from "~/shared/lib/env";
+import {
+  deleteMessagesByIds,
+  getChatMessageBounds,
+  MESSAGE_CACHE_DEFAULT_WINDOW_SIZE,
+  patchMessageContentInCache,
+  patchMessageFlagsInCache,
+  patchMessageReactionInCache,
+  putSingleMessage,
+  upsertChatMessages,
+} from "~/shared/lib/message-cache-db";
+import {
+  logMessageFlow,
+  summarizeChatContextForLog,
+} from "~/shared/lib/message-flow-debug.lib";
+import {
+  chatKeyFromContext,
+  chatKeyFromMockMessage,
+  normalizeStreamTopicForMessageCache,
+} from "~/shared/lib/message-cache-keys.lib";
 import type { CurrentChatContext, CurrentChatMessagesState } from "./message.model.types";
 
 export type { CurrentChatContext } from "./message.model.types";
+
+/** True when route points to the same stream/topic or DM as the current store context (re-sync without navigation). */
+function isSameChatLocation(prev: CurrentChatContext | null, next: CurrentChatContext | null): boolean {
+  if (prev == null || next == null) return false;
+  if (prev.type !== next.type) return false;
+  if (prev.type === "stream" && next.type === "stream") {
+    if (prev.streamId !== next.streamId) return false;
+    const pt = normalizeStreamTopicForMessageCache(prev.topic);
+    const nt = normalizeStreamTopicForMessageCache(next.topic);
+    if (pt === nt) return true;
+    return pt.toLowerCase() === nt.toLowerCase();
+  }
+  if (prev.type === "dm" && next.type === "dm") {
+    return prev.dmKey === next.dmKey;
+  }
+  return false;
+}
 
 export function isMessageForContext(
   msg: {
@@ -68,8 +104,12 @@ export function contextFromMessage(
 }
 
 const CURRENT_CHAT_CACHE_KEY = "workspace-offline-current-chat-messages-v1";
-const MAX_MESSAGES_PER_CONTEXT = 200;
+const MAX_MESSAGES_PER_CONTEXT = MESSAGE_CACHE_DEFAULT_WINDOW_SIZE;
 const MAX_CACHED_CONTEXTS = 25;
+
+function isIndexedDbMessageSource(): boolean {
+  return env.CHAT_MESSAGES_SOURCE_INDEXEDDB;
+}
 
 interface MessageCacheEntry {
   updatedAt: number;
@@ -215,6 +255,7 @@ function saveMessageCache(storage: Storage, storageKey: string, cache: MessageCa
 }
 
 function loadCachedMessagesForContext(context: CurrentChatContext): MockMessage[] {
+  if (isIndexedDbMessageSource()) return [];
   const storage = getStorage();
   if (!storage) return [];
   const cache = loadMessageCache(storage, getMessageCacheStorageKey());
@@ -222,6 +263,7 @@ function loadCachedMessagesForContext(context: CurrentChatContext): MockMessage[
 }
 
 function persistMessagesForContext(context: CurrentChatContext, messages: MockMessage[]): void {
+  if (isIndexedDbMessageSource()) return;
   const storage = getStorage();
   if (!storage) return;
 
@@ -302,10 +344,42 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
   hasNewerMessages: false,
 
   setContext(context) {
-    const cachedMessages = context ? loadCachedMessagesForContext(context) : [];
+    const prev = get().context;
+    const keepMessages =
+      isIndexedDbMessageSource() &&
+      context != null &&
+      prev != null &&
+      isSameChatLocation(prev, context);
+
+    const cachedMessages =
+      isIndexedDbMessageSource() || !context ? [] : loadCachedMessagesForContext(context);
+
+    let nextContext: CurrentChatContext | null = context;
+    if (
+      keepMessages &&
+      prev != null &&
+      context != null &&
+      context.type === "stream" &&
+      prev.type === "stream"
+    ) {
+      nextContext = {
+        ...prev,
+        streamName: context.streamName,
+        streamId: context.streamId,
+      };
+    }
+
+    logMessageFlow("store:setContext", {
+      prev: summarizeChatContextForLog(prev),
+      next: summarizeChatContextForLog(nextContext),
+      keepMessages,
+      idbSource: isIndexedDbMessageSource(),
+      nextStoreMessagesLen: keepMessages ? get().messages.length : cachedMessages.length,
+    });
+
     set({
-      context,
-      messages: cachedMessages,
+      context: nextContext,
+      messages: keepMessages ? get().messages : cachedMessages,
       isLoadingMore: false,
       hasOlderMessages: true,
       hasNewerMessages: false,
@@ -317,6 +391,24 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
   },
 
   setMessages(messages) {
+    if (isIndexedDbMessageSource()) {
+      logMessageFlow("store:setMessages(idb)", {
+        incomingLen: messages.length,
+        context: summarizeChatContextForLog(get().context),
+      });
+      const ctx = get().context;
+      const inst = getCurrentInstance()?.id;
+      if (ctx && inst && messages.length > 0) {
+        void upsertChatMessages({
+          instanceId: inst,
+          chatKey: chatKeyFromContext(ctx),
+          messages,
+          windowSizeN: MAX_MESSAGES_PER_CONTEXT,
+        });
+      }
+      set({ messages: [] });
+      return;
+    }
     set({ messages });
     const state = get();
     if (state.context) {
@@ -325,6 +417,19 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
   },
 
   prependMessages(msgs) {
+    if (isIndexedDbMessageSource()) {
+      const ctx = get().context;
+      const inst = getCurrentInstance()?.id;
+      if (ctx && inst && msgs.length > 0) {
+        void upsertChatMessages({
+          instanceId: inst,
+          chatKey: chatKeyFromContext(ctx),
+          messages: msgs,
+          windowSizeN: MAX_MESSAGES_PER_CONTEXT,
+        });
+      }
+      return;
+    }
     set((state) => {
       const existingIds = new Set(state.messages.map((m) => m.id));
       const fresh = msgs.filter((m) => !existingIds.has(m.id));
@@ -338,6 +443,19 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
   },
 
   appendMessages(msgs) {
+    if (isIndexedDbMessageSource()) {
+      const ctx = get().context;
+      const inst = getCurrentInstance()?.id;
+      if (ctx && inst && msgs.length > 0) {
+        void upsertChatMessages({
+          instanceId: inst,
+          chatKey: chatKeyFromContext(ctx),
+          messages: msgs,
+          windowSizeN: MAX_MESSAGES_PER_CONTEXT,
+        });
+      }
+      return;
+    }
     set((state) => {
       const existingIds = new Set(state.messages.map((m) => m.id));
       const fresh = msgs.filter((m) => !existingIds.has(m.id));
@@ -351,6 +469,19 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
   },
 
   appendMessage(msg) {
+    if (isIndexedDbMessageSource()) {
+      const ctx = get().context;
+      const inst = getCurrentInstance()?.id;
+      if (ctx && inst) {
+        void putSingleMessage({
+          instanceId: inst,
+          chatKey: chatKeyFromContext(ctx),
+          message: msg,
+          windowSizeN: MAX_MESSAGES_PER_CONTEXT,
+        });
+      }
+      return;
+    }
     set((state) => {
       const idx = state.messages.findIndex((m) => m.id === msg.id);
       if (idx >= 0) {
@@ -367,6 +498,11 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
   },
 
   removeMessage(messageId) {
+    if (isIndexedDbMessageSource()) {
+      const inst = getCurrentInstance()?.id;
+      if (inst) void deleteMessagesByIds(inst, [messageId]);
+      return;
+    }
     set((state) => ({
       messages: state.messages.filter((m) => m.id !== messageId),
     }));
@@ -377,6 +513,11 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
   },
 
   removeMessages(messageIds) {
+    if (isIndexedDbMessageSource()) {
+      const inst = getCurrentInstance()?.id;
+      if (inst) void deleteMessagesByIds(inst, messageIds);
+      return;
+    }
     const ids = new Set(messageIds);
     set((state) => ({
       messages: state.messages.filter((m) => !ids.has(m.id)),
@@ -388,6 +529,11 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
   },
 
   updateMessageReaction(messageId, reaction, op) {
+    if (isIndexedDbMessageSource()) {
+      const inst = getCurrentInstance()?.id;
+      if (inst) void patchMessageReactionInCache({ instanceId: inst, messageId, reaction, op });
+      return;
+    }
     set((state) => ({
       messages: state.messages.map((m) => {
         if (m.id !== messageId) return m;
@@ -414,6 +560,11 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
   },
 
   updateMessageFlags(messageIds, flag, op) {
+    if (isIndexedDbMessageSource()) {
+      const inst = getCurrentInstance()?.id;
+      if (inst) void patchMessageFlagsInCache({ instanceId: inst, messageIds, flag, op });
+      return;
+    }
     const ids = new Set(messageIds);
     set((state) => ({
       messages: state.messages.map((m) => {
@@ -432,6 +583,11 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
   },
 
   updateMessageContent(messageId, content) {
+    if (isIndexedDbMessageSource()) {
+      const inst = getCurrentInstance()?.id;
+      if (inst) void patchMessageContentInCache({ instanceId: inst, messageId, content });
+      return;
+    }
     set((state) => ({
       messages: state.messages.map((m) => (m.id === messageId ? { ...m, content } : m)),
     }));
@@ -454,6 +610,13 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
   },
 
   async loadInitialMessagesForContext({ context, focusedMessageId, currentUserId }) {
+    logMessageFlow("store:loadInitial start", {
+      context: summarizeChatContextForLog(context),
+      focusedMessageId,
+      hasCurrentUserId: currentUserId != null,
+      idbSource: isIndexedDbMessageSource(),
+    });
+
     const load =
       context.type === "stream"
         ? focusedMessageId != null
@@ -479,9 +642,72 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
             )
           : fetchDmMessages(parseDmKeyToUserIds(context.dmKey, currentUserId));
 
-    const messages = await load;
+    let messages: MockMessage[];
+    try {
+      messages = await load;
+    } catch (e) {
+      logMessageFlow("store:loadInitial fetch failed", {
+        context: summarizeChatContextForLog(context),
+        error: String(e),
+      });
+      throw e;
+    }
     mergeUsersFromMessages(messages);
     const flags = deriveFocusedPaginationFlags(messages, focusedMessageId);
+
+    if (isIndexedDbMessageSource()) {
+      const inst = getCurrentInstance()?.id;
+      let nextContext: CurrentChatContext = context;
+      if (messages.length > 0) {
+        const first = messages[0]!;
+        const fromKey = chatKeyFromMockMessage(first, currentUserId);
+        if (context.type === "stream") {
+          const topic = (first.subject ?? "").trim() || "general";
+          nextContext = { ...context, topic };
+        } else if (fromKey?.startsWith("dm:")) {
+          const k = fromKey.slice(3);
+          if (k !== context.dmKey) {
+            nextContext = { type: "dm", dmKey: k };
+          }
+        }
+      }
+      // Mirror API result in store first so the list renders immediately; IDB upsert + hook may lag behind notify ordering.
+      set({
+        context: nextContext,
+        messages,
+        hasOlderMessages: flags.hasOlderMessages,
+        hasNewerMessages: flags.hasNewerMessages,
+      });
+      if (inst && messages.length > 0) {
+        const first = messages[0]!;
+        const chatKey =
+          chatKeyFromMockMessage(first, currentUserId) ?? chatKeyFromContext(nextContext);
+        logMessageFlow("store:loadInitial idb upsert", {
+          chatKey,
+          instanceId: inst,
+          count: messages.length,
+          nextContext: summarizeChatContextForLog(nextContext),
+        });
+        await upsertChatMessages({
+          instanceId: inst,
+          chatKey,
+          messages,
+          windowSizeN: MAX_MESSAGES_PER_CONTEXT,
+        });
+      }
+      logMessageFlow("store:loadInitial done(idb)", {
+        storeMessagesLen: messages.length,
+        hasOlder: flags.hasOlderMessages,
+        hasNewer: flags.hasNewerMessages,
+      });
+      return;
+    }
+
+    logMessageFlow("store:loadInitial done(memory)", {
+      count: messages.length,
+      hasOlder: flags.hasOlderMessages,
+      hasNewer: flags.hasNewerMessages,
+    });
     set({
       messages,
       hasOlderMessages: flags.hasOlderMessages,
@@ -491,10 +717,50 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
 
   async loadOlderBoundaryPage({ pageSize, currentUserId }) {
     const state = get();
-    if (state.isLoadingMore || !state.hasOlderMessages || state.messages.length === 0) return;
-    const oldest = state.messages[0];
     const ctx = state.context;
-    if (!oldest || !ctx) return;
+    if (state.isLoadingMore || !state.hasOlderMessages || !ctx) return;
+
+    if (isIndexedDbMessageSource()) {
+      const inst = getCurrentInstance()?.id;
+      if (!inst) return;
+      const chatKey = chatKeyFromContext(ctx);
+      const bounds = await getChatMessageBounds(inst, chatKey);
+      if (bounds.oldestId == null) return;
+
+      set({ isLoadingMore: true });
+      try {
+        const narrow =
+          ctx.type === "stream"
+            ? [
+                { operator: "stream", operand: ctx.streamName },
+                { operator: "topic", operand: ctx.topic },
+              ]
+            : [{ operator: "dm", operand: parseDmKeyToUserIds(ctx.dmKey, currentUserId) }];
+        const older = await fetchMessagesWithNarrow(narrow, bounds.oldestId, pageSize, 0);
+        const withoutAnchor = older.filter((m) => m.id !== bounds.oldestId);
+        if (withoutAnchor.length < pageSize) {
+          set({ hasOlderMessages: false });
+        }
+        if (withoutAnchor.length > 0) {
+          mergeUsersFromMessages(withoutAnchor);
+          await upsertChatMessages({
+            instanceId: inst,
+            chatKey,
+            messages: withoutAnchor,
+            windowSizeN: MAX_MESSAGES_PER_CONTEXT,
+          });
+        }
+      } catch {
+        // best-effort; keep boundary flags unchanged
+      } finally {
+        set({ isLoadingMore: false });
+      }
+      return;
+    }
+
+    if (state.messages.length === 0) return;
+    const oldest = state.messages[0];
+    if (!oldest) return;
 
     set({ isLoadingMore: true });
     try {
@@ -523,10 +789,50 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
 
   async loadNewerBoundaryPage({ pageSize, currentUserId }) {
     const state = get();
-    if (state.isLoadingMore || !state.hasNewerMessages || state.messages.length === 0) return;
-    const newest = state.messages[state.messages.length - 1];
     const ctx = state.context;
-    if (!newest || !ctx) return;
+    if (state.isLoadingMore || !state.hasNewerMessages || !ctx) return;
+
+    if (isIndexedDbMessageSource()) {
+      const inst = getCurrentInstance()?.id;
+      if (!inst) return;
+      const chatKey = chatKeyFromContext(ctx);
+      const bounds = await getChatMessageBounds(inst, chatKey);
+      if (bounds.newestId == null) return;
+
+      set({ isLoadingMore: true });
+      try {
+        const narrow =
+          ctx.type === "stream"
+            ? [
+                { operator: "stream", operand: ctx.streamName },
+                { operator: "topic", operand: ctx.topic },
+              ]
+            : [{ operator: "dm", operand: parseDmKeyToUserIds(ctx.dmKey, currentUserId) }];
+        const newer = await fetchMessagesWithNarrow(narrow, bounds.newestId, 0, pageSize);
+        const withoutAnchor = newer.filter((m) => m.id !== bounds.newestId);
+        if (withoutAnchor.length < pageSize) {
+          set({ hasNewerMessages: false });
+        }
+        if (withoutAnchor.length > 0) {
+          mergeUsersFromMessages(withoutAnchor);
+          await upsertChatMessages({
+            instanceId: inst,
+            chatKey,
+            messages: withoutAnchor,
+            windowSizeN: MAX_MESSAGES_PER_CONTEXT,
+          });
+        }
+      } catch {
+        // best-effort; keep boundary flags unchanged
+      } finally {
+        set({ isLoadingMore: false });
+      }
+      return;
+    }
+
+    if (state.messages.length === 0) return;
+    const newest = state.messages[state.messages.length - 1];
+    if (!newest) return;
 
     set({ isLoadingMore: true });
     try {

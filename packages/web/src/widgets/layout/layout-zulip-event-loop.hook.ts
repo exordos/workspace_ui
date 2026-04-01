@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useActivityStore } from "~/entities/activity/activity.model";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { persistChatListSnapshotToIndexedDb } from "~/entities/chat-list/chat-list-snapshot-persist.lib";
 import { useInboxStore } from "~/entities/inbox/inbox.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
@@ -20,14 +21,16 @@ import {
 import { startZulipEventLoop } from "~/shared/lib/event-loop";
 import { playNotificationSound } from "~/shared/lib/notification-sound";
 import { notificationService } from "~/shared/lib/notifications";
+import type { ChatListBootstrapResult } from "./layout-chat-list-bootstrap.lib";
 import { buildLayoutNotificationsActions, dispatchZulipEvent } from "./layout-zulip-event-dispatch.lib";
+import { logMessageFlow } from "~/shared/lib/message-flow-debug.lib";
 import { getNewestMessageId } from "./layout-chat-history-sync.lib";
 
 const RECONNECT_DELTA_BATCH_SIZE = 5000;
 
 export function useLayoutZulipEventLoop(options: {
   currentInstanceId: string | null;
-  loadBootstrapMessages: () => Promise<unknown[] | null | undefined>;
+  loadBootstrapMessages: () => Promise<ChatListBootstrapResult>;
   loadMuteSnapshot: () => Promise<{
     mutedStreamIds: number[];
     mutedTopics: { streamId: number; topic: string }[];
@@ -46,61 +49,108 @@ export function useLayoutZulipEventLoop(options: {
     setCurrentUserStatus,
   } = options;
 
+  const loadBootstrapMessagesRef = useRef(loadBootstrapMessages);
+  loadBootstrapMessagesRef.current = loadBootstrapMessages;
+  const loadMuteSnapshotRef = useRef(loadMuteSnapshot);
+  loadMuteSnapshotRef.current = loadMuteSnapshot;
+  const setFromMessagesRef = useRef(setFromMessages);
+  setFromMessagesRef.current = setFromMessages;
+  const setCurrentUserIdRef = useRef(setCurrentUserId);
+  setCurrentUserIdRef.current = setCurrentUserId;
+  const setCurrentUserStatusRef = useRef(setCurrentUserStatus);
+  setCurrentUserStatusRef.current = setCurrentUserStatus;
+
+  /** Only reset stores when switching org — not when this effect re-runs (callback deps / Strict Mode remount). */
+  const prevInstanceForBootstrapRef = useRef<string | null>(null);
+
   const eventLoopAbortRef = useRef<AbortController | null>(null);
   const queueIdRef = useRef<string | null>(null);
   const instanceAtLoopStartRef = useRef<{ realm: string; email: string; apiKey: string } | null>(null);
   const latestMessageIdRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!currentInstanceId) return;
+    if (!currentInstanceId) {
+      prevInstanceForBootstrapRef.current = null;
+      return;
+    }
     let cancelled = false;
 
+    const instanceSwitched = prevInstanceForBootstrapRef.current !== currentInstanceId;
+    if (instanceSwitched) {
+      logMessageFlow("eventLoop:clear stores (instance switched)", {
+        instanceId: currentInstanceId,
+      });
+      prevInstanceForBootstrapRef.current = currentInstanceId;
+      useUsersStore.getState().clear();
+      useActivityStore.getState().clear();
+      useInboxStore.getState().clear();
+      useChatListStore.getState().clear();
+      useCurrentChatMessagesStore.getState().setContext(null);
+      useCurrentChatMessagesStore.getState().setMessages([]);
+      latestMessageIdRef.current = null;
+    }
+
     void Promise.resolve().then(() => {
-      if (!cancelled) setCurrentUserStatus("loading");
+      if (!cancelled) setCurrentUserStatusRef.current("loading");
     });
 
-    useUsersStore.getState().clear();
-    useChatListStore.getState().clear();
-    useActivityStore.getState().clear();
-    useInboxStore.getState().clear();
-    useCurrentChatMessagesStore.getState().setContext(null);
-    useCurrentChatMessagesStore.getState().setMessages([]);
-    latestMessageIdRef.current = null;
-
     const pUsers = fetchUsers();
-    const pMessages = loadBootstrapMessages();
+    const pMessages = loadBootstrapMessagesRef.current();
 
     getCurrentUser()
       .then((user) => {
         if (cancelled) return;
         if (user?.user_id != null) {
           useUsersStore.getState().mergeUser(user);
-          setCurrentUserId(user.user_id);
-          setCurrentUserStatus("ready");
+          setCurrentUserIdRef.current(user.user_id);
+          setCurrentUserStatusRef.current("ready");
         } else {
-          setCurrentUserStatus("error");
+          setCurrentUserStatusRef.current("error");
           useUsersStore.getState().clear();
           useChatListStore.getState().clear();
         }
       })
       .catch(() => {
         if (cancelled) return;
-        setCurrentUserStatus("error");
+        setCurrentUserStatusRef.current("error");
         useUsersStore.getState().clear();
         useChatListStore.getState().clear();
       });
 
     Promise.all([pUsers, pMessages])
-      .then(([members, messages]) => {
+      .then(([members, bootstrap]) => {
         if (cancelled) return;
-        const msgs = (messages as any[]) ?? [];
+        const result = bootstrap as ChatListBootstrapResult;
         useUsersStore.getState().mergeUsers((members as any[]) ?? []);
-        for (const m of msgs) {
-          useUsersStore.getState().mergeFromMessage(m as any);
-        }
+
         const uid = useChatListStore.getState().currentUserId ?? null;
-        setFromMessages(msgs, uid);
-        latestMessageIdRef.current = getNewestMessageId(msgs as any);
+
+        if (result.mode === "full") {
+          const msgs = result.messages;
+          for (const m of msgs) {
+            useUsersStore.getState().mergeFromMessage(m as any);
+          }
+          setFromMessagesRef.current(msgs, uid);
+          latestMessageIdRef.current = getNewestMessageId(msgs as any);
+        } else if (result.mode === "delta") {
+          for (const m of result.messages) {
+            useUsersStore.getState().mergeFromMessage(m as any);
+          }
+          useChatListStore.getState().addMessages(result.messages);
+          const newest = getNewestMessageId(result.messages as any);
+          const prev = result.latestMessageIdHint;
+          latestMessageIdRef.current =
+            newest != null && (prev == null || newest > prev) ? newest : (prev ?? newest);
+        } else {
+          if (result.latestMessageIdHint != null) {
+            latestMessageIdRef.current = result.latestMessageIdHint;
+          }
+        }
+
+        const instanceIdPersist = useInstancesStore.getState().currentInstanceId;
+        if (instanceIdPersist != null) {
+          void persistChatListSnapshotToIndexedDb(instanceIdPersist);
+        }
 
         eventLoopAbortRef.current?.abort();
         eventLoopAbortRef.current = new AbortController();
@@ -118,8 +168,12 @@ export function useLayoutZulipEventLoop(options: {
                 for (const m of freshMsgs) {
                   useUsersStore.getState().mergeFromMessage(m as any);
                 }
-                setFromMessages(freshMsgs as any, uid);
+                setFromMessagesRef.current(freshMsgs as any, uid);
                 latestMessageIdRef.current = getNewestMessageId(freshMsgs as any);
+                const idPersist = useInstancesStore.getState().currentInstanceId;
+                if (idPersist != null) {
+                  void persistChatListSnapshotToIndexedDb(idPersist);
+                }
               })
               .catch(() => {});
           };
@@ -144,6 +198,10 @@ export function useLayoutZulipEventLoop(options: {
                   getNewestMessageId(deltaMessages as any) ?? latestMessageIdRef.current;
                 useActivityStore.getState().markStale();
                 useInboxStore.getState().markStale();
+                const idPersist = useInstancesStore.getState().currentInstanceId;
+                if (idPersist != null) {
+                  void persistChatListSnapshotToIndexedDb(idPersist);
+                }
               })
               .catch(() => {
                 hydrateFromRecentWindow();
@@ -173,7 +231,7 @@ export function useLayoutZulipEventLoop(options: {
           onBadQueue: refreshStaleData,
           onQueueRegistered: (id) => {
             queueIdRef.current = id;
-            void loadMuteSnapshot()
+            void loadMuteSnapshotRef.current()
               .then((snapshot) => {
                 if (!cancelled) {
                   useMuteStore.getState().setFromServer(snapshot);
@@ -242,13 +300,6 @@ export function useLayoutZulipEventLoop(options: {
       instanceAtLoopStartRef.current = null;
       latestMessageIdRef.current = null;
     };
-  }, [
-    currentInstanceId,
-    loadBootstrapMessages,
-    loadMuteSnapshot,
-    setFromMessages,
-    setCurrentUserId,
-    setCurrentUserStatus,
-  ]);
+  }, [currentInstanceId]);
 }
 

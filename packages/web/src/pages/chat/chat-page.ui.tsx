@@ -13,6 +13,10 @@ import { resolveHydratedDraftBootstrap } from "~/entities/draft/draft-chat-boots
 import { createDraft, deleteDraftOnServer, updateDraftOnServer } from "~/entities/draft/draft.api";
 import { useDraftStore } from "~/entities/draft/draft.model";
 import type { DraftType } from "~/entities/draft/draft.types";
+import {
+  useIndexedDbChatMessages,
+  useIndexedDbMessageSourceEnabled,
+} from "~/entities/message/message-indexeddb.hook";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
@@ -46,6 +50,7 @@ import { dmRouteKey } from "~/shared/lib/dm-key";
 import { getPresenceState, formatLastSeen } from "~/shared/lib/format";
 import { stripHtml } from "~/shared/lib/html";
 import { buildJitsiMeetingUrl } from "~/shared/lib/jitsi";
+import { logMessageFlow, summarizeChatContextForLog } from "~/shared/lib/message-flow-debug.lib";
 import { createLogger } from "~/shared/lib/logger";
 import { useShortcut } from "~/shared/lib/shortcuts";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
@@ -155,7 +160,36 @@ export const ChatPage: React.FC = () => {
   );
   useChatPartnerProfileHydration({ partnerUserId, isDmView, isGroupDmView });
 
-  const messages = useCurrentChatMessagesStore((s) => s.messages);
+  const chatContextForMessages = useCurrentChatMessagesStore((s) => s.context);
+  const messagesFromStore = useCurrentChatMessagesStore((s) => s.messages);
+  const messagesFromIdb = useIndexedDbChatMessages({ context: chatContextForMessages });
+  const useIdbAsMessageSource = useIndexedDbMessageSourceEnabled();
+  const messages = useMemo(() => {
+    if (!useIdbAsMessageSource) return messagesFromStore;
+    return messagesFromIdb.length > 0 ? messagesFromIdb : messagesFromStore;
+  }, [useIdbAsMessageSource, messagesFromIdb, messagesFromStore]);
+
+  useEffect(() => {
+    const source =
+      !useIdbAsMessageSource
+        ? "store-only"
+        : messagesFromIdb.length > 0
+          ? "idb"
+          : "store-fallback";
+    logMessageFlow("ui:resolved message list", {
+      source,
+      context: summarizeChatContextForLog(chatContextForMessages),
+      storeCount: messagesFromStore.length,
+      idbCount: messagesFromIdb.length,
+      effectiveCount: messages.length,
+    });
+  }, [
+    useIdbAsMessageSource,
+    messagesFromStore.length,
+    messagesFromIdb.length,
+    messages.length,
+    chatContextForMessages,
+  ]);
   const streams = useChatListStore((s) => s.streams());
   const firstUnreadId = useMemo(
     () => resolveFirstUnreadBoundaryMessageId(messages, currentUserId),
@@ -163,10 +197,7 @@ export const ChatPage: React.FC = () => {
   );
   const unreadCount = useMemo(() => countUnreadMessages(messages), [messages]);
   const setContext = useCurrentChatMessagesStore((s) => s.setContext);
-  const setMessagesInStore = useCurrentChatMessagesStore((s) => s.setMessages);
   const appendMessageToStore = useCurrentChatMessagesStore((s) => s.appendMessage);
-  const appendMessagesToStore = useCurrentChatMessagesStore((s) => s.appendMessages);
-  const prependMessagesToStore = useCurrentChatMessagesStore((s) => s.prependMessages);
   const removeMessageFromStore = useCurrentChatMessagesStore((s) => s.removeMessage);
   const removeMessagesFromStore = useCurrentChatMessagesStore((s) => s.removeMessages);
   const updateMessageFlagsInStore = useCurrentChatMessagesStore((s) => s.updateMessageFlags);
@@ -706,13 +737,17 @@ export const ChatPage: React.FC = () => {
       setMessagesLoading(false);
       return;
     }
+    if (resolvedStreamId == null) {
+      setMessagesLoading(false);
+      return;
+    }
 
     setMessagesLoading(true);
     let cancelled = false;
     loadInitialMessagesForContext({
       context: {
         type: "stream",
-        streamId: resolvedStreamId ?? 0,
+        streamId: resolvedStreamId,
         streamName: resolvedStreamName,
         topic: streamRouteTopic,
       },
@@ -722,7 +757,8 @@ export const ChatPage: React.FC = () => {
       .then(() => {
         if (!cancelled) setMessagesLoading(false);
       })
-      .catch(() => {
+      .catch((e) => {
+        logMessageFlow("ui:stream loadInitial rejected", { error: String(e) });
         if (!cancelled) setMessagesLoading(false);
       });
     return () => {
@@ -775,7 +811,8 @@ export const ChatPage: React.FC = () => {
       .then(() => {
         if (!cancelled) setMessagesLoading(false);
       })
-      .catch(() => {
+      .catch((e) => {
+        logMessageFlow("ui:dm loadInitial rejected", { error: String(e) });
         if (!cancelled) setMessagesLoading(false);
       });
     return () => {
@@ -787,31 +824,33 @@ export const ChatPage: React.FC = () => {
 
   const loadOlderMessages = useCallback(() => {
     const store = useCurrentChatMessagesStore.getState();
+    const messagesLength = useIndexedDbMessageSourceEnabled() ? messages.length : store.messages.length;
     if (
       !shouldLoadBoundaryPage({
         isLoadingMore: store.isLoadingMore,
         hasBoundaryMessages: store.hasOlderMessages,
-        messagesLength: store.messages.length,
+        messagesLength,
       })
     ) {
       return;
     }
     void loadOlderBoundaryPage({ pageSize: PAGE_SIZE, currentUserId });
-  }, [PAGE_SIZE, currentUserId, loadOlderBoundaryPage]);
+  }, [PAGE_SIZE, currentUserId, loadOlderBoundaryPage, messages.length]);
 
   const loadNewerMessages = useCallback(() => {
     const store = useCurrentChatMessagesStore.getState();
+    const messagesLength = useIndexedDbMessageSourceEnabled() ? messages.length : store.messages.length;
     if (
       !shouldLoadBoundaryPage({
         isLoadingMore: store.isLoadingMore,
         hasBoundaryMessages: store.hasNewerMessages,
-        messagesLength: store.messages.length,
+        messagesLength,
       })
     ) {
       return;
     }
     void loadNewerBoundaryPage({ pageSize: PAGE_SIZE, currentUserId });
-  }, [PAGE_SIZE, currentUserId, loadNewerBoundaryPage]);
+  }, [PAGE_SIZE, currentUserId, loadNewerBoundaryPage, messages.length]);
 
   const callTarget = useMemo(
     () =>

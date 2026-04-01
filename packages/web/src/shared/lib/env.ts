@@ -124,4 +124,24 @@ export const env = {
    * Defaults to same-origin `/embeds/mail-placeholder.html` when empty.
    */
   MAIL_EMBED_URL: optional("VITE_MAIL_EMBED_URL"),
+
+  /**
+   * When true, chat message lists read from IndexedDB; REST/events upsert the cache.
+   * Set `VITE_CHAT_MESSAGES_SOURCE_INDEXEDDB=false` to use in-memory store + localStorage only.
+   */
+  CHAT_MESSAGES_SOURCE_INDEXEDDB: (() => {
+    if (import.meta.env.MODE === "test") return false;
+    const v = optional("VITE_CHAT_MESSAGES_SOURCE_INDEXEDDB", "true").toLowerCase();
+    return v !== "false" && v !== "0";
+  })(),
+
+  /**
+   * When true, `[message-flow]` traces appear in the browser console (chat store + IDB + chat page merge).
+   * Default: on in development, off in production. Set `VITE_MESSAGE_FLOW_DEBUG=false` to silence in dev.
+   */
+  MESSAGE_FLOW_DEBUG: (() => {
+    if (import.meta.env.MODE === "test") return false;
+    const v = optional("VITE_MESSAGE_FLOW_DEBUG", import.meta.env.DEV ? "true" : "false").toLowerCase();
+    return v === "true" || v === "1";
+  })(),
 } as const;

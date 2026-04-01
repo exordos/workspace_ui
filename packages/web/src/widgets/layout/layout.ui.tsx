@@ -25,9 +25,6 @@ import { useUserProfileStore } from "~/features/user-profile/user-profile.model"
 import { t } from "~/i18n/i18n";
 import { setAuthErrorHandler } from "~/shared/api/client";
 import {
-  fetchMessagesAfterAnchor,
-  fetchMessagesBeforeAnchor,
-  fetchRecentMessages,
   fetchUsers,
   fetchRealmPresence,
   getCurrentUser,
@@ -70,7 +67,7 @@ import {
 } from "~/widgets/sidebar/sidebar.lib";
 import { TopBar, type TopBarSection } from "~/widgets/top-bar/top-bar.ui";
 import { getSectionFromPathname } from "./layout-active-section.lib";
-import { getNewestMessageId, loadDeepHistoryMessages } from "./layout-chat-history-sync.lib";
+import { runChatListBootstrap } from "./layout-chat-list-bootstrap.lib";
 import { shouldRenderChatShell } from "./layout-chat-shell.lib";
 import { resolveChatShortcutRoute } from "./layout-chat-shortcuts.lib";
 import { DESKTOP_MIN_VIEWPORT_STYLE } from "./layout-desktop-viewport.lib";
@@ -116,10 +113,6 @@ import { useSyncChatContextFromLocation } from "./layout-sync-chat-context.hook"
 import { useLayoutWindowBranding } from "./layout-window-branding.hook";
 import { useLayoutZulipEventLoop } from "./layout-zulip-event-loop.hook";
 
-const CHAT_HISTORY_BATCH_SIZE = 5000;
-const CHAT_HISTORY_MAX_BATCHES = 5;
-const RECONNECT_DELTA_BATCH_SIZE = 5000;
-
 function getSystemFolderLabels() {
   return {
     allChats: t("folder.allChats"),
@@ -154,6 +147,10 @@ export const Layout: React.FC = () => {
   const dmsFromStore = useChatListStore((s) => s.dms());
   const streamsMap = useChatListStore((s) => s.streamsMap);
   const dmsMap = useChatListStore((s) => s.dmsMap);
+  const chatListHasCachedRows = useMemo(
+    () => streamsMap.size > 0 || dmsMap.size > 0,
+    [streamsMap, dmsMap],
+  );
   const usersMapForChatInfo = useUsersStore((s) => s.users);
   const chatSorting = useSettingsStore((s) => s.chatSorting);
   const prioritizePersonalUnread = useSettingsStore((s) => s.prioritizePersonalUnread);
@@ -227,14 +224,8 @@ export const Layout: React.FC = () => {
   });
 
   const loadBootstrapMessages = useCallback(async () => {
-    const initialMessages = await fetchRecentMessages();
-    return loadDeepHistoryMessages({
-      initialMessages,
-      fetchOlderMessages: (anchorId, numBefore) => fetchMessagesBeforeAnchor(anchorId, numBefore),
-      pageSize: CHAT_HISTORY_BATCH_SIZE,
-      maxBatches: CHAT_HISTORY_MAX_BATCHES,
-    });
-  }, []);
+    return runChatListBootstrap(currentInstanceId);
+  }, [currentInstanceId]);
 
   const online = useLayoutOnlineStatus();
   useHydrateDrafts(currentInstanceId, currentUserStatus);
@@ -366,8 +357,11 @@ export const Layout: React.FC = () => {
     setCurrentUserStatus,
   });
 
+  // Allow main shell while auth/history sync runs if sidebar was hydrated from IndexedDB.
   const showFullscreenLoader =
-    currentInstanceId != null && (currentUserStatus === "loading" || currentUserStatus === "idle");
+    currentInstanceId != null &&
+    (currentUserStatus === "loading" || currentUserStatus === "idle") &&
+    !chatListHasCachedRows;
   const showError = currentInstanceId != null && currentUserStatus === "error";
 
   // Redirect legacy URL /stream/general without stream_id to the first channel slug if data is available

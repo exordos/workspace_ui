@@ -2,6 +2,7 @@
  * Types for the chat-list Zustand store (see chat-list.model.ts).
  */
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { ChatListSnapshotSerialized } from "~/shared/lib/chat-list-snapshot-serialize.lib";
 import type {
   SidebarChat,
   StreamWithLast,
@@ -20,6 +21,8 @@ export interface ChatListState {
   lastAppliedMessages: ZulipRawMessage[] | null;
   messageIdToLocation: Map<number, MessageLocation>;
   setFromMessages: (messages: ZulipRawMessage[], currentUserId: number | null) => void;
+  /** Restore sidebar maps from IndexedDB snapshot (no raw `lastAppliedMessages`). */
+  hydrateFromIndexedDbSnapshot: (snapshot: ChatListSnapshotSerialized) => void;
   addMessage: (message: ZulipRawMessage) => void;
   addMessages: (messages: ZulipRawMessage[]) => void;
   setCurrentUserId: (id: number | null) => void;

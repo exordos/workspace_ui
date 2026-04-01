@@ -2,6 +2,10 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
+import {
+  useIndexedDbChatMessages,
+  useIndexedDbMessageSourceEnabled,
+} from "~/entities/message/message-indexeddb.hook";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { useThemeStore } from "~/entities/theme/theme.model";
 import { useUsersStore } from "~/entities/user/user.model";
@@ -35,7 +39,12 @@ export const LogsPage: React.FC = () => {
   const streamsCount = useChatListStore((s) => s.streams().length);
   const dmsCount = useChatListStore((s) => s.dms().length);
   const usersCount = useUsersStore((s) => s.users.size);
-  const currentChatMessagesCount = useCurrentChatMessagesStore((s) => s.messages.length);
+  const chatContext = useCurrentChatMessagesStore((s) => s.context);
+  const idbChatMessages = useIndexedDbChatMessages({ context: chatContext });
+  const storeMessageCount = useCurrentChatMessagesStore((s) => s.messages.length);
+  const currentChatMessagesCount = useIndexedDbMessageSourceEnabled()
+    ? idbChatMessages.length
+    : storeMessageCount;
   const currentInstance = useInstancesStore((s) => s.getCurrentInstance());
   const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
   const instancesCount = useInstancesStore((s) => s.instances.length);
