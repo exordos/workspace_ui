@@ -207,7 +207,6 @@ export const Layout: React.FC = () => {
   const setRightDrawerOpen = useRightDrawerStore((s) => s.setOpen);
   const rightDrawerMode = useRightDrawerStore((s) => s.mode);
   const rightDrawerUserIdOverride = useRightDrawerStore((s) => s.userIdOverride);
-  const openRightDrawerUserMenu = useRightDrawerStore((s) => s.openUserMenu);
   const openRightDrawerUserProfile = useRightDrawerStore((s) => s.openUserProfile);
   const openRightDrawerSettings = useRightDrawerStore((s) => s.openSettings);
   const openRightDrawerAbout = useRightDrawerStore((s) => s.openAbout);
@@ -305,9 +304,6 @@ export const Layout: React.FC = () => {
     onSelectMessage: handleSearchSelectMessage,
     onSelectUser: handleSearchSelectUser,
   } = useLayoutSearchModal({ navigate });
-  const handleOpenProfile = useCallback(() => {
-    openRightDrawerUserMenu();
-  }, [openRightDrawerUserMenu]);
   const handleSelectFolder = useCallback(
     (folderId: string) => {
       setPinReorderMode(false);
@@ -593,8 +589,6 @@ export const Layout: React.FC = () => {
           <TopBar
             activeSection={activeSection}
             onSectionChange={handleSectionChange}
-            onOpenSearch={openSearch}
-            onOpenProfile={handleOpenProfile}
             leftContent={<InstanceSwitcher />}
           />
           <LayoutMainWorkspace

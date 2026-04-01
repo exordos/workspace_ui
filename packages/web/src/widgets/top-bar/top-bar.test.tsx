@@ -4,6 +4,8 @@ import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useDownloadStore } from "~/entities/download/download.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { renderWithProviders } from "~/test/render";
+import { useRightDrawerStore } from "~/widgets/right-panel/right-drawer.model";
+import { useSearchModalStore } from "~/widgets/search-modal/search-modal.model";
 import { TopBar } from "./top-bar.ui";
 
 describe("TopBar", () => {
@@ -11,6 +13,8 @@ describe("TopBar", () => {
     useChatListStore.setState({ currentUserId: null });
     useUsersStore.getState().clear();
     useDownloadStore.setState({ entries: [], duplicateRequestTick: 0 });
+    useSearchModalStore.getState().closeModal();
+    useRightDrawerStore.setState({ open: false, mode: "info", userIdOverride: null });
   });
 
   it("calls onSectionChange for available sections", () => {
@@ -40,10 +44,7 @@ describe("TopBar", () => {
   });
 
   it("opens global search from top bar action", () => {
-    const onOpenSearch = vi.fn();
-    renderWithProviders(
-      <TopBar activeSection="chat" onSectionChange={vi.fn()} onOpenSearch={onOpenSearch} />,
-    );
+    renderWithProviders(<TopBar activeSection="chat" onSectionChange={vi.fn()} />);
 
     const searchButton = screen.getByRole("button", { name: /search/i });
     expect(searchButton).toHaveClass("h-10");
@@ -53,7 +54,19 @@ describe("TopBar", () => {
     act(() => {
       fireEvent.click(searchButton);
     });
-    expect(onOpenSearch).toHaveBeenCalledTimes(1);
+    expect(useSearchModalStore.getState().open).toBe(true);
+  });
+
+  it("opens user menu in right drawer when profile trigger is clicked", () => {
+    renderWithProviders(<TopBar activeSection="chat" onSectionChange={vi.fn()} />);
+
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: /profile/i }));
+    });
+
+    const drawer = useRightDrawerStore.getState();
+    expect(drawer.open).toBe(true);
+    expect(drawer.mode).toBe("user-menu");
   });
 
   it("uses semantic token class for active section background", () => {
