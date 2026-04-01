@@ -1,5 +1,6 @@
 import type { ZulipInstance } from "~/entities/instance/instance.model";
 import type { ZulipEvent } from "~/shared/api/zulip.types";
+import { MULTI_ORG_UNREAD_REFRESH_DEBOUNCE_MS } from "~/shared/config/constants";
 import type {
   StartCredentialEventLoopFn,
   StartInactiveInstanceEventStreamsOptions,
@@ -9,8 +10,6 @@ export type {
   StartCredentialEventLoopFn,
   StartCredentialEventLoopOptions,
 } from "./layout-multi-org-event-streams.types";
-
-const DEFAULT_DEBOUNCE_MS = 300;
 
 function shouldRefreshUnreadForEvent(event: ZulipEvent): boolean {
   return (
@@ -33,7 +32,7 @@ export function startInactiveInstanceEventStreams(
     refreshUnreadForInstance,
     startEventLoop,
     onError,
-    debounceMs = DEFAULT_DEBOUNCE_MS,
+    debounceMs = MULTI_ORG_UNREAD_REFRESH_DEBOUNCE_MS,
   } = options;
 
   if (!enabled || !online || instances.length <= 1) {

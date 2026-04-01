@@ -151,7 +151,7 @@ export const FolderQuickList: React.FC<FolderQuickListProps> = React.memo(functi
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content
-          className="z-dropdown w-[260px] rounded-lg border border-border-subtle bg-bg-elevated p-2 shadow-lg"
+          className="z-dropdown w-folder-quick-list rounded-lg border border-border-subtle bg-bg-elevated p-2 shadow-lg"
           side="right"
           align="start"
           sideOffset={8}

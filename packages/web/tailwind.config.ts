@@ -77,6 +77,25 @@ export default {
         header: "123px",
         "panel-right": "299px",
       },
+      /* Mirror layout constants in `src/shared/config/constants.ts` (main / narrow / shell). */
+      maxWidth: {
+        "main-workspace": "1920px",
+        "narrow-page": "1199px",
+        "modal-manage-folder": "520px",
+        "drawer-profile": "360px",
+      },
+      minWidth: {
+        "context-menu": "160px",
+        "context-menu-message": "200px",
+        "context-menu-wide": "220px",
+        "context-menu-narrow": "180px",
+      },
+      width: {
+        "folder-quick-list": "260px",
+      },
+      minHeight: {
+        "app-shell": "400px",
+      },
       borderRadius: {
         lg: "6px",
         xl: "10px",

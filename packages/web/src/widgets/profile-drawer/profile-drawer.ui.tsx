@@ -269,7 +269,7 @@ export const ProfileDrawer: React.FC<ProfileDrawerProps> = ({
       <Dialog.Portal>
         <Dialog.Overlay className="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-modal bg-black/50" />
         <Dialog.Content
-          className="fixed bottom-0 right-0 top-0 z-modal flex w-full max-w-[360px] flex-col bg-sidebar-bg shadow-xl outline-none"
+          className="fixed bottom-0 right-0 top-0 z-modal flex w-full max-w-drawer-profile flex-col bg-sidebar-bg shadow-xl outline-none"
           onPointerDownOutside={() => onOpenChange(false)}
           onEscapeKeyDown={() => onOpenChange(false)}
           aria-describedby={undefined}

@@ -72,7 +72,7 @@ const FolderAssignmentsSubmenu = React.memo(function FolderAssignmentsSubmenu({
       </DropdownMenu.SubTrigger>
       <DropdownMenu.Portal>
         <DropdownMenu.SubContent
-          className="z-dropdown min-w-[220px] rounded-lg border border-border-subtle bg-bg-elevated py-1 shadow-lg"
+          className="z-dropdown min-w-context-menu-wide rounded-lg border border-border-subtle bg-bg-elevated py-1 shadow-lg"
           sideOffset={8}
           alignOffset={-4}
         >
@@ -242,7 +242,7 @@ export const StreamContextMenu = React.memo(function StreamContextMenu({
       </div>
       <DropdownMenu.Portal>
         <DropdownMenu.Content
-          className="z-dropdown min-w-[180px] rounded-lg border border-border-subtle bg-bg-elevated py-1 shadow-lg"
+          className="z-dropdown min-w-context-menu-narrow rounded-lg border border-border-subtle bg-bg-elevated py-1 shadow-lg"
           sideOffset={4}
           align="start"
         >
@@ -378,7 +378,7 @@ export const DmContextMenu = React.memo(function DmContextMenu({
       </div>
       <DropdownMenu.Portal>
         <DropdownMenu.Content
-          className="z-dropdown min-w-[180px] rounded-lg border border-border-subtle bg-bg-elevated py-1 shadow-lg"
+          className="z-dropdown min-w-context-menu-narrow rounded-lg border border-border-subtle bg-bg-elevated py-1 shadow-lg"
           sideOffset={4}
           align="start"
         >

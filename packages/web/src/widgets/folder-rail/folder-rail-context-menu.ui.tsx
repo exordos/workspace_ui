@@ -28,7 +28,7 @@ export const FolderContextMenuContent: React.FC<FolderContextMenuContentProps> =
 
     return (
       <DropdownMenu.Content
-        className="z-dropdown min-w-[160px] rounded-lg border border-border-subtle bg-bg-elevated py-1 shadow-lg"
+        className="z-dropdown min-w-context-menu rounded-lg border border-border-subtle bg-bg-elevated py-1 shadow-lg"
         sideOffset={4}
         align="start"
       >

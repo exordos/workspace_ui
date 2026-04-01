@@ -29,7 +29,7 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
 
   return (
     <div className="flex min-h-0 flex-1 items-stretch justify-center">
-      <div className="flex min-h-0 w-full min-w-0 max-w-[1920px] gap-1">
+      <div className="flex min-h-0 w-full min-w-0 max-w-main-workspace gap-1">
         {shouldShowChatShell && sidebarOpen && (
           <>
             <SidebarShell />

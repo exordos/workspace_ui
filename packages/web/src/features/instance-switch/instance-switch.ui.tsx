@@ -153,7 +153,7 @@ export const InstanceSwitcher: React.FC = () => {
         </DropdownMenu.Trigger>
         <DropdownMenu.Portal>
           <DropdownMenu.Content
-            className="z-dropdown min-w-[220px] rounded-lg border border-border-subtle bg-bg-elevated py-1 shadow-lg"
+            className="z-dropdown min-w-context-menu-wide rounded-lg border border-border-subtle bg-bg-elevated py-1 shadow-lg"
             sideOffset={6}
             align="start"
           >

@@ -332,7 +332,7 @@ export const LogsPage: React.FC = () => {
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder={t("settings.logsSearchPlaceholder")}
               aria-label={t("settings.logsSearch")}
-              className="h-8 min-w-[180px] rounded-md border border-border-subtle bg-card-bg px-2 text-xs text-text-primary outline-none focus:border-accent"
+              className="h-8 min-w-context-menu-narrow rounded-md border border-border-subtle bg-card-bg px-2 text-xs text-text-primary outline-none focus:border-accent"
             />
           </label>
           <label className="min-w-0">

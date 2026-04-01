@@ -10,10 +10,9 @@ import { stripHtml } from "~/shared/lib/html";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { ScrollArea } from "~/shared/ui/scroll-area";
+import { SEARCH_INPUT_DEBOUNCE_MS } from "~/shared/config/constants";
 import { useSearchModalStore } from "./search-modal.model";
 import type { SearchModalProps } from "./search-modal.types";
-
-const DEBOUNCE_MS = 300;
 const MAX_USER_RESULTS = 20;
 
 const SearchResultItem = React.memo(function SearchResultItem({
@@ -176,7 +175,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
     if (!open) return;
     const timer = setTimeout(() => {
       void runSearch(query);
-    }, DEBOUNCE_MS);
+    }, SEARCH_INPUT_DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [query, open, runSearch]);
 

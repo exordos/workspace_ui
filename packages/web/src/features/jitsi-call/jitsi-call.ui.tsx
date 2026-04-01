@@ -6,6 +6,7 @@ import { useCallParticipantsStore } from "~/entities/call/call.model";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
+import { JITSI_PARTICIPANTS_POLL_MS } from "~/shared/config/constants";
 import { callState } from "~/shared/lib/call-state";
 import { parseJitsiUrl } from "~/shared/lib/jitsi";
 import { Icon } from "~/shared/ui/icon";
@@ -125,7 +126,10 @@ export const JitsiCallModal: React.FC<JitsiCallModalProps> = ({
       }
     };
     updateParticipants();
-    participantPollIntervalRef.current = setInterval(updateParticipants, 5000);
+    participantPollIntervalRef.current = setInterval(
+      updateParticipants,
+      JITSI_PARTICIPANTS_POLL_MS,
+    );
 
     const syncCallState = () => {
       const n = api.getNumberOfParticipants?.();

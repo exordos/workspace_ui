@@ -31,7 +31,7 @@ export const MessageBubbleContextMenu = React.memo(function MessageBubbleContext
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content
-          className="z-dropdown min-w-[200px] rounded-lg border border-border-subtle bg-bg-elevated py-1 shadow-lg"
+          className="z-dropdown min-w-context-menu-message rounded-lg border border-border-subtle bg-bg-elevated py-1 shadow-lg"
           sideOffset={4}
           align={isOwn ? "end" : "start"}
         >

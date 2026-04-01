@@ -573,7 +573,7 @@ export const Layout: React.FC = () => {
         }}
       >
         <div
-          className="flex h-screen max-h-[100dvh] min-h-[400px] flex-col items-stretch overflow-hidden bg-bg text-text-primary"
+          className="flex h-screen max-h-[100dvh] min-h-app-shell flex-col items-stretch overflow-hidden bg-bg text-text-primary"
           role="application"
           aria-label={brand.appName}
           style={DESKTOP_MIN_VIEWPORT_STYLE}

@@ -153,7 +153,7 @@ export const FeedPage: React.FC = () => {
   };
 
   return (
-    <div className="flex max-h-full min-h-0 min-w-0 max-w-[1199px] flex-1 flex-col overflow-hidden">
+    <div className="flex max-h-full min-h-0 min-w-0 max-w-narrow-page flex-1 flex-col overflow-hidden">
       <ChatHeader
         channelName={t("feed.title")}
         hideTopic

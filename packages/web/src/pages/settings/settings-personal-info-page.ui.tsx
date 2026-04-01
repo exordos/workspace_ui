@@ -247,7 +247,7 @@ export const SettingsPersonalInfoPage: React.FC = () => {
   }, [profile?.avatarUrl, user?.avatar_url]);
 
   return (
-    <div className="flex max-h-full min-h-0 min-w-0 max-w-[1199px] flex-1 flex-col overflow-hidden">
+    <div className="flex max-h-full min-h-0 min-w-0 max-w-narrow-page flex-1 flex-col overflow-hidden">
       <ChatHeader channelName={t("settings.personalInfo")} hideTopic hideParticipants />
       <section className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-4">
         <div className="rounded-xl border border-border-subtle bg-card-bg p-4">
