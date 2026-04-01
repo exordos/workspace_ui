@@ -16,12 +16,19 @@ export function resolveFirstUnreadBoundaryMessageId(
   return undefined;
 }
 
-export function countUnreadMessages(messages: readonly MockMessage[]): number {
+export function countUnreadMessages(
+  messages: readonly MockMessage[],
+  currentUserId?: number | null,
+): number {
   let unreadCount = 0;
   for (const message of messages) {
-    if (!message.flags?.includes("read")) {
-      unreadCount += 1;
+    if (message.flags?.includes("read")) {
+      continue;
     }
+    if (currentUserId != null && message.sender_id === currentUserId) {
+      continue;
+    }
+    unreadCount += 1;
   }
   return unreadCount;
 }

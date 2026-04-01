@@ -3,7 +3,7 @@ import React, { useCallback, useState } from "react";
 import { Badge } from "~/shared/ui/badge";
 import { Icon } from "~/shared/ui/icon";
 import { FolderContextMenuContent } from "./folder-rail-context-menu.ui";
-import { getFolderItemVisualState, isContextMenuKeyboardTrigger } from "./folder-rail.utils";
+import { getFolderItemVisualState, isContextMenuKeyboardTrigger } from "./folder-rail.lib";
 import type { FolderItemProps, UseFolderItemActionsArgs } from "./folder-rail-folder-items.types";
 
 /**

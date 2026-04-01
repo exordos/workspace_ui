@@ -9,7 +9,7 @@ import {
   FOLDER_QUICK_LIST_SHORTCUT,
   resolveFolderSystemType,
   type IndexedFolderEntry,
-} from "./folder-rail.utils";
+} from "./folder-rail.lib";
 import type { FolderQuickListProps } from "./folder-rail-quick-list.types";
 
 export const FolderQuickList: React.FC<FolderQuickListProps> = React.memo(function FolderQuickList({

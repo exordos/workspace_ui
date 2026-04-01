@@ -8,7 +8,7 @@ import { t } from "~/i18n/i18n";
 import { FolderRailHorizontalView } from "./folder-rail-horizontal-view.ui";
 import { FolderRailVerticalView } from "./folder-rail-vertical-view.ui";
 import type { FolderRailFolder, FolderRailLayout, FolderRailProps } from "./folder-rail.types";
-import type { IndexedFolderEntry } from "./folder-rail.utils";
+import type { IndexedFolderEntry } from "./folder-rail.lib";
 
 export type { FolderRailFolder, FolderRailLayout } from "./folder-rail.types";
 

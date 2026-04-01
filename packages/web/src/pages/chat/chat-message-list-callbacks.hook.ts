@@ -13,7 +13,7 @@ import {
 import { stripHtml } from "~/shared/lib/html";
 import type { MessageListCallbacks } from "~/widgets/message-list/message-list.types";
 import { slugForStream } from "~/widgets/sidebar/sidebar.lib";
-import type { UseChatMessageListCallbacksParams } from "./use-chat-message-list-callbacks.types";
+import type { UseChatMessageListCallbacksParams } from "./chat-message-list-callbacks.types";
 
 export function useChatMessageListCallbacks(
   params: UseChatMessageListCallbacksParams,

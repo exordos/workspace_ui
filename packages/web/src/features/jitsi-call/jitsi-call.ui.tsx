@@ -14,7 +14,7 @@ import { configureJitsiIframe } from "./jitsi-call-permissions.lib";
 import { getDefaultPipWindowBounds, type PipWindowBounds } from "./jitsi-call-pip.lib";
 import { parseJitsiMeetingUrlLoose } from "./jitsi-call-url.lib";
 import type { JitsiCallModalProps, JitsiExternalApiWithParticipants } from "./jitsi-call.types";
-import { useJitsiParticipantCount } from "./use-jitsi-participant-count.hook";
+import { useJitsiParticipantCount } from "./jitsi-participant-count.hook";
 
 export const JitsiCallModal: React.FC<JitsiCallModalProps> = ({
   open,

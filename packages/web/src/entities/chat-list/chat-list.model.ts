@@ -23,7 +23,7 @@ import {
   buildSidebarFromMessages,
   messageToStreamEntry,
   messageToDmEntry,
-  isUnread,
+  isUnreadFromOthers,
 } from "./chat-list.lib";
 import type { ChatListState, MessageLocation } from "./chat-list.model.types";
 
@@ -215,7 +215,7 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
       if (!result) return;
       const { stream_id, name, lastMessage, time, ts } = result.stream;
       const topic = result.topic;
-      const topicUnreadDelta = isUnread(message) ? 1 : 0;
+      const topicUnreadDelta = isUnreadFromOthers(message, currentUserId) ? 1 : 0;
       set((state) => {
         const existing = state.streamsMap.get(stream_id);
         if (existing && message.timestamp <= existing.ts) {
@@ -263,7 +263,7 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
       const dmEntry = messageToDmEntry(message, currentUserId, getAvatarMap());
       if (!dmEntry) return;
       const key = dmConversationKey(message.display_recipient, currentUserId);
-      const unreadDelta = isUnread(message) ? 1 : 0;
+      const unreadDelta = isUnreadFromOthers(message, currentUserId) ? 1 : 0;
       set((state) => {
         const existing = state.dmsMap.get(key);
         if (existing && message.timestamp <= existing.ts) {
@@ -337,7 +337,7 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
         if (!result) continue;
         const { stream_id, name, lastMessage, time, ts } = result.stream;
         const topic = result.topic;
-        const topicUnreadDelta = isUnread(m) ? 1 : 0;
+        const topicUnreadDelta = isUnreadFromOthers(m, currentUserId) ? 1 : 0;
         const existing = nextStreams.get(stream_id);
         if (existing && m.timestamp <= existing.ts) {
           const existingTopic = existing.topics.get(topic.subject);
@@ -376,7 +376,7 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
         if (!Array.isArray(m.display_recipient)) continue;
         const key = dmConversationKey(m.display_recipient, currentUserId);
         const existing = nextDms.get(key);
-        const unreadDelta = isUnread(m) ? 1 : 0;
+        const unreadDelta = isUnreadFromOthers(m, currentUserId) ? 1 : 0;
         if (existing && dmEntry.ts <= existing.ts) {
           if (unreadDelta > 0) {
             nextDms = new Map(nextDms);

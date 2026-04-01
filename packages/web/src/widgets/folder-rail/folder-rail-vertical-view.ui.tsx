@@ -7,7 +7,7 @@ import {
   FOLDER_QUICK_LIST_THRESHOLD,
   orderedIndexedFoldersForRail,
   type IndexedFolderEntry,
-} from "./folder-rail.utils";
+} from "./folder-rail.lib";
 import type { FolderRailVerticalViewProps } from "./folder-rail-vertical-view.types";
 
 export const FolderRailVerticalView: React.FC<FolderRailVerticalViewProps> = React.memo(

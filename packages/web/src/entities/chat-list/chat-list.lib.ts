@@ -90,6 +90,13 @@ export function isUnread(m: ZulipRawMessage): boolean {
   return !m.flags?.includes("read");
 }
 
+/** Unread for sidebar/UX: message lacks "read" and is not from the current user. */
+export function isUnreadFromOthers(m: ZulipRawMessage, currentUserId: number | null): boolean {
+  if (!isUnread(m)) return false;
+  if (currentUserId != null && m.sender_id === currentUserId) return false;
+  return true;
+}
+
 export function messageToStreamEntry(m: ZulipRawMessage): {
   stream: Omit<StreamEntryInternal, "topics"> & { topics: Map<string, StreamTopicEntry> };
   topic: StreamTopicEntry;
@@ -211,7 +218,7 @@ export function buildSidebarFromMessages(
   const dmUnread = new Map<string, number>();
 
   for (const m of messages) {
-    const unread = isUnread(m);
+    const unread = isUnreadFromOthers(m, currentUserId);
     if (m.type === "stream" && m.stream_id != null) {
       const subject = (m.subject ?? "").trim() || "general";
       const key = `${m.stream_id}\t${subject}`;

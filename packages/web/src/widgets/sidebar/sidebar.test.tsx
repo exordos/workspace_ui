@@ -161,6 +161,21 @@ describe("Sidebar", () => {
     expect(screen.getByText(t("app.loading"))).toBeInTheDocument();
   });
 
+  it("does not show folder list loading label when chats exist while sync is in flight", () => {
+    renderWithProviders(
+      <Sidebar
+        streams={[]}
+        selectedFolderId="folder-1"
+        sidebarChats={[DM_CHAT]}
+        sidebarChatsLoading
+        sidebarDms={[DM_CHAT]}
+      />,
+    );
+
+    expect(screen.queryByText(t("app.loading"))).not.toBeInTheDocument();
+    expect(screen.getByText("Alice")).toBeInTheDocument();
+  });
+
   it("does not render legacy chats-and-channels heading", () => {
     renderWithProviders(
       <Sidebar

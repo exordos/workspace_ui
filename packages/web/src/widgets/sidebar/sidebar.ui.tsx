@@ -92,6 +92,7 @@ export const Sidebar: React.FC<SidebarUiProps> = ({
   const streamChats = useMemo(() => getStreamChats(streams as StreamWithLast[]), [streams]);
 
   const listChats = useMemo<SidebarChat[]>(() => sidebarChats ?? [], [sidebarChats]);
+  const folderChatListLoading = sidebarChatsLoading && listChats.length === 0;
   const normalizedQuery = useMemo(() => normalizeSidebarSearchQuery(searchQuery), [searchQuery]);
 
   const doesChatMatchQuery = useCallback(
@@ -188,7 +189,7 @@ export const Sidebar: React.FC<SidebarUiProps> = ({
             onToggleStream={handleToggleStream}
             onNewTopic={handleNewTopic}
             reorderPinnedOnly={pinReorderMode}
-            loading={sidebarChatsLoading}
+            loading={folderChatListLoading}
             showEmptyState={sidebarChats != null && normalizedQuery.length === 0}
             onFolderAssignmentsChanged={handleFoldersChanged}
           />

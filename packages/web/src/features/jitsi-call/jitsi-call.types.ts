@@ -1,4 +1,4 @@
-import type { JitsiExternalApi } from "./use-jitsi-participant-count.hook";
+import type { JitsiExternalApi } from "./jitsi-participant-count.hook";
 
 export interface JitsiExternalApiWithParticipants extends JitsiExternalApi {
   getParticipantsInfo: () => object[];

@@ -97,7 +97,7 @@ import { ChatPageMessageListSection } from "./chat-page-message-list-section.ui"
 import { ChatPageReadReceiptsDialog } from "./chat-page-read-receipts-dialog.ui";
 import { ChatPageSelectionBar } from "./chat-page-selection-bar.ui";
 import { ChatPageTypingLine } from "./chat-page-typing-line.ui";
-import { useChatMessageListCallbacks } from "./use-chat-message-list-callbacks.hook";
+import { useChatMessageListCallbacks } from "./chat-message-list-callbacks.hook";
 
 const log = createLogger("chat-page");
 const AI_CONTEXT_MESSAGES_LIMIT = 30;
@@ -222,7 +222,10 @@ export const ChatPage: React.FC = () => {
     () => resolveFirstUnreadBoundaryMessageId(messages, currentUserId),
     [messages, currentUserId],
   );
-  const unreadCount = useMemo(() => countUnreadMessages(messages), [messages]);
+  const unreadCount = useMemo(
+    () => countUnreadMessages(messages, currentUserId),
+    [messages, currentUserId],
+  );
   const setContext = useCurrentChatMessagesStore((s) => s.setContext);
   const appendMessageToStore = useCurrentChatMessagesStore((s) => s.appendMessage);
   const removeMessageFromStore = useCurrentChatMessagesStore((s) => s.removeMessage);

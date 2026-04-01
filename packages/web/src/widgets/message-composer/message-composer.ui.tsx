@@ -55,8 +55,8 @@ import type {
   MessageComposerProps,
   ScheduledComposerMessage,
 } from "./message-composer.types";
-import { useMessageComposerPreview } from "./use-message-composer-preview.hook";
-import { useMessageComposerUpload } from "./use-message-composer-upload.hook";
+import { useMessageComposerPreview } from "./message-composer-preview.hook";
+import { useMessageComposerUpload } from "./message-composer-upload.hook";
 
 export type { ReplyQuote } from "./message-composer.types";
 

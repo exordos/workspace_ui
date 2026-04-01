@@ -2,7 +2,7 @@ import React, { useCallback } from "react";
 import { useMediaViewerStore } from "./media-viewer.model";
 import { MediaViewerBackdrop } from "./media-viewer-backdrop.ui";
 import { MediaViewerControls } from "./media-viewer-controls.ui";
-import { useMediaViewerZoom } from "./use-media-viewer-zoom.hook";
+import { useMediaViewerZoom } from "./media-viewer-zoom.hook";
 
 export const MediaViewerOverlay: React.FC = () => {
   const isOpen = useMediaViewerStore((s) => s.isOpen);

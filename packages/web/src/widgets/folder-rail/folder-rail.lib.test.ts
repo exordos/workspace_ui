@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { orderedIndexedFoldersForRail, type IndexedFolderEntry } from "./folder-rail.utils";
+import { orderedIndexedFoldersForRail, type IndexedFolderEntry } from "./folder-rail.lib";
 
 function entry(
   id: string,

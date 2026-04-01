@@ -4,7 +4,7 @@ import { t } from "~/i18n/i18n";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import type { CreateChatDialogProps } from "./create-chat-dialog.types";
-import { useCreateChatDialog } from "./use-create-chat-dialog.hook";
+import { useCreateChatDialog } from "./create-chat-dialog.hook";
 
 export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
   open,
