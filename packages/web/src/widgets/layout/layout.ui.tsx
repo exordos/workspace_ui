@@ -14,7 +14,6 @@ import { getChatInfoNetworkKey } from "~/features/chat-info/chat-info.lib";
 import { useChatInfoStore } from "~/features/chat-info/chat-info.model";
 import { selectSidebarChatsLoading } from "~/features/folder-sync/folder-sync.selectors";
 import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
-import { InstanceSwitcher } from "~/features/instance-switch/instance-switch.ui";
 import { MediaViewerOverlay } from "~/features/media-viewer/media-viewer-overlay.ui";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { usePinStore } from "~/features/pin-chat/pin-chat.model";
@@ -58,7 +57,7 @@ import { isValidRealmUrl } from "~/shared/lib/validation";
 import { createResilientInterval } from "~/shared/lib/visibility";
 import { useRightDrawerStore, type RightDrawerMode } from "~/widgets/right-panel/right-drawer.model";
 import type { RightPanelUserInfo } from "~/widgets/right-panel/right-panel.types";
-import { SearchModal } from "~/widgets/search-modal/search-modal.ui";
+import { useSearchModalStore } from "~/widgets/search-modal/search-modal.model";
 import {
   parseStreamSlug,
   parseDmSlugToUserIds,
@@ -66,8 +65,7 @@ import {
   getDmById,
 } from "~/widgets/sidebar/sidebar.lib";
 import { TopBar } from "~/widgets/top-bar/top-bar.ui";
-import type { TopBarSection } from "~/widgets/top-bar/top-bar.types";
-import { getSectionFromPathname } from "./layout-active-section.lib";
+import { getSectionFromPathname } from "~/widgets/top-bar/top-bar.lib";
 import { runChatListBootstrap } from "./layout-chat-list-bootstrap.lib";
 import { shouldRenderChatShell } from "./layout-chat-shell.lib";
 import { resolveChatShortcutRoute } from "./layout-chat-shortcuts.lib";
@@ -101,7 +99,6 @@ import { useLayoutAuthGuard } from "./layout-auth-guard.hook";
 import { useLayoutInstanceBootstrap } from "./layout-instance-bootstrap.hook";
 import { useInactiveInstancesBackgroundWork } from "./layout-inactive-instances-background-work.hook";
 import { useLayoutOnlineStatus } from "./layout-online-status.hook";
-import { useLayoutSearchModal } from "./layout-search-modal.hook";
 import { useLayoutPushPermission } from "./layout-push-permission.hook";
 import { useLayoutPresencePolling } from "./layout-presence-polling.hook";
 import { useLayoutPushClickRouting } from "./layout-push-click-routing.hook";
@@ -297,13 +294,7 @@ export const Layout: React.FC = () => {
     usersMapForChatInfo,
   ]);
 
-  const {
-    open: searchOpen,
-    setOpen: setSearchOpen,
-    openSearch,
-    onSelectMessage: handleSearchSelectMessage,
-    onSelectUser: handleSearchSelectUser,
-  } = useLayoutSearchModal({ navigate });
+  const openSearch = useSearchModalStore((s) => s.openModal);
   const handleSelectFolder = useCallback(
     (folderId: string) => {
       setPinReorderMode(false);
@@ -422,7 +413,6 @@ export const Layout: React.FC = () => {
     [navigate],
   );
 
-  // Search modal callbacks are provided by useLayoutSearchModal()
   const allFolderId = useMemo(
     () => folders.find((folder) => folder.systemType === "all")?.id ?? null,
     [folders],
@@ -450,20 +440,6 @@ export const Layout: React.FC = () => {
     activeDmIdParam: dmIdParam ?? null,
     navigate,
   });
-
-  const handleSectionChange = useCallback(
-    (section: TopBarSection) => {
-      if (section === "chat") {
-        const first = streamsFromStore[0];
-        void navigate(
-          first ? withCurrentOrgRoute(`/stream/${slugForStream(first)}`) : withCurrentOrgRoute("/"),
-        );
-      } else {
-        void navigate(withCurrentOrgRoute(`/${section}`));
-      }
-    },
-    [streamsFromStore, navigate],
-  );
 
   const parsedStream = activeStreamSlug ? parseStreamSlug(activeStreamSlug) : null;
   const rightDrawerOverrideUser = useUsersStore((s) =>
@@ -580,17 +556,7 @@ export const Layout: React.FC = () => {
             </div>
           )}
           <MediaViewerOverlay />
-          <SearchModal
-            open={searchOpen}
-            onOpenChange={setSearchOpen}
-            onSelectMessage={handleSearchSelectMessage}
-            onSelectUser={handleSearchSelectUser}
-          />
-          <TopBar
-            activeSection={activeSection}
-            onSectionChange={handleSectionChange}
-            leftContent={<InstanceSwitcher />}
-          />
+          <TopBar />
           <LayoutMainWorkspace
             shouldShowChatShell={shouldShowChatShell}
             sidebarOpen={sidebarOpen}

@@ -1,7 +1,20 @@
 import { t } from "~/i18n/i18n";
 import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
 import { resolveAvatarUrl } from "~/shared/lib/avatar";
-import type { TopBarSectionNavItem } from "./top-bar.types";
+import { extractOrgRouteFromPathname } from "~/shared/lib/org-route";
+import type { TopBarSection, TopBarSectionNavItem } from "./top-bar.types";
+
+/** Maps the current pathname (including `/org/:id/...`) to the top-bar app section. */
+export function getSectionFromPathname(pathname: string): TopBarSection {
+  const { scopedPathname } = extractOrgRouteFromPathname(pathname);
+  if (scopedPathname.startsWith("/calendar")) return "calendar";
+  if (scopedPathname.startsWith("/mail")) return "mail";
+  if (scopedPathname.startsWith("/calls")) return "calls";
+  if (scopedPathname.startsWith("/services") || scopedPathname.startsWith("/all-services")) {
+    return "services";
+  }
+  return "chat";
+}
 
 export function formatDownloadBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";

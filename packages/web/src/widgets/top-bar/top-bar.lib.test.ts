@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getSectionFromPathname } from "./layout-active-section.lib";
+import { getSectionFromPathname } from "./top-bar.lib";
 
 describe("getSectionFromPathname", () => {
   it("resolves chat section for chat routes", () => {

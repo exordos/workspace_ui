@@ -166,6 +166,9 @@ export const ChatPage: React.FC = () => {
   const useIdbAsMessageSource = useIndexedDbMessageSourceEnabled();
   const messages = useMemo(() => {
     if (!useIdbAsMessageSource) return messagesFromStore;
+    // IDB hook can briefly lag behind or return a smaller slice (e.g. before upsert + notify);
+    // the store holds the latest API merge from loadInitial / pagination until IDB catches up.
+    if (messagesFromStore.length > messagesFromIdb.length) return messagesFromStore;
     return messagesFromIdb.length > 0 ? messagesFromIdb : messagesFromStore;
   }, [useIdbAsMessageSource, messagesFromIdb, messagesFromStore]);
 
@@ -173,9 +176,11 @@ export const ChatPage: React.FC = () => {
     const source =
       !useIdbAsMessageSource
         ? "store-only"
-        : messagesFromIdb.length > 0
-          ? "idb"
-          : "store-fallback";
+        : messagesFromStore.length > messagesFromIdb.length
+          ? "store-prefer-longer"
+          : messagesFromIdb.length > 0
+            ? "idb"
+            : "store-fallback";
     logMessageFlow("ui:resolved message list", {
       source,
       context: summarizeChatContextForLog(chatContextForMessages),

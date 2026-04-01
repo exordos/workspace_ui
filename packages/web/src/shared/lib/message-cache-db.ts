@@ -27,6 +27,12 @@ export const MESSAGE_CACHE_DEFAULT_WINDOW_SIZE = 200;
 /** How many messages newer than cached max id to request on chat open (incremental IDB bootstrap). */
 export const MESSAGE_CACHE_INITIAL_DELTA_NUM_AFTER = 200;
 
+/**
+ * Incremental open (anchor = max cached id, num_after only) skips older history. If IndexedDB has
+ * fewer rows than this (e.g. a single realtime message), run full DM/stream bootstrap instead.
+ */
+export const MESSAGE_CACHE_MIN_CACHED_MESSAGES_FOR_INCREMENTAL_INITIAL = 15;
+
 const STORE_MESSAGES = "messages";
 const STORE_CHAT_META = "chatMeta";
 const STORE_CHAT_LIST_SNAPSHOT = "chatListSnapshot";

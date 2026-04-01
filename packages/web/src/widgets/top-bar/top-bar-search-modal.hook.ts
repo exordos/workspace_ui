@@ -6,17 +6,15 @@ import { buildRouteFromMessage } from "~/shared/lib/push-click";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { useSearchModalStore } from "~/widgets/search-modal/search-modal.model";
 
-export function useLayoutSearchModal(options: { navigate: NavigateFunction }): {
+export function useTopBarSearchModal(options: { navigate: NavigateFunction }): {
   open: boolean;
   setOpen: (open: boolean) => void;
-  openSearch: () => void;
   onSelectMessage: (msg: MockMessage) => void;
   onSelectUser: (userId: number) => void;
 } {
   const { navigate } = options;
   const open = useSearchModalStore((s) => s.open);
   const setOpen = useSearchModalStore((s) => s.setOpen);
-  const openSearch = useSearchModalStore((s) => s.openModal);
   const closeModal = useSearchModalStore((s) => s.closeModal);
 
   const onSelectMessage = useCallback(
@@ -39,6 +37,5 @@ export function useLayoutSearchModal(options: { navigate: NavigateFunction }): {
     [navigate, closeModal],
   );
 
-  return { open, setOpen, openSearch, onSelectMessage, onSelectUser };
+  return { open, setOpen, onSelectMessage, onSelectUser };
 }
-

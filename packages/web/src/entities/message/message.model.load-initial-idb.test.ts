@@ -111,7 +111,9 @@ describe("loadInitialMessagesForContext (IndexedDB incremental)", () => {
       streamName: "general",
       topic: "topic1",
     };
-    const cached = [mockMsg({ id: 100, stream_id: 5, subject: "topic1" })];
+    const cached = Array.from({ length: 15 }, (_, i) =>
+      mockMsg({ id: 86 + i, stream_id: 5, subject: "topic1" }),
+    );
     mockGetChatMessagesAscending.mockResolvedValue(cached);
     mockFetchMessagesWithNarrowPage.mockResolvedValue({
       messages: [mockMsg({ id: 101, stream_id: 5, subject: "topic1", content: "<p>n</p>" })],
@@ -138,7 +140,10 @@ describe("loadInitialMessagesForContext (IndexedDB incremental)", () => {
     expect(mockFetchMessages).not.toHaveBeenCalled();
 
     const state = useCurrentChatMessagesStore.getState();
-    expect(state.messages.map((m) => m.id)).toEqual([100, 101]);
+    expect(state.messages.map((m) => m.id)).toEqual([
+      ...Array.from({ length: 15 }, (_, i) => 86 + i),
+      101,
+    ]);
     expect(mockUpsertChatMessages).toHaveBeenCalledTimes(1);
     expect(mockUpsertChatMessages).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -146,6 +151,33 @@ describe("loadInitialMessagesForContext (IndexedDB incremental)", () => {
       }),
     );
     expect(mockUpsertChatMessages.mock.calls[0]![0].messages).toHaveLength(1);
+  });
+
+  it("with sparse IDB cache (below incremental threshold) uses full stream fetch", async () => {
+    const ctx: CurrentChatContext = {
+      type: "stream",
+      streamId: 5,
+      streamName: "general",
+      topic: "topic1",
+    };
+    mockGetChatMessagesAscending.mockResolvedValue([
+      mockMsg({ id: 5505488, stream_id: 5, subject: "topic1" }),
+    ]);
+    const boot = [
+      mockMsg({ id: 1, stream_id: 5, subject: "topic1" }),
+      mockMsg({ id: 2, stream_id: 5, subject: "topic1" }),
+    ];
+    mockFetchMessages.mockResolvedValue(boot);
+
+    await useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
+      context: ctx,
+      focusedMessageId: null,
+      currentUserId: 1,
+    });
+
+    expect(mockFetchMessagesWithNarrowPage).not.toHaveBeenCalled();
+    expect(mockFetchMessages).toHaveBeenCalledWith("general", "topic1");
+    expect(useCurrentChatMessagesStore.getState().messages).toEqual(boot);
   });
 
   it("with empty IDB cache uses stream bootstrap fetchMessages", async () => {

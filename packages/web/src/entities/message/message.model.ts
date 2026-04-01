@@ -34,6 +34,7 @@ import {
   getExistingMessageIdsInChat,
   MESSAGE_CACHE_DEFAULT_WINDOW_SIZE,
   MESSAGE_CACHE_INITIAL_DELTA_NUM_AFTER,
+  MESSAGE_CACHE_MIN_CACHED_MESSAGES_FOR_INCREMENTAL_INITIAL,
   patchMessageContentInCache,
   patchMessageFlagsInCache,
   patchMessageReactionInCache,
@@ -652,7 +653,17 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     if (tryIdbIncremental) {
       const chatKey = chatKeyFromContext(context);
       const cached = await getChatMessagesAscending(inst, chatKey).catch(() => [] as MockMessage[]);
-      if (cached.length > 0) {
+      const cacheLargeEnoughForIncremental =
+        cached.length >= MESSAGE_CACHE_MIN_CACHED_MESSAGES_FOR_INCREMENTAL_INITIAL;
+      if (cached.length > 0 && !cacheLargeEnoughForIncremental) {
+        logMessageFlow("store:loadInitial idb incremental skipped", {
+          reason: "sparse-cache",
+          chatKey,
+          cachedCount: cached.length,
+          minRequired: MESSAGE_CACHE_MIN_CACHED_MESSAGES_FOR_INCREMENTAL_INITIAL,
+        });
+      }
+      if (cacheLargeEnoughForIncremental) {
         const newestCachedId = cached[cached.length - 1]!.id;
         const narrow =
           context.type === "stream"

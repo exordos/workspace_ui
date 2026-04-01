@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import type { DownloadEntry } from "~/entities/download/download.types";
 
 export type TopBarSection = "chat" | "calendar" | "mail" | "calls" | "services";
@@ -9,13 +8,6 @@ export type TopBarSectionNavItem = {
   label: string;
   available: boolean;
 };
-
-export interface TopBarProps {
-  activeSection: TopBarSection;
-  onSectionChange: (section: TopBarSection) => void;
-  /** Left content (e.g. the instance switcher) */
-  leftContent?: ReactNode;
-}
 
 export interface TopBarSectionButtonProps {
   id: TopBarSection;
