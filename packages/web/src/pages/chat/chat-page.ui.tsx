@@ -77,7 +77,11 @@ import {
   setPendingForwardPrefill,
   toggleForwardRecipient,
 } from "./chat-forward.lib";
-import { collectUnreadMessageIds, resolveMarkAllAsReadTarget } from "./chat-mark-all-read.lib";
+import {
+  collectUnreadMessageIds,
+  filterMessageIdsStillUnreadForOptimisticApply,
+  resolveMarkAllAsReadTarget,
+} from "./chat-mark-all-read.lib";
 import { createMarkAsReadBatcher } from "./chat-mark-as-read.lib";
 import { resolveNextUnreadTopicRoute } from "./chat-next-unread-topic.lib";
 import { shouldLoadBoundaryPage } from "./chat-pagination.lib";
@@ -171,6 +175,10 @@ export const ChatPage: React.FC = () => {
     if (messagesFromStore.length > messagesFromIdb.length) return messagesFromStore;
     return messagesFromIdb.length > 0 ? messagesFromIdb : messagesFromStore;
   }, [useIdbAsMessageSource, messagesFromIdb, messagesFromStore]);
+
+  /** Same array as passed to `MessageList`; used when applying read flags so we do not rely on store alone. */
+  const effectiveMessagesForReadRef = useRef<MockMessage[]>(messages);
+  effectiveMessagesForReadRef.current = messages;
 
   useEffect(() => {
     const source =
@@ -491,13 +499,25 @@ export const ChatPage: React.FC = () => {
     (messageIds: number[], fallbackContext?: ReadFallbackContext) => {
       if (messageIds.length === 0) return;
 
-      const unreadMessageIds = messageIds.filter((messageId) => {
-        const message = useCurrentChatMessagesStore
-          .getState()
-          .messages.find((m) => m.id === messageId);
-        return message != null && !(message.flags ?? []).includes("read");
+      const storeMessages = useCurrentChatMessagesStore.getState().messages;
+      const effectiveMessages = effectiveMessagesForReadRef.current;
+      const unreadMessageIds = filterMessageIdsStillUnreadForOptimisticApply(messageIds, {
+        storeMessages,
+        effectiveMessages,
       });
-      if (unreadMessageIds.length === 0) return;
+      if (unreadMessageIds.length === 0) {
+        const missingFromBothLists = messageIds.filter(
+          (id) =>
+            !storeMessages.some((m) => m.id === id) && !effectiveMessages.some((m) => m.id === id),
+        );
+        if (missingFromBothLists.length > 0) {
+          log.warn("markAsRead optimistic: ids missing from store and effective message lists", {
+            missingCount: missingFromBothLists.length,
+            requestedCount: messageIds.length,
+          });
+        }
+        return;
+      }
 
       updateMessageFlagsInStore(unreadMessageIds, "read", "add");
 
