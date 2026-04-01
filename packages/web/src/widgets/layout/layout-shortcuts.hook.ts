@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import type { NavigateFunction } from "react-router-dom";
+import type { TopBarSection } from "~/widgets/top-bar/top-bar.types";
 import type { SidebarChat } from "~/shared/types/sidebar-chat";
 import { useShortcut } from "~/shared/lib/shortcuts";
 import { resolveShortcutPanelToggle } from "./layout-shortcuts.lib";
@@ -7,7 +8,7 @@ import { resolveChatShortcutRoute } from "./layout-chat-shortcuts.lib";
 
 export function useLayoutShortcuts(options: {
   enabled: boolean;
-  activeSection: string;
+  activeSection: TopBarSection;
   rightDrawerOpen: boolean;
   setRightDrawerOpen: (open: boolean) => void;
   setSidebarOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -29,11 +30,11 @@ export function useLayoutShortcuts(options: {
   } = options;
 
   const toggleSidebar = useCallback(() => {
-    setSidebarOpen((currentOpen) => resolveShortcutPanelToggle(currentOpen, activeSection as any));
+    setSidebarOpen((currentOpen) => resolveShortcutPanelToggle(currentOpen, activeSection));
   }, [activeSection, setSidebarOpen]);
 
   const toggleInfoPanel = useCallback(() => {
-    setRightDrawerOpen(resolveShortcutPanelToggle(rightDrawerOpen, activeSection as any));
+    setRightDrawerOpen(resolveShortcutPanelToggle(rightDrawerOpen, activeSection));
   }, [activeSection, rightDrawerOpen, setRightDrawerOpen]);
 
   const navigateToAdjacent = useCallback(

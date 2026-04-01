@@ -52,16 +52,10 @@ export const useFooStore = create<FooState>((set, get) => ({
 }));
 ```
 
-Export via `entities/foo/index.ts`:
+Import the store from the **concrete model file** (no barrel `index.ts` re-exports — see `no-barrel-index.mdc`):
 
 ```ts
-export { useFooStore } from "./foo.model";
-```
-
-Import via public API only:
-
-```ts
-import { useFooStore } from "~/entities/foo";
+import { useFooStore } from "~/entities/foo/foo.model";
 ```
 
 ## Patterns

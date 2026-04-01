@@ -14,7 +14,6 @@ import { getChatInfoNetworkKey } from "~/features/chat-info/chat-info.lib";
 import { useChatInfoStore } from "~/features/chat-info/chat-info.model";
 import { selectSidebarChatsLoading } from "~/features/folder-sync/folder-sync.selectors";
 import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
-import { MediaViewerOverlay } from "~/features/media-viewer/media-viewer-overlay.ui";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { usePinStore } from "~/features/pin-chat/pin-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
@@ -34,10 +33,7 @@ import {
   type ZulipRawMessage,
   type ZulipEvent,
 } from "~/shared/api/zulip";
-import { OpenSearchContext } from "~/shared/contexts/open-search";
-import { RightDrawerContext } from "~/shared/contexts/right-drawer";
 import { initAuthGuard } from "~/shared/lib/auth-guard";
-import { brand } from "~/shared/lib/brand";
 import { createLogger } from "~/shared/lib/logger";
 import { sortChatsByLastMessage } from "~/shared/lib/chat-sorting";
 import { getElectronAPI } from "~/shared/lib/electron";
@@ -65,14 +61,12 @@ import {
   slugForStream,
   getDmById,
 } from "~/widgets/sidebar/sidebar.lib";
-import { TopBar } from "~/widgets/top-bar/top-bar.ui";
 import { getSectionFromPathname } from "~/widgets/top-bar/top-bar.lib";
 import { runChatListBootstrap } from "./layout-chat-list-bootstrap.lib";
 import { shouldRenderChatShell } from "./layout-chat-shell.lib";
 import { resolveChatShortcutRoute } from "./layout-chat-shortcuts.lib";
-import { DESKTOP_MIN_VIEWPORT_STYLE } from "./layout-desktop-viewport.lib";
-import { LayoutFullscreenError, LayoutFullscreenLoading } from "./layout-loading-state.ui";
-import { LayoutMainWorkspace } from "./layout-main-workspace.ui";
+import { LayoutAppShell } from "./layout-app-shell.ui";
+import { LayoutLoadingGate } from "./layout-loading-gate.ui";
 import { startFolderPolling } from "./layout-folder-polling.lib";
 import { useLayoutShortcuts } from "./layout-shortcuts.hook";
 import { useLayoutUnreadAndTitle } from "./layout-unread-title.hook";
@@ -542,60 +536,35 @@ export const Layout: React.FC = () => {
     rightPanelMemberStatusIds,
   });
 
-  if (showFullscreenLoader) {
-    return <LayoutFullscreenLoading />;
-  }
-
-  if (showError) {
-    return <LayoutFullscreenError />;
-  }
+  const rightPanelTitleResolved =
+    rightDrawerMode === "settings"
+      ? t("settings.settings")
+      : rightDrawerMode === "user-menu"
+        ? t("nav.profile")
+        : rightDrawerMode === "about"
+          ? t("settings.appVersion")
+          : rightDrawerTitle;
 
   return (
-    <OpenSearchContext.Provider value={openSearch}>
-      <RightDrawerContext.Provider
-        value={{
-          open: rightDrawerOpen,
-          setOpen: setRightDrawerOpen,
-          openUserProfile: openRightDrawerUserProfile,
-        }}
-      >
-        <div
-          className="flex h-screen max-h-[100dvh] min-h-app-shell flex-col items-stretch overflow-hidden bg-bg text-text-primary"
-          role="application"
-          aria-label={brand.appName}
-          style={DESKTOP_MIN_VIEWPORT_STYLE}
-        >
-          {!online && (
-            <div className="bg-notice-base/90 text-badge-text shrink-0 py-1 text-center text-xs">
-              {t("app.offline")}
-            </div>
-          )}
-          <MediaViewerOverlay />
-          <TopBar />
-          <LayoutMainWorkspace
-            shouldShowChatShell={shouldShowChatShell}
-            sidebarOpen={sidebarOpen}
-            rightDrawerOpen={rightDrawerOpen}
-            rightDrawerMode={rightDrawerMode}
-            onCloseRightDrawer={handleCloseRightDrawer}
-            rightPanelTitle={
-              rightDrawerMode === "settings"
-                ? t("settings.settings")
-                : rightDrawerMode === "user-menu"
-                  ? t("nav.profile")
-                  : rightDrawerMode === "about"
-                    ? t("settings.appVersion")
-                    : rightDrawerTitle
-            }
-            participantsCount={chatInfoData?.memberCount ?? 0}
-            onlineCount={chatInfoData?.onlineCount ?? 0}
-            rightPanelUser={rightPanelUser ?? undefined}
-            onSelectCommonGroup={(slug: string) => handleSelectDm(slug)}
-            onOpenSettingsDrawer={openRightDrawerSettings}
-            onOpenAboutDrawer={openRightDrawerAbout}
-          />
-        </div>
-      </RightDrawerContext.Provider>
-    </OpenSearchContext.Provider>
+    <LayoutLoadingGate showFullscreenLoader={showFullscreenLoader} showError={showError}>
+      <LayoutAppShell
+        openSearch={openSearch}
+        online={online}
+        rightDrawerOpen={rightDrawerOpen}
+        setRightDrawerOpen={setRightDrawerOpen}
+        openRightDrawerUserProfile={openRightDrawerUserProfile}
+        shouldShowChatShell={shouldShowChatShell}
+        sidebarOpen={sidebarOpen}
+        rightDrawerMode={rightDrawerMode}
+        onCloseRightDrawer={handleCloseRightDrawer}
+        rightPanelTitle={rightPanelTitleResolved}
+        participantsCount={chatInfoData?.memberCount ?? 0}
+        onlineCount={chatInfoData?.onlineCount ?? 0}
+        rightPanelUser={rightPanelUser ?? undefined}
+        onSelectCommonGroup={(slug: string) => handleSelectDm(slug)}
+        onOpenSettingsDrawer={openRightDrawerSettings}
+        onOpenAboutDrawer={openRightDrawerAbout}
+      />
+    </LayoutLoadingGate>
   );
 };

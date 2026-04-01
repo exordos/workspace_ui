@@ -6,6 +6,8 @@ import { buildActiveChatWindowTitle } from "./layout-instance-unread.lib";
 import { getDmById, parseStreamSlug } from "~/widgets/sidebar/sidebar.lib";
 import type { SidebarChat } from "~/shared/types/sidebar-chat";
 
+type DmSidebarChat = Extract<SidebarChat, { type: "dm" }>;
+
 export function useLayoutUnreadAndTitle(options: {
   instances: ZulipInstance[];
   currentInstanceId: string | null;
@@ -54,15 +56,16 @@ export function useLayoutUnreadAndTitle(options: {
     return parsedActiveStream.stream_name;
   }, [activeStreamSlug, streamsMap]);
 
-  const activeDmChatForTitle = useMemo(
-    () => (dmIdParam != null && dmIdParam !== "" ? getDmById(dmIdParam, dms as any) : undefined),
-    [dmIdParam, dms],
-  );
+  const activeDmChatForTitle = useMemo((): DmSidebarChat | undefined => {
+    if (dmIdParam == null || dmIdParam === "") return undefined;
+    const dmOnly = dms.filter((c): c is DmSidebarChat => c.type === "dm");
+    return getDmById(dmIdParam, dmOnly);
+  }, [dmIdParam, dms]);
 
   const activeChatWindowTitle = useMemo(
     () =>
       buildActiveChatWindowTitle({
-        dmName: (activeDmChatForTitle as any)?.name,
+        dmName: activeDmChatForTitle?.name,
         streamName: activeStreamNameForTitle,
         topicName: activeTopic,
       }),

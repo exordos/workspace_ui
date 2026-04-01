@@ -180,7 +180,7 @@ export function useTranslation() {
 
   const translate = useCallback(
     (key: string, vars?: Record<string, unknown>) => t(key, vars),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `t` closes over module locale; `locale` is the only external input that must invalidate the callback when switching language.
     [locale],
   );
 

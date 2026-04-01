@@ -10,7 +10,7 @@ import { useUsersStore } from "~/entities/user/user.model";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indicator.model";
-import type { ZulipUserMember } from "~/shared/api/zulip.types";
+import type { ZulipRawMessage, ZulipUserMember } from "~/shared/api/zulip.types";
 import {
   deleteQueue,
   fetchRecentMessages,
@@ -39,7 +39,7 @@ export function useLayoutZulipEventLoop(options: {
     mutedTopics: { streamId: number; topic: string }[];
     unmutedTopics: { streamId: number; topic: string }[];
   }>;
-  setFromMessages: (messages: any[], currentUserId: number | null) => void;
+  setFromMessages: (messages: ZulipRawMessage[], currentUserId: number | null) => void;
   setCurrentUserId: (id: number) => void;
   setCurrentUserStatus: (status: "idle" | "loading" | "ready" | "error") => void;
 }): void {
@@ -143,16 +143,16 @@ export function useLayoutZulipEventLoop(options: {
         if (result.mode === "full") {
           const msgs = result.messages;
           for (const m of msgs) {
-            useUsersStore.getState().mergeFromMessage(m as any);
+            useUsersStore.getState().mergeFromMessage(m);
           }
           setFromMessagesRef.current(msgs, uid);
-          latestMessageIdRef.current = getNewestMessageId(msgs as any);
+          latestMessageIdRef.current = getNewestMessageId(msgs);
         } else if (result.mode === "delta") {
           for (const m of result.messages) {
-            useUsersStore.getState().mergeFromMessage(m as any);
+            useUsersStore.getState().mergeFromMessage(m);
           }
           useChatListStore.getState().addMessages(result.messages);
-          const newest = getNewestMessageId(result.messages as any);
+          const newest = getNewestMessageId(result.messages);
           const prev = result.latestMessageIdHint;
           latestMessageIdRef.current =
             newest != null && (prev == null || newest > prev) ? newest : (prev ?? newest);
@@ -182,10 +182,10 @@ export function useLayoutZulipEventLoop(options: {
               .then((freshMsgs) => {
                 if (cancelled) return;
                 for (const m of freshMsgs) {
-                  useUsersStore.getState().mergeFromMessage(m as any);
+                  useUsersStore.getState().mergeFromMessage(m);
                 }
-                setFromMessagesRef.current(freshMsgs as any, uid);
-                latestMessageIdRef.current = getNewestMessageId(freshMsgs as any);
+                setFromMessagesRef.current(freshMsgs, uid);
+                latestMessageIdRef.current = getNewestMessageId(freshMsgs);
                 const idPersist = useInstancesStore.getState().currentInstanceId;
                 if (idPersist != null) {
                   void persistChatListSnapshotToIndexedDb(idPersist);
@@ -206,12 +206,12 @@ export function useLayoutZulipEventLoop(options: {
                 const usersStore = useUsersStore.getState();
                 const chatListStore = useChatListStore.getState();
                 for (const message of deltaMessages) {
-                  usersStore.mergeFromMessage(message as any);
-                  chatListStore.addMessage(message as any);
+                  usersStore.mergeFromMessage(message);
+                  chatListStore.addMessage(message);
                 }
 
                 latestMessageIdRef.current =
-                  getNewestMessageId(deltaMessages as any) ?? latestMessageIdRef.current;
+                  getNewestMessageId(deltaMessages) ?? latestMessageIdRef.current;
                 useActivityStore.getState().markStale();
                 useInboxStore.getState().markStale();
                 const idPersist = useInstancesStore.getState().currentInstanceId;
