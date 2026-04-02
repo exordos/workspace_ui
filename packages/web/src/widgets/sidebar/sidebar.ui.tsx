@@ -89,6 +89,19 @@ export const Sidebar: React.FC<SidebarUiProps> = ({
     };
   }, [activeTopic, activeStreamSlug, expandedStreamSlug, setExpandedStreamSlug]);
 
+  useEffect(() => {
+    if (activeDmIdParam == null || activeDmIdParam === "") return;
+    if (expandedStreamSlug == null) return;
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (cancelled) return;
+      setExpandedStreamSlug(null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeDmIdParam, expandedStreamSlug, setExpandedStreamSlug]);
+
   const streamChats = useMemo(() => getStreamChats(streams as StreamWithLast[]), [streams]);
 
   const listChats = useMemo<SidebarChat[]>(() => sidebarChats ?? [], [sidebarChats]);

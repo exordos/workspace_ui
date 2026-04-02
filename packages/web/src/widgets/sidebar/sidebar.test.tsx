@@ -1009,6 +1009,28 @@ describe("Sidebar", () => {
     expect(screen.getByText("# incident")).toBeInTheDocument();
   });
 
+  it("collapses expanded stream topics when a direct message chat is active", async () => {
+    const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
+      ...STREAM_CHAT,
+      topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
+    };
+    useSidebarConfigStore.getState().setExpandedStreamSlug("11-engineering");
+
+    renderWithProviders(
+      <Sidebar
+        streams={[]}
+        selectedFolderId="all"
+        sidebarChats={[streamWithTopics, DM_CHAT]}
+        sidebarDms={[DM_CHAT]}
+        activeDmIdParam={DM_CHAT.slug}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByText("# incident")).not.toBeInTheDocument();
+    });
+  });
+
   it("places stream chat-menu trigger under counters and keeps avatar overlay toggle", () => {
     const streamWithUnread: Extract<SidebarChat, { type: "stream" }> = {
       ...STREAM_CHAT,
