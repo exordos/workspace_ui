@@ -65,14 +65,14 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   const instances = useInstancesStore((s) => s.instances);
   const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
   const removeInstance = useInstancesStore((s) => s.removeInstance);
-  const prioritizePersonalUnread = useSettingsStore((s) => s.prioritizePersonalUnread);
-  const prioritizeUnmutedUnreadChannels = useSettingsStore(
-    (s) => s.prioritizeUnmutedUnreadChannels,
-  );
-  const setPrioritizePersonalUnread = useSettingsStore((s) => s.setPrioritizePersonalUnread);
-  const setPrioritizeUnmutedUnreadChannels = useSettingsStore(
-    (s) => s.setPrioritizeUnmutedUnreadChannels,
-  );
+  // const prioritizePersonalUnread = useSettingsStore((s) => s.prioritizePersonalUnread);
+  // const prioritizeUnmutedUnreadChannels = useSettingsStore(
+  //   (s) => s.prioritizeUnmutedUnreadChannels,
+  // );
+  // const setPrioritizePersonalUnread = useSettingsStore((s) => s.setPrioritizePersonalUnread);
+  // const setPrioritizeUnmutedUnreadChannels = useSettingsStore(
+  //   (s) => s.setPrioritizeUnmutedUnreadChannels,
+  // );
   const notificationSound = useSettingsStore((s) => s.notificationSound);
   const setNotificationSound = useSettingsStore((s) => s.setNotificationSound);
   const setLanguage = useSettingsStore((s) => s.setLanguage);
@@ -86,7 +86,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   const [soundSettingsOpen, setSoundSettingsOpen] = useState(false);
   const [languageSettingsOpen, setLanguageSettingsOpen] = useState(false);
   const [themeSettingsOpen, setThemeSettingsOpen] = useState(false);
-  const [chatSortingOpen, setChatSortingOpen] = useState(false);
+  // const [chatSortingOpen, setChatSortingOpen] = useState(false);
   const [folderLayoutOpen, setFolderLayoutOpen] = useState(false);
   const [chatListDensityOpen, setChatListDensityOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
@@ -478,35 +478,35 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
                 </div>
               )}
 
-              <RightPanelUserMenuMenuButton
-                label={t("settings.chatSorting")}
-                icon="channels"
-                onClick={() => setChatSortingOpen((open) => !open)}
-                subtitle={t("settings.chatSortingHint")}
-                right={
-                  <Icon
-                    name={chatSortingOpen ? "chevron-up" : "chevron-right"}
-                    size={16}
-                    className="text-text-muted"
-                  />
-                }
-              />
-              {chatSortingOpen && (
-                <div className="mx-2 mb-2 divide-y divide-border-subtle overflow-hidden rounded-md border border-border-subtle bg-bg-elevated">
-                  <RightPanelUserMenuOptionButton
-                    label={t("settings.chatSortingPrioritizeDirects")}
-                    active={prioritizePersonalUnread}
-                    onClick={() => setPrioritizePersonalUnread(!prioritizePersonalUnread)}
-                  />
-                  <RightPanelUserMenuOptionButton
-                    label={t("settings.chatSortingPrioritizeUnmuted")}
-                    active={prioritizeUnmutedUnreadChannels}
-                    onClick={() =>
-                      setPrioritizeUnmutedUnreadChannels(!prioritizeUnmutedUnreadChannels)
-                    }
-                  />
-                </div>
-              )}
+              {/*<RightPanelUserMenuMenuButton*/}
+              {/*  label={t("settings.chatSorting")}*/}
+              {/*  icon="channels"*/}
+              {/*  onClick={() => setChatSortingOpen((open) => !open)}*/}
+              {/*  subtitle={t("settings.chatSortingHint")}*/}
+              {/*  right={*/}
+              {/*    <Icon*/}
+              {/*      name={chatSortingOpen ? "chevron-up" : "chevron-right"}*/}
+              {/*      size={16}*/}
+              {/*      className="text-text-muted"*/}
+              {/*    />*/}
+              {/*  }*/}
+              {/*/>*/}
+              {/*{chatSortingOpen && (*/}
+              {/*  <div className="mx-2 mb-2 divide-y divide-border-subtle overflow-hidden rounded-md border border-border-subtle bg-bg-elevated">*/}
+              {/*    <RightPanelUserMenuOptionButton*/}
+              {/*      label={t("settings.chatSortingPrioritizeDirects")}*/}
+              {/*      active={prioritizePersonalUnread}*/}
+              {/*      onClick={() => setPrioritizePersonalUnread(!prioritizePersonalUnread)}*/}
+              {/*    />*/}
+              {/*    <RightPanelUserMenuOptionButton*/}
+              {/*      label={t("settings.chatSortingPrioritizeUnmuted")}*/}
+              {/*      active={prioritizeUnmutedUnreadChannels}*/}
+              {/*      onClick={() =>*/}
+              {/*        setPrioritizeUnmutedUnreadChannels(!prioritizeUnmutedUnreadChannels)*/}
+              {/*      }*/}
+              {/*    />*/}
+              {/*  </div>*/}
+              {/*)}*/}
 
               <RightPanelUserMenuMenuButton
                 label={t("settings.folderLayout")}
