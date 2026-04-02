@@ -10,6 +10,46 @@ function isFolderWithUuid(f: WorkspaceFolder): f is WorkspaceFolder & { uuid: st
   return typeof f.uuid === "string" && f.uuid.trim().length > 0;
 }
 
+async function loadFolderItemsResultsMap(
+  folders: WorkspaceFolder[],
+  priorityFolderUuid?: string | null,
+): Promise<Map<string, FolderItemsLoadResult>> {
+  const withUuid = folders.filter(isFolderWithUuid);
+  const next = new Map<string, FolderItemsLoadResult>();
+  const priority = priorityFolderUuid?.trim();
+  const priorityFolder =
+    priority != null && priority.length > 0
+      ? withUuid.find((f) => f.uuid === priority)
+      : undefined;
+  const others = priorityFolder
+    ? withUuid.filter((f) => f.uuid !== priorityFolder.uuid)
+    : withUuid;
+
+  if (priorityFolder) {
+    try {
+      const items = await getFolderItems(priorityFolder.uuid);
+      next.set(priorityFolder.uuid, { ok: true, items });
+    } catch {
+      next.set(priorityFolder.uuid, { ok: false, items: [] });
+    }
+  }
+
+  const restEntries = await Promise.all(
+    others.map(async (folder) => {
+      try {
+        const items = await getFolderItems(folder.uuid);
+        return [folder.uuid, { ok: true, items } as FolderItemsLoadResult] as const;
+      } catch {
+        return [folder.uuid, { ok: false, items: [] } as FolderItemsLoadResult] as const;
+      }
+    }),
+  );
+  for (const [id, result] of restEntries) {
+    next.set(id, result);
+  }
+  return next;
+}
+
 export interface FolderItemsLoadResult {
   // true — items папки загружены успешно, false — сохраняем ошибку как best-effort.
   ok: boolean;
@@ -37,9 +77,17 @@ function cloneSnapshot(snapshot: FolderSyncSnapshot): FolderSyncSnapshot {
   };
 }
 
+export interface LoadFolderSyncSnapshotOptions {
+  force?: boolean;
+  /** Fetched before the parallel batch so the active folder hydrates first. */
+  priorityFolderUuid?: string | null;
+  /** After `getFolders()`, before item requests complete — for early rail update. */
+  onFoldersLoaded?: (folders: WorkspaceFolder[]) => void | Promise<void>;
+}
+
 export async function loadFolderSyncSnapshot(
   instanceId: string,
-  options?: { force?: boolean },
+  options?: LoadFolderSyncSnapshotOptions,
 ): Promise<FolderSyncSnapshot> {
   // Дедупликация параллельных refresh по инстансу, чтобы не плодить одинаковые батчи.
   if (!options?.force) {
@@ -51,21 +99,15 @@ export async function loadFolderSyncSnapshot(
 
   const request = (async () => {
     const folders = await getFolders();
-    // Один батч: сначала папки, затем items по каждой папке (best-effort по ошибкам).
-    const itemsByFolderIdEntries: (readonly [string, FolderItemsLoadResult])[] = await Promise.all(
-      folders.filter(isFolderWithUuid).map(async (folder) => {
-        try {
-          const items = await getFolderItems(folder.uuid);
-          return [folder.uuid, { ok: true, items } as FolderItemsLoadResult] as const;
-        } catch {
-          return [folder.uuid, { ok: false, items: [] } as FolderItemsLoadResult] as const;
-        }
-      }),
+    await options?.onFoldersLoaded?.(folders);
+    const itemsByFolderId = await loadFolderItemsResultsMap(
+      folders,
+      options?.priorityFolderUuid,
     );
 
     const snapshot: FolderSyncSnapshot = {
       folders,
-      itemsByFolderId: new Map(itemsByFolderIdEntries),
+      itemsByFolderId,
       loadedAt: Date.now(),
     };
     // Храним последний успешный snapshot для повторного использования внутри orchestrator.

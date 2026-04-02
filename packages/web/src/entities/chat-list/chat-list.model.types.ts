@@ -28,6 +28,8 @@ export interface ChatListState {
   setCurrentUserId: (id: number | null) => void;
   renameStream: (streamId: number, nextName: string) => void;
   removeStream: (streamId: number) => void;
+  /** After a user profile is fetched, refresh personal DM row titles that still use placeholders. */
+  patchPersonalDmRowLabelsForUser: (userId: number) => void;
   clear: () => void;
   decrementUnreadForMessages: (messageIds: number[]) => void;
   decrementUnreadForTopic: (streamId: number, topic: string, count: number) => void;

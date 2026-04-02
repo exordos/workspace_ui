@@ -16,22 +16,8 @@ import {
   type CurrentChatContext,
 } from "./message.model";
 
-const MESSAGE_CACHE_KEY_PREFIX = "workspace-offline-current-chat-messages-v1:";
-
 function resetStore() {
   useCurrentChatMessagesStore.setState({ context: null, messages: [] });
-  if (typeof localStorage !== "undefined") {
-    const keysToRemove: string[] = [];
-    for (let i = 0; i < localStorage.length; i += 1) {
-      const key = localStorage.key(i);
-      if (key?.startsWith(MESSAGE_CACHE_KEY_PREFIX)) {
-        keysToRemove.push(key);
-      }
-    }
-    for (const key of keysToRemove) {
-      localStorage.removeItem(key);
-    }
-  }
 }
 
 function mockMsg(overrides: Partial<MockMessage> = {}): MockMessage {
@@ -104,7 +90,7 @@ describe("currentChatMessagesStore", () => {
       expect(useCurrentChatMessagesStore.getState().context).toBeNull();
     });
 
-    it("hydrates cached messages when returning to the same context", () => {
+    it("does not restore messages from disk when returning to the same context", () => {
       const streamA: CurrentChatContext = {
         type: "stream",
         streamId: 5,
@@ -125,14 +111,32 @@ describe("currentChatMessagesStore", () => {
 
       useCurrentChatMessagesStore.getState().setContext(streamB);
       expect(useCurrentChatMessagesStore.getState().messages).toHaveLength(0);
+      expect(useCurrentChatMessagesStore.getState().context).toEqual(streamB);
 
       useCurrentChatMessagesStore.getState().setContext(streamA);
-      const restored = useCurrentChatMessagesStore.getState().messages;
-      expect(restored).toHaveLength(1);
-      expect(restored[0]!.id).toBe(101);
+      expect(useCurrentChatMessagesStore.getState().messages).toHaveLength(0);
     });
 
-    it("restores only the most recent cached message slice", () => {
+    it("updates topic when navigating between stream locations (merge keeps route topic)", () => {
+      const first: CurrentChatContext = {
+        type: "stream",
+        streamId: 5,
+        streamName: "general",
+        topic: "release",
+      };
+      const second: CurrentChatContext = {
+        type: "stream",
+        streamId: 5,
+        streamName: "general",
+        topic: "bugs",
+      };
+
+      useCurrentChatMessagesStore.getState().setContext(first);
+      useCurrentChatMessagesStore.getState().setContext(second);
+      expect(useCurrentChatMessagesStore.getState().context).toEqual(second);
+    });
+
+    it("does not restore a trimmed slice when revisiting a DM context", () => {
       const dmContext: CurrentChatContext = { type: "dm", dmKey: "10,20" };
       const anotherDmContext: CurrentChatContext = { type: "dm", dmKey: "10,30" };
       const manyMessages = Array.from({ length: 240 }, (_, index) =>
@@ -153,13 +157,10 @@ describe("currentChatMessagesStore", () => {
       useCurrentChatMessagesStore.getState().setContext(anotherDmContext);
       useCurrentChatMessagesStore.getState().setContext(dmContext);
 
-      const restored = useCurrentChatMessagesStore.getState().messages;
-      expect(restored).toHaveLength(200);
-      expect(restored[0]!.id).toBe(41);
-      expect(restored[199]!.id).toBe(240);
+      expect(useCurrentChatMessagesStore.getState().messages).toHaveLength(0);
     });
 
-    it("hydrates cached local delivery status for optimistic messages", () => {
+    it("does not restore optimistic delivery status after context clear without IDB hydrate", () => {
       const dmContext: CurrentChatContext = { type: "dm", dmKey: "10,20" };
 
       useCurrentChatMessagesStore.getState().setContext(dmContext);
@@ -179,9 +180,7 @@ describe("currentChatMessagesStore", () => {
       useCurrentChatMessagesStore.getState().setContext(null);
       useCurrentChatMessagesStore.getState().setContext(dmContext);
 
-      const restored = useCurrentChatMessagesStore.getState().messages;
-      expect(restored).toHaveLength(1);
-      expect(restored[0]!.delivery_status).toBe("failed");
+      expect(useCurrentChatMessagesStore.getState().messages).toHaveLength(0);
     });
   });
 

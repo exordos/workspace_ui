@@ -51,6 +51,35 @@ describe("workspace-client", () => {
     expect(workspaceApi.get).toHaveBeenCalledWith("/v1/folders/", undefined, undefined);
   });
 
+  it("getFolders keeps folders when unread_messages is omitted or null", async () => {
+    workspaceApi.get.mockResolvedValue({
+      ok: true,
+      data: [
+        {
+          uuid: "f-no-unread",
+          title: "NoUnreadField",
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-01T00:00:00Z",
+          system_type: "created",
+        },
+        {
+          uuid: "f-null-unread",
+          title: "NullUnread",
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-01T00:00:00Z",
+          system_type: "created",
+          unread_messages: null,
+        },
+      ],
+    });
+
+    const { getFolders } = await import("./workspace-client");
+    const folders = await getFolders();
+
+    expect(folders).toHaveLength(2);
+    expect(folders.map((f) => f.uuid).sort()).toEqual(["f-no-unread", "f-null-unread"].sort());
+  });
+
   it("maps folder rail badge as total unread messages count", async () => {
     const { mapWorkspaceFoldersToRail } = await import("./workspace-client");
     const mapped = mapWorkspaceFoldersToRail([
@@ -226,6 +255,30 @@ describe("workspace-client", () => {
     ]);
     expect(workspaceApi.get).toHaveBeenCalledWith("/v1/folders/folder-1/items/", undefined, undefined);
     expect(workspaceApi.setBaseUrl).not.toHaveBeenCalled();
+  });
+
+  it("maps folder items using request folder uuid when folder_uuid is omitted in payload", async () => {
+    workspaceApi.get.mockResolvedValue({
+      ok: true,
+      data: [
+        {
+          uuid: "item-no-folder-field",
+          chat_id: "dm:99",
+          order_index: 0,
+          created_at: "2026-03-14T00:00:00Z",
+          updated_at: "2026-03-14T00:00:00Z",
+        },
+      ],
+    });
+
+    const { getFolderItems } = await import("./workspace-client");
+    await expect(getFolderItems("folder-abc")).resolves.toEqual([
+      expect.objectContaining({
+        uuid: "item-no-folder-field",
+        chatId: "dm:99",
+        folderUuid: "folder-abc",
+      }),
+    ]);
   });
 
   it("maps folder items even when backend returns relaxed fields", async () => {

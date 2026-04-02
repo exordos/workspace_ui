@@ -1,15 +1,13 @@
 /**
- * loadInitialMessagesForContext when IndexedDB message source is enabled:
- * non-empty cache uses delta fetch; empty cache uses stream/DM bootstrap.
+ * loadInitialMessagesForContext with IndexedDB persist: hydrate from cache, then always full API fetch.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setInstanceProvider } from "~/shared/api/client";
 import type { MockMessage } from "~/shared/api/zulip.types";
-import { MESSAGE_CACHE_INITIAL_DELTA_NUM_AFTER } from "~/shared/lib/message-cache-db";
+import { ZULIP_STREAM_CHAT_NUM_BEFORE } from "~/shared/lib/zulip-message-window.lib";
 
 const {
   mockGetChatMessagesAscending,
-  mockFetchMessagesWithNarrowPage,
   mockFetchMessages,
   mockFetchDmMessages,
   mockFetchMessagesWithNarrow,
@@ -18,7 +16,6 @@ const {
   mockUpsertChatMessages,
 } = vi.hoisted(() => ({
   mockGetChatMessagesAscending: vi.fn(),
-  mockFetchMessagesWithNarrowPage: vi.fn(),
   mockFetchMessages: vi.fn(),
   mockFetchDmMessages: vi.fn(),
   mockFetchMessagesWithNarrow: vi.fn(),
@@ -27,11 +24,16 @@ const {
   mockUpsertChatMessages: vi.fn(),
 }));
 
-vi.mock("~/shared/lib/env", () => ({
-  env: {
-    CHAT_MESSAGES_SOURCE_INDEXEDDB: true,
-  },
-}));
+vi.mock("~/shared/lib/env", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("~/shared/lib/env")>();
+  return {
+    env: {
+      ...mod.env,
+      CHAT_MESSAGES_PERSIST_INDEXEDDB: true,
+      CHAT_MESSAGES_SOURCE_INDEXEDDB: true,
+    },
+  };
+});
 
 vi.mock("~/shared/lib/message-cache-db", async (importOriginal) => {
   const actual = await importOriginal<typeof import("~/shared/lib/message-cache-db")>();
@@ -48,7 +50,6 @@ vi.mock("~/shared/api/zulip", async (importOriginal) => {
   const actual = await importOriginal<typeof import("~/shared/api/zulip")>();
   return {
     ...actual,
-    fetchMessagesWithNarrowPage: mockFetchMessagesWithNarrowPage,
     fetchMessages: mockFetchMessages,
     fetchDmMessages: mockFetchDmMessages,
     fetchMessagesWithNarrow: mockFetchMessagesWithNarrow,
@@ -73,7 +74,7 @@ function mockMsg(overrides: Partial<MockMessage> = {}): MockMessage {
   };
 }
 
-describe("loadInitialMessagesForContext (IndexedDB incremental)", () => {
+describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
   beforeEach(() => {
     const runtimeTestApiKey = `runtime-test-key-${Date.now()}`;
     setInstanceProvider(() => ({
@@ -104,7 +105,7 @@ describe("loadInitialMessagesForContext (IndexedDB incremental)", () => {
     });
   });
 
-  it("with non-empty IDB cache uses delta fetch (anchor newest cached, num_before 0)", async () => {
+  it("with non-empty IDB cache still calls full fetchMessages (no delta-only path)", async () => {
     const ctx: CurrentChatContext = {
       type: "stream",
       streamId: 5,
@@ -115,58 +116,7 @@ describe("loadInitialMessagesForContext (IndexedDB incremental)", () => {
       mockMsg({ id: 86 + i, stream_id: 5, subject: "topic1" }),
     );
     mockGetChatMessagesAscending.mockResolvedValue(cached);
-    mockFetchMessagesWithNarrowPage.mockResolvedValue({
-      messages: [mockMsg({ id: 101, stream_id: 5, subject: "topic1", content: "<p>n</p>" })],
-      foundOldest: false,
-      foundNewest: true,
-    });
-
-    await useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
-      context: ctx,
-      focusedMessageId: null,
-      currentUserId: 1,
-    });
-
-    expect(mockFetchMessagesWithNarrowPage).toHaveBeenCalledTimes(1);
-    expect(mockFetchMessagesWithNarrowPage).toHaveBeenCalledWith(
-      [
-        { operator: "stream", operand: "general" },
-        { operator: "topic", operand: "topic1" },
-      ],
-      100,
-      0,
-      MESSAGE_CACHE_INITIAL_DELTA_NUM_AFTER,
-    );
-    expect(mockFetchMessages).not.toHaveBeenCalled();
-
-    const state = useCurrentChatMessagesStore.getState();
-    expect(state.messages.map((m) => m.id)).toEqual([
-      ...Array.from({ length: 15 }, (_, i) => 86 + i),
-      101,
-    ]);
-    expect(mockUpsertChatMessages).toHaveBeenCalledTimes(1);
-    expect(mockUpsertChatMessages).toHaveBeenCalledWith(
-      expect.objectContaining({
-        messages: expect.arrayContaining([expect.objectContaining({ id: 101 })]),
-      }),
-    );
-    expect(mockUpsertChatMessages.mock.calls[0]![0].messages).toHaveLength(1);
-  });
-
-  it("with sparse IDB cache (below incremental threshold) uses full stream fetch", async () => {
-    const ctx: CurrentChatContext = {
-      type: "stream",
-      streamId: 5,
-      streamName: "general",
-      topic: "topic1",
-    };
-    mockGetChatMessagesAscending.mockResolvedValue([
-      mockMsg({ id: 5505488, stream_id: 5, subject: "topic1" }),
-    ]);
-    const boot = [
-      mockMsg({ id: 1, stream_id: 5, subject: "topic1" }),
-      mockMsg({ id: 2, stream_id: 5, subject: "topic1" }),
-    ];
+    const boot = [mockMsg({ id: 200, stream_id: 5, subject: "topic1", content: "<p>api</p>" })];
     mockFetchMessages.mockResolvedValue(boot);
 
     await useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
@@ -175,9 +125,15 @@ describe("loadInitialMessagesForContext (IndexedDB incremental)", () => {
       currentUserId: 1,
     });
 
-    expect(mockFetchMessagesWithNarrowPage).not.toHaveBeenCalled();
+    expect(mockGetChatMessagesAscending).toHaveBeenCalled();
     expect(mockFetchMessages).toHaveBeenCalledWith("general", "topic1");
     expect(useCurrentChatMessagesStore.getState().messages).toEqual(boot);
+    expect(mockUpsertChatMessages).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messages: boot,
+        windowSizeN: ZULIP_STREAM_CHAT_NUM_BEFORE,
+      }),
+    );
   });
 
   it("with empty IDB cache uses stream bootstrap fetchMessages", async () => {
@@ -198,7 +154,6 @@ describe("loadInitialMessagesForContext (IndexedDB incremental)", () => {
     });
 
     expect(mockFetchMessages).toHaveBeenCalledWith("general", "topic1");
-    expect(mockFetchMessagesWithNarrowPage).not.toHaveBeenCalled();
     expect(mockUpsertChatMessages).toHaveBeenCalledWith(
       expect.objectContaining({
         messages: boot,
@@ -206,7 +161,7 @@ describe("loadInitialMessagesForContext (IndexedDB incremental)", () => {
     );
   });
 
-  it("with focusedMessageId skips incremental path and uses fetchMessagesWithNarrow", async () => {
+  it("with focusedMessageId skips IDB hydrate and uses fetchMessagesWithNarrow", async () => {
     const ctx: CurrentChatContext = {
       type: "stream",
       streamId: 5,
@@ -224,30 +179,5 @@ describe("loadInitialMessagesForContext (IndexedDB incremental)", () => {
 
     expect(mockGetChatMessagesAscending).not.toHaveBeenCalled();
     expect(mockFetchMessagesWithNarrow).toHaveBeenCalled();
-    expect(mockFetchMessagesWithNarrowPage).not.toHaveBeenCalled();
-  });
-
-  it("falls back to full fetch when delta request fails", async () => {
-    const ctx: CurrentChatContext = {
-      type: "stream",
-      streamId: 5,
-      streamName: "general",
-      topic: "topic1",
-    };
-    mockGetChatMessagesAscending.mockResolvedValue([
-      mockMsg({ id: 200, stream_id: 5, subject: "topic1" }),
-    ]);
-    mockFetchMessagesWithNarrowPage.mockRejectedValue(new Error("network"));
-    const boot = [mockMsg({ id: 1, stream_id: 5, subject: "topic1" })];
-    mockFetchMessages.mockResolvedValue(boot);
-
-    await useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
-      context: ctx,
-      focusedMessageId: null,
-      currentUserId: 1,
-    });
-
-    expect(mockFetchMessages).toHaveBeenCalled();
-    expect(useCurrentChatMessagesStore.getState().messages).toEqual(boot);
   });
 });

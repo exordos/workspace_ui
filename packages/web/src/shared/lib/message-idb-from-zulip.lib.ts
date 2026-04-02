@@ -1,8 +1,7 @@
 /**
- * Applies Zulip realtime events to the IndexedDB message cache (when enabled).
+ * Applies Zulip realtime events to the IndexedDB message cache when persist is enabled.
  *
- * Keeps IDB aligned with the layout event dispatcher; in-memory `currentChat` updates
- * are skipped when `env.CHAT_MESSAGES_SOURCE_INDEXEDDB` is true.
+ * Zustand is updated separately in the layout dispatcher; this module only mirrors to IDB.
  *
  * Usage:
  *   import { applyZulipEventToMessageIndexedDb } from "~/shared/lib/message-idb-from-zulip.lib";
@@ -12,16 +11,16 @@ import type { ZulipEvent, ZulipRawMessage } from "~/shared/api/zulip.types";
 import { env } from "~/shared/lib/env";
 import {
   deleteMessagesByIds,
-  MESSAGE_CACHE_DEFAULT_WINDOW_SIZE,
   patchMessageContentInCache,
   patchMessageFlagsInCache,
   patchMessageReactionInCache,
   putSingleMessage,
 } from "~/shared/lib/message-cache-db";
 import { chatKeyFromRawMessage } from "~/shared/lib/message-cache-keys.lib";
+import { zulipMessageCacheWindowNForChatKey } from "~/shared/lib/zulip-message-window.lib";
 
-export function isIndexedDbMessageSourceEnabled(): boolean {
-  return env.CHAT_MESSAGES_SOURCE_INDEXEDDB;
+export function isChatMessagesPersistToIndexedDbEnabled(): boolean {
+  return env.CHAT_MESSAGES_PERSIST_INDEXEDDB;
 }
 
 export async function applyZulipEventToMessageIndexedDb(options: {
@@ -29,7 +28,7 @@ export async function applyZulipEventToMessageIndexedDb(options: {
   currentUserId: number | null;
   event: ZulipEvent;
 }): Promise<void> {
-  if (!isIndexedDbMessageSourceEnabled()) return;
+  if (!isChatMessagesPersistToIndexedDbEnabled()) return;
   const { instanceId, currentUserId, event } = options;
 
   if (event.type === "message" && event.message) {
@@ -41,7 +40,7 @@ export async function applyZulipEventToMessageIndexedDb(options: {
       instanceId,
       chatKey,
       message: mock,
-      windowSizeN: MESSAGE_CACHE_DEFAULT_WINDOW_SIZE,
+      windowSizeN: zulipMessageCacheWindowNForChatKey(chatKey),
     });
     return;
   }

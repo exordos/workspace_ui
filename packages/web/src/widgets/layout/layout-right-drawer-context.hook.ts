@@ -1,6 +1,14 @@
 import { useMemo } from "react";
+import { resolvePersonalDmSidebarTitle } from "~/entities/chat-list/chat-list-format.lib";
+import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
-import { getDmById, parseDmSlugToUserIds, parseStreamSlug } from "~/widgets/sidebar/sidebar.lib";
+import { computeIsGroupDmView, normalizeDmRouteUserIds } from "~/shared/lib/dm-route.lib";
+import {
+  getDmById,
+  parseDmSlugToUserIds,
+  parseStreamSlug,
+  resolveStreamRouteFromSlug,
+} from "~/widgets/sidebar/sidebar.lib";
 import type { SidebarChat } from "~/widgets/sidebar/sidebar.types";
 import type { LayoutRightDrawerContext, UseLayoutRightDrawerContextOptions } from "./layout-right-drawer-context.types";
 
@@ -25,12 +33,20 @@ export function useLayoutRightDrawerContext(options: UseLayoutRightDrawerContext
     () => (activeStreamSlug ? parseStreamSlug(activeStreamSlug) : null),
     [activeStreamSlug],
   );
-  const activeStreamId = parsedStream?.stream_id ?? null;
+
+  const { resolvedStreamName, resolvedStreamId } = useMemo(
+    () => resolveStreamRouteFromSlug(parsedStream, streamsMap),
+    [parsedStream, streamsMap],
+  );
+
+  const activeStreamId = resolvedStreamId;
 
   const activeStreamName = useMemo(() => {
-    if (activeStreamId == null) return parsedStream?.stream_name ?? null;
-    return streamsMap.get(activeStreamId)?.name ?? parsedStream?.stream_name ?? "";
-  }, [activeStreamId, parsedStream?.stream_name, streamsMap]);
+    if (activeStreamId == null) {
+      return resolvedStreamName.length > 0 ? resolvedStreamName : null;
+    }
+    return (streamsMap.get(activeStreamId)?.name ?? resolvedStreamName) || "";
+  }, [activeStreamId, resolvedStreamName, streamsMap]);
 
   const dmChats = useMemo(() => {
     return dms.filter((c): c is Extract<SidebarChat, { type: "dm" }> => c.type === "dm");
@@ -40,22 +56,58 @@ export function useLayoutRightDrawerContext(options: UseLayoutRightDrawerContext
     return dmIdParam != null && dmIdParam !== "" ? getDmById(dmIdParam, dmChats) : undefined;
   }, [dmIdParam, dmChats]);
 
-  const isGroupDm = dmChat?.isGroup === true;
-  const partnerUserId = dmChat && !dmChat.isGroup ? dmChat.id : undefined;
+  const rawDmUserIds = useMemo(
+    () => (dmIdParam != null && dmIdParam !== "" ? parseDmSlugToUserIds(dmIdParam) : []),
+    [dmIdParam],
+  );
+
+  const dmRecipientIds = useMemo(
+    () => normalizeDmRouteUserIds(rawDmUserIds, currentUserId),
+    [rawDmUserIds, currentUserId],
+  );
+
+  const isGroupDm = useMemo(
+    () => computeIsGroupDmView(dmChat, dmRecipientIds, currentUserId),
+    [dmChat, dmRecipientIds, currentUserId],
+  );
+
+  const partnerUserId = useMemo(() => {
+    if (isGroupDm) return undefined;
+    return dmRecipientIds[0] ?? dmChat?.id;
+  }, [isGroupDm, dmRecipientIds, dmChat?.id]);
+
+  const partnerUserRecord = useUsersStore((s) =>
+    partnerUserId != null ? s.getUser(partnerUserId) : undefined,
+  );
+  const partnerStoreDisplayName = useUsersStore((s) =>
+    partnerUserId != null ? s.getDisplayName(partnerUserId) : "Unknown",
+  );
 
   const rightDrawerTargetUserId = rightDrawerUserIdOverride ?? partnerUserId;
 
   const dmParticipantIds = useMemo(() => {
-    if (!dmChat) return [];
-    if (dmChat.userIds != null && dmChat.userIds.length > 0) {
-      return dmChat.userIds;
+    if (dmIdParam == null || dmIdParam === "") return [];
+    const isGroup = computeIsGroupDmView(dmChat, dmRecipientIds, currentUserId);
+
+    if (isGroup) {
+      if (dmChat?.userIds != null && dmChat.userIds.length > 0) {
+        return dmChat.userIds;
+      }
+      const raw = dmChat != null ? parseDmSlugToUserIds(dmChat.slug) : parseDmSlugToUserIds(dmIdParam);
+      if (currentUserId != null) {
+        return Array.from(new Set([...raw, currentUserId]));
+      }
+      return raw;
     }
-    const parsedUserIds = parseDmSlugToUserIds(dmChat.slug);
-    if (dmChat.isGroup && currentUserId != null) {
-      return Array.from(new Set([...parsedUserIds, currentUserId]));
+
+    if (currentUserId != null && dmRecipientIds.length > 0) {
+      return Array.from(new Set([...dmRecipientIds, currentUserId]));
     }
-    return parsedUserIds;
-  }, [dmChat, currentUserId]);
+    if (dmRecipientIds.length > 0) {
+      return dmRecipientIds;
+    }
+    return parseDmSlugToUserIds(dmIdParam);
+  }, [dmChat, dmIdParam, dmRecipientIds, currentUserId]);
 
   const title = useMemo(() => {
     if (!rightDrawerOpen) {
@@ -70,7 +122,11 @@ export function useLayoutRightDrawerContext(options: UseLayoutRightDrawerContext
       if (isGroupDm) {
         return (dmChat?.name?.trim() ?? "") || t("dm.groupChat");
       }
-      return t("dm.privateChat");
+      return resolvePersonalDmSidebarTitle({
+        chatName: dmChat?.name ?? "",
+        userFullName: partnerUserRecord?.full_name,
+        storeDisplayName: partnerStoreDisplayName,
+      });
     }
     if (activeStreamName && activeStreamName.trim().length > 0) {
       return `#${activeStreamName}`;
@@ -85,6 +141,8 @@ export function useLayoutRightDrawerContext(options: UseLayoutRightDrawerContext
     dmChat?.name,
     dmIdParam,
     isGroupDm,
+    partnerStoreDisplayName,
+    partnerUserRecord?.full_name,
     rightDrawerOpen,
     rightDrawerOverrideUserName,
     rightDrawerUserIdOverride,

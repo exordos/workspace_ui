@@ -1,8 +1,13 @@
 import { useMemo } from "react";
 import type { Location } from "react-router-dom";
 import { dmRouteKey } from "~/shared/lib/dm-key";
-import { getDmById, parseDmSlugToUserIds, parseStreamSlug } from "~/widgets/sidebar/sidebar.lib";
-import { normalizeDmRouteUserIds } from "./chat-dm-route.lib";
+import {
+  getDmById,
+  parseDmSlugToUserIds,
+  parseStreamSlug,
+  resolveStreamRouteFromSlug,
+} from "~/widgets/sidebar/sidebar.lib";
+import { computeIsGroupDmView, normalizeDmRouteUserIds } from "~/shared/lib/dm-route.lib";
 
 function parsePositiveIntFromSearch(location: Location, key: string): number | null {
   const raw = new URLSearchParams(location.search).get(key);
@@ -40,23 +45,10 @@ export function useChatRouteContext(options: {
   const activeTopic = topicName ?? undefined;
   const parsedStream = useMemo(() => (streamSlug ? parseStreamSlug(streamSlug) : null), [streamSlug]);
 
-  const resolvedStreamName = useMemo(() => {
-    if (!parsedStream) return "";
-    if (parsedStream.stream_id != null) {
-      return streamsMap.get(parsedStream.stream_id)?.name ?? parsedStream.stream_name;
-    }
-    return parsedStream.stream_name;
-  }, [parsedStream, streamsMap]);
-
-  const resolvedStreamId = useMemo(() => {
-    if (!parsedStream) return null;
-    if (parsedStream.stream_id != null) return parsedStream.stream_id;
-    if (!resolvedStreamName) return null;
-    return (
-      Array.from(streamsMap.entries()).find(([, stream]) => stream.name === resolvedStreamName)?.[0] ??
-      null
-    );
-  }, [parsedStream, resolvedStreamName, streamsMap]);
+  const { resolvedStreamName, resolvedStreamId } = useMemo(
+    () => resolveStreamRouteFromSlug(parsedStream, streamsMap),
+    [parsedStream, streamsMap],
+  );
 
   const streamRouteTopic = topicName ?? "general";
   const activeStream = parsedStream ? resolvedStreamName : undefined;
@@ -80,8 +72,7 @@ export function useChatRouteContext(options: {
   );
 
   const isGroupDmView =
-    isDmView &&
-    ((dmChat as { isGroup?: boolean } | undefined)?.isGroup ?? dmRecipientIds.length > 1);
+    isDmView && computeIsGroupDmView(dmChat, dmRecipientIds, currentUserId);
   const partnerUserId =
     isDmView && !isGroupDmView && dmRecipientIds.length > 0 ? dmRecipientIds[0] ?? null : null;
 

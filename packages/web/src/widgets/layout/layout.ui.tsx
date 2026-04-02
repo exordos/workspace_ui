@@ -97,6 +97,7 @@ export const Layout: React.FC = () => {
       activeStreamSlug,
       activeTopic,
       dmIdParam,
+      currentUserId,
     });
 
   const selectedFolderId = useFolderSyncStore((s) => s.selectedFolderId);

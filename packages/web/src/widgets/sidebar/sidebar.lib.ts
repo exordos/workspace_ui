@@ -110,7 +110,7 @@ export const MOCK_GROUPS: SidebarChat[] = [
     type: "dm",
     id: 201,
     name: "Group chat",
-    slug: "201-group",
+    slug: "201,202,203",
     isGroup: true,
     lastMessage: "Last message text",
     time: "10:13",
@@ -170,6 +170,32 @@ export function parseStreamSlug(streamSlug: string): { stream_id?: number; strea
   } catch {
     return { stream_name: streamSlug };
   }
+}
+
+/**
+ * Resolves canonical stream name and id from a parsed slug plus the chat-list map.
+ * Legacy URLs without a numeric prefix are matched by exact stream name.
+ */
+export function resolveStreamRouteFromSlug(
+  parsedStream: { stream_id?: number; stream_name: string } | null,
+  streamsMap: Map<number, { name: string }>,
+): { resolvedStreamName: string; resolvedStreamId: number | null } {
+  if (!parsedStream) {
+    return { resolvedStreamName: "", resolvedStreamId: null };
+  }
+  if (parsedStream.stream_id != null) {
+    const resolvedStreamName =
+      streamsMap.get(parsedStream.stream_id)?.name ?? parsedStream.stream_name;
+    return { resolvedStreamName, resolvedStreamId: parsedStream.stream_id };
+  }
+  const resolvedStreamName = parsedStream.stream_name;
+  if (!resolvedStreamName) {
+    return { resolvedStreamName: "", resolvedStreamId: null };
+  }
+  const resolvedStreamId =
+    Array.from(streamsMap.entries()).find(([, stream]) => stream.name === resolvedStreamName)?.[0] ??
+    null;
+  return { resolvedStreamName, resolvedStreamId };
 }
 
 /** Parse DM slug from URL to user_id array for API: "422-vasya" -> [422], "422-vasya,507-petya" -> [422, 507]. */

@@ -33,6 +33,8 @@ describe("env", () => {
     expect(env).toHaveProperty("BASE_URL");
     expect(env).toHaveProperty("CALENDAR_EMBED_URL");
     expect(env).toHaveProperty("MAIL_EMBED_URL");
+    expect(env).toHaveProperty("CHAT_MESSAGES_PERSIST_INDEXEDDB");
+    expect(env).toHaveProperty("CHAT_MESSAGES_SOURCE_INDEXEDDB");
   });
 
   // DEV/PROD flags drive conditional logic (e.g. log level, CSP, devtools)

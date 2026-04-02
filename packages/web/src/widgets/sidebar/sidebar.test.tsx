@@ -86,7 +86,7 @@ const GROUP_DM_CHAT: Extract<SidebarChat, { type: "dm" }> = {
   type: "dm",
   id: 201,
   name: "Design Squad",
-  slug: "201-group",
+  slug: "201,202,203",
   isGroup: true,
   lastMessage: "Weekly sync",
   time: "11:05",
@@ -624,7 +624,7 @@ describe("Sidebar", () => {
     );
 
     expect(screen.getByText("Design Squad")).toBeInTheDocument();
-    expect(screen.getByTestId("group-avatar-icon-201-group")).toBeInTheDocument();
+    expect(screen.getByTestId("group-avatar-icon-201,202,203")).toBeInTheDocument();
   });
 
   it("shows mark-as-read action in dm context menu and triggers dm narrow API", async () => {

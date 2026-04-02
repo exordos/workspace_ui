@@ -114,6 +114,25 @@ export function buildSelectedFolderSidebarChats(
               time: "",
             });
           }
+        } else if (dmUserIds.length === 2) {
+          // Workspace / Zulip store 1:1 as dm:userA,userB (two ids). Not a huddle.
+          const sortedPair = [...dmUserIds].sort((left, right) => left - right);
+          const peerId =
+            currentUserId != null
+              ? sortedPair.find((id) => id !== currentUserId) ?? sortedPair[0]!
+              : sortedPair[0]!;
+          const dmUser = usersMapForChatInfo.get(peerId);
+          const dmName = resolveFallbackUserName(dmUser, `User ${peerId}`);
+          fallbackDmChats.push({
+            type: "dm",
+            id: peerId,
+            name: dmName,
+            slug: `${peerId}-${slugifyFallbackName(dmName)}`,
+            isGroup: false,
+            userIds: sortedPair,
+            lastMessage: "",
+            time: "",
+          });
         } else {
           const groupUsers =
             currentUserId != null && !dmUserIds.includes(currentUserId)

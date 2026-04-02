@@ -4,8 +4,12 @@ import {
   type FolderItemForClient,
   type WorkspaceFolderForRail,
 } from "~/shared/api/workspace-client";
+import {
+  loadFoldersSnapshotRow,
+  persistFoldersSnapshotRow,
+} from "~/shared/lib/folders-snapshot-db";
+import { logFolderFlow } from "~/shared/lib/message-flow-debug.lib";
 import { createLogger, logStoreAction } from "~/shared/lib/logger";
-import { loadOfflineFolders, saveOfflineFolders } from "~/shared/lib/offline-folders";
 import type { SidebarChat, StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import {
   loadFolderItemsForSelection,
@@ -25,6 +29,15 @@ import {
 export type FolderRefreshReason = "bootstrap" | "polling" | "mutation";
 
 const folderSyncLog = createLogger("folderSync");
+
+async function loadFolderRailCache(instanceId: string): Promise<WorkspaceFolderForRail[]> {
+  const row = await loadFoldersSnapshotRow(instanceId).catch(() => null);
+  return row?.folders ?? [];
+}
+
+function schedulePersistFolders(instanceId: string, folders: WorkspaceFolderForRail[]): void {
+  void persistFoldersSnapshotRow({ instanceId, folders, version: 1 });
+}
 
 function describeFolderChatIds(value: Set<string> | null): "null" | "empty" | `size:${number}` {
   if (value === null) {
@@ -112,6 +125,39 @@ function normalizeFoldersForPresentation(
   );
 }
 
+/** When Workspace returns an empty folder list, keep IDB-hydrated rail and item cache instead of wiping UI. */
+function applySnapshotToFolderState(
+  snapshot: FolderSyncSnapshot,
+  latestState: FolderSyncState,
+): {
+  foldersWithSystemDefaults: WorkspaceFolderForRail[];
+  nextFolderItemsByFolderId: Map<string, FolderItemForClient[]>;
+} {
+  const apiFoldersEmpty = snapshot.folders.length === 0;
+  const hadLocalFolders = latestState.folders.length > 0;
+
+  let foldersWithSystemDefaults = normalizeFoldersForPresentation(
+    snapshot,
+    latestState.labels,
+    latestState.showSystemFolders,
+  );
+  let nextFolderItemsByFolderId = mergeFolderItemsSnapshot(
+    latestState.folderItemsByFolderId,
+    snapshot,
+  );
+
+  if (apiFoldersEmpty && hadLocalFolders) {
+    foldersWithSystemDefaults = withDefaultSystemFolders(
+      latestState.folders,
+      latestState.labels,
+      latestState.showSystemFolders,
+    );
+    nextFolderItemsByFolderId = new Map(latestState.folderItemsByFolderId);
+  }
+
+  return { foldersWithSystemDefaults, nextFolderItemsByFolderId };
+}
+
 export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
   // Не даем стартовать двум refresh одновременно для одного instanceId.
   const inFlightRefreshByInstance = new Map<string, Promise<void>>();
@@ -125,7 +171,7 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
     error: null,
     requestVersion: 0,
     instanceId: null,
-    showSystemFolders: false,
+    showSystemFolders: true,
     labels: DEFAULT_LABELS,
     folderItemsByFolderId: new Map(),
 
@@ -133,12 +179,14 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
       logStoreAction("folderSync", "bootstrap", { instanceId });
       const previousInstanceId = get().instanceId;
       const isInstanceChanged = previousInstanceId !== instanceId;
-      // Сначала поднимаем offline-кэш, чтобы UI не мигал пустым состоянием.
-      const cachedFolders = withDefaultSystemFolders(
-        loadOfflineFolders(instanceId),
-        labels,
-        showSystemFolders,
-      );
+      logFolderFlow("bootstrap:start", { instanceId, isInstanceChanged });
+      // Сначала поднимаем кеш из IndexedDB, чтобы UI не мигал.
+      const railFromCache = await loadFolderRailCache(instanceId);
+      logFolderFlow("bootstrap:idb cache read", {
+        instanceId,
+        railCount: railFromCache.length,
+      });
+      const cachedFolders = withDefaultSystemFolders(railFromCache, labels, showSystemFolders);
       const currentSelected = isInstanceChanged
         ? DEFAULT_SELECTED_FOLDER_ID
         : get().selectedFolderId;
@@ -175,8 +223,10 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
         ),
       });
 
+      logFolderFlow("bootstrap:await refresh(api)", { instanceId, reason: "bootstrap" });
       // После загрузки кэша всегда запускаем сетевой refresh для актуализации данных.
       await get().refresh("bootstrap");
+      logFolderFlow("bootstrap:refresh finished", { instanceId });
     },
 
     async selectFolder(folderId) {
@@ -260,12 +310,14 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
 
       const inFlight = inFlightRefreshByInstance.get(instanceId);
       if (inFlight) {
+        logFolderFlow("refresh:coalesced (await in-flight)", { instanceId, reason });
         // Anti-overlap для polling/mutation: возвращаем текущий in-flight промис.
         return inFlight;
       }
 
       const refreshPromise = (async () => {
         const requestVersion = get().requestVersion + 1;
+        logFolderFlow("refresh:start", { reason, requestVersion, instanceId });
         logStoreAction("folderSync", "refresh:start", { reason, requestVersion, instanceId });
         set({
           error: null,
@@ -274,29 +326,80 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
         });
 
         try {
+          const priorityFolderUuid = get().selectedFolderId;
           const snapshot = await loadFolderSyncSnapshot(instanceId, {
             force: reason === "bootstrap",
+            priorityFolderUuid,
+            onFoldersLoaded: async (folderRows) => {
+              const phaseState = get();
+              if (!isCurrentRequest(phaseState, instanceId, requestVersion)) {
+                return;
+              }
+              // Пустой список с сервера не должен затирать rail, уже показанный из IndexedDB.
+              if (folderRows.length === 0) {
+                return;
+              }
+
+              const phaseSnapshot: FolderSyncSnapshot = {
+                folders: folderRows,
+                itemsByFolderId: new Map(),
+                loadedAt: Date.now(),
+              };
+              const foldersWithSystemDefaults = normalizeFoldersForPresentation(
+                phaseSnapshot,
+                phaseState.labels,
+                phaseState.showSystemFolders,
+              );
+              schedulePersistFolders(instanceId, foldersWithSystemDefaults);
+
+              const selectedFolderId =
+                resolveSelectedFolderId(foldersWithSystemDefaults, phaseState.selectedFolderId) ??
+                phaseState.selectedFolderId;
+              const nextFolderItemsByFolderId = mergeFolderItemsSnapshot(
+                phaseState.folderItemsByFolderId,
+                phaseSnapshot,
+              );
+
+              let selectedFolderChatIds: Set<string> | null = null;
+              if (shouldLoadFolderItemsForSelection(foldersWithSystemDefaults, selectedFolderId)) {
+                const stale = nextFolderItemsByFolderId.get(selectedFolderId);
+                selectedFolderChatIds = stale ? toChatIdSet(stale) : new Set<string>();
+              }
+
+              set({
+                folders: foldersWithSystemDefaults,
+                selectedFolderId,
+                selectedFolderChatIds,
+                folderItemsByFolderId: nextFolderItemsByFolderId,
+                error: null,
+              });
+            },
           });
           const latestState = get();
           if (!isCurrentRequest(latestState, instanceId, requestVersion)) {
+            logFolderFlow("refresh:snapshot ignored (stale requestVersion)", {
+              instanceId,
+              requestVersion,
+            });
             // Пришёл ответ от старой версии запроса — пропускаем.
             return;
           }
+          logFolderFlow("refresh:snapshot ok", {
+            instanceId,
+            requestVersion,
+            reason,
+            folderCount: snapshot.folders.length,
+          });
 
-          const foldersWithSystemDefaults = normalizeFoldersForPresentation(
+          const { foldersWithSystemDefaults, nextFolderItemsByFolderId } = applySnapshotToFolderState(
             snapshot,
-            latestState.labels,
-            latestState.showSystemFolders,
+            latestState,
           );
-          saveOfflineFolders(instanceId, foldersWithSystemDefaults);
+          schedulePersistFolders(instanceId, foldersWithSystemDefaults);
 
           const selectedFolderId =
             resolveSelectedFolderId(foldersWithSystemDefaults, latestState.selectedFolderId) ??
             latestState.selectedFolderId;
-          const nextFolderItemsByFolderId = mergeFolderItemsSnapshot(
-            latestState.folderItemsByFolderId,
-            snapshot,
-          );
           const shouldLoadSelectedItems = shouldLoadFolderItemsForSelection(
             foldersWithSystemDefaults,
             selectedFolderId,
@@ -376,9 +479,11 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
             return;
           }
 
-          // На общей ошибке refresh откатываемся к offline-папкам текущего инстанса.
+          // На общей ошибке refresh откатываемся к кешу папок текущего инстанса.
+          const row = await loadFoldersSnapshotRow(instanceId).catch(() => null);
+          const offlineRail = row?.folders ?? [];
           const offlineFolders = withDefaultSystemFolders(
-            loadOfflineFolders(instanceId),
+            offlineRail,
             stateOnFailure.labels,
             stateOnFailure.showSystemFolders,
           );
@@ -485,7 +590,7 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
         if (!nextMap.has(id)) {
           nextMap.set(id, []);
         }
-        saveOfflineFolders(instanceId, nextFolders);
+        schedulePersistFolders(instanceId, nextFolders);
         return {
           folders: nextFolders,
           folderItemsByFolderId: nextMap,
@@ -533,7 +638,7 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
               : new Set<string>();
         }
 
-        saveOfflineFolders(instanceId, nextFolders);
+        schedulePersistFolders(instanceId, nextFolders);
 
         return {
           folders: nextFolders,
@@ -592,9 +697,9 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
         resolveSelectedFolderId(nextFolders, state.selectedFolderId) ?? state.selectedFolderId;
       const selectedFolderItems = state.folderItemsByFolderId.get(selectedFolderId);
       const selectedFolderChatIds = shouldLoadFolderItemsForSelection(nextFolders, selectedFolderId)
-        ? selectedFolderItems
+        ? selectedFolderItems !== undefined
           ? toChatIdSet(selectedFolderItems)
-          : null
+          : new Set<string>()
         : null;
       set({
         folders: nextFolders,

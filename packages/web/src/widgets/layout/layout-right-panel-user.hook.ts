@@ -1,8 +1,4 @@
 import { useMemo } from "react";
-import {
-  useIndexedDbChatMessages,
-  useIndexedDbMessageSourceEnabled,
-} from "~/entities/message/message-indexeddb.hook";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { selectUserStatusSnapshot } from "~/entities/user/user-status.hooks";
@@ -24,10 +20,7 @@ export function useLayoutRightPanelUser(options: {
     rightDrawerTargetUserId != null ? s.getUser(rightDrawerTargetUserId) : undefined,
   );
   const detailedProfile = useUserProfileStore((s) => s.profile);
-  const chatContext = useCurrentChatMessagesStore((s) => s.context);
-  const messagesFromStore = useCurrentChatMessagesStore((s) => s.messages);
-  const messagesFromIdb = useIndexedDbChatMessages({ context: chatContext });
-  const currentChatMessages = useIndexedDbMessageSourceEnabled() ? messagesFromIdb : messagesFromStore;
+  const currentChatMessages = useCurrentChatMessagesStore((s) => s.messages);
 
   const userStatusLabel = selectUserStatusSnapshot(userFromStore).statusLabel;
 

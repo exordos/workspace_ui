@@ -54,7 +54,7 @@ function createDefaultSettings(): AppSettings {
     notificationSound: "default",
     language: resolveBrowserLanguage(),
     folderRailLayout: "vertical",
-    showSystemFolders: false,
+    showSystemFolders: true,
     chatListDensity: "standard",
   };
 }
@@ -67,7 +67,7 @@ const FALLBACK_SETTINGS: Omit<AppSettings, "language"> = {
   prioritizeUnmutedUnreadChannels: false,
   notificationSound: "default",
   folderRailLayout: "horizontal",
-  showSystemFolders: false,
+  showSystemFolders: true,
   chatListDensity: "standard",
 };
 
@@ -138,7 +138,9 @@ function resolveNotificationSound(value: unknown): NotificationSound {
 }
 
 function resolveShowSystemFolders(value: unknown): boolean {
-  return value === true;
+  if (value === true) return true;
+  if (value === false) return false;
+  return DEFAULT_SETTINGS.showSystemFolders;
 }
 
 function resolveChatListDensity(value: unknown): ChatListDensity {

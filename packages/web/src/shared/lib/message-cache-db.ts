@@ -1,17 +1,14 @@
 /**
- * IndexedDB cache for chat messages (per Zulip instance + conversation).
+ * IndexedDB write-through cache for chat messages (per Zulip instance + conversation).
  *
- * Source of truth for UI when `env.CHAT_MESSAGES_SOURCE_INDEXEDDB` is enabled.
- * REST bootstrap and realtime events upsert rows; retention keeps the last N per chat.
+ * Zustand holds UI state; this store retains the last N messages per chat for cold start / reopen.
+ * N matches stream vs DM initial fetch sizes in `zulip-message-window.lib`.
  *
  * Usage:
  *   import { upsertChatMessages, getChatMessagesAscending } from "~/shared/lib/message-cache-db";
  */
+import { ZULIP_CHAT_MESSAGE_CACHE_MAX_WINDOW } from "~/shared/lib/zulip-message-window.lib";
 import type { MockMessage, Reaction } from "~/shared/api/zulip.types";
-import {
-  notifyMessageCache,
-  notifyMessageCacheMany,
-} from "~/shared/lib/message-cache-bus";
 import { instanceChatKey } from "~/shared/lib/message-cache-keys.lib";
 
 function idbError(reason: unknown): Error {
@@ -19,25 +16,17 @@ function idbError(reason: unknown): Error {
 }
 
 const DB_NAME = "workspace-message-cache-v1";
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 
-/** Default max messages retained per chat (last N by id). */
-export const MESSAGE_CACHE_DEFAULT_WINDOW_SIZE = 200;
-
-/** How many messages newer than cached max id to request on chat open (incremental IDB bootstrap). */
-export const MESSAGE_CACHE_INITIAL_DELTA_NUM_AFTER = 200;
-
-/**
- * Incremental open (anchor = max cached id, num_after only) skips older history. If IndexedDB has
- * fewer rows than this (e.g. a single realtime message), run full DM/stream bootstrap instead.
- */
-export const MESSAGE_CACHE_MIN_CACHED_MESSAGES_FOR_INCREMENTAL_INITIAL = 15;
+/** Default max messages retained per chat when caller does not pass `windowSizeN` (DM window is largest). */
+export const MESSAGE_CACHE_DEFAULT_WINDOW_SIZE = ZULIP_CHAT_MESSAGE_CACHE_MAX_WINDOW;
 
 const STORE_MESSAGES = "messages";
 const STORE_CHAT_META = "chatMeta";
 const STORE_CHAT_LIST_SNAPSHOT = "chatListSnapshot";
 const STORE_USERS_DIRECTORY = "usersDirectory";
 const STORE_USER_STATUS_CACHE = "userStatusCache";
+const STORE_FOLDERS_SNAPSHOT = "foldersSnapshot";
 
 export interface MessageCacheRow {
   /** `${instanceId}:${messageId}` */
@@ -102,6 +91,9 @@ export function openMessageCacheDb(): Promise<IDBDatabase> {
       }
       if (oldVersion < 4 && !db.objectStoreNames.contains(STORE_USER_STATUS_CACHE)) {
         db.createObjectStore(STORE_USER_STATUS_CACHE, { keyPath: "id" });
+      }
+      if (oldVersion < 5 && !db.objectStoreNames.contains(STORE_FOLDERS_SNAPSHOT)) {
+        db.createObjectStore(STORE_FOLDERS_SNAPSHOT, { keyPath: "instanceId" });
       }
     };
   });
@@ -333,7 +325,6 @@ export async function upsertChatMessages(options: {
   });
 
   await applyRetentionForChat(instanceId, chatKey, windowSizeN);
-  notifyMessageCache(iKey);
   return { instanceChatKey: iKey };
 }
 
@@ -369,7 +360,6 @@ export async function updateChatMetaPatch(
     reachedNewest: patch.reachedNewest ?? prev?.reachedNewest ?? false,
   };
   await putChatMetaRow(db, next);
-  notifyMessageCache(iKey);
 }
 
 async function getMessageRow(
@@ -391,11 +381,6 @@ export async function deleteMessagesByIds(
 ): Promise<void> {
   if (!isIndexedDBAvailable() || messageIds.length === 0) return;
   const db = await openMessageCacheDb();
-  const keysToNotify = new Set<string>();
-  for (const mid of messageIds) {
-    const row = await getMessageRow(db, instanceId, mid);
-    if (row) keysToNotify.add(row.instanceChatKey);
-  }
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(STORE_MESSAGES, "readwrite");
     tx.onerror = () => reject(idbError(tx.error));
@@ -405,7 +390,6 @@ export async function deleteMessagesByIds(
       store.delete(rowId(instanceId, mid));
     }
   });
-  notifyMessageCacheMany([...keysToNotify]);
 }
 
 export async function patchMessageFlagsInCache(options: {
@@ -417,13 +401,11 @@ export async function patchMessageFlagsInCache(options: {
   const { instanceId, messageIds, flag, op } = options;
   if (!isIndexedDBAvailable() || messageIds.length === 0) return;
   const db = await openMessageCacheDb();
-  const keysToNotify = new Set<string>();
   const toWrite: MessageCacheRow[] = [];
 
   for (const mid of messageIds) {
     const row = await getMessageRow(db, instanceId, mid);
     if (!row) continue;
-    keysToNotify.add(row.instanceChatKey);
     const flags = row.message.flags ?? [];
     const has = flags.includes(flag);
     let nextFlags: string[];
@@ -449,8 +431,6 @@ export async function patchMessageFlagsInCache(options: {
       store.put(r);
     }
   });
-
-  notifyMessageCacheMany([...keysToNotify]);
 }
 
 export async function patchMessageReactionInCache(options: {
@@ -487,7 +467,6 @@ export async function patchMessageReactionInCache(options: {
     tx.oncomplete = () => resolve();
     tx.objectStore(STORE_MESSAGES).put(nextRow);
   });
-  notifyMessageCache(existing.instanceChatKey);
 }
 
 export async function patchMessageContentInCache(options: {
@@ -511,7 +490,6 @@ export async function patchMessageContentInCache(options: {
     tx.oncomplete = () => resolve();
     tx.objectStore(STORE_MESSAGES).put(nextRow);
   });
-  notifyMessageCache(existing.instanceChatKey);
 }
 
 export async function putSingleMessage(options: {

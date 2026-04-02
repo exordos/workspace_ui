@@ -51,8 +51,39 @@ export function getDisplayName(recipient: { email?: string; full_name?: string }
   return recipient.full_name ?? "";
 }
 
-export function getDmPartnerName(recipient: { email?: string; full_name?: string }): string {
+export function getDmPartnerName(recipient: {
+  id?: number;
+  email?: string;
+  full_name?: string;
+}): string {
   const name = (recipient.full_name ?? "").trim();
   if (name) return name;
-  return getDisplayName(recipient) || t("dm.privateChat");
+  const fromEmail = getDisplayName(recipient);
+  if (fromEmail) return fromEmail;
+  if (recipient.id != null && Number.isFinite(recipient.id) && recipient.id > 0) {
+    return t("dm.partner");
+  }
+  return t("dm.privateChat");
+}
+
+/**
+ * Personal DM row / drawer title: prefer users store profile, then non-placeholder chat label.
+ */
+export function resolvePersonalDmSidebarTitle(input: {
+  chatName: string;
+  userFullName?: string;
+  storeDisplayName: string;
+}): string {
+  const fromProfile = input.userFullName?.trim();
+  if (fromProfile != null && fromProfile.length > 0) {
+    return fromProfile;
+  }
+  if (input.storeDisplayName !== "Unknown") {
+    return input.storeDisplayName;
+  }
+  const fromChat = input.chatName.trim();
+  if (fromChat.length > 0 && fromChat !== t("dm.privateChat")) {
+    return fromChat;
+  }
+  return t("dm.partner");
 }

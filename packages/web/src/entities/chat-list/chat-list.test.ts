@@ -7,6 +7,7 @@
  * Correctness here is critical because the sidebar is the primary navigation surface.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { setLocale } from "~/i18n/i18n";
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import { sortChatsByLastMessage } from "~/shared/lib/chat-sorting";
 import { useUsersStore } from "../user/user.model";
@@ -58,6 +59,28 @@ const OTHER_SENDER_ID = 20;
 describe("chatListStore", () => {
   beforeEach(resetStores);
   afterEach(resetStores);
+
+  describe("patchPersonalDmRowLabelsForUser", () => {
+    it("rewrites stale generic DM title after user profile exists in users store", () => {
+      setLocale("en");
+      useChatListStore.getState().setFromMessages([dmMsg()], 10);
+      const dmKey = [...useChatListStore.getState().dmsMap.keys()][0]!;
+      useChatListStore.setState((s) => {
+        const next = new Map(s.dmsMap);
+        const entry = next.get(dmKey);
+        if (!entry) return s;
+        next.set(dmKey, { ...entry, name: "Direct message" });
+        return { dmsMap: next };
+      });
+      useUsersStore.getState().mergeUser({
+        user_id: 20,
+        full_name: "Bob Loaded",
+        email: "bob@t.com",
+      });
+      useChatListStore.getState().patchPersonalDmRowLabelsForUser(20);
+      expect(useChatListStore.getState().dmsMap.get(dmKey)?.name).toBe("Bob Loaded");
+    });
+  });
 
   // Ensures clear() wipes all derived data so instance switching starts clean.
   describe("clear", () => {

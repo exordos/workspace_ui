@@ -19,6 +19,7 @@ import {
   deserializeStreamEntry,
   type ChatListSnapshotSerialized,
 } from "~/shared/lib/chat-list-snapshot-serialize.lib";
+import { resolvePersonalDmSidebarTitle } from "./chat-list-format.lib";
 import {
   buildSidebarFromMessages,
   messageToStreamEntry,
@@ -426,6 +427,34 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
       const nextStreams = new Map(state.streamsMap);
       nextStreams.set(streamId, { ...existing, name: trimmedName });
       return { streamsMap: nextStreams };
+    });
+  },
+
+  patchPersonalDmRowLabelsForUser(userId) {
+    if (!Number.isFinite(userId) || userId <= 0) return;
+    const users = useUsersStore.getState();
+    const storeDisplayName = users.getDisplayName(userId);
+    if (storeDisplayName === "Unknown") return;
+    const userFullName = users.getUser(userId)?.full_name;
+    set((state) => {
+      let changed = false;
+      const next = new Map(state.dmsMap);
+      for (const [key, entry] of next) {
+        if (entry.isGroup || entry.id !== userId) continue;
+        const resolved = resolvePersonalDmSidebarTitle({
+          chatName: entry.name,
+          userFullName,
+          storeDisplayName,
+        });
+        if (resolved !== entry.name) {
+          next.set(key, { ...entry, name: resolved });
+          changed = true;
+        }
+      }
+      if (!changed) return state;
+      _cachedDms = null;
+      _cachedDmsMapRef = null;
+      return { dmsMap: next };
     });
   },
 

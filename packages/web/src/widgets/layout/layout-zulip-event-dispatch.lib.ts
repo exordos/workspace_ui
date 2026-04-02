@@ -7,7 +7,7 @@ import { getElectronAPI } from "~/shared/lib/electron";
 import { stripHtml } from "~/shared/lib/html";
 import {
   applyZulipEventToMessageIndexedDb,
-  isIndexedDbMessageSourceEnabled,
+  isChatMessagesPersistToIndexedDbEnabled,
 } from "~/shared/lib/message-idb-from-zulip.lib";
 import { shouldNotify } from "~/shared/lib/notifications-policy";
 import { closeReadMessageNotifications } from "./layout-notification-tags.lib";
@@ -21,14 +21,13 @@ export function dispatchZulipEvent(event: ZulipEvent, ctx: LayoutZulipEventDispa
   const { chatList, currentChat, users, typing, mute, activity, inbox, notifications } = ctx;
 
   const instance = getCurrentInstance();
-  if (instance?.id && isIndexedDbMessageSourceEnabled()) {
+  if (instance?.id && isChatMessagesPersistToIndexedDbEnabled()) {
     void applyZulipEventToMessageIndexedDb({
       instanceId: instance.id,
       currentUserId: chatList.currentUserId,
       event,
     }).catch(() => {});
   }
-  const skipMemoryChat = isIndexedDbMessageSourceEnabled();
 
   if (event.type === "message" && event.message) {
     const raw = event.message as unknown as ZulipRawMessage;
@@ -41,7 +40,7 @@ export function dispatchZulipEvent(event: ZulipEvent, ctx: LayoutZulipEventDispa
     const isForCurrentChat = currentChat.context
       ? isMessageForContext(raw, currentChat.context, currentUserId)
       : false;
-    if (isForCurrentChat && !skipMemoryChat) {
+    if (isForCurrentChat) {
       currentChat.appendMessage(rawMessageToMockMessage(raw));
     }
 
@@ -88,14 +87,10 @@ export function dispatchZulipEvent(event: ZulipEvent, ctx: LayoutZulipEventDispa
       if (op === "add") {
         closeReadMessageNotifications(notifications.closeByTag, messageIds);
         chatList.decrementUnreadForMessages(messageIds);
-        if (!skipMemoryChat) {
-          currentChat.updateMessageFlags(messageIds, "read", "add");
-        }
+        currentChat.updateMessageFlags(messageIds, "read", "add");
       } else {
         chatList.incrementUnreadForMessages(messageIds);
-        if (!skipMemoryChat) {
-          currentChat.updateMessageFlags(messageIds, "read", "remove");
-        }
+        currentChat.updateMessageFlags(messageIds, "read", "remove");
       }
     }
     return;
@@ -117,9 +112,7 @@ export function dispatchZulipEvent(event: ZulipEvent, ctx: LayoutZulipEventDispa
         : null;
     if (reaction) {
       const op = (event.op as LayoutMessageFlagOp) ?? "add";
-      if (!skipMemoryChat) {
-        currentChat.updateMessageReaction(messageId, reaction, op);
-      }
+      currentChat.updateMessageReaction(messageId, reaction, op);
     }
     return;
   }
@@ -133,9 +126,7 @@ export function dispatchZulipEvent(event: ZulipEvent, ctx: LayoutZulipEventDispa
         : [];
     if (messageIds.length > 0) {
       chatList.handleDeleteMessages(messageIds);
-      if (!skipMemoryChat) {
-        currentChat.removeMessages(messageIds);
-      }
+      currentChat.removeMessages(messageIds);
     }
     return;
   }
@@ -164,9 +155,7 @@ export function dispatchZulipEvent(event: ZulipEvent, ctx: LayoutZulipEventDispa
     const messageId = event.message_id as number | undefined;
     const newContent = event.rendered_content as string | undefined;
     if (messageId != null && newContent != null) {
-      if (!skipMemoryChat) {
-        currentChat.updateMessageContent(messageId, newContent);
-      }
+      currentChat.updateMessageContent(messageId, newContent);
     }
     return;
   }

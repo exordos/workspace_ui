@@ -85,13 +85,15 @@ function isWorkspaceFolder(value: unknown): value is FolderFilter {
   const bg = value.background_color_value;
   const bgOk =
     bg === undefined || bg === null || (typeof bg === "number" && Number.isFinite(bg));
+  const unreadOk =
+    value.unread_messages == null || Array.isArray(value.unread_messages);
   return (
     typeof value.uuid === "string" &&
     typeof value.created_at === "string" &&
     typeof value.updated_at === "string" &&
     typeof value.title === "string" &&
     bgOk &&
-    Array.isArray(value.unread_messages) &&
+    unreadOk &&
     (value.system_type === "created" ||
       value.system_type === "all" ||
       value.system_type === null ||
@@ -233,12 +235,17 @@ function parseFolderItemChatId(value: unknown): string | null {
   return null;
 }
 
-function mapToFolderItemForClient(raw: unknown): FolderItemForClient | null {
+function mapToFolderItemForClient(
+  raw: unknown,
+  requestFolderUuid: string,
+): FolderItemForClient | null {
   if (!isRecord(raw)) {
     return null;
   }
   const uuid = typeof raw.uuid === "string" ? raw.uuid.trim() : "";
-  const folderUuid = typeof raw.folder_uuid === "string" ? raw.folder_uuid.trim() : "";
+  const folderUuidRaw = typeof raw.folder_uuid === "string" ? raw.folder_uuid.trim() : "";
+  const folderUuid =
+    folderUuidRaw.length > 0 ? folderUuidRaw : requestFolderUuid.trim();
   const chatId = parseFolderItemChatId(raw.chat_id);
   if (uuid.length === 0 || folderUuid.length === 0 || chatId == null) {
     return null;
@@ -329,7 +336,7 @@ export async function getFolderItems(folderUuid: string): Promise<FolderItemForC
 
   const result: FolderItemForClient[] = [];
   for (const rawItem of data) {
-    const mapped = mapToFolderItemForClient(rawItem);
+    const mapped = mapToFolderItemForClient(rawItem, safeFolderUuid);
     if (mapped != null) {
       result.push(mapped);
     }

@@ -76,6 +76,27 @@ describe("SidebarDmList", () => {
     expect(screen.queryByText("Hello")).not.toBeInTheDocument();
   });
 
+  it("renders partner avatar image in recent DMs when user has avatar_url", () => {
+    useChatListStore.setState({ currentUserId: 999 });
+    useUsersStore.getState().mergeUsers([
+      createUser({ user_id: 999, full_name: "Self User", email: "self@example.com" }),
+      createUser({
+        user_id: 42,
+        full_name: "Alice",
+        email: "alice@example.com",
+        avatar_url: "https://cdn.example.com/u42.png",
+      }),
+      createUser({ user_id: 77, full_name: "Bob", email: "bob@example.com" }),
+    ]);
+
+    const { container } = renderWithProviders(<SidebarDmList activeDmId={null} dms={RECENT_DMS} />);
+
+    const avatarSrcs = [...container.querySelectorAll("img")].map((el) => el.getAttribute("src"));
+    const aliceSrc = avatarSrcs.find((s) => s?.includes("cdn.example.com"));
+    expect(aliceSrc).toBeTruthy();
+    expect(aliceSrc).toContain("_av=");
+  });
+
   it("uses tokenized compact typography classes in recent dm rows", () => {
     renderWithProviders(<SidebarDmList activeDmId={42} dms={RECENT_DMS} />);
 

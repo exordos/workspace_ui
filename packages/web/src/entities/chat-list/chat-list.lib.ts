@@ -94,23 +94,40 @@ export function messageToDmEntry(
     }))
     .sort((a, b) => a.id - b.id);
   const key = recipients.map((r) => r.id).join(",");
+  // Zulip: exactly two recipients => 1:1 DM (not a huddle). When currentUserId is not yet known,
+  // both recipients were treated as "others" and isGroup became true → wrong "group" header + participant count.
+  const isOneToOneDm = recipients.length === 2;
   const otherUsers =
-    currentUserId != null ? recipients.filter((r) => r.id !== currentUserId) : recipients;
-  const isGroup = otherUsers.length !== 1 || (currentUserId == null && recipients.length === 2);
+    currentUserId != null
+      ? recipients.filter((r) => r.id !== currentUserId)
+      : isOneToOneDm
+        ? (() => {
+            const peer = recipients.find((r) => r.id !== m.sender_id);
+            return peer != null ? [peer] : [recipients[0]!];
+          })()
+        : recipients;
+  const isGroup = !isOneToOneDm && otherUsers.length !== 1;
   const nameFromStore = (userId: number) => usersStore.getDisplayName(userId);
   const avatarFromStore = (userId: number) =>
     usersStore.getAvatarUrl(userId) ?? avatarUrlByUserId?.get(userId);
-  const directName = otherUsers[0] != null ? nameFromStore(otherUsers[0].id) : undefined;
+  const rawStoreName = otherUsers[0] != null ? nameFromStore(otherUsers[0].id) : undefined;
+  const fromStore =
+    rawStoreName != null &&
+    rawStoreName.length > 0 &&
+    rawStoreName !== "Unknown"
+      ? rawStoreName
+      : undefined;
   const name = isGroup
-    ? currentUserId == null && recipients.length === 2
-      ? t("dm.privateChat")
-      : otherUsers
-          .map((u) => nameFromStore(u.id) || getDisplayName(u))
-          .filter(Boolean)
-          .join(", ") || t("dm.groupChat")
-    : directName != null && directName.length > 0
-      ? directName
-      : getDmPartnerName(otherUsers[0] ?? {});
+    ? otherUsers
+        .map((u) => nameFromStore(u.id) || getDisplayName(u))
+        .filter(Boolean)
+        .join(", ") || t("dm.groupChat")
+    : fromStore ??
+      getDmPartnerName({
+        id: otherUsers[0]?.id,
+        full_name: otherUsers[0]?.full_name,
+        email: otherUsers[0]?.email,
+      });
   let id: number;
   let userIds: number[] | undefined;
   let avatar_url: string | undefined;

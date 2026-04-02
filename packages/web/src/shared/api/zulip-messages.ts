@@ -26,6 +26,12 @@ import {
   validateMessagesApiAnchor,
   validateNonNegativeInteger,
 } from "./zulip-validation.internal";
+import {
+  ZULIP_DM_CHAT_NUM_AFTER,
+  ZULIP_DM_CHAT_NUM_BEFORE,
+  ZULIP_STREAM_CHAT_NUM_AFTER,
+  ZULIP_STREAM_CHAT_NUM_BEFORE,
+} from "~/shared/lib/zulip-message-window.lib";
 
 interface MessageWindowOptions {
   anchor: string | number;
@@ -198,8 +204,8 @@ export async function fetchMessages(
     const data = (await client.messages.retrieve({
       narrow: narrow.length ? narrow : undefined,
       anchor: "newest",
-      num_before: 100,
-      num_after: 0,
+      num_before: ZULIP_STREAM_CHAT_NUM_BEFORE,
+      num_after: ZULIP_STREAM_CHAT_NUM_AFTER,
     })) as { result?: string; messages?: RawMessageToMockInput[] };
     if (data.result === "error") return [];
     const list = data.messages ?? [];
@@ -213,8 +219,8 @@ export async function fetchMessages(
 export async function fetchMessagesWithNarrow(
   narrow: { operator: string; operand: string | number | number[] }[],
   anchor: string | number = "newest",
-  numBefore = 100,
-  numAfter = 0,
+  numBefore = ZULIP_STREAM_CHAT_NUM_BEFORE,
+  numAfter = ZULIP_STREAM_CHAT_NUM_AFTER,
 ): Promise<MockMessage[]> {
   const page = await fetchMessagesWithNarrowPage(narrow, anchor, numBefore, numAfter);
   return page.messages;
@@ -224,8 +230,8 @@ export async function fetchMessagesWithNarrow(
 export async function fetchMessagesWithNarrowPage(
   narrow: { operator: string; operand: string | number | number[] }[],
   anchor: string | number = "newest",
-  numBefore = 100,
-  numAfter = 0,
+  numBefore = ZULIP_STREAM_CHAT_NUM_BEFORE,
+  numAfter = ZULIP_STREAM_CHAT_NUM_AFTER,
 ): Promise<MessagesPageResult> {
   const validatedAnchor = validateMessagesApiAnchor(anchor, "fetchMessagesWithNarrowPage");
   const validatedNumBefore = validateNonNegativeInteger(numBefore, "numBefore");
@@ -318,8 +324,8 @@ export async function fetchDmMessages(userIds: number | number[]): Promise<MockM
   const params = {
     narrow: [{ negated: false, operator: "dm", operand: ids }] as DmNarrow[],
     anchor: "newest",
-    num_before: 60,
-    num_after: 150,
+    num_before: ZULIP_DM_CHAT_NUM_BEFORE,
+    num_after: ZULIP_DM_CHAT_NUM_AFTER,
     client_gravatar: true,
     allow_empty_topic_name: true,
   };

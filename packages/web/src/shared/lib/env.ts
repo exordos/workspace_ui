@@ -32,6 +32,17 @@ function cleanOrigin(url: string): string {
   return url.replace(/\/api\/v1\/?$/, "").replace(/\/+$/, "");
 }
 
+const chatMessagesPersistIndexedDb = (() => {
+  if (import.meta.env.MODE === "test") return false;
+  const explicit = optional("VITE_CHAT_MESSAGES_PERSIST_INDEXEDDB", "");
+  if (explicit.trim() !== "") {
+    const v = explicit.toLowerCase();
+    return v !== "false" && v !== "0";
+  }
+  const legacy = optional("VITE_CHAT_MESSAGES_SOURCE_INDEXEDDB", "true").toLowerCase();
+  return legacy !== "false" && legacy !== "0";
+})();
+
 const WORKSPACE_API_ORIGIN_RAW = required("VITE_WORKSPACE_API_ORIGIN");
 const ZULIP_API_PATH = optional("VITE_ZULIP_API_PATH", "/api/v1");
 const WORKSPACE_API_PATH = optional("VITE_WORKSPACE_API_PATH", "/api/v1");
@@ -127,14 +138,17 @@ export const env = {
   MAIL_EMBED_URL: optional("VITE_MAIL_EMBED_URL"),
 
   /**
-   * When true, chat message lists read from IndexedDB; REST/events upsert the cache.
-   * Set `VITE_CHAT_MESSAGES_SOURCE_INDEXEDDB=false` to use in-memory store + localStorage only.
+   * When true, chat messages are written to IndexedDB (write-through cache). UI always uses Zustand.
+   * Set `VITE_CHAT_MESSAGES_PERSIST_INDEXEDDB=false` to disable IDB (no disk cache for messages).
+   * Legacy: `VITE_CHAT_MESSAGES_SOURCE_INDEXEDDB` is read if `VITE_CHAT_MESSAGES_PERSIST_INDEXEDDB` is unset.
    */
-  CHAT_MESSAGES_SOURCE_INDEXEDDB: (() => {
-    if (import.meta.env.MODE === "test") return false;
-    const v = optional("VITE_CHAT_MESSAGES_SOURCE_INDEXEDDB", "true").toLowerCase();
-    return v !== "false" && v !== "0";
-  })(),
+  CHAT_MESSAGES_PERSIST_INDEXEDDB: chatMessagesPersistIndexedDb,
+
+  /**
+   * Alias of CHAT_MESSAGES_PERSIST_INDEXEDDB for backward compatibility.
+   * Prefer CHAT_MESSAGES_PERSIST_INDEXEDDB in new code.
+   */
+  CHAT_MESSAGES_SOURCE_INDEXEDDB: chatMessagesPersistIndexedDb,
 
   /**
    * When true, `[message-flow]` traces appear in the browser console (chat store + IDB + chat page merge).

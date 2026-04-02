@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseDmSlugToUserIds, parseStreamSlug } from "./sidebar.lib";
+import { parseDmSlugToUserIds, parseStreamSlug, resolveStreamRouteFromSlug } from "./sidebar.lib";
 
 describe("parseStreamSlug", () => {
   it("parses numeric slug prefix into stream id", () => {
@@ -13,6 +13,32 @@ describe("parseStreamSlug", () => {
   it("does not throw on malformed encoded stream slug", () => {
     expect(() => parseStreamSlug("%E0%A4%A")).not.toThrow();
     expect(parseStreamSlug("%E0%A4%A")).toEqual({ stream_name: "%E0%A4%A" });
+  });
+});
+
+describe("resolveStreamRouteFromSlug", () => {
+  it("resolves id and name from numeric slug using map when present", () => {
+    const map = new Map<number, { name: string }>([[5, { name: "general" }]]);
+    expect(resolveStreamRouteFromSlug(parseStreamSlug("5-general"), map)).toEqual({
+      resolvedStreamName: "general",
+      resolvedStreamId: 5,
+    });
+  });
+
+  it("resolves stream id for legacy slug by exact stream name in map", () => {
+    const map = new Map<number, { name: string }>([[12, { name: "marketing" }]]);
+    expect(resolveStreamRouteFromSlug(parseStreamSlug("marketing"), map)).toEqual({
+      resolvedStreamName: "marketing",
+      resolvedStreamId: 12,
+    });
+  });
+
+  it("returns null id when legacy name is not in map", () => {
+    const map = new Map<number, { name: string }>();
+    expect(resolveStreamRouteFromSlug(parseStreamSlug("unknown"), map)).toEqual({
+      resolvedStreamName: "unknown",
+      resolvedStreamId: null,
+    });
   });
 });
 

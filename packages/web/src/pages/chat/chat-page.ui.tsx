@@ -1,6 +1,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { resolvePersonalDmSidebarTitle } from "~/entities/chat-list/chat-list-format.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import {
   reconcileCreatedDraftServerId,
@@ -13,10 +14,6 @@ import { resolveHydratedDraftBootstrap } from "~/entities/draft/draft-chat-boots
 import { createDraft, deleteDraftOnServer, updateDraftOnServer } from "~/entities/draft/draft.api";
 import { useDraftStore } from "~/entities/draft/draft.model";
 import type { DraftType } from "~/entities/draft/draft.types";
-import {
-  useIndexedDbChatMessages,
-  useIndexedDbMessageSourceEnabled,
-} from "~/entities/message/message-indexeddb.hook";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
@@ -66,7 +63,7 @@ import { useChatForwardHydration } from "./chat-page-forward-hydration.hook";
 import { useChatPartnerProfileHydration } from "./chat-page-partner-profile.hook";
 import { useChatRouteContext } from "./chat-page-route-context.hook";
 import { useChatToastAutoClear } from "./chat-page-toast.hook";
-import { normalizeDmRouteUserIds } from "./chat-dm-route.lib";
+import { normalizeDmRouteUserIds } from "~/shared/lib/dm-route.lib";
 import { resolveLastOwnMessageForEdit } from "./chat-edit-last-message.lib";
 import { countUnreadMessages, resolveFirstUnreadBoundaryMessageId } from "./chat-first-unread.lib";
 import {
@@ -162,69 +159,29 @@ export const ChatPage: React.FC = () => {
   const partnerUser = useUsersStore((s) =>
     partnerUserId != null ? s.getUser(partnerUserId) : undefined,
   );
+  const partnerStoreDisplayName = useUsersStore((s) =>
+    partnerUserId != null ? s.getDisplayName(partnerUserId) : "Unknown",
+  );
   useChatPartnerProfileHydration({ partnerUserId, isDmView, isGroupDmView });
 
   const chatContextForMessages = useCurrentChatMessagesStore((s) => s.context);
-  const messagesFromStore = useCurrentChatMessagesStore((s) => s.messages);
-  const messagesFromIdb = useIndexedDbChatMessages({ context: chatContextForMessages });
-  const useIdbAsMessageSource = useIndexedDbMessageSourceEnabled();
-  const messages = useMemo(() => {
-    if (!useIdbAsMessageSource) return messagesFromStore;
-    // IDB hook can briefly lag behind or return a smaller slice (e.g. before upsert + notify);
-    // the store holds the latest API merge from loadInitial / pagination until IDB catches up.
-    if (messagesFromStore.length > messagesFromIdb.length) return messagesFromStore;
-    return messagesFromIdb.length > 0 ? messagesFromIdb : messagesFromStore;
-  }, [useIdbAsMessageSource, messagesFromIdb, messagesFromStore]);
+  const messages = useCurrentChatMessagesStore((s) => s.messages);
 
   /** Same array as passed to `MessageList`; used when applying read flags so we do not rely on store alone. */
   const effectiveMessagesForReadRef = useRef<MockMessage[]>(messages);
   effectiveMessagesForReadRef.current = messages;
 
   useEffect(() => {
-    const source =
-      !useIdbAsMessageSource
-        ? "store-only"
-        : messagesFromStore.length > messagesFromIdb.length
-          ? "store-prefer-longer"
-          : messagesFromIdb.length > 0
-            ? "idb"
-            : "store-fallback";
     const firstId = messages[0]?.id;
     const lastId = messages[messages.length - 1]?.id;
-    const storeFirst = messagesFromStore[0]?.id;
-    const storeLast = messagesFromStore[messagesFromStore.length - 1]?.id;
-    const idbFirst = messagesFromIdb[0]?.id;
-    const idbLast = messagesFromIdb[messagesFromIdb.length - 1]?.id;
     logMessageFlow("ui:resolved message list", {
-      source,
+      source: "store",
       context: summarizeChatContextForLog(chatContextForMessages),
-      storeCount: messagesFromStore.length,
-      idbCount: messagesFromIdb.length,
       effectiveCount: messages.length,
       effectiveFirstId: firstId,
       effectiveLastId: lastId,
-      storeFirstId: storeFirst,
-      storeLastId: storeLast,
-      idbFirstId: idbFirst,
-      idbLastId: idbLast,
-      storeLongerThanIdb: messagesFromStore.length > messagesFromIdb.length,
     });
-    logMessageFlow("ui:messages id range compare", {
-      source,
-      sameBoundsAsStore:
-        source === "store-prefer-longer" ||
-        (storeFirst === firstId && storeLast === lastId && messagesFromStore.length === messages.length),
-      sameBoundsAsIdb:
-        source === "idb" ||
-        (idbFirst === firstId && idbLast === lastId && messagesFromIdb.length === messages.length),
-    });
-  }, [
-    useIdbAsMessageSource,
-    messagesFromStore.length,
-    messagesFromIdb.length,
-    messages.length,
-    chatContextForMessages,
-  ]);
+  }, [messages.length, messages, chatContextForMessages]);
   const streams = useChatListStore((s) => s.streams());
   const firstUnreadId = useMemo(
     () => resolveFirstUnreadBoundaryMessageId(messages, currentUserId),
@@ -761,14 +718,22 @@ export const ChatPage: React.FC = () => {
   useEffect(() => {
     if (!streamSlug) {
       if (!dmIdParam || dmIdParam === "") {
+        logMessageFlow("ui:stream route effect → setContext(null)", { reason: "no stream slug" });
         setContext(null);
       }
       return;
     }
     if (!resolvedStreamName || resolvedStreamId == null) {
+      logMessageFlow("ui:stream route effect → setContext(null)", {
+        reason: "stream name/id not resolved",
+      });
       setContext(null);
       return;
     }
+    logMessageFlow("ui:stream route effect → setContext(stream)", {
+      streamId: resolvedStreamId,
+      topic: streamRouteTopic,
+    });
     setContext({
       type: "stream",
       streamId: resolvedStreamId,
@@ -794,6 +759,11 @@ export const ChatPage: React.FC = () => {
 
     setMessagesLoading(true);
     let cancelled = false;
+    logMessageFlow("ui:stream loadInitial effect → invoke store.loadInitialMessagesForContext", {
+      streamId: resolvedStreamId,
+      topic: streamRouteTopic,
+      focusedMessageId,
+    });
     loadInitialMessagesForContext({
       context: {
         type: "stream",
@@ -805,7 +775,14 @@ export const ChatPage: React.FC = () => {
       currentUserId,
     })
       .then(() => {
-        if (!cancelled) setMessagesLoading(false);
+        if (!cancelled) {
+          logMessageFlow("ui:stream loadInitial effect → fulfilled", { cancelled: false });
+          setMessagesLoading(false);
+        } else {
+          logMessageFlow("ui:stream loadInitial effect → fulfilled (ignored, unmounted)", {
+            cancelled: true,
+          });
+        }
       })
       .catch((e) => {
         logMessageFlow("ui:stream loadInitial rejected", { error: String(e) });
@@ -827,7 +804,10 @@ export const ChatPage: React.FC = () => {
   // Синхронизируем контекст активного DM с маршрутом и текущим пользователем.
   useEffect(() => {
     if (!dmIdParam || dmIdParam === "") {
-      if (!streamSlug) setContext(null);
+      if (!streamSlug) {
+        logMessageFlow("ui:dm route effect → setContext(null)", { reason: "empty dm param" });
+        setContext(null);
+      }
       return;
     }
     if (currentUserId == null) return;
@@ -837,6 +817,7 @@ export const ChatPage: React.FC = () => {
     if (userIds.length === 0) return;
 
     const dmKey = dmRouteKey(userIds, currentUserId);
+    logMessageFlow("ui:dm route effect → setContext(dm)", { dmKey });
     setContext({ type: "dm", dmKey });
   }, [dmIdParam, streamSlug, currentUserId, setContext]);
 
@@ -853,13 +834,24 @@ export const ChatPage: React.FC = () => {
     setMessagesLoading(true);
     let cancelled = false;
     const dmKey = dmRouteKey(userIds, currentUserId);
+    logMessageFlow("ui:dm loadInitial effect → invoke store.loadInitialMessagesForContext", {
+      dmKey,
+      focusedMessageId,
+    });
     loadInitialMessagesForContext({
       context: { type: "dm", dmKey },
       focusedMessageId,
       currentUserId,
     })
       .then(() => {
-        if (!cancelled) setMessagesLoading(false);
+        if (!cancelled) {
+          logMessageFlow("ui:dm loadInitial effect → fulfilled", { cancelled: false });
+          setMessagesLoading(false);
+        } else {
+          logMessageFlow("ui:dm loadInitial effect → fulfilled (ignored, unmounted)", {
+            cancelled: true,
+          });
+        }
       })
       .catch((e) => {
         logMessageFlow("ui:dm loadInitial rejected", { error: String(e) });
@@ -874,7 +866,7 @@ export const ChatPage: React.FC = () => {
 
   const loadOlderMessages = useCallback(() => {
     const store = useCurrentChatMessagesStore.getState();
-    const messagesLength = useIdbAsMessageSource ? messages.length : store.messages.length;
+    const messagesLength = store.messages.length;
     const gate = {
       isLoadingMore: store.isLoadingMore,
       hasBoundaryMessages: store.hasOlderMessages,
@@ -884,7 +876,6 @@ export const ChatPage: React.FC = () => {
       logMessageFlow("ui:loadOlder skipped", {
         ...gate,
         context: summarizeChatContextForLog(store.context),
-        useIdbSource: useIdbAsMessageSource,
       });
       return;
     }
@@ -892,29 +883,38 @@ export const ChatPage: React.FC = () => {
       pageSize: PAGE_SIZE,
       messagesLength,
       context: summarizeChatContextForLog(store.context),
-      useIdbSource: useIdbAsMessageSource,
       storeHasOlderMessages: store.hasOlderMessages,
       storeMessageCount: store.messages.length,
       storeFirstId: store.messages[0]?.id,
       storeLastId: store.messages[store.messages.length - 1]?.id,
     });
     void loadOlderBoundaryPage({ pageSize: PAGE_SIZE, currentUserId });
-  }, [PAGE_SIZE, currentUserId, loadOlderBoundaryPage, messages.length, useIdbAsMessageSource]);
+  }, [PAGE_SIZE, currentUserId, loadOlderBoundaryPage]);
 
   const loadNewerMessages = useCallback(() => {
     const store = useCurrentChatMessagesStore.getState();
-    const messagesLength = useIndexedDbMessageSourceEnabled() ? messages.length : store.messages.length;
-    if (
-      !shouldLoadBoundaryPage({
-        isLoadingMore: store.isLoadingMore,
-        hasBoundaryMessages: store.hasNewerMessages,
-        messagesLength,
-      })
-    ) {
+    const messagesLength = store.messages.length;
+    const gate = {
+      isLoadingMore: store.isLoadingMore,
+      hasBoundaryMessages: store.hasNewerMessages,
+      messagesLength,
+    };
+    if (!shouldLoadBoundaryPage(gate)) {
+      logMessageFlow("ui:loadNewer skipped", {
+        ...gate,
+        context: summarizeChatContextForLog(store.context),
+      });
       return;
     }
+    logMessageFlow("ui:loadNewer invoke", {
+      pageSize: PAGE_SIZE,
+      messagesLength,
+      context: summarizeChatContextForLog(store.context),
+      storeFirstId: store.messages[0]?.id,
+      storeLastId: store.messages[store.messages.length - 1]?.id,
+    });
     void loadNewerBoundaryPage({ pageSize: PAGE_SIZE, currentUserId });
-  }, [PAGE_SIZE, currentUserId, loadNewerBoundaryPage, messages.length]);
+  }, [PAGE_SIZE, currentUserId, loadNewerBoundaryPage]);
 
   const callTarget = useMemo(
     () =>
@@ -1277,13 +1277,14 @@ export const ChatPage: React.FC = () => {
 
   const dmPartner = useMemo(() => {
     if (!isDmView || isGroupDmView || partnerUserId == null) return undefined;
-    const trimmedPartnerName = partnerUser?.full_name?.trim();
+    const resolvedName = resolvePersonalDmSidebarTitle({
+      chatName: dmChat?.name ?? "",
+      userFullName: partnerUser?.full_name,
+      storeDisplayName: partnerStoreDisplayName,
+    });
     return {
       avatarUrl: partnerUser?.avatar_url ?? undefined,
-      name:
-        trimmedPartnerName != null && trimmedPartnerName.length > 0
-          ? trimmedPartnerName
-          : t("dm.partner"),
+      name: resolvedName,
       presenceState:
         partnerUser?.presence != null
           ? getPresenceState(partnerUser.presence.timestamp, partnerUser.presence.status)
@@ -1295,7 +1296,15 @@ export const ChatPage: React.FC = () => {
       customStatus: formatUserStatusLabel(partnerUser?.status) ?? undefined,
       isTyping: dmPartnerIsTyping,
     };
-  }, [isDmView, isGroupDmView, partnerUserId, partnerUser, dmPartnerIsTyping]);
+  }, [
+    isDmView,
+    isGroupDmView,
+    partnerUserId,
+    partnerUser,
+    dmPartnerIsTyping,
+    dmChat?.name,
+    partnerStoreDisplayName,
+  ]);
 
   const dmGroup = useMemo(() => {
     if (!isGroupDmView || !dmChat) return undefined;
@@ -1305,10 +1314,11 @@ export const ChatPage: React.FC = () => {
         : currentUserId != null
           ? Array.from(new Set([...dmRecipientIds, currentUserId]))
           : dmRecipientIds;
+    const rawName = dmChat.name?.trim() ?? "";
     const resolvedName =
-      dmChat.name?.trim() != null && dmChat.name.trim().length > 0
-        ? dmChat.name.trim()
-        : t("dm.groupChat");
+      rawName.length === 0 || rawName === t("dm.privateChat")
+        ? t("dm.groupChat")
+        : rawName;
     return {
       name: resolvedName,
       participantsCount: participantIds.length,

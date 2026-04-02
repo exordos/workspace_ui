@@ -44,7 +44,7 @@ describe("useSettingsStore", () => {
       expect(state.notificationSound).toBe("default");
       expect(state.language).toBe("en");
       expect(state.folderRailLayout).toBe("vertical");
-      expect(state.showSystemFolders).toBe(false);
+      expect(state.showSystemFolders).toBe(true);
       expect(state.chatListDensity).toBe("standard");
     });
   });
@@ -142,7 +142,7 @@ describe("useSettingsStore", () => {
       expect(state.prioritizeUnmutedUnreadChannels).toBe(false);
       expect(state.notificationSound).toBe("default");
       expect(state.language).toBe("en");
-      expect(state.showSystemFolders).toBe(false);
+      expect(state.showSystemFolders).toBe(true);
       expect(state.chatListDensity).toBe("standard");
     });
 
@@ -315,7 +315,7 @@ describe("loadSettings (module reload)", () => {
     expect(state.notificationSound).toBe("default");
     expect(state.language).toBe("en");
     expect(state.folderRailLayout).toBe("vertical");
-    expect(state.showSystemFolders).toBe(false);
+    expect(state.showSystemFolders).toBe(true);
     expect(state.chatListDensity).toBe("standard");
   });
 
@@ -330,7 +330,7 @@ describe("loadSettings (module reload)", () => {
     expect(state.notificationSound).toBe("default");
     expect(state.language).toBe("en");
     expect(state.folderRailLayout).toBe("horizontal");
-    expect(state.showSystemFolders).toBe(false);
+    expect(state.showSystemFolders).toBe(true);
     expect(state.chatListDensity).toBe("standard");
   });
 
@@ -362,7 +362,7 @@ describe("loadSettings (module reload)", () => {
     expect(state.notificationSound).toBe("default");
     expect(state.language).toBe("en");
     expect(state.folderRailLayout).toBe("vertical");
-    expect(state.showSystemFolders).toBe(false);
+    expect(state.showSystemFolders).toBe(true);
     expect(state.chatListDensity).toBe("standard");
   });
 
@@ -391,6 +391,16 @@ describe("loadSettings (module reload)", () => {
     expect(state.folderRailLayout).toBe("horizontal");
     expect(state.showSystemFolders).toBe(true);
     expect(state.chatListDensity).toBe("compact");
+  });
+
+  it("respects explicit showSystemFolders false in persisted settings", async () => {
+    localStorage.setItem(
+      "workspace-settings",
+      JSON.stringify({ showSystemFolders: false, language: "en" }),
+    );
+    vi.resetModules();
+    const { useSettingsStore: freshStore } = await import("./settings.model");
+    expect(freshStore.getState().showSystemFolders).toBe(false);
   });
 
   it("derives default language from browser locale when settings are absent", async () => {

@@ -8,9 +8,9 @@ vi.mock("./folder-sync.api", () => ({
   loadFolderItemsForSelection: vi.fn(),
 }));
 
-vi.mock("~/shared/lib/offline-folders", () => ({
-  loadOfflineFolders: vi.fn(() => []),
-  saveOfflineFolders: vi.fn(),
+vi.mock("~/shared/lib/folders-snapshot-db", () => ({
+  loadFoldersSnapshotRow: vi.fn().mockResolvedValue(null),
+  persistFoldersSnapshotRow: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("~/shared/api/workspace-client", () => ({
@@ -99,6 +99,41 @@ describe("folder-sync model orchestration", () => {
     useFolderSyncStore.setState({ selectedFolderId: "custom-folder" });
     useFolderSyncStore.getState().clear();
     expect(useFolderSyncStore.getState().selectedFolderId).toBe(SYSTEM_ALL_FOLDER_ID);
+  });
+
+  it("preserves rail and folder items when snapshot returns empty folder list (IDB cache)", async () => {
+    const cachedItem = {
+      uuid: "it-1",
+      chatId: "dm:99",
+      folderUuid: "f-cached",
+      orderIndex: 0,
+      pinnedAt: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+    };
+    useFolderSyncStore.setState({
+      instanceId: "inst-a",
+      labels: { allChats: "All", personal: "Personal", channels: "Channels" },
+      showSystemFolders: false,
+      folders: [
+        { id: SYSTEM_ALL_FOLDER_ID, label: "All", backgroundColor: 0, systemType: "all" },
+        { id: "f-cached", label: "Cached", backgroundColor: 2, systemType: "created" },
+      ],
+      selectedFolderId: "f-cached",
+      folderItemsByFolderId: new Map([["f-cached", [cachedItem]]]),
+    });
+    vi.mocked(loadFolderSyncSnapshot).mockResolvedValue({
+      folders: [],
+      itemsByFolderId: new Map(),
+      loadedAt: Date.now(),
+    });
+    vi.mocked(loadFolderItemsForSelection).mockResolvedValue([cachedItem]);
+
+    await useFolderSyncStore.getState().refresh("mutation");
+
+    const state = useFolderSyncStore.getState();
+    expect(state.folders.some((f) => f.id === "f-cached")).toBe(true);
+    expect(state.folderItemsByFolderId.get("f-cached")).toEqual([cachedItem]);
   });
 
   it("refresh does not trigger extra selected-folder fetch when snapshot already has selected items", async () => {
@@ -618,5 +653,57 @@ describe("applyLocallyDeletedFolder", () => {
     const state = useFolderSyncStore.getState();
     expect(state.selectedFolderId).toBe("current");
     expect(state.folders.some((f) => f.id === victim)).toBe(false);
+  });
+});
+
+describe("syncDerived", () => {
+  const labels = { allChats: "All", personal: "Personal", channels: "Channels" };
+
+  beforeEach(() => {
+    useFolderSyncStore.getState().clear();
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    useFolderSyncStore.getState().clear();
+  });
+
+  it("uses empty chat id set for created folder when items not yet in map (not null)", () => {
+    useFolderSyncStore.setState({
+      instanceId: "inst-1",
+      labels,
+      showSystemFolders: false,
+      folders: [
+        { id: SYSTEM_ALL_FOLDER_ID, label: "All", backgroundColor: 0, systemType: "all" },
+        { id: "folder-1", label: "Work", backgroundColor: 1, systemType: "created" },
+      ],
+      selectedFolderId: "folder-1",
+      folderItemsByFolderId: new Map(),
+    });
+
+    useFolderSyncStore.getState().syncDerived(false, labels);
+
+    const { selectedFolderChatIds } = useFolderSyncStore.getState();
+    expect(selectedFolderChatIds).not.toBeNull();
+    expect(selectedFolderChatIds?.size).toBe(0);
+  });
+
+  it("keeps null selectedFolderChatIds for system «all» folder", () => {
+    useFolderSyncStore.setState({
+      instanceId: "inst-1",
+      labels,
+      showSystemFolders: false,
+      folders: [
+        { id: SYSTEM_ALL_FOLDER_ID, label: "All", backgroundColor: 0, systemType: "all" },
+        { id: "folder-1", label: "Work", backgroundColor: 1, systemType: "created" },
+      ],
+      selectedFolderId: SYSTEM_ALL_FOLDER_ID,
+      selectedFolderChatIds: null,
+      folderItemsByFolderId: new Map(),
+    });
+
+    useFolderSyncStore.getState().syncDerived(false, labels);
+
+    expect(useFolderSyncStore.getState().selectedFolderChatIds).toBeNull();
   });
 });
