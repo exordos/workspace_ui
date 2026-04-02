@@ -6,6 +6,7 @@
  */
 import type { CurrentChatContext } from "~/entities/message/message.model.types";
 import { dmRouteKey } from "~/shared/lib/dm-key";
+import { normalizeStreamTopicForMessageCache } from "~/shared/lib/message-cache-keys.lib";
 import { parseDmSlugToUserIds, parseStreamSlug } from "~/widgets/sidebar/sidebar.lib";
 
 /**
@@ -19,11 +20,45 @@ export function stripOrgSegmentFromPathname(pathname: string): string {
   return pathname;
 }
 
+/** Result of parsing the chat segment of the URL for layout ↔ store sync. */
+export interface ParsedChatRoute {
+  context: CurrentChatContext | null;
+  /** True when the path includes `/stream/.../topic/:topicName`. */
+  streamTopicExplicitInUrl: boolean;
+}
+
+/**
+ * True when the message store already matches what the URL implies (navigation sync),
+ * without forcing `setContext` when the only difference is topic on a stream-overview URL.
+ */
+export function isStoreContextAlignedWithParsedRoute(
+  store: CurrentChatContext | null,
+  parsed: ParsedChatRoute,
+): boolean {
+  const urlCtx = parsed.context;
+  if (store === urlCtx) return true;
+  if (store == null || urlCtx == null) return false;
+  if (store.type !== urlCtx.type) return false;
+  if (store.type === "dm") {
+    return urlCtx.type === "dm" && store.dmKey === urlCtx.dmKey;
+  }
+  if (urlCtx.type !== "stream") return false;
+  const su = store;
+  const uu = urlCtx;
+  if (su.streamId !== uu.streamId) return false;
+  if (parsed.streamTopicExplicitInUrl) {
+    return (
+      normalizeStreamTopicForMessageCache(su.topic) === normalizeStreamTopicForMessageCache(uu.topic)
+    );
+  }
+  return true;
+}
+
 export function parseChatContextFromPathname(options: {
   pathname: string;
   streamsMap: Map<number, { name: string }>;
   currentUserId: number | null;
-}): CurrentChatContext | null {
+}): ParsedChatRoute {
   const { streamsMap, currentUserId } = options;
   const pathname = stripOrgSegmentFromPathname(options.pathname);
 
@@ -32,16 +67,17 @@ export function parseChatContextFromPathname(options: {
     const dmSlug = decodeURIComponent(dmMatch[1] ?? "");
     const userIds = parseDmSlugToUserIds(dmSlug);
     const dmKey = dmRouteKey(userIds, currentUserId);
-    return { type: "dm", dmKey };
+    return { context: { type: "dm", dmKey }, streamTopicExplicitInUrl: false };
   }
 
   const streamMatch = pathname.match(/^\/stream\/([^/]+)(?:\/topic\/([^/]+))?/);
   if (streamMatch) {
     const streamSlug = decodeURIComponent(streamMatch[1] ?? "");
-    const topicRaw = streamMatch[2] ? decodeURIComponent(streamMatch[2]) : "general";
+    const topicExplicit = streamMatch[2] != null && streamMatch[2].length > 0;
+    const topicRaw = topicExplicit ? decodeURIComponent(streamMatch[2] ?? "") : "general";
     const topic = (topicRaw ?? "").trim() || "general";
     const parsed = parseStreamSlug(streamSlug);
-    if (!parsed) return null;
+    if (!parsed) return { context: null, streamTopicExplicitInUrl: false };
     const streamName =
       parsed.stream_id != null
         ? streamsMap.get(parsed.stream_id)?.name ?? parsed.stream_name
@@ -51,9 +87,18 @@ export function parseChatContextFromPathname(options: {
       (streamName
         ? (Array.from(streamsMap.entries()).find(([, s]) => s.name === streamName)?.[0] ?? null)
         : null);
-    if (streamId == null) return null;
-    return { type: "stream", streamId, streamName, topic };
+    if (streamId == null) return { context: null, streamTopicExplicitInUrl: topicExplicit };
+    return {
+      context: {
+        type: "stream",
+        streamId,
+        streamName,
+        topic,
+        streamWideView: !topicExplicit,
+      },
+      streamTopicExplicitInUrl: topicExplicit,
+    };
   }
 
-  return null;
+  return { context: null, streamTopicExplicitInUrl: false };
 }

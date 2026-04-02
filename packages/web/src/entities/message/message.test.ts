@@ -505,6 +505,19 @@ describe("isMessageForContext", () => {
       false,
     );
   });
+
+  it("returns true for any topic in stream when streamWideView is set", () => {
+    const wideCtx: CurrentChatContext = {
+      type: "stream",
+      streamId: 5,
+      streamName: "eng",
+      topic: "general",
+      streamWideView: true,
+    };
+    expect(
+      isMessageForContext({ type: "stream", stream_id: 5, subject: "anything" }, wideCtx, null),
+    ).toBe(true);
+  });
 });
 
 // contextFromMessage converts a raw Zulip message into a CurrentChatContext

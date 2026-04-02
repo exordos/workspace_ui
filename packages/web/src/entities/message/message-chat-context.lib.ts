@@ -16,6 +16,7 @@ export function isSameChatLocation(
   if (prev.type !== next.type) return false;
   if (prev.type === "stream" && next.type === "stream") {
     if (prev.streamId !== next.streamId) return false;
+    if (prev.streamWideView === true && next.streamWideView === true) return true;
     const pt = normalizeStreamTopicForMessageCache(prev.topic);
     const nt = normalizeStreamTopicForMessageCache(next.topic);
     if (pt === nt) return true;
@@ -39,10 +40,11 @@ export function isMessageForContext(
 ): boolean {
   if (!context) return false;
   if (context.type === "stream") {
+    if (msg.type !== "stream" || msg.stream_id !== context.streamId) return false;
+    if (context.streamWideView) return true;
     return (
-      msg.type === "stream" &&
-      msg.stream_id === context.streamId &&
-      ((msg.subject ?? "").trim() || "general") === context.topic
+      normalizeStreamTopicForMessageCache((msg.subject ?? "").trim() || "general") ===
+      normalizeStreamTopicForMessageCache(context.topic)
     );
   }
   if (context.type === "dm") {

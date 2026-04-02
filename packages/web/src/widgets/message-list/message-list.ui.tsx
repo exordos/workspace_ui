@@ -4,6 +4,7 @@ import type { MockMessage } from "~/shared/api/zulip.types";
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
 import { createLogger } from "~/shared/lib/logger";
 import { logMessageFlow } from "~/shared/lib/message-flow-debug.lib";
+import { normalizeStreamTopicForMessageCache } from "~/shared/lib/message-cache-keys.lib";
 import { computeScrollTopAfterPrepend } from "~/shared/lib/scroll-prepend-anchor.lib";
 import { Icon } from "~/shared/ui/icon";
 import { MessageBubble, type MessageBubbleCallbacks } from "./message-bubble.ui";
@@ -339,6 +340,8 @@ export const MessageList: React.FC<MessageListProps> = ({
   }, [messages]);
   const mediaGallery = useMemo(() => buildMessageMediaGallery(messages), [messages]);
 
+  let lastStreamTopicKey: string | undefined;
+
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       <div
@@ -362,16 +365,22 @@ export const MessageList: React.FC<MessageListProps> = ({
             </div>
             {(() => {
               const senderGroups = getSenderGroups(items);
-              let prevTopic: string | undefined;
               return senderGroups.map((senderMessages) => {
                 const isOwn = senderMessages[0]!.sender_id === currentUserId;
                 const showUnreadMarker =
                   firstUnreadId != null && senderMessages.some((m) => m.id === firstUnreadId);
-                const currentTopic = senderMessages[0]!.subject;
-                const isStream = senderMessages[0]!.stream_id != null;
+                const first = senderMessages[0]!;
+                const isStream = first.stream_id != null;
+                const topicKey = normalizeStreamTopicForMessageCache(first.subject ?? "");
+                const topicLabel = topicKey;
                 const showTopicSeparator =
-                  isStream && currentTopic && prevTopic !== undefined && prevTopic !== currentTopic;
-                prevTopic = currentTopic;
+                  isStream &&
+                  lastStreamTopicKey !== undefined &&
+                  lastStreamTopicKey !== topicKey;
+                if (isStream) {
+                  lastStreamTopicKey = topicKey;
+                }
+
 
                 if (isOwn) {
                   return (
@@ -383,9 +392,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                           className="my-3 flex w-full items-center gap-3 px-4 text-left"
                         >
                           <div className="h-px flex-1 bg-border-subtle" />
-                          <span className="text-xs font-medium text-text-muted">
-                            {currentTopic}
-                          </span>
+                          <span className="text-xs font-medium text-text-muted">{topicLabel}</span>
                           <div className="h-px flex-1 bg-border-subtle" />
                         </button>
                       )}
@@ -418,7 +425,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                         className="my-3 flex w-full items-center gap-3 px-4 text-left"
                       >
                         <div className="h-px flex-1 bg-border-subtle" />
-                        <span className="text-xs font-medium text-text-muted">{currentTopic}</span>
+                        <span className="text-xs font-medium text-text-muted">{topicLabel}</span>
                         <div className="h-px flex-1 bg-border-subtle" />
                       </button>
                     )}

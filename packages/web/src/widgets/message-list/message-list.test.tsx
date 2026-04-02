@@ -126,6 +126,25 @@ describe("MessageList focused message behavior", () => {
     expect(onTopicSeparatorClick.mock.calls[0]?.[0]?.id).toBe(3);
   });
 
+  it("shows topic separator when topic changes across calendar days", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2024-06-02T12:00:00Z"));
+    const day1 = Math.floor(new Date("2024-06-01T10:00:00Z").getTime() / 1000);
+    const day2 = Math.floor(new Date("2024-06-02T10:00:00Z").getTime() / 1000);
+
+    render(
+      <MessageList
+        messages={[
+          msg(1, { subject: "bugs", timestamp: day1 }),
+          msg(2, { subject: "support", timestamp: day2, sender_id: 43 }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "support" })).toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
   it("calls author callback when message avatar is clicked", () => {
     const onMessageAuthorClick = vi.fn();
 

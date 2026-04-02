@@ -730,17 +730,28 @@ export const ChatPage: React.FC = () => {
       setContext(null);
       return;
     }
+    const streamWideView = topicName == null;
     logMessageFlow("ui:stream route effect → setContext(stream)", {
       streamId: resolvedStreamId,
       topic: streamRouteTopic,
+      streamWideView,
     });
     setContext({
       type: "stream",
       streamId: resolvedStreamId,
       streamName: resolvedStreamName,
       topic: streamRouteTopic,
+      streamWideView,
     });
-  }, [dmIdParam, streamSlug, setContext, resolvedStreamId, resolvedStreamName, streamRouteTopic]);
+  }, [
+    dmIdParam,
+    streamSlug,
+    setContext,
+    resolvedStreamId,
+    resolvedStreamName,
+    streamRouteTopic,
+    topicName,
+  ]);
 
   // Загружаем стартовую порцию stream-сообщений только по параметрам маршрута и фокусу.
   useEffect(() => {
@@ -770,6 +781,7 @@ export const ChatPage: React.FC = () => {
         streamId: resolvedStreamId,
         streamName: resolvedStreamName,
         topic: streamRouteTopic,
+        streamWideView: topicName == null,
       },
       focusedMessageId,
       currentUserId,
@@ -796,6 +808,7 @@ export const ChatPage: React.FC = () => {
     resolvedStreamName,
     resolvedStreamId,
     streamRouteTopic,
+    topicName,
     focusedMessageId,
     currentUserId,
     loadInitialMessagesForContext,

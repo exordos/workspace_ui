@@ -5,7 +5,14 @@ import type {
 } from "~/shared/api/zulip.types";
 
 export type CurrentChatContext =
-  | { type: "stream"; streamId: number; streamName: string; topic: string }
+  | {
+      type: "stream";
+      streamId: number;
+      streamName: string;
+      topic: string;
+      /** True when the route is `/stream/:slug` without `/topic/...` (whole-stream view). */
+      streamWideView?: boolean;
+    }
   | { type: "dm"; dmKey: string };
 
 export interface CurrentChatMessagesState {

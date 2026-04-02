@@ -94,6 +94,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         streamName: context.streamName,
         streamId: context.streamId,
         topic: context.topic,
+        streamWideView: context.streamWideView ?? prev.streamWideView,
       };
     }
 
@@ -296,17 +297,19 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       context.type === "stream"
         ? focusedMessageId != null
           ? fetchMessagesWithNarrow(
-              [
-                { operator: "stream", operand: context.streamName },
-                { operator: "topic", operand: context.topic },
-              ],
+              context.streamWideView
+                ? [{ operator: "stream", operand: context.streamName }]
+                : [
+                    { operator: "stream", operand: context.streamName },
+                    { operator: "topic", operand: context.topic },
+                  ],
               focusedMessageId,
               60,
               60,
             )
           : fetchMessages(
               context.streamName,
-              context.topic === "general" ? undefined : context.topic,
+              context.streamWideView || context.topic === "general" ? undefined : context.topic,
             )
         : focusedMessageId != null
           ? fetchMessagesWithNarrow(
@@ -341,7 +344,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       const fromKey = chatKeyFromMockMessage(first, currentUserId);
       if (context.type === "stream") {
         const topic = (first.subject ?? "").trim() || "general";
-        nextContext = { ...context, topic };
+        nextContext = { ...context, topic, streamWideView: context.streamWideView };
       } else if (fromKey?.startsWith("dm:")) {
         const k = fromKey.slice(3);
         if (k !== context.dmKey) {
@@ -425,10 +428,12 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     try {
       const narrow =
         ctx.type === "stream"
-          ? [
-              { operator: "stream", operand: ctx.streamName },
-              { operator: "topic", operand: ctx.topic },
-            ]
+          ? ctx.streamWideView
+            ? [{ operator: "stream", operand: ctx.streamName }]
+            : [
+                { operator: "stream", operand: ctx.streamName },
+                { operator: "topic", operand: ctx.topic },
+              ]
           : [{ operator: "dm", operand: parseDmKeyToUserIds(ctx.dmKey, currentUserId) }];
       const page = await fetchMessagesWithNarrowPage(narrow, oldest.id, pageSize, 0);
       const withoutAnchor = page.messages.filter((m) => m.id !== oldest.id);
@@ -522,10 +527,12 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     try {
       const narrow =
         ctx.type === "stream"
-          ? [
-              { operator: "stream", operand: ctx.streamName },
-              { operator: "topic", operand: ctx.topic },
-            ]
+          ? ctx.streamWideView
+            ? [{ operator: "stream", operand: ctx.streamName }]
+            : [
+                { operator: "stream", operand: ctx.streamName },
+                { operator: "topic", operand: ctx.topic },
+              ]
           : [{ operator: "dm", operand: parseDmKeyToUserIds(ctx.dmKey, currentUserId) }];
       const page = await fetchMessagesWithNarrowPage(narrow, newest.id, 0, pageSize);
       const withoutAnchor = page.messages.filter((m) => m.id !== newest.id);
