@@ -4,7 +4,7 @@
  * Covers the pure mapping utility mapWorkspaceFoldersToRail and the
  * async getFolders function with mocked workspace API transport.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getFolders, mapWorkspaceFoldersToRail } from "./folder.api";
 
 const { workspaceApi } = vi.hoisted(() => ({
@@ -126,6 +126,11 @@ describe("mapWorkspaceFoldersToRail", () => {
 
 // Async fetch with mocked globals.
 describe("getFolders", () => {
+  beforeEach(async () => {
+    const { registerWorkspaceOrvalMutator } = await import("~/shared/api/workspace-orval-mutator");
+    registerWorkspaceOrvalMutator();
+  });
+
   afterEach(() => {
     vi.clearAllMocks();
   });
@@ -166,7 +171,7 @@ describe("getFolders", () => {
       raw: { statusText: "Internal Server Error" },
     });
 
-    await expect(getFolders()).rejects.toThrow("Workspace API error: 500");
+    await expect(getFolders()).rejects.toThrow(/Workspace API error: 500/);
   });
 
   it("throws on network error", async () => {
@@ -185,6 +190,6 @@ describe("getFolders", () => {
 
     await getFolders();
 
-    expect(workspaceApi.get).toHaveBeenCalledWith("/folders/");
+    expect(workspaceApi.get).toHaveBeenCalledWith("/folders/", undefined, undefined);
   });
 });

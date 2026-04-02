@@ -1,0 +1,410 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Workspace API",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/services/": {
+      "get": {
+        "operationId": "listWorkspaceServices",
+        "responses": {
+          "200": {
+            "description": "Service catalog",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/WorkspaceServiceResponse" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/folders/": {
+      "get": {
+        "operationId": "listFolders",
+        "responses": {
+          "200": {
+            "description": "Folders list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/WorkspaceFolder" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createFolder",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateFolderBody" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created folder",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/WorkspaceFolderResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/folders/{folderId}/": {
+      "post": {
+        "operationId": "updateFolder",
+        "parameters": [
+          {
+            "name": "folderId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateFolderBody" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated folder",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/WorkspaceFolderResponse" }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteFolder",
+        "parameters": [
+          {
+            "name": "folderId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object", "additionalProperties": true }
+              }
+            }
+          },
+          "204": { "description": "No content" }
+        }
+      }
+    },
+    "/folders/{folderUuid}/items/": {
+      "get": {
+        "operationId": "listFolderItems",
+        "parameters": [
+          {
+            "name": "folderUuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Folder items",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/FolderItemRaw" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "addFolderItem",
+        "parameters": [
+          {
+            "name": "folderUuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AddFolderItemBody" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Item created",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object", "additionalProperties": true }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/folders/{folderUuid}/items/{itemUuid}": {
+      "put": {
+        "operationId": "updateFolderItemOrder",
+        "parameters": [
+          {
+            "name": "folderUuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "itemUuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateFolderItemOrderBody" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object", "additionalProperties": true }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "removeFolderItem",
+        "parameters": [
+          {
+            "name": "folderUuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "itemUuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object", "additionalProperties": true }
+              }
+            }
+          },
+          "204": { "description": "No content" }
+        }
+      }
+    },
+    "/folders/{folderUuid}/items/{folderItemUuid}/actions/pin/invoke": {
+      "post": {
+        "operationId": "invokePinFolderItem",
+        "parameters": [
+          {
+            "name": "folderUuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "folderItemUuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Pinned",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object", "additionalProperties": true }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/folders/{folderUuid}/items/{folderItemUuid}/actions/unpin/invoke": {
+      "post": {
+        "operationId": "invokeUnpinFolderItem",
+        "parameters": [
+          {
+            "name": "folderUuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "folderItemUuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Unpinned",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object", "additionalProperties": true }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "WorkspaceFolder": {
+        "type": "object",
+        "required": [
+          "uuid",
+          "created_at",
+          "updated_at",
+          "title",
+          "background_color_value",
+          "unread_messages",
+          "system_type"
+        ],
+        "properties": {
+          "uuid": { "type": "string" },
+          "created_at": { "type": "string" },
+          "updated_at": { "type": "string" },
+          "title": { "type": "string" },
+          "background_color_value": { "type": "number" },
+          "unread_messages": {
+            "type": "array",
+            "items": {}
+          },
+          "system_type": {
+            "type": "string",
+            "enum": ["created", "all"]
+          }
+        },
+        "additionalProperties": true
+      },
+      "WorkspaceServiceResponse": {
+        "type": "object",
+        "required": ["uuid", "name", "description", "service_url", "icon"],
+        "properties": {
+          "uuid": { "type": "string" },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "service_url": { "type": "string" },
+          "icon": { "type": "string" }
+        },
+        "additionalProperties": true
+      },
+      "WorkspaceFolderResponse": {
+        "type": "object",
+        "required": ["uuid", "title", "background_color_value", "created_at", "updated_at"],
+        "properties": {
+          "uuid": { "type": "string" },
+          "title": { "type": "string" },
+          "background_color_value": { "type": "number" },
+          "created_at": { "type": "string" },
+          "updated_at": { "type": "string" }
+        },
+        "additionalProperties": true
+      },
+      "CreateFolderBody": {
+        "type": "object",
+        "required": ["title"],
+        "properties": {
+          "title": { "type": "string" },
+          "background_color_value": { "type": "number" }
+        },
+        "additionalProperties": true
+      },
+      "UpdateFolderBody": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string" },
+          "background_color_value": { "type": "number" }
+        },
+        "additionalProperties": true
+      },
+      "FolderItemRaw": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "AddFolderItemBody": {
+        "type": "object",
+        "required": ["chat_id"],
+        "properties": {
+          "chat_id": {}
+        },
+        "additionalProperties": true
+      },
+      "UpdateFolderItemOrderBody": {
+        "type": "object",
+        "required": ["order_index"],
+        "properties": {
+          "order_index": { "type": "integer", "minimum": 0 }
+        },
+        "additionalProperties": true
+      }
+    }
+  }
+}

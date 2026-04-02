@@ -27,6 +27,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Verify Workspace OpenAPI codegen
+        run: npm run codegen --workspace=workspace-api && git diff --exit-code -- packages/workspace-api/src/generated/
+
       - name: TypeScript
         run: npm run typecheck
 

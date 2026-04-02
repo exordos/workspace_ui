@@ -4,7 +4,7 @@
  * Covers store state transitions (edit mode, selection, status), and API
  * integration for create, update, and delete operations.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useManageFoldersStore } from "./manage-folders.model";
 
 vi.mock("~/shared/api/client", () => ({
@@ -13,6 +13,11 @@ vi.mock("~/shared/api/client", () => ({
     delete: vi.fn(),
   },
 }));
+
+beforeEach(async () => {
+  const { registerWorkspaceOrvalMutator } = await import("~/shared/api/workspace-orval-mutator");
+  registerWorkspaceOrvalMutator();
+});
 
 const folderResponse = {
   ok: true as const,

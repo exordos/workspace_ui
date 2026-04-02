@@ -1,32 +1,30 @@
 /**
  * Client for the Workspace API (separate from Zulip).
  *
- * Uses the shared `workspaceApi` pipeline so auth, logging, retries,
- * and no-cache behavior stay aligned with the documented API architecture.
- * Base path comes only from env/config (`VITE_WORKSPACE_API_PATH` / `VITE_WORKSPACE_API_BASE_URL`).
+ * HTTP is implemented via Orval-generated calls + `workspaceOrvalMutator` → `workspaceApi`
+ * (auth, logging, retries). Base path comes from env (`VITE_WORKSPACE_API_*`).
  *
  * Usage:
- *   import { getFolders, mapWorkspaceFoldersToRail } from "~/lib/api/workspaceClient";
+ *   import { getFolders, mapWorkspaceFoldersToRail } from "~/shared/api/workspace-client";
  */
+import {
+  addFolderItem,
+  listFolderItems,
+  listFolders,
+  listWorkspaceServices,
+  removeFolderItem,
+  updateFolderItemOrder as updateFolderItemOrderRequest,
+} from "workspace-api/workspace-api.generated";
 import { guard, invariant } from "~/shared/lib/guards";
 import { isValidUrl } from "~/shared/lib/validation";
-import { getCurrentInstance, workspaceApi } from "./client";
-import type { ApiResponse } from "./client";
+import { getCurrentInstance } from "./client";
+import { WorkspaceApiHttpError } from "./workspace-orval-mutator";
+import type { WorkspaceFolder } from "workspace-api/workspace-api.generated";
 
-const inFlightWorkspaceGets = new Map<string, Promise<WorkspaceGetResponse>>();
+const inFlightWorkspaceGets = new Map<string, Promise<unknown>>();
 
 type WorkspaceFolderSystemType = "created" | "all";
 export type WorkspaceFolderRailSystemType = WorkspaceFolderSystemType | "personal" | "channels";
-
-interface WorkspaceFolder {
-  uuid: string;
-  created_at: string;
-  updated_at: string;
-  title: string;
-  background_color_value: number;
-  unread_messages: unknown[];
-  system_type: WorkspaceFolderSystemType;
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -90,34 +88,19 @@ function isWorkspaceFolder(value: unknown): value is WorkspaceFolder {
   );
 }
 
-function assertWorkspaceResponseOk(response: {
-  ok: boolean;
-  status: number;
-  raw?: { statusText?: string };
-}): void {
-  if (response.ok) {
-    return;
-  }
-
-  const statusText = response.raw?.statusText ? ` ${response.raw.statusText}` : "";
-  throw new Error(`Workspace API error: ${response.status}${statusText}`);
-}
-
-type WorkspaceGetResponse = Awaited<ReturnType<typeof workspaceApi.get>>;
 function getWorkspaceRequestKey(path: string): string {
-  // Изолируем in-flight dedupe по инстансу, чтобы не склеивать запросы между аккаунтами.
   const instanceId = getCurrentInstance()?.id ?? "none";
   return `${instanceId}::${path}`;
 }
 
-async function workspaceGet(path: string): Promise<WorkspaceGetResponse> {
+async function workspaceGetDeduped<T>(path: string, fetcher: () => Promise<T>): Promise<T> {
   const requestKey = getWorkspaceRequestKey(path);
   const inFlight = inFlightWorkspaceGets.get(requestKey);
   if (inFlight) {
-    return inFlight;
+    return inFlight as Promise<T>;
   }
 
-  const nextRequest = workspaceApi.get(path);
+  const nextRequest = fetcher();
   inFlightWorkspaceGets.set(requestKey, nextRequest);
   try {
     return await nextRequest;
@@ -175,13 +158,12 @@ function mapWorkspaceService(raw: WorkspaceServiceResponse): WorkspaceServiceFor
 
 /** Fetches all services from the workspace catalog. */
 export async function getWorkspaceServices(): Promise<WorkspaceServiceForClient[]> {
-  const response = await workspaceGet("/services/");
-  assertWorkspaceResponseOk(response);
-  if (!Array.isArray(response.data)) {
+  const data = await workspaceGetDeduped("/services/", () => listWorkspaceServices());
+  if (!Array.isArray(data)) {
     return [];
   }
 
-  return response.data
+  return data
     .filter(isWorkspaceServiceResponse)
     .map(mapWorkspaceService)
     .filter((service): service is WorkspaceServiceForClient => service != null);
@@ -189,9 +171,8 @@ export async function getWorkspaceServices(): Promise<WorkspaceServiceForClient[
 
 /** Fetches all workspace folders. */
 export async function getFolders(): Promise<WorkspaceFolder[]> {
-  const response = await workspaceGet("/folders/");
-  assertWorkspaceResponseOk(response);
-  return Array.isArray(response.data) ? response.data.filter(isWorkspaceFolder) : [];
+  const data = await workspaceGetDeduped("/folders/", () => listFolders());
+  return Array.isArray(data) ? data.filter(isWorkspaceFolder) : [];
 }
 
 /** Folder shape for the FolderRail component. */
@@ -231,7 +212,6 @@ export interface FolderItemForClient {
 }
 
 function parseFolderItemOrderIndex(value: unknown): number {
-  // Допускаем число и строку-число; при любом шуме откатываемся к 0.
   if (typeof value === "number" && Number.isInteger(value) && value >= 0) {
     return value;
   }
@@ -245,7 +225,6 @@ function parseFolderItemOrderIndex(value: unknown): number {
 }
 
 function parseFolderItemChatId(value: unknown): string | null {
-  // Поддерживаем строковый и числовой chat_id из разных версий backend-контрактов.
   if (typeof value === "string") {
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : null;
@@ -257,7 +236,6 @@ function parseFolderItemChatId(value: unknown): string | null {
 }
 
 function mapToFolderItemForClient(raw: unknown): FolderItemForClient | null {
-  // Нормализуем "мягкий" формат ответа и отбрасываем только явно битые записи.
   if (!isRecord(raw)) {
     return null;
   }
@@ -326,24 +304,22 @@ function parseNumericFolderChatId(chatId: string): number | null {
   return null;
 }
 
-function isIntegerTypeMismatchResponse(response: ApiResponse): boolean {
-  if (response.status !== 400 || !isRecord(response.data)) return false;
-  const message = typeof response.data.message === "string" ? response.data.message : "";
+function isIntegerTypeMismatchPayload(status: number, data: unknown): boolean {
+  if (status !== 400 || !isRecord(data)) return false;
+  const message = typeof data.message === "string" ? data.message : "";
   return message.includes("Invalid type value") && message.includes("Integer");
 }
 
 /** Fetches all chat assignments within a folder. */
 export async function getFolderItems(folderUuid: string): Promise<FolderItemForClient[]> {
   const safeFolderUuid = validateFolderUuid(folderUuid);
-  const response = await workspaceApi.get(`/folders/${safeFolderUuid}/items/`);
-  assertWorkspaceResponseOk(response);
-  if (!Array.isArray(response.data)) {
+  const data = await listFolderItems(safeFolderUuid);
+  if (!Array.isArray(data)) {
     return [];
   }
 
   const result: FolderItemForClient[] = [];
-  // Здесь намеренно не падаем на частично невалидных элементах — собираем максимум полезных данных.
-  for (const rawItem of response.data) {
+  for (const rawItem of data) {
     const mapped = mapToFolderItemForClient(rawItem);
     if (mapped != null) {
       result.push(mapped);
@@ -357,27 +333,27 @@ export async function addChatToFolder(folderUuid: string, chatId: string): Promi
   try {
     const safeFolderUuid = validateFolderUuid(folderUuid);
     const safeChatId = validateChatId(chatId);
-    const response = await workspaceApi.postJson(`/folders/${safeFolderUuid}/items/`, {
-      chat_id: safeChatId,
-    });
-    if (response.ok) {
-      return true;
-    }
-
-    const numericChatId = parseNumericFolderChatId(safeChatId);
-    if (!isIntegerTypeMismatchResponse(response) || numericChatId == null) {
+    await addFolderItem(safeFolderUuid, { chat_id: safeChatId });
+    return true;
+  } catch (e) {
+    if (!(e instanceof WorkspaceApiHttpError)) {
       return false;
     }
-
-    const numericFallbackResponse = await workspaceApi.postJson(
-      `/folders/${safeFolderUuid}/items/`,
-      {
-        chat_id: numericChatId,
-      },
-    );
-    return numericFallbackResponse.ok;
-  } catch {
-    return false;
+    const safeFolderUuid = validateFolderUuid(folderUuid);
+    const safeChatId = validateChatId(chatId);
+    if (!isIntegerTypeMismatchPayload(e.status, e.data)) {
+      return false;
+    }
+    const numericChatId = parseNumericFolderChatId(safeChatId);
+    if (numericChatId == null) {
+      return false;
+    }
+    try {
+      await addFolderItem(safeFolderUuid, { chat_id: numericChatId });
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
 
@@ -386,8 +362,8 @@ export async function removeChatFromFolder(folderUuid: string, itemUuid: string)
   try {
     const safeFolderUuid = validateFolderUuid(folderUuid);
     const safeItemUuid = validateFolderItemUuid(itemUuid);
-    const response = await workspaceApi.delete(`/folders/${safeFolderUuid}/items/${safeItemUuid}`);
-    return response.ok;
+    await removeFolderItem(safeFolderUuid, safeItemUuid);
+    return true;
   } catch {
     return false;
   }
@@ -403,13 +379,8 @@ export async function updateFolderItemOrder(
     const safeFolderUuid = validateFolderUuid(folderUuid);
     const safeItemUuid = validateFolderItemUuid(itemUuid);
     const safeOrderIndex = validateOrderIndex(orderIndex);
-    const response = await workspaceApi.putJson(
-      `/folders/${safeFolderUuid}/items/${safeItemUuid}`,
-      {
-        order_index: safeOrderIndex,
-      },
-    );
-    return response.ok;
+    await updateFolderItemOrderRequest(safeFolderUuid, safeItemUuid, { order_index: safeOrderIndex });
+    return true;
   } catch {
     return false;
   }

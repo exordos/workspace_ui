@@ -32,6 +32,7 @@ typecheck:
   stage: check
   script:
     - npm ci --prefer-offline
+    - npm run codegen --workspace=workspace-api && git diff --exit-code -- packages/workspace-api/src/generated/
     - npm run typecheck
 
 lint:

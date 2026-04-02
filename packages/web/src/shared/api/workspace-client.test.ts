@@ -21,7 +21,7 @@ vi.mock("./client", () => ({
 }));
 
 describe("workspace-client", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetModules();
     workspaceBaseUrl = "/workspace-api/api/v1";
     getCurrentInstance.mockReturnValue({
@@ -30,6 +30,8 @@ describe("workspace-client", () => {
       email: "user@example.com",
       apiKey: "api-key",
     });
+    const { registerWorkspaceOrvalMutator } = await import("./workspace-orval-mutator");
+    registerWorkspaceOrvalMutator();
   });
 
   afterEach(() => {
@@ -45,7 +47,7 @@ describe("workspace-client", () => {
     const { getFolders } = await import("./workspace-client");
     await getFolders();
 
-    expect(workspaceApi.get).toHaveBeenCalledWith("/folders/");
+    expect(workspaceApi.get).toHaveBeenCalledWith("/folders/", undefined, undefined);
   });
 
   it("maps folder rail badge as total unread messages count", async () => {
@@ -97,7 +99,7 @@ describe("workspace-client", () => {
         iconUrl: "https://services.example.com/icon.svg",
       },
     ]);
-    expect(workspaceApi.get).toHaveBeenCalledWith("/services/");
+    expect(workspaceApi.get).toHaveBeenCalledWith("/services/", undefined, undefined);
   });
 
   it("fails fast for services and does not switch base on 404", async () => {
@@ -221,7 +223,7 @@ describe("workspace-client", () => {
         updatedAt: "2026-03-14T02:00:00Z",
       },
     ]);
-    expect(workspaceApi.get).toHaveBeenCalledWith("/folders/folder-1/items/");
+    expect(workspaceApi.get).toHaveBeenCalledWith("/folders/folder-1/items/", undefined, undefined);
     expect(workspaceApi.setBaseUrl).not.toHaveBeenCalled();
   });
 

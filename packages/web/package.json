@@ -45,6 +45,7 @@
     "react-router-dom": "^7.0.0",
     "tinyexec": "^1.0.3",
     "zulip-js": "^2.1.0",
+    "workspace-api": "0.1.0",
     "zustand": "^4.5.0"
   },
   "devDependencies": {

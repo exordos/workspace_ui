@@ -7,6 +7,7 @@ import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useThemeStore } from "~/entities/theme/theme.model";
 import { reportPresence } from "~/entities/user/api/user.api";
 import { setInstanceProvider } from "~/shared/api/client";
+import { registerWorkspaceOrvalMutator } from "~/shared/api/workspace-orval-mutator";
 import { initAnalytics } from "~/shared/lib/analytics/setup";
 import { setStoreWiper, setAuthInstanceGetter } from "~/shared/lib/auth-guard";
 import { initNetworkTracking } from "~/shared/lib/network";
@@ -27,6 +28,8 @@ import "./app/focus-outline.styles.css";
 // ---------------------------------------------------------------------------
 // FSD provider wiring (shared layer cannot import entities; we inject here)
 // ---------------------------------------------------------------------------
+
+registerWorkspaceOrvalMutator();
 
 setInstanceProvider(() => {
   const inst = useInstancesStore.getState().getCurrentInstance();
