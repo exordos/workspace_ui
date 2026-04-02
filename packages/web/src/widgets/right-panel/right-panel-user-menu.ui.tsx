@@ -15,7 +15,11 @@ import {
 import { useUsersStore } from "~/entities/user/user.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import type { NotificationSound } from "~/features/settings/settings.types";
-import { getAvailablePalettes, selectMode, selectPalette } from "~/features/theme-picker/theme-picker.model";
+import {
+  getAvailablePalettes,
+  selectMode,
+  selectPalette,
+} from "~/features/theme-picker/theme-picker.model";
 import { useTranslation } from "~/i18n/i18n";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { clearLocalStatePreservingCriticalKeys } from "~/shared/lib/local-reset";
@@ -561,13 +565,6 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
               {t("settings.appVersion")}
             </p>
             <div className="divide-y divide-border-subtle overflow-hidden rounded-lg border border-border-subtle bg-card-bg">
-              <RightPanelUserMenuMenuButton
-                label={t("settings.selectBuild")}
-                icon="grid"
-                subtitle={t("settings.selectBuildHint")}
-                onClick={openBuilds}
-                right={<Icon name="chevron-right" size={16} className="text-text-muted" />}
-              />
               <RightPanelUserMenuMenuButton
                 label={t("settings.appVersion")}
                 icon="info"
