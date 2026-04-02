@@ -19,7 +19,7 @@ function idbError(reason: unknown): Error {
 }
 
 const DB_NAME = "workspace-message-cache-v1";
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 /** Default max messages retained per chat (last N by id). */
 export const MESSAGE_CACHE_DEFAULT_WINDOW_SIZE = 200;
@@ -37,6 +37,7 @@ const STORE_MESSAGES = "messages";
 const STORE_CHAT_META = "chatMeta";
 const STORE_CHAT_LIST_SNAPSHOT = "chatListSnapshot";
 const STORE_USERS_DIRECTORY = "usersDirectory";
+const STORE_USER_STATUS_CACHE = "userStatusCache";
 
 export interface MessageCacheRow {
   /** `${instanceId}:${messageId}` */
@@ -98,6 +99,9 @@ export function openMessageCacheDb(): Promise<IDBDatabase> {
       }
       if (oldVersion < 3 && !db.objectStoreNames.contains(STORE_USERS_DIRECTORY)) {
         db.createObjectStore(STORE_USERS_DIRECTORY, { keyPath: "instanceId" });
+      }
+      if (oldVersion < 4 && !db.objectStoreNames.contains(STORE_USER_STATUS_CACHE)) {
+        db.createObjectStore(STORE_USER_STATUS_CACHE, { keyPath: "id" });
       }
     };
   });

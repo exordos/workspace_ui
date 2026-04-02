@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { SYSTEM_CHANNELS_FOLDER_ID, SYSTEM_PERSONAL_FOLDER_ID } from "./folder-sync.lib";
+import {
+  SYSTEM_CHANNELS_FOLDER_ID,
+  SYSTEM_PERSONAL_FOLDER_ID,
+} from "./folder-sync-constants.lib";
 import { selectSidebarChatsLoading } from "./folder-sync.selectors";
 
 describe("folder-sync selectors", () => {

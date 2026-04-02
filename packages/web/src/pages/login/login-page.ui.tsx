@@ -10,39 +10,14 @@ import {
   saveDesktopFlowState,
 } from "~/shared/lib/oidc-desktop";
 import { extractOrgRouteFromPathname } from "~/shared/lib/org-route";
-import {
-  getOrganizationLogoSrc,
-  ORGANIZATION_FALLBACK_LOGO_URL,
-} from "~/shared/lib/organization-branding";
+import { ORGANIZATION_FALLBACK_LOGO_URL } from "~/shared/lib/organization-branding";
 import { isValidRealmUrl, isValidUrl } from "~/shared/lib/validation";
-import { Button } from "~/shared/ui/button";
 import { Icon } from "~/shared/ui/icon";
+import { LoginPageCredentialsForm } from "./login-page-credentials-form.ui";
+import { LoginPageExternalAuth } from "./login-page-external-auth.ui";
+import { resolveLoginIconUrl } from "./login-page-icon-url.lib";
+import { LoginPageRealmPreview } from "./login-page-realm-preview.ui";
 import { sanitizeInternalRedirectTarget } from "./login-redirect.lib";
-
-function resolveIconUrl(realmBase: string, icon: string): string {
-  const trimmedIcon = icon.trim();
-  if (trimmedIcon.length === 0) return "";
-
-  const normalizedBase = realmBase.trim().replace(/\/+$/, "");
-  if (!isValidUrl(normalizedBase)) return "";
-
-  try {
-    const baseUrl = new URL(`${normalizedBase}/`);
-    const resolvedUrl = new URL(trimmedIcon, baseUrl);
-    const resolved = resolvedUrl.toString();
-    if (!isValidUrl(resolved)) return "";
-
-    // Avoid native browser Basic Auth prompts: same-origin icon URLs on pre-auth
-    // pages can be protected and trigger modal credential dialogs in <img src>.
-    if (resolvedUrl.origin === baseUrl.origin) {
-      return "";
-    }
-
-    return resolved;
-  } catch {
-    return "";
-  }
-}
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
@@ -110,7 +85,7 @@ export const LoginPage: React.FC = () => {
           setServerSettings({
             realm_base: base,
             realm_name: data.realm_name,
-            realm_icon: resolveIconUrl(base, data.realm_icon),
+            realm_icon: resolveLoginIconUrl(base, data.realm_icon),
             external_authentication_methods: data.external_authentication_methods,
           });
         } else {
@@ -238,6 +213,10 @@ export const LoginPage: React.FC = () => {
     [navigate, realm, redirectTarget, serverSettings?.realm_base],
   );
 
+  const toggleShowPassword = useCallback(() => {
+    setShowPassword((p) => !p);
+  }, []);
+
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-bg p-4">
       <div className="flex w-full max-w-md flex-col gap-6">
@@ -258,122 +237,37 @@ export const LoginPage: React.FC = () => {
           <p className="mt-1 text-sm text-text-muted">{t("auth.serverHint")}</p>
         </div>
 
-        {serverSettings && (serverSettings.realm_name || serverSettings.realm_icon) && (
-          <div className="flex flex-col items-center gap-2 rounded-lg border border-border-subtle bg-bg-elevated px-4 py-3">
-            <img
-              data-testid="realm-logo-preview"
-              src={getOrganizationLogoSrc(serverSettings.realm_icon)}
-              alt=""
-              className="h-12 w-12 rounded-lg object-contain"
-              onError={handleRealmLogoError}
+        {serverSettings != null &&
+          (Boolean(serverSettings.realm_name) || serverSettings.realm_icon.length > 0) && (
+            <LoginPageRealmPreview
+              realmName={serverSettings.realm_name ?? ""}
+              realmIcon={serverSettings.realm_icon}
+              onLogoError={handleRealmLogoError}
             />
-            {serverSettings.realm_name && (
-              <span className="text-sm font-medium text-text-primary">
-                {serverSettings.realm_name}
-              </span>
-            )}
-          </div>
+          )}
+
+        {serverSettings != null && serverSettings.external_authentication_methods.length > 0 && (
+          <LoginPageExternalAuth
+            realmBase={serverSettings.realm_base}
+            methods={serverSettings.external_authentication_methods}
+            onSelectLoginPath={handleStartOidcFlow}
+          />
         )}
 
-        {serverSettings?.external_authentication_methods &&
-          serverSettings.external_authentication_methods.length > 0 && (
-            <div className="flex flex-col gap-2">
-              {serverSettings.external_authentication_methods.map((method) => {
-                const base = serverSettings.realm_base;
-                const iconUrl =
-                  method.display_icon != null ? resolveIconUrl(base, method.display_icon) : "";
-                return (
-                  <button
-                    key={method.name}
-                    type="button"
-                    onClick={() => handleStartOidcFlow(method.login_url)}
-                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary transition-colors hover:bg-bg"
-                  >
-                    {iconUrl && <img src={iconUrl} alt="" className="h-5 w-5 object-contain" />}
-                    {method.display_name}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <div>
-            <label htmlFor="realm" className="mb-1.5 block text-sm font-medium text-text-primary">
-              {t("auth.zulipServerUrl")}
-            </label>
-            <input
-              id="realm"
-              type="url"
-              inputMode="url"
-              autoComplete="url"
-              placeholder={t("auth.zulipServerUrlHint")}
-              value={realm}
-              onChange={(e) => setRealm(e.target.value)}
-              onBlur={handleRealmBlur}
-              className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2.5 text-text-primary placeholder:text-text-muted focus:border-transparent focus:outline-none focus:ring-2 focus:ring-accent"
-              disabled={loading}
-            />
-          </div>
-
-          <div>
-            <label
-              htmlFor="username"
-              className="mb-1.5 block text-sm font-medium text-text-primary"
-            >
-              {t("auth.email")}
-            </label>
-            <input
-              id="username"
-              type="email"
-              autoComplete="email"
-              placeholder={t("auth.emailHint")}
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2.5 text-text-primary placeholder:text-text-muted focus:border-transparent focus:outline-none focus:ring-2 focus:ring-accent"
-              disabled={loading}
-            />
-          </div>
-
-          <div>
-            <label
-              htmlFor="password"
-              className="mb-1.5 block text-sm font-medium text-text-primary"
-            >
-              {t("auth.password")}
-            </label>
-            <div className="relative">
-              <input
-                id="password"
-                type={showPassword ? "text" : "password"}
-                autoComplete="current-password"
-                placeholder={t("auth.passwordPlaceholder")}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2.5 pr-10 text-text-primary placeholder:text-text-muted focus:border-transparent focus:outline-none focus:ring-2 focus:ring-accent"
-                disabled={loading}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword((p) => !p)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-text-muted transition-colors hover:text-text-primary"
-                aria-label={showPassword ? t("auth.hidePassword") : t("auth.showPassword")}
-              >
-                <Icon name={showPassword ? "close" : "profile"} size={18} />
-              </button>
-            </div>
-          </div>
-
-          {error && (
-            <div className="border-notice-base/20 bg-notice-base/10 rounded-lg border px-3 py-2 text-sm text-notice-base">
-              {error}
-            </div>
-          )}
-
-          <Button type="submit" disabled={loading} className="w-full">
-            {loading ? t("auth.loginLoading") : t("auth.login")}
-          </Button>
-        </form>
+        <LoginPageCredentialsForm
+          realm={realm}
+          username={username}
+          password={password}
+          showPassword={showPassword}
+          loading={loading}
+          error={error}
+          onRealmChange={setRealm}
+          onUsernameChange={setUsername}
+          onPasswordChange={setPassword}
+          onRealmBlur={handleRealmBlur}
+          onToggleShowPassword={toggleShowPassword}
+          onSubmit={handleSubmit}
+        />
       </div>
     </div>
   );

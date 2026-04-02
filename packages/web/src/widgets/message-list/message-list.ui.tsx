@@ -1,19 +1,15 @@
 import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback } from "react";
-import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
-import { computeScrollTopAfterPrepend } from "~/shared/lib/scroll-prepend-anchor.lib";
-import { getPresenceState } from "~/shared/lib/format";
 import { createLogger } from "~/shared/lib/logger";
 import { logMessageFlow } from "~/shared/lib/message-flow-debug.lib";
-import { Avatar } from "~/shared/ui/avatar";
+import { computeScrollTopAfterPrepend } from "~/shared/lib/scroll-prepend-anchor.lib";
 import { Icon } from "~/shared/ui/icon";
-import { PresenceIndicator } from "~/shared/ui/presence-indicator";
-import { resolveAvatarSrc } from "./message-avatar.lib";
 import { MessageBubble, type MessageBubbleCallbacks } from "./message-bubble.ui";
-import { buildMessageMediaGallery, type MessageMediaGallery } from "./message-list-media.lib";
 import { getSenderGroups, scrollToBottom } from "./message-list-grouping.lib";
+import { buildMessageMediaGallery } from "./message-list-media.lib";
+import { MessageListSenderGroup } from "./message-list-sender-group.ui";
 import type { MessageListProps } from "./message-list.types";
 
 const SCROLL_AT_BOTTOM_THRESHOLD = 80;
@@ -27,86 +23,6 @@ function getDateKey(ts: number): string {
   if (d.toDateString() === yesterday.toDateString()) return t("chat.yesterday");
   return d.toLocaleDateString(undefined, { day: "numeric", month: "long" });
 }
-
-/** Group of messages from the same sender: single avatar at the bottom edge of the block. */
-const SenderMessageGroup = React.memo(function SenderMessageGroup({
-  messages,
-  currentUserId,
-  bubbleCallbacks,
-  selectionMode,
-  selectedMessageIds,
-  focusedMessageId,
-  mediaGallery,
-}: {
-  messages: MockMessage[];
-  currentUserId?: number;
-  bubbleCallbacks?: MessageBubbleCallbacks;
-  selectionMode?: boolean;
-  selectedMessageIds?: Set<number>;
-  focusedMessageId?: number | null;
-  mediaGallery: MessageMediaGallery;
-}) {
-  const user = useUsersStore((s) => s.getUser(messages[0]!.sender_id));
-  const trimmedUserName = user?.full_name?.trim();
-  const displayName =
-    trimmedUserName != null && trimmedUserName.length > 0
-      ? trimmedUserName
-      : (messages[0]!.sender_full_name ?? "");
-  const avatarSrc = resolveAvatarSrc(user?.avatar_url ?? undefined);
-  const presenceState =
-    user?.presence != null ? getPresenceState(user.presence.timestamp, user.presence.status) : null;
-  const authorId = messages[0]!.sender_id;
-  const handleAuthorClick = useCallback(() => {
-    bubbleCallbacks?.onAuthorClick?.(authorId);
-  }, [bubbleCallbacks, authorId]);
-
-  return (
-    <>
-      <div className="flex items-stretch gap-2 px-4">
-        <div className="flex w-12 flex-shrink-0 flex-col justify-end pb-2">
-          <button
-            type="button"
-            onClick={handleAuthorClick}
-            className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
-            aria-label={t("a11y.openUserProfile", { name: displayName })}
-          >
-            <span className="relative block">
-              <Avatar
-                size="lg"
-                className="bg-bg-elevated text-accent-soft"
-                src={avatarSrc ?? undefined}
-              >
-                {displayName.slice(0, 1)}
-              </Avatar>
-              <PresenceIndicator
-                status={presenceState}
-                size="sm"
-                className="absolute bottom-0 right-0"
-              />
-            </span>
-          </button>
-        </div>
-        <div className="min-w-0 flex-1">
-          {messages.map((m, i) => (
-            <MessageBubble
-              key={m.id}
-              message={m}
-              isOwn={false}
-              showSenderName={i === 0}
-              inSenderGroup
-              currentUserId={currentUserId}
-              callbacks={bubbleCallbacks}
-              selectionMode={selectionMode}
-              isSelected={selectedMessageIds?.has(m.id)}
-              isFocused={focusedMessageId === m.id}
-              mediaGallery={mediaGallery}
-            />
-          ))}
-        </div>
-      </div>
-    </>
-  );
-});
 
 const UnreadMarker: React.FC<{ unreadCount: number }> = ({ unreadCount }) => (
   <div className="flex items-center gap-2 px-4 py-1 text-xs text-notice-base">
@@ -507,7 +423,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                       </button>
                     )}
                     {showUnreadMarker && <UnreadMarker unreadCount={unreadCount} />}
-                    <SenderMessageGroup
+                    <MessageListSenderGroup
                       messages={senderMessages}
                       currentUserId={currentUserId}
                       bubbleCallbacks={bubbleCallbacks}

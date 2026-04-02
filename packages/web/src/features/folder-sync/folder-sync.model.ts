@@ -12,13 +12,12 @@ import {
   loadFolderSyncSnapshot,
   type FolderSyncSnapshot,
 } from "./folder-sync.api";
+import { SYSTEM_ALL_FOLDER_ID } from "./folder-sync-constants.lib";
+import { buildSelectedFolderSidebarChats, toChatIdSet } from "./folder-sync-sidebar-chats.lib";
 import {
-  buildSelectedFolderSidebarChats,
   mergeFolderItemsSnapshot,
   resolveSelectedFolderId,
   shouldLoadFolderItemsForSelection,
-  SYSTEM_ALL_FOLDER_ID,
-  toChatIdSet,
   withDefaultSystemFolders,
   type FolderSyncSystemLabels,
 } from "./folder-sync.lib";

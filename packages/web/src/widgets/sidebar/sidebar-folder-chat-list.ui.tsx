@@ -6,7 +6,6 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import * as Dialog from "@radix-ui/react-dialog";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -23,6 +22,7 @@ import { sidebarRowClass } from "~/shared/lib/format";
 import { Avatar } from "~/shared/ui/avatar";
 import { Badge } from "~/shared/ui/badge";
 import { Icon } from "~/shared/ui/icon";
+import { SidebarFolderNewTopicDialog } from "./sidebar-folder-new-topic-dialog.ui";
 import { DmChatRow } from "./sidebar-folder-dm-row.ui";
 import { TopicMuteButton, TopicResolvedButton } from "./sidebar-folder-topic-buttons.ui";
 import { DmContextMenu, StreamContextMenu } from "./sidebar-chat-context-menu.ui";
@@ -474,84 +474,20 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
           </div>
         </SortableContext>
       </DndContext>
-      <Dialog.Root
+      <SidebarFolderNewTopicDialog
         open={topicDialogState != null}
+        streamName={topicDialogState?.streamName ?? ""}
+        newTopicName={newTopicName}
+        onNewTopicNameChange={setNewTopicName}
+        muteTopicOnCreate={muteTopicOnCreate}
+        onMuteTopicOnCreateChange={setMuteTopicOnCreate}
         onOpenChange={(open) => {
           if (!open) {
             closeTopicDialog();
           }
         }}
-      >
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-overlay bg-black/50" />
-          <Dialog.Content className="fixed left-1/2 top-1/2 z-modal w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border-subtle bg-bg-elevated shadow-xl">
-            <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
-              <Dialog.Title className="text-sm font-semibold text-text-primary">
-                {t("channel.createTopic")}
-              </Dialog.Title>
-              <Dialog.Close asChild>
-                <button
-                  type="button"
-                  className="hover:bg-bg/50 rounded p-1 text-text-muted"
-                  aria-label={t("common.close")}
-                >
-                  <Icon name="close" size={18} />
-                </button>
-              </Dialog.Close>
-            </div>
-            <div className="flex flex-col gap-4 px-4 py-4">
-              <Dialog.Description className="text-xs text-text-muted">
-                #{topicDialogState?.streamName ?? ""}
-              </Dialog.Description>
-              <label className="flex flex-col gap-1.5">
-                <span className="text-sm text-text-muted">{t("channel.topicName")}</span>
-                <input
-                  type="text"
-                  value={newTopicName}
-                  autoFocus
-                  onChange={(e) => setNewTopicName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      handleCreateTopicFromDialog();
-                    }
-                  }}
-                  aria-label={t("channel.topicName")}
-                  className="w-full rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted"
-                  placeholder={t("channel.topicName")}
-                />
-              </label>
-              <label className="flex items-center gap-2 text-sm text-text-primary">
-                <input
-                  type="checkbox"
-                  checked={muteTopicOnCreate}
-                  onChange={(e) => setMuteTopicOnCreate(e.target.checked)}
-                  className="h-4 w-4 rounded border-border-subtle"
-                />
-                <span>{t("channel.muteTopic")}</span>
-              </label>
-              <div className="flex justify-end gap-2">
-                <Dialog.Close asChild>
-                  <button
-                    type="button"
-                    className="hover:bg-bg/50 rounded-lg px-3 py-1.5 text-sm text-text-muted"
-                  >
-                    {t("common.cancel")}
-                  </button>
-                </Dialog.Close>
-                <button
-                  type="button"
-                  disabled={newTopicName.trim().length === 0}
-                  onClick={handleCreateTopicFromDialog}
-                  className="rounded-lg bg-accent px-3 py-1.5 text-sm text-bg hover:opacity-90 disabled:opacity-50"
-                >
-                  {t("common.create")}
-                </button>
-              </div>
-            </div>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
+        onSubmit={handleCreateTopicFromDialog}
+      />
     </>
   );
 };

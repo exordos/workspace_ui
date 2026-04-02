@@ -1,4 +1,6 @@
 import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MessageBubbleCallbacks } from "./message-bubble.types";
+import type { MessageMediaGallery } from "./message-list-media.lib";
 
 export interface MessageListCallbacks {
   onMessageReply?: (message: MockMessage, selectedText?: string) => void;
@@ -15,6 +17,17 @@ export interface MessageListCallbacks {
   onMessageOpenInChat?: (message: MockMessage) => void;
   onTopicSeparatorClick?: (message: MockMessage) => void;
   onMessageAuthorClick?: (userId: number) => void;
+}
+
+/** Props for grouped non-own messages (avatar column + bubbles). */
+export interface MessageListSenderGroupProps {
+  messages: MockMessage[];
+  currentUserId?: number;
+  bubbleCallbacks?: MessageBubbleCallbacks;
+  selectionMode?: boolean;
+  selectedMessageIds?: Set<number>;
+  focusedMessageId?: number | null;
+  mediaGallery: MessageMediaGallery;
 }
 
 export interface MessageListProps {

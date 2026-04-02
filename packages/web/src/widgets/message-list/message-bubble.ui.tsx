@@ -5,9 +5,7 @@ import { useUsersStore } from "~/entities/user/user.model";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
 import { t } from "~/i18n/i18n";
-import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
 import type { MockMessage } from "~/shared/api/zulip.types";
-import { WORKSPACE_ORIGIN, WORKSPACE_UPLOADS_ORIGIN } from "~/shared/config/constants";
 import { buildAuthHeader } from "~/shared/lib/auth-guard";
 import { formatMessageTime, getPresenceState } from "~/shared/lib/format";
 import { sanitizeHtml } from "~/shared/lib/html";
@@ -33,7 +31,6 @@ import { MessageBubbleContextMenu } from "./message-bubble-context-menu.ui";
 import type {
   MessageBubbleAttachmentDownloadStatus,
   MessageBubbleCallbacks,
-  MessageBubbleOwnDeliveryStatus,
   MessageBubbleProps,
 } from "./message-bubble.types";
 import { groupReactions } from "./message-bubble-emoji.lib";
@@ -46,51 +43,14 @@ import {
   protectUserUploadMediaSources,
 } from "./message-bubble-protected-media.lib";
 import { MessageBubbleReactionsRow } from "./message-bubble-reactions-row.ui";
-
-/** Base URL for message images (uploads): when realm === workspace, use origin + api/v1. */
-function getMessageImagesBaseUrl(): string | undefined {
-  const realm = getRealmBaseUrl();
-  if (WORKSPACE_ORIGIN && realm === WORKSPACE_ORIGIN && WORKSPACE_UPLOADS_ORIGIN) {
-    return WORKSPACE_UPLOADS_ORIGIN;
-  }
-  return realm || WORKSPACE_UPLOADS_ORIGIN || undefined;
-}
+import {
+  MESSAGE_BUBBLE_ATTACHMENT_LINK_BASE_CLASSES,
+  MESSAGE_BUBBLE_ATTACHMENT_LINK_STATUS_CLASSES,
+} from "./message-bubble-attachment-styles.lib";
+import { resolveOwnMessageDeliveryStatus } from "./message-bubble-delivery.lib";
+import { getMessageImagesBaseUrl } from "./message-bubble-realm-html.lib";
 
 export type { MessageBubbleCallbacks, MessageBubbleProps } from "./message-bubble.types";
-
-const ATTACHMENT_LINK_BASE_CLASSES = [
-  "inline-flex",
-  "max-w-[220px]",
-  "items-center",
-  "gap-2",
-  "rounded-md",
-  "border",
-  "px-2.5",
-  "py-1.5",
-  "font-medium",
-  "no-underline",
-  "transition-colors",
-] as const;
-
-const ATTACHMENT_LINK_STATUS_CLASSES = {
-  idle: ["border-border-subtle", "bg-bg/40", "text-text-primary", "hover:bg-bg/60"],
-  downloading: [
-    "border-border-subtle",
-    "bg-bg/60",
-    "text-text-muted",
-    "pointer-events-none",
-    "animate-pulse",
-  ],
-  downloaded: ["border-notice-base/50", "bg-notice-base/10", "text-notice-base"],
-  error: ["border-border-subtle", "bg-bg/20", "text-text-muted"],
-} as const;
-
-function resolveOwnMessageDeliveryStatus(message: MockMessage): MessageBubbleOwnDeliveryStatus {
-  if (message.delivery_status != null) {
-    return message.delivery_status;
-  }
-  return message.id > 0 ? "sent" : "sending";
-}
 
 export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
   ({
@@ -278,15 +238,15 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
         const status = attachmentStatusRef.current.get(path) ?? "idle";
         link.dataset.attachmentLink = "true";
         link.dataset.attachmentPath = path;
-        for (const className of ATTACHMENT_LINK_BASE_CLASSES) {
+        for (const className of MESSAGE_BUBBLE_ATTACHMENT_LINK_BASE_CLASSES) {
           link.classList.add(className);
         }
-        for (const statusClasses of Object.values(ATTACHMENT_LINK_STATUS_CLASSES)) {
+        for (const statusClasses of Object.values(MESSAGE_BUBBLE_ATTACHMENT_LINK_STATUS_CLASSES)) {
           for (const className of statusClasses) {
             link.classList.remove(className);
           }
         }
-        for (const className of ATTACHMENT_LINK_STATUS_CLASSES[status]) {
+        for (const className of MESSAGE_BUBBLE_ATTACHMENT_LINK_STATUS_CLASSES[status]) {
           link.classList.add(className);
         }
       }

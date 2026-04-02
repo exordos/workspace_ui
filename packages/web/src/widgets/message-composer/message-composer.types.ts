@@ -72,3 +72,17 @@ export interface ComposerModeTabsProps {
 }
 
 export type MediaPickerTab = "emoji" | "sticker";
+
+export interface MessageComposerPrefaceProps {
+  uploadProgress: ComposerUploadProgress | null | undefined;
+  uploadProgressPercent: number;
+  files: File[];
+  filePreviewUrls: (string | null)[];
+  isUploadInProgress: boolean;
+  onCancelUpload?: () => void;
+  removeFile: (index: number) => void;
+  scheduledMessages: ScheduledComposerMessage[];
+  onCancelScheduled: (id: string) => void;
+  replyQuote: ReplyQuote | null | undefined;
+  onClearReply?: () => void;
+}

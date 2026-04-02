@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadFolderItemsForSelection, loadFolderSyncSnapshot } from "./folder-sync.api";
-import { SYSTEM_ALL_FOLDER_ID } from "./folder-sync.lib";
+import { SYSTEM_ALL_FOLDER_ID } from "./folder-sync-constants.lib";
 import { useFolderSyncStore } from "./folder-sync.model";
 
 vi.mock("./folder-sync.api", () => ({

@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
-import {
-  hasMatchingChatId,
-  SYSTEM_ALL_FOLDER_ID,
-  toChatIdSet,
-  withDefaultSystemFolders,
-} from "./folder-sync.lib";
+import { SYSTEM_ALL_FOLDER_ID } from "./folder-sync-constants.lib";
+import { hasMatchingChatId, toChatIdSet } from "./folder-sync-sidebar-chats.lib";
+import { withDefaultSystemFolders } from "./folder-sync.lib";
 
 const BASE_ITEM = {
   uuid: "item-1",

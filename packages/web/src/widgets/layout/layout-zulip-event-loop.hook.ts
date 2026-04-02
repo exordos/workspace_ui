@@ -11,15 +11,7 @@ import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indicator.model";
 import type { ZulipRawMessage, ZulipUserMember } from "~/shared/api/zulip.types";
-import {
-  deleteQueue,
-  fetchRecentMessages,
-  fetchMessagesAfterAnchor,
-  fetchRealmPresence,
-  fetchUsers,
-  getCurrentUser,
-  type ZulipEvent,
-} from "~/shared/api/zulip";
+import { deleteQueue, fetchUsers, getCurrentUser, type ZulipEvent } from "~/shared/api/zulip";
 import { loadUsersDirectoryRow } from "~/shared/lib/users-directory-snapshot-db";
 import { startZulipEventLoop } from "~/shared/lib/event-loop";
 import { playNotificationSound } from "~/shared/lib/notification-sound";
@@ -28,8 +20,7 @@ import type { ChatListBootstrapResult } from "./layout-chat-list-bootstrap.lib";
 import { buildLayoutNotificationsActions, dispatchZulipEvent } from "./layout-zulip-event-dispatch.lib";
 import { logMessageFlow } from "~/shared/lib/message-flow-debug.lib";
 import { getNewestMessageId } from "./layout-chat-history-sync.lib";
-
-const RECONNECT_DELTA_BATCH_SIZE = 5000;
+import { runLayoutReconnectRefresh } from "./layout-zulip-refresh-stale.lib";
 
 export function useLayoutZulipEventLoop(options: {
   currentInstanceId: string | null;
@@ -175,70 +166,11 @@ export function useLayoutZulipEventLoop(options: {
         instanceAtLoopStartRef.current = inst ? { realm: inst.realm, email: inst.email, apiKey: inst.apiKey } : null;
 
         const refreshStaleData = () => {
-          if (cancelled) return;
-          const uid = useChatListStore.getState().currentUserId ?? null;
-          const hydrateFromRecentWindow = () => {
-            fetchRecentMessages()
-              .then((freshMsgs) => {
-                if (cancelled) return;
-                for (const m of freshMsgs) {
-                  useUsersStore.getState().mergeFromMessage(m);
-                }
-                setFromMessagesRef.current(freshMsgs, uid);
-                latestMessageIdRef.current = getNewestMessageId(freshMsgs);
-                const idPersist = useInstancesStore.getState().currentInstanceId;
-                if (idPersist != null) {
-                  void persistChatListSnapshotToIndexedDb(idPersist);
-                }
-              })
-              .catch(() => {});
-          };
-
-          const latestMessageId = latestMessageIdRef.current;
-          if (latestMessageId == null) {
-            hydrateFromRecentWindow();
-          } else {
-            fetchMessagesAfterAnchor(latestMessageId, RECONNECT_DELTA_BATCH_SIZE)
-              .then((deltaMessages) => {
-                if (cancelled) return;
-                if (deltaMessages.length === 0) return;
-
-                const usersStore = useUsersStore.getState();
-                const chatListStore = useChatListStore.getState();
-                for (const message of deltaMessages) {
-                  usersStore.mergeFromMessage(message);
-                  chatListStore.addMessage(message);
-                }
-
-                latestMessageIdRef.current =
-                  getNewestMessageId(deltaMessages) ?? latestMessageIdRef.current;
-                useActivityStore.getState().markStale();
-                useInboxStore.getState().markStale();
-                const idPersist = useInstancesStore.getState().currentInstanceId;
-                if (idPersist != null) {
-                  void persistChatListSnapshotToIndexedDb(idPersist);
-                }
-              })
-              .catch(() => {
-                hydrateFromRecentWindow();
-              });
-          }
-
-          fetchRealmPresence()
-            .then((data) => {
-              if (cancelled || data.result === "error" || !data.presences) return;
-              const store = useUsersStore.getState();
-              for (const [email, entry] of Object.entries(data.presences)) {
-                const agg = entry.aggregated ?? entry.website;
-                if (agg?.status != null && agg?.timestamp != null) {
-                  store.setPresenceByEmail(email, {
-                    status: agg.status === "idle" ? "idle" : "active",
-                    timestamp: agg.timestamp,
-                  });
-                }
-              }
-            })
-            .catch(() => {});
+          runLayoutReconnectRefresh({
+            cancelled,
+            latestMessageIdRef,
+            setFromMessages: (messages, uid) => setFromMessagesRef.current(messages, uid),
+          });
         };
 
         startZulipEventLoop({
