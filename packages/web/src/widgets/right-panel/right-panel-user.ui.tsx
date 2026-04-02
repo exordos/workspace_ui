@@ -1,15 +1,15 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { ensureUserStatusLoaded } from "~/entities/user/api/user.api";
-import { useUsersStore } from "~/entities/user/user.model";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
+import { useUsersStore } from "~/entities/user/user.model";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
 import { t } from "~/i18n/i18n";
 import { createLogger } from "~/shared/lib/logger";
 import { isValidUrl } from "~/shared/lib/validation";
 import { Avatar } from "~/shared/ui/avatar";
+import { Copyable } from "~/shared/ui/copyable";
 import { Icon } from "~/shared/ui/icon";
 import { ScrollArea } from "~/shared/ui/scroll-area";
-
 import {
   buildMailtoHref,
   buildTelHref,
@@ -46,6 +46,8 @@ export const RightPanelUser = React.memo(function RightPanelUser({
     user.userId != null && {
       label: t("info.userId"),
       value: String(user.userId),
+      copyValue: String(user.userId),
+      copyAriaLabel: t("info.copyUserId"),
       icon: "profile" as const,
       href: userIdLink,
       external: true,
@@ -101,6 +103,8 @@ export const RightPanelUser = React.memo(function RightPanelUser({
       | "handshake"
       | "group"
       | "info";
+    copyValue?: string;
+    copyAriaLabel?: string;
     href?: string;
     external?: boolean;
   }[];
@@ -162,26 +166,12 @@ export const RightPanelUser = React.memo(function RightPanelUser({
     [user.userId],
   );
 
-  const handleCopyMentionNickname = useCallback(async () => {
-    if (!mentionCopyValue) return;
-    setMentionCopyState("idle");
-    const copied = await copyProfileValue(mentionCopyValue, "mention nickname");
-    setMentionCopyState(copied ? "success" : "error");
-  }, [copyProfileValue, mentionCopyValue]);
-
   const handleCopyEmail = useCallback(async () => {
     if (!emailCopyValue) return;
     setEmailCopyState("idle");
     const copied = await copyProfileValue(emailCopyValue, "email");
     setEmailCopyState(copied ? "success" : "error");
   }, [copyProfileValue, emailCopyValue]);
-
-  const handleCopyUserId = useCallback(async () => {
-    if (!userIdCopyValue) return;
-    setUserIdCopyState("idle");
-    const copied = await copyProfileValue(userIdCopyValue, "user id");
-    setUserIdCopyState(copied ? "success" : "error");
-  }, [copyProfileValue, userIdCopyValue]);
 
   const handleOpenAvatarPreview = useCallback(() => {
     if (!avatarSrc) return;
@@ -224,7 +214,9 @@ export const RightPanelUser = React.memo(function RightPanelUser({
               </Avatar>
             )}
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-text-primary">{user.name}</p>
+              <Copyable value={user.name} className="w-full">
+                <p className="truncate text-sm font-medium text-text-primary">{user.name}</p>
+              </Copyable>
               {statusLabel && (
                 <p className="truncate text-[11px] text-text-secondary">{statusLabel}</p>
               )}
@@ -252,16 +244,6 @@ export const RightPanelUser = React.memo(function RightPanelUser({
                   <span>{t("info.openDirectMessages")}</span>
                 </button>
               )}
-              {mentionCopyValue != null && (
-                <button
-                  type="button"
-                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-card-bg"
-                  onClick={() => void handleCopyMentionNickname()}
-                >
-                  <Icon name="alternate_email" size={16} className="shrink-0 text-current" />
-                  <span>{mentionCopyButtonLabel}</span>
-                </button>
-              )}
               {emailCopyValue != null && (
                 <button
                   type="button"
@@ -272,50 +254,54 @@ export const RightPanelUser = React.memo(function RightPanelUser({
                   <span>{emailCopyButtonLabel}</span>
                 </button>
               )}
-              {userIdCopyValue != null && (
-                <button
-                  type="button"
-                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-card-bg"
-                  onClick={() => void handleCopyUserId()}
-                >
-                  <Icon name="profile" size={16} className="shrink-0 text-current" />
-                  <span>{userIdCopyButtonLabel}</span>
-                </button>
-              )}
             </div>
           )}
           {contactRows.length > 0 && (
             <ul className="mt-3 space-y-2">
-              {contactRows.map((row) => (
-                <li
-                  key={row.label}
-                  className="flex items-start gap-3 rounded-lg px-1 py-1.5 text-sm"
-                >
-                  <Icon name={row.icon} size={20} className="mt-0.5 shrink-0 text-icon-base" />
-                  <div className="min-w-0 flex-1">
-                    <p className="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-text-secondary">
-                      {row.label}
-                    </p>
-                    {row.href ? (
-                      <a
-                        href={row.href}
-                        target={row.external ? "_blank" : undefined}
-                        rel={row.external ? "noreferrer" : undefined}
-                        className="inline-flex max-w-full items-center gap-1 text-accent underline-offset-2 hover:underline"
-                      >
-                        <span className="truncate whitespace-nowrap">{row.value}</span>
-                        {row.external && (
-                          <Icon name="newWindow" size={14} className="shrink-0 text-icon-base" />
-                        )}
-                      </a>
-                    ) : (
-                      <span className="block truncate whitespace-nowrap text-text-primary">
-                        {row.value}
-                      </span>
-                    )}
-                  </div>
-                </li>
-              ))}
+              {contactRows.map((row) => {
+                const rowValueNode = row.href ? (
+                  <a
+                    href={row.href}
+                    target={row.external ? "_blank" : undefined}
+                    rel={row.external ? "noreferrer" : undefined}
+                    className="inline-flex max-w-full items-center text-accent underline-offset-2 hover:underline"
+                  >
+                    <span className="truncate whitespace-nowrap">{row.value}</span>
+                  </a>
+                ) : (
+                  <span className="block truncate whitespace-nowrap text-text-primary">
+                    {row.value}
+                  </span>
+                );
+
+                const renderedRowValue =
+                  row.copyValue != null ? (
+                    <Copyable
+                      value={row.copyValue}
+                      copyAriaLabel={row.copyAriaLabel}
+                      className="max-w-full"
+                    >
+                      {rowValueNode}
+                    </Copyable>
+                  ) : (
+                    rowValueNode
+                  );
+
+                return (
+                  <li
+                    key={row.label}
+                    className="flex items-start gap-3 rounded-lg px-1 py-1.5 text-sm"
+                  >
+                    <Icon name={row.icon} size={20} className="mt-0.5 shrink-0 text-icon-base" />
+                    <div className="min-w-0 flex-1">
+                      <p className="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-text-secondary">
+                        {row.label}
+                      </p>
+                      {renderedRowValue}
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </header>

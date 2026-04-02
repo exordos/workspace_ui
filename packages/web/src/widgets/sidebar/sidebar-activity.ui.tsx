@@ -37,6 +37,11 @@ export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle
   const location = useLocation();
   const currentUserId = useChatListStore((s) => s.currentUserId);
   const lastAppliedMessages = useChatListStore((s) => s.lastAppliedMessages);
+  const inboxCount = useChatListStore((s) => {
+    const streamsUnread = s.streams().reduce((sum, stream) => sum + (stream.badge ?? 0), 0);
+    const dmsUnread = s.dms().reduce((sum, dm) => sum + (dm.badge ?? 0), 0);
+    return streamsUnread + dmsUnread;
+  });
   const activityListId = "sidebar-activity-list";
   const draftsCount = useDraftStore(
     (s) => s.drafts.filter((draft) => draft.content.trim().length > 0).length,
@@ -110,6 +115,11 @@ export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle
                       size={getCompactActivityIconSize(item.key)}
                       className="shrink-0 text-current"
                     />
+                    {item.key === "inbox" && inboxCount > 0 && (
+                      <span className={compactBadgeClass}>
+                        <Badge count={inboxCount} variant="unread" className="opacity-70" />
+                      </span>
+                    )}
                     {item.key === "mentions" && mentionsCount > 0 && (
                       <span className={compactBadgeClass}>
                         <Badge count={mentionsCount} variant="unread" className="opacity-70" />
@@ -183,6 +193,11 @@ export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle
                   />
                 </span>
                 <span className={expandedLabel}>{t(item.labelKey)}</span>
+                {item.key === "inbox" && inboxCount > 0 && (
+                  <span className="shrink-0">
+                    <Badge count={inboxCount} variant="unread" />
+                  </span>
+                )}
                 {item.key === "mentions" && mentionsCount > 0 && (
                   <span className="shrink-0">
                     <Badge count={mentionsCount} variant="unread" />
