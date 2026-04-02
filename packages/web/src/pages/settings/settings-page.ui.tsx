@@ -4,6 +4,7 @@ import { useThemeStore } from "~/entities/theme/theme.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { getAvailablePalettes } from "~/features/theme-picker/theme-picker.model";
 import { useTranslation } from "~/i18n/i18n";
+import { IS_CONNECTION_DIAGNOSTICS_ENABLED } from "~/shared/config/constants";
 import { wipeCredentials } from "~/shared/lib/auth-guard";
 import { createLogger } from "~/shared/lib/logger";
 import { playNotificationSound } from "~/shared/lib/notification-sound";
@@ -112,19 +113,21 @@ export const SettingsPage: React.FC = () => {
           </span>
           <Icon name="chevron-right" size={16} className="text-text-muted" />
         </button>
-        <button
-          type="button"
-          onClick={openLogs}
-          className="flex items-center justify-between rounded-xl border border-border-subtle bg-card-bg p-4 text-left transition-colors hover:bg-bg-elevated"
-        >
-          <span className="flex items-center gap-3">
-            <Icon name="grid" size={20} className="text-accent" />
-            <span className="text-sm font-medium text-text-primary">
-              {t("settings.connectionDiagnostics")}
+        {IS_CONNECTION_DIAGNOSTICS_ENABLED && (
+          <button
+            type="button"
+            onClick={openLogs}
+            className="flex items-center justify-between rounded-xl border border-border-subtle bg-card-bg p-4 text-left transition-colors hover:bg-bg-elevated"
+          >
+            <span className="flex items-center gap-3">
+              <Icon name="grid" size={20} className="text-accent" />
+              <span className="text-sm font-medium text-text-primary">
+                {t("settings.connectionDiagnostics")}
+              </span>
             </span>
-          </span>
-          <Icon name="chevron-right" size={16} className="text-text-muted" />
-        </button>
+            <Icon name="chevron-right" size={16} className="text-text-muted" />
+          </button>
+        )}
         <button
           type="button"
           onClick={openBuilds}

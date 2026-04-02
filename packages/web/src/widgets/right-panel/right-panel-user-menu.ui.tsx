@@ -21,6 +21,7 @@ import {
   selectPalette,
 } from "~/features/theme-picker/theme-picker.model";
 import { useTranslation } from "~/i18n/i18n";
+import { IS_CONNECTION_DIAGNOSTICS_ENABLED } from "~/shared/config/constants";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { clearLocalStatePreservingCriticalKeys } from "~/shared/lib/local-reset";
 import { createLogger } from "~/shared/lib/logger";
@@ -576,12 +577,14 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
                   </span>
                 }
               />
-              <RightPanelUserMenuMenuButton
-                label={t("settings.connectionDiagnostics")}
-                icon="visibility"
-                onClick={openDiagnostics}
-                right={<Icon name="chevron-right" size={16} className="text-text-muted" />}
-              />
+              {IS_CONNECTION_DIAGNOSTICS_ENABLED && (
+                <RightPanelUserMenuMenuButton
+                  label={t("settings.connectionDiagnostics")}
+                  icon="visibility"
+                  onClick={openDiagnostics}
+                  right={<Icon name="chevron-right" size={16} className="text-text-muted" />}
+                />
+              )}
               <RightPanelUserMenuMenuButton
                 label={t("settings.clearCache")}
                 icon="delete"

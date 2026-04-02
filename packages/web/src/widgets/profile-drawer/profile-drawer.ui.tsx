@@ -6,8 +6,13 @@ import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useThemeStore } from "~/entities/theme/theme.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import type { NotificationSound } from "~/features/settings/settings.types";
-import { getAvailablePalettes, selectPalette, selectMode } from "~/features/theme-picker/theme-picker.model";
+import {
+  getAvailablePalettes,
+  selectPalette,
+  selectMode,
+} from "~/features/theme-picker/theme-picker.model";
 import { useTranslation } from "~/i18n/i18n";
+import { IS_CONNECTION_DIAGNOSTICS_ENABLED } from "~/shared/config/constants";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { wipeCredentials } from "~/shared/lib/auth-guard";
 import { clearLocalStatePreservingCriticalKeys } from "~/shared/lib/local-reset";
@@ -139,8 +144,8 @@ export const ProfileDrawer: React.FC<ProfileDrawerProps> = ({
     onOpenChange(false);
   }, [currentInstance, currentServerLabel, removeInstance, onOpenChange, t]);
 
-  const profileItems: MenuItem[] = useMemo(
-    () => [
+  const profileItems: MenuItem[] = useMemo(() => {
+    const items: MenuItem[] = [
       {
         label: t("settings.settings"),
         icon: "grid",
@@ -150,11 +155,6 @@ export const ProfileDrawer: React.FC<ProfileDrawerProps> = ({
         label: t("settings.personalInfo"),
         icon: "accountCircle",
         action: "openPersonalInfoPanel",
-      },
-      {
-        label: t("settings.connectionDiagnostics"),
-        icon: "visibility",
-        navigateTo: "/settings/logs",
       },
       {
         label: t("settings.appVersion"),
@@ -209,9 +209,18 @@ export const ProfileDrawer: React.FC<ProfileDrawerProps> = ({
         destructive: true,
         action: "logout",
       },
-    ],
-    [t, currentLocaleName, notificationSound],
-  );
+    ];
+
+    if (IS_CONNECTION_DIAGNOSTICS_ENABLED) {
+      items.splice(2, 0, {
+        label: t("settings.connectionDiagnostics"),
+        icon: "visibility",
+        navigateTo: "/settings/logs",
+      });
+    }
+
+    return items;
+  }, [t, currentLocaleName, notificationSound]);
 
   const handleItemClick = useCallback(
     (item: MenuItem) => {

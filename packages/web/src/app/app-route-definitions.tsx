@@ -1,5 +1,6 @@
 import React from "react";
 import { Routes, Route, Navigate, useLocation, useParams } from "react-router-dom";
+import { IS_CONNECTION_DIAGNOSTICS_ENABLED } from "~/shared/config/constants";
 import { withCurrentOrgRoute, withOrgRoutePrefix } from "~/shared/lib/org-route";
 import { Layout } from "~/widgets/layout/layout.ui";
 import { WebViewShell } from "./webview-shell";
@@ -10,29 +11,43 @@ const LoginPage = React.lazy(() =>
 const PasteTokenPage = React.lazy(() =>
   import("~/pages/login/paste-token-page.ui").then((m) => ({ default: m.PasteTokenPage })),
 );
-const ChatPage = React.lazy(() => import("~/pages/chat/chat-page.ui").then((m) => ({ default: m.ChatPage })));
+const ChatPage = React.lazy(() =>
+  import("~/pages/chat/chat-page.ui").then((m) => ({ default: m.ChatPage })),
+);
 const ActivityPage = React.lazy(() =>
   import("~/pages/activity/activity-page.ui").then((m) => ({ default: m.ActivityPage })),
 );
 const CalendarPage = React.lazy(() =>
   import("~/pages/calendar/calendar-page.ui").then((m) => ({ default: m.CalendarPage })),
 );
-const MailPage = React.lazy(() => import("~/pages/mail/mail-page.ui").then((m) => ({ default: m.MailPage })));
-const CallsPage = React.lazy(() => import("~/pages/calls/calls-page.ui").then((m) => ({ default: m.CallsPage })));
-const LogsPage = React.lazy(() => import("~/pages/logs/logs-page.ui").then((m) => ({ default: m.LogsPage })));
+const MailPage = React.lazy(() =>
+  import("~/pages/mail/mail-page.ui").then((m) => ({ default: m.MailPage })),
+);
+const CallsPage = React.lazy(() =>
+  import("~/pages/calls/calls-page.ui").then((m) => ({ default: m.CallsPage })),
+);
+const LogsPage = React.lazy(() =>
+  import("~/pages/logs/logs-page.ui").then((m) => ({ default: m.LogsPage })),
+);
 const ServicesPage = React.lazy(() =>
   import("~/pages/services/services-page.ui").then((m) => ({ default: m.ServicesPage })),
 );
 const LicensesPage = React.lazy(() =>
   import("~/pages/licenses/licenses-page.ui").then((m) => ({ default: m.LicensesPage })),
 );
-const InboxPage = React.lazy(() => import("~/pages/inbox/inbox-page.ui").then((m) => ({ default: m.InboxPage })));
-const FeedPage = React.lazy(() => import("~/pages/feed/feed-page.ui").then((m) => ({ default: m.FeedPage })));
+const InboxPage = React.lazy(() =>
+  import("~/pages/inbox/inbox-page.ui").then((m) => ({ default: m.InboxPage })),
+);
+const FeedPage = React.lazy(() =>
+  import("~/pages/feed/feed-page.ui").then((m) => ({ default: m.FeedPage })),
+);
 const UpdatePage = React.lazy(() =>
   import("~/pages/update/update-page.ui").then((m) => ({ default: m.UpdatePage })),
 );
 const MessageRedirectPage = React.lazy(() =>
-  import("~/pages/message-redirect/message-redirect-page.ui").then((m) => ({ default: m.MessageRedirectPage })),
+  import("~/pages/message-redirect/message-redirect-page.ui").then((m) => ({
+    default: m.MessageRedirectPage,
+  })),
 );
 
 export const OrgInboxRedirect: React.FC = () => {
@@ -65,6 +80,12 @@ export const AuthenticatedAppRoutes: React.FC<AuthenticatedAppRoutesProps> = ({
   defaultInboxRoute,
 }) => {
   const location = useLocation();
+  const diagnosticsRouteElement = IS_CONNECTION_DIAGNOSTICS_ENABLED ? (
+    <LogsPage />
+  ) : (
+    <Navigate to={withCurrentOrgRoute("/inbox")} replace />
+  );
+
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
@@ -92,13 +113,13 @@ export const AuthenticatedAppRoutes: React.FC<AuthenticatedAppRoutesProps> = ({
           path="/settings/personal-info"
           element={<Navigate to={withCurrentOrgRoute("/inbox")} replace />}
         />
-        <Route path="/settings/logs" element={<LogsPage />} />
+        <Route path="/settings/logs" element={diagnosticsRouteElement} />
         <Route path="/settings/build" element={<UpdatePage />} />
         <Route
           path="/settings/*"
           element={<Navigate to={withCurrentOrgRoute("/inbox")} replace />}
         />
-        <Route path="/logs" element={<LogsPage />} />
+        <Route path="/logs" element={diagnosticsRouteElement} />
         <Route path="/services" element={<ServicesPage />} />
         <Route path="/all-services" element={<ServicesPage />} />
         <Route path="/inbox" element={<InboxPage />} />
@@ -122,13 +143,13 @@ export const AuthenticatedAppRoutes: React.FC<AuthenticatedAppRoutesProps> = ({
           path="settings/personal-info"
           element={<Navigate to={withCurrentOrgRoute("/inbox")} replace />}
         />
-        <Route path="settings/logs" element={<LogsPage />} />
+        <Route path="settings/logs" element={diagnosticsRouteElement} />
         <Route path="settings/build" element={<UpdatePage />} />
         <Route
           path="settings/*"
           element={<Navigate to={withCurrentOrgRoute("/inbox")} replace />}
         />
-        <Route path="logs" element={<LogsPage />} />
+        <Route path="logs" element={diagnosticsRouteElement} />
         <Route path="services" element={<ServicesPage />} />
         <Route path="all-services" element={<ServicesPage />} />
         <Route path="inbox" element={<InboxPage />} />
