@@ -27,7 +27,7 @@ export interface SidebarProps {
   sidebarChatsLoading?: boolean;
   pinReorderMode?: boolean;
   onExitPinReorderMode?: () => void;
-  onFolderAssignmentsChanged?: () => void | Promise<void>;
+  onFolderAssignmentsChanged?: (affectedFolderUuid?: string) => void | Promise<void>;
 }
 
 export interface SidebarUiProps extends SidebarProps {

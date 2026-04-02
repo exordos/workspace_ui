@@ -57,6 +57,7 @@ export const Sidebar: React.FC<SidebarUiProps> = ({
   const sidebarChatsLoading = sidebarChatsLoadingProp || false;
   const selectFolderSync = useFolderSyncStore((s) => s.selectFolder);
   const refreshFolderSync = useFolderSyncStore((s) => s.refresh);
+  const refreshFolderItemsCache = useFolderSyncStore((s) => s.refreshFolderItemsCache);
   const pinFolderId = pinFolderIdProp ?? undefined;
   const pinReorderMode = pinReorderModeProp || pinReorderModeFromUi;
   const activeStreamSlug = activeStreamSlugProp ?? streamSlug ?? null;
@@ -157,10 +158,18 @@ export const Sidebar: React.FC<SidebarUiProps> = ({
     setPinReorderModeFromUi(false);
   }, [onExitPinReorderMode, setPinReorderModeFromUi]);
 
-  const handleFoldersChanged = useCallback(async () => {
-    await refreshFolderSync("mutation");
-    await onFolderAssignmentsChanged?.();
-  }, [refreshFolderSync, onFolderAssignmentsChanged]);
+  const handleFoldersChanged = useCallback(
+    async (affectedFolderUuid?: string) => {
+      const uuid = affectedFolderUuid?.trim();
+      if (uuid != null && uuid.length > 0) {
+        await refreshFolderItemsCache(uuid);
+      } else {
+        await refreshFolderSync("mutation");
+      }
+      await onFolderAssignmentsChanged?.(affectedFolderUuid);
+    },
+    [refreshFolderItemsCache, refreshFolderSync, onFolderAssignmentsChanged],
+  );
 
   return (
     <aside

@@ -10,7 +10,11 @@ import { FolderRailVerticalView } from "./folder-rail-vertical-view.ui";
 import type { FolderRailFolder, FolderRailLayout, FolderRailProps } from "./folder-rail.types";
 import type { IndexedFolderEntry } from "./folder-rail.lib";
 
-export type { FolderRailFolder, FolderRailLayout } from "./folder-rail.types";
+export type {
+  FolderRailFolder,
+  FolderRailFoldersChangedDetail,
+  FolderRailLayout,
+} from "./folder-rail.types";
 
 export const FolderRail: React.FC<FolderRailProps> = ({
   folders,
@@ -36,7 +40,13 @@ export const FolderRail: React.FC<FolderRailProps> = ({
         if (!result) {
           return false;
         }
-        onFoldersChanged?.();
+        onFoldersChanged?.({
+          created: {
+            id: result.id,
+            title: result.title,
+            backgroundColor: result.backgroundColor,
+          },
+        });
         return true;
       } catch {
         return false;
@@ -79,7 +89,7 @@ export const FolderRail: React.FC<FolderRailProps> = ({
       if (!deleted) {
         return;
       }
-      onFoldersChanged?.();
+      onFoldersChanged?.({ deletedFolderId: deletingFolder.id });
       setDeletingFolder(null);
     } catch {
       // Keep the dialog open so user can retry.

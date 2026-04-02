@@ -6,6 +6,10 @@ import {
 
 type WorkspaceFolder = Awaited<ReturnType<typeof getFolders>>[number];
 
+function isFolderWithUuid(f: WorkspaceFolder): f is WorkspaceFolder & { uuid: string } {
+  return typeof f.uuid === "string" && f.uuid.trim().length > 0;
+}
+
 export interface FolderItemsLoadResult {
   // true — items папки загружены успешно, false — сохраняем ошибку как best-effort.
   ok: boolean;
@@ -49,7 +53,7 @@ export async function loadFolderSyncSnapshot(
     const folders = await getFolders();
     // Один батч: сначала папки, затем items по каждой папке (best-effort по ошибкам).
     const itemsByFolderIdEntries: (readonly [string, FolderItemsLoadResult])[] = await Promise.all(
-      folders.map(async (folder) => {
+      folders.filter(isFolderWithUuid).map(async (folder) => {
         try {
           const items = await getFolderItems(folder.uuid);
           return [folder.uuid, { ok: true, items } as FolderItemsLoadResult] as const;

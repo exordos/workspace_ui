@@ -1,31 +1,34 @@
 /**
  * Folder CRUD API — Workspace API endpoints for folder management.
  *
- * POST   /folders/      — create a new folder
- * POST   /folders/:id/  — update folder title / color
- * DELETE /folders/:id/  — delete a folder
+ * OpenAPI: `POST /v1/folders/`, `PUT /v1/folders/{uuid}`, `DELETE /v1/folders/{uuid}`.
  */
 
 import {
-  createFolder as createWorkspaceFolderRequest,
-  deleteFolder as deleteWorkspaceFolderRequest,
-  updateFolder as updateWorkspaceFolderRequest,
+  createV1Folders,
+  deleteV1FoldersFolderUuid,
+  getV1FoldersFolderUuid,
+  updateV1FoldersFolderUuid,
 } from "workspace-api/workspace-api.generated";
+import type { FolderCreate, FolderUpdate } from "workspace-api/workspace-api.generated";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
 import type { CreateFolderInput, FolderItem, UpdateFolderInput } from "./manage-folders.types";
-import type {
-  UpdateFolderBody,
-  WorkspaceFolderResponse,
-} from "workspace-api/workspace-api.generated";
 
 const log = createLogger("manage-folders:api");
 
-function mapToFolderItem(raw: WorkspaceFolderResponse): FolderItem {
+function isoNow(): string {
+  return new Date().toISOString();
+}
+
+function mapToFolderItem(raw: { uuid?: string; title: string; background_color_value?: number | null } & {
+  created_at: string;
+  updated_at: string;
+}): FolderItem {
   return {
-    id: raw.uuid,
+    id: raw.uuid ?? "",
     title: raw.title,
-    backgroundColor: raw.background_color_value,
+    backgroundColor: raw.background_color_value ?? 0,
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
   };
@@ -35,10 +38,14 @@ export async function createFolder(input: CreateFolderInput): Promise<FolderItem
   guard.nonEmpty(input.title, "folder title");
 
   try {
-    const raw = await createWorkspaceFolderRequest({
+    const t = isoNow();
+    const folderCreate: FolderCreate = {
+      created_at: t,
+      updated_at: t,
       title: input.title,
       background_color_value: input.backgroundColor ?? 0,
-    });
+    };
+    const raw = await createV1Folders(folderCreate);
     log.info("Folder created", { title: input.title });
     return mapToFolderItem(raw);
   } catch (err) {
@@ -54,11 +61,17 @@ export async function updateFolder(
   guard.nonEmpty(folderId, "folder id");
 
   try {
-    const body: UpdateFolderBody = {};
-    if (input.title != null) body.title = input.title;
-    if (input.backgroundColor != null) body.background_color_value = input.backgroundColor;
-
-    const raw = await updateWorkspaceFolderRequest(folderId, body);
+    const current = await getV1FoldersFolderUuid(folderId);
+    const t = isoNow();
+    const folderUpdate: FolderUpdate = {
+      ...current,
+      title: input.title ?? current.title,
+      updated_at: t,
+    };
+    if (input.backgroundColor != null) {
+      folderUpdate.background_color_value = input.backgroundColor;
+    }
+    const raw = await updateV1FoldersFolderUuid(folderId, folderUpdate);
     log.info("Folder updated", { folderId });
     return mapToFolderItem(raw);
   } catch (err) {
@@ -71,7 +84,7 @@ export async function deleteFolder(folderId: string): Promise<boolean> {
   guard.nonEmpty(folderId, "folder id");
 
   try {
-    await deleteWorkspaceFolderRequest(folderId);
+    await deleteV1FoldersFolderUuid(folderId);
     log.info("Folder deleted", { folderId });
     return true;
   } catch (err) {

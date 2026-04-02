@@ -391,7 +391,7 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
 
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true }));
 
-    await workspaceApi.putJson("/folders/f1/items/i1", { order_index: 3 });
+    await workspaceApi.putJson("/v1/folders/f1/items/i1", { order_index: 3 });
 
     const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
     expect(init.method).toBe("PUT");
@@ -610,19 +610,19 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
     expect(mockFetch).toHaveBeenCalledOnce();
   });
 
-  // Dev-mode workspace API uses a relative base path (/workspace-api/...).
+  // Dev-mode workspace API uses a relative base path (/workspace/...).
   // Url builder must resolve it against window.location.origin instead of throwing Invalid URL.
   it("resolves relative workspace base URLs against window origin", async () => {
     const { workspaceApi, setInstanceProvider } = await import("./client");
     setInstanceProvider(() => null);
-    workspaceApi.setBaseUrl("/workspace-api/api/v1");
+    workspaceApi.setBaseUrl("/workspace");
 
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true }));
 
-    await expect(workspaceApi.get("/services/")).resolves.toMatchObject({ ok: true });
+    await expect(workspaceApi.get("/v1/services/")).resolves.toMatchObject({ ok: true });
     expect(mockFetch).toHaveBeenCalledOnce();
     const [url] = mockFetch.mock.calls[0] as [string, RequestInit];
-    expect(url).toContain("/workspace-api/api/v1/services/");
+    expect(url).toContain("/workspace/v1/services/");
   });
 
   // Trailing slashes in base URL cause double-slash paths — must be trimmed.

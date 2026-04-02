@@ -12,8 +12,10 @@ interface ImportMetaEnv {
   readonly VITE_CDN_URL?: string;
   /** Zulip API base path (default: /api/v1). For custom API gateways. */
   readonly VITE_ZULIP_API_PATH?: string;
-  /** Workspace API base path (default: /api/v1). For custom backend routing. */
+  /** Workspace API base path (default: /api/v1). For Zulip uploads and legacy routing. */
   readonly VITE_WORKSPACE_API_PATH?: string;
+  /** Extra path before Orval `/v1/...` routes (default empty). Use if Workspace REST is mounted under a prefix. */
+  readonly VITE_WORKSPACE_REST_API_PATH?: string;
   /** Sentry DSN for error tracking. Optional — disabled if empty. */
   readonly VITE_SENTRY_DSN?: string;
   /** App version for Sentry releases. Set by CI. */

@@ -2,26 +2,29 @@
  * Client for the Workspace API (separate from Zulip).
  *
  * HTTP is implemented via Orval-generated calls + `workspaceOrvalMutator` → `workspaceApi`
- * (auth, logging, retries). Base path comes from env (`VITE_WORKSPACE_API_*`).
+ * (auth, logging, retries). Base URL from env — paths are `/v1/...` (see `VITE_WORKSPACE_REST_API_PATH`).
  *
  * Usage:
  *   import { getFolders, mapWorkspaceFoldersToRail } from "~/shared/api/workspace-client";
  */
 import {
-  addFolderItem,
-  listFolderItems,
-  listFolders,
-  listWorkspaceServices,
-  removeFolderItem,
-  updateFolderItemOrder as updateFolderItemOrderRequest,
+  createV1FoldersFolderUuidItems,
+  deleteV1FoldersFolderUuidItemsFolderItemUuid,
+  filterV1Folders,
+  filterV1FoldersFolderUuidItems,
+  filterV1Services,
+  getV1FoldersFolderUuidItemsFolderItemUuid,
+  updateV1FoldersFolderUuidItemsFolderItemUuid,
 } from "workspace-api/workspace-api.generated";
+import type { FolderFilter, FolderItemCreate, ServiceFilter } from "workspace-api/workspace-api.generated";
 import { guard, invariant } from "~/shared/lib/guards";
 import { isValidUrl } from "~/shared/lib/validation";
 import { getCurrentInstance } from "./client";
-import { WorkspaceApiHttpError } from "./workspace-orval-mutator";
-import type { WorkspaceFolder } from "workspace-api/workspace-api.generated";
 
 const inFlightWorkspaceGets = new Map<string, Promise<unknown>>();
+
+/** Folder row from Workspace OpenAPI — re-exported for callers typing `getFolders()`. */
+export type WorkspaceFolder = FolderFilter;
 
 type WorkspaceFolderSystemType = "created" | "all";
 export type WorkspaceFolderRailSystemType = WorkspaceFolderSystemType | "personal" | "channels";
@@ -75,16 +78,24 @@ function countFolderUnreadMessages(unreadMessages: readonly unknown[]): number {
   return unreadMessages.reduce<number>((sum, entry) => sum + countUnreadEntry(entry), 0);
 }
 
-function isWorkspaceFolder(value: unknown): value is WorkspaceFolder {
+function isWorkspaceFolder(value: unknown): value is FolderFilter {
+  if (!isRecord(value)) {
+    return false;
+  }
+  const bg = value.background_color_value;
+  const bgOk =
+    bg === undefined || bg === null || (typeof bg === "number" && Number.isFinite(bg));
   return (
-    isRecord(value) &&
     typeof value.uuid === "string" &&
     typeof value.created_at === "string" &&
     typeof value.updated_at === "string" &&
     typeof value.title === "string" &&
-    typeof value.background_color_value === "number" &&
+    bgOk &&
     Array.isArray(value.unread_messages) &&
-    (value.system_type === "created" || value.system_type === "all")
+    (value.system_type === "created" ||
+      value.system_type === "all" ||
+      value.system_type === null ||
+      value.system_type === undefined)
   );
 }
 
@@ -115,25 +126,6 @@ async function workspaceGetDeduped<T>(path: string, fetcher: () => Promise<T>): 
 // Services catalog
 // ---------------------------------------------------------------------------
 
-interface WorkspaceServiceResponse {
-  uuid: string;
-  name: string;
-  description: string;
-  service_url: string;
-  icon: string;
-}
-
-function isWorkspaceServiceResponse(value: unknown): value is WorkspaceServiceResponse {
-  return (
-    isRecord(value) &&
-    typeof value.uuid === "string" &&
-    typeof value.name === "string" &&
-    typeof value.description === "string" &&
-    typeof value.service_url === "string" &&
-    typeof value.icon === "string"
-  );
-}
-
 export interface WorkspaceServiceForClient {
   id: string;
   name: string;
@@ -142,36 +134,42 @@ export interface WorkspaceServiceForClient {
   iconUrl: string | null;
 }
 
-function mapWorkspaceService(raw: WorkspaceServiceResponse): WorkspaceServiceForClient | null {
+function mapWorkspaceServiceFromFilter(raw: ServiceFilter): WorkspaceServiceForClient | null {
+  const id = raw.uuid?.trim();
+  if (id == null || id.length === 0) {
+    return null;
+  }
   if (!isValidUrl(raw.service_url)) {
     return null;
   }
+  const description = typeof raw.description === "string" ? raw.description : "";
+  const iconRaw = raw.icon;
+  const icon = typeof iconRaw === "string" ? iconRaw : "";
 
   return {
-    id: raw.uuid,
+    id,
     name: raw.name,
-    description: raw.description,
+    description,
     url: raw.service_url,
-    iconUrl: isValidUrl(raw.icon) ? raw.icon : null,
+    iconUrl: icon.length > 0 && isValidUrl(icon) ? icon : null,
   };
 }
 
 /** Fetches all services from the workspace catalog. */
 export async function getWorkspaceServices(): Promise<WorkspaceServiceForClient[]> {
-  const data = await workspaceGetDeduped("/services/", () => listWorkspaceServices());
+  const data = await workspaceGetDeduped("/v1/services/", () => filterV1Services());
   if (!Array.isArray(data)) {
     return [];
   }
 
   return data
-    .filter(isWorkspaceServiceResponse)
-    .map(mapWorkspaceService)
+    .map(mapWorkspaceServiceFromFilter)
     .filter((service): service is WorkspaceServiceForClient => service != null);
 }
 
 /** Fetches all workspace folders. */
 export async function getFolders(): Promise<WorkspaceFolder[]> {
-  const data = await workspaceGetDeduped("/folders/", () => listFolders());
+  const data = await workspaceGetDeduped("/v1/folders/", () => filterV1Folders());
   return Array.isArray(data) ? data.filter(isWorkspaceFolder) : [];
 }
 
@@ -186,14 +184,14 @@ export interface WorkspaceFolderForRail {
 
 export function mapWorkspaceFoldersToRail(folders: WorkspaceFolder[]): WorkspaceFolderForRail[] {
   return folders.map((f) => ({
-    id: f.uuid,
+    id: f.uuid ?? "",
     label: f.title,
-    backgroundColor: f.background_color_value,
+    backgroundColor: f.background_color_value ?? 0,
     badge: (() => {
-      const unreadCount = countFolderUnreadMessages(f.unread_messages);
+      const unreadCount = countFolderUnreadMessages(f.unread_messages ?? []);
       return unreadCount > 0 ? unreadCount : undefined;
     })(),
-    systemType: f.system_type,
+    systemType: f.system_type === "created" || f.system_type === "all" ? f.system_type : undefined,
   }));
 }
 
@@ -304,16 +302,27 @@ function parseNumericFolderChatId(chatId: string): number | null {
   return null;
 }
 
-function isIntegerTypeMismatchPayload(status: number, data: unknown): boolean {
-  if (status !== 400 || !isRecord(data)) return false;
-  const message = typeof data.message === "string" ? data.message : "";
-  return message.includes("Invalid type value") && message.includes("Integer");
+function parseChatIdToApiInteger(chatId: string): number | null {
+  const numeric = parseNumericFolderChatId(chatId);
+  if (numeric != null) {
+    return numeric;
+  }
+  return null;
+}
+
+function folderItemCreateStub(chatId: number): FolderItemCreate {
+  const now = new Date().toISOString();
+  return {
+    created_at: now,
+    updated_at: now,
+    chat_id: chatId,
+  };
 }
 
 /** Fetches all chat assignments within a folder. */
 export async function getFolderItems(folderUuid: string): Promise<FolderItemForClient[]> {
   const safeFolderUuid = validateFolderUuid(folderUuid);
-  const data = await listFolderItems(safeFolderUuid);
+  const data = await filterV1FoldersFolderUuidItems(safeFolderUuid);
   if (!Array.isArray(data)) {
     return [];
   }
@@ -333,27 +342,14 @@ export async function addChatToFolder(folderUuid: string, chatId: string): Promi
   try {
     const safeFolderUuid = validateFolderUuid(folderUuid);
     const safeChatId = validateChatId(chatId);
-    await addFolderItem(safeFolderUuid, { chat_id: safeChatId });
+    const chatIdNum = parseChatIdToApiInteger(safeChatId);
+    if (chatIdNum == null) {
+      return false;
+    }
+    await createV1FoldersFolderUuidItems(safeFolderUuid, folderItemCreateStub(chatIdNum));
     return true;
-  } catch (e) {
-    if (!(e instanceof WorkspaceApiHttpError)) {
-      return false;
-    }
-    const safeFolderUuid = validateFolderUuid(folderUuid);
-    const safeChatId = validateChatId(chatId);
-    if (!isIntegerTypeMismatchPayload(e.status, e.data)) {
-      return false;
-    }
-    const numericChatId = parseNumericFolderChatId(safeChatId);
-    if (numericChatId == null) {
-      return false;
-    }
-    try {
-      await addFolderItem(safeFolderUuid, { chat_id: numericChatId });
-      return true;
-    } catch {
-      return false;
-    }
+  } catch {
+    return false;
   }
 }
 
@@ -362,7 +358,7 @@ export async function removeChatFromFolder(folderUuid: string, itemUuid: string)
   try {
     const safeFolderUuid = validateFolderUuid(folderUuid);
     const safeItemUuid = validateFolderItemUuid(itemUuid);
-    await removeFolderItem(safeFolderUuid, safeItemUuid);
+    await deleteV1FoldersFolderUuidItemsFolderItemUuid(safeFolderUuid, safeItemUuid);
     return true;
   } catch {
     return false;
@@ -379,7 +375,13 @@ export async function updateFolderItemOrder(
     const safeFolderUuid = validateFolderUuid(folderUuid);
     const safeItemUuid = validateFolderItemUuid(itemUuid);
     const safeOrderIndex = validateOrderIndex(orderIndex);
-    await updateFolderItemOrderRequest(safeFolderUuid, safeItemUuid, { order_index: safeOrderIndex });
+    const current = await getV1FoldersFolderUuidItemsFolderItemUuid(safeFolderUuid, safeItemUuid);
+    const updatedAt = new Date().toISOString();
+    await updateV1FoldersFolderUuidItemsFolderItemUuid(safeFolderUuid, safeItemUuid, {
+      ...current,
+      order_index: safeOrderIndex,
+      updated_at: updatedAt,
+    });
     return true;
   } catch {
     return false;

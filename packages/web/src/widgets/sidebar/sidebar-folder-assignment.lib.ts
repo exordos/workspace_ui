@@ -1,5 +1,49 @@
-import { addChatToFolder, getFolderItems, getFolders, removeChatFromFolder } from "~/shared/api/workspace-client";
-import type { FolderAssignment } from "./sidebar-folder-assignment.types";
+import {
+  SYSTEM_ALL_FOLDER_ID,
+  SYSTEM_CHANNELS_FOLDER_ID,
+  SYSTEM_PERSONAL_FOLDER_ID,
+} from "~/features/folder-sync/folder-sync-constants.lib";
+import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
+import {
+  addChatToFolder,
+  getFolderItems,
+  getFolders,
+  removeChatFromFolder,
+  type FolderItemForClient,
+  type WorkspaceFolder,
+  type WorkspaceFolderForRail,
+} from "~/shared/api/workspace-client";
+import {
+  OPTIMISTIC_FOLDER_ASSIGNMENT_ITEM_UUID,
+  type FolderAssignment,
+} from "./sidebar-folder-assignment.types";
+
+function isAssignableFolder(folder: WorkspaceFolder): folder is WorkspaceFolder & { uuid: string } {
+  return (
+    folder.system_type !== "all" &&
+    typeof folder.uuid === "string" &&
+    folder.uuid.trim().length > 0
+  );
+}
+
+function isAssignableRailFolder(folder: WorkspaceFolderForRail): boolean {
+  if (folder.id.trim().length === 0) {
+    return false;
+  }
+  if (folder.id === SYSTEM_ALL_FOLDER_ID) {
+    return false;
+  }
+  if (folder.systemType === "all") {
+    return false;
+  }
+  if (folder.systemType === "personal" || folder.systemType === "channels") {
+    return false;
+  }
+  if (folder.id === SYSTEM_PERSONAL_FOLDER_ID || folder.id === SYSTEM_CHANNELS_FOLDER_ID) {
+    return false;
+  }
+  return true;
+}
 
 export type { FolderAssignment };
 
@@ -97,14 +141,14 @@ function areEquivalentChatIds(leftChatId: string, rightChatId: string): boolean 
   return false;
 }
 
-export async function loadFolderAssignments(
+async function loadFolderAssignmentsFromWorkspaceApi(
   chatId: string,
-  api: FolderAssignmentApi = defaultApi,
+  api: FolderAssignmentApi,
 ): Promise<FolderAssignment[]> {
   const folders = await api.getFolders();
-  const assignableFolders = folders.filter((folder) => folder.system_type !== "all");
+  const assignableFolders = folders.filter(isAssignableFolder);
 
-  const assignments = await Promise.all(
+  return Promise.all(
     assignableFolders.map(async (folder) => {
       try {
         const items = await api.getFolderItems(folder.uuid);
@@ -123,8 +167,49 @@ export async function loadFolderAssignments(
       }
     }),
   );
+}
 
-  return assignments;
+export async function loadFolderAssignments(
+  chatId: string,
+  api: FolderAssignmentApi = defaultApi,
+): Promise<FolderAssignment[]> {
+  const sync = useFolderSyncStore.getState();
+  if (sync.instanceId == null || sync.folders.length === 0) {
+    return loadFolderAssignmentsFromWorkspaceApi(chatId, api);
+  }
+
+  const assignableRailFolders = sync.folders.filter(isAssignableRailFolder);
+  if (assignableRailFolders.length === 0) {
+    return [];
+  }
+
+  const { folderItemsByFolderId } = sync;
+
+  return Promise.all(
+    assignableRailFolders.map(async (folder) => {
+      const folderId = folder.id;
+      try {
+        let items: FolderItemForClient[];
+        if (folderItemsByFolderId.has(folderId)) {
+          items = folderItemsByFolderId.get(folderId) ?? [];
+        } else {
+          items = await api.getFolderItems(folderId);
+        }
+        const assignment = items.find((item) => areEquivalentChatIds(item.chatId, chatId));
+        return {
+          folderUuid: folderId,
+          label: folder.label,
+          itemUuid: assignment?.uuid ?? null,
+        } satisfies FolderAssignment;
+      } catch {
+        return {
+          folderUuid: folderId,
+          label: folder.label,
+          itemUuid: null,
+        } satisfies FolderAssignment;
+      }
+    }),
+  );
 }
 
 export async function toggleFolderAssignment(
@@ -132,6 +217,9 @@ export async function toggleFolderAssignment(
   assignment: FolderAssignment,
   api: FolderAssignmentApi = defaultApi,
 ): Promise<{ ok: boolean; nextItemUuid: string | null; removed: boolean }> {
+  if (assignment.itemUuid === OPTIMISTIC_FOLDER_ASSIGNMENT_ITEM_UUID) {
+    return { ok: false, nextItemUuid: null, removed: false };
+  }
   if (assignment.itemUuid != null) {
     const ok = await api.removeChatFromFolder(assignment.folderUuid, assignment.itemUuid);
     return {

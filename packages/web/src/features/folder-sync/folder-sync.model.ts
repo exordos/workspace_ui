@@ -62,6 +62,16 @@ interface FolderSyncState {
   bootstrap: (options: FolderSyncBootstrapOptions) => Promise<void>;
   selectFolder: (folderId: string) => Promise<void>;
   refresh: (reason: FolderRefreshReason) => Promise<void>;
+  /** Reloads items for one folder after add/remove chat assignment (avoids full snapshot refresh). */
+  refreshFolderItemsCache: (folderUuid: string) => Promise<void>;
+  /** Inserts a folder from POST /folders response without reloading all folders/items. */
+  applyLocallyCreatedFolder: (folder: {
+    id: string;
+    title: string;
+    backgroundColor: number;
+  }) => void;
+  /** Removes a folder after DELETE /folders/{uuid} without reloading all folders/items. */
+  applyLocallyDeletedFolder: (folderId: string) => void;
   syncSidebarProjection: (input: {
     chatsSortedByLastMessage: SidebarChat[];
     streamsMap: Map<number, StreamEntryInternal>;
@@ -417,6 +427,121 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
       });
 
       return refreshPromise;
+    },
+
+    async refreshFolderItemsCache(folderUuid) {
+      const instanceId = get().instanceId;
+      if (instanceId == null) {
+        return;
+      }
+      const trimmed = folderUuid.trim();
+      if (trimmed.length === 0) {
+        return;
+      }
+      logStoreAction("folderSync", "refreshFolderItemsCache", { folderUuid: trimmed });
+      try {
+        const items = await loadFolderItemsForSelection(trimmed);
+        set((state) => {
+          const nextMap = new Map(state.folderItemsByFolderId);
+          nextMap.set(trimmed, items);
+          const shouldPatchSelection =
+            state.selectedFolderId === trimmed &&
+            shouldLoadFolderItemsForSelection(state.folders, trimmed);
+          return {
+            folderItemsByFolderId: nextMap,
+            ...(shouldPatchSelection
+              ? { selectedFolderChatIds: toChatIdSet(items) }
+              : {}),
+          };
+        });
+      } catch {
+        folderSyncLog.warn("refreshFolderItemsCache:failed", { folderUuid: trimmed });
+      }
+    },
+
+    applyLocallyCreatedFolder(folder) {
+      const instanceId = get().instanceId;
+      if (instanceId == null) {
+        return;
+      }
+      const id = folder.id.trim();
+      if (id.length === 0) {
+        return;
+      }
+      logStoreAction("folderSync", "applyLocallyCreatedFolder", { folderId: id });
+      const titleTrimmed = folder.title.trim();
+      const railFolder: WorkspaceFolderForRail = {
+        id,
+        label: titleTrimmed.length > 0 ? titleTrimmed : id,
+        backgroundColor: folder.backgroundColor,
+        systemType: "created",
+      };
+      set((state) => {
+        if (state.folders.some((f) => f.id === id)) {
+          return {};
+        }
+        const nextFolders = [...state.folders, railFolder];
+        const nextMap = new Map(state.folderItemsByFolderId);
+        if (!nextMap.has(id)) {
+          nextMap.set(id, []);
+        }
+        saveOfflineFolders(instanceId, nextFolders);
+        return {
+          folders: nextFolders,
+          folderItemsByFolderId: nextMap,
+        };
+      });
+    },
+
+    applyLocallyDeletedFolder(folderId) {
+      const instanceId = get().instanceId;
+      if (instanceId == null) {
+        return;
+      }
+      const trimmed = folderId.trim();
+      if (trimmed.length === 0) {
+        return;
+      }
+      logStoreAction("folderSync", "applyLocallyDeletedFolder", { folderId: trimmed });
+      set((state) => {
+        const nextFolders = state.folders.filter((f) => f.id !== trimmed);
+        const nextMap = new Map(state.folderItemsByFolderId);
+        nextMap.delete(trimmed);
+
+        const resolved = resolveSelectedFolderId(nextFolders, state.selectedFolderId);
+        const nextSelectedId =
+          resolved ??
+          (nextFolders.length > 0
+            ? (nextFolders[0]?.id ?? DEFAULT_SELECTED_FOLDER_ID)
+            : DEFAULT_SELECTED_FOLDER_ID);
+
+        const shouldLoadSelectedFolderItems = shouldLoadFolderItemsForSelection(
+          nextFolders,
+          nextSelectedId,
+        );
+        const hasCachedItemsForSelectedFolder =
+          shouldLoadSelectedFolderItems && nextMap.has(nextSelectedId);
+        const cachedItemsForSelectedFolder = hasCachedItemsForSelectedFolder
+          ? (nextMap.get(nextSelectedId) ?? [])
+          : undefined;
+
+        let selectedFolderChatIds: Set<string> | null = null;
+        if (shouldLoadSelectedFolderItems) {
+          selectedFolderChatIds =
+            cachedItemsForSelectedFolder != null
+              ? toChatIdSet(cachedItemsForSelectedFolder)
+              : new Set<string>();
+        }
+
+        saveOfflineFolders(instanceId, nextFolders);
+
+        return {
+          folders: nextFolders,
+          folderItemsByFolderId: nextMap,
+          selectedFolderId: nextSelectedId,
+          selectedFolderChatIds,
+        };
+      });
     },
 
     syncSidebarProjection(input) {

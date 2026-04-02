@@ -35,6 +35,8 @@ function cleanOrigin(url: string): string {
 const WORKSPACE_API_ORIGIN_RAW = required("VITE_WORKSPACE_API_ORIGIN");
 const ZULIP_API_PATH = optional("VITE_ZULIP_API_PATH", "/api/v1");
 const WORKSPACE_API_PATH = optional("VITE_WORKSPACE_API_PATH", "/api/v1");
+/** Path segment(s) after origin for Workspace REST (OpenAPI paths start with `/v1/`). Default empty. */
+const WORKSPACE_REST_API_PATH = optional("VITE_WORKSPACE_REST_API_PATH", "");
 
 export const env = {
   /** `true` in development, `false` in production build. Vite built-in. */
@@ -66,18 +68,17 @@ export const env = {
   WORKSPACE_API_PATH: WORKSPACE_API_PATH,
 
   /**
-   * Workspace API base URL: origin + path.
-   * In dev: proxied through Vite (`/workspace-api{path}`).
-   * In prod: direct (`https://zulip.example.com{path}`).
-   * Full override: `VITE_WORKSPACE_API_BASE_URL`.
+   * Workspace REST API base (Orval paths are `/v1/...`).
+   * Default: dev `/workspace`, prod `origin` — no extra suffix so URLs are `{base}/v1/...` (→ `/workspace/v1/...`).
+   * Zulip uploads still use {@link WORKSPACE_API_PATH}. Override: `VITE_WORKSPACE_REST_API_PATH`
+   * or full `VITE_WORKSPACE_API_BASE_URL`.
    */
   WORKSPACE_API_BASE: (() => {
     const override = optional("VITE_WORKSPACE_API_BASE_URL");
     if (override) return override.replace(/\/+$/, "");
     const origin = cleanOrigin(WORKSPACE_API_ORIGIN_RAW);
-    return import.meta.env.DEV
-      ? `/workspace-api${WORKSPACE_API_PATH}`
-      : `${origin}${WORKSPACE_API_PATH}`;
+    const restPath = WORKSPACE_REST_API_PATH.replace(/\/+$/, "");
+    return import.meta.env.DEV ? `/workspace${restPath}` : `${origin}${restPath}`;
   })(),
 
   /**

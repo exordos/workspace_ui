@@ -8,10 +8,13 @@ import { t } from "~/i18n/i18n";
 import { getFolderItems } from "~/shared/api/workspace-client";
 import { markDmAsRead, markStreamAsRead } from "~/shared/api/zulip";
 import { Icon } from "~/shared/ui/icon";
-import { chatToWorkspaceChatId, parseDmSlugToUserIds } from "./sidebar.lib";
-import type { FolderAssignment } from "./sidebar-folder-assignment.types";
-import type { SidebarChat } from "./sidebar.types";
 import { loadFolderAssignments, toggleFolderAssignment } from "./sidebar-folder-assignment.lib";
+import { chatToWorkspaceChatId, parseDmSlugToUserIds } from "./sidebar.lib";
+import {
+  OPTIMISTIC_FOLDER_ASSIGNMENT_ITEM_UUID,
+  type FolderAssignment,
+} from "./sidebar-folder-assignment.types";
+import type { SidebarChat } from "./sidebar.types";
 
 const MENU_ITEM_CLASS =
   "flex cursor-pointer select-none items-center gap-2 rounded-md px-2 py-2 text-sm text-text-primary outline-none transition-colors data-[disabled]:pointer-events-none data-[disabled]:opacity-50 hover:bg-bg-elevated";
@@ -31,10 +34,13 @@ const FolderAssignmentsSubmenu = React.memo(function FolderAssignmentsSubmenu({
 }: {
   chatId: string;
   menuOpen: boolean;
-  onFolderAssignmentsChanged?: () => void;
+  onFolderAssignmentsChanged?: (affectedFolderUuid?: string) => void;
 }) {
   const [assignments, setAssignments] = useState<FolderAssignment[]>([]);
   const [isLoadingAssignments, setIsLoadingAssignments] = useState(false);
+  const [pendingAssignmentFolderIds, setPendingAssignmentFolderIds] = useState(
+    () => new Set<string>(),
+  );
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -57,8 +63,59 @@ const FolderAssignmentsSubmenu = React.memo(function FolderAssignmentsSubmenu({
 
   const handleToggleAssignment = useCallback(
     async (assignment: FolderAssignment) => {
-      await toggleFolderAssignment(chatId, assignment);
-      onFolderAssignmentsChanged?.();
+      const folderUuid = assignment.folderUuid;
+      const previousItemUuid = assignment.itemUuid;
+      const wasAssigned = previousItemUuid != null;
+
+      setPendingAssignmentFolderIds((prev) => new Set(prev).add(folderUuid));
+
+      if (wasAssigned) {
+        setAssignments((prev) =>
+          prev.map((row) => (row.folderUuid === folderUuid ? { ...row, itemUuid: null } : row)),
+        );
+      } else {
+        setAssignments((prev) =>
+          prev.map((row) =>
+            row.folderUuid === folderUuid
+              ? { ...row, itemUuid: OPTIMISTIC_FOLDER_ASSIGNMENT_ITEM_UUID }
+              : row,
+          ),
+        );
+      }
+
+      try {
+        const result = await toggleFolderAssignment(chatId, assignment);
+        if (!result.ok) {
+          setAssignments((prev) =>
+            prev.map((row) =>
+              row.folderUuid === folderUuid ? { ...row, itemUuid: previousItemUuid } : row,
+            ),
+          );
+          return;
+        }
+        if (result.removed) {
+          setAssignments((prev) =>
+            prev.map((row) => (row.folderUuid === folderUuid ? { ...row, itemUuid: null } : row)),
+          );
+        } else if (result.nextItemUuid != null) {
+          setAssignments((prev) =>
+            prev.map((row) =>
+              row.folderUuid === folderUuid ? { ...row, itemUuid: result.nextItemUuid } : row,
+            ),
+          );
+        } else {
+          void loadFolderAssignments(chatId).then((rows) => {
+            setAssignments(rows);
+          });
+        }
+        onFolderAssignmentsChanged?.(folderUuid);
+      } finally {
+        setPendingAssignmentFolderIds((prev) => {
+          const next = new Set(prev);
+          next.delete(folderUuid);
+          return next;
+        });
+      }
     },
     [chatId, onFolderAssignmentsChanged],
   );
@@ -86,6 +143,7 @@ const FolderAssignmentsSubmenu = React.memo(function FolderAssignmentsSubmenu({
               <DropdownMenu.CheckboxItem
                 key={assignment.folderUuid}
                 checked={assignment.itemUuid != null}
+                disabled={pendingAssignmentFolderIds.has(assignment.folderUuid)}
                 onCheckedChange={() => void handleToggleAssignment(assignment)}
                 onSelect={(e) => {
                   e.preventDefault();
@@ -126,7 +184,7 @@ export const StreamContextMenu = React.memo(function StreamContextMenu({
   chat: Extract<SidebarChat, { type: "stream" }>;
   folderId?: string;
   onCreateTopic?: () => void;
-  onFolderAssignmentsChanged?: () => void;
+  onFolderAssignmentsChanged?: (affectedFolderUuid?: string) => void;
   triggerOffsetClassName?: string;
   children: React.ReactNode;
 }) {
@@ -285,7 +343,7 @@ export const DmContextMenu = React.memo(function DmContextMenu({
 }: {
   chat: Extract<SidebarChat, { type: "dm" }>;
   folderId?: string;
-  onFolderAssignmentsChanged?: () => void;
+  onFolderAssignmentsChanged?: (affectedFolderUuid?: string) => void;
   children: React.ReactNode;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);

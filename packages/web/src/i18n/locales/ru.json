@@ -544,6 +544,7 @@
     "pinChat": "Закрепить",
     "unpinChat": "Открепить",
     "addToFolder": "Добавить в папку",
+    "loadingFolders": "Загрузка папок…",
     "noFoldersAvailable": "Папки не найдены"
   },
   "sticker": {

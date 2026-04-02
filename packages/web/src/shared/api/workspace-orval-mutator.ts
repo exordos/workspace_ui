@@ -86,6 +86,11 @@ export async function workspaceOrvalMutator<T>(url: string, init: RequestInit): 
       assertOk(res);
       return (res.data ?? undefined) as T;
     }
+    if (init.body === undefined || init.body === null) {
+      const res = await workspaceApi.post(url, {}, signal);
+      assertOk(res);
+      return (res.data ?? undefined) as T;
+    }
     throw new Error(`workspaceOrvalMutator: unsupported POST body for ${url}`);
   }
 

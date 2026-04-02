@@ -7,7 +7,7 @@
  * Incorrect env handling would break API connections or Jitsi integration.
  */
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Core env object shape and types
 describe("env", () => {
@@ -58,14 +58,29 @@ describe("env", () => {
   });
 
   // Default API paths must match Zulip's standard — missing defaults would break API calls
-  it("ZULIP_API_PATH defaults to /api/v1", async () => {
-    const { env } = await import("./env");
-    expect(env.ZULIP_API_PATH).toBe("/api/v1");
-  });
+  describe("default API paths (isolated from repo .env)", () => {
+    beforeEach(() => {
+      vi.stubEnv("VITE_WORKSPACE_API_ORIGIN", "https://zulip.test");
+      vi.stubEnv("VITE_ZULIP_API_PATH", "");
+      vi.stubEnv("VITE_WORKSPACE_API_PATH", "");
+      vi.stubEnv("VITE_WORKSPACE_REST_API_PATH", "");
+      vi.resetModules();
+    });
 
-  it("WORKSPACE_API_PATH defaults to /api/v1", async () => {
-    const { env } = await import("./env");
-    expect(env.WORKSPACE_API_PATH).toBe("/api/v1");
+    afterEach(() => {
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    });
+
+    it("ZULIP_API_PATH defaults to /api/v1", async () => {
+      const { env } = await import("./env");
+      expect(env.ZULIP_API_PATH).toBe("/api/v1");
+    });
+
+    it("WORKSPACE_API_PATH defaults to /api/v1", async () => {
+      const { env } = await import("./env");
+      expect(env.WORKSPACE_API_PATH).toBe("/api/v1");
+    });
   });
 
   // When Jitsi is not configured, the base URL must be empty to disable call features

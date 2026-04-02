@@ -5,8 +5,8 @@
  */
 
 import {
-  invokePinFolderItem,
-  invokeUnpinFolderItem,
+  pinV1FoldersFolderUuidItemsFolderItemUuidActionsPinInvoke,
+  unpinV1FoldersFolderUuidItemsFolderItemUuidActionsUnpinInvoke,
 } from "workspace-api/workspace-api.generated";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
@@ -21,7 +21,7 @@ export async function pinChatInFolder(
   guard.nonEmpty(folderItemUuid, "folderItemUuid");
 
   try {
-    await invokePinFolderItem(folderUuid, folderItemUuid, {});
+    await pinV1FoldersFolderUuidItemsFolderItemUuidActionsPinInvoke(folderUuid, folderItemUuid);
     log.info("Chat pinned", { folderUuid, folderItemUuid });
     return true;
   } catch (err) {
@@ -38,7 +38,7 @@ export async function unpinChatInFolder(
   guard.nonEmpty(folderItemUuid, "folderItemUuid");
 
   try {
-    await invokeUnpinFolderItem(folderUuid, folderItemUuid, {});
+    await unpinV1FoldersFolderUuidItemsFolderItemUuidActionsUnpinInvoke(folderUuid, folderItemUuid);
     log.info("Chat unpinned", { folderUuid, folderItemUuid });
     return true;
   } catch (err) {

@@ -5,6 +5,7 @@
  * async getFolders function with mocked workspace API transport.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { WorkspaceFolder } from "~/shared/api/workspace-client";
 import { getFolders, mapWorkspaceFoldersToRail } from "./folder.api";
 
 const { workspaceApi } = vi.hoisted(() => ({
@@ -26,17 +27,17 @@ vi.mock("~/shared/api/client", () => ({
   setInstanceProvider: vi.fn(),
 }));
 
-function makeFolderPayload(overrides: Record<string, unknown> = {}) {
+function makeFolderPayload(overrides: Record<string, unknown> = {}): WorkspaceFolder {
   return {
     uuid: "f1",
     title: "Work",
     background_color_value: 0xff0000,
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
-    unread_messages: [] as unknown[],
-    system_type: "created" as const,
+    unread_messages: [],
+    system_type: "created",
     ...overrides,
-  };
+  } as WorkspaceFolder;
 }
 
 // Pure mapping function — no mocks needed.
@@ -190,6 +191,6 @@ describe("getFolders", () => {
 
     await getFolders();
 
-    expect(workspaceApi.get).toHaveBeenCalledWith("/folders/", undefined, undefined);
+    expect(workspaceApi.get).toHaveBeenCalledWith("/v1/folders/", undefined, undefined);
   });
 });

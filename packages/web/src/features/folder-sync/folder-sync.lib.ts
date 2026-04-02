@@ -22,7 +22,7 @@ interface FolderItemsLoadResult {
 }
 
 interface FolderSnapshotLike {
-  folders: readonly { uuid: string }[];
+  folders: readonly { uuid?: string }[];
   itemsByFolderId: ReadonlyMap<string, FolderItemsLoadResult>;
 }
 
@@ -158,7 +158,11 @@ export function mergeFolderItemsSnapshot(
 ): Map<string, FolderItemForClient[]> {
   // Оставляем только живые папки; при ошибке конкретной папки сохраняем stale-данные.
   const next = new Map<string, FolderItemForClient[]>();
-  const liveFolderIds = new Set(snapshot.folders.map((folder) => folder.uuid));
+  const liveFolderIds = new Set(
+    snapshot.folders
+      .map((folder) => folder.uuid)
+      .filter((id): id is string => typeof id === "string" && id.trim().length > 0),
+  );
 
   for (const folderId of liveFolderIds) {
     const result = snapshot.itemsByFolderId.get(folderId);

@@ -940,7 +940,7 @@ describe("Sidebar", () => {
       },
     ]);
     addChatToFolderMock.mockResolvedValue(true);
-    getFolderItemsMock.mockResolvedValueOnce([]).mockResolvedValueOnce([
+    const workFolderItems = [
       {
         uuid: "work-item-1",
         chatId: "stream:11",
@@ -950,7 +950,11 @@ describe("Sidebar", () => {
         createdAt: "",
         updatedAt: "",
       },
-    ]);
+    ];
+    getFolderItemsMock
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(workFolderItems)
+      .mockResolvedValue(workFolderItems);
 
     renderWithProviders(
       <Sidebar streams={[]} selectedFolderId="all" sidebarChats={[STREAM_CHAT]} sidebarDms={[]} />,
@@ -967,6 +971,10 @@ describe("Sidebar", () => {
     await waitFor(() => {
       expect(addChatToFolderMock).toHaveBeenCalledWith("work-folder", "stream:11:general");
       expect(addChatToFolderMock).toHaveBeenCalledTimes(1);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("menuitemcheckbox", { name: /work/i })).toBeChecked();
     });
   });
 

@@ -154,7 +154,7 @@ describe("pin-chat API", () => {
 
       expect(result).toBe(true);
       expect(workspaceApi.post).toHaveBeenCalledWith(
-        "/folders/folder-abc/items/item-xyz/actions/pin/invoke",
+        "/v1/folders/folder-abc/items/item-xyz/actions/pin/invoke",
         {},
         undefined,
       );
@@ -197,7 +197,7 @@ describe("pin-chat API", () => {
 
       expect(result).toBe(true);
       expect(workspaceApi.post).toHaveBeenCalledWith(
-        "/folders/folder-abc/items/item-xyz/actions/unpin/invoke",
+        "/v1/folders/folder-abc/items/item-xyz/actions/unpin/invoke",
         {},
         undefined,
       );

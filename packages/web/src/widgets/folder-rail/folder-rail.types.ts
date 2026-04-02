@@ -24,6 +24,19 @@ export interface FolderRailFolder {
  */
 export type FolderRailLayout = "vertical" | "horizontal";
 
+/** Passed with `onFoldersChanged` after POST /folders so the shell can patch rail without a full snapshot. */
+export interface FolderRailCreatedFolderPayload {
+  id: string;
+  title: string;
+  backgroundColor: number;
+}
+
+/** Optional detail for `onFoldersChanged` (incremental updates without full folder snapshot). */
+export interface FolderRailFoldersChangedDetail {
+  created?: FolderRailCreatedFolderPayload;
+  deletedFolderId?: string;
+}
+
 /** Public props for `FolderRail` (stable contract for layout/sidebar). */
 export interface FolderRailProps {
   /** Full list of folders in display order. */
@@ -36,8 +49,8 @@ export interface FolderRailProps {
   onOrderPinning?: (id: string) => void;
   /** External layout toggle; if not provided, settings store is used. */
   onToggleLayout?: () => void;
-  /** Signal that folders list changed (create/rename/delete). */
-  onFoldersChanged?: () => void;
+  /** Signal that folders list changed (create/rename/delete). Use `created` / `deletedFolderId` to skip full refresh. */
+  onFoldersChanged?: (detail?: FolderRailFoldersChangedDetail) => void;
   /** Current rail layout mode. */
   layout?: FolderRailLayout;
 }
