@@ -5,12 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useActivityStore } from "~/entities/activity/activity.model";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useDraftStore } from "~/entities/draft/draft.model";
+import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import { createMessage } from "~/test/factories";
 import { ActivityPage } from "./activity-page.ui";
 import type * as ReactRouterDom from "react-router-dom";
 
 const navigateSpy = vi.hoisted(() => vi.fn());
-const fetchDrafts = vi.hoisted(() => vi.fn());
 const deleteDraftOnServer = vi.hoisted(() => vi.fn());
 const updateDraftOnServer = vi.hoisted(() => vi.fn());
 const fetchActivityMessages = vi.hoisted(() => vi.fn());
@@ -31,7 +31,6 @@ vi.mock("~/entities/draft/draft.api", async () => {
   );
   return {
     ...actual,
-    fetchDrafts,
     deleteDraftOnServer,
     updateDraftOnServer,
   };
@@ -51,12 +50,11 @@ vi.mock("~/shared/api/zulip-messages", async () => {
 
 describe("ActivityPage drafts routing", () => {
   beforeEach(() => {
-    useActivityStore.setState({ staleVersion: 0 });
+    useActivityStore.getState().clear();
   });
 
   afterEach(() => {
     navigateSpy.mockReset();
-    fetchDrafts.mockReset();
     deleteDraftOnServer.mockReset();
     updateDraftOnServer.mockReset();
     fetchActivityMessages.mockReset();
@@ -64,6 +62,7 @@ describe("ActivityPage drafts routing", () => {
     removeMessageFlag.mockReset();
     useDraftStore.getState().clear();
     useChatListStore.getState().clear();
+    useActivityStore.getState().clear();
   });
 
   it("navigates stream drafts using the canonical stream slug from the store", async () => {
@@ -83,7 +82,7 @@ describe("ActivityPage drafts routing", () => {
       ]),
     });
 
-    fetchDrafts.mockResolvedValue([
+    useDraftStore.getState().setDrafts([
       {
         id: 1,
         type: "stream",
@@ -183,6 +182,35 @@ describe("ActivityPage drafts routing", () => {
     fireEvent.click(screen.getByRole("button", { name: "Forward" }));
 
     expect(navigateSpy).toHaveBeenCalledWith("/stream/10-engineering/topic/bugs?msg=44&forward=44");
+  });
+
+  it("renders cached activity list immediately while newest refresh is in flight", () => {
+    const cachedMention = createMessage({
+      id: 88,
+      sender_id: 42,
+      sender_full_name: "Alice",
+      stream_id: 10,
+      subject: "bugs",
+      content: "Cached mention",
+      timestamp: 1,
+      type: "stream",
+      display_recipient: "engineering",
+    }) as ZulipRawMessage;
+    useActivityStore.getState().setFilterCache("mentions", [cachedMention], true);
+    fetchActivityMessagesPage.mockResolvedValue({
+      messages: [cachedMention],
+      foundOldest: true,
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/activity/mentions"]}>
+        <Routes>
+          <Route path="/activity/:filter" element={<ActivityPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Cached mention")).toBeInTheDocument();
   });
 
   it("removes starred message from list after unstar action", async () => {
@@ -383,7 +411,7 @@ describe("ActivityPage drafts routing", () => {
         resolveDelete = resolve;
       }),
     );
-    fetchDrafts.mockResolvedValue([
+    useDraftStore.getState().setDrafts([
       {
         id: 7,
         type: "stream",
@@ -422,7 +450,7 @@ describe("ActivityPage drafts routing", () => {
 
   it("keeps a draft row when server deletion returns false", async () => {
     deleteDraftOnServer.mockResolvedValue(false);
-    fetchDrafts.mockResolvedValue([
+    useDraftStore.getState().setDrafts([
       {
         id: 11,
         type: "stream",
@@ -456,7 +484,7 @@ describe("ActivityPage drafts routing", () => {
 
   it("edits a server-backed draft from the drafts list", async () => {
     updateDraftOnServer.mockResolvedValue(true);
-    fetchDrafts.mockResolvedValue([
+    useDraftStore.getState().setDrafts([
       {
         id: 8,
         type: "stream",
@@ -497,7 +525,7 @@ describe("ActivityPage drafts routing", () => {
 
   it("treats empty edited draft content as delete", async () => {
     deleteDraftOnServer.mockResolvedValue(true);
-    fetchDrafts.mockResolvedValue([
+    useDraftStore.getState().setDrafts([
       {
         id: 12,
         type: "stream",

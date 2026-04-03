@@ -1,21 +1,20 @@
+// Страница /activity/:filter.
+// Для mentions/starred/reactions используем cache-first паттерн:
+// локальный hydrate -> фоновый refresh -> authoritative replace на newest.
+// Для drafts берём уже гидрейтнутый global store без дополнительного initial fetch.
 import * as Dialog from "@radix-ui/react-dialog";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { hydrateActivityMessagesFromCache } from "~/entities/activity/activity-cache.lib";
 import { useActivityStore } from "~/entities/activity/activity.model";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
-import {
-  fetchDrafts,
-  deleteDraftOnServer,
-  updateDraftOnServer,
-} from "~/entities/draft/draft.api";
+import { deleteDraftOnServer, updateDraftOnServer } from "~/entities/draft/draft.api";
 import { useDraftStore } from "~/entities/draft/draft.model";
 import type { Draft } from "~/entities/draft/draft.types";
+import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
-import {
-  fetchActivityMessagesPage,
-  removeMessageFlag,
-} from "~/shared/api/zulip-messages";
+import { fetchActivityMessagesPage, removeMessageFlag } from "~/shared/api/zulip-messages";
 import type { ActivityFilter, ZulipRawMessage } from "~/shared/api/zulip.types";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { formatMessageTime } from "~/shared/lib/format";
@@ -23,6 +22,8 @@ import { stripHtml } from "~/shared/lib/html";
 import { createLogger } from "~/shared/lib/logger";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { buildNavigableRouteFromMessage } from "~/shared/lib/push-click";
+import { runInFlightDeduped } from "~/shared/lib/request-lifecycle.lib";
+import { FloatingLoadingOverlay } from "~/shared/ui/floating-loading-overlay";
 import { Icon } from "~/shared/ui/icon";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
 import { MY_ACTIVITY, messageToDmEntry, slugForStream } from "~/widgets/sidebar/sidebar.lib";
@@ -31,7 +32,10 @@ import type { ActivityPageExtendedFilter } from "./activity-page.types";
 const log = createLogger("activity-page");
 
 const ACTIVITY_FILTERS: ActivityFilter[] = ["starred", "mentions", "reactions"];
-const ALL_FILTERS = [...ACTIVITY_FILTERS, "drafts"] as const satisfies readonly ActivityPageExtendedFilter[];
+const ALL_FILTERS = [
+  ...ACTIVITY_FILTERS,
+  "drafts",
+] as const satisfies readonly ActivityPageExtendedFilter[];
 
 function getActivityTitle(filter: ActivityPageExtendedFilter): string {
   const item = MY_ACTIVITY.find(
@@ -76,11 +80,9 @@ export const ActivityPage: React.FC = () => {
   const navigate = useNavigate();
   const openSearch = useOpenSearch();
   const currentUserId = useChatListStore((s) => s.currentUserId ?? null);
+  const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
   const streamsMap = useChatListStore((s) => s.streamsMap);
-  const [messages, setMessages] = useState<ZulipRawMessage[]>([]);
-  const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
   const [pendingDraftId, setPendingDraftId] = useState<number | null>(null);
   const [pendingUnstarIds, setPendingUnstarIds] = useState<Set<number>>(() => new Set());
   const [editingDraft, setEditingDraft] = useState<Draft | null>(null);
@@ -89,7 +91,15 @@ export const ActivityPage: React.FC = () => {
   const editDraftTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const drafts = useDraftStore((s) => s.drafts);
+  const draftsLoading = useDraftStore((s) => s.loading);
   const activityStaleVersion = useActivityStore((s) => s.staleVersion);
+  const activityFilters = useActivityStore((s) => s.filters);
+  const setFilterCache = useActivityStore((s) => s.setFilterCache);
+  const startFilterRequest = useActivityStore((s) => s.startFilterRequest);
+  const setFilterPageIfActual = useActivityStore((s) => s.setFilterPageIfActual);
+  const appendOlderIfActual = useActivityStore((s) => s.appendOlderIfActual);
+  const setFilterErrorIfActual = useActivityStore((s) => s.setFilterErrorIfActual);
+  const removeMessageFromFilter = useActivityStore((s) => s.removeMessageFromFilter);
 
   const validFilter: ActivityPageExtendedFilter | null =
     filter && (ALL_FILTERS as readonly string[]).includes(filter)
@@ -98,73 +108,109 @@ export const ActivityPage: React.FC = () => {
 
   const isDrafts = validFilter === "drafts";
   const activityRefreshVersion = isDrafts ? 0 : activityStaleVersion;
+  const activityFilterState =
+    validFilter != null && !isDrafts ? activityFilters[validFilter] : null;
+  const messages = activityFilterState?.messages ?? [];
+  const hasMore = activityFilterState?.hasMore ?? true;
+  const loading = isDrafts ? draftsLoading : (activityFilterState?.isInitialLoading ?? false);
+  const isRefreshing = isDrafts ? false : (activityFilterState?.isRefreshing ?? false);
 
   useEffect(() => {
     if (!validFilter) {
       void navigate("/activity/mentions", { replace: true });
       return;
     }
-    setLoading(true);
-    let cancelled = false;
+    if (validFilter === "drafts") return;
 
-    if (validFilter === "drafts") {
-      fetchDrafts()
-        .then((list) => {
-          if (!cancelled) useDraftStore.getState().setDrafts(list);
-        })
-        .catch((err) => {
-          log.error("Failed to load drafts", { error: String(err) });
-        })
-        .finally(() => {
-          if (!cancelled) setLoading(false);
+    let cancelled = false;
+    void (async () => {
+      const activityFilter = validFilter;
+      // 1) Локальный bootstrap фильтра из IDB.
+      const cached = await hydrateActivityMessagesFromCache(
+        currentInstanceId,
+        activityFilter,
+        currentUserId,
+        ACTIVITY_PAGE_SIZE,
+      );
+      if (cancelled) return;
+      if (cached.length > 0) {
+        setFilterCache(activityFilter, cached, true);
+      }
+
+      // 2) Серверный refresh с защитой от гонок и dedupe одинаковых запросов.
+      const hasCachedData =
+        cached.length > 0 ||
+        useActivityStore.getState().filters[activityFilter].messages.length > 0;
+      const requestVersion = startFilterRequest(activityFilter, hasCachedData);
+      const requestKey = `${currentInstanceId ?? "none"}:activity:${activityFilter}:newest:${ACTIVITY_PAGE_SIZE}`;
+
+      try {
+        const page = await runInFlightDeduped(requestKey, () =>
+          fetchActivityMessagesPage(activityFilter, currentUserId, "newest", ACTIVITY_PAGE_SIZE),
+        );
+        if (cancelled) return;
+        for (const message of page.messages) useUsersStore.getState().mergeFromMessage(message);
+        setFilterPageIfActual(activityFilter, requestVersion, page.messages, !page.foundOldest);
+      } catch (err) {
+        if (cancelled) return;
+        setFilterErrorIfActual(activityFilter, requestVersion, String(err));
+        log.error("Failed to load activity messages", {
+          error: String(err),
+          filter: activityFilter,
         });
-    } else {
-      void fetchActivityMessagesPage(validFilter, currentUserId, "newest", ACTIVITY_PAGE_SIZE)
-        .then((page) => {
-          if (!cancelled) {
-            for (const m of page.messages) useUsersStore.getState().mergeFromMessage(m);
-            setMessages(page.messages);
-            setHasMore(!page.foundOldest);
-          }
-        })
-        .catch((err) => {
-          if (!cancelled) {
-            log.error("Failed to load activity messages", {
-              error: String(err),
-              filter: validFilter,
-            });
-          }
-        })
-        .finally(() => {
-          if (!cancelled) setLoading(false);
-        });
-    }
+      }
+    })().catch(() => {});
+
     return () => {
       cancelled = true;
     };
-  }, [validFilter, currentUserId, navigate, activityRefreshVersion]);
+  }, [
+    activityRefreshVersion,
+    currentInstanceId,
+    currentUserId,
+    navigate,
+    setFilterCache,
+    setFilterErrorIfActual,
+    setFilterPageIfActual,
+    startFilterRequest,
+    validFilter,
+  ]);
 
   useEffect(() => {
     if (loading || isDrafts || messages.length === 0) return;
     const el = listScrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [loading, messages.length, validFilter, isDrafts]);
+  }, [loading, messages.length, isDrafts]);
 
   const handleLoadMore = useCallback(() => {
     if (loadingMore || !hasMore || messages.length === 0 || isDrafts || !validFilter) return;
     const oldest = messages[0];
     if (!oldest) return;
+    const activityFilter = validFilter as ActivityFilter;
+    const requestVersion = useActivityStore.getState().filters[activityFilter].requestVersion;
     setLoadingMore(true);
-    fetchActivityMessagesPage(validFilter, currentUserId, oldest.id, ACTIVITY_PAGE_SIZE)
+    const requestKey = `${currentInstanceId ?? "none"}:activity:${activityFilter}:${oldest.id}:${ACTIVITY_PAGE_SIZE}`;
+    runInFlightDeduped(requestKey, () =>
+      fetchActivityMessagesPage(activityFilter, currentUserId, oldest.id, ACTIVITY_PAGE_SIZE),
+    )
       .then((page) => {
+        // Для пагинации удаляем anchor и добавляем только уникальные старые элементы.
         const withoutAnchor = page.messages.filter((m) => m.id !== oldest.id);
         for (const m of withoutAnchor) useUsersStore.getState().mergeFromMessage(m);
-        setMessages((prev) => [...withoutAnchor, ...prev]);
-        setHasMore(!page.foundOldest);
+        appendOlderIfActual(activityFilter, requestVersion, withoutAnchor, !page.foundOldest);
       })
       .catch(() => {})
       .finally(() => setLoadingMore(false));
-  }, [loadingMore, hasMore, messages, isDrafts, validFilter, currentUserId]);
+  }, [
+    appendOlderIfActual,
+    currentInstanceId,
+    currentUserId,
+    hasMore,
+    isDrafts,
+    loadingMore,
+    messages,
+    validFilter,
+  ]);
 
   const handleMessageClick = useCallback(
     (m: ZulipRawMessage, mode: "open" | "forward" = "open") => {
@@ -187,28 +233,31 @@ export const ActivityPage: React.FC = () => {
     [navigate, currentUserId],
   );
 
-  const handleUnstarMessage = useCallback(async (messageId: number) => {
-    setPendingUnstarIds((current) => {
-      const next = new Set(current);
-      next.add(messageId);
-      return next;
-    });
-    try {
-      await removeMessageFlag([messageId], "starred");
-      setMessages((current) => current.filter((message) => message.id !== messageId));
-    } catch (err) {
-      log.error("Failed to remove star in activity", {
-        messageId,
-        error: String(err),
-      });
-    } finally {
+  const handleUnstarMessage = useCallback(
+    async (messageId: number) => {
       setPendingUnstarIds((current) => {
         const next = new Set(current);
-        next.delete(messageId);
+        next.add(messageId);
         return next;
       });
-    }
-  }, []);
+      try {
+        await removeMessageFlag([messageId], "starred");
+        removeMessageFromFilter("starred", messageId);
+      } catch (err) {
+        log.error("Failed to remove star in activity", {
+          messageId,
+          error: String(err),
+        });
+      } finally {
+        setPendingUnstarIds((current) => {
+          const next = new Set(current);
+          next.delete(messageId);
+          return next;
+        });
+      }
+    },
+    [removeMessageFromFilter],
+  );
 
   const handleDraftClick = useCallback(
     (draft: Draft) => {
@@ -405,101 +454,104 @@ export const ActivityPage: React.FC = () => {
         ) : messages.length === 0 ? (
           <div className="p-4 text-sm text-text-muted">{t("chat.noMessages")}</div>
         ) : (
-          <ul ref={listScrollRef} className="flex flex-col space-y-1 overflow-auto p-2">
-            {messages.map((m) => {
-              const isStream = m.type === "stream" && m.stream_id != null;
-              const streamName =
-                isStream && typeof m.display_recipient === "string" ? m.display_recipient : null;
-              const topic = isStream ? (m.subject ?? "").trim() || "general" : null;
-              let dmName: string | null = null;
-              if (m.type === "private" && Array.isArray(m.display_recipient)) {
-                const entry = messageToDmEntry(m, currentUserId);
-                dmName = entry?.name ?? null;
-              }
-              const context = isStream
-                ? `#${streamName} · ${topic}`
-                : dmName
-                  ? `${t("dm.private")} · ${dmName}`
-                  : t("dm.private");
-              const isUnstarPending = pendingUnstarIds.has(m.id);
+          <div className="relative flex min-h-0 flex-1 flex-col">
+            <ul
+              ref={listScrollRef}
+              className="flex min-h-0 flex-1 flex-col space-y-1 overflow-auto p-2"
+            >
+              {messages.map((m) => {
+                const isStream = m.type === "stream" && m.stream_id != null;
+                const streamName =
+                  isStream && typeof m.display_recipient === "string" ? m.display_recipient : null;
+                const topic = isStream ? (m.subject ?? "").trim() || "general" : null;
+                let dmName: string | null = null;
+                if (m.type === "private" && Array.isArray(m.display_recipient)) {
+                  const entry = messageToDmEntry(m, currentUserId);
+                  dmName = entry?.name ?? null;
+                }
+                const context = isStream
+                  ? `#${streamName} · ${topic}`
+                  : dmName
+                    ? `${t("dm.private")} · ${dmName}`
+                    : t("dm.private");
+                const isUnstarPending = pendingUnstarIds.has(m.id);
 
-              return (
-                <li key={m.id}>
-                  <div className="group flex items-start gap-2 rounded-lg p-3 transition-colors hover:bg-card-bg">
-                    <button
-                      type="button"
-                      onClick={() => handleMessageClick(m)}
-                      className="min-w-0 flex-1 text-left"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <span className="shrink-0 text-[11px] text-text-muted">
-                          {formatItemTime(m.timestamp)}
-                        </span>
-                        <span className="truncate text-[11px] text-text-muted">{context}</span>
-                      </div>
-                      <p className="mt-0.5 text-xs text-sidebar-sender">
-                        <ActivitySenderName
-                          senderId={m.sender_id}
-                          fallback={m.sender_full_name ?? ""}
-                        />
-                      </p>
-                      <p className="mt-1 line-clamp-2 text-sm text-text-primary">
-                        {truncateText(stripHtml(m.content))}
-                      </p>
-                    </button>
-                    <div className="mt-0.5 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                      {validFilter === "starred" && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            void handleUnstarMessage(m.id);
-                          }}
-                          disabled={isUnstarPending}
-                          className="hover:bg-bg-elevated/70 rounded p-1 text-text-muted hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
-                          aria-label={t("message.unstar")}
-                          title={t("message.unstar")}
-                        >
-                          <Icon name="star" size={16} className="text-current" />
-                        </button>
-                      )}
+                return (
+                  <li key={m.id}>
+                    <div className="group flex items-start gap-2 rounded-lg p-3 transition-colors hover:bg-card-bg">
                       <button
                         type="button"
                         onClick={() => handleMessageClick(m)}
-                        className="hover:bg-bg-elevated/70 rounded p-1 text-text-muted hover:text-text-primary"
-                        aria-label={t("message.openInChat")}
-                        title={t("message.openInChat")}
+                        className="min-w-0 flex-1 text-left"
                       >
-                        <Icon name="newWindow" size={16} className="text-current" />
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="shrink-0 text-[11px] text-text-muted">
+                            {formatItemTime(m.timestamp)}
+                          </span>
+                          <span className="truncate text-[11px] text-text-muted">{context}</span>
+                        </div>
+                        <p className="mt-0.5 text-xs text-sidebar-sender">
+                          <ActivitySenderName
+                            senderId={m.sender_id}
+                            fallback={m.sender_full_name ?? ""}
+                          />
+                        </p>
+                        <p className="mt-1 line-clamp-2 text-sm text-text-primary">
+                          {truncateText(stripHtml(m.content))}
+                        </p>
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => handleMessageClick(m, "forward")}
-                        className="hover:bg-bg-elevated/70 rounded p-1 text-text-muted hover:text-text-primary"
-                        aria-label={t("message.forward")}
-                        title={t("message.forward")}
-                      >
-                        <Icon name="send" size={16} className="text-current" />
-                      </button>
+                      <div className="mt-0.5 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                        {validFilter === "starred" && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void handleUnstarMessage(m.id);
+                            }}
+                            disabled={isUnstarPending}
+                            className="hover:bg-bg-elevated/70 rounded p-1 text-text-muted hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                            aria-label={t("message.unstar")}
+                            title={t("message.unstar")}
+                          >
+                            <Icon name="star" size={16} className="text-current" />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleMessageClick(m)}
+                          className="hover:bg-bg-elevated/70 rounded p-1 text-text-muted hover:text-text-primary"
+                          aria-label={t("message.openInChat")}
+                          title={t("message.openInChat")}
+                        >
+                          <Icon name="newWindow" size={16} className="text-current" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMessageClick(m, "forward")}
+                          className="hover:bg-bg-elevated/70 rounded p-1 text-text-muted hover:text-text-primary"
+                          aria-label={t("message.forward")}
+                          title={t("message.forward")}
+                        >
+                          <Icon name="send" size={16} className="text-current" />
+                        </button>
+                      </div>
                     </div>
-                  </div>
+                  </li>
+                );
+              })}
+              {hasMore && !loadingMore && (
+                <li className="py-2 text-center">
+                  <button
+                    type="button"
+                    onClick={handleLoadMore}
+                    className="rounded-lg px-4 py-2 text-sm text-accent hover:bg-card-bg"
+                  >
+                    {t("common.loadMore")}
+                  </button>
                 </li>
-              );
-            })}
-            {hasMore && !loadingMore && (
-              <li className="py-2 text-center">
-                <button
-                  type="button"
-                  onClick={handleLoadMore}
-                  className="rounded-lg px-4 py-2 text-sm text-accent hover:bg-card-bg"
-                >
-                  {t("common.loadMore")}
-                </button>
-              </li>
-            )}
-            {loadingMore && (
-              <li className="py-2 text-center text-sm text-text-muted">{t("app.loading")}</li>
-            )}
-          </ul>
+              )}
+            </ul>
+            <FloatingLoadingOverlay visible={isRefreshing || loadingMore} />
+          </div>
         )}
       </section>
       <Dialog.Root open={editingDraft != null} onOpenChange={handleEditDialogOpenChange}>

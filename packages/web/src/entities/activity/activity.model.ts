@@ -1,14 +1,192 @@
+// Этот файл нужен для состояния страницы /activity по фильтрам.
+// Для каждого фильтра (mentions/starred/reactions) хранится свой кэш,
+// метаданные загрузки и requestVersion для защиты от гонок.
 import { create } from "zustand";
+import type { ActivityFilter, ZulipRawMessage } from "~/shared/api/zulip.types";
 import { logStoreAction } from "~/shared/lib/logger";
+
+export interface ActivityFilterState {
+  messages: ZulipRawMessage[];
+  hasMore: boolean;
+  isInitialLoading: boolean;
+  isRefreshing: boolean;
+  requestVersion: number;
+  lastLoadedAt: number | null;
+  error: string | null;
+}
+
+const EMPTY_MESSAGES: ZulipRawMessage[] = [];
+
+function createInitialFilterState(): ActivityFilterState {
+  return {
+    messages: EMPTY_MESSAGES,
+    hasMore: true,
+    isInitialLoading: false,
+    isRefreshing: false,
+    requestVersion: 0,
+    lastLoadedAt: null,
+    error: null,
+  };
+}
+
+function createInitialFiltersState(): Record<ActivityFilter, ActivityFilterState> {
+  return {
+    starred: createInitialFilterState(),
+    mentions: createInitialFilterState(),
+    reactions: createInitialFilterState(),
+  };
+}
 
 interface ActivityState {
   staleVersion: number;
+  filters: Record<ActivityFilter, ActivityFilterState>;
+  setFilterCache: (filter: ActivityFilter, messages: ZulipRawMessage[], hasMore: boolean) => void;
+  startFilterRequest: (filter: ActivityFilter, hasCachedData: boolean) => number;
+  setFilterPageIfActual: (
+    filter: ActivityFilter,
+    requestVersion: number,
+    messages: ZulipRawMessage[],
+    hasMore: boolean,
+  ) => void;
+  appendOlderIfActual: (
+    filter: ActivityFilter,
+    requestVersion: number,
+    messages: ZulipRawMessage[],
+    hasMore: boolean,
+  ) => void;
+  removeMessageFromFilter: (filter: ActivityFilter, messageId: number) => void;
+  setFilterErrorIfActual: (filter: ActivityFilter, requestVersion: number, error: string) => void;
   markStale: () => void;
   clear: () => void;
 }
 
 export const useActivityStore = create<ActivityState>((set) => ({
   staleVersion: 0,
+  filters: createInitialFiltersState(),
+
+  setFilterCache(filter, messages, hasMore) {
+    // Быстрый локальный hydrate (из IDB) без блокировки UI.
+    logStoreAction("activity", "setFilterCache", { filter, count: messages.length });
+    set((state) => ({
+      filters: {
+        ...state.filters,
+        [filter]: {
+          ...state.filters[filter],
+          messages,
+          hasMore,
+          isInitialLoading: false,
+          isRefreshing: false,
+          lastLoadedAt: Date.now(),
+          error: null,
+        },
+      },
+    }));
+  },
+
+  startFilterRequest(filter, hasCachedData) {
+    let nextRequestVersion = 0;
+    set((state) => {
+      nextRequestVersion = state.filters[filter].requestVersion + 1;
+      return {
+        filters: {
+          ...state.filters,
+          [filter]: {
+            ...state.filters[filter],
+            requestVersion: nextRequestVersion,
+            // С кэшем показываем refresh, без кэша — initial loading.
+            isInitialLoading: !hasCachedData,
+            isRefreshing: hasCachedData,
+          },
+        },
+      };
+    });
+    return nextRequestVersion;
+  },
+
+  setFilterPageIfActual(filter, requestVersion, messages, hasMore) {
+    // authoritative replace для newest: список фильтра заменяется целиком.
+    logStoreAction("activity", "setFilterPageIfActual", {
+      filter,
+      requestVersion,
+      count: messages.length,
+    });
+    set((state) => {
+      if (state.filters[filter].requestVersion !== requestVersion) return state;
+      return {
+        filters: {
+          ...state.filters,
+          [filter]: {
+            ...state.filters[filter],
+            messages,
+            hasMore,
+            isInitialLoading: false,
+            isRefreshing: false,
+            lastLoadedAt: Date.now(),
+            error: null,
+          },
+        },
+      };
+    });
+  },
+
+  appendOlderIfActual(filter, requestVersion, messages, hasMore) {
+    logStoreAction("activity", "appendOlderIfActual", {
+      filter,
+      requestVersion,
+      count: messages.length,
+    });
+    set((state) => {
+      if (state.filters[filter].requestVersion !== requestVersion) return state;
+      // Для "load more" дописываем старые элементы и удаляем дубликаты по id.
+      const existingIds = new Set(state.filters[filter].messages.map((message) => message.id));
+      const uniqueOlder = messages.filter((message) => !existingIds.has(message.id));
+      return {
+        filters: {
+          ...state.filters,
+          [filter]: {
+            ...state.filters[filter],
+            messages: [...uniqueOlder, ...state.filters[filter].messages],
+            hasMore,
+            isInitialLoading: false,
+            isRefreshing: false,
+            lastLoadedAt: Date.now(),
+            error: null,
+          },
+        },
+      };
+    });
+  },
+
+  removeMessageFromFilter(filter, messageId) {
+    logStoreAction("activity", "removeMessageFromFilter", { filter, messageId });
+    set((state) => ({
+      filters: {
+        ...state.filters,
+        [filter]: {
+          ...state.filters[filter],
+          messages: state.filters[filter].messages.filter((message) => message.id !== messageId),
+        },
+      },
+    }));
+  },
+
+  setFilterErrorIfActual(filter, requestVersion, error) {
+    logStoreAction("activity", "setFilterErrorIfActual", { filter, requestVersion, error });
+    set((state) => {
+      if (state.filters[filter].requestVersion !== requestVersion) return state;
+      return {
+        filters: {
+          ...state.filters,
+          [filter]: {
+            ...state.filters[filter],
+            isInitialLoading: false,
+            isRefreshing: false,
+            error,
+          },
+        },
+      };
+    });
+  },
 
   markStale() {
     logStoreAction("activity", "markStale", {});
@@ -17,6 +195,6 @@ export const useActivityStore = create<ActivityState>((set) => ({
 
   clear() {
     logStoreAction("activity", "clear", {});
-    set({ staleVersion: 0 });
+    set({ staleVersion: 0, filters: createInitialFiltersState() });
   },
 }));

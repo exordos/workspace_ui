@@ -1,22 +1,17 @@
-/**
- * Inbox API — fetches unread messages and groups them into inbox entries.
- *
- * Uses the Zulip `is:unread` narrow to get unread messages, then
- * groups them by stream+topic (for stream messages) or DM conversation
- * route slug (for private messages). Returns InboxEntry[] sorted by most recent.
- */
+// Этот файл нужен для данных страницы /inbox.
+// Что делает:
+// 1) загружает unread с сервера (источник финальной актуальности);
+// 2) строит локальный bootstrap из IDB, чтобы не показывать пустой loader.
 
 import { fetchMessagesWithNarrow } from "~/shared/api/zulip-messages";
 import { createLogger, logApiCall } from "~/shared/lib/logger";
+import { getInstanceMessagesAscending } from "~/shared/lib/message-cache-db";
 import { buildInboxEntries } from "./inbox.lib";
 import type { InboxEntry } from "./inbox.types";
 
 const log = createLogger("inbox:api");
 
-/**
- * Fetches unread messages from Zulip and groups them into inbox entries.
- * Stream messages group by (streamId, topic); DMs group by conversation route slug.
- */
+// Серверная загрузка unread по narrow is:unread с последующей группировкой.
 export async function fetchInboxEntries(
   currentUserId: number | null = null,
 ): Promise<InboxEntry[]> {
@@ -40,4 +35,16 @@ export async function fetchInboxEntries(
     log.error("Failed to fetch inbox entries", { error: String(err) });
     throw err;
   }
+}
+
+// Локальный bootstrap inbox из текущего IDB-кэша сообщений.
+// unread определяем по отсутствию флага "read" (эквивалент is:unread для UI-старта).
+export async function hydrateInboxEntriesFromCache(
+  instanceId: string | null,
+  currentUserId: number | null = null,
+): Promise<InboxEntry[]> {
+  if (instanceId == null) return [];
+  const messages = await getInstanceMessagesAscending(instanceId);
+  const unread = messages.filter((message) => !message.flags?.includes("read"));
+  return buildInboxEntries(unread, currentUserId);
 }

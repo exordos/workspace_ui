@@ -5,6 +5,7 @@ import {
   applyRetentionForChat,
   getChatMessageBounds,
   getChatMessagesAscending,
+  getInstanceMessagesAscending,
   openMessageCacheDb,
   resetMessageCacheDbSingletonForTests,
   upsertChatMessages,
@@ -35,7 +36,7 @@ afterEach(async () => {
   resetMessageCacheDbSingletonForTests();
   await new Promise<void>((resolve, reject) => {
     const req = indexedDB.deleteDatabase("workspace-message-cache-v1");
-    req.onerror = () => reject(req.error);
+    req.onerror = () => reject(req.error ?? new Error("indexedDB deleteDatabase error"));
     req.onsuccess = () => resolve();
   });
 });
@@ -84,5 +85,30 @@ describe("message-cache-db", () => {
     expect(b.count).toBe(3);
     expect(b.oldestId).toBe(10);
     expect(b.newestId).toBe(50);
+  });
+
+  it("getInstanceMessagesAscending returns all instance rows sorted by message id", async () => {
+    await openMessageCacheDb();
+    await upsertChatMessages({
+      instanceId: "inst-a",
+      chatKey: "stream:1:general",
+      messages: [msg(30), msg(10)],
+      windowSizeN: 200,
+    });
+    await upsertChatMessages({
+      instanceId: "inst-a",
+      chatKey: "dm:42",
+      messages: [msg(20)],
+      windowSizeN: 200,
+    });
+    await upsertChatMessages({
+      instanceId: "inst-b",
+      chatKey: "stream:9:other",
+      messages: [msg(5)],
+      windowSizeN: 200,
+    });
+
+    const rows = await getInstanceMessagesAscending("inst-a");
+    expect(rows.map((m) => m.id)).toEqual([10, 20, 30]);
   });
 });

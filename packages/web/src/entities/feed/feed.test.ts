@@ -24,10 +24,15 @@ function msgs(count: number, base: Parameters<typeof createMessage>[0] = {}): Mo
 describe("useFeedStore", () => {
   afterEach(() => {
     useFeedStore.setState({
+      instanceId: null,
       messages: [],
+      isInitialLoading: false,
+      isRefreshing: false,
       isLoadingMore: false,
       isAllLoaded: false,
       lastMessageId: null,
+      requestVersion: 0,
+      lastLoadedAt: null,
       error: null,
     });
   });
@@ -73,10 +78,15 @@ describe("useFeedStore", () => {
     useFeedStore.getState().setMessages(msgs(5), false);
     useFeedStore.getState().clear();
     const state = useFeedStore.getState();
+    expect(state.instanceId).toBeNull();
     expect(state.messages).toHaveLength(0);
+    expect(state.isInitialLoading).toBe(false);
+    expect(state.isRefreshing).toBe(false);
     expect(state.isLoadingMore).toBe(false);
     expect(state.isAllLoaded).toBe(false);
     expect(state.lastMessageId).toBeNull();
+    expect(state.requestVersion).toBe(0);
+    expect(state.lastLoadedAt).toBeNull();
     expect(state.error).toBeNull();
   });
 
