@@ -5,7 +5,11 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { hydrateActivityMessagesFromCache } from "~/entities/activity/activity-cache.lib";
+import {
+  hydrateActivityMessagesFromCache,
+  isActivityMessagesSnapshotFresher,
+} from "~/entities/activity/activity-cache.lib";
+import { fetchActivityMessagesPageWithPersist } from "~/entities/activity/activity.api";
 import { useActivityStore } from "~/entities/activity/activity.model";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { deleteDraftOnServer, updateDraftOnServer } from "~/entities/draft/draft.api";
@@ -14,7 +18,7 @@ import type { Draft } from "~/entities/draft/draft.types";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
-import { fetchActivityMessagesPage, removeMessageFlag } from "~/shared/api/zulip-messages";
+import { removeMessageFlag } from "~/shared/api/zulip-messages";
 import type { ActivityFilter, ZulipRawMessage } from "~/shared/api/zulip.types";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { formatMessageTime } from "~/shared/lib/format";
@@ -133,20 +137,34 @@ export const ActivityPage: React.FC = () => {
         ACTIVITY_PAGE_SIZE,
       );
       if (cancelled) return;
-      if (cached.length > 0) {
+
+      const currentMessages = useActivityStore.getState().filters[activityFilter].messages;
+      // Применяем cached snapshot только если он объективно свежее текущего in-memory состояния.
+      // Это защищает UI от отката на устаревший IDB-кэш.
+      const shouldApplyCached =
+        cached.length > 0 &&
+        (currentMessages.length === 0 ||
+          isActivityMessagesSnapshotFresher(cached, currentMessages));
+      if (shouldApplyCached) {
         setFilterCache(activityFilter, cached, true);
       }
 
       // 2) Серверный refresh с защитой от гонок и dedupe одинаковых запросов.
       const hasCachedData =
-        cached.length > 0 ||
+        shouldApplyCached ||
         useActivityStore.getState().filters[activityFilter].messages.length > 0;
       const requestVersion = startFilterRequest(activityFilter, hasCachedData);
       const requestKey = `${currentInstanceId ?? "none"}:activity:${activityFilter}:newest:${ACTIVITY_PAGE_SIZE}`;
 
       try {
+        // Используем fetch с best-effort persist, чтобы после refresh локальный IDB тоже обновлялся.
         const page = await runInFlightDeduped(requestKey, () =>
-          fetchActivityMessagesPage(activityFilter, currentUserId, "newest", ACTIVITY_PAGE_SIZE),
+          fetchActivityMessagesPageWithPersist(
+            activityFilter,
+            currentUserId,
+            "newest",
+            ACTIVITY_PAGE_SIZE,
+          ),
         );
         if (cancelled) return;
         for (const message of page.messages) useUsersStore.getState().mergeFromMessage(message);
@@ -191,7 +209,13 @@ export const ActivityPage: React.FC = () => {
     setLoadingMore(true);
     const requestKey = `${currentInstanceId ?? "none"}:activity:${activityFilter}:${oldest.id}:${ACTIVITY_PAGE_SIZE}`;
     runInFlightDeduped(requestKey, () =>
-      fetchActivityMessagesPage(activityFilter, currentUserId, oldest.id, ACTIVITY_PAGE_SIZE),
+      // Пагинацию тоже пропускаем через persist-обертку, чтобы кэш пополнялся старыми страницами.
+      fetchActivityMessagesPageWithPersist(
+        activityFilter,
+        currentUserId,
+        oldest.id,
+        ACTIVITY_PAGE_SIZE,
+      ),
     )
       .then((page) => {
         // Для пагинации удаляем anchor и добавляем только уникальные старые элементы.

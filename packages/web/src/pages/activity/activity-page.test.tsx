@@ -13,8 +13,8 @@ import type * as ReactRouterDom from "react-router-dom";
 const navigateSpy = vi.hoisted(() => vi.fn());
 const deleteDraftOnServer = vi.hoisted(() => vi.fn());
 const updateDraftOnServer = vi.hoisted(() => vi.fn());
-const fetchActivityMessages = vi.hoisted(() => vi.fn());
-const fetchActivityMessagesPage = vi.hoisted(() => vi.fn());
+const fetchActivityMessagesPageWithPersist = vi.hoisted(() => vi.fn());
+const hydrateActivityMessagesFromCache = vi.hoisted(() => vi.fn().mockResolvedValue([]));
 const removeMessageFlag = vi.hoisted(() => vi.fn());
 
 vi.mock("react-router-dom", async () => {
@@ -36,14 +36,26 @@ vi.mock("~/entities/draft/draft.api", async () => {
   };
 });
 
+vi.mock("~/entities/activity/activity.api", () => ({
+  fetchActivityMessagesPageWithPersist,
+}));
+
+vi.mock("~/entities/activity/activity-cache.lib", async () => {
+  const actual = await vi.importActual<typeof import("~/entities/activity/activity-cache.lib")>(
+    "~/entities/activity/activity-cache.lib",
+  );
+  return {
+    ...actual,
+    hydrateActivityMessagesFromCache,
+  };
+});
+
 vi.mock("~/shared/api/zulip-messages", async () => {
   const actual = await vi.importActual<typeof import("~/shared/api/zulip-messages")>(
     "~/shared/api/zulip-messages",
   );
   return {
     ...actual,
-    fetchActivityMessages,
-    fetchActivityMessagesPage,
     removeMessageFlag,
   };
 });
@@ -57,8 +69,9 @@ describe("ActivityPage drafts routing", () => {
     navigateSpy.mockReset();
     deleteDraftOnServer.mockReset();
     updateDraftOnServer.mockReset();
-    fetchActivityMessages.mockReset();
-    fetchActivityMessagesPage.mockReset();
+    fetchActivityMessagesPageWithPersist.mockReset();
+    hydrateActivityMessagesFromCache.mockReset();
+    hydrateActivityMessagesFromCache.mockResolvedValue([]);
     removeMessageFlag.mockReset();
     useDraftStore.getState().clear();
     useChatListStore.getState().clear();
@@ -125,7 +138,7 @@ describe("ActivityPage drafts routing", () => {
       }),
     ];
 
-    fetchActivityMessagesPage.mockResolvedValue({
+    fetchActivityMessagesPageWithPersist.mockResolvedValue({
       messages: page,
       foundOldest: true,
     });
@@ -162,7 +175,7 @@ describe("ActivityPage drafts routing", () => {
       }),
     ];
 
-    fetchActivityMessagesPage.mockResolvedValue({
+    fetchActivityMessagesPageWithPersist.mockResolvedValue({
       messages: page,
       foundOldest: true,
     });
@@ -197,7 +210,7 @@ describe("ActivityPage drafts routing", () => {
       display_recipient: "engineering",
     }) as ZulipRawMessage;
     useActivityStore.getState().setFilterCache("mentions", [cachedMention], true);
-    fetchActivityMessagesPage.mockResolvedValue({
+    fetchActivityMessagesPageWithPersist.mockResolvedValue({
       messages: [cachedMention],
       foundOldest: true,
     });
@@ -211,6 +224,99 @@ describe("ActivityPage drafts routing", () => {
     );
 
     expect(screen.getByText("Cached mention")).toBeInTheDocument();
+  });
+
+  it("keeps current in-memory activity snapshot when cached snapshot is older", async () => {
+    const freshReaction = createMessage({
+      id: 30,
+      sender_id: 42,
+      sender_full_name: "Alice",
+      stream_id: 10,
+      subject: "bugs",
+      content: "Fresh reaction",
+      timestamp: 300,
+      type: "stream",
+      display_recipient: "engineering",
+    }) as ZulipRawMessage;
+    const oldReaction = createMessage({
+      id: 10,
+      sender_id: 42,
+      sender_full_name: "Alice",
+      stream_id: 10,
+      subject: "bugs",
+      content: "Old reaction",
+      timestamp: 100,
+      type: "stream",
+      display_recipient: "engineering",
+    }) as ZulipRawMessage;
+
+    useActivityStore.getState().setFilterCache("reactions", [freshReaction], true);
+    hydrateActivityMessagesFromCache.mockResolvedValue([oldReaction]);
+    fetchActivityMessagesPageWithPersist.mockResolvedValue({
+      messages: [freshReaction],
+      foundOldest: true,
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/activity/reactions"]}>
+        <Routes>
+          <Route path="/activity/:filter" element={<ActivityPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(fetchActivityMessagesPageWithPersist).toHaveBeenCalled();
+    });
+
+    expect(screen.getByText("Fresh reaction")).toBeInTheDocument();
+    expect(screen.queryByText("Old reaction")).not.toBeInTheDocument();
+  });
+
+  it("applies cached activity snapshot when it is fresher than in-memory state", async () => {
+    const oldReaction = createMessage({
+      id: 10,
+      sender_id: 42,
+      sender_full_name: "Alice",
+      stream_id: 10,
+      subject: "bugs",
+      content: "Old reaction",
+      timestamp: 100,
+      type: "stream",
+      display_recipient: "engineering",
+    }) as ZulipRawMessage;
+    const freshReaction = createMessage({
+      id: 30,
+      sender_id: 42,
+      sender_full_name: "Alice",
+      stream_id: 10,
+      subject: "bugs",
+      content: "Fresh reaction",
+      timestamp: 300,
+      type: "stream",
+      display_recipient: "engineering",
+    }) as ZulipRawMessage;
+
+    useActivityStore.getState().setFilterCache("reactions", [oldReaction], true);
+    hydrateActivityMessagesFromCache.mockResolvedValue([freshReaction]);
+    fetchActivityMessagesPageWithPersist.mockResolvedValue({
+      messages: [freshReaction],
+      foundOldest: true,
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/activity/reactions"]}>
+        <Routes>
+          <Route path="/activity/:filter" element={<ActivityPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Fresh reaction")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText("Old reaction")).not.toBeInTheDocument();
   });
 
   it("removes starred message from list after unstar action", async () => {
@@ -228,7 +334,7 @@ describe("ActivityPage drafts routing", () => {
       }),
     ];
 
-    fetchActivityMessagesPage.mockResolvedValue({
+    fetchActivityMessagesPageWithPersist.mockResolvedValue({
       messages: page,
       foundOldest: true,
     });
@@ -269,7 +375,7 @@ describe("ActivityPage drafts routing", () => {
       }),
     ];
 
-    fetchActivityMessagesPage.mockResolvedValue({
+    fetchActivityMessagesPageWithPersist.mockResolvedValue({
       messages: page,
       foundOldest: true,
     });
@@ -310,7 +416,7 @@ describe("ActivityPage drafts routing", () => {
       }),
     );
 
-    fetchActivityMessagesPage.mockResolvedValue({
+    fetchActivityMessagesPageWithPersist.mockResolvedValue({
       messages: page,
       foundOldest: false,
     });
@@ -345,8 +451,7 @@ describe("ActivityPage drafts routing", () => {
       }),
     );
 
-    fetchActivityMessages.mockResolvedValue(page);
-    fetchActivityMessagesPage.mockResolvedValue({
+    fetchActivityMessagesPageWithPersist.mockResolvedValue({
       messages: page,
       foundOldest: true,
     });
@@ -381,8 +486,7 @@ describe("ActivityPage drafts routing", () => {
       }),
     );
 
-    fetchActivityMessages.mockResolvedValue(page);
-    fetchActivityMessagesPage.mockResolvedValue({
+    fetchActivityMessagesPageWithPersist.mockResolvedValue({
       messages: page,
       foundOldest: false,
     });
@@ -560,7 +664,7 @@ describe("ActivityPage drafts routing", () => {
   });
 
   it("refetches activity messages when the page is marked stale", async () => {
-    fetchActivityMessagesPage
+    fetchActivityMessagesPageWithPersist
       .mockResolvedValueOnce({
         messages: [
           createMessage({
@@ -614,6 +718,6 @@ describe("ActivityPage drafts routing", () => {
       expect(screen.getByText("Updated mention")).toBeInTheDocument();
     });
 
-    expect(fetchActivityMessagesPage).toHaveBeenCalledTimes(2);
+    expect(fetchActivityMessagesPageWithPersist).toHaveBeenCalledTimes(2);
   });
 });
