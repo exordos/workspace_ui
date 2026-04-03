@@ -24,7 +24,11 @@ export const ChatPageMessageListSection = React.memo(function ChatPageMessageLis
   onUnreadMessagesVisible,
   onUnreadMessagesAtBottom,
 }: ChatPageMessageListSectionProps) {
-  if (messagesLoading) {
+  const showBlockingLoader = messagesLoading && messages.length === 0;
+  const showLoadingOverlay =
+    !showBlockingLoader && messages.length > 0 && (messagesLoading || isLoadingMore);
+
+  if (showBlockingLoader) {
     return (
       <div
         className="flex min-h-[200px] flex-1 items-center justify-center"
@@ -59,6 +63,7 @@ export const ChatPageMessageListSection = React.memo(function ChatPageMessageLis
       focusedMessageId={focusedMessageId}
       onUnreadMessagesVisible={onUnreadMessagesVisible}
       onUnreadMessagesAtBottom={onUnreadMessagesAtBottom}
+      showLoadingOverlay={showLoadingOverlay}
     />
   );
 });

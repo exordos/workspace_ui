@@ -3,9 +3,10 @@ import { t } from "~/i18n/i18n";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
 import { createLogger } from "~/shared/lib/logger";
-import { logMessageFlow } from "~/shared/lib/message-flow-debug.lib";
 import { normalizeStreamTopicForMessageCache } from "~/shared/lib/message-cache-keys.lib";
+import { logMessageFlow } from "~/shared/lib/message-flow-debug.lib";
 import { computeScrollTopAfterPrepend } from "~/shared/lib/scroll-prepend-anchor.lib";
+import { FloatingLoadingOverlay } from "~/shared/ui/floating-loading-overlay";
 import { Icon } from "~/shared/ui/icon";
 import { MessageBubble, type MessageBubbleCallbacks } from "./message-bubble.ui";
 import { getSenderGroups, scrollToBottom } from "./message-list-grouping.lib";
@@ -57,6 +58,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   focusedMessageId = null,
   onUnreadMessagesVisible,
   onUnreadMessagesAtBottom,
+  showLoadingOverlay = false,
 }) => {
   const bubbleCallbacks: MessageBubbleCallbacks | undefined = useMemo(
     () =>
@@ -185,7 +187,14 @@ export const MessageList: React.FC<MessageListProps> = ({
     if (atBottom) {
       dispatchUnreadAtBottom();
     }
-  }, [isLoadingMore, onLoadMore, hasNewerMessages, onLoadNewer, dispatchUnreadAtBottom, messages.length]);
+  }, [
+    isLoadingMore,
+    onLoadMore,
+    hasNewerMessages,
+    onLoadNewer,
+    dispatchUnreadAtBottom,
+    messages.length,
+  ]);
 
   useLayoutEffect(() => {
     const pending = pendingPrependScrollRef.current;
@@ -346,16 +355,11 @@ export const MessageList: React.FC<MessageListProps> = ({
     <div className="relative flex min-h-0 flex-1 flex-col">
       <div
         ref={scrollRef}
-        className={`scroll-auto overscroll-behavior-contain min-h-0 flex-1 overflow-y-auto ${SCROLL_AREA_CLASS}`}
+        className={`overscroll-behavior-contain min-h-0 flex-1 overflow-y-auto scroll-auto ${SCROLL_AREA_CLASS}`}
         onScroll={handleScroll}
         role="feed"
         aria-label={t("a11y.conversation")}
       >
-        {isLoadingMore && (
-          <div className="flex justify-center py-3" aria-busy="true">
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-border-subtle border-t-accent" />
-          </div>
-        )}
         {groups.map(({ dateKey, items }) => (
           <div key={dateKey}>
             <div className="sticky top-0 z-sticky flex justify-center py-2">
@@ -374,13 +378,10 @@ export const MessageList: React.FC<MessageListProps> = ({
                 const topicKey = normalizeStreamTopicForMessageCache(first.subject ?? "");
                 const topicLabel = topicKey;
                 const showTopicSeparator =
-                  isStream &&
-                  lastStreamTopicKey !== undefined &&
-                  lastStreamTopicKey !== topicKey;
+                  isStream && lastStreamTopicKey !== undefined && lastStreamTopicKey !== topicKey;
                 if (isStream) {
                   lastStreamTopicKey = topicKey;
                 }
-
 
                 if (isOwn) {
                   return (
@@ -445,7 +446,7 @@ export const MessageList: React.FC<MessageListProps> = ({
             })()}
           </div>
         ))}
-        {hasNewerMessages && !isLoadingMore && onLoadNewer && (
+        {hasNewerMessages && !isLoadingMore && !showLoadingOverlay && onLoadNewer && (
           <div className="flex justify-center py-2">
             <button
               type="button"
@@ -470,6 +471,11 @@ export const MessageList: React.FC<MessageListProps> = ({
           </button>
         </div>
       )}
+      <FloatingLoadingOverlay
+        visible={showLoadingOverlay}
+        label={t("chat.loadingMessages")}
+        position={"top-left"}
+      />
     </div>
   );
 };
