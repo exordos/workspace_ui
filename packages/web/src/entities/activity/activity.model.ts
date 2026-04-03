@@ -15,6 +15,16 @@ export interface ActivityFilterState {
   error: string | null;
 }
 
+export interface StarredSummaryState {
+  count: number;
+  isCapped: boolean;
+  isLoading: boolean;
+  error: string | null;
+  requestVersion: number;
+  lastLoadedAt: number | null;
+  stale: boolean;
+}
+
 const EMPTY_MESSAGES: ZulipRawMessage[] = [];
 
 function createInitialFilterState(): ActivityFilterState {
@@ -29,6 +39,19 @@ function createInitialFilterState(): ActivityFilterState {
   };
 }
 
+function createInitialStarredSummaryState(): StarredSummaryState {
+  // Начальное состояние summary-счетчика для starred.
+  return {
+    count: 0,
+    isCapped: false,
+    isLoading: false,
+    error: null,
+    requestVersion: 0,
+    lastLoadedAt: null,
+    stale: false,
+  };
+}
+
 function createInitialFiltersState(): Record<ActivityFilter, ActivityFilterState> {
   return {
     starred: createInitialFilterState(),
@@ -40,6 +63,7 @@ function createInitialFiltersState(): Record<ActivityFilter, ActivityFilterState
 interface ActivityState {
   staleVersion: number;
   filters: Record<ActivityFilter, ActivityFilterState>;
+  starredSummary: StarredSummaryState;
   setFilterCache: (filter: ActivityFilter, messages: ZulipRawMessage[], hasMore: boolean) => void;
   startFilterRequest: (filter: ActivityFilter, hasCachedData: boolean) => number;
   setFilterPageIfActual: (
@@ -56,6 +80,14 @@ interface ActivityState {
   ) => void;
   removeMessageFromFilter: (filter: ActivityFilter, messageId: number) => void;
   setFilterErrorIfActual: (filter: ActivityFilter, requestVersion: number, error: string) => void;
+  startStarredSummaryRequest: (hasCachedData: boolean) => number;
+  setStarredSummaryFromCache: (count: number, isCapped: boolean) => void;
+  setStarredSummaryFromServerIfActual: (
+    requestVersion: number,
+    payload: { count: number; isCapped: boolean },
+  ) => void;
+  setStarredSummaryErrorIfActual: (requestVersion: number, error: string) => void;
+  markStarredSummaryStale: () => void;
   markStale: () => void;
   clear: () => void;
 }
@@ -63,6 +95,7 @@ interface ActivityState {
 export const useActivityStore = create<ActivityState>((set) => ({
   staleVersion: 0,
   filters: createInitialFiltersState(),
+  starredSummary: createInitialStarredSummaryState(),
 
   setFilterCache(filter, messages, hasMore) {
     // Быстрый локальный hydrate (из IDB) без блокировки UI.
@@ -188,6 +221,92 @@ export const useActivityStore = create<ActivityState>((set) => ({
     });
   },
 
+  startStarredSummaryRequest(hasCachedData) {
+    // Начинает lifecycle загрузки summary.
+    // При наличии кэша избегаем блокирующего loading-режима.
+    let nextRequestVersion = 0;
+    set((state) => {
+      nextRequestVersion = state.starredSummary.requestVersion + 1;
+      return {
+        starredSummary: {
+          ...state.starredSummary,
+          requestVersion: nextRequestVersion,
+          isLoading: !hasCachedData,
+          error: null,
+          stale: false,
+        },
+      };
+    });
+    return nextRequestVersion;
+  },
+
+  setStarredSummaryFromCache(count, isCapped) {
+    // Локальный bootstrap summary из cache-слоя.
+    logStoreAction("activity", "setStarredSummaryFromCache", { count, isCapped });
+    set((state) => ({
+      starredSummary: {
+        ...state.starredSummary,
+        count,
+        isCapped,
+        isLoading: false,
+        error: null,
+        lastLoadedAt: Date.now(),
+        stale: false,
+      },
+    }));
+  },
+
+  setStarredSummaryFromServerIfActual(requestVersion, payload) {
+    // Применяет authoritative server-результат только для актуальной версии запроса.
+    logStoreAction("activity", "setStarredSummaryFromServerIfActual", {
+      requestVersion,
+      count: payload.count,
+      isCapped: payload.isCapped,
+    });
+    set((state) => {
+      if (state.starredSummary.requestVersion !== requestVersion) return state;
+      return {
+        starredSummary: {
+          ...state.starredSummary,
+          count: payload.count,
+          isCapped: payload.isCapped,
+          isLoading: false,
+          error: null,
+          lastLoadedAt: Date.now(),
+          stale: false,
+        },
+      };
+    });
+  },
+
+  setStarredSummaryErrorIfActual(requestVersion, error) {
+    // Ошибка старого запроса не должна перетирать более новый state.
+    logStoreAction("activity", "setStarredSummaryErrorIfActual", { requestVersion, error });
+    set((state) => {
+      if (state.starredSummary.requestVersion !== requestVersion) return state;
+      return {
+        starredSummary: {
+          ...state.starredSummary,
+          isLoading: false,
+          error,
+          stale: true,
+        },
+      };
+    });
+  },
+
+  markStarredSummaryStale() {
+    // Используется realtime-dispatch при изменениях starred,
+    // чтобы bootstrap-хук инициировал мягкий refresh summary.
+    logStoreAction("activity", "markStarredSummaryStale", {});
+    set((state) => ({
+      starredSummary: {
+        ...state.starredSummary,
+        stale: true,
+      },
+    }));
+  },
+
   markStale() {
     logStoreAction("activity", "markStale", {});
     set((state) => ({ staleVersion: state.staleVersion + 1 }));
@@ -195,6 +314,10 @@ export const useActivityStore = create<ActivityState>((set) => ({
 
   clear() {
     logStoreAction("activity", "clear", {});
-    set({ staleVersion: 0, filters: createInitialFiltersState() });
+    set({
+      staleVersion: 0,
+      filters: createInitialFiltersState(),
+      starredSummary: createInitialStarredSummaryState(),
+    });
   },
 }));

@@ -9,6 +9,10 @@ import {
   hydrateActivityMessagesFromCache,
   isActivityMessagesSnapshotFresher,
 } from "~/entities/activity/activity-cache.lib";
+import {
+  ensureStarredLoaded,
+  STARRED_SUMMARY_PAGE_SIZE,
+} from "~/entities/activity/activity-starred-loader.lib";
 import { fetchActivityMessagesPageWithPersist } from "~/entities/activity/activity.api";
 import { useActivityStore } from "~/entities/activity/activity.model";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
@@ -40,6 +44,7 @@ const ALL_FILTERS = [
   ...ACTIVITY_FILTERS,
   "drafts",
 ] as const satisfies readonly ActivityPageExtendedFilter[];
+const EMPTY_ACTIVITY_MESSAGES: ZulipRawMessage[] = [];
 
 function getActivityTitle(filter: ActivityPageExtendedFilter): string {
   const item = MY_ACTIVITY.find(
@@ -77,7 +82,7 @@ function ActivitySenderName({ senderId, fallback }: { senderId: number; fallback
   return <>{displayName !== "Unknown" ? displayName : fallback}</>;
 }
 
-const ACTIVITY_PAGE_SIZE = 200;
+const ACTIVITY_PAGE_SIZE = STARRED_SUMMARY_PAGE_SIZE;
 
 export const ActivityPage: React.FC = () => {
   const { filter } = useParams<{ filter: string }>();
@@ -114,7 +119,7 @@ export const ActivityPage: React.FC = () => {
   const activityRefreshVersion = isDrafts ? 0 : activityStaleVersion;
   const activityFilterState =
     validFilter != null && !isDrafts ? activityFilters[validFilter] : null;
-  const messages = activityFilterState?.messages ?? [];
+  const messages = activityFilterState?.messages ?? EMPTY_ACTIVITY_MESSAGES;
   const hasMore = activityFilterState?.hasMore ?? true;
   const loading = isDrafts ? draftsLoading : (activityFilterState?.isInitialLoading ?? false);
   const isRefreshing = isDrafts ? false : (activityFilterState?.isRefreshing ?? false);
@@ -125,6 +130,16 @@ export const ActivityPage: React.FC = () => {
       return;
     }
     if (validFilter === "drafts") return;
+
+    if (validFilter === "starred") {
+      void ensureStarredLoaded({
+        currentInstanceId,
+        currentUserId,
+        forceRefresh: false,
+        pageSize: ACTIVITY_PAGE_SIZE,
+      });
+      return;
+    }
 
     let cancelled = false;
     void (async () => {

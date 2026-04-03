@@ -33,18 +33,19 @@ export interface LayoutCurrentChatActions {
 
 export interface LayoutUsersActions {
   mergeFromMessage: (message: ZulipRawMessage) => void;
-  setPresenceByEmail: (email: string, presence: { status: "active" | "idle"; timestamp: number }) => void;
+  setPresenceByEmail: (
+    email: string,
+    presence: { status: "active" | "idle"; timestamp: number },
+  ) => void;
   setStatus: (
     userId: number,
-    status:
-      | {
-          text: string;
-          emojiName?: string;
-          emojiCode?: string;
-          reactionType?: "unicode_emoji" | "realm_emoji" | "zulip_extra_emoji";
-          away: boolean;
-        }
-      | null,
+    status: {
+      text: string;
+      emojiName?: string;
+      emojiCode?: string;
+      reactionType?: "unicode_emoji" | "realm_emoji" | "zulip_extra_emoji";
+      away: boolean;
+    } | null,
     updatedAtMs: number,
   ) => void;
 }
@@ -63,6 +64,7 @@ export interface LayoutMuteActions {
 
 export interface LayoutActivityActions {
   markStale: () => void;
+  markStarredSummaryStale: () => void;
 }
 
 export interface LayoutInboxActions {

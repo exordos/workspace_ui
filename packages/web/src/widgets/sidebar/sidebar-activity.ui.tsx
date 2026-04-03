@@ -1,5 +1,6 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
+import { useActivityStore } from "~/entities/activity/activity.model";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useDraftStore } from "~/entities/draft/draft.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
@@ -47,6 +48,8 @@ export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle
     (s) => s.drafts.filter((draft) => draft.content.trim().length > 0).length,
   );
   const isCompactDensity = useSettingsStore((s) => s.chatListDensity === "compact");
+  const favoritesCount = useActivityStore((s) => s.starredSummary.count);
+  const favoritesError = useActivityStore((s) => s.starredSummary.error);
   const mentionsCount =
     lastAppliedMessages?.filter(
       (message) =>
@@ -130,6 +133,11 @@ export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle
                         <Badge count={draftsCount} variant="muted" className="opacity-70" />
                       </span>
                     )}
+                    {item.key === "favorites" && favoritesError == null && favoritesCount > 0 && (
+                      <span className={compactBadgeClass}>
+                        <Badge count={favoritesCount} variant="muted" className="opacity-70" />
+                      </span>
+                    )}
                   </Link>
                 ) : (
                   <button type="button" aria-label={label} className={compactRowClass}>
@@ -206,6 +214,11 @@ export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle
                 {item.key === "drafts" && draftsCount > 0 && (
                   <span className="shrink-0">
                     <Badge count={draftsCount} variant="muted" />
+                  </span>
+                )}
+                {item.key === "favorites" && favoritesError == null && favoritesCount > 0 && (
+                  <span className="shrink-0">
+                    <Badge count={favoritesCount} variant="muted" />
                   </span>
                 )}
               </>

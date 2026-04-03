@@ -1,4 +1,7 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
+import { ensureStarredLoaded } from "~/entities/activity/activity-starred-loader.lib";
+import { useActivityStore } from "~/entities/activity/activity.model";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { fetchSubscriptions, fetchUserTopics } from "~/shared/api/zulip";
 
@@ -15,7 +18,10 @@ export function useLayoutInstanceBootstrap(options: {
   loadMuteSnapshot: () => Promise<LayoutMuteSnapshot>;
 } {
   const { currentInstanceId, currentUserStatus } = options;
+  const starredSummaryStale = useActivityStore((s) => s.starredSummary.stale);
+  const starredBootstrapInstanceRef = useRef<string | null>(null);
 
+  // Загружает mute-снимок инстанса (muted streams/topics) для консистентной UI-модели.
   const loadMuteSnapshot = useCallback(async (): Promise<LayoutMuteSnapshot> => {
     const [subs, userTopics] = await Promise.all([fetchSubscriptions(), fetchUserTopics()]);
     const mutedStreamIds = subs.filter((s) => s.is_muted).map((s) => s.stream_id);
@@ -48,6 +54,25 @@ export function useLayoutInstanceBootstrap(options: {
     };
   }, [currentInstanceId, currentUserStatus, loadMuteSnapshot]);
 
+  useEffect(() => {
+    // Единый bootstrap starred для общего activity-store.
+    // Срабатывает на смену инстанса и на явную invalidation (stale=true).
+    if (!currentInstanceId || currentUserStatus !== "ready") {
+      starredBootstrapInstanceRef.current = null;
+      return;
+    }
+
+    const instanceChanged = starredBootstrapInstanceRef.current !== currentInstanceId;
+    if (!instanceChanged && !starredSummaryStale) return;
+
+    starredBootstrapInstanceRef.current = currentInstanceId;
+    const currentUserId = useChatListStore.getState().currentUserId ?? null;
+    void ensureStarredLoaded({
+      currentInstanceId,
+      currentUserId,
+      forceRefresh: starredSummaryStale,
+    });
+  }, [currentInstanceId, currentUserStatus, starredSummaryStale]);
+
   return { loadMuteSnapshot };
 }
-

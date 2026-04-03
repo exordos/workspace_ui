@@ -1,6 +1,7 @@
 import { act, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
+import { useActivityStore } from "~/entities/activity/activity.model";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useDraftStore } from "~/entities/draft/draft.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
@@ -65,6 +66,7 @@ const INBOX_COUNT_THREE_MESSAGES = [
 
 describe("SidebarActivity", () => {
   afterEach(() => {
+    useActivityStore.getState().clear();
     useChatListStore.getState().clear();
     useDraftStore.getState().clear();
     useSettingsStore.getState().resetToDefaults();
@@ -146,6 +148,20 @@ describe("SidebarActivity", () => {
     expect(within(inboxRow).getByText("3")).toBeInTheDocument();
   });
 
+  it("shows favorites badge in expanded view from starred summary", () => {
+    useChatListStore.setState({ currentUserId: 7, lastAppliedMessages: [] });
+    useActivityStore.getState().setStarredSummaryFromCache(4, false);
+
+    render(
+      <MemoryRouter>
+        <SidebarActivity open onToggle={() => {}} />
+      </MemoryRouter>,
+    );
+
+    const favoritesRow = screen.getByRole("link", { name: /starred/i });
+    expect(within(favoritesRow).getByText("4")).toBeInTheDocument();
+  });
+
   it("renders compact activity shortcuts with badges when collapsed", () => {
     useChatListStore.setState({
       currentUserId: 7,
@@ -210,6 +226,20 @@ describe("SidebarActivity", () => {
 
     const inboxLink = screen.getByRole("link", { name: /inbox/i });
     expect(within(inboxLink).getByText("3")).toHaveClass("opacity-70");
+  });
+
+  it("shows compact favorites badge from starred summary", () => {
+    useChatListStore.setState({ currentUserId: 7, lastAppliedMessages: [] });
+    useActivityStore.getState().setStarredSummaryFromCache(7, false);
+
+    render(
+      <MemoryRouter>
+        <SidebarActivity open={false} onToggle={() => {}} />
+      </MemoryRouter>,
+    );
+
+    const favoritesLink = screen.getByRole("link", { name: /starred/i });
+    expect(within(favoritesLink).getByText("7")).toHaveClass("opacity-70");
   });
 
   it("hides inbox badge when unread total is zero", () => {
