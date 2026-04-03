@@ -1,11 +1,13 @@
 // Страница /inbox.
-// Паттерн работы: сначала показываем локальный inbox-кэш (если есть),
-// затем делаем фоновый refresh unread с сервера без очистки UI.
+// Паттерн работы:
+// 1) читаем локальный inbox bootstrap из IDB;
+// 2) применяем его только если он свежее текущих in-memory entries;
+// 3) всегда запускаем фоновый refresh unread с сервера без очистки UI.
 import React, { useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { fetchInboxEntries, hydrateInboxEntriesFromCache } from "~/entities/inbox/inbox.api";
-import { groupInboxEntries } from "~/entities/inbox/inbox.lib";
+import { groupInboxEntries, isInboxEntriesSnapshotFresher } from "~/entities/inbox/inbox.lib";
 import { useInboxStore } from "~/entities/inbox/inbox.model";
 import type { InboxEntry } from "~/entities/inbox/inbox.types";
 import { useInstancesStore } from "~/entities/instance/instance.model";
@@ -95,12 +97,18 @@ export const InboxPage: React.FC = () => {
       // 1) Локальный bootstrap из IDB для мгновенного рендера.
       const cached = await hydrateInboxEntriesFromCache(currentInstanceId, currentUserId);
       if (cancelled) return;
-      if (cached.length > 0) {
+      const currentEntries = useInboxStore.getState().entries;
+      // Гибридный bootstrap:
+      // - если памяти нет, берем cached;
+      // - если память есть, заменяем только когда cached объективно свежее.
+      const shouldApplyCached =
+        cached.length > 0 &&
+        (currentEntries.length === 0 || isInboxEntriesSnapshotFresher(cached, currentEntries));
+      if (shouldApplyCached) {
         setEntries(cached);
       }
       // 2) Серверный authoritative refresh.
-      const hasCachedData = cached.length > 0 || useInboxStore.getState().entries.length > 0;
-      void loadInbox(hasCachedData);
+      void loadInbox(true);
     })().catch(() => {});
     return () => {
       cancelled = true;
