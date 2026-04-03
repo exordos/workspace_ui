@@ -47,6 +47,16 @@ function findOldestId(messages: MockMessage[]): number | null {
   return oldest.id;
 }
 
+// Сравниваем только id и порядок, чтобы понять, изменился ли фактический список.
+// Это позволяет не дергать лишние перерисовки при cache -> refresh с теми же сообщениями.
+function hasSameMessageOrder(left: MockMessage[], right: MockMessage[]): boolean {
+  if (left.length !== right.length) return false;
+  for (let i = 0; i < left.length; i++) {
+    if (left[i]!.id !== right[i]!.id) return false;
+  }
+  return true;
+}
+
 export const useFeedStore = create<FeedState>((set, get) => ({
   instanceId: null,
   messages: [],
@@ -79,10 +89,14 @@ export const useFeedStore = create<FeedState>((set, get) => ({
     logStoreAction("feed", "setMessagesIfActual", { count: messages.length, requestVersion });
     set((state) => {
       if (state.requestVersion !== requestVersion) return state;
+      // Если сервер вернул тот же набор id в том же порядке, сохраняем старую ссылку массива.
+      const nextMessages = hasSameMessageOrder(state.messages, messages)
+        ? state.messages
+        : messages;
       return {
         instanceId: instanceId ?? state.instanceId,
-        messages,
-        lastMessageId: findOldestId(messages),
+        messages: nextMessages,
+        lastMessageId: findOldestId(nextMessages),
         isInitialLoading: false,
         isRefreshing: false,
         isAllLoaded,

@@ -33,13 +33,45 @@ function truncateText(text: string, max = 80): string {
   return text.slice(0, max) + "…";
 }
 
+// Формат времени для feed:
+// - сегодня: только HH:MM;
+// - вчера и старше: дата + HH:MM.
+function formatFeedItemTime(ts: number): string {
+  const date = new Date(ts * 1000);
+  const now = new Date();
+  const sameDay =
+    date.getDate() === now.getDate() &&
+    date.getMonth() === now.getMonth() &&
+    date.getFullYear() === now.getFullYear();
+  if (sameDay) return formatMessageTime(ts);
+  const datePart = date.toLocaleDateString(undefined, {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+  return `${datePart} ${formatMessageTime(ts)}`;
+}
+
 const FEED_PAGE_SIZE = 50;
+const FEED_BOTTOM_THRESHOLD_PX = 80;
+const FEED_TOP_PAGINATION_REARM_THRESHOLD_PX = 96;
 const FEED_STATE_CARD_CLASS =
   "m-3 rounded-xl border border-border-subtle bg-bg-elevated/50 px-4 py-3 text-sm";
 const FEED_ROW_CLASS =
   "group flex items-start gap-2 rounded-xl border border-border-subtle bg-bg-elevated/60 p-2.5 transition-colors hover:border-accent-soft/40 hover:bg-card-bg";
 const FEED_ACTION_BUTTON_CLASS =
   "rounded-md p-1.5 text-text-muted transition-colors hover:bg-card-bg-active hover:text-text-primary";
+
+// Проверяем, находится ли скролл около низа списка.
+function isNearBottom(el: HTMLElement, thresholdPx = FEED_BOTTOM_THRESHOLD_PX): boolean {
+  return el.scrollHeight - el.scrollTop - el.clientHeight <= thresholdPx;
+}
+
+// Мгновенно скроллим список к последним сообщениям (без плавной анимации).
+function scrollFeedToBottom(el: HTMLElement | null): void {
+  if (!el) return;
+  el.scrollTo({ top: el.scrollHeight, behavior: "instant" });
+}
 
 export const FeedPage: React.FC = () => {
   const navigate = useNavigate();
@@ -60,6 +92,12 @@ export const FeedPage: React.FC = () => {
   const listRef = useRef<HTMLUListElement>(null);
   const didAutoScrollToLatestRef = useRef(false);
   const pendingScrollRestoreRef = useRef<{ scrollTop: number; scrollHeight: number } | null>(null);
+  // Если refresh стартовал при "приклеенном" низе, после ответа оставляем пользователя внизу.
+  const shouldStickToBottomAfterRefreshRef = useRef(false);
+  // Защита от дребезга: автоподгрузка у верхней границы выполняется один раз до re-arm.
+  const topPaginationArmedRef = useRef(true);
+  // Нужен для отображения кнопки "прокрутить вниз", как в обычном message-list.
+  const [isAtBottom, setIsAtBottom] = React.useState(true);
 
   useEffect(() => {
     if (currentInstanceId == null) {
@@ -84,6 +122,10 @@ export const FeedPage: React.FC = () => {
       }
       // 2) Фоновая актуализация с requestVersion и dedupe.
       const hasCachedData = cached.length > 0 || useFeedStore.getState().messages.length > 0;
+      const scrollEl = listRef.current;
+      // Запоминаем, нужно ли после refresh автоматически удержать низ.
+      shouldStickToBottomAfterRefreshRef.current =
+        hasCachedData && (scrollEl == null || isNearBottom(scrollEl));
       const requestVersion = startRequest(hasCachedData);
       const requestKey = `${currentInstanceId}:feed:newest:${FEED_PAGE_SIZE}`;
       try {
@@ -108,9 +150,22 @@ export const FeedPage: React.FC = () => {
     if (isInitialLoading || messages.length === 0 || didAutoScrollToLatestRef.current) return;
     const el = listRef.current;
     if (!el) return;
-    el.scrollTop = el.scrollHeight;
+    scrollFeedToBottom(el);
     didAutoScrollToLatestRef.current = true;
+    topPaginationArmedRef.current = true;
   }, [isInitialLoading, messages.length]);
+
+  useEffect(() => {
+    // После завершения refresh мягко возвращаемся к последним сообщениям,
+    // только если пользователь не успел вручную уйти вверх.
+    if (isRefreshing || !shouldStickToBottomAfterRefreshRef.current || messages.length === 0)
+      return;
+    const el = listRef.current;
+    if (!el) return;
+    scrollFeedToBottom(el);
+    shouldStickToBottomAfterRefreshRef.current = false;
+    topPaginationArmedRef.current = true;
+  }, [isRefreshing, messages.length]);
 
   useEffect(() => {
     const pending = pendingScrollRestoreRef.current;
@@ -120,6 +175,7 @@ export const FeedPage: React.FC = () => {
     if (!el) return;
 
     el.scrollTop = computeFeedScrollTopAfterPrepend(pending, el.scrollHeight);
+    setIsAtBottom(isNearBottom(el));
     pendingScrollRestoreRef.current = null;
   }, [messages.length, isLoadingMore]);
 
@@ -128,6 +184,7 @@ export const FeedPage: React.FC = () => {
       if (isLoadingMore || isAllLoaded || lastMessageId == null) return;
 
       if (preserveScroll && listRef.current) {
+        // Снимок нужен, чтобы после prepend старых сообщений сохранить позицию viewport.
         pendingScrollRestoreRef.current = {
           scrollTop: listRef.current.scrollTop,
           scrollHeight: listRef.current.scrollHeight,
@@ -149,24 +206,48 @@ export const FeedPage: React.FC = () => {
           pendingScrollRestoreRef.current = null;
         });
     },
-    [isLoadingMore, isAllLoaded, lastMessageId],
+    [isLoadingMore, isAllLoaded, lastMessageId, currentInstanceId],
   );
 
   const handleListScroll = React.useCallback(
     (event: React.UIEvent<HTMLUListElement>) => {
+      const currentScrollTop = event.currentTarget.scrollTop;
+      setIsAtBottom(isNearBottom(event.currentTarget));
+
+      // Если пользователь вручную ушел от низа, отключаем автоприлипание после refresh.
+      if (isRefreshing && shouldStickToBottomAfterRefreshRef.current) {
+        if (!isNearBottom(event.currentTarget)) {
+          shouldStickToBottomAfterRefreshRef.current = false;
+        }
+      }
+
+      // Re-arm после заметного ухода от верхней границы.
+      if (currentScrollTop > FEED_TOP_PAGINATION_REARM_THRESHOLD_PX) {
+        topPaginationArmedRef.current = true;
+      }
+
       if (
+        topPaginationArmedRef.current &&
         shouldRequestOlderFeedPage({
-          scrollTop: event.currentTarget.scrollTop,
+          scrollTop: currentScrollTop,
           isLoadingMore,
           isAllLoaded,
           lastMessageId,
         })
       ) {
+        // Пока снова не уйдем вниз от топа, повторный автозапрос не запускаем.
+        topPaginationArmedRef.current = false;
         handleLoadMore(true);
       }
     },
-    [handleLoadMore, isLoadingMore, isAllLoaded, lastMessageId],
+    [handleLoadMore, isLoadingMore, isAllLoaded, isRefreshing, lastMessageId],
   );
+
+  const handleScrollToBottomClick = React.useCallback(() => {
+    scrollFeedToBottom(listRef.current);
+    setIsAtBottom(true);
+    topPaginationArmedRef.current = true;
+  }, []);
 
   const handleMessageClick = (m: (typeof messages)[number], mode: "open" | "forward" = "open") => {
     const route = buildNavigableRouteFromMessage(m, currentUserId);
@@ -199,7 +280,7 @@ export const FeedPage: React.FC = () => {
             <ul
               ref={listRef}
               onScroll={handleListScroll}
-              className="flex min-h-0 flex-1 flex-col space-y-2 overflow-auto px-3 pb-3 pt-2"
+              className="overscroll-behavior-contain flex min-h-0 flex-1 flex-col space-y-2 overflow-auto scroll-auto px-3 pb-3 pt-2"
             >
               {messages.map((m) => {
                 const isStream = m.stream_id != null;
@@ -218,7 +299,7 @@ export const FeedPage: React.FC = () => {
                       >
                         <div className="flex items-center justify-between gap-2">
                           <span className="shrink-0 rounded-full bg-bg px-2 py-0.5 text-[10px] font-medium text-text-muted">
-                            {formatMessageTime(m.timestamp)}
+                            {formatFeedItemTime(m.timestamp)}
                           </span>
                           <span className="truncate rounded-full bg-bg px-2 py-0.5 text-[10px] font-medium text-text-secondary">
                             {context}
@@ -268,6 +349,18 @@ export const FeedPage: React.FC = () => {
               )}
             </ul>
             <FloatingLoadingOverlay visible={isLoadingMore || isRefreshing} />
+            {!isAtBottom && (
+              <div className="absolute bottom-4 right-4 z-float">
+                <button
+                  type="button"
+                  onClick={handleScrollToBottomClick}
+                  className="hover:bg-bg-elevated/90 flex h-10 w-10 items-center justify-center rounded-full border border-border-subtle bg-bg-elevated text-text-primary shadow-lg focus:outline-none focus:ring-2 focus:ring-accent-soft"
+                  aria-label={t("a11y.scrollToBottom")}
+                >
+                  <Icon name="chevron-down" className="h-5 w-5" />
+                </button>
+              </div>
+            )}
           </div>
         )}
       </section>

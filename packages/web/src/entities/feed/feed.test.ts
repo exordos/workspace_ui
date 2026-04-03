@@ -124,6 +124,18 @@ describe("useFeedStore", () => {
     expect(useFeedStore.getState().isAllLoaded).toBe(true);
   });
 
+  it("setMessagesIfActual keeps message reference when ids/order are unchanged", () => {
+    const initial = [msg({ id: 10, timestamp: 1000 }), msg({ id: 20, timestamp: 2000 })];
+    useFeedStore.getState().setMessages(initial, false);
+    const beforeRef = useFeedStore.getState().messages;
+    useFeedStore.setState({ requestVersion: 1 });
+
+    const sameIds = [msg({ id: 10, timestamp: 1111 }), msg({ id: 20, timestamp: 2222 })];
+    useFeedStore.getState().setMessagesIfActual(sameIds, false, 1);
+
+    expect(useFeedStore.getState().messages).toBe(beforeRef);
+  });
+
   it("appendOlder preserves found-oldest metadata even with a non-empty final page", () => {
     useFeedStore.getState().setMessages([msg({ id: 30, timestamp: 3000 })], false);
     useFeedStore.getState().appendOlder([msg({ id: 10, timestamp: 1000 })], true);

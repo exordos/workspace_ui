@@ -315,4 +315,62 @@ describe("FeedPage forward action", () => {
 
     expect(screen.getByText("Cached feed item")).toBeInTheDocument();
   });
+
+  it("shows scroll-to-bottom button when feed list is away from bottom and scrolls down on click", async () => {
+    useInstancesStore.setState({
+      instances: [
+        {
+          id: "instance-1",
+          realm: "https://zulip.example.com",
+          email: "user@example.com",
+          apiKey: "api-key",
+        },
+      ],
+      currentInstanceId: "instance-1",
+      unreadCountsByInstance: {},
+    });
+
+    const message = createMessage({
+      id: 59,
+      sender_id: 42,
+      sender_full_name: "Alice",
+      stream_id: 10,
+      subject: "scroll",
+      content: "Scroll button target",
+      timestamp: 1,
+      type: "stream",
+      display_recipient: "engineering",
+      channel: "engineering",
+    });
+
+    fetchFeedMessages.mockResolvedValue({
+      messages: [message],
+      foundOldest: true,
+    });
+
+    const { container } = render(
+      <MemoryRouter initialEntries={["/feed"]}>
+        <Routes>
+          <Route path="/feed" element={<FeedPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Scroll button target")).toBeInTheDocument();
+    });
+
+    const list = container.querySelector("ul") as HTMLUListElement;
+    Object.defineProperty(list, "scrollHeight", { configurable: true, value: 1200 });
+    Object.defineProperty(list, "clientHeight", { configurable: true, value: 400 });
+    Object.defineProperty(list, "scrollTop", { configurable: true, writable: true, value: 120 });
+
+    fireEvent.scroll(list);
+
+    const scrollButton = screen.getByRole("button", { name: /scroll to bottom/i });
+    expect(scrollButton).toBeInTheDocument();
+
+    fireEvent.click(scrollButton);
+    expect(list.scrollTop).toBe(1200);
+  });
 });
