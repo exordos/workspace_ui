@@ -152,31 +152,67 @@ export async function getChatMessagesAscending(
 // Возвращает все кэшированные сообщения инстанса в порядке возрастания id.
 // Используется как best-effort bootstrap для страниц вне текущего чата.
 export async function getInstanceMessagesAscending(instanceId: string): Promise<MockMessage[]> {
+  // В некоторых окружениях IndexedDB может быть недоступен
+  // (например, SSR, приватный режим браузера или отсутствие поддержки)
   if (!isIndexedDBAvailable()) return [];
+
   try {
     const db = await openMessageCacheDb();
-    const rows = await new Promise<MessageCacheRow[]>((resolve, reject) => {
+
+    return await new Promise<MockMessage[]>((resolve, reject) => {
+      // Открываем store только для чтения
       const tx = db.transaction(STORE_MESSAGES, "readonly");
       const store = tx.objectStore(STORE_MESSAGES);
-      const req = store.openCursor();
-      const collected: MessageCacheRow[] = [];
+
+      /**
+       * Первичный ключ хранится в формате:
+       * `${instanceId}:${messageId}`
+       *
+       * Поэтому вместо полного сканирования всего store
+       * можно эффективно выбрать только сообщения
+       * нужного инстанса через диапазон ключей.
+       *
+       * Например для instanceId = "chat-1":
+       *
+       * Подойдут:
+       * chat-1:1
+       * chat-1:2
+       * chat-1:100
+       *
+       * Не подойдут:
+       * chat-2:1
+       */
+      const range = IDBKeyRange.bound(`${instanceId}:`, `${instanceId}:\uffff`);
+
+      // Открываем курсор только по сообщениям текущего инстанса
+      const req = store.openCursor(range);
+
+      // Сразу собираем итоговый массив сообщений,
+      // чтобы избежать дополнительного map после чтения
+      const messages: MockMessage[] = [];
+
       req.onerror = () => reject(idbError(req.error));
+
       req.onsuccess = () => {
         const cursor = req.result;
+
+        // Если записи закончились — возвращаем собранный результат
         if (!cursor) {
-          resolve(collected);
+          resolve(messages);
           return;
         }
+
+        // Добавляем сообщение в результат
         const row = cursor.value as MessageCacheRow;
-        if (row.instanceId === instanceId) {
-          collected.push(row);
-        }
+        messages.push(row.message);
+
+        // Переходим к следующей записи в диапазоне
         cursor.continue();
       };
     });
-    rows.sort((a, b) => a.messageId - b.messageId);
-    return rows.map((row) => row.message);
   } catch {
+    // Кэш используется как best-effort bootstrap,
+    // поэтому в случае ошибки просто возвращаем пустой массив
     return [];
   }
 }
