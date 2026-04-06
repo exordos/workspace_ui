@@ -1,4 +1,5 @@
 import { isMessageForContext } from "~/entities/message/message.model";
+import { resolveIncomingDmCallInvite } from "~/features/jitsi-call/jitsi-call-invite.lib";
 import { resolveTypingEventRoute } from "~/features/typing-indicator/typing-event-routing";
 import { getCurrentInstance } from "~/shared/api/client";
 import type { ZulipEvent, ZulipRawMessage } from "~/shared/api/zulip";
@@ -18,7 +19,8 @@ import type {
 } from "./layout-zulip-event-dispatch.types";
 
 export function dispatchZulipEvent(event: ZulipEvent, ctx: LayoutZulipEventDispatchContext): void {
-  const { chatList, currentChat, users, typing, mute, activity, inbox, notifications } = ctx;
+  const { chatList, currentChat, users, typing, mute, activity, inbox, notifications, jitsiCall } =
+    ctx;
 
   const instance = getCurrentInstance();
   if (instance?.id && isChatMessagesPersistToIndexedDbEnabled()) {
@@ -72,6 +74,10 @@ export function dispatchZulipEvent(event: ZulipEvent, ctx: LayoutZulipEventDispa
 
         notifications.requestAttentionIfNotFocused();
       }
+    }
+    const incomingInvite = resolveIncomingDmCallInvite(raw, currentUserId);
+    if (incomingInvite != null) {
+      jitsiCall.ingestIncomingInvite(incomingInvite);
     }
     return;
   }

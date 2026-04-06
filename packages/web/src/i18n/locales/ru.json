@@ -231,6 +231,10 @@
     "createCall": "Создание звонка",
     "createCallLink": "Создать ссылку на звонок",
     "joinCall": "Подключиться",
+    "incomingCall": "Входящий звонок",
+    "incomingFrom": "{{name}} звонит",
+    "accept": "Принять",
+    "decline": "Отклонить",
     "recentCalls": "Последние звонки Jitsi",
     "noRecentCalls": "Пока нет недавних звонков Jitsi",
     "loadRecentCallsError": "Не удалось загрузить последние звонки"

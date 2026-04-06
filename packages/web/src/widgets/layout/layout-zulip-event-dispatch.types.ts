@@ -1,4 +1,5 @@
 import type { CurrentChatContext } from "~/entities/message/message.model";
+import type { IncomingDmCallInvite } from "~/features/jitsi-call/jitsi-call.model";
 import type { MockMessage, ZulipRawMessage } from "~/shared/api/zulip";
 
 export type LayoutMessageFlagOp = "add" | "remove";
@@ -79,6 +80,10 @@ export interface LayoutNotificationsActions {
   requestAttentionIfNotFocused: () => void;
 }
 
+export interface LayoutJitsiCallActions {
+  ingestIncomingInvite: (invite: IncomingDmCallInvite) => void;
+}
+
 export interface LayoutZulipEventDispatchContext {
   chatList: LayoutChatListActions;
   currentChat: LayoutCurrentChatActions;
@@ -88,5 +93,6 @@ export interface LayoutZulipEventDispatchContext {
   activity: LayoutActivityActions;
   inbox: LayoutInboxActions;
   notifications: LayoutNotificationsActions;
+  jitsiCall: LayoutJitsiCallActions;
   updateLatestMessageId: (id: number) => void;
 }

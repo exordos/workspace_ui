@@ -19,7 +19,7 @@ import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { AiMessageContext, AiReplyRequest } from "~/features/ai-reply/ai-reply.types";
 import { useChatInfoStore } from "~/features/chat-info/chat-info.model";
-import { JitsiCallModal } from "~/features/jitsi-call/jitsi-call.ui";
+import { useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { useMessageReadersStore } from "~/features/message-readers/message-readers.model";
 import { useComposerTypingController } from "~/features/typing-indicator/composer-typing-controller.hook";
 import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indicator.model";
@@ -82,11 +82,18 @@ import {
 import { createMarkAsReadBatcher } from "./chat-mark-as-read.lib";
 import { useChatMessageListCallbacks } from "./chat-message-list-callbacks.hook";
 import { resolveNextUnreadTopicRoute } from "./chat-next-unread-topic.lib";
+import { ChatPageComposerSection } from "./chat-page-composer-section.ui";
+import { ChatPageDeleteConfirmBar } from "./chat-page-delete-confirm-bar.ui";
 import { EditMessageModalBody } from "./chat-page-edit-message-modal.ui";
+import { ChatPageFloatingToast } from "./chat-page-floating-toast.ui";
 import { useChatForwardHydration } from "./chat-page-forward-hydration.hook";
 import { ForwardMessageModalBody } from "./chat-page-forward-modal.ui";
+import { ChatPageInlineAlerts } from "./chat-page-inline-alerts.ui";
+import { ChatPageMessageListSection } from "./chat-page-message-list-section.ui";
 import { useChatPartnerProfileHydration } from "./chat-page-partner-profile.hook";
+import { ChatPageReadReceiptsDialog } from "./chat-page-read-receipts-dialog.ui";
 import { useChatRouteContext } from "./chat-page-route-context.hook";
+import { ChatPageSelectionBar } from "./chat-page-selection-bar.ui";
 import { useChatToastAutoClear } from "./chat-page-toast.hook";
 import { ChatPageTypingLine } from "./chat-page-typing-line.ui";
 import { shouldLoadBoundaryPage } from "./chat-pagination.lib";
@@ -96,13 +103,6 @@ import {
   markOutgoingMessageSent,
 } from "./chat-send-delivery.lib";
 import { uploadComposerFiles, type ComposerUploadProgressState } from "./chat-upload.lib";
-import { ChatPageComposerSection } from "./chat-page-composer-section.ui";
-import { ChatPageDeleteConfirmBar } from "./chat-page-delete-confirm-bar.ui";
-import { ChatPageFloatingToast } from "./chat-page-floating-toast.ui";
-import { ChatPageInlineAlerts } from "./chat-page-inline-alerts.ui";
-import { ChatPageMessageListSection } from "./chat-page-message-list-section.ui";
-import { ChatPageReadReceiptsDialog } from "./chat-page-read-receipts-dialog.ui";
-import { ChatPageSelectionBar } from "./chat-page-selection-bar.ui";
 
 const log = createLogger("chat-page");
 const AI_CONTEXT_MESSAGES_LIMIT = 30;
@@ -227,8 +227,6 @@ export const ChatPage: React.FC = () => {
     useChatForwardHydration({ forwardMessageId, messages });
   const [actionError, setActionError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [jitsiModalUrl, setJitsiModalUrl] = useState<string | null>(null);
-  const [jitsiLocationName, setJitsiLocationName] = useState("");
   const [readReceiptsOpen, setReadReceiptsOpen] = useState(false);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const markAsReadBatcherRef = useRef<ReturnType<typeof createMarkAsReadBatcher> | null>(null);
@@ -238,6 +236,7 @@ export const ChatPage: React.FC = () => {
     { type: "single"; messageId: number } | { type: "bulk"; messageIds: number[] } | null
   >(null);
   const rightDrawer = useRightDrawer();
+  const openJitsiCall = useJitsiCallStore((s) => s.openCall);
   const chatInfo = useChatInfoStore((s) => s.data);
 
   const readersLoading = useMessageReadersStore((s) => s.loading);
@@ -1003,8 +1002,7 @@ export const ChatPage: React.FC = () => {
       sendMessage,
       appendMessageToStore,
       openModal: (url, locationName) => {
-        setJitsiModalUrl(url);
-        setJitsiLocationName(locationName);
+        openJitsiCall({ meetingUrl: url, locationName });
       },
       resolveErrorMessage: (error) =>
         error instanceof Error ? error.message : t("call.createFailed"),
@@ -1020,6 +1018,7 @@ export const ChatPage: React.FC = () => {
     t,
     sendMessage,
     appendMessageToStore,
+    openJitsiCall,
     isOneToOneDm,
     callRoomChatLabel,
   ]);
@@ -1177,8 +1176,7 @@ export const ChatPage: React.FC = () => {
     setSelectionMode,
     updateMessageFlagsInStore,
     updateMessageReactionInStore,
-    setJitsiModalUrl,
-    setJitsiLocationName,
+    openJitsiCall: (url, locationName) => openJitsiCall({ meetingUrl: url, locationName }),
     setReadReceiptsOpen,
   });
 
@@ -1533,17 +1531,6 @@ export const ChatPage: React.FC = () => {
           aiChatContext={aiChatContext}
         />
       </section>
-      {jitsiModalUrl && (
-        <JitsiCallModal
-          open={!!jitsiModalUrl}
-          meetingUrl={jitsiModalUrl}
-          locationName={jitsiLocationName}
-          onClose={() => {
-            setJitsiModalUrl(null);
-            setJitsiLocationName("");
-          }}
-        />
-      )}
     </div>
   );
 };
