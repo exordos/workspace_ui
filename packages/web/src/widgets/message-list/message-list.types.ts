@@ -52,4 +52,6 @@ export interface MessageListProps {
   onUnreadMessagesVisible?: (messageIds: number[]) => void;
   /** Called when user reaches chat bottom with unread messages in the loaded list. */
   onUnreadMessagesAtBottom?: (messageIds: number[]) => void;
+  /** Shows non-blocking floating loading indicator above the list. */
+  showLoadingOverlay?: boolean;
 }

@@ -1,14 +1,72 @@
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
+import { useActivityStore } from "~/entities/activity/activity.model";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useDraftStore } from "~/entities/draft/draft.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { SidebarActivity } from "./sidebar-activity.ui";
 import { MY_ACTIVITY } from "./sidebar.lib";
 
+const INBOX_COUNT_ONE_MESSAGES = [
+  {
+    id: 31,
+    sender_id: 42,
+    sender_full_name: "Alice",
+    content: "dm unread",
+    timestamp: 31,
+    type: "private" as const,
+    display_recipient: [
+      { id: 7, full_name: "Me", email: "me@example.com" },
+      { id: 42, full_name: "Alice", email: "alice@example.com" },
+    ],
+    flags: [],
+  },
+];
+
+const INBOX_COUNT_THREE_MESSAGES = [
+  {
+    id: 11,
+    sender_id: 42,
+    sender_full_name: "Alice",
+    stream_id: 10,
+    subject: "bugs",
+    content: "stream unread 1",
+    timestamp: 11,
+    type: "stream" as const,
+    display_recipient: "engineering",
+    flags: [],
+  },
+  {
+    id: 12,
+    sender_id: 43,
+    sender_full_name: "Bob",
+    stream_id: 10,
+    subject: "bugs",
+    content: "stream unread 2",
+    timestamp: 12,
+    type: "stream" as const,
+    display_recipient: "engineering",
+    flags: [],
+  },
+  {
+    id: 13,
+    sender_id: 42,
+    sender_full_name: "Alice",
+    content: "dm unread",
+    timestamp: 13,
+    type: "private" as const,
+    display_recipient: [
+      { id: 7, full_name: "Me", email: "me@example.com" },
+      { id: 42, full_name: "Alice", email: "alice@example.com" },
+    ],
+    flags: [],
+  },
+];
+
 describe("SidebarActivity", () => {
   afterEach(() => {
+    useActivityStore.getState().clear();
     useChatListStore.getState().clear();
     useDraftStore.getState().clear();
     useSettingsStore.getState().resetToDefaults();
@@ -77,6 +135,33 @@ describe("SidebarActivity", () => {
     expect(within(draftsRow!).getByText("2")).toBeInTheDocument();
   });
 
+  it("shows inbox badge from summed unread stream and dm counts in expanded view", () => {
+    useChatListStore.getState().setFromMessages(INBOX_COUNT_THREE_MESSAGES, 7);
+
+    render(
+      <MemoryRouter>
+        <SidebarActivity open onToggle={() => {}} />
+      </MemoryRouter>,
+    );
+
+    const inboxRow = screen.getByRole("link", { name: /inbox/i });
+    expect(within(inboxRow).getByText("3")).toBeInTheDocument();
+  });
+
+  it("shows favorites badge in expanded view from starred summary", () => {
+    useChatListStore.setState({ currentUserId: 7, lastAppliedMessages: [] });
+    useActivityStore.getState().setStarredSummaryFromCache(4, false);
+
+    render(
+      <MemoryRouter>
+        <SidebarActivity open onToggle={() => {}} />
+      </MemoryRouter>,
+    );
+
+    const favoritesRow = screen.getByRole("link", { name: /starred/i });
+    expect(within(favoritesRow).getByText("4")).toBeInTheDocument();
+  });
+
   it("renders compact activity shortcuts with badges when collapsed", () => {
     useChatListStore.setState({
       currentUserId: 7,
@@ -128,6 +213,72 @@ describe("SidebarActivity", () => {
     const draftsCompactLink = screen.getByRole("link", { name: /drafts/i });
     expect(within(mentionsCompactLink).getByText("1")).toHaveClass("opacity-70");
     expect(within(draftsCompactLink).getByText("2")).toHaveClass("opacity-70");
+  });
+
+  it("shows compact inbox badge from summed unread stream and dm counts", () => {
+    useChatListStore.getState().setFromMessages(INBOX_COUNT_THREE_MESSAGES, 7);
+
+    render(
+      <MemoryRouter>
+        <SidebarActivity open={false} onToggle={() => {}} />
+      </MemoryRouter>,
+    );
+
+    const inboxLink = screen.getByRole("link", { name: /inbox/i });
+    expect(within(inboxLink).getByText("3")).toHaveClass("opacity-70");
+  });
+
+  it("shows compact favorites badge from starred summary", () => {
+    useChatListStore.setState({ currentUserId: 7, lastAppliedMessages: [] });
+    useActivityStore.getState().setStarredSummaryFromCache(7, false);
+
+    render(
+      <MemoryRouter>
+        <SidebarActivity open={false} onToggle={() => {}} />
+      </MemoryRouter>,
+    );
+
+    const favoritesLink = screen.getByRole("link", { name: /starred/i });
+    expect(within(favoritesLink).getByText("7")).toHaveClass("opacity-70");
+  });
+
+  it("hides inbox badge when unread total is zero", () => {
+    useChatListStore.getState().setFromMessages([], 7);
+
+    render(
+      <MemoryRouter>
+        <SidebarActivity open onToggle={() => {}} />
+      </MemoryRouter>,
+    );
+
+    const inboxRow = screen.getByRole("link", { name: /inbox/i });
+    expect(inboxRow.querySelector(".bg-sidebar-unread")).toBeNull();
+  });
+
+  it("updates inbox badge when chat-list unread totals change", () => {
+    useChatListStore.getState().setFromMessages([], 7);
+
+    render(
+      <MemoryRouter>
+        <SidebarActivity open onToggle={() => {}} />
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.getByRole("link", { name: /inbox/i }).querySelector(".bg-sidebar-unread"),
+    ).toBeNull();
+
+    act(() => {
+      useChatListStore.getState().setFromMessages(INBOX_COUNT_ONE_MESSAGES, 7);
+    });
+    expect(within(screen.getByRole("link", { name: /inbox/i })).getByText("1")).toBeInTheDocument();
+
+    act(() => {
+      useChatListStore.getState().setFromMessages(INBOX_COUNT_THREE_MESSAGES, 7);
+    });
+    const inboxRow = screen.getByRole("link", { name: /inbox/i });
+    expect(within(inboxRow).getByText("3")).toBeInTheDocument();
+    expect(within(inboxRow).queryByText("1")).toBeNull();
   });
 
   it("renders collapsed activity shortcuts in a single monochrome row", () => {

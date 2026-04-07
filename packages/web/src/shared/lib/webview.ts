@@ -15,6 +15,7 @@
  * Security: auth token is passed via the JS bridge (postMessage), never in the URL.
  */
 
+import { IS_CONNECTION_DIAGNOSTICS_ENABLED } from "~/shared/config/constants";
 import { createLogger } from "./logger";
 import { isValidRealmUrl } from "./validation";
 
@@ -343,9 +344,13 @@ const webViewPages: WebViewPageDef[] = [
   { path: "/calls", label: "Calls" },
   { path: "/settings", label: "Settings" },
   { path: "/settings/personal-info", label: "Personal Info" },
-  { path: "/settings/logs", label: "Diagnostics" },
   { path: "/settings/build", label: "Settings Build" },
-  { path: "/logs", label: "Logs" },
+  ...(IS_CONNECTION_DIAGNOSTICS_ENABLED
+    ? ([
+        { path: "/settings/logs", label: "Diagnostics" },
+        { path: "/logs", label: "Logs" },
+      ] as const)
+    : []),
   { path: "/services", label: "Services" },
   { path: "/all-services", label: "All Services" },
   { path: "/inbox", label: "Inbox" },

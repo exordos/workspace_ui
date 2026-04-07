@@ -1,6 +1,6 @@
+import type { MockMessage, Reaction } from "~/shared/api/zulip";
 import type { Dispatch, SetStateAction } from "react";
 import type { NavigateFunction } from "react-router-dom";
-import type { MockMessage, Reaction } from "~/shared/api/zulip";
 
 export interface UseChatMessageListCallbacksParams {
   selectionMode: boolean;
@@ -19,9 +19,7 @@ export interface UseChatMessageListCallbacksParams {
   setEditingMessage: Dispatch<SetStateAction<MockMessage | null>>;
   setDeleteConfirm: Dispatch<
     SetStateAction<
-      | { type: "single"; messageId: number }
-      | { type: "bulk"; messageIds: number[] }
-      | null
+      { type: "single"; messageId: number } | { type: "bulk"; messageIds: number[] } | null
     >
   >;
   setToastMessage: Dispatch<SetStateAction<string | null>>;
@@ -30,13 +28,12 @@ export interface UseChatMessageListCallbacksParams {
   setActionError: Dispatch<SetStateAction<string | null>>;
   setSelectedMessageIds: Dispatch<SetStateAction<Set<number>>>;
   setSelectionMode: Dispatch<SetStateAction<boolean>>;
-  updateMessageFlagsInStore: (
-    ids: number[],
-    flag: string,
+  updateMessageFlagsInStore: (ids: number[], flag: string, op: "add" | "remove") => void;
+  updateMessageReactionInStore: (
+    messageId: number,
+    reaction: Reaction,
     op: "add" | "remove",
   ) => void;
-  updateMessageReactionInStore: (messageId: number, reaction: Reaction, op: "add" | "remove") => void;
-  setJitsiModalUrl: Dispatch<SetStateAction<string | null>>;
-  setJitsiLocationName: Dispatch<SetStateAction<string>>;
+  openJitsiCall: (url: string, locationName: string) => void;
   setReadReceiptsOpen: Dispatch<SetStateAction<boolean>>;
 }

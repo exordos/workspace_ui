@@ -15,8 +15,13 @@ import {
 import { useUsersStore } from "~/entities/user/user.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import type { NotificationSound } from "~/features/settings/settings.types";
-import { getAvailablePalettes, selectMode, selectPalette } from "~/features/theme-picker/theme-picker.model";
+import {
+  getAvailablePalettes,
+  selectMode,
+  selectPalette,
+} from "~/features/theme-picker/theme-picker.model";
 import { useTranslation } from "~/i18n/i18n";
+import { IS_CONNECTION_DIAGNOSTICS_ENABLED } from "~/shared/config/constants";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { clearLocalStatePreservingCriticalKeys } from "~/shared/lib/local-reset";
 import { createLogger } from "~/shared/lib/logger";
@@ -61,14 +66,14 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   const instances = useInstancesStore((s) => s.instances);
   const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
   const removeInstance = useInstancesStore((s) => s.removeInstance);
-  const prioritizePersonalUnread = useSettingsStore((s) => s.prioritizePersonalUnread);
-  const prioritizeUnmutedUnreadChannels = useSettingsStore(
-    (s) => s.prioritizeUnmutedUnreadChannels,
-  );
-  const setPrioritizePersonalUnread = useSettingsStore((s) => s.setPrioritizePersonalUnread);
-  const setPrioritizeUnmutedUnreadChannels = useSettingsStore(
-    (s) => s.setPrioritizeUnmutedUnreadChannels,
-  );
+  // const prioritizePersonalUnread = useSettingsStore((s) => s.prioritizePersonalUnread);
+  // const prioritizeUnmutedUnreadChannels = useSettingsStore(
+  //   (s) => s.prioritizeUnmutedUnreadChannels,
+  // );
+  // const setPrioritizePersonalUnread = useSettingsStore((s) => s.setPrioritizePersonalUnread);
+  // const setPrioritizeUnmutedUnreadChannels = useSettingsStore(
+  //   (s) => s.setPrioritizeUnmutedUnreadChannels,
+  // );
   const notificationSound = useSettingsStore((s) => s.notificationSound);
   const setNotificationSound = useSettingsStore((s) => s.setNotificationSound);
   const setLanguage = useSettingsStore((s) => s.setLanguage);
@@ -82,7 +87,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   const [soundSettingsOpen, setSoundSettingsOpen] = useState(false);
   const [languageSettingsOpen, setLanguageSettingsOpen] = useState(false);
   const [themeSettingsOpen, setThemeSettingsOpen] = useState(false);
-  const [chatSortingOpen, setChatSortingOpen] = useState(false);
+  // const [chatSortingOpen, setChatSortingOpen] = useState(false);
   const [folderLayoutOpen, setFolderLayoutOpen] = useState(false);
   const [chatListDensityOpen, setChatListDensityOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
@@ -474,35 +479,35 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
                 </div>
               )}
 
-              <RightPanelUserMenuMenuButton
-                label={t("settings.chatSorting")}
-                icon="channels"
-                onClick={() => setChatSortingOpen((open) => !open)}
-                subtitle={t("settings.chatSortingHint")}
-                right={
-                  <Icon
-                    name={chatSortingOpen ? "chevron-up" : "chevron-right"}
-                    size={16}
-                    className="text-text-muted"
-                  />
-                }
-              />
-              {chatSortingOpen && (
-                <div className="mx-2 mb-2 divide-y divide-border-subtle overflow-hidden rounded-md border border-border-subtle bg-bg-elevated">
-                  <RightPanelUserMenuOptionButton
-                    label={t("settings.chatSortingPrioritizeDirects")}
-                    active={prioritizePersonalUnread}
-                    onClick={() => setPrioritizePersonalUnread(!prioritizePersonalUnread)}
-                  />
-                  <RightPanelUserMenuOptionButton
-                    label={t("settings.chatSortingPrioritizeUnmuted")}
-                    active={prioritizeUnmutedUnreadChannels}
-                    onClick={() =>
-                      setPrioritizeUnmutedUnreadChannels(!prioritizeUnmutedUnreadChannels)
-                    }
-                  />
-                </div>
-              )}
+              {/*<RightPanelUserMenuMenuButton*/}
+              {/*  label={t("settings.chatSorting")}*/}
+              {/*  icon="channels"*/}
+              {/*  onClick={() => setChatSortingOpen((open) => !open)}*/}
+              {/*  subtitle={t("settings.chatSortingHint")}*/}
+              {/*  right={*/}
+              {/*    <Icon*/}
+              {/*      name={chatSortingOpen ? "chevron-up" : "chevron-right"}*/}
+              {/*      size={16}*/}
+              {/*      className="text-text-muted"*/}
+              {/*    />*/}
+              {/*  }*/}
+              {/*/>*/}
+              {/*{chatSortingOpen && (*/}
+              {/*  <div className="mx-2 mb-2 divide-y divide-border-subtle overflow-hidden rounded-md border border-border-subtle bg-bg-elevated">*/}
+              {/*    <RightPanelUserMenuOptionButton*/}
+              {/*      label={t("settings.chatSortingPrioritizeDirects")}*/}
+              {/*      active={prioritizePersonalUnread}*/}
+              {/*      onClick={() => setPrioritizePersonalUnread(!prioritizePersonalUnread)}*/}
+              {/*    />*/}
+              {/*    <RightPanelUserMenuOptionButton*/}
+              {/*      label={t("settings.chatSortingPrioritizeUnmuted")}*/}
+              {/*      active={prioritizeUnmutedUnreadChannels}*/}
+              {/*      onClick={() =>*/}
+              {/*        setPrioritizeUnmutedUnreadChannels(!prioritizeUnmutedUnreadChannels)*/}
+              {/*      }*/}
+              {/*    />*/}
+              {/*  </div>*/}
+              {/*)}*/}
 
               <RightPanelUserMenuMenuButton
                 label={t("settings.folderLayout")}
@@ -562,13 +567,6 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
             </p>
             <div className="divide-y divide-border-subtle overflow-hidden rounded-lg border border-border-subtle bg-card-bg">
               <RightPanelUserMenuMenuButton
-                label={t("settings.selectBuild")}
-                icon="grid"
-                subtitle={t("settings.selectBuildHint")}
-                onClick={openBuilds}
-                right={<Icon name="chevron-right" size={16} className="text-text-muted" />}
-              />
-              <RightPanelUserMenuMenuButton
                 label={t("settings.appVersion")}
                 icon="info"
                 onClick={openAbout}
@@ -579,12 +577,14 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
                   </span>
                 }
               />
-              <RightPanelUserMenuMenuButton
-                label={t("settings.connectionDiagnostics")}
-                icon="visibility"
-                onClick={openDiagnostics}
-                right={<Icon name="chevron-right" size={16} className="text-text-muted" />}
-              />
+              {IS_CONNECTION_DIAGNOSTICS_ENABLED && (
+                <RightPanelUserMenuMenuButton
+                  label={t("settings.connectionDiagnostics")}
+                  icon="visibility"
+                  onClick={openDiagnostics}
+                  right={<Icon name="chevron-right" size={16} className="text-text-muted" />}
+                />
+              )}
               <RightPanelUserMenuMenuButton
                 label={t("settings.clearCache")}
                 icon="delete"

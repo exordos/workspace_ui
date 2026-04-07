@@ -1,4 +1,5 @@
 import { isMessageForContext } from "~/entities/message/message.model";
+import { resolveIncomingDmCallInvite } from "~/features/jitsi-call/jitsi-call-invite.lib";
 import { resolveTypingEventRoute } from "~/features/typing-indicator/typing-event-routing";
 import { getCurrentInstance } from "~/shared/api/client";
 import type { ZulipEvent, ZulipRawMessage } from "~/shared/api/zulip";
@@ -18,7 +19,8 @@ import type {
 } from "./layout-zulip-event-dispatch.types";
 
 export function dispatchZulipEvent(event: ZulipEvent, ctx: LayoutZulipEventDispatchContext): void {
-  const { chatList, currentChat, users, typing, mute, activity, inbox, notifications } = ctx;
+  const { chatList, currentChat, users, typing, mute, activity, inbox, notifications, jitsiCall } =
+    ctx;
 
   const instance = getCurrentInstance();
   if (instance?.id && isChatMessagesPersistToIndexedDbEnabled()) {
@@ -73,6 +75,10 @@ export function dispatchZulipEvent(event: ZulipEvent, ctx: LayoutZulipEventDispa
         notifications.requestAttentionIfNotFocused();
       }
     }
+    const incomingInvite = resolveIncomingDmCallInvite(raw, currentUserId);
+    if (incomingInvite != null) {
+      jitsiCall.ingestIncomingInvite(incomingInvite);
+    }
     return;
   }
 
@@ -82,6 +88,9 @@ export function dispatchZulipEvent(event: ZulipEvent, ctx: LayoutZulipEventDispa
     const messageIds = (event.messages ?? []) as number[];
     if (messageIds.length === 0) return;
     activity.markStale();
+    if (flag === "starred") {
+      activity.markStarredSummaryStale();
+    }
     if (flag === "read") {
       inbox.markStale();
       if (op === "add") {
@@ -119,6 +128,7 @@ export function dispatchZulipEvent(event: ZulipEvent, ctx: LayoutZulipEventDispa
 
   if (event.type === "delete_message") {
     activity.markStale();
+    activity.markStarredSummaryStale();
     const messageIds = event.message_ids
       ? (event.message_ids as number[])
       : event.message_id != null
@@ -152,6 +162,7 @@ export function dispatchZulipEvent(event: ZulipEvent, ctx: LayoutZulipEventDispa
 
   if (event.type === "update_message") {
     activity.markStale();
+    activity.markStarredSummaryStale();
     const messageId = event.message_id as number | undefined;
     const newContent = event.rendered_content as string | undefined;
     if (messageId != null && newContent != null) {
@@ -162,7 +173,9 @@ export function dispatchZulipEvent(event: ZulipEvent, ctx: LayoutZulipEventDispa
 
   if (event.type === "presence") {
     const email = event.email as string | undefined;
-    const presenceData = event.presence as Record<string, { status?: string; timestamp?: number }> | undefined;
+    const presenceData = event.presence as
+      | Record<string, { status?: string; timestamp?: number }>
+      | undefined;
     if (email && presenceData) {
       const agg = presenceData.aggregated ?? presenceData.website;
       if (agg?.status != null && agg?.timestamp != null) {
@@ -209,13 +222,7 @@ export function dispatchZulipEvent(event: ZulipEvent, ctx: LayoutZulipEventDispa
   }
 
   if (event.type === "subscription") {
-    const op = event.op as
-      | "update"
-      | "add"
-      | "remove"
-      | "peer_add"
-      | "peer_remove"
-      | undefined;
+    const op = event.op as "update" | "add" | "remove" | "peer_add" | "peer_remove" | undefined;
     if (op === "update") {
       const streamId = event.stream_id as number | undefined;
       const property = event.property as string | undefined;
@@ -266,4 +273,3 @@ export function buildLayoutNotificationsActions(options: {
     },
   };
 }
-

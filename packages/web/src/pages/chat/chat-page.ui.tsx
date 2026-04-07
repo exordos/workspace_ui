@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { resolvePersonalDmSidebarTitle } from "~/entities/chat-list/chat-list-format.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { resolveHydratedDraftBootstrap } from "~/entities/draft/draft-chat-bootstrap.lib";
 import {
   reconcileCreatedDraftServerId,
   syncExistingDraftDeleteOnCleanup,
@@ -10,20 +11,22 @@ import {
   syncExistingDraftUpdateOnCleanup,
 } from "~/entities/draft/draft-chat-sync.lib";
 import { resolveDraftTargetIds } from "~/entities/draft/draft-chat-target.lib";
-import { resolveHydratedDraftBootstrap } from "~/entities/draft/draft-chat-bootstrap.lib";
 import { createDraft, deleteDraftOnServer, updateDraftOnServer } from "~/entities/draft/draft.api";
 import { useDraftStore } from "~/entities/draft/draft.model";
 import type { DraftType } from "~/entities/draft/draft.types";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
-import { useUsersStore } from "~/entities/user/user.model";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
+import { useUsersStore } from "~/entities/user/user.model";
 import type { AiMessageContext, AiReplyRequest } from "~/features/ai-reply/ai-reply.types";
 import { useChatInfoStore } from "~/features/chat-info/chat-info.model";
-import { JitsiCallModal } from "~/features/jitsi-call/jitsi-call.ui";
+import { useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { useMessageReadersStore } from "~/features/message-readers/message-readers.model";
 import { useComposerTypingController } from "~/features/typing-indicator/composer-typing-controller.hook";
 import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indicator.model";
-import { buildDmTypingChatKey, buildStreamTypingChatKey } from "~/features/typing-indicator/typing-key";
+import {
+  buildDmTypingChatKey,
+  buildStreamTypingChatKey,
+} from "~/features/typing-indicator/typing-key";
 import { t } from "~/i18n/i18n";
 import {
   fetchMessages,
@@ -44,26 +47,23 @@ import {
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { dmRouteKey } from "~/shared/lib/dm-key";
+import { normalizeDmRouteUserIds } from "~/shared/lib/dm-route.lib";
 import { getPresenceState, formatLastSeen } from "~/shared/lib/format";
 import { stripHtml } from "~/shared/lib/html";
 import { buildJitsiMeetingUrl } from "~/shared/lib/jitsi";
-import { logMessageFlow, summarizeChatContextForLog } from "~/shared/lib/message-flow-debug.lib";
 import { createLogger } from "~/shared/lib/logger";
+import { logMessageFlow, summarizeChatContextForLog } from "~/shared/lib/message-flow-debug.lib";
 import { useShortcut } from "~/shared/lib/shortcuts";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
-import { getDmById, parseStreamSlug, parseDmSlugToUserIds } from "~/widgets/sidebar/sidebar.lib";
 import { useSidebarConfigStore } from "~/widgets/sidebar/sidebar-config.model";
+import { getDmById, parseStreamSlug, parseDmSlugToUserIds } from "~/widgets/sidebar/sidebar.lib";
 import type { StreamWithLast } from "~/widgets/sidebar/sidebar.types";
+import { startCallFromHeader } from "./chat-call-start.lib";
 import {
   buildCallRoomName,
   canStartCallFromHeader,
   resolveCallMessageTargetParams,
 } from "./chat-call.lib";
-import { useChatForwardHydration } from "./chat-page-forward-hydration.hook";
-import { useChatPartnerProfileHydration } from "./chat-page-partner-profile.hook";
-import { useChatRouteContext } from "./chat-page-route-context.hook";
-import { useChatToastAutoClear } from "./chat-page-toast.hook";
-import { normalizeDmRouteUserIds } from "~/shared/lib/dm-route.lib";
 import { resolveLastOwnMessageForEdit } from "./chat-edit-last-message.lib";
 import { countUnreadMessages, resolveFirstUnreadBoundaryMessageId } from "./chat-first-unread.lib";
 import {
@@ -80,7 +80,22 @@ import {
   resolveMarkAllAsReadTarget,
 } from "./chat-mark-all-read.lib";
 import { createMarkAsReadBatcher } from "./chat-mark-as-read.lib";
+import { useChatMessageListCallbacks } from "./chat-message-list-callbacks.hook";
 import { resolveNextUnreadTopicRoute } from "./chat-next-unread-topic.lib";
+import { ChatPageComposerSection } from "./chat-page-composer-section.ui";
+import { ChatPageDeleteConfirmBar } from "./chat-page-delete-confirm-bar.ui";
+import { EditMessageModalBody } from "./chat-page-edit-message-modal.ui";
+import { ChatPageFloatingToast } from "./chat-page-floating-toast.ui";
+import { useChatForwardHydration } from "./chat-page-forward-hydration.hook";
+import { ForwardMessageModalBody } from "./chat-page-forward-modal.ui";
+import { ChatPageInlineAlerts } from "./chat-page-inline-alerts.ui";
+import { ChatPageMessageListSection } from "./chat-page-message-list-section.ui";
+import { useChatPartnerProfileHydration } from "./chat-page-partner-profile.hook";
+import { ChatPageReadReceiptsDialog } from "./chat-page-read-receipts-dialog.ui";
+import { useChatRouteContext } from "./chat-page-route-context.hook";
+import { ChatPageSelectionBar } from "./chat-page-selection-bar.ui";
+import { useChatToastAutoClear } from "./chat-page-toast.hook";
+import { ChatPageTypingLine } from "./chat-page-typing-line.ui";
 import { shouldLoadBoundaryPage } from "./chat-pagination.lib";
 import {
   buildOptimisticOutgoingMessage,
@@ -88,17 +103,6 @@ import {
   markOutgoingMessageSent,
 } from "./chat-send-delivery.lib";
 import { uploadComposerFiles, type ComposerUploadProgressState } from "./chat-upload.lib";
-import { EditMessageModalBody } from "./chat-page-edit-message-modal.ui";
-import { ForwardMessageModalBody } from "./chat-page-forward-modal.ui";
-import { ChatPageComposerSection } from "./chat-page-composer-section.ui";
-import { ChatPageDeleteConfirmBar } from "./chat-page-delete-confirm-bar.ui";
-import { ChatPageFloatingToast } from "./chat-page-floating-toast.ui";
-import { ChatPageInlineAlerts } from "./chat-page-inline-alerts.ui";
-import { ChatPageMessageListSection } from "./chat-page-message-list-section.ui";
-import { ChatPageReadReceiptsDialog } from "./chat-page-read-receipts-dialog.ui";
-import { ChatPageSelectionBar } from "./chat-page-selection-bar.ui";
-import { ChatPageTypingLine } from "./chat-page-typing-line.ui";
-import { useChatMessageListCallbacks } from "./chat-message-list-callbacks.hook";
 
 const log = createLogger("chat-page");
 const AI_CONTEXT_MESSAGES_LIMIT = 30;
@@ -223,8 +227,6 @@ export const ChatPage: React.FC = () => {
     useChatForwardHydration({ forwardMessageId, messages });
   const [actionError, setActionError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [jitsiModalUrl, setJitsiModalUrl] = useState<string | null>(null);
-  const [jitsiLocationName, setJitsiLocationName] = useState("");
   const [readReceiptsOpen, setReadReceiptsOpen] = useState(false);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const markAsReadBatcherRef = useRef<ReturnType<typeof createMarkAsReadBatcher> | null>(null);
@@ -234,6 +236,7 @@ export const ChatPage: React.FC = () => {
     { type: "single"; messageId: number } | { type: "bulk"; messageIds: number[] } | null
   >(null);
   const rightDrawer = useRightDrawer();
+  const openJitsiCall = useJitsiCallStore((s) => s.openCall);
   const chatInfo = useChatInfoStore((s) => s.data);
 
   const readersLoading = useMessageReadersStore((s) => s.loading);
@@ -668,7 +671,9 @@ export const ChatPage: React.FC = () => {
 
       const draftStore = useDraftStore.getState();
       const existingDraft =
-        draftType && draftTo.length > 0 ? draftStore.getDraftForChat(draftType, draftTo, draftTopic) : undefined;
+        draftType && draftTo.length > 0
+          ? draftStore.getDraftForChat(draftType, draftTo, draftTopic)
+          : undefined;
       const existingId = existingDraft?.id ?? activeDraftIdRef.current;
       if (draftType && draftTo.length > 0 && (existingDraft != null || existingId != null)) {
         void syncExistingDraftDeleteOnClear({
@@ -967,6 +972,7 @@ export const ChatPage: React.FC = () => {
       ? trimmedPartnerName
       : t("dm.partner");
   }, [callTarget, isGroupDmView, dmChat, partnerUser, t]);
+  const isOneToOneDm = isDmView && !isGroupDmView;
 
   const buildCurrentCallLink = useCallback(() => {
     if (!canStartCallFromHeader({ target: callTarget, currentUserId }) || callTarget == null) {
@@ -983,37 +989,39 @@ export const ChatPage: React.FC = () => {
   const handleCallClick = useCallback(async () => {
     if (!canStartCallFromHeader({ target: callTarget, currentUserId }) || callTarget == null)
       return;
-    const senderUserId = currentUserId!;
     setSendError(null);
     setSending(true);
-    try {
-      const url = buildCurrentCallLink();
-      if (url == null) {
-        return;
-      }
-      const newMsg =
-        callTarget.mode === "dm"
-          ? await sendMessage({
-              to: callTarget.to,
-              content: url,
-              sender_id: senderUserId,
-              sender_full_name: t("common.you"),
-            })
-          : await sendMessage({
-              stream: callTarget.stream,
-              streamId: callTarget.streamId,
-              subject: callTarget.subject,
-              content: url,
-              sender_id: senderUserId,
-              sender_full_name: t("common.you"),
-            });
-      appendMessageToStore(newMsg);
-    } catch (err) {
-      setSendError(err instanceof Error ? err.message : t("call.createFailed"));
-    } finally {
-      setSending(false);
+    const result = await startCallFromHeader({
+      target: callTarget,
+      currentUserId,
+      buildCurrentCallLink,
+      isOneToOneDm,
+      callRoomChatLabel,
+      fallbackDmPartnerLabel: t("dm.partner"),
+      currentUserLabel: t("common.you"),
+      sendMessage,
+      appendMessageToStore,
+      openModal: (url, locationName) => {
+        openJitsiCall({ meetingUrl: url, locationName });
+      },
+      resolveErrorMessage: (error) =>
+        error instanceof Error ? error.message : t("call.createFailed"),
+    });
+    if (!result.ok && result.error != null) {
+      setSendError(result.error);
     }
-  }, [callTarget, currentUserId, buildCurrentCallLink, appendMessageToStore, t]);
+    setSending(false);
+  }, [
+    callTarget,
+    currentUserId,
+    buildCurrentCallLink,
+    t,
+    sendMessage,
+    appendMessageToStore,
+    openJitsiCall,
+    isOneToOneDm,
+    callRoomChatLabel,
+  ]);
 
   const handleSend = async (content: string, subjectOverride?: string, files?: File[]) => {
     setSendError(null);
@@ -1168,8 +1176,7 @@ export const ChatPage: React.FC = () => {
     setSelectionMode,
     updateMessageFlagsInStore,
     updateMessageReactionInStore,
-    setJitsiModalUrl,
-    setJitsiLocationName,
+    openJitsiCall: (url, locationName) => openJitsiCall({ meetingUrl: url, locationName }),
     setReadReceiptsOpen,
   });
 
@@ -1255,7 +1262,6 @@ export const ChatPage: React.FC = () => {
   const typingUsers = useTypingIndicatorStore((s) =>
     typingChatKey ? s.getTypingUsers(typingChatKey) : [],
   );
-  const isOneToOneDm = isDmView && !isGroupDmView;
   const dmPartnerIsTyping = useMemo(
     () =>
       isOneToOneDm &&
@@ -1329,9 +1335,7 @@ export const ChatPage: React.FC = () => {
           : dmRecipientIds;
     const rawName = dmChat.name?.trim() ?? "";
     const resolvedName =
-      rawName.length === 0 || rawName === t("dm.privateChat")
-        ? t("dm.groupChat")
-        : rawName;
+      rawName.length === 0 || rawName === t("dm.privateChat") ? t("dm.groupChat") : rawName;
     return {
       name: resolvedName,
       participantsCount: participantIds.length,
@@ -1527,17 +1531,6 @@ export const ChatPage: React.FC = () => {
           aiChatContext={aiChatContext}
         />
       </section>
-      {jitsiModalUrl && (
-        <JitsiCallModal
-          open={!!jitsiModalUrl}
-          meetingUrl={jitsiModalUrl}
-          locationName={jitsiLocationName}
-          onClose={() => {
-            setJitsiModalUrl(null);
-            setJitsiLocationName("");
-          }}
-        />
-      )}
     </div>
   );
 };

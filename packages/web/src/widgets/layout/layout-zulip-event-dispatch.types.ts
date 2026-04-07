@@ -1,4 +1,5 @@
 import type { CurrentChatContext } from "~/entities/message/message.model";
+import type { IncomingDmCallInvite } from "~/features/jitsi-call/jitsi-call.model";
 import type { MockMessage, ZulipRawMessage } from "~/shared/api/zulip";
 
 export type LayoutMessageFlagOp = "add" | "remove";
@@ -33,18 +34,19 @@ export interface LayoutCurrentChatActions {
 
 export interface LayoutUsersActions {
   mergeFromMessage: (message: ZulipRawMessage) => void;
-  setPresenceByEmail: (email: string, presence: { status: "active" | "idle"; timestamp: number }) => void;
+  setPresenceByEmail: (
+    email: string,
+    presence: { status: "active" | "idle"; timestamp: number },
+  ) => void;
   setStatus: (
     userId: number,
-    status:
-      | {
-          text: string;
-          emojiName?: string;
-          emojiCode?: string;
-          reactionType?: "unicode_emoji" | "realm_emoji" | "zulip_extra_emoji";
-          away: boolean;
-        }
-      | null,
+    status: {
+      text: string;
+      emojiName?: string;
+      emojiCode?: string;
+      reactionType?: "unicode_emoji" | "realm_emoji" | "zulip_extra_emoji";
+      away: boolean;
+    } | null,
     updatedAtMs: number,
   ) => void;
 }
@@ -63,6 +65,7 @@ export interface LayoutMuteActions {
 
 export interface LayoutActivityActions {
   markStale: () => void;
+  markStarredSummaryStale: () => void;
 }
 
 export interface LayoutInboxActions {
@@ -77,6 +80,10 @@ export interface LayoutNotificationsActions {
   requestAttentionIfNotFocused: () => void;
 }
 
+export interface LayoutJitsiCallActions {
+  ingestIncomingInvite: (invite: IncomingDmCallInvite) => void;
+}
+
 export interface LayoutZulipEventDispatchContext {
   chatList: LayoutChatListActions;
   currentChat: LayoutCurrentChatActions;
@@ -86,5 +93,6 @@ export interface LayoutZulipEventDispatchContext {
   activity: LayoutActivityActions;
   inbox: LayoutInboxActions;
   notifications: LayoutNotificationsActions;
+  jitsiCall: LayoutJitsiCallActions;
   updateLatestMessageId: (id: number) => void;
 }

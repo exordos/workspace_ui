@@ -60,7 +60,12 @@ describe("useInboxStore", () => {
     useInboxStore.setState({
       entries: [],
       loading: false,
+      isInitialLoading: false,
+      isRefreshing: false,
+      requestVersion: 0,
+      lastLoadedAt: null,
       error: null,
+      stale: false,
     });
   });
 
@@ -104,14 +109,20 @@ describe("useInboxStore", () => {
     const state = useInboxStore.getState();
     expect(state.entries).toHaveLength(0);
     expect(state.loading).toBe(false);
+    expect(state.isInitialLoading).toBe(false);
+    expect(state.isRefreshing).toBe(false);
+    expect(state.requestVersion).toBe(0);
+    expect(state.lastLoadedAt).toBeNull();
     expect(state.error).toBeNull();
   });
 
   it("setLoading toggles loading state", () => {
     useInboxStore.getState().setLoading(true);
     expect(useInboxStore.getState().loading).toBe(true);
+    expect(useInboxStore.getState().isInitialLoading).toBe(true);
     useInboxStore.getState().setLoading(false);
     expect(useInboxStore.getState().loading).toBe(false);
+    expect(useInboxStore.getState().isInitialLoading).toBe(false);
   });
 
   it("setError stores error message", () => {

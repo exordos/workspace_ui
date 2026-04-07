@@ -4,12 +4,7 @@
 import { useMemo } from "react";
 import { useMessageReadersStore } from "~/features/message-readers/message-readers.model";
 import { t } from "~/i18n/i18n";
-import {
-  addMessageFlag,
-  addReaction,
-  removeMessageFlag,
-  removeReaction,
-} from "~/shared/api/zulip";
+import { addMessageFlag, addReaction, removeMessageFlag, removeReaction } from "~/shared/api/zulip";
 import { stripHtml } from "~/shared/lib/html";
 import type { MessageListCallbacks } from "~/widgets/message-list/message-list.types";
 import { slugForStream } from "~/widgets/sidebar/sidebar.lib";
@@ -36,8 +31,7 @@ export function useChatMessageListCallbacks(
     setSelectionMode,
     updateMessageFlagsInStore,
     updateMessageReactionInStore,
-    setJitsiModalUrl,
-    setJitsiLocationName,
+    openJitsiCall,
     setReadReceiptsOpen,
   } = params;
 
@@ -133,8 +127,7 @@ export function useChatMessageListCallbacks(
           );
       },
       onOpenJitsiCall(url: string, locationName?: string) {
-        setJitsiModalUrl(url);
-        setJitsiLocationName(locationName?.trim() ?? "");
+        openJitsiCall(url, locationName?.trim() ?? "");
       },
       onMessageViews(msg) {
         void useMessageReadersStore.getState().fetchReadReceipts(msg.id);
@@ -174,8 +167,7 @@ export function useChatMessageListCallbacks(
       setActionError,
       setSelectedMessageIds,
       setSelectionMode,
-      setJitsiModalUrl,
-      setJitsiLocationName,
+      openJitsiCall,
       setReadReceiptsOpen,
     ],
   );

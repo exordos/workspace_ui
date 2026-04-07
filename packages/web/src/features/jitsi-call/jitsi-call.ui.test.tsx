@@ -1,12 +1,20 @@
+// Этот файл проверяет, что Jitsi-модалка не ломает lifecycle embed при UI-переключениях.
+// Здесь нас интересует не внешний вид как таковой, а то, что minimize/expand/resize
+// не создают новый Jitsi session instance.
+
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import React, { useEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { JitsiCallModal } from "./jitsi-call.ui";
 
+// Это минимальный shape props, который тесту нужен от mock-версии react-rnd.
 interface MockRndProps {
   children: React.ReactNode;
   position?: { x: number; y: number };
   size?: { width: number | string; height: number | string };
   bounds?: string;
+  disableDragging?: boolean;
+  enableResizing?: boolean;
   onDragStop?: (event: MouseEvent | TouchEvent, data: { x: number; y: number }) => void;
   onResizeStop?: (
     event: MouseEvent | TouchEvent,
@@ -17,10 +25,16 @@ interface MockRndProps {
   ) => void;
 }
 
+// Эти переменные позволяют проверить, что shell-переключения не создают новую Jitsi-сессию.
 let latestRndProps: MockRndProps | null = null;
 let latestJitsiIframe: HTMLIFrameElement | null = null;
+let jitsiMountCount = 0;
+let jitsiApiReadyCount = 0;
+let jitsiIframeReadyCount = 0;
 
 vi.mock("@jitsi/react-sdk", () => ({
+  // Этот mock моделирует жизненный цикл настоящего Jitsi embed.
+  // Нам важно считать mount/apiReady/iframeReady, чтобы ловить скрытый remount при смене режима окна.
   JitsiMeeting: ({
     onApiReady,
     getIFrameRef,
@@ -30,23 +44,36 @@ vi.mock("@jitsi/react-sdk", () => ({
       getParticipantsInfo: () => [];
       on: (event: string, callback: () => void) => void;
     }) => void;
-    getIFrameRef?: (iframe: HTMLElement) => void;
+    getIFrameRef?: (iframe: HTMLElement | null) => void;
   }) => {
-    queueMicrotask(() => {
+    useEffect(() => {
+      // Mount эффекта здесь моделирует создание новой Jitsi-сессии.
+      jitsiMountCount += 1;
+      jitsiApiReadyCount += 1;
       onApiReady?.({
         getNumberOfParticipants: () => 2,
         getParticipantsInfo: () => [],
         on: () => {},
       });
+
       const iframe = document.createElement("iframe");
       latestJitsiIframe = iframe;
+      jitsiIframeReadyCount += 1;
       getIFrameRef?.(iframe);
-    });
+
+      return () => {
+        getIFrameRef?.(null);
+      };
+      // Этот mock должен реагировать только на mount/unmount, а не на обычные shell-ререндеры.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     return <div data-testid="jitsi-meeting">meeting</div>;
   },
 }));
 
 vi.mock("react-rnd", () => ({
+  // Mock Rnd даёт тесту контролируемый способ симулировать drag и resize без настоящего DOM layout engine.
   Rnd: (props: MockRndProps) => {
     latestRndProps = props;
     return (
@@ -77,13 +104,18 @@ vi.mock("react-rnd", () => ({
   },
 }));
 
-describe("JitsiCallModal pip bounds persistence", () => {
+describe("JitsiCallModal", () => {
   afterEach(() => {
+    // После каждого теста обнуляем счётчики, чтобы каждая проверка смотрела только на свой сценарий.
     latestRndProps = null;
     latestJitsiIframe = null;
+    jitsiMountCount = 0;
+    jitsiApiReadyCount = 0;
+    jitsiIframeReadyCount = 0;
   });
 
   it("includes call name in the dialog header title", () => {
+    // Проверяем, что shell показывает понятный заголовок активного звонка.
     render(
       <JitsiCallModal
         open
@@ -97,6 +129,7 @@ describe("JitsiCallModal pip bounds persistence", () => {
   });
 
   it("preserves pip position and size across minimize cycles", () => {
+    // PiP-окно должно помнить last known bounds, чтобы повторное сворачивание было предсказуемым.
     render(
       <JitsiCallModal
         open
@@ -107,8 +140,6 @@ describe("JitsiCallModal pip bounds persistence", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: /minimize/i }));
-    expect(screen.getByTestId("mock-rnd")).toBeInTheDocument();
-
     fireEvent.click(screen.getByText("drag-stop"));
     fireEvent.click(screen.getByText("resize-stop"));
 
@@ -120,6 +151,7 @@ describe("JitsiCallModal pip bounds persistence", () => {
   });
 
   it("configures Jitsi iframe permissions for camera and microphone", async () => {
+    // iframe должен получать нужные allow permissions независимо от shell-состояния.
     render(
       <JitsiCallModal
         open
@@ -136,21 +168,8 @@ describe("JitsiCallModal pip bounds persistence", () => {
     });
   });
 
-  it("renders pip content in a dedicated non-radix container when minimized", () => {
-    render(
-      <JitsiCallModal
-        open
-        meetingUrl="https://meet.genesis-core.tech/room-safe-ref"
-        locationName="Ref safety"
-        onClose={vi.fn()}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: /minimize/i }));
-    expect(screen.getByTestId("jitsi-pip-content")).toBeInTheDocument();
-  });
-
-  it("uses element-based bounds for pip window to avoid window getComputedStyle crash", () => {
+  it("uses element-based bounds for pip window and disables dragging in expanded mode", () => {
+    // В expanded режиме окно фиксированное, а в PiP режиме становится draggable/resizable.
     render(
       <JitsiCallModal
         open
@@ -160,22 +179,68 @@ describe("JitsiCallModal pip bounds persistence", () => {
       />,
     );
 
+    expect(latestRndProps?.disableDragging).toBe(true);
+
     fireEvent.click(screen.getByRole("button", { name: /minimize/i }));
+
     expect(latestRndProps?.bounds).toBe("body");
+    expect(latestRndProps?.disableDragging).toBe(false);
+    expect(latestRndProps?.enableResizing).toBe(true);
   });
 
-  it("keeps pip outside Radix portal to prevent non-element ref callbacks", () => {
+  it("does not remount Jitsi when minimizing and expanding the same call", async () => {
+    // Это главный регрессионный тест: minimize/expand не должен создавать новый Jitsi instance.
     render(
       <JitsiCallModal
         open
-        meetingUrl="https://meet.genesis-core.tech/room-portal-safety"
-        locationName="Portal safety"
+        meetingUrl="https://meet.genesis-core.tech/room-stable"
+        locationName="Stable call"
         onClose={vi.fn()}
       />,
     );
 
+    await waitFor(() => {
+      expect(jitsiMountCount).toBe(1);
+      expect(jitsiApiReadyCount).toBe(1);
+      expect(jitsiIframeReadyCount).toBe(1);
+    });
+
+    const firstIframe = latestJitsiIframe;
+
     fireEvent.click(screen.getByRole("button", { name: /minimize/i }));
-    const pipContent = screen.getByTestId("jitsi-pip-content");
-    expect(pipContent.closest("[data-radix-portal]")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /expand/i }));
+
+    await waitFor(() => {
+      expect(jitsiMountCount).toBe(1);
+      expect(jitsiApiReadyCount).toBe(1);
+      expect(jitsiIframeReadyCount).toBe(1);
+      expect(latestJitsiIframe).toBe(firstIframe);
+    });
+  });
+
+  it("does not remount Jitsi when pip window is dragged or resized", async () => {
+    // Drag и resize — это только shell-операции. Для embed они не должны выглядеть как новый mount.
+    render(
+      <JitsiCallModal
+        open
+        meetingUrl="https://meet.genesis-core.tech/room-resize-safe"
+        locationName="Resize safe"
+        onClose={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(jitsiMountCount).toBe(1);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /minimize/i }));
+    fireEvent.click(screen.getByText("drag-stop"));
+    fireEvent.click(screen.getByText("resize-stop"));
+
+    await waitFor(() => {
+      expect(jitsiMountCount).toBe(1);
+      expect(jitsiApiReadyCount).toBe(1);
+      expect(jitsiIframeReadyCount).toBe(1);
+    });
   });
 });

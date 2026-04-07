@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MockMessage } from "~/shared/api/zulip.types";
-import { groupInboxEntries } from "./inbox.lib";
+import { groupInboxEntries, isInboxEntriesSnapshotFresher } from "./inbox.lib";
 import type { InboxEntry } from "./inbox.types";
 
 const DM_A: InboxEntry = {
@@ -182,5 +182,28 @@ describe("buildInboxEntries", () => {
       unreadCount: 1,
       messageIds: [77],
     });
+  });
+});
+
+describe("isInboxEntriesSnapshotFresher", () => {
+  it("returns true when candidate has newer timestamp", () => {
+    const current = [{ ...DM_A, lastMessageTimestamp: 100, messageIds: [10] }];
+    const candidate = [{ ...DM_A, lastMessageTimestamp: 200, messageIds: [11] }];
+
+    expect(isInboxEntriesSnapshotFresher(candidate, current)).toBe(true);
+  });
+
+  it("returns true when timestamp is equal but candidate has higher max messageId", () => {
+    const current = [{ ...DM_A, lastMessageTimestamp: 200, messageIds: [100, 120] }];
+    const candidate = [{ ...DM_A, lastMessageTimestamp: 200, messageIds: [100, 130] }];
+
+    expect(isInboxEntriesSnapshotFresher(candidate, current)).toBe(true);
+  });
+
+  it("returns false when candidate is not fresher", () => {
+    const current = [{ ...DM_A, lastMessageTimestamp: 200, messageIds: [100, 130] }];
+    const candidate = [{ ...DM_A, lastMessageTimestamp: 200, messageIds: [100, 120] }];
+
+    expect(isInboxEntriesSnapshotFresher(candidate, current)).toBe(false);
   });
 });

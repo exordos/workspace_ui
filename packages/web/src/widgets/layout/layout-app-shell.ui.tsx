@@ -1,4 +1,5 @@
 import React from "react";
+import { JitsiCallShell } from "~/features/jitsi-call/jitsi-call-shell.ui";
 import { MediaViewerOverlay } from "~/features/media-viewer/media-viewer-overlay.ui";
 import { t } from "~/i18n/i18n";
 import { OpenSearchContext } from "~/shared/contexts/open-search";
@@ -68,6 +69,7 @@ export const LayoutAppShell = React.memo<LayoutAppShellProps>(function LayoutApp
             </div>
           )}
           <MediaViewerOverlay />
+          <JitsiCallShell />
           <TopBar />
           <LayoutMainWorkspace
             shouldShowChatShell={shouldShowChatShell}

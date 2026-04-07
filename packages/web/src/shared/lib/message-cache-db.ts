@@ -1,15 +1,11 @@
-/**
- * IndexedDB write-through cache for chat messages (per Zulip instance + conversation).
- *
- * Zustand holds UI state; this store retains the last N messages per chat for cold start / reopen.
- * N matches stream vs DM initial fetch sizes in `zulip-message-window.lib`.
- *
- * Usage:
- *   import { upsertChatMessages, getChatMessagesAscending } from "~/shared/lib/message-cache-db";
- */
-import { ZULIP_CHAT_MESSAGE_CACHE_MAX_WINDOW } from "~/shared/lib/zulip-message-window.lib";
+// Этот файл описывает работу с IndexedDB-кэшем сообщений.
+// Назначение:
+// - хранить сообщения локально для быстрого cold start;
+// - отдавать bootstrap-данные для UI до завершения серверного refresh;
+// - поддерживать retention по чатам, чтобы кэш не рос бесконечно.
 import type { MockMessage, Reaction } from "~/shared/api/zulip.types";
 import { instanceChatKey } from "~/shared/lib/message-cache-keys.lib";
+import { ZULIP_CHAT_MESSAGE_CACHE_MAX_WINDOW } from "~/shared/lib/zulip-message-window.lib";
 
 function idbError(reason: unknown): Error {
   return reason instanceof Error ? reason : new Error("indexedDB error", { cause: reason });
@@ -18,7 +14,7 @@ function idbError(reason: unknown): Error {
 const DB_NAME = "workspace-message-cache-v1";
 const DB_VERSION = 5;
 
-/** Default max messages retained per chat when caller does not pass `windowSizeN` (DM window is largest). */
+// Размер retention по умолчанию, если caller явно не передал windowSizeN.
 export const MESSAGE_CACHE_DEFAULT_WINDOW_SIZE = ZULIP_CHAT_MESSAGE_CACHE_MAX_WINDOW;
 
 const STORE_MESSAGES = "messages";
@@ -29,10 +25,10 @@ const STORE_USER_STATUS_CACHE = "userStatusCache";
 const STORE_FOLDERS_SNAPSHOT = "foldersSnapshot";
 
 export interface MessageCacheRow {
-  /** `${instanceId}:${messageId}` */
+  // Уникальный ключ строки сообщения.
   id: string;
   instanceId: string;
-  /** `${instanceId}::${chatKey}` */
+  // Композитный ключ инстанса и чата.
   instanceChatKey: string;
   chatKey: string;
   messageId: number;
@@ -48,9 +44,9 @@ export interface ChatMetaRow {
   windowSizeN: number;
   lastEventIdApplied: number | null;
   lastSyncedAt: number | null;
-  /** Narrow has no older messages on server (GET /messages found_oldest). */
+  // Для narrow больше нет старых сообщений на сервере.
   reachedOldest?: boolean;
-  /** Narrow has no newer messages on server (GET /messages found_newest). */
+  // Для narrow больше нет новых сообщений на сервере.
   reachedNewest?: boolean;
 }
 
@@ -100,7 +96,7 @@ export function openMessageCacheDb(): Promise<IDBDatabase> {
   return dbPromise;
 }
 
-/** Test helper: reset singleton after deleting DB. */
+// Test helper: сбрасывает singleton после удаления БД.
 export function resetMessageCacheDbSingletonForTests(): void {
   dbPromise = null;
 }
@@ -136,9 +132,7 @@ async function readAllMessagesInChat(
   });
 }
 
-/**
- * Returns messages sorted ascending by Zulip message id.
- */
+// Возвращает сообщения чата в порядке возрастания message.id.
 export async function getChatMessagesAscending(
   instanceId: string,
   chatKey: string,
@@ -155,7 +149,75 @@ export async function getChatMessagesAscending(
   }
 }
 
-/** All message ids currently stored for the chat (for pagination dedup). */
+// Возвращает все кэшированные сообщения инстанса в порядке возрастания id.
+// Используется как best-effort bootstrap для страниц вне текущего чата.
+export async function getInstanceMessagesAscending(instanceId: string): Promise<MockMessage[]> {
+  // В некоторых окружениях IndexedDB может быть недоступен
+  // (например, SSR, приватный режим браузера или отсутствие поддержки)
+  if (!isIndexedDBAvailable()) return [];
+
+  try {
+    const db = await openMessageCacheDb();
+
+    return await new Promise<MockMessage[]>((resolve, reject) => {
+      // Открываем store только для чтения
+      const tx = db.transaction(STORE_MESSAGES, "readonly");
+      const store = tx.objectStore(STORE_MESSAGES);
+
+      /**
+       * Первичный ключ хранится в формате:
+       * `${instanceId}:${messageId}`
+       *
+       * Поэтому вместо полного сканирования всего store
+       * можно эффективно выбрать только сообщения
+       * нужного инстанса через диапазон ключей.
+       *
+       * Например для instanceId = "chat-1":
+       *
+       * Подойдут:
+       * chat-1:1
+       * chat-1:2
+       * chat-1:100
+       *
+       * Не подойдут:
+       * chat-2:1
+       */
+      const range = IDBKeyRange.bound(`${instanceId}:`, `${instanceId}:\uffff`);
+
+      // Открываем курсор только по сообщениям текущего инстанса
+      const req = store.openCursor(range);
+
+      // Сразу собираем итоговый массив сообщений,
+      // чтобы избежать дополнительного map после чтения
+      const messages: MockMessage[] = [];
+
+      req.onerror = () => reject(idbError(req.error));
+
+      req.onsuccess = () => {
+        const cursor = req.result;
+
+        // Если записи закончились — возвращаем собранный результат
+        if (!cursor) {
+          resolve(messages);
+          return;
+        }
+
+        // Добавляем сообщение в результат
+        const row = cursor.value as MessageCacheRow;
+        messages.push(row.message);
+
+        // Переходим к следующей записи в диапазоне
+        cursor.continue();
+      };
+    });
+  } catch {
+    // Кэш используется как best-effort bootstrap,
+    // поэтому в случае ошибки просто возвращаем пустой массив
+    return [];
+  }
+}
+
+// Возвращает id сообщений, уже лежащих в кэше чата (нужно для dedupe пагинации).
 export async function getExistingMessageIdsInChat(
   instanceId: string,
   chatKey: string,
@@ -221,9 +283,7 @@ async function putChatMetaRow(db: IDBDatabase, row: ChatMetaRow): Promise<void> 
   });
 }
 
-/**
- * Deletes oldest messages beyond the last `maxPerChat` by message id.
- */
+// Применяет retention: удаляет самые старые сообщения сверх лимита.
 export async function applyRetentionForChat(
   instanceId: string,
   chatKey: string,
@@ -282,9 +342,7 @@ export interface UpsertChatMessagesResult {
   instanceChatKey: string;
 }
 
-/**
- * Upserts messages for a chat and applies retention. Notifies subscribers.
- */
+// Upsert сообщений чата + применение retention.
 export async function upsertChatMessages(options: {
   instanceId: string;
   chatKey: string;

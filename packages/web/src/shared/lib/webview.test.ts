@@ -125,6 +125,8 @@ describe("WebView page registry", () => {
     expect(pages.some((p) => p.path === "/licenses")).toBe(true);
     expect(pages.some((p) => p.path === "/updates")).toBe(true);
     expect(pages.some((p) => p.path === "/settings/personal-info")).toBe(true);
+    expect(pages.some((p) => p.path === "/settings/logs")).toBe(true);
+    expect(pages.some((p) => p.path === "/logs")).toBe(true);
     expect(pages.some((p) => p.path === "/settings/build")).toBe(true);
     expect(pages.some((p) => p.path === "/inbox")).toBe(true);
     expect(pages.some((p) => p.path === "/feed")).toBe(true);
@@ -142,6 +144,25 @@ describe("WebView page registry", () => {
     const before = getWebViewPages().length;
     registerWebViewPage({ path: "/licenses", label: "Dup" });
     expect(getWebViewPages().length).toBe(before);
+  });
+
+  it("omits diagnostics pages when diagnostics are disabled", async () => {
+    vi.resetModules();
+    vi.doMock("~/shared/config/constants", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("~/shared/config/constants")>();
+      return {
+        ...actual,
+        IS_CONNECTION_DIAGNOSTICS_ENABLED: false,
+      };
+    });
+
+    const { getWebViewPages: getWebViewPagesWithDiagnosticsDisabled } = await import("./webview");
+    const pages = getWebViewPagesWithDiagnosticsDisabled();
+    expect(pages.some((p) => p.path === "/settings/logs")).toBe(false);
+    expect(pages.some((p) => p.path === "/logs")).toBe(false);
+
+    vi.doUnmock("~/shared/config/constants");
+    vi.resetModules();
   });
 });
 
