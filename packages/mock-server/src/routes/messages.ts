@@ -26,41 +26,41 @@ interface MockMessage {
 const now = Math.floor(Date.now() / 1000);
 
 const SENDER_POOL = [
-  { id: 1, name: "Илья Фомин" },
-  { id: 2, name: "Дарья Исакова" },
-  { id: 4, name: "Анна Дизайнер" },
-  { id: 5, name: "Михаил Продакт" },
-  { id: 6, name: "Екатерина QA" },
-  { id: 7, name: "Сергей DevOps" },
-  { id: 8, name: "Алексей Аналитик" },
-  { id: 9, name: "Марина Поддержка" },
-  { id: 10, name: "Олег Маркетинг" },
+  { id: 1, name: "Ilya Fomin" },
+  { id: 2, name: "Daria Isakova" },
+  { id: 4, name: "Anna Designer" },
+  { id: 5, name: "Michael Product" },
+  { id: 6, name: "Kate QA" },
+  { id: 7, name: "Sergey DevOps" },
+  { id: 8, name: "Alex Analyst" },
+  { id: 9, name: "Marina Support" },
+  { id: 10, name: "Oleg Marketing" },
 ] as const;
 
 const CONTENT_SAMPLES = [
-  "Согласен, давайте так и сделаем.",
-  "Можем обсудить на стендапе.",
-  "Готово, проверьте в dev-окружении.",
-  "Есть вопрос по макету — когда будет время?",
-  "Напомню в четверг.",
-  "Добавил в backlog.",
-  "Это уже в работе.",
-  "Кто-нибудь смотрел последний коммит?",
-  "Предлагаю перенести на следующую неделю.",
-  "Отличная идея 👍",
-  "Нужна помощь с тестами.",
-  "Обновил документацию.",
-  "Митинг в 15:00 не забыли?",
-  "Проверьте, пожалуйста, на мобилке.",
-  "Скину ссылку в личку.",
-  "Сделаю до конца дня.",
-  "Есть блокер по API.",
-  "Можно закрывать тикет.",
-  "Кто ведёт ретро?",
-  "Напишите в тред, если что.",
+  "Agreed, let's do it that way.",
+  "We can discuss at standup.",
+  "Done, please check in dev environment.",
+  "Question about the mockup — when do you have time?",
+  "I'll remind you on Thursday.",
+  "Added to backlog.",
+  "Already in progress.",
+  "Has anyone looked at the latest commit?",
+  "Suggest moving to next week.",
+  "Great idea 👍",
+  "Need help with tests.",
+  "Updated the documentation.",
+  "Don't forget the 3pm meeting.",
+  "Please check on mobile.",
+  "I'll send the link in DM.",
+  "Will finish by end of day.",
+  "There's an API blocker.",
+  "We can close the ticket.",
+  "Who's leading retro?",
+  "Reply in the thread if anything.",
 ];
 
-const TOPIC_SAMPLES = ["Welcome", "Design", "Roadmap", "Testing", "Общее", "Вопросы", "Идеи"];
+const TOPIC_SAMPLES = ["Welcome", "Design", "Roadmap", "Testing", "General", "Questions", "Ideas"];
 
 function generateManyMessages(
   streamId: number,
@@ -96,11 +96,11 @@ const messages: MockMessage[] = [
   {
     id: 1001,
     sender_id: 1,
-    sender_full_name: "Илья Фомин",
+    sender_full_name: "Ilya Fomin",
     stream_id: 10,
     channel: "general",
     subject: "Welcome",
-    content: "Добро пожаловать в кастомный клиент Zulip 👋",
+    content: "Welcome to the custom Zulip client 👋",
     timestamp: now - 3600,
     reactions: [
       { emoji_name: "thumbs_up", emoji_code: "1f44d", reaction_type: "unicode_emoji", user_id: 999 },
@@ -111,12 +111,12 @@ const messages: MockMessage[] = [
   {
     id: 1002,
     sender_id: 2,
-    sender_full_name: "Дарья Исакова",
+    sender_full_name: "Daria Isakova",
     stream_id: 10,
     channel: "general",
     subject: "Design",
     content:
-      "Залил новый макет в Figma: версия с информацией о канале справа. Нужно сверстать максимально близко.",
+      "Uploaded new mockup to Figma: version with channel info on the right. Need to implement it as close as possible.",
     timestamp: now - 3500,
     reactions: [
       { emoji_name: "heart", emoji_code: "2764-fe0f", reaction_type: "unicode_emoji", user_id: 4 },
@@ -125,230 +125,230 @@ const messages: MockMessage[] = [
   {
     id: 1003,
     sender_id: 4,
-    sender_full_name: "Анна Дизайнер",
+    sender_full_name: "Anna Designer",
     stream_id: 10,
     channel: "general",
     subject: "Design",
-    content: "Обновила отступы и сетку. Проверьте, пожалуйста, в Dev mode.",
+    content: "Updated spacing and grid. Please check in Dev mode.",
     timestamp: now - 3400,
   },
   {
     id: 1004,
     sender_id: 5,
-    sender_full_name: "Михаил Продакт",
+    sender_full_name: "Michael Product",
     stream_id: 10,
     channel: "general",
     subject: "Roadmap",
     content:
-      "На этой неделе фокус на кастомном веб-клиенте для Zulip и интеграции с нашим OIDC.",
+      "This week focus on custom Zulip web client and integration with our OIDC.",
     timestamp: now - 3200,
   },
   {
     id: 1005,
     sender_id: 6,
-    sender_full_name: "Екатерина QA",
+    sender_full_name: "Kate QA",
     stream_id: 10,
     channel: "general",
     subject: "Testing",
     content:
-      "Добавила чек-лист по проверке авторизации и навигации. Позже допишу сценарии для real-time обновлений.",
+      "Added checklist for auth and navigation testing. Will add scenarios for real-time updates later.",
     timestamp: now - 3000,
   },
   {
     id: 1006,
     sender_id: 999,
-    sender_full_name: "Вы",
+    sender_full_name: "You",
     stream_id: 10,
     channel: "general",
     subject: "Welcome",
-    content: "Спасибо, подключаю список сообщений и правую панель.",
+    content: "Thanks, connecting the message list and right panel.",
     timestamp: now - 2900,
   },
   {
     id: 1007,
     sender_id: 999,
-    sender_full_name: "Вы",
+    sender_full_name: "You",
     stream_id: 10,
     channel: "general",
     subject: "Design",
-    content: "Макет посмотрел, делаю шторку с информацией о канале.",
+    content: "Reviewed the mockup, working on the channel info panel.",
     timestamp: now - 2700,
   },
-  // Ещё много сообщений в general для проверки прокрутки (примерно за 3 дня)
+  // More messages in general for scroll testing (approx. 3 days)
   ...generateManyMessages(10, "general", now - 86400 * 3, now - 3000, 120, 5000),
   // engineering
   {
     id: 1101,
     sender_id: 7,
-    sender_full_name: "Сергей DevOps",
+    sender_full_name: "Sergey DevOps",
     stream_id: 11,
     channel: "engineering",
     subject: "Mock server",
     content:
-      "Мок-сервер поднят на http://localhost:4000. Сейчас там /users, /streams, /messages с фикстурами.",
+      "Mock server running at http://localhost:4000. Currently has /users, /streams, /messages with fixtures.",
     timestamp: now - 2500,
   },
   {
     id: 1102,
     sender_id: 1,
-    sender_full_name: "Илья Фомин",
+    sender_full_name: "Ilya Fomin",
     stream_id: 11,
     channel: "engineering",
     subject: "API client",
     content:
-      "Фронт пока ходит в mock-server, позже подключим zulip-js и реальное API.",
+      "Frontend currently uses mock-server, will switch to zulip-js and real API later.",
     timestamp: now - 2300,
   },
   {
     id: 1103,
     sender_id: 2,
-    sender_full_name: "Дарья Исакова",
+    sender_full_name: "Daria Isakova",
     stream_id: 11,
     channel: "engineering",
     subject: "Layout",
     content:
-      "Не забывайте, что верстка должна быть адаптивной, но при этом соответствовать десктопному макету 1920×1080.",
+      "Remember layout must be responsive while matching the desktop mockup 1920×1080.",
     timestamp: now - 2100,
   },
   {
     id: 1104,
     sender_id: 999,
-    sender_full_name: "Вы",
+    sender_full_name: "You",
     stream_id: 11,
     channel: "engineering",
     subject: "API client",
-    content: "Пока ходим в mock, потом переключим на zulip-js.",
+    content: "Using mock for now, will switch to zulip-js later.",
     timestamp: now - 2000,
   },
   // design
   {
     id: 1201,
     sender_id: 4,
-    sender_full_name: "Анна Дизайнер",
+    sender_full_name: "Anna Designer",
     stream_id: 12,
     channel: "design",
     subject: "SVG assets",
     content:
-      "Экспортировала основные иконки в SVG. Их нужно подключить в виде отдельных компонентов.",
+      "Exported main icons to SVG. They need to be wired up as separate components.",
     timestamp: now - 2000,
   },
   {
     id: 1202,
     sender_id: 4,
-    sender_full_name: "Анна Дизайнер",
+    sender_full_name: "Anna Designer",
     stream_id: 12,
     channel: "design",
     subject: "Right panel",
     content:
-      "В правой панели есть блоки: медиа, ссылки, комментарии со звонками и участники. Пока можно сделать статическими.",
+      "Right panel has blocks: media, links, comments with calls, and participants. Can be static for now.",
     timestamp: now - 1800,
   },
   {
     id: 1203,
     sender_id: 999,
-    sender_full_name: "Вы",
+    sender_full_name: "You",
     stream_id: 12,
     channel: "design",
     subject: "SVG assets",
-    content: "Иконки подключил как React-компоненты через Icon.",
+    content: "Icons wired up as React components via Icon.",
     timestamp: now - 1700,
   },
   // product
   {
     id: 1301,
     sender_id: 5,
-    sender_full_name: "Михаил Продакт",
+    sender_full_name: "Michael Product",
     stream_id: 13,
     channel: "product",
     subject: "Navigation",
     content:
-      "После первой страницы с чатом добавим верхний уровень навигации: список чатов, настройки и т.д.",
+      "After the first chat page we'll add top-level navigation: chat list, settings, etc.",
     timestamp: now - 1500,
   },
   // support
   {
     id: 1401,
     sender_id: 9,
-    sender_full_name: "Марина Поддержка",
+    sender_full_name: "Marina Support",
     stream_id: 14,
     channel: "support",
     subject: "Feedback",
     content:
-      "Пользователи просят тёмную тему и компактный режим сообщений. Обсудим, как вписать это в наш UI.",
+      "Users are asking for dark theme and compact message mode. Let's discuss how to fit this into our UI.",
     timestamp: now - 1200,
   },
   {
     id: 1402,
     sender_id: 8,
-    sender_full_name: "Алексей Аналитик",
+    sender_full_name: "Alex Analyst",
     stream_id: 14,
     channel: "support",
     subject: "Metrics",
     content:
-      "Собираю метрики по использованию чатов. В дальнейшем можно будет встроить графики прямо в правую панель.",
+      "Collecting chat usage metrics. We can embed charts in the right panel later.",
     timestamp: now - 900,
   },
   // random
   {
     id: 1501,
     sender_id: 10,
-    sender_full_name: "Олег Маркетинг",
+    sender_full_name: "Oleg Marketing",
     stream_id: 15,
     channel: "random",
     subject: "Off-topic",
-    content: "Кто идет на митап по React 19 в четверг?",
+    content: "Who's going to the React 19 meetup on Thursday?",
     timestamp: now - 800,
   },
   {
     id: 1502,
     sender_id: 6,
-    sender_full_name: "Екатерина QA",
+    sender_full_name: "Kate QA",
     stream_id: 15,
     channel: "random",
     subject: "Off-topic",
-    content: "Я приду, можно обсудить опыт по тестированию real-time клиентов.",
+    content: "I'll be there, we can discuss testing real-time clients.",
     timestamp: now - 700,
   },
   {
     id: 1503,
     sender_id: 999,
-    sender_full_name: "Вы",
+    sender_full_name: "You",
     stream_id: 15,
     channel: "random",
     subject: "Off-topic",
-    content: "Я тоже записался, до встречи в четверг.",
+    content: "I signed up too, see you Thursday.",
     timestamp: now - 600,
   },
 ];
 
-// Личные диалоги: dm_id соответствует id из сайдбара (101, 102, 103, 104)
+// Direct messages: dm_id matches sidebar id (101, 102, 103, 104)
 const dmMessages: Record<number, MockMessage[]> = {
   101: [
     {
       id: 2001,
       sender_id: 1,
-      sender_full_name: "Илья Фомин",
+      sender_full_name: "Ilya Fomin",
       stream_id: null,
       subject: "",
-      content: "Привет! Как продвигается верстка чата?",
+      content: "Hi! How's the chat layout progressing?",
       timestamp: now - 7200,
     },
     {
       id: 2002,
       sender_id: 999,
-      sender_full_name: "Вы",
+      sender_full_name: "You",
       stream_id: null,
       subject: "",
-      content: "Уже делаю список сообщений и скролл к низу при переключении.",
+      content: "Working on the message list and scroll-to-bottom on switch.",
       timestamp: now - 7000,
     },
     {
       id: 2003,
       sender_id: 1,
-      sender_full_name: "Илья Фомин",
+      sender_full_name: "Ilya Fomin",
       stream_id: null,
       subject: "",
-      content: "Отлично, тогда к концу недели посмотрим первый вариант.",
+      content: "Great, we'll see the first version by end of week.",
       timestamp: now - 6800,
       reactions: [
         { emoji_name: "thumbs_up", emoji_code: "1f44d", reaction_type: "unicode_emoji", user_id: 999 },
@@ -359,28 +359,28 @@ const dmMessages: Record<number, MockMessage[]> = {
     {
       id: 2101,
       sender_id: 2,
-      sender_full_name: "Дарья Исакова",
+      sender_full_name: "Daria Isakova",
       stream_id: null,
       subject: "",
-      content: "В группе договорились: митинг по дизайну в среду в 15:00.",
+      content: "We agreed in the group: design meeting Wednesday at 3pm.",
       timestamp: now - 5400,
     },
     {
       id: 2102,
       sender_id: 4,
-      sender_full_name: "Анна Дизайнер",
+      sender_full_name: "Anna Designer",
       stream_id: null,
       subject: "",
-      content: "Подтверждаю, буду с макетами.",
+      content: "Confirmed, I'll have the mockups.",
       timestamp: now - 5300,
     },
     {
       id: 2103,
       sender_id: 999,
-      sender_full_name: "Вы",
+      sender_full_name: "You",
       stream_id: null,
       subject: "",
-      content: "Запишусь, спасибо.",
+      content: "I'll sign up, thanks.",
       timestamp: now - 5200,
     },
   ],
@@ -388,19 +388,19 @@ const dmMessages: Record<number, MockMessage[]> = {
     {
       id: 2201,
       sender_id: 2,
-      sender_full_name: "Дарья Исакова",
+      sender_full_name: "Daria Isakova",
       stream_id: null,
       subject: "",
-      content: "Ок, тогда в четверг подойдёт?",
+      content: "Ok, then Thursday works?",
       timestamp: now - 86400,
     },
     {
       id: 2202,
       sender_id: 999,
-      sender_full_name: "Вы",
+      sender_full_name: "You",
       stream_id: null,
       subject: "",
-      content: "Да, в четверг ок. Напишу за день.",
+      content: "Yes, Thursday works. I'll message the day before.",
       timestamp: now - 86000,
     },
   ],
@@ -408,19 +408,19 @@ const dmMessages: Record<number, MockMessage[]> = {
     {
       id: 2301,
       sender_id: 5,
-      sender_full_name: "Михаил Продакт",
+      sender_full_name: "Michael Product",
       stream_id: null,
       subject: "",
-      content: "Напоминаю: митинг в 15:00 по кастомному клиенту.",
+      content: "Reminder: meeting at 3pm about the custom client.",
       timestamp: now - 3600,
     },
     {
       id: 2302,
       sender_id: 999,
-      sender_full_name: "Вы",
+      sender_full_name: "You",
       stream_id: null,
       subject: "",
-      content: "Буду, подготовлю демо по навигации.",
+      content: "I'll be there, preparing a demo on navigation.",
       timestamp: now - 3500,
     },
   ],
@@ -445,7 +445,7 @@ export function getTopicsByStream(streamName: string): string[] {
   return Array.from(seen).sort();
 }
 
-/** Формат сообщения Zulip API (GET /messages) */
+/** Zulip API message format (GET /messages) */
 function toZulipMessage(m: MockMessage): Record<string, unknown> {
   return {
     id: m.id,
@@ -462,7 +462,7 @@ function toZulipMessage(m: MockMessage): Record<string, unknown> {
   };
 }
 
-/** Парсинг narrow из Zulip API: [{"operator":"stream","operand":"general"},{"operator":"topic","operand":"Design"}] или dm */
+/** Parse narrow from Zulip API: [{"operator":"stream","operand":"general"},{"operator":"topic","operand":"Design"}] or dm */
 function filterByNarrow(
   list: MockMessage[],
   narrow: unknown[]
@@ -499,7 +499,7 @@ function filterByNarrow(
 }
 
 export function registerMessagesRoutes(app: Express, apiBase: string) {
-  // Устаревший эндпоинт для топиков по имени стрима (можно удалить, если везде перейдём на users/me/:id/topics)
+  // Deprecated endpoint for topics by stream name (can remove when migrated to users/me/:id/topics)
   app.get(`${apiBase}/messages/topics`, (req: Request, res: Response) => {
     const { stream } = req.query;
     if (typeof stream !== "string") {
@@ -591,7 +591,7 @@ export function registerMessagesRoutes(app: Express, apiBase: string) {
       const newMsg: MockMessage = {
         id: nextId(),
         sender_id: 999,
-        sender_full_name: "Вы",
+        sender_full_name: "You",
         stream_id: streamId,
         channel: streamName,
         subject: topic || "general",
@@ -624,7 +624,7 @@ export function registerMessagesRoutes(app: Express, apiBase: string) {
       const newMsg: MockMessage = {
         id: nextDmId(),
         sender_id: 999,
-        sender_full_name: "Вы",
+        sender_full_name: "You",
         stream_id: null,
         subject: "",
         content: content.trim(),

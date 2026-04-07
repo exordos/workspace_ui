@@ -1,8 +1,8 @@
 {
   "name": "workspace",
   "private": true,
-  "version": "0.0.0",
-  "description": "Custom Zulip web client - Lerna monorepo (web + mock-server)",
+  "version": "0.1.0",
+  "description": "Genesis Workspace - corporate messenger built with React/Electron",
   "workspaces": [
     "packages/*"
   ],
@@ -10,13 +10,48 @@
     "bootstrap": "lerna bootstrap",
     "dev": "lerna run dev --parallel",
     "dev:web": "lerna run dev --scope web --stream",
-    "dev:mock": "lerna run dev --scope mock-server --stream"
+    "dev:mock": "lerna run dev --scope mock-server --stream",
+    "lint": "npm run lint --workspace=web",
+    "lint:fix": "npm run lint:fix --workspace=web",
+    "format": "prettier --write \"packages/web/src/**/*.{ts,tsx,css}\"",
+    "format:check": "prettier --check \"packages/web/src/**/*.{ts,tsx,css}\"",
+    "test": "npm run test --workspace=web",
+    "test:watch": "npm run test:watch --workspace=web",
+    "test:coverage": "npm run test:coverage --workspace=web",
+    "typecheck": "npm run typecheck --workspace=web && npm run typecheck --workspace=workspace-api",
+    "check": "npm run check --workspace=web",
+    "codegen:workspace-api": "npm run codegen --workspace=workspace-api",
+    "licenses": "node scripts/generate-licenses.mjs",
+    "version:bump": "node scripts/version.mjs",
+    "e2e": "npx playwright test",
+    "e2e:ui": "npx playwright test --ui",
+    "e2e:headed": "npx playwright test --headed",
+    "e2e:chromium": "npx playwright test --project=chromium",
+    "e2e:report": "npx playwright show-report e2e/results",
+    "seed:feed": "node scripts/seed-feed-message.mjs",
+    "dev:electron": "npm run dev --workspace=web & npm run dev --workspace=electron-app",
+    "build:electron": "npm run build --workspace=electron-app",
+    "package:electron": "npm run package --workspace=electron-app",
+    "package:electron:win": "npm run package:win --workspace=electron-app",
+    "package:electron:mac": "npm run package:mac --workspace=electron-app",
+    "package:electron:linux": "npm run package:linux --workspace=electron-app",
+    "package:electron:appimage": "npm run package:appimage --workspace=electron-app"
+  },
+  "simple-git-hooks": {
+    "pre-commit": "sh scripts/pre-commit.sh",
+    "commit-msg": "npx commitlint --edit $1"
+  },
+  "engines": {
+    "node": ">=22"
   },
   "devDependencies": {
-    "lerna": "^7.3.0"
+    "@commitlint/cli": "20.4.4",
+    "@commitlint/config-conventional": "20.4.4",
+    "@playwright/test": "1.58.2",
+    "lerna": "^7.3.0",
+    "lint-staged": "^16.3.3",
+    "simple-git-hooks": "^2.13.1",
+    "tinyexec": "1.0.3"
   },
-  "license": "ISC",
-  "author": "",
-  "type": "commonjs",
-  "main": "index.js"
+  "license": "Apache-2.0"
 }

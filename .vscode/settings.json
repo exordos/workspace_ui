@@ -1,0 +1,70 @@
+{
+  // ── Editor ─────────────────────────────────────────────
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  },
+  "editor.tabSize": 2,
+  "editor.insertSpaces": true,
+  "editor.rulers": [100],
+  "editor.bracketPairColorization.enabled": true,
+  "editor.linkedEditing": true,
+
+  // ── Files ──────────────────────────────────────────────
+  "files.eol": "\n",
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+  "files.exclude": {
+    "**/node_modules": true,
+    "**/.git": true,
+    "**/dist": true,
+    "**/build": true,
+    "**/coverage": true,
+    "**/.dart_tool": true,
+    "**/packages/electron/renderer": true,
+    "**/packages/electron/release": true
+  },
+
+  // ── Search ─────────────────────────────────────────────
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/package-lock.json": true,
+    "**/dist": true,
+    "**/coverage": true,
+    "**/*.g.dart": true,
+    "**/*.freezed.dart": true
+  },
+
+  // ── TypeScript ─────────────────────────────────────────
+  "typescript.tsdk": "packages/web/node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+  "typescript.preferences.importModuleSpecifier": "non-relative",
+
+  // ── ESLint ─────────────────────────────────────────────
+  "eslint.useFlatConfig": true,
+  "eslint.workingDirectories": ["packages/web"],
+
+  // ── Tailwind CSS ───────────────────────────────────────
+  "tailwindCSS.experimental.classRegex": [
+    ["className\\s*[:=]\\s*[\"']([^\"']*)[\"']", ""],
+    ["cn\\(([^)]*)\\)", "\"([^\"]*)\""]
+  ],
+  "tailwindCSS.rootFontSize": 16,
+
+  // ── Emmet ──────────────────────────────────────────────
+  "emmet.includeLanguages": {
+    "typescriptreact": "html"
+  },
+
+  // ── File associations ──────────────────────────────────
+  "files.associations": {
+    "*.mdc": "markdown",
+    "*.css": "tailwindcss"
+  },
+
+  // ── Cursor AI ────────────────────────────────────────────
+  // Optimized for current Cursor agent workflows
+  "cursor.ai.enableShadowWorkspace": true,
+  "cursor.ai.chat.showSuggestedFiles": true
+}

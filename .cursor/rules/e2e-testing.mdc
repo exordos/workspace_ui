@@ -1,0 +1,105 @@
+---
+description: E2E testing with Playwright
+globs: "e2e/**/*.{ts,spec.ts}"
+alwaysApply: false
+---
+
+# E2E Testing (Playwright)
+
+## Structure
+
+```
+e2e/
+├── fixtures.ts           # Test fixtures (loginAs, authenticated)
+├── login.spec.ts         # Login page tests
+├── navigation.spec.ts    # Routing, sidebar
+├── theme.spec.ts         # Theme switching
+├── accessibility.spec.ts # a11y checks
+└── results/              # Reports (gitignored)
+```
+
+Config: `playwright.config.ts` (root).
+
+## Commands
+
+```bash
+npm run e2e                # All tests (headless)
+npm run e2e:headed         # With visible browser
+npm run e2e:ui             # Playwright UI mode (interactive)
+npm run e2e:chromium       # Chromium only
+npm run e2e:report         # Open HTML report
+```
+
+## Fixtures
+
+```typescript
+import { test, expect } from "./fixtures";
+
+test("with auth", async ({ authenticated }) => {
+  // authenticated — Page with localStorage credentials
+  await expect(authenticated.getByText("Chats")).toBeVisible();
+});
+
+test("login flow", async ({ page, loginAs }) => {
+  await loginAs("user@example.com", "password", "https://zulip.example.com");
+  await expect(page).toHaveURL(/\/stream\//);
+});
+```
+
+## Writing E2E tests
+
+### Locators (priority)
+
+1. `getByRole("button", { name: "Login" })` — best: semantic
+2. `getByText("Messenger")` — good: visible text
+3. `getByPlaceholder("Message...")` — good: for inputs
+4. `getByTestId("chat-list")` — fallback: data-testid
+5. `locator(".css-class")` — avoid: brittle
+
+### Assertions
+
+```typescript
+await expect(page.getByText("Loading")).toBeHidden();
+await expect(page.getByRole("feed")).toBeVisible();
+await page.waitForURL(/\/stream\//);
+await page.waitForResponse(/\/api\/v1\/messages/);
+```
+
+### Page Object (for complex tests)
+
+```typescript
+class ChatPage {
+  constructor(private page: Page) {}
+
+  async sendMessage(text: string) {
+    await this.page.getByPlaceholder(/message/i).fill(text);
+    await this.page.getByRole("button", { name: /send/i }).click();
+  }
+
+  async expectMessage(text: string) {
+    await expect(this.page.getByText(text)).toBeVisible();
+  }
+}
+```
+
+## Browsers
+
+| Project | Browser | Use case |
+|---------|---------|----------|
+| `chromium` | Chrome | Primary target |
+| `edge` | Edge | Secondary desktop |
+| `mobile-chrome` | Mobile Chrome (Pixel 7) | Responsive layout |
+
+## CI
+
+E2E tests run in GitHub Actions after unit tests (Chromium only).
+Artifacts: HTML report + screenshots on failure + video on failure.
+
+## For AI Agent
+
+When adding a new feature:
+1. Create `e2e/<feature>.spec.ts`
+2. Use fixtures from `./fixtures`
+3. Test user journeys, not implementation details
+4. Locators: `getByRole` > `getByText` > `getByTestId`
+5. Assertions: `toBeVisible`, `toHaveURL`, `toHaveText`

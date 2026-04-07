@@ -1,0 +1,43 @@
+{
+  "folders": [
+    {
+      "name": "workspace-ui",
+      "path": ".",
+    },
+  ],
+  "settings": {
+    "files.exclude": {
+      "**/node_modules": true,
+      "**/.git": true,
+      "**/dist": true,
+      "**/build": true,
+      "**/coverage": true,
+      "**/.dart_tool": true,
+      "**/.gradle": true,
+      "**/ios/Pods": true,
+      "**/packages/electron/renderer": true,
+      "**/packages/electron/release": true,
+    },
+    "search.exclude": {
+      "**/node_modules": true,
+      "**/package-lock.json": true,
+      "**/.dart_tool": true,
+      "**/dist": true,
+      "**/build": true,
+      "**/coverage": true,
+      "**/*.g.dart": true,
+      "**/*.freezed.dart": true,
+    },
+    "typescript.tsdk": "packages/web/node_modules/typescript/lib",
+    "eslint.useFlatConfig": true,
+    "eslint.workingDirectories": ["packages/web"],
+  },
+  "extensions": {
+    "recommendations": [
+      "dbaeumer.vscode-eslint",
+      "esbenp.prettier-vscode",
+      "bradlc.vscode-tailwindcss",
+      "editorconfig.editorconfig",
+    ],
+  },
+}

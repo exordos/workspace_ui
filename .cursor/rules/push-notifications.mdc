@@ -1,0 +1,177 @@
+---
+description: Push notifications via Firebase Cloud Messaging + Zulip server
+globs: "packages/web/src/**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# Push Notifications
+
+## Architecture
+
+```
+┌─────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│  Zulip      │───►│  Zulip Push      │───►│  Firebase FCM   │
+│  Server     │    │  Notification    │    │  (Google)       │
+│             │    │  Service         │    │                 │
+│  new msg,   │    │  (bouncer)       │    │  Routes to      │
+│  mention,   │    └──────────────────┘    │  client device  │
+│  DM         │                            └────────┬────────┘
+└─────────────┘                                     │
+                                                    ▼
+                              ┌──────────────────────────────────┐
+                              │  Browser / PWA                    │
+                              ├──────────────────────────────────┤
+                              │  firebase-messaging-sw.js        │
+                              │  (background → system notif)     │
+                              ├──────────────────────────────────┤
+                              │  shared/lib/push/fcm.ts          │
+                              │  (foreground → in-app handler)   │
+                              └──────────────────────────────────┘
+```
+
+## Modules
+
+| File | Purpose |
+|------|---------|
+| `shared/lib/push/types.ts` | Types: PushProvider, PushMessagePayload, PushState |
+| `shared/lib/push/middleware.ts` | Middleware pipeline: decrypt → parse → validate → dedup |
+| `shared/lib/push/fcm.ts` | Firebase Cloud Messaging provider |
+| `shared/lib/push/zulip.ts` | FCM token registration on Zulip server |
+| `shared/lib/push/index.ts` | Public API: pushService, initPush, usePushState, pushPipeline |
+
+## Middleware Pipeline
+
+Raw FCM payloads pass through a middleware chain before reaching the app:
+
+```
+Raw FCM envelope
+  → [decryption]    — decrypt E2EE payload (placeholder, backend TBD)
+  → [parsing]       — convert raw data fields to PushMessagePayload
+  → [validation]    — reject malformed / missing fields
+  → [deduplication] — drop already-processed message IDs (200-entry window)
+  → PushMessagePayload (clean, trusted)
+```
+
+### Adding a custom middleware
+
+```ts
+import { pushPipeline, type PushMiddleware } from "~/shared/lib/push";
+
+const muteFilter: PushMiddleware = async (ctx, next) => {
+  if (ctx.payload?.message?.stream_name === "muted-channel") {
+    ctx.dropped = true;
+    ctx.dropReason = "Channel is muted";
+    return;
+  }
+  await next();
+};
+
+pushPipeline.use(muteFilter);
+```
+
+### Decryption (E2EE — when backend is ready)
+
+Zulip 11+ supports E2EE push notifications. The `decryptionMiddleware` slot is reserved for this. When the backend encryption scheme is decided:
+
+1. Implement `decrypt(encryptedPayload, scheme, key)` inside `decryptionMiddleware`
+2. Key exchange: the device's push encryption key is registered via `POST /register_client_device`
+3. Supported schemes (future): `aes-256-gcm`, `xchacha20-poly1305`, or Zulip's custom scheme
+4. Until implemented, encrypted payloads without a fallback `event` field are safely dropped
+
+```ts
+// decryptionMiddleware (when ready):
+if (data.encrypted_payload) {
+  const decrypted = await decrypt(data.encrypted_payload, data.encryption_scheme);
+  Object.assign(ctx.envelope.data, JSON.parse(decrypted));
+}
+```
+| `public/firebase-messaging-sw.js` | Service Worker for background notifications |
+
+## Quick Start
+
+### Configuration (env vars)
+
+```env
+VITE_FIREBASE_API_KEY=AIza...
+VITE_FIREBASE_PROJECT_ID=my-project
+VITE_FIREBASE_MESSAGING_SENDER_ID=123456789
+VITE_FIREBASE_APP_ID=1:123456789:web:abc123
+VITE_FIREBASE_VAPID_KEY=BLwz...
+```
+
+All 5 variables are required to activate push. Without them — graceful degradation, long-polling only.
+
+### Usage
+
+```ts
+import { pushService, usePushState } from "~/shared/lib/push";
+
+// Request permission + register
+async function enablePush() {
+  const perm = await pushService.requestPermission();
+  if (perm === "granted") {
+    await pushService.register();
+  }
+}
+
+// Subscribe to foreground messages
+pushService.onMessage((payload) => {
+  if (payload.event === "message") {
+    showToast(payload.message.sender_full_name, payload.message.content);
+  }
+});
+
+// React hook
+function PushStatus() {
+  const { permission, registered, provider } = usePushState();
+  // ...
+}
+```
+
+## Registration Flow
+
+1. `initPush()` — called in `main.tsx`, creates FCM provider (if env vars are present)
+2. User clicks "Enable notifications" → `pushService.requestPermission()`
+3. On consent → `pushService.register()`:
+   - FCM SDK is initialized lazily (`import("firebase/app")`)
+   - FCM token is obtained from Google
+   - Token is registered on Zulip server: `POST /users/me/android_gcm_reg_id`
+   - Token is saved in `localStorage` for rotation
+4. On logout → `pushService.unregister()` — revokes token from server
+
+## Background Notifications
+
+`firebase-messaging-sw.js` (in `public/`):
+- Intercepts FCM push when tab is closed/background
+- Shows system notification with sender name and text preview
+- Click on notification → focuses the tab + navigates to chat/DM
+
+## Foreground Notifications
+
+`onMessage` in FCM provider:
+- Intercepts FCM push when tab is active
+- Passes payload to `pushService.onMessage()` handlers
+- Typically shows in-app toast (not a system notification)
+
+## Zulip Push Service
+
+For self-hosted Zulip servers:
+- Server must be registered with Zulip Mobile Push Notification Service
+- In `settings.py`: `ZULIP_SERVICE_PUSH_NOTIFICATIONS = True`
+- Server proxies push via bouncer → FCM → client
+
+## Rules for AI Agent
+
+### Required
+
+1. **Firebase is optional** — the app works without Firebase, degrades to long-polling
+2. **Lazy loading** — `import("firebase/app")` only when actually used
+3. **Token rotation** — when token changes, revoke old one from server
+4. **Logout = unregister** — always revoke push token on logout
+
+### Forbidden
+
+- **DO NOT** hardcode Firebase credentials — only via env vars
+- **DO NOT** show message content in system notifications for protected channels
+- **DO NOT** send push token to analytics/logs
+- **DO NOT** request permission without explicit user action (button)

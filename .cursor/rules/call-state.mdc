@@ -1,0 +1,113 @@
+---
+description: Active call state and OS-level awareness
+globs: "packages/web/src/**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# Active Call State & OS Awareness
+
+## How the OS knows about a call
+
+| Runtime | Mechanism | What the OS shows |
+|---------|-----------|-------------------|
+| **All browsers** | `navigator.mediaSession` | macOS Now Playing widget, Windows media overlay, Android media notification |
+| **All browsers** | Screen Wake Lock API | Prevents screen from dimming/sleeping |
+| **All browsers** | `document.title` | Tab shows `🔴 02:15 — standup` with timer |
+| **Electron (macOS)** | `powerSaveBlocker` | Prevents system sleep |
+| **Electron (macOS)** | `app.dock.setBadge("📞")` | Phone icon on dock badge |
+| **Electron (all)** | Tray tooltip | `Workspace — In call: standup (5 participants)` |
+| **Electron (all)** | IPC channels | Main process manages power + tray |
+| **All** | `beforeunload` | Call ended on page close (best-effort) |
+
+## Module
+
+`shared/lib/call-state.ts` — unified call state manager.
+
+```ts
+import { callState, useCallState } from "~/shared/lib/call-state";
+
+// Start a call (triggers all OS integrations)
+callState.start({ roomName: "standup", participants: 3 });
+
+// Update during call
+callState.updateParticipants(5);
+callState.setMuted(true);
+callState.setVideoOn(false);
+
+// End the call (releases all resources)
+callState.end();
+
+// Query
+callState.getStatus();      // "idle" | "connecting" | "active"
+callState.getActiveCall();   // { roomName, startedAt, participants, muted, videoOn } | null
+callState.getCallDuration(); // seconds since start
+
+// React hook
+const { status, call, duration } = useCallState();
+```
+
+## Integration with JitsiCallModal
+
+```tsx
+// In jitsi-call.ui.tsx — when call opens:
+useEffect(() => {
+  if (open && parsed) {
+    callState.start({ roomName: parsed.roomName });
+  }
+  return () => {
+    callState.end();
+  };
+}, [open, parsed?.roomName]);
+
+// When participant count updates:
+useEffect(() => {
+  if (participantCount != null) {
+    callState.updateParticipants(participantCount);
+  }
+}, [participantCount]);
+```
+
+## Electron IPC
+
+Renderer → Main process channels:
+
+| Channel | Payload | Main process action |
+|---------|---------|---------------------|
+| `call:start` | `{ room, participants }` | Start `powerSaveBlocker`, update tray tooltip, set dock badge |
+| `call:end` | — | Stop `powerSaveBlocker`, restore tray tooltip, restore dock badge |
+| `call:update` | `{ participants }` | Update tray tooltip |
+
+## Media Session API
+
+When a call is active, `navigator.mediaSession` shows:
+- **Title**: `Call: {roomName}`
+- **Artist**: `{N} participants`
+- **Album**: `Workspace`
+
+Action handlers:
+- **Pause** → mute the call
+- **Play** → unmute
+- **Stop** → end the call
+
+This appears in macOS Now Playing, Windows system media transport controls, and Chrome's media hub.
+
+## Screen Wake Lock
+
+Automatically acquired on call start, released on call end.
+If the lock is released (e.g., tab hidden), it's re-acquired when the tab becomes visible again.
+
+## Rules for AI Agent
+
+### When implementing call features
+
+1. **Always call `callState.start()`** when a call begins — not just when the UI opens
+2. **Always call `callState.end()`** in cleanup — useEffect return, modal close, page unload
+3. **Update participants** via `callState.updateParticipants()` when count changes
+4. **Never manage wake lock manually** — `call-state.ts` handles it
+5. **Never modify document.title during a call** — `call-state.ts` manages the title pulse
+
+### Do NOT
+
+- Do NOT create a separate `powerSaveBlocker` — it's managed by the call state
+- Do NOT forget to call `end()` — leaked calls prevent system sleep permanently
+- Do NOT access `navigator.mediaSession` directly — go through `callState`

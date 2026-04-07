@@ -1,0 +1,209 @@
+---
+description: Memory leak prevention — cleanup rules for listeners, timers, subscriptions
+globs: "packages/web/src/**/*.{ts,tsx}"
+alwaysApply: true
+---
+
+# Memory Leak Prevention
+
+Every resource acquired must be released. No exceptions.
+
+## The 7 Leak Sources
+
+| # | Source | Cleanup | Where to clean |
+|---|--------|---------|----------------|
+| 1 | `addEventListener` | `removeEventListener` | `useEffect` return / init function return |
+| 2 | `setInterval` | `clearInterval` | `useEffect` return / init function return |
+| 3 | `setTimeout` | `clearTimeout` | `useEffect` return (if component may unmount) |
+| 4 | `store.subscribe()` | Call returned unsubscribe fn | `useEffect` return |
+| 5 | `new AbortController()` | `.abort()` | `useEffect` return |
+| 6 | Observers (`Intersection`, `Mutation`, `Resize`, `Performance`) | `.disconnect()` | `useEffect` return |
+| 7 | Async operations (fetch, Promise) | Cancellation flag | `useEffect` return |
+
+## Rule 1: Every useEffect with side effects MUST return cleanup
+
+```tsx
+// ✅ CORRECT
+useEffect(() => {
+  const handler = () => { /* ... */ };
+  window.addEventListener("resize", handler);
+  return () => window.removeEventListener("resize", handler);
+}, []);
+
+// ❌ LEAK — no cleanup
+useEffect(() => {
+  window.addEventListener("resize", handler);
+}, []);
+```
+
+## Rule 2: Timers must be cleared
+
+```tsx
+// ✅ CORRECT
+useEffect(() => {
+  const id = setInterval(poll, 5000);
+  return () => clearInterval(id);
+}, []);
+
+// ✅ CORRECT — setTimeout with ref
+const timerRef = useRef<ReturnType<typeof setTimeout>>();
+useEffect(() => {
+  timerRef.current = setTimeout(doSomething, 1000);
+  return () => clearTimeout(timerRef.current);
+}, [dep]);
+```
+
+## Rule 3: Async operations must check cancellation
+
+```tsx
+// ✅ CORRECT
+useEffect(() => {
+  let cancelled = false;
+  fetchData().then(data => {
+    if (!cancelled) setState(data);
+  });
+  return () => { cancelled = true; };
+}, [id]);
+
+// ✅ BETTER — AbortController
+useEffect(() => {
+  const controller = new AbortController();
+  fetch(url, { signal: controller.signal })
+    .then(res => res.json())
+    .then(data => setState(data))
+    .catch(() => {});
+  return () => controller.abort();
+}, [url]);
+```
+
+## Rule 4: Module-level init functions must return cleanup
+
+```typescript
+// ✅ CORRECT — init returns teardown
+export function initPresenceTracker(): () => void {
+  const handler = () => { /* ... */ };
+  window.addEventListener("mousemove", handler);
+  const id = setInterval(report, 60000);
+
+  return () => {
+    window.removeEventListener("mousemove", handler);
+    clearInterval(id);
+  };
+}
+
+// ❌ BAD — no way to clean up
+export function initPresenceTracker(): void {
+  window.addEventListener("mousemove", handler);
+  setInterval(report, 60000);
+}
+```
+
+## Rule 5: Anonymous listeners are unremovable — avoid them
+
+```typescript
+// ❌ LEAK — cannot remove anonymous listener
+window.addEventListener("online", () => { setOnline(true); });
+
+// ✅ CORRECT — named reference
+const handler = () => { setOnline(true); };
+window.addEventListener("online", handler);
+// ... later:
+window.removeEventListener("online", handler);
+```
+
+## Rule 6: Store subscriptions must be unsubscribed
+
+```tsx
+// ✅ CORRECT
+useEffect(() => {
+  const unsub = useThemeStore.subscribe((state) => {
+    applyTheme(state.mode);
+  });
+  return unsub;
+}, []);
+```
+
+## Rule 7: Observers must be disconnected
+
+```tsx
+// ✅ CORRECT
+useEffect(() => {
+  const observer = new IntersectionObserver(entries => { /* ... */ });
+  observer.observe(elementRef.current);
+  return () => observer.disconnect();
+}, []);
+```
+
+## Rule 8: Closures in event handlers must not capture stale state
+
+```tsx
+// ❌ STALE CLOSURE — handler captures initial `count`
+useEffect(() => {
+  const handler = () => console.log(count);
+  window.addEventListener("click", handler);
+  return () => window.removeEventListener("click", handler);
+}, []); // missing `count` in deps!
+
+// ✅ CORRECT — ref for latest value
+const countRef = useRef(count);
+countRef.current = count;
+useEffect(() => {
+  const handler = () => console.log(countRef.current);
+  window.addEventListener("click", handler);
+  return () => window.removeEventListener("click", handler);
+}, []);
+```
+
+## Audit Checklist
+
+When reviewing code, check every file for:
+
+- [ ] Every `addEventListener` has a matching `removeEventListener` in cleanup
+- [ ] Every `setInterval` has `clearInterval` in cleanup
+- [ ] Every `setTimeout` has `clearTimeout` if the component can unmount before it fires
+- [ ] Every `useEffect` with async operations has a cancellation flag or AbortController
+- [ ] Every `store.subscribe()` return value is called in cleanup
+- [ ] Every Observer (Intersection/Mutation/Resize/Performance) is `.disconnect()`ed
+- [ ] No anonymous functions passed to `addEventListener` (unreferenceable = unleakable)
+- [ ] Module-level `init*()` functions return a cleanup function
+- [ ] No `setState` called after component unmount (use `cancelled` flag)
+
+## Testing for Leaks
+
+### In development
+
+1. Open Chrome DevTools → Memory → Heap Snapshot
+2. Take snapshot A
+3. Navigate away from the page and back
+4. Take snapshot B
+5. Compare: filter by "Detached" — should be near zero
+
+### Automated
+
+```typescript
+// In Vitest — verify cleanup is called
+it("cleans up on unmount", () => {
+  const { unmount } = render(<MyComponent />);
+  const spy = vi.spyOn(window, "removeEventListener");
+  unmount();
+  expect(spy).toHaveBeenCalled();
+});
+```
+
+## Rules for AI Agent
+
+### MUST
+
+1. **Every `useEffect` that creates a resource** must return a cleanup function
+2. **Every `init*()` module function** must return `() => void` cleanup
+3. **Every `addEventListener`** must have a corresponding `removeEventListener` with the SAME function reference
+4. **Every `setInterval`** must store the ID and call `clearInterval` in cleanup
+5. **Every async operation in useEffect** must use `cancelled` flag or `AbortController`
+6. **Named listeners only** — no anonymous functions in `addEventListener`
+
+### MUST NOT
+
+- Do NOT call `setState` after component unmount — always check cancellation
+- Do NOT create intervals/listeners in render body — only inside `useEffect`
+- Do NOT forget to abort long-polling when switching instances or logging out
+- Do NOT leak timers in hot-reload (dev mode) — cleanup must work in Strict Mode (double-mount)

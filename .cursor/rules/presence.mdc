@@ -1,0 +1,101 @@
+---
+description: User presence tracking and display
+globs: "packages/web/src/**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# Presence System
+
+## Architecture
+
+```
+shared/lib/presence.ts       ← local activity tracker (idle detection, reporting)
+shared/lib/format.ts         ← formatLastSeen(), getPresenceState(), isPresenceOnline()
+shared/ui/presence-indicator  ← visual indicator (green/yellow/gray)
+entities/user/user.model.ts  ← UserPresence in store (per-user)
+entities/user/user.api.ts    ← POST /users/me/presence (report to Zulip)
+widgets/layout/              ← polling fetchRealmPresence() every 90s
+```
+
+## User States
+
+| Status | Condition | Color | i18n |
+|--------|-----------|-------|------|
+| `active` | Fresh timestamp + status=active (< 2 min) | Green | `presence.online` |
+| `idle` | Connected but inactive (< 10 min) | Yellow | `presence.away` |
+| `offline` | No data / timestamp > 10 min | Gray | `presence.offline` |
+
+## Local Tracker (Current User)
+
+```ts
+import { useLocalPresence, getLocalPresenceStatus } from "~/shared/lib/presence";
+
+// React hook — reactively updated
+const status = useLocalPresence(); // "active" | "idle" | "offline"
+
+// Imperative
+const status = getLocalPresenceStatus();
+const idleMs = getIdleTimeMs();
+```
+
+### How It Works
+
+1. Listens to `mousemove`, `keydown`, `touchstart`, `scroll`, `pointerdown` (passive, capture)
+2. After 5 minutes without activity → `idle`
+3. When tab is hidden → `idle` immediately
+4. When tab returns → `active` immediately
+5. Every 60s sends `POST /users/me/presence` with current status
+
+### Initialization
+
+Called in `main.tsx`:
+```ts
+setPresenceReporter(reportPresence); // entities/user/user.api.ts
+initPresenceTracker();
+```
+
+## Remote Presence (Other Users)
+
+Layout polls `fetchRealmPresence()` every 90 seconds and updates `usersStore`.
+
+```ts
+import { useUsersStore } from "~/entities/user";
+import { getPresenceState, formatLastSeen } from "~/shared/lib/format";
+
+const user = useUsersStore((s) => s.getUser(userId));
+const state = getPresenceState(user.presence.timestamp, user.presence.status);
+// "active" | "idle" | "offline" | null
+
+const text = formatLastSeen(user.presence.timestamp, user.presence.status);
+// "online" | "away" | "5 min ago" | "2 h ago" | "3 days ago"
+```
+
+## Visual Indicator
+
+```tsx
+import { PresenceIndicator } from "~/shared/ui";
+
+<PresenceIndicator status="active" />       // green dot with pulse
+<PresenceIndicator status="idle" />         // yellow dot
+<PresenceIndicator status="offline" />      // gray dot
+<PresenceIndicator status={null} />         // hidden
+
+// Sizes: sm (8px), md (10px), lg (12px)
+// withBorder: ring around the dot for overlaying on avatars
+```
+
+## Rules for AI Agent
+
+### When implementing features
+
+1. **Avatars with indicator** — next to every avatar in the sidebar, chat header, right panel, show `<PresenceIndicator>`
+2. **Use `getPresenceState()`** — don't check timestamps manually
+3. **Use `formatLastSeen()`** — don't format time manually
+4. **i18n** — all strings via `t("presence.*")`, don't hardcode "online" / "away"
+
+### Do not
+
+- **DO NOT** send presence more often than once per 60 seconds
+- **DO NOT** show exact last activity timestamp (privacy)
+- **DO NOT** show "offline" for the current user (they are always active/idle)
+- **DO NOT** rely only on `status === "active"` without checking the timestamp

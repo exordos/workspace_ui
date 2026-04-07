@@ -1,0 +1,92 @@
+---
+description: Auto-update mechanisms for Electron and PWA
+globs: "packages/**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# Auto-Update System
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────┐
+│                   React (renderer)                   │
+│                                                      │
+│  useAppUpdate() → { status, version, check, install }│
+│       │                                              │
+│       ├── Electron? → IPC → main process             │
+│       │                      autoUpdater             │
+│       │                      (electron-updater)      │
+│       │                                              │
+│       └── PWA? → ServiceWorker                       │
+│                  reg.waiting.postMessage(SKIP_WAITING)│
+└─────────────────────────────────────────────────────┘
+```
+
+## React — unified hook
+
+```tsx
+import { useAppUpdate } from "~/shared/lib/updater";
+
+function UpdateBanner() {
+  const { status, version, percent, check, install } = useAppUpdate();
+
+  if (status === "ready") {
+    return (
+      <div>
+        Version {version} is available
+        <button onClick={install}>Update</button>
+      </div>
+    );
+  }
+
+  if (status === "downloading") {
+    return <div>Downloading update... {percent}%</div>;
+  }
+
+  return null;
+}
+```
+
+## Statuses
+
+| Status | Electron | PWA |
+|--------|----------|-----|
+| `idle` | Waiting | Waiting |
+| `checking` | autoUpdater.checkForUpdates() | reg.update() |
+| `available` | New version detected | — |
+| `downloading` | Downloading in background | installing SW |
+| `ready` | Downloaded, awaiting restart | SW waiting |
+| `up-to-date` | Current version is up to date | — |
+| `error` | Download/check error | — |
+
+## Electron
+
+- Check on startup + every hour
+- `autoDownload: true` — download in background
+- `autoInstallOnAppQuit: true` — install on close
+- User can expedite: `install()` → `quitAndInstall()`
+- Download progress via `download-progress` event
+
+### electron-builder.yml
+
+```yaml
+publish:
+  provider: generic
+  url: https://update.workspace.example.com/releases
+```
+
+The update server serves `latest.yml` / `latest-mac.yml` / `latest-linux.yml` + binaries.
+
+## PWA
+
+- On every visit the browser checks the SW
+- If a new SW is found → `updatefound` → `installing` → `installed`
+- When the new SW is ready → `status: "ready"`
+- `install()` → `postMessage({ type: "SKIP_WAITING" })` → page reload
+
+## For AI Agent
+
+- When adding an update button — use the `useAppUpdate()` hook
+- Do not call `autoUpdater` or `serviceWorker` directly from components
+- Update status is read-only in components; actions are via `check()` and `install()`

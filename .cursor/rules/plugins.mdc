@@ -1,0 +1,252 @@
+---
+description: Plugin system architecture and authoring guide
+globs: "packages/web/src/**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# Plugin System
+
+## Architecture
+
+```
+shared/lib/plugins/
+├── types.ts      ← PluginManifest, Plugin, PluginAPI, SlotName, Permissions
+├── registry.ts   ← registration, lifecycle (activate/deactivate), slot contributions, events
+├── api.ts        ← PluginAPI factory (restricted surface for each plugin)
+├── hooks.tsx     ← useSlot(), PluginSlot, useSlotActions() — React integration
+├── index.ts      ← public barrel
+└── setup.ts      ← bootstrap (main.tsx), window.__plugins__ dev tool
+```
+
+## Concept
+
+Plugins extend the application through **slots** (extension points) — named points in UI and logic where a plugin can add:
+- **Visual contributions** (`render`) — React components
+- **Action contributions** (`handler`) — action handlers
+
+Each plugin:
+1. Declares a `PluginManifest` (id, name, version, permissions, slots)
+2. Implements `activate(api)` — receives a restricted `PluginAPI`
+3. Registers contributions into slots via the API
+
+## Slots (Extension Points)
+
+| Slot | Type | Location in UI |
+|------|------|----------------|
+| `sidebar:widget` | visual | Widgets at the bottom of the sidebar |
+| `sidebar:footer` | visual | Sidebar footer |
+| `topbar:action` | visual | Buttons in the top bar |
+| `message:action` | action | Actions in the message context menu |
+| `message:renderer` | visual | Message renderers (cards, previews) |
+| `composer:toolbar` | visual | Buttons in the composer toolbar |
+| `composer:slash-command` | action | Slash commands (/summarize, /translate) |
+| `settings:panel` | visual | Sections in settings |
+| `route:custom` | visual | Custom pages |
+
+## Example: Creating a Plugin
+
+```ts
+import type { Plugin } from "~/shared/lib/plugins";
+
+const myPlugin: Plugin = {
+  manifest: {
+    id: "com.example.translate",
+    name: "Auto Translate",
+    version: "1.0.0",
+    description: "Translates messages on the fly",
+    permissions: ["read:messages", "analytics", "storage"],
+    slots: ["message:action", "composer:slash-command"],
+  },
+
+  activate(api) {
+    api.log.info("Translate plugin activated");
+
+    // Add action to the message context menu
+    api.contribute({
+      slot: "message:action",
+      label: "Translate",
+      icon: "translate",
+      priority: 50,
+      handler: async (message) => {
+        const translated = await translateText(message.content);
+        api.log.info("Translated", { messageId: message.id });
+        api.track?.("message_translated", { from: "ru", to: "en" });
+      },
+    });
+
+    // Slash command /translate
+    api.contribute({
+      slot: "composer:slash-command",
+      label: "/translate",
+      handler: async (context) => {
+        // context.text — text after the command
+      },
+    });
+  },
+
+  deactivate() {
+    // Cleanup (contributions are removed automatically)
+  },
+};
+
+export default myPlugin;
+```
+
+## Plugin Registration
+
+### Built-in (in application code)
+
+```ts
+// In setup.ts or main.tsx
+import { registerPlugin } from "~/shared/lib/plugins";
+import translatePlugin from "./plugins/translate";
+
+registerPlugin(translatePlugin);
+```
+
+### Dynamic (external script)
+
+```ts
+// From <script> tag or dynamic import
+import { loadPlugin } from "~/shared/lib/plugins/setup";
+
+loadPlugin({
+  manifest: { id: "com.ext.widget", name: "Widget", version: "1.0.0" },
+  activate(api) { /* ... */ },
+});
+```
+
+### Via dev console
+
+```js
+window.__plugins__.register({
+  manifest: { id: "dev.test", name: "Test", version: "0.1.0" },
+  activate(api) { api.log.info("Hello from dev plugin"); },
+});
+window.__plugins__.activate("dev.test");
+```
+
+## Using Slots in Components
+
+### Visual slot
+
+```tsx
+import { PluginSlot } from "~/shared/lib/plugins";
+
+function SidebarFooter() {
+  return (
+    <div>
+      {/* Built-in UI */}
+      <PluginSlot name="sidebar:footer" className="mt-2 space-y-1" />
+    </div>
+  );
+}
+```
+
+### Actions (message actions, slash commands)
+
+```tsx
+import { useSlotActions } from "~/shared/lib/plugins";
+
+function MessageContextMenu({ message }) {
+  const pluginActions = useSlotActions("message:action", message);
+
+  return (
+    <menu>
+      {/* Built-in actions */}
+      <li onClick={handleReply}>Reply</li>
+
+      {/* Plugin actions */}
+      {pluginActions.map(action => (
+        <li key={action.pluginId} onClick={action.execute}>
+          {action.label}
+        </li>
+      ))}
+    </menu>
+  );
+}
+```
+
+## PluginAPI (Restricted Surface)
+
+| Method | Description | Requires permission |
+|--------|-------------|---------------------|
+| `contribute()` | Register into a slot | — |
+| `removeContributions()` | Remove own contributions | — |
+| `navigate(path)` | Route navigation | `navigate` |
+| `storage.get/set/remove` | Scoped localStorage | `storage` |
+| `log.*` | Logging (scoped) | — |
+| `data.getCurrentUserId()` | Current user ID | — |
+| `data.getStreams()` | Channel list | `read:streams` |
+| `data.getUnreadCount()` | Unread count | `read:messages` |
+| `data.getTheme()` | Current theme | — |
+| `data.getLocale()` | Current locale | — |
+| `data.getRuntime()` | web/pwa/electron | — |
+| `track(event, props)` | Analytics | `analytics` |
+| `notify(title, body)` | Notifications | `notifications` |
+| `on(event, handler)` | Event subscription | — |
+
+## Permissions
+
+```ts
+type PluginPermission =
+  | "read:messages"    // access to messages (metadata)
+  | "read:users"       // access to user list
+  | "read:streams"     // access to channels
+  | "read:settings"    // access to settings
+  | "write:messages"   // send messages
+  | "navigate"         // route navigation
+  | "notifications"    // show notifications
+  | "analytics"        // send analytics
+  | "shortcuts"        // register keyboard shortcuts
+  | "storage";         // localStorage (scoped)
+```
+
+## Events (for plugin subscriptions)
+
+| Event | Data |
+|-------|------|
+| `message:received` | `{ id, streamId, senderId, timestamp }` |
+| `message:sent` | `{ id, streamId }` |
+| `navigation:changed` | `{ path, params }` |
+| `theme:changed` | `{ mode, palette }` |
+| `network:status` | `{ online }` |
+| `plugin:activated` | `{ pluginId }` |
+| `plugin:deactivated` | `{ pluginId }` |
+
+Host code emits events:
+```ts
+import { emitEvent } from "~/shared/lib/plugins";
+
+emitEvent("message:received", { id: 123, streamId: 10 });
+```
+
+## Rules for AI Agent
+
+### When adding a new extension point
+
+1. Add `SlotName` to `types.ts`
+2. Add `<PluginSlot name="..."/>` or `useSlotActions("...")` in the component
+3. Document in the slots table above
+4. Describe the `context` (props) format passed to contributions
+
+### When implementing a feature
+
+1. **Check `useSlotActions()`** — in context menus and action bars, always render plugin actions after built-in ones
+2. **Don't break plugins** — when refactoring slots, maintain backward compatibility of SlotName
+3. **Emit events** — on key user actions, call `emitEvent()` so plugins can react
+
+### When creating a plugin
+
+1. **Minimum permissions** — only request what you need
+2. **Cleanup in deactivate()** — release resources (timers, subscriptions). Contributions are removed automatically
+3. **Don't access the DOM directly** — only via `contribute()` with a `render` function
+4. **Don't import stores directly** — use `api.data.*`
+5. **Version properly** — use semver in manifest
+
+### Security
+
+- Plugins DO NOT have direct `localStorage` access — only scoped via `api.storage`
+- Plugins DO NOT have access to auth credentials
+- All API calls are proxied through a permission check
+- `contribute({ render })` renders inside a `data-plugin-slot` container — host-level ErrorBoundary protects against crashes

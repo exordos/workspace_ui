@@ -1,0 +1,470 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Theme CSS variables are set dynamically by lib/themes/engine.ts via applyTheme().
+ * Palettes defined in lib/themes/orange-warm.ts, lib/themes/blue-cold.ts,
+ * lib/themes/blue-mist.ts, lib/themes/emerald-chat.ts.
+ *
+ * Fallback values below ensure the app renders before JS initializes the theme.
+ * They match the product default: Blue Cold light.
+ */
+:root {
+  --color-bg: #e0ecf0;
+  --color-bg-elevated: #ffffff;
+  --color-card-bg: #ecf4f8;
+  --color-card-bg-active: #c9e7ff;
+  --color-text-field-bg: #eef5fd;
+  --color-text-primary: #1b1b1d;
+  --color-text-secondary: #707b88;
+  --color-text-muted: #97a3b2;
+  --color-accent: #7087ff;
+  --color-accent-soft: #d9eaff;
+  --color-on-accent: #1b1b1d;
+  --color-border-subtle: #d8e4ef;
+  --color-sidebar-bg: #ffffff;
+  --color-sidebar-item-hover: #ecf4fc;
+  --color-sidebar-sender: #7087ff;
+  --color-sidebar-unread: #7087ff;
+  --color-composer-outer: #ecf4f8;
+  --color-composer-send: #7087ff;
+  --color-composer-icon: #8f9bab;
+  --color-msg-bg: #ffffff;
+  --color-msg-own-bg: #cce4fc;
+  --color-msg-time: #97a3b2;
+  --color-msg-call-bg: #e0fce8;
+  --color-msg-selected: #c9e7ff;
+  --color-icon-base: #97a3b2;
+  --color-icon-disable: #b4bfcb;
+  --color-icon-hover: #c9e7ff;
+  --color-icon-active: #1b1b1d;
+  --color-notice-base: #7087ff;
+  --color-notice-disable: #9ba6b4;
+  --color-badge-bg: #7087ff;
+  --color-badge-text: #ffffff;
+  --color-call-bg: #e0fce8;
+  --color-call-green: #26c038;
+  --color-search-bg: #eef5fd;
+  --color-search-hint: #97a3b2;
+  --color-indicator-yellow: #ffd633;
+  --color-indicator-pink: #f458d2;
+  --color-indicator-purple: #8d6dff;
+  --color-indicator-green: #26c038;
+  --color-indicator-orange: #ff8900;
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body {
+  @apply bg-bg text-text-primary antialiased;
+  font-family:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    "Helvetica Neue",
+    Arial,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  height: 100%;
+}
+
+/* ── Zulip spoiler blocks ─────────────────────────────── */
+
+.message-body .spoiler-block {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  margin: 4px 0;
+  overflow: hidden;
+}
+
+.message-body .spoiler-header {
+  cursor: pointer;
+  padding: 6px 12px;
+  font-weight: 600;
+  font-size: 0.875rem;
+  user-select: none;
+}
+
+.message-body .spoiler-header::before {
+  content: "▶ ";
+  font-size: 0.75rem;
+}
+
+.message-body .spoiler-block.open .spoiler-header::before {
+  content: "▼ ";
+}
+
+.message-body .spoiler-content {
+  display: none;
+  padding: 6px 12px;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.message-body .spoiler-block.open .spoiler-content {
+  display: block;
+}
+
+/* ── Video in messages ────────────────────────────────── */
+
+.message-body video {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 4px 0;
+}
+
+/* ── Composer preview code highlighting ──────────────── */
+
+.composer-preview-html pre code.hljs {
+  display: block;
+  overflow-x: auto;
+  color: var(--color-text-primary);
+  background: transparent;
+}
+
+.composer-preview-html .hljs-comment,
+.composer-preview-html .hljs-quote {
+  color: var(--color-text-muted);
+}
+
+.composer-preview-html .hljs-keyword,
+.composer-preview-html .hljs-selector-tag,
+.composer-preview-html .hljs-literal,
+.composer-preview-html .hljs-name,
+.composer-preview-html .hljs-tag {
+  color: var(--color-accent);
+}
+
+.composer-preview-html .hljs-string,
+.composer-preview-html .hljs-title,
+.composer-preview-html .hljs-section,
+.composer-preview-html .hljs-attribute,
+.composer-preview-html .hljs-symbol,
+.composer-preview-html .hljs-bullet,
+.composer-preview-html .hljs-addition {
+  color: var(--color-indicator-green);
+}
+
+.composer-preview-html .hljs-number,
+.composer-preview-html .hljs-meta,
+.composer-preview-html .hljs-variable,
+.composer-preview-html .hljs-template-variable,
+.composer-preview-html .hljs-type {
+  color: var(--color-indicator-orange);
+}
+
+.composer-preview-html .hljs-deletion {
+  color: var(--color-indicator-pink);
+}
+
+/* ── Native app feel ──────────────────────────────────── */
+
+/* Prevent text selection on UI chrome (buttons, labels, nav) */
+button,
+[role="button"],
+nav,
+header,
+aside {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Allow text selection only in content areas */
+[role="feed"],
+[role="main"],
+article,
+.selectable {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* macOS: draggable title bar region */
+.electron-drag {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.electron-no-drag {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+/* Remove focus outline on mouse click, keep for keyboard */
+:focus-visible {
+  @apply outline-2 outline-offset-2 outline-accent;
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/*
+ * Unified hover/focus contract for icon-only action buttons.
+ * Keeps icon interactions consistent across the interface.
+ */
+@media (hover: hover) {
+  button:not(:disabled):not([data-icon-hover="custom"]):has(> svg):not(:has(> *:not(svg))):hover {
+    @apply text-icon-active;
+    background-color: color-mix(in srgb, var(--color-icon-hover) 35%, transparent);
+  }
+}
+
+button:not(:disabled):not([data-icon-hover="custom"]):has(> svg):not(:has(> *:not(svg))) {
+  @apply rounded-lg text-icon-base transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft;
+}
+
+/* Skip-to-content link — visible only on keyboard focus */
+.skip-link {
+  position: absolute;
+  top: -100px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  padding: 8px 24px;
+  border-radius: 0 0 8px 8px;
+  font-weight: 600;
+  font-size: 14px;
+  transition: top 0.15s;
+}
+
+.skip-link:focus {
+  top: 0;
+  @apply bg-accent text-on-accent;
+}
+
+/* Smooth scrolling */
+* {
+  scroll-behavior: smooth;
+}
+
+/* Prevent image dragging (native apps don't drag images) */
+img {
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+/* Remove tap highlight on mobile/PWA */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ── Touch-friendly overrides ──────────────────────────── */
+
+/*
+ * Minimum 44×44 px touch targets (WCAG 2.2 / Apple HIG).
+ * Applied only when the primary pointer is coarse (finger).
+ */
+@media (pointer: coarse) {
+  button,
+  [role="button"],
+  a,
+  input[type="checkbox"],
+  input[type="radio"],
+  summary {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Sidebar items, chat rows — comfortable touch */
+  [role="listitem"],
+  [role="option"],
+  [role="treeitem"],
+  [role="menuitem"] {
+    min-height: 48px;
+  }
+}
+
+/*
+ * Hover effects only when the device actually supports fine pointer.
+ * On touch-only devices, :hover sticks after tap — this avoids it.
+ * Usage: `.hover-effect { ... }` → `@media (hover: hover) { ... }`
+ */
+@media (hover: none) {
+  .hover\:bg-sidebar-hover:hover,
+  .hover\:bg-card-bg:hover,
+  .hover\:bg-card-bg-active:hover,
+  .hover\:text-text-primary:hover {
+    background-color: unset;
+    color: unset;
+  }
+}
+
+/* Touch-active state (applied via JS by lib/touch.ts) */
+html.touch-active .touch-hide {
+  display: none !important;
+}
+
+html.pointer-active .pointer-hide {
+  display: none !important;
+}
+
+/* ── Virtual keyboard ──────────────────────────────────── */
+
+/*
+ * When virtual keyboard is open, the composer should stay above it.
+ * --keyboard-height is set dynamically by lib/touch.ts.
+ */
+:root {
+  --keyboard-height: 0px;
+}
+
+html.keyboard-open .keyboard-aware {
+  padding-bottom: var(--keyboard-height);
+}
+
+html.keyboard-open .keyboard-sticky {
+  position: fixed;
+  bottom: var(--keyboard-height);
+  left: 0;
+  right: 0;
+}
+
+/* ── Safe-area insets (notch / rounded corners) ────────── */
+
+@supports (padding: env(safe-area-inset-top)) {
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .safe-area-left {
+    padding-left: env(safe-area-inset-left);
+  }
+  .safe-area-right {
+    padding-right: env(safe-area-inset-right);
+  }
+  .safe-area-x {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+  .safe-area-y {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .safe-area-all {
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+      env(safe-area-inset-left);
+  }
+}
+
+/* ── Scrolling ─────────────────────────────────────────── */
+
+/* Smooth momentum scrolling on iOS */
+.touch-scroll {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+}
+
+/*
+ * Unified custom scrollbar across menus, dialogs, and panels.
+ * Applies to all overflow utility containers except explicit scrollbar-none.
+ */
+.overflow-auto:not(.scrollbar-none),
+.overflow-x-auto:not(.scrollbar-none),
+.overflow-y-auto:not(.scrollbar-none),
+.overflow-scroll:not(.scrollbar-none),
+.overflow-x-scroll:not(.scrollbar-none),
+.overflow-y-scroll:not(.scrollbar-none) {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-subtle) var(--color-bg);
+}
+
+.overflow-auto:not(.scrollbar-none)::-webkit-scrollbar,
+.overflow-x-auto:not(.scrollbar-none)::-webkit-scrollbar,
+.overflow-y-auto:not(.scrollbar-none)::-webkit-scrollbar,
+.overflow-scroll:not(.scrollbar-none)::-webkit-scrollbar,
+.overflow-x-scroll:not(.scrollbar-none)::-webkit-scrollbar,
+.overflow-y-scroll:not(.scrollbar-none)::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.overflow-auto:not(.scrollbar-none)::-webkit-scrollbar-track,
+.overflow-x-auto:not(.scrollbar-none)::-webkit-scrollbar-track,
+.overflow-y-auto:not(.scrollbar-none)::-webkit-scrollbar-track,
+.overflow-scroll:not(.scrollbar-none)::-webkit-scrollbar-track,
+.overflow-x-scroll:not(.scrollbar-none)::-webkit-scrollbar-track,
+.overflow-y-scroll:not(.scrollbar-none)::-webkit-scrollbar-track {
+  background-color: var(--color-bg);
+  border-radius: 8px;
+}
+
+.overflow-auto:not(.scrollbar-none)::-webkit-scrollbar-thumb,
+.overflow-x-auto:not(.scrollbar-none)::-webkit-scrollbar-thumb,
+.overflow-y-auto:not(.scrollbar-none)::-webkit-scrollbar-thumb,
+.overflow-scroll:not(.scrollbar-none)::-webkit-scrollbar-thumb,
+.overflow-x-scroll:not(.scrollbar-none)::-webkit-scrollbar-thumb,
+.overflow-y-scroll:not(.scrollbar-none)::-webkit-scrollbar-thumb {
+  background-color: var(--color-border-subtle);
+  border: 2px solid var(--color-bg);
+  border-radius: 8px;
+}
+
+.overflow-auto:not(.scrollbar-none)::-webkit-scrollbar-thumb:hover,
+.overflow-x-auto:not(.scrollbar-none)::-webkit-scrollbar-thumb:hover,
+.overflow-y-auto:not(.scrollbar-none)::-webkit-scrollbar-thumb:hover,
+.overflow-scroll:not(.scrollbar-none)::-webkit-scrollbar-thumb:hover,
+.overflow-x-scroll:not(.scrollbar-none)::-webkit-scrollbar-thumb:hover,
+.overflow-y-scroll:not(.scrollbar-none)::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--color-border-subtle) 70%, var(--color-icon-base) 30%);
+}
+
+/*
+ * emoji-picker-react uses internal scroll areas without our overflow utility classes.
+ * Keep scrollbar styling consistent with the rest of the app.
+ */
+.composer-emoji-picker .epr-body,
+.composer-emoji-picker .epr-emoji-category-content {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-subtle) var(--color-bg);
+}
+
+.composer-emoji-picker .epr-body::-webkit-scrollbar,
+.composer-emoji-picker .epr-emoji-category-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.composer-emoji-picker .epr-body::-webkit-scrollbar-track,
+.composer-emoji-picker .epr-emoji-category-content::-webkit-scrollbar-track {
+  background-color: var(--color-bg);
+  border-radius: 8px;
+}
+
+.composer-emoji-picker .epr-body::-webkit-scrollbar-thumb,
+.composer-emoji-picker .epr-emoji-category-content::-webkit-scrollbar-thumb {
+  background-color: var(--color-border-subtle);
+  border: 2px solid var(--color-bg);
+  border-radius: 8px;
+}
+
+.composer-emoji-picker .epr-body::-webkit-scrollbar-thumb:hover,
+.composer-emoji-picker .epr-emoji-category-content::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--color-border-subtle) 70%, var(--color-icon-base) 30%);
+}
+
+/* Prevent pull-to-refresh on main shell (PWA / mobile browser) */
+html,
+body {
+  overscroll-behavior-y: none;
+}
+
+/* ── Text sizing ───────────────────────────────────────── */
+
+/* Prevent iOS auto-zoom on input focus */
+input,
+textarea,
+select {
+  font-size: max(16px, 1em);
+}

@@ -1,0 +1,10 @@
+{
+  "packages/web/src/**/*.{ts,tsx}": [
+    "eslint --fix --config packages/web/eslint.config.js",
+    "prettier --write"
+  ],
+  "packages/web/src/**/*.css": ["prettier --write"],
+  "packages/electron/src/**/*.ts": ["prettier --write"],
+  "*.{json,yml,yaml}": ["prettier --write"],
+  "*.md": ["prettier --write"]
+}

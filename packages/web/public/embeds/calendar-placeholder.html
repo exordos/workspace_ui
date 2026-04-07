@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Calendar Placeholder</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --page-bg: #f2f5fb;
+        --panel-bg: #ffffff;
+        --panel-border: #dbe3f0;
+        --text: #162033;
+        --muted: #61708a;
+        --accent: #4a73ff;
+        --accent-soft: #e8eeff;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+        background: radial-gradient(circle at top, #ffffff 0%, var(--page-bg) 62%);
+        color: var(--text);
+        padding: 18px;
+      }
+
+      .shell {
+        width: min(1100px, 100%);
+        margin: 0 auto;
+        border: 1px solid var(--panel-border);
+        border-radius: 16px;
+        background: var(--panel-bg);
+        box-shadow: 0 14px 34px rgba(21, 40, 84, 0.12);
+        overflow: hidden;
+      }
+
+      .demo-banner {
+        display: inline-block;
+        margin: 14px 18px 0;
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #2540a1;
+        background: #e4ebff;
+        border: 1px solid #cfdcff;
+      }
+
+      .top {
+        padding: 12px 18px 16px;
+        border-bottom: 1px solid var(--panel-border);
+      }
+
+      .title-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .title {
+        margin: 0;
+        font-size: 23px;
+      }
+
+      .toolbar {
+        margin-top: 12px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .controls,
+      .views {
+        display: flex;
+        gap: 8px;
+      }
+
+      .btn {
+        border: 1px solid var(--panel-border);
+        background: #f7f9ff;
+        color: #2f4060;
+        border-radius: 9px;
+        font-size: 13px;
+        padding: 7px 11px;
+      }
+
+      .btn.active {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #fff;
+      }
+
+      .calendar {
+        padding: 14px;
+      }
+
+      .weekdays,
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .weekdays {
+        margin-bottom: 10px;
+      }
+
+      .weekday {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 600;
+        text-align: center;
+      }
+
+      .day {
+        min-height: 106px;
+        border: 1px solid var(--panel-border);
+        border-radius: 12px;
+        padding: 8px;
+        background: #fbfcff;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .day.muted {
+        opacity: 0.48;
+      }
+
+      .day.today {
+        border-color: #b8c8ff;
+        background: #f2f6ff;
+      }
+
+      .date {
+        font-size: 12px;
+        color: #3e4f6f;
+        font-weight: 600;
+      }
+
+      .event {
+        font-size: 11px;
+        color: #24408d;
+        background: var(--accent-soft);
+        border: 1px solid #d4ddff;
+        border-radius: 7px;
+        padding: 3px 6px;
+      }
+
+      .note {
+        padding: 0 18px 16px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      code {
+        background: #eef3ff;
+        border: 1px solid #d8e2ff;
+        border-radius: 6px;
+        padding: 2px 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <span class="demo-banner">Demo Placeholder</span>
+      <section class="top">
+        <div class="title-row">
+          <h1 class="title">Calendar - March 2026</h1>
+        </div>
+        <div class="toolbar">
+          <div class="controls">
+            <button class="btn" type="button">&#8592;</button>
+            <button class="btn" type="button">Today</button>
+            <button class="btn" type="button">&#8594;</button>
+          </div>
+          <div class="views">
+            <button class="btn active" type="button">Month</button>
+            <button class="btn" type="button">Week</button>
+            <button class="btn" type="button">Day</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="calendar">
+        <div class="weekdays">
+          <div class="weekday">Mon</div>
+          <div class="weekday">Tue</div>
+          <div class="weekday">Wed</div>
+          <div class="weekday">Thu</div>
+          <div class="weekday">Fri</div>
+          <div class="weekday">Sat</div>
+          <div class="weekday">Sun</div>
+        </div>
+        <div class="grid">
+          <div class="day muted"><div class="date">23</div></div>
+          <div class="day muted"><div class="date">24</div></div>
+          <div class="day muted"><div class="date">25</div></div>
+          <div class="day muted"><div class="date">26</div></div>
+          <div class="day muted"><div class="date">27</div></div>
+          <div class="day muted"><div class="date">28</div></div>
+          <div class="day"><div class="date">1</div></div>
+          <div class="day"><div class="date">2</div><div class="event">09:30 Standup</div></div>
+          <div class="day"><div class="date">3</div></div>
+          <div class="day"><div class="date">4</div><div class="event">14:00 Planning</div></div>
+          <div class="day today"><div class="date">5</div><div class="event">16:00 Demo review</div></div>
+          <div class="day"><div class="date">6</div></div>
+          <div class="day"><div class="date">7</div></div>
+        </div>
+      </section>
+      <p class="note">
+        Demo-only HTML page. Configure real source with <code>VITE_CALENDAR_EMBED_URL</code>.
+      </p>
+    </main>
+  </body>
+</html>

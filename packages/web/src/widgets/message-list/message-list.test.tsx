@@ -1,0 +1,326 @@
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useUsersStore } from "~/entities/user/user.model";
+import type { MockMessage } from "~/shared/api/zulip.types";
+import { createUser } from "~/test/factories";
+import { MessageList } from "./message-list.ui";
+
+function msg(id: number, overrides: Partial<MockMessage> = {}): MockMessage {
+  return {
+    id,
+    sender_id: 42,
+    sender_full_name: "Alice",
+    stream_id: 10,
+    display_recipient: "general",
+    channel: "general",
+    subject: "bugs",
+    content: `<p>Message ${id}</p>`,
+    timestamp: 1710000000 + id,
+    ...overrides,
+  };
+}
+
+describe("MessageList focused message behavior", () => {
+  const scrollTargets: string[] = [];
+  const scrollIntoView = vi.fn(function (this: HTMLElement) {
+    scrollTargets.push(this.getAttribute("data-message-id") ?? "");
+  });
+  const originalIntersectionObserver = globalThis.IntersectionObserver;
+  let intersectionCallback:
+    | ((entries: IntersectionObserverEntry[], observer: IntersectionObserver) => void)
+    | null = null;
+
+  class IntersectionObserverMock implements IntersectionObserver {
+    readonly root = null;
+    readonly rootMargin = "0px";
+    readonly thresholds = [0.5];
+    disconnect = vi.fn();
+    observe = vi.fn();
+    takeRecords = vi.fn(() => []);
+    unobserve = vi.fn();
+
+    constructor(
+      callback: (entries: IntersectionObserverEntry[], observer: IntersectionObserver) => void,
+    ) {
+      intersectionCallback = callback;
+    }
+  }
+
+  beforeEach(() => {
+    scrollTargets.length = 0;
+    scrollIntoView.mockReset();
+    intersectionCallback = null;
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    globalThis.IntersectionObserver = IntersectionObserverMock;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    globalThis.IntersectionObserver = originalIntersectionObserver;
+    useUsersStore.getState().clear();
+  });
+
+  it("marks and scrolls the focused message into view", () => {
+    render(
+      <MessageList messages={[msg(1), msg(2), msg(3)]} currentUserId={7} focusedMessageId={2} />,
+    );
+
+    const focused = screen.getByTestId("message-2");
+    expect(focused).toHaveAttribute("data-focused", "true");
+    expect(scrollIntoView).toHaveBeenCalled();
+    expect(scrollTargets).toContain("2");
+  });
+
+  it("scrolls first unread message into view when no focused message is set", () => {
+    render(
+      <MessageList
+        messages={[msg(1), msg(2), msg(3)]}
+        currentUserId={7}
+        firstUnreadId={3}
+        unreadCount={2}
+      />,
+    );
+
+    expect(scrollIntoView).toHaveBeenCalled();
+    expect(scrollTargets).toContain("3");
+    expect(screen.getByText("Unread messages • 2")).toBeInTheDocument();
+  });
+
+  it("prioritizes focused message over first unread scrolling", () => {
+    render(
+      <MessageList
+        messages={[msg(1), msg(2), msg(3)]}
+        currentUserId={7}
+        firstUnreadId={3}
+        unreadCount={2}
+        focusedMessageId={2}
+      />,
+    );
+
+    expect(scrollIntoView).toHaveBeenCalled();
+    expect(scrollTargets).toContain("2");
+    expect(scrollTargets).not.toContain("3");
+  });
+
+  it("calls topic separator callback when separator is clicked", () => {
+    const onTopicSeparatorClick = vi.fn();
+
+    render(
+      <MessageList
+        messages={[
+          msg(1, { sender_id: 42, subject: "bugs" }),
+          msg(2, { sender_id: 43, subject: "bugs" }),
+          msg(3, { sender_id: 42, subject: "support" }),
+        ]}
+        callbacks={{ onTopicSeparatorClick }}
+      />,
+    );
+
+    const separator = screen.getByRole("button", { name: "support" });
+    fireEvent.click(separator);
+
+    expect(onTopicSeparatorClick).toHaveBeenCalledTimes(1);
+    expect(onTopicSeparatorClick.mock.calls[0]?.[0]?.id).toBe(3);
+  });
+
+  it("shows topic separator when topic changes across calendar days", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2024-06-02T12:00:00Z"));
+    const day1 = Math.floor(new Date("2024-06-01T10:00:00Z").getTime() / 1000);
+    const day2 = Math.floor(new Date("2024-06-02T10:00:00Z").getTime() / 1000);
+
+    render(
+      <MessageList
+        messages={[
+          msg(1, { subject: "bugs", timestamp: day1 }),
+          msg(2, { subject: "support", timestamp: day2, sender_id: 43 }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "support" })).toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  it("calls author callback when message avatar is clicked", () => {
+    const onMessageAuthorClick = vi.fn();
+
+    render(<MessageList messages={[msg(1)]} callbacks={{ onMessageAuthorClick }} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /open profile/i }));
+    expect(onMessageAuthorClick).toHaveBeenCalledTimes(1);
+    expect(onMessageAuthorClick).toHaveBeenCalledWith(42);
+  });
+
+  it("uses large avatar size for grouped sender blocks", () => {
+    render(<MessageList messages={[msg(1), msg(2)]} currentUserId={7} />);
+
+    const avatarButton = screen.getByRole("button", { name: /open profile/i });
+    const avatarElement = avatarButton.querySelector("div");
+    expect(avatarElement).toHaveClass("w-12");
+    expect(avatarElement).toHaveClass("h-12");
+  });
+
+  it("shows grouped sender presence indicator when user presence is available", () => {
+    const now = Math.floor(Date.now() / 1000);
+    useUsersStore.getState().mergeUser(
+      createUser({
+        user_id: 42,
+        full_name: "Alice",
+        presence: { status: "active", timestamp: now },
+      }),
+    );
+
+    render(<MessageList messages={[msg(1), msg(2)]} currentUserId={7} />);
+
+    expect(screen.getByRole("status", { name: /online/i })).toBeInTheDocument();
+  });
+
+  it("reports unread visible messages at 50% threshold", () => {
+    const onUnreadMessagesVisible = vi.fn();
+    render(
+      <MessageList
+        messages={[
+          msg(1, { sender_id: 42, flags: [] }),
+          msg(2, { sender_id: 42, flags: ["read"] }),
+          msg(3, { sender_id: 7, flags: [] }),
+        ]}
+        currentUserId={7}
+        onUnreadMessagesVisible={onUnreadMessagesVisible}
+      />,
+    );
+    onUnreadMessagesVisible.mockClear();
+
+    const targetUnread = screen.getByTestId("message-1");
+    const targetRead = screen.getByTestId("message-2");
+
+    intersectionCallback?.(
+      [
+        { target: targetUnread, isIntersecting: true, intersectionRatio: 0.3 },
+      ] as unknown as IntersectionObserverEntry[],
+      {} as IntersectionObserver,
+    );
+    expect(onUnreadMessagesVisible).not.toHaveBeenCalled();
+
+    intersectionCallback?.(
+      [
+        { target: targetUnread, isIntersecting: true, intersectionRatio: 0.7 },
+        { target: targetRead, isIntersecting: true, intersectionRatio: 0.9 },
+      ] as unknown as IntersectionObserverEntry[],
+      {} as IntersectionObserver,
+    );
+    expect(onUnreadMessagesVisible).toHaveBeenCalledTimes(1);
+    expect(onUnreadMessagesVisible).toHaveBeenCalledWith([1]);
+  });
+
+  it("reports all loaded unread messages when user scrolls to chat bottom", () => {
+    const onUnreadMessagesVisible = vi.fn();
+    render(
+      <MessageList
+        messages={[
+          msg(1, { sender_id: 42, flags: [] }),
+          msg(2, { sender_id: 43, flags: [] }),
+          msg(3, { sender_id: 7, flags: [] }),
+        ]}
+        currentUserId={7}
+        onUnreadMessagesVisible={onUnreadMessagesVisible}
+      />,
+    );
+
+    const feed = screen.getByRole("feed", { name: /conversation/i });
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 1200 });
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 400 });
+    Object.defineProperty(feed, "scrollTop", { configurable: true, value: 820 });
+
+    // Regression: fast scroll-to-bottom may skip 50%-visibility callbacks for some unread rows.
+    fireEvent.scroll(feed);
+
+    expect(onUnreadMessagesVisible).toHaveBeenCalledWith([1, 2]);
+  });
+
+  it("reports unread messages through bottom callback when user reaches chat bottom", () => {
+    const onUnreadMessagesAtBottom = vi.fn();
+    render(
+      <MessageList
+        messages={[
+          msg(1, { sender_id: 42, flags: [] }),
+          msg(2, { sender_id: 43, flags: [] }),
+          msg(3, { sender_id: 7, flags: [] }),
+        ]}
+        currentUserId={7}
+        onUnreadMessagesAtBottom={onUnreadMessagesAtBottom}
+      />,
+    );
+
+    const feed = screen.getByRole("feed", { name: /conversation/i });
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 1200 });
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 400 });
+    Object.defineProperty(feed, "scrollTop", { configurable: true, value: 820 });
+
+    fireEvent.scroll(feed);
+
+    expect(onUnreadMessagesAtBottom).toHaveBeenCalledWith([1, 2]);
+  });
+
+  it("reports unread messages when list stays at bottom after rerender", async () => {
+    const onUnreadMessagesVisible = vi.fn();
+    const { rerender } = render(
+      <MessageList
+        messages={[msg(1, { sender_id: 7, flags: ["read"] })]}
+        currentUserId={7}
+        onUnreadMessagesVisible={onUnreadMessagesVisible}
+      />,
+    );
+
+    const feed = screen.getByRole("feed", { name: /conversation/i });
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, writable: true, value: 400 });
+    Object.defineProperty(feed, "clientHeight", { configurable: true, writable: true, value: 400 });
+    Object.defineProperty(feed, "scrollTop", { configurable: true, writable: true, value: 0 });
+
+    rerender(
+      <MessageList
+        messages={[msg(1, { sender_id: 7, flags: ["read"] }), msg(2, { sender_id: 42, flags: [] })]}
+        currentUserId={7}
+        onUnreadMessagesVisible={onUnreadMessagesVisible}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(onUnreadMessagesVisible).toHaveBeenCalledWith([2]);
+    });
+  });
+});
+
+describe("MessageList selection mode", () => {
+  afterEach(() => {
+    useUsersStore.getState().clear();
+  });
+
+  it("calls message select callback from selection toggle", () => {
+    const onMessageSelect = vi.fn();
+
+    render(
+      <MessageList
+        messages={[msg(11)]}
+        selectionMode
+        selectedMessageIds={new Set<number>()}
+        callbacks={{ onMessageSelect }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /select/i }));
+    expect(onMessageSelect).toHaveBeenCalledTimes(1);
+    expect(onMessageSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 11 }));
+  });
+
+  it("uses deselect label for already selected message", () => {
+    render(
+      <MessageList messages={[msg(12)]} selectionMode selectedMessageIds={new Set<number>([12])} />,
+    );
+
+    expect(screen.getByRole("button", { name: /deselect/i })).toBeInTheDocument();
+  });
+});

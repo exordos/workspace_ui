@@ -1,0 +1,175 @@
+---
+description: AI-generated reply system — smart replies, rewrite, translate, summarize
+globs: "packages/web/src/**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# AI-Generated Replies
+
+> Backend is NOT ready yet. Frontend foundation is in place with a mock provider.
+
+## Architecture
+
+```
+features/ai-reply/
+├── ai-reply.types.ts    ← AiAction, AiReplyRequest/Response, AiReplyProvider, streaming
+├── ai-reply.model.ts    ← Zustand store: status, suggestions, streaming, generate/abort
+├── ai-reply.api.ts      ← Mock provider + HTTP provider stub (SSE streaming)
+├── ai-reply.ui.tsx       ← SmartReplySuggestions, AiActionMenu, AiComposerButton
+└── index.ts              ← Public barrel
+```
+
+## Use Cases
+
+| Action | Input | Output | UX |
+|--------|-------|--------|-----|
+| `smart-reply` | Last N messages | 3 short reply chips | Google Messages-style chips above composer |
+| `generate-reply` | Thread context | 1 full reply draft | Streamed into preview panel |
+| `rewrite` | User's draft | 1 improved version | Replace draft in composer |
+| `fix-grammar` | User's draft | 1 corrected version | Replace draft |
+| `change-tone` | Draft + tone | 1 rephrased version | Professional/Casual/Friendly/Formal/Concise |
+| `translate` | Draft + target lang | 1 translated version | Replace draft |
+| `summarize` | Thread messages | 1 summary | Show in preview panel |
+
+## Store (useAiReplyStore)
+
+```ts
+import { useAiReplyStore, setAiReplyProvider, createMockProvider } from "~/features/ai-reply";
+
+// Setup (once, in app initialization)
+setAiReplyProvider(createMockProvider()); // or createHttpProvider(baseUrl)
+
+// Generate smart replies
+await useAiReplyStore.getState().generate({
+  action: "smart-reply",
+  messages: recentMessages,
+  chatContext: { type: "stream", streamName: "general", topic: "hello" },
+});
+
+// Read state
+const { status, suggestions, streamingText, error } = useAiReplyStore.getState();
+// status: "idle" | "loading" | "streaming" | "done" | "error"
+
+// Accept a suggestion (returns text, clears state)
+const text = useAiReplyStore.getState().acceptSuggestion(suggestion.id);
+
+// Abort generation
+useAiReplyStore.getState().abort();
+
+// Dismiss without accepting
+useAiReplyStore.getState().dismiss();
+```
+
+## UI Components
+
+### Smart Reply Chips
+
+```tsx
+import { SmartReplySuggestions } from "~/features/ai-reply";
+
+// Above the composer:
+<SmartReplySuggestions onAccept={(text) => sendMessage({ content: text })} />
+```
+
+Shows 3 contextual quick-reply chips. Visible only when `lastAction === "smart-reply"` and `status === "done"`.
+
+### AI Action Menu
+
+```tsx
+import { AiActionMenu, AiComposerButton } from "~/features/ai-reply";
+
+const [aiMenuOpen, setAiMenuOpen] = useState(false);
+
+// In composer toolbar:
+<AiComposerButton onClick={() => setAiMenuOpen(!aiMenuOpen)} active={aiMenuOpen} />
+
+// Above composer (positioned absolutely):
+<AiActionMenu
+  draft={composerValue}
+  onInsert={(text) => setComposerValue(text)}
+  open={aiMenuOpen}
+  onOpenChange={setAiMenuOpen}
+/>
+```
+
+Shows: Generate reply, Rewrite, Fix grammar, Change tone (5 options), Translate, Summarize thread.
+Actions that need a draft are disabled when composer is empty.
+
+### Streaming Preview
+
+When `generateStream` is used, the UI shows text appearing token-by-token with a blinking cursor. User can Stop or wait for completion, then Insert or Discard.
+
+## Providers
+
+### Mock (for development)
+
+```ts
+import { createMockProvider } from "~/features/ai-reply";
+setAiReplyProvider(createMockProvider());
+```
+
+Returns canned responses after 300-800ms delay. Smart replies are context-aware (questions, greetings, default). Streaming simulates word-by-word output.
+
+### HTTP (when backend is ready)
+
+```ts
+import { createHttpProvider } from "~/features/ai-reply";
+setAiReplyProvider(createHttpProvider("https://api.workspace.com"));
+```
+
+Endpoints:
+- `POST /ai/reply` — non-streaming (returns AiReplyResponse)
+- `POST /ai/reply/stream` — SSE streaming (Server-Sent Events, `data: { delta, done, index }`)
+
+## Message Context
+
+The `AiMessageContext` array provides thread context to the LLM:
+
+```ts
+interface AiMessageContext {
+  id: number;
+  senderId: number;
+  senderName: string;
+  content: string;      // plain text (stripped HTML)
+  timestamp: number;
+  isOwn: boolean;       // whether current user sent this
+}
+```
+
+Prepare from `MockMessage[]`:
+```ts
+const context: AiMessageContext[] = messages.slice(-20).map(m => ({
+  id: m.id,
+  senderId: m.sender_id,
+  senderName: m.sender_full_name,
+  content: stripHtml(m.content),
+  timestamp: m.timestamp,
+  isOwn: m.sender_id === currentUserId,
+}));
+```
+
+## Rules for AI Agent
+
+### When integrating into composer
+
+1. **Smart replies** — trigger after receiving a new message (not own), with last 10-20 messages as context
+2. **Action menu** — show via ✨ button in composer toolbar
+3. **Insert = replace** — when user accepts rewrite/translate/fix, replace the composer draft entirely
+4. **Insert = append** — when user accepts generate-reply, append to composer (don't replace)
+5. **Track with analytics** — `AnalyticsEvent.AI_REPLY_GENERATED`, `AI_REPLY_ACCEPTED`
+
+### Security / Privacy
+
+- **Do NOT send message content to third-party APIs** without explicit user consent
+- **Strip HTML** before sending to LLM — use `stripHtml()` from `~/shared/lib/html`
+- **Limit context** — max 20 messages, no file attachments
+- **Do NOT store** generated suggestions in localStorage or send to analytics
+- **Model transparency** — show which model generated the response (`response.model`)
+
+### When backend is ready
+
+1. Replace `createMockProvider()` with `createHttpProvider(baseUrl)` in app initialization
+2. Add `VITE_AI_API_URL` env var
+3. Add auth header (use existing API client middleware)
+4. Handle rate limiting (429) with backoff
+5. Add feature flag to enable/disable AI features per organization

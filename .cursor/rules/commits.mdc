@@ -1,0 +1,93 @@
+---
+description: Commit conventions — message format, hooks, validation
+alwaysApply: true
+---
+
+# Commit Conventions
+
+## Message Format (Conventional Commits)
+
+```
+<type>(<scope>): <subject>
+
+<body>
+
+<footer>
+```
+
+### Types
+
+| Type | When |
+|------|------|
+| `feat` | New feature |
+| `fix` | Bug fix |
+| `refactor` | Code change that neither fixes a bug nor adds a feature |
+| `docs` | Documentation only |
+| `test` | Adding or fixing tests |
+| `chore` | Dependencies, config, tooling |
+| `style` | Formatting, whitespace (no logic change) |
+| `perf` | Performance improvement |
+| `ci` | CI/CD changes |
+| `build` | Build system, packaging |
+| `revert` | Reverting a previous commit |
+
+### Scopes (optional)
+
+`chat`, `auth`, `sidebar`, `electron`, `i18n`, `theme`, `api`, `pwa`, `security`, `a11y`
+
+### Examples
+
+```
+feat(chat): add message forwarding dialog
+fix: correct unread count decrement on DM
+refactor(stores): extract chat list sorting to utility
+docs: update API client reference
+test(html): add XSS sanitization edge cases
+chore: update Radix UI to 1.2
+perf(messages): virtualize long message lists
+ci: add E2E tests to GitLab pipeline
+```
+
+### Rules
+
+- Subject: imperative mood ("add", not "added" or "adding")
+- Subject max 100 chars, header max 120 chars
+- No period at end of subject
+- Body: wrap at 200 chars, explain WHY (not what)
+- Footer: `Closes #123`, `BREAKING CHANGE: ...`
+
+## Git Hooks
+
+### pre-commit (automatic)
+
+1. **lint-staged** — ESLint fix + Prettier on staged files
+2. **Secret detection** — blocks commits containing API keys, passwords, tokens
+3. **Sensitive file block** — prevents committing `.env`, `.pem`, `.key` files
+4. **Large file block** — prevents files >2MB (use Git LFS)
+
+### commit-msg (automatic)
+
+**commitlint** — validates message format against Conventional Commits.
+
+Rejected:
+```
+❌ "fixed stuff"           → missing type
+❌ "feat add feature"      → missing colon after type
+❌ "feat: "                → empty subject
+```
+
+Accepted:
+```
+✅ "feat: add drafts page"
+✅ "fix(chat): correct unread count"
+✅ "docs: update STORES_REFERENCE"
+```
+
+## For AI Agent
+
+When creating commits:
+1. Use Conventional Commits format
+2. Subject: English, imperative mood, lowercase after type
+3. Scope: use when change is localized to one area
+4. Don't combine unrelated changes in one commit
+5. `feat` for new features, `fix` for bugs — don't use `chore` for code changes

@@ -1,0 +1,171 @@
+---
+description: Native WebView integration for iOS/Android hybrid mode
+globs: "packages/web/src/**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# Native WebView Integration
+
+## Purpose
+
+Native iOS/Android apps can open individual web application pages in a WebView while the native implementation is not ready. For example, the iOS developer hasn't finished the profile page — they open `/webview/profile` in WKWebView.
+
+## Architecture
+
+```
+┌─────────────────────────┐     postMessage      ┌──────────────────────┐
+│  Native App (iOS/Android)│ ◄──────────────────► │  WebView Shell       │
+│                          │                      │  (no sidebar/topbar) │
+│  WKWebView / WebView    │  window.NativeApp    │                      │
+│                          │  window.webkit       │  /webview/stream/10  │
+│  Auth injection ────────►│  messageHandlers     │  /webview/licenses   │
+│  Theme sync ────────────►│                      │  /webview/profile    │
+│  Navigate ◄──────────────│                      │                      │
+│  Close ◄─────────────────│                      │                      │
+└─────────────────────────┘                      └──────────────────────┘
+```
+
+## Modules
+
+| File | Purpose |
+|------|---------|
+| `shared/lib/webview.ts` | WebView detection, Web↔Native bridge, page registry |
+| `app/webview-shell.tsx` | Minimal shell without Layout (sidebar, topbar, folder rail) |
+| `app/app.tsx` | Router: if `isWebView()` → WebViewShell, otherwise full App |
+
+## WebView Detection
+
+```ts
+import { isWebView, getWebViewPlatform } from "~/shared/lib/webview";
+
+if (isWebView()) {
+  const platform = getWebViewPlatform(); // "ios" | "android" | null
+}
+```
+
+Detection priority:
+1. URL parameter `?webview=1`
+2. `window.NativeApp` (injected by native code)
+3. User-Agent heuristic (`wv)`, `WebView`)
+
+## Web → Native Bridge
+
+```ts
+import { getNativeBridge } from "~/shared/lib/webview";
+
+const bridge = getNativeBridge();
+
+bridge.close();                          // close WebView
+bridge.navigateNative("profile", { id: "42" }); // navigate to native screen
+bridge.setTitle("Profile");              // update title in native nav bar
+bridge.setLoading(true);                 // show/hide native loading indicator
+bridge.share("Check this out", url);     // native share sheet
+bridge.postEvent("page_loaded", { path: "/licenses" }); // custom event
+bridge.requestAuth();                    // request credentials from native app
+```
+
+## Native → Web Bridge
+
+### Auth injection
+
+Native app sends via postMessage:
+```json
+{ "type": "auth", "email": "user@example.com", "apiKey": "abc123", "realm": "https://zulip.example.com" }
+```
+
+Web app receives:
+```ts
+import { onAuthFromNative } from "~/shared/lib/webview";
+
+onAuthFromNative(({ email, apiKey, realm }) => {
+  addInstance({ name: "Native", url: realm, email, apiKey });
+});
+```
+
+### Navigation
+
+```json
+{ "type": "navigate", "path": "/webview/stream/10-general" }
+{ "type": "back" }
+```
+
+### Theme
+
+```json
+{ "type": "theme", "mode": "dark", "palette": "orange-warm" }
+```
+
+## WebView Page Registry
+
+```ts
+import { getWebViewPages, registerWebViewPage } from "~/shared/lib/webview";
+
+const pages = getWebViewPages();
+// [{ path: "/profile", label: "Profile" }, { path: "/licenses", label: "Open Source Licenses" }, ...]
+
+registerWebViewPage({ path: "/custom", label: "Custom Page" });
+```
+
+The native app queries the registry to build navigation: which pages are available in WebView.
+
+## URL Scheme for Native Apps
+
+```
+https://app.workspace.example.com/webview/profile
+https://app.workspace.example.com/webview/licenses
+https://app.workspace.example.com/webview/stream/10-general/topic/hello?webview=1
+```
+
+All paths under `/webview/` are automatically rendered without sidebar/topbar.
+The `?webview=1` parameter is a fallback way to activate WebView mode on any URL.
+
+## Instructions for Native Developers
+
+### iOS (WKWebView)
+
+```swift
+let config = WKWebViewConfiguration()
+let controller = WKUserContentController()
+controller.add(self, name: "nativeApp")
+config.userContentController = controller
+
+let webView = WKWebView(frame: .zero, configuration: config)
+webView.load(URLRequest(url: URL(string: "https://app.example.com/webview/profile?webview=1")!))
+
+// Inject auth
+webView.evaluateJavaScript("""
+  window.postMessage({ type: "auth", email: "\(email)", apiKey: "\(apiKey)", realm: "\(realm)" })
+""")
+```
+
+### Android (WebView)
+
+```kotlin
+webView.settings.javaScriptEnabled = true
+webView.addJavascriptInterface(object {
+    @JavascriptInterface
+    fun postMessage(json: String) { /* handle Web→Native messages */ }
+}, "NativeApp")
+
+webView.loadUrl("https://app.example.com/webview/profile?webview=1")
+
+// Inject auth
+webView.evaluateJavascript("""
+  window.postMessage({ type: "auth", email: "$email", apiKey: "$apiKey", realm: "$realm" })
+""", null)
+```
+
+## Rules for AI Agent
+
+### When creating new pages
+
+1. **Add to registry** — `registerWebViewPage({ path, label })` if the page could be useful in WebView
+2. **Add route** in `webview-shell.tsx`
+3. **Don't depend on Layout** — page component must work both inside Layout and without it
+4. **Safe area** — use `safe-area-all` class on the page's root element
+
+### Security
+
+- **Auth only through bridge** — never via URL parameters
+- **Validate origin** in `handleIncomingMessage` (TODO: restrict to specific origin on deploy)
+- **Don't pass sensitive data** in `bridge.postEvent()` — only metadata

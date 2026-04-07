@@ -1,0 +1,141 @@
+---
+description: API client with middleware pipeline
+globs: "packages/web/src/shared/api/**/*.ts"
+alwaysApply: false
+---
+
+# API Middleware Pipeline
+
+## Architecture
+
+```
+apiClient.get("/messages")
+  → authMiddleware      (adds Authorization: Basic)
+  → loggingMiddleware   (starts timer, logs request/response)
+  → retryMiddleware     (retries on 429/5xx, exponential backoff)
+  → fetch()             (actual HTTP call)
+```
+
+Middleware is a function `(req, next) => Promise<ApiResponse>`. Onion model: each calls `next()`, can modify request before and response after.
+
+## API Client
+
+```typescript
+import { zulipApi, workspaceApi } from "~/shared/api/client";
+
+// Zulip API (auth is automatic)
+const res = await zulipApi.get("/messages", { anchor: "newest", num_before: "100" });
+await zulipApi.post("/messages", { type: "stream", content: "hello" });
+await zulipApi.patch("/messages/123", { content: "updated" });
+await zulipApi.delete("/messages/123");
+
+// Workspace API
+const folders = await workspaceApi.get("/folders/");
+await workspaceApi.postJson("/folders/", { title: "New" });
+```
+
+## Built-in middleware
+
+| Middleware | Purpose |
+|-----------|---------|
+| `authMiddleware` | Injects `Authorization: Basic` from instancesStore |
+| `loggingMiddleware` | Timer + `logApiCall()`. Warns if >1s |
+| `retryMiddleware` | Retry on 429/502/503/504 with backoff (up to 2 retries) |
+
+## Creating custom middleware
+
+```typescript
+import type { Middleware } from "~/shared/api/client";
+import { zulipApi } from "~/shared/api/client";
+
+// CSRF token middleware
+const csrfMiddleware: Middleware = async (req, next) => {
+  const token = getCsrfToken();
+  if (token) {
+    req.headers["X-CSRFToken"] = token;
+  }
+  return next(req);
+};
+
+// Rate limiter
+const rateLimitMiddleware: Middleware = async (req, next) => {
+  await waitForSlot();
+  return next(req);
+};
+
+// Cache middleware (short-circuit on hit)
+const cacheMiddleware: Middleware = async (req, next) => {
+  if (req.method === "GET") {
+    const cached = cache.get(req.url);
+    if (cached) return cached;
+  }
+  const res = await next(req);
+  if (req.method === "GET" && res.ok) {
+    cache.set(req.url, res);
+  }
+  return res;
+};
+
+// Error transform
+const errorTransform: Middleware = async (req, next) => {
+  try {
+    return await next(req);
+  } catch (err) {
+    captureException(err);
+    throw new AppError("API unavailable", { cause: err });
+  }
+};
+
+// Register
+zulipApi.use(csrfMiddleware);
+zulipApi.useBefore(authMiddleware, rateLimitMiddleware);
+```
+
+## Request/Response types
+
+```typescript
+interface ApiRequest {
+  method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
+  url: string;
+  headers: Record<string, string>;
+  body?: string;
+  params?: Record<string, string>;
+  signal?: AbortSignal;
+  meta: Record<string, unknown>;     // ← custom metadata for middleware
+}
+
+interface ApiResponse {
+  status: number;
+  ok: boolean;
+  headers: Headers;
+  data: unknown;                      // ← parsed JSON
+  raw: Response;                      // ← original Response
+  durationMs: number;                 // ← from loggingMiddleware
+}
+```
+
+## Zulip split modules
+
+There is no `zulip.ts` barrel — import from the concrete module:
+
+| Import from | Module |
+|-------------|--------|
+| Types, `ZulipAuthError` | `./zulip.types` |
+| Auth, server settings | `./zulip-auth` |
+| Realm / client helpers | `./zulip-client.internal` (or other `zulip-*.internal.ts`) |
+| Queue, events | `./zulip-queue` |
+| Read/mark/topic resolve | `./zulip-read-state` |
+| Users | `./zulip-users` |
+| Streams | `./zulip-streams` |
+| Messages, reactions | `./zulip-messages` |
+| Upload | `./zulip-upload` |
+
+Tests should mock the same module path the code under test imports (e.g. `~/shared/api/zulip-messages`).
+
+## For AI Agent
+
+- New API calls: use `zulipApi.get/post/patch/delete`
+- Custom interceptors: create a `Middleware` function + `zulipApi.use()`
+- `req.meta` — for passing data between middleware (e.g. `req.meta.skipRetry = true`)
+- DO NOT duplicate auth/URL logic — everything goes through the middleware pipeline
+- New Zulip API usage and tests: import from concrete `zulip-*.ts` modules only

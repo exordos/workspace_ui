@@ -1,0 +1,162 @@
+---
+description: Touch screen and gesture support
+globs: "packages/web/src/**/*.{ts,tsx,css}"
+alwaysApply: false
+---
+
+# Touch & Gesture Support
+
+## Modules
+
+| File | Purpose |
+|------|---------|
+| `shared/lib/touch.ts` | Input type detection (touch/pointer), virtual keyboard, safe-area |
+| `shared/lib/gestures.ts` | Swipe, long-press, pinch-to-zoom hooks |
+| `styles/index.css` | CSS adaptations for touch (tap targets, hover guard, safe-area, keyboard) |
+
+## Input Mode Detection
+
+```ts
+import { useInputMode, isTouchDevice, isCoarsePointer } from "~/shared/lib/touch";
+
+const mode = useInputMode(); // "touch" | "pointer" — reactively switches
+```
+
+The module tracks `pointerdown` events — if the last input was `pointerType === "touch"`, the `touch-active` class is set on `<html>`, otherwise `pointer-active`. This works dynamically on hybrid devices (Surface, iPad + mouse).
+
+## Gestures
+
+### Swipe
+
+```tsx
+import { useSwipe } from "~/shared/lib/gestures";
+
+const ref = useRef<HTMLDivElement>(null);
+
+useSwipe(ref, {
+  onSwipeLeft: () => navigateForward(),
+  onSwipeRight: () => navigateBack(),
+  onSwiping: (dx, dy) => { /* animation */ },
+  onSwipeEnd: () => { /* reset */ },
+}, {
+  threshold: 50,      // px minimum distance
+  maxDuration: 500,   // ms maximum gesture duration
+  edgeOnly: true,     // from screen edge only
+  edgeWidth: 30,      // px edge zone
+});
+```
+
+### Long-press (context menu)
+
+```tsx
+import { useLongPress } from "~/shared/lib/gestures";
+
+const ref = useRef<HTMLDivElement>(null);
+
+useLongPress(ref, (e) => {
+  openContextMenu(e.clientX, e.clientY);
+}, {
+  delay: 500,          // ms before trigger
+  moveTolerance: 10,   // px — cancels on movement
+});
+```
+
+Includes vibration (`navigator.vibrate(30)`) on supported devices.
+
+### Pinch-to-zoom (images)
+
+```tsx
+import { usePinch, type PinchState } from "~/shared/lib/gestures";
+
+const ref = useRef<HTMLDivElement>(null);
+
+usePinch(ref, ({ scale, centerX, centerY }: PinchState) => {
+  applyZoom(scale, centerX, centerY);
+});
+```
+
+## Virtual Keyboard
+
+```tsx
+import { useViewportKeyboard } from "~/shared/lib/touch";
+
+function Composer() {
+  const { isOpen, keyboardHeight } = useViewportKeyboard();
+  // keyboardHeight — keyboard height in px
+}
+```
+
+CSS variable `--keyboard-height` is updated automatically. Classes:
+- `keyboard-aware` — adds padding-bottom equal to keyboard height
+- `keyboard-sticky` — fixes element above the keyboard
+
+## CSS Utilities
+
+### Touch targets (WCAG 2.2)
+
+At `@media (pointer: coarse)` all buttons and interactive elements get `min-height: 44px; min-width: 44px`. This is automatic.
+
+### Hover guard
+
+At `@media (hover: none)` Tailwind hover effects are disabled — prevents hover "sticking" after a tap.
+
+### Safe-area insets
+
+```html
+<div class="safe-area-bottom">   <!-- padding-bottom: env(safe-area-inset-bottom) -->
+<div class="safe-area-x">        <!-- left + right -->
+<div class="safe-area-all">      <!-- all 4 sides -->
+```
+
+### Conditional display
+
+```html
+<span class="touch-hide">Visible only with mouse</span>
+<span class="pointer-hide">Visible only on touch</span>
+```
+
+### Scroll
+
+```html
+<div class="touch-scroll">  <!-- momentum scrolling on iOS + overscroll contain -->
+```
+
+## Rules for AI Agent
+
+### Required
+
+1. **Tap targets >= 44px** — buttons, checkboxes, links, list items. `@media (pointer: coarse)` is already set in CSS, but when creating new components verify sizes
+2. **Hover != primary interaction** — hover effects supplement but don't replace tap/click. Information shown on hover must be accessible another way (tooltip → long-press, context menu)
+3. **Pointer Events** — use `pointerdown/move/up`, NOT `touchstart/move/end`. Pointer Events unify mouse + touch + pen
+4. **passive: true** — all `addEventListener` for touch/pointer should be passive, except cases with `preventDefault`
+5. **Safe-area** — on elements adjacent to screen edges (toolbar, composer, navigation), use `safe-area-*` classes
+
+### Forbidden
+
+- **DO NOT** use `touch-action: none` globally — only on specific gesture areas
+- **DO NOT** block pinch-to-zoom on document (violates accessibility)
+- **DO NOT** rely on double-tap — conflicts with zoom in browsers
+- **DO NOT** set `user-scalable=no` in viewport meta
+
+### Context menu
+
+On desktop: right-click (`contextmenu` event).
+On touch: long-press via `useLongPress()`.
+Both should open the same UI.
+
+### Swipe navigation
+
+Swipe right from left edge → goBack.
+Swipe left from right edge → goForward.
+Configured in `app/app.tsx` via `useSwipe(rootRef, ..., { edgeOnly: true })`.
+
+### Text fields
+
+`font-size: max(16px, 1em)` is already set globally — prevents auto-zoom on iOS when focusing an input.
+
+### Verification
+
+When implementing touch-dependent features, verify:
+1. Chrome DevTools → Toggle device toolbar (Ctrl+Shift+M)
+2. Devices with `pointer: coarse` (Touch Simulation enabled)
+3. E2E: Playwright with `hasTouch: true` in config

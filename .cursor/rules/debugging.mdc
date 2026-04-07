@@ -1,0 +1,123 @@
+---
+description: Debugging tools and workflows
+alwaysApply: false
+globs: "packages/web/src/**/*.{ts,tsx}"
+---
+
+# Debugging
+
+## VS Code / Cursor Launch Configs
+
+`.vscode/launch.json` contains 5 configurations:
+
+| Config | What it launches |
+|--------|-----------------|
+| **Chrome: Web App** | Chrome with DevTools on localhost:5173 |
+| **Edge: Web App** | Edge on localhost:5173 |
+| **Vitest: Current File** | Tests for current file with breakpoints |
+| **Vitest: All Tests** | All tests with breakpoints |
+| **Electron: Main Process** | Node.js debugger for main.ts |
+
+Launch: F5 or Debug panel → select config → ▶
+
+**Vitest debug** — set breakpoints in test files and in the code under test, then launch "Vitest: Current File".
+
+## Console DevTools (`__dev__`)
+
+In dev mode, `window.__dev__` provides:
+
+```javascript
+// Stores (Zustand state)
+__dev__.stores.chatList.getState()
+__dev__.stores.users.getState().getUser(42)
+__dev__.stores.instances.getState().getCurrentInstance()
+__dev__.stores.theme.getState()
+
+// Logs
+__dev__.logs()                  // last 500 entries
+__dev__.logs("error")           // only errors
+__dev__.logs("warn")            // only warnings
+__dev__.clearLogs()
+__dev__.setLogLevel("debug")    // show all levels
+
+// Theme
+__dev__.theme.toggle()          // dark ↔ light
+__dev__.theme.setPalette("blue-cold")
+__dev__.theme.current()
+
+// i18n
+__dev__.i18n.setLocale("en")
+__dev__.i18n.t("auth.login")
+
+// Environment
+__dev__.env
+
+// Performance
+__dev__.perf.startTimer("test")
+
+// Help
+__dev__.help()
+```
+
+## React DevTools
+
+Install [React DevTools](https://react.dev/learn/react-developer-tools) in Chrome/Edge.
+- Components tab: inspect props, state, hooks
+- Profiler tab: measure render performance
+- Zustand stores are visible through hooks in the Components tab
+
+## Source Maps
+
+`build.sourcemap: true` in vite.config.ts — source maps are generated in both dev and prod.
+In Chrome DevTools → Sources: TypeScript files are displayed as-is.
+
+## Network Debugging
+
+All API calls are logged via `loggingMiddleware`:
+- Console: `[api] GET /messages { status: 200, durationMs: 150 }`
+- Log buffer: `__dev__.logs().filter(e => e.scope === "api")`
+- Chrome DevTools → Network: all fetch requests with timing
+
+## Performance Debugging
+
+```javascript
+// In code
+import { perf } from "~/shared/lib/perf";
+const end = perf.startTimer("myOperation");
+// ... work
+end();
+
+// In console
+__dev__.perf.startTimer("manual-test")
+
+// Chrome DevTools → Performance
+// perf.mark() and perf.measure() are visible in User Timing section
+```
+
+## Store Debugging
+
+```javascript
+// Snapshot of all stores
+const snapshot = {
+  chatList: __dev__.stores.chatList.getState(),
+  users: __dev__.stores.users.getState(),
+  messages: __dev__.stores.messages.getState(),
+  theme: __dev__.stores.theme.getState(),
+};
+console.table(Object.entries(snapshot).map(([k, v]) => ({
+  store: k,
+  keys: Object.keys(v).length,
+})));
+
+// Subscribe to changes
+__dev__.stores.chatList.subscribe((state) => console.log("chatList changed", state));
+```
+
+## Zustand DevTools (Redux DevTools)
+
+For a visual inspector, install [Redux DevTools](https://chrome.google.com/webstore/detail/redux-devtools) and add devtools middleware when creating a store:
+
+```typescript
+import { devtools } from "zustand/middleware";
+const useMyStore = create(devtools((set) => ({ ... }), { name: "myStore" }));
+```

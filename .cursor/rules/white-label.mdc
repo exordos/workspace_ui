@@ -1,0 +1,54 @@
+---
+description: White-label branding system
+alwaysApply: true
+---
+
+# White-Label
+
+## Principle
+
+All brand-specific values live in `~/shared/lib/brand`. Never hardcode "Workspace" in code.
+
+## Usage
+
+```typescript
+import { brand } from "~/shared/lib/brand";
+
+document.title = brand.appName;           // "Workspace" or "Acme Chat"
+<img src={brand.logoUrl} />               // "/favicon.svg" or "/acme-logo.svg"
+<span>{brand.copyright}</span>            // "© 2025 Workspace Team"
+<a href={brand.supportUrl}>Help</a>       // "" or "https://support.acme.com"
+```
+
+## What Is Customizable
+
+| Category | Env var | Default |
+|----------|---------|---------|
+| **Name** | `VITE_BRAND_APP_NAME` | Workspace |
+| **Short name** | `VITE_BRAND_SHORT_NAME` | Workspace |
+| **Description** | `VITE_BRAND_DESCRIPTION` | Corporate messenger |
+| **Copyright** | `VITE_BRAND_COPYRIGHT` | © 2025 Workspace Team |
+| **App ID** | `VITE_BRAND_APP_ID` | com.workspace.app |
+| **Logo** | `VITE_BRAND_LOGO_URL` | /favicon.svg |
+| **Accent color** | `VITE_BRAND_ACCENT_COLOR` | #FF8438 |
+| **Theme color** | `VITE_BRAND_THEME_COLOR` | #1B1B1D |
+| **Default palette** | `VITE_BRAND_DEFAULT_PALETTE` | orange-warm |
+| **Default mode** | `VITE_BRAND_DEFAULT_THEME` | dark |
+| **Support URL** | `VITE_BRAND_SUPPORT_URL` | (empty) |
+| **Update server** | `VITE_BRAND_UPDATE_URL` | (default) |
+
+## Creating a New Brand
+
+1. Copy `.env.brand-example` → `.env.local` (or `.env.production.local`)
+2. Fill in the `VITE_BRAND_*` values
+3. Replace icons in `public/` (favicon, PWA icons, apple-touch-icon)
+4. Replace icons in `packages/electron/resources/` (ico, icns, tray)
+5. Build: `npm run build --workspace=web`
+
+## Rules for AI Agent
+
+- **DO NOT** hardcode "Workspace" in components — use `brand.appName`
+- **DO NOT** hardcode copyright, URLs, descriptions — use `brand.*`
+- **DO NOT** hardcode accent color — use theme tokens
+- When adding a new brand-dependent value → add to `brand.ts` + `.env.example`
+- `index.html` uses `%VITE_BRAND_*%` syntax — Vite substitutes at build time

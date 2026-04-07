@@ -11,37 +11,37 @@ const streams: MockStream[] = [
   {
     stream_id: 10,
     name: "general",
-    description: "Общий канал команды",
+    description: "Team general channel",
     is_announcement_only: false,
   },
   {
     stream_id: 11,
     name: "engineering",
-    description: "Разработка и архитектура",
+    description: "Development and architecture",
     is_announcement_only: false,
   },
   {
     stream_id: 12,
     name: "design",
-    description: "Дизайн, макеты Figma, UI-kit",
+    description: "Design, Figma mockups, UI kit",
     is_announcement_only: false,
   },
   {
     stream_id: 13,
     name: "product",
-    description: "Продуктовые обсуждения, roadmap",
+    description: "Product discussions, roadmap",
     is_announcement_only: false,
   },
   {
     stream_id: 14,
     name: "support",
-    description: "Обсуждение обращений пользователей",
+    description: "User support discussions",
     is_announcement_only: false,
   },
   {
     stream_id: 15,
     name: "random",
-    description: "Оффтоп, мемы, котики",
+    description: "Off-topic, memes, fun",
     is_announcement_only: false,
   },
 ];
@@ -56,7 +56,7 @@ export function getStreamNameById(streamId: number): string | null {
   return s ? s.name : null;
 }
 
-/** Топики по stream_id (для GET /users/me/:streamId/topics в формате Zulip) */
+/** Topics by stream_id (for GET /users/me/:streamId/topics in Zulip format) */
 export function getTopicsByStreamId(
   streamId: number,
   getTopicsForStreamName: (name: string) => string[]

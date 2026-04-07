@@ -1,0 +1,190 @@
+---
+description: Defensive programming — fool-proof guards, invariants, safe access
+globs: "packages/web/src/**/*.{ts,tsx}"
+alwaysApply: true
+---
+
+# Defensive Programming ("Fool-Proof" Rules)
+
+Multi-layered protection: compile-time → lint-time → pre-commit → runtime.
+
+## Layer 1: TypeScript Compiler (strictest)
+
+| Flag | What it catches |
+|------|-----------------|
+| `strict: true` | Null checks, implicit any, strict binds |
+| `noUncheckedIndexedAccess: true` | `array[i]` returns `T \| undefined`, not `T` |
+| `noFallthroughCasesInSwitch` | Missing `break` in switch |
+| `forceConsistentCasingInFileNames` | Import case mismatches |
+| `verbatimModuleSyntax` | Forces explicit `import type` |
+
+### Array/Object index access
+
+`noUncheckedIndexedAccess` is ON. Every indexed access returns `T | undefined`:
+
+```typescript
+const items = ["a", "b", "c"];
+
+items[0]          // string | undefined  ← compiler forces you to handle
+items[0]!         // string              ← only after length check
+items[0] ?? ""    // string              ← with fallback
+```
+
+**Fix patterns:**
+```typescript
+// After length check — non-null assertion is safe
+if (items.length > 0) {
+  const first = items[0]!;
+}
+
+// When element might not exist — optional chain
+const name = users[idx]?.name ?? "Unknown";
+
+// In bounded loops — non-null assertion is safe
+for (let i = 0; i < arr.length; i++) {
+  const item = arr[i]!;
+}
+```
+
+## Layer 2: ESLint (code patterns)
+
+| Rule | Catches |
+|------|---------|
+| `no-eval`, `no-implied-eval`, `no-new-func` | Code injection |
+| `no-script-url` | `javascript:` URLs |
+| `eqeqeq` | `==` instead of `===` |
+| `no-param-reassign` | Mutating function parameters |
+| `no-return-assign` | Assignment in return statement |
+| `no-self-compare` | `x === x` (always true, NaN bug) |
+| `no-throw-literal` | `throw "error"` instead of `throw new Error()` |
+| `array-callback-return` | Missing return in map/filter/reduce |
+| `no-promise-executor-return` | Accidental return in `new Promise(resolve => ...)` |
+| `no-unreachable-loop` | Loop that runs only once |
+| `no-constructor-return` | Return in constructor |
+| `no-template-curly-in-string` | `"${x}"` instead of `` `${x}` `` |
+| `no-restricted-globals` | `event`, `name`, `status` (window shadows) |
+| `no-restricted-properties` | `document.write`, `localStorage.clear` |
+| `no-console` (warn) | Raw console.log — use logger |
+
+## Layer 3: Pre-commit Hooks
+
+| Check | Blocks |
+|-------|--------|
+| `lint-staged` | ESLint + Prettier on staged files |
+| Sensitive file detection | `.env`, `.pem`, `.key`, credentials |
+| Secret detection | API keys, tokens in code |
+| `dangerouslySetInnerHTML` check | Without `sanitizeHtml()` — blocked |
+| console.log warning | In non-test source files |
+| Large file block | Files > 2MB |
+| commitlint | Non-conventional commit messages |
+
+## Layer 4: Runtime Guards (`shared/lib/guards.ts`)
+
+### invariant — assert or crash (dev) / log (prod)
+
+```typescript
+import { invariant } from "~/shared/lib/guards";
+
+invariant(userId != null, "userId is required for presence update");
+invariant(items.length > 0, "Cannot render empty message list");
+```
+
+### Domain guards — validate IDs, strings, emails, URLs
+
+```typescript
+import { guard } from "~/shared/lib/guards";
+
+guard.userId(id);                    // throws if not positive integer
+guard.streamId(id);                  // throws if not positive integer
+guard.messageId(id);                 // throws if not positive integer
+guard.nonEmpty(topic, "topic");      // throws if empty string
+guard.email(input, "login form");    // throws if not valid email
+guard.url(input, "embed src");       // throws if not http(s) URL
+guard.nonEmptyArray(items, "messages"); // throws if empty/null
+guard.oneOf(status, ["active", "idle"] as const); // throws if not in set
+guard.range(page, 1, 100, "page");   // throws if out of bounds
+```
+
+### Safe access — prevent "cannot read property of undefined"
+
+```typescript
+import { safeGet, safeArray, safeString, safeNumber } from "~/shared/lib/guards";
+
+safeGet(user, "name")        // string | undefined  (never throws)
+safeArray(response.items)    // T[]                  ([] if null)
+safeString(data.label, "-")  // string               ("" if null)
+safeNumber(input, 0)         // number               (0 if NaN)
+```
+
+### Type guards
+
+```typescript
+import { isNonNull, isNonEmptyString, isPositiveNumber, isValidId } from "~/shared/lib/guards";
+
+items.filter(isNonNull)      // removes null/undefined from array
+if (isNonEmptyString(name))  // narrows to string
+if (isPositiveNumber(count)) // narrows to number > 0
+if (isValidId(id))           // narrows to string | number
+```
+
+### safeCatch — wrap callbacks that must not crash the caller
+
+```typescript
+import { safeCatch } from "~/shared/lib/guards";
+
+el.addEventListener("click", safeCatch(handleClick, "sidebar click"));
+store.subscribe(safeCatch(onChange, "theme change listener"));
+```
+
+### strictObject — frozen config that throws on typo (dev only)
+
+```typescript
+import { strictObject } from "~/shared/lib/guards";
+
+const CONFIG = strictObject({
+  maxRetries: 3,
+  timeoutMs: 5000,
+}, "apiConfig");
+
+CONFIG.maxRetries  // 3
+CONFIG.maxRetires  // throws: Unknown key "maxRetires" in apiConfig
+```
+
+### assertNever — exhaustive switch
+
+```typescript
+import { assertNever } from "~/shared/lib/guards";
+
+function getIcon(status: "active" | "idle" | "offline"): string {
+  switch (status) {
+    case "active":  return "🟢";
+    case "idle":    return "🟡";
+    case "offline": return "⚫";
+    default:        return assertNever(status);
+    // If someone adds "away" to the union, TypeScript will error HERE
+  }
+}
+```
+
+## Rules for AI Agent
+
+### ALWAYS
+
+1. **Use `guard.userId()` / `guard.streamId()` / `guard.messageId()`** before passing IDs to API calls
+2. **Use `invariant()`** for conditions that MUST be true — don't silently continue with bad data
+3. **Use `assertNever()`** in every exhaustive switch over union types
+4. **Use `?.` or `!` with justification** for array/record access (never assume index exists)
+5. **Use `safeCatch()`** for event listeners and store subscribers that must not crash the app
+6. **Use `sanitizeHtml()`** — ALWAYS before `dangerouslySetInnerHTML`
+7. **Use `guard.url()`** before `window.open()`, `navigate()`, or iframe src
+
+### NEVER
+
+- NEVER use `as T` to silence type errors — fix the actual type
+- NEVER use `// @ts-ignore` or `// @ts-expect-error` without a Jira ticket
+- NEVER use `any` — use `unknown` + type guard
+- NEVER use `eval()`, `new Function()`, `document.write()`
+- NEVER access `localStorage.clear()` directly — use `wipeCredentials()`
+- NEVER use `==` — always `===` (null exception via `eqeqeq` config)
+- NEVER use `tabIndex > 0`
+- NEVER commit secrets, `.env`, or files > 2MB

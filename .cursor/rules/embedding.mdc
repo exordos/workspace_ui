@@ -1,0 +1,69 @@
+---
+description: External content embedding with security allowlist
+globs: "packages/web/src/**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# External Embedding
+
+## Architecture
+
+```
+VITE_EMBED_ALLOWED_ORIGINS="https://wiki.example.com,https://grafana.internal.com"
+              ↓
+  shared/lib/embed.tsx → allowlist (+ auto: Jitsi, Workspace API)
+              ↓
+  isEmbedAllowed(url) → true/false
+              ↓
+  <EmbedFrame url={url} title="Wiki" sandbox="interactive" />
+              ↓
+  <iframe sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
+```
+
+## Usage
+
+```tsx
+import { EmbedFrame, isEmbedAllowed } from "~/shared/lib/embed";
+
+// Check before rendering
+if (isEmbedAllowed(url)) {
+  <EmbedFrame
+    url="https://wiki.example.com/page"
+    title="Corporate Wiki"
+    sandbox="interactive"     // "strict" | "interactive" | "full"
+    className="h-[600px]"
+    onLoad={() => log.info("loaded")}
+    fallback={<p>Content blocked</p>}
+  />
+}
+```
+
+## Sandbox Levels
+
+| Level | Permissions | Use case |
+|-------|-----------|----------|
+| `strict` | scripts, same-origin | Read-only dashboards, documentation |
+| `interactive` | + forms, popups | Wiki, form-based tools |
+| `full` | + downloads, popup-escape | Full-featured web apps (Grafana, etc.) |
+
+## Security
+
+- Only `https:` and `http:` protocols allowed
+- Origin must be in `VITE_EMBED_ALLOWED_ORIGINS` (or auto-allowed: Jitsi, Workspace)
+- `referrerPolicy="strict-origin-when-cross-origin"` on iframe
+- Sandbox attribute always present (never unrestricted)
+- Blocked URLs logged with `logger.warn`
+
+## Auto-allowed Origins
+
+- Jitsi Meet domain (from `VITE_JITSI_MEET_DOMAIN`)
+- Workspace API origin (from `VITE_WORKSPACE_API_ORIGIN`)
+
+These don't need to be listed in `VITE_EMBED_ALLOWED_ORIGINS`.
+
+## For AI Agent
+
+- Use `<EmbedFrame>` — never raw `<iframe>`
+- Always check `isEmbedAllowed(url)` before rendering
+- Choose minimum sandbox level needed
+- New embedded services → add origin to `VITE_EMBED_ALLOWED_ORIGINS`

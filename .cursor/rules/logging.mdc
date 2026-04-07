@@ -1,0 +1,133 @@
+---
+description: Logging and tracing conventions with security sanitization
+alwaysApply: true
+---
+
+# Logging & Tracing
+
+## Logger API
+
+```typescript
+import { logger, createLogger } from "~/shared/lib/logger";
+
+// Global logger
+logger.info("App started", { runtime: "browser" });
+logger.error("Failed to connect", { status: 503 });
+
+// Scoped logger
+const apiLog = createLogger("api");
+apiLog.warn("Slow response", { ms: 3200, endpoint: "/messages" });
+
+// Child logger
+const chatLog = logger.child("chat");
+chatLog.info("Message sent", { streamId: 5, topic: "general" });
+```
+
+## Log Levels
+
+| Level | When | Production |
+|-------|------|------------|
+| `debug` | Development tracing, state changes | Suppressed |
+| `info` | Significant events (login, connect, navigate) | Suppressed |
+| `warn` | Recoverable problems (slow API, retry) | Logged |
+| `error` | Failures (API error, uncaught exception) | Logged |
+
+Default min level: `debug` (dev), `warn` (production).
+
+## Security: NEVER log these
+
+```typescript
+// ❌ NEVER
+logger.info("Login", { apiKey: instance.apiKey });
+logger.error("Auth failed", { password: input.value });
+logger.debug("Request", { headers: { Authorization: authHeader } });
+
+// ✅ SAFE (auto-redacted, but still — avoid passing secrets)
+logger.info("Login", { realm: instance.realm, email: instance.email });
+logger.error("Auth failed", { status: 401, realm: "zulip.example.com" });
+logger.debug("Request", { method: "GET", path: "/api/v1/messages" });
+```
+
+Auto-redaction catches keys like `apiKey`, `password`, `token`, `authorization`, `secret`, `csrf`, `session` and values matching Basic/Bearer auth patterns. But **prevention is better than sanitization** — don't pass secrets to the logger at all.
+
+## Helper Functions
+
+```typescript
+import { logApiCall, logEvent, logStoreAction } from "~/shared/lib/logger";
+
+// API call tracing
+logApiCall("GET", "/messages", { status: 200, durationMs: 150 });
+logApiCall("POST", "/messages", { error: "Network error" });
+
+// Real-time event tracing
+logEvent("message", { messageId: 123, type: "stream" });
+
+// Store action tracing
+logStoreAction("chatList", "addMessage", { messageId: 123 });
+```
+
+## Log History (Debug UI)
+
+```typescript
+import { getLogHistory, clearLogHistory } from "~/shared/lib/logger";
+
+const entries = getLogHistory(); // Last 500 entries (ring buffer)
+clearLogHistory();
+```
+
+Use for in-app debug screens and developer diagnostics surfaces.
+
+## Sentry Integration
+
+When `VITE_SENTRY_DSN` is present:
+- Logger error/warn → Sentry breadcrumbs (automatically via transport)
+- ErrorBoundary → `captureException()` (automatically)
+- Unhandled rejections → Sentry (automatically)
+
+Manual capture:
+```typescript
+import { captureException, captureMessage, setUser, clearUser } from "~/shared/lib/sentry";
+
+captureException(error, { context: "custom info" });
+captureMessage("Something happened", "warning");
+setUser(userId, email);   // after login
+clearUser();              // after logout
+```
+
+## Custom Transports
+
+```typescript
+import { addTransport, type LogTransport } from "~/shared/lib/logger";
+
+const remoteTransport: LogTransport = {
+  write(entry) {
+    if (entry.level === "error") {
+      fetch("/api/logs", {
+        method: "POST",
+        body: JSON.stringify(entry),
+      }).catch(() => {});
+    }
+  },
+};
+addTransport(remoteTransport);
+```
+
+## Where to Log
+
+| Location | Logger scope | What to log |
+|----------|-------------|-------------|
+| API client (`shared/api/client.ts`) | `api` | Requests, responses (status+duration), errors |
+| Event loop (`app/app.event-loop.ts`) | `realtime` | Queue registration, events received, reconnects |
+| Stores | `store:<name>` | State changes, action calls |
+| Components | `ui:<name>` | User interactions (sparingly) |
+| Auth flow | `auth` | Login/logout events (NO credentials) |
+| Error boundaries | `error` | Uncaught exceptions with stack |
+
+## Rules for AI Agent
+
+When adding new code:
+1. Use `createLogger("scope")` — never raw `console.log/warn/error`
+2. Always use structured data: `logger.info("msg", { key: value })` — not string interpolation
+3. Never pass user credentials, API keys, or tokens to log data
+4. For API calls, log method + path + status + duration — never log request/response bodies
+5. For real-time events, log event type + minimal identifiers — never log message content

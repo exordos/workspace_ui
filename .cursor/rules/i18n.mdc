@@ -1,0 +1,96 @@
+---
+description: Internationalization — translation keys, locales, plural rules
+alwaysApply: true
+---
+
+# Internationalization (i18n)
+
+## Usage
+
+```typescript
+// Outside React
+import { t, setLocale, getLocale } from "~/i18n/i18n";
+
+t("auth.login")                          // "Войти" / "Login"
+t("presence.minutesAgo", { count: 5 })   // "5 мин назад"
+t("channel.participants", { count: 3 })  // "3 участника" (plural)
+
+// In React
+import { useTranslation } from "~/i18n/i18n";
+
+const { t, locale, setLocale, supportedLocales } = useTranslation();
+```
+
+## Rules for AI Agent
+
+### When creating UI
+
+1. **DO NOT** hardcode strings — use `t("key")`
+2. Key format is `section.action`: `auth.login`, `message.delete`, `nav.messenger`
+3. For new strings: add to BOTH files (`ru.json` + `en.json`)
+
+### When adding a new key
+
+1. `src/i18n/locales/ru.json` — Russian text
+2. `src/i18n/locales/en.json` — English translation
+3. Follow the existing section structure
+
+### Plurals
+
+Russian (3 forms):
+```json
+"selected_one": "{{count}} сообщение",
+"selected_few": "{{count}} сообщения",
+"selected_many": "{{count}} сообщений"
+```
+
+English (2 forms):
+```json
+"selected_one": "{{count}} message",
+"selected_other": "{{count}} messages"
+```
+
+Invocation: `t("message.selected", { count: n })`
+
+### Interpolation
+
+```json
+"newVersion": "Вышла новая версия {{version}}"
+```
+
+Invocation: `t("settings.newVersion", { version: "1.2.3" })`
+
+## Key sections
+
+| Section | Contents |
+|---------|---------|
+| `app` | Global (loading, errors) |
+| `auth` | Login, logout |
+| `nav` | Navigation |
+| `activity` | Starred, mentions, drafts |
+| `chat` | Chat, input |
+| `message` | Message actions |
+| `channel` | Channels, topics |
+| `dm` | Direct messages |
+| `call` | Calls |
+| `info` | Info panel |
+| `presence` | Online status |
+| `settings` | Settings |
+| `roles` | User roles |
+| `search` | Search |
+| `notifications` | Notifications |
+| `update` | Updates |
+| `licenses` | Licenses |
+| `folder` | Folders |
+| `common` | Common (Cancel, Create, Save) |
+
+## Adding a new language
+
+1. Create `src/i18n/locales/<code>.json` (copy `en.json`, translate)
+2. Import in `src/i18n/i18n.ts`:
+   ```typescript
+   import deMessages from "./locales/de.json";
+   const MESSAGES = { ru: ..., en: ..., de: deMessages };
+   ```
+3. Add to `SUPPORTED_LOCALES`
+4. Add plural rules in `selectPlural()`

@@ -1,0 +1,137 @@
+---
+description: Workspace UI project architecture — FSD layers, data flow, key modules
+alwaysApply: true
+---
+
+# Project Architecture
+
+Lerna monorepo: `packages/web` (Vite React SPA) + `packages/electron` (desktop shell) + `packages/mock-server` (Express).
+
+Architecture follows **Feature-Sliced Design** (FSD): `app → pages → widgets → features → entities → shared`.
+
+## Module Map
+
+```
+src/
+├── app/                     Entry, router, providers, event loop
+│   ├── app.tsx              Root component + route definitions
+│   ├── app.event-loop.ts    Zulip long-poll event loop
+│   ├── webview-shell.tsx    WebView mode (no sidebar/top-bar chrome)
+│   └── contexts/            App-level contexts (search, right-drawer)
+│
+├── pages/                   9 route pages (lazy-loaded via React.lazy)
+│   ├── activity/            Starred messages, mentions, drafts
+│   ├── calendar/            Calendar view
+│   ├── calls/               Voice/video call history
+│   ├── chat/                Stream/topic/DM chat (main view)
+│   ├── feed/                All-messages feed with pagination
+│   ├── inbox/               Unread inbox aggregation
+│   ├── licenses/            OSS dependency license list
+│   ├── login/               Authentication
+│   └── mail/                Email integration
+│
+├── widgets/                 10 composite UI blocks
+│   ├── chat-view/           Chat header with actions
+│   ├── folder-rail/         Folder navigation rail
+│   ├── layout/              App shell (sidebar + content + drawers)
+│   ├── message-composer/    Rich message input with attachments
+│   ├── message-list/        Message list + message bubbles
+│   ├── profile-drawer/      User profile side panel
+│   ├── right-panel/         Right drawer + detail panels
+│   ├── search-modal/        Global search dialog
+│   ├── sidebar/             Navigation sidebar + 5 sub-lists
+│   └── top-bar/             Top navigation bar
+│
+├── features/                16 user-facing features
+│   ├── ai-reply/            AI-generated reply suggestions (API + store + UI)
+│   ├── chat-info/           Chat info panel (DM + channel details)
+│   ├── create-chat/         Create DM / group / channel dialogs
+│   ├── instance-switch/     Multi-instance Zulip switcher UI
+│   ├── jitsi-call/          Jitsi Meet video call modal + PiP
+│   ├── manage-folders/      Folder CRUD + chat assignment
+│   ├── media-viewer/        Image/video viewer overlay
+│   ├── mention-suggest/     @mention autocomplete in composer
+│   ├── message-readers/     "Read by" list for messages
+│   ├── mute-chat/           Mute/unmute streams + topics
+│   ├── pin-chat/            Pin/unpin chats to sidebar
+│   ├── settings/            User settings panel
+│   ├── sticker-picker/      Sticker pack selection + sending
+│   ├── theme-picker/        Theme palette picker UI
+│   ├── typing-indicator/    Typing indicator state
+│   └── user-profile/        User profile page
+│
+├── entities/                11 domain models (Zustand stores + API)
+│   ├── call/                Call participants store
+│   ├── chat-list/           Chat list, sorting, unread counts
+│   ├── draft/               Message drafts store + server sync
+│   ├── feed/                Activity feed store
+│   ├── folder/              Folder API integration
+│   ├── inbox/               Unread inbox aggregation
+│   ├── instance/            Zulip instance management + persistence
+│   ├── message/             Messages store + current chat state
+│   ├── sticker/             Sticker packs, API, types
+│   ├── theme/               Theme mode + palette store
+│   └── user/                Users store + presence API
+│
+├── shared/                  Cross-cutting infrastructure
+│   ├── ui/                  9 primitives: Avatar, Badge, Button, CallBubble,
+│   │                        ErrorBoundary, Icon, PresenceIndicator,
+│   │                        ScrollArea, StickerMessage
+│   ├── lib/                 30+ utilities
+│   │   ├── analytics/       GA4, Yandex Metrica, page view tracking
+│   │   ├── plugins/         Plugin registry, hooks, lifecycle
+│   │   ├── push/            FCM push notifications, Zulip token sync
+│   │   ├── themes/          Palette engine (Orange Warm, Blue Cold), 42 tokens
+│   │   ├── guards.ts        Runtime invariants, domain guards, safeCatch
+│   │   ├── env.ts           Centralized env vars (SINGLE access point)
+│   │   ├── brand.ts         White-label config (DO NOT hardcode "Workspace")
+│   │   ├── logger.ts        Structured logging (DO NOT use console.log)
+│   │   ├── roles.ts         Permissions (hasPermission, canEditMessage)
+│   │   ├── shortcuts.ts     Keyboard shortcuts (useShortcut)
+│   │   ├── validation.ts    Input validation (isValidUrl, sanitizeFilename)
+│   │   ├── auth-guard.ts    Auth header, session timeout, wipeCredentials
+│   │   ├── sentry.ts        Error tracking (opt-in)
+│   │   ├── perf.ts          Performance monitoring
+│   │   ├── visibility.ts    Background tab resilience
+│   │   ├── notifications.ts Unified notifications
+│   │   ├── updater.ts       Auto-update (Electron + PWA)
+│   │   ├── os-integration.ts OS features (badge, tray, progress)
+│   │   ├── presence.ts      User presence tracking
+│   │   ├── call-state.ts    Call state management
+│   │   ├── focus.ts         Focus management utilities
+│   │   ├── webview.ts       WebView bridge for native iOS/Android
+│   │   ├── network.ts       Online/offline detection, reconnect
+│   │   ├── electron.ts      Electron detection + IPC bridge
+│   │   ├── pwa.ts           PWA install prompt + detection
+│   │   ├── deeplinks.ts     URL builders, workspace:// protocol
+│   │   └── embed.tsx        Secure iframe embedding
+│   ├── api/                 Middleware pipeline client (auth → logging → retry)
+│   ├── config/              Constants
+│   └── assets/icons/        40 SVG icons (via vite-plugin-svgr)
+│
+├── i18n/                    Internationalization (en default + ru)
+├── test/                    Test infrastructure (setup, MSW, factories, render helper)
+└── generated/               Auto-generated (licenses.json)
+```
+
+## Data Flow
+
+1. `app/app.tsx` — mounts router, providers, layout
+2. `app/app.event-loop.ts` — registers Zulip event queue, starts long-polling
+3. `shared/api/client.ts` — all HTTP through middleware pipeline (auth → logging → retry)
+4. Entity stores (`entities/*/`) — single source of truth, cached selectors
+5. Components subscribe via `useStore((s) => s.field)` — minimal selectors only
+
+## Adding New Features
+
+1. **Types** → `entities/<name>/<name>.types.ts`
+2. **API** → `entities/<name>/<name>.api.ts` or `shared/api/`
+3. **Store** → `entities/<name>/<name>.model.ts` (with `logStoreAction`)
+4. **Feature** → `features/<action>/` (if user-facing scenario)
+5. **Widget** → `widgets/<name>/` (if composite UI block)
+6. **Page** → `pages/<name>/` (if new route, `React.lazy`)
+7. **i18n** → `i18n/locales/en.json` + `ru.json`
+8. **Permissions** → `hasPermission()` checks via `shared/lib/roles`
+9. **Shortcuts** → `SHORTCUTS[]` catalog if keyboard-triggerable
+10. **Tests** → `*.test.ts(x)` alongside source (TDD: write first)
+11. **Docs** → update relevant `docs/` files

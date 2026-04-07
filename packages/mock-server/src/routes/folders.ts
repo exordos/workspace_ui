@@ -7,9 +7,9 @@ export interface MockFolder {
 }
 
 const folders: MockFolder[] = [
-  { id: "1", label: "Папка 1", badge: 4 },
-  { id: "2", label: "Папка 2" },
-  { id: "3", label: "Папка 3", badge: 4 },
+  { id: "1", label: "Folder 1", badge: 4 },
+  { id: "2", label: "Folder 2" },
+  { id: "3", label: "Folder 3", badge: 4 },
 ];
 
 export function registerFoldersRoutes(app: Express, apiBase: string) {

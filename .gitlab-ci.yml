@@ -1,0 +1,136 @@
+##
+## Workspace CI/CD — GitLab CI
+##
+## Mirrors .github/workflows/ci.yml logic.
+## Both pipelines use the same npm scripts.
+##
+
+stages:
+  - check
+  - e2e
+  - build
+
+variables:
+  NODE_VERSION: "22"
+  npm_config_cache: "$CI_PROJECT_DIR/.npm-cache"
+
+default:
+  image: node:${NODE_VERSION}
+  cache:
+    key:
+      files:
+        - package-lock.json
+    paths:
+      - .npm-cache/
+    policy: pull-push
+
+# ──────────────────────────────────────────────────────────
+# Stage: check
+# ──────────────────────────────────────────────────────────
+
+typecheck:
+  stage: check
+  script:
+    - npm ci --prefer-offline
+    - npm run codegen --workspace=workspace-api && git diff --exit-code -- packages/workspace-api/src/generated/
+    - npm run typecheck
+
+lint:
+  stage: check
+  script:
+    - npm ci --prefer-offline
+    - npm run lint
+
+prettier:
+  stage: check
+  script:
+    - npm ci --prefer-offline
+    - npm run format:check
+
+unit-tests:
+  stage: check
+  script:
+    - npm ci --prefer-offline
+    - npm run test
+  coverage: '/All files\s*\|\s*(\d+\.?\d*)\s*\|/'
+  artifacts:
+    when: always
+    reports:
+      junit: packages/web/coverage/junit.xml
+    expire_in: 7 days
+
+build-web:
+  stage: check
+  script:
+    - npm ci --prefer-offline
+    - npm run build --workspace=web
+  variables:
+    VITE_APP_VERSION: $CI_COMMIT_SHA
+  artifacts:
+    paths:
+      - packages/web/dist/
+    expire_in: 1 day
+
+audit:
+  stage: check
+  script:
+    - npm ci --prefer-offline
+    - npm audit --audit-level=high
+  allow_failure: false
+
+# ──────────────────────────────────────────────────────────
+# Stage: e2e
+# ──────────────────────────────────────────────────────────
+
+e2e-tests:
+  stage: e2e
+  image: mcr.microsoft.com/playwright:v1.52.0-noble
+  needs: [build-web]
+  script:
+    - npm ci --prefer-offline
+    - npx playwright install --with-deps chromium
+    - npm run e2e -- --project=chromium
+  artifacts:
+    when: always
+    paths:
+      - e2e/results/
+    expire_in: 7 days
+
+# ──────────────────────────────────────────────────────────
+# Stage: build (Electron — only on main)
+# ──────────────────────────────────────────────────────────
+
+.electron-base:
+  stage: build
+  needs: [unit-tests, build-web]
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+  script:
+    - npm ci --prefer-offline
+    - cd packages/electron && npm ci --prefer-offline && cd ../..
+    - npm run ${ELECTRON_CMD}
+  artifacts:
+    paths:
+      - packages/electron/release/
+    expire_in: 14 days
+
+electron-linux:
+  extends: .electron-base
+  variables:
+    ELECTRON_CMD: "package:electron:linux"
+  tags:
+    - linux
+
+electron-windows:
+  extends: .electron-base
+  variables:
+    ELECTRON_CMD: "package:electron:win"
+  tags:
+    - windows
+
+electron-macos:
+  extends: .electron-base
+  variables:
+    ELECTRON_CMD: "package:electron:mac"
+  tags:
+    - macos

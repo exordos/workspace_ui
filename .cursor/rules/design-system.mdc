@@ -1,0 +1,124 @@
+---
+description: Design system principles — design tokens over pixel-perfect
+alwaysApply: true
+---
+
+# Design System Principles
+
+## Core Rule
+
+**Design system > Pixel Perfect.**
+
+Figma mockups are a guide, not a blueprint. The designer can make mistakes: use the wrong token, set the wrong spacing, forget about another theme. The design system is the contract. The mockup is an illustration.
+
+## Hierarchy of Authority
+
+```
+1. Design tokens (42 tokens in PaletteTokens)     ← HIGHEST
+2. Spacing scale (Tailwind 4px grid)
+3. Component API contracts (Props interfaces)
+4. Figma mockups                                   ← REFERENCE ONLY
+```
+
+If a mockup contradicts the design system — **the design system wins**.
+
+## Rules
+
+### 1. Colors: ONLY tokens
+
+```tsx
+// ✅ Design system token
+<div className="bg-card-bg text-text-primary" />
+
+// ❌ Color from Figma screenshot
+<div className="bg-[#373737] text-[#ffffff]" />
+
+// ❌ Even if Figma shows exactly this color
+// Tokens adapt to palette + dark/light mode. Hardcoded colors don't.
+```
+
+If a mockup uses a color that doesn't match any token:
+1. Check if it's a mistake (most common) — use the closest token
+2. If it's intentionally new — add a new token to `PaletteTokens` + all palettes
+
+### 2. Spacing: Tailwind scale, not pixel values from Figma
+
+```tsx
+// ✅ Use Tailwind spacing (4px grid)
+<div className="p-4 gap-2 mt-6" />   // 16px, 8px, 24px
+
+// ❌ Exact Figma pixel value
+<div className="p-[13px] gap-[7px]" />  // Not on 4px grid
+
+// Exception: design-critical exact values (sidebar width: 299px → token)
+```
+
+Tailwind spacing scale: 0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 5, 6, 8, 10, 12, 14, 16, 20, 24...
+(0px, 2px, 4px, 6px, 8px, 10px, 12px, 14px, 16px, 20px, 24px, 32px, 40px, 48px, 56px, 64px, 80px, 96px...)
+
+If Figma shows 13px padding → round to `p-3` (12px) or `p-3.5` (14px).
+
+### 3. Typography: scale, not arbitrary sizes
+
+```tsx
+// ✅ Tailwind type scale
+<p className="text-sm" />     // 14px
+<p className="text-base" />   // 16px
+<p className="text-lg" />     // 18px
+
+// ❌ Arbitrary size from Figma
+<p className="text-[15px]" />
+```
+
+### 4. Border radius: tokens
+
+```tsx
+// ✅ Consistent radius
+<div className="rounded-lg" />    // 16px (our token)
+<div className="rounded-full" />  // pills, badges, avatars
+
+// ❌ Figma-specific radius
+<div className="rounded-[14px]" />
+```
+
+### 5. Shadows, opacity: from design system
+
+Use Tailwind shadow/opacity utilities. If Figma has custom shadow — check if an existing utility matches before adding `shadow-[custom]`.
+
+### 6. Icons: from the icon registry
+
+Always use `<Icon name="..." />` from `shared/ui/icon.tsx`. Don't inline SVGs from Figma.
+
+## When Mockup and System Disagree
+
+| Situation | Action |
+|-----------|--------|
+| Figma uses a color not in tokens | Use closest token; report to designer |
+| Figma spacing is off-grid (13px) | Round to nearest 4px grid value |
+| Figma font size is non-standard | Use nearest Tailwind scale step |
+| Figma shows dark theme only | Implement for both dark AND light |
+| Figma shows one palette only | Ensure works with ALL registered palettes |
+| Figma component differs from existing | Prefer existing component; extend if needed |
+| Figma shows different border radius | Use `rounded-lg` (16px) or `rounded-full` |
+
+## Validation Checklist
+
+Before marking UI work as done:
+- [ ] All colors are semantic tokens (no `[#hex]`)
+- [ ] All spacing on 4px grid (no `[Npx]` except defined tokens)
+- [ ] Works in dark mode
+- [ ] Works in light mode
+- [ ] Works with Orange Warm palette
+- [ ] Works with Blue Cold palette
+- [ ] Text readable in all theme variants
+- [ ] Accent colors from tokens, not hardcoded
+- [ ] Icons from `<Icon>` registry
+
+## For AI Agent
+
+When implementing UI from a Figma screenshot:
+1. Identify the INTENT of the design (layout, hierarchy, spacing rhythm)
+2. Map to existing tokens and components
+3. DO NOT match exact pixel values — match the design system
+4. If a new token is needed, propose it — don't hardcode
+5. Always test both themes and both palettes mentally

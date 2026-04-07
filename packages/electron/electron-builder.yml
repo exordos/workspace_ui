@@ -1,0 +1,143 @@
+appId: com.genesis_workspace.app
+productName: Genesis Workspace
+copyright: Copyright © 2026 Genesis Team
+
+directories:
+  buildResources: resources
+  output: release
+
+files:
+  - dist/**/*
+  - renderer/**/*
+  - resources/**/*
+
+extraMetadata:
+  main: dist/main.js
+
+asar: true
+compression: maximum
+
+# ──────────────────────────── Windows 11 ────────────────────────────
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+        - arm64
+  icon: resources/icon.ico
+  artifactName: "${productName}-${version}-win-${arch}.${ext}"
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  installerIcon: resources/icon.ico
+  uninstallerIcon: resources/icon.ico
+  installerHeaderIcon: resources/icon.ico
+  deleteAppDataOnUninstall: false
+  shortcutName: Workspace
+
+# ──────────────────────────── macOS 26 ────────────────────────────
+#
+# Code Signing:
+#   electron-builder reads the signing certificate from these env vars:
+#     CSC_LINK          — path to .p12 file OR base64-encoded .p12 content
+#     CSC_KEY_PASSWORD   — password for the .p12 file
+#
+#   In CI (GitHub Actions), store the .p12 as a base64 secret:
+#     base64 -i certificate.p12 | pbcopy  → paste into CSC_LINK secret
+#
+#   Without CSC_LINK, the build runs unsigned (dev builds).
+#
+# Notarization:
+#   After signing, the afterSign hook submits the app to Apple's notary service.
+#   Required env vars: APPLE_ID, APPLE_APP_PASSWORD, APPLE_TEAM_ID
+#   Without them, notarization is skipped (dev builds).
+#
+mac:
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+    - target: zip
+      arch:
+        - x64
+        - arm64
+  icon: resources/icon.icns
+  category: public.app-category.social-networking
+  artifactName: "${productName}-${version}-mac-${arch}.${ext}"
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: resources/entitlements.mac.plist
+  entitlementsInherit: resources/entitlements.mac.inherit.plist
+  darkModeSupport: true
+  notarize: false
+  # Signing identity: "Developer ID Application: TEAM_NAME (TEAM_ID)"
+  # Set via CSC_LINK + CSC_KEY_PASSWORD env vars, or leave unset for unsigned dev builds.
+  # identity: null  — auto-detected from CSC_LINK
+
+afterSign: scripts/notarize.mjs
+
+dmg:
+  sign: false
+  artifactName: "${productName}-${version}-mac-${arch}.${ext}"
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+
+# ──────────────────────────── Linux ────────────────────────────
+linux:
+  target:
+    # Ubuntu 24
+    - target: deb
+      arch:
+        - x64
+        - arm64
+    # Fedora 43
+    - target: rpm
+      arch:
+        - x64
+        - arm64
+    # Universal
+    - target: AppImage
+      arch:
+        - x64
+        - arm64
+  icon: resources/icons
+  category: Network;InstantMessaging;Chat
+  desktop:
+    entry: |
+      [Desktop Entry]
+      StartupWMClass=workspace
+  artifactName: "${productName}-${version}-linux-${arch}.${ext}"
+
+deb:
+  depends:
+    - libgtk-3-0
+    - libnotify4
+    - libnss3
+    - libxss1
+    - libxtst6
+    - xdg-utils
+    - libatspi2.0-0
+    - libuuid1
+  priority: optional
+
+rpm:
+  depends:
+    - gtk3
+    - libnotify
+    - nss
+    - libXScrnSaver
+    - libXtst
+    - xdg-utils
+    - at-spi2-core
+
+# ──────────────────────────── Auto-update ────────────────────────────
+publish:
+  provider: generic
+  url: https://update.workspace.genesis-core.tech/releases

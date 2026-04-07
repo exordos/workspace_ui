@@ -1,0 +1,185 @@
+---
+description: Keyboard shortcut conventions and registry
+globs: "packages/web/src/**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# Keyboard Shortcuts
+
+## Architecture
+
+Centralized registry in `shared/lib/shortcuts.ts`:
+
+```
+SHORTCUTS[]         ← catalog of all keyboard shortcuts (source of truth)
+useShortcut()       ← React hook for registering a handler
+formatShortcut()    ← "mod+k" → "⌘K" (macOS) / "Ctrl+K" (Windows/Linux)
+getShortcutsByCategory() ← for help UI
+```
+
+## Usage
+
+### Single shortcut
+
+```tsx
+import { useShortcut } from "~/shared/lib/shortcuts";
+
+function SearchModal() {
+  useShortcut("mod+k", () => setOpen(true), { context: "global" });
+}
+```
+
+### Multiple in one component
+
+```tsx
+import { useShortcuts } from "~/shared/lib/shortcuts";
+
+function ChatView() {
+  useShortcuts([
+    { combo: "escape", handler: () => cancel(), context: "chat" },
+    { combo: "shift+n", handler: () => nextUnread(), context: "chat" },
+    { combo: "mod+shift+m", handler: () => markAllRead(), context: "chat" },
+  ]);
+}
+```
+
+### Conditional
+
+```tsx
+useShortcut("arrowup", () => editLastMessage(), {
+  context: "composer",
+  enabled: inputIsEmpty,
+});
+```
+
+## Shortcut Catalog
+
+### Navigation
+
+| Key | Action |
+|-----|--------|
+| `Mod+K` | Search |
+| `Mod+1..4` | Messenger / Calendar / Mail / Calls |
+| `Alt+↑/↓` | Previous / next chat (sidebar) |
+| `Alt+←/→` | Back / Forward through history |
+| `Mod+Shift+A` | My activity |
+| Mouse 4/5 | Back / Forward (extra mouse buttons) |
+
+### Message input (composer)
+
+| Key | Action |
+|-----|--------|
+| `Enter` | Send |
+| `Shift+Enter` | New line |
+| `Escape` | Cancel editing |
+| `↑` (when input is empty) | Edit last message |
+| `Mod+B` | Bold |
+| `Mod+I` | Italic |
+| `Mod+Shift+X` | Strikethrough |
+| `Mod+E` | Code (inline) |
+
+### Chat
+
+| Key | Action |
+|-----|--------|
+| `Escape` | Cancel selection / close panel |
+| `Shift+N` | Next unread topic |
+| `Mod+Shift+M` | Mark all as read |
+
+### Interface
+
+| Key | Action |
+|-----|--------|
+| `Mod+\` | Toggle sidebar |
+| `Mod+.` | Toggle info panel |
+| `Mod+/` | Keyboard shortcuts help |
+| `Mod+Shift+T` | Toggle theme |
+
+### Modal windows
+
+| Key | Action |
+|-----|--------|
+| `Escape` | Close |
+
+## Navigation History (back/forward)
+
+The `shared/lib/navigation-history.ts` module provides history navigation:
+
+```tsx
+import { useNavigationHistory } from "~/shared/lib/navigation-history";
+
+function NavBar() {
+  const { goBack, goForward, canGoBack, canGoForward } = useNavigationHistory();
+
+  return (
+    <>
+      <button disabled={!canGoBack} onClick={goBack}>←</button>
+      <button disabled={!canGoForward} onClick={goForward}>→</button>
+    </>
+  );
+}
+```
+
+### How it works
+
+- Internal route stack (up to 100 entries, truncated to 80 on overflow)
+- Works with both `BrowserRouter` (web/PWA) and `HashRouter` (Electron)
+- `useSyncExternalStore` — reactively updates `canGoBack` / `canGoForward`
+- Programmatic navigation (goBack/goForward) does not create duplicates in the stack
+
+### Mouse buttons
+
+`initMouseNavigation()` handles mouse button 3 (back) and button 4 (forward) — called once in the root component.
+
+### Keyboard
+
+`Alt+←` / `Alt+→` — standard shortcuts, registered in `SHORTCUTS[]`.
+
+## Rules for AI Agent
+
+### Adding a new keyboard shortcut
+
+1. Add an entry to `SHORTCUTS[]` in `shared/lib/shortcuts.ts`
+2. Use `useShortcut()` in the component
+3. Always specify `context` — never register global shortcuts for screen-specific actions
+4. `Mod` = `Cmd` on macOS, `Ctrl` on Windows/Linux — do not hardcode the platform
+
+### Contexts
+
+| Context | When active |
+|---------|------------|
+| `global` | Always (except modal) |
+| `chat` | When a chat is open |
+| `composer` | When focus is in the message input textarea |
+| `sidebar` | When focus is in the sidebar |
+| `modal` | When a modal window is open (blocks others) |
+
+### Modal windows block shortcuts
+
+When the DOM contains `[data-shortcut-context="modal"]`, all shortcuts except `modal` and `global` contexts are ignored. Add this attribute to modal overlays:
+
+```tsx
+<div data-shortcut-context="modal" className="...">
+  {/* modal content */}
+</div>
+```
+
+### Avoid conflicts
+
+- `Mod+C/V/X/Z/A` — reserved by browser/OS
+- `Mod+W/T/N` — reserved by browser (close/new tab)
+- `Mod+L` — reserved by browser (address bar)
+- `F1..F12` — reserved by OS/IDE
+- `Mod+S` — do not use (no "save" in a messenger)
+
+### Help overlay
+
+To display the keyboard shortcuts help:
+
+```tsx
+import { getShortcutsByCategory, formatShortcut } from "~/shared/lib/shortcuts";
+
+const categories = getShortcutsByCategory();
+// Map<"Navigation", [{ key: "mod+k", label: "Search", ... }, ...]>
+// formatShortcut("mod+k") → "⌘K" or "Ctrl+K"
+```

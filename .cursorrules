@@ -1,0 +1,81 @@
+# Workspace UI — Cursor Agent Instructions
+
+You are working on **Workspace UI**, an open-source corporate messenger built on the Zulip API.
+The codebase uses **Feature-Sliced Design (FSD)** architecture.
+
+## Quick Facts
+
+- React 19 + TypeScript 5.6 (strict + noUncheckedIndexedAccess) + Vite 6
+- Zustand 4.5 stores in `entities/<name>/<name>.model.ts`
+- Tailwind CSS 3.4 with 42 semantic design tokens (NO hardcoded colors)
+- i18n: English (default) + Russian. ALL UI text via `t("key")`
+- Tests: Vitest 4, TDD mandatory for new features. 2100+ tests.
+- License: Apache 2.0
+
+## FSD Import Rules (STRICT)
+
+```
+app → pages → widgets → features → entities → shared
+```
+
+- Import only DOWN the hierarchy. Never up.
+- **No barrel `index.ts` re-exports** (see `.cursor/rules/no-barrel-index.mdc`)
+- Import from concrete files: `import { X } from "~/entities/user/user.model"`
+
+## Key Paths
+
+| What | Path |
+|------|------|
+| Entities (stores) | `src/entities/<name>/` |
+| Features | `src/features/<name>/` |
+| Widgets | `src/widgets/<name>/` |
+| Pages | `src/pages/<name>/` |
+| App shell | `src/app/` |
+| UI primitives | `src/shared/ui/` |
+| Utilities | `src/shared/lib/` |
+| API client | `src/shared/api/client.ts` |
+| Constants | `src/shared/config/constants.ts` |
+| Test factories | `src/test/factories.ts` |
+
+## Before Writing Code
+
+1. Read `AGENTS.md` for architecture overview
+2. Check relevant `.cursor/rules/*.mdc` for the domain
+3. Search existing code — don't duplicate what exists
+
+## Code Quality (non-negotiable)
+
+- `guard.userId()` / `invariant()` at API boundaries
+- `React.memo` on every component rendered in `.map()`
+- `useCallback` / `useMemo` for props passed to children
+- `createLogger("scope")` — NEVER `console.log`
+- `sanitizeHtml()` before `dangerouslySetInnerHTML`
+- `useEffect` MUST return cleanup for subscriptions/timers
+- No `any`. No `@ts-ignore`. No `tabIndex > 0`.
+
+## Verification (run after every change)
+
+```bash
+npx tsc --noEmit && npx vitest run
+```
+
+## Available Skills (read SKILL.md before complex tasks)
+
+| Skill | When to use |
+|-------|------------|
+| `full-stack-feature` | New feature implementation |
+| `code-review` | Code review or refactoring |
+| `bug-investigation` | Bug fix or debugging |
+| `design-to-code` | Implementing UI from Figma design |
+
+## 48 Cursor Rules
+
+Architecture: `project-architecture`, `fsd-architecture`, `scalability`
+Quality: `testing`, `defensive-programming`, `memory-leaks`, `performance`, `caching`
+Security: `security`, `focus-tabindex`, `z-index`
+UI: `react-components`, `tailwind-theming`, `design-system`, `design-reference`, `touch`
+Domain: `roles-permissions`, `i18n`, `white-label`, `presence`, `stickers`, `ai-replies`
+Infra: `electron-desktop`, `pwa-notifications`, `push-notifications`, `auto-update`, `ci-cd`
+Integration: `api-middleware`, `plugins`, `analytics`, `embedding`, `webview`, `deeplinks`
+Process: `commits`, `comments`, `logging`, `env-variables`, `keyboard-shortcuts`
+Meta: `call-state`, `network-awareness`, `background-tabs`, `cross-platform`, `debugging`

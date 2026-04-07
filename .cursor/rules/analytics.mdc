@@ -1,0 +1,190 @@
+---
+description: Product analytics — event tracking, providers, consent
+globs: "packages/web/src/**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# Product Analytics
+
+## Architecture
+
+```
+shared/lib/analytics/
+├── types.ts          ← types, AnalyticsEvent taxonomy (source of truth)
+├── index.ts          ← core: analytics singleton, consent, PII stripping
+├── ga4.ts            ← Google Analytics 4 provider
+├── ym.ts             ← Yandex Metrika provider
+├── usePageView.ts    ← React hook for auto page view tracking
+└── setup.ts          ← bootstrap (called in main.tsx)
+```
+
+## Quick Start
+
+### Sending an event
+
+```ts
+import { analytics, AnalyticsEvent } from "~/shared/lib/analytics";
+
+analytics.track(AnalyticsEvent.MESSAGE_SENT, {
+  streamId: 42,
+  hasAttachment: true,
+  messageLength: 150,
+});
+```
+
+### Page view
+
+Automatically tracked via `usePageView()` in `app/app.tsx`. No action needed.
+
+### User identification
+
+```ts
+analytics.identify(String(userId), {
+  role: "admin",
+  locale: "ru",
+  theme: "dark",
+  runtime: "electron",
+});
+```
+
+### Reset on logout
+
+```ts
+analytics.reset();
+```
+
+## Event Taxonomy
+
+**ALWAYS** use constants from `AnalyticsEvent` — never string literals:
+
+| Category | Events |
+|----------|--------|
+| Auth | `LOGIN`, `LOGOUT`, `SIGNUP` |
+| Messaging | `MESSAGE_SENT`, `MESSAGE_EDITED`, `MESSAGE_DELETED`, `MESSAGE_REACTION`, `MESSAGE_REPLY`, `MESSAGE_FORWARDED`, `MESSAGE_COPIED`, `MESSAGE_STARRED` |
+| Navigation | `STREAM_OPENED`, `TOPIC_OPENED`, `DM_OPENED`, `SECTION_CHANGED`, `SEARCH_PERFORMED`, `SEARCH_RESULT_CLICKED`, `DEEP_LINK_OPENED` |
+| Calls | `CALL_STARTED`, `CALL_JOINED`, `CALL_ENDED` |
+| UI | `SIDEBAR_TOGGLED`, `THEME_CHANGED`, `SHORTCUT_USED`, `CONTEXT_MENU_OPENED`, `EMOJI_PICKER_OPENED`, `ATTACHMENT_UPLOADED` |
+| Features | `PWA_INSTALLED`, `NOTIFICATION_ALLOWED`, `NOTIFICATION_DENIED`, `NOTIFICATION_CLICKED` |
+| Engagement | `SESSION_START`, `SESSION_END`, `APP_FOREGROUNDED`, `APP_BACKGROUNDED`, `NETWORK_RECONNECTED` |
+| Errors | `FEATURE_ERROR`, `API_ERROR_USER_FACING` |
+
+### Adding a new event
+
+1. Add a constant to `AnalyticsEvent` in `types.ts`
+2. Use `analytics.track(AnalyticsEvent.NEW_EVENT, { ... })` in code
+3. Document properties in the table below
+
+## Providers
+
+| Provider | Env var | Format |
+|----------|---------|--------|
+| Google Analytics 4 | `VITE_GA4_MEASUREMENT_ID` | `G-XXXXXXXXXX` |
+| Yandex Metrika | `VITE_YM_COUNTER_ID` | `12345678` (numeric) |
+
+Providers are activated only if the env var is set. If none are set, analytics works as a no-op (zero overhead).
+
+### Adding a new provider
+
+1. Create a file in `shared/lib/analytics/` with a factory function `createXxxProvider(...): AnalyticsProvider`
+2. Implement the `AnalyticsProvider` interface (init, track, page, identify, reset, setConsent)
+3. Register in `setup.ts`: `analytics.registerProvider(createXxxProvider(...))`
+4. Add env var to `.env.example`, `vite-env.d.ts`
+
+## Consent
+
+The system is consent-aware — events are buffered until consent is obtained:
+
+```ts
+// User accepted cookies/analytics
+analytics.grantConsent();
+
+// User declined
+analytics.denyConsent();
+
+// Check current status
+const status = analytics.getConsent(); // "granted" | "denied" | "pending"
+```
+
+**Behavior:**
+- `pending` → events are buffered (up to 200 in the queue)
+- `granted` → buffer is flushed, new events are sent immediately
+- `denied` → buffer is cleared, all events are discarded
+
+Status is persisted in `localStorage` (`analytics_consent`).
+
+## Super Properties
+
+Automatically added to every event:
+- `runtime` — "web" | "pwa" | "electron"
+- `app_version` — from `VITE_APP_VERSION`
+
+Add your own:
+```ts
+analytics.setSuperProperties({ instanceId: "abc", plan: "enterprise" });
+```
+
+## Security
+
+### PII stripping
+
+Before sending to providers, all properties pass through `stripPii()`:
+- Fields `email`, `password`, `token`, `secret`, `apikey`, `phone`, `ssn`, `creditcard`, `address` → `[REDACTED]`
+
+### CSP
+
+For GA4 and YM to work, add to Content-Security-Policy:
+
+```
+script-src 'self' https://www.googletagmanager.com https://mc.yandex.ru;
+img-src 'self' https://mc.yandex.ru https://www.google-analytics.com;
+connect-src 'self' https://www.google-analytics.com https://mc.yandex.ru;
+```
+
+## Rules for AI Agent
+
+### Required when adding a feature
+
+1. **Track key actions** — every user action (send, edit, delete, navigate, toggle) should be tracked
+2. **Use `AnalyticsEvent` constants** — never string literals
+3. **Properties = context for analysis** — add meaningful properties: streamId, messageLength, hasAttachment, source ("keyboard" | "mouse" | "touch")
+4. **Do not track PII** — email, phone, names must not be passed in properties
+5. **Do not track message content** — only metadata (length, type, presence of attachments)
+
+### Prohibited
+
+- **DO NOT** send analytics in tests (mock or skip)
+- **DO NOT** track every keystroke — only completed actions
+- **DO NOT** send data without consent
+- **DO NOT** hardcode measurement IDs in code — only via env vars
+
+### Example: adding tracking to a new feature
+
+```tsx
+import { analytics, AnalyticsEvent } from "~/shared/lib/analytics";
+
+function SendButton({ onSend }: { onSend: () => void }) {
+  const handleClick = () => {
+    onSend();
+    analytics.track(AnalyticsEvent.MESSAGE_SENT, {
+      source: "button",
+      streamId: currentStreamId,
+      hasAttachment: attachments.length > 0,
+    });
+  };
+
+  return <button onClick={handleClick}>Send</button>;
+}
+```
+
+### Testing
+
+In tests, analytics is a no-op (no env vars). To verify calls:
+
+```ts
+import { analytics } from "~/shared/lib/analytics";
+import { vi } from "vitest";
+
+const trackSpy = vi.spyOn(analytics, "track");
+// ...perform action...
+expect(trackSpy).toHaveBeenCalledWith("message_sent", expect.objectContaining({ streamId: 42 }));
+```

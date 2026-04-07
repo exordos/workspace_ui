@@ -1,0 +1,59 @@
+---
+description: React component patterns and conventions for Workspace UI
+globs: packages/web/src/**/*.tsx
+alwaysApply: false
+---
+
+# React Component Conventions
+
+## FSD Component Layers
+
+| Layer | Path | Naming | Purpose |
+|-------|------|--------|---------|
+| shared/ui | `shared/ui/<name>.tsx` | kebab-case | Primitives: Avatar, Badge, Button, Icon, ScrollArea |
+| widgets | `widgets/<name>/<name>.ui.tsx` | kebab-case | Composites: layout, sidebar, message-list, top-bar |
+| features | `features/<name>/<name>.ui.tsx` | kebab-case | Scenarios: ai-reply, sticker-picker, instance-switch |
+| pages | `pages/<name>/<name>.ui.tsx` | kebab-case | Routes: chat, activity, login (lazy-loaded) |
+
+## Component Structure
+
+Props and shared UI types live in a co-located `*.types.ts` next to `*.ui.tsx` (e.g. `my-feature.types.ts`). Import with `import type { MyComponentProps } from "./my-feature.types"`.
+
+```tsx
+import React, { useState, useEffect, useCallback } from "react";
+import type { SomeType } from "~/entities/some/some.types";
+import type { MyComponentProps } from "./my-feature.types";
+import { useSomeStore } from "~/entities/some";
+import { Icon } from "~/shared/ui";
+
+export const MyComponent: React.FC<MyComponentProps> = ({ title, onAction }) => {
+  const data = useSomeStore((s) => s.data);
+  const [localState, setLocalState] = useState(false);
+
+  useEffect(() => { /* ... */ }, []);
+
+  const handleClick = useCallback(() => {
+    onAction?.();
+  }, [onAction]);
+
+  return <div className="...">{title}</div>;
+};
+```
+
+## Rules
+
+- `React.FC<Props>` for component typing
+- Props interface in co-located `*.types.ts`, `Props` suffix; `import type` into the UI file
+- Zustand selectors — minimal, subscribe to specific fields: `useStore((s) => s.field)`
+- Event handlers: `handleXxx` naming convention
+- Conditional rendering: `{condition && <Component />}`, not ternaries for JSX blocks
+- Cleanup in useEffect — always return cleanup function for subscriptions
+- Import stores from concrete files: `from "~/entities/user/user.model"` (no barrel `index.ts`)
+- Import shared UI from concrete files: `from "~/shared/ui/icon"`, `from "~/shared/ui/button"`, etc.
+
+## Layout
+
+- Use Tailwind flexbox/grid, not CSS modules
+- Responsive: desktop-first, `min-h-0 min-w-0` for flex-children
+- Spacing via Tailwind tokens, not magic numbers
+- Colors — only semantic tokens (`bg-card-bg`, `text-text-primary`, `accent`), not hex values

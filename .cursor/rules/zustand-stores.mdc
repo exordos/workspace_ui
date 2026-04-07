@@ -1,0 +1,70 @@
+---
+description: Zustand store patterns for state management in Workspace UI
+globs: packages/web/src/entities/**/*.model.ts, packages/web/src/features/**/*.model.ts
+alwaysApply: false
+---
+
+# Zustand Store Patterns
+
+## Entity Stores (FSD: `entities/<name>/<name>.model.ts`)
+
+| Entity | Store file | Responsibility |
+|--------|-----------|---------------|
+| `entities/instance/` | `instance.model.ts` | Zulip instances (realm, email, apiKey), persisted in localStorage |
+| `entities/chat-list/` | `chat-list.model.ts` | Streams, DMs, topics, unread counts — derived from messages |
+| `entities/message/` | `message.model.ts` | Messages for active chat context |
+| `entities/user/` | `user.model.ts` | User profiles, presence, avatar URLs |
+| `entities/theme/` | `theme.model.ts` | Theme mode + palette |
+| `entities/call/` | `call.model.ts` | Jitsi call participants |
+| `entities/sticker/` | `sticker.model.ts` | Sticker packs, favorites, recent |
+| `entities/folder/` | `folder.api.ts` | Folder API integration |
+
+## Feature Stores (FSD: `features/<name>/<name>.model.ts`)
+
+| Feature | Store file | Responsibility |
+|---------|-----------|---------------|
+| `features/ai-reply/` | `ai-reply.model.ts` | AI reply suggestions state |
+
+## Creating New Entity Store
+
+```ts
+// entities/foo/foo.model.ts
+import { create } from "zustand";
+import { logStoreAction } from "~/shared/lib/logger";
+
+interface FooState {
+  items: FooItem[];
+  loading: boolean;
+  setItems: (items: FooItem[]) => void;
+  addItem: (item: FooItem) => void;
+  clear: () => void;
+}
+
+export const useFooStore = create<FooState>((set, get) => ({
+  items: [],
+  loading: false,
+  setItems: (items) => {
+    logStoreAction("foo", "setItems", { count: items.length });
+    set({ items, loading: false });
+  },
+  addItem: (item) => set((s) => ({ items: [...s.items, item] })),
+  clear: () => set({ items: [], loading: false }),
+}));
+```
+
+Import the store from the **concrete model file** (no barrel `index.ts` re-exports — see `no-barrel-index.mdc`):
+
+```ts
+import { useFooStore } from "~/entities/foo/foo.model";
+```
+
+## Patterns
+
+- Immutable updates: spread operator or `new Map(existing)`
+- Cross-store access: `useOtherStore.getState()` (not a hook, only inside actions)
+- Derived data: cached getters (see `performance.mdc` anti-pattern #1)
+- Persistence: `persist` middleware from zustand, key in localStorage
+- Events from real-time loop update stores via entity store actions
+- Map pattern for indexed data: `new Map<number, Item>()`
+- Logging: `logStoreAction("scope", "action", { data })` in every action
+- Empty fallbacks: use module-level constants (`const EMPTY: T[] = []`), never inline `[]`

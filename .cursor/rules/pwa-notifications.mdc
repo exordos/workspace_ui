@@ -1,0 +1,86 @@
+---
+description: PWA support and unified notification system
+globs: "packages/web/src/**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# PWA & Notifications
+
+## Three Runtime Environments
+
+```
+getRuntime() → "electron" | "pwa" | "browser"
+```
+
+| Runtime | Router | Notifications | Service Worker | Install |
+|---------|--------|---------------|----------------|---------|
+| `electron` | HashRouter | IPC → main process | NONE (disabled) | — |
+| `pwa` | BrowserRouter | Web Notifications API | Workbox (auto) | Installed |
+| `browser` | BrowserRouter | Web Notifications API | Workbox (auto) | Prompt available |
+
+## Runtime Detection
+
+```typescript
+import { isElectron } from "~/shared/lib/electron";
+import { isPwa, getRuntime } from "~/shared/lib/pwa";
+
+if (isElectron()) { /* Electron desktop */ }
+if (isPwa()) { /* PWA standalone mode */ }
+```
+
+## Notifications — Unified API
+
+```typescript
+import { notificationService } from "~/shared/lib/notifications";
+
+// Request permission (once)
+await notificationService.requestPermission();
+
+// Show notification (any runtime)
+await notificationService.show({
+  title: "New message",
+  body: "Hello!",
+  tag: "msg-12345",        // deduplication
+  onClick: () => navigate("/dm/42"),
+});
+
+// Badge count (PWA only, via navigator.setAppBadge)
+await notificationService.setBadgeCount(5);
+await notificationService.clearBadge();
+```
+
+## PWA Install Prompt
+
+```typescript
+import { canInstallPwa, promptInstallPwa, onInstallAvailableChange } from "~/shared/lib/pwa";
+
+// Check availability
+if (canInstallPwa()) {
+  const outcome = await promptInstallPwa(); // "accepted" | "dismissed"
+}
+
+// Subscribe to availability changes
+const unsub = onInstallAvailableChange(() => {
+  // update UI (show/hide "Install" button)
+});
+```
+
+## Service Worker
+
+- vite-plugin-pwa generates SW automatically on `npm run build`
+- registerType: `"prompt"` — user decides when to update
+- Caching: static assets (CacheFirst) + API responses (NetworkFirst, 5 min)
+- User uploads: CacheFirst (30 days, 200 entries)
+- SW is NOT registered in Electron (ELECTRON=1 disables the plugin)
+
+## Electron vs PWA: Feature Comparison
+
+| Feature | Electron | PWA/Browser |
+|---------|----------|-------------|
+| Native notifications | ipcRenderer → main | Web Notifications API |
+| App badge | Main process | navigator.setAppBadge |
+| Offline | Not needed (desktop) | Workbox service worker |
+| Install | installer (NSIS/DMG) | beforeinstallprompt |
+| Auto-update | electron-updater | SW update prompt |
+| Deep links | Electron protocol handler | Web URL |
+| File system | Main process IPC | Download API |

@@ -1,0 +1,32 @@
+{
+  "name": "electron-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "GenesisWorkspace",
+  "author": "Genesis Team <info@genesis-corporation.ru>",
+  "license": "Apache-2.0",
+  "main": "dist/main.js",
+  "homepage": "https://genesis-corporation.ru/",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "npm run build:web && npm run build:electron",
+    "build:web": "cd ../web && npx cross-env ELECTRON=1 vite build",
+    "build:electron": "node scripts/build.mjs",
+    "package": "npm run build && electron-builder",
+    "package:win": "npm run build && electron-builder --win",
+    "package:mac": "npm run build && electron-builder --mac",
+    "package:linux": "npm run build && electron-builder --linux",
+    "package:appimage": "npm run build && electron-builder --linux AppImage",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "electron-updater": "^6.6.2"
+  },
+  "devDependencies": {
+    "@electron/notarize": "2.5.0",
+    "electron": "35.7.5",
+    "electron-builder": "^26.0.12",
+    "esbuild": "^0.25.3",
+    "typescript": "^5.6.3"
+  }
+}

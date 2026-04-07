@@ -1,0 +1,81 @@
+---
+description: Principles for long-term scalability — preventing technical debt that leads to rewrites
+alwaysApply: true
+---
+
+# Scalability Principles
+
+## 1. One module = one responsibility
+
+- Store: one domain (user, message, chatList) — not "globalStore"
+- Component: one task — not a 500-line "do-everything" component
+- API file: one backend resource
+- If a file > 300 lines — consider decomposition
+
+## 2. Explicit contracts
+
+- Every module exports through `index.ts` (public API)
+- Module internals are implementation details, don't import directly
+- Props interfaces for components, TypeScript interfaces for stores
+- API contracts documented in types, not in comments
+
+## 3. Dependency direction
+
+```
+shared → entities → features → widgets → pages → app
+```
+
+Dependencies flow ONLY downward. If an upward reference is needed — use a callback, event, or context.
+
+## 4. New code = tests
+
+- Utility functions — unit tests required
+- Stores — test actions and derived data
+- Components — test render + key interactions (for new ones)
+- API — mock via MSW
+
+## 5. Architectural decisions are documented
+
+- New library → ADR in `docs/adr/`
+- Pattern change → ADR
+- Infrastructure decision → ADR
+- Format: context → options → decision → consequences
+
+## 6. No Magic Numbers, No Hardcoded Strings
+
+- Colors → CSS variables → Tailwind tokens
+- Sizes → Tailwind spacing or constants
+- API URLs → env variables
+- UI strings → `t("key")` from `~/i18n/i18n` (en default + ru)
+
+## 7. Error Handling
+
+- API: always handle errors (try/catch, .catch())
+- Components: ErrorBoundary on every route
+- Stores: loading/error state fields
+- Logger: `logger.error()` for every error
+
+## 8. Performance by Default
+
+- Route-level code splitting (React.lazy)
+- Zustand selectors: subscribe to minimal number of fields
+- useCallback/useMemo: only for passing to child components or heavy computations
+- Images: lazy loading, srcSet where applicable
+
+## 9. Backward Compatibility
+
+- Don't remove public API without deprecation warning
+- Major store changes → version the key in localStorage
+- API contracts: extend, don't break
+
+## 10. Code Review Checklist
+
+When reviewing a PR, check:
+- [ ] TypeScript strict (no `any`, no `as unknown as`)
+- [ ] No hardcoded credentials, tokens, URLs
+- [ ] New code is covered by tests
+- [ ] No `console.log` (use `logger`)
+- [ ] No CSS magic numbers (use Tailwind tokens)
+- [ ] Lazy-loaded if page-level component
+- [ ] ErrorBoundary if new route
+- [ ] ADR if architectural decision

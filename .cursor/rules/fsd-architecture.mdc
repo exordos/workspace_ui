@@ -1,0 +1,97 @@
+---
+description: Feature-Sliced Design architecture for Workspace UI
+alwaysApply: true
+---
+
+# FSD Architecture
+
+The project uses Feature-Sliced Design. Details in `docs/fsd-architecture.md`.
+
+## Layers (imports only go downward)
+
+```
+app → pages → widgets → features → entities → shared
+```
+
+## Slice file structure
+
+```
+slice-name/
+  slice-name.api.ts       # API calls
+  slice-name.model.ts     # Zustand store
+  slice-name.types.ts     # TypeScript types
+  slice-name.lib.ts       # Pure utilities
+  slice-name.ui.tsx       # React component
+  slice-name.test.ts      # Tests
+```
+
+## Current slices
+
+### Entities (11)
+
+| Entity | Files | Purpose |
+|--------|-------|---------|
+| `entities/call/` | model, index | Call participants store |
+| `entities/chat-list/` | model, index | Chat list, sorting, unread counts |
+| `entities/draft/` | api, model, types, index | Message drafts store + server sync |
+| `entities/feed/` | api, model, types, index | Activity feed store |
+| `entities/folder/` | api, index | Folder API integration |
+| `entities/inbox/` | model, index | Unread inbox aggregation |
+| `entities/instance/` | model, index | Zulip instance management + persistence |
+| `entities/message/` | model, index | Messages store + current chat state |
+| `entities/sticker/` | api, model, types, test, index | Sticker packs, API, types |
+| `entities/theme/` | model, index | Theme mode + palette store |
+| `entities/user/` | api, model, index | Users store + presence API |
+
+### Features (16)
+
+| Feature | Files | Purpose |
+|---------|-------|---------|
+| `features/ai-reply/` | api, model, types, ui, test, index | AI-generated reply suggestions |
+| `features/chat-info/` | model, ui, index | Chat info panel (DM + channel details) |
+| `features/create-chat/` | ui, index | Create DM / group / channel dialogs |
+| `features/instance-switch/` | ui, index | Multi-instance Zulip switcher UI |
+| `features/jitsi-call/` | ui, index | Jitsi Meet video call modal + PiP |
+| `features/manage-folders/` | ui, index | Folder CRUD + chat assignment |
+| `features/media-viewer/` | model, index | Image/video viewer overlay |
+| `features/mention-suggest/` | ui, index | @mention autocomplete in composer |
+| `features/message-readers/` | model, api, index | "Read by" list for messages |
+| `features/mute-chat/` | model, api, types, test, index | Mute/unmute streams + topics |
+| `features/pin-chat/` | model, api, types, index | Pin/unpin chats to sidebar |
+| `features/settings/` | model, ui, index | User settings panel |
+| `features/sticker-picker/` | ui, index | Sticker pack selection + sending |
+| `features/theme-picker/` | ui, index | Theme palette picker UI |
+| `features/typing-indicator/` | model, index | Typing indicator state |
+| `features/user-profile/` | ui, index | User profile page |
+
+### Widgets (10)
+
+`chat-view`, `folder-rail`, `layout`, `message-composer`, `message-list`, `profile-drawer`, `right-panel`, `search-modal`, `sidebar`, `top-bar`
+
+### Pages (9)
+
+`activity`, `calendar`, `calls`, `chat`, `feed`, `inbox`, `licenses`, `login`, `mail`
+
+## Where to place code
+
+| What | Layer | Path |
+|------|-------|------|
+| Zustand store (domain data) | entities | `entities/<name>/<name>.model.ts` |
+| API functions (fetch/post) | entities | `entities/<name>/<name>.api.ts` |
+| Domain types | entities | `entities/<name>/<name>.types.ts` |
+| User scenario | features | `features/<action>/` |
+| Composite UI block | widgets | `widgets/<name>/` |
+| Page (route) | pages | `pages/<name>/` |
+| UI primitive (Avatar, Button) | shared | `shared/ui/` |
+| Utility (format, html, guards) | shared | `shared/lib/` |
+| Fetch helpers | shared | `shared/api/` |
+| Icons | shared | `shared/assets/icons/` |
+| Constants | shared | `shared/config/` |
+
+## Rules
+
+- No barrel `index.ts` re-exports (see `no-barrel-index.mdc`).
+- Import from concrete files (e.g. `import { useUsersStore } from "~/entities/user/user.model"`).
+- Cross-store access — only downward or at the same level
+- New features — create as FSD features from the start
+- Tests live next to source: `slice-name.test.ts` inside the slice directory

@@ -1,0 +1,52 @@
+import { describe, expect, it } from "vitest";
+import type { MockMessage } from "~/shared/api/zulip.types";
+import { buildMessageMediaGallery } from "./message-list-media.lib";
+
+function msg(id: number, content: string): MockMessage {
+  return {
+    id,
+    sender_id: 42,
+    sender_full_name: "Alice",
+    stream_id: 10,
+    display_recipient: "engineering",
+    channel: "engineering",
+    subject: "general",
+    content,
+    timestamp: 1_710_000_000 + id,
+  };
+}
+
+describe("buildMessageMediaGallery", () => {
+  it("extracts image urls in appearance order", () => {
+    const gallery = buildMessageMediaGallery([
+      msg(1, '<p><img src="https://cdn.example.com/a.png" /></p>'),
+      msg(2, '<p><img src="https://cdn.example.com/b.png" /></p>'),
+    ]);
+
+    expect(gallery.items.map((item) => item.url)).toEqual([
+      "https://cdn.example.com/a.png",
+      "https://cdn.example.com/b.png",
+    ]);
+    expect(gallery.indexByUrl.get("https://cdn.example.com/a.png")).toBe(0);
+    expect(gallery.indexByUrl.get("https://cdn.example.com/b.png")).toBe(1);
+  });
+
+  it("deduplicates repeated images across messages", () => {
+    const gallery = buildMessageMediaGallery([
+      msg(1, '<p><img src="https://cdn.example.com/a.png" /></p>'),
+      msg(2, '<p><img src="https://cdn.example.com/a.png" /></p>'),
+    ]);
+
+    expect(gallery.items).toHaveLength(1);
+    expect(gallery.indexByUrl.get("https://cdn.example.com/a.png")).toBe(0);
+  });
+
+  it("normalizes relative image urls to absolute", () => {
+    const gallery = buildMessageMediaGallery([
+      msg(1, '<p><img src="/user_uploads/1/a.png" /></p>'),
+    ]);
+
+    expect(gallery.items[0]?.url).toMatch(/\/user_uploads\/1\/a\.png$/);
+    expect(gallery.indexByUrl.size).toBe(1);
+  });
+});
