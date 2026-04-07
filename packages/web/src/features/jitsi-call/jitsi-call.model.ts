@@ -6,6 +6,7 @@ export interface IncomingDmCallInvite {
   meetingUrl: string;
   callerName: string;
   locationName: string;
+  avatarUrl?: string;
   timestamp: number;
 }
 

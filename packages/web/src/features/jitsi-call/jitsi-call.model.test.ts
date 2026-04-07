@@ -12,6 +12,7 @@ describe("useJitsiCallStore", () => {
       meetingUrl: "https://meet.jit.si/zulip-dm-room-10",
       callerName: "Slon",
       locationName: "Slon",
+      avatarUrl: "/avatars/slon.png",
       timestamp: 1,
     });
 
@@ -31,6 +32,7 @@ describe("useJitsiCallStore", () => {
       meetingUrl: "https://meet.jit.si/zulip-dm-room-11",
       callerName: "Ku",
       locationName: "Ku",
+      avatarUrl: "/avatars/ku.png",
       timestamp: 2,
     });
 
@@ -47,6 +49,7 @@ describe("useJitsiCallStore", () => {
       meetingUrl: "https://meet.jit.si/zulip-dm-room-12",
       callerName: "Fox",
       locationName: "Fox",
+      avatarUrl: "/avatars/fox.png",
       timestamp: 3,
     };
     useJitsiCallStore.getState().ingestIncomingInvite(invite);

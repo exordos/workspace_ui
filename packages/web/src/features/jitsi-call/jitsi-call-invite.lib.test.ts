@@ -20,7 +20,7 @@ function buildPrivateMessage(overrides: Partial<ZulipRawMessage> = {}): ZulipRaw
 
 describe("resolveIncomingDmCallInvite", () => {
   it("returns invite for incoming one-to-one dm call message", () => {
-    const message = buildPrivateMessage();
+    const message = buildPrivateMessage({ avatar_url: "/avatar/slon.png" });
 
     const invite = resolveIncomingDmCallInvite(message, 25);
 
@@ -29,7 +29,19 @@ describe("resolveIncomingDmCallInvite", () => {
       meetingUrl: "https://meet.jit.si/zulip-dm-slon-123",
       callerName: "Slon",
       locationName: "Slon",
+      avatarUrl: "/avatar/slon.png",
       timestamp: 1_700_000_000,
+    });
+  });
+
+  it("normalizes empty avatar_url to undefined", () => {
+    const message = buildPrivateMessage({ avatar_url: "   " });
+
+    const invite = resolveIncomingDmCallInvite(message, 25);
+
+    expect(invite).toMatchObject({
+      messageId: 77,
+      avatarUrl: undefined,
     });
   });
 

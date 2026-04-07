@@ -36,11 +36,15 @@ export function resolveIncomingDmCallInvite(
 
   const callerName = message.sender_full_name?.trim() ?? "";
   const locationName = callerName.length > 0 ? callerName : "";
+  const trimmedAvatarUrl = message.avatar_url?.trim();
+  const avatarUrl =
+    trimmedAvatarUrl != null && trimmedAvatarUrl.length > 0 ? trimmedAvatarUrl : undefined;
   return {
     messageId: message.id,
     meetingUrl,
     callerName,
     locationName,
+    avatarUrl,
     timestamp: message.timestamp,
   };
 }
