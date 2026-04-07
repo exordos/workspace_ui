@@ -23,10 +23,11 @@ describe("useJitsiCallStore", () => {
 
     const state = useJitsiCallStore.getState();
     expect(state.activeCall?.meetingUrl).toBe("https://meet.jit.si/zulip-dm-room-10");
+    expect(state.activeCall?.startWithVideoMuted).toBe(true);
     expect(state.incomingInvite).toBeNull();
   });
 
-  it("accepts incoming invite and opens call", () => {
+  it("accepts incoming invite and opens call with default muted video", () => {
     useJitsiCallStore.getState().ingestIncomingInvite({
       messageId: 11,
       meetingUrl: "https://meet.jit.si/zulip-dm-room-11",
@@ -41,6 +42,24 @@ describe("useJitsiCallStore", () => {
     const state = useJitsiCallStore.getState();
     expect(state.incomingInvite).toBeNull();
     expect(state.activeCall?.locationName).toBe("Ku");
+    expect(state.activeCall?.startWithVideoMuted).toBe(true);
+  });
+
+  it("accepts incoming invite with unmuted video when requested", () => {
+    useJitsiCallStore.getState().ingestIncomingInvite({
+      messageId: 13,
+      meetingUrl: "https://meet.jit.si/zulip-dm-room-13",
+      callerName: "Dog",
+      locationName: "Dog",
+      avatarUrl: "/avatars/dog.png",
+      timestamp: 4,
+    });
+
+    useJitsiCallStore.getState().acceptIncomingInvite({ startWithVideoMuted: false });
+
+    const state = useJitsiCallStore.getState();
+    expect(state.incomingInvite).toBeNull();
+    expect(state.activeCall?.startWithVideoMuted).toBe(false);
   });
 
   it("deduplicates incoming invite by message id", () => {

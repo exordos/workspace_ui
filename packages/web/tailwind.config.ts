@@ -61,6 +61,7 @@ export default {
         /* Call */
         "call-bg": colorVar("call-bg"),
         "call-green": colorVar("call-green"),
+        "call-red": colorVar("call-red"),
 
         /* Search */
         "search-bg": colorVar("search-bg"),

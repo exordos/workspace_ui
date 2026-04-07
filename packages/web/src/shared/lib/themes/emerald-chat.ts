@@ -48,6 +48,7 @@ export const emeraldChat: ThemePalette = {
 
     "call-bg": "#1b4a39",
     "call-green": "#26c038",
+    "call-red": "#f04c4c",
 
     "search-bg": "rgba(255, 255, 255, 0.08)",
     "search-hint": "#7e9890",
@@ -103,6 +104,7 @@ export const emeraldChat: ThemePalette = {
 
     "call-bg": "#cae9da",
     "call-green": "#26c038",
+    "call-red": "#f04c4c",
 
     "search-bg": "#f2f2f2",
     "search-hint": "#809991",

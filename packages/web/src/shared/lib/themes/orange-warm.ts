@@ -48,6 +48,7 @@ export const orangeWarm: ThemePalette = {
 
     "call-bg": "#31402d",
     "call-green": "#26c038",
+    "call-red": "#f04c4c",
 
     "search-bg": "rgba(255, 255, 255, 0.08)",
     "search-hint": "#707070",
@@ -103,6 +104,7 @@ export const orangeWarm: ThemePalette = {
 
     "call-bg": "#d8e4c8",
     "call-green": "#26c038",
+    "call-red": "#f04c4c",
 
     "search-bg": "#e6e6e6",
     "search-hint": "#989898",

@@ -227,6 +227,7 @@
     "joinCall": "Join call",
     "incomingCall": "Incoming call",
     "incomingFrom": "{{name}} is calling",
+    "incomingChooseMethod": "Choose how to answer the call",
     "accept": "Accept",
     "decline": "Decline",
     "recentCalls": "Recent Jitsi calls",

@@ -48,6 +48,7 @@ export const blueMist: ThemePalette = {
 
     "call-bg": "#1f473d",
     "call-green": "#26c038",
+    "call-red": "#f04c4c",
 
     "search-bg": "rgba(255, 255, 255, 0.08)",
     "search-hint": "#748396",
@@ -103,6 +104,7 @@ export const blueMist: ThemePalette = {
 
     "call-bg": "#cfe6dc",
     "call-green": "#26c038",
+    "call-red": "#f04c4c",
 
     "search-bg": "#f0f6fc",
     "search-hint": "#8d9bae",
