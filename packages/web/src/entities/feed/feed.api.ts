@@ -1,22 +1,17 @@
-/**
- * Feed API — fetches all messages in chronological order with pagination.
- *
- * Uses the Zulip messages endpoint with no narrow (all messages)
- * and anchor-based pagination for infinite scroll.
- */
+// Этот файл нужен для загрузки данных страницы /feed.
+// Здесь есть два источника:
+// 1) локальный bootstrap из IDB (мгновенный старт UI);
+// 2) серверный refresh из Zulip (актуализация списка).
 
-import { fetchAllMessagesPage } from "~/shared/api/zulip";
-import type { MessagesPageResult } from "~/shared/api/zulip";
+import { fetchAllMessagesPage } from "~/shared/api/zulip-messages";
+import type { MessagesPageResult, MockMessage } from "~/shared/api/zulip.types";
 import { createLogger, logApiCall } from "~/shared/lib/logger";
+import { getInstanceMessagesAscending } from "~/shared/lib/message-cache-db";
 
 const log = createLogger("feed:api");
 
-/**
- * Fetches a page of all messages for the feed view.
- *
- * @param anchor - Message ID to fetch relative to, or "newest" for latest.
- * @param numBefore - Number of messages before the anchor to fetch.
- */
+// Загружает страницу feed с сервера.
+// anchor="newest" используем как authoritative refresh.
 export async function fetchFeedMessages(
   anchor: number | "newest" = "newest",
   numBefore = 50,
@@ -39,4 +34,16 @@ export async function fetchFeedMessages(
     log.error("Failed to fetch feed messages", { error: String(err) });
     throw err;
   }
+}
+
+// Берём локальный bootstrap из IDB.
+// Важно: это best-effort кэш и он может быть неполным из-за retention.
+export async function hydrateFeedMessagesFromCache(
+  instanceId: string | null,
+  limit = 200,
+): Promise<MockMessage[]> {
+  if (instanceId == null) return [];
+  const all = await getInstanceMessagesAscending(instanceId);
+  if (all.length <= limit) return all;
+  return all.slice(all.length - limit);
 }

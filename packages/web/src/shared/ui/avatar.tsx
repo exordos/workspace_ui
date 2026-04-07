@@ -1,19 +1,12 @@
 import React from "react";
+import type { AvatarProps, AvatarSize } from "./avatar.types";
 
-const SIZE_CLASS = {
+const SIZE_CLASS: Record<AvatarSize, string> = {
   xs: "w-9 h-9 text-xs",
   sm: "w-8 h-8 text-xs",
   md: "w-10 h-10 text-xs",
   lg: "w-12 h-12 text-lg",
-} as const;
-
-interface AvatarProps {
-  size?: keyof typeof SIZE_CLASS;
-  /** Avatar image URL. When provided, renders an image; otherwise renders children (e.g. an initial). */
-  src?: string | null;
-  children: React.ReactNode;
-  className?: string;
-}
+};
 
 export const Avatar = React.memo<AvatarProps>(({ size = "md", src, children, className = "" }) => {
   const sizeClass = SIZE_CLASS[size];

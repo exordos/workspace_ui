@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   collectUnreadMessageIds,
+  filterMessageIdsStillUnreadForOptimisticApply,
   resolveMarkAllAsReadTarget,
   type MarkAllAsReadTarget,
 } from "./chat-mark-all-read.lib";
@@ -69,5 +70,49 @@ describe("chat-mark-all-read", () => {
         { id: 3, flags: undefined },
       ]),
     ).toEqual([2, 3]);
+  });
+
+  describe("filterMessageIdsStillUnreadForOptimisticApply", () => {
+    it("uses store messages when present", () => {
+      expect(
+        filterMessageIdsStillUnreadForOptimisticApply([1, 2], {
+          storeMessages: [
+            { id: 1, flags: [] },
+            { id: 2, flags: ["read"] },
+          ],
+          effectiveMessages: [{ id: 1, flags: ["read"] }],
+        }),
+      ).toEqual([1]);
+    });
+
+    it("falls back to effective list when id is missing from store (IDB vs store divergence)", () => {
+      expect(
+        filterMessageIdsStillUnreadForOptimisticApply([10, 11], {
+          storeMessages: [{ id: 10, flags: [] }],
+          effectiveMessages: [
+            { id: 10, flags: [] },
+            { id: 11, flags: [] },
+          ],
+        }),
+      ).toEqual([10, 11]);
+    });
+
+    it("returns empty when store is empty but effective has no matching unread ids", () => {
+      expect(
+        filterMessageIdsStillUnreadForOptimisticApply([99], {
+          storeMessages: [],
+          effectiveMessages: [{ id: 99, flags: ["read"] }],
+        }),
+      ).toEqual([]);
+    });
+
+    it("prefers store row over effective when both contain the same id", () => {
+      expect(
+        filterMessageIdsStillUnreadForOptimisticApply([5], {
+          storeMessages: [{ id: 5, flags: ["read"] }],
+          effectiveMessages: [{ id: 5, flags: [] }],
+        }),
+      ).toEqual([]);
+    });
   });
 });

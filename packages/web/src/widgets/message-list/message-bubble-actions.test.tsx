@@ -1,8 +1,8 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useCallParticipantsStore } from "~/entities/call";
-import { useUsersStore } from "~/entities/user";
-import type { MockMessage } from "~/shared/api/zulip";
+import { useCallParticipantsStore } from "~/entities/call/call.model";
+import { useUsersStore } from "~/entities/user/user.model";
+import type { MockMessage } from "~/shared/api/zulip.types";
 import { createUser } from "~/test/factories";
 import { MessageBubble } from "./message-bubble.ui";
 
@@ -312,7 +312,8 @@ describe("MessageBubble edit/delete actions parity", () => {
 
   it("loads protected image preview through normalized user_uploads path", async () => {
     const fetchMock = vi.fn((input: string | URL) => {
-      if (String(input) === "/user_uploads/1/private.png") {
+      const s = String(input);
+      if (s === "/user_uploads/1/private.png" || /\/user_uploads\/1\/private\.png$/.test(s)) {
         return Promise.resolve({
           ok: true,
           blob: () => Promise.resolve(new Blob(["ok"])),
@@ -343,7 +344,7 @@ describe("MessageBubble edit/delete actions parity", () => {
       expect(image?.getAttribute("src")).toBe("blob:test-image");
     });
     expect(fetchMock).toHaveBeenCalledWith(
-      "/user_uploads/1/private.png",
+      expect.stringMatching(/\/user_uploads\/1\/private\.png$/),
       expect.objectContaining({
         headers: { Authorization: "Basic test" },
       }),

@@ -7,7 +7,7 @@
  * Usage:
  *   import { formatMessageTime, formatLastSeen, isPresenceOnline } from "~/lib/format";
  */
-import { t } from "~/i18n";
+import { t } from "~/i18n/i18n";
 
 /** Formats a Unix timestamp (seconds) into HH:MM. */
 export function formatMessageTime(timestamp: number): string {

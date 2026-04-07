@@ -9,7 +9,7 @@
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AnalyticsProvider, EventProperties, UserTraits } from "~/shared/lib/analytics/types";
-import { analytics, AnalyticsEvent } from "./index";
+import { analytics, AnalyticsEvent } from "./analytics";
 
 function createMockProvider(name = "mock"): AnalyticsProvider & {
   trackCalls: { event: string; properties?: EventProperties }[];

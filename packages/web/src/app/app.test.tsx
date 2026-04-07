@@ -1,22 +1,22 @@
 import { screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useInstancesStore } from "~/entities/instance";
+import { useInstancesStore } from "~/entities/instance/instance.model";
 import { renderWithProviders } from "~/test/render";
 import App from "./app";
 
-vi.mock("~/pages/inbox", () => ({
+vi.mock("~/pages/inbox/inbox-page.ui", () => ({
   InboxPage: () => <div>inbox-page</div>,
 }));
 
-vi.mock("~/pages/chat", () => ({
+vi.mock("~/pages/chat/chat-page.ui", () => ({
   ChatPage: () => <div>chat-page</div>,
 }));
 
-vi.mock("~/pages/licenses", () => ({
+vi.mock("~/pages/licenses/licenses-page.ui", () => ({
   LicensesPage: () => <div>licenses-page</div>,
 }));
 
-vi.mock("~/widgets/layout", async () => {
+vi.mock("~/widgets/layout/layout.ui", async () => {
   const actual = await vi.importActual<typeof import("react-router-dom")>("react-router-dom");
   return {
     Layout: () => (

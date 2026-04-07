@@ -1,14 +1,15 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useUsersStore } from "~/entities/user";
-import type * as ZulipApiModule from "~/shared/api/zulip";
+import { useUsersStore } from "~/entities/user/user.model";
 import { createMessage, createUser } from "~/test/factories";
 import { SearchModal } from "./search-modal.ui";
 
 const fetchMessages = vi.hoisted(() => vi.fn());
 
-vi.mock("~/shared/api/zulip", async () => {
-  const actual = await vi.importActual<typeof ZulipApiModule>("~/shared/api/zulip");
+vi.mock("~/shared/api/zulip-messages", async () => {
+  const actual = await vi.importActual<typeof import("~/shared/api/zulip-messages")>(
+    "~/shared/api/zulip-messages",
+  );
   return {
     ...actual,
     fetchMessages,

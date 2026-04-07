@@ -6,7 +6,7 @@
  * across page reloads.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useInstancesStore } from "~/entities/instance";
+import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useSidebarConfigStore } from "./sidebar-config.model";
 
 const STORAGE_KEY = "zulip-web-sidebar-config";

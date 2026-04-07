@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { UserRecord } from "~/entities/user";
-import type { TypingUser } from "~/features/typing-indicator";
+import type { UserRecord } from "~/entities/user/user.model";
+import type { TypingUser } from "~/features/typing-indicator/typing-indicator.types";
 import { isDmPartnerTyping, sortDmAllUsersForDisplay } from "./sidebar-dm-list.lib";
 
 function createUser(

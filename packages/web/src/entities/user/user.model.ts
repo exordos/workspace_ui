@@ -4,7 +4,7 @@
 // - хранит custom status и метаданные его загрузки
 // - держит индекс email -> userId для быстрых обновлений presence
 import { create } from "zustand";
-import type { ZulipRawMessage, AvatarUrlByUserId } from "~/shared/api/zulip";
+import type { AvatarUrlByUserId, ZulipRawMessage } from "~/shared/api/zulip.types";
 import { bumpAvatarVersion } from "~/shared/lib/avatar";
 
 export type PresenceStatus = "active" | "idle";

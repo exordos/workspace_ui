@@ -5,7 +5,7 @@
  * Messages are fetched oldest-first with anchor-based pagination.
  */
 import { afterEach, describe, expect, it } from "vitest";
-import type { MockMessage } from "~/shared/api/zulip";
+import type { MockMessage } from "~/shared/api/zulip.types";
 import { createMessage, createMessages } from "~/test/factories";
 import { useFeedStore } from "./feed.model";
 
@@ -24,10 +24,15 @@ function msgs(count: number, base: Parameters<typeof createMessage>[0] = {}): Mo
 describe("useFeedStore", () => {
   afterEach(() => {
     useFeedStore.setState({
+      instanceId: null,
       messages: [],
+      isInitialLoading: false,
+      isRefreshing: false,
       isLoadingMore: false,
       isAllLoaded: false,
       lastMessageId: null,
+      requestVersion: 0,
+      lastLoadedAt: null,
       error: null,
     });
   });
@@ -73,10 +78,15 @@ describe("useFeedStore", () => {
     useFeedStore.getState().setMessages(msgs(5), false);
     useFeedStore.getState().clear();
     const state = useFeedStore.getState();
+    expect(state.instanceId).toBeNull();
     expect(state.messages).toHaveLength(0);
+    expect(state.isInitialLoading).toBe(false);
+    expect(state.isRefreshing).toBe(false);
     expect(state.isLoadingMore).toBe(false);
     expect(state.isAllLoaded).toBe(false);
     expect(state.lastMessageId).toBeNull();
+    expect(state.requestVersion).toBe(0);
+    expect(state.lastLoadedAt).toBeNull();
     expect(state.error).toBeNull();
   });
 
@@ -112,6 +122,18 @@ describe("useFeedStore", () => {
   it("setMessages preserves found-oldest metadata from the initial page", () => {
     useFeedStore.getState().setMessages([msg({ id: 1 })], true);
     expect(useFeedStore.getState().isAllLoaded).toBe(true);
+  });
+
+  it("setMessagesIfActual keeps message reference when ids/order are unchanged", () => {
+    const initial = [msg({ id: 10, timestamp: 1000 }), msg({ id: 20, timestamp: 2000 })];
+    useFeedStore.getState().setMessages(initial, false);
+    const beforeRef = useFeedStore.getState().messages;
+    useFeedStore.setState({ requestVersion: 1 });
+
+    const sameIds = [msg({ id: 10, timestamp: 1111 }), msg({ id: 20, timestamp: 2222 })];
+    useFeedStore.getState().setMessagesIfActual(sameIds, false, 1);
+
+    expect(useFeedStore.getState().messages).toBe(beforeRef);
   });
 
   it("appendOlder preserves found-oldest metadata even with a non-empty final page", () => {

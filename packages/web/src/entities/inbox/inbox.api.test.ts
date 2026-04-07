@@ -6,14 +6,36 @@
  * logic, sorting, and error handling.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { MockMessage } from "~/shared/api/zulip";
-import { fetchMessagesWithNarrow } from "~/shared/api/zulip";
+import { fetchMessagesWithNarrow } from "~/shared/api/zulip-messages";
+import type { MockMessage } from "~/shared/api/zulip.types";
 import { createMessage } from "~/test/factories";
 import { fetchInboxEntries } from "./inbox.api";
 
-vi.mock("~/shared/api/zulip", () => ({
+const upsertChatMessages = vi.hoisted(() => vi.fn());
+const getCurrentInstance = vi.hoisted(() => vi.fn());
+const persistChatMessagesToIndexedDb = vi.hoisted(() => vi.fn());
+
+vi.mock("~/shared/api/zulip-messages", () => ({
   fetchMessagesWithNarrow: vi.fn(),
 }));
+
+vi.mock("~/shared/api/client", () => ({
+  getCurrentInstance,
+}));
+
+vi.mock("~/entities/message/message-local-cache.lib", () => ({
+  persistChatMessagesToIndexedDb,
+}));
+
+vi.mock("~/shared/lib/message-cache-db", async () => {
+  const actual = await vi.importActual<typeof import("~/shared/lib/message-cache-db")>(
+    "~/shared/lib/message-cache-db",
+  );
+  return {
+    ...actual,
+    upsertChatMessages,
+  };
+});
 
 vi.mock("~/shared/lib/logger", () => ({
   createLogger: () => ({
@@ -27,6 +49,11 @@ vi.mock("~/shared/lib/logger", () => ({
 
 afterEach(() => {
   vi.restoreAllMocks();
+  upsertChatMessages.mockReset();
+  getCurrentInstance.mockReset();
+  persistChatMessagesToIndexedDb.mockReset();
+  getCurrentInstance.mockReturnValue(null);
+  persistChatMessagesToIndexedDb.mockReturnValue(false);
 });
 
 function msg(overrides: Parameters<typeof createMessage>[0] = {}): MockMessage {
@@ -165,5 +192,91 @@ describe("fetchInboxEntries", () => {
     expect(dmEntry!.streamId).toBeNull();
     expect(dmEntry!.streamName).toBeNull();
     expect(dmEntry!.topic).toBeNull();
+  });
+
+  it("persists unread snapshot to IDB per chat key when persistence is enabled", async () => {
+    persistChatMessagesToIndexedDb.mockReturnValue(true);
+    getCurrentInstance.mockReturnValue({
+      id: "instance-1",
+      realm: "https://zulip.example.com",
+      email: "user@example.com",
+      apiKey: "api-key",
+    });
+    upsertChatMessages.mockResolvedValue(undefined);
+
+    vi.mocked(fetchMessagesWithNarrow).mockResolvedValue([
+      msg({
+        id: 1,
+        stream_id: 10,
+        channel: "engineering",
+        subject: "general",
+        timestamp: 100,
+      }),
+      msg({
+        id: 2,
+        stream_id: 10,
+        channel: "engineering",
+        subject: "general",
+        timestamp: 200,
+      }),
+      dmMsg({
+        id: 3,
+        sender_id: 42,
+        sender_full_name: "Alice",
+        timestamp: 300,
+        display_recipient: [
+          { id: 7, full_name: "Me" },
+          { id: 42, full_name: "Alice" },
+        ],
+      }),
+    ]);
+
+    await fetchInboxEntries(7);
+
+    expect(upsertChatMessages).toHaveBeenCalledTimes(2);
+    expect(upsertChatMessages).toHaveBeenCalledWith(
+      expect.objectContaining({
+        instanceId: "instance-1",
+        chatKey: "stream:10:general",
+        messages: expect.arrayContaining([
+          expect.objectContaining({ id: 1 }),
+          expect.objectContaining({ id: 2 }),
+        ]),
+      }),
+    );
+    expect(upsertChatMessages).toHaveBeenCalledWith(
+      expect.objectContaining({
+        instanceId: "instance-1",
+        chatKey: "dm:7,42",
+        messages: expect.arrayContaining([expect.objectContaining({ id: 3 })]),
+      }),
+    );
+  });
+
+  it("does not fail fetchInboxEntries when IDB persistence errors", async () => {
+    persistChatMessagesToIndexedDb.mockReturnValue(true);
+    getCurrentInstance.mockReturnValue({
+      id: "instance-1",
+      realm: "https://zulip.example.com",
+      email: "user@example.com",
+      apiKey: "api-key",
+    });
+    upsertChatMessages.mockRejectedValue(new Error("idb failure"));
+
+    vi.mocked(fetchMessagesWithNarrow).mockResolvedValue([
+      msg({
+        id: 1,
+        stream_id: 10,
+        channel: "engineering",
+        subject: "general",
+        timestamp: 100,
+      }),
+    ]);
+
+    const entries = await fetchInboxEntries(7);
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.key).toBe("stream:10:general");
+    expect(upsertChatMessages).toHaveBeenCalledTimes(1);
   });
 });

@@ -194,15 +194,14 @@ export default defineConfig(({ mode }) => {
       },
       ...(workspaceOrigin && {
         proxy: {
-          "/workspace-api/workspace/v1": {
+          "/workspace/workspace/v1": {
             target: workspaceLegacyOrigin,
             changeOrigin: true,
-            rewrite: (pathValue) => pathValue.replace(/^\/workspace-api/, ""),
+            rewrite: (pathValue) => pathValue.replace(/^\/workspace/, ""),
           },
-          "/workspace-api": {
+          "/workspace": {
             target: workspaceOrigin,
             changeOrigin: true,
-            rewrite: (pathValue) => pathValue.replace(/^\/workspace-api/, ""),
           },
           "/user_uploads": {
             target: workspaceOrigin,

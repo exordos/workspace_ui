@@ -1,3 +1,6 @@
+import type { ScrollPrependSnapshot } from "~/shared/lib/scroll-prepend-anchor.lib";
+import { computeScrollTopAfterPrepend } from "~/shared/lib/scroll-prepend-anchor.lib";
+
 export interface FeedPaginationScrollState {
   scrollTop: number;
   isLoadingMore: boolean;
@@ -5,10 +8,7 @@ export interface FeedPaginationScrollState {
   lastMessageId: number | null;
 }
 
-export interface FeedScrollSnapshot {
-  scrollTop: number;
-  scrollHeight: number;
-}
+export type FeedScrollSnapshot = ScrollPrependSnapshot;
 
 const DEFAULT_TOP_THRESHOLD_PX = 64;
 
@@ -24,14 +24,9 @@ export function shouldRequestOlderFeedPage(
   return state.scrollTop <= topThresholdPx;
 }
 
-/**
- * Computes the next scrollTop after prepending older messages.
- * Keeps the currently visible content anchored.
- */
 export function computeFeedScrollTopAfterPrepend(
-  previous: FeedScrollSnapshot,
+  previous: ScrollPrependSnapshot,
   nextScrollHeight: number,
 ): number {
-  const next = nextScrollHeight - previous.scrollHeight + previous.scrollTop;
-  return Math.max(0, next);
+  return computeScrollTopAfterPrepend(previous, nextScrollHeight);
 }

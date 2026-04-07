@@ -1,9 +1,9 @@
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useChatListStore } from "~/entities/chat-list";
-import { useInstancesStore } from "~/entities/instance";
-import { useUsersStore } from "~/entities/user";
-import { setLocale } from "~/i18n";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useInstancesStore } from "~/entities/instance/instance.model";
+import { useUsersStore } from "~/entities/user/user.model";
+import { setLocale } from "~/i18n/i18n";
 import { renderWithProviders } from "~/test/render";
 import { SettingsPersonalInfoPage } from "./settings-personal-info-page.ui";
 
@@ -12,7 +12,7 @@ const updateOwnProfileMock = vi.hoisted(() => vi.fn());
 const fetchOwnStatusMock = vi.hoisted(() => vi.fn());
 const updateOwnStatusMock = vi.hoisted(() => vi.fn());
 
-vi.mock("~/features/user-profile", () => ({
+vi.mock("~/features/user-profile/user-profile.api", () => ({
   fetchUserProfile: fetchUserProfileMock,
   updateOwnProfile: updateOwnProfileMock,
   fetchOwnStatus: fetchOwnStatusMock,

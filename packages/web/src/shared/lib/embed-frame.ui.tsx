@@ -7,20 +7,11 @@
  */
 
 import React, { useCallback, useState } from "react";
-import { getSandboxPolicy, isEmbedAllowed, type EmbedSandbox } from "./embed.lib";
+import { getSandboxPolicy, isEmbedAllowed } from "./embed.lib";
+import type { EmbedFrameProps } from "./embed-frame.types";
 import { createLogger } from "./logger";
 
 const log = createLogger("embed");
-
-export interface EmbedFrameProps {
-  url: string;
-  title: string;
-  sandbox?: EmbedSandbox;
-  className?: string;
-  onLoad?: () => void;
-  onError?: () => void;
-  fallback?: React.ReactNode;
-}
 
 export const EmbedFrame: React.FC<EmbedFrameProps> = ({
   url,

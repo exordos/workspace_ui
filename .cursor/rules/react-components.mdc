@@ -17,16 +17,14 @@ alwaysApply: false
 
 ## Component Structure
 
+Props and shared UI types live in a co-located `*.types.ts` next to `*.ui.tsx` (e.g. `my-feature.types.ts`). Import with `import type { MyComponentProps } from "./my-feature.types"`.
+
 ```tsx
 import React, { useState, useEffect, useCallback } from "react";
 import type { SomeType } from "~/entities/some/some.types";
+import type { MyComponentProps } from "./my-feature.types";
 import { useSomeStore } from "~/entities/some";
 import { Icon } from "~/shared/ui";
-
-interface MyComponentProps {
-  title: string;
-  onAction?: () => void;
-}
 
 export const MyComponent: React.FC<MyComponentProps> = ({ title, onAction }) => {
   const data = useSomeStore((s) => s.data);
@@ -45,13 +43,13 @@ export const MyComponent: React.FC<MyComponentProps> = ({ title, onAction }) => 
 ## Rules
 
 - `React.FC<Props>` for component typing
-- Props interface next to the component, `Props` suffix
+- Props interface in co-located `*.types.ts`, `Props` suffix; `import type` into the UI file
 - Zustand selectors — minimal, subscribe to specific fields: `useStore((s) => s.field)`
 - Event handlers: `handleXxx` naming convention
 - Conditional rendering: `{condition && <Component />}`, not ternaries for JSX blocks
 - Cleanup in useEffect — always return cleanup function for subscriptions
-- Import stores via public API: `from "~/entities/user"`, not `from "~/entities/user/user.model"`
-- Import shared UI via: `from "~/shared/ui"`
+- Import stores from concrete files: `from "~/entities/user/user.model"` (no barrel `index.ts`)
+- Import shared UI from concrete files: `from "~/shared/ui/icon"`, `from "~/shared/ui/button"`, etc.
 
 ## Layout
 

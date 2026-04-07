@@ -1,17 +1,10 @@
 import React from "react";
+import type { BadgeProps, BadgeVariant } from "./badge.types";
 
-const VARIANT_CLASS = {
+const VARIANT_CLASS: Record<BadgeVariant, string> = {
   muted: "bg-bg-elevated text-text-muted border-0",
   unread: "bg-sidebar-unread text-badge-text border-0",
-} as const;
-
-interface BadgeProps {
-  count: number;
-  variant?: keyof typeof VARIANT_CLASS;
-  /** For large numbers (e.g. 458) — slightly rounded rectangle instead of a pill */
-  rounded?: "full" | "md";
-  className?: string;
-}
+};
 
 export const Badge = React.memo<BadgeProps>(
   ({ count, variant = "unread", rounded = "full", className = "" }) => {

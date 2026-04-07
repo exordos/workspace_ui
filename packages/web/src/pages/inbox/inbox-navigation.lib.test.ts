@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { InboxEntry } from "~/entities/inbox";
+import type { InboxEntry } from "~/entities/inbox/inbox.types";
 import { setCurrentOrgRouteIdResolver } from "~/shared/lib/org-route";
 import { buildInboxEntryRoute } from "./inbox-navigation.lib";
 

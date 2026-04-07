@@ -1,4 +1,4 @@
-import { resolveSelectedFolderSidebarLoading } from "./folder-sync.lib";
+import { resolveSelectedFolderSidebarLoading } from "./folder-sync-sidebar-chats.lib";
 
 interface FolderSyncSidebarLoadingState {
   selectedFolderId: string;

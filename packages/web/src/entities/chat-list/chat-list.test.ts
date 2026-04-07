@@ -7,7 +7,8 @@
  * Correctness here is critical because the sidebar is the primary navigation surface.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { ZulipRawMessage } from "~/shared/api/zulip";
+import { setLocale } from "~/i18n/i18n";
+import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import { sortChatsByLastMessage } from "~/shared/lib/chat-sorting";
 import { useUsersStore } from "../user/user.model";
 import { useChatListStore } from "./chat-list.model";
@@ -50,11 +51,36 @@ function dmMsg(overrides: Partial<ZulipRawMessage> = {}): ZulipRawMessage {
   };
 }
 
+/** Unread badge counts when currentUserId is 10 — use for messages that should count as unread. */
+const OTHER_SENDER_ID = 20;
+
 // Verifies all store actions: building entries from messages, live updates,
 // unread tracking, deletion handling, and sort order.
 describe("chatListStore", () => {
   beforeEach(resetStores);
   afterEach(resetStores);
+
+  describe("patchPersonalDmRowLabelsForUser", () => {
+    it("rewrites stale generic DM title after user profile exists in users store", () => {
+      setLocale("en");
+      useChatListStore.getState().setFromMessages([dmMsg()], 10);
+      const dmKey = [...useChatListStore.getState().dmsMap.keys()][0]!;
+      useChatListStore.setState((s) => {
+        const next = new Map(s.dmsMap);
+        const entry = next.get(dmKey);
+        if (!entry) return s;
+        next.set(dmKey, { ...entry, name: "Direct message" });
+        return { dmsMap: next };
+      });
+      useUsersStore.getState().mergeUser({
+        user_id: 20,
+        full_name: "Bob Loaded",
+        email: "bob@t.com",
+      });
+      useChatListStore.getState().patchPersonalDmRowLabelsForUser(20);
+      expect(useChatListStore.getState().dmsMap.get(dmKey)?.name).toBe("Bob Loaded");
+    });
+  });
 
   // Ensures clear() wipes all derived data so instance switching starts clean.
   describe("clear", () => {
@@ -165,9 +191,9 @@ describe("chatListStore", () => {
         .getState()
         .setFromMessages(
           [
-            streamMsg({ id: 1, flags: [] }),
-            streamMsg({ id: 2, flags: ["read"] }),
-            streamMsg({ id: 3, flags: [] }),
+            streamMsg({ id: 1, flags: [], sender_id: OTHER_SENDER_ID }),
+            streamMsg({ id: 2, flags: ["read"], sender_id: OTHER_SENDER_ID }),
+            streamMsg({ id: 3, flags: [], sender_id: OTHER_SENDER_ID }),
           ],
           10,
         );
@@ -219,10 +245,21 @@ describe("chatListStore", () => {
     it("increments unread count for unread stream messages", () => {
       useChatListStore.getState().setFromMessages([streamMsg({ id: 1, flags: ["read"] })], 10);
 
-      useChatListStore.getState().addMessage(streamMsg({ id: 2, flags: [], timestamp: 3000 }));
+      useChatListStore
+        .getState()
+        .addMessage(streamMsg({ id: 2, flags: [], timestamp: 3000, sender_id: OTHER_SENDER_ID }));
 
       const streams = useChatListStore.getState().streams();
       expect(streams[0]!.badge).toBe(1);
+    });
+
+    it("does not increment unread count for own stream messages", () => {
+      useChatListStore.getState().setFromMessages([streamMsg({ id: 1, flags: ["read"] })], 10);
+
+      useChatListStore.getState().addMessage(streamMsg({ id: 2, flags: [], timestamp: 3000, sender_id: 10 }));
+
+      const streams = useChatListStore.getState().streams();
+      expect(streams[0]!.badge).toBeUndefined();
     });
 
     // Location index must be updated for every new message so decrements work later.
@@ -253,12 +290,23 @@ describe("chatListStore", () => {
     it("increments unread count for unread DM messages", () => {
       useChatListStore.setState({ currentUserId: 10 });
 
-      useChatListStore.getState().addMessage(dmMsg({ id: 60, flags: [], timestamp: 3000 }));
-      useChatListStore.getState().addMessage(dmMsg({ id: 61, flags: [], timestamp: 4000 }));
+      useChatListStore.getState().addMessage(dmMsg({ id: 60, flags: [], timestamp: 3000, sender_id: OTHER_SENDER_ID }));
+      useChatListStore.getState().addMessage(dmMsg({ id: 61, flags: [], timestamp: 4000, sender_id: OTHER_SENDER_ID }));
 
       const dms = useChatListStore.getState().dms();
       const dm = dms.find((d) => d.type === "dm");
       expect(dm?.badge).toBeGreaterThanOrEqual(1);
+    });
+
+    it("does not increment unread count for own DM messages", () => {
+      useChatListStore.setState({ currentUserId: 10 });
+
+      useChatListStore.getState().setFromMessages([dmMsg({ id: 59, flags: ["read"], timestamp: 1000 })], 10);
+      useChatListStore.getState().addMessage(dmMsg({ id: 60, flags: [], timestamp: 3000, sender_id: 10 }));
+
+      const dms = useChatListStore.getState().dms();
+      const dm = dms.find((d) => d.type === "dm");
+      expect(dm?.badge).toBeUndefined();
     });
 
     // DM messages also need location tracking for unread decrement.
@@ -331,7 +379,13 @@ describe("chatListStore", () => {
     it("decrements stream topic unread count", () => {
       useChatListStore
         .getState()
-        .setFromMessages([streamMsg({ id: 1, flags: [] }), streamMsg({ id: 2, flags: [] })], 10);
+        .setFromMessages(
+          [
+            streamMsg({ id: 1, flags: [], sender_id: OTHER_SENDER_ID }),
+            streamMsg({ id: 2, flags: [], sender_id: OTHER_SENDER_ID }),
+          ],
+          10,
+        );
 
       expect(useChatListStore.getState().streams()[0]!.badge).toBe(2);
 
@@ -342,7 +396,9 @@ describe("chatListStore", () => {
 
     // Once read, the message must be removed from the index to avoid double-decrement.
     it("removes messageId from location index after decrement", () => {
-      useChatListStore.getState().setFromMessages([streamMsg({ id: 1, flags: [] })], 10);
+      useChatListStore
+        .getState()
+        .setFromMessages([streamMsg({ id: 1, flags: [], sender_id: OTHER_SENDER_ID })], 10);
 
       useChatListStore.getState().decrementUnreadForMessages([1]);
 
@@ -362,7 +418,9 @@ describe("chatListStore", () => {
 
     // Empty array is a valid input from the event loop — must be a safe no-op.
     it("handles empty messageIds array", () => {
-      useChatListStore.getState().setFromMessages([streamMsg({ id: 1, flags: [] })], 10);
+      useChatListStore
+        .getState()
+        .setFromMessages([streamMsg({ id: 1, flags: [], sender_id: OTHER_SENDER_ID })], 10);
 
       useChatListStore.getState().decrementUnreadForMessages([]);
 
@@ -374,7 +432,10 @@ describe("chatListStore", () => {
       useChatListStore
         .getState()
         .setFromMessages(
-          [dmMsg({ id: 50, flags: [] }), dmMsg({ id: 51, flags: [], timestamp: 3000 })],
+          [
+            dmMsg({ id: 50, flags: [], sender_id: OTHER_SENDER_ID }),
+            dmMsg({ id: 51, flags: [], timestamp: 3000, sender_id: OTHER_SENDER_ID }),
+          ],
           10,
         );
 
@@ -390,7 +451,13 @@ describe("chatListStore", () => {
     it("decrements stream topic unread count by explicit amount", () => {
       useChatListStore
         .getState()
-        .setFromMessages([streamMsg({ id: 1, flags: [] }), streamMsg({ id: 2, flags: [] })], 10);
+        .setFromMessages(
+          [
+            streamMsg({ id: 1, flags: [], sender_id: OTHER_SENDER_ID }),
+            streamMsg({ id: 2, flags: [], sender_id: OTHER_SENDER_ID }),
+          ],
+          10,
+        );
 
       useChatListStore.getState().decrementUnreadForTopic(5, "topic1", 1);
 
@@ -398,7 +465,9 @@ describe("chatListStore", () => {
     });
 
     it("clamps stream topic unread count to zero", () => {
-      useChatListStore.getState().setFromMessages([streamMsg({ id: 1, flags: [] })], 10);
+      useChatListStore
+        .getState()
+        .setFromMessages([streamMsg({ id: 1, flags: [], sender_id: OTHER_SENDER_ID })], 10);
 
       useChatListStore.getState().decrementUnreadForTopic(5, "topic1", 10);
 
@@ -410,7 +479,10 @@ describe("chatListStore", () => {
       useChatListStore
         .getState()
         .setFromMessages(
-          [dmMsg({ id: 50, flags: [] }), dmMsg({ id: 51, flags: [], timestamp: 3000 })],
+          [
+            dmMsg({ id: 50, flags: [], sender_id: OTHER_SENDER_ID }),
+            dmMsg({ id: 51, flags: [], timestamp: 3000, sender_id: OTHER_SENDER_ID }),
+          ],
           10,
         );
 
@@ -426,7 +498,9 @@ describe("chatListStore", () => {
     });
 
     it("clamps DM unread count to zero", () => {
-      useChatListStore.getState().setFromMessages([dmMsg({ id: 50, flags: [] })], 10);
+      useChatListStore
+        .getState()
+        .setFromMessages([dmMsg({ id: 50, flags: [], sender_id: OTHER_SENDER_ID })], 10);
 
       const dmLocation = useChatListStore.getState().messageIdToLocation.get(50);
       expect(dmLocation?.type).toBe("dm");
@@ -455,7 +529,9 @@ describe("chatListStore", () => {
 
     // Empty array must be a safe no-op.
     it("handles empty messageIds array", () => {
-      useChatListStore.getState().setFromMessages([streamMsg({ id: 1, flags: [] })], 10);
+      useChatListStore
+        .getState()
+        .setFromMessages([streamMsg({ id: 1, flags: [], sender_id: OTHER_SENDER_ID })], 10);
 
       useChatListStore.getState().incrementUnreadForMessages([]);
 
@@ -464,7 +540,9 @@ describe("chatListStore", () => {
 
     // Unknown IDs may come from stale events — must not crash or change state.
     it("is a no-op for unknown message ids", () => {
-      useChatListStore.getState().setFromMessages([streamMsg({ id: 1, flags: [] })], 10);
+      useChatListStore
+        .getState()
+        .setFromMessages([streamMsg({ id: 1, flags: [], sender_id: OTHER_SENDER_ID })], 10);
 
       useChatListStore.getState().incrementUnreadForMessages([999]);
 

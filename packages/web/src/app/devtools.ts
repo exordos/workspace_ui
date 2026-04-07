@@ -13,13 +13,13 @@
  *   __dev__.theme.setPalette("blue-cold")
  */
 
-import { useCallParticipantsStore } from "~/entities/call";
-import { useChatListStore } from "~/entities/chat-list";
-import { useInstancesStore } from "~/entities/instance";
-import { useCurrentChatMessagesStore } from "~/entities/message";
-import { useThemeStore } from "~/entities/theme";
-import { useUsersStore } from "~/entities/user";
-import { t, setLocale, getLocale, getSupportedLocales } from "~/i18n";
+import { useCallParticipantsStore } from "~/entities/call/call.model";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useInstancesStore } from "~/entities/instance/instance.model";
+import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
+import { useThemeStore } from "~/entities/theme/theme.model";
+import { useUsersStore } from "~/entities/user/user.model";
+import { t, setLocale, getLocale, getSupportedLocales } from "~/i18n/i18n";
 import { env } from "~/shared/lib/env";
 import {
   getLogHistory,
@@ -29,7 +29,7 @@ import {
   type LogEntry,
 } from "~/shared/lib/logger";
 import { perf } from "~/shared/lib/perf";
-import { useSidebarConfigStore } from "~/widgets/sidebar";
+import { useSidebarConfigStore } from "~/widgets/sidebar/sidebar-config.model";
 
 interface DevTools {
   stores: {

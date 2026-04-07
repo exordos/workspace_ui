@@ -1,25 +1,13 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { t } from "~/i18n";
-import { Icon } from "~/shared/ui";
+import { t } from "~/i18n/i18n";
+import { Icon } from "~/shared/ui/icon";
 import {
   FOLDER_COLOR_PRESETS,
   folderColorValueToCssHex,
   folderColorValueToCssRgba,
 } from "./folder-colors";
-
-interface UpdateFolderPayload {
-  name: string;
-  backgroundColor: number;
-}
-
-interface UpdateFolderModalProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  initialName: string;
-  initialBackgroundColor?: number;
-  onSave: (payload: UpdateFolderPayload) => Promise<boolean>;
-}
+import type { UpdateFolderModalProps } from "./update-folder-modal.types";
 
 export const UpdateFolderModal: React.FC<UpdateFolderModalProps> = ({
   open,
@@ -91,7 +79,7 @@ export const UpdateFolderModal: React.FC<UpdateFolderModalProps> = ({
       <Dialog.Portal>
         <Dialog.Overlay className="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-overlay bg-black/50" />
         <Dialog.Content
-          className="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed left-1/2 top-[20%] z-modal w-full max-w-[520px] -translate-x-1/2 rounded-xl border border-border-subtle bg-bg-elevated p-6 shadow-xl"
+          className="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed left-1/2 top-[20%] z-modal w-full max-w-modal-manage-folder -translate-x-1/2 rounded-xl border border-border-subtle bg-bg-elevated p-6 shadow-xl"
           onCloseAutoFocus={(e) => e.preventDefault()}
         >
           <Dialog.Title className="mb-4 text-base font-semibold text-text-primary">

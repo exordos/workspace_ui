@@ -1,94 +1,22 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { formatUserStatusLabel, useUsersStore } from "~/entities/user";
-import { t } from "~/i18n";
-import { fetchMessages, type MockMessage } from "~/shared/api/zulip";
+import React, { useCallback, useEffect, useMemo, useRef } from "react";
+import { useUsersStore } from "~/entities/user/user.model";
+import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
+import { t } from "~/i18n/i18n";
+import { fetchMessages } from "~/shared/api/zulip-messages";
+import type { MockMessage } from "~/shared/api/zulip.types";
 import { getPresenceState } from "~/shared/lib/format";
-import { stripHtml } from "~/shared/lib/html";
-import { Icon, PresenceIndicator, ScrollArea } from "~/shared/ui";
-
-const DEBOUNCE_MS = 300;
-const MAX_USER_RESULTS = 20;
-
-const SearchResultItem = React.memo(function SearchResultItem({
-  msg,
-  onSelect,
-}: {
-  msg: MockMessage;
-  onSelect: () => void;
-}) {
-  const senderName = useUsersStore((s) => s.getDisplayName(msg.sender_id));
-  const displayName = senderName !== "Unknown" ? senderName : msg.sender_full_name;
-  return (
-    <li>
-      <div className="hover:bg-bg/60 group flex items-start gap-2 rounded-lg px-3 py-2 transition-colors">
-        <button type="button" onClick={onSelect} className="min-w-0 flex-1 text-left text-sm">
-          <div className="mb-0.5 flex items-center gap-2 text-[11px] text-text-muted">
-            <span>{displayName}</span>
-            <span>·</span>
-            <span>
-              #{msg.channel ?? "?"} › #{msg.subject}
-            </span>
-          </div>
-          <p className="line-clamp-2 truncate text-text-primary">{stripHtml(msg.content)}</p>
-        </button>
-        <button
-          type="button"
-          onClick={onSelect}
-          className="hover:bg-bg-elevated/70 mt-0.5 rounded p-1 text-text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:text-text-primary"
-          aria-label={t("message.openInChat")}
-          title={t("message.openInChat")}
-        >
-          <Icon name="newWindow" size={16} className="text-current" />
-        </button>
-      </div>
-    </li>
-  );
-});
-
-const UserResultItem = React.memo(function UserResultItem({
-  userId,
-  fullName,
-  email,
-  statusLabel,
-  presenceState,
-  onSelect,
-}: {
-  userId: number;
-  fullName: string;
-  email?: string;
-  statusLabel?: string;
-  presenceState: "active" | "idle" | "offline" | null;
-  onSelect: () => void;
-}) {
-  const secondaryText = statusLabel ?? email ?? "";
-  return (
-    <li>
-      <button
-        type="button"
-        onClick={onSelect}
-        className="hover:bg-bg/60 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors"
-        aria-label={`${fullName} (${email ?? userId})`}
-      >
-        <PresenceIndicator status={presenceState} size="sm" />
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium text-text-primary">{fullName}</span>
-          {secondaryText.length > 0 && (
-            <span className="block truncate text-[11px] text-text-secondary">{secondaryText}</span>
-          )}
-        </span>
-        <span className="ml-2 shrink-0 text-[11px] text-text-muted">#{userId}</span>
-      </button>
-    </li>
-  );
-});
-
-interface SearchModalProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onSelectMessage: (msg: MockMessage) => void;
-  onSelectUser?: (userId: number) => void;
-}
+import { Icon } from "~/shared/ui/icon";
+import { ScrollArea } from "~/shared/ui/scroll-area";
+import { SEARCH_INPUT_DEBOUNCE_MS } from "~/shared/config/constants";
+import { filterSearchMessages } from "./search-modal-filters.lib";
+import {
+  MAX_USER_RESULTS,
+  SearchResultItem,
+  UserResultItem,
+} from "./search-modal-result-items.ui";
+import { useSearchModalStore } from "./search-modal.model";
+import type { SearchModalProps } from "./search-modal.types";
 
 export const SearchModal: React.FC<SearchModalProps> = ({
   open,
@@ -96,12 +24,19 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   onSelectMessage,
   onSelectUser,
 }) => {
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<MockMessage[]>([]);
-  const [streamFilter, setStreamFilter] = useState("");
-  const [senderFilter, setSenderFilter] = useState("");
-  const [dateFilter, setDateFilter] = useState("");
-  const [loading, setLoading] = useState(false);
+  const query = useSearchModalStore((s) => s.query);
+  const setQuery = useSearchModalStore((s) => s.setQuery);
+  const results = useSearchModalStore((s) => s.results);
+  const setResults = useSearchModalStore((s) => s.setResults);
+  const streamFilter = useSearchModalStore((s) => s.streamFilter);
+  const setStreamFilter = useSearchModalStore((s) => s.setStreamFilter);
+  const senderFilter = useSearchModalStore((s) => s.senderFilter);
+  const setSenderFilter = useSearchModalStore((s) => s.setSenderFilter);
+  const dateFilter = useSearchModalStore((s) => s.dateFilter);
+  const setDateFilter = useSearchModalStore((s) => s.setDateFilter);
+  const loading = useSearchModalStore((s) => s.loading);
+  const setLoading = useSearchModalStore((s) => s.setLoading);
+  const resetStore = useSearchModalStore((s) => s.reset);
   const inputRef = useRef<HTMLInputElement>(null);
   const users = useUsersStore((s) => s.users);
 
@@ -123,7 +58,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [setLoading, setResults]);
 
   const userResults = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -146,43 +81,24 @@ export const SearchModal: React.FC<SearchModalProps> = ({
       }));
   }, [query, users]);
 
-  const filteredMessageResults = useMemo(() => {
-    const normalizedStreamFilter = streamFilter.trim().toLowerCase();
-    const normalizedSenderFilter = senderFilter.trim().toLowerCase();
-    const normalizedDateFilter = dateFilter.trim();
-    return results.filter((msg) => {
-      const channelName = (msg.channel ?? "").toLowerCase();
-      const messageSender = (msg.sender_full_name ?? "").toLowerCase();
-      const senderFromStore = (users.get(msg.sender_id)?.full_name ?? "").toLowerCase();
-      const matchesStream =
-        normalizedStreamFilter.length === 0 || channelName.includes(normalizedStreamFilter);
-      const matchesSender =
-        normalizedSenderFilter.length === 0 ||
-        messageSender.includes(normalizedSenderFilter) ||
-        senderFromStore.includes(normalizedSenderFilter);
-      const messageDate = new Date(msg.timestamp * 1000).toISOString().slice(0, 10);
-      const matchesDate = normalizedDateFilter.length === 0 || messageDate === normalizedDateFilter;
-      return matchesStream && matchesSender && matchesDate;
-    });
-  }, [dateFilter, results, senderFilter, streamFilter, users]);
+  const filteredMessageResults = useMemo(
+    () => filterSearchMessages(results, users, streamFilter, senderFilter, dateFilter),
+    [dateFilter, results, senderFilter, streamFilter, users],
+  );
 
   useEffect(() => {
     if (!open) return;
     const timer = setTimeout(() => {
       void runSearch(query);
-    }, DEBOUNCE_MS);
+    }, SEARCH_INPUT_DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [query, open, runSearch]);
 
   useEffect(() => {
     if (!open) {
-      setQuery("");
-      setResults([]);
-      setStreamFilter("");
-      setSenderFilter("");
-      setDateFilter("");
+      resetStore();
     }
-  }, [open]);
+  }, [open, resetStore]);
 
   useEffect(() => {
     if (!open) return;
@@ -254,7 +170,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
               type="date"
               value={dateFilter}
               onChange={(event) => setDateFilter(event.target.value)}
-              className="rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none transition-colors focus-visible:bg-bg-elevated focus-visible:outline-none"
+              className="rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none transition-colors placeholder:text-text-muted focus-visible:bg-bg-elevated focus-visible:outline-none"
             />
           </div>
           <ScrollArea className="flex-1 px-3 py-2">

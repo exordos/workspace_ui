@@ -6,7 +6,7 @@
  * Also listens to OS color-scheme changes when mode is "system".
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useInstancesStore } from "~/entities/instance";
+import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useThemeStore } from "./theme.model";
 
 function resetInstanceScope(): void {

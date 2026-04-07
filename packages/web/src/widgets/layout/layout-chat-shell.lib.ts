@@ -1,5 +1,5 @@
 import { extractOrgRouteFromPathname } from "~/shared/lib/org-route";
-import type { TopBarSection } from "~/widgets/top-bar";
+import type { TopBarSection } from "~/widgets/top-bar/top-bar.types";
 
 const FULL_PAGE_CHAT_SHELL_EXCLUDED_ROUTES = new Set(["/settings/logs", "/logs"]);
 

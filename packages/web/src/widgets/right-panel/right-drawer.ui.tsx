@@ -1,11 +1,7 @@
 import React from "react";
-import { t } from "~/i18n";
-import { Icon } from "~/shared/ui";
-
-interface RightDrawerProps {
-  onClose: () => void;
-  children: React.ReactNode;
-}
+import { t } from "~/i18n/i18n";
+import { Icon } from "~/shared/ui/icon";
+import type { RightDrawerProps } from "./right-drawer.types";
 
 /** Right-side drawer next to the content. Any content can be placed inside (channel info, user info, settings, etc.). */
 export const RightDrawer: React.FC<RightDrawerProps> = ({ onClose, children }) => {

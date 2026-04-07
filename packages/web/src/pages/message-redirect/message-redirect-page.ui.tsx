@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { useChatListStore } from "~/entities/chat-list";
-import { useInstancesStore } from "~/entities/instance";
-import { t } from "~/i18n";
-import { fetchMessageById, getCurrentUser } from "~/shared/api/zulip";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useInstancesStore } from "~/entities/instance/instance.model";
+import { t } from "~/i18n/i18n";
+import { fetchMessageById } from "~/shared/api/zulip-messages";
+import { getCurrentUser } from "~/shared/api/zulip-users";
 import { buildRouteFromMessage, findInstanceIdByRealmUri } from "~/shared/lib/push-click";
 import { isValidUrl } from "~/shared/lib/validation";
-import { PageLoader } from "~/shared/ui";
+import { PageLoader } from "~/shared/ui/error-boundary";
 
 const DECIMAL_MESSAGE_ID_RE = /^\d+$/;
 

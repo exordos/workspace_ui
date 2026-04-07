@@ -1,12 +1,13 @@
 import React, { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { t } from "~/i18n";
+import { t } from "~/i18n/i18n";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { env } from "~/shared/lib/env";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { getRuntime } from "~/shared/lib/pwa";
 import { isWebView } from "~/shared/lib/webview";
-import { Icon, ScrollArea } from "~/shared/ui";
+import { Icon } from "~/shared/ui/icon";
+import { ScrollArea } from "~/shared/ui/scroll-area";
 
 const APP_VERSION = import.meta.env.VITE_APP_VERSION ?? "dev";
 

@@ -1,9 +1,9 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useFeedStore } from "~/entities/feed";
-import type * as FeedModule from "~/entities/feed";
-import { useInstancesStore } from "~/entities/instance";
+import { useFeedStore } from "~/entities/feed/feed.model";
+import { useInstancesStore } from "~/entities/instance/instance.model";
+import type { MockMessage } from "~/shared/api/zulip.types";
 import { createMessage } from "~/test/factories";
 import { FeedPage } from "./feed-page.ui";
 import type * as ReactRouterDom from "react-router-dom";
@@ -19,8 +19,10 @@ vi.mock("react-router-dom", async () => {
   };
 });
 
-vi.mock("~/entities/feed", async () => {
-  const actual = await vi.importActual<typeof FeedModule>("~/entities/feed");
+vi.mock("~/entities/feed/feed.api", async () => {
+  const actual = await vi.importActual<typeof import("~/entities/feed/feed.api")>(
+    "~/entities/feed/feed.api",
+  );
   return {
     ...actual,
     fetchFeedMessages,
@@ -243,5 +245,132 @@ describe("FeedPage forward action", () => {
     expect(row).toHaveClass("border");
     expect(row).toHaveClass("border-border-subtle");
     expect(row).toHaveClass("bg-bg-elevated/60");
+  });
+
+  it("renders cached feed immediately while newest refresh is in flight", () => {
+    useInstancesStore.setState({
+      instances: [
+        {
+          id: "instance-1",
+          realm: "https://zulip.example.com",
+          email: "user@example.com",
+          apiKey: "api-key",
+        },
+      ],
+      currentInstanceId: "instance-1",
+      unreadCountsByInstance: {},
+    });
+
+    useFeedStore.setState({
+      instanceId: "instance-1",
+      messages: [
+        createMessage({
+          id: 99,
+          sender_id: 42,
+          sender_full_name: "Alice",
+          stream_id: 10,
+          subject: "cache",
+          content: "Cached feed item",
+          timestamp: 1,
+          type: "stream",
+          display_recipient: "engineering",
+          channel: "engineering",
+        }) as MockMessage,
+      ],
+      isInitialLoading: false,
+      isRefreshing: false,
+      isLoadingMore: false,
+      isAllLoaded: false,
+      lastMessageId: 99,
+      requestVersion: 0,
+      lastLoadedAt: Date.now(),
+      error: null,
+    });
+
+    fetchFeedMessages.mockResolvedValue({
+      messages: [
+        createMessage({
+          id: 99,
+          sender_id: 42,
+          sender_full_name: "Alice",
+          stream_id: 10,
+          subject: "cache",
+          content: "Cached feed item",
+          timestamp: 1,
+          type: "stream",
+          display_recipient: "engineering",
+          channel: "engineering",
+        }),
+      ],
+      foundOldest: true,
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/feed"]}>
+        <Routes>
+          <Route path="/feed" element={<FeedPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Cached feed item")).toBeInTheDocument();
+  });
+
+  it("shows scroll-to-bottom button when feed list is away from bottom and scrolls down on click", async () => {
+    useInstancesStore.setState({
+      instances: [
+        {
+          id: "instance-1",
+          realm: "https://zulip.example.com",
+          email: "user@example.com",
+          apiKey: "api-key",
+        },
+      ],
+      currentInstanceId: "instance-1",
+      unreadCountsByInstance: {},
+    });
+
+    const message = createMessage({
+      id: 59,
+      sender_id: 42,
+      sender_full_name: "Alice",
+      stream_id: 10,
+      subject: "scroll",
+      content: "Scroll button target",
+      timestamp: 1,
+      type: "stream",
+      display_recipient: "engineering",
+      channel: "engineering",
+    });
+
+    fetchFeedMessages.mockResolvedValue({
+      messages: [message],
+      foundOldest: true,
+    });
+
+    const { container } = render(
+      <MemoryRouter initialEntries={["/feed"]}>
+        <Routes>
+          <Route path="/feed" element={<FeedPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Scroll button target")).toBeInTheDocument();
+    });
+
+    const list = container.querySelector("ul") as HTMLUListElement;
+    Object.defineProperty(list, "scrollHeight", { configurable: true, value: 1200 });
+    Object.defineProperty(list, "clientHeight", { configurable: true, value: 400 });
+    Object.defineProperty(list, "scrollTop", { configurable: true, writable: true, value: 120 });
+
+    fireEvent.scroll(list);
+
+    const scrollButton = screen.getByRole("button", { name: /scroll to bottom/i });
+    expect(scrollButton).toBeInTheDocument();
+
+    fireEvent.click(scrollButton);
+    expect(list.scrollTop).toBe(1200);
   });
 });

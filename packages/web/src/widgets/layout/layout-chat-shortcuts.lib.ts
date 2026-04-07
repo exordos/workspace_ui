@@ -1,15 +1,7 @@
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import type { SidebarChat } from "~/shared/types/sidebar-chat";
-import { slugForStream } from "~/widgets/sidebar";
-
-type ChatShortcutDirection = "next" | "prev";
-
-interface ResolveChatShortcutRouteOptions {
-  sidebarChats: SidebarChat[];
-  direction: ChatShortcutDirection;
-  activeStreamSlug?: string | null;
-  activeDmIdParam?: string | null;
-}
+import { slugForStream } from "~/widgets/sidebar/sidebar.lib";
+import type { ResolveChatShortcutRouteOptions } from "./layout-chat-shortcuts.types";
 
 function toChatRoute(chat: SidebarChat): string {
   if (chat.type === "dm") {

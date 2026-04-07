@@ -225,6 +225,10 @@
     "createCall": "Create call",
     "createCallLink": "Create call link",
     "joinCall": "Join call",
+    "incomingCall": "Incoming call",
+    "incomingFrom": "{{name}} is calling",
+    "accept": "Accept",
+    "decline": "Decline",
     "recentCalls": "Recent Jitsi calls",
     "noRecentCalls": "No recent Jitsi calls yet",
     "loadRecentCallsError": "Failed to load recent calls"
@@ -539,6 +543,7 @@
     "pinChat": "Pin",
     "unpinChat": "Unpin",
     "addToFolder": "Add to folder",
+    "loadingFolders": "Loading folders…",
     "noFoldersAvailable": "No folders available"
   },
   "sticker": {

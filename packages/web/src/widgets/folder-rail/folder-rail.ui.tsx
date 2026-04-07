@@ -1,38 +1,20 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import React, { useCallback, useMemo, useState } from "react";
-import {
-  createFolder,
-  deleteFolder,
-  CreateFolderModal,
-  updateFolder,
-  UpdateFolderModal,
-} from "~/features/manage-folders";
-import { useSettingsStore } from "~/features/settings";
-import { t } from "~/i18n";
+import { createFolder, deleteFolder, updateFolder } from "~/features/manage-folders/manage-folders.api";
+import { CreateFolderModal } from "~/features/manage-folders/create-folder-modal.ui";
+import { UpdateFolderModal } from "~/features/manage-folders/update-folder-modal.ui";
+import { useSettingsStore } from "~/features/settings/settings.model";
+import { t } from "~/i18n/i18n";
 import { FolderRailHorizontalView } from "./folder-rail-horizontal-view.ui";
 import { FolderRailVerticalView } from "./folder-rail-vertical-view.ui";
-import type { FolderRailFolder, FolderRailLayout } from "./folder-rail.types";
-import type { IndexedFolderEntry } from "./folder-rail.utils";
+import type { FolderRailFolder, FolderRailLayout, FolderRailProps } from "./folder-rail.types";
+import type { IndexedFolderEntry } from "./folder-rail.lib";
 
-export type { FolderRailFolder, FolderRailLayout } from "./folder-rail.types";
-
-/** Публичные пропсы `FolderRail` (контракт должен оставаться стабильным для layout/sidebar). */
-interface FolderRailProps {
-  /** Полный список папок в текущем порядке отображения. */
-  folders: FolderRailFolder[];
-  /** Id текущей выбранной папки. */
-  selectedFolderId: string;
-  /** Обработчик выбора папки. */
-  onSelectFolder: (id: string) => void;
-  /** Legacy-prop, пока сохраняем для обратной совместимости API. */
-  onOrderPinning?: (id: string) => void;
-  /** Внешний переключатель layout; если не передан, используется settings store. */
-  onToggleLayout?: () => void;
-  /** Сигнал наверх, что список папок изменился (create/rename/delete). */
-  onFoldersChanged?: () => void;
-  /** Текущий режим отображения rail. */
-  layout?: FolderRailLayout;
-}
+export type {
+  FolderRailFolder,
+  FolderRailFoldersChangedDetail,
+  FolderRailLayout,
+} from "./folder-rail.types";
 
 export const FolderRail: React.FC<FolderRailProps> = ({
   folders,
@@ -58,7 +40,13 @@ export const FolderRail: React.FC<FolderRailProps> = ({
         if (!result) {
           return false;
         }
-        onFoldersChanged?.();
+        onFoldersChanged?.({
+          created: {
+            id: result.id,
+            title: result.title,
+            backgroundColor: result.backgroundColor,
+          },
+        });
         return true;
       } catch {
         return false;
@@ -101,7 +89,7 @@ export const FolderRail: React.FC<FolderRailProps> = ({
       if (!deleted) {
         return;
       }
-      onFoldersChanged?.();
+      onFoldersChanged?.({ deletedFolderId: deletingFolder.id });
       setDeletingFolder(null);
     } catch {
       // Keep the dialog open so user can retry.

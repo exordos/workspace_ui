@@ -1,7 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type * as ZulipApiModule from "~/shared/api/zulip";
 import { createMessage } from "~/test/factories";
 import { CallsPage } from "./calls-page.ui";
 import type * as ReactRouterDom from "react-router-dom";
@@ -17,8 +16,10 @@ vi.mock("react-router-dom", async () => {
   };
 });
 
-vi.mock("~/shared/api/zulip", async () => {
-  const actual = await vi.importActual<typeof ZulipApiModule>("~/shared/api/zulip");
+vi.mock("~/shared/api/zulip-messages", async () => {
+  const actual = await vi.importActual<typeof import("~/shared/api/zulip-messages")>(
+    "~/shared/api/zulip-messages",
+  );
   return {
     ...actual,
     fetchAllMessagesPage,

@@ -5,269 +5,70 @@
  * for reactions, flags, content edits, and deletions.
  */
 import { create } from "zustand";
+import { useUsersStore } from "~/entities/user/user.model";
 import { getCurrentInstance } from "~/shared/api/client";
-import type {
-  MockMessage,
-  MockMessageDeliveryStatus,
-  Reaction,
-  ZulipRawMessage,
+import {
+  fetchDmMessages,
+  fetchMessages,
+  fetchMessagesWithNarrow,
+  fetchMessagesWithNarrowPage,
 } from "~/shared/api/zulip";
-import { dmConversationKey } from "~/shared/lib/dm-key";
+import type { MockMessage, Reaction } from "~/shared/api/zulip.types";
+import {
+  deleteMessagesByIds,
+  getChatMessagesAscending,
+  getChatMeta,
+  patchMessageContentInCache,
+  patchMessageFlagsInCache,
+  patchMessageReactionInCache,
+  putSingleMessage,
+  updateChatMetaPatch,
+  upsertChatMessages,
+} from "~/shared/lib/message-cache-db";
+import {
+  logMessageFlow,
+  summarizeChatContextForLog,
+} from "~/shared/lib/message-flow-debug.lib";
+import { createLogger } from "~/shared/lib/logger";
+import {
+  computeHasNewerAfterLoadNewerIdbPage,
+  computeHasOlderAfterLoadOlderIdbPage,
+} from "~/shared/lib/message-pagination-boundary.lib";
+import { chatKeyFromContext, chatKeyFromMockMessage } from "~/shared/lib/message-cache-keys.lib";
+import { zulipMessageCacheWindowN } from "~/shared/lib/zulip-message-window.lib";
+import { parseDmKeyToUserIds } from "./message-chat-context.lib";
+import { persistChatMessagesToIndexedDb } from "./message-local-cache.lib";
+import { deriveFocusedPaginationFlags } from "./message-pagination-helpers.lib";
+import type { CurrentChatContext, CurrentChatMessagesState } from "./message.model.types";
 
-export type CurrentChatContext =
-  | { type: "stream"; streamId: number; streamName: string; topic: string }
-  | { type: "dm"; dmKey: string };
+export type { CurrentChatContext } from "./message.model.types";
+export { contextFromMessage, isMessageForContext } from "./message-chat-context.lib";
 
-interface CurrentChatMessagesState {
-  context: CurrentChatContext | null;
-  messages: MockMessage[];
-  isLoadingMore: boolean;
-  hasOlderMessages: boolean;
-  hasNewerMessages: boolean;
-  setContext: (context: CurrentChatContext | null) => void;
-  setMessages: (messages: MockMessage[]) => void;
-  prependMessages: (msgs: MockMessage[]) => void;
-  appendMessages: (msgs: MockMessage[]) => void;
-  appendMessage: (msg: MockMessage) => void;
-  removeMessage: (messageId: number) => void;
-  removeMessages: (messageIds: number[]) => void;
-  updateMessageReaction: (messageId: number, reaction: Reaction, op: "add" | "remove") => void;
-  updateMessageFlags: (messageIds: number[], flag: string, op: "add" | "remove") => void;
-  updateMessageContent: (messageId: number, content: string) => void;
-  setIsLoadingMore: (loading: boolean) => void;
-  setHasOlderMessages: (has: boolean) => void;
-  setHasNewerMessages: (has: boolean) => void;
-}
+const loadOlderLog = createLogger("messages:loadOlder");
 
-export function isMessageForContext(
-  msg: {
-    type?: string;
-    stream_id?: number | null;
-    subject?: string;
-    display_recipient?: string | { id: number }[];
-  },
-  context: CurrentChatContext | null,
-  currentUserId: number | null,
-): boolean {
-  if (!context) return false;
-  if (context.type === "stream") {
-    return (
-      msg.type === "stream" &&
-      msg.stream_id === context.streamId &&
-      ((msg.subject ?? "").trim() || "general") === context.topic
-    );
+function mergeUsersFromMessages(messages: readonly MockMessage[]): void {
+  const store = useUsersStore.getState();
+  for (const msg of messages) {
+    store.mergeUser({
+      user_id: msg.sender_id,
+      full_name: msg.sender_full_name ?? "",
+    });
   }
-  if (context.type === "dm") {
-    if (msg.type !== "private" || !Array.isArray(msg.display_recipient)) return false;
-    const key = dmConversationKey(msg.display_recipient, currentUserId);
-    return key === context.dmKey;
-  }
-  return false;
 }
 
-export function contextFromMessage(
-  msg: ZulipRawMessage,
-  currentUserId: number | null,
-): CurrentChatContext | null {
-  if (msg.type === "stream" && msg.stream_id != null) {
-    const name =
-      typeof msg.display_recipient === "string" ? msg.display_recipient : String(msg.stream_id);
-    const topic = (msg.subject ?? "").trim() || "general";
-    return { type: "stream", streamId: msg.stream_id, streamName: name, topic };
-  }
-  if (msg.type === "private" && Array.isArray(msg.display_recipient)) {
-    const dmKey = dmConversationKey(msg.display_recipient, currentUserId);
-    return { type: "dm", dmKey };
-  }
-  return null;
-}
-
-const CURRENT_CHAT_CACHE_KEY = "workspace-offline-current-chat-messages-v1";
-const MAX_MESSAGES_PER_CONTEXT = 200;
-const MAX_CACHED_CONTEXTS = 25;
-
-interface MessageCacheEntry {
-  updatedAt: number;
-  messages: MockMessage[];
-}
-
-type MessageCache = Record<string, MessageCacheEntry>;
-
-interface StoredMessageCandidate {
-  id: number;
-  sender_id: number;
-  sender_full_name: string;
-  stream_id: number | null;
-  subject: string;
-  content: string;
-  timestamp: number;
-  display_recipient?: MockMessage["display_recipient"];
-  channel?: string;
-  flags?: string[];
-  reactions?: Reaction[];
-  delivery_status?: MockMessageDeliveryStatus;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === "string");
-}
-
-function isReaction(value: unknown): value is Reaction {
-  return (
-    isRecord(value) &&
-    typeof value.emoji_name === "string" &&
-    typeof value.emoji_code === "string" &&
-    typeof value.reaction_type === "string" &&
-    typeof value.user_id === "number"
-  );
-}
-
-function isReactionArray(value: unknown): value is Reaction[] {
-  return Array.isArray(value) && value.every(isReaction);
-}
-
-function isMockMessageDeliveryStatus(value: unknown): value is MockMessageDeliveryStatus {
-  return value === "sending" || value === "failed" || value === "sent";
-}
-
-function isDisplayRecipient(value: unknown): value is MockMessage["display_recipient"] {
-  if (typeof value === "string") return true;
-  if (!Array.isArray(value)) return false;
-  return value.every((recipient) => {
-    if (!isRecord(recipient)) return false;
-    if (typeof recipient.id !== "number") return false;
-    if (typeof recipient.full_name !== "string") return false;
-    if (recipient.email != null && typeof recipient.email !== "string") return false;
-    if (recipient.avatar_url != null && typeof recipient.avatar_url !== "string") return false;
-    return true;
+function schedulePersistFullChatMessages(get: () => CurrentChatMessagesState): void {
+  if (!persistChatMessagesToIndexedDb()) return;
+  const inst = getCurrentInstance()?.id;
+  const ctx = get().context;
+  const msgs = get().messages;
+  if (!inst || !ctx || msgs.length === 0) return;
+  const windowN = zulipMessageCacheWindowN(ctx);
+  void upsertChatMessages({
+    instanceId: inst,
+    chatKey: chatKeyFromContext(ctx),
+    messages: msgs,
+    windowSizeN: windowN,
   });
-}
-
-function isStoredMessageCandidate(value: unknown): value is StoredMessageCandidate {
-  if (!isRecord(value)) return false;
-  if (typeof value.id !== "number") return false;
-  if (typeof value.sender_id !== "number") return false;
-  if (typeof value.sender_full_name !== "string") return false;
-  if (!(typeof value.stream_id === "number" || value.stream_id === null)) return false;
-  if (typeof value.subject !== "string") return false;
-  if (typeof value.content !== "string") return false;
-  if (typeof value.timestamp !== "number") return false;
-  if (value.display_recipient != null && !isDisplayRecipient(value.display_recipient)) return false;
-  if (value.channel != null && typeof value.channel !== "string") return false;
-  if (value.flags != null && !isStringArray(value.flags)) return false;
-  if (value.reactions != null && !isReactionArray(value.reactions)) return false;
-  if (value.delivery_status != null && !isMockMessageDeliveryStatus(value.delivery_status))
-    return false;
-  return true;
-}
-
-function normalizeStoredMessages(value: unknown): MockMessage[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter(isStoredMessageCandidate).map((message) => ({
-    id: message.id,
-    sender_id: message.sender_id,
-    sender_full_name: message.sender_full_name,
-    stream_id: message.stream_id,
-    subject: message.subject,
-    content: message.content,
-    timestamp: message.timestamp,
-    display_recipient: message.display_recipient,
-    channel: message.channel,
-    flags: message.flags,
-    reactions: message.reactions,
-    delivery_status: message.delivery_status,
-  }));
-}
-
-function getStorage(): Storage | null {
-  if (typeof window === "undefined") return null;
-  return window.localStorage;
-}
-
-function getMessageCacheStorageKey(): string {
-  const instanceId = getCurrentInstance()?.id ?? "global";
-  return `${CURRENT_CHAT_CACHE_KEY}:${instanceId}`;
-}
-
-function getContextCacheKey(context: CurrentChatContext): string {
-  if (context.type === "stream") {
-    return `stream:${context.streamId}:${context.topic}`;
-  }
-  return `dm:${context.dmKey}`;
-}
-
-function loadMessageCache(storage: Storage, storageKey: string): MessageCache {
-  try {
-    const raw = storage.getItem(storageKey);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    if (!isRecord(parsed)) return {};
-
-    const cache: MessageCache = {};
-    for (const [key, value] of Object.entries(parsed)) {
-      if (!isRecord(value)) continue;
-      const messages = normalizeStoredMessages(value.messages);
-      if (messages.length === 0) continue;
-      const updatedAt = typeof value.updatedAt === "number" ? value.updatedAt : 0;
-      cache[key] = { updatedAt, messages };
-    }
-    return cache;
-  } catch {
-    return {};
-  }
-}
-
-function saveMessageCache(storage: Storage, storageKey: string, cache: MessageCache): void {
-  try {
-    storage.setItem(storageKey, JSON.stringify(cache));
-  } catch {
-    // best-effort cache write (quota/restricted storage)
-  }
-}
-
-function loadCachedMessagesForContext(context: CurrentChatContext): MockMessage[] {
-  const storage = getStorage();
-  if (!storage) return [];
-  const cache = loadMessageCache(storage, getMessageCacheStorageKey());
-  return cache[getContextCacheKey(context)]?.messages ?? [];
-}
-
-function persistMessagesForContext(context: CurrentChatContext, messages: MockMessage[]): void {
-  const storage = getStorage();
-  if (!storage) return;
-
-  const storageKey = getMessageCacheStorageKey();
-  const contextKey = getContextCacheKey(context);
-  const cache = loadMessageCache(storage, storageKey);
-  const trimmedMessages = messages.slice(-MAX_MESSAGES_PER_CONTEXT);
-
-  if (trimmedMessages.length === 0) {
-    delete cache[contextKey];
-    saveMessageCache(storage, storageKey, cache);
-    return;
-  }
-
-  const nextCache: MessageCache = {
-    ...cache,
-    [contextKey]: {
-      updatedAt: Date.now(),
-      messages: trimmedMessages,
-    },
-  };
-
-  const sortedEntries = Object.entries(nextCache)
-    .sort(([, left], [, right]) => right.updatedAt - left.updatedAt)
-    .slice(0, MAX_CACHED_CONTEXTS);
-  const prunedCache: MessageCache = {};
-  for (const [key, entry] of sortedEntries) {
-    prunedCache[key] = entry;
-  }
-
-  saveMessageCache(storage, storageKey, prunedCache);
 }
 
 export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set, get) => ({
@@ -278,9 +79,34 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
   hasNewerMessages: false,
 
   setContext(context) {
-    const cachedMessages = context ? loadCachedMessagesForContext(context) : [];
+    const prev = get().context;
+    const cachedMessages: MockMessage[] = [];
+
+    let nextContext: CurrentChatContext | null = context;
+    if (
+      prev != null &&
+      context != null &&
+      context.type === "stream" &&
+      prev.type === "stream"
+    ) {
+      nextContext = {
+        ...prev,
+        streamName: context.streamName,
+        streamId: context.streamId,
+        topic: context.topic,
+        streamWideView: context.streamWideView ?? prev.streamWideView,
+      };
+    }
+
+    logMessageFlow("store:setContext", {
+      prev: summarizeChatContextForLog(prev),
+      next: summarizeChatContextForLog(nextContext),
+      persistIdb: persistChatMessagesToIndexedDb(),
+      nextStoreMessagesLen: cachedMessages.length,
+    });
+
     set({
-      context,
+      context: nextContext,
       messages: cachedMessages,
       isLoadingMore: false,
       hasOlderMessages: true,
@@ -288,11 +114,14 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     });
   },
 
+  setContextFromNavigation(context) {
+    get().setContext(context);
+  },
+
   setMessages(messages) {
     set({ messages });
-    const state = get();
-    if (state.context) {
-      persistMessagesForContext(state.context, state.messages);
+    if (persistChatMessagesToIndexedDb()) {
+      schedulePersistFullChatMessages(get);
     }
   },
 
@@ -303,9 +132,8 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       if (fresh.length === 0) return state;
       return { messages: [...fresh, ...state.messages] };
     });
-    const state = get();
-    if (state.context) {
-      persistMessagesForContext(state.context, state.messages);
+    if (persistChatMessagesToIndexedDb()) {
+      schedulePersistFullChatMessages(get);
     }
   },
 
@@ -316,9 +144,8 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       if (fresh.length === 0) return state;
       return { messages: [...state.messages, ...fresh] };
     });
-    const state = get();
-    if (state.context) {
-      persistMessagesForContext(state.context, state.messages);
+    if (persistChatMessagesToIndexedDb()) {
+      schedulePersistFullChatMessages(get);
     }
   },
 
@@ -333,8 +160,17 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       return { messages: [...state.messages, msg] };
     });
     const state = get();
-    if (state.context) {
-      persistMessagesForContext(state.context, state.messages);
+    if (!state.context) return;
+    if (persistChatMessagesToIndexedDb()) {
+      const inst = getCurrentInstance()?.id;
+      if (inst) {
+        void putSingleMessage({
+          instanceId: inst,
+          chatKey: chatKeyFromContext(state.context),
+          message: msg,
+          windowSizeN: zulipMessageCacheWindowN(state.context),
+        });
+      }
     }
   },
 
@@ -342,9 +178,9 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     set((state) => ({
       messages: state.messages.filter((m) => m.id !== messageId),
     }));
-    const state = get();
-    if (state.context) {
-      persistMessagesForContext(state.context, state.messages);
+    if (persistChatMessagesToIndexedDb()) {
+      const inst = getCurrentInstance()?.id;
+      if (inst) void deleteMessagesByIds(inst, [messageId]);
     }
   },
 
@@ -353,9 +189,9 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     set((state) => ({
       messages: state.messages.filter((m) => !ids.has(m.id)),
     }));
-    const state = get();
-    if (state.context) {
-      persistMessagesForContext(state.context, state.messages);
+    if (persistChatMessagesToIndexedDb()) {
+      const inst = getCurrentInstance()?.id;
+      if (inst) void deleteMessagesByIds(inst, messageIds);
     }
   },
 
@@ -380,8 +216,10 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       }),
     }));
     const state = get();
-    if (state.context) {
-      persistMessagesForContext(state.context, state.messages);
+    if (!state.context) return;
+    if (persistChatMessagesToIndexedDb()) {
+      const inst = getCurrentInstance()?.id;
+      if (inst) void patchMessageReactionInCache({ instanceId: inst, messageId, reaction, op });
     }
   },
 
@@ -398,8 +236,10 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       }),
     }));
     const state = get();
-    if (state.context) {
-      persistMessagesForContext(state.context, state.messages);
+    if (!state.context) return;
+    if (persistChatMessagesToIndexedDb()) {
+      const inst = getCurrentInstance()?.id;
+      if (inst) void patchMessageFlagsInCache({ instanceId: inst, messageIds, flag, op });
     }
   },
 
@@ -408,8 +248,10 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       messages: state.messages.map((m) => (m.id === messageId ? { ...m, content } : m)),
     }));
     const state = get();
-    if (state.context) {
-      persistMessagesForContext(state.context, state.messages);
+    if (!state.context) return;
+    if (persistChatMessagesToIndexedDb()) {
+      const inst = getCurrentInstance()?.id;
+      if (inst) void patchMessageContentInCache({ instanceId: inst, messageId, content });
     }
   },
 
@@ -423,5 +265,317 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
 
   setHasNewerMessages(has) {
     set({ hasNewerMessages: has });
+  },
+
+  async loadInitialMessagesForContext({ context, focusedMessageId, currentUserId }) {
+    logMessageFlow("store:loadInitial start", {
+      context: summarizeChatContextForLog(context),
+      focusedMessageId,
+      hasCurrentUserId: currentUserId != null,
+      persistIdb: persistChatMessagesToIndexedDb(),
+    });
+
+    const inst = getCurrentInstance()?.id;
+    if (persistChatMessagesToIndexedDb() && inst != null && focusedMessageId == null) {
+      const chatKey = chatKeyFromContext(context);
+      const cached = await getChatMessagesAscending(inst, chatKey).catch(() => [] as MockMessage[]);
+      const meta = await getChatMeta(inst, chatKey).catch(() => null);
+      if (cached.length > 0) {
+        set({
+          messages: cached,
+          hasOlderMessages: meta?.reachedOldest !== true,
+          hasNewerMessages: meta?.reachedNewest !== true,
+        });
+        logMessageFlow("store:loadInitial idb hydrate before api", {
+          chatKey,
+          cachedCount: cached.length,
+        });
+      }
+    }
+
+    const load =
+      context.type === "stream"
+        ? focusedMessageId != null
+          ? fetchMessagesWithNarrow(
+              context.streamWideView
+                ? [{ operator: "stream", operand: context.streamName }]
+                : [
+                    { operator: "stream", operand: context.streamName },
+                    { operator: "topic", operand: context.topic },
+                  ],
+              focusedMessageId,
+              60,
+              60,
+            )
+          : fetchMessages(
+              context.streamName,
+              context.streamWideView || context.topic === "general" ? undefined : context.topic,
+            )
+        : focusedMessageId != null
+          ? fetchMessagesWithNarrow(
+              [{ operator: "dm", operand: parseDmKeyToUserIds(context.dmKey, currentUserId) }],
+              focusedMessageId,
+              60,
+              60,
+            )
+          : fetchDmMessages(parseDmKeyToUserIds(context.dmKey, currentUserId));
+
+    let messages: MockMessage[];
+    try {
+      messages = await load;
+    } catch (e) {
+      logMessageFlow("store:loadInitial fetch failed", {
+        context: summarizeChatContextForLog(context),
+        error: String(e),
+      });
+      throw e;
+    }
+    logMessageFlow("store:loadInitial api response", {
+      context: summarizeChatContextForLog(context),
+      messageCount: messages.length,
+    });
+    mergeUsersFromMessages(messages);
+
+    const flags = deriveFocusedPaginationFlags(messages, focusedMessageId);
+
+    let nextContext: CurrentChatContext = context;
+    if (messages.length > 0) {
+      const first = messages[0]!;
+      const fromKey = chatKeyFromMockMessage(first, currentUserId);
+      if (context.type === "stream") {
+        const topic = (first.subject ?? "").trim() || "general";
+        nextContext = { ...context, topic, streamWideView: context.streamWideView };
+      } else if (fromKey?.startsWith("dm:")) {
+        const k = fromKey.slice(3);
+        if (k !== context.dmKey) {
+          nextContext = { type: "dm", dmKey: k };
+        }
+      }
+    }
+    const chatKeyForMeta =
+      messages.length > 0
+        ? (chatKeyFromMockMessage(messages[0]!, currentUserId) ?? chatKeyFromContext(nextContext))
+        : chatKeyFromContext(nextContext);
+
+    if (persistChatMessagesToIndexedDb() && inst) {
+      await updateChatMetaPatch(inst, chatKeyForMeta, {
+        reachedOldest: false,
+        reachedNewest: false,
+      });
+    }
+
+    set({
+      context: nextContext,
+      messages,
+      hasOlderMessages: flags.hasOlderMessages,
+      hasNewerMessages: flags.hasNewerMessages,
+    });
+
+    if (persistChatMessagesToIndexedDb() && inst && messages.length > 0) {
+      logMessageFlow("store:loadInitial idb upsert after api", {
+        chatKey: chatKeyForMeta,
+        instanceId: inst,
+        count: messages.length,
+        nextContext: summarizeChatContextForLog(nextContext),
+      });
+      await upsertChatMessages({
+        instanceId: inst,
+        chatKey: chatKeyForMeta,
+        messages,
+        windowSizeN: zulipMessageCacheWindowN(nextContext),
+      });
+    }
+
+    logMessageFlow("store:loadInitial done", {
+      count: messages.length,
+      hasOlder: flags.hasOlderMessages,
+      hasNewer: flags.hasNewerMessages,
+    });
+  },
+
+  async loadOlderBoundaryPage({ pageSize, currentUserId }) {
+    const state = get();
+    const ctx = state.context;
+    if (state.isLoadingMore || !state.hasOlderMessages || !ctx) {
+      logMessageFlow("store:loadOlder gate skip", {
+        isLoadingMore: state.isLoadingMore,
+        hasOlderMessages: state.hasOlderMessages,
+        hasContext: ctx != null,
+        context: ctx != null ? summarizeChatContextForLog(ctx) : null,
+      });
+      return;
+    }
+
+    if (state.messages.length === 0) {
+      logMessageFlow("store:loadOlder abort empty store", {
+        context: summarizeChatContextForLog(ctx),
+      });
+      loadOlderLog.debug("loadOlder abort: empty store");
+      return;
+    }
+    const oldest = state.messages[0];
+    if (!oldest) return;
+
+    const inst = getCurrentInstance()?.id;
+    const chatKey = chatKeyFromContext(ctx);
+
+    logMessageFlow("store:loadOlder start", {
+      context: summarizeChatContextForLog(ctx),
+      anchorOldestId: oldest.id,
+      pageSize,
+    });
+    set({ isLoadingMore: true });
+    try {
+      const narrow =
+        ctx.type === "stream"
+          ? ctx.streamWideView
+            ? [{ operator: "stream", operand: ctx.streamName }]
+            : [
+                { operator: "stream", operand: ctx.streamName },
+                { operator: "topic", operand: ctx.topic },
+              ]
+          : [{ operator: "dm", operand: parseDmKeyToUserIds(ctx.dmKey, currentUserId) }];
+      const page = await fetchMessagesWithNarrowPage(narrow, oldest.id, pageSize, 0);
+      const withoutAnchor = page.messages.filter((m) => m.id !== oldest.id);
+      const existingIds = new Set(get().messages.map((m) => m.id));
+      const fresh = withoutAnchor.filter((m) => !existingIds.has(m.id));
+
+      loadOlderLog.debug("loadOlder page", {
+        anchorOldest: oldest.id,
+        apiRows: page.messages.length,
+        withoutAnchor: withoutAnchor.length,
+        freshCount: fresh.length,
+      });
+
+      if (page.foundOldest && persistChatMessagesToIndexedDb() && inst) {
+        await updateChatMetaPatch(inst, chatKey, { reachedOldest: true });
+      }
+
+      set({
+        hasOlderMessages: computeHasOlderAfterLoadOlderIdbPage({
+          foundOldest: page.foundOldest,
+          withoutAnchorCount: withoutAnchor.length,
+          pageSize,
+          toUpsertCount: fresh.length,
+        }),
+      });
+
+      if (fresh.length > 0) {
+        mergeUsersFromMessages(fresh);
+        set((s) => ({ messages: [...fresh, ...s.messages] }));
+        loadOlderLog.info("loadOlder prepended", {
+          anchorOldest: oldest.id,
+          prepended: fresh.length,
+          storeMessagesAfter: get().messages.length,
+        });
+      }
+
+      if (persistChatMessagesToIndexedDb() && inst && fresh.length > 0) {
+        const windowN = zulipMessageCacheWindowN(ctx);
+        await upsertChatMessages({
+          instanceId: inst,
+          chatKey,
+          messages: fresh,
+          windowSizeN: windowN,
+        });
+      }
+      logMessageFlow("store:loadOlder done", {
+        context: summarizeChatContextForLog(ctx),
+        freshCount: fresh.length,
+        foundOldest: page.foundOldest,
+        storeLenAfter: get().messages.length,
+      });
+    } catch (e) {
+      logMessageFlow("store:loadOlder failed", { error: String(e) });
+      loadOlderLog.warn("loadOlder failed", { error: String(e) });
+    } finally {
+      set({ isLoadingMore: false });
+    }
+  },
+
+  async loadNewerBoundaryPage({ pageSize, currentUserId }) {
+    const state = get();
+    const ctx = state.context;
+    if (state.isLoadingMore || !state.hasNewerMessages || !ctx) {
+      logMessageFlow("store:loadNewer gate skip", {
+        isLoadingMore: state.isLoadingMore,
+        hasNewerMessages: state.hasNewerMessages,
+        hasContext: ctx != null,
+        context: ctx != null ? summarizeChatContextForLog(ctx) : null,
+      });
+      return;
+    }
+
+    if (state.messages.length === 0) {
+      logMessageFlow("store:loadNewer abort empty store", {
+        context: ctx != null ? summarizeChatContextForLog(ctx) : null,
+      });
+      return;
+    }
+    const newest = state.messages[state.messages.length - 1];
+    if (!newest) return;
+
+    const inst = getCurrentInstance()?.id;
+    const chatKey = chatKeyFromContext(ctx);
+
+    logMessageFlow("store:loadNewer start", {
+      context: summarizeChatContextForLog(ctx),
+      anchorNewestId: newest.id,
+      pageSize,
+    });
+    set({ isLoadingMore: true });
+    try {
+      const narrow =
+        ctx.type === "stream"
+          ? ctx.streamWideView
+            ? [{ operator: "stream", operand: ctx.streamName }]
+            : [
+                { operator: "stream", operand: ctx.streamName },
+                { operator: "topic", operand: ctx.topic },
+              ]
+          : [{ operator: "dm", operand: parseDmKeyToUserIds(ctx.dmKey, currentUserId) }];
+      const page = await fetchMessagesWithNarrowPage(narrow, newest.id, 0, pageSize);
+      const withoutAnchor = page.messages.filter((m) => m.id !== newest.id);
+      const existingIds = new Set(get().messages.map((m) => m.id));
+      const fresh = withoutAnchor.filter((m) => !existingIds.has(m.id));
+
+      if (page.foundNewest && persistChatMessagesToIndexedDb() && inst) {
+        await updateChatMetaPatch(inst, chatKey, { reachedNewest: true });
+      }
+
+      set({
+        hasNewerMessages: computeHasNewerAfterLoadNewerIdbPage({
+          foundNewest: page.foundNewest,
+          withoutAnchorCount: withoutAnchor.length,
+          pageSize,
+          toUpsertCount: fresh.length,
+        }),
+      });
+
+      if (fresh.length > 0) {
+        mergeUsersFromMessages(fresh);
+        set((s) => ({ messages: [...s.messages, ...fresh] }));
+      }
+
+      if (persistChatMessagesToIndexedDb() && inst && fresh.length > 0) {
+        const windowN = zulipMessageCacheWindowN(ctx);
+        await upsertChatMessages({
+          instanceId: inst,
+          chatKey,
+          messages: fresh,
+          windowSizeN: windowN,
+        });
+      }
+      logMessageFlow("store:loadNewer done", {
+        context: summarizeChatContextForLog(ctx),
+        freshCount: fresh.length,
+        foundNewest: page.foundNewest,
+        storeLenAfter: get().messages.length,
+      });
+    } catch (e) {
+      logMessageFlow("store:loadNewer failed", { error: String(e) });
+    } finally {
+      set({ isLoadingMore: false });
+    }
   },
 }));

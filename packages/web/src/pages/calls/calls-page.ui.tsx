@@ -1,15 +1,16 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useChatListStore } from "~/entities/chat-list";
-import { JitsiCallModal } from "~/features/jitsi-call";
-import { t } from "~/i18n";
-import type { MockMessage } from "~/shared/api/zulip";
-import { fetchAllMessagesPage } from "~/shared/api/zulip";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { JitsiCallModal } from "~/features/jitsi-call/jitsi-call.ui";
+import { t } from "~/i18n/i18n";
+import type { MockMessage } from "~/shared/api/zulip.types";
+import { fetchAllMessagesPage } from "~/shared/api/zulip-messages";
 import { formatMessageTime } from "~/shared/lib/format";
 import { getJitsiMeetingUrl, parseJitsiUrl } from "~/shared/lib/jitsi";
 import { createLogger } from "~/shared/lib/logger";
 import { buildNavigableRouteFromMessage } from "~/shared/lib/push-click";
-import { Icon } from "~/shared/ui";
+import { Icon } from "~/shared/ui/icon";
+import type { CallsRowProps, RecentJitsiCallEntry } from "./calls-page.types";
 
 const log = createLogger("calls-page");
 const CALLS_SCAN_LIMIT = 250;
@@ -20,21 +21,6 @@ const CALLS_ROW_CLASS =
   "group flex items-start gap-2 rounded-xl border border-border-subtle bg-card-bg p-2.5 transition-colors hover:border-accent-soft/40 hover:bg-bg-elevated";
 const CALLS_ACTION_BUTTON_CLASS =
   "rounded-md p-1.5 text-text-muted transition-colors hover:bg-card-bg-active hover:text-text-primary";
-
-interface RecentJitsiCallEntry {
-  id: number;
-  meetingUrl: string;
-  roomLabel: string;
-  locationName: string;
-  contextLabel: string;
-  message: MockMessage;
-}
-
-interface CallsRowProps {
-  entry: RecentJitsiCallEntry;
-  onJoin: (entry: RecentJitsiCallEntry) => void;
-  onOpenInChat: (entry: RecentJitsiCallEntry) => void;
-}
 
 function resolveCallLocationName(message: MockMessage): string {
   if (message.stream_id != null) {
@@ -232,7 +218,7 @@ export const CallsPage: React.FC = () => {
   const callsTitle = t("call.recentCalls");
 
   return (
-    <div className="flex max-h-full min-h-0 min-w-0 max-w-[1199px] flex-1 flex-col overflow-hidden">
+    <div className="flex max-h-full min-h-0 min-w-0 max-w-narrow-page flex-1 flex-col overflow-hidden">
       <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <div className="flex items-center gap-2 px-4 pb-2 pt-3">
           <Icon name="phone" size={18} className="text-text-muted" />

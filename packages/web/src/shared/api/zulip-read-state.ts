@@ -1,0 +1,142 @@
+/**
+ * Zulip read/unread and topic resolution (flags API + topic rename).
+ */
+import { t } from "~/i18n/i18n";
+import { guard } from "~/shared/lib/guards";
+import { toResolvedTopicName, toUnresolvedTopicName } from "~/shared/lib/topic-resolve";
+import {
+  zulipPipelineGet,
+  zulipPipelinePatch,
+  zulipPipelinePost,
+} from "./zulip-pipeline.internal";
+import { validateMessageIds } from "./zulip-validation.internal";
+
+/** Marks messages as read (POST /api/v1/messages/flags). Call when opening a chat. */
+export async function markMessagesAsRead(messageIds: number[]): Promise<void> {
+  if (messageIds.length === 0) return;
+  const validatedMessageIds = validateMessageIds(messageIds, "markMessagesAsRead.messageIds");
+  await zulipPipelinePost("messages/flags", {
+    messages: JSON.stringify(validatedMessageIds),
+    op: "add",
+    flag: "read",
+  });
+}
+
+/** Bulk-marks all messages in a DM chat as read (POST /api/v1/messages/flags/narrow). */
+export async function markDmAsRead(userIds: number[]): Promise<boolean> {
+  const validatedUserIds = guard
+    .nonEmptyArray(userIds, "markDmAsRead.userIds")
+    .map((userId) => guard.userId(userId, "markDmAsRead.userIds"));
+  const res = await zulipPipelinePost("messages/flags/narrow", {
+    anchor: "newest",
+    include_anchor: "false",
+    num_before: "5000",
+    num_after: "0",
+    narrow: JSON.stringify([{ operator: "dm", operand: validatedUserIds }]),
+    op: "add",
+    flag: "read",
+  });
+  return res.ok;
+}
+
+/** Bulk-marks all messages in a stream as read (POST /api/v1/messages/flags/narrow). */
+export async function markStreamAsRead(streamId: number): Promise<boolean> {
+  guard.streamId(streamId, "markStreamAsRead");
+  const res = await zulipPipelinePost("messages/flags/narrow", {
+    anchor: "newest",
+    include_anchor: "false",
+    num_before: "5000",
+    num_after: "0",
+    narrow: JSON.stringify([{ operator: "stream", operand: streamId }]),
+    op: "add",
+    flag: "read",
+  });
+  return res.ok;
+}
+
+/** Bulk-marks all messages in a stream topic as read (POST /api/v1/messages/flags/narrow). */
+export async function markTopicAsRead(streamId: number, topic: string): Promise<boolean> {
+  guard.streamId(streamId, "markTopicAsRead");
+  guard.nonEmpty(topic, "markTopicAsRead.topic");
+  const res = await zulipPipelinePost("messages/flags/narrow", {
+    anchor: "newest",
+    include_anchor: "false",
+    num_before: "5000",
+    num_after: "0",
+    narrow: JSON.stringify([
+      { operator: "stream", operand: streamId },
+      { operator: "topic", operand: topic },
+    ]),
+    op: "add",
+    flag: "read",
+  });
+  return res.ok;
+}
+
+/**
+ * Marks a stream topic as resolved/unresolved by renaming the whole topic thread.
+ *
+ * Zulip models "resolved" as a topic-name convention (checkmark prefix).
+ * We PATCH the first message in the topic with propagate_mode=change_all.
+ */
+export async function setTopicResolvedState(
+  streamId: number,
+  topic: string,
+  resolved: boolean,
+): Promise<boolean> {
+  guard.streamId(streamId, "setTopicResolvedState.streamId");
+  const normalizedTopic = guard.nonEmpty(topic.trim(), "setTopicResolvedState.topic");
+  const targetTopic = resolved
+    ? toResolvedTopicName(normalizedTopic)
+    : toUnresolvedTopicName(normalizedTopic);
+
+  if (targetTopic === normalizedTopic) {
+    return true;
+  }
+
+  const anchorMessageResponse = await zulipPipelineGet("/messages", {
+    anchor: "oldest",
+    num_before: "0",
+    num_after: "1",
+    include_anchor: "true",
+    allow_empty_topic_name: "true",
+    client_gravatar: "false",
+    narrow: JSON.stringify([
+      { operator: "stream", operand: streamId },
+      { operator: "topic", operand: normalizedTopic },
+    ]),
+  });
+
+  if (!anchorMessageResponse?.ok) {
+    return false;
+  }
+
+  const anchorData = anchorMessageResponse.data as {
+    result?: string;
+    messages?: { id?: number }[];
+  };
+  if (anchorData.result === "error") {
+    return false;
+  }
+
+  const anchorMessageId = anchorData.messages?.[0]?.id;
+  if (anchorMessageId == null) {
+    return false;
+  }
+  guard.messageId(anchorMessageId, "setTopicResolvedState.anchorMessageId");
+
+  const patchResponse = await zulipPipelinePatch(`messages/${anchorMessageId}`, {
+    topic: targetTopic,
+    propagate_mode: "change_all",
+    send_notification_to_old_thread: "false",
+    send_notification_to_new_thread: "false",
+    send_webhook_notifications: "false",
+  });
+
+  if (!patchResponse.ok) {
+    return false;
+  }
+
+  const patchData = patchResponse.data as { result?: string };
+  return patchData.result !== "error";
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Draft } from "~/entities/draft";
+import type { Draft } from "~/entities/draft/draft.types";
 import { resolveHydratedDraftBootstrap } from "./chat-page-draft-bootstrap";
 
 const HYDRATED_DRAFT: Draft = {

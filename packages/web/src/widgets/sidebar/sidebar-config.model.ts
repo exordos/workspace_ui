@@ -4,19 +4,23 @@
  * Stores collapsible section states (e.g. activity panel). Persisted to localStorage.
  */
 import { create } from "zustand";
-import { useInstancesStore } from "~/entities/instance";
+import { SYSTEM_ALL_FOLDER_ID } from "~/features/folder-sync/folder-sync-constants.lib";
+import { useInstancesStore } from "~/entities/instance/instance.model";
 import { buildOrgScopedStorageKey } from "~/shared/lib/org-scoped-storage";
+import type { SidebarConfig, SidebarConfigState, SidebarUiState } from "./sidebar-config.types";
 
 const SIDEBAR_CONFIG_STORAGE_KEY = "zulip-web-sidebar-config";
-
-interface SidebarConfig {
-  activityOpen: boolean;
-  expandedStreamSlug: string | null;
-}
 
 const DEFAULT_CONFIG: SidebarConfig = {
   activityOpen: false,
   expandedStreamSlug: null,
+};
+
+const DEFAULT_UI_STATE: SidebarUiState = {
+  selectedFolderId: SYSTEM_ALL_FOLDER_ID,
+  pinReorderMode: false,
+  searchQuery: "",
+  createChatOpen: false,
 };
 
 function getStorageKeyForOrganization(organizationId: string | null): string {
@@ -58,13 +62,8 @@ function saveConfig(
   }
 }
 
-interface SidebarConfigState extends SidebarConfig {
-  setActivityOpen: (open: boolean) => void;
-  setExpandedStreamSlug: (slug: string | null) => void;
-  setConfig: (patch: Partial<SidebarConfig>) => void;
-}
-
 export const useSidebarConfigStore = create<SidebarConfigState>((set) => ({
+  ...DEFAULT_UI_STATE,
   ...loadConfig(),
 
   setActivityOpen: (activityOpen) =>
@@ -87,6 +86,19 @@ export const useSidebarConfigStore = create<SidebarConfigState>((set) => ({
       saveConfig(next);
       return next;
     }),
+
+  setSelectedFolderId: (selectedFolderId) =>
+    set((state) => ({
+      ...state,
+      selectedFolderId,
+      pinReorderMode: false,
+    })),
+
+  setPinReorderMode: (pinReorderMode) => set((state) => ({ ...state, pinReorderMode })),
+
+  setSearchQuery: (searchQuery) => set((state) => ({ ...state, searchQuery })),
+
+  setCreateChatOpen: (createChatOpen) => set((state) => ({ ...state, createChatOpen })),
 }));
 
 if (typeof window !== "undefined") {
@@ -98,6 +110,12 @@ if (typeof window !== "undefined") {
     }
 
     previousOrganizationId = nextOrganizationId;
-    useSidebarConfigStore.setState(loadConfig(nextOrganizationId));
+    useSidebarConfigStore.setState((prev) => ({
+      ...DEFAULT_UI_STATE,
+      ...loadConfig(nextOrganizationId),
+      // Preserve non-persisted UI state only if it belongs to the same organization.
+      selectedFolderId: prev.selectedFolderId,
+      pinReorderMode: false,
+    }));
   });
 }

@@ -4,7 +4,7 @@
  * Verifies that chats can be pinned/unpinned within folders,
  * and that the pinned state is correctly tracked.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { usePinStore } from "./pin-chat.model";
 
 vi.mock("~/shared/api/client", () => ({
@@ -116,6 +116,12 @@ describe("usePinStore", () => {
 
 // Pin/unpin API — calls Workspace API for folder-scoped pinning.
 describe("pin-chat API", () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const { registerWorkspaceOrvalMutator } = await import("~/shared/api/workspace-orval-mutator");
+    registerWorkspaceOrvalMutator();
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -148,8 +154,9 @@ describe("pin-chat API", () => {
 
       expect(result).toBe(true);
       expect(workspaceApi.post).toHaveBeenCalledWith(
-        "/folders/folder-abc/items/item-xyz/actions/pin/invoke",
+        "/v1/folders/folder-abc/items/item-xyz/actions/pin/invoke",
         {},
+        undefined,
       );
     });
 
@@ -190,8 +197,9 @@ describe("pin-chat API", () => {
 
       expect(result).toBe(true);
       expect(workspaceApi.post).toHaveBeenCalledWith(
-        "/folders/folder-abc/items/item-xyz/actions/unpin/invoke",
+        "/v1/folders/folder-abc/items/item-xyz/actions/unpin/invoke",
         {},
+        undefined,
       );
     });
 

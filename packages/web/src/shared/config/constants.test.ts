@@ -10,8 +10,15 @@
 import { describe, expect, it } from "vitest";
 import {
   SCROLL_AREA_CLASS,
+  DESKTOP_MIN_VIEWPORT_WIDTH_PX,
   JITSI_MEET_DOMAIN,
   JITSI_MEET_BASE_URL,
+  JITSI_PARTICIPANTS_POLL_MS,
+  LAYOUT_MIN_HEIGHT_PX,
+  MAIN_WORKSPACE_MAX_WIDTH_PX,
+  MULTI_ORG_UNREAD_REFRESH_DEBOUNCE_MS,
+  NARROW_PAGE_MAX_WIDTH_PX,
+  SEARCH_INPUT_DEBOUNCE_MS,
   WORKSPACE_ORIGIN,
   WORKSPACE_UPLOADS_ORIGIN,
 } from "./constants";
@@ -64,5 +71,18 @@ describe("constants", () => {
     expect(JITSI_MEET_BASE_URL).toBeDefined();
     expect(WORKSPACE_ORIGIN).toBeDefined();
     expect(WORKSPACE_UPLOADS_ORIGIN).toBeDefined();
+  });
+
+  it("timing constants are positive integers", () => {
+    expect(SEARCH_INPUT_DEBOUNCE_MS).toBeGreaterThan(0);
+    expect(MULTI_ORG_UNREAD_REFRESH_DEBOUNCE_MS).toBe(SEARCH_INPUT_DEBOUNCE_MS);
+    expect(JITSI_PARTICIPANTS_POLL_MS).toBeGreaterThan(0);
+  });
+
+  it("layout constants match narrow-page = desktop min width - 1", () => {
+    expect(MAIN_WORKSPACE_MAX_WIDTH_PX).toBeGreaterThan(0);
+    expect(LAYOUT_MIN_HEIGHT_PX).toBeGreaterThan(0);
+    expect(DESKTOP_MIN_VIEWPORT_WIDTH_PX).toBeGreaterThan(0);
+    expect(NARROW_PAGE_MAX_WIDTH_PX).toBe(DESKTOP_MIN_VIEWPORT_WIDTH_PX - 1);
   });
 });

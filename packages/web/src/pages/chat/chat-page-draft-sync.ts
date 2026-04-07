@@ -1,4 +1,4 @@
-import type { Draft, DraftInput, DraftType } from "~/entities/draft";
+import type { Draft, DraftInput, DraftType } from "~/entities/draft/draft.types";
 
 interface SyncExistingDraftDeleteOnCleanupOptions {
   draft: Draft | undefined;

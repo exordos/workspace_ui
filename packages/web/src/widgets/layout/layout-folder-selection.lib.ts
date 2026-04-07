@@ -1,16 +1,13 @@
-interface FolderLike {
-  id: string;
-  systemType?: "created" | "all" | "personal" | "channels";
-}
+import type { LayoutFolderLike } from "./layout-folder-selection.types";
 
-function hasFolderId(folders: readonly FolderLike[], folderId: string): boolean {
+function hasFolderId(folders: readonly LayoutFolderLike[], folderId: string): boolean {
   return folders.some((folder) => folder.id === folderId);
 }
 
 function resolveFolderSystemType(
-  folders: readonly FolderLike[],
-  folder: FolderLike,
-): NonNullable<FolderLike["systemType"]> {
+  folders: readonly LayoutFolderLike[],
+  folder: LayoutFolderLike,
+): NonNullable<LayoutFolderLike["systemType"]> {
   if (folder.systemType != null) {
     return folder.systemType;
   }
@@ -18,9 +15,9 @@ function resolveFolderSystemType(
 }
 
 function resolveSelectedFolderSystemType(
-  folders: readonly FolderLike[],
+  folders: readonly LayoutFolderLike[],
   selectedFolderId: string,
-): NonNullable<FolderLike["systemType"]> | null {
+): NonNullable<LayoutFolderLike["systemType"]> | null {
   const selectedFolder = folders.find((folder) => folder.id === selectedFolderId);
   if (!selectedFolder) {
     return null;
@@ -29,7 +26,7 @@ function resolveSelectedFolderSystemType(
 }
 
 export function resolveSelectedFolderId(
-  folders: readonly FolderLike[],
+  folders: readonly LayoutFolderLike[],
   selectedFolderId: string,
 ): string | null {
   if (folders.length === 0) {
@@ -42,7 +39,7 @@ export function resolveSelectedFolderId(
 }
 
 export function shouldLoadFolderItemsForSelection(
-  folders: readonly FolderLike[],
+  folders: readonly LayoutFolderLike[],
   selectedFolderId: string,
 ): boolean {
   if (folders.length === 0) {

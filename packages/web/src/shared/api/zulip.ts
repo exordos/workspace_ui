@@ -10,12 +10,18 @@
  */
 import { Buffer } from "buffer";
 import zulipInitDefault from "zulip-js";
-import { t } from "~/i18n";
+import { t } from "~/i18n/i18n";
 import { getBasicAuthValue } from "~/shared/lib/auth-guard";
 import { env } from "~/shared/lib/env";
 import { guard, invariant } from "~/shared/lib/guards";
 import { toResolvedTopicName, toUnresolvedTopicName } from "~/shared/lib/topic-resolve";
 import { isValidEmail, isValidRealmUrl, validateFileUpload } from "~/shared/lib/validation";
+import {
+  ZULIP_DM_CHAT_NUM_AFTER,
+  ZULIP_DM_CHAT_NUM_BEFORE,
+  ZULIP_STREAM_CHAT_NUM_AFTER,
+  ZULIP_STREAM_CHAT_NUM_BEFORE,
+} from "~/shared/lib/zulip-message-window.lib";
 import { getCurrentInstance, refreshZulipApiBase, zulipApi } from "./client";
 import { parseUnreadMessagesCount } from "./zulip-unread.lib";
 
@@ -1473,7 +1479,12 @@ export async function fetchMessages(
   if (normalizedStream) narrow.push({ operator: "stream", operand: normalizedStream });
   if (normalizedTopic) narrow.push({ operator: "topic", operand: normalizedTopic });
   if (q?.trim()) narrow.push({ operator: "search", operand: q.trim() });
-  const page = await fetchMessagesWithNarrowPage(narrow, "newest", 100, 0);
+  const page = await fetchMessagesWithNarrowPage(
+    narrow,
+    "newest",
+    ZULIP_STREAM_CHAT_NUM_BEFORE,
+    ZULIP_STREAM_CHAT_NUM_AFTER,
+  );
   return page.messages;
 }
 
@@ -1520,8 +1531,8 @@ function buildMessagesPageInFlightKey(
 export async function fetchMessagesWithNarrow(
   narrow: MessagesApiNarrow[],
   anchor: string | number = "newest",
-  numBefore = 100,
-  numAfter = 0,
+  numBefore = ZULIP_STREAM_CHAT_NUM_BEFORE,
+  numAfter = ZULIP_STREAM_CHAT_NUM_AFTER,
 ): Promise<MockMessage[]> {
   const page = await fetchMessagesWithNarrowPage(narrow, anchor, numBefore, numAfter);
   return page.messages;
@@ -1530,14 +1541,15 @@ export async function fetchMessagesWithNarrow(
 export interface MessagesPageResult {
   messages: MockMessage[];
   foundOldest: boolean;
+  foundNewest: boolean;
 }
 
 /** Универсальная загрузка страницы сообщений по narrow с метаданными пагинации. */
 export async function fetchMessagesWithNarrowPage(
   narrow: MessagesApiNarrow[],
   anchor: string | number = "newest",
-  numBefore = 100,
-  numAfter = 0,
+  numBefore = ZULIP_STREAM_CHAT_NUM_BEFORE,
+  numAfter = ZULIP_STREAM_CHAT_NUM_AFTER,
 ): Promise<MessagesPageResult> {
   const validatedAnchor = validateMessagesApiAnchor(anchor, "fetchMessagesWithNarrowPage");
   const validatedNumBefore = validateNonNegativeInteger(numBefore, "numBefore");
@@ -1566,14 +1578,18 @@ export async function fetchMessagesWithNarrowPage(
         messages?: Parameters<typeof mapZulipMessage>[0][];
         found_oldest?: boolean;
         foundOldest?: boolean;
+        found_newest?: boolean;
+        foundNewest?: boolean;
       };
-      if (data.result === "error") return { messages: [], foundOldest: false };
+      if (data.result === "error")
+        return { messages: [], foundOldest: false, foundNewest: false };
       return {
         messages: (data.messages ?? []).map(mapZulipMessage),
         foundOldest: data.found_oldest ?? data.foundOldest ?? false,
+        foundNewest: data.found_newest ?? data.foundNewest ?? false,
       };
     } catch {
-      return { messages: [], foundOldest: false };
+      return { messages: [], foundOldest: false, foundNewest: false };
     }
   })();
 
@@ -1602,7 +1618,7 @@ export async function fetchAllMessagesPage(
   });
 
   if (!res?.ok) {
-    return { messages: [], foundOldest: false };
+    return { messages: [], foundOldest: false, foundNewest: false };
   }
 
   const data = res.data as {
@@ -1611,15 +1627,18 @@ export async function fetchAllMessagesPage(
     messages?: ZulipRawMessage[];
     found_oldest?: boolean;
     foundOldest?: boolean;
+    found_newest?: boolean;
+    foundNewest?: boolean;
   };
 
   if (!data || data.result === "error") {
-    return { messages: [], foundOldest: false };
+    return { messages: [], foundOldest: false, foundNewest: false };
   }
 
   return {
     messages: (data.messages ?? []).map(rawMessageToMockMessage),
     foundOldest: data.found_oldest ?? data.foundOldest ?? false,
+    foundNewest: data.found_newest ?? data.foundNewest ?? false,
   };
 }
 
@@ -1661,8 +1680,8 @@ export async function fetchDmMessages(userIds: number | number[]): Promise<MockM
   const params = {
     narrow: [{ negated: false, operator: "dm", operand: ids }] as DmNarrow[],
     anchor: "newest",
-    num_before: 60,
-    num_after: 150,
+    num_before: ZULIP_DM_CHAT_NUM_BEFORE,
+    num_after: ZULIP_DM_CHAT_NUM_AFTER,
     client_gravatar: true,
     allow_empty_topic_name: true,
   };

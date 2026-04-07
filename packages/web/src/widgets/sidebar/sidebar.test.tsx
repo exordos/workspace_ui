@@ -1,14 +1,14 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useChatListStore } from "~/entities/chat-list";
-import { useUsersStore } from "~/entities/user";
-import { usePinStore } from "~/features/pin-chat";
-import type * as PinChatModule from "~/features/pin-chat";
-import { useSettingsStore } from "~/features/settings";
-import { buildDmTypingChatKey, useTypingIndicatorStore } from "~/features/typing-indicator";
-import { t } from "~/i18n";
-import type * as WorkspaceApiModule from "~/shared/api";
-import type * as ZulipApiModule from "~/shared/api/zulip";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useUsersStore } from "~/entities/user/user.model";
+import { usePinStore } from "~/features/pin-chat/pin-chat.model";
+import type * as PinChatApiModule from "~/features/pin-chat/pin-chat.api";
+import { useSettingsStore } from "~/features/settings/settings.model";
+import { buildDmTypingChatKey } from "~/features/typing-indicator/typing-key";
+import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indicator.model";
+import { t } from "~/i18n/i18n";
+import type * as WorkspaceApiModule from "~/shared/api/workspace-client";
 import type { SidebarChat } from "~/shared/types/sidebar-chat";
 import { createUser } from "~/test/factories";
 import { renderWithProviders } from "~/test/render";
@@ -25,12 +25,16 @@ const getFoldersMock = vi.fn().mockResolvedValue([]);
 const addChatToFolderMock = vi.fn();
 const removeChatFromFolderMock = vi.fn();
 
-vi.mock("~/features/create-chat", () => ({
-  createChannel: (...args: unknown[]) => createChannelMock(...args),
-}));
+vi.mock("~/features/create-chat/create-chat.api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("~/features/create-chat/create-chat.api")>();
+  return {
+    ...actual,
+    createChannel: (...args: unknown[]) => createChannelMock(...args),
+  };
+});
 
 vi.mock("~/shared/api/zulip", async (importOriginal) => {
-  const actual = await importOriginal<typeof ZulipApiModule>();
+  const actual = await importOriginal<typeof import("~/shared/api/zulip")>();
   return {
     ...actual,
     markDmAsRead: (...args: unknown[]) => markDmAsReadMock(...args),
@@ -38,8 +42,8 @@ vi.mock("~/shared/api/zulip", async (importOriginal) => {
   };
 });
 
-vi.mock("~/features/pin-chat", async (importOriginal) => {
-  const actual = await importOriginal<typeof PinChatModule>();
+vi.mock("~/features/pin-chat/pin-chat.api", async (importOriginal) => {
+  const actual = await importOriginal<typeof PinChatApiModule>();
   return {
     ...actual,
     pinChatInFolder: (...args: unknown[]) => pinChatInFolderMock(...args),
@@ -47,7 +51,7 @@ vi.mock("~/features/pin-chat", async (importOriginal) => {
   };
 });
 
-vi.mock("~/shared/api", async (importOriginal) => {
+vi.mock("~/shared/api/workspace-client", async (importOriginal) => {
   const actual = await importOriginal<typeof WorkspaceApiModule>();
   return {
     ...actual,
@@ -82,7 +86,7 @@ const GROUP_DM_CHAT: Extract<SidebarChat, { type: "dm" }> = {
   type: "dm",
   id: 201,
   name: "Design Squad",
-  slug: "201-group",
+  slug: "201,202,203",
   isGroup: true,
   lastMessage: "Weekly sync",
   time: "11:05",
@@ -113,6 +117,8 @@ describe("Sidebar", () => {
     usePinStore.getState().clear();
     useChatListStore.setState({ currentUserId: null });
     useSidebarConfigStore.getState().setConfig({ expandedStreamSlug: null });
+    useSidebarConfigStore.getState().setSearchQuery("");
+    useSidebarConfigStore.getState().setCreateChatOpen(false);
     useSettingsStore.getState().resetToDefaults();
     createChannelMock.mockReset();
     markDmAsReadMock.mockReset();
@@ -153,6 +159,21 @@ describe("Sidebar", () => {
     );
 
     expect(screen.getByText(t("app.loading"))).toBeInTheDocument();
+  });
+
+  it("does not show folder list loading label when chats exist while sync is in flight", () => {
+    renderWithProviders(
+      <Sidebar
+        streams={[]}
+        selectedFolderId="folder-1"
+        sidebarChats={[DM_CHAT]}
+        sidebarChatsLoading
+        sidebarDms={[DM_CHAT]}
+      />,
+    );
+
+    expect(screen.queryByText(t("app.loading"))).not.toBeInTheDocument();
+    expect(screen.getByText("Alice")).toBeInTheDocument();
   });
 
   it("does not render legacy chats-and-channels heading", () => {
@@ -603,7 +624,7 @@ describe("Sidebar", () => {
     );
 
     expect(screen.getByText("Design Squad")).toBeInTheDocument();
-    expect(screen.getByTestId("group-avatar-icon-201-group")).toBeInTheDocument();
+    expect(screen.getByTestId("group-avatar-icon-201,202,203")).toBeInTheDocument();
   });
 
   it("shows mark-as-read action in dm context menu and triggers dm narrow API", async () => {
@@ -919,7 +940,7 @@ describe("Sidebar", () => {
       },
     ]);
     addChatToFolderMock.mockResolvedValue(true);
-    getFolderItemsMock.mockResolvedValueOnce([]).mockResolvedValueOnce([
+    const workFolderItems = [
       {
         uuid: "work-item-1",
         chatId: "stream:11",
@@ -929,7 +950,11 @@ describe("Sidebar", () => {
         createdAt: "",
         updatedAt: "",
       },
-    ]);
+    ];
+    getFolderItemsMock
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(workFolderItems)
+      .mockResolvedValue(workFolderItems);
 
     renderWithProviders(
       <Sidebar streams={[]} selectedFolderId="all" sidebarChats={[STREAM_CHAT]} sidebarDms={[]} />,
@@ -946,6 +971,10 @@ describe("Sidebar", () => {
     await waitFor(() => {
       expect(addChatToFolderMock).toHaveBeenCalledWith("work-folder", "stream:11:general");
       expect(addChatToFolderMock).toHaveBeenCalledTimes(1);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("menuitemcheckbox", { name: /work/i })).toBeChecked();
     });
   });
 
@@ -986,6 +1015,28 @@ describe("Sidebar", () => {
     expect(screen.queryByText("# incident")).not.toBeInTheDocument();
     fireEvent.click(screen.getByText("#Engineering"));
     expect(screen.getByText("# incident")).toBeInTheDocument();
+  });
+
+  it("collapses expanded stream topics when a direct message chat is active", async () => {
+    const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
+      ...STREAM_CHAT,
+      topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
+    };
+    useSidebarConfigStore.getState().setExpandedStreamSlug("11-engineering");
+
+    renderWithProviders(
+      <Sidebar
+        streams={[]}
+        selectedFolderId="all"
+        sidebarChats={[streamWithTopics, DM_CHAT]}
+        sidebarDms={[DM_CHAT]}
+        activeDmIdParam={DM_CHAT.slug}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByText("# incident")).not.toBeInTheDocument();
+    });
   });
 
   it("places stream chat-menu trigger under counters and keeps avatar overlay toggle", () => {

@@ -5,5 +5,5 @@ export {
   getFrameSrcDirective,
   getSandboxPolicy,
 } from "./embed.lib";
-export type { EmbedFrameProps } from "./embed-frame.ui";
+export type { EmbedFrameProps } from "./embed-frame.types";
 export { EmbedFrame } from "./embed-frame.ui";

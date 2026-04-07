@@ -1,4 +1,4 @@
-import { getRealmBaseUrl } from "~/shared/api/zulip";
+import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
 import { WORKSPACE_ORIGIN } from "~/shared/config/constants";
 import { resolveAvatarUrl } from "~/shared/lib/avatar";
 

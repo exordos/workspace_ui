@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Draft } from "~/entities/draft";
+import type { Draft } from "~/entities/draft/draft.types";
 import {
   reconcileCreatedDraftServerId,
   syncExistingDraftDeleteOnClear,

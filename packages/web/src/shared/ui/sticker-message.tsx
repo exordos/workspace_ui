@@ -9,6 +9,7 @@
  */
 import React from "react";
 import { isValidUrl } from "../lib/validation";
+import type { StickerMessageProps } from "./sticker-message.types";
 
 const STICKER_RE = /\[sticker:([^:]+):([^\]]+)\]\(([^)]+)\)/;
 
@@ -22,11 +23,6 @@ function parseStickerFromContent(
 
 function isStickerMessage(content: string): boolean {
   return /^\[sticker:[^:]+:[^\]]+\]\([^)]+\)$/.test(content.trim());
-}
-
-interface StickerMessageProps {
-  content: string;
-  maxSize?: number;
 }
 
 export const StickerMessage: React.FC<StickerMessageProps> = ({ content, maxSize = 180 }) => {

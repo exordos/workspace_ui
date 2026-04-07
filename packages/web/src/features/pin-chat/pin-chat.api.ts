@@ -4,7 +4,10 @@
  * Pins are folder-scoped: a chat is pinned within a specific folder.
  */
 
-import { workspaceApi } from "~/shared/api/client";
+import {
+  pinV1FoldersFolderUuidItemsFolderItemUuidActionsPinInvoke,
+  unpinV1FoldersFolderUuidItemsFolderItemUuidActionsUnpinInvoke,
+} from "workspace-api/workspace-api.generated";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
 
@@ -18,16 +21,9 @@ export async function pinChatInFolder(
   guard.nonEmpty(folderItemUuid, "folderItemUuid");
 
   try {
-    const res = await workspaceApi.post(
-      `/folders/${folderUuid}/items/${folderItemUuid}/actions/pin/invoke`,
-      {},
-    );
-    if (res.ok) {
-      log.info("Chat pinned", { folderUuid, folderItemUuid });
-      return true;
-    }
-    log.warn("Pin failed", { status: res.status });
-    return false;
+    await pinV1FoldersFolderUuidItemsFolderItemUuidActionsPinInvoke(folderUuid, folderItemUuid);
+    log.info("Chat pinned", { folderUuid, folderItemUuid });
+    return true;
   } catch (err) {
     log.error("Pin error", { error: String(err) });
     return false;
@@ -42,16 +38,9 @@ export async function unpinChatInFolder(
   guard.nonEmpty(folderItemUuid, "folderItemUuid");
 
   try {
-    const res = await workspaceApi.post(
-      `/folders/${folderUuid}/items/${folderItemUuid}/actions/unpin/invoke`,
-      {},
-    );
-    if (res.ok) {
-      log.info("Chat unpinned", { folderUuid, folderItemUuid });
-      return true;
-    }
-    log.warn("Unpin failed", { status: res.status });
-    return false;
+    await unpinV1FoldersFolderUuidItemsFolderItemUuidActionsUnpinInvoke(folderUuid, folderItemUuid);
+    log.info("Chat unpinned", { folderUuid, folderItemUuid });
+    return true;
   } catch (err) {
     log.error("Unpin error", { error: String(err) });
     return false;

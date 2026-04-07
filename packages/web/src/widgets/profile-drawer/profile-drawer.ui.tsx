@@ -1,42 +1,30 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import React, { useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { useChatListStore } from "~/entities/chat-list";
-import { useInstancesStore } from "~/entities/instance";
-import { useThemeStore } from "~/entities/theme";
-import { useSettingsStore } from "~/features/settings";
-import type { NotificationSound } from "~/features/settings";
-import { getAvailablePalettes, selectPalette, selectMode } from "~/features/theme-picker";
-import { useTranslation } from "~/i18n";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useInstancesStore } from "~/entities/instance/instance.model";
+import { useThemeStore } from "~/entities/theme/theme.model";
+import { useSettingsStore } from "~/features/settings/settings.model";
+import type { NotificationSound } from "~/features/settings/settings.types";
+import {
+  getAvailablePalettes,
+  selectPalette,
+  selectMode,
+} from "~/features/theme-picker/theme-picker.model";
+import { useTranslation } from "~/i18n/i18n";
+import { IS_CONNECTION_DIAGNOSTICS_ENABLED } from "~/shared/config/constants";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { wipeCredentials } from "~/shared/lib/auth-guard";
 import { clearLocalStatePreservingCriticalKeys } from "~/shared/lib/local-reset";
 import { createLogger } from "~/shared/lib/logger";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
-import { pushService } from "~/shared/lib/push";
+import { pushService } from "~/shared/lib/push/push.service";
 import { isValidUrl } from "~/shared/lib/validation";
-import { Icon } from "~/shared/ui";
-import type { IconName } from "~/shared/ui";
+import { Icon } from "~/shared/ui/icon";
+import type { MenuItem, ProfileDrawerProps } from "./profile-drawer.types";
 
 const log = createLogger("profile-drawer");
 const APP_VERSION = import.meta.env.VITE_APP_VERSION ?? "dev";
-
-interface ProfileDrawerProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onOpenSettingsDrawer?: () => void;
-}
-
-interface MenuItem {
-  label: string;
-  subtitle?: string;
-  icon?: IconName;
-  right?: React.ReactNode;
-  highlighted?: boolean;
-  destructive?: boolean;
-  navigateTo?: string;
-  action?: string;
-}
 
 const NOTIFICATION_SOUNDS: NotificationSound[] = [
   "default",
@@ -156,8 +144,8 @@ export const ProfileDrawer: React.FC<ProfileDrawerProps> = ({
     onOpenChange(false);
   }, [currentInstance, currentServerLabel, removeInstance, onOpenChange, t]);
 
-  const profileItems: MenuItem[] = useMemo(
-    () => [
+  const profileItems: MenuItem[] = useMemo(() => {
+    const items: MenuItem[] = [
       {
         label: t("settings.settings"),
         icon: "grid",
@@ -167,11 +155,6 @@ export const ProfileDrawer: React.FC<ProfileDrawerProps> = ({
         label: t("settings.personalInfo"),
         icon: "accountCircle",
         action: "openPersonalInfoPanel",
-      },
-      {
-        label: t("settings.connectionDiagnostics"),
-        icon: "visibility",
-        navigateTo: "/settings/logs",
       },
       {
         label: t("settings.appVersion"),
@@ -226,9 +209,18 @@ export const ProfileDrawer: React.FC<ProfileDrawerProps> = ({
         destructive: true,
         action: "logout",
       },
-    ],
-    [t, currentLocaleName, notificationSound],
-  );
+    ];
+
+    if (IS_CONNECTION_DIAGNOSTICS_ENABLED) {
+      items.splice(2, 0, {
+        label: t("settings.connectionDiagnostics"),
+        icon: "visibility",
+        navigateTo: "/settings/logs",
+      });
+    }
+
+    return items;
+  }, [t, currentLocaleName, notificationSound]);
 
   const handleItemClick = useCallback(
     (item: MenuItem) => {
@@ -286,7 +278,7 @@ export const ProfileDrawer: React.FC<ProfileDrawerProps> = ({
       <Dialog.Portal>
         <Dialog.Overlay className="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-modal bg-black/50" />
         <Dialog.Content
-          className="fixed bottom-0 right-0 top-0 z-modal flex w-full max-w-[360px] flex-col bg-sidebar-bg shadow-xl outline-none"
+          className="fixed bottom-0 right-0 top-0 z-modal flex w-full max-w-drawer-profile flex-col bg-sidebar-bg shadow-xl outline-none"
           onPointerDownOutside={() => onOpenChange(false)}
           onEscapeKeyDown={() => onOpenChange(false)}
           aria-describedby={undefined}

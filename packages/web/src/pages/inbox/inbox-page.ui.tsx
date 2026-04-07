@@ -1,14 +1,24 @@
+// Страница /inbox.
+// Паттерн работы:
+// 1) читаем локальный inbox bootstrap из IDB;
+// 2) применяем его только если он свежее текущих in-memory entries;
+// 3) всегда запускаем фоновый refresh unread с сервера без очистки UI.
 import React, { useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useChatListStore } from "~/entities/chat-list";
-import { useInboxStore, fetchInboxEntries, groupInboxEntries } from "~/entities/inbox";
-import type { InboxEntry } from "~/entities/inbox";
-import { t } from "~/i18n";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { fetchInboxEntries, hydrateInboxEntriesFromCache } from "~/entities/inbox/inbox.api";
+import { groupInboxEntries, isInboxEntriesSnapshotFresher } from "~/entities/inbox/inbox.lib";
+import { useInboxStore } from "~/entities/inbox/inbox.model";
+import type { InboxEntry } from "~/entities/inbox/inbox.types";
+import { useInstancesStore } from "~/entities/instance/instance.model";
+import { t } from "~/i18n/i18n";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { formatMessageTime } from "~/shared/lib/format";
 import { createLogger } from "~/shared/lib/logger";
-import { Icon } from "~/shared/ui";
-import { ChatHeader } from "~/widgets/chat-view";
+import { runInFlightDeduped } from "~/shared/lib/request-lifecycle.lib";
+import { FloatingLoadingOverlay } from "~/shared/ui/floating-loading-overlay";
+import { Icon } from "~/shared/ui/icon";
+import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
 import { buildInboxEntryRoute } from "./inbox-navigation.lib";
 
 const log = createLogger("inbox-page");
@@ -52,35 +62,63 @@ export const InboxPage: React.FC = () => {
   const navigate = useNavigate();
   const openSearch = useOpenSearch();
   const currentUserId = useChatListStore((s) => s.currentUserId ?? null);
-  const loading = useInboxStore((s) => s.loading);
+  const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
+  const loading = useInboxStore((s) => s.isInitialLoading);
+  const isRefreshing = useInboxStore((s) => s.isRefreshing);
   const error = useInboxStore((s) => s.error);
   const stale = useInboxStore((s) => s.stale);
   const setEntries = useInboxStore((s) => s.setEntries);
-  const setLoading = useInboxStore((s) => s.setLoading);
+  const startRequest = useInboxStore((s) => s.startRequest);
   const setError = useInboxStore((s) => s.setError);
   const sortedEntries = useInboxStore((s) => s.sortedEntries);
   const entries = sortedEntries();
   const grouped = groupInboxEntries(entries);
 
-  const loadInbox = useCallback(() => {
-    setLoading(true);
-    fetchInboxEntries(currentUserId)
-      .then((data) => {
-        setEntries(data);
-      })
-      .catch((err) => {
-        setError(String(err));
-        log.error("Failed to load inbox", { error: String(err) });
-      });
-  }, [currentUserId, setEntries, setLoading, setError]);
+  const loadInbox = useCallback(
+    (hasCachedData: boolean) => {
+      // Запускаем запрос с версионированием, чтобы закрыть гонки ответов.
+      const requestVersion = startRequest(hasCachedData);
+      const requestKey = `${currentInstanceId ?? "none"}:inbox:newest`;
+      return runInFlightDeduped(requestKey, () => fetchInboxEntries(currentUserId))
+        .then((data) => {
+          setEntries(data, requestVersion);
+        })
+        .catch((err) => {
+          setError(String(err), requestVersion);
+          log.error("Failed to load inbox", { error: String(err) });
+        });
+    },
+    [currentInstanceId, currentUserId, setEntries, setError, startRequest],
+  );
 
   useEffect(() => {
-    loadInbox();
-  }, [loadInbox]);
+    let cancelled = false;
+    void (async () => {
+      // 1) Локальный bootstrap из IDB для мгновенного рендера.
+      const cached = await hydrateInboxEntriesFromCache(currentInstanceId, currentUserId);
+      if (cancelled) return;
+      const currentEntries = useInboxStore.getState().entries;
+      // Гибридный bootstrap:
+      // - если памяти нет, берем cached;
+      // - если память есть, заменяем только когда cached объективно свежее.
+      const shouldApplyCached =
+        cached.length > 0 &&
+        (currentEntries.length === 0 || isInboxEntriesSnapshotFresher(cached, currentEntries));
+      if (shouldApplyCached) {
+        setEntries(cached);
+      }
+      // 2) Серверный authoritative refresh.
+      void loadInbox(true);
+    })().catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [currentInstanceId, currentUserId, loadInbox, setEntries]);
 
   useEffect(() => {
-    if (stale) loadInbox();
-  }, [stale, loadInbox]);
+    // markStale инициирует мягкий фоновый refresh, не очищая текущий список.
+    if (stale) void loadInbox(entries.length > 0);
+  }, [stale, loadInbox, entries.length]);
 
   const handleEntryClick = useCallback(
     (entry: InboxEntry) => {
@@ -93,7 +131,7 @@ export const InboxPage: React.FC = () => {
   );
 
   return (
-    <div className="flex max-h-full min-h-0 min-w-0 max-w-[1199px] flex-1 flex-col overflow-hidden">
+    <div className="flex max-h-full min-h-0 min-w-0 max-w-narrow-page flex-1 flex-col overflow-hidden">
       <ChatHeader
         channelName={t("inbox.title")}
         hideTopic
@@ -101,17 +139,17 @@ export const InboxPage: React.FC = () => {
         onOpenSearch={openSearch ?? undefined}
       />
       <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        {loading && (
+        {loading && entries.length === 0 && (
           <div className={`${INBOX_STATE_CARD_CLASS} text-text-muted`}>{t("app.loading")}</div>
         )}
-        {!loading && error && (
+        {!loading && error && entries.length === 0 && (
           <div className={`${INBOX_STATE_CARD_CLASS} text-notice-base`}>{t("inbox.loadError")}</div>
         )}
         {!loading && !error && entries.length === 0 && (
           <div className={`${INBOX_STATE_CARD_CLASS} text-text-muted`}>{t("inbox.noUnread")}</div>
         )}
-        {!loading && !error && entries.length > 0 && (
-          <div className="flex flex-1 flex-col overflow-auto px-3 pb-3 pt-2">
+        {entries.length > 0 && (
+          <div className="relative flex flex-1 flex-col overflow-auto px-3 pb-3 pt-2">
             {grouped.dms.length > 0 && (
               <section className="space-y-1.5">
                 <h3 className="flex items-center gap-2 px-1 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-text-muted">
@@ -161,6 +199,7 @@ export const InboxPage: React.FC = () => {
                 </div>
               </section>
             )}
+            <FloatingLoadingOverlay visible={isRefreshing} />
           </div>
         )}
       </section>

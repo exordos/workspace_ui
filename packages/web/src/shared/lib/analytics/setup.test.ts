@@ -7,9 +7,9 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { initAnalytics } from "./setup";
-import { analytics } from "./index";
+import { analytics } from "./analytics";
 
-vi.mock("./index", () => ({
+vi.mock("./analytics", () => ({
   analytics: {
     registerProvider: vi.fn(),
     init: vi.fn(),

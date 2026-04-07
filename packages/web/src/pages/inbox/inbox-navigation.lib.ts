@@ -1,6 +1,6 @@
-import type { InboxEntry } from "~/entities/inbox";
+import type { InboxEntry } from "~/entities/inbox/inbox.types";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
-import { slugForStream } from "~/widgets/sidebar";
+import { slugForStream } from "~/widgets/sidebar/sidebar.lib";
 
 function resolveInboxFocusMessageId(messageIds: number[]): number | null {
   let maxId: number | null = null;

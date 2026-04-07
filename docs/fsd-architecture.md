@@ -473,42 +473,27 @@ Key points:
 
 ---
 
-## Slice Public API
+## Imports (no barrel `index.ts`)
 
-- Each slice is exported only through its root `index.ts`.
-- Do not import internal files directly: `~/entities/message` — ok, `~/entities/message/message.model` — not ok.
-
-```typescript
-// entities/sticker/index.ts
-export { useStickerStore } from "./sticker.model";
-export type { Sticker, StickerPack, StickerFormat, RecentSticker } from "./sticker.types";
-export {
-  fetchStickerPacks,
-  searchStickers,
-  buildStickerMarkdown,
-  isStickerMessage,
-} from "./sticker.api";
-```
+Workspace UI follows **concrete segment imports**, not folder-level barrels. Do not add `index.ts` files that only re-export symbols. See `.cursor/rules/no-barrel-index.mdc`.
 
 ```typescript
-// features/ai-reply/index.ts
-export type { AiAction, AiTone, AiSuggestion, AiReplyProvider } from "./ai-reply.types";
-export { useAiReplyStore, setAiReplyProvider, type AiReplyStatus } from "./ai-reply.model";
-export { createMockProvider, createHttpProvider } from "./ai-reply.api";
-export { SmartReplySuggestions, AiActionMenu, AiComposerButton } from "./ai-reply.ui";
+// Import in widgets/features/pages — always point at the segment file:
+import { useStickerStore, type Sticker } from "~/entities/sticker/sticker.model";
+import type { StickerPack } from "~/entities/sticker/sticker.types";
+import { useDraftStore } from "~/entities/draft/draft.model";
+import { useInboxStore } from "~/entities/inbox/inbox.model";
+import { useAiReplyStore } from "~/features/ai-reply/ai-reply.model";
+import { SmartReplySuggestions } from "~/features/ai-reply/ai-reply.ui";
+import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
+import { usePinStore } from "~/features/pin-chat/pin-chat.model";
+import { useSettingsStore } from "~/features/settings/settings.model";
+import { Avatar } from "~/shared/ui/avatar";
+import { Badge } from "~/shared/ui/badge";
+import { Icon } from "~/shared/ui/icon";
 ```
 
-```typescript
-// Import in widgets/features/pages:
-import { useStickerStore, type Sticker } from "~/entities/sticker";
-import { useDraftStore } from "~/entities/draft";
-import { useInboxStore } from "~/entities/inbox";
-import { useAiReplyStore, SmartReplySuggestions } from "~/features/ai-reply";
-import { useMuteStore } from "~/features/mute-chat";
-import { usePinStore } from "~/features/pin-chat";
-import { useSettingsStore } from "~/features/settings";
-import { Avatar, Badge, Icon } from "~/shared/ui";
-```
+Some lazy routes may still resolve a folder via `index.ts` for the bundler; **application code** should import the explicit `*.model.ts` / `*.ui.tsx` path.
 
 ---
 
@@ -525,7 +510,6 @@ slice-name/
   slice-name.ui.tsx           # React component(s)
   slice-name.config.ts       # Constants, configuration
   slice-name.test.ts         # Tests
-  index.ts                   # Slice public API
 ```
 
 ### Zustand Store in FSD
@@ -572,11 +556,10 @@ export const useUsersStore = create<UsersState>((set, get) => ({
 
 ### Do Not
 
-- Create `index.ts` deeper than the second nesting level.
+- Add barrel-only `index.ts` files that re-export the slice (use concrete `*.model.ts` / `*.api.ts` imports). See `no-barrel-index.mdc`.
 - Create single-file folders (`ui/`, `lib/`, `model/`) — flatten them instead.
 - Create "dump" files like `helpers.ts` or `utils.ts` without context.
 - Make cross-layer imports upward (e.g., `entities` from `features` or `widgets` from `pages`).
-- Import from internal slice files directly (only through `index.ts`).
 - Keep `stores/` as a separate folder — stores live in `entities/<name>/` as `.model.ts`.
 
 ---
@@ -588,10 +571,10 @@ Zustand allows accessing other stores via `getState()`. In FSD this is only perm
 ```typescript
 // entities/chat-list/chat-list.model.ts
 // ✅ OK: entity → entity (same or lower level)
-import { useUsersStore } from "~/entities/user";
+import { useUsersStore } from "~/entities/user/user.model";
 
 // ❌ FORBIDDEN: entity → feature
-import { useAiReplyStore } from "~/features/ai-reply"; // not allowed!
+import { useAiReplyStore } from "~/features/ai-reply/ai-reply.model"; // not allowed!
 ```
 
 Current cross-store dependencies:
@@ -652,11 +635,12 @@ export default defineConfig({
 Imports:
 
 ```typescript
-import { useUsersStore } from "~/entities/user";
-import { useStickerStore } from "~/entities/sticker";
-import { useAiReplyStore, SmartReplySuggestions } from "~/features/ai-reply";
-import { Avatar } from "~/shared/ui";
-import { JITSI_MEET_DOMAIN } from "~/shared/config";
+import { useUsersStore } from "~/entities/user/user.model";
+import { useStickerStore } from "~/entities/sticker/sticker.model";
+import { useAiReplyStore } from "~/features/ai-reply/ai-reply.model";
+import { SmartReplySuggestions } from "~/features/ai-reply/ai-reply.ui";
+import { Avatar } from "~/shared/ui/avatar";
+import { JITSI_MEET_DOMAIN } from "~/shared/config/constants";
 ```
 
 ---

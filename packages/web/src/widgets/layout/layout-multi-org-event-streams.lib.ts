@@ -1,27 +1,15 @@
-import type { ZulipInstance } from "~/entities/instance";
-import type { ZulipCredentials, ZulipEvent } from "~/shared/api/zulip";
+import type { ZulipInstance } from "~/entities/instance/instance.model";
+import type { ZulipEvent } from "~/shared/api/zulip.types";
+import { MULTI_ORG_UNREAD_REFRESH_DEBOUNCE_MS } from "~/shared/config/constants";
+import type {
+  StartCredentialEventLoopFn,
+  StartInactiveInstanceEventStreamsOptions,
+} from "./layout-multi-org-event-streams.types";
 
-export interface StartCredentialEventLoopOptions {
-  credentials: ZulipCredentials;
-  onEvent: (event: ZulipEvent) => void;
-  onBadQueue?: () => void;
-  onReconnect?: () => void;
-}
-
-export type StartCredentialEventLoopFn = (options: StartCredentialEventLoopOptions) => () => void;
-
-interface StartInactiveInstanceEventStreamsOptions {
-  instances: readonly ZulipInstance[];
-  currentInstanceId: string | null;
-  enabled: boolean;
-  online: boolean;
-  refreshUnreadForInstance: (instance: ZulipInstance) => Promise<void> | void;
-  startEventLoop: StartCredentialEventLoopFn;
-  onError?: (instanceId: string, error: unknown) => void;
-  debounceMs?: number;
-}
-
-const DEFAULT_DEBOUNCE_MS = 300;
+export type {
+  StartCredentialEventLoopFn,
+  StartCredentialEventLoopOptions,
+} from "./layout-multi-org-event-streams.types";
 
 function shouldRefreshUnreadForEvent(event: ZulipEvent): boolean {
   return (
@@ -44,7 +32,7 @@ export function startInactiveInstanceEventStreams(
     refreshUnreadForInstance,
     startEventLoop,
     onError,
-    debounceMs = DEFAULT_DEBOUNCE_MS,
+    debounceMs = MULTI_ORG_UNREAD_REFRESH_DEBOUNCE_MS,
   } = options;
 
   if (!enabled || !online || instances.length <= 1) {

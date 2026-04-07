@@ -7,16 +7,20 @@
 // - как записать результат/ошибку в store.
 
 import { getCurrentInstance } from "~/shared/api/client";
+import { getUserStatusCacheRow, putUserStatusCacheRow } from "~/shared/lib/user-status-cache-db";
 import { useUsersStore, type UserRecord } from "../user.model";
 import type {
   FetchUserStatusDetailed,
   RequestUserStatusOptions,
   StatusFetchOutcome,
+  UserStatusRequestReason,
 } from "./user.api.types";
 
-// Если статус загрузился успешно, столько времени считаем его "свежим".
-// Пока TTL не истек, повторно в сеть не идем.
-const STATUS_SUCCESS_TTL_MS = 30 * 60_000;
+/** Success response considered fresh for this long (default); DM header uses 1 min. */
+function getSuccessTtlMs(reason: UserStatusRequestReason | undefined): number {
+  if (reason === "dm_header") return 60_000;
+  return 5 * 60_000;
+}
 // После 400 (невалидный пользователь) долго не повторяем запрос.
 // Это и есть negative cache.
 const STATUS_INVALID_USER_BACKOFF_MS = 24 * 60 * 60_000;
@@ -71,7 +75,8 @@ function shouldSkipRequest(
   if (user.statusNextRetryAt != null && now < user.statusNextRetryAt) {
     return true;
   }
-  return user.statusFetchedAt != null && now - user.statusFetchedAt < STATUS_SUCCESS_TTL_MS;
+  const ttl = getSuccessTtlMs(options?.reason);
+  return user.statusFetchedAt != null && now - user.statusFetchedAt < ttl;
 }
 
 // Кладем задачу в нужную очередь по приоритету.
@@ -95,7 +100,17 @@ function nextStatusRequestItem(): StatusQueueItem | undefined {
 // - transient_error => короткий retry backoff
 function applyFetchOutcome(userId: number, outcome: StatusFetchOutcome): void {
   if (outcome.kind === "ok") {
-    useUsersStore.getState().setStatus(userId, outcome.status, Date.now());
+    const fetchedAt = Date.now();
+    useUsersStore.getState().setStatus(userId, outcome.status, fetchedAt);
+    const inst = getCurrentInstance();
+    if (inst?.id) {
+      void putUserStatusCacheRow({
+        instanceId: inst.id,
+        userId,
+        status: outcome.status,
+        fetchedAt,
+      });
+    }
     return;
   }
   if (outcome.kind === "invalid_user") {
@@ -188,13 +203,30 @@ export async function requestUserStatusWithPolicy(
   }
 
   // Фоллбек работает только для пользователей, которые уже есть в store.
-  const user = useUsersStore.getState().getUser(userId);
+  let user = useUsersStore.getState().getUser(userId);
   if (!user) {
     return;
   }
 
+  const normalizedOptions: RequestUserStatusOptions = {
+    ...options,
+    reason: options?.reason ?? "compat",
+    priority: options?.priority ?? "low",
+  };
+
+  if (user.statusFetchedAt == null && instance.id) {
+    const row = await getUserStatusCacheRow(instance.id, userId);
+    if (row != null) {
+      useUsersStore.getState().setStatus(userId, row.status, row.fetchedAt);
+      user = useUsersStore.getState().getUser(userId);
+      if (!user) {
+        return;
+      }
+    }
+  }
+
   const now = Date.now();
-  if (shouldSkipRequest(user, now, options)) {
+  if (shouldSkipRequest(user, now, normalizedOptions)) {
     return;
   }
 
@@ -206,14 +238,6 @@ export async function requestUserStatusWithPolicy(
     return;
   }
 
-  // Нормализуем входные опции, чтобы всегда были reason/priority по умолчанию.
-  const normalizedOptions: RequestUserStatusOptions = {
-    ...options,
-    reason: options?.reason ?? "compat",
-    priority: options?.priority ?? "low",
-  };
-
-  // Создаем задачу, кладем в очередь и запускаем "двигатель" очереди.
   const promise = new Promise<void>((resolve, reject) => {
     enqueueStatusRequest({ key, userId, resolve, reject }, normalizedOptions);
     pumpStatusRequestQueue(fetchUserStatusDetailed);

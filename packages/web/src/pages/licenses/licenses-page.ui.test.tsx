@@ -30,6 +30,6 @@ describe("LicensesPage", () => {
     expect(pageRoot).toHaveClass("w-full");
     expect(pageRoot).toHaveClass("h-full");
     expect(pageRoot).toHaveClass("overflow-hidden");
-    expect(pageRoot).not.toHaveClass("max-w-[1199px]");
+    expect(pageRoot).not.toHaveClass("max-w-narrow-page");
   });
 });

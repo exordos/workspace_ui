@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { useChatListStore } from "~/entities/chat-list";
-import { useInstancesStore } from "~/entities/instance";
-import { useCurrentChatMessagesStore } from "~/entities/message";
-import { useThemeStore } from "~/entities/theme";
-import { useUsersStore } from "~/entities/user";
-import { useSettingsStore } from "~/features/settings";
-import { t } from "~/i18n";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useInstancesStore } from "~/entities/instance/instance.model";
+import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
+import { useThemeStore } from "~/entities/theme/theme.model";
+import { useUsersStore } from "~/entities/user/user.model";
+import { useSettingsStore } from "~/features/settings/settings.model";
+import { t } from "~/i18n/i18n";
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
 import { isElectron } from "~/shared/lib/electron";
 import { env } from "~/shared/lib/env";
@@ -16,7 +16,7 @@ import { getIdleTimeMs, getLocalPresenceStatus } from "~/shared/lib/presence";
 import { getRuntime, isPwa } from "~/shared/lib/pwa";
 import { isTabVisible } from "~/shared/lib/visibility";
 import { getWebViewPlatform, isWebView } from "~/shared/lib/webview";
-import { Icon } from "~/shared/ui";
+import { Icon } from "~/shared/ui/icon";
 import { downloadLogsAsFile } from "./logs-export.lib";
 
 type RuntimeFilter = string;
@@ -35,6 +35,7 @@ export const LogsPage: React.FC = () => {
   const streamsCount = useChatListStore((s) => s.streams().length);
   const dmsCount = useChatListStore((s) => s.dms().length);
   const usersCount = useUsersStore((s) => s.users.size);
+  const chatContext = useCurrentChatMessagesStore((s) => s.context);
   const currentChatMessagesCount = useCurrentChatMessagesStore((s) => s.messages.length);
   const currentInstance = useInstancesStore((s) => s.getCurrentInstance());
   const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
@@ -323,7 +324,7 @@ export const LogsPage: React.FC = () => {
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder={t("settings.logsSearchPlaceholder")}
               aria-label={t("settings.logsSearch")}
-              className="h-8 min-w-[180px] rounded-md border border-border-subtle bg-card-bg px-2 text-xs text-text-primary outline-none focus:border-accent"
+              className="h-8 min-w-context-menu-narrow rounded-md border border-border-subtle bg-card-bg px-2 text-xs text-text-primary outline-none focus:border-accent"
             />
           </label>
           <label className="min-w-0">

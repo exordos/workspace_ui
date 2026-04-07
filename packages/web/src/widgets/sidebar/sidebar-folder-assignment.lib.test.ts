@@ -1,9 +1,18 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { SYSTEM_ALL_FOLDER_ID } from "~/features/folder-sync/folder-sync-constants.lib";
+import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import {
   loadFolderAssignments,
   toggleFolderAssignment,
-  type FolderAssignment,
 } from "./sidebar-folder-assignment.lib";
+import {
+  OPTIMISTIC_FOLDER_ASSIGNMENT_ITEM_UUID,
+  type FolderAssignment,
+} from "./sidebar-folder-assignment.types";
+
+afterEach(() => {
+  useFolderSyncStore.getState().clear();
+});
 
 describe("loadFolderAssignments", () => {
   it("excludes system all folder from assignment rows", async () => {
@@ -170,9 +179,136 @@ describe("loadFolderAssignments", () => {
 
     expect(result).toEqual([{ folderUuid: "f-2", label: "Work", itemUuid: null }]);
   });
+
+  it("uses folder sync store when bootstrapped and skips getFolders and getFolderItems when cache is complete", async () => {
+    const folderItemsByFolderId = new Map([
+      [
+        "f-work",
+        [
+          {
+            uuid: "i-2",
+            chatId: "stream:11",
+            folderUuid: "f-work",
+            orderIndex: 0,
+            pinnedAt: null,
+            createdAt: "",
+            updatedAt: "",
+          },
+        ],
+      ],
+    ]);
+    useFolderSyncStore.setState({
+      instanceId: "instance-1",
+      folders: [
+        {
+          id: SYSTEM_ALL_FOLDER_ID,
+          label: "All chats",
+          backgroundColor: 0,
+          systemType: "all",
+        },
+        {
+          id: "f-work",
+          label: "Work",
+          backgroundColor: 2,
+          systemType: "created",
+        },
+      ],
+      folderItemsByFolderId,
+    });
+
+    const api = {
+      getFolders: vi.fn(),
+      getFolderItems: vi.fn(),
+      addChatToFolder: vi.fn(),
+      removeChatFromFolder: vi.fn(),
+    };
+
+    const result = await loadFolderAssignments("stream:11:general", api);
+
+    expect(result).toEqual([{ folderUuid: "f-work", label: "Work", itemUuid: "i-2" }]);
+    expect(api.getFolders).not.toHaveBeenCalled();
+    expect(api.getFolderItems).not.toHaveBeenCalled();
+  });
+
+  it("fetches getFolderItems only for folders missing from folderItemsByFolderId", async () => {
+    useFolderSyncStore.setState({
+      instanceId: "instance-1",
+      folders: [
+        {
+          id: SYSTEM_ALL_FOLDER_ID,
+          label: "All chats",
+          backgroundColor: 0,
+          systemType: "all",
+        },
+        {
+          id: "f-a",
+          label: "Alpha",
+          backgroundColor: 1,
+          systemType: "created",
+        },
+        {
+          id: "f-b",
+          label: "Beta",
+          backgroundColor: 2,
+          systemType: "created",
+        },
+      ],
+      folderItemsByFolderId: new Map([["f-a", []]]),
+    });
+
+    const api = {
+      getFolders: vi.fn(),
+      getFolderItems: vi.fn().mockResolvedValue([
+        {
+          uuid: "i-b",
+          chatId: "stream:20",
+          folderUuid: "f-b",
+          orderIndex: 0,
+          pinnedAt: null,
+          createdAt: "",
+          updatedAt: "",
+        },
+      ]),
+      addChatToFolder: vi.fn(),
+      removeChatFromFolder: vi.fn(),
+    };
+
+    const result = await loadFolderAssignments("stream:20:general", api);
+
+    expect(result).toEqual([
+      { folderUuid: "f-a", label: "Alpha", itemUuid: null },
+      { folderUuid: "f-b", label: "Beta", itemUuid: "i-b" },
+    ]);
+    expect(api.getFolders).not.toHaveBeenCalled();
+    expect(api.getFolderItems).toHaveBeenCalledTimes(1);
+    expect(api.getFolderItems).toHaveBeenCalledWith("f-b");
+  });
 });
 
 describe("toggleFolderAssignment", () => {
+  it("does not call API when item UUID is optimistic placeholder", async () => {
+    const api = {
+      getFolders: vi.fn(),
+      getFolderItems: vi.fn(),
+      addChatToFolder: vi.fn(),
+      removeChatFromFolder: vi.fn(),
+    };
+
+    const result = await toggleFolderAssignment(
+      "stream:10",
+      {
+        folderUuid: "f-1",
+        label: "Work",
+        itemUuid: OPTIMISTIC_FOLDER_ASSIGNMENT_ITEM_UUID,
+      },
+      api,
+    );
+
+    expect(result).toEqual({ ok: false, nextItemUuid: null, removed: false });
+    expect(api.removeChatFromFolder).not.toHaveBeenCalled();
+    expect(api.addChatToFolder).not.toHaveBeenCalled();
+  });
+
   it("removes assignment when item UUID exists", async () => {
     const api = {
       getFolders: vi.fn(),

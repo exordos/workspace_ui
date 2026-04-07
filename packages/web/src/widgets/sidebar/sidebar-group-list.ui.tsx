@@ -1,29 +1,13 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { Link } from "react-router-dom";
-import { Avatar, Badge, Icon } from "~/shared/ui";
-import { MOCK_GROUPS } from "./sidebar.lib";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { effectiveDmIsGroupFromSlug } from "~/shared/lib/dm-route.lib";
+import { Avatar } from "~/shared/ui/avatar";
+import { Badge } from "~/shared/ui/badge";
+import { Icon } from "~/shared/ui/icon";
+import { MOCK_GROUPS, parseDmSlugToUserIds } from "./sidebar.lib";
 import type { SidebarChat } from "./sidebar.types";
-
-interface SidebarGroupListProps {
-  activeDmIdParam: string | null;
-  expandedGroupIds: Set<number>;
-  onToggleGroup: (id: number) => void;
-  /** Group DMs from recent messages. If not provided, mock data is shown. */
-  groupChats?: Extract<SidebarChat, { type: "dm" }>[];
-}
-
-interface GroupChat {
-  type: "dm";
-  id: number;
-  name: string;
-  slug: string;
-  isGroup: true;
-  lastMessage?: string;
-  time?: string;
-  badge?: number;
-  pinned?: boolean;
-  userIds?: number[];
-}
+import type { SidebarGroupListProps } from "./sidebar-group-list.types";
 
 export const SidebarGroupList: React.FC<SidebarGroupListProps> = ({
   activeDmIdParam,
@@ -31,9 +15,17 @@ export const SidebarGroupList: React.FC<SidebarGroupListProps> = ({
   onToggleGroup,
   groupChats,
 }) => {
+  const currentUserId = useChatListStore((s) => s.currentUserId);
   const source: SidebarChat[] = groupChats && groupChats.length > 0 ? groupChats : MOCK_GROUPS;
-  const filtered = source.filter((c): c is GroupChat => c.type === "dm" && c.isGroup === true);
-  const list: GroupChat[] = filtered;
+  const list = useMemo(
+    () =>
+      source.filter(
+        (c): c is Extract<SidebarChat, { type: "dm" }> =>
+          c.type === "dm" &&
+          effectiveDmIsGroupFromSlug(c.isGroup, parseDmSlugToUserIds(c.slug), currentUserId),
+      ),
+    [source, currentUserId],
+  );
   return (
     <div className="space-y-0.5 px-3">
       {list.map((chat) => {

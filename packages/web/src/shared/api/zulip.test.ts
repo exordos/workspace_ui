@@ -91,7 +91,7 @@ vi.mock("~/shared/lib/auth-guard", () => ({
   setAuthInstanceGetter: vi.fn(),
 }));
 
-vi.mock("~/i18n", () => ({
+vi.mock("~/i18n/i18n", () => ({
   t: (key: string) => key,
 }));
 

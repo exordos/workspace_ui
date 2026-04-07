@@ -34,7 +34,7 @@ vi.mock("../entities/instance/instance.model", () => ({
 vi.mock("../entities/theme/theme.model", () => ({
   useThemeStore: { getState: vi.fn() },
 }));
-vi.mock("../i18n", () => ({
+vi.mock("../i18n/i18n", () => ({
   getLocale: vi.fn(() => "ru"),
 }));
 vi.mock("../shared/lib/logger", () => ({

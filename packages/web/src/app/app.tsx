@@ -1,8 +1,8 @@
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Routes, Route, useLocation, useNavigate, Navigate, useParams } from "react-router-dom";
-import { useInstancesStore } from "~/entities/instance";
-import { useThemeStore } from "~/entities/theme";
-import { t } from "~/i18n";
+import { useLocation, useNavigate } from "react-router-dom";
+import { useInstancesStore } from "~/entities/instance/instance.model";
+import { useThemeStore } from "~/entities/theme/theme.model";
+import { t } from "~/i18n/i18n";
 import { usePageView } from "~/shared/lib/analytics/usePageView";
 import { getElectronAPI } from "~/shared/lib/electron";
 import { initFocusManagement, focusMainContent } from "~/shared/lib/focus";
@@ -17,56 +17,23 @@ import {
   withCurrentOrgRoute,
   withOrgRoutePrefix,
 } from "~/shared/lib/org-route";
-import { setPluginNavigate } from "~/shared/lib/plugins";
+import { setPluginNavigate } from "~/shared/lib/plugins/api";
 import { useShortcut } from "~/shared/lib/shortcuts";
 import { useAppUpdate } from "~/shared/lib/updater";
 import { isWebView } from "~/shared/lib/webview";
-import { ErrorBoundary, PageErrorFallback, PageLoader } from "~/shared/ui";
-import { Layout } from "~/widgets/layout";
+import { ErrorBoundary, PageErrorFallback, PageLoader } from "~/shared/ui/error-boundary";
 import { normalizeElectronDeeplinkRoute } from "./app-deeplink.lib";
 import { isForceUpdateRequiredStatus, shouldRedirectToForceUpdate } from "./app-force-update.lib";
+import {
+  AuthenticatedAppRoutes,
+  LoginAppRoutes,
+  WebViewAppRoutes,
+} from "./app-route-definitions";
 import { buildShortcutHelpSections } from "./app-shortcuts-help.lib";
+import { AppShortcutsHelpModal } from "./app-shortcuts-help-modal.ui";
 import { resolveGlobalNavigationRoute, resolveGlobalShortcutAction } from "./app-shortcuts.lib";
-import { WebViewShell } from "./webview-shell";
-
-const LoginPage = React.lazy(() => import("~/pages/login").then((m) => ({ default: m.LoginPage })));
-const PasteTokenPage = React.lazy(() =>
-  import("~/pages/login").then((m) => ({ default: m.PasteTokenPage })),
-);
-const ChatPage = React.lazy(() => import("~/pages/chat").then((m) => ({ default: m.ChatPage })));
-const ActivityPage = React.lazy(() =>
-  import("~/pages/activity").then((m) => ({ default: m.ActivityPage })),
-);
-const CalendarPage = React.lazy(() =>
-  import("~/pages/calendar").then((m) => ({ default: m.CalendarPage })),
-);
-const MailPage = React.lazy(() => import("~/pages/mail").then((m) => ({ default: m.MailPage })));
-const CallsPage = React.lazy(() => import("~/pages/calls").then((m) => ({ default: m.CallsPage })));
-const LogsPage = React.lazy(() => import("~/pages/logs").then((m) => ({ default: m.LogsPage })));
-const ServicesPage = React.lazy(() =>
-  import("~/pages/services").then((m) => ({ default: m.ServicesPage })),
-);
-const LicensesPage = React.lazy(() =>
-  import("~/pages/licenses").then((m) => ({ default: m.LicensesPage })),
-);
-const InboxPage = React.lazy(() => import("~/pages/inbox").then((m) => ({ default: m.InboxPage })));
-const FeedPage = React.lazy(() => import("~/pages/feed").then((m) => ({ default: m.FeedPage })));
-const UpdatePage = React.lazy(() =>
-  import("~/pages/update").then((m) => ({ default: m.UpdatePage })),
-);
-const MessageRedirectPage = React.lazy(() =>
-  import("~/pages/message-redirect").then((m) => ({ default: m.MessageRedirectPage })),
-);
 
 const DEFAULT_STREAM = "general";
-
-const OrgInboxRedirect: React.FC = () => {
-  const { orgId } = useParams<{ orgId?: string }>();
-  if (orgId == null || orgId.length === 0) {
-    return <Navigate to="/inbox" replace />;
-  }
-  return <Navigate to={withOrgRoutePrefix("/inbox", orgId)} replace />;
-};
 
 const App: React.FC = () => {
   const location = useLocation();
@@ -254,22 +221,14 @@ const App: React.FC = () => {
   );
 
   if (isWebView()) {
-    return (
-      <Routes>
-        <Route path="/webview/*" element={<WebViewShell />} />
-        <Route path="/*" element={<WebViewShell />} />
-      </Routes>
-    );
+    return <WebViewAppRoutes />;
   }
 
   if (instances.length === 0) {
     return (
       <div ref={rootRef} className="h-full">
         <Suspense fallback={<PageLoader />}>
-          <Routes>
-            <Route path="/paste-token" element={<PasteTokenPage />} />
-            <Route path="*" element={<LoginPage />} />
-          </Routes>
+          <LoginAppRoutes />
         </Suspense>
       </div>
     );
@@ -288,122 +247,11 @@ const App: React.FC = () => {
         {t("a11y.skipToContent")}
       </a>
       {shortcutsHelpOpen && (
-        <div
-          className="bg-bg/80 fixed inset-0 z-modal flex items-center justify-center p-4"
-          data-shortcut-context="modal"
-          role="dialog"
-          aria-modal="true"
-          aria-label={t("shortcuts.title")}
-        >
-          <div className="max-h-[80vh] w-full max-w-3xl overflow-hidden rounded-xl border border-border-subtle bg-bg-elevated shadow-xl">
-            <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
-              <h2 className="text-sm font-semibold text-text-primary">{t("shortcuts.title")}</h2>
-              <button
-                type="button"
-                onClick={closeShortcutsHelp}
-                className="rounded px-2 py-1 text-sm text-text-muted hover:bg-bg hover:text-text-primary"
-                aria-label={t("common.close")}
-              >
-                {t("common.close")}
-              </button>
-            </div>
-            <div className="grid gap-4 overflow-y-auto p-4 md:grid-cols-2">
-              {shortcutHelpSections.map((section) => (
-                <section key={section.category} className="space-y-2">
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-text-muted">
-                    {section.category}
-                  </h3>
-                  <div className="space-y-1.5">
-                    {section.entries.map((entry) => (
-                      <div
-                        key={`${section.category}-${entry.label}-${entry.combo}`}
-                        className="flex items-center justify-between gap-2 rounded bg-bg px-2 py-1.5 text-xs text-text-primary"
-                      >
-                        <span className="truncate">{entry.label}</span>
-                        <kbd className="rounded border border-border-subtle bg-card-bg px-1.5 py-0.5 font-mono text-[11px] text-text-muted">
-                          {entry.combo}
-                        </kbd>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              ))}
-            </div>
-          </div>
-        </div>
+        <AppShortcutsHelpModal sections={shortcutHelpSections} onClose={closeShortcutsHelp} />
       )}
       <ErrorBoundary fallback={<PageErrorFallback />}>
         <Suspense fallback={<PageLoader />}>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/paste-token" element={<PasteTokenPage />} />
-            <Route path="/" element={<Navigate to={defaultInboxRoute} replace />} />
-            <Route path="/org/:orgId" element={<OrgInboxRedirect />} />
-            <Route path="/force-update" element={<UpdatePage forceMode />} />
-            <Route path="/org/:orgId/force-update" element={<UpdatePage forceMode />} />
-            <Route path="/licenses" element={<LicensesPage />} />
-            <Route path="/org/:orgId/licenses" element={<LicensesPage />} />
-            <Route element={<Layout />}>
-              <Route path="/stream/:streamSlug" element={<ChatPage key={location.pathname} />} />
-              <Route
-                path="/stream/:streamSlug/topic/:topicName"
-                element={<ChatPage key={location.pathname} />}
-              />
-              <Route path="/dm/:dmId" element={<ChatPage key={location.pathname} />} />
-              <Route path="/message/:messageId" element={<MessageRedirectPage />} />
-              <Route path="/activity/:filter" element={<ActivityPage />} />
-              <Route path="/calendar" element={<CalendarPage />} />
-              <Route path="/mail" element={<MailPage />} />
-              <Route path="/call" element={<CallsPage />} />
-              <Route path="/calls" element={<CallsPage />} />
-              <Route
-                path="/settings/personal-info"
-                element={<Navigate to={withCurrentOrgRoute("/inbox")} replace />}
-              />
-              <Route path="/settings/logs" element={<LogsPage />} />
-              <Route path="/settings/build" element={<UpdatePage />} />
-              <Route
-                path="/settings/*"
-                element={<Navigate to={withCurrentOrgRoute("/inbox")} replace />}
-              />
-              <Route path="/logs" element={<LogsPage />} />
-              <Route path="/services" element={<ServicesPage />} />
-              <Route path="/all-services" element={<ServicesPage />} />
-              <Route path="/inbox" element={<InboxPage />} />
-              <Route path="/feed" element={<FeedPage />} />
-              <Route path="/updates" element={<UpdatePage />} />
-            </Route>
-            <Route path="/org/:orgId" element={<Layout />}>
-              <Route path="stream/:streamSlug" element={<ChatPage key={location.pathname} />} />
-              <Route
-                path="stream/:streamSlug/topic/:topicName"
-                element={<ChatPage key={location.pathname} />}
-              />
-              <Route path="dm/:dmId" element={<ChatPage key={location.pathname} />} />
-              <Route path="message/:messageId" element={<MessageRedirectPage />} />
-              <Route path="activity/:filter" element={<ActivityPage />} />
-              <Route path="calendar" element={<CalendarPage />} />
-              <Route path="mail" element={<MailPage />} />
-              <Route path="call" element={<CallsPage />} />
-              <Route path="calls" element={<CallsPage />} />
-              <Route
-                path="settings/personal-info"
-                element={<Navigate to={withCurrentOrgRoute("/inbox")} replace />}
-              />
-              <Route path="settings/logs" element={<LogsPage />} />
-              <Route path="settings/build" element={<UpdatePage />} />
-              <Route
-                path="settings/*"
-                element={<Navigate to={withCurrentOrgRoute("/inbox")} replace />}
-              />
-              <Route path="logs" element={<LogsPage />} />
-              <Route path="services" element={<ServicesPage />} />
-              <Route path="all-services" element={<ServicesPage />} />
-              <Route path="inbox" element={<InboxPage />} />
-              <Route path="feed" element={<FeedPage />} />
-              <Route path="updates" element={<UpdatePage />} />
-            </Route>
-          </Routes>
+          <AuthenticatedAppRoutes defaultInboxRoute={defaultInboxRoute} />
         </Suspense>
       </ErrorBoundary>
     </div>

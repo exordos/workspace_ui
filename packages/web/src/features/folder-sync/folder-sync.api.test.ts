@@ -113,6 +113,40 @@ describe("folder-sync.api", () => {
     expect(getFolders).toHaveBeenCalledTimes(1);
   });
 
+  it("requests items for priority folder before parallel batch for other folders", async () => {
+    vi.mocked(getFolders).mockResolvedValue([
+      {
+        uuid: "folder-a",
+        title: "A",
+        background_color_value: 0,
+        unread_messages: [],
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+        system_type: "created",
+      },
+      {
+        uuid: "folder-b",
+        title: "B",
+        background_color_value: 0,
+        unread_messages: [],
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+        system_type: "created",
+      },
+    ]);
+    const callOrder: string[] = [];
+    vi.mocked(getFolderItems).mockImplementation(async (uuid: string) => {
+      callOrder.push(uuid);
+      return [];
+    });
+
+    await loadFolderSyncSnapshot("inst-a", { priorityFolderUuid: "folder-b" });
+
+    expect(callOrder[0]).toBe("folder-b");
+    expect(callOrder).toContain("folder-a");
+    expect(callOrder).toHaveLength(2);
+  });
+
   it("marks failed folder-items requests without failing full snapshot", async () => {
     vi.mocked(getFolders).mockResolvedValue([
       {

@@ -2,19 +2,20 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { installAiContext } from "~/app/ai-context";
 import { installDevTools } from "~/app/devtools";
-import { useChatListStore } from "~/entities/chat-list";
-import { useInstancesStore } from "~/entities/instance";
-import { useThemeStore } from "~/entities/theme";
-import { reportPresence } from "~/entities/user";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useInstancesStore } from "~/entities/instance/instance.model";
+import { useThemeStore } from "~/entities/theme/theme.model";
+import { reportPresence } from "~/entities/user/api/user.api";
 import { setInstanceProvider } from "~/shared/api/client";
+import { registerWorkspaceOrvalMutator } from "~/shared/api/workspace-orval-mutator";
 import { initAnalytics } from "~/shared/lib/analytics/setup";
 import { setStoreWiper, setAuthInstanceGetter } from "~/shared/lib/auth-guard";
 import { initNetworkTracking } from "~/shared/lib/network";
 import { perf } from "~/shared/lib/perf";
-import { setPluginDataProvider } from "~/shared/lib/plugins";
+import { setPluginDataProvider } from "~/shared/lib/plugins/api";
 import { initPlugins } from "~/shared/lib/plugins/setup";
 import { initPresenceTracker, setPresenceReporter } from "~/shared/lib/presence";
-import { initPush } from "~/shared/lib/push";
+import { initPush } from "~/shared/lib/push/push.service";
 import { cleanupDevServiceWorkers, initPwaListeners } from "~/shared/lib/pwa";
 import { initSentry } from "~/shared/lib/sentry";
 import { initTouchTracking } from "~/shared/lib/touch";
@@ -27,6 +28,8 @@ import "./app/focus-outline.styles.css";
 // ---------------------------------------------------------------------------
 // FSD provider wiring (shared layer cannot import entities; we inject here)
 // ---------------------------------------------------------------------------
+
+registerWorkspaceOrvalMutator();
 
 setInstanceProvider(() => {
   const inst = useInstancesStore.getState().getCurrentInstance();

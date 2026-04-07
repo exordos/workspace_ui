@@ -4,15 +4,22 @@
  * Covers store state transitions (edit mode, selection, status), and API
  * integration for create, update, and delete operations.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useManageFoldersStore } from "./manage-folders.model";
 
 vi.mock("~/shared/api/client", () => ({
   workspaceApi: {
+    get: vi.fn(),
     postJson: vi.fn(),
+    putJson: vi.fn(),
     delete: vi.fn(),
   },
 }));
+
+beforeEach(async () => {
+  const { registerWorkspaceOrvalMutator } = await import("~/shared/api/workspace-orval-mutator");
+  registerWorkspaceOrvalMutator();
+});
 
 const folderResponse = {
   ok: true as const,
@@ -29,6 +36,23 @@ const folderResponse = {
   durationMs: 30,
 };
 
+const folderGetResponse = {
+  ok: true as const,
+  status: 200,
+  data: {
+    uuid: "folder-1",
+    title: "New Folder",
+    background_color_value: 0,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+    unread_messages: [] as number[],
+    system_type: "created" as const,
+  },
+  headers: new Headers(),
+  raw: new Response(),
+  durationMs: 20,
+};
+
 describe("useManageFoldersStore", () => {
   afterEach(() => {
     useManageFoldersStore.getState().reset();
@@ -37,8 +61,17 @@ describe("useManageFoldersStore", () => {
 
   async function setupDefaultMocks() {
     const { workspaceApi } = await import("~/shared/api/client");
+    vi.mocked(workspaceApi.get).mockResolvedValue(folderGetResponse);
     vi.mocked(workspaceApi.postJson).mockResolvedValue(folderResponse);
-    vi.mocked(workspaceApi.delete).mockResolvedValue({ ok: true } as never);
+    vi.mocked(workspaceApi.putJson).mockResolvedValue(folderResponse);
+    vi.mocked(workspaceApi.delete).mockResolvedValue({
+      ok: true,
+      status: 204,
+      data: null,
+      headers: new Headers(),
+      raw: new Response(),
+      durationMs: 10,
+    } as never);
   }
 
   describe("initial state", () => {
@@ -133,6 +166,11 @@ describe("useManageFoldersStore", () => {
 
 // Direct API function tests — isolated from the store layer.
 describe("manage-folders API", () => {
+  beforeEach(async () => {
+    const { registerWorkspaceOrvalMutator } = await import("~/shared/api/workspace-orval-mutator");
+    registerWorkspaceOrvalMutator();
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -152,10 +190,13 @@ describe("manage-folders API", () => {
         createdAt: "2026-01-01T00:00:00Z",
         updatedAt: "2026-01-01T00:00:00Z",
       });
-      expect(workspaceApi.postJson).toHaveBeenCalledWith("/folders/", {
-        title: "Engineering",
-        background_color_value: 0,
-      });
+      expect(workspaceApi.postJson).toHaveBeenCalledWith(
+        "/v1/folders/",
+        expect.objectContaining({
+          title: "Engineering",
+          background_color_value: 0,
+        }),
+      );
     });
 
     it("passes backgroundColor when provided", async () => {
@@ -165,10 +206,13 @@ describe("manage-folders API", () => {
       const { createFolder } = await import("./manage-folders.api");
       await createFolder({ title: "Red Folder", backgroundColor: 0xff0000 });
 
-      expect(workspaceApi.postJson).toHaveBeenCalledWith("/folders/", {
-        title: "Red Folder",
-        background_color_value: 0xff0000,
-      });
+      expect(workspaceApi.postJson).toHaveBeenCalledWith(
+        "/v1/folders/",
+        expect.objectContaining({
+          title: "Red Folder",
+          background_color_value: 0xff0000,
+        }),
+      );
     });
 
     it("returns null on API failure", async () => {
@@ -200,31 +244,41 @@ describe("manage-folders API", () => {
   describe("updateFolder", () => {
     it("sends only provided fields in update payload", async () => {
       const { workspaceApi } = await import("~/shared/api/client");
-      vi.mocked(workspaceApi.postJson).mockResolvedValue(folderResponse);
+      vi.mocked(workspaceApi.get).mockResolvedValue(folderGetResponse);
+      vi.mocked(workspaceApi.putJson).mockResolvedValue(folderResponse);
 
       const { updateFolder } = await import("./manage-folders.api");
       await updateFolder("folder-1", { title: "Renamed" });
 
-      expect(workspaceApi.postJson).toHaveBeenCalledWith("/folders/folder-1/", {
-        title: "Renamed",
-      });
+      expect(workspaceApi.get).toHaveBeenCalledWith("/v1/folders/folder-1", undefined, undefined);
+      expect(workspaceApi.putJson).toHaveBeenCalledWith(
+        "/v1/folders/folder-1",
+        expect.objectContaining({
+          title: "Renamed",
+        }),
+      );
     });
 
     it("sends backgroundColor when provided", async () => {
       const { workspaceApi } = await import("~/shared/api/client");
-      vi.mocked(workspaceApi.postJson).mockResolvedValue(folderResponse);
+      vi.mocked(workspaceApi.get).mockResolvedValue(folderGetResponse);
+      vi.mocked(workspaceApi.putJson).mockResolvedValue(folderResponse);
 
       const { updateFolder } = await import("./manage-folders.api");
       await updateFolder("folder-1", { backgroundColor: 0x00ff00 });
 
-      expect(workspaceApi.postJson).toHaveBeenCalledWith("/folders/folder-1/", {
-        background_color_value: 0x00ff00,
-      });
+      expect(workspaceApi.putJson).toHaveBeenCalledWith(
+        "/v1/folders/folder-1",
+        expect.objectContaining({
+          background_color_value: 0x00ff00,
+        }),
+      );
     });
 
     it("maps response to FolderItem", async () => {
       const { workspaceApi } = await import("~/shared/api/client");
-      vi.mocked(workspaceApi.postJson).mockResolvedValue(folderResponse);
+      vi.mocked(workspaceApi.get).mockResolvedValue(folderGetResponse);
+      vi.mocked(workspaceApi.putJson).mockResolvedValue(folderResponse);
 
       const { updateFolder } = await import("./manage-folders.api");
       const result = await updateFolder("folder-1", { title: "X" });
@@ -240,7 +294,8 @@ describe("manage-folders API", () => {
 
     it("returns null on API failure", async () => {
       const { workspaceApi } = await import("~/shared/api/client");
-      vi.mocked(workspaceApi.postJson).mockResolvedValue({
+      vi.mocked(workspaceApi.get).mockResolvedValue(folderGetResponse);
+      vi.mocked(workspaceApi.putJson).mockResolvedValue({
         ok: false,
         status: 404,
         data: null,
@@ -252,7 +307,8 @@ describe("manage-folders API", () => {
 
     it("returns null on network error", async () => {
       const { workspaceApi } = await import("~/shared/api/client");
-      vi.mocked(workspaceApi.postJson).mockRejectedValue(new Error("Timeout"));
+      vi.mocked(workspaceApi.get).mockResolvedValue(folderGetResponse);
+      vi.mocked(workspaceApi.putJson).mockRejectedValue(new Error("Timeout"));
 
       const { updateFolder } = await import("./manage-folders.api");
       expect(await updateFolder("folder-1", { title: "X" })).toBeNull();
@@ -280,7 +336,7 @@ describe("manage-folders API", () => {
       const result = await deleteFolder("folder-1");
 
       expect(result).toBe(true);
-      expect(workspaceApi.delete).toHaveBeenCalledWith("/folders/folder-1/");
+      expect(workspaceApi.delete).toHaveBeenCalledWith("/v1/folders/folder-1");
     });
 
     it("returns false on API failure", async () => {

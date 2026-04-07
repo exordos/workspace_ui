@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { MockMessage } from "~/shared/api/zulip";
+import type { MockMessage } from "~/shared/api/zulip.types";
 import { countUnreadMessages, resolveFirstUnreadBoundaryMessageId } from "./chat-first-unread.lib";
 
 function createMessage(id: number, senderId: number, flags?: string[]): MockMessage {
@@ -43,7 +43,20 @@ describe("chat-first-unread", () => {
     expect(result).toBeUndefined();
   });
 
-  it("counts all unread messages", () => {
+  it("counts unread messages from others when currentUserId is set", () => {
+    const messages: MockMessage[] = [
+      createMessage(1, 7, ["read"]),
+      createMessage(2, 7),
+      createMessage(3, 42),
+      createMessage(4, 99, ["read"]),
+    ];
+
+    const result = countUnreadMessages(messages, 7);
+
+    expect(result).toBe(1);
+  });
+
+  it("counts every message without read when currentUserId is omitted", () => {
     const messages: MockMessage[] = [
       createMessage(1, 7, ["read"]),
       createMessage(2, 7),

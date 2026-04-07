@@ -1,151 +1,55 @@
-import * as Dialog from "@radix-ui/react-dialog";
-import EmojiPicker, { Theme, type EmojiClickData } from "emoji-picker-react";
+import { Theme, type EmojiClickData } from "emoji-picker-react";
 import React, { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useChatListStore } from "~/entities/chat-list";
-import { useInstancesStore } from "~/entities/instance";
-import { useThemeStore } from "~/entities/theme";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useInstancesStore } from "~/entities/instance/instance.model";
+import { useThemeStore } from "~/entities/theme/theme.model";
+import { updateOwnStatus } from "~/entities/user/api/user.api";
+import { useUserStatus } from "~/entities/user/user-status.hooks";
 import {
   encodeEmojiToCode,
   formatUserStatusLabel,
   getUserStatusEmoji,
   normalizeStatusEmojiName,
-  updateOwnStatus,
-  useUserStatus,
-  useUsersStore,
-} from "~/entities/user";
+} from "~/entities/user/user-status.lib";
+import { useUsersStore } from "~/entities/user/user.model";
+import { useSettingsStore } from "~/features/settings/settings.model";
+import type { NotificationSound } from "~/features/settings/settings.types";
 import {
-  useSettingsStore,
-  type ChatListDensity,
-  type FolderRailLayout,
-  type NotificationSound,
-} from "~/features/settings";
-import { getAvailablePalettes, selectPalette, selectMode } from "~/features/theme-picker";
-import { useTranslation } from "~/i18n";
+  getAvailablePalettes,
+  selectMode,
+  selectPalette,
+} from "~/features/theme-picker/theme-picker.model";
+import { useTranslation } from "~/i18n/i18n";
+import { IS_CONNECTION_DIAGNOSTICS_ENABLED } from "~/shared/config/constants";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { clearLocalStatePreservingCriticalKeys } from "~/shared/lib/local-reset";
 import { createLogger } from "~/shared/lib/logger";
 import { playNotificationSound } from "~/shared/lib/notification-sound";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
-import type { ThemeMode } from "~/shared/lib/themes/tokens";
-import { isValidUrl } from "~/shared/lib/validation";
-import { Icon, ScrollArea } from "~/shared/ui";
-import type { IconName } from "~/shared/ui";
+import { Icon } from "~/shared/ui/icon";
+import { ScrollArea } from "~/shared/ui/scroll-area";
+import {
+  RightPanelUserMenuMenuButton,
+  RightPanelUserMenuOptionButton,
+} from "./right-panel-user-menu-buttons.ui";
+import {
+  APP_VERSION,
+  CHAT_LIST_DENSITIES,
+  CHAT_LIST_DENSITY_LABEL_KEYS,
+  FOLDER_LAYOUTS,
+  FOLDER_LAYOUT_LABEL_KEYS,
+  getInstanceLabel,
+  MODE_LABEL_KEYS,
+  NOTIFICATION_SOUND_LABEL_KEYS,
+  NOTIFICATION_SOUNDS,
+  resolveRealmIconUrl,
+  THEME_MODES,
+} from "./right-panel-user-menu-constants.lib";
+import { RightPanelUserMenuStatusDialog } from "./right-panel-user-menu-status-dialog.ui";
+import type { RightPanelUserMenuProps } from "./right-panel-user-menu.types";
 
 const log = createLogger("right-panel-user-menu");
-const APP_VERSION = import.meta.env.VITE_APP_VERSION ?? "dev";
-const NOTIFICATION_SOUNDS: NotificationSound[] = [
-  "default",
-  "subtle",
-  "digital",
-  "glass",
-  "pulse",
-  "none",
-];
-const NOTIFICATION_SOUND_LABEL_KEYS: Record<NotificationSound, string> = {
-  default: "settings.soundDefault",
-  subtle: "settings.soundSubtle",
-  digital: "settings.soundDigital",
-  glass: "settings.soundGlass",
-  pulse: "settings.soundPulse",
-  none: "settings.soundNone",
-};
-const THEME_MODES: ThemeMode[] = ["light", "dark", "system"];
-const MODE_LABEL_KEYS: Record<ThemeMode, string> = {
-  light: "settings.themeLight",
-  dark: "settings.themeDark",
-  system: "settings.themeSystem",
-};
-const FOLDER_LAYOUTS: FolderRailLayout[] = ["vertical", "horizontal"];
-const FOLDER_LAYOUT_LABEL_KEYS: Record<FolderRailLayout, string> = {
-  vertical: "settings.folderLayoutVertical",
-  horizontal: "settings.folderLayoutHorizontal",
-};
-const CHAT_LIST_DENSITIES: ChatListDensity[] = ["standard", "compact"];
-const CHAT_LIST_DENSITY_LABEL_KEYS: Record<ChatListDensity, string> = {
-  standard: "settings.chatListDensityStandard",
-  compact: "settings.chatListDensityCompact",
-};
-const STATUS_EMOJI_PRESETS = [
-  { name: "speech_balloon", code: "1f4ac", symbol: "💬" },
-  { name: "house", code: "1f3e0", symbol: "🏠" },
-  { name: "palm_tree", code: "1f334", symbol: "🌴" },
-  { name: "plate_with_cutlery", code: "1f37d-fe0f", symbol: "🍽️" },
-  { name: "helmet_with_white_cross", code: "26d1-fe0f", symbol: "⛑️" },
-  { name: "spiral_calendar_pad", code: "1f5d3-fe0f", symbol: "🗓️" },
-] as const;
-
-interface RightPanelUserMenuProps {
-  heading?: string;
-  onOpenAboutDrawer?: () => void;
-  onOpenBuildsDrawer?: () => void;
-}
-
-interface MenuButtonProps {
-  label: string;
-  icon: IconName;
-  subtitle?: string;
-  right?: React.ReactNode;
-  onClick: () => void;
-}
-
-interface OptionButtonProps {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}
-
-function getInstanceLabel(realm: string, email: string): string {
-  try {
-    const host = new URL(realm.startsWith("http") ? realm : `https://${realm}`).hostname;
-    return host || email;
-  } catch {
-    return email;
-  }
-}
-
-function resolveRealmIconUrl(realmIcon?: string): string | null {
-  if (realmIcon == null) return null;
-  const trimmed = realmIcon.trim();
-  if (trimmed.length === 0) return null;
-  return isValidUrl(trimmed) ? trimmed : null;
-}
-
-const MenuButton: React.FC<MenuButtonProps> = ({ label, icon, subtitle, right, onClick }) => {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex w-full items-center justify-between gap-3 rounded-md px-2.5 py-2.5 text-left transition-colors hover:bg-bg-elevated"
-    >
-      <span className="flex min-w-0 items-center gap-3">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border-subtle bg-bg">
-          <Icon name={icon} size={18} className="text-accent" />
-        </span>
-        <span className="min-w-0">
-          <span className="block text-sm font-medium text-text-primary">{label}</span>
-          {subtitle && <span className="mt-0.5 block text-[11px] text-text-muted">{subtitle}</span>}
-        </span>
-      </span>
-      {right}
-    </button>
-  );
-};
-
-const OptionButton: React.FC<OptionButtonProps> = ({ label, active, onClick }) => {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-bg"
-    >
-      <span className={active ? "font-medium text-text-primary" : "text-text-primary"}>
-        {label}
-      </span>
-      {active ? <Icon name="check" size={14} className="text-accent" /> : null}
-    </button>
-  );
-};
 
 export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   heading,
@@ -162,14 +66,14 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   const instances = useInstancesStore((s) => s.instances);
   const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
   const removeInstance = useInstancesStore((s) => s.removeInstance);
-  const prioritizePersonalUnread = useSettingsStore((s) => s.prioritizePersonalUnread);
-  const prioritizeUnmutedUnreadChannels = useSettingsStore(
-    (s) => s.prioritizeUnmutedUnreadChannels,
-  );
-  const setPrioritizePersonalUnread = useSettingsStore((s) => s.setPrioritizePersonalUnread);
-  const setPrioritizeUnmutedUnreadChannels = useSettingsStore(
-    (s) => s.setPrioritizeUnmutedUnreadChannels,
-  );
+  // const prioritizePersonalUnread = useSettingsStore((s) => s.prioritizePersonalUnread);
+  // const prioritizeUnmutedUnreadChannels = useSettingsStore(
+  //   (s) => s.prioritizeUnmutedUnreadChannels,
+  // );
+  // const setPrioritizePersonalUnread = useSettingsStore((s) => s.setPrioritizePersonalUnread);
+  // const setPrioritizeUnmutedUnreadChannels = useSettingsStore(
+  //   (s) => s.setPrioritizeUnmutedUnreadChannels,
+  // );
   const notificationSound = useSettingsStore((s) => s.notificationSound);
   const setNotificationSound = useSettingsStore((s) => s.setNotificationSound);
   const setLanguage = useSettingsStore((s) => s.setLanguage);
@@ -183,7 +87,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   const [soundSettingsOpen, setSoundSettingsOpen] = useState(false);
   const [languageSettingsOpen, setLanguageSettingsOpen] = useState(false);
   const [themeSettingsOpen, setThemeSettingsOpen] = useState(false);
-  const [chatSortingOpen, setChatSortingOpen] = useState(false);
+  // const [chatSortingOpen, setChatSortingOpen] = useState(false);
   const [folderLayoutOpen, setFolderLayoutOpen] = useState(false);
   const [chatListDensityOpen, setChatListDensityOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
@@ -318,7 +222,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
       setLocale(nextLocale);
       setLanguage(nextLocale as "en" | "ru");
     },
-    [locales, setLanguage, setLocale],
+    [setLanguage, setLocale],
   );
 
   const handleSelectNotificationSound = useCallback(
@@ -344,7 +248,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
       handleSelectLanguage(nextLocale);
       setLanguageSettingsOpen(false);
     },
-    [handleSelectLanguage, locales],
+    [handleSelectLanguage],
   );
 
   const soundLabel = useMemo(
@@ -447,13 +351,13 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
                   </button>
                 </div>
               )}
-              <MenuButton
+              <RightPanelUserMenuMenuButton
                 label={t("settings.personalInfo")}
                 icon="accountCircle"
                 onClick={openPersonalInfo}
                 right={<Icon name="chevron-right" size={16} className="text-text-muted" />}
               />
-              <MenuButton
+              <RightPanelUserMenuMenuButton
                 label={t("settings.status")}
                 icon="mood"
                 subtitle={currentStatusLabel ?? t("settings.statusPlaceholder")}
@@ -468,7 +372,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
               {t("settings.settings")}
             </p>
             <div className="divide-y divide-border-subtle overflow-hidden rounded-lg border border-border-subtle bg-card-bg">
-              <MenuButton
+              <RightPanelUserMenuMenuButton
                 label={t("settings.notificationSound")}
                 icon="volumeUp"
                 onClick={toggleSoundSettings}
@@ -486,7 +390,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
               {soundSettingsOpen && (
                 <div className="mx-2 mb-2 divide-y divide-border-subtle overflow-hidden rounded-md border border-border-subtle bg-bg-elevated">
                   {NOTIFICATION_SOUNDS.map((sound) => (
-                    <OptionButton
+                    <RightPanelUserMenuOptionButton
                       key={sound}
                       label={t(NOTIFICATION_SOUND_LABEL_KEYS[sound])}
                       active={notificationSound === sound}
@@ -495,7 +399,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
                   ))}
                 </div>
               )}
-              <MenuButton
+              <RightPanelUserMenuMenuButton
                 label={t("settings.language")}
                 icon="language"
                 onClick={toggleLanguageSettings}
@@ -513,7 +417,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
               {languageSettingsOpen && (
                 <div className="mx-2 mb-2 divide-y divide-border-subtle overflow-hidden rounded-md border border-border-subtle bg-bg-elevated">
                   {locales.map((localeOption) => (
-                    <OptionButton
+                    <RightPanelUserMenuOptionButton
                       key={localeOption.id}
                       label={localeOption.nativeLabel}
                       active={currentLocale === localeOption.id}
@@ -523,7 +427,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
                 </div>
               )}
 
-              <MenuButton
+              <RightPanelUserMenuMenuButton
                 label={t("settings.themeSettings")}
                 icon="mood"
                 onClick={() => setThemeSettingsOpen((open) => !open)}
@@ -539,7 +443,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
                 <div className="mx-2 mb-2 space-y-2 rounded-md border border-border-subtle bg-bg-elevated p-2">
                   <div className="divide-y divide-border-subtle overflow-hidden rounded-md border border-border-subtle bg-card-bg">
                     {THEME_MODES.map((mode) => (
-                      <OptionButton
+                      <RightPanelUserMenuOptionButton
                         key={mode}
                         label={t(MODE_LABEL_KEYS[mode])}
                         active={currentThemeMode === mode}
@@ -575,37 +479,37 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
                 </div>
               )}
 
-              <MenuButton
-                label={t("settings.chatSorting")}
-                icon="channels"
-                onClick={() => setChatSortingOpen((open) => !open)}
-                subtitle={t("settings.chatSortingHint")}
-                right={
-                  <Icon
-                    name={chatSortingOpen ? "chevron-up" : "chevron-right"}
-                    size={16}
-                    className="text-text-muted"
-                  />
-                }
-              />
-              {chatSortingOpen && (
-                <div className="mx-2 mb-2 divide-y divide-border-subtle overflow-hidden rounded-md border border-border-subtle bg-bg-elevated">
-                  <OptionButton
-                    label={t("settings.chatSortingPrioritizeDirects")}
-                    active={prioritizePersonalUnread}
-                    onClick={() => setPrioritizePersonalUnread(!prioritizePersonalUnread)}
-                  />
-                  <OptionButton
-                    label={t("settings.chatSortingPrioritizeUnmuted")}
-                    active={prioritizeUnmutedUnreadChannels}
-                    onClick={() =>
-                      setPrioritizeUnmutedUnreadChannels(!prioritizeUnmutedUnreadChannels)
-                    }
-                  />
-                </div>
-              )}
+              {/*<RightPanelUserMenuMenuButton*/}
+              {/*  label={t("settings.chatSorting")}*/}
+              {/*  icon="channels"*/}
+              {/*  onClick={() => setChatSortingOpen((open) => !open)}*/}
+              {/*  subtitle={t("settings.chatSortingHint")}*/}
+              {/*  right={*/}
+              {/*    <Icon*/}
+              {/*      name={chatSortingOpen ? "chevron-up" : "chevron-right"}*/}
+              {/*      size={16}*/}
+              {/*      className="text-text-muted"*/}
+              {/*    />*/}
+              {/*  }*/}
+              {/*/>*/}
+              {/*{chatSortingOpen && (*/}
+              {/*  <div className="mx-2 mb-2 divide-y divide-border-subtle overflow-hidden rounded-md border border-border-subtle bg-bg-elevated">*/}
+              {/*    <RightPanelUserMenuOptionButton*/}
+              {/*      label={t("settings.chatSortingPrioritizeDirects")}*/}
+              {/*      active={prioritizePersonalUnread}*/}
+              {/*      onClick={() => setPrioritizePersonalUnread(!prioritizePersonalUnread)}*/}
+              {/*    />*/}
+              {/*    <RightPanelUserMenuOptionButton*/}
+              {/*      label={t("settings.chatSortingPrioritizeUnmuted")}*/}
+              {/*      active={prioritizeUnmutedUnreadChannels}*/}
+              {/*      onClick={() =>*/}
+              {/*        setPrioritizeUnmutedUnreadChannels(!prioritizeUnmutedUnreadChannels)*/}
+              {/*      }*/}
+              {/*    />*/}
+              {/*  </div>*/}
+              {/*)}*/}
 
-              <MenuButton
+              <RightPanelUserMenuMenuButton
                 label={t("settings.folderLayout")}
                 icon="folders"
                 onClick={() => setFolderLayoutOpen((open) => !open)}
@@ -620,7 +524,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
               {folderLayoutOpen && (
                 <div className="mx-2 mb-2 divide-y divide-border-subtle overflow-hidden rounded-md border border-border-subtle bg-bg-elevated">
                   {FOLDER_LAYOUTS.map((layout) => (
-                    <OptionButton
+                    <RightPanelUserMenuOptionButton
                       key={layout}
                       label={t(FOLDER_LAYOUT_LABEL_KEYS[layout])}
                       active={folderRailLayout === layout}
@@ -630,7 +534,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
                 </div>
               )}
 
-              <MenuButton
+              <RightPanelUserMenuMenuButton
                 label={t("settings.chatListDensity")}
                 icon="list_bulleted"
                 onClick={() => setChatListDensityOpen((open) => !open)}
@@ -645,7 +549,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
               {chatListDensityOpen && (
                 <div className="mx-2 mb-2 divide-y divide-border-subtle overflow-hidden rounded-md border border-border-subtle bg-bg-elevated">
                   {CHAT_LIST_DENSITIES.map((density) => (
-                    <OptionButton
+                    <RightPanelUserMenuOptionButton
                       key={density}
                       label={t(CHAT_LIST_DENSITY_LABEL_KEYS[density])}
                       active={chatListDensity === density}
@@ -662,14 +566,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
               {t("settings.appVersion")}
             </p>
             <div className="divide-y divide-border-subtle overflow-hidden rounded-lg border border-border-subtle bg-card-bg">
-              <MenuButton
-                label={t("settings.selectBuild")}
-                icon="grid"
-                subtitle={t("settings.selectBuildHint")}
-                onClick={openBuilds}
-                right={<Icon name="chevron-right" size={16} className="text-text-muted" />}
-              />
-              <MenuButton
+              <RightPanelUserMenuMenuButton
                 label={t("settings.appVersion")}
                 icon="info"
                 onClick={openAbout}
@@ -680,13 +577,15 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
                   </span>
                 }
               />
-              <MenuButton
-                label={t("settings.connectionDiagnostics")}
-                icon="visibility"
-                onClick={openDiagnostics}
-                right={<Icon name="chevron-right" size={16} className="text-text-muted" />}
-              />
-              <MenuButton
+              {IS_CONNECTION_DIAGNOSTICS_ENABLED && (
+                <RightPanelUserMenuMenuButton
+                  label={t("settings.connectionDiagnostics")}
+                  icon="visibility"
+                  onClick={openDiagnostics}
+                  right={<Icon name="chevron-right" size={16} className="text-text-muted" />}
+                />
+              )}
+              <RightPanelUserMenuMenuButton
                 label={t("settings.clearCache")}
                 icon="delete"
                 subtitle={t("settings.clearCacheHint")}
@@ -697,7 +596,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
         </div>
       </ScrollArea>
 
-      <Dialog.Root
+      <RightPanelUserMenuStatusDialog
         open={statusDialogOpen}
         onOpenChange={(nextOpen) => {
           if (nextOpen) {
@@ -706,127 +605,25 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
           }
           closeStatusDialog();
         }}
-      >
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-overlay bg-black/50" />
-          <Dialog.Content className="fixed left-1/2 top-1/2 z-modal w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border-subtle bg-bg-elevated shadow-xl">
-            <div className="border-b border-border-subtle px-5 py-4">
-              <Dialog.Title className="text-base font-semibold text-text-primary">
-                {t("settings.status")}
-              </Dialog.Title>
-              <Dialog.Description className="mt-1 text-sm text-text-muted">
-                {t("settings.statusDialogHint")}
-              </Dialog.Description>
-            </div>
-
-            <div className="space-y-4 px-5 py-4">
-              <div className="flex flex-wrap items-center gap-2">
-                {STATUS_EMOJI_PRESETS.map((preset) => (
-                  <button
-                    key={preset.name}
-                    type="button"
-                    onClick={() => {
-                      setStatusEmojiNameDraft(preset.name);
-                      setStatusEmojiCodeDraft(preset.code);
-                      setStatusEmojiPickerOpen(false);
-                    }}
-                    className={`inline-flex h-9 w-9 items-center justify-center rounded-md border text-base transition-colors ${
-                      statusEmojiNameDraft === preset.name
-                        ? "bg-accent/15 border-accent"
-                        : "border-border-subtle bg-bg hover:bg-bg-elevated"
-                    }`}
-                    aria-label={`${t("settings.status")} ${preset.symbol}`}
-                  >
-                    {preset.symbol}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setStatusEmojiPickerOpen((open) => !open)}
-                  className={`inline-flex h-9 items-center rounded-md border px-2.5 text-xs font-medium transition-colors ${
-                    statusEmojiPickerOpen
-                      ? "bg-accent/15 border-accent text-text-primary"
-                      : "border-border-subtle bg-bg text-text-primary hover:bg-bg-elevated"
-                  }`}
-                  aria-label={t("settings.statusChooseEmoji")}
-                >
-                  {t("settings.statusChooseEmoji")}
-                </button>
-              </div>
-
-              {statusEmojiPickerOpen && (
-                <div className="overflow-hidden rounded-lg border border-border-subtle">
-                  <EmojiPicker
-                    onEmojiClick={handleStatusEmojiPick}
-                    searchDisabled={false}
-                    skinTonesDisabled
-                    width="100%"
-                    height={320}
-                    lazyLoadEmojis
-                    theme={statusEmojiPickerTheme}
-                  />
-                </div>
-              )}
-
-              <label className="block text-sm">
-                <span className="mb-1.5 block text-text-muted">{t("settings.status")}</span>
-                <div className="flex items-center gap-2 rounded-md border border-border-subtle bg-bg px-3 py-2">
-                  <span className="text-base">{selectedStatusEmoji ?? "🙂"}</span>
-                  <input
-                    type="text"
-                    value={statusTextDraft}
-                    onChange={(event) => setStatusTextDraft(event.target.value.slice(0, 60))}
-                    placeholder={t("settings.statusPlaceholder")}
-                    aria-label={t("settings.status")}
-                    className="w-full bg-transparent text-sm text-text-primary outline-none placeholder:text-text-muted"
-                  />
-                </div>
-              </label>
-
-              <label className="flex cursor-pointer items-center gap-2 text-sm text-text-primary">
-                <input
-                  type="checkbox"
-                  checked={statusAwayDraft}
-                  onChange={(event) => setStatusAwayDraft(event.target.checked)}
-                  className="h-4 w-4 rounded border-border-subtle bg-bg accent-accent"
-                />
-                <span>{t("settings.statusAwayToggle")}</span>
-              </label>
-            </div>
-
-            <div className="flex items-center justify-between gap-2 border-t border-border-subtle px-5 py-3">
-              <button
-                type="button"
-                onClick={clearStatusDraft}
-                className="rounded-md px-3 py-2 text-sm text-text-muted transition-colors hover:bg-bg"
-                disabled={statusSubmitting}
-              >
-                {t("settings.statusClear")}
-              </button>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={closeStatusDialog}
-                  className="rounded-md px-3 py-2 text-sm text-text-muted transition-colors hover:bg-bg"
-                  disabled={statusSubmitting}
-                >
-                  {t("common.cancel")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void handleSaveStatus();
-                  }}
-                  className="rounded-md bg-accent px-3 py-2 text-sm font-medium text-text-primary transition-opacity hover:opacity-90 disabled:opacity-60"
-                  disabled={statusSubmitting}
-                >
-                  {t("common.save")}
-                </button>
-              </div>
-            </div>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
+        closeStatusDialog={closeStatusDialog}
+        statusEmojiPickerOpen={statusEmojiPickerOpen}
+        setStatusEmojiPickerOpen={setStatusEmojiPickerOpen}
+        statusEmojiNameDraft={statusEmojiNameDraft}
+        setStatusEmojiNameDraft={setStatusEmojiNameDraft}
+        statusEmojiCodeDraft={statusEmojiCodeDraft}
+        setStatusEmojiCodeDraft={setStatusEmojiCodeDraft}
+        statusTextDraft={statusTextDraft}
+        setStatusTextDraft={setStatusTextDraft}
+        statusAwayDraft={statusAwayDraft}
+        setStatusAwayDraft={setStatusAwayDraft}
+        statusSubmitting={statusSubmitting}
+        selectedStatusEmoji={selectedStatusEmoji}
+        statusEmojiPickerTheme={statusEmojiPickerTheme}
+        t={t}
+        handleStatusEmojiPick={handleStatusEmojiPick}
+        clearStatusDraft={clearStatusDraft}
+        handleSaveStatus={handleSaveStatus}
+      />
     </div>
   );
 };

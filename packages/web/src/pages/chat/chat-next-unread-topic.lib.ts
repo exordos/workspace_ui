@@ -1,6 +1,6 @@
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import type { TopicWithLast } from "~/shared/types/sidebar-chat";
-import { slugForStream } from "~/widgets/sidebar";
+import { slugForStream } from "~/widgets/sidebar/sidebar.lib";
 
 interface ResolveNextUnreadTopicRouteOptions {
   streamId: number;

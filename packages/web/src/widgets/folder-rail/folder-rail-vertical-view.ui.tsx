@@ -1,23 +1,14 @@
 import React, { useMemo } from "react";
-import { t } from "~/i18n";
-import { Icon } from "~/shared/ui";
+import { t } from "~/i18n/i18n";
+import { Icon } from "~/shared/ui/icon";
 import { VerticalFolderItem } from "./folder-rail-folder-items.ui";
 import { FolderQuickList } from "./folder-rail-quick-list.ui";
-import { FOLDER_QUICK_LIST_THRESHOLD, type IndexedFolderEntry } from "./folder-rail.utils";
-import type { FolderRailFolder } from "./folder-rail.types";
-
-/** Пропсы vertical-представления; state/CRUD остаются в контейнере `FolderRail`. */
-interface FolderRailVerticalViewProps {
-  indexedFolders: IndexedFolderEntry[];
-  selectedFolderId: string;
-  showSystemFolders: boolean;
-  onSelectFolder: (id: string) => void;
-  onToggleLayout: () => void;
-  onToggleShowSystemFolders: () => void;
-  onRequestRename: (folder: FolderRailFolder) => void;
-  onRequestDelete: (folder: FolderRailFolder) => void;
-  onOpenCreateDialog: () => void;
-}
+import {
+  FOLDER_QUICK_LIST_THRESHOLD,
+  orderedIndexedFoldersForRail,
+  type IndexedFolderEntry,
+} from "./folder-rail.lib";
+import type { FolderRailVerticalViewProps } from "./folder-rail-vertical-view.types";
 
 export const FolderRailVerticalView: React.FC<FolderRailVerticalViewProps> = React.memo(
   function FolderRailVerticalView({
@@ -31,26 +22,18 @@ export const FolderRailVerticalView: React.FC<FolderRailVerticalViewProps> = Rea
     onRequestDelete,
     onOpenCreateDialog,
   }) {
-    // "All" закрепляем сверху: если systemType не пришел, для совместимости считаем первым элементом.
-    const allFolderEntry = useMemo(
-      () =>
-        indexedFolders.find(
-          ({ folder, index }) =>
-            folder.systemType === "all" || (folder.systemType == null && index === 0),
-        ) ??
-        indexedFolders[0] ??
-        null,
+    const orderedEntries = useMemo(
+      () => orderedIndexedFoldersForRail(indexedFolders),
       [indexedFolders],
     );
-
-    // Остальные папки рендерим в скроллируемой зоне.
-    const scrollableFolderEntries = useMemo(() => {
-      if (allFolderEntry == null) return [];
-      return indexedFolders.filter(({ folder }) => folder.id !== allFolderEntry.folder.id);
-    }, [allFolderEntry, indexedFolders]);
+    const allFolderEntry = orderedEntries[0] ?? null;
+    const scrollableFolderEntries = useMemo(
+      () => orderedEntries.slice(1),
+      [orderedEntries],
+    );
 
     // Quick-list нужен только когда колонка становится длинной.
-    const showQuickList = indexedFolders.length > FOLDER_QUICK_LIST_THRESHOLD;
+    const showQuickList = orderedEntries.length > FOLDER_QUICK_LIST_THRESHOLD;
 
     return (
       <div
@@ -105,7 +88,7 @@ export const FolderRailVerticalView: React.FC<FolderRailVerticalViewProps> = Rea
 
         {showQuickList && (
           <FolderQuickList
-            folders={indexedFolders}
+            folders={orderedEntries}
             selectedFolderId={selectedFolderId}
             onSelectFolder={onSelectFolder}
           />

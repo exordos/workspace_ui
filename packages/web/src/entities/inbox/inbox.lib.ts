@@ -1,4 +1,10 @@
-import type { MockMessage } from "~/shared/api/zulip";
+// Этот файл нужен для локальной модели Inbox-агрегации.
+// Что делает:
+// 1) группирует unread-сообщения в inbox entries (stream/topic и DM);
+// 2) группирует entries по секциям для UI;
+// 3) сравнивает свежесть двух inbox snapshot (кэш vs текущее состояние).
+
+import type { MockMessage } from "~/shared/api/zulip.types";
 import type { InboxEntry } from "./inbox.types";
 
 export interface GroupedInboxStream {
@@ -12,6 +18,58 @@ export interface GroupedInboxStream {
 export interface GroupedInboxEntries {
   dms: InboxEntry[];
   streams: GroupedInboxStream[];
+}
+
+// Находит самый новый timestamp среди inbox entries.
+// Это основной критерий "свежести" snapshot.
+function getInboxEntriesNewestTimestamp(entries: readonly InboxEntry[]): number {
+  if (entries.length === 0) return 0;
+  let newest = entries[0]?.lastMessageTimestamp ?? 0;
+  for (const entry of entries) {
+    if (entry.lastMessageTimestamp > newest) {
+      newest = entry.lastMessageTimestamp;
+    }
+  }
+  return newest;
+}
+
+// Находит максимальный messageId внутри snapshot entries.
+// Используется как tie-breaker, когда newest timestamp у двух snapshot совпал.
+function getInboxEntriesMaxMessageId(entries: readonly InboxEntry[]): number {
+  let maxId = 0;
+  for (const entry of entries) {
+    for (const id of entry.messageIds) {
+      if (id > maxId) {
+        maxId = id;
+      }
+    }
+  }
+  return maxId;
+}
+
+/**
+ * Возвращает true, если `candidate` объективно свежее `current`.
+ * Правила сравнения:
+ * 1) сначала сравниваем максимальный `lastMessageTimestamp`;
+ * 2) при равенстве сравниваем максимальный `messageId`.
+ * Нужно, чтобы не откатывать UI на более старый кэш при повторном заходе в Inbox.
+ */
+export function isInboxEntriesSnapshotFresher(
+  candidate: readonly InboxEntry[],
+  current: readonly InboxEntry[],
+): boolean {
+  if (candidate.length === 0) return false;
+  if (current.length === 0) return true;
+
+  const candidateNewestTimestamp = getInboxEntriesNewestTimestamp(candidate);
+  const currentNewestTimestamp = getInboxEntriesNewestTimestamp(current);
+  if (candidateNewestTimestamp !== currentNewestTimestamp) {
+    return candidateNewestTimestamp > currentNewestTimestamp;
+  }
+
+  const candidateMaxMessageId = getInboxEntriesMaxMessageId(candidate);
+  const currentMaxMessageId = getInboxEntriesMaxMessageId(current);
+  return candidateMaxMessageId > currentMaxMessageId;
 }
 
 interface DmConversationMeta {

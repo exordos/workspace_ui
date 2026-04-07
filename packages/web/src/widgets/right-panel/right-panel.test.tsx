@@ -1,17 +1,17 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useChatListStore } from "~/entities/chat-list";
-import { useInstancesStore } from "~/entities/instance";
-import { useCurrentChatMessagesStore } from "~/entities/message";
-import { useThemeStore } from "~/entities/theme";
-import { useUsersStore } from "~/entities/user";
-import { useChatInfoStore } from "~/features/chat-info";
-import { useMediaViewerStore } from "~/features/media-viewer";
-import * as muteChat from "~/features/mute-chat";
-import { useMuteStore } from "~/features/mute-chat";
-import { useSettingsStore } from "~/features/settings";
-import { setLocale } from "~/i18n";
-import * as zulipApi from "~/shared/api/zulip";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useInstancesStore } from "~/entities/instance/instance.model";
+import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
+import { useThemeStore } from "~/entities/theme/theme.model";
+import { useUsersStore } from "~/entities/user/user.model";
+import { useChatInfoStore } from "~/features/chat-info/chat-info.model";
+import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
+import * as muteChat from "~/features/mute-chat/mute-chat.api";
+import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
+import { useSettingsStore } from "~/features/settings/settings.model";
+import { setLocale } from "~/i18n/i18n";
+import * as zulipStreams from "~/shared/api/zulip-streams";
 import { RightDrawerContext } from "~/shared/contexts/right-drawer";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { renderWithProviders } from "~/test/render";
@@ -790,7 +790,7 @@ describe("RightPanel truthfulness", () => {
   });
 
   it("shows channel edit/delete actions for admin role and submits edit changes", async () => {
-    const updateStreamSpy = vi.spyOn(zulipApi, "updateStream").mockResolvedValue(true);
+    const updateStreamSpy = vi.spyOn(zulipStreams, "updateStream").mockResolvedValue(true);
 
     act(() => {
       useCurrentChatMessagesStore.setState({

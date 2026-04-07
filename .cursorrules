@@ -19,8 +19,8 @@ app → pages → widgets → features → entities → shared
 ```
 
 - Import only DOWN the hierarchy. Never up.
-- Import slices through `index.ts` barrels only: `import { X } from "~/entities/user"`
-- NEVER import internal files: ~~`~/entities/user/user.model`~~
+- **No barrel `index.ts` re-exports** (see `.cursor/rules/no-barrel-index.mdc`)
+- Import from concrete files: `import { X } from "~/entities/user/user.model"`
 
 ## Key Paths
 

@@ -1,22 +1,9 @@
-import React, { useCallback, useRef, useState } from "react";
-import { t } from "~/i18n";
-import { Icon } from "~/shared/ui";
+import React, { useCallback, useMemo, useRef, useState } from "react";
+import { t } from "~/i18n/i18n";
+import { Icon } from "~/shared/ui/icon";
 import { HorizontalFolderItem } from "./folder-rail-folder-items.ui";
-import type { FolderRailFolder } from "./folder-rail.types";
-import type { IndexedFolderEntry } from "./folder-rail.utils";
-
-/** Пропсы только для horizontal-представления; бизнес-логика остается в контейнере `FolderRail`. */
-interface FolderRailHorizontalViewProps {
-  indexedFolders: IndexedFolderEntry[];
-  selectedFolderId: string;
-  showSystemFolders: boolean;
-  onSelectFolder: (id: string) => void;
-  onToggleLayout: () => void;
-  onToggleShowSystemFolders: () => void;
-  onRequestRename: (folder: FolderRailFolder) => void;
-  onRequestDelete: (folder: FolderRailFolder) => void;
-  onOpenCreateDialog: () => void;
-}
+import { orderedIndexedFoldersForRail, type IndexedFolderEntry } from "./folder-rail.lib";
+import type { FolderRailHorizontalViewProps } from "./folder-rail-horizontal-view.types";
 
 export const FolderRailHorizontalView: React.FC<FolderRailHorizontalViewProps> = React.memo(
   function FolderRailHorizontalView({
@@ -47,6 +34,11 @@ export const FolderRailHorizontalView: React.FC<FolderRailHorizontalViewProps> =
     });
     // После drag блокируем один следующий click, чтобы не срабатывать на "клик после протяжки".
     const suppressHorizontalClickRef = useRef(false);
+
+    const displayFolders = useMemo(
+      () => orderedIndexedFoldersForRail(indexedFolders),
+      [indexedFolders],
+    );
 
     const endHorizontalDrag = useCallback((pointerId: number | null) => {
       const dragState = horizontalDragStateRef.current;
@@ -150,7 +142,7 @@ export const FolderRailHorizontalView: React.FC<FolderRailHorizontalViewProps> =
           isDragging ? "cursor-grabbing" : "cursor-grab"
         }`}
       >
-        {indexedFolders.map(({ folder, index }) => (
+        {displayFolders.map(({ folder, index }) => (
           <HorizontalFolderItem
             key={folder.id}
             folder={folder}

@@ -1,0 +1,463 @@
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { muteStream, unmuteStream } from "~/features/mute-chat/mute-chat.api";
+import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
+import { pinChatInFolder, unpinChatInFolder } from "~/features/pin-chat/pin-chat.api";
+import { usePinStore } from "~/features/pin-chat/pin-chat.model";
+import { t } from "~/i18n/i18n";
+import { getFolderItems } from "~/shared/api/workspace-client";
+import { markDmAsRead, markStreamAsRead } from "~/shared/api/zulip";
+import { Icon } from "~/shared/ui/icon";
+import { loadFolderAssignments, toggleFolderAssignment } from "./sidebar-folder-assignment.lib";
+import { chatToWorkspaceChatId, parseDmSlugToUserIds } from "./sidebar.lib";
+import {
+  OPTIMISTIC_FOLDER_ASSIGNMENT_ITEM_UUID,
+  type FolderAssignment,
+} from "./sidebar-folder-assignment.types";
+import type { SidebarChat } from "./sidebar.types";
+
+const MENU_ITEM_CLASS =
+  "flex cursor-pointer select-none items-center gap-2 rounded-md px-2 py-2 text-sm text-text-primary outline-none transition-colors data-[disabled]:pointer-events-none data-[disabled]:opacity-50 hover:bg-bg-elevated";
+
+function isContextMenuKeyboardEvent(event: React.KeyboardEvent): boolean {
+  return event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey);
+}
+
+function isVirtualSystemFolderId(folderId: string | undefined): boolean {
+  return folderId === "system:personal" || folderId === "system:channels";
+}
+
+const FolderAssignmentsSubmenu = React.memo(function FolderAssignmentsSubmenu({
+  chatId,
+  menuOpen,
+  onFolderAssignmentsChanged,
+}: {
+  chatId: string;
+  menuOpen: boolean;
+  onFolderAssignmentsChanged?: (affectedFolderUuid?: string) => void;
+}) {
+  const [assignments, setAssignments] = useState<FolderAssignment[]>([]);
+  const [isLoadingAssignments, setIsLoadingAssignments] = useState(false);
+  const [pendingAssignmentFolderIds, setPendingAssignmentFolderIds] = useState(
+    () => new Set<string>(),
+  );
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    let cancelled = false;
+    setIsLoadingAssignments(true);
+    void loadFolderAssignments(chatId)
+      .then((rows) => {
+        if (!cancelled) setAssignments(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setAssignments([]);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingAssignments(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [chatId, menuOpen]);
+
+  const handleToggleAssignment = useCallback(
+    async (assignment: FolderAssignment) => {
+      const folderUuid = assignment.folderUuid;
+      const previousItemUuid = assignment.itemUuid;
+      const wasAssigned = previousItemUuid != null;
+
+      setPendingAssignmentFolderIds((prev) => new Set(prev).add(folderUuid));
+
+      if (wasAssigned) {
+        setAssignments((prev) =>
+          prev.map((row) => (row.folderUuid === folderUuid ? { ...row, itemUuid: null } : row)),
+        );
+      } else {
+        setAssignments((prev) =>
+          prev.map((row) =>
+            row.folderUuid === folderUuid
+              ? { ...row, itemUuid: OPTIMISTIC_FOLDER_ASSIGNMENT_ITEM_UUID }
+              : row,
+          ),
+        );
+      }
+
+      try {
+        const result = await toggleFolderAssignment(chatId, assignment);
+        if (!result.ok) {
+          setAssignments((prev) =>
+            prev.map((row) =>
+              row.folderUuid === folderUuid ? { ...row, itemUuid: previousItemUuid } : row,
+            ),
+          );
+          return;
+        }
+        if (result.removed) {
+          setAssignments((prev) =>
+            prev.map((row) => (row.folderUuid === folderUuid ? { ...row, itemUuid: null } : row)),
+          );
+        } else if (result.nextItemUuid != null) {
+          setAssignments((prev) =>
+            prev.map((row) =>
+              row.folderUuid === folderUuid ? { ...row, itemUuid: result.nextItemUuid } : row,
+            ),
+          );
+        } else {
+          void loadFolderAssignments(chatId).then((rows) => {
+            setAssignments(rows);
+          });
+        }
+        onFolderAssignmentsChanged?.(folderUuid);
+      } finally {
+        setPendingAssignmentFolderIds((prev) => {
+          const next = new Set(prev);
+          next.delete(folderUuid);
+          return next;
+        });
+      }
+    },
+    [chatId, onFolderAssignmentsChanged],
+  );
+
+  return (
+    <DropdownMenu.Sub>
+      <DropdownMenu.SubTrigger className={MENU_ITEM_CLASS}>
+        <Icon name="folder" size={14} />
+        {t("sidebar.addToFolder")}
+        <Icon name="chevronRight" size={14} className="ml-auto opacity-60" />
+      </DropdownMenu.SubTrigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.SubContent
+          className="z-dropdown min-w-context-menu-wide rounded-lg border border-border-subtle bg-bg-elevated py-1 shadow-lg"
+          sideOffset={8}
+          alignOffset={-4}
+        >
+          {isLoadingAssignments && (
+            <DropdownMenu.Item disabled className={MENU_ITEM_CLASS}>
+              {t("sidebar.loadingFolders")}
+            </DropdownMenu.Item>
+          )}
+          {!isLoadingAssignments &&
+            assignments.map((assignment) => (
+              <DropdownMenu.CheckboxItem
+                key={assignment.folderUuid}
+                checked={assignment.itemUuid != null}
+                disabled={pendingAssignmentFolderIds.has(assignment.folderUuid)}
+                onCheckedChange={() => void handleToggleAssignment(assignment)}
+                onSelect={(e) => {
+                  e.preventDefault();
+                }}
+                className={MENU_ITEM_CLASS}
+              >
+                <span
+                  className={`inline-flex h-4 w-4 items-center justify-center rounded border border-border-subtle text-xs ${
+                    assignment.itemUuid != null ? "bg-accent text-on-accent" : "text-transparent"
+                  }`}
+                >
+                  ✓
+                </span>
+                <span className="truncate">{assignment.label}</span>
+              </DropdownMenu.CheckboxItem>
+            ))}
+          {!isLoadingAssignments && assignments.length === 0 && (
+            <DropdownMenu.Item disabled className={MENU_ITEM_CLASS}>
+              {t("sidebar.noFoldersAvailable")}
+            </DropdownMenu.Item>
+          )}
+        </DropdownMenu.SubContent>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Sub>
+  );
+});
+
+export const StreamContextMenu = React.memo(function StreamContextMenu({
+  streamId,
+  chat,
+  folderId,
+  onCreateTopic,
+  onFolderAssignmentsChanged,
+  triggerOffsetClassName = "right-1 top-8",
+  children,
+}: {
+  streamId: number;
+  chat: Extract<SidebarChat, { type: "stream" }>;
+  folderId?: string;
+  onCreateTopic?: () => void;
+  onFolderAssignmentsChanged?: (affectedFolderUuid?: string) => void;
+  triggerOffsetClassName?: string;
+  children: React.ReactNode;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const isMuted = useMuteStore((s) => s.isStreamMuted(streamId));
+  const chatId = chatToWorkspaceChatId(chat);
+  const isPinnedInFolder = usePinStore((s) => (folderId != null ? s.isPinned(folderId, chatId) : false));
+  const isPinned = folderId != null && isPinnedInFolder;
+
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setMenuOpen(true);
+  }, []);
+
+  const handleToggleMute = useCallback(() => {
+    if (isMuted) {
+      useMuteStore.getState().unmuteStream(streamId);
+      void unmuteStream(streamId);
+    } else {
+      useMuteStore.getState().muteStream(streamId);
+      void muteStream(streamId);
+    }
+    setMenuOpen(false);
+  }, [streamId, isMuted]);
+
+  const handleMarkAsRead = useCallback(() => {
+    void markStreamAsRead(streamId);
+    setMenuOpen(false);
+  }, [streamId]);
+
+  const handleTogglePin = useCallback(() => {
+    if (folderId == null) return;
+    setMenuOpen(false);
+    void (async () => {
+      const pinStore = usePinStore.getState();
+      let folderItemUuid = pinStore.getFolderItemUuid(folderId, chatId);
+      if (!folderItemUuid) {
+        const items = await getFolderItems(folderId);
+        folderItemUuid = items.find((i) => i.chatId === chatId)?.uuid ?? null;
+      }
+      if (!folderItemUuid) return;
+
+      if (isPinned) {
+        const ok = await unpinChatInFolder(folderId, folderItemUuid);
+        if (ok) {
+          pinStore.unpinChat(folderId, chatId);
+        }
+      } else {
+        const ok = await pinChatInFolder(folderId, folderItemUuid);
+        if (ok) {
+          pinStore.pinChat(folderId, chatId, { folderItemUuid });
+        }
+      }
+    })();
+  }, [folderId, chatId, isPinned]);
+
+  const handleCreateTopic = useCallback(() => {
+    onCreateTopic?.();
+    setMenuOpen(false);
+  }, [onCreateTopic]);
+
+  const showFolderPinAction = folderId != null && folderId.length > 0 && !isVirtualSystemFolderId(folderId);
+
+  const contentWithContextMenu = useMemo(() => {
+    const childrenArray = React.Children.toArray(children);
+    if (childrenArray.length === 0) return childrenArray;
+
+    const firstChild = childrenArray[0];
+    if (!React.isValidElement(firstChild)) return childrenArray;
+
+    const firstChildElement = firstChild as React.ReactElement<{
+      onContextMenu?: React.MouseEventHandler;
+      onKeyDown?: React.KeyboardEventHandler;
+    }>;
+    const existingOnContextMenu = firstChildElement.props.onContextMenu;
+    const existingOnKeyDown = firstChildElement.props.onKeyDown;
+
+    const firstChildWithContextMenu = React.cloneElement(firstChildElement, {
+      onContextMenu: (e: React.MouseEvent) => {
+        existingOnContextMenu?.(e);
+        handleContextMenu(e);
+      },
+      onKeyDown: (e: React.KeyboardEvent) => {
+        existingOnKeyDown?.(e);
+        if (e.defaultPrevented) return;
+        if (isContextMenuKeyboardEvent(e)) {
+          e.preventDefault();
+          setMenuOpen(true);
+        }
+      },
+    });
+
+    return [firstChildWithContextMenu, ...childrenArray.slice(1)];
+  }, [children, handleContextMenu]);
+
+  return (
+    <DropdownMenu.Root open={menuOpen} onOpenChange={setMenuOpen}>
+      <div className="relative">
+        {contentWithContextMenu}
+        <DropdownMenu.Trigger asChild>
+          <button
+            type="button"
+            className={`absolute flex h-6 w-6 items-center justify-center rounded text-text-muted opacity-60 transition-opacity group-focus-within/stream:opacity-100 group-hover/stream:opacity-100 hover:bg-sidebar-hover hover:text-text-primary focus-visible:opacity-100 ${triggerOffsetClassName}`}
+            aria-label={t("a11y.chatMenu")}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+          >
+            <Icon name="more" size={14} />
+          </button>
+        </DropdownMenu.Trigger>
+      </div>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          className="z-dropdown min-w-context-menu-narrow rounded-lg border border-border-subtle bg-bg-elevated py-1 shadow-lg"
+          sideOffset={4}
+          align="start"
+        >
+          <DropdownMenu.Item className={MENU_ITEM_CLASS} onSelect={handleToggleMute}>
+            <Icon name="bell" size={14} className={isMuted ? "opacity-40" : ""} />
+            {isMuted ? t("channel.unmuteChannel") : t("channel.muteChannel")}
+          </DropdownMenu.Item>
+          <DropdownMenu.Item className={MENU_ITEM_CLASS} onSelect={handleMarkAsRead}>
+            <Icon name="check" size={14} />
+            {t("sidebar.markAsRead")}
+          </DropdownMenu.Item>
+          {showFolderPinAction && (
+            <DropdownMenu.Item className={MENU_ITEM_CLASS} onSelect={handleTogglePin}>
+              <Icon name="pin" size={14} />
+              {isPinned ? t("sidebar.unpinChat") : t("sidebar.pinChat")}
+            </DropdownMenu.Item>
+          )}
+          {onCreateTopic && (
+            <DropdownMenu.Item className={MENU_ITEM_CLASS} onSelect={handleCreateTopic}>
+              <Icon name="plus" size={14} />
+              {t("channel.newTopic")}
+            </DropdownMenu.Item>
+          )}
+          <FolderAssignmentsSubmenu
+            chatId={chatId}
+            menuOpen={menuOpen}
+            onFolderAssignmentsChanged={onFolderAssignmentsChanged}
+          />
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+});
+
+export const DmContextMenu = React.memo(function DmContextMenu({
+  chat,
+  folderId,
+  onFolderAssignmentsChanged,
+  children,
+}: {
+  chat: Extract<SidebarChat, { type: "dm" }>;
+  folderId?: string;
+  onFolderAssignmentsChanged?: (affectedFolderUuid?: string) => void;
+  children: React.ReactNode;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const chatId = chatToWorkspaceChatId(chat);
+  const isPinnedInFolder = usePinStore((s) => (folderId != null ? s.isPinned(folderId, chatId) : false));
+  const isPinned = folderId != null && isPinnedInFolder;
+
+  const handleMarkAsRead = useCallback(() => {
+    const userIds =
+      Array.isArray(chat.userIds) && chat.userIds.length > 0 ? chat.userIds : parseDmSlugToUserIds(chat.slug);
+    if (userIds.length === 0) return;
+    void markDmAsRead(userIds);
+    setMenuOpen(false);
+  }, [chat.slug, chat.userIds]);
+
+  const handleTogglePin = useCallback(() => {
+    if (folderId == null) return;
+    setMenuOpen(false);
+    void (async () => {
+      const pinStore = usePinStore.getState();
+      let folderItemUuid = pinStore.getFolderItemUuid(folderId, chatId);
+      if (!folderItemUuid) {
+        const items = await getFolderItems(folderId);
+        folderItemUuid = items.find((i) => i.chatId === chatId)?.uuid ?? null;
+      }
+      if (!folderItemUuid) return;
+
+      if (isPinned) {
+        const ok = await unpinChatInFolder(folderId, folderItemUuid);
+        if (ok) {
+          pinStore.unpinChat(folderId, chatId);
+        }
+      } else {
+        const ok = await pinChatInFolder(folderId, folderItemUuid);
+        if (ok) {
+          pinStore.pinChat(folderId, chatId, { folderItemUuid });
+        }
+      }
+    })();
+  }, [folderId, chatId, isPinned]);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setMenuOpen(true);
+  }, []);
+
+  const showFolderPinAction = folderId != null && folderId.length > 0 && !isVirtualSystemFolderId(folderId);
+
+  const contentWithContextMenu = useMemo(() => {
+    if (!React.isValidElement(children)) return children;
+    const childElement = children as React.ReactElement<{
+      onContextMenu?: React.MouseEventHandler;
+      onKeyDown?: React.KeyboardEventHandler;
+    }>;
+    const existingOnContextMenu = childElement.props.onContextMenu;
+    const existingOnKeyDown = childElement.props.onKeyDown;
+    return React.cloneElement(childElement, {
+      onContextMenu: (e: React.MouseEvent) => {
+        existingOnContextMenu?.(e);
+        handleContextMenu(e);
+      },
+      onKeyDown: (e: React.KeyboardEvent) => {
+        existingOnKeyDown?.(e);
+        if (e.defaultPrevented) return;
+        if (isContextMenuKeyboardEvent(e)) {
+          e.preventDefault();
+          setMenuOpen(true);
+        }
+      },
+    });
+  }, [children, handleContextMenu]);
+
+  return (
+    <DropdownMenu.Root open={menuOpen} onOpenChange={setMenuOpen}>
+      <div className="group/dm relative">
+        {contentWithContextMenu}
+        <DropdownMenu.Trigger asChild>
+          <button
+            type="button"
+            className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded text-text-muted opacity-60 transition-opacity group-focus-within/dm:opacity-100 group-hover/dm:opacity-100 hover:bg-sidebar-hover hover:text-text-primary focus-visible:opacity-100"
+            aria-label={t("a11y.chatMenu")}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+          >
+            <Icon name="more" size={14} />
+          </button>
+        </DropdownMenu.Trigger>
+      </div>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          className="z-dropdown min-w-context-menu-narrow rounded-lg border border-border-subtle bg-bg-elevated py-1 shadow-lg"
+          sideOffset={4}
+          align="start"
+        >
+          <DropdownMenu.Item className={MENU_ITEM_CLASS} onSelect={handleMarkAsRead}>
+            <Icon name="check" size={14} />
+            {t("sidebar.markAsRead")}
+          </DropdownMenu.Item>
+          {showFolderPinAction && (
+            <DropdownMenu.Item className={MENU_ITEM_CLASS} onSelect={handleTogglePin}>
+              <Icon name="pin" size={14} />
+              {isPinned ? t("sidebar.unpinChat") : t("sidebar.pinChat")}
+            </DropdownMenu.Item>
+          )}
+          <FolderAssignmentsSubmenu
+            chatId={chatId}
+            menuOpen={menuOpen}
+            onFolderAssignmentsChanged={onFolderAssignmentsChanged}
+          />
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+});
+

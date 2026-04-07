@@ -1,9 +1,9 @@
 import { fireEvent, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useChatListStore } from "~/entities/chat-list";
-import { useInstancesStore } from "~/entities/instance";
-import { useThemeStore } from "~/entities/theme";
-import { useSettingsStore } from "~/features/settings";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useInstancesStore } from "~/entities/instance/instance.model";
+import { useThemeStore } from "~/entities/theme/theme.model";
+import { useSettingsStore } from "~/features/settings/settings.model";
 import { RightDrawerContext } from "~/shared/contexts/right-drawer";
 import { clearLocalStatePreservingCriticalKeys } from "~/shared/lib/local-reset";
 import { renderWithProviders } from "~/test/render";

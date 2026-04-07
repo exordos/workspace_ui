@@ -1,35 +1,52 @@
 import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { useChatListStore } from "~/entities/chat-list";
-import { formatUserStatusLabel, useUsersStore } from "~/entities/user";
-import { useSettingsStore } from "~/features/settings";
-import { useTypingIndicatorStore } from "~/features/typing-indicator";
-import { t } from "~/i18n";
+import { resolvePersonalDmSidebarTitle } from "~/entities/chat-list/chat-list-format.lib";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useUsersStore } from "~/entities/user/user.model";
+import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
+import { useSettingsStore } from "~/features/settings/settings.model";
+import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indicator.model";
+import { t } from "~/i18n/i18n";
+import { getRealmBaseUrl } from "~/shared/api/zulip";
+import { resolveAvatarUrl } from "~/shared/lib/avatar";
+import { effectiveDmIsGroupFromSlug } from "~/shared/lib/dm-route.lib";
 import { getPresenceState, sidebarRowClass } from "~/shared/lib/format";
-import { Avatar, Badge, Icon, PresenceIndicator } from "~/shared/ui";
+import { Avatar } from "~/shared/ui/avatar";
+import { Badge } from "~/shared/ui/badge";
+import { Icon } from "~/shared/ui/icon";
+import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { isDmPartnerTyping, sortDmAllUsersForDisplay } from "./sidebar-dm-list.lib";
-import { MOCK_DMS } from "./sidebar.lib";
+import { MOCK_DMS, parseDmSlugToUserIds } from "./sidebar.lib";
 import type { SidebarChat } from "./sidebar.types";
+import type { SidebarDmListProps, SidebarDmTab } from "./sidebar-dm-list.types";
 
-interface SidebarDmListProps {
-  activeDmId: number | null;
-  dms?: Extract<SidebarChat, { type: "dm" }>[];
+function isPersonalDmChat(
+  chat: SidebarChat,
+  currentUserId: number | null,
+): chat is Extract<SidebarChat, { type: "dm" }> {
+  if (chat.type !== "dm") return false;
+  return !effectiveDmIsGroupFromSlug(chat.isGroup, parseDmSlugToUserIds(chat.slug), currentUserId);
 }
 
-function isDm(chat: SidebarChat): chat is Extract<SidebarChat, { type: "dm" }> {
-  return chat.type === "dm" && !chat.isGroup;
+function resolvePersonalDmListAvatarSrc(
+  chatAvatarUrl: string | undefined,
+  userAvatarUrl: string | undefined | null,
+): string | undefined {
+  const base = getRealmBaseUrl();
+  return resolveAvatarUrl(chatAvatarUrl, base) ?? resolveAvatarUrl(userAvatarUrl ?? undefined, base);
 }
-
-type DmTab = "recent" | "all";
 
 export const SidebarDmList: React.FC<SidebarDmListProps> = ({ activeDmId, dms }) => {
-  const [tab, setTab] = useState<DmTab>("recent");
+  const [tab, setTab] = useState<SidebarDmTab>("recent");
   const currentUserId = useChatListStore((s) => s.currentUserId);
   const allUsers = useUsersStore((s) => s.users);
   const isCompactDensity = useSettingsStore((s) => s.chatListDensity === "compact");
   const typingMap = useTypingIndicatorStore((s) => s.typingMap);
 
-  const recentDms = useMemo(() => (dms ?? MOCK_DMS).filter(isDm), [dms]);
+  const recentDms = useMemo(
+    () => (dms ?? MOCK_DMS).filter((c) => isPersonalDmChat(c, currentUserId)),
+    [dms, currentUserId],
+  );
   const unreadByUserId = useMemo(() => {
     const unreadByUser = new Map<number, number>();
     for (const chat of recentDms) {
@@ -73,6 +90,12 @@ export const SidebarDmList: React.FC<SidebarDmListProps> = ({ activeDmId, dms })
           recentDms.map((chat) => {
             const isActive = chat.id === activeDmId;
             const recentDmUser = allUsers.get(chat.id);
+            const storeDisplayName = useUsersStore.getState().getDisplayName(chat.id);
+            const rowTitle = resolvePersonalDmSidebarTitle({
+              chatName: chat.name,
+              userFullName: recentDmUser?.full_name,
+              storeDisplayName,
+            });
             const recentPresenceState =
               recentDmUser?.presence != null
                 ? getPresenceState(recentDmUser.presence.timestamp, recentDmUser.presence.status)
@@ -90,6 +113,10 @@ export const SidebarDmList: React.FC<SidebarDmListProps> = ({ activeDmId, dms })
                   ? `${statusLabel} · ${chat.lastMessage}`
                   : statusLabel
                 : (chat.lastMessage ?? "");
+            const avatarSrc = resolvePersonalDmListAvatarSrc(
+              chat.avatar_url,
+              recentDmUser?.avatar_url,
+            );
             return (
               <Link
                 key={`dm-${chat.id}`}
@@ -101,7 +128,9 @@ export const SidebarDmList: React.FC<SidebarDmListProps> = ({ activeDmId, dms })
                 } transition-colors ${sidebarRowClass(isActive)}`}
               >
                 <div className="relative shrink-0">
-                  <Avatar size={isCompactDensity ? "sm" : "md"}>{chat.name.slice(0, 1)}</Avatar>
+                  <Avatar size={isCompactDensity ? "sm" : "md"} src={avatarSrc}>
+                    {rowTitle.slice(0, 1)}
+                  </Avatar>
                   <PresenceIndicator
                     status={recentPresenceState}
                     size="sm"
@@ -110,7 +139,7 @@ export const SidebarDmList: React.FC<SidebarDmListProps> = ({ activeDmId, dms })
                 </div>
                 <div className="flex min-w-0 flex-1 flex-col justify-center">
                   <span className="block truncate text-sm font-medium text-text-primary">
-                    {chat.name}
+                    {rowTitle}
                   </span>
                   {!isCompactDensity && (
                     <span
@@ -145,6 +174,7 @@ export const SidebarDmList: React.FC<SidebarDmListProps> = ({ activeDmId, dms })
               typingMap,
             });
             const statusLabel = formatUserStatusLabel(user.status);
+            const allUsersAvatarSrc = resolveAvatarUrl(user.avatar_url, getRealmBaseUrl());
             return (
               <Link
                 key={`user-${user.user_id}`}
@@ -154,7 +184,7 @@ export const SidebarDmList: React.FC<SidebarDmListProps> = ({ activeDmId, dms })
                 } transition-colors ${sidebarRowClass(false)}`}
               >
                 <div className="relative shrink-0">
-                  <Avatar size={isCompactDensity ? "sm" : "md"}>
+                  <Avatar size={isCompactDensity ? "sm" : "md"} src={allUsersAvatarSrc}>
                     {user.full_name.slice(0, 1)}
                   </Avatar>
                   <PresenceIndicator

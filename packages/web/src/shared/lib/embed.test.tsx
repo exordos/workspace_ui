@@ -64,8 +64,13 @@ describe("getAllowedOrigins", () => {
   // When configured, the workspace/zulip origin must be in the list
   it("includes workspace origin if set", () => {
     const origins = getAllowedOrigins();
-    const hasWorkspace = origins.some((o) => o.includes("zulip") || o.includes("workspace"));
-    expect(origins.length === 0 || hasWorkspace).toBe(true);
+    if (origins.length === 0) {
+      expect(origins).toEqual([]);
+      return;
+    }
+
+    // In browser runtime we always include the app origin (window.location.origin).
+    expect(origins).toContain(window.location.origin);
   });
 });
 

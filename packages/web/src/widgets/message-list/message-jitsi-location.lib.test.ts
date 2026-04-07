@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { MockMessage } from "~/shared/api/zulip";
-import { resolveJitsiLocationName } from "./message-jitsi-location.lib";
+import type { MockMessage } from "~/shared/api/zulip.types";
+import { formatJitsiRoomDisplayName, resolveJitsiLocationName } from "./message-jitsi-location.lib";
 
 function createMessage(overrides: Partial<MockMessage>): MockMessage {
   return {
@@ -16,6 +16,14 @@ function createMessage(overrides: Partial<MockMessage>): MockMessage {
 }
 
 describe("message-jitsi-location", () => {
+  it("formats Jitsi room display name from URL", () => {
+    expect(formatJitsiRoomDisplayName("https://meet.jit.si/hello_world")).toBe("hello world");
+  });
+
+  it("returns empty string when room cannot be parsed", () => {
+    expect(formatJitsiRoomDisplayName("not-a-url")).toBe("");
+  });
+
   it("uses stream name for stream messages", () => {
     const message = createMessage({
       stream_id: 7,

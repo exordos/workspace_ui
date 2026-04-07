@@ -1,8 +1,8 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useChatListStore } from "~/entities/chat-list";
-import { useInstancesStore } from "~/entities/instance";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useInstancesStore } from "~/entities/instance/instance.model";
 import { MessageRedirectPage } from "./message-redirect-page.ui";
 import type * as ReactRouterDom from "react-router-dom";
 
@@ -18,8 +18,11 @@ vi.mock("react-router-dom", async () => {
   };
 });
 
-vi.mock("~/shared/api/zulip", () => ({
+vi.mock("~/shared/api/zulip-messages", () => ({
   fetchMessageById,
+}));
+
+vi.mock("~/shared/api/zulip-users", () => ({
   getCurrentUser,
 }));
 

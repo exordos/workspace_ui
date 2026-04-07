@@ -1,11 +1,6 @@
-const DEFAULT_FOLDER_POLL_INTERVAL_MS = 60_000;
+import type { StartFolderPollingOptions } from "./layout-folder-polling.types";
 
-interface StartFolderPollingOptions {
-  enabled: boolean;
-  refreshFolders: () => Promise<void> | void;
-  pollIntervalMs?: number;
-  runImmediately?: boolean;
-}
+const DEFAULT_FOLDER_POLL_INTERVAL_MS = 60_000;
 
 export function startFolderPolling({
   enabled,

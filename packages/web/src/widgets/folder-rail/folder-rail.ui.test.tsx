@@ -1,10 +1,10 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import * as manageFolders from "~/features/manage-folders";
-import { folderColorValueToCssHex } from "~/features/manage-folders";
-import { useSettingsStore } from "~/features/settings";
-import { applyTheme } from "~/shared/lib/themes";
+import * as manageFolders from "~/features/manage-folders/manage-folders.api";
+import { folderColorValueToCssHex } from "~/features/manage-folders/folder-colors";
+import { useSettingsStore } from "~/features/settings/settings.model";
+import { applyTheme } from "~/shared/lib/themes/engine";
 import { FolderRail } from "./folder-rail.ui";
 
 describe("FolderRail visual parity", () => {

@@ -11,19 +11,15 @@
  * The composer converts it to markdown via `buildStickerMarkdown()`.
  */
 import React, { useState, useMemo, useRef } from "react";
-import { useStickerStore, type Sticker, type StickerPack } from "~/entities/sticker";
-import { t } from "~/i18n";
-import { Icon } from "~/shared/ui";
+import { useStickerStore } from "~/entities/sticker/sticker.model";
+import type { Sticker } from "~/entities/sticker/sticker.types";
+import { t } from "~/i18n/i18n";
+import { Icon } from "~/shared/ui/icon";
+import type { PackTabProps, StickerItemProps, StickerPickerProps } from "./sticker-picker.types";
 
 // ---------------------------------------------------------------------------
 // Sticker grid item
 // ---------------------------------------------------------------------------
-
-interface StickerItemProps {
-  sticker: Sticker;
-  size?: number;
-  onClick: (sticker: Sticker) => void;
-}
 
 const StickerItem: React.FC<StickerItemProps> = ({ sticker, size = 80, onClick }) => (
   <button
@@ -56,12 +52,6 @@ const StickerItem: React.FC<StickerItemProps> = ({ sticker, size = 80, onClick }
 // ---------------------------------------------------------------------------
 // Pack tab
 // ---------------------------------------------------------------------------
-
-interface PackTabProps {
-  pack: StickerPack;
-  isActive: boolean;
-  onClick: () => void;
-}
 
 const PackTab: React.FC<PackTabProps> = ({ pack, isActive, onClick }) => {
   const coverSticker = pack.stickers.find((s) => s.id === pack.coverStickerId) ?? pack.stickers[0];
@@ -105,12 +95,6 @@ const EmptyState: React.FC = () => (
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
-
-export interface StickerPickerProps {
-  onSelect: (sticker: Sticker) => void;
-  onClose?: () => void;
-  embedded?: boolean;
-}
 
 export const StickerPicker: React.FC<StickerPickerProps> = ({
   onSelect,

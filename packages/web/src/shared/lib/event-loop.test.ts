@@ -13,7 +13,7 @@ const isOnlineMock = vi.fn();
 const unsubResumeMock = vi.fn();
 const unsubReconnectMock = vi.fn();
 
-vi.mock("~/shared/api/zulip", () => ({
+vi.mock("~/shared/api/zulip-queue", () => ({
   registerQueue: (...args: unknown[]) => registerQueueMock(...args),
   getEvents: (...args: unknown[]) => getEventsMock(...args),
   registerQueueForCredentials: (...args: unknown[]) => registerQueueForCredentialsMock(...args),

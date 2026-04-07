@@ -1,4 +1,4 @@
-import type { Draft } from "~/entities/draft";
+import type { Draft } from "~/entities/draft/draft.types";
 
 export function resolveHydratedDraftBootstrap(
   composerValue: string,

@@ -1,21 +1,16 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { folderColorValueToCssHex } from "~/features/manage-folders";
-import { t } from "~/i18n";
+import { folderColorValueToCssHex } from "~/features/manage-folders/folder-colors";
+import { t } from "~/i18n/i18n";
 import { useShortcut } from "~/shared/lib/shortcuts";
-import { Badge, Icon } from "~/shared/ui";
+import { Badge } from "~/shared/ui/badge";
+import { Icon } from "~/shared/ui/icon";
 import {
   FOLDER_QUICK_LIST_SHORTCUT,
   resolveFolderSystemType,
   type IndexedFolderEntry,
-} from "./folder-rail.utils";
-
-/** Quick-list для быстрого переключения между большим числом папок. */
-interface FolderQuickListProps {
-  folders: IndexedFolderEntry[];
-  selectedFolderId: string;
-  onSelectFolder: (id: string) => void;
-}
+} from "./folder-rail.lib";
+import type { FolderQuickListProps } from "./folder-rail-quick-list.types";
 
 export const FolderQuickList: React.FC<FolderQuickListProps> = React.memo(function FolderQuickList({
   folders,
@@ -156,7 +151,7 @@ export const FolderQuickList: React.FC<FolderQuickListProps> = React.memo(functi
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content
-          className="z-dropdown w-[260px] rounded-lg border border-border-subtle bg-bg-elevated p-2 shadow-lg"
+          className="z-dropdown w-folder-quick-list rounded-lg border border-border-subtle bg-bg-elevated p-2 shadow-lg"
           side="right"
           align="start"
           sideOffset={8}

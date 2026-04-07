@@ -22,7 +22,7 @@ For each file under review, check ALL categories. Score: PASS / WARN / FAIL.
 | --------------------------------------------------------------------------- | ---------------------- |
 | Imports only go DOWN the layer hierarchy                                    | `fsd-architecture.mdc` |
 | No cross-slice imports within same layer                                    | `fsd-architecture.mdc` |
-| Imports use barrel `index.ts`, not internal files                           | `fsd-architecture.mdc` |
+| Imports use concrete segment files (no barrel-only `index.ts`)              | `no-barrel-index.mdc` |
 | File naming: `*.ui.tsx`, `*.model.ts`, `*.api.ts`, `*.lib.ts`, `*.types.ts` | `fsd-architecture.mdc` |
 | No imports from legacy paths (`~/components/`, `~/stores/`, `~/lib/`)       | Migration complete     |
 

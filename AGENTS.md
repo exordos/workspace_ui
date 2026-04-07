@@ -159,10 +159,9 @@ slice-name/
   slice-name.lib.ts       Pure utilities
   slice-name.ui.tsx       React component(s)
   slice-name.test.ts      Tests (co-located)
-  index.ts                Public API — the ONLY valid import point
 ```
 
-Import rule: `import { X } from '~/entities/user'` — never import internal files.
+Import rule: use **concrete segment files** (no barrel `index.ts` re-exports). Example: `import { useUsersStore } from '~/entities/user/user.model'`. See `.cursor/rules/no-barrel-index.mdc`.
 
 ## Key Modules
 
@@ -218,7 +217,7 @@ Import rule: `import { X } from '~/entities/user'` — never import internal fil
 | --------------------- | ----------------------------------------------------------- |
 | `client.ts`           | Middleware pipeline client (auth → logging → retry → parse) |
 | `workspace-client.ts` | Workspace-specific API extensions                           |
-| `index.ts`            | Public API barrel                                           |
+| `index.ts`            | Legacy entrypoints only — prefer importing `*.ts` segments directly |
 
 ### Shared UI Primitives (`shared/ui/`)
 
@@ -254,8 +253,7 @@ Import rule: `import { X } from '~/entities/user'` — never import internal fil
 
 ### FSD Imports (STRICT)
 
-- Import slices only through `index.ts`: `import { X } from '~/entities/user'`
-- NEVER import internals: ~~`from '~/entities/user/user.model'`~~
+- Import from **concrete files**: `import { useUsersStore } from '~/entities/user/user.model'` (same for `*.api.ts`, `*.ui.tsx`, `shared/ui/icon`, etc.). No barrel-only re-export folders — see `.cursor/rules/no-barrel-index.mdc`.
 - Dependencies flow downward only: `app → pages → widgets → features → entities → shared`
 - Cross-entity access only at the same level or downward
 

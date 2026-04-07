@@ -1,8 +1,8 @@
 import React, { useCallback, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useInstancesStore } from "~/entities/instance";
-import { t } from "~/i18n";
-import { exchangeDesktopFlowToken } from "~/shared/api/zulip";
+import { useInstancesStore } from "~/entities/instance/instance.model";
+import { t } from "~/i18n/i18n";
+import { exchangeDesktopFlowToken } from "~/shared/api/zulip-auth";
 import {
   clearDesktopFlowState,
   decryptDesktopFlowToken,
@@ -11,7 +11,8 @@ import {
   parseDesktopFlowLoginToken,
 } from "~/shared/lib/oidc-desktop";
 import { isValidRealmUrl } from "~/shared/lib/validation";
-import { Button, Icon } from "~/shared/ui";
+import { Button } from "~/shared/ui/button";
+import { Icon } from "~/shared/ui/icon";
 import { sanitizeInternalRedirectTarget } from "./login-redirect.lib";
 
 function normalizeRealm(realm: string): string {

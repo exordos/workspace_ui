@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useUsersStore } from "~/entities/user";
+import { useUsersStore } from "~/entities/user/user.model";
 import {
   invalidateInstance,
   invalidateStream as invalidateStreamCache,

@@ -19,12 +19,12 @@
  *   __ai__.commands.register("summarize-chat", handler)
  */
 
-import { useChatListStore } from "~/entities/chat-list";
-import { useInstancesStore } from "~/entities/instance";
-import { useCurrentChatMessagesStore } from "~/entities/message";
-import { useThemeStore } from "~/entities/theme";
-import { useUsersStore } from "~/entities/user";
-import { getLocale } from "~/i18n";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useInstancesStore } from "~/entities/instance/instance.model";
+import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
+import { useThemeStore } from "~/entities/theme/theme.model";
+import { useUsersStore } from "~/entities/user/user.model";
+import { getLocale } from "~/i18n/i18n";
 import { createLogger } from "~/shared/lib/logger";
 
 const log = createLogger("ai-context");

@@ -1,4 +1,4 @@
-import type { UserRecord } from "~/entities/user";
+import type { UserRecord } from "~/entities/user/user.model";
 import type {
   ChatInfoContext,
   ChatInfoData,

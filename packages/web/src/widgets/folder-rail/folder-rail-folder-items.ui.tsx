@@ -1,31 +1,10 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import React, { useCallback, useState } from "react";
-import { Badge, Icon } from "~/shared/ui";
+import { Badge } from "~/shared/ui/badge";
+import { Icon } from "~/shared/ui/icon";
 import { FolderContextMenuContent } from "./folder-rail-context-menu.ui";
-import { getFolderItemVisualState, isContextMenuKeyboardTrigger } from "./folder-rail.utils";
-import type { FolderRailFolder } from "./folder-rail.types";
-
-/** Общий контракт для horizontal/vertical item. */
-interface FolderItemProps {
-  folder: FolderRailFolder;
-  index: number;
-  isSelected: boolean;
-  showSystemFolders: boolean;
-  onSelectFolder: (id: string) => void;
-  onToggleLayout: () => void;
-  onToggleShowSystemFolders: () => void;
-  onRequestRename: (folder: FolderRailFolder) => void;
-  onRequestDelete: (folder: FolderRailFolder) => void;
-}
-
-/** Аргументы общего хука интеракций папки. */
-interface UseFolderItemActionsArgs {
-  folder: FolderRailFolder;
-  onSelectFolder: (id: string) => void;
-  onToggleLayout: () => void;
-  onRequestRename: (folder: FolderRailFolder) => void;
-  onRequestDelete: (folder: FolderRailFolder) => void;
-}
+import { getFolderItemVisualState, isContextMenuKeyboardTrigger } from "./folder-rail.lib";
+import type { FolderItemProps, UseFolderItemActionsArgs } from "./folder-rail-folder-items.types";
 
 /**
  * Общий обработчик действий item:

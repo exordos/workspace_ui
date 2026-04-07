@@ -1,49 +1,84 @@
+import React from "react";
 import { act, fireEvent, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { useChatListStore } from "~/entities/chat-list";
-import { useDownloadStore } from "~/entities/download";
-import { useUsersStore } from "~/entities/user";
+import { useLocation } from "react-router-dom";
+import { afterEach, describe, expect, it } from "vitest";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useDownloadStore } from "~/entities/download/download.model";
+import { useUsersStore } from "~/entities/user/user.model";
 import { renderWithProviders } from "~/test/render";
+import { useRightDrawerStore } from "~/widgets/right-panel/right-drawer.model";
+import { useSearchModalStore } from "~/widgets/search-modal/search-modal.model";
 import { TopBar } from "./top-bar.ui";
+
+function LocationProbe() {
+  return <span data-testid="location-path">{useLocation().pathname}</span>;
+}
 
 describe("TopBar", () => {
   afterEach(() => {
     useChatListStore.setState({ currentUserId: null });
     useUsersStore.getState().clear();
     useDownloadStore.setState({ entries: [], duplicateRequestTick: 0 });
+    useSearchModalStore.getState().closeModal();
+    useRightDrawerStore.setState({ open: false, mode: "info", userIdOverride: null });
   });
 
-  it("calls onSectionChange for available sections", () => {
-    const onSectionChange = vi.fn();
-
-    renderWithProviders(<TopBar activeSection="chat" onSectionChange={onSectionChange} />);
+  it("navigates to calendar when calendar section is clicked", () => {
+    renderWithProviders(
+      <>
+        <LocationProbe />
+        <TopBar />
+      </>,
+      { route: "/" },
+    );
 
     fireEvent.click(screen.getByRole("button", { name: /calendar/i }));
-    fireEvent.click(screen.getByRole("button", { name: /mail/i }));
-    fireEvent.click(screen.getByRole("button", { name: /calls/i }));
-    fireEvent.click(screen.getByRole("button", { name: /services/i }));
-
-    expect(onSectionChange).toHaveBeenNthCalledWith(1, "calendar");
-    expect(onSectionChange).toHaveBeenNthCalledWith(2, "mail");
-    expect(onSectionChange).toHaveBeenNthCalledWith(3, "calls");
-    expect(onSectionChange).toHaveBeenNthCalledWith(4, "services");
+    expect(screen.getByTestId("location-path")).toHaveTextContent("/calendar");
   });
 
-  it("still calls onSectionChange for chat", () => {
-    const onSectionChange = vi.fn();
+  it("navigates to mail, calls, and services when those sections are clicked", () => {
+    renderWithProviders(
+      <>
+        <LocationProbe />
+        <TopBar />
+      </>,
+      { route: "/" },
+    );
 
-    renderWithProviders(<TopBar activeSection="calendar" onSectionChange={onSectionChange} />);
+    fireEvent.click(screen.getByRole("button", { name: /mail/i }));
+    expect(screen.getByTestId("location-path")).toHaveTextContent("/mail");
+
+    fireEvent.click(screen.getByRole("button", { name: /calls/i }));
+    expect(screen.getByTestId("location-path")).toHaveTextContent("/calls");
+
+    fireEvent.click(screen.getByRole("button", { name: /services/i }));
+    expect(screen.getByTestId("location-path")).toHaveTextContent("/services");
+  });
+
+  it("navigates to home when chat is selected from another section", () => {
+    renderWithProviders(
+      <>
+        <LocationProbe />
+        <TopBar />
+      </>,
+      { route: "/calendar" },
+    );
 
     fireEvent.click(screen.getByRole("button", { name: /chats\s*&\s*channels/i }));
+    expect(screen.getByTestId("location-path")).toHaveTextContent("/");
+  });
 
-    expect(onSectionChange).toHaveBeenCalledWith("chat");
+  it("sets aria-current on the section that matches the URL", () => {
+    renderWithProviders(<TopBar />, { route: "/calendar" });
+
+    expect(screen.getByRole("button", { name: /calendar/i })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("button", { name: /chats\s*&\s*channels/i })).not.toHaveAttribute(
+      "aria-current",
+    );
   });
 
   it("opens global search from top bar action", () => {
-    const onOpenSearch = vi.fn();
-    renderWithProviders(
-      <TopBar activeSection="chat" onSectionChange={vi.fn()} onOpenSearch={onOpenSearch} />,
-    );
+    renderWithProviders(<TopBar />);
 
     const searchButton = screen.getByRole("button", { name: /search/i });
     expect(searchButton).toHaveClass("h-10");
@@ -53,19 +88,29 @@ describe("TopBar", () => {
     act(() => {
       fireEvent.click(searchButton);
     });
-    expect(onOpenSearch).toHaveBeenCalledTimes(1);
+    expect(useSearchModalStore.getState().open).toBe(true);
   });
 
-  it("uses semantic token class for active section background", () => {
-    renderWithProviders(<TopBar activeSection="chat" onSectionChange={vi.fn()} />);
+  it("opens user menu in right drawer when profile trigger is clicked", () => {
+    renderWithProviders(<TopBar />);
 
-    expect(screen.getByRole("button", { name: /chats\s*&\s*channels/i })).toHaveClass(
-      "bg-card-bg-active",
-    );
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: /profile/i }));
+    });
+
+    const drawer = useRightDrawerStore.getState();
+    expect(drawer.open).toBe(true);
+    expect(drawer.mode).toBe("user-menu");
+  });
+
+  it("uses semantic token class for active section background from route", () => {
+    renderWithProviders(<TopBar />, { route: "/mail" });
+
+    expect(screen.getByRole("button", { name: /mail/i })).toHaveClass("bg-card-bg-active");
   });
 
   it("uses tokenized geometry for top bar shell", () => {
-    renderWithProviders(<TopBar activeSection="chat" onSectionChange={vi.fn()} />);
+    renderWithProviders(<TopBar />);
 
     const header = screen.getByRole("banner", { name: /top bar/i });
     expect(header).toHaveClass("rounded-b-xl");
@@ -73,26 +118,14 @@ describe("TopBar", () => {
   });
 
   it("uses left slot inset to align server switcher with folder rail", () => {
-    renderWithProviders(
-      <TopBar
-        activeSection="chat"
-        onSectionChange={vi.fn()}
-        leftContent={<div data-testid="mock-left-content" />}
-      />,
-    );
+    renderWithProviders(<TopBar />);
 
     const leftSlot = screen.getByTestId("topbar-left-slot");
     expect(leftSlot).toHaveClass("pl-5");
   });
 
   it("uses compact section buttons aligned from the left with a small inset", () => {
-    renderWithProviders(
-      <TopBar
-        activeSection="chat"
-        onSectionChange={vi.fn()}
-        leftContent={<div data-testid="mock-left-content" />}
-      />,
-    );
+    renderWithProviders(<TopBar />);
 
     const sectionsSlot = screen.getByTestId("topbar-sections-slot");
     expect(sectionsSlot).toHaveClass("items-start");
@@ -113,7 +146,7 @@ describe("TopBar", () => {
       presence: { status: "active", timestamp: Date.now() },
     });
 
-    renderWithProviders(<TopBar activeSection="chat" onSectionChange={vi.fn()} />);
+    renderWithProviders(<TopBar />);
     expect(screen.getByLabelText(/online/i)).toHaveClass("bg-indicator-green");
 
     act(() => {
@@ -130,7 +163,7 @@ describe("TopBar", () => {
       email: "dmitrii@example.com",
     });
 
-    renderWithProviders(<TopBar activeSection="chat" onSectionChange={vi.fn()} />);
+    renderWithProviders(<TopBar />);
 
     const profileButton = screen.getByRole("button", { name: /profile/i });
     const profileScope = within(profileButton);
@@ -159,7 +192,7 @@ describe("TopBar", () => {
       ],
     });
 
-    renderWithProviders(<TopBar activeSection="chat" onSectionChange={vi.fn()} />);
+    renderWithProviders(<TopBar />);
 
     fireEvent.click(screen.getByRole("button", { name: /open downloads/i }));
 
@@ -187,7 +220,7 @@ describe("TopBar", () => {
       ],
     });
 
-    renderWithProviders(<TopBar activeSection="chat" onSectionChange={vi.fn()} />);
+    renderWithProviders(<TopBar />);
 
     const trigger = screen.getByRole("button", { name: /open downloads/i });
     expect(trigger).toHaveAttribute("aria-haspopup", "dialog");
@@ -213,7 +246,7 @@ describe("TopBar", () => {
       ],
     });
 
-    renderWithProviders(<TopBar activeSection="chat" onSectionChange={vi.fn()} />);
+    renderWithProviders(<TopBar />);
 
     fireEvent.click(screen.getByRole("button", { name: /open downloads/i }));
 

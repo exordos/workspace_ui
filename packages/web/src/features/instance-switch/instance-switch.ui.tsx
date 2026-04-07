@@ -1,14 +1,15 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import React from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useInstancesStore } from "~/entities/instance";
-import { t } from "~/i18n";
+import { useInstancesStore } from "~/entities/instance/instance.model";
+import { t } from "~/i18n/i18n";
 import { buildOrgRouteIdFromRealm, replaceOrgRouteInPath } from "~/shared/lib/org-route";
 import {
   getOrganizationLogoSrc,
   ORGANIZATION_FALLBACK_LOGO_URL,
 } from "~/shared/lib/organization-branding";
-import { Badge, Icon } from "~/shared/ui";
+import { Badge } from "~/shared/ui/badge";
+import { Icon } from "~/shared/ui/icon";
 
 function getInstanceLabel(realm: string, email: string): string {
   try {
@@ -152,7 +153,7 @@ export const InstanceSwitcher: React.FC = () => {
         </DropdownMenu.Trigger>
         <DropdownMenu.Portal>
           <DropdownMenu.Content
-            className="z-dropdown min-w-[220px] rounded-lg border border-border-subtle bg-bg-elevated py-1 shadow-lg"
+            className="z-dropdown min-w-context-menu-wide rounded-lg border border-border-subtle bg-bg-elevated py-1 shadow-lg"
             sideOffset={6}
             align="start"
           >

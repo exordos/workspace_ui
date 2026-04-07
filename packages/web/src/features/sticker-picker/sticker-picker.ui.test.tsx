@@ -1,6 +1,7 @@
 import { fireEvent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useStickerStore, type StickerPack } from "~/entities/sticker";
+import { useStickerStore } from "~/entities/sticker/sticker.model";
+import type { StickerPack } from "~/entities/sticker/sticker.types";
 import { renderWithProviders } from "~/test/render";
 import { StickerPicker } from "./sticker-picker.ui";
 

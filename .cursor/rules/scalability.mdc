@@ -46,7 +46,7 @@ Dependencies flow ONLY downward. If an upward reference is needed — use a call
 - Colors → CSS variables → Tailwind tokens
 - Sizes → Tailwind spacing or constants
 - API URLs → env variables
-- UI strings → `t("key")` from `~/i18n` (en default + ru)
+- UI strings → `t("key")` from `~/i18n/i18n` (en default + ru)
 
 ## 7. Error Handling
 

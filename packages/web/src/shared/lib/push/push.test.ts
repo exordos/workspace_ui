@@ -8,7 +8,7 @@
  * and safe fallback behavior.
  */
 import { describe, expect, it, vi } from "vitest";
-import { pushService, initPush, usePushState } from "./index";
+import { pushService, initPush, usePushState } from "./push.service";
 import type { PushMessagePayload, PushState, PushPermission } from "./types";
 
 // Type-level smoke tests ensure payload shapes match what the server sends.

@@ -1,4 +1,4 @@
-import type { MockMessage } from "~/shared/api/zulip";
+import type { MockMessage } from "~/shared/api/zulip.types";
 
 const IMAGE_EXT_RE = /\.(?:png|jpe?g|gif|webp|svg|bmp|avif)(?:[?#]|$)/i;
 const VIDEO_EXT_RE = /\.(?:mp4|mov|webm|m4v|avi|mkv)(?:[?#]|$)/i;

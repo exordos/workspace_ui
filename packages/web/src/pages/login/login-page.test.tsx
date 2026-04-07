@@ -1,7 +1,6 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useInstancesStore } from "~/entities/instance";
-import type * as ZulipApiModule from "~/shared/api/zulip";
+import { useInstancesStore } from "~/entities/instance/instance.model";
 import { renderWithProviders } from "~/test/render";
 import { LoginPage } from "./login-page.ui";
 import type * as ReactRouterDom from "react-router-dom";
@@ -18,8 +17,10 @@ vi.mock("react-router-dom", async () => {
   };
 });
 
-vi.mock("~/shared/api/zulip", async () => {
-  const actual = await vi.importActual<typeof ZulipApiModule>("~/shared/api/zulip");
+vi.mock("~/shared/api/zulip-auth", async () => {
+  const actual = await vi.importActual<typeof import("~/shared/api/zulip-auth")>(
+    "~/shared/api/zulip-auth",
+  );
   return {
     ...actual,
     fetchApiKey,
