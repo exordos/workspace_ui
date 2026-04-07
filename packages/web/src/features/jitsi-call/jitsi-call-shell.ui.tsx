@@ -1,5 +1,6 @@
 import React from "react";
 import { t } from "~/i18n/i18n";
+import { Button } from "~/shared/ui/button";
 import { Icon } from "~/shared/ui/icon";
 import { useJitsiCallStore } from "./jitsi-call.model";
 import { JitsiCallModal } from "./jitsi-call.ui";
@@ -32,20 +33,12 @@ export const JitsiCallShell: React.FC = () => {
               </div>
             </div>
             <div className="flex items-center justify-end gap-2">
-              <button
-                type="button"
-                className="rounded-md border border-border-subtle px-3 py-1.5 text-xs text-text-muted hover:bg-bg hover:text-text-primary"
-                onClick={declineIncomingInvite}
-              >
+              <Button type="button" variant="ghost" size="sm" onClick={declineIncomingInvite}>
                 {t("call.decline")}
-              </button>
-              <button
-                type="button"
-                className="text-badge-text rounded-md bg-call-green px-3 py-1.5 text-xs font-medium hover:opacity-90"
-                onClick={acceptIncomingInvite}
-              >
+              </Button>
+              <Button type="button" variant="primary" size="sm" onClick={acceptIncomingInvite}>
                 {t("call.accept")}
-              </button>
+              </Button>
             </div>
           </section>
         </div>
