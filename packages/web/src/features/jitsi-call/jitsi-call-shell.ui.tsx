@@ -5,6 +5,7 @@ import { CALL_INCOMING_MODAL_VARIANT } from "~/shared/config/constants";
 import { resolveAvatarUrl } from "~/shared/lib/avatar";
 import { IncomingCallCompact } from "./jitsi-call-incoming-compact.ui";
 import { IncomingCallLarge } from "./jitsi-call-incoming-large.ui";
+import { useIncomingCallLifecycle } from "./jitsi-call-incoming-lifecycle.hook";
 import { useJitsiCallStore } from "./jitsi-call.model";
 import { JitsiCallModal } from "./jitsi-call.ui";
 
@@ -52,6 +53,12 @@ export const JitsiCallShell: React.FC = () => {
       [incomingMessageId]: !(current[incomingMessageId] ?? false),
     }));
   }, [incomingMessageId]);
+
+  useIncomingCallLifecycle({
+    incomingInvite,
+    activeCall,
+    onDeclineIncomingInvite: handleDeclineIncomingInvite,
+  });
 
   const incomingInviteView = useMemo(() => {
     if (incomingInvite == null) return null;

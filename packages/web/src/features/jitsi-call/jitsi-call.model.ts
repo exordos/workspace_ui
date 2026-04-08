@@ -59,6 +59,22 @@ export const useJitsiCallStore = create<JitsiCallStoreState>((set, get) => ({
     if (current.lastIncomingMessageId === invite.messageId) {
       return;
     }
+    if (current.activeCall != null) {
+      logStoreAction("jitsiCall", "ingestIncomingInviteIgnored", {
+        messageId: invite.messageId,
+        reason: "activeCall",
+      });
+      set({ lastIncomingMessageId: invite.messageId });
+      return;
+    }
+    if (current.incomingInvite != null) {
+      logStoreAction("jitsiCall", "ingestIncomingInviteIgnored", {
+        messageId: invite.messageId,
+        reason: "incomingAlreadyOpen",
+      });
+      set({ lastIncomingMessageId: invite.messageId });
+      return;
+    }
     logStoreAction("jitsiCall", "ingestIncomingInvite", { messageId: invite.messageId });
     set({
       incomingInvite: invite,

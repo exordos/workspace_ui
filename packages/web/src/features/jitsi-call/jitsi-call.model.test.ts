@@ -77,4 +77,50 @@ describe("useJitsiCallStore", () => {
 
     expect(useJitsiCallStore.getState().incomingInvite).toBeNull();
   });
+
+  it("does not ingest incoming invite when active call is already open", () => {
+    useJitsiCallStore.getState().openCall({
+      meetingUrl: "https://meet.jit.si/zulip-dm-room-active",
+      locationName: "Active",
+    });
+
+    useJitsiCallStore.getState().ingestIncomingInvite({
+      messageId: 21,
+      meetingUrl: "https://meet.jit.si/zulip-dm-room-21",
+      callerName: "Cat",
+      locationName: "Cat",
+      avatarUrl: "/avatars/cat.png",
+      timestamp: 5,
+    });
+
+    const state = useJitsiCallStore.getState();
+    expect(state.activeCall?.meetingUrl).toBe("https://meet.jit.si/zulip-dm-room-active");
+    expect(state.incomingInvite).toBeNull();
+    expect(state.lastIncomingMessageId).toBe(21);
+  });
+
+  it("keeps first incoming invite while another incoming invite arrives", () => {
+    useJitsiCallStore.getState().ingestIncomingInvite({
+      messageId: 31,
+      meetingUrl: "https://meet.jit.si/zulip-dm-room-31",
+      callerName: "Fox",
+      locationName: "Fox",
+      avatarUrl: "/avatars/fox.png",
+      timestamp: 6,
+    });
+
+    useJitsiCallStore.getState().ingestIncomingInvite({
+      messageId: 32,
+      meetingUrl: "https://meet.jit.si/zulip-dm-room-32",
+      callerName: "Wolf",
+      locationName: "Wolf",
+      avatarUrl: "/avatars/wolf.png",
+      timestamp: 7,
+    });
+
+    const state = useJitsiCallStore.getState();
+    expect(state.incomingInvite?.messageId).toBe(31);
+    expect(state.incomingInvite?.meetingUrl).toBe("https://meet.jit.si/zulip-dm-room-31");
+    expect(state.lastIncomingMessageId).toBe(32);
+  });
 });

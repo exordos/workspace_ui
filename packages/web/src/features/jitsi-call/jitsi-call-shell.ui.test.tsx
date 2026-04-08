@@ -47,6 +47,7 @@ describe("JitsiCallShell", () => {
     const { useJitsiCallStore } = await import("./jitsi-call.model");
     useJitsiCallStore.getState().clear();
     vi.unstubAllEnvs();
+    vi.useRealTimers();
   });
 
   it("renders large incoming modal by default", async () => {
@@ -104,5 +105,23 @@ describe("JitsiCallShell", () => {
     expect(useJitsiCallStore.getState().incomingInvite).toBeNull();
     expect(screen.queryByTestId("incoming-call-large")).not.toBeInTheDocument();
     expect(screen.queryByTestId("incoming-call-compact")).not.toBeInTheDocument();
+  });
+
+  it("auto-declines incoming invite after 45 seconds", async () => {
+    vi.useFakeTimers();
+    const { useJitsiCallStore, JitsiCallShell } = await loadShell("large");
+    act(() => {
+      useJitsiCallStore.getState().ingestIncomingInvite(buildInvite(105));
+    });
+
+    render(<JitsiCallShell />);
+    expect(screen.getByTestId("incoming-call-large")).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(45_000);
+    });
+
+    expect(useJitsiCallStore.getState().incomingInvite).toBeNull();
+    expect(screen.queryByTestId("incoming-call-large")).not.toBeInTheDocument();
   });
 });
