@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { parseDmSlugToUserIds, parseStreamSlug, resolveStreamRouteFromSlug } from "./sidebar.lib";
+import {
+  chatToWorkspaceChatId,
+  parseDmSlugToUserIds,
+  parseStreamSlug,
+  resolveStreamRouteFromSlug,
+} from "./sidebar.lib";
 
 describe("parseStreamSlug", () => {
   it("parses numeric slug prefix into stream id", () => {
@@ -59,5 +64,32 @@ describe("parseDmSlugToUserIds", () => {
 
   it("ignores hex-form user ids", () => {
     expect(parseDmSlugToUserIds("0x10-user")).toEqual([]);
+  });
+});
+
+describe("chatToWorkspaceChatId", () => {
+  it("prefers dm userIds over slug parsing when userIds are present", () => {
+    expect(
+      chatToWorkspaceChatId({
+        type: "dm",
+        id: 42,
+        name: "Bob",
+        slug: "999-stale",
+        isGroup: false,
+        userIds: [7, 42],
+      }),
+    ).toBe("dm:7,42");
+  });
+
+  it("falls back to dm slug parsing when userIds are missing", () => {
+    expect(
+      chatToWorkspaceChatId({
+        type: "dm",
+        id: 42,
+        name: "Bob",
+        slug: "42-bob",
+        isGroup: false,
+      }),
+    ).toBe("dm:42");
   });
 });

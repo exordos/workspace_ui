@@ -4,15 +4,13 @@ import {
   addChatIdAliases,
   chatToWorkspaceChatId,
   type FolderSyncUserLike,
+  parseNumericChatId,
   parseFolderItemDmUserIds,
   parseFolderItemStreamId,
   resolveFallbackUserName,
   slugifyFallbackName,
 } from "./folder-sync-chat-id.lib";
-import {
-  SYSTEM_CHANNELS_FOLDER_ID,
-  SYSTEM_PERSONAL_FOLDER_ID,
-} from "./folder-sync-constants.lib";
+import { SYSTEM_CHANNELS_FOLDER_ID, SYSTEM_PERSONAL_FOLDER_ID } from "./folder-sync-constants.lib";
 
 export interface SelectedFolderSidebarProjectionInput {
   selectedFolderId: string;
@@ -75,11 +73,57 @@ export function buildSelectedFolderSidebarChats(
     return matchedChats;
   }
 
+  const resolveDmNumericCandidate = (dmUserIds: readonly number[]): number | null => {
+    if (dmUserIds.length === 1) {
+      return dmUserIds[0] ?? null;
+    }
+    if (dmUserIds.length !== 2) {
+      return null;
+    }
+    const sortedPair = [...dmUserIds].sort((left, right) => left - right);
+    if (currentUserId == null) {
+      return sortedPair[0] ?? null;
+    }
+    return sortedPair.find((id) => id !== currentUserId) ?? sortedPair[0] ?? null;
+  };
+
+  const numericFolderItemIds = new Set<number>();
+  const preferredDmNumericIds = new Set<number>();
+  for (const item of selectedFolderItems) {
+    const numericChatId = parseNumericChatId(item.chatId);
+    if (numericChatId != null) {
+      numericFolderItemIds.add(numericChatId);
+      continue;
+    }
+    const dmUserIds = parseFolderItemDmUserIds(item.chatId);
+    if (dmUserIds == null) {
+      continue;
+    }
+    const dmNumericCandidate = resolveDmNumericCandidate(dmUserIds);
+    if (dmNumericCandidate != null) {
+      preferredDmNumericIds.add(dmNumericCandidate);
+    }
+  }
+  for (const chat of matchedChats) {
+    if (chat.type !== "dm" || chat.isGroup) {
+      continue;
+    }
+    preferredDmNumericIds.add(chat.id);
+  }
+  const matchedChatsWithoutAmbiguousNumericStreams = matchedChats.filter((chat) => {
+    if (chat.type !== "stream") {
+      return true;
+    }
+    return !(numericFolderItemIds.has(chat.stream_id) && preferredDmNumericIds.has(chat.stream_id));
+  });
+
   const knownMatchedStreamIds = new Set(
-    matchedChats.filter((chat) => chat.type === "stream").map((chat) => chat.stream_id),
+    matchedChatsWithoutAmbiguousNumericStreams
+      .filter((chat) => chat.type === "stream")
+      .map((chat) => chat.stream_id),
   );
   const knownMatchedDmKeys = new Set(
-    matchedChats
+    matchedChatsWithoutAmbiguousNumericStreams
       .filter((chat): chat is Extract<SidebarChat, { type: "dm" }> => chat.type === "dm")
       .map((chat) => chatToWorkspaceChatId(chat)),
   );
@@ -119,7 +163,7 @@ export function buildSelectedFolderSidebarChats(
           const sortedPair = [...dmUserIds].sort((left, right) => left - right);
           const peerId =
             currentUserId != null
-              ? sortedPair.find((id) => id !== currentUserId) ?? sortedPair[0]!
+              ? (sortedPair.find((id) => id !== currentUserId) ?? sortedPair[0]!)
               : sortedPair[0]!;
           const dmUser = usersMapForChatInfo.get(peerId);
           const dmName = resolveFallbackUserName(dmUser, `User ${peerId}`);
@@ -169,6 +213,10 @@ export function buildSelectedFolderSidebarChats(
     if (streamId == null) {
       continue;
     }
+    const numericChatId = parseNumericChatId(item.chatId);
+    if (numericChatId != null && preferredDmNumericIds.has(numericChatId)) {
+      continue;
+    }
     if (knownMatchedStreamIds.has(streamId) || seenFallbackStreamIds.has(streamId)) {
       continue;
     }
@@ -185,7 +233,11 @@ export function buildSelectedFolderSidebarChats(
     });
   }
 
-  return [...fallbackDmChats, ...fallbackStreamChats, ...matchedChats];
+  return [
+    ...fallbackDmChats,
+    ...fallbackStreamChats,
+    ...matchedChatsWithoutAmbiguousNumericStreams,
+  ];
 }
 
 export function resolveSelectedFolderSidebarLoading(

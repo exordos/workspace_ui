@@ -59,4 +59,63 @@ describe("buildSelectedFolderSidebarChats", () => {
     expect(dm).toBeDefined();
     expect(dm).toMatchObject({ type: "dm", isGroup: true });
   });
+
+  it("prefers DM over stream for ambiguous legacy numeric folder chat ids", () => {
+    const folderId = "folder-1";
+    const result = buildSelectedFolderSidebarChats({
+      selectedFolderId: folderId,
+      folderChatIds: new Set(["42"]),
+      folderItemsByFolderId: new Map([[folderId, [folderItem("42", 0)]]]),
+      chatsSortedByLastMessage: [
+        {
+          type: "stream",
+          stream_id: 42,
+          name: "general",
+          topics: [],
+          lastMessage: "",
+          time: "",
+        },
+        {
+          type: "dm",
+          id: 42,
+          name: "Bob",
+          slug: "42-bob",
+          isGroup: false,
+          lastMessage: "",
+          time: "",
+        },
+      ],
+      streamsMap: new Map(),
+      usersMapForChatInfo: new Map([[42, { full_name: "Bob" }]]),
+      currentUserId: 7,
+    });
+
+    expect(result.filter((chat) => chat.type === "dm")).toHaveLength(1);
+    expect(result.filter((chat) => chat.type === "stream")).toHaveLength(0);
+  });
+
+  it("keeps legacy numeric stream when there is no matching DM candidate", () => {
+    const folderId = "folder-1";
+    const result = buildSelectedFolderSidebarChats({
+      selectedFolderId: folderId,
+      folderChatIds: new Set(["77"]),
+      folderItemsByFolderId: new Map([[folderId, [folderItem("77", 0)]]]),
+      chatsSortedByLastMessage: [
+        {
+          type: "stream",
+          stream_id: 77,
+          name: "engineering",
+          topics: [],
+          lastMessage: "",
+          time: "",
+        },
+      ],
+      streamsMap: new Map(),
+      usersMapForChatInfo: new Map(),
+      currentUserId: 7,
+    });
+
+    expect(result.filter((chat) => chat.type === "stream")).toHaveLength(1);
+    expect(result.filter((chat) => chat.type === "dm")).toHaveLength(0);
+  });
 });
