@@ -124,6 +124,7 @@ export function getStreamChats(streams: StreamWithLast[]): SidebarChat[] {
     stream_id: s.stream_id,
     name: s.name,
     lastMessage: s.lastMessage,
+    lastMessageSenderName: s.lastMessageSenderName,
     time: s.time,
     topics: s.topics,
     badge: s.badge,

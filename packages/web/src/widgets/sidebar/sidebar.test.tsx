@@ -2,11 +2,11 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useUsersStore } from "~/entities/user/user.model";
-import { usePinStore } from "~/features/pin-chat/pin-chat.model";
 import type * as PinChatApiModule from "~/features/pin-chat/pin-chat.api";
+import { usePinStore } from "~/features/pin-chat/pin-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
-import { buildDmTypingChatKey } from "~/features/typing-indicator/typing-key";
 import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indicator.model";
+import { buildDmTypingChatKey } from "~/features/typing-indicator/typing-key";
 import { t } from "~/i18n/i18n";
 import type * as WorkspaceApiModule from "~/shared/api/workspace-client";
 import type { SidebarChat } from "~/shared/types/sidebar-chat";
@@ -995,6 +995,80 @@ describe("Sidebar", () => {
     );
 
     expect(screen.getByText("# incident")).toBeInTheDocument();
+  });
+
+  it("shows topic last message sender name in folder stream list", () => {
+    const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
+      ...STREAM_CHAT,
+      topics: [
+        {
+          subject: "incident",
+          badge: 0,
+          lastMessage: "Topic update",
+          lastMessageSenderName: "Topic Sender",
+        },
+      ],
+    };
+    useSidebarConfigStore.getState().setExpandedStreamSlug("11-engineering");
+
+    renderWithProviders(
+      <Sidebar
+        streams={[]}
+        selectedFolderId="all"
+        sidebarChats={[streamWithTopics]}
+        sidebarDms={[]}
+      />,
+    );
+
+    expect(screen.getByText("Topic Sender")).toBeInTheDocument();
+  });
+
+  it("hides topic sender row in folder stream list when sender name is missing", () => {
+    const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
+      ...STREAM_CHAT,
+      topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
+    };
+    useSidebarConfigStore.getState().setExpandedStreamSlug("11-engineering");
+
+    renderWithProviders(
+      <Sidebar
+        streams={[]}
+        selectedFolderId="all"
+        sidebarChats={[streamWithTopics]}
+        sidebarDms={[]}
+      />,
+    );
+
+    expect(screen.queryByText(t("roles.member"))).not.toBeInTheDocument();
+  });
+
+  it("shows topic last message sender name in stream list when sidebarChats is absent", () => {
+    useSidebarConfigStore.getState().setExpandedStreamSlug("11-engineering");
+
+    renderWithProviders(
+      <Sidebar
+        streams={[
+          {
+            stream_id: 11,
+            name: "Engineering",
+            lastMessage: "Deploy today",
+            time: "12:10",
+            topics: [
+              {
+                subject: "incident",
+                badge: 0,
+                lastMessage: "Topic update",
+                lastMessageSenderName: "Legacy Sender",
+              },
+            ],
+          },
+        ]}
+        selectedFolderId="all"
+        sidebarDms={[]}
+      />,
+    );
+
+    expect(screen.getByText("Legacy Sender")).toBeInTheDocument();
   });
 
   it("auto-expands stream topics when stream is clicked in sidebar", () => {

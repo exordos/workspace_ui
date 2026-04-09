@@ -120,6 +120,35 @@ describe("chatListStore", () => {
       expect(streams[0]!.topics!.length).toBe(2);
     });
 
+    it("maps stream and topic last message sender names", () => {
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: 1,
+            stream_id: 5,
+            subject: "topic1",
+            timestamp: 1000,
+            sender_full_name: "Alice",
+          }),
+          streamMsg({
+            id: 2,
+            stream_id: 5,
+            subject: "topic2",
+            timestamp: 2000,
+            sender_full_name: "Bob",
+          }),
+        ],
+        10,
+      );
+
+      const stream = useChatListStore.getState().streams()[0]!;
+      expect(stream.lastMessageSenderName).toBe("Bob");
+      const topic1 = stream.topics?.find((topic) => topic.subject === "topic1");
+      const topic2 = stream.topics?.find((topic) => topic.subject === "topic2");
+      expect(topic1?.lastMessageSenderName).toBe("Alice");
+      expect(topic2?.lastMessageSenderName).toBe("Bob");
+    });
+
     // Private messages must produce DM entries with type "dm".
     it("builds DM entries from private messages", () => {
       useChatListStore.getState().setFromMessages([dmMsg()], 10);
@@ -585,6 +614,37 @@ describe("chatListStore", () => {
       const topicNames = stream!.topics!.map((t) => t.subject);
       expect(topicNames).not.toContain("topicA");
       expect(topicNames).toContain("topicB");
+    });
+
+    it("recalculates stream last sender from remaining newest topic", () => {
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: 1,
+            stream_id: 5,
+            subject: "topicA",
+            timestamp: 1000,
+            sender_full_name: "Alice",
+          }),
+          streamMsg({
+            id: 2,
+            stream_id: 5,
+            subject: "topicB",
+            timestamp: 2000,
+            sender_full_name: "Bob",
+          }),
+        ],
+        10,
+      );
+
+      useChatListStore.getState().handleDeleteMessages([2]);
+
+      const stream = useChatListStore
+        .getState()
+        .streams()
+        .find((item) => item.stream_id === 5);
+      expect(stream).toBeDefined();
+      expect(stream?.lastMessageSenderName).toBe("Alice");
     });
 
     // A stream with zero topics must be removed entirely from the sidebar.

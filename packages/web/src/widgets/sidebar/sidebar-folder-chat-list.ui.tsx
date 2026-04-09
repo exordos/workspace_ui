@@ -22,13 +22,16 @@ import { sidebarRowClass } from "~/shared/lib/format";
 import { Avatar } from "~/shared/ui/avatar";
 import { Badge } from "~/shared/ui/badge";
 import { Icon } from "~/shared/ui/icon";
-import { SidebarFolderNewTopicDialog } from "./sidebar-folder-new-topic-dialog.ui";
-import { DmChatRow } from "./sidebar-folder-dm-row.ui";
-import { TopicMuteButton, TopicResolvedButton } from "./sidebar-folder-topic-buttons.ui";
 import { DmContextMenu, StreamContextMenu } from "./sidebar-chat-context-menu.ui";
+import { DmChatRow } from "./sidebar-folder-dm-row.ui";
+import { SidebarFolderNewTopicDialog } from "./sidebar-folder-new-topic-dialog.ui";
+import { TopicMuteButton, TopicResolvedButton } from "./sidebar-folder-topic-buttons.ui";
 import { slugForStream, TOPIC_BAR_COLORS, chatToWorkspaceChatId } from "./sidebar.lib";
+import type {
+  NewTopicDialogState,
+  SidebarFolderChatListProps,
+} from "./sidebar-folder-chat-list.types";
 import type { SidebarChat } from "./sidebar.types";
-import type { NewTopicDialogState, SidebarFolderChatListProps } from "./sidebar-folder-chat-list.types";
 
 function getAvatarUrl(avatarUrl: string | undefined): string | null {
   return resolveAvatarUrl(avatarUrl, getRealmBaseUrl()) ?? null;
@@ -368,9 +371,11 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
                                       <div className="truncate text-sm font-medium text-text-primary">
                                         # {topic.subject}
                                       </div>
-                                      <div className="mt-0.5 truncate text-xs text-sidebar-sender">
-                                        {t("roles.member")}
-                                      </div>
+                                      {topic.lastMessageSenderName && (
+                                        <div className="mt-0.5 truncate text-xs text-sidebar-sender">
+                                          {topic.lastMessageSenderName}
+                                        </div>
+                                      )}
                                       <div className="mt-0.5 truncate text-xs text-text-muted">
                                         {topic.lastMessage ?? ""}
                                       </div>
@@ -431,9 +436,11 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
                         </div>
                         {!isCompactDensity && (
                           <>
-                            <div className="mt-0.5 truncate text-xs text-sidebar-sender">
-                              {t("roles.member")}
-                            </div>
+                            {chat.lastMessageSenderName && (
+                              <div className="mt-0.5 truncate text-xs text-sidebar-sender">
+                                {chat.lastMessageSenderName}
+                              </div>
+                            )}
                             <div className="mt-0.5 truncate text-xs text-text-muted">
                               {chat.lastMessage ?? ""}
                             </div>

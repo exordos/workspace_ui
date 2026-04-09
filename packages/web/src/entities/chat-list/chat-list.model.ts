@@ -38,6 +38,7 @@ function streamsMapToSortedStreams(streamsMap: Map<number, StreamEntryInternal>)
         .map((t) => ({
           subject: t.subject,
           lastMessage: t.lastMessage,
+          lastMessageSenderName: t.lastMessageSenderName,
           time: t.time,
           badge: t.unreadCount > 0 ? t.unreadCount : undefined,
         }));
@@ -46,6 +47,7 @@ function streamsMapToSortedStreams(streamsMap: Map<number, StreamEntryInternal>)
         stream_id: s.stream_id,
         name: s.name,
         lastMessage: s.lastMessage,
+        lastMessageSenderName: s.lastMessageSenderName,
         time: s.time,
         topics,
         badge: badge > 0 ? badge : undefined,
@@ -78,10 +80,12 @@ function mergeStreamEntry(
   streamId: number,
   name: string,
   lastMessage: string,
+  lastMessageSenderName: string | undefined,
   time: string,
   ts: number,
   topicSubject: string,
   topicLastMessage: string,
+  topicLastMessageSenderName: string | undefined,
   topicTime: string,
   topicTs: number,
   topicUnreadDelta: number,
@@ -92,6 +96,7 @@ function mergeStreamEntry(
   const topicEntry = {
     subject: topicSubject,
     lastMessage: topicLastMessage,
+    lastMessageSenderName: topicLastMessageSenderName,
     time: topicTime,
     ts: topicTs,
     unreadCount,
@@ -100,10 +105,18 @@ function mergeStreamEntry(
   if (!existing) {
     const topics = new Map<
       string,
-      { subject: string; lastMessage: string; time: string; ts: number; unreadCount: number }
+      {
+        subject: string;
+        lastMessage: string;
+        lastMessageSenderName?: string;
+        time: string;
+        ts: number;
+        unreadCount: number;
+        lastMessageId?: number;
+      }
     >();
     topics.set(topicSubject, topicEntry);
-    return { stream_id: streamId, name, lastMessage, time, ts, topics };
+    return { stream_id: streamId, name, lastMessage, lastMessageSenderName, time, ts, topics };
   }
   const nextTopics = new Map(existing.topics);
   if (!existingTopic || topicTs >= existingTopic.ts) {
@@ -116,6 +129,7 @@ function mergeStreamEntry(
     stream_id: streamId,
     name: existing.name,
     lastMessage: newerStream ? lastMessage : existing.lastMessage,
+    lastMessageSenderName: newerStream ? lastMessageSenderName : existing.lastMessageSenderName,
     time: newerStream ? time : existing.time,
     ts: Math.max(existing.ts, ts),
     topics: nextTopics,
@@ -215,7 +229,7 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
     if (type === "stream" && message.stream_id != null) {
       const result = messageToStreamEntry(message);
       if (!result) return;
-      const { stream_id, name, lastMessage, time, ts } = result.stream;
+      const { stream_id, name, lastMessage, lastMessageSenderName, time, ts } = result.stream;
       const topic = result.topic;
       const topicUnreadDelta = isUnreadFromOthers(message, currentUserId) ? 1 : 0;
       set((state) => {
@@ -239,10 +253,12 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
           stream_id,
           name,
           lastMessage,
+          lastMessageSenderName,
           time,
           ts,
           topic.subject,
           topic.lastMessage,
+          topic.lastMessageSenderName,
           topic.time,
           topic.ts,
           topicUnreadDelta,
@@ -337,7 +353,7 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
       for (const m of streamByKey.values()) {
         const result = messageToStreamEntry(m);
         if (!result) continue;
-        const { stream_id, name, lastMessage, time, ts } = result.stream;
+        const { stream_id, name, lastMessage, lastMessageSenderName, time, ts } = result.stream;
         const topic = result.topic;
         const topicUnreadDelta = isUnreadFromOthers(m, currentUserId) ? 1 : 0;
         const existing = nextStreams.get(stream_id);
@@ -360,10 +376,12 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
           stream_id,
           name,
           lastMessage,
+          lastMessageSenderName,
           time,
           ts,
           topic.subject,
           topic.lastMessage,
+          topic.lastMessageSenderName,
           topic.time,
           topic.ts,
           topicUnreadDelta,
@@ -616,6 +634,7 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
               ...stream,
               topics: nextTopics,
               lastMessage: newLast.lastMessage,
+              lastMessageSenderName: newLast.lastMessageSenderName,
               time: newLast.time,
               ts: newLast.ts,
             });

@@ -9,8 +9,8 @@ import { Avatar } from "~/shared/ui/avatar";
 import { Badge } from "~/shared/ui/badge";
 import { Icon } from "~/shared/ui/icon";
 import { slugForStream, TOPIC_BAR_COLORS } from "./sidebar.lib";
-import type { SidebarChat } from "./sidebar.types";
 import type { SidebarStreamListProps } from "./sidebar-stream-list.types";
+import type { SidebarChat } from "./sidebar.types";
 
 function isStream(chat: SidebarChat): chat is Extract<SidebarChat, { type: "stream" }> {
   return chat.type === "stream";
@@ -215,9 +215,11 @@ export const SidebarStreamList: React.FC<SidebarStreamListProps> = ({
                               </div>
                               {!isCompactDensity && (
                                 <>
-                                  <div className="mt-0.5 truncate text-xs text-sidebar-sender">
-                                    {t("roles.member")}
-                                  </div>
+                                  {topic.lastMessageSenderName && (
+                                    <div className="mt-0.5 truncate text-xs text-sidebar-sender">
+                                      {topic.lastMessageSenderName}
+                                    </div>
+                                  )}
                                   <div className="mt-0.5 truncate text-xs text-text-muted">
                                     {topic.lastMessage ?? ""}
                                   </div>
