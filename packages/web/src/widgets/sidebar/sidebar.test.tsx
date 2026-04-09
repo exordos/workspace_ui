@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useUsersStore } from "~/entities/user/user.model";
@@ -109,6 +110,11 @@ const STREAM_CHAT_SECOND: Extract<SidebarChat, { type: "stream" }> = {
   time: "11:20",
   topics: [],
 };
+
+function RoutePathProbe() {
+  const location = useLocation();
+  return <output data-testid="route-path">{location.pathname}</output>;
+}
 
 describe("Sidebar", () => {
   afterEach(() => {
@@ -1071,6 +1077,66 @@ describe("Sidebar", () => {
     expect(screen.getByText("Legacy Sender")).toBeInTheDocument();
   });
 
+  it("opens stream from folder list when stream meta area is clicked", () => {
+    const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
+      ...STREAM_CHAT,
+      badge: 3,
+      topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
+    };
+
+    renderWithProviders(
+      <>
+        <Sidebar
+          streams={[]}
+          selectedFolderId="all"
+          sidebarChats={[streamWithTopics]}
+          sidebarDms={[]}
+        />
+        <RoutePathProbe />
+      </>,
+    );
+
+    expect(screen.getByTestId("route-path")).toHaveTextContent("/");
+    expect(screen.queryByText("# incident")).not.toBeInTheDocument();
+
+    const streamLink = screen.getByRole("link", { name: /engineering/i });
+    fireEvent.click(within(streamLink).getByText("3"));
+
+    expect(screen.getByText("# incident")).toBeInTheDocument();
+    expect(screen.getByTestId("route-path")).toHaveTextContent("/stream/11-engineering");
+  });
+
+  it("opens stream from stream list when unread badge in meta area is clicked", () => {
+    renderWithProviders(
+      <>
+        <Sidebar
+          streams={[
+            {
+              stream_id: 11,
+              name: "Engineering",
+              lastMessage: "Deploy today",
+              time: "12:10",
+              badge: 3,
+              topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
+            },
+          ]}
+          selectedFolderId="all"
+          sidebarDms={[]}
+        />
+        <RoutePathProbe />
+      </>,
+    );
+
+    expect(screen.getByTestId("route-path")).toHaveTextContent("/");
+    expect(screen.queryByText("# incident")).not.toBeInTheDocument();
+
+    const streamLink = screen.getByRole("link", { name: /engineering/i });
+    fireEvent.click(within(streamLink).getByText("3"));
+
+    expect(screen.getByText("# incident")).toBeInTheDocument();
+    expect(screen.getByTestId("route-path")).toHaveTextContent("/stream/11-engineering");
+  });
+
   it("auto-expands stream topics when stream is clicked in sidebar", () => {
     const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
       ...STREAM_CHAT,
@@ -1130,9 +1196,8 @@ describe("Sidebar", () => {
 
     const chatMenuButton = screen.getByRole("button", { name: /chat menu/i });
     const expandButton = screen.getByRole("button", { name: /expand topics/i });
-    const streamTime = screen.getByText("12:10");
     const streamUnreadBadge = screen.getByText("3");
-    const streamMetaRow = streamTime.parentElement;
+    const streamMetaRow = streamUnreadBadge.parentElement;
 
     expect(streamMetaRow).not.toBeNull();
     expect(streamMetaRow!).toContainElement(streamUnreadBadge);
@@ -1146,16 +1211,12 @@ describe("Sidebar", () => {
     expect(chatMenuButton).not.toHaveClass("right-10");
 
     expect(expandButton).toHaveClass("absolute");
-    expect(expandButton).toHaveClass("left-5");
-    expect(expandButton).toHaveClass("top-5");
-    expect(expandButton).toHaveClass("-translate-x-1/2");
-    expect(expandButton).toHaveClass("-translate-y-1/2");
-    expect(expandButton).toHaveClass("h-8");
-    expect(expandButton).toHaveClass("w-8");
+    expect(expandButton).toHaveClass("right-1");
+    expect(expandButton).toHaveClass("top-2.5");
+    expect(expandButton).toHaveClass("h-5");
+    expect(expandButton).toHaveClass("w-5");
     expect(expandButton).toHaveClass("bg-bg/60");
-    expect(expandButton).toHaveClass("opacity-0");
-    expect(expandButton).toHaveClass("group-hover/stream:opacity-100");
-    expect(expandButton).toHaveClass("group-focus-within/stream:opacity-100");
+    expect(expandButton).not.toHaveClass("opacity-0");
   });
 
   it("aligns dm chat-menu trigger horizontally with unread and keeps time left of unread", () => {
@@ -1184,8 +1245,8 @@ describe("Sidebar", () => {
     expect(dmMetaRow!).not.toHaveClass("flex-col");
 
     const chatMenuButton = screen.getByRole("button", { name: /chat menu/i });
-    expect(chatMenuButton).toHaveClass("top-1");
-    expect(chatMenuButton).not.toHaveClass("top-8");
+    expect(chatMenuButton).toHaveClass("top-8");
+    expect(chatMenuButton).not.toHaveClass("top-1");
   });
 
   it("places topic mute control under topic unread badge", () => {
@@ -1206,13 +1267,67 @@ describe("Sidebar", () => {
 
     const topicMuteButton = screen.getByRole("button", { name: /mute topic/i });
     const actionsContainer = topicMuteButton.parentElement;
+    const topicLink = screen.getByRole("link", { name: /incident/i });
 
     expect(actionsContainer).toBeTruthy();
     expect(actionsContainer).toHaveClass("flex-col");
     expect(actionsContainer).toHaveClass("items-end");
+    expect(within(topicLink).getByText("2")).toBeInTheDocument();
+    expect(within(actionsContainer as HTMLElement).queryByText("2")).toBeNull();
+  });
 
-    const topicBadge = within(actionsContainer as HTMLElement).getByText("2");
-    expect(actionsContainer?.firstElementChild).toBe(topicBadge);
+  it("navigates to topic when topic unread badge is clicked", () => {
+    const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
+      ...STREAM_CHAT,
+      topics: [{ subject: "incident", badge: 2, lastMessage: "Topic update" }],
+    };
+    useSidebarConfigStore.getState().setExpandedStreamSlug("11-engineering");
+
+    renderWithProviders(
+      <>
+        <Sidebar
+          streams={[]}
+          selectedFolderId="all"
+          sidebarChats={[streamWithTopics]}
+          sidebarDms={[]}
+        />
+        <RoutePathProbe />
+      </>,
+    );
+
+    const topicLink = screen.getByRole("link", { name: /incident/i });
+    fireEvent.click(within(topicLink).getByText("2"));
+
+    expect(screen.getByTestId("route-path")).toHaveTextContent(
+      "/stream/11-engineering/topic/incident",
+    );
+  });
+
+  it("does not navigate when topic mute action is clicked", () => {
+    useSidebarConfigStore.getState().setExpandedStreamSlug("11-engineering");
+
+    renderWithProviders(
+      <>
+        <Sidebar
+          streams={[
+            {
+              stream_id: 11,
+              name: "Engineering",
+              lastMessage: "Deploy today",
+              time: "12:10",
+              topics: [{ subject: "incident", badge: 2, lastMessage: "Topic update" }],
+            },
+          ]}
+          selectedFolderId="all"
+          sidebarDms={[]}
+        />
+        <RoutePathProbe />
+      </>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /mute topic/i }));
+
+    expect(screen.getByTestId("route-path")).toHaveTextContent("/");
   });
 
   it("marks topic as done from topic row action", async () => {
@@ -1224,12 +1339,15 @@ describe("Sidebar", () => {
     useSidebarConfigStore.getState().setExpandedStreamSlug("11-engineering");
 
     renderWithProviders(
-      <Sidebar
-        streams={[]}
-        selectedFolderId="all"
-        sidebarChats={[streamWithTopics]}
-        sidebarDms={[]}
-      />,
+      <>
+        <Sidebar
+          streams={[]}
+          selectedFolderId="all"
+          sidebarChats={[streamWithTopics]}
+          sidebarDms={[]}
+        />
+        <RoutePathProbe />
+      </>,
     );
 
     const markDoneButton = screen.getByRole("button", { name: /mark topic as done/i });
@@ -1238,6 +1356,7 @@ describe("Sidebar", () => {
     await waitFor(() => {
       expect(setTopicResolvedStateMock).toHaveBeenCalledWith(11, "incident", true);
     });
+    expect(screen.getByTestId("route-path")).toHaveTextContent("/");
   });
 
   it("marks resolved topic as not done from topic row action", async () => {

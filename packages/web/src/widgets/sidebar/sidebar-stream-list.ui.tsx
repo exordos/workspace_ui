@@ -86,21 +86,18 @@ export const SidebarStreamList: React.FC<SidebarStreamListProps> = ({
           const isGeneral = stream.name.toLowerCase() === "general";
           const displayName = isGeneral ? t("chat.generalChat") : stream.name;
           const topics = stream.topics ?? [];
+          const streamRowClass = isCompactDensity
+            ? "flex items-start gap-2 rounded-md px-2 py-1.5 transition-colors"
+            : "flex items-start gap-3 rounded-lg px-2.5 py-2.5 transition-colors";
 
           return (
             <div key={`stream-${stream.stream_id}`}>
-              <div
-                className={`flex items-start ${
-                  isCompactDensity
-                    ? "gap-2 rounded-md px-2 py-1.5"
-                    : "gap-3 rounded-lg px-2.5 py-2.5"
-                } transition-colors ${
-                  expanded ? "bg-sidebar-hover" : ""
-                } ${isActive ? "bg-sidebar-hover" : ""}`}
-              >
+              <div className="group/stream relative">
                 <Link
                   to={`/stream/${streamSlug}`}
-                  className="flex min-w-0 flex-1 items-start gap-3"
+                  className={`${streamRowClass} w-full ${
+                    expanded ? "bg-sidebar-hover" : ""
+                  } ${isActive ? "bg-sidebar-hover" : ""} ${isCompactDensity ? "pr-10" : "pr-11"}`}
                   onClick={() => {
                     if (!expanded) {
                       onToggleStream(streamSlug);
@@ -118,30 +115,30 @@ export const SidebarStreamList: React.FC<SidebarStreamListProps> = ({
                       </div>
                     )}
                   </div>
-                </Link>
-                <div className="flex flex-shrink-0 flex-col items-end gap-1">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      onToggleStream(streamSlug);
-                    }}
-                    className={`flex items-center justify-center rounded-lg text-text-muted hover:bg-sidebar-hover hover:text-text-primary ${
-                      isCompactDensity ? "h-7 w-7" : "h-8 w-8"
-                    }`}
-                    aria-label={expanded ? t("a11y.collapseTopics") : t("a11y.expandTopics")}
-                  >
-                    {expanded ? (
-                      <Icon name="chevron-up" size={16} />
-                    ) : (
-                      <Icon name="chevron-down" size={16} />
+                  <div className="flex flex-shrink-0 flex-col items-end gap-1">
+                    {stream.badge !== undefined && stream.badge > 0 && (
+                      <Badge count={stream.badge} variant="unread" />
                     )}
-                  </button>
-                  {stream.badge !== undefined && stream.badge > 0 && (
-                    <Badge count={stream.badge} variant="unread" />
+                  </div>
+                </Link>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onToggleStream(streamSlug);
+                  }}
+                  className={`absolute flex items-center justify-center rounded-lg text-text-muted hover:bg-sidebar-hover hover:text-text-primary ${
+                    isCompactDensity ? "right-1 top-1 h-7 w-7" : "right-1 top-1 h-8 w-8"
+                  }`}
+                  aria-label={expanded ? t("a11y.collapseTopics") : t("a11y.expandTopics")}
+                >
+                  {expanded ? (
+                    <Icon name="chevron-up" size={16} />
+                  ) : (
+                    <Icon name="chevron-down" size={16} />
                   )}
-                </div>
+                </button>
               </div>
 
               {expanded && (
@@ -207,7 +204,7 @@ export const SidebarStreamList: React.FC<SidebarStreamListProps> = ({
                         >
                           <Link
                             to={`/stream/${streamSlug}/topic/${encodeURIComponent(topic.subject)}`}
-                            className="flex min-w-0 flex-1 items-start gap-3 py-2 pl-3"
+                            className="flex min-w-0 flex-1 items-start gap-3 py-2 pl-3 pr-2"
                           >
                             <div className="min-w-0 flex-1">
                               <div className="truncate text-sm font-medium text-text-primary">
@@ -226,12 +223,12 @@ export const SidebarStreamList: React.FC<SidebarStreamListProps> = ({
                                 </>
                               )}
                             </div>
-                          </Link>
-                          <div className="flex shrink-0 items-center gap-1 py-2 pr-2">
-                            <TopicMuteButton streamId={stream.stream_id} topic={topic.subject} />
                             {topic.badge !== undefined && topic.badge > 0 && (
                               <Badge count={topic.badge} variant="unread" />
                             )}
+                          </Link>
+                          <div className="flex shrink-0 items-center py-2 pr-2">
+                            <TopicMuteButton streamId={stream.stream_id} topic={topic.subject} />
                           </div>
                         </div>
                       );

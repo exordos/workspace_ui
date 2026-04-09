@@ -244,6 +244,10 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
                 const streamTriggerOffsetClassName = isCompactDensity
                   ? "right-1 top-6"
                   : "right-1 top-8";
+                const streamExpandTriggerClassName = isCompactDensity
+                  ? "right-1.5 top-1 h-5 w-5"
+                  : "right-1.5 top-2.5 h-5 w-5";
+                const streamLinkPaddingClass = isCompactDensity ? "pr-10" : "pr-11";
 
                 if (canExpandStreams) {
                   return wrapPinned(
@@ -265,65 +269,56 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
                       }
                       onFolderAssignmentsChanged={onFolderAssignmentsChanged}
                     >
-                      <div
-                        className={`${streamRowClass} ${
-                          expanded ? "bg-sidebar-hover" : ""
-                        } ${isActive ? "bg-sidebar-hover" : ""}`}
-                      >
-                        <div className="relative min-w-0 flex-1">
-                          <Link
-                            to={`/stream/${streamSlug}`}
-                            className="flex min-w-0 items-start gap-3"
-                            onClick={() => {
-                              if (!expanded) {
-                                onToggleStream(streamSlug);
-                              }
-                            }}
-                          >
-                            <Avatar size={streamAvatarSize}>#</Avatar>
-                            <div className="min-w-0 flex-1">
-                              <div className="truncate text-sm font-medium text-text-primary">
-                                #{displayName}
-                              </div>
-                              {!isCompactDensity && (
-                                <div className="mt-0.5 truncate text-xs text-text-muted">
-                                  {chat.lastMessage ?? ""}
-                                </div>
-                              )}
-                            </div>
-                          </Link>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
+                      <div className="group/stream relative">
+                        <Link
+                          to={`/stream/${streamSlug}`}
+                          className={`${streamRowClass} ${streamLinkPaddingClass} w-full ${
+                            expanded ? "bg-sidebar-hover" : ""
+                          } ${isActive ? "bg-sidebar-hover" : ""}`}
+                          onClick={() => {
+                            if (!expanded) {
                               onToggleStream(streamSlug);
-                            }}
-                            className={`bg-bg/60 hover:bg-bg-elevated/80 pointer-events-none absolute z-10 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-lg text-text-muted opacity-0 transition-all group-focus-within/stream:pointer-events-auto group-focus-within/stream:opacity-100 group-hover/stream:pointer-events-auto group-hover/stream:opacity-100 hover:text-text-primary focus-visible:pointer-events-auto focus-visible:opacity-100 ${
-                              isCompactDensity ? "left-4 top-4 h-7 w-7" : "left-5 top-5 h-8 w-8"
-                            }`}
-                            aria-label={
-                              expanded ? t("a11y.collapseTopics") : t("a11y.expandTopics")
                             }
-                          >
-                            {expanded ? (
-                              <Icon name="chevron-up" size={16} />
-                            ) : (
-                              <Icon name="chevron-down" size={16} />
-                            )}
-                          </button>
-                        </div>
-                        <div className="flex flex-shrink-0 flex-col items-end gap-1">
-                          <div className="flex items-center gap-1">
-                            {isPinnedChat && (
-                              <Icon name="pin" size={12} className="text-text-muted" />
-                            )}
-                            <span className="text-xs text-text-muted">{chat.time ?? ""}</span>
-                            {chat.badge !== undefined && chat.badge > 0 && (
-                              <Badge count={chat.badge} variant="unread" />
+                          }}
+                        >
+                          <Avatar size={streamAvatarSize}>#</Avatar>
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-sm font-medium text-text-primary">
+                              #{displayName}
+                            </div>
+                            {!isCompactDensity && (
+                              <div className="mt-0.5 truncate text-xs text-text-muted">
+                                {chat.lastMessage ?? ""}
+                              </div>
                             )}
                           </div>
-                        </div>
+                          <div className="flex flex-shrink-0 flex-col items-end gap-1">
+                            <div className="flex items-center gap-1">
+                              {isPinnedChat && (
+                                <Icon name="pin" size={12} className="text-text-muted" />
+                              )}
+                              {chat.badge !== undefined && chat.badge > 0 && (
+                                <Badge count={chat.badge} variant="unread" />
+                              )}
+                            </div>
+                          </div>
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onToggleStream(streamSlug);
+                          }}
+                          className={`bg-bg/60 hover:bg-bg-elevated/80 absolute z-10 flex items-center justify-center rounded-lg text-text-muted transition-colors hover:text-text-primary focus-visible:text-text-primary ${streamExpandTriggerClassName}`}
+                          aria-label={expanded ? t("a11y.collapseTopics") : t("a11y.expandTopics")}
+                        >
+                          {expanded ? (
+                            <Icon name="chevron-up" size={16} />
+                          ) : (
+                            <Icon name="chevron-down" size={16} />
+                          )}
+                        </button>
                       </div>
                       {expanded && (
                         <div className="ml-4 mt-0.5 space-y-0.5 border-l-2 border-transparent pl-2">
@@ -365,7 +360,7 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
                                 >
                                   <Link
                                     to={`/stream/${streamSlug}/topic/${encodeURIComponent(topic.subject)}`}
-                                    className="flex min-w-0 flex-1 items-start gap-3 py-2 pl-3"
+                                    className="flex min-w-0 flex-1 items-start gap-3 py-2 pl-3 pr-2"
                                   >
                                     <div className="min-w-0 flex-1">
                                       <div className="truncate text-sm font-medium text-text-primary">
@@ -380,11 +375,11 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
                                         {topic.lastMessage ?? ""}
                                       </div>
                                     </div>
-                                  </Link>
-                                  <div className="flex shrink-0 flex-col items-end gap-1 py-2 pr-2">
                                     {topic.badge !== undefined && topic.badge > 0 && (
                                       <Badge count={topic.badge} variant="unread" />
                                     )}
+                                  </Link>
+                                  <div className="flex shrink-0 flex-col items-end gap-1 py-2 pr-2">
                                     <TopicMuteButton
                                       streamId={chat.stream_id}
                                       topic={topic.subject}
