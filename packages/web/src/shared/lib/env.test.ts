@@ -23,8 +23,11 @@ describe("env", () => {
     expect(env).toHaveProperty("PROD");
     expect(env).toHaveProperty("MODE");
     expect(env).toHaveProperty("WORKSPACE_API_ORIGIN");
+    expect(env).toHaveProperty("ZULIP_REALM_ORIGIN");
     expect(env).toHaveProperty("ZULIP_API_PATH");
     expect(env).toHaveProperty("WORKSPACE_API_PATH");
+    expect(env).toHaveProperty("WORKSPACE_REST_API_PATH");
+    expect(env).toHaveProperty("USER_UPLOADS_PATH_PREFIX");
     expect(env).toHaveProperty("WORKSPACE_API_BASE");
     expect(env).toHaveProperty("WORKSPACE_UPLOADS_ORIGIN");
     expect(env).toHaveProperty("JITSI_MEET_DOMAIN");
@@ -35,6 +38,9 @@ describe("env", () => {
     expect(env).toHaveProperty("MAIL_EMBED_URL");
     expect(env).toHaveProperty("CHAT_MESSAGES_PERSIST_INDEXEDDB");
     expect(env).toHaveProperty("CHAT_MESSAGES_SOURCE_INDEXEDDB");
+    expect(env).toHaveProperty("MESSAGE_FLOW_DEBUG");
+    expect(env).toHaveProperty("TOP_BAR_CALLS_NAV");
+    expect(env).toHaveProperty("TOP_BAR_SERVICES_NAV");
   });
 
   // DEV/PROD flags drive conditional logic (e.g. log level, CSP, devtools)
@@ -66,6 +72,7 @@ describe("env", () => {
       vi.stubEnv("VITE_ZULIP_API_PATH", "");
       vi.stubEnv("VITE_WORKSPACE_API_PATH", "");
       vi.stubEnv("VITE_WORKSPACE_REST_API_PATH", "");
+      vi.stubEnv("VITE_USER_UPLOADS_PATH_PREFIX", "");
       vi.resetModules();
     });
 
@@ -83,6 +90,37 @@ describe("env", () => {
       const { env } = await import("./env");
       expect(env.WORKSPACE_API_PATH).toBe("/api/v1");
     });
+
+    it("USER_UPLOADS_PATH_PREFIX is empty by default", async () => {
+      const { env } = await import("./env");
+      expect(env.USER_UPLOADS_PATH_PREFIX).toBe("");
+    });
+
+    it("ZULIP_REALM_ORIGIN matches WORKSPACE_API_ORIGIN when VITE_ZULIP_REALM_ORIGIN is unset", async () => {
+      const { env } = await import("./env");
+      expect(env.ZULIP_REALM_ORIGIN).toBe(env.WORKSPACE_API_ORIGIN);
+    });
+  });
+
+  it("ZULIP_REALM_ORIGIN uses VITE_ZULIP_REALM_ORIGIN when set", async () => {
+    vi.stubEnv("VITE_WORKSPACE_API_ORIGIN", "https://workspace.gateway.test");
+    vi.stubEnv("VITE_ZULIP_REALM_ORIGIN", "https://zulip.tokens.team/");
+    vi.stubEnv("VITE_ZULIP_API_PATH", "");
+    vi.stubEnv("VITE_WORKSPACE_API_PATH", "");
+    vi.stubEnv("VITE_WORKSPACE_REST_API_PATH", "");
+    vi.stubEnv("VITE_USER_UPLOADS_PATH_PREFIX", "");
+    vi.resetModules();
+    const { env } = await import("./env");
+    expect(env.ZULIP_REALM_ORIGIN).toBe("https://zulip.tokens.team");
+    vi.unstubAllEnvs();
+  });
+
+  it("USER_UPLOADS_PATH_PREFIX normalizes slashes", async () => {
+    vi.stubEnv("VITE_WORKSPACE_API_ORIGIN", "https://zulip.test");
+    vi.stubEnv("VITE_USER_UPLOADS_PATH_PREFIX", "workspace/v1/");
+    vi.resetModules();
+    const { env } = await import("./env");
+    expect(env.USER_UPLOADS_PATH_PREFIX).toBe("/workspace/v1");
   });
 
   // When Jitsi is not configured, the base URL must be empty to disable call features
@@ -99,8 +137,11 @@ describe("env", () => {
     const stringKeys = [
       "MODE",
       "WORKSPACE_API_ORIGIN",
+      "ZULIP_REALM_ORIGIN",
       "ZULIP_API_PATH",
       "WORKSPACE_API_PATH",
+      "WORKSPACE_REST_API_PATH",
+      "USER_UPLOADS_PATH_PREFIX",
       "WORKSPACE_API_BASE",
       "WORKSPACE_UPLOADS_ORIGIN",
       "JITSI_MEET_DOMAIN",
@@ -113,6 +154,30 @@ describe("env", () => {
     for (const key of stringKeys) {
       expect(typeof env[key]).toBe("string");
     }
+  });
+
+  it("TOP_BAR_CALLS_NAV and TOP_BAR_SERVICES_NAV respect their VITE_* vars independently", async () => {
+    vi.stubEnv("VITE_WORKSPACE_API_ORIGIN", "https://zulip.test");
+    vi.stubEnv("VITE_ZULIP_API_PATH", "");
+    vi.stubEnv("VITE_WORKSPACE_API_PATH", "");
+    vi.stubEnv("VITE_WORKSPACE_REST_API_PATH", "");
+    vi.stubEnv("VITE_USER_UPLOADS_PATH_PREFIX", "");
+    vi.resetModules();
+    const { env: envDefault } = await import("./env");
+    expect(envDefault.TOP_BAR_CALLS_NAV).toBe(false);
+    expect(envDefault.TOP_BAR_SERVICES_NAV).toBe(false);
+
+    vi.stubEnv("VITE_TOP_BAR_CALLS_NAV", "true");
+    vi.resetModules();
+    const { env: envCalls } = await import("./env");
+    expect(envCalls.TOP_BAR_CALLS_NAV).toBe(true);
+    expect(envCalls.TOP_BAR_SERVICES_NAV).toBe(false);
+
+    vi.stubEnv("VITE_TOP_BAR_SERVICES_NAV", "1");
+    vi.resetModules();
+    const { env: envBoth } = await import("./env");
+    expect(envBoth.TOP_BAR_CALLS_NAV).toBe(true);
+    expect(envBoth.TOP_BAR_SERVICES_NAV).toBe(true);
   });
 });
 

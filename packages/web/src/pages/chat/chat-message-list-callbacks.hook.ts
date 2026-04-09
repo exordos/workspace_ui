@@ -5,10 +5,13 @@ import { useMemo } from "react";
 import { useMessageReadersStore } from "~/features/message-readers/message-readers.model";
 import { t } from "~/i18n/i18n";
 import { addMessageFlag, addReaction, removeMessageFlag, removeReaction } from "~/shared/api/zulip";
-import { stripHtml } from "~/shared/lib/html";
+import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
+import { withCurrentOrgRoute } from "~/shared/lib/org-route";
+import { buildZulipMessageWebPermalink } from "~/shared/lib/zulip-web-permalink.lib";
 import type { MessageListCallbacks } from "~/widgets/message-list/message-list.types";
 import { slugForStream } from "~/widgets/sidebar/sidebar.lib";
 import type { UseChatMessageListCallbacksParams } from "./chat-message-list-callbacks.types";
+import { resolveReplyQuoteContent } from "./chat-reply-quote.lib";
 
 export function useChatMessageListCallbacks(
   params: UseChatMessageListCallbacksParams,
@@ -16,6 +19,7 @@ export function useChatMessageListCallbacks(
   const {
     selectionMode,
     currentUserId,
+    realmBaseUrl,
     streams,
     locationPathname,
     navigate,
@@ -33,19 +37,25 @@ export function useChatMessageListCallbacks(
     updateMessageReactionInStore,
     openJitsiCall,
     setReadReceiptsOpen,
+    onRetryFailedOutgoing: retryFailedOutgoing,
+    onRemoveFailedOutgoing: removeFailedOutgoing,
   } = params;
 
   return useMemo(
     () => ({
       onMessageReply(msg, selectedText) {
-        const trimmedSelectedText = selectedText?.trim();
+        const permalinkUrl =
+          realmBaseUrl.trim().length > 0
+            ? buildZulipMessageWebPermalink(realmBaseUrl, msg, (streamId) =>
+                streams.find((s) => s.stream_id === streamId)?.name,
+              )
+            : null;
         setReplyQuote({
           id: msg.id,
-          content:
-            trimmedSelectedText != null && trimmedSelectedText.length > 0
-              ? trimmedSelectedText
-              : msg.content,
+          content: resolveReplyQuoteContent(msg, selectedText),
           sender_full_name: msg.sender_full_name,
+          sender_id: msg.sender_id,
+          permalinkUrl,
         });
       },
       onMessageEdit(msg) {
@@ -55,7 +65,7 @@ export function useChatMessageListCallbacks(
         setDeleteConfirm({ type: "single", messageId: msg.id });
       },
       onMessageCopy(msg) {
-        const text = stripHtml(msg.content);
+        const text = plainTextPreviewFromMessageBody(msg.content);
         void navigator.clipboard.writeText(text).then(
           () => setToastMessage(t("message.copied")),
           () => setToastMessage(t("message.copyFailed")),
@@ -148,10 +158,20 @@ export function useChatMessageListCallbacks(
       onMessageAuthorClick(userId) {
         rightDrawer?.openUserProfile?.(userId);
       },
+      onOpenDirectMessage(userId) {
+        void navigate(withCurrentOrgRoute(`/dm/${userId}`));
+      },
+      onRetryFailedOutgoing(msg) {
+        void retryFailedOutgoing(msg);
+      },
+      onRemoveFailedOutgoing(msg) {
+        removeFailedOutgoing(msg);
+      },
     }),
     [
       selectionMode,
       currentUserId,
+      realmBaseUrl,
       updateMessageFlagsInStore,
       updateMessageReactionInStore,
       streams,
@@ -169,6 +189,8 @@ export function useChatMessageListCallbacks(
       setSelectionMode,
       openJitsiCall,
       setReadReceiptsOpen,
+      retryFailedOutgoing,
+      removeFailedOutgoing,
     ],
   );
 }

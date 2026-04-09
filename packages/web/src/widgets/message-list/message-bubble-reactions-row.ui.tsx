@@ -1,5 +1,9 @@
 import React from "react";
+import { isOneToOneDirectMessage } from "./message-bubble-emoji.lib";
 import type { MessageBubbleReactionsRowProps } from "./message-bubble-reactions-row.types";
+
+/** Up to this many reactors — chip shows comma-separated names; above — numeric count only. */
+const REACTION_CHIP_NAMES_INSTEAD_OF_COUNT_MAX = 3;
 
 /** Grouped reaction chips shown at the bottom of the message bubble. */
 export const MessageBubbleReactionsRow = React.memo(function MessageBubbleReactionsRow({
@@ -11,6 +15,8 @@ export const MessageBubbleReactionsRow = React.memo(function MessageBubbleReacti
   callbacks,
 }: MessageBubbleReactionsRowProps) {
   if (reactionGroups.length === 0) return null;
+
+  const hideReactionChipMeta = isOneToOneDirectMessage(message);
 
   return (
     <div
@@ -28,14 +34,29 @@ export const MessageBubbleReactionsRow = React.memo(function MessageBubbleReacti
             : count > 0
               ? `${displayChar} ${count}`
               : undefined;
+        const showAuthorNamesOnChip =
+          count >= 1 &&
+          count <= REACTION_CHIP_NAMES_INSTEAD_OF_COUNT_MAX &&
+          reactionAuthors.length > 0;
+        const chipMetaText = hideReactionChipMeta
+          ? null
+          : showAuthorNamesOnChip
+            ? reactionAuthors
+            : count >= 4
+              ? String(count)
+              : count > 1
+                ? String(count)
+                : null;
         return (
           <button
             type="button"
             key={key}
-            className={`inline-flex cursor-pointer items-center gap-0.5 rounded-full border-0 px-1.5 py-0.5 text-sm transition-colors ${
-              hasCurrentUser ? "bg-accent/25 hover:bg-accent/35" : "bg-bg/50 hover:bg-bg/80"
+            className={`inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1 rounded-lg border px-2 py-0.5 text-sm transition-colors ${
+              hasCurrentUser
+                ? "border-accent/40 bg-accent/15 hover:border-accent/50 hover:bg-accent/25"
+                : "border-border-subtle bg-bg-elevated/90 hover:bg-bg-elevated"
             }`}
-            title={reactionTitle}
+            title={hideReactionChipMeta ? undefined : reactionTitle}
             aria-label={reactionTitle}
             onClick={() => {
               if (hasCurrentUser) {
@@ -45,8 +66,10 @@ export const MessageBubbleReactionsRow = React.memo(function MessageBubbleReacti
               }
             }}
           >
-            <span>{displayChar}</span>
-            {count > 1 && <span className="text-[11px] text-text-muted">{count}</span>}
+            <span className="shrink-0">{displayChar}</span>
+            {chipMetaText != null && (
+              <span className="min-w-0 truncate text-[11px] text-text-muted">{chipMetaText}</span>
+            )}
           </button>
         );
       })}

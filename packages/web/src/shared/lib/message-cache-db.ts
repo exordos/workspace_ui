@@ -531,15 +531,21 @@ export async function patchMessageContentInCache(options: {
   instanceId: string;
   messageId: number;
   content: string;
+  /** When set, updates `markdown_source`; when omitted, keeps the previous value. */
+  markdown_source?: string;
 }): Promise<void> {
-  const { instanceId, messageId, content } = options;
+  const { instanceId, messageId, content, markdown_source: markdownSource } = options;
   if (!isIndexedDBAvailable()) return;
   const db = await openMessageCacheDb();
   const existing = await getMessageRow(db, instanceId, messageId);
   if (!existing) return;
   const nextRow: MessageCacheRow = {
     ...existing,
-    message: { ...existing.message, content },
+    message: {
+      ...existing.message,
+      content,
+      ...(markdownSource !== undefined ? { markdown_source: markdownSource } : {}),
+    },
     version: existing.version + 1,
   };
   await new Promise<void>((resolve, reject) => {

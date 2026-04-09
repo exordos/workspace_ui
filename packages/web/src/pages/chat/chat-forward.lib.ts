@@ -1,4 +1,4 @@
-import { stripHtml } from "~/shared/lib/html";
+import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { slugForStream } from "~/widgets/sidebar/sidebar.lib";
 
@@ -27,7 +27,7 @@ function buildSingleForwardQuote(senderName: string, content: string): string {
 }
 
 function normalizeForwardPayloadContent(content: string): string {
-  return stripHtml(content).trim();
+  return plainTextPreviewFromMessageBody(content).trim();
 }
 
 export function buildForwardQuote(

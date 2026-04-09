@@ -361,7 +361,7 @@ describe("RightPanel truthfulness", () => {
     expect(screen.getByText("10:45")).toBeInTheDocument();
   });
 
-  it("renders clickable profile contact rows and extra Zulip account fields", () => {
+  it("renders profile contact rows with tel/profile links and plain email text", () => {
     const user = {
       name: "Alice",
       userId: 42,
@@ -376,10 +376,8 @@ describe("RightPanel truthfulness", () => {
 
     renderWithProviders(<RightPanel title="Alice" user={user} />);
 
-    expect(screen.getByRole("link", { name: "alice@example.com" })).toHaveAttribute(
-      "href",
-      "mailto:alice@example.com",
-    );
+    expect(screen.queryByRole("link", { name: "alice@example.com" })).not.toBeInTheDocument();
+    expect(screen.getByText("alice@example.com")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "+1 (555) 010-1000" })).toHaveAttribute(
       "href",
       "tel:+15550101000",
@@ -398,32 +396,7 @@ describe("RightPanel truthfulness", () => {
     expect(screen.getByText("Active")).toBeInTheDocument();
   });
 
-  it("copies mention nickname from profile header action", async () => {
-    const writeTextMock = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, "clipboard", {
-      value: { writeText: writeTextMock },
-      configurable: true,
-    });
-
-    renderWithProviders(
-      <RightPanel
-        title="Alice"
-        user={{
-          name: "Alice Example",
-          username: "alice_example",
-        }}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: /copy @nickname/i }));
-
-    await waitFor(() => {
-      expect(writeTextMock).toHaveBeenCalledWith("@alice_example");
-    });
-    expect(screen.getByRole("button", { name: /copied/i })).toBeInTheDocument();
-  });
-
-  it("copies email and user id from profile header actions", async () => {
+  it("copies email and user id from profile contact rows", async () => {
     const writeTextMock = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
       value: { writeText: writeTextMock },

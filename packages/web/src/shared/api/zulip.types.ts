@@ -86,6 +86,8 @@ export interface ZulipUserMember {
   email?: string;
   avatar_url?: string | null;
   role?: number;
+  /** Present when `include_custom_profile_fields=true`. */
+  profile_data?: Record<string, { value?: string; rendered_value?: string }>;
 }
 
 /** Response shape from GET /api/v1/realm/presence (keyed by user email). */
@@ -153,13 +155,26 @@ export interface MockMessage {
     | { id: number; full_name: string; email?: string; avatar_url?: string }[];
   channel?: string;
   subject: string;
+  /**
+   * Message body: Zulip-flavored Markdown when fetched with `apply_markdown=false` (app default),
+   * or rendered HTML from some real-time payloads / legacy cache.
+   */
   content: string;
+  /**
+   * Markdown source for editing and reply quotes; mirrors `content` when the body is Markdown.
+   */
+  markdown_source?: string;
   timestamp: number;
   /** API flags (e.g. 'read', 'mentioned'). Missing 'read' = unread. */
   flags?: string[];
   reactions?: Reaction[];
   /** Local delivery state for optimistic outgoing messages. */
   delivery_status?: MockMessageDeliveryStatus;
+  /**
+   * Stable client key for list reconciliation (negative id while optimistic).
+   * Preserved after the server assigns a positive message id.
+   */
+  local_echo_key?: number;
 }
 
 /** Input shape for normalizing API messages to MockMessage. */
@@ -168,6 +183,8 @@ export type RawMessageToMockInput = {
   sender_id: number;
   sender_full_name?: string;
   content: string;
+  /** When set, stored as MockMessage.markdown_source. */
+  markdown_source?: string;
   timestamp: number;
   display_recipient?: ZulipRawMessage["display_recipient"];
   subject?: string;

@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { stripHtml, sanitizeHtml } from "./html";
+import { resolveMessageMediaUrl, stripHtml, sanitizeHtml } from "./html";
 
 // stripHtml is used to extract plain text from messages (e.g. for notifications, previews)
 describe("stripHtml", () => {
@@ -35,6 +35,27 @@ describe("stripHtml", () => {
   // Self-closing tags like <br/> must also be removed
   it("handles self-closing tags", () => {
     expect(stripHtml("line<br/>break")).toBe("linebreak");
+  });
+});
+
+describe("resolveMessageMediaUrl", () => {
+  it("prefixes relative paths with base", () => {
+    expect(resolveMessageMediaUrl("/user_uploads/1/a.png", "https://zulip.example.com")).toBe(
+      "https://zulip.example.com/user_uploads/1/a.png",
+    );
+  });
+
+  it("leaves absolute and data URLs unchanged", () => {
+    expect(
+      resolveMessageMediaUrl("https://cdn.example.com/x.png", "https://zulip.example.com"),
+    ).toBe("https://cdn.example.com/x.png");
+    expect(resolveMessageMediaUrl("data:image/png;base64,AA", "https://zulip.example.com")).toBe(
+      "data:image/png;base64,AA",
+    );
+  });
+
+  it("returns src unchanged when base is empty", () => {
+    expect(resolveMessageMediaUrl("/user_uploads/1/a.png", "")).toBe("/user_uploads/1/a.png");
   });
 });
 
@@ -97,5 +118,22 @@ describe("sanitizeHtml", () => {
   it("removes style tags", () => {
     const html = "<style>body{display:none}</style><p>safe</p>";
     expect(sanitizeHtml(html)).toBe("<p>safe</p>");
+  });
+
+  // Zulip @mention spans carry data-user-id for client-side mention UX
+  it("preserves user-mention data-user-id on span", () => {
+    const html = '<p><span class="user-mention" data-user-id="31">@Alice</span></p>';
+    const result = sanitizeHtml(html);
+    expect(result).toContain('class="user-mention"');
+    expect(result).toContain('data-user-id="31"');
+  });
+
+  it("allows GFM table structure from marked fallback", () => {
+    const html =
+      "<table><thead><tr><th>a</th></tr></thead><tbody><tr><td>b</td></tr></tbody></table>";
+    const result = sanitizeHtml(html);
+    expect(result).toContain("<table>");
+    expect(result).toContain("<th>");
+    expect(result).toContain("<td>");
   });
 });

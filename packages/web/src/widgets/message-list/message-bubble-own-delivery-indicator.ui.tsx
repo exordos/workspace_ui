@@ -8,6 +8,8 @@ export const MessageBubbleOwnDeliveryIndicator = React.memo(
     message,
     status,
     onViews,
+    onRetryFailedOutgoing,
+    onRemoveFailedOutgoing,
   }: MessageBubbleOwnDeliveryIndicatorProps) {
     if (status === "sent") {
       return onViews ? (
@@ -40,20 +42,60 @@ export const MessageBubbleOwnDeliveryIndicator = React.memo(
       return (
         <span
           data-testid={`message-delivery-${message.id}`}
-          className="text-[11px] text-text-muted"
+          className="inline-flex size-3.5 items-center justify-center text-text-muted"
           title={t("message.sending")}
         >
-          {t("message.sending")}
+          <span className="sr-only">{t("message.sending")}</span>
+          <span
+            className="size-2 shrink-0 animate-pulse rounded-full bg-text-muted/60"
+            aria-hidden
+          />
         </span>
       );
     }
+    const failedOptimistic = message.id < 0;
+    const showRetry = failedOptimistic && onRetryFailedOutgoing != null;
+    const showRemove = failedOptimistic && onRemoveFailedOutgoing != null;
     return (
       <span
         data-testid={`message-delivery-${message.id}`}
-        className="text-[11px] text-notice-base"
-        title={t("message.notDelivered")}
+        className="inline-flex items-center gap-0.5"
       >
-        {t("message.notDelivered")}
+        {showRetry && (
+          <button
+            type="button"
+            className="rounded-sm text-text-muted hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
+            title={t("message.retrySend")}
+            aria-label={t("message.retrySend")}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onRetryFailedOutgoing?.(message);
+            }}
+          >
+            <Icon name="send" size={14} className="shrink-0" />
+          </button>
+        )}
+        {showRemove && (
+          <button
+            type="button"
+            className="rounded-sm text-text-muted hover:text-notice-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
+            title={t("message.removeFailedSend")}
+            aria-label={t("message.removeFailedSend")}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onRemoveFailedOutgoing?.(message);
+            }}
+          >
+            <Icon name="delete" size={14} className="shrink-0" />
+          </button>
+        )}
+        {!showRetry && !showRemove && (
+          <span className="text-[11px] text-notice-base" title={t("message.notDelivered")}>
+            {t("message.notDelivered")}
+          </span>
+        )}
       </span>
     );
   },

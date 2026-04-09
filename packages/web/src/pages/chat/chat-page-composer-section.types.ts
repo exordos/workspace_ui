@@ -22,6 +22,8 @@ export interface ChatPageComposerSectionProps {
     id: number;
     content: string;
     sender_full_name: string;
+    sender_id: number;
+    permalinkUrl: string | null;
   } | null;
   onClearReply: () => void;
   draftInitialValue: string | undefined;

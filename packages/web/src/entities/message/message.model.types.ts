@@ -18,6 +18,11 @@ export type CurrentChatContext =
 export interface CurrentChatMessagesState {
   context: CurrentChatContext | null;
   messages: MockMessage[];
+  /**
+   * FIFO keys (`local_echo_key`) for optimistic sends still waiting for a server id.
+   * Drives pairing when several outgoing messages are in flight.
+   */
+  pendingOutgoingEchoKeys: number[];
   isLoadingMore: boolean;
   hasOlderMessages: boolean;
   hasNewerMessages: boolean;
@@ -26,11 +31,13 @@ export interface CurrentChatMessagesState {
   prependMessages: (msgs: MockMessage[]) => void;
   appendMessages: (msgs: MockMessage[]) => void;
   appendMessage: (msg: MockMessage) => void;
+  /** Replaces optimistic row and/or merges with an existing server echo in one update. */
+  commitOutgoingMessage: (optimisticId: number, finalMessage: MockMessage) => void;
   removeMessage: (messageId: number) => void;
   removeMessages: (messageIds: number[]) => void;
   updateMessageReaction: (messageId: number, reaction: Reaction, op: "add" | "remove") => void;
   updateMessageFlags: (messageIds: number[], flag: string, op: "add" | "remove") => void;
-  updateMessageContent: (messageId: number, content: string) => void;
+  updateMessageContent: (messageId: number, content: string, markdownSource?: string) => void;
   setIsLoadingMore: (loading: boolean) => void;
   setHasOlderMessages: (has: boolean) => void;
   setHasNewerMessages: (has: boolean) => void;

@@ -17,7 +17,7 @@ import {
 } from "./message.model";
 
 function resetStore() {
-  useCurrentChatMessagesStore.setState({ context: null, messages: [] });
+  useCurrentChatMessagesStore.setState({ context: null, messages: [], pendingOutgoingEchoKeys: [] });
 }
 
 function mockMsg(overrides: Partial<MockMessage> = {}): MockMessage {
@@ -245,6 +245,122 @@ describe("currentChatMessagesStore", () => {
     });
   });
 
+  describe("optimistic outgoing / commitOutgoingMessage", () => {
+    it("commitOutgoingMessage replaces optimistic and clears echo queue", () => {
+      const me = 42;
+      useCurrentChatMessagesStore.getState().appendMessage({
+        ...mockMsg({ id: -1, sender_id: me, stream_id: 5, content: "hi" }),
+        delivery_status: "sending",
+        local_echo_key: -1,
+      });
+      expect(useCurrentChatMessagesStore.getState().pendingOutgoingEchoKeys).toEqual([-1]);
+
+      useCurrentChatMessagesStore.getState().commitOutgoingMessage(-1, {
+        ...mockMsg({ id: 100, sender_id: me, stream_id: 5, content: "<p>hi</p>" }),
+      });
+
+      const state = useCurrentChatMessagesStore.getState();
+      expect(state.messages).toHaveLength(1);
+      expect(state.messages[0]!.id).toBe(100);
+      expect(state.messages[0]!.delivery_status).toBe("sent");
+      expect(state.messages[0]!.local_echo_key).toBe(-1);
+      expect(state.pendingOutgoingEchoKeys).toHaveLength(0);
+    });
+
+    it("commitOutgoingMessage updates server row when real-time echo merged first", () => {
+      const me = 42;
+      useCurrentChatMessagesStore.getState().appendMessage({
+        ...mockMsg({ id: -1, sender_id: me, content: "x", stream_id: 5 }),
+        delivery_status: "sending",
+        local_echo_key: -1,
+      });
+      useCurrentChatMessagesStore.getState().appendMessage({
+        ...mockMsg({ id: 200, sender_id: me, content: "<p>x</p>", stream_id: 5 }),
+      });
+
+      expect(useCurrentChatMessagesStore.getState().messages).toHaveLength(1);
+      expect(useCurrentChatMessagesStore.getState().pendingOutgoingEchoKeys).toEqual([]);
+
+      useCurrentChatMessagesStore.getState().commitOutgoingMessage(-1, {
+        ...mockMsg({ id: 200, sender_id: me, content: "<p>x</p>", stream_id: 5 }),
+      });
+
+      const state = useCurrentChatMessagesStore.getState();
+      expect(state.messages).toHaveLength(1);
+      expect(state.messages[0]!.id).toBe(200);
+      expect(state.messages[0]!.delivery_status).toBe("sent");
+      expect(state.messages[0]!.local_echo_key).toBe(-1);
+    });
+
+    it("appendMessage merges distinct pendings using queue order and content", () => {
+      const me = 99;
+      useCurrentChatMessagesStore.getState().appendMessage({
+        ...mockMsg({ id: -1, sender_id: me, content: "a", stream_id: 5 }),
+        delivery_status: "sending",
+        local_echo_key: -1,
+      });
+      useCurrentChatMessagesStore.getState().appendMessage({
+        ...mockMsg({ id: -2, sender_id: me, content: "b", stream_id: 5 }),
+        delivery_status: "sending",
+        local_echo_key: -2,
+      });
+
+      useCurrentChatMessagesStore.getState().appendMessage({
+        ...mockMsg({ id: 301, sender_id: me, content: "<p>a</p>", stream_id: 5 }),
+      });
+      useCurrentChatMessagesStore.getState().appendMessage({
+        ...mockMsg({ id: 302, sender_id: me, content: "<p>b</p>", stream_id: 5 }),
+      });
+
+      const state = useCurrentChatMessagesStore.getState();
+      expect(state.messages.map((m) => m.id)).toEqual([301, 302]);
+      expect(state.messages[0]!.local_echo_key).toBe(-1);
+      expect(state.messages[1]!.local_echo_key).toBe(-2);
+      expect(state.pendingOutgoingEchoKeys).toHaveLength(0);
+    });
+
+    it("appendMessage pairs identical bodies in FIFO order when echoes arrive in send order", () => {
+      const me = 7;
+      useCurrentChatMessagesStore.getState().appendMessage({
+        ...mockMsg({ id: -1, sender_id: me, content: "ok", stream_id: 5 }),
+        delivery_status: "sending",
+        local_echo_key: -1,
+      });
+      useCurrentChatMessagesStore.getState().appendMessage({
+        ...mockMsg({ id: -2, sender_id: me, content: "ok", stream_id: 5 }),
+        delivery_status: "sending",
+        local_echo_key: -2,
+      });
+
+      useCurrentChatMessagesStore.getState().appendMessage({
+        ...mockMsg({ id: 401, sender_id: me, content: "<p>ok</p>", stream_id: 5 }),
+      });
+      useCurrentChatMessagesStore.getState().appendMessage({
+        ...mockMsg({ id: 402, sender_id: me, content: "<p>ok</p>", stream_id: 5 }),
+      });
+
+      const state = useCurrentChatMessagesStore.getState();
+      expect(state.messages.map((m) => ({ id: m.id, key: m.local_echo_key }))).toEqual([
+        { id: 401, key: -1 },
+        { id: 402, key: -2 },
+      ]);
+    });
+
+    it("failed appendMessage removes echo key from queue", () => {
+      useCurrentChatMessagesStore.getState().appendMessage({
+        ...mockMsg({ id: -1, sender_id: 1, stream_id: 5, content: "n" }),
+        delivery_status: "sending",
+        local_echo_key: -1,
+      });
+      useCurrentChatMessagesStore.getState().appendMessage({
+        ...mockMsg({ id: -1, sender_id: 1, stream_id: 5, content: "n" }),
+        delivery_status: "failed",
+        local_echo_key: -1,
+      });
+      expect(useCurrentChatMessagesStore.getState().pendingOutgoingEchoKeys).toHaveLength(0);
+    });
+  });
+
   // removeMessage handles single-message deletion events from the server.
   describe("removeMessage", () => {
     // Only the targeted message must be removed; others stay intact.
@@ -417,6 +533,28 @@ describe("currentChatMessagesStore", () => {
       useCurrentChatMessagesStore.getState().updateMessageContent(1, "updated");
 
       expect(useCurrentChatMessagesStore.getState().messages[1]!.content).toBe("b");
+    });
+
+    it("updates markdown_source when the third argument is provided", () => {
+      useCurrentChatMessagesStore
+        .getState()
+        .setMessages([mockMsg({ id: 1, content: "<p>o</p>", markdown_source: "old" })]);
+
+      useCurrentChatMessagesStore.getState().updateMessageContent(1, "<p>n</p>", "new");
+
+      const m = useCurrentChatMessagesStore.getState().messages[0]!;
+      expect(m.content).toBe("<p>n</p>");
+      expect(m.markdown_source).toBe("new");
+    });
+
+    it("preserves markdown_source when the third argument is omitted", () => {
+      useCurrentChatMessagesStore
+        .getState()
+        .setMessages([mockMsg({ id: 1, markdown_source: "keep" })]);
+
+      useCurrentChatMessagesStore.getState().updateMessageContent(1, "<p>only html</p>");
+
+      expect(useCurrentChatMessagesStore.getState().messages[0]!.markdown_source).toBe("keep");
     });
   });
 });

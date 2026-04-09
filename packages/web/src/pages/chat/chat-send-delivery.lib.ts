@@ -37,6 +37,7 @@ export function buildOptimisticOutgoingMessage(
       content: input.content,
       timestamp,
       delivery_status: "sending",
+      local_echo_key: input.id,
     };
   }
 
@@ -51,6 +52,7 @@ export function buildOptimisticOutgoingMessage(
     content: input.content,
     timestamp,
     delivery_status: "sending",
+    local_echo_key: input.id,
   };
 }
 

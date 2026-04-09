@@ -20,6 +20,7 @@ export function serializeDirectoryMembersForSnapshot(members: ZulipUserMember[])
       email: m.email,
       avatar_url: m.avatar_url ?? undefined,
       role: m.role,
+      profile_data: m.profile_data,
     });
   }
   return out;

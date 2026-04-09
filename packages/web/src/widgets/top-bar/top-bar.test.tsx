@@ -1,7 +1,7 @@
 import React from "react";
 import { act, fireEvent, screen, within } from "@testing-library/react";
 import { useLocation } from "react-router-dom";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useDownloadStore } from "~/entities/download/download.model";
 import { useUsersStore } from "~/entities/user/user.model";
@@ -14,13 +14,17 @@ function LocationProbe() {
   return <span data-testid="location-path">{useLocation().pathname}</span>;
 }
 
+function resetTopBarRelatedStores(): void {
+  useChatListStore.setState({ currentUserId: null });
+  useUsersStore.getState().clear();
+  useDownloadStore.setState({ entries: [], duplicateRequestTick: 0 });
+  useSearchModalStore.getState().closeModal();
+  useRightDrawerStore.setState({ open: false, mode: "info", userIdOverride: null });
+}
+
 describe("TopBar", () => {
   afterEach(() => {
-    useChatListStore.setState({ currentUserId: null });
-    useUsersStore.getState().clear();
-    useDownloadStore.setState({ entries: [], duplicateRequestTick: 0 });
-    useSearchModalStore.getState().closeModal();
-    useRightDrawerStore.setState({ open: false, mode: "info", userIdOverride: null });
+    resetTopBarRelatedStores();
   });
 
   it("navigates to calendar when calendar section is clicked", () => {
@@ -36,7 +40,7 @@ describe("TopBar", () => {
     expect(screen.getByTestId("location-path")).toHaveTextContent("/calendar");
   });
 
-  it("navigates to mail, calls, and services when those sections are clicked", () => {
+  it("does not render calls or services nav buttons by default", () => {
     renderWithProviders(
       <>
         <LocationProbe />
@@ -45,14 +49,8 @@ describe("TopBar", () => {
       { route: "/" },
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /mail/i }));
-    expect(screen.getByTestId("location-path")).toHaveTextContent("/mail");
-
-    fireEvent.click(screen.getByRole("button", { name: /calls/i }));
-    expect(screen.getByTestId("location-path")).toHaveTextContent("/calls");
-
-    fireEvent.click(screen.getByRole("button", { name: /services/i }));
-    expect(screen.getByTestId("location-path")).toHaveTextContent("/services");
+    expect(screen.queryByRole("button", { name: /^calls$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^services$/i })).not.toBeInTheDocument();
   });
 
   it("navigates to home when chat is selected from another section", () => {
@@ -254,5 +252,57 @@ describe("TopBar", () => {
     expect(status).toHaveAttribute("role", "status");
     expect(status).toHaveAttribute("aria-live", "polite");
     expect(screen.getByRole("button", { name: /remove report\.pdf/i })).toBeInTheDocument();
+  });
+});
+
+describe("TopBar with VITE_TOP_BAR_CALLS_NAV / VITE_TOP_BAR_SERVICES_NAV", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+    resetTopBarRelatedStores();
+  });
+
+  it("navigates to mail, calls, and services when both build flags are enabled", async () => {
+    vi.stubEnv("VITE_TOP_BAR_CALLS_NAV", "true");
+    vi.stubEnv("VITE_TOP_BAR_SERVICES_NAV", "true");
+    vi.resetModules();
+    const { TopBar: TopBarWithNav } = await import("./top-bar.ui");
+
+    renderWithProviders(
+      <>
+        <LocationProbe />
+        <TopBarWithNav />
+      </>,
+      { route: "/" },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /mail/i }));
+    expect(screen.getByTestId("location-path")).toHaveTextContent("/mail");
+
+    fireEvent.click(screen.getByRole("button", { name: /calls/i }));
+    expect(screen.getByTestId("location-path")).toHaveTextContent("/calls");
+
+    fireEvent.click(screen.getByRole("button", { name: /services/i }));
+    expect(screen.getByTestId("location-path")).toHaveTextContent("/services");
+  });
+
+  it("shows only calls when only VITE_TOP_BAR_CALLS_NAV is set", async () => {
+    vi.stubEnv("VITE_TOP_BAR_CALLS_NAV", "true");
+    vi.resetModules();
+    const { TopBar: TopBarCallsOnly } = await import("./top-bar.ui");
+
+    renderWithProviders(
+      <>
+        <LocationProbe />
+        <TopBarCallsOnly />
+      </>,
+      { route: "/" },
+    );
+
+    expect(screen.getByRole("button", { name: /calls/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^services$/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /calls/i }));
+    expect(screen.getByTestId("location-path")).toHaveTextContent("/calls");
   });
 });

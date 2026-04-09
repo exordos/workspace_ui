@@ -61,7 +61,7 @@ export const MessageListSenderGroup = React.memo<MessageListSenderGroupProps>(fu
         <div className="min-w-0 flex-1">
           {messages.map((m, i) => (
             <MessageBubble
-              key={m.id}
+              key={m.local_echo_key ?? m.id}
               message={m}
               isOwn={false}
               showSenderName={i === 0}

@@ -5,4 +5,6 @@ export interface MessageBubbleOwnDeliveryIndicatorProps {
   message: MockMessage;
   status: "sent" | "sending" | "failed";
   onViews?: MessageBubbleCallbacks["onViews"];
+  onRetryFailedOutgoing?: MessageBubbleCallbacks["onRetryFailedOutgoing"];
+  onRemoveFailedOutgoing?: MessageBubbleCallbacks["onRemoveFailedOutgoing"];
 }

@@ -29,7 +29,7 @@ export interface LayoutCurrentChatActions {
     op: LayoutMessageFlagOp,
   ) => void;
   removeMessages: (messageIds: number[]) => void;
-  updateMessageContent: (messageId: number, content: string) => void;
+  updateMessageContent: (messageId: number, content: string, markdownSource?: string) => void;
 }
 
 export interface LayoutUsersActions {

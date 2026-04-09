@@ -6,6 +6,7 @@
 import { create } from "zustand";
 import type { AvatarUrlByUserId, ZulipRawMessage } from "~/shared/api/zulip.types";
 import { bumpAvatarVersion } from "~/shared/lib/avatar";
+import type { ZulipCustomProfileDataMap } from "~/shared/lib/user-profile-fields.lib";
 
 export type PresenceStatus = "active" | "idle";
 
@@ -50,6 +51,8 @@ export interface UserRecord {
   statusNextRetryAt?: number;
   // Какая была последняя ошибка загрузки.
   statusErrorKind?: UserStatusErrorKind;
+  /** Zulip GET /users `profile_data` (custom profile fields). */
+  profile_data?: ZulipCustomProfileDataMap;
 }
 
 export interface UserStatusFetchMeta {
@@ -98,6 +101,7 @@ function normalizeUser(payload: Partial<UserRecord> & { user_id: number }): User
     statusFetchState: payload.statusFetchState,
     statusNextRetryAt: payload.statusNextRetryAt,
     statusErrorKind: payload.statusErrorKind,
+    profile_data: payload.profile_data,
   };
 }
 
@@ -125,6 +129,7 @@ export const useUsersStore = create<UsersState>((set, get) => ({
         statusFetchState: payload.statusFetchState ?? existing?.statusFetchState,
         statusNextRetryAt: payload.statusNextRetryAt ?? existing?.statusNextRetryAt,
         statusErrorKind: payload.statusErrorKind ?? existing?.statusErrorKind,
+        profile_data: payload.profile_data ?? existing?.profile_data,
       };
       next.set(user_id, merged);
       const nextEmail = new Map(state.emailToUserId);
@@ -157,6 +162,7 @@ export const useUsersStore = create<UsersState>((set, get) => ({
           statusFetchState: u.statusFetchState ?? existing?.statusFetchState,
           statusNextRetryAt: u.statusNextRetryAt ?? existing?.statusNextRetryAt,
           statusErrorKind: u.statusErrorKind ?? existing?.statusErrorKind,
+          profile_data: u.profile_data ?? existing?.profile_data,
         };
         next.set(u.user_id, merged);
         if (merged.email) {

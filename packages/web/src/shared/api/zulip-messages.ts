@@ -4,6 +4,7 @@
 import { t } from "~/i18n/i18n";
 import { guard } from "~/shared/lib/guards";
 import { getClient, type ZulipClient } from "./zulip-client.internal";
+import { mockMessageFromGetMessageApiData, rawMessageToMockMessage } from "./zulip-message-map.lib";
 import {
   zulipPipelineDelete,
   zulipPipelineGet,
@@ -78,6 +79,7 @@ async function fetchMessageWindow(options: MessageWindowOptions): Promise<ZulipR
     num_after: String(numAfter),
     client_gravatar: "true",
     allow_empty_topic_name: "true",
+    apply_markdown: "false",
   });
   if (!res?.ok) return [];
   const data = res.data as { result?: string; messages?: ZulipRawMessage[] };
@@ -149,6 +151,7 @@ export async function fetchActivityMessagesPage(
     narrow: JSON.stringify(narrow),
     allow_empty_topic_name: "true",
     client_gravatar: "true",
+    apply_markdown: "false",
   });
   if (!res?.ok) return { messages: [], foundOldest: false };
   const data = res.data as {
@@ -164,21 +167,7 @@ export async function fetchActivityMessagesPage(
   };
 }
 
-export function rawMessageToMockMessage(m: RawMessageToMockInput): MockMessage {
-  return {
-    id: m.id,
-    sender_id: m.sender_id,
-    sender_full_name: m.sender_full_name ?? "",
-    stream_id: m.stream_id ?? (m.type === "private" ? null : (m.stream_id ?? null)),
-    display_recipient: m.display_recipient,
-    channel: typeof m.display_recipient === "string" ? m.display_recipient : undefined,
-    subject: m.subject ?? "",
-    content: m.content,
-    timestamp: m.timestamp,
-    flags: m.flags,
-    reactions: m.reactions,
-  };
-}
+export { rawMessageToMockMessage };
 
 function mapZulipMessage(m: RawMessageToMockInput): MockMessage {
   return rawMessageToMockMessage(m);
@@ -206,6 +195,7 @@ export async function fetchMessages(
       anchor: "newest",
       num_before: ZULIP_STREAM_CHAT_NUM_BEFORE,
       num_after: ZULIP_STREAM_CHAT_NUM_AFTER,
+      apply_markdown: false,
     })) as { result?: string; messages?: RawMessageToMockInput[] };
     if (data.result === "error") return [];
     const list = data.messages ?? [];
@@ -243,6 +233,7 @@ export async function fetchMessagesWithNarrowPage(
       anchor: validatedAnchor,
       num_before: validatedNumBefore,
       num_after: validatedNumAfter,
+      apply_markdown: false,
     })) as {
       result?: string;
       messages?: RawMessageToMockInput[];
@@ -277,6 +268,7 @@ export async function fetchAllMessagesPage(
     narrow: "[]",
     allow_empty_topic_name: "true",
     client_gravatar: "true",
+    apply_markdown: "false",
   });
 
   if (!res?.ok) {
@@ -328,6 +320,7 @@ export async function fetchDmMessages(userIds: number | number[]): Promise<MockM
     num_after: ZULIP_DM_CHAT_NUM_AFTER,
     client_gravatar: true,
     allow_empty_topic_name: true,
+    apply_markdown: false,
   };
   try {
     const data = await client.messages.retrieve(
@@ -345,13 +338,14 @@ export async function fetchDmMessages(userIds: number | number[]): Promise<MockM
 /** Fetches a single message by id. Returns null on non-ok/error response. */
 export async function fetchMessageById(messageId: number): Promise<MockMessage | null> {
   guard.messageId(messageId, "fetchMessageById");
-  const res = await zulipPipelineGet(`/messages/${messageId}`);
+  const res = await zulipPipelineGet(`/messages/${messageId}`, {
+    allow_empty_topic_name: "true",
+    apply_markdown: "false",
+  });
   if (!res?.ok) {
     return null;
   }
-  const data = res.data as ZulipRawMessage & { result?: string };
-  if (data.result === "error" || data.id == null) return null;
-  return rawMessageToMockMessage(data);
+  return mockMessageFromGetMessageApiData(res.data);
 }
 
 /** Fetches saved snippets for the current user (GET /api/v1/saved_snippets). */

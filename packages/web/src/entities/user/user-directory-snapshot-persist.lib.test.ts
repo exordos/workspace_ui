@@ -29,6 +29,14 @@ describe("serializeDirectoryMembersForSnapshot", () => {
     ]);
     expect(out[0]).toEqual({ user_id: 2, full_name: "B", avatar_url: undefined });
   });
+
+  it("preserves profile_data for hydrated directory rows", () => {
+    const profile = { "1": { value: "QA", rendered_value: "<p>QA</p>" } };
+    const out = serializeDirectoryMembersForSnapshot([
+      { user_id: 3, full_name: "C", profile_data: profile },
+    ]);
+    expect(out[0]?.profile_data).toEqual(profile);
+  });
 });
 
 describe("persistUsersDirectoryToIndexedDb", () => {

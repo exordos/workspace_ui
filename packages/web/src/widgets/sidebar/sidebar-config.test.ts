@@ -7,6 +7,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useInstancesStore } from "~/entities/instance/instance.model";
+import { SYSTEM_ALL_FOLDER_ID } from "~/features/folder-sync/folder-sync-constants.lib";
 import { useSidebarConfigStore } from "./sidebar-config.model";
 
 const STORAGE_KEY = "zulip-web-sidebar-config";
@@ -18,7 +19,14 @@ function resetStore() {
     currentInstanceId: null,
     unreadCountsByInstance: {},
   });
-  useSidebarConfigStore.setState({ activityOpen: false, expandedStreamSlug: null });
+  useSidebarConfigStore.setState({
+    activityOpen: false,
+    expandedStreamSlug: null,
+    searchQuery: "",
+    pinReorderMode: false,
+    createChatOpen: false,
+    selectedFolderId: SYSTEM_ALL_FOLDER_ID,
+  });
 }
 
 function setInstanceScope(instanceIds: string[], currentInstanceId: string): void {
@@ -79,6 +87,17 @@ describe("sidebarConfigStore", () => {
 
       const stored = JSON.parse(window.localStorage.getItem(STORAGE_KEY)!);
       expect(stored.activityOpen).toBe(false);
+    });
+
+    it("does not persist search query when saving activity state", () => {
+      useSidebarConfigStore.getState().setSearchQuery("find me");
+      useSidebarConfigStore.getState().setActivityOpen(true);
+
+      const stored = JSON.parse(window.localStorage.getItem(STORAGE_KEY)!);
+      expect(stored).toEqual({
+        activityOpen: true,
+        expandedStreamSlug: null,
+      });
     });
   });
 
@@ -157,6 +176,22 @@ describe("sidebarConfigStore", () => {
 
       useInstancesStore.getState().setCurrentInstanceId("org-b");
       expect(useSidebarConfigStore.getState().expandedStreamSlug).toBe("22-product");
+    });
+  });
+
+  describe("search query (ephemeral)", () => {
+    it("ignores legacy searchQuery in localStorage on module init", async () => {
+      window.localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          activityOpen: false,
+          expandedStreamSlug: null,
+          searchQuery: "stale filter",
+        }),
+      );
+      vi.resetModules();
+      const { useSidebarConfigStore: freshStore } = await import("./sidebar-config.model");
+      expect(freshStore.getState().searchQuery).toBe("");
     });
   });
 });

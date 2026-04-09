@@ -2,6 +2,7 @@
  * Sidebar config store — persists sidebar UI preferences.
  *
  * Stores collapsible section states (e.g. activity panel). Persisted to localStorage.
+ * Ephemeral UI (search query, folder selection) is never written to storage.
  */
 import { create } from "zustand";
 import { SYSTEM_ALL_FOLDER_ID } from "~/features/folder-sync/folder-sync-constants.lib";
@@ -27,6 +28,25 @@ function getStorageKeyForOrganization(organizationId: string | null): string {
   return buildOrgScopedStorageKey(SIDEBAR_CONFIG_STORAGE_KEY, organizationId);
 }
 
+function parsePersistedSidebarConfig(raw: string): SidebarConfig {
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const activityOpen =
+      typeof parsed.activityOpen === "boolean"
+        ? parsed.activityOpen
+        : DEFAULT_CONFIG.activityOpen;
+    let expandedStreamSlug: string | null = DEFAULT_CONFIG.expandedStreamSlug;
+    if (typeof parsed.expandedStreamSlug === "string") {
+      expandedStreamSlug = parsed.expandedStreamSlug;
+    } else if (parsed.expandedStreamSlug === null) {
+      expandedStreamSlug = null;
+    }
+    return { activityOpen, expandedStreamSlug };
+  } catch {
+    return DEFAULT_CONFIG;
+  }
+}
+
 function loadConfig(
   organizationId: string | null = useInstancesStore.getState().currentInstanceId,
 ): SidebarConfig {
@@ -42,8 +62,7 @@ function loadConfig(
     if (legacyFallbackKey != null && window.localStorage.getItem(scopedKey) == null) {
       window.localStorage.setItem(scopedKey, raw);
     }
-    const parsed = JSON.parse(raw) as Partial<SidebarConfig>;
-    return { ...DEFAULT_CONFIG, ...parsed };
+    return parsePersistedSidebarConfig(raw);
   } catch {
     return DEFAULT_CONFIG;
   }
@@ -62,6 +81,15 @@ function saveConfig(
   }
 }
 
+function persistSidebarConfigSlice(
+  state: Pick<SidebarConfigState, "activityOpen" | "expandedStreamSlug">,
+): void {
+  saveConfig({
+    activityOpen: state.activityOpen,
+    expandedStreamSlug: state.expandedStreamSlug,
+  });
+}
+
 export const useSidebarConfigStore = create<SidebarConfigState>((set) => ({
   ...DEFAULT_UI_STATE,
   ...loadConfig(),
@@ -69,21 +97,21 @@ export const useSidebarConfigStore = create<SidebarConfigState>((set) => ({
   setActivityOpen: (activityOpen) =>
     set((state) => {
       const next = { ...state, activityOpen };
-      saveConfig(next);
+      persistSidebarConfigSlice(next);
       return next;
     }),
 
   setExpandedStreamSlug: (expandedStreamSlug) =>
     set((state) => {
       const next = { ...state, expandedStreamSlug };
-      saveConfig(next);
+      persistSidebarConfigSlice(next);
       return next;
     }),
 
   setConfig: (patch) =>
     set((state) => {
       const next = { ...state, ...patch };
-      saveConfig(next);
+      persistSidebarConfigSlice(next);
       return next;
     }),
 

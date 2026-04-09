@@ -567,6 +567,13 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
             </p>
             <div className="divide-y divide-border-subtle overflow-hidden rounded-lg border border-border-subtle bg-card-bg">
               <RightPanelUserMenuMenuButton
+                label={t("settings.selectBuild")}
+                icon="grid"
+                subtitle={t("settings.selectBuildHint")}
+                onClick={openBuilds}
+                right={<Icon name="chevron-right" size={16} className="text-text-muted" />}
+              />
+              <RightPanelUserMenuMenuButton
                 label={t("settings.appVersion")}
                 icon="info"
                 onClick={openAbout}

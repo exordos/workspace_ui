@@ -36,6 +36,7 @@ import {
 } from "~/shared/lib/message-pagination-boundary.lib";
 import { chatKeyFromContext, chatKeyFromMockMessage } from "~/shared/lib/message-cache-keys.lib";
 import { zulipMessageCacheWindowN } from "~/shared/lib/zulip-message-window.lib";
+import { outgoingEchoContentMatches } from "./message-outgoing-echo.lib";
 import { parseDmKeyToUserIds } from "./message-chat-context.lib";
 import { persistChatMessagesToIndexedDb } from "./message-local-cache.lib";
 import { deriveFocusedPaginationFlags } from "./message-pagination-helpers.lib";
@@ -56,6 +57,13 @@ function mergeUsersFromMessages(messages: readonly MockMessage[]): void {
   }
 }
 
+function withOutgoingDeliveryStatus(message: MockMessage): MockMessage {
+  if (message.id > 0) {
+    return { ...message, delivery_status: "sent" };
+  }
+  return { ...message, delivery_status: "failed" };
+}
+
 function schedulePersistFullChatMessages(get: () => CurrentChatMessagesState): void {
   if (!persistChatMessagesToIndexedDb()) return;
   const inst = getCurrentInstance()?.id;
@@ -74,6 +82,7 @@ function schedulePersistFullChatMessages(get: () => CurrentChatMessagesState): v
 export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set, get) => ({
   context: null,
   messages: [],
+  pendingOutgoingEchoKeys: [],
   isLoadingMore: false,
   hasOlderMessages: true,
   hasNewerMessages: false,
@@ -108,6 +117,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     set({
       context: nextContext,
       messages: cachedMessages,
+      pendingOutgoingEchoKeys: [],
       isLoadingMore: false,
       hasOlderMessages: true,
       hasNewerMessages: false,
@@ -119,7 +129,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
   },
 
   setMessages(messages) {
-    set({ messages });
+    set({ messages, pendingOutgoingEchoKeys: [] });
     if (persistChatMessagesToIndexedDb()) {
       schedulePersistFullChatMessages(get);
     }
@@ -150,34 +160,181 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
   },
 
   appendMessage(msg) {
+    const idbRef: {
+      current:
+        | { kind: "none" }
+        | { kind: "put"; message: MockMessage }
+        | { kind: "mergeReplace"; removeId: number; message: MockMessage };
+    } = { current: { kind: "none" } };
+
     set((state) => {
+      if (msg.id > 0) {
+        for (let qi = 0; qi < state.pendingOutgoingEchoKeys.length; qi++) {
+          const echoKey = state.pendingOutgoingEchoKeys[qi]!;
+          const msgIdx = state.messages.findIndex((m) => {
+            const key = m.local_echo_key ?? (m.id < 0 ? m.id : undefined);
+            return (
+              key === echoKey &&
+              m.delivery_status === "sending" &&
+              m.sender_id === msg.sender_id &&
+              outgoingEchoContentMatches(m, msg)
+            );
+          });
+          if (msgIdx >= 0) {
+            const prev = state.messages[msgIdx]!;
+            const stableKey = prev.local_echo_key ?? prev.id;
+            const merged = withOutgoingDeliveryStatus({ ...msg, local_echo_key: stableKey });
+            const queue = [...state.pendingOutgoingEchoKeys];
+            queue.splice(qi, 1);
+            const updated = [...state.messages];
+            updated[msgIdx] = merged;
+            idbRef.current = { kind: "mergeReplace", removeId: prev.id, message: merged };
+            return { messages: updated, pendingOutgoingEchoKeys: queue };
+          }
+        }
+      }
+
+      if (msg.id < 0 && msg.delivery_status === "failed") {
+        const echoKey = msg.local_echo_key ?? msg.id;
+        const nextQueue = state.pendingOutgoingEchoKeys.filter((k) => k !== echoKey);
+        const idx = state.messages.findIndex((m) => m.id === msg.id);
+        if (idx >= 0) {
+          const updated = [...state.messages];
+          updated[idx] = msg;
+          return { messages: updated, pendingOutgoingEchoKeys: nextQueue };
+        }
+        return {
+          messages: [...state.messages, msg],
+          pendingOutgoingEchoKeys: nextQueue,
+        };
+      }
+
+      if (msg.id < 0 && msg.delivery_status === "sending") {
+        const echoKey = msg.local_echo_key ?? msg.id;
+        const idx = state.messages.findIndex((m) => m.id === msg.id);
+        if (idx >= 0) {
+          const updated = [...state.messages];
+          updated[idx] = msg;
+          return { messages: updated };
+        }
+        return {
+          messages: [...state.messages, msg],
+          pendingOutgoingEchoKeys: [...state.pendingOutgoingEchoKeys, echoKey],
+        };
+      }
+
       const idx = state.messages.findIndex((m) => m.id === msg.id);
       if (idx >= 0) {
         const updated = [...state.messages];
         updated[idx] = msg;
+        idbRef.current = msg.id < 0 ? { kind: "none" } : { kind: "put", message: msg };
         return { messages: updated };
       }
+      idbRef.current = msg.id < 0 ? { kind: "none" } : { kind: "put", message: msg };
       return { messages: [...state.messages, msg] };
     });
+
     const state = get();
-    if (!state.context) return;
-    if (persistChatMessagesToIndexedDb()) {
-      const inst = getCurrentInstance()?.id;
-      if (inst) {
-        void putSingleMessage({
-          instanceId: inst,
-          chatKey: chatKeyFromContext(state.context),
-          message: msg,
-          windowSizeN: zulipMessageCacheWindowN(state.context),
-        });
+    if (!state.context || !persistChatMessagesToIndexedDb()) return;
+    const inst = getCurrentInstance()?.id;
+    if (!inst) return;
+    const idbPlan = idbRef.current;
+    if (idbPlan.kind === "put") {
+      void putSingleMessage({
+        instanceId: inst,
+        chatKey: chatKeyFromContext(state.context),
+        message: idbPlan.message,
+        windowSizeN: zulipMessageCacheWindowN(state.context),
+      });
+    } else if (idbPlan.kind === "mergeReplace") {
+      if (idbPlan.removeId < 0) {
+        void deleteMessagesByIds(inst, [idbPlan.removeId]);
       }
+      void putSingleMessage({
+        instanceId: inst,
+        chatKey: chatKeyFromContext(state.context),
+        message: idbPlan.message,
+        windowSizeN: zulipMessageCacheWindowN(state.context),
+      });
+    }
+  },
+
+  commitOutgoingMessage(optimisticId, finalMessage) {
+    const idbRef: {
+      current: { kind: "none" } | { kind: "sync"; deleteNegativeId: number | null; message: MockMessage };
+    } = { current: { kind: "none" } };
+
+    set((state) => {
+      const nextQueue = state.pendingOutgoingEchoKeys.filter((k) => k !== optimisticId);
+      const delivered = withOutgoingDeliveryStatus(finalMessage);
+
+      const optIdx = state.messages.findIndex(
+        (m) => m.id === optimisticId || m.local_echo_key === optimisticId,
+      );
+      if (optIdx >= 0) {
+        const prev = state.messages[optIdx]!;
+        const echoKey = prev.local_echo_key ?? prev.id;
+        const merged = { ...delivered, local_echo_key: echoKey };
+        const updated = [...state.messages];
+        updated[optIdx] = merged;
+        idbRef.current = {
+          kind: "sync",
+          deleteNegativeId: prev.id < 0 ? prev.id : null,
+          message: merged,
+        };
+        return { messages: updated, pendingOutgoingEchoKeys: nextQueue };
+      }
+
+      const realIdx = state.messages.findIndex((m) => m.id === finalMessage.id);
+      if (realIdx >= 0) {
+        const prev = state.messages[realIdx]!;
+        const echoKey = prev.local_echo_key ?? optimisticId;
+        const merged = { ...delivered, local_echo_key: echoKey };
+        const updated = [...state.messages];
+        updated[realIdx] = merged;
+        idbRef.current = { kind: "sync", deleteNegativeId: null, message: merged };
+        return { messages: updated, pendingOutgoingEchoKeys: nextQueue };
+      }
+
+      const merged = { ...delivered, local_echo_key: optimisticId };
+      idbRef.current = { kind: "sync", deleteNegativeId: null, message: merged };
+      return {
+        messages: [...state.messages, merged],
+        pendingOutgoingEchoKeys: nextQueue,
+      };
+    });
+
+    const idbPlan = idbRef.current;
+    if (idbPlan.kind === "none" || !persistChatMessagesToIndexedDb()) return;
+    const state = get();
+    const inst = getCurrentInstance()?.id;
+    if (!state.context || !inst) return;
+    if (idbPlan.deleteNegativeId != null && idbPlan.deleteNegativeId < 0) {
+      void deleteMessagesByIds(inst, [idbPlan.deleteNegativeId]);
+    }
+    if (idbPlan.message.id > 0) {
+      void putSingleMessage({
+        instanceId: inst,
+        chatKey: chatKeyFromContext(state.context),
+        message: idbPlan.message,
+        windowSizeN: zulipMessageCacheWindowN(state.context),
+      });
     }
   },
 
   removeMessage(messageId) {
-    set((state) => ({
-      messages: state.messages.filter((m) => m.id !== messageId),
-    }));
+    set((state) => {
+      const removed = state.messages.find((m) => m.id === messageId);
+      const echoKey = removed?.local_echo_key ?? (removed != null && removed.id < 0 ? removed.id : null);
+      const nextQueue =
+        echoKey != null
+          ? state.pendingOutgoingEchoKeys.filter((k) => k !== echoKey)
+          : state.pendingOutgoingEchoKeys;
+      return {
+        messages: state.messages.filter((m) => m.id !== messageId),
+        pendingOutgoingEchoKeys: nextQueue,
+      };
+    });
     if (persistChatMessagesToIndexedDb()) {
       const inst = getCurrentInstance()?.id;
       if (inst) void deleteMessagesByIds(inst, [messageId]);
@@ -186,9 +343,22 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
 
   removeMessages(messageIds) {
     const ids = new Set(messageIds);
-    set((state) => ({
-      messages: state.messages.filter((m) => !ids.has(m.id)),
-    }));
+    set((state) => {
+      const echoKeysToDrop = new Set<number>();
+      for (const m of state.messages) {
+        if (!ids.has(m.id)) continue;
+        const k = m.local_echo_key ?? (m.id < 0 ? m.id : undefined);
+        if (k != null) echoKeysToDrop.add(k);
+      }
+      const nextQueue =
+        echoKeysToDrop.size === 0
+          ? state.pendingOutgoingEchoKeys
+          : state.pendingOutgoingEchoKeys.filter((k) => !echoKeysToDrop.has(k));
+      return {
+        messages: state.messages.filter((m) => !ids.has(m.id)),
+        pendingOutgoingEchoKeys: nextQueue,
+      };
+    });
     if (persistChatMessagesToIndexedDb()) {
       const inst = getCurrentInstance()?.id;
       if (inst) void deleteMessagesByIds(inst, messageIds);
@@ -243,15 +413,29 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     }
   },
 
-  updateMessageContent(messageId, content) {
+  updateMessageContent(messageId, content, markdownSource) {
     set((state) => ({
-      messages: state.messages.map((m) => (m.id === messageId ? { ...m, content } : m)),
+      messages: state.messages.map((m) =>
+        m.id === messageId
+          ? {
+              ...m,
+              content,
+              ...(markdownSource !== undefined ? { markdown_source: markdownSource } : {}),
+            }
+          : m,
+      ),
     }));
     const state = get();
     if (!state.context) return;
     if (persistChatMessagesToIndexedDb()) {
       const inst = getCurrentInstance()?.id;
-      if (inst) void patchMessageContentInCache({ instanceId: inst, messageId, content });
+      if (inst)
+        void patchMessageContentInCache({
+          instanceId: inst,
+          messageId,
+          content,
+          ...(markdownSource !== undefined ? { markdown_source: markdownSource } : {}),
+        });
     }
   },
 
@@ -283,6 +467,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       if (cached.length > 0) {
         set({
           messages: cached,
+          pendingOutgoingEchoKeys: [],
           hasOlderMessages: meta?.reachedOldest !== true,
           hasNewerMessages: meta?.reachedNewest !== true,
         });
@@ -367,6 +552,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     set({
       context: nextContext,
       messages,
+      pendingOutgoingEchoKeys: [],
       hasOlderMessages: flags.hasOlderMessages,
       hasNewerMessages: flags.hasNewerMessages,
     });

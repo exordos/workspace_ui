@@ -1,5 +1,21 @@
+/**
+ * Client-side message body display: detect Zulip-rendered HTML vs Markdown, render Markdown
+ * with `marked` + syntax highlighting, produce plain-text previews.
+ *
+ * Used when GET /messages uses `apply_markdown=false` (body is Markdown) and for composer
+ * preview fallback. Real-time events may still deliver rendered HTML — `isLikelyRenderedMessageHtml`
+ * picks the safe path before `sanitizeHtml`.
+ *
+ * Usage:
+ *   import {
+ *     isLikelyRenderedMessageHtml,
+ *     messageBodyToUnsanitizedDisplayHtml,
+ *     plainTextPreviewFromMessageBody,
+ *   } from "~/shared/lib/message-markdown-display.lib";
+ */
 import hljs from "highlight.js/lib/common";
 import { marked } from "marked";
+import { stripHtml } from "~/shared/lib/html";
 
 const LANGUAGE_CLASS_PATTERN = /\b(?:language|lang)-([a-z0-9#+-]+)\b/i;
 
@@ -23,6 +39,15 @@ function resolveLanguageFromClassName(className: string): string | null {
   }
   const normalizedLanguage = LANGUAGE_ALIASES[rawLanguage] ?? rawLanguage;
   return hljs.getLanguage(normalizedLanguage) ? normalizedLanguage : null;
+}
+
+/** True when the string looks like HTML from Zulip, not raw `<https://…>` autolink markdown. */
+export function isLikelyRenderedMessageHtml(s: string): boolean {
+  const t = s.trimStart();
+  if (t.length === 0) return false;
+  if (!t.startsWith("<")) return false;
+  if (/^<(https?:|mailto:)/i.test(t)) return false;
+  return /^<[a-z!?]/i.test(t);
 }
 
 export function renderMarkdownFallbackHtml(markdown: string): string {
@@ -61,10 +86,31 @@ export function applySyntaxHighlighting(html: string): string {
         codeBlock.classList.add(`language-${language}`);
       }
     } catch {
-      // Keep raw code content if a highlighter fails on malformed input.
       continue;
     }
   }
 
   return wrapper.innerHTML;
+}
+
+/** Markdown → HTML (marked + GFM + highlight). Caller must `sanitizeHtml` before DOM insertion. */
+export function messageBodyToUnsanitizedDisplayHtml(body: string): string {
+  const t = body.trim();
+  if (t.length === 0) return "";
+  if (isLikelyRenderedMessageHtml(t)) {
+    return t;
+  }
+  const mdHtml = renderMarkdownFallbackHtml(t);
+  return applySyntaxHighlighting(mdHtml);
+}
+
+/** One-line / list previews: strip tags; Markdown is converted via marked first. */
+export function plainTextPreviewFromMessageBody(body: string): string {
+  const t = body.trim();
+  if (t.length === 0) return "";
+  if (isLikelyRenderedMessageHtml(t)) {
+    return stripHtml(t);
+  }
+  const html = renderMarkdownFallbackHtml(t);
+  return stripHtml(html);
 }

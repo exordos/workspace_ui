@@ -1,4 +1,5 @@
 import type { UserRecord } from "~/entities/user/user.model";
+import { areCustomProfileDataEqual } from "~/shared/lib/user-profile-fields.lib";
 import type {
   ChatInfoContext,
   ChatInfoData,
@@ -32,6 +33,7 @@ function mapMember(user: UserRecord): ChatInfoMember {
     email: user.email ?? "",
     avatarUrl: user.avatar_url ?? null,
     isOnline: user.presence?.status === "active",
+    profileData: user.profile_data,
   };
 }
 
@@ -98,7 +100,8 @@ function areMembersEqual(a: ChatInfoMember[], b: ChatInfoMember[]): boolean {
       left.fullName !== right.fullName ||
       left.email !== right.email ||
       left.avatarUrl !== right.avatarUrl ||
-      left.isOnline !== right.isOnline
+      left.isOnline !== right.isOnline ||
+      !areCustomProfileDataEqual(left.profileData, right.profileData)
     ) {
       return false;
     }

@@ -6,6 +6,105 @@ import { VitePWA } from "vite-plugin-pwa";
 import svgr from "vite-plugin-svgr";
 import { buildPermissionsPolicyHeader } from "./src/shared/lib/permissions-policy";
 
+function normalizeUserUploadsPathPrefix(raw: string | undefined): string {
+  if (!raw?.trim()) return "";
+  const t = raw.trim().replace(/\/+$/, "");
+  return t.startsWith("/") ? t : `/${t}`;
+}
+
+function normalizeWorkspaceRestPath(raw: string | undefined): string {
+  return (raw ?? "").trim().replace(/\/+$/, "");
+}
+
+/**
+ * When `VITE_USER_UPLOADS_PATH_PREFIX` is unset, match dev Orval layout: uploads live at
+ * `/workspace{REST}/v1/user_uploads/...` on the upstream (same as `/workspace` proxy).
+ */
+function defaultDevUserUploadsProxyPrefix(workspaceRestPath: string): string {
+  const rest = normalizeWorkspaceRestPath(workspaceRestPath);
+  const segment = rest === "" ? "" : rest.startsWith("/") ? rest : `/${rest}`;
+  return `/workspace${segment}/v1`;
+}
+
+function effectiveUserUploadsProxyRewritePrefix(
+  explicitPrefix: string,
+  workspaceRestPath: string,
+): string {
+  if (explicitPrefix !== "") {
+    return explicitPrefix.replace(/\/+$/, "");
+  }
+  return defaultDevUserUploadsProxyPrefix(workspaceRestPath).replace(/\/+$/, "");
+}
+
+function cleanRealmOrigin(raw: string): string {
+  return raw.replace(/\/api\/v1\/?$/, "").replace(/\/+$/, "");
+}
+
+function originHostname(origin: string | undefined): string {
+  if (!origin?.trim()) return "";
+  try {
+    const normalized = /^https?:\/\//i.test(origin) ? origin : `https://${origin}`;
+    return new URL(normalized).hostname;
+  } catch {
+    return "";
+  }
+}
+
+function isViteDevProxyDebugEnabled(rawEnv: Record<string, string>): boolean {
+  const v = rawEnv.VITE_DEV_PROXY_DEBUG?.trim().toLowerCase();
+  return v === "true" || v === "1";
+}
+
+type ViteProxyEntry = {
+  target: string;
+  changeOrigin: boolean;
+  rewrite?: (pathValue: string) => string;
+  configure?: (proxy: unknown, options: unknown) => void;
+};
+
+/** Logs incoming dev path → resolved upstream URL (after rewrite). Gated by VITE_DEV_PROXY_DEBUG. */
+function withDevProxyRequestLog(
+  routeLabel: string,
+  targetBase: string,
+  enabled: boolean,
+  entry: ViteProxyEntry,
+): ViteProxyEntry {
+  if (!enabled) {
+    return entry;
+  }
+  const previous = entry.configure;
+  return {
+    ...entry,
+    configure(proxy: unknown, options: unknown) {
+      previous?.(proxy, options);
+      if (
+        typeof proxy !== "object" ||
+        proxy === null ||
+        !("on" in proxy) ||
+        typeof (proxy as { on: unknown }).on !== "function"
+      ) {
+        return;
+      }
+      const p = proxy as { on: (event: string, handler: (...args: unknown[]) => void) => void };
+      p.on("proxyReq", (proxyReq: unknown, req: unknown) => {
+        const pr = proxyReq as { path?: string };
+        const r = req as { method?: string; url?: string };
+        const path = typeof pr.path === "string" ? pr.path : "";
+        const base = targetBase.replace(/\/+$/, "");
+        let upstream: string;
+        try {
+          const pathname = path.startsWith("/") ? path : `/${path}`;
+          upstream = new URL(pathname, `${base}/`).href;
+        } catch {
+          upstream = `${base}${path}`;
+        }
+        // Dev-only; vite.config.ts is ESLint-ignored. Intentionally not app logger (Node, no ~/shared).
+        console.info(`[vite-proxy:${routeLabel}] ${r.method ?? "?"} ${r.url ?? ""} → ${upstream}`);
+      });
+    },
+  };
+}
+
 function deriveLegacyWorkspaceOrigin(
   workspaceOrigin: string,
   explicitLegacyOrigin: string | undefined,
@@ -32,6 +131,37 @@ function deriveLegacyWorkspaceOrigin(
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, import.meta.dirname, "");
   const workspaceOrigin = env.VITE_WORKSPACE_API_ORIGIN?.replace(/\/+$/, "");
+  const zulipRealmOriginRaw = env.VITE_ZULIP_REALM_ORIGIN?.trim();
+  const zulipRealmOrigin = zulipRealmOriginRaw
+    ? cleanRealmOrigin(zulipRealmOriginRaw)
+    : workspaceOrigin;
+  const workspaceRestPath = normalizeWorkspaceRestPath(env.VITE_WORKSPACE_REST_API_PATH);
+  const rawUserUploadsPrefix = env.VITE_USER_UPLOADS_PATH_PREFIX?.trim() ?? "";
+  const uploadsAtRealmRootFlag = env.VITE_USER_UPLOADS_AT_REALM_ROOT?.trim().toLowerCase();
+  const uploadsProxySeparateRealmHost =
+    originHostname(workspaceOrigin) !== "" &&
+    originHostname(zulipRealmOrigin) !== "" &&
+    originHostname(workspaceOrigin) !== originHostname(zulipRealmOrigin);
+  /** Rare: Zulip realm host uses a gateway prefix for uploads (same as VITE_USER_UPLOADS_PATH_PREFIX). */
+  const forceUploadsGatewayPrefixOnZulipRealm =
+    env.VITE_USER_UPLOADS_PREFIX_ON_ZULIP_REALM?.trim().toLowerCase() === "true" ||
+    env.VITE_USER_UPLOADS_PREFIX_ON_ZULIP_REALM?.trim() === "1";
+  let proxyUserUploadsAsRealmRoot =
+    rawUserUploadsPrefix === "-" ||
+    rawUserUploadsPrefix.toLowerCase() === "realm-root" ||
+    uploadsAtRealmRootFlag === "true" ||
+    uploadsAtRealmRootFlag === "1";
+  if (
+    !proxyUserUploadsAsRealmRoot &&
+    uploadsProxySeparateRealmHost &&
+    !forceUploadsGatewayPrefixOnZulipRealm
+  ) {
+    // API on workspace gateway, files on canonical Zulip: /user_uploads/... at realm root.
+    proxyUserUploadsAsRealmRoot = true;
+  }
+  const userUploadsPathPrefix = proxyUserUploadsAsRealmRoot
+    ? ""
+    : normalizeUserUploadsPathPrefix(env.VITE_USER_UPLOADS_PATH_PREFIX);
   const workspaceLegacyOrigin = workspaceOrigin
     ? deriveLegacyWorkspaceOrigin(workspaceOrigin, env.VITE_WORKSPACE_API_LEGACY_ORIGIN)
     : "";
@@ -41,6 +171,41 @@ export default defineConfig(({ mode }) => {
   const permissionsPolicyHeader = buildPermissionsPolicyHeader(env.VITE_JITSI_MEET_DOMAIN);
 
   const base = isElectron ? "./" : cdnUrl ? `${cdnUrl}/` : "/";
+
+  const proxyDebug = isViteDevProxyDebugEnabled(env);
+
+  const devApiProxy =
+    workspaceOrigin &&
+    ({
+      "/workspace/workspace/v1": withDevProxyRequestLog(
+        "workspace-legacy",
+        workspaceLegacyOrigin,
+        proxyDebug,
+        {
+          target: workspaceLegacyOrigin,
+          changeOrigin: true,
+          rewrite: (pathValue) => pathValue.replace(/^\/workspace/, ""),
+        },
+      ),
+      "/workspace": withDevProxyRequestLog("workspace", workspaceOrigin, proxyDebug, {
+        target: workspaceOrigin,
+        changeOrigin: true,
+      }),
+      "/user_uploads": withDevProxyRequestLog("user_uploads", zulipRealmOrigin, proxyDebug, {
+        target: zulipRealmOrigin,
+        changeOrigin: true,
+        rewrite: (pathValue) => {
+          if (proxyUserUploadsAsRealmRoot) {
+            return pathValue;
+          }
+          const prefix = effectiveUserUploadsProxyRewritePrefix(
+            userUploadsPathPrefix,
+            workspaceRestPath,
+          );
+          return `${prefix}${pathValue}`;
+        },
+      }),
+    } satisfies Record<string, ViteProxyEntry>);
 
   return {
     plugins: [
@@ -192,23 +357,7 @@ export default defineConfig(({ mode }) => {
         "Referrer-Policy": "strict-origin-when-cross-origin",
         "Permissions-Policy": permissionsPolicyHeader,
       },
-      ...(workspaceOrigin && {
-        proxy: {
-          "/workspace/workspace/v1": {
-            target: workspaceLegacyOrigin,
-            changeOrigin: true,
-            rewrite: (pathValue) => pathValue.replace(/^\/workspace/, ""),
-          },
-          "/workspace": {
-            target: workspaceOrigin,
-            changeOrigin: true,
-          },
-          "/user_uploads": {
-            target: workspaceOrigin,
-            changeOrigin: true,
-          },
-        },
-      }),
+      ...(devApiProxy && { proxy: devApiProxy }),
     },
 
     preview: {
@@ -218,6 +367,7 @@ export default defineConfig(({ mode }) => {
         "Referrer-Policy": "strict-origin-when-cross-origin",
         "Permissions-Policy": permissionsPolicyHeader,
       },
+      ...(devApiProxy && { proxy: devApiProxy }),
     },
   };
 });

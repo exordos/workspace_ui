@@ -87,6 +87,30 @@ describe("usersStore", () => {
 
       expect(useUsersStore.getState().users.size).toBe(1);
     });
+
+    it("merges profile_data from directory payloads", () => {
+      useUsersStore.getState().mergeUsers([
+        {
+          user_id: 9,
+          full_name: "Pat",
+          profile_data: { "1": { value: "Lead", rendered_value: "<p>Lead</p>" } },
+        },
+      ]);
+      expect(useUsersStore.getState().getUser(9)?.profile_data?.["1"]?.value).toBe("Lead");
+    });
+
+    it("preserves profile_data when batch entry omits it", () => {
+      useUsersStore.getState().mergeUsers([
+        {
+          user_id: 11,
+          full_name: "Sam",
+          profile_data: { "2": { value: "Mgr" } },
+        },
+      ]);
+      useUsersStore.getState().mergeUsers([{ user_id: 11, full_name: "Samuel" }]);
+      expect(useUsersStore.getState().getUser(11)?.full_name).toBe("Samuel");
+      expect(useUsersStore.getState().getUser(11)?.profile_data?.["2"]?.value).toBe("Mgr");
+    });
   });
 
   // mergeFromMessage auto-populates the user cache from message payloads.

@@ -249,7 +249,7 @@ describe("MessageBubble edit/delete actions parity", () => {
     expect(onViews).toHaveBeenCalledWith(expect.objectContaining({ id: 101 }));
   });
 
-  it("shows sending state for optimistic own messages", () => {
+  it("shows sending state for optimistic own messages without visible label text", () => {
     render(
       <MessageBubble
         message={createMessage({
@@ -259,11 +259,12 @@ describe("MessageBubble edit/delete actions parity", () => {
       />,
     );
 
-    expect(screen.getByText(/sending/i)).toBeInTheDocument();
+    expect(screen.getByTestId("message-delivery-101")).toBeInTheDocument();
+    expect(screen.getByText(/sending/i)).toHaveClass("sr-only");
     expect(screen.queryByTitle(/sent to server/i)).not.toBeInTheDocument();
   });
 
-  it("shows not-delivered state for failed own messages", () => {
+  it("shows not-delivered state for failed own messages when retry/remove callbacks are absent", () => {
     render(
       <MessageBubble
         message={createMessage({
@@ -275,6 +276,29 @@ describe("MessageBubble edit/delete actions parity", () => {
 
     expect(screen.getByText(/not delivered/i)).toBeInTheDocument();
     expect(screen.queryByTitle(/sent to server/i)).not.toBeInTheDocument();
+  });
+
+  it("shows retry and remove for failed own messages when callbacks are provided", () => {
+    const onRetry = vi.fn();
+    const onRemove = vi.fn();
+    render(
+      <MessageBubble
+        message={createMessage({
+          id: -1,
+          delivery_status: "failed",
+        })}
+        isOwn
+        callbacks={{
+          onRetryFailedOutgoing: onRetry,
+          onRemoveFailedOutgoing: onRemove,
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /retry send/i }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: /remove message/i }));
+    expect(onRemove).toHaveBeenCalledTimes(1);
   });
 
   it("does not leave protected video source URL in rendered HTML", () => {
@@ -307,13 +331,17 @@ describe("MessageBubble edit/delete actions parity", () => {
     const image = container.querySelector("img");
     expect(image).not.toBeNull();
     expect(image?.getAttribute("src")).not.toContain("/user_uploads/");
-    expect(image?.getAttribute("data-auth-src")).toContain("/user_uploads/");
+    expect(image?.getAttribute("data-auth-src")).toContain("/user_uploads/thumbnail/");
   });
 
   it("loads protected image preview through normalized user_uploads path", async () => {
     const fetchMock = vi.fn((input: string | URL) => {
       const s = String(input);
-      if (s === "/user_uploads/1/private.png" || /\/user_uploads\/1\/private\.png$/.test(s)) {
+      if (
+        s.includes("/user_uploads/thumbnail/1/private.png/840x560.webp") ||
+        s === "/user_uploads/1/private.png" ||
+        /\/user_uploads\/1\/private\.png$/.test(s)
+      ) {
         return Promise.resolve({
           ok: true,
           blob: () => Promise.resolve(new Blob(["ok"])),
@@ -344,7 +372,7 @@ describe("MessageBubble edit/delete actions parity", () => {
       expect(image?.getAttribute("src")).toBe("blob:test-image");
     });
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringMatching(/\/user_uploads\/1\/private\.png$/),
+      expect.stringMatching(/\/user_uploads\/thumbnail\/1\/private\.png\/840x560\.webp$/),
       expect.objectContaining({
         headers: { Authorization: "Basic test" },
       }),

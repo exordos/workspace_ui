@@ -195,6 +195,7 @@ describe("setTopicResolvedState", () => {
       include_anchor: "true",
       allow_empty_topic_name: "true",
       client_gravatar: "false",
+      apply_markdown: "false",
       narrow: JSON.stringify([
         { operator: "stream", operand: 10 },
         { operator: "topic", operand: "incident" },

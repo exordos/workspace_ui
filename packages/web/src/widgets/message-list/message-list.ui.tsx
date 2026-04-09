@@ -78,6 +78,9 @@ export const MessageList: React.FC<MessageListProps> = ({
             onViews: callbacks.onMessageViews,
             onOpenInChat: callbacks.onMessageOpenInChat,
             onAuthorClick: callbacks.onMessageAuthorClick,
+            onOpenDirectMessage: callbacks.onOpenDirectMessage,
+            onRetryFailedOutgoing: callbacks.onRetryFailedOutgoing,
+            onRemoveFailedOutgoing: callbacks.onRemoveFailedOutgoing,
           }
         : undefined,
     [callbacks],
@@ -384,8 +387,10 @@ export const MessageList: React.FC<MessageListProps> = ({
                 }
 
                 if (isOwn) {
+                  const ownGroupKey =
+                    senderMessages[0]!.local_echo_key ?? senderMessages[0]!.id;
                   return (
-                    <React.Fragment key={`own-${senderMessages[0]!.id}`}>
+                    <React.Fragment key={`own-${ownGroupKey}`}>
                       {showTopicSeparator && (
                         <button
                           type="button"
@@ -400,7 +405,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                       {showUnreadMarker && <UnreadMarker unreadCount={unreadCount} />}
                       {senderMessages.map((m, i) => (
                         <MessageBubble
-                          key={m.id}
+                          key={m.local_echo_key ?? m.id}
                           message={m}
                           isOwn
                           showAvatar={false}

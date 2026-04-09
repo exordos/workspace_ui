@@ -8,16 +8,18 @@ export const MediaViewerOverlay: React.FC = () => {
   const isOpen = useMediaViewerStore((s) => s.isOpen);
   const items = useMediaViewerStore((s) => s.items);
   const currentIndex = useMediaViewerStore((s) => s.currentIndex);
+  const close = useMediaViewerStore((s) => s.close);
+  const next = useMediaViewerStore((s) => s.next);
+  const prev = useMediaViewerStore((s) => s.prev);
   const { zoom, onWheel } = useMediaViewerZoom({ currentIndex });
+
+  const handlePrev = useCallback(() => prev(), [prev]);
+  const handleNext = useCallback(() => next(), [next]);
 
   if (!isOpen || items.length === 0) return null;
 
   const item = items[currentIndex];
   if (!item) return null;
-
-  const { close, next, prev } = useMediaViewerStore.getState();
-  const handlePrev = useCallback(() => prev(), [prev]);
-  const handleNext = useCallback(() => next(), [next]);
 
   return (
     <MediaViewerBackdrop onClose={close}>
