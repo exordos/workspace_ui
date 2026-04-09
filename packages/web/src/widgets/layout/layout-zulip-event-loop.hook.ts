@@ -1,5 +1,4 @@
 // Оркестрация bootstrap + long-poll event loop для активного инстанса.
-// Также отсюда сигнализируем в layout о факте применения bootstrap chat-list.
 import { useEffect, useRef } from "react";
 import { useActivityStore } from "~/entities/activity/activity.model";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
@@ -38,8 +37,6 @@ export function useLayoutZulipEventLoop(options: {
   setFromMessages: (messages: ZulipRawMessage[], currentUserId: number | null) => void;
   setCurrentUserId: (id: number) => void;
   setCurrentUserStatus: (status: "idle" | "loading" | "ready" | "error") => void;
-  // Колбэк после применения bootstrap данных в chat-list store.
-  onBootstrapApplied?: () => void;
 }): void {
   const {
     currentInstanceId,
@@ -48,7 +45,6 @@ export function useLayoutZulipEventLoop(options: {
     setFromMessages,
     setCurrentUserId,
     setCurrentUserStatus,
-    onBootstrapApplied,
   } = options;
 
   const loadBootstrapMessagesRef = useRef(loadBootstrapMessages);
@@ -56,7 +52,6 @@ export function useLayoutZulipEventLoop(options: {
   const setFromMessagesRef = useRef(setFromMessages);
   const setCurrentUserIdRef = useRef(setCurrentUserId);
   const setCurrentUserStatusRef = useRef(setCurrentUserStatus);
-  const onBootstrapAppliedRef = useRef(onBootstrapApplied);
 
   useEffect(() => {
     loadBootstrapMessagesRef.current = loadBootstrapMessages;
@@ -64,14 +59,12 @@ export function useLayoutZulipEventLoop(options: {
     setFromMessagesRef.current = setFromMessages;
     setCurrentUserIdRef.current = setCurrentUserId;
     setCurrentUserStatusRef.current = setCurrentUserStatus;
-    onBootstrapAppliedRef.current = onBootstrapApplied;
   }, [
     loadBootstrapMessages,
     loadMuteSnapshot,
     setFromMessages,
     setCurrentUserId,
     setCurrentUserStatus,
-    onBootstrapApplied,
   ]);
 
   /** Only reset stores when switching org — not when this effect re-runs (callback deps / Strict Mode remount). */
@@ -180,8 +173,6 @@ export function useLayoutZulipEventLoop(options: {
         if (instanceIdPersist != null) {
           void persistUsersDirectoryToIndexedDb(instanceIdPersist, apiMembers);
         }
-        // Сообщаем внешнему layout, что bootstrap был применен.
-        onBootstrapAppliedRef.current?.();
 
         eventLoopAbortRef.current?.abort();
         eventLoopAbortRef.current = new AbortController();

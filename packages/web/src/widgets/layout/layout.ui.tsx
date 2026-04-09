@@ -18,7 +18,6 @@ import { useLayoutAuthErrorHandler } from "./layout-auth-error-handler.hook";
 import { useLayoutAuthGuard } from "./layout-auth-guard.hook";
 import { runChatListBootstrap } from "./layout-chat-list-bootstrap.lib";
 import { useLayoutChatListSnapshotSync } from "./layout-chat-list-snapshot-sync.hook";
-import { useLayoutChatListUnreadReconcile } from "./layout-chat-list-unread-reconcile.hook";
 import { shouldRenderChatShell } from "./layout-chat-shell.lib";
 import { useLayoutFolderSyncOrchestration } from "./layout-folder-sync-orchestration.hook";
 import { useInactiveInstancesBackgroundWork } from "./layout-inactive-instances-background-work.hook";
@@ -125,10 +124,6 @@ export const Layout: React.FC = () => {
   const [currentUserStatus, setCurrentUserStatus] = useState<
     "idle" | "loading" | "ready" | "error"
   >("idle");
-  // Технические маркеры "bootstrap chat-list применен".
-  // Нужны, чтобы startup unread reconcile запускался строго после bootstrap.
-  const [bootstrapAppliedSeq, setBootstrapAppliedSeq] = useState(0);
-  const [bootstrapAppliedInstanceId, setBootstrapAppliedInstanceId] = useState<string | null>(null);
 
   const { loadMuteSnapshot } = useLayoutInstanceBootstrap({
     currentInstanceId,
@@ -137,11 +132,6 @@ export const Layout: React.FC = () => {
 
   const loadBootstrapMessages = useCallback(async () => {
     return runChatListBootstrap(currentInstanceId);
-  }, [currentInstanceId]);
-  // Фиксируем факт применения bootstrap внутри event-loop orchestration.
-  const handleBootstrapApplied = useCallback(() => {
-    setBootstrapAppliedInstanceId(currentInstanceId);
-    setBootstrapAppliedSeq((prev) => prev + 1);
   }, [currentInstanceId]);
 
   const online = useLayoutOnlineStatus();
@@ -154,15 +144,6 @@ export const Layout: React.FC = () => {
 
   // Централизованный debounce-sync chat-list snapshot в IndexedDB.
   useLayoutChatListSnapshotSync(currentInstanceId);
-
-  // One-shot reconcile unread с сервером после завершения bootstrap.
-  useLayoutChatListUnreadReconcile({
-    currentInstanceId,
-    currentUserStatus,
-    currentUserId,
-    bootstrapAppliedInstanceId,
-    bootstrapAppliedSeq,
-  });
 
   useLayoutWindowBranding({
     unreadCount: unreadCountForCurrentInstance,
@@ -210,7 +191,6 @@ export const Layout: React.FC = () => {
     setFromMessages,
     setCurrentUserId,
     setCurrentUserStatus,
-    onBootstrapApplied: handleBootstrapApplied,
   });
 
   // Allow main shell while auth/history sync runs if sidebar was hydrated from IndexedDB.

@@ -7,13 +7,12 @@
  */
 import { create } from "zustand";
 import { useUsersStore } from "~/entities/user/user.model";
-import type { ZulipUnreadMessagesSnapshot } from "~/shared/api/zulip-unread.lib";
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import {
   deserializeStreamEntry,
   type ChatListSnapshotSerialized,
 } from "~/shared/lib/chat-list-snapshot-serialize.lib";
-import { dmConversationKey, dmRouteKey } from "~/shared/lib/dm-key";
+import { dmConversationKey } from "~/shared/lib/dm-key";
 import { saveRecentDmPartners } from "~/shared/lib/recent-dms";
 import type {
   SidebarChat,
@@ -586,116 +585,6 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
         }
       }
       return { streamsMap: nextStreams, dmsMap: nextDms };
-    });
-  },
-
-  // Применяет серверный unread snapshot по политике Authoritative Existing:
-  // 1) обновляем unread только у уже существующих stream/topic и DM строк;
-  // 2) отсутствующие в snapshot существующие строки обнуляем;
-  // 3) дополняем индекс messageId->location, но новые sidebar rows не создаем.
-  reconcileUnreadFromServer(snapshot: ZulipUnreadMessagesSnapshot) {
-    set((state) => {
-      // Карта unread для stream/topic.
-      const streamUnreadByTopic = new Map<string, number>();
-      for (const streamBucket of snapshot.streams) {
-        const topic = streamBucket.topic.trim() || "general";
-        const key = `${streamBucket.streamId}\t${topic}`;
-        const unreadCount = streamBucket.unreadMessageIds.length;
-        streamUnreadByTopic.set(key, (streamUnreadByTopic.get(key) ?? 0) + unreadCount);
-      }
-
-      // Карта unread для DM key.
-      const dmUnreadByKey = new Map<string, number>();
-      for (const dmBucket of snapshot.dms) {
-        const dmKey = dmRouteKey(dmBucket.userIds, state.currentUserId);
-        if (dmKey.length === 0) continue;
-        const unreadCount = dmBucket.unreadMessageIds.length;
-        dmUnreadByKey.set(dmKey, (dmUnreadByKey.get(dmKey) ?? 0) + unreadCount);
-      }
-
-      // Authoritative update stream topics.
-      let streamsChanged = false;
-      const nextStreams = new Map<number, StreamEntryInternal>();
-      for (const [streamId, streamEntry] of state.streamsMap.entries()) {
-        let topicsChanged = false;
-        const nextTopics = new Map(streamEntry.topics);
-        for (const [topicName, topicEntry] of streamEntry.topics.entries()) {
-          const key = `${streamId}\t${topicName}`;
-          const unreadCount = streamUnreadByTopic.get(key) ?? 0;
-          if (topicEntry.unreadCount !== unreadCount) {
-            topicsChanged = true;
-            nextTopics.set(topicName, { ...topicEntry, unreadCount });
-          }
-        }
-        if (topicsChanged) {
-          streamsChanged = true;
-          nextStreams.set(streamId, { ...streamEntry, topics: nextTopics });
-        } else {
-          nextStreams.set(streamId, streamEntry);
-        }
-      }
-
-      // Authoritative update DM rows.
-      let dmsChanged = false;
-      const nextDms = new Map<string, DmEntryInternal>();
-      for (const [dmKey, dmEntry] of state.dmsMap.entries()) {
-        const unreadCount = dmUnreadByKey.get(dmKey) ?? 0;
-        if (dmEntry.unreadCount !== unreadCount) {
-          dmsChanged = true;
-          nextDms.set(dmKey, { ...dmEntry, unreadCount });
-        } else {
-          nextDms.set(dmKey, dmEntry);
-        }
-      }
-
-      // Upsert messageId->location для unread id из snapshot.
-      let messageLocationsChanged = false;
-      const nextMessageLocations = new Map(state.messageIdToLocation);
-      for (const streamBucket of snapshot.streams) {
-        const topic = streamBucket.topic.trim() || "general";
-        for (const messageId of streamBucket.unreadMessageIds) {
-          const currentLocation = nextMessageLocations.get(messageId);
-          if (
-            currentLocation?.type === "stream" &&
-            currentLocation.stream_id === streamBucket.streamId &&
-            currentLocation.topic === topic
-          ) {
-            continue;
-          }
-          nextMessageLocations.set(messageId, {
-            type: "stream",
-            stream_id: streamBucket.streamId,
-            topic,
-          });
-          messageLocationsChanged = true;
-        }
-      }
-
-      for (const dmBucket of snapshot.dms) {
-        const dmKey = dmRouteKey(dmBucket.userIds, state.currentUserId);
-        if (dmKey.length === 0) continue;
-        for (const messageId of dmBucket.unreadMessageIds) {
-          const currentLocation = nextMessageLocations.get(messageId);
-          if (currentLocation?.type === "dm" && currentLocation.dmKey === dmKey) {
-            continue;
-          }
-          nextMessageLocations.set(messageId, { type: "dm", dmKey });
-          messageLocationsChanged = true;
-        }
-      }
-
-      // Если изменений нет, возвращаем исходное состояние по ссылке.
-      if (!streamsChanged && !dmsChanged && !messageLocationsChanged) {
-        return state;
-      }
-
-      return {
-        streamsMap: streamsChanged ? nextStreams : state.streamsMap,
-        dmsMap: dmsChanged ? nextDms : state.dmsMap,
-        messageIdToLocation: messageLocationsChanged
-          ? nextMessageLocations
-          : state.messageIdToLocation,
-      };
     });
   },
 

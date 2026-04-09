@@ -24,8 +24,7 @@ import {
   ZULIP_STREAM_CHAT_NUM_BEFORE,
 } from "~/shared/lib/zulip-message-window.lib";
 import { getCurrentInstance, refreshZulipApiBase, zulipApi } from "./client";
-import { parseUnreadMessagesCount, parseUnreadMessagesSnapshot } from "./zulip-unread.lib";
-import type { ZulipUnreadMessagesSnapshot } from "./zulip-unread.lib";
+import { parseUnreadMessagesCount } from "./zulip-unread.lib";
 
 if (typeof (globalThis as unknown as { Buffer?: unknown }).Buffer === "undefined") {
   (globalThis as unknown as { Buffer: typeof Buffer }).Buffer = Buffer;
@@ -818,23 +817,6 @@ export async function fetchUnreadMessagesCountForCredentials(
   } catch {
     return null;
   }
-}
-
-// Читает полный unread snapshot для текущего активного инстанса через GET /messages is:unread.
-// Используется в startup reconcile для приведения badge к серверной истине.
-export async function fetchUnreadMessagesSnapshot(): Promise<ZulipUnreadMessagesSnapshot | null> {
-  const res = await zulipPipelineGet("/messages", {
-    anchor: "newest",
-    num_before: String(UNREAD_MESSAGES_NUM_BEFORE),
-    num_after: String(UNREAD_MESSAGES_NUM_AFTER),
-    narrow: UNREAD_MESSAGES_NARROW,
-    allow_empty_topic_name: "true",
-    client_gravatar: "true",
-  });
-  if (!res?.ok) {
-    return null;
-  }
-  return parseUnreadMessagesSnapshot(res.data);
 }
 
 /** Long-polls for events (GET /api/v1/events). Supports timeout and AbortSignal. */
