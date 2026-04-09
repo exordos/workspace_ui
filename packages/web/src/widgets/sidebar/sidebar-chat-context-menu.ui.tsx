@@ -9,11 +9,11 @@ import { getFolderItems } from "~/shared/api/workspace-client";
 import { markDmAsRead, markStreamAsRead } from "~/shared/api/zulip";
 import { Icon } from "~/shared/ui/icon";
 import { loadFolderAssignments, toggleFolderAssignment } from "./sidebar-folder-assignment.lib";
-import { chatToWorkspaceChatId, parseDmSlugToUserIds } from "./sidebar.lib";
 import {
   OPTIMISTIC_FOLDER_ASSIGNMENT_ITEM_UUID,
   type FolderAssignment,
 } from "./sidebar-folder-assignment.types";
+import { chatToWorkspaceChatId, parseDmSlugToUserIds } from "./sidebar.lib";
 import type { SidebarChat } from "./sidebar.types";
 
 const MENU_ITEM_CLASS =
@@ -191,7 +191,9 @@ export const StreamContextMenu = React.memo(function StreamContextMenu({
   const [menuOpen, setMenuOpen] = useState(false);
   const isMuted = useMuteStore((s) => s.isStreamMuted(streamId));
   const chatId = chatToWorkspaceChatId(chat);
-  const isPinnedInFolder = usePinStore((s) => (folderId != null ? s.isPinned(folderId, chatId) : false));
+  const isPinnedInFolder = usePinStore((s) =>
+    folderId != null ? s.isPinned(folderId, chatId) : false,
+  );
   const isPinned = folderId != null && isPinnedInFolder;
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
@@ -246,7 +248,8 @@ export const StreamContextMenu = React.memo(function StreamContextMenu({
     setMenuOpen(false);
   }, [onCreateTopic]);
 
-  const showFolderPinAction = folderId != null && folderId.length > 0 && !isVirtualSystemFolderId(folderId);
+  const showFolderPinAction =
+    folderId != null && folderId.length > 0 && !isVirtualSystemFolderId(folderId);
 
   const contentWithContextMenu = useMemo(() => {
     const childrenArray = React.Children.toArray(children);
@@ -338,22 +341,28 @@ export const StreamContextMenu = React.memo(function StreamContextMenu({
 export const DmContextMenu = React.memo(function DmContextMenu({
   chat,
   folderId,
+  triggerOffsetClassName = "right-1 top-8",
   onFolderAssignmentsChanged,
   children,
 }: {
   chat: Extract<SidebarChat, { type: "dm" }>;
   folderId?: string;
+  triggerOffsetClassName?: string;
   onFolderAssignmentsChanged?: (affectedFolderUuid?: string) => void;
   children: React.ReactNode;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const chatId = chatToWorkspaceChatId(chat);
-  const isPinnedInFolder = usePinStore((s) => (folderId != null ? s.isPinned(folderId, chatId) : false));
+  const isPinnedInFolder = usePinStore((s) =>
+    folderId != null ? s.isPinned(folderId, chatId) : false,
+  );
   const isPinned = folderId != null && isPinnedInFolder;
 
   const handleMarkAsRead = useCallback(() => {
     const userIds =
-      Array.isArray(chat.userIds) && chat.userIds.length > 0 ? chat.userIds : parseDmSlugToUserIds(chat.slug);
+      Array.isArray(chat.userIds) && chat.userIds.length > 0
+        ? chat.userIds
+        : parseDmSlugToUserIds(chat.slug);
     if (userIds.length === 0) return;
     void markDmAsRead(userIds);
     setMenuOpen(false);
@@ -390,7 +399,8 @@ export const DmContextMenu = React.memo(function DmContextMenu({
     setMenuOpen(true);
   }, []);
 
-  const showFolderPinAction = folderId != null && folderId.length > 0 && !isVirtualSystemFolderId(folderId);
+  const showFolderPinAction =
+    folderId != null && folderId.length > 0 && !isVirtualSystemFolderId(folderId);
 
   const contentWithContextMenu = useMemo(() => {
     if (!React.isValidElement(children)) return children;
@@ -423,7 +433,7 @@ export const DmContextMenu = React.memo(function DmContextMenu({
         <DropdownMenu.Trigger asChild>
           <button
             type="button"
-            className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded text-text-muted opacity-60 transition-opacity group-focus-within/dm:opacity-100 group-hover/dm:opacity-100 hover:bg-sidebar-hover hover:text-text-primary focus-visible:opacity-100"
+            className={`absolute flex h-6 w-6 items-center justify-center rounded text-text-muted opacity-60 transition-opacity group-focus-within/stream:opacity-100 group-hover/stream:opacity-100 hover:bg-sidebar-hover hover:text-text-primary focus-visible:opacity-100 ${triggerOffsetClassName}`}
             aria-label={t("a11y.chatMenu")}
             onClick={(e) => {
               e.preventDefault();
@@ -460,4 +470,3 @@ export const DmContextMenu = React.memo(function DmContextMenu({
     </DropdownMenu.Root>
   );
 });
-
