@@ -1,3 +1,4 @@
+// Корневой layout приложения: собирает shell, стор-оркестрацию и фоновые синки для активного инстанса.
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
@@ -16,6 +17,8 @@ import { LayoutAppShell } from "./layout-app-shell.ui";
 import { useLayoutAuthErrorHandler } from "./layout-auth-error-handler.hook";
 import { useLayoutAuthGuard } from "./layout-auth-guard.hook";
 import { runChatListBootstrap } from "./layout-chat-list-bootstrap.lib";
+import { useLayoutChatListSnapshotSync } from "./layout-chat-list-snapshot-sync.hook";
+import { useLayoutChatListUnreadReconcile } from "./layout-chat-list-unread-reconcile.hook";
 import { shouldRenderChatShell } from "./layout-chat-shell.lib";
 import { useLayoutFolderSyncOrchestration } from "./layout-folder-sync-orchestration.hook";
 import { useInactiveInstancesBackgroundWork } from "./layout-inactive-instances-background-work.hook";
@@ -87,18 +90,21 @@ export const Layout: React.FC = () => {
       prioritizeUnmutedUnreadChannels,
     ],
   );
-  const { realmIcon: currentInstanceRealmIcon, unreadCount: unreadCountForCurrentInstance, activeChatWindowTitle } =
-    useLayoutUnreadAndTitle({
-      instances,
-      currentInstanceId,
-      streams: streamsFromStore,
-      dms: dmsFromStore,
-      streamsMap,
-      activeStreamSlug,
-      activeTopic,
-      dmIdParam,
-      currentUserId,
-    });
+  const {
+    realmIcon: currentInstanceRealmIcon,
+    unreadCount: unreadCountForCurrentInstance,
+    activeChatWindowTitle,
+  } = useLayoutUnreadAndTitle({
+    instances,
+    currentInstanceId,
+    streams: streamsFromStore,
+    dms: dmsFromStore,
+    streamsMap,
+    activeStreamSlug,
+    activeTopic,
+    dmIdParam,
+    currentUserId,
+  });
 
   const selectedFolderId = useFolderSyncStore((s) => s.selectedFolderId);
   const selectedFolderChatIds = useFolderSyncStore((s) => s.selectedFolderChatIds);
@@ -119,6 +125,10 @@ export const Layout: React.FC = () => {
   const [currentUserStatus, setCurrentUserStatus] = useState<
     "idle" | "loading" | "ready" | "error"
   >("idle");
+  // Технические маркеры "bootstrap chat-list применен".
+  // Нужны, чтобы startup unread reconcile запускался строго после bootstrap.
+  const [bootstrapAppliedSeq, setBootstrapAppliedSeq] = useState(0);
+  const [bootstrapAppliedInstanceId, setBootstrapAppliedInstanceId] = useState<string | null>(null);
 
   const { loadMuteSnapshot } = useLayoutInstanceBootstrap({
     currentInstanceId,
@@ -128,6 +138,11 @@ export const Layout: React.FC = () => {
   const loadBootstrapMessages = useCallback(async () => {
     return runChatListBootstrap(currentInstanceId);
   }, [currentInstanceId]);
+  // Фиксируем факт применения bootstrap внутри event-loop orchestration.
+  const handleBootstrapApplied = useCallback(() => {
+    setBootstrapAppliedInstanceId(currentInstanceId);
+    setBootstrapAppliedSeq((prev) => prev + 1);
+  }, [currentInstanceId]);
 
   const online = useLayoutOnlineStatus();
   useHydrateDrafts(currentInstanceId, currentUserStatus);
@@ -136,6 +151,18 @@ export const Layout: React.FC = () => {
     if (!currentInstanceId) return;
     setInstanceUnreadCount(currentInstanceId, unreadCountForCurrentInstance);
   }, [currentInstanceId, unreadCountForCurrentInstance, setInstanceUnreadCount]);
+
+  // Централизованный debounce-sync chat-list snapshot в IndexedDB.
+  useLayoutChatListSnapshotSync(currentInstanceId);
+
+  // One-shot reconcile unread с сервером после завершения bootstrap.
+  useLayoutChatListUnreadReconcile({
+    currentInstanceId,
+    currentUserStatus,
+    currentUserId,
+    bootstrapAppliedInstanceId,
+    bootstrapAppliedSeq,
+  });
 
   useLayoutWindowBranding({
     unreadCount: unreadCountForCurrentInstance,
@@ -183,6 +210,7 @@ export const Layout: React.FC = () => {
     setFromMessages,
     setCurrentUserId,
     setCurrentUserStatus,
+    onBootstrapApplied: handleBootstrapApplied,
   });
 
   // Allow main shell while auth/history sync runs if sidebar was hydrated from IndexedDB.

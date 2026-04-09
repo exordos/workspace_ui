@@ -1,3 +1,4 @@
+// Тесты chat-list store: проверяем построение sidebar, unread-логику и reconcile с сервером.
 /**
  * Tests for chatListStore — the central store that manages sidebar chat entries.
  *
@@ -256,7 +257,9 @@ describe("chatListStore", () => {
     it("does not increment unread count for own stream messages", () => {
       useChatListStore.getState().setFromMessages([streamMsg({ id: 1, flags: ["read"] })], 10);
 
-      useChatListStore.getState().addMessage(streamMsg({ id: 2, flags: [], timestamp: 3000, sender_id: 10 }));
+      useChatListStore
+        .getState()
+        .addMessage(streamMsg({ id: 2, flags: [], timestamp: 3000, sender_id: 10 }));
 
       const streams = useChatListStore.getState().streams();
       expect(streams[0]!.badge).toBeUndefined();
@@ -290,8 +293,12 @@ describe("chatListStore", () => {
     it("increments unread count for unread DM messages", () => {
       useChatListStore.setState({ currentUserId: 10 });
 
-      useChatListStore.getState().addMessage(dmMsg({ id: 60, flags: [], timestamp: 3000, sender_id: OTHER_SENDER_ID }));
-      useChatListStore.getState().addMessage(dmMsg({ id: 61, flags: [], timestamp: 4000, sender_id: OTHER_SENDER_ID }));
+      useChatListStore
+        .getState()
+        .addMessage(dmMsg({ id: 60, flags: [], timestamp: 3000, sender_id: OTHER_SENDER_ID }));
+      useChatListStore
+        .getState()
+        .addMessage(dmMsg({ id: 61, flags: [], timestamp: 4000, sender_id: OTHER_SENDER_ID }));
 
       const dms = useChatListStore.getState().dms();
       const dm = dms.find((d) => d.type === "dm");
@@ -301,8 +308,12 @@ describe("chatListStore", () => {
     it("does not increment unread count for own DM messages", () => {
       useChatListStore.setState({ currentUserId: 10 });
 
-      useChatListStore.getState().setFromMessages([dmMsg({ id: 59, flags: ["read"], timestamp: 1000 })], 10);
-      useChatListStore.getState().addMessage(dmMsg({ id: 60, flags: [], timestamp: 3000, sender_id: 10 }));
+      useChatListStore
+        .getState()
+        .setFromMessages([dmMsg({ id: 59, flags: ["read"], timestamp: 1000 })], 10);
+      useChatListStore
+        .getState()
+        .addMessage(dmMsg({ id: 60, flags: [], timestamp: 3000, sender_id: 10 }));
 
       const dms = useChatListStore.getState().dms();
       const dm = dms.find((d) => d.type === "dm");
@@ -547,6 +558,119 @@ describe("chatListStore", () => {
       useChatListStore.getState().incrementUnreadForMessages([999]);
 
       expect(useChatListStore.getState().streams()[0]!.badge).toBe(1);
+    });
+  });
+
+  describe("reconcileUnreadFromServer", () => {
+    it("authoritatively updates stream/topic unread counts", () => {
+      useChatListStore
+        .getState()
+        .setFromMessages(
+          [
+            streamMsg({
+              id: 1,
+              stream_id: 5,
+              subject: "topic1",
+              flags: [],
+              sender_id: OTHER_SENDER_ID,
+            }),
+            streamMsg({
+              id: 2,
+              stream_id: 5,
+              subject: "topic2",
+              flags: [],
+              sender_id: OTHER_SENDER_ID,
+            }),
+          ],
+          10,
+        );
+
+      useChatListStore.getState().reconcileUnreadFromServer({
+        totalCount: 3,
+        streams: [{ streamId: 5, topic: "topic1", unreadMessageIds: [101, 102, 103] }],
+        dms: [],
+      });
+
+      const stream = useChatListStore.getState().streamsMap.get(5);
+      expect(stream?.topics.get("topic1")?.unreadCount).toBe(3);
+      expect(stream?.topics.get("topic2")?.unreadCount).toBe(0);
+    });
+
+    it("authoritatively updates dm unread counts", () => {
+      useChatListStore
+        .getState()
+        .setFromMessages(
+          [
+            dmMsg({ id: 50, flags: [], sender_id: OTHER_SENDER_ID }),
+            dmMsg({ id: 51, flags: [], sender_id: OTHER_SENDER_ID }),
+          ],
+          10,
+        );
+
+      useChatListStore.getState().reconcileUnreadFromServer({
+        totalCount: 1,
+        streams: [],
+        dms: [{ userIds: [20], unreadMessageIds: [999] }],
+      });
+
+      const dms = useChatListStore.getState().dmsMap;
+      const dmEntry = dms.get("10,20");
+      expect(dmEntry?.unreadCount).toBe(1);
+    });
+
+    it("resets stale unread counts to zero for chats missing in snapshot", () => {
+      useChatListStore
+        .getState()
+        .setFromMessages([streamMsg({ id: 1, flags: [], sender_id: OTHER_SENDER_ID })], 10);
+
+      useChatListStore.getState().reconcileUnreadFromServer({
+        totalCount: 0,
+        streams: [],
+        dms: [],
+      });
+
+      const stream = useChatListStore.getState().streamsMap.get(5);
+      expect(stream?.topics.get("topic1")?.unreadCount).toBe(0);
+    });
+
+    it("upserts messageIdToLocation entries from unread snapshot", () => {
+      useChatListStore
+        .getState()
+        .setFromMessages([streamMsg({ id: 1, stream_id: 5, subject: "topic1" })], 10);
+
+      useChatListStore.getState().reconcileUnreadFromServer({
+        totalCount: 2,
+        streams: [{ streamId: 5, topic: "topic1", unreadMessageIds: [777] }],
+        dms: [{ userIds: [20], unreadMessageIds: [888] }],
+      });
+
+      const streamLocation = useChatListStore.getState().messageIdToLocation.get(777);
+      expect(streamLocation).toEqual({
+        type: "stream",
+        stream_id: 5,
+        topic: "topic1",
+      });
+
+      const dmLocation = useChatListStore.getState().messageIdToLocation.get(888);
+      expect(dmLocation).toEqual({
+        type: "dm",
+        dmKey: "10,20",
+      });
+    });
+
+    it("does not create new sidebar rows for unknown chats", () => {
+      useChatListStore
+        .getState()
+        .setFromMessages([streamMsg({ id: 1, stream_id: 5, subject: "topic1" })], 10);
+
+      useChatListStore.getState().reconcileUnreadFromServer({
+        totalCount: 4,
+        streams: [{ streamId: 999, topic: "new-topic", unreadMessageIds: [1, 2] }],
+        dms: [{ userIds: [777], unreadMessageIds: [3, 4] }],
+      });
+
+      expect(useChatListStore.getState().streamsMap.has(999)).toBe(false);
+      expect(useChatListStore.getState().dmsMap.has("10,777")).toBe(false);
     });
   });
 

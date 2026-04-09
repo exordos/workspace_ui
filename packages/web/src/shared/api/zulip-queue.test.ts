@@ -211,15 +211,10 @@ describe("deleteQueue", () => {
 // ---------------------------------------------------------------------------
 
 describe("fetchUnreadMessagesCountForCredentials", () => {
-  it("returns unread count from unread_msgs payload", async () => {
+  it("returns unread count from messages payload", async () => {
     mockFetch.mockResolvedValue(
       jsonResponse({
-        unread_msgs: {
-          streams: [{ unread_message_ids: [1, 2] }],
-          pms: [{ unread_message_ids: [3] }],
-          huddles: [],
-          mentions: [],
-        },
+        messages: [{ id: 1 }, { id: 2 }, { id: 3 }],
       }),
     );
 
@@ -230,9 +225,17 @@ describe("fetchUnreadMessagesCountForCredentials", () => {
     });
 
     expect(count).toBe(3);
-    expect(mockFetch).toHaveBeenCalledWith(
-      "https://other.example.com/api/v1/users/me/unread_messages",
-      expect.objectContaining({ method: "GET" }),
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const fetchArgs = mockFetch.mock.calls[0];
+    const calledUrl = new URL(String(fetchArgs?.[0]));
+    expect(fetchArgs?.[1]).toEqual(expect.objectContaining({ method: "GET" }));
+    expect(calledUrl.origin).toBe("https://other.example.com");
+    expect(calledUrl.pathname).toBe("/api/v1/messages");
+    expect(calledUrl.searchParams.get("anchor")).toBe("newest");
+    expect(calledUrl.searchParams.get("num_before")).toBe("5000");
+    expect(calledUrl.searchParams.get("num_after")).toBe("0");
+    expect(calledUrl.searchParams.get("narrow")).toBe(
+      JSON.stringify([{ operator: "is", operand: "unread" }]),
     );
   });
 
@@ -251,12 +254,7 @@ describe("fetchUnreadMessagesCountForCredentials", () => {
   it("returns null without network call when realm url is invalid", async () => {
     mockFetch.mockResolvedValue(
       jsonResponse({
-        unread_msgs: {
-          streams: [{ unread_message_ids: [1] }],
-          pms: [],
-          huddles: [],
-          mentions: [],
-        },
+        messages: [{ id: 1 }],
       }),
     );
 

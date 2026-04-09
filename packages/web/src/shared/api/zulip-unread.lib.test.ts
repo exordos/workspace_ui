@@ -1,5 +1,6 @@
+// Тесты парсинга unread-ответа Zulip: и total count, и подробный snapshot.
 import { describe, expect, it } from "vitest";
-import { parseUnreadMessagesCount } from "./zulip-unread.lib";
+import { parseUnreadMessagesCount, parseUnreadMessagesSnapshot } from "./zulip-unread.lib";
 
 describe("parseUnreadMessagesCount", () => {
   it("prefers direct unread count when present", () => {
@@ -37,5 +38,126 @@ describe("parseUnreadMessagesCount", () => {
     expect(parseUnreadMessagesCount(null)).toBeNull();
     expect(parseUnreadMessagesCount({})).toBeNull();
     expect(parseUnreadMessagesCount({ unread_msgs: [] })).toBeNull();
+  });
+
+  it("supports /messages payload and skips read-flagged entries", () => {
+    const result = parseUnreadMessagesCount({
+      messages: [{ id: 1, flags: [] }, { id: 2 }, { id: 3, flags: ["read"] }],
+    });
+    expect(result).toBe(2);
+  });
+});
+
+describe("parseUnreadMessagesSnapshot", () => {
+  it("parses streams, pms and huddles buckets", () => {
+    const result = parseUnreadMessagesSnapshot({
+      unread_msgs: {
+        count: 7,
+        streams: [{ stream_id: 10, topic: "bugs", unread_message_ids: [1, 2] }],
+        pms: [{ sender_id: 20, unread_message_ids: [3] }],
+        huddles: [{ user_ids_string: "20,30", unread_message_ids: [4, 5] }],
+        mentions: [{ unread_message_ids: [6, 7] }],
+      },
+    });
+
+    expect(result).toEqual({
+      totalCount: 7,
+      streams: [{ streamId: 10, topic: "bugs", unreadMessageIds: [1, 2] }],
+      dms: [
+        { userIds: [20], unreadMessageIds: [3] },
+        { userIds: [20, 30], unreadMessageIds: [4, 5] },
+      ],
+    });
+  });
+
+  it("filters invalid ids and normalizes empty stream topic to general", () => {
+    const result = parseUnreadMessagesSnapshot({
+      unread_msgs: {
+        streams: [
+          { stream_id: 10, topic: "", unread_message_ids: [1, -2, 0, "3"] },
+          { stream_id: 0, topic: "ignored", unread_message_ids: [10] },
+        ],
+        pms: [{ sender_id: 20, unread_message_ids: [3, "4", -5] }],
+        huddles: [{ user_ids_string: "20, x, 30, 20", unread_message_ids: [4, null, 5] }],
+        mentions: [],
+      },
+    });
+
+    expect(result).toEqual({
+      totalCount: 5,
+      streams: [{ streamId: 10, topic: "general", unreadMessageIds: [1] }],
+      dms: [
+        { userIds: [20], unreadMessageIds: [3] },
+        { userIds: [20, 30], unreadMessageIds: [4, 5] },
+      ],
+    });
+  });
+
+  it("returns zero total and empty buckets for valid empty payload", () => {
+    const result = parseUnreadMessagesSnapshot({
+      unread_msgs: {
+        streams: [],
+        pms: [],
+        huddles: [],
+        mentions: [],
+      },
+    });
+    expect(result).toEqual({ totalCount: 0, streams: [], dms: [] });
+  });
+
+  it("returns null for invalid payload", () => {
+    expect(parseUnreadMessagesSnapshot(null)).toBeNull();
+    expect(parseUnreadMessagesSnapshot({})).toBeNull();
+    expect(parseUnreadMessagesSnapshot({ unread_msgs: [] })).toBeNull();
+    expect(parseUnreadMessagesSnapshot({ unread_msgs: { streams: [], pms: [] } })).toBeNull();
+  });
+
+  it("parses unread snapshot from /messages payload", () => {
+    const result = parseUnreadMessagesSnapshot({
+      messages: [
+        { id: 1, type: "stream", stream_id: 10, subject: "bugs" },
+        { id: 2, type: "stream", stream_id: 10, subject: "bugs" },
+        {
+          id: 3,
+          type: "private",
+          display_recipient: [
+            { id: 20, full_name: "Alice" },
+            { id: 30, full_name: "Bob" },
+          ],
+        },
+        {
+          id: 4,
+          type: "private",
+          display_recipient: [
+            { id: 30, full_name: "Bob" },
+            { id: 20, full_name: "Alice" },
+          ],
+        },
+      ],
+    });
+
+    expect(result).toEqual({
+      totalCount: 4,
+      streams: [{ streamId: 10, topic: "bugs", unreadMessageIds: [1, 2] }],
+      dms: [{ userIds: [20, 30], unreadMessageIds: [3, 4] }],
+    });
+  });
+
+  it("filters invalid messages in /messages payload", () => {
+    const result = parseUnreadMessagesSnapshot({
+      messages: [
+        { id: "1" },
+        { id: 2, type: "stream", stream_id: 0, subject: "ignored" },
+        { id: 3, type: "stream", stream_id: 10, subject: "" },
+        { id: 4, type: "private", sender_id: 77, flags: ["read"] },
+        { id: 5, type: "private", sender_id: 77 },
+      ],
+    });
+
+    expect(result).toEqual({
+      totalCount: 3,
+      streams: [{ streamId: 10, topic: "general", unreadMessageIds: [3] }],
+      dms: [{ userIds: [77], unreadMessageIds: [5] }],
+    });
   });
 });

@@ -3,9 +3,8 @@
  */
 import { t } from "~/i18n/i18n";
 import { getBasicAuthValue } from "~/shared/lib/auth-guard";
-import { getCurrentInstance, zulipApi } from "./client";
 import { env } from "~/shared/lib/env";
-import { parseUnreadMessagesCount } from "./zulip-unread.lib";
+import { getCurrentInstance, zulipApi } from "./client";
 import {
   getAuthValueForCredentials,
   getValidatedCredentialsRealm,
@@ -15,6 +14,7 @@ import {
   zulipPipelinePost,
   ensureZulipApiReady,
 } from "./zulip-pipeline.internal";
+import { parseUnreadMessagesCount } from "./zulip-unread.lib";
 import {
   buildUserTopicsCacheKey,
   getCachedUserTopicsForKey,
@@ -22,13 +22,13 @@ import {
   parseUserTopics,
   setCachedUserTopicsForKey,
 } from "./zulip-user-topics.internal";
+import { validateEventCursor, validateQueueId } from "./zulip-validation.internal";
 import type {
   GetEventsResult,
   RegisterQueueResult,
   ZulipCredentials,
   ZulipUserTopic,
 } from "./zulip.types";
-import { validateEventCursor, validateQueueId } from "./zulip-validation.internal";
 
 /** Registers an event queue (POST /api/v1/register). Returns queue_id for subsequent long-polling. */
 export async function registerQueue(eventTypes: string[]): Promise<RegisterQueueResult> {
@@ -165,7 +165,7 @@ export async function deleteQueue(queueId: string, credentials?: ZulipCredential
 }
 
 /**
- * Reads total unread count for any instance credentials (GET /api/v1/users/me/unread_messages).
+ * Reads total unread count for any instance credentials (GET /api/v1/messages?narrow=is:unread).
  * Returns null when request fails or payload cannot be parsed.
  */
 export async function fetchUnreadMessagesCountForCredentials(
@@ -178,7 +178,13 @@ export async function fetchUnreadMessagesCountForCredentials(
   } catch {
     return null;
   }
-  const url = `${base}${env.ZULIP_API_PATH}/users/me/unread_messages`;
+  const url = new URL(`${base}${env.ZULIP_API_PATH}/messages`);
+  url.searchParams.set("anchor", "newest");
+  url.searchParams.set("num_before", "5000");
+  url.searchParams.set("num_after", "0");
+  url.searchParams.set("narrow", JSON.stringify([{ operator: "is", operand: "unread" }]));
+  url.searchParams.set("allow_empty_topic_name", "true");
+  url.searchParams.set("client_gravatar", "true");
   const authValue = getBasicAuthValue({
     email: credentials.email,
     apiKey: credentials.apiKey,
@@ -187,7 +193,7 @@ export async function fetchUnreadMessagesCountForCredentials(
 
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await fetch(url.toString(), {
       method: "GET",
       headers: {
         Authorization: authValue,

@@ -1,3 +1,4 @@
+// Основной API-слой для работы с Zulip (очереди, unread, сообщения, флаги, профили и т.д.).
 /**
  * Zulip API client (via zulip-js).
  *
@@ -23,7 +24,8 @@ import {
   ZULIP_STREAM_CHAT_NUM_BEFORE,
 } from "~/shared/lib/zulip-message-window.lib";
 import { getCurrentInstance, refreshZulipApiBase, zulipApi } from "./client";
-import { parseUnreadMessagesCount } from "./zulip-unread.lib";
+import { parseUnreadMessagesCount, parseUnreadMessagesSnapshot } from "./zulip-unread.lib";
+import type { ZulipUnreadMessagesSnapshot } from "./zulip-unread.lib";
 
 if (typeof (globalThis as unknown as { Buffer?: unknown }).Buffer === "undefined") {
   (globalThis as unknown as { Buffer: typeof Buffer }).Buffer = Buffer;
@@ -680,7 +682,7 @@ export async function registerQueueForCredentials(
 
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await fetch(url.toString(), {
       method: "POST",
       headers: {
         Authorization: authValue,
@@ -764,8 +766,12 @@ export async function deleteQueue(queueId: string, credentials?: ZulipCredential
   }
 }
 
+const UNREAD_MESSAGES_NUM_BEFORE = 5000;
+const UNREAD_MESSAGES_NUM_AFTER = 0;
+const UNREAD_MESSAGES_NARROW = JSON.stringify([{ operator: "is", operand: "unread" }]);
+
 /**
- * Reads total unread count for any instance credentials (GET /api/v1/users/me/unread_messages).
+ * Reads total unread count for any instance credentials (GET /api/v1/messages?narrow=is:unread).
  * Returns null when request fails or payload cannot be parsed.
  */
 export async function fetchUnreadMessagesCountForCredentials(
@@ -778,7 +784,13 @@ export async function fetchUnreadMessagesCountForCredentials(
   } catch {
     return null;
   }
-  const url = `${base}${env.ZULIP_API_PATH}/users/me/unread_messages`;
+  const url = new URL(`${base}${env.ZULIP_API_PATH}/messages`);
+  url.searchParams.set("anchor", "newest");
+  url.searchParams.set("num_before", String(UNREAD_MESSAGES_NUM_BEFORE));
+  url.searchParams.set("num_after", String(UNREAD_MESSAGES_NUM_AFTER));
+  url.searchParams.set("narrow", UNREAD_MESSAGES_NARROW);
+  url.searchParams.set("allow_empty_topic_name", "true");
+  url.searchParams.set("client_gravatar", "true");
   const authValue = getBasicAuthValue({
     email: credentials.email,
     apiKey: credentials.apiKey,
@@ -787,7 +799,7 @@ export async function fetchUnreadMessagesCountForCredentials(
 
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await fetch(url.toString(), {
       method: "GET",
       headers: {
         Authorization: authValue,
@@ -806,6 +818,23 @@ export async function fetchUnreadMessagesCountForCredentials(
   } catch {
     return null;
   }
+}
+
+// Читает полный unread snapshot для текущего активного инстанса через GET /messages is:unread.
+// Используется в startup reconcile для приведения badge к серверной истине.
+export async function fetchUnreadMessagesSnapshot(): Promise<ZulipUnreadMessagesSnapshot | null> {
+  const res = await zulipPipelineGet("/messages", {
+    anchor: "newest",
+    num_before: String(UNREAD_MESSAGES_NUM_BEFORE),
+    num_after: String(UNREAD_MESSAGES_NUM_AFTER),
+    narrow: UNREAD_MESSAGES_NARROW,
+    allow_empty_topic_name: "true",
+    client_gravatar: "true",
+  });
+  if (!res?.ok) {
+    return null;
+  }
+  return parseUnreadMessagesSnapshot(res.data);
 }
 
 /** Long-polls for events (GET /api/v1/events). Supports timeout and AbortSignal. */
@@ -1581,8 +1610,7 @@ export async function fetchMessagesWithNarrowPage(
         found_newest?: boolean;
         foundNewest?: boolean;
       };
-      if (data.result === "error")
-        return { messages: [], foundOldest: false, foundNewest: false };
+      if (data.result === "error") return { messages: [], foundOldest: false, foundNewest: false };
       return {
         messages: (data.messages ?? []).map(mapZulipMessage),
         foundOldest: data.found_oldest ?? data.foundOldest ?? false,

@@ -1,6 +1,6 @@
-/**
- * Types for the chat-list Zustand store (see chat-list.model.ts).
- */
+// Типы Zustand-store для chat-list.
+// Здесь описаны состояние и публичные actions, которые используют layout/widgets.
+import type { ZulipUnreadMessagesSnapshot } from "~/shared/api/zulip-unread.lib";
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import type { ChatListSnapshotSerialized } from "~/shared/lib/chat-list-snapshot-serialize.lib";
 import type {
@@ -35,6 +35,8 @@ export interface ChatListState {
   decrementUnreadForTopic: (streamId: number, topic: string, count: number) => void;
   decrementUnreadForDmKey: (dmKey: string, count: number) => void;
   incrementUnreadForMessages: (messageIds: number[]) => void;
+  // Приводит unread к серверной истине для уже существующих чатов (authoritative existing).
+  reconcileUnreadFromServer: (snapshot: ZulipUnreadMessagesSnapshot) => void;
   handleDeleteMessages: (messageIds: number[]) => void;
   streams: () => StreamWithLast[];
   dms: () => Extract<SidebarChat, { type: "dm" }>[];
