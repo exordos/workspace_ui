@@ -59,6 +59,7 @@ export interface PaletteTokens {
   /** Call */
   "call-bg": string;
   "call-green": string;
+  "call-red": string;
 
   /** Search */
   "search-bg": string;

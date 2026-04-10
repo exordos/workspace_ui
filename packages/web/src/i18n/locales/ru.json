@@ -233,6 +233,7 @@
     "joinCall": "Подключиться",
     "incomingCall": "Входящий звонок",
     "incomingFrom": "{{name}} звонит",
+    "incomingChooseMethod": "Выберите удобный способ для звонка",
     "accept": "Принять",
     "decline": "Отклонить",
     "recentCalls": "Последние звонки Jitsi",

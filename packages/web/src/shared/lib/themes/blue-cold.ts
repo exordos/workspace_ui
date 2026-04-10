@@ -48,6 +48,7 @@ export const blueCold: ThemePalette = {
 
     "call-bg": "#1f4637",
     "call-green": "#26c038",
+    "call-red": "#f04c4c",
 
     "search-bg": "rgba(255, 255, 255, 0.08)",
     "search-hint": "#707070",
@@ -103,6 +104,7 @@ export const blueCold: ThemePalette = {
 
     "call-bg": "#cfe5d6",
     "call-green": "#26c038",
+    "call-red": "#f04c4c",
 
     "search-bg": "#eef5fd",
     "search-hint": "#97a3b2",

@@ -2,7 +2,7 @@
  * Notification sound — plays short modern tones via Web Audio API.
  *
  * Uses oscillators (no external audio files needed). Supports multiple presets:
- * default, subtle, digital, glass, pulse, and none.
+ * default, subtle, digital, glass, pulse, soft_call, and none.
  *
  * Usage:
  *   import { playNotificationSound } from "~/shared/lib/notification-sound";
@@ -11,7 +11,14 @@
 
 let audioContext: AudioContext | null = null;
 
-type NotificationSoundPreset = "default" | "subtle" | "digital" | "glass" | "pulse" | "none";
+type NotificationSoundPreset =
+  | "default"
+  | "subtle"
+  | "digital"
+  | "glass"
+  | "pulse"
+  | "soft_call"
+  | "none";
 
 interface ToneSpec {
   frequency: number;
@@ -34,6 +41,15 @@ const TONE_PRESETS: Readonly<
   pulse: [
     { frequency: 640, gain: 0.09, duration: 0.1, startOffset: 0, waveType: "square" },
     { frequency: 760, gain: 0.085, duration: 0.1, startOffset: 0.14, waveType: "square" },
+  ],
+  soft_call: [
+    { frequency: 622, gain: 0.11, duration: 0.09, startOffset: 0, waveType: "triangle" },
+    { frequency: 622, gain: 0.105, duration: 0.09, startOffset: 0.12, waveType: "triangle" },
+    { frequency: 740, gain: 0.1, duration: 0.09, startOffset: 0.24, waveType: "triangle" },
+    { frequency: 622, gain: 0.1, duration: 0.09, startOffset: 0.36, waveType: "triangle" },
+    { frequency: 740, gain: 0.095, duration: 0.09, startOffset: 0.48, waveType: "triangle" },
+    { frequency: 622, gain: 0.09, duration: 0.09, startOffset: 0.6, waveType: "triangle" },
+    { frequency: 740, gain: 0.09, duration: 0.11, startOffset: 0.72, waveType: "triangle" },
   ],
 };
 

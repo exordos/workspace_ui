@@ -115,6 +115,16 @@ export const env = {
   })(),
 
   /**
+   * Incoming call modal visual variant.
+   * `large` renders centered modal, `compact` keeps top-right toast-like popup.
+   * Invalid values fallback to `large`.
+   */
+  CALL_INCOMING_MODAL_VARIANT: (() => {
+    const raw = optional("VITE_CALL_INCOMING_MODAL_VARIANT", "large").toLowerCase();
+    return raw === "compact" ? "compact" : "large";
+  })() as "large" | "compact",
+
+  /**
    * CDN base URL for static assets (e.g. `https://cdn.example.com/workspace`).
    * When set, all JS/CSS/image assets are loaded from CDN instead of origin.
    * Vite handles this via `base` config — no code changes needed in components.
@@ -156,7 +166,10 @@ export const env = {
    */
   MESSAGE_FLOW_DEBUG: (() => {
     if (import.meta.env.MODE === "test") return false;
-    const v = optional("VITE_MESSAGE_FLOW_DEBUG", import.meta.env.DEV ? "true" : "false").toLowerCase();
+    const v = optional(
+      "VITE_MESSAGE_FLOW_DEBUG",
+      import.meta.env.DEV ? "true" : "false",
+    ).toLowerCase();
     return v === "true" || v === "1";
   })(),
 } as const;

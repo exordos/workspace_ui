@@ -32,9 +32,8 @@ const DESKTOP_INSET = 32;
 const DESKTOP_BREAKPOINT = 640;
 // Базовая конфигурация Jitsi, которая относится к самой сессии звонка.
 // Она должна оставаться стабильной и не зависеть от minimize/expand состояния.
-const JITSI_CONFIG_OVERWRITE = {
+const JITSI_CONFIG_OVERWRITE_BASE = {
   startWithAudioMuted: true,
-  startWithVideoMuted: true,
   prejoinConfig: { enabled: false },
 } as const;
 // Настройки интерфейса Jitsi, которые не должны меняться из-за оболочки модалки.
@@ -61,6 +60,7 @@ interface JitsiCallEmbedProps {
   displayName: string;
   domain: string | null;
   roomName: string | null;
+  startWithVideoMuted: boolean;
   onApiReady: (api: JitsiExternalApiWithParticipants) => void;
   onIframeReady: (ref: HTMLElement | null) => void;
   onReadyToClose: () => void;
@@ -72,10 +72,19 @@ const JitsiCallEmbed: React.FC<JitsiCallEmbedProps> = React.memo(function JitsiC
   displayName,
   domain,
   roomName,
+  startWithVideoMuted,
   onApiReady,
   onIframeReady,
   onReadyToClose,
 }) {
+  const configOverwrite = useMemo(
+    () => ({
+      ...JITSI_CONFIG_OVERWRITE_BASE,
+      startWithVideoMuted,
+    }),
+    [startWithVideoMuted],
+  );
+
   if (domain == null || roomName == null) {
     return (
       <div className="absolute inset-0 flex items-center justify-center text-sm text-text-muted">
@@ -92,7 +101,7 @@ const JitsiCallEmbed: React.FC<JitsiCallEmbedProps> = React.memo(function JitsiC
       getIFrameRef={onIframeReady}
       onReadyToClose={onReadyToClose}
       userInfo={{ displayName, email: "" }}
-      configOverwrite={JITSI_CONFIG_OVERWRITE}
+      configOverwrite={configOverwrite}
       interfaceConfigOverwrite={JITSI_INTERFACE_CONFIG_OVERWRITE}
     />
   );
@@ -137,6 +146,7 @@ export const JitsiCallModal: React.FC<JitsiCallModalProps> = ({
   open,
   meetingUrl,
   locationName,
+  startWithVideoMuted = true,
   onClose,
 }) => {
   const fullscreenRef = useRef<HTMLDivElement>(null);
@@ -483,6 +493,7 @@ export const JitsiCallModal: React.FC<JitsiCallModalProps> = ({
                   displayName={displayName}
                   domain={parsedDomain}
                   roomName={parsedRoomName}
+                  startWithVideoMuted={startWithVideoMuted}
                   onApiReady={handleApiReady}
                   onIframeReady={handleIframeReady}
                   onReadyToClose={handleReadyToClose}

@@ -28,6 +28,7 @@ interface MockRndProps {
 // Эти переменные позволяют проверить, что shell-переключения не создают новую Jitsi-сессию.
 let latestRndProps: MockRndProps | null = null;
 let latestJitsiIframe: HTMLIFrameElement | null = null;
+let latestJitsiConfigOverwrite: Record<string, unknown> | undefined;
 let jitsiMountCount = 0;
 let jitsiApiReadyCount = 0;
 let jitsiIframeReadyCount = 0;
@@ -38,6 +39,7 @@ vi.mock("@jitsi/react-sdk", () => ({
   JitsiMeeting: ({
     onApiReady,
     getIFrameRef,
+    configOverwrite,
   }: {
     onApiReady?: (api: {
       getNumberOfParticipants: () => number;
@@ -45,7 +47,10 @@ vi.mock("@jitsi/react-sdk", () => ({
       on: (event: string, callback: () => void) => void;
     }) => void;
     getIFrameRef?: (iframe: HTMLElement | null) => void;
+    configOverwrite?: Record<string, unknown>;
   }) => {
+    latestJitsiConfigOverwrite = configOverwrite;
+
     useEffect(() => {
       // Mount эффекта здесь моделирует создание новой Jitsi-сессии.
       jitsiMountCount += 1;
@@ -109,6 +114,7 @@ describe("JitsiCallModal", () => {
     // После каждого теста обнуляем счётчики, чтобы каждая проверка смотрела только на свой сценарий.
     latestRndProps = null;
     latestJitsiIframe = null;
+    latestJitsiConfigOverwrite = undefined;
     jitsiMountCount = 0;
     jitsiApiReadyCount = 0;
     jitsiIframeReadyCount = 0;
@@ -165,6 +171,23 @@ describe("JitsiCallModal", () => {
       expect(latestJitsiIframe?.getAttribute("allow")).toBe(
         "camera; microphone; fullscreen; display-capture",
       );
+    });
+  });
+
+  it("passes session-level video mute preference to Jitsi config", async () => {
+    render(
+      <JitsiCallModal
+        open
+        meetingUrl="https://meet.genesis-core.tech/room-video-pref"
+        locationName="Video pref"
+        startWithVideoMuted={false}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(latestJitsiConfigOverwrite?.startWithVideoMuted).toBe(false);
+      expect(latestJitsiConfigOverwrite?.startWithAudioMuted).toBe(true);
     });
   });
 
