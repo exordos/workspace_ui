@@ -38,21 +38,47 @@ const MESSAGE_ALLOWED_TAGS = [
   "source",
   "details",
   "summary",
+  "table",
+  "thead",
+  "tbody",
+  "tr",
+  "th",
+  "td",
 ];
 
-const MESSAGE_ADD_ATTR = ["src", "alt", "class", "controls", "preload", "poster", "type"];
+const MESSAGE_ADD_ATTR = [
+  "src",
+  "alt",
+  "class",
+  "controls",
+  "preload",
+  "poster",
+  "type",
+  "colspan",
+  "rowspan",
+  /** Zulip user/group mention markup (`span.user-mention`, `span.user-group-mention`). */
+  "data-user-id",
+  "data-user-group-id",
+];
+
+/** Resolves a relative message media URL (`img` / `video` / `poster`) to absolute using the realm or uploads base. */
+export function resolveMessageMediaUrl(src: string, baseUrl: string): string {
+  const trimmedBase = baseUrl.trim();
+  if (trimmedBase === "") return src;
+  const base = trimmedBase.replace(/\/+$/, "");
+  const s = src.trim();
+  if (s.startsWith("http://") || s.startsWith("https://") || s.startsWith("data:")) {
+    return s;
+  }
+  return s.startsWith("/") ? `${base}${s}` : `${base}/${s}`;
+}
 
 /** Rewrites relative media `src` / `poster` URLs to absolute using the Zulip realm base URL. */
 function rewriteRelativeMediaSrc(html: string, baseUrl: string): string {
   if (!baseUrl?.trim()) return html;
-  const base = baseUrl.replace(/\/+$/, "");
 
   const rewriteAttr = (_match: string, _quote: string, src: string) => {
-    const s = src.trim();
-    if (s.startsWith("http://") || s.startsWith("https://") || s.startsWith("data:")) {
-      return _match;
-    }
-    const absolute = s.startsWith("/") ? `${base}${s}` : `${base}/${s}`;
+    const absolute = resolveMessageMediaUrl(src, baseUrl);
     return _match.replace(src, absolute);
   };
 

@@ -1,11 +1,12 @@
 /**
  * Types for chat page UI subcomponents.
  */
+import type { MockMessage } from "~/shared/api/zulip.types";
 import type { StreamWithLast } from "~/widgets/sidebar/sidebar.types";
 
 export interface EditMessageModalBodyProps {
-  initialContent: string;
-  onSave: (content: string) => void;
+  message: MockMessage;
+  onSave: (markdown: string) => void;
   onClose: () => void;
 }
 

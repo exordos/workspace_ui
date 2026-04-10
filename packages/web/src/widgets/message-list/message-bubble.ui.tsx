@@ -1,8 +1,7 @@
-import type { EmojiClickData } from "emoji-picker-react";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useDownloadStore } from "~/entities/download/download.model";
-import { useUsersStore } from "~/entities/user/user.model";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
+import { useUsersStore } from "~/entities/user/user.model";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
 import { t } from "~/i18n/i18n";
 import type { MockMessage } from "~/shared/api/zulip.types";
@@ -10,6 +9,7 @@ import { buildAuthHeader } from "~/shared/lib/auth-guard";
 import { formatMessageTime, getPresenceState } from "~/shared/lib/format";
 import { sanitizeHtml } from "~/shared/lib/html";
 import { getJitsiMeetingUrl } from "~/shared/lib/jitsi";
+import { messageBodyToUnsanitizedDisplayHtml } from "~/shared/lib/message-markdown-display.lib";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
@@ -19,36 +19,40 @@ import {
   extractUserUploadPath,
 } from "./message-attachment-download.lib";
 import { resolveAvatarSrc } from "./message-avatar.lib";
-import { resolveJitsiLocationName } from "./message-jitsi-location.lib";
-import { normalizeMediaUrl, type MessageMediaGallery } from "./message-list-media.lib";
+import {
+  MESSAGE_BUBBLE_ATTACHMENT_LINK_BASE_CLASSES,
+  MESSAGE_BUBBLE_ATTACHMENT_LINK_STATUS_CLASSES,
+} from "./message-bubble-attachment-styles.lib";
+import { MessageBubbleContextMenu } from "./message-bubble-context-menu.ui";
 import {
   BASE_CONTEXT_SECTIONS,
   JITSI_CONTEXT_SECTIONS,
   LABEL_TO_ACTION,
   type ContextItemLabel,
 } from "./message-bubble-context.lib";
-import { MessageBubbleContextMenu } from "./message-bubble-context-menu.ui";
-import type {
-  MessageBubbleAttachmentDownloadStatus,
-  MessageBubbleCallbacks,
-  MessageBubbleProps,
-} from "./message-bubble.types";
+import { resolveOwnMessageDeliveryStatus } from "./message-bubble-delivery.lib";
 import { groupReactions } from "./message-bubble-emoji.lib";
 import { MessageBubbleJitsiCard } from "./message-bubble-jitsi-card.ui";
 import { MessageBubbleOwnDeliveryIndicator } from "./message-bubble-own-delivery-indicator.ui";
 import {
   AUTH_MEDIA_POSTER_DATA_ATTR,
   AUTH_MEDIA_SRC_DATA_ATTR,
+  collapseDuplicateWorkspaceV1InUrl,
   fetchProtectedUploadBlob,
+  isAuthMediaPlaceholderAttr,
   protectUserUploadMediaSources,
 } from "./message-bubble-protected-media.lib";
+import { expandUserUploadImageLinks } from "./message-bubble-user-upload-links.lib";
 import { MessageBubbleReactionsRow } from "./message-bubble-reactions-row.ui";
-import {
-  MESSAGE_BUBBLE_ATTACHMENT_LINK_BASE_CLASSES,
-  MESSAGE_BUBBLE_ATTACHMENT_LINK_STATUS_CLASSES,
-} from "./message-bubble-attachment-styles.lib";
-import { resolveOwnMessageDeliveryStatus } from "./message-bubble-delivery.lib";
 import { getMessageImagesBaseUrl } from "./message-bubble-realm-html.lib";
+import { resolveJitsiLocationName } from "./message-jitsi-location.lib";
+import { normalizeMediaUrl } from "./message-list-media.lib";
+import { MessageMentionPopover } from "./message-mention-popover.ui";
+import type {
+  MessageBubbleAttachmentDownloadStatus,
+  MessageBubbleProps,
+} from "./message-bubble.types";
+import type { EmojiClickData } from "emoji-picker-react";
 
 export type { MessageBubbleCallbacks, MessageBubbleProps } from "./message-bubble.types";
 
@@ -68,6 +72,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
   }) => {
     const [open, setOpen] = useState(false);
     const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+    const [mentionPopover, setMentionPopover] = useState<{
+      userId: number;
+      anchorRect: DOMRect;
+      fallbackName: string;
+    } | null>(null);
     const getUser = useUsersStore((s) => s.getUser);
     const user = useUsersStore((s) => s.getUser(message.sender_id));
     const trimmedUserName = user?.full_name?.trim();
@@ -84,41 +93,50 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     const handleAuthorClick = useCallback(() => {
       callbacks?.onAuthorClick?.(message.sender_id);
     }, [callbacks, message.sender_id]);
+
+    const closeMentionPopover = useCallback(() => {
+      setMentionPopover(null);
+    }, []);
     const time = formatMessageTime(message.timestamp);
     const reactionGroups = useMemo(
       () => (message.reactions?.length ? groupReactions(message.reactions) : []),
       [message.reactions],
     );
-    const resolveReactionAuthorLabel = useCallback(
-      (userId: number): string => {
-        const reactionUser = getUser(userId);
-        const fullName = reactionUser?.full_name?.trim();
-        const baseName = fullName != null && fullName.length > 0 ? fullName : `#${userId}`;
-        const statusLabel = formatUserStatusLabel(reactionUser?.status);
-        if (statusLabel == null || statusLabel.length === 0) {
-          return baseName;
-        }
-        return `${baseName} — ${statusLabel}`;
-      },
-      [getUser],
-    );
-    const safeMessageHtml = useMemo(() => {
-      const sanitized = sanitizeHtml(message.content, getMessageImagesBaseUrl());
-      return protectUserUploadMediaSources(sanitized);
-    }, [message.content]);
+    const resolveReactionAuthorLabel = useCallback((userId: number): string => {
+      const reactionUser = getUser(userId);
+      const fullName = reactionUser?.full_name?.trim();
+      return fullName != null && fullName.length > 0 ? fullName : `#${userId}`;
+    }, [getUser]);
+    const imagesBase = getMessageImagesBaseUrl();
+    const { safeMessageHtml, displayHtmlForJitsi } = useMemo(() => {
+      const rawHtml = messageBodyToUnsanitizedDisplayHtml(message.content);
+      const sanitized = sanitizeHtml(rawHtml, imagesBase);
+      return {
+        safeMessageHtml: protectUserUploadMediaSources(
+          expandUserUploadImageLinks(sanitized, imagesBase),
+        ),
+        displayHtmlForJitsi: rawHtml,
+      };
+    }, [message.content, imagesBase]);
 
     const messageBodyRef = useRef<HTMLDivElement>(null);
+    const lastInjectedMessageHtmlRef = useRef<string | null>(null);
     const groupedContainerRef = useRef<HTMLDivElement>(null);
     const regularContainerRef = useRef<HTMLDivElement>(null);
-    const attachmentStatusRef = useRef<Map<string, MessageBubbleAttachmentDownloadStatus>>(new Map());
+    const attachmentStatusRef = useRef<Map<string, MessageBubbleAttachmentDownloadStatus>>(
+      new Map(),
+    );
     const attachmentTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
     const [attachmentStatusVersion, setAttachmentStatusVersion] = useState(0);
     const replySelectionRef = useRef<string | undefined>(undefined);
 
-    const setAttachmentStatus = useCallback((path: string, status: MessageBubbleAttachmentDownloadStatus) => {
-      attachmentStatusRef.current.set(path, status);
-      setAttachmentStatusVersion((value) => value + 1);
-    }, []);
+    const setAttachmentStatus = useCallback(
+      (path: string, status: MessageBubbleAttachmentDownloadStatus) => {
+        attachmentStatusRef.current.set(path, status);
+        setAttachmentStatusVersion((value) => value + 1);
+      },
+      [],
+    );
     const startDownload = useDownloadStore((s) => s.startDownload);
     const setDownloadProgress = useDownloadStore((s) => s.setProgress);
     const finishDownload = useDownloadStore((s) => s.finishDownload);
@@ -148,6 +166,21 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       };
     }, []);
 
+    // Keep message HTML out of React's dangerouslySetInnerHTML on every render: parent re-renders
+    // (e.g. presence from useUsersStore) would reapply __html and wipe blob: URLs before effects re-run.
+    useLayoutEffect(() => {
+      const el = messageBodyRef.current;
+      if (!el) return;
+      if (lastInjectedMessageHtmlRef.current === safeMessageHtml) {
+        return;
+      }
+      el.innerHTML = safeMessageHtml;
+      lastInjectedMessageHtmlRef.current = safeMessageHtml;
+      return () => {
+        lastInjectedMessageHtmlRef.current = null;
+      };
+    }, [safeMessageHtml]);
+
     // Load protected uploads with authenticated fetch to avoid browser auth popups.
     useEffect(() => {
       const div = messageBodyRef.current;
@@ -170,13 +203,29 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       ) => {
         const rawValue = element.getAttribute(sourceAttr);
         if (!rawValue) return;
+        if (!isAuthMediaPlaceholderAttr(element.getAttribute(targetAttr))) {
+          return;
+        }
+
+        const fullResolutionUrl =
+          element instanceof HTMLImageElement && element.dataset.originalSrc?.trim()
+            ? element.dataset.originalSrc.trim()
+            : undefined;
+        const fetchFallbackFull =
+          fullResolutionUrl != null &&
+          collapseDuplicateWorkspaceV1InUrl(fullResolutionUrl) !==
+            collapseDuplicateWorkspaceV1InUrl(rawValue)
+            ? fullResolutionUrl
+            : undefined;
 
         const restoreOriginalSource = () => {
           if (cancelled) return;
-          element.setAttribute(targetAttr, rawValue);
+          const restoreUrl =
+            targetAttr === "src" && fullResolutionUrl != null ? fullResolutionUrl : rawValue;
+          element.setAttribute(targetAttr, restoreUrl);
           if (targetAttr === "src") {
             if (element instanceof HTMLImageElement) {
-              element.dataset.originalSrc = rawValue;
+              element.dataset.originalSrc = fullResolutionUrl ?? rawValue;
             }
             if (element instanceof HTMLSourceElement || element instanceof HTMLVideoElement) {
               element.closest("video")?.load();
@@ -184,7 +233,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
           }
         };
 
-        void fetchProtectedUploadBlob(rawValue, headers)
+        void fetchProtectedUploadBlob(rawValue, headers, fetchFallbackFull)
           .then((blob) => {
             if (cancelled) return;
             if (!blob) {
@@ -196,7 +245,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
             element.setAttribute(targetAttr, url);
             if (targetAttr === "src") {
               if (element instanceof HTMLImageElement) {
-                element.dataset.originalSrc = rawValue;
+                element.dataset.originalSrc = fullResolutionUrl ?? rawValue;
               }
               if (element instanceof HTMLSourceElement || element instanceof HTMLVideoElement) {
                 element.closest("video")?.load();
@@ -428,6 +477,29 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
           }
           return;
         }
+
+        const mentionSpan = target.closest("span.user-mention[data-user-id]");
+        if (
+          mentionSpan != null &&
+          callbacks?.onOpenDirectMessage != null &&
+          !mentionSpan.classList.contains("user-group-mention")
+        ) {
+          const raw = mentionSpan.getAttribute("data-user-id");
+          if (raw !== "*" && raw != null && raw.trim() !== "") {
+            const id = Number(raw);
+            if (Number.isFinite(id) && Number.isInteger(id) && id > 0) {
+              event.preventDefault();
+              event.stopPropagation();
+              setMentionPopover({
+                userId: id,
+                anchorRect: mentionSpan.getBoundingClientRect(),
+                fallbackName: mentionSpan.textContent?.trim() ?? "",
+              });
+              return;
+            }
+          }
+        }
+
         const spoilerHeader = target.closest(".spoiler-header");
         if (spoilerHeader) {
           event.preventDefault();
@@ -476,6 +548,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
         }
       },
       [
+        callbacks?.onOpenDirectMessage,
         finishDownload,
         mediaGallery,
         scheduleAttachmentStatusClear,
@@ -494,7 +567,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       };
     }, [handleMessageBodyClick]);
 
-    const jitsiUrl = getJitsiMeetingUrl(message.content);
+    const jitsiUrl =
+      getJitsiMeetingUrl(message.content) ?? getJitsiMeetingUrl(displayHtmlForJitsi);
     const isJitsiCall = jitsiUrl != null;
     const jitsiLocationName = isJitsiCall ? resolveJitsiLocationName(message) : "";
     const ownDeliveryStatus = isOwn ? resolveOwnMessageDeliveryStatus(message) : null;
@@ -512,6 +586,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
                 : "failed"
           }
           onViews={callbacks?.onViews}
+          onRetryFailedOutgoing={callbacks?.onRetryFailedOutgoing}
+          onRemoveFailedOutgoing={callbacks?.onRemoveFailedOutgoing}
         />
       ) : null;
     const bubbleSurfaceClass = "rounded-[18px]";
@@ -546,6 +622,18 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       />
     );
 
+    const mentionPopoverPortal =
+      mentionPopover != null && callbacks?.onOpenDirectMessage != null ? (
+        <MessageMentionPopover
+          userId={mentionPopover.userId}
+          anchorRect={mentionPopover.anchorRect}
+          fallbackName={mentionPopover.fallbackName}
+          onClose={closeMentionPopover}
+          onOpenDirectMessage={callbacks.onOpenDirectMessage}
+          onOpenUserProfile={callbacks.onAuthorClick}
+        />
+      ) : null;
+
     const bubbleInner = isJitsiCall ? (
       <>
         <MessageBubbleJitsiCard
@@ -565,7 +653,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       <>
         <div
           className={`relative overflow-hidden px-3 py-2 pr-14 ${
-            hasReactions ? "pb-8" : "pb-5"
+            hasReactions ? "pb-10" : "pb-5"
           } ${bubbleSurfaceClass} ${
             isOwn
               ? `${ownBubbleTailClass} bg-msg-own-bg text-text-primary`
@@ -574,10 +662,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
         >
           <div
             ref={messageBodyRef}
-            className="message-body [&_pre]:bg-bg/50 select-text break-words [&_a]:text-accent [&_a]:underline hover:[&_a]:opacity-90 [&_blockquote]:border-l-2 [&_blockquote]:border-border-subtle [&_blockquote]:pl-2 [&_blockquote]:italic [&_blockquote]:text-text-muted [&_img]:my-1 [&_img]:h-auto [&_img]:max-w-full [&_img]:cursor-pointer [&_img]:rounded [&_p:last-child]:mb-0 [&_p]:mb-1 [&_pre]:rounded [&_pre]:p-2 [&_pre]:text-sm"
-            dangerouslySetInnerHTML={{
-              __html: safeMessageHtml,
-            }}
+            className="message-body min-w-0 max-w-full select-text break-words [&_a]:text-accent [&_a]:underline hover:[&_a]:opacity-90 [&_blockquote]:border-l-2 [&_blockquote]:border-border-subtle [&_blockquote]:pl-2 [&_blockquote]:italic [&_blockquote]:text-text-muted [&_img]:my-1 [&_img]:h-auto [&_img]:max-w-full [&_img]:cursor-pointer [&_img]:rounded [&_p:last-child]:mb-0 [&_p]:mb-1 [&_pre]:my-1 [&_pre]:max-w-full [&_pre]:min-w-0 [&_pre]:border-l-2 [&_pre]:border-border-subtle [&_pre]:pl-2 [&_pre]:pr-2 [&_pre]:py-2 [&_pre]:italic [&_pre]:text-text-muted [&_pre]:text-sm [&_pre]:font-mono [&_pre]:whitespace-pre-wrap [&_pre]:[overflow-wrap:anywhere] [&_pre_code]:max-w-full [&_pre_code]:min-w-0 [&_pre_code]:whitespace-pre-wrap [&_pre_code]:[overflow-wrap:anywhere] [&_span.user-mention]:cursor-pointer [&_span.user-mention]:text-accent hover:[&_span.user-mention]:opacity-90 [&_table]:my-2 [&_table]:w-full [&_table]:border-collapse [&_table]:text-sm [&_td]:border [&_td]:border-border-subtle [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-border-subtle [&_th]:px-2 [&_th]:py-1 [&_th]:text-left"
           />
           <div className="absolute bottom-2 right-2 flex items-center gap-1 text-[11px] text-text-muted">
             <span>{time}</span>
@@ -598,28 +683,114 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
 
     if (inSenderGroup) {
       return (
+        <>
+          <div
+            ref={groupedContainerRef}
+            data-message-id={message.id}
+            data-testid={`message-${message.id}`}
+            data-focused={isFocused ? "true" : "false"}
+            role="button"
+            tabIndex={0}
+            onKeyDown={handleKeyboardContextMenu}
+            className={`selectable hover:bg-bg-elevated/30 group relative flex items-start gap-2 py-2 ${
+              isSelected ? `${bubbleSurfaceClass} ring-1 ring-accent` : ""
+            } ${isFocused ? `${bubbleSurfaceClass} ring-2 ring-accent-soft` : ""}`}
+          >
+            {selectionMode && (
+              <button
+                type="button"
+                onClick={() => callbacks?.onToggleSelect?.(message)}
+                className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded border border-border-subtle transition-colors"
+                aria-label={isSelected ? t("message.deselect") : t("message.select")}
+              >
+                {isSelected && <Icon name="check" size={14} className="text-accent" />}
+              </button>
+            )}
+            <div className={`min-w-0 flex-1 ${isOwn ? "flex flex-col items-end" : ""}`}>
+              {showSenderName && (
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <span className="text-sm font-semibold text-text-primary">{displayName}</span>
+                  {senderStatusLabel != null && senderStatusLabel.length > 0 && (
+                    <span className="truncate text-[11px] text-text-secondary">
+                      {senderStatusLabel}
+                    </span>
+                  )}
+                  {message.subject && (
+                    <span
+                      className={`text-[11px] font-medium ${isOwn ? "text-call-green" : "text-accent-soft"}`}
+                    >
+                      #{message.subject}
+                    </span>
+                  )}
+                </div>
+              )}
+              <div
+                className={`relative min-w-0 max-w-[85%] text-sm leading-relaxed ${bubbleSurfaceClass} ${
+                  showSenderName ? "mt-1" : "mt-0.5"
+                } ${isOwn ? "flex flex-col items-end" : ""}`}
+              >
+                {bubbleInner}
+              </div>
+            </div>
+          </div>
+          {mentionPopoverPortal}
+        </>
+      );
+    }
+
+    return (
+      <>
         <div
-          ref={groupedContainerRef}
+          ref={regularContainerRef}
           data-message-id={message.id}
           data-testid={`message-${message.id}`}
           data-focused={isFocused ? "true" : "false"}
           role="button"
           tabIndex={0}
           onKeyDown={handleKeyboardContextMenu}
-          className={`selectable hover:bg-bg-elevated/30 group relative flex items-start gap-2 py-2 ${
-            isSelected ? `${bubbleSurfaceClass} ring-1 ring-accent` : ""
-          } ${isFocused ? `${bubbleSurfaceClass} ring-2 ring-accent-soft` : ""}`}
+          className={`selectable hover:bg-bg-elevated/30 group relative flex gap-2 px-4 py-2 ${
+            isOwn ? "flex-row-reverse" : ""
+          } ${isSelected ? `${bubbleSurfaceClass} ring-1 ring-accent` : ""} ${
+            isFocused ? `${bubbleSurfaceClass} ring-2 ring-accent-soft` : ""
+          }`}
         >
           {selectionMode && (
             <button
               type="button"
               onClick={() => callbacks?.onToggleSelect?.(message)}
-              className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded border border-border-subtle transition-colors"
+              className="flex h-5 w-5 flex-shrink-0 items-center justify-center self-center rounded border border-border-subtle transition-colors"
               aria-label={isSelected ? t("message.deselect") : t("message.select")}
             >
               {isSelected && <Icon name="check" size={14} className="text-accent" />}
             </button>
           )}
+          {!isOwn &&
+            (showAvatar ? (
+              <button
+                type="button"
+                onClick={handleAuthorClick}
+                className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
+                aria-label={t("a11y.openUserProfile", { name: displayName })}
+              >
+                <span className="relative block">
+                  <Avatar
+                    size="lg"
+                    className="flex-shrink-0 bg-bg-elevated text-accent-soft"
+                    src={avatarSrc ?? undefined}
+                  >
+                    {displayName.slice(0, 1)}
+                  </Avatar>
+                  <PresenceIndicator
+                    status={presenceState}
+                    size="sm"
+                    className="absolute bottom-0 right-0"
+                  />
+                </span>
+              </button>
+            ) : (
+              <div className="w-12 flex-shrink-0" aria-hidden />
+            ))}
+          {isOwn && <div className="w-12 flex-shrink-0" />}
           <div className={`min-w-0 flex-1 ${isOwn ? "flex flex-col items-end" : ""}`}>
             {showSenderName && (
               <div className="flex flex-wrap items-baseline gap-2">
@@ -631,7 +802,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
                 )}
                 {message.subject && (
                   <span
-                    className={`text-[11px] font-medium ${isOwn ? "text-call-green" : "text-accent-soft"}`}
+                    className={`text-[11px] font-medium ${
+                      isOwn ? "text-call-green" : "text-accent-soft"
+                    }`}
                   >
                     #{message.subject}
                   </span>
@@ -639,7 +812,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
               </div>
             )}
             <div
-              className={`relative max-w-[85%] text-sm leading-relaxed ${bubbleSurfaceClass} ${
+              className={`relative min-w-0 max-w-[85%] text-sm leading-relaxed ${bubbleSurfaceClass} ${
                 showSenderName ? "mt-1" : "mt-0.5"
               } ${isOwn ? "flex flex-col items-end" : ""}`}
             >
@@ -647,90 +820,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
             </div>
           </div>
         </div>
-      );
-    }
-
-    return (
-      <div
-        ref={regularContainerRef}
-        data-message-id={message.id}
-        data-testid={`message-${message.id}`}
-        data-focused={isFocused ? "true" : "false"}
-        role="button"
-        tabIndex={0}
-        onKeyDown={handleKeyboardContextMenu}
-        className={`selectable hover:bg-bg-elevated/30 group relative flex gap-2 px-4 py-2 ${
-          isOwn ? "flex-row-reverse" : ""
-        } ${isSelected ? `${bubbleSurfaceClass} ring-1 ring-accent` : ""} ${
-          isFocused ? `${bubbleSurfaceClass} ring-2 ring-accent-soft` : ""
-        }`}
-      >
-        {selectionMode && (
-          <button
-            type="button"
-            onClick={() => callbacks?.onToggleSelect?.(message)}
-            className="flex h-5 w-5 flex-shrink-0 items-center justify-center self-center rounded border border-border-subtle transition-colors"
-            aria-label={isSelected ? t("message.deselect") : t("message.select")}
-          >
-            {isSelected && <Icon name="check" size={14} className="text-accent" />}
-          </button>
-        )}
-        {!isOwn &&
-          (showAvatar ? (
-            <button
-              type="button"
-              onClick={handleAuthorClick}
-              className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
-              aria-label={t("a11y.openUserProfile", { name: displayName })}
-            >
-              <span className="relative block">
-                <Avatar
-                  size="lg"
-                  className="flex-shrink-0 bg-bg-elevated text-accent-soft"
-                  src={avatarSrc ?? undefined}
-                >
-                  {displayName.slice(0, 1)}
-                </Avatar>
-                <PresenceIndicator
-                  status={presenceState}
-                  size="sm"
-                  className="absolute bottom-0 right-0"
-                />
-              </span>
-            </button>
-          ) : (
-            <div className="w-12 flex-shrink-0" aria-hidden />
-          ))}
-        {isOwn && <div className="w-12 flex-shrink-0" />}
-        <div className={`min-w-0 flex-1 ${isOwn ? "flex flex-col items-end" : ""}`}>
-          {showSenderName && (
-            <div className="flex flex-wrap items-baseline gap-2">
-              <span className="text-sm font-semibold text-text-primary">{displayName}</span>
-              {senderStatusLabel != null && senderStatusLabel.length > 0 && (
-                <span className="truncate text-[11px] text-text-secondary">
-                  {senderStatusLabel}
-                </span>
-              )}
-              {message.subject && (
-                <span
-                  className={`text-[11px] font-medium ${
-                    isOwn ? "text-call-green" : "text-accent-soft"
-                  }`}
-                >
-                  #{message.subject}
-                </span>
-              )}
-            </div>
-          )}
-          <div
-            className={`relative max-w-[85%] text-sm leading-relaxed ${bubbleSurfaceClass} ${
-              showSenderName ? "mt-1" : "mt-0.5"
-            } ${isOwn ? "flex flex-col items-end" : ""}`}
-          >
-            {bubbleInner}
-          </div>
-        </div>
-      </div>
+        {mentionPopoverPortal}
+      </>
     );
   },
 );

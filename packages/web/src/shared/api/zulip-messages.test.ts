@@ -98,6 +98,17 @@ describe("rawMessageToMockMessage", () => {
     expect(result.subject).toBe("");
     expect(result.stream_id).toBeNull();
   });
+
+  it("maps markdown_source when present", () => {
+    const result = rawMessageToMockMessage({
+      id: 1,
+      sender_id: 1,
+      content: "<p>x</p>",
+      timestamp: 0,
+      markdown_source: "`x`",
+    });
+    expect(result.markdown_source).toBe("`x`");
+  });
 });
 describe("fetchRecentMessages", () => {
   it("returns messages on success", async () => {
@@ -129,6 +140,7 @@ describe("fetchRecentMessages", () => {
       num_after: "0",
       client_gravatar: "true",
       allow_empty_topic_name: "true",
+      apply_markdown: "false",
     });
   });
 
@@ -181,6 +193,7 @@ describe("fetchMessagesBeforeAnchor", () => {
       num_after: "0",
       client_gravatar: "true",
       allow_empty_topic_name: "true",
+      apply_markdown: "false",
     });
   });
 
@@ -219,6 +232,7 @@ describe("fetchMessagesAfterAnchor", () => {
       num_after: "5000",
       client_gravatar: "true",
       allow_empty_topic_name: "true",
+      apply_markdown: "false",
     });
   });
 
@@ -252,6 +266,7 @@ describe("fetchActivityMessages", () => {
       narrow: JSON.stringify([{ negated: false, operator: "is", operand: "starred" }]),
       allow_empty_topic_name: "true",
       client_gravatar: "true",
+      apply_markdown: "false",
     });
   });
 
@@ -318,6 +333,7 @@ describe("fetchMessageById", () => {
         subject: "test",
         type: "stream",
         stream_id: 10,
+        raw_content: "hello",
       },
       raw: { statusText: "OK" },
     });
@@ -326,7 +342,11 @@ describe("fetchMessageById", () => {
 
     expect(result?.id).toBe(100);
     expect(result?.channel).toBe("general");
-    expect(mockZulipApi.get).toHaveBeenCalledWith("/messages/100", undefined);
+    expect(result?.markdown_source).toBe("hello");
+    expect(mockZulipApi.get).toHaveBeenCalledWith("/messages/100", {
+      allow_empty_topic_name: "true",
+      apply_markdown: "false",
+    });
   });
 });
 
@@ -364,7 +384,7 @@ describe("fetchMessages", () => {
     mockZulipClient.messages.retrieve.mockResolvedValue({ messages: [] });
     await fetchMessages();
     expect(mockZulipClient.messages.retrieve).toHaveBeenCalledWith(
-      expect.objectContaining({ narrow: undefined }),
+      expect.objectContaining({ narrow: undefined, apply_markdown: false }),
     );
   });
 
@@ -397,6 +417,7 @@ describe("fetchMessagesWithNarrow", () => {
         anchor: "newest",
         num_before: 200,
         num_after: 0,
+        apply_markdown: false,
       }),
     );
   });

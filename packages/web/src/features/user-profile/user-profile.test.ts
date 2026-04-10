@@ -2,12 +2,14 @@
  * Tests for user profile feature — loading, caching, clearing, and error handling.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { clearRealmProfileFieldsCache } from "~/shared/api/zulip-realm-profile-fields";
 import { useUserProfileStore } from "./user-profile.model";
 
 vi.mock("~/shared/api/client", () => ({
   zulipApi: {
     get: vi.fn(),
   },
+  getCurrentInstance: vi.fn(() => null),
 }));
 
 const MOCK_ZULIP_USER = {
@@ -31,6 +33,7 @@ const MOCK_ZULIP_USER = {
 describe("useUserProfileStore", () => {
   afterEach(() => {
     useUserProfileStore.getState().clear();
+    clearRealmProfileFieldsCache();
     vi.restoreAllMocks();
   });
 
@@ -57,6 +60,11 @@ describe("useUserProfileStore", () => {
 
       await useUserProfileStore.getState().loadProfile(42);
 
+      expect(zulipApi.get).toHaveBeenCalledWith("/users/42", {
+        client_gravatar: "false",
+        include_custom_profile_fields: "true",
+      });
+
       const state = useUserProfileStore.getState();
       expect(state.status).toBe("done");
       expect(state.profile).not.toBeNull();
@@ -69,6 +77,59 @@ describe("useUserProfileStore", () => {
       expect(state.profile!.isBot).toBe(false);
       expect(state.profile!.isActive).toBe(true);
       expect(state.profile!.dateJoined).toBe("2025-01-10T08:15:00Z");
+    });
+
+    it("maps profile_data using realm field definitions when instance is active", async () => {
+      const { zulipApi, getCurrentInstance } = await import("~/shared/api/client");
+      vi.mocked(getCurrentInstance).mockReturnValue({
+        id: "test-inst",
+        realm: "https://z.example.com",
+        email: "a@b.com",
+        apiKey: "key",
+      });
+      vi.mocked(zulipApi.get).mockImplementation(async (path: string) => {
+        if (path === "/realm/profile_fields") {
+          return {
+            ok: true,
+            status: 200,
+            data: {
+              custom_fields: [
+                { id: 5, name: "Должность", type: 1, order: 1 },
+                { id: 6, name: "Телефон", type: 1, order: 2 },
+              ],
+            },
+            headers: new Headers(),
+            raw: new Response(),
+            durationMs: 1,
+          };
+        }
+        return {
+          ok: true,
+          status: 200,
+          data: {
+            user: {
+              user_id: 7,
+              full_name: "Sam",
+              email: "sam@example.com",
+              avatar_url: "",
+              role: 400,
+              profile_data: {
+                "5": { value: "AQA Lead" },
+                "6": { value: "+7 900 000-00-00" },
+              },
+            },
+          },
+          headers: new Headers(),
+          raw: new Response(),
+          durationMs: 1,
+        };
+      });
+
+      await useUserProfileStore.getState().loadProfile(7);
+
+      const state = useUserProfileStore.getState();
+      expect(state.profile?.jobTitle).toBe("AQA Lead");
+      expect(state.profile?.phone).toBe("+7 900 000-00-00");
     });
 
     it("sets error on failed response", async () => {

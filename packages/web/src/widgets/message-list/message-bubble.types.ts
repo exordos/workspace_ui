@@ -21,6 +21,11 @@ export interface MessageBubbleCallbacks {
   onViews?: (message: MockMessage) => void;
   onOpenInChat?: (message: MockMessage) => void;
   onAuthorClick?: (userId: number) => void;
+  onOpenDirectMessage?: (userId: number) => void;
+  /** Resend a failed optimistic outgoing message (negative id, delivery failed). */
+  onRetryFailedOutgoing?: (message: MockMessage) => void;
+  /** Drop a failed optimistic outgoing message from the list. */
+  onRemoveFailedOutgoing?: (message: MockMessage) => void;
 }
 
 export interface MessageBubbleProps {

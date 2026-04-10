@@ -86,6 +86,7 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
     useCurrentChatMessagesStore.setState({
       context: null,
       messages: [],
+      pendingOutgoingEchoKeys: [],
       hasOlderMessages: true,
       hasNewerMessages: false,
     });
@@ -100,6 +101,7 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
     useCurrentChatMessagesStore.setState({
       context: null,
       messages: [],
+      pendingOutgoingEchoKeys: [],
       hasOlderMessages: true,
       hasNewerMessages: false,
     });

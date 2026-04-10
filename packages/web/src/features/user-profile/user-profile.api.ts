@@ -5,11 +5,17 @@
  */
 
 import { zulipApi } from "~/shared/api/client";
+import { fetchRealmProfileFieldDefinitions } from "~/shared/api/zulip-realm-profile-fields";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
+import {
+  mapZulipProfileDataToSemanticFields,
+} from "~/shared/lib/zulip-profile-fields-map.lib";
 import type { OwnStatusData, UserProfileData } from "./user-profile.types";
 
 const log = createLogger("user-profile:api");
+
+export { clearRealmProfileFieldsCache, fetchRealmProfileFieldDefinitions } from "~/shared/api/zulip-realm-profile-fields";
 
 interface ZulipUserResponse {
   user: {
@@ -32,19 +38,17 @@ interface OwnStatusResponse {
   away?: boolean | string;
 }
 
-function extractCustomField(
-  profileData: ZulipUserResponse["user"]["profile_data"],
-  fieldId: string,
-): string | undefined {
-  const value = profileData?.[fieldId]?.value;
-  return value != null && value.length > 0 ? value : undefined;
-}
-
 export async function fetchUserProfile(userId: number): Promise<UserProfileData | null> {
   guard.userId(userId, "fetchUserProfile");
 
   try {
-    const res = await zulipApi.get(`/users/${userId}`);
+    const [res, realmFields] = await Promise.all([
+      zulipApi.get(`/users/${userId}`, {
+        client_gravatar: "false",
+        include_custom_profile_fields: "true",
+      }),
+      fetchRealmProfileFieldDefinitions(),
+    ]);
 
     if (!res.ok) {
       log.warn("Failed to fetch user profile", { userId, status: res.status });
@@ -54,6 +58,10 @@ export async function fetchUserProfile(userId: number): Promise<UserProfileData 
     const data = res.data as ZulipUserResponse;
     const user = data.user;
     const profile = user.profile_data;
+
+    const custom = mapZulipProfileDataToSemanticFields(profile, realmFields, {
+      useLegacyFixedFieldIds: realmFields == null,
+    });
 
     return {
       userId: user.user_id,
@@ -68,10 +76,10 @@ export async function fetchUserProfile(userId: number): Promise<UserProfileData 
           ? user.date_joined
           : undefined,
       timezone: user.timezone,
-      jobTitle: extractCustomField(profile, "1"),
-      phone: extractCustomField(profile, "2"),
-      manager: extractCustomField(profile, "3"),
-      birthday: extractCustomField(profile, "4"),
+      jobTitle: custom.jobTitle,
+      phone: custom.phone,
+      manager: custom.manager,
+      birthday: custom.birthday,
     };
   } catch (err) {
     log.error("Error fetching user profile", { userId, error: String(err) });

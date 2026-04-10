@@ -94,6 +94,10 @@ describe("fetchUsers", () => {
     const result = await fetchUsers();
     expect(result).toHaveLength(1);
     expect(result[0]!.full_name).toBe("Alice");
+    expect(mockZulipApi.get).toHaveBeenCalledWith("/users", {
+      client_gravatar: "false",
+      include_custom_profile_fields: "true",
+    });
   });
 
   it("falls back to users array", async () => {
@@ -148,6 +152,10 @@ describe("fetchUser", () => {
     });
     const result = await fetchUser(42);
     expect(result).toEqual({ user_id: 42, full_name: "Alice", email: "a@t.com", role: 200 });
+    expect(mockZulipApi.get).toHaveBeenCalledWith("/users/42", {
+      client_gravatar: "false",
+      include_custom_profile_fields: "true",
+    });
   });
 
   it("throws for invalid userId (0)", async () => {

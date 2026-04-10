@@ -112,6 +112,7 @@
     "views": "Views",
     "reply": "Reply",
     "edit": "Edit message",
+    "editLoadingMarkdown": "Loading message source…",
     "editPlaceholder": "Message text",
     "deleteConfirm": "Delete message?",
     "deleteError": "Failed to delete",
@@ -122,6 +123,8 @@
     "forwardError": "Failed to forward",
     "sendFailed": "Failed to send message",
     "sending": "Sending…",
+    "retrySend": "Retry send",
+    "removeFailedSend": "Remove message",
     "notDelivered": "Not delivered",
     "sentToServer": "Sent to server",
     "deleteSelectedConfirm": "Delete {{count}} messages?",
@@ -150,12 +153,14 @@
     "selected_other": "{{count}} messages",
     "forwardTo": "Forward",
     "replyTo": "Reply",
+    "replyQuoteWrote": "wrote",
     "readBy": "Read by",
     "readByCount_one": "Read by {{count}} person",
     "readByCount_other": "Read by {{count}} people",
     "read": "Read",
     "readReceiptsError": "Could not load read receipts",
-    "noReadReceipts": "No one has read this message yet"
+    "noReadReceipts": "No one has read this message yet",
+    "mentionUserCard": "User mention"
   },
   "channel": {
     "createChannel": "Create channel",
@@ -270,7 +275,9 @@
     "copyMentionNickname": "Copy @nickname",
     "copyEmail": "Copy email",
     "copyUserId": "Copy user ID",
-    "openAvatarPreview": "Open avatar preview"
+    "openAvatarPreview": "Open avatar preview",
+    "atMention": "Mention",
+    "customProfileFields": "Custom profile"
   },
   "presence": {
     "online": "online",

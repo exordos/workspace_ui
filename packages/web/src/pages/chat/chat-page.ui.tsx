@@ -34,6 +34,7 @@ import {
   fetchDmMessages,
   fetchMessageById,
   fetchUser,
+  getRealmBaseUrl,
   sendMessage,
   markMessagesAsRead,
   updateMessage,
@@ -49,7 +50,6 @@ import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { dmRouteKey } from "~/shared/lib/dm-key";
 import { normalizeDmRouteUserIds } from "~/shared/lib/dm-route.lib";
 import { getPresenceState, formatLastSeen } from "~/shared/lib/format";
-import { stripHtml } from "~/shared/lib/html";
 import { buildJitsiMeetingUrl } from "~/shared/lib/jitsi";
 import { createLogger } from "~/shared/lib/logger";
 import { logMessageFlow, summarizeChatContextForLog } from "~/shared/lib/message-flow-debug.lib";
@@ -82,6 +82,10 @@ import {
 import { createMarkAsReadBatcher } from "./chat-mark-as-read.lib";
 import { useChatMessageListCallbacks } from "./chat-message-list-callbacks.hook";
 import { resolveNextUnreadTopicRoute } from "./chat-next-unread-topic.lib";
+import {
+  isAbortLikeError,
+  normalizeAiContextContent,
+} from "./chat-page-ai.lib";
 import { ChatPageComposerSection } from "./chat-page-composer-section.ui";
 import { ChatPageDeleteConfirmBar } from "./chat-page-delete-confirm-bar.ui";
 import { EditMessageModalBody } from "./chat-page-edit-message-modal.ui";
@@ -100,24 +104,11 @@ import { shouldLoadBoundaryPage } from "./chat-pagination.lib";
 import {
   buildOptimisticOutgoingMessage,
   markOutgoingMessageFailed,
-  markOutgoingMessageSent,
 } from "./chat-send-delivery.lib";
 import { uploadComposerFiles, type ComposerUploadProgressState } from "./chat-upload.lib";
 
 const log = createLogger("chat-page");
 const AI_CONTEXT_MESSAGES_LIMIT = 30;
-const AI_CONTEXT_MESSAGE_MAX_CHARS = 500;
-
-function isAbortLikeError(error: unknown): boolean {
-  return (
-    (error instanceof DOMException && error.name === "AbortError") ||
-    (error instanceof Error && error.name === "AbortError")
-  );
-}
-
-function normalizeAiContextContent(content: string): string {
-  return stripHtml(content).replace(/\s+/g, " ").trim().slice(0, AI_CONTEXT_MESSAGE_MAX_CHARS);
-}
 
 export const ChatPage: React.FC = () => {
   const navigate = useNavigate();
@@ -197,6 +188,7 @@ export const ChatPage: React.FC = () => {
   );
   const setContext = useCurrentChatMessagesStore((s) => s.setContext);
   const appendMessageToStore = useCurrentChatMessagesStore((s) => s.appendMessage);
+  const commitOutgoingMessageToStore = useCurrentChatMessagesStore((s) => s.commitOutgoingMessage);
   const removeMessageFromStore = useCurrentChatMessagesStore((s) => s.removeMessage);
   const removeMessagesFromStore = useCurrentChatMessagesStore((s) => s.removeMessages);
   const updateMessageFlagsInStore = useCurrentChatMessagesStore((s) => s.updateMessageFlags);
@@ -219,6 +211,8 @@ export const ChatPage: React.FC = () => {
     id: number;
     content: string;
     sender_full_name: string;
+    sender_id: number;
+    permalinkUrl: string | null;
   } | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedMessageIds, setSelectedMessageIds] = useState<Set<number>>(new Set());
@@ -1061,10 +1055,6 @@ export const ChatPage: React.FC = () => {
       }
     }
 
-    const clearDraftAfterSend = () => {
-      composerValueRef.current = "";
-    };
-
     const stopTypingAfterSend = () => {
       stopTypingNow();
     };
@@ -1088,12 +1078,8 @@ export const ChatPage: React.FC = () => {
           sender_id: currentUserId ?? 0,
           sender_full_name: t("common.you"),
         });
-        removeMessageFromStore(optimisticMessageId);
-        appendMessageToStore(
-          newMsg.id > 0 ? markOutgoingMessageSent(newMsg) : markOutgoingMessageFailed(newMsg),
-        );
+        commitOutgoingMessageToStore(optimisticMessageId, newMsg);
         setReplyQuote(null);
-        clearDraftAfterSend();
         stopTypingAfterSend();
       } catch (err) {
         appendMessageToStore(markOutgoingMessageFailed(optimisticMessage));
@@ -1132,12 +1118,8 @@ export const ChatPage: React.FC = () => {
           sender_id: currentUserId ?? 0,
           sender_full_name: t("common.you"),
         });
-        removeMessageFromStore(optimisticMessageId);
-        appendMessageToStore(
-          newMsg.id > 0 ? markOutgoingMessageSent(newMsg) : markOutgoingMessageFailed(newMsg),
-        );
+        commitOutgoingMessageToStore(optimisticMessageId, newMsg);
         setReplyQuote(null);
-        clearDraftAfterSend();
         stopTypingAfterSend();
       } catch (err) {
         appendMessageToStore(markOutgoingMessageFailed(optimisticMessage));
@@ -1152,6 +1134,111 @@ export const ChatPage: React.FC = () => {
     setUploadProgress(null);
   };
 
+  const handleRemoveFailedOutgoing = useCallback(
+    (msg: MockMessage) => {
+      if (msg.delivery_status !== "failed" || msg.id >= 0) return;
+      removeMessageFromStore(msg.id);
+      setSendError(null);
+    },
+    [removeMessageFromStore],
+  );
+
+  const handleRetryFailedOutgoing = useCallback(
+    async (msg: MockMessage) => {
+      if (msg.delivery_status !== "failed" || msg.id >= 0) return;
+      setSendError(null);
+      const body = msg.content;
+      removeMessageFromStore(msg.id);
+
+      const stopTypingAfterSend = () => {
+        stopTypingNow();
+      };
+
+      if (isDmView && activeDmUserIds?.length) {
+        const optimisticMessageId = optimisticMessageIdRef.current;
+        optimisticMessageIdRef.current -= 1;
+        const optimisticMessage = buildOptimisticOutgoingMessage({
+          id: optimisticMessageId,
+          senderId: currentUserId ?? 0,
+          senderFullName: t("common.you"),
+          content: body,
+          target: { mode: "dm", recipientIds: activeDmUserIds },
+        });
+        appendMessageToStore(optimisticMessage);
+        setSending(true);
+        try {
+          const newMsg = await sendMessage({
+            to: activeDmUserIds,
+            content: body,
+            sender_id: currentUserId ?? 0,
+            sender_full_name: t("common.you"),
+          });
+          commitOutgoingMessageToStore(optimisticMessageId, newMsg);
+          setReplyQuote(null);
+          stopTypingAfterSend();
+        } catch (err) {
+          appendMessageToStore(markOutgoingMessageFailed(optimisticMessage));
+          setSendError(err instanceof Error ? err.message : t("message.sendFailed"));
+        } finally {
+          setSending(false);
+          setUploadProgress(null);
+        }
+        return;
+      }
+      if (activeStream) {
+        const subject = (msg.subject ?? "").trim() || activeTopic || "general";
+        const optimisticMessageId = optimisticMessageIdRef.current;
+        optimisticMessageIdRef.current -= 1;
+        const optimisticMessage = buildOptimisticOutgoingMessage({
+          id: optimisticMessageId,
+          senderId: currentUserId ?? 0,
+          senderFullName: t("common.you"),
+          content: body,
+          target: {
+            mode: "stream",
+            stream: activeStream,
+            streamId: activeStreamId ?? undefined,
+            subject,
+          },
+        });
+        appendMessageToStore(optimisticMessage);
+        setSending(true);
+        try {
+          const newMsg = await sendMessage({
+            stream: activeStream,
+            streamId: activeStreamId ?? undefined,
+            subject,
+            content: body,
+            sender_id: currentUserId ?? 0,
+            sender_full_name: t("common.you"),
+          });
+          commitOutgoingMessageToStore(optimisticMessageId, newMsg);
+          setReplyQuote(null);
+          stopTypingAfterSend();
+        } catch (err) {
+          appendMessageToStore(markOutgoingMessageFailed(optimisticMessage));
+          setSendError(err instanceof Error ? err.message : t("message.sendFailed"));
+        } finally {
+          setSending(false);
+          setUploadProgress(null);
+        }
+      }
+    },
+    [
+      activeDmUserIds,
+      activeStream,
+      activeStreamId,
+      activeTopic,
+      appendMessageToStore,
+      commitOutgoingMessageToStore,
+      currentUserId,
+      isDmView,
+      removeMessageFromStore,
+      stopTypingNow,
+      t,
+    ],
+  );
+
   const handleCancelUpload = useCallback(() => {
     const controller = uploadAbortControllerRef.current;
     if (controller == null || controller.signal.aborted) return;
@@ -1161,6 +1248,7 @@ export const ChatPage: React.FC = () => {
   const messageCallbacks = useChatMessageListCallbacks({
     selectionMode,
     currentUserId,
+    realmBaseUrl: getRealmBaseUrl(),
     streams,
     locationPathname: location.pathname,
     navigate,
@@ -1178,22 +1266,26 @@ export const ChatPage: React.FC = () => {
     updateMessageReactionInStore,
     openJitsiCall: (url, locationName) => openJitsiCall({ meetingUrl: url, locationName }),
     setReadReceiptsOpen,
+    onRetryFailedOutgoing: handleRetryFailedOutgoing,
+    onRemoveFailedOutgoing: handleRemoveFailedOutgoing,
   });
 
   const handleSaveEdit = useCallback(
-    (content: string) => {
+    async (markdown: string) => {
       if (!editingMessage) return;
       setActionError(null);
-      updateMessage(editingMessage.id, { content })
-        .then(() => {
-          updateMessageContentInStore(editingMessage.id, content);
-          setEditingMessage(null);
-        })
-        .catch((err) =>
-          setActionError(err instanceof Error ? err.message : t("message.saveError")),
-        );
+      try {
+        await updateMessage(editingMessage.id, { content: markdown });
+        const fresh = await fetchMessageById(editingMessage.id);
+        if (fresh) {
+          updateMessageContentInStore(fresh.id, fresh.content, fresh.markdown_source);
+        }
+        setEditingMessage(null);
+      } catch (err) {
+        setActionError(err instanceof Error ? err.message : t("message.saveError"));
+      }
     },
-    [editingMessage, updateMessageContentInStore],
+    [editingMessage, updateMessageContentInStore, t],
   );
   const handleEditLastMessage = useCallback(() => {
     if (lastOwnMessageForEdit == null) return;
@@ -1400,7 +1492,8 @@ export const ChatPage: React.FC = () => {
           >
             {editingMessage && (
               <EditMessageModalBody
-                initialContent={editingMessage.content}
+                key={editingMessage.id}
+                message={editingMessage}
                 onSave={handleSaveEdit}
                 onClose={() => setEditingMessage(null)}
               />

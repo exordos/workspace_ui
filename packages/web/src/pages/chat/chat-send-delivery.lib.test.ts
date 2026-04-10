@@ -29,6 +29,7 @@ describe("buildOptimisticOutgoingMessage", () => {
       content: "hello",
       timestamp: 123,
       delivery_status: "sending",
+      local_echo_key: -1,
     });
   });
 
@@ -53,6 +54,7 @@ describe("buildOptimisticOutgoingMessage", () => {
       content: "hello stream",
       timestamp: 456,
       delivery_status: "sending",
+      local_echo_key: -2,
     });
   });
 });

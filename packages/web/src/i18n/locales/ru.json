@@ -112,6 +112,7 @@
     "views": "Просмотры",
     "reply": "Ответить",
     "edit": "Изменить сообщение",
+    "editLoadingMarkdown": "Загрузка исходного текста…",
     "editPlaceholder": "Текст сообщения",
     "deleteConfirm": "Удалить сообщение?",
     "deleteError": "Ошибка удаления",
@@ -122,6 +123,8 @@
     "forwardError": "Ошибка пересылки",
     "sendFailed": "Не удалось отправить сообщение",
     "sending": "Отправляется…",
+    "retrySend": "Повторить отправку",
+    "removeFailedSend": "Удалить сообщение",
     "notDelivered": "Не доставлено",
     "sentToServer": "Доставлено на сервер",
     "deleteSelectedConfirm": "Удалить {{count}} сообщений?",
@@ -151,13 +154,15 @@
     "selected_many": "{{count}} сообщений",
     "forwardTo": "Переслать",
     "replyTo": "Ответить",
+    "replyQuoteWrote": "писал/а",
     "readBy": "Прочитано",
     "readByCount_one": "Прочитано {{count}} человеком",
     "readByCount_few": "Прочитано {{count}} людьми",
     "readByCount_many": "Прочитано {{count}} людьми",
     "read": "Прочитано",
     "readReceiptsError": "Не удалось загрузить список прочитавших",
-    "noReadReceipts": "Это сообщение ещё никто не прочитал"
+    "noReadReceipts": "Это сообщение ещё никто не прочитал",
+    "mentionUserCard": "Упоминание пользователя"
   },
   "channel": {
     "createChannel": "Создать канал",
@@ -277,7 +282,9 @@
     "copyMentionNickname": "Скопировать @ник",
     "copyEmail": "Скопировать email",
     "copyUserId": "Скопировать ID пользователя",
-    "openAvatarPreview": "Открыть предпросмотр аватара"
+    "openAvatarPreview": "Открыть предпросмотр аватара",
+    "atMention": "Упоминание",
+    "customProfileFields": "Дополнительные поля профиля"
   },
   "presence": {
     "online": "онлайн",

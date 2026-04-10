@@ -9,11 +9,13 @@ import { useChatInfoStore } from "~/features/chat-info/chat-info.model";
 import { muteStream, unmuteStream } from "~/features/mute-chat/mute-chat.api";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { t } from "~/i18n/i18n";
+import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
 import { deleteStream, updateStream } from "~/shared/api/zulip-streams";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { createLogger } from "~/shared/lib/logger";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { hasPermission, parseRole } from "~/shared/lib/roles";
+import { ProfileCustomFieldsBlock } from "~/entities/user/profile-custom-fields-block.ui";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
@@ -164,6 +166,7 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
         isOwner: i === 0,
         isOnline: m.isOnline,
         avatarUrl: m.avatarUrl,
+        profileData: m.profileData,
       }))
     : [];
   const rawChannelDescription =
@@ -419,38 +422,47 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
             <ul className="space-y-2">
               {members.map((p) => (
                 <li key={p.userId}>
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-3 rounded-lg px-1.5 py-1 text-left transition-colors hover:bg-bg-elevated"
-                    onClick={() => handleOpenUserProfile(p.userId)}
-                    aria-label={t("a11y.openUserProfile", { name: p.name })}
-                  >
-                    <div className="relative shrink-0">
-                      <Avatar
-                        size="sm"
-                        className="bg-bg-elevated text-text-primary"
-                        src={resolveAvatarSrc(p.avatarUrl) ?? undefined}
-                      >
-                        {p.name.slice(0, 1)}
-                      </Avatar>
-                      <span className="absolute -bottom-0.5 -right-0.5">
-                        <PresenceIndicator status={p.isOnline ? "active" : "offline"} size="sm" />
-                      </span>
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="flex items-center gap-1.5 truncate text-sm text-text-primary">
-                        {p.name}
-                        {p.isOwner && (
-                          <span className="text-[10px] font-normal text-text-secondary">
-                            {t("roles.owner")}
-                          </span>
+                  <div className="rounded-lg px-1.5 py-1 transition-colors hover:bg-bg-elevated">
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-3 text-left"
+                      onClick={() => handleOpenUserProfile(p.userId)}
+                      aria-label={t("a11y.openUserProfile", { name: p.name })}
+                    >
+                      <div className="relative shrink-0">
+                        <Avatar
+                          size="sm"
+                          className="bg-bg-elevated text-text-primary"
+                          src={resolveAvatarSrc(p.avatarUrl) ?? undefined}
+                        >
+                          {p.name.slice(0, 1)}
+                        </Avatar>
+                        <span className="absolute -bottom-0.5 -right-0.5">
+                          <PresenceIndicator status={p.isOnline ? "active" : "offline"} size="sm" />
+                        </span>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="flex items-center gap-1.5 truncate text-sm text-text-primary">
+                          {p.name}
+                          {p.isOwner && (
+                            <span className="text-[10px] font-normal text-text-secondary">
+                              {t("roles.owner")}
+                            </span>
+                          )}
+                        </p>
+                        {p.status && (
+                          <p className="truncate text-[11px] text-text-secondary">{p.status}</p>
                         )}
-                      </p>
-                      {p.status && (
-                        <p className="truncate text-[11px] text-text-secondary">{p.status}</p>
-                      )}
-                    </div>
-                  </button>
+                      </div>
+                    </button>
+                    <ProfileCustomFieldsBlock
+                      profileData={p.profileData}
+                      baseUrl={getRealmBaseUrl() || undefined}
+                      density="compact"
+                      className="mt-2 pl-[calc(2rem+0.75rem)] pr-1"
+                      onOpenUserProfile={handleOpenUserProfile}
+                    />
+                  </div>
                 </li>
               ))}
             </ul>

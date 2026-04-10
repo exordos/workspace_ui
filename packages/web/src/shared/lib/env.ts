@@ -44,10 +44,21 @@ const chatMessagesPersistIndexedDb = (() => {
 })();
 
 const WORKSPACE_API_ORIGIN_RAW = required("VITE_WORKSPACE_API_ORIGIN");
+const ZULIP_REALM_ORIGIN_RAW = optional("VITE_ZULIP_REALM_ORIGIN");
 const ZULIP_API_PATH = optional("VITE_ZULIP_API_PATH", "/api/v1");
 const WORKSPACE_API_PATH = optional("VITE_WORKSPACE_API_PATH", "/api/v1");
 /** Path segment(s) after origin for Workspace REST (OpenAPI paths start with `/v1/`). Default empty. */
 const WORKSPACE_REST_API_PATH = optional("VITE_WORKSPACE_REST_API_PATH", "");
+
+function normalizeUserUploadsPathPrefix(raw: string): string {
+  const t = raw.trim().replace(/\/+$/, "");
+  if (t === "") return "";
+  return t.startsWith("/") ? t : `/${t}`;
+}
+
+const USER_UPLOADS_PATH_PREFIX = normalizeUserUploadsPathPrefix(
+  optional("VITE_USER_UPLOADS_PATH_PREFIX", ""),
+);
 
 export const env = {
   /** `true` in development, `false` in production build. Vite built-in. */
@@ -67,6 +78,15 @@ export const env = {
   WORKSPACE_API_ORIGIN: cleanOrigin(WORKSPACE_API_ORIGIN_RAW),
 
   /**
+   * Zulip realm origin (host where `/user_uploads/` and the web app live).
+   * Defaults to {@link WORKSPACE_API_ORIGIN}. Override when Workspace API and Zulip realm differ.
+   * Dev: Vite proxies `/user_uploads/*` to this origin.
+   */
+  ZULIP_REALM_ORIGIN: ZULIP_REALM_ORIGIN_RAW
+    ? cleanOrigin(ZULIP_REALM_ORIGIN_RAW)
+    : cleanOrigin(WORKSPACE_API_ORIGIN_RAW),
+
+  /**
    * Zulip API path (default `/api/v1`).
    * Override via `VITE_ZULIP_API_PATH` for custom API gateways.
    */
@@ -77,6 +97,18 @@ export const env = {
    * Override via `VITE_WORKSPACE_API_PATH` for custom backend paths.
    */
   WORKSPACE_API_PATH: WORKSPACE_API_PATH,
+
+  /**
+   * Path after origin for Workspace REST (e.g. `/workspace`). Used when stripping gateway
+   * suffix from realm URLs for `/user_uploads/` resolution. See `VITE_WORKSPACE_REST_API_PATH`.
+   */
+  WORKSPACE_REST_API_PATH: WORKSPACE_REST_API_PATH.replace(/\/+$/, ""),
+
+  /**
+   * Path inserted before `/user_uploads/` on the server (e.g. `/workspace/v1`).
+   * Empty when files are at `{origin}/user_uploads/...`. Set for gateways that mount uploads under a prefix.
+   */
+  USER_UPLOADS_PATH_PREFIX: USER_UPLOADS_PATH_PREFIX,
 
   /**
    * Workspace REST API base (Orval paths are `/v1/...`).
@@ -170,6 +202,24 @@ export const env = {
       "VITE_MESSAGE_FLOW_DEBUG",
       import.meta.env.DEV ? "true" : "false",
     ).toLowerCase();
+    return v === "true" || v === "1";
+  })(),
+
+  /**
+   * When true, top bar shows the Calls section shortcut.
+   * Build-time — `VITE_TOP_BAR_CALLS_NAV=true` (default: hidden).
+   */
+  TOP_BAR_CALLS_NAV: (() => {
+    const v = optional("VITE_TOP_BAR_CALLS_NAV", "false").toLowerCase();
+    return v === "true" || v === "1";
+  })(),
+
+  /**
+   * When true, top bar shows the Services section shortcut.
+   * Build-time — `VITE_TOP_BAR_SERVICES_NAV=true` (default: hidden).
+   */
+  TOP_BAR_SERVICES_NAV: (() => {
+    const v = optional("VITE_TOP_BAR_SERVICES_NAV", "false").toLowerCase();
     return v === "true" || v === "1";
   })(),
 } as const;

@@ -5,6 +5,8 @@ import type { NavigateFunction } from "react-router-dom";
 export interface UseChatMessageListCallbacksParams {
   selectionMode: boolean;
   currentUserId: number | null;
+  /** Active Zulip realm base URL for reply-quote permalinks */
+  realmBaseUrl: string;
   streams: { stream_id: number; name: string }[];
   locationPathname: string;
   navigate: NavigateFunction;
@@ -14,6 +16,8 @@ export interface UseChatMessageListCallbacksParams {
       id: number;
       content: string;
       sender_full_name: string;
+      sender_id: number;
+      permalinkUrl: string | null;
     } | null>
   >;
   setEditingMessage: Dispatch<SetStateAction<MockMessage | null>>;
@@ -36,4 +40,6 @@ export interface UseChatMessageListCallbacksParams {
   ) => void;
   openJitsiCall: (url: string, locationName: string) => void;
   setReadReceiptsOpen: Dispatch<SetStateAction<boolean>>;
+  onRetryFailedOutgoing: (message: MockMessage) => void;
+  onRemoveFailedOutgoing: (message: MockMessage) => void;
 }

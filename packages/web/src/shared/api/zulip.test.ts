@@ -192,6 +192,17 @@ describe("rawMessageToMockMessage", () => {
     });
   });
 
+  it("maps markdown_source when present", () => {
+    const result = rawMessageToMockMessage({
+      id: 1,
+      sender_id: 1,
+      content: "<p>a</p>",
+      timestamp: 0,
+      markdown_source: "**a**",
+    });
+    expect(result.markdown_source).toBe("**a**");
+  });
+
   it("maps a private message with null stream_id", () => {
     const result = rawMessageToMockMessage({
       id: 2,
@@ -975,6 +986,10 @@ describe("fetchUsers", () => {
     const result = await fetchUsers();
     expect(result).toHaveLength(1);
     expect(result[0]!.full_name).toBe("Alice");
+    expect(mockZulipApi.get).toHaveBeenCalledWith("/users", {
+      client_gravatar: "false",
+      include_custom_profile_fields: "true",
+    });
   });
 
   it("falls back to users array", async () => {
@@ -1029,6 +1044,10 @@ describe("fetchUser", () => {
     });
     const result = await fetchUser(42);
     expect(result).toEqual({ user_id: 42, full_name: "Alice", email: "a@t.com", role: 200 });
+    expect(mockZulipApi.get).toHaveBeenCalledWith("/users/42", {
+      client_gravatar: "false",
+      include_custom_profile_fields: "true",
+    });
   });
 
   it("throws for invalid userId (0)", async () => {
@@ -1127,6 +1146,7 @@ describe("fetchRecentMessages", () => {
       num_after: "0",
       client_gravatar: "true",
       allow_empty_topic_name: "true",
+      apply_markdown: "false",
     });
   });
 
@@ -1179,6 +1199,7 @@ describe("fetchMessagesBeforeAnchor", () => {
       num_after: "0",
       client_gravatar: "true",
       allow_empty_topic_name: "true",
+      apply_markdown: "false",
     });
   });
 
@@ -1217,6 +1238,7 @@ describe("fetchMessagesAfterAnchor", () => {
       num_after: "5000",
       client_gravatar: "true",
       allow_empty_topic_name: "true",
+      apply_markdown: "false",
     });
   });
 
@@ -1250,6 +1272,7 @@ describe("fetchActivityMessages", () => {
       narrow: JSON.stringify([{ negated: false, operator: "is", operand: "starred" }]),
       allow_empty_topic_name: "true",
       client_gravatar: "true",
+      apply_markdown: "false",
     });
   });
 
@@ -1357,7 +1380,7 @@ describe("fetchUserTopics", () => {
 });
 
 describe("fetchMessageById", () => {
-  it("returns mapped message data", async () => {
+  it("returns mapped message data (flat response)", async () => {
     mockZulipApi.get.mockResolvedValue({
       ok: true,
       status: 200,
@@ -1371,6 +1394,7 @@ describe("fetchMessageById", () => {
         subject: "test",
         type: "stream",
         stream_id: 10,
+        raw_content: "hello",
       },
       raw: { statusText: "OK" },
     });
@@ -1379,7 +1403,40 @@ describe("fetchMessageById", () => {
 
     expect(result?.id).toBe(100);
     expect(result?.channel).toBe("general");
-    expect(mockZulipApi.get).toHaveBeenCalledWith("/messages/100", undefined);
+    expect(result?.markdown_source).toBe("hello");
+    expect(mockZulipApi.get).toHaveBeenCalledWith("/messages/100", {
+      allow_empty_topic_name: "true",
+      apply_markdown: "false",
+    });
+  });
+
+  it("returns mapped message data (nested message + raw_content)", async () => {
+    mockZulipApi.get.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        raw_content: "**Bold**",
+        message: {
+          id: 50,
+          sender_id: 7,
+          sender_full_name: "Carol",
+          content: "<p><strong>Bold</strong></p>",
+          content_type: "text/html",
+          timestamp: 200,
+          display_recipient: "dev",
+          subject: "topic",
+          type: "stream",
+          stream_id: 3,
+        },
+      },
+      raw: { statusText: "OK" },
+    });
+
+    const result = await fetchMessageById(50);
+    expect(result?.id).toBe(50);
+    expect(result?.content).toBe("<p><strong>Bold</strong></p>");
+    expect(result?.markdown_source).toBe("**Bold**");
   });
 });
 
@@ -1490,7 +1547,7 @@ describe("fetchMessages", () => {
     mockZulipClient.messages.retrieve.mockResolvedValue({ messages: [] });
     await fetchMessages();
     expect(mockZulipClient.messages.retrieve).toHaveBeenCalledWith(
-      expect.objectContaining({ narrow: undefined }),
+      expect.objectContaining({ narrow: undefined, apply_markdown: false }),
     );
   });
 
@@ -1557,6 +1614,7 @@ describe("fetchMessagesWithNarrow", () => {
         anchor: "newest",
         num_before: 200,
         num_after: 0,
+        apply_markdown: false,
       }),
     );
   });
@@ -2377,6 +2435,7 @@ describe("setTopicResolvedState", () => {
       include_anchor: "true",
       allow_empty_topic_name: "true",
       client_gravatar: "false",
+      apply_markdown: "false",
       narrow: JSON.stringify([
         { operator: "stream", operand: 10 },
         { operator: "topic", operand: "incident" },

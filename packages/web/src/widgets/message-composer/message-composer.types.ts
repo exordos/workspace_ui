@@ -8,6 +8,9 @@ export interface ReplyQuote {
   id: number;
   content: string;
   sender_full_name: string;
+  sender_id: number;
+  /** Full Zulip web URL (`https://realm/#narrow/.../near/id`); omit link text if null */
+  permalinkUrl: string | null;
 }
 
 export interface ComposerUploadProgress {

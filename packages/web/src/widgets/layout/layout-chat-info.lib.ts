@@ -14,6 +14,7 @@ function mapMember(user: UserRecord): ChatInfoMember {
     email: user.email ?? "",
     avatarUrl: user.avatar_url ?? null,
     isOnline: user.presence?.status === "active",
+    profileData: user.profile_data,
   };
 }
 

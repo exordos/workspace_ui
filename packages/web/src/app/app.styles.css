@@ -127,9 +127,18 @@ body {
 
 /* ── Composer preview code highlighting ──────────────── */
 
+.message-body pre code {
+  max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .composer-preview-html pre code.hljs {
   display: block;
-  overflow-x: auto;
+  max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow-x: hidden;
   color: var(--color-text-primary);
   background: transparent;
 }

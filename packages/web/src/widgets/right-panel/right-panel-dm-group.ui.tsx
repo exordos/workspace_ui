@@ -2,6 +2,8 @@ import React, { useMemo } from "react";
 import { useUsersStore } from "~/entities/user/user.model";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { t } from "~/i18n/i18n";
+import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
+import { ProfileCustomFieldsBlock } from "~/entities/user/profile-custom-fields-block.ui";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
@@ -25,6 +27,7 @@ export const RightPanelDmGroup = React.memo(function RightPanelDmGroup({
         statusLabel: formatUserStatusLabel(users.get(member.userId)?.status),
         isOnline: member.isOnline,
         avatarUrl: member.avatarUrl,
+        profileData: member.profileData,
       })),
     [data.members, users],
   );
@@ -60,42 +63,51 @@ export const RightPanelDmGroup = React.memo(function RightPanelDmGroup({
             <ul className="space-y-2">
               {members.map((member) => (
                 <li key={member.id}>
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-3 rounded-lg px-1.5 py-1 text-left transition-colors hover:bg-bg-elevated"
-                    onClick={() => onOpenUserProfile?.(member.id)}
-                    aria-label={t("a11y.openUserProfile", { name: member.name })}
-                  >
-                    <div className="relative shrink-0">
-                      <Avatar
-                        size="sm"
-                        className="bg-bg-elevated text-text-primary"
-                        src={resolveAvatarSrc(member.avatarUrl) ?? undefined}
-                      >
-                        {member.name.slice(0, 1)}
-                      </Avatar>
-                      <span className="absolute -bottom-0.5 -right-0.5">
-                        <PresenceIndicator
-                          status={member.isOnline ? "active" : "offline"}
+                  <div className="rounded-lg px-1.5 py-1 transition-colors hover:bg-bg-elevated">
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-3 text-left"
+                      onClick={() => onOpenUserProfile?.(member.id)}
+                      aria-label={t("a11y.openUserProfile", { name: member.name })}
+                    >
+                      <div className="relative shrink-0">
+                        <Avatar
                           size="sm"
-                        />
-                      </span>
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm text-text-primary">{member.name}</p>
-                      {member.statusLabel ? (
-                        <p className="truncate text-[11px] text-text-secondary">
-                          {member.statusLabel}
-                        </p>
-                      ) : member.email.length > 0 ? (
-                        <p className="truncate text-[11px] text-text-secondary">{member.email}</p>
-                      ) : (
-                        <p className="truncate text-[11px] text-text-secondary">
-                          {member.isOnline ? t("presence.online") : t("presence.offline")}
-                        </p>
-                      )}
-                    </div>
-                  </button>
+                          className="bg-bg-elevated text-text-primary"
+                          src={resolveAvatarSrc(member.avatarUrl) ?? undefined}
+                        >
+                          {member.name.slice(0, 1)}
+                        </Avatar>
+                        <span className="absolute -bottom-0.5 -right-0.5">
+                          <PresenceIndicator
+                            status={member.isOnline ? "active" : "offline"}
+                            size="sm"
+                          />
+                        </span>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm text-text-primary">{member.name}</p>
+                        {member.statusLabel ? (
+                          <p className="truncate text-[11px] text-text-secondary">
+                            {member.statusLabel}
+                          </p>
+                        ) : member.email.length > 0 ? (
+                          <p className="truncate text-[11px] text-text-secondary">{member.email}</p>
+                        ) : (
+                          <p className="truncate text-[11px] text-text-secondary">
+                            {member.isOnline ? t("presence.online") : t("presence.offline")}
+                          </p>
+                        )}
+                      </div>
+                    </button>
+                    <ProfileCustomFieldsBlock
+                      profileData={member.profileData}
+                      baseUrl={getRealmBaseUrl() || undefined}
+                      density="compact"
+                      className="mt-2 pl-[calc(2rem+0.75rem)] pr-1"
+                      onOpenUserProfile={onOpenUserProfile}
+                    />
+                  </div>
                 </li>
               ))}
             </ul>

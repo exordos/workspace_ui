@@ -33,12 +33,28 @@ export function resolveTopBarAvatarSrc(url: string | undefined | null): string |
   return resolveAvatarUrl(url, getRealmBaseUrl());
 }
 
-export function getTopBarSectionNavItems(): TopBarSectionNavItem[] {
-  return [
+export function getTopBarSectionNavItems(options: {
+  showCallsNav: boolean;
+  showServicesNav: boolean;
+}): TopBarSectionNavItem[] {
+  const items: TopBarSectionNavItem[] = [
     { id: "chat", icon: "chatBubble", label: t("nav.chatsAndChannels"), available: true },
     { id: "calendar", icon: "calendar", label: t("nav.calendar"), available: true },
     { id: "mail", icon: "mail", label: t("nav.mail"), available: true },
-    { id: "calls", icon: "phone", label: t("nav.calls"), available: true },
-    { id: "services", icon: "grid", label: t("nav.services"), available: true },
   ];
+  if (options.showCallsNav) {
+    items.push({ id: "calls", icon: "phone", label: t("nav.calls"), available: true });
+  }
+  if (options.showServicesNav) {
+    items.push({ id: "services", icon: "grid", label: t("nav.services"), available: true });
+  }
+  return items;
+}
+
+/** When the current route maps to a section not shown in the nav, highlight chat instead. */
+export function resolveTopBarActiveSection(
+  pathnameSection: TopBarSection,
+  visibleSectionIds: ReadonlySet<TopBarSection>,
+): TopBarSection {
+  return visibleSectionIds.has(pathnameSection) ? pathnameSection : "chat";
 }

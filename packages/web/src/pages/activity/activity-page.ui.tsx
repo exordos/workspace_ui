@@ -26,7 +26,7 @@ import { removeMessageFlag } from "~/shared/api/zulip-messages";
 import type { ActivityFilter, ZulipRawMessage } from "~/shared/api/zulip.types";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { formatMessageTime } from "~/shared/lib/format";
-import { stripHtml } from "~/shared/lib/html";
+import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
 import { createLogger } from "~/shared/lib/logger";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { buildNavigableRouteFromMessage } from "~/shared/lib/push-click";
@@ -536,7 +536,7 @@ export const ActivityPage: React.FC = () => {
                           />
                         </p>
                         <p className="mt-1 line-clamp-2 text-sm text-text-primary">
-                          {truncateText(stripHtml(m.content))}
+                          {truncateText(plainTextPreviewFromMessageBody(m.content))}
                         </p>
                       </button>
                       <div className="mt-0.5 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">

@@ -342,16 +342,23 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     const hasFiles = files.length > 0;
     if ((!hasText && !hasFiles) || disabled) return;
     const subject = activeTopic ?? "general";
+    const bodyToSend = outgoingBody;
+    const filesToSend = hasFiles ? [...files] : undefined;
+    setValue("");
+    onValueChange?.("");
+    setFiles([]);
     try {
-      await onSend?.(outgoingBody, subject, hasFiles ? files : undefined);
+      await onSend?.(bodyToSend, subject, filesToSend);
     } catch {
       return;
+    }
+    if (replyQuote) {
+      onClearReply?.();
     }
     setAiMenuOpen(false);
     setScheduleMenuOpen(false);
     setSavedSnippetsMenuOpen(false);
     setMediaPickerOpen(false);
-    clearComposerInput();
   };
 
   const handleEmojiClick = (data: EmojiClickData) => {

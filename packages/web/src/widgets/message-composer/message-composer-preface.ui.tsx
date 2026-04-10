@@ -1,6 +1,6 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { t } from "~/i18n/i18n";
-import { stripHtml } from "~/shared/lib/html";
+import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
 import { Icon } from "~/shared/ui/icon";
 import {
   formatAttachmentSize,
@@ -24,6 +24,14 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
     replyQuote,
     onClearReply,
   }) => {
+    const replyQuotePreview = useMemo(() => {
+      if (replyQuote == null) return "";
+      const plain = plainTextPreviewFromMessageBody(replyQuote.content).trim();
+      return plain.length <= QUOTE_PREVIEW_MAX
+        ? plain
+        : plain.slice(0, QUOTE_PREVIEW_MAX) + "…";
+    }, [replyQuote]);
+
     return (
       <>
         {uploadProgress != null && uploadProgress.total > 0 && (
@@ -151,11 +159,7 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
               <p className="text-[11px] text-text-muted">
                 {t("message.replyTo")}: {replyQuote.sender_full_name}
               </p>
-              <p className="mt-0.5 line-clamp-2 text-sm text-text-primary">
-                {stripHtml(replyQuote.content).trim().length <= QUOTE_PREVIEW_MAX
-                  ? stripHtml(replyQuote.content).trim()
-                  : stripHtml(replyQuote.content).trim().slice(0, QUOTE_PREVIEW_MAX) + "…"}
-              </p>
+              <p className="mt-0.5 line-clamp-2 text-sm text-text-primary">{replyQuotePreview}</p>
             </div>
             <button
               type="button"

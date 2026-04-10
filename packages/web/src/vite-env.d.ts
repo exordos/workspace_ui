@@ -4,6 +4,23 @@
 interface ImportMetaEnv {
   /** Workspace/Zulip API origin (e.g. https://zulip.example.com). REQUIRED. */
   readonly VITE_WORKSPACE_API_ORIGIN: string;
+  /**
+   * Zulip realm origin for `/user_uploads/` (standard Zulip: same host as API). Dev proxy target
+   * for `/user_uploads/*`. Defaults to VITE_WORKSPACE_API_ORIGIN when unset.
+   */
+  readonly VITE_ZULIP_REALM_ORIGIN?: string;
+  /**
+   * When true, dev proxy forwards `/user_uploads/...` without a `/workspace/v1` prefix (standard
+   * Zulip: `https://realm/user_uploads/...`). Same as VITE_USER_UPLOADS_PATH_PREFIX=realm-root.
+   */
+  readonly VITE_USER_UPLOADS_AT_REALM_ROOT?: string;
+  /**
+   * When API origin and VITE_ZULIP_REALM_ORIGIN differ, the dev upload proxy defaults to realm-root
+   * paths. Set true only if uploads on the Zulip host are under a prefix (e.g. /workspace/v1).
+   */
+  readonly VITE_USER_UPLOADS_PREFIX_ON_ZULIP_REALM?: string;
+  /** When true, Vite dev server logs each proxied request: method, path → upstream URL. */
+  readonly VITE_DEV_PROXY_DEBUG?: string;
   /** Jitsi Meet domain without protocol (e.g. meet.example.com). Optional. */
   readonly VITE_JITSI_MEET_DOMAIN?: string;
   /** Override for Workspace API base URL. Optional. */
@@ -16,6 +33,11 @@ interface ImportMetaEnv {
   readonly VITE_WORKSPACE_API_PATH?: string;
   /** Extra path before Orval `/v1/...` routes (default empty). Use if Workspace REST is mounted under a prefix. */
   readonly VITE_WORKSPACE_REST_API_PATH?: string;
+  /**
+   * Path before `/user_uploads/` on the backend (e.g. `/workspace/v1`). Dev proxy rewrites
+   * `/user_uploads/...` → `{prefix}/user_uploads/...`. Optional.
+   */
+  readonly VITE_USER_UPLOADS_PATH_PREFIX?: string;
   /** Sentry DSN for error tracking. Optional — disabled if empty. */
   readonly VITE_SENTRY_DSN?: string;
   /** App version for Sentry releases. Set by CI. */

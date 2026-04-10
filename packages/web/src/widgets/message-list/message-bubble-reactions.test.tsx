@@ -117,7 +117,7 @@ describe("MessageBubble quick reactions", () => {
     expect(reactionButton).toHaveAttribute("title", expect.stringContaining("Bob"));
   });
 
-  it("includes reaction author custom statuses in reaction tooltip", () => {
+  it("reaction tooltip lists author names without custom status", () => {
     useUsersStore.getState().mergeUser({
       user_id: 77,
       full_name: "Alice",
@@ -154,11 +154,157 @@ describe("MessageBubble quick reactions", () => {
       .getAllByRole("button")
       .find((button) => button.getAttribute("title")?.startsWith("👍 "));
     expect(reactionButton).toBeDefined();
-    expect(reactionButton).toHaveAttribute("title", expect.stringContaining("Deep work"));
-    expect(reactionButton).toHaveAttribute("title", expect.stringContaining("WFH"));
+    const title = reactionButton?.getAttribute("title") ?? "";
+    expect(title).toContain("Alice");
+    expect(title).toContain("Bob");
+    expect(title).not.toContain("Deep work");
+    expect(title).not.toContain("WFH");
+    expect(title).not.toContain("💬");
+    expect(title).not.toContain("🏠");
   });
 
-  it("renders reactions on the same bottom row as message time without border outline", () => {
+  it("hides reaction nicknames and count on chip in 1:1 DM", () => {
+    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+    useUsersStore.getState().mergeUser(createUser({ user_id: 88, full_name: "Bob" }));
+
+    render(
+      <MessageBubble
+        message={createMessage({
+          stream_id: null,
+          subject: "",
+          display_recipient: [
+            { id: 77, full_name: "Alice" },
+            { id: 88, full_name: "Bob" },
+          ],
+          reactions: [
+            {
+              emoji_name: "thumbs_up",
+              emoji_code: "1f44d",
+              reaction_type: "unicode_emoji",
+              user_id: 77,
+            },
+            {
+              emoji_name: "thumbs_up",
+              emoji_code: "1f44d",
+              reaction_type: "unicode_emoji",
+              user_id: 88,
+            },
+          ],
+        })}
+      />,
+    );
+
+    const btn = screen
+      .getAllByRole("button")
+      .find((b) => b.getAttribute("aria-label")?.startsWith("👍 "));
+    expect(btn?.textContent).toBe("👍");
+    expect(btn?.getAttribute("title")).toBeNull();
+    expect(btn?.getAttribute("aria-label")).toContain("Alice");
+    expect(btn?.getAttribute("aria-label")).toContain("Bob");
+  });
+
+  it("shows author nicknames on chip for up to 3 reactors, count digit for 4+", () => {
+    useUsersStore.getState().mergeUser(createUser({ user_id: 1, full_name: "Ann" }));
+    useUsersStore.getState().mergeUser(createUser({ user_id: 2, full_name: "Bob" }));
+    useUsersStore.getState().mergeUser(createUser({ user_id: 3, full_name: "Cara" }));
+    useUsersStore.getState().mergeUser(createUser({ user_id: 4, full_name: "Dan" }));
+
+    const { rerender } = render(
+      <MessageBubble
+        message={createMessage({
+          reactions: [
+            {
+              emoji_name: "thumbs_up",
+              emoji_code: "1f44d",
+              reaction_type: "unicode_emoji",
+              user_id: 1,
+            },
+          ],
+        })}
+      />,
+    );
+
+    let btn = screen
+      .getAllByRole("button")
+      .find((b) => b.getAttribute("title")?.startsWith("👍 "));
+    expect(btn?.textContent).toContain("Ann");
+    expect(btn?.textContent).not.toMatch(/^👍\s*1$/);
+
+    rerender(
+      <MessageBubble
+        message={createMessage({
+          reactions: [
+            {
+              emoji_name: "thumbs_up",
+              emoji_code: "1f44d",
+              reaction_type: "unicode_emoji",
+              user_id: 1,
+            },
+            {
+              emoji_name: "thumbs_up",
+              emoji_code: "1f44d",
+              reaction_type: "unicode_emoji",
+              user_id: 2,
+            },
+            {
+              emoji_name: "thumbs_up",
+              emoji_code: "1f44d",
+              reaction_type: "unicode_emoji",
+              user_id: 3,
+            },
+          ],
+        })}
+      />,
+    );
+    btn = screen
+      .getAllByRole("button")
+      .find((b) => b.getAttribute("title")?.startsWith("👍 "));
+    expect(btn?.textContent).toContain("Ann");
+    expect(btn?.textContent).toContain("Bob");
+    expect(btn?.textContent).toContain("Cara");
+    expect(btn?.textContent?.endsWith("3")).toBe(false);
+
+    rerender(
+      <MessageBubble
+        message={createMessage({
+          reactions: [
+            {
+              emoji_name: "thumbs_up",
+              emoji_code: "1f44d",
+              reaction_type: "unicode_emoji",
+              user_id: 1,
+            },
+            {
+              emoji_name: "thumbs_up",
+              emoji_code: "1f44d",
+              reaction_type: "unicode_emoji",
+              user_id: 2,
+            },
+            {
+              emoji_name: "thumbs_up",
+              emoji_code: "1f44d",
+              reaction_type: "unicode_emoji",
+              user_id: 3,
+            },
+            {
+              emoji_name: "thumbs_up",
+              emoji_code: "1f44d",
+              reaction_type: "unicode_emoji",
+              user_id: 4,
+            },
+          ],
+        })}
+      />,
+    );
+    btn = screen
+      .getAllByRole("button")
+      .find((b) => b.getAttribute("title")?.startsWith("👍 "));
+    expect(btn?.textContent).toBe("👍4");
+    expect(btn?.getAttribute("title")).toContain("Ann");
+    expect(btn?.getAttribute("title")).toContain("Dan");
+  });
+
+  it("renders reactions on the same bottom row as message time in bordered chips", () => {
     render(
       <MessageBubble
         message={createMessage({
@@ -186,8 +332,7 @@ describe("MessageBubble quick reactions", () => {
     expect(reactionRow).toHaveClass("absolute", "bottom-2", "left-2", "right-14", "items-end");
     expect(reactionRow).not.toHaveClass("mt-1.5");
 
-    expect(reactionButton).toHaveClass("border-0");
-    expect(reactionButton).not.toHaveClass("border");
+    expect(reactionButton).toHaveClass("border", "border-border-subtle", "rounded-lg");
 
     const bubbleSurface = reactionRow?.parentElement;
     expect(bubbleSurface?.querySelector(".absolute.bottom-2.right-2")).not.toBeNull();

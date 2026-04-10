@@ -11,7 +11,7 @@ import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { formatMessageTime } from "~/shared/lib/format";
-import { stripHtml } from "~/shared/lib/html";
+import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
 import { createLogger } from "~/shared/lib/logger";
 import { buildNavigableRouteFromMessage } from "~/shared/lib/push-click";
 import { runInFlightDeduped } from "~/shared/lib/request-lifecycle.lib";
@@ -309,7 +309,7 @@ export const FeedPage: React.FC = () => {
                           <FeedSenderName senderId={m.sender_id} fallback={m.sender_full_name} />
                         </p>
                         <p className="bg-bg/70 mt-1.5 line-clamp-2 rounded-lg px-2.5 py-2 text-sm leading-snug text-text-primary">
-                          {truncateText(stripHtml(m.content))}
+                          {truncateText(plainTextPreviewFromMessageBody(m.content))}
                         </p>
                       </button>
                       <div className="bg-bg/60 mt-0.5 flex shrink-0 items-center gap-1 rounded-lg p-1 opacity-70 transition-opacity group-hover:opacity-100">

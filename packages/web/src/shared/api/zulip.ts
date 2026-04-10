@@ -23,6 +23,7 @@ import {
   ZULIP_STREAM_CHAT_NUM_BEFORE,
 } from "~/shared/lib/zulip-message-window.lib";
 import { getCurrentInstance, refreshZulipApiBase, zulipApi } from "./client";
+import { mockMessageFromGetMessageApiData, rawMessageToMockMessage } from "./zulip-message-map.lib";
 import { parseUnreadMessagesCount } from "./zulip-unread.lib";
 
 if (typeof (globalThis as unknown as { Buffer?: unknown }).Buffer === "undefined") {
@@ -48,6 +49,10 @@ const zulipInit = zulipInitDefault as unknown as (config: {
       anchor?: string | number;
       num_before?: number;
       num_after?: number;
+      include_anchor?: boolean;
+      client_gravatar?: boolean;
+      allow_empty_topic_name?: boolean;
+      apply_markdown?: boolean;
     }) => Promise<{
       messages?: {
         id: number;
@@ -100,6 +105,7 @@ function buildMessagesQueryParams(params: {
     num_after: String(params.num_after ?? 0),
     allow_empty_topic_name: "true",
     client_gravatar: "true",
+    apply_markdown: "false",
   };
   if (params.narrow != null) {
     query.narrow = JSON.stringify(params.narrow);
@@ -1034,6 +1040,7 @@ export async function setTopicResolvedState(
     include_anchor: "true",
     allow_empty_topic_name: "true",
     client_gravatar: "false",
+    apply_markdown: "false",
     narrow: JSON.stringify([
       { operator: "stream", operand: streamId },
       { operator: "topic", operand: normalizedTopic },
@@ -1103,11 +1110,16 @@ export interface ZulipUserMember {
   email?: string;
   avatar_url?: string | null;
   role?: number;
+  /** Present when `include_custom_profile_fields=true`. */
+  profile_data?: Record<string, { value?: string; rendered_value?: string }>;
 }
 
 /** Fetches the full user list (GET /users) for populating usersStore. */
 export async function fetchUsers(): Promise<ZulipUserMember[]> {
-  const res = await zulipPipelineGet("/users", { client_gravatar: "false" });
+  const res = await zulipPipelineGet("/users", {
+    client_gravatar: "false",
+    include_custom_profile_fields: "true",
+  });
   if (!res?.ok) {
     return [];
   }
@@ -1123,7 +1135,10 @@ export async function fetchUsers(): Promise<ZulipUserMember[]> {
 /** Fetches a single user by ID (GET /users/{user_id}). Used for DM profile panel. */
 export async function fetchUser(userId: number): Promise<ZulipUserMember | null> {
   guard.userId(userId, "fetchUser");
-  const res = await zulipPipelineGet(`/users/${userId}`, { client_gravatar: "false" });
+  const res = await zulipPipelineGet(`/users/${userId}`, {
+    client_gravatar: "false",
+    include_custom_profile_fields: "true",
+  });
   if (!res?.ok) {
     return null;
   }
@@ -1234,6 +1249,7 @@ async function fetchMessageWindow(options: MessageWindowOptions): Promise<ZulipR
     num_after: String(numAfter),
     client_gravatar: "true",
     allow_empty_topic_name: "true",
+    apply_markdown: "false",
   });
   if (!res?.ok) return [];
   const data = res.data as { result?: string; messages?: ZulipRawMessage[] };
@@ -1341,6 +1357,7 @@ export async function fetchActivityMessagesPage(
     narrow: JSON.stringify(narrow),
     allow_empty_topic_name: "true",
     client_gravatar: "true",
+    apply_markdown: "false",
   });
   if (!res?.ok) return { messages: [], foundOldest: false };
   const data = res.data as {
@@ -1376,41 +1393,22 @@ export interface MockMessage {
   channel?: string;
   subject: string;
   content: string;
+  /** Markdown for editing / quotes; mirrors Markdown `content` when not HTML. */
+  markdown_source?: string;
   timestamp: number;
   /** API flags (e.g. 'read', 'mentioned'). Missing 'read' = unread. */
   flags?: string[];
   reactions?: Reaction[];
   /** Local delivery state for optimistic outgoing messages. */
   delivery_status?: MockMessageDeliveryStatus;
+  /**
+   * Stable client key for list reconciliation (negative id while optimistic).
+   * Preserved after the server assigns a positive message id.
+   */
+  local_echo_key?: number;
 }
 
-export function rawMessageToMockMessage(m: {
-  id: number;
-  sender_id: number;
-  sender_full_name?: string;
-  content: string;
-  timestamp: number;
-  display_recipient?: ZulipRawMessage["display_recipient"];
-  subject?: string;
-  type?: string;
-  stream_id?: number | null;
-  flags?: string[];
-  reactions?: Reaction[];
-}): MockMessage {
-  return {
-    id: m.id,
-    sender_id: m.sender_id,
-    sender_full_name: m.sender_full_name ?? "",
-    stream_id: m.stream_id ?? (m.type === "private" ? null : (m.stream_id ?? null)),
-    display_recipient: m.display_recipient,
-    channel: typeof m.display_recipient === "string" ? m.display_recipient : undefined,
-    subject: m.subject ?? "",
-    content: m.content,
-    timestamp: m.timestamp,
-    flags: m.flags,
-    reactions: m.reactions,
-  };
-}
+export { rawMessageToMockMessage };
 
 function mapZulipMessage(m: Parameters<typeof rawMessageToMockMessage>[0]): MockMessage {
   return rawMessageToMockMessage(m);
@@ -1573,6 +1571,7 @@ export async function fetchMessagesWithNarrowPage(
         anchor: validatedAnchor,
         num_before: validatedNumBefore,
         num_after: validatedNumAfter,
+        apply_markdown: false,
       })) as {
         result?: string;
         messages?: Parameters<typeof mapZulipMessage>[0][];
@@ -1615,6 +1614,7 @@ export async function fetchAllMessagesPage(
     narrow: "[]",
     allow_empty_topic_name: "true",
     client_gravatar: "true",
+    apply_markdown: "false",
   });
 
   if (!res?.ok) {
@@ -1684,6 +1684,7 @@ export async function fetchDmMessages(userIds: number | number[]): Promise<MockM
     num_after: ZULIP_DM_CHAT_NUM_AFTER,
     client_gravatar: true,
     allow_empty_topic_name: true,
+    apply_markdown: false,
   };
   const request = (async () => {
     try {
@@ -1711,13 +1712,14 @@ export async function fetchDmMessages(userIds: number | number[]): Promise<MockM
 /** Fetches a single message by id. Returns null on non-ok/error response. */
 export async function fetchMessageById(messageId: number): Promise<MockMessage | null> {
   guard.messageId(messageId, "fetchMessageById");
-  const res = await zulipPipelineGet(`/messages/${messageId}`);
+  const res = await zulipPipelineGet(`/messages/${messageId}`, {
+    allow_empty_topic_name: "true",
+    apply_markdown: "false",
+  });
   if (!res?.ok) {
     return null;
   }
-  const data = res.data as ZulipRawMessage & { result?: string };
-  if (data.result === "error" || data.id == null) return null;
-  return rawMessageToMockMessage(data);
+  return mockMessageFromGetMessageApiData(res.data);
 }
 
 /** Fetches subscriber IDs for a stream (GET /streams/{stream_id}/members). */

@@ -4,7 +4,7 @@ import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { t } from "~/i18n/i18n";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { getPresenceState } from "~/shared/lib/format";
-import { stripHtml } from "~/shared/lib/html";
+import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 
@@ -30,7 +30,9 @@ export const SearchResultItem = React.memo(function SearchResultItem({
               #{msg.channel ?? "?"} › #{msg.subject}
             </span>
           </div>
-          <p className="line-clamp-2 truncate text-text-primary">{stripHtml(msg.content)}</p>
+          <p className="line-clamp-2 truncate text-text-primary">
+            {plainTextPreviewFromMessageBody(msg.content)}
+          </p>
         </button>
         <button
           type="button"

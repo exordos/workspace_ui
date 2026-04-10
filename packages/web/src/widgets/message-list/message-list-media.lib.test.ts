@@ -49,4 +49,16 @@ describe("buildMessageMediaGallery", () => {
     expect(gallery.items[0]?.url).toMatch(/\/user_uploads\/1\/a\.png$/);
     expect(gallery.indexByUrl.size).toBe(1);
   });
+
+  it("includes user_upload image links as gallery items", () => {
+    const gallery = buildMessageMediaGallery([
+      msg(
+        1,
+        '<p><a href="/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png">image.png</a></p>',
+      ),
+    ]);
+
+    expect(gallery.items).toHaveLength(1);
+    expect(gallery.items[0]?.url).toMatch(/\/user_uploads\/2\/ff\/aP3oHiNs40xdmpUNVol7Z5ga\/image\.png$/);
+  });
 });

@@ -12,6 +12,8 @@ export interface ChatInfoMember {
   email: string;
   avatarUrl: string | null;
   isOnline: boolean;
+  /** Zulip custom profile fields (from GET /users). */
+  profileData?: Record<string, { value?: string; rendered_value?: string }>;
 }
 
 export interface ChatInfoTopic {
