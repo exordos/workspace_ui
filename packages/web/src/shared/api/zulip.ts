@@ -262,6 +262,15 @@ export interface ZulipUserTopic {
   visibility_policy: number;
 }
 
+export interface ZulipRecentPrivateConversation {
+  // Что делает: список участников DM (включая текущего пользователя).
+  user_ids: number[];
+  // Что делает: id последнего сообщения в этом DM, если сервер его знает.
+  max_message_id: number | null;
+  // Что делает: список непрочитанных сообщений в DM для быстрого unread-индикатора.
+  unread_message_ids: number[];
+}
+
 export interface SavedSnippet {
   id: number;
   title: string;
@@ -317,6 +326,44 @@ function parseUserTopics(data: unknown): ZulipUserTopic[] | null {
     return null;
   }
   return data.filter(isZulipUserTopic);
+}
+
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0;
+}
+
+// Что делает: безопасно читает recent_private_conversations из register-ответа и отфильтровывает битые данные.
+function parseRecentPrivateConversations(
+  data: unknown,
+): Record<string, ZulipRecentPrivateConversation> | null {
+  if (data == null || typeof data !== "object" || Array.isArray(data)) {
+    return null;
+  }
+
+  const entries = Object.entries(data as Record<string, unknown>);
+  if (entries.length === 0) {
+    return {};
+  }
+
+  const parsed: Record<string, ZulipRecentPrivateConversation> = {};
+  for (const [key, value] of entries) {
+    if (value == null || typeof value !== "object" || Array.isArray(value)) continue;
+    const record = value as Record<string, unknown>;
+    if (!Array.isArray(record.user_ids)) continue;
+    const userIds = record.user_ids.filter(isPositiveInteger);
+    if (userIds.length === 0) continue;
+    const unreadMessageIds = Array.isArray(record.unread_message_ids)
+      ? record.unread_message_ids.filter(isPositiveInteger)
+      : [];
+    const maxMessageId = isPositiveInteger(record.max_message_id) ? record.max_message_id : null;
+    parsed[key] = {
+      user_ids: Array.from(new Set(userIds)).sort((left, right) => left - right),
+      max_message_id: maxMessageId,
+      unread_message_ids: unreadMessageIds,
+    };
+  }
+
+  return parsed;
 }
 
 /**
@@ -582,7 +629,12 @@ export interface RegisterQueueResult {
   last_event_id: number;
   event_queue_longpoll_timeout_seconds?: number;
   user_topics?: ZulipUserTopic[];
+  // Зачем: metadata recent DM для первичного построения списка диалогов.
+  recent_private_conversations?: Record<string, ZulipRecentPrivateConversation>;
 }
+
+// Зачем: по умолчанию подтягиваем metadata, чтобы быстрее собрать sidebar без полной истории сообщений.
+const DEFAULT_REGISTER_FETCH_EVENT_TYPES = ["user_topics", "recent_private_conversations"] as const;
 
 export interface ZulipEvent {
   id: number;
@@ -632,10 +684,17 @@ function validateEventCursor(lastEventId: number, context: string): number {
 }
 
 /** Registers an event queue (POST /api/v1/register). Returns queue_id for subsequent long-polling. */
-export async function registerQueue(eventTypes: string[]): Promise<RegisterQueueResult> {
+export async function registerQueue(
+  eventTypes: string[],
+  fetchEventTypes: string[] = [...DEFAULT_REGISTER_FETCH_EVENT_TYPES],
+): Promise<RegisterQueueResult> {
   const body: Record<string, string> = {
     event_types: JSON.stringify(eventTypes),
   };
+  if (fetchEventTypes.length > 0) {
+    // Что делает: просит Zulip добавить в register нужные metadata-поля.
+    body.fetch_event_types = JSON.stringify(fetchEventTypes);
+  }
   const res = await zulipPipelinePost("register", body);
   const data = res.data as {
     result?: string;
@@ -645,6 +704,7 @@ export async function registerQueue(eventTypes: string[]): Promise<RegisterQueue
     last_event_id?: number;
     event_queue_longpoll_timeout_seconds?: number;
     user_topics?: unknown;
+    recent_private_conversations?: unknown;
   } | null;
   if (data == null || typeof data !== "object") {
     throw new Error(t("app.invalidResponse"));
@@ -657,6 +717,9 @@ export async function registerQueue(eventTypes: string[]): Promise<RegisterQueue
   }
 
   const userTopics = parseUserTopics(data.user_topics);
+  const recentPrivateConversations = parseRecentPrivateConversations(
+    data.recent_private_conversations,
+  );
   const cacheKey = getCurrentUserTopicsCacheKey();
   if (cacheKey && userTopics) {
     setCachedUserTopicsForKey(cacheKey, userTopics);
@@ -667,6 +730,9 @@ export async function registerQueue(eventTypes: string[]): Promise<RegisterQueue
     last_event_id: data.last_event_id,
     event_queue_longpoll_timeout_seconds: data.event_queue_longpoll_timeout_seconds,
     ...(userTopics ? { user_topics: userTopics } : {}),
+    ...(recentPrivateConversations
+      ? { recent_private_conversations: recentPrivateConversations }
+      : {}),
   };
 }
 
@@ -674,6 +740,7 @@ export async function registerQueue(eventTypes: string[]): Promise<RegisterQueue
 export async function registerQueueForCredentials(
   credentials: ZulipCredentials,
   eventTypes: string[],
+  fetchEventTypes: string[] = [...DEFAULT_REGISTER_FETCH_EVENT_TYPES],
 ): Promise<RegisterQueueResult> {
   const base = getValidatedCredentialsRealm(credentials, "registerQueueForCredentials");
   const authValue = getAuthValueForCredentials(credentials);
@@ -689,6 +756,10 @@ export async function registerQueueForCredentials(
       },
       body: new URLSearchParams({
         event_types: JSON.stringify(eventTypes),
+        // Зачем: background-loop для других инстансов должен получать такой же metadata-набор.
+        ...(fetchEventTypes.length > 0
+          ? { fetch_event_types: JSON.stringify(fetchEventTypes) }
+          : {}),
       }).toString(),
     });
   } catch {
@@ -703,6 +774,7 @@ export async function registerQueueForCredentials(
     last_event_id?: number;
     event_queue_longpoll_timeout_seconds?: number;
     user_topics?: unknown;
+    recent_private_conversations?: unknown;
   };
   try {
     data = (await response.json()) as typeof data;
@@ -718,6 +790,9 @@ export async function registerQueueForCredentials(
   }
 
   const userTopics = parseUserTopics(data.user_topics);
+  const recentPrivateConversations = parseRecentPrivateConversations(
+    data.recent_private_conversations,
+  );
   setCachedUserTopicsForKey(
     buildUserTopicsCacheKey(credentials.realm, credentials.email),
     userTopics ?? [],
@@ -728,6 +803,9 @@ export async function registerQueueForCredentials(
     last_event_id: data.last_event_id,
     event_queue_longpoll_timeout_seconds: data.event_queue_longpoll_timeout_seconds,
     ...(userTopics ? { user_topics: userTopics } : {}),
+    ...(recentPrivateConversations
+      ? { recent_private_conversations: recentPrivateConversations }
+      : {}),
   };
 }
 
@@ -1214,6 +1292,7 @@ interface MessageWindowOptions {
   numBefore: number;
   numAfter: number;
   includeAnchor?: boolean;
+  narrow?: { operator: string; operand: string | number | number[] }[];
 }
 
 type MessagesApiAnchor = number | "newest" | "oldest" | "first_unread";
@@ -1237,12 +1316,13 @@ function validateNonNegativeInteger(value: number, label: string): number {
 }
 
 async function fetchMessageWindow(options: MessageWindowOptions): Promise<ZulipRawMessage[]> {
-  const { anchor, numBefore, numAfter, includeAnchor } = options;
+  const { anchor, numBefore, numAfter, includeAnchor, narrow } = options;
   const res = await zulipPipelineGet("/messages", {
     anchor: String(anchor),
     ...(includeAnchor == null ? {} : { include_anchor: includeAnchor ? "true" : "false" }),
     num_before: String(numBefore),
     num_after: String(numAfter),
+    ...(narrow == null ? {} : { narrow: JSON.stringify(narrow) }),
     client_gravatar: "true",
     allow_empty_topic_name: "true",
   });
@@ -1287,6 +1367,43 @@ export async function fetchMessagesAfterAnchor(
     numAfter,
     includeAnchor: false,
   });
+}
+
+export interface DirectMessagesPageResult {
+  messages: ZulipRawMessage[];
+  foundOldest: boolean;
+}
+
+/** Fetches a page across all direct messages (narrow=is:dm) for metadata backfill. */
+export async function fetchDirectMessagesPage(
+  anchor: number | "newest" = "newest",
+  numBefore = 5000,
+): Promise<DirectMessagesPageResult> {
+  // Что делает: берем широкую выборку DM, чтобы восстановить старые диалоги без полного bootstrap всех сообщений.
+  const normalizedAnchor =
+    anchor === "newest" ? anchor : guard.messageId(anchor, "fetchDirectMessagesPage.anchor");
+  const safeNumBefore = validateNonNegativeInteger(numBefore, "fetchDirectMessagesPage.numBefore");
+  const res = await zulipPipelineGet("/messages", {
+    anchor: String(normalizedAnchor),
+    include_anchor: "false",
+    num_before: String(safeNumBefore),
+    num_after: "0",
+    narrow: JSON.stringify([{ operator: "is", operand: "dm" }]),
+    client_gravatar: "true",
+    allow_empty_topic_name: "true",
+  });
+  if (!res?.ok) return { messages: [], foundOldest: false };
+  const data = res.data as {
+    result?: string;
+    messages?: ZulipRawMessage[];
+    found_oldest?: boolean;
+    foundOldest?: boolean;
+  };
+  if (!data || data.result === "error") return { messages: [], foundOldest: false };
+  return {
+    messages: data.messages ?? [],
+    foundOldest: data.found_oldest ?? data.foundOldest ?? false,
+  };
 }
 
 export type ActivityFilter = "starred" | "mentions" | "reactions";

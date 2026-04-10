@@ -1,7 +1,6 @@
 /**
  * Tests for Zulip API (zulip-queue module).
  */
-import "./zulip.test.setup";
 import { describe, expect, it, vi } from "vitest";
 import { getCurrentInstance } from "./client";
 import {
@@ -45,6 +44,7 @@ describe("registerQueue", () => {
     expect(mockRefreshZulipApiBase).toHaveBeenCalled();
     expect(mockZulipApi.post).toHaveBeenCalledWith("/register", {
       event_types: JSON.stringify(["message", "presence"]),
+      fetch_event_types: JSON.stringify(["user_topics", "recent_private_conversations"]),
     });
   });
 
@@ -76,6 +76,35 @@ describe("registerQueue", () => {
       raw: { statusText: "OK" },
     });
     await expect(registerQueue(["message"])).rejects.toThrow();
+  });
+
+  it("parses recent_private_conversations from register payload", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        queue_id: "q-123",
+        last_event_id: -1,
+        recent_private_conversations: {
+          "1": {
+            user_ids: [10, 20],
+            max_message_id: 555,
+            unread_message_ids: [551, 552],
+          },
+        },
+      },
+      raw: { statusText: "OK" },
+    });
+
+    const result = await registerQueue(["message"]);
+    expect(result.recent_private_conversations).toEqual({
+      "1": {
+        user_ids: [10, 20],
+        max_message_id: 555,
+        unread_message_ids: [551, 552],
+      },
+    });
   });
 });
 

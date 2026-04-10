@@ -749,6 +749,57 @@ describe("chatListStore", () => {
       expect(useChatListStore.getState().currentUserId).toBe(10);
       expect(useChatListStore.getState().streams().length).toBeGreaterThanOrEqual(1);
     });
+
+    it("rebuilds metadata-only DM rows when userId arrives late", () => {
+      useUsersStore.getState().mergeUser({ user_id: 10, full_name: "Alice", email: "a@x.test" });
+      useUsersStore.getState().mergeUser({ user_id: 20, full_name: "Bob", email: "b@x.test" });
+      useChatListStore.getState().upsertDmMetadataRows([{ userIds: [10, 20], unreadCount: 1 }]);
+
+      const before = [...useChatListStore.getState().dmsMap.values()][0];
+      expect(before?.isGroup).toBe(true);
+
+      useChatListStore.getState().setCurrentUserId(10);
+
+      const after = [...useChatListStore.getState().dmsMap.values()][0];
+      expect(after?.isGroup).toBe(false);
+      expect(after?.id).toBe(20);
+    });
+  });
+
+  describe("metadata upserts", () => {
+    it("adds missing stream rows from metadata", () => {
+      useChatListStore.getState().upsertStreamMetadataRows([
+        { streamId: 11, name: "engineering" },
+        { streamId: 12, name: "design" },
+      ]);
+
+      const streams = useChatListStore.getState().streamsMap;
+      expect(streams.has(11)).toBe(true);
+      expect(streams.has(12)).toBe(true);
+      expect(streams.get(11)?.topics.size).toBe(0);
+    });
+
+    it("adds personal DM rows from metadata with unread count", () => {
+      useUsersStore.getState().mergeUser({ user_id: 10, full_name: "Alice", email: "a@x.test" });
+      useUsersStore.getState().mergeUser({ user_id: 20, full_name: "Bob", email: "b@x.test" });
+      useChatListStore.getState().setCurrentUserId(10);
+
+      useChatListStore.getState().upsertDmMetadataRows([
+        {
+          userIds: [10, 20],
+          unreadCount: 3,
+          lastMessageId: 123,
+          lastActivityTs: 1_700_000_000,
+        },
+      ]);
+
+      const dm = useChatListStore.getState().dmsMap.get("10,20");
+      expect(dm).toBeDefined();
+      expect(dm?.isGroup).toBe(false);
+      expect(dm?.id).toBe(20);
+      expect(dm?.unreadCount).toBe(3);
+      expect(dm?.lastMessageId).toBe(123);
+    });
   });
 
   describe("stream admin actions", () => {
