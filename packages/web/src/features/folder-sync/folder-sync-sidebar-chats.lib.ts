@@ -22,6 +22,8 @@ export interface SelectedFolderSidebarProjectionInput {
   currentUserId: number | null;
 }
 
+// Зачем: из folder items приходит набор chat_id в разных форматах, который нужен для быстрого membership-check.
+// Что делает: нормализует все chat_id через alias-правила и складывает их в Set.
 export function toChatIdSet(items: readonly FolderItemForClient[]): Set<string> {
   const chatIdSet = new Set<string>();
   for (const item of items) {
@@ -30,6 +32,8 @@ export function toChatIdSet(items: readonly FolderItemForClient[]): Set<string> 
   return chatIdSet;
 }
 
+// Зачем: один и тот же чат может иметь несколько представлений chat_id (legacy/numeric/stream/dm).
+// Что делает: проверяет совпадение chat_id с учетом всех его alias-вариантов.
 export function hasMatchingChatId(chatIdSet: ReadonlySet<string>, chatId: string): boolean {
   const aliases = new Set<string>();
   addChatIdAliases(aliases, chatId);
@@ -41,6 +45,34 @@ export function hasMatchingChatId(chatIdSet: ReadonlySet<string>, chatId: string
   return false;
 }
 
+// Зачем: self-DM должен быть доступен только из «Моя активность», а не в обычном списке чатов.
+// Что делает: определяет, является ли конкретный DM персональным чатом пользователя с самим собой.
+function isSelfDmChat(chat: SidebarChat, currentUserId: number | null): boolean {
+  if (chat.type !== "dm") return false;
+  if (chat.isGroup === true) return false;
+  if (currentUserId == null) return false;
+  return chat.id === currentUserId;
+}
+
+// Зачем: групповые DM и self-DM не должны попадать в sidebar-проекцию чатов.
+// Что делает: возвращает true для DM-чатов, которые нужно скрыть из сайдбара.
+function shouldHideDmChat(chat: SidebarChat, currentUserId: number | null): boolean {
+  if (chat.type !== "dm") return false;
+  if (chat.isGroup === true) return true;
+  return isSelfDmChat(chat, currentUserId);
+}
+
+// Зачем: правило скрытия должно применяться единообразно для всех путей построения списка чатов.
+// Что делает: удаляет из входного массива все DM, отмеченные как скрываемые.
+function filterHiddenDmChats(
+  chats: readonly SidebarChat[],
+  currentUserId: number | null,
+): SidebarChat[] {
+  return chats.filter((chat) => !shouldHideDmChat(chat, currentUserId));
+}
+
+// Зачем: sidebar рендерится из единой проекции выбранной папки, чтобы поиск/навигация/список были согласованы.
+// Что делает: строит итоговый список чатов для выбранной папки с учетом folder items, fallback и фильтрации DM.
 export function buildSelectedFolderSidebarChats(
   input: SelectedFolderSidebarProjectionInput,
 ): SidebarChat[] {
@@ -55,14 +87,20 @@ export function buildSelectedFolderSidebarChats(
   } = input;
 
   if (selectedFolderId === SYSTEM_PERSONAL_FOLDER_ID) {
-    return chatsSortedByLastMessage.filter((chat) => chat.type === "dm");
+    return filterHiddenDmChats(
+      chatsSortedByLastMessage.filter((chat) => chat.type === "dm"),
+      currentUserId,
+    );
   }
   if (selectedFolderId === SYSTEM_CHANNELS_FOLDER_ID) {
-    return chatsSortedByLastMessage.filter((chat) => chat.type === "stream");
+    return filterHiddenDmChats(
+      chatsSortedByLastMessage.filter((chat) => chat.type === "stream"),
+      currentUserId,
+    );
   }
 
   if (folderChatIds == null) {
-    return [...chatsSortedByLastMessage];
+    return filterHiddenDmChats(chatsSortedByLastMessage, currentUserId);
   }
 
   const matchedChats = chatsSortedByLastMessage.filter((chat) =>
@@ -70,9 +108,11 @@ export function buildSelectedFolderSidebarChats(
   );
   const selectedFolderItems = folderItemsByFolderId.get(selectedFolderId) ?? [];
   if (selectedFolderItems.length === 0) {
-    return matchedChats;
+    return filterHiddenDmChats(matchedChats, currentUserId);
   }
 
+  // Зачем: legacy numeric chat_id могут конфликтовать между stream и dm, нужен явный приоритет.
+  // Что делает: извлекает числового DM-кандидата для дедупликации неоднозначных numeric id.
   const resolveDmNumericCandidate = (dmUserIds: readonly number[]): number | null => {
     if (dmUserIds.length === 1) {
       return dmUserIds[0] ?? null;
@@ -233,13 +273,14 @@ export function buildSelectedFolderSidebarChats(
     });
   }
 
-  return [
-    ...fallbackDmChats,
-    ...fallbackStreamChats,
-    ...matchedChatsWithoutAmbiguousNumericStreams,
-  ];
+  return filterHiddenDmChats(
+    [...fallbackDmChats, ...fallbackStreamChats, ...matchedChatsWithoutAmbiguousNumericStreams],
+    currentUserId,
+  );
 }
 
+// Зачем: системные папки рендерятся синтетически и не должны показывать loader при выборке items.
+// Что делает: возвращает флаг loading для sidebar в зависимости от типа выбранной папки.
 export function resolveSelectedFolderSidebarLoading(
   selectedFolderId: string,
   loading: boolean,
