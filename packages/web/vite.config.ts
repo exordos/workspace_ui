@@ -4,7 +4,11 @@ import react from "@vitejs/plugin-react-swc";
 import { defineConfig, loadEnv } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 import svgr from "vite-plugin-svgr";
+import { devWorkspaceBrowserMountPath } from "./src/shared/config/dev-workspace-org-proxy";
+import { WORKSPACE_HTTP_PATH_DEFAULTS } from "./src/shared/config/workspace-api-layout";
 import { buildPermissionsPolicyHeader } from "./src/shared/lib/permissions-policy";
+import { workspaceOrgApiOriginFromZulipRealmRoot } from "./src/shared/lib/workspace-org-origin.lib";
+import { installDevWorkspaceOrgProxyMiddleware } from "./vite-dev-workspace-org-proxy";
 
 function normalizeUserUploadsPathPrefix(raw: string | undefined): string {
   if (!raw?.trim()) return "";
@@ -34,20 +38,6 @@ function effectiveUserUploadsProxyRewritePrefix(
     return explicitPrefix.replace(/\/+$/, "");
   }
   return defaultDevUserUploadsProxyPrefix(workspaceRestPath).replace(/\/+$/, "");
-}
-
-function cleanRealmOrigin(raw: string): string {
-  return raw.replace(/\/api\/v1\/?$/, "").replace(/\/+$/, "");
-}
-
-function originHostname(origin: string | undefined): string {
-  if (!origin?.trim()) return "";
-  try {
-    const normalized = /^https?:\/\//i.test(origin) ? origin : `https://${origin}`;
-    return new URL(normalized).hostname;
-  } catch {
-    return "";
-  }
 }
 
 function isViteDevProxyDebugEnabled(rawEnv: Record<string, string>): boolean {
@@ -115,50 +105,27 @@ function deriveLegacyWorkspaceOrigin(
   }
 
   const normalizedWorkspaceOrigin = workspaceOrigin.replace(/\/+$/, "");
-  try {
-    const parsedWorkspaceOrigin = new URL(normalizedWorkspaceOrigin);
-    if (parsedWorkspaceOrigin.hostname.startsWith("zulip.")) {
-      parsedWorkspaceOrigin.hostname = `workspace.${parsedWorkspaceOrigin.hostname.slice("zulip.".length)}`;
-      return parsedWorkspaceOrigin.origin;
-    }
-  } catch {
-    // Keep current origin when env value is not a valid URL.
-  }
-
-  return normalizedWorkspaceOrigin;
+  return workspaceOrgApiOriginFromZulipRealmRoot(normalizedWorkspaceOrigin);
 }
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, import.meta.dirname, "");
   const workspaceOrigin = env.VITE_WORKSPACE_API_ORIGIN?.replace(/\/+$/, "");
-  const zulipRealmOriginRaw = env.VITE_ZULIP_REALM_ORIGIN?.trim();
-  const zulipRealmOrigin = zulipRealmOriginRaw
-    ? cleanRealmOrigin(zulipRealmOriginRaw)
-    : workspaceOrigin;
-  const workspaceRestPath = normalizeWorkspaceRestPath(env.VITE_WORKSPACE_REST_API_PATH);
-  const rawUserUploadsPrefix = env.VITE_USER_UPLOADS_PATH_PREFIX?.trim() ?? "";
+  const workspaceRestPath = normalizeWorkspaceRestPath(
+    env.VITE_WORKSPACE_REST_API_PATH !== undefined
+      ? env.VITE_WORKSPACE_REST_API_PATH
+      : WORKSPACE_HTTP_PATH_DEFAULTS.workspaceRestApiPath,
+  );
+  const rawUserUploadsPrefix =
+    env.VITE_USER_UPLOADS_PATH_PREFIX !== undefined
+      ? (env.VITE_USER_UPLOADS_PATH_PREFIX?.trim() ?? "")
+      : WORKSPACE_HTTP_PATH_DEFAULTS.userUploadsPathPrefix;
   const uploadsAtRealmRootFlag = env.VITE_USER_UPLOADS_AT_REALM_ROOT?.trim().toLowerCase();
-  const uploadsProxySeparateRealmHost =
-    originHostname(workspaceOrigin) !== "" &&
-    originHostname(zulipRealmOrigin) !== "" &&
-    originHostname(workspaceOrigin) !== originHostname(zulipRealmOrigin);
-  /** Rare: Zulip realm host uses a gateway prefix for uploads (same as VITE_USER_UPLOADS_PATH_PREFIX). */
-  const forceUploadsGatewayPrefixOnZulipRealm =
-    env.VITE_USER_UPLOADS_PREFIX_ON_ZULIP_REALM?.trim().toLowerCase() === "true" ||
-    env.VITE_USER_UPLOADS_PREFIX_ON_ZULIP_REALM?.trim() === "1";
   let proxyUserUploadsAsRealmRoot =
     rawUserUploadsPrefix === "-" ||
     rawUserUploadsPrefix.toLowerCase() === "realm-root" ||
     uploadsAtRealmRootFlag === "true" ||
     uploadsAtRealmRootFlag === "1";
-  if (
-    !proxyUserUploadsAsRealmRoot &&
-    uploadsProxySeparateRealmHost &&
-    !forceUploadsGatewayPrefixOnZulipRealm
-  ) {
-    // API on workspace gateway, files on canonical Zulip: /user_uploads/... at realm root.
-    proxyUserUploadsAsRealmRoot = true;
-  }
   const userUploadsPathPrefix = proxyUserUploadsAsRealmRoot
     ? ""
     : normalizeUserUploadsPathPrefix(env.VITE_USER_UPLOADS_PATH_PREFIX);
@@ -173,6 +140,17 @@ export default defineConfig(({ mode }) => {
   const base = isElectron ? "./" : cdnUrl ? `${cdnUrl}/` : "/";
 
   const proxyDebug = isViteDevProxyDebugEnabled(env);
+
+  const rewriteUserUploadsPathForUpstream = (pathWithQuery: string): string => {
+    if (proxyUserUploadsAsRealmRoot) {
+      return pathWithQuery;
+    }
+    const prefix = effectiveUserUploadsProxyRewritePrefix(
+      userUploadsPathPrefix,
+      workspaceRestPath,
+    );
+    return `${prefix}${pathWithQuery}`;
+  };
 
   const devApiProxy =
     workspaceOrigin &&
@@ -191,24 +169,31 @@ export default defineConfig(({ mode }) => {
         target: workspaceOrigin,
         changeOrigin: true,
       }),
-      "/user_uploads": withDevProxyRequestLog("user_uploads", zulipRealmOrigin, proxyDebug, {
-        target: zulipRealmOrigin,
+      "/user_uploads": withDevProxyRequestLog("user_uploads", workspaceOrigin, proxyDebug, {
+        target: workspaceOrigin,
         changeOrigin: true,
-        rewrite: (pathValue) => {
-          if (proxyUserUploadsAsRealmRoot) {
-            return pathValue;
-          }
-          const prefix = effectiveUserUploadsProxyRewritePrefix(
-            userUploadsPathPrefix,
-            workspaceRestPath,
-          );
-          return `${prefix}${pathValue}`;
-        },
+        rewrite: (pathValue) => rewriteUserUploadsPathForUpstream(pathValue),
       }),
     } satisfies Record<string, ViteProxyEntry>);
 
   return {
     plugins: [
+      // Multi-org Workspace REST: same-origin `/workspace/...` + X-Workspace-Dev-Target-Origin (before server.proxy)
+      ...(mode === "development" && !isElectron
+        ? [
+            {
+              name: "dev-workspace-org-proxy",
+              enforce: "pre" as const,
+              configureServer(server) {
+                installDevWorkspaceOrgProxyMiddleware(server.middlewares, {
+                  proxyDebug,
+                  workspaceMountPath: devWorkspaceBrowserMountPath(workspaceRestPath),
+                  workspaceRestPathRaw: workspaceRestPath,
+                });
+              },
+            },
+          ]
+        : []),
       react(),
       svgr(),
       ...(!isElectron
@@ -346,6 +331,7 @@ export default defineConfig(({ mode }) => {
           "src/test/**",
           "src/vite-env.d.ts",
           "src/main.tsx",
+          "src/main-app.tsx",
         ],
       },
     },

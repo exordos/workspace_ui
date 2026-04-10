@@ -18,8 +18,16 @@
  *   apiClient.use(myMiddleware);
  */
 
+import {
+  DEV_WORKSPACE_ORG_PROXY_PATH_PREFIX,
+  X_WORKSPACE_DEV_TARGET_ORIGIN,
+  devWorkspaceBrowserMountPath,
+  isAllowedDevWorkspaceProxyTargetOrigin,
+  workspaceRestApiPathSuffix,
+} from "~/shared/config/dev-workspace-org-proxy";
 import { getBasicAuthValue, wipeCredentials } from "~/shared/lib/auth-guard";
 import { env } from "~/shared/lib/env";
+import { workspaceOrgApiOriginFromZulipRealmRoot } from "~/shared/lib/workspace-org-origin.lib";
 import { logApiCall } from "~/shared/lib/logger";
 
 // ---------------------------------------------------------------------------
@@ -32,6 +40,8 @@ export interface InstanceCredentials {
   email: string;
   apiKey: string;
   authType?: "api_key" | "session";
+  /** Origin of Workspace REST for this org (from server URL entered at login). */
+  workspaceOrgOrigin?: string;
 }
 
 let instanceProvider: (() => InstanceCredentials | null) | null = null;
@@ -50,6 +60,95 @@ type InstanceAuthType = "api_key" | "session";
 
 function resolveInstanceAuthType(instance: InstanceCredentials | null): InstanceAuthType {
   return instance?.authType === "session" ? "session" : "api_key";
+}
+
+function normalizeInstanceRealmRoot(realmInput: string): string {
+  const trimmed = realmInput.trim().replace(/\/+$/, "");
+  const escapedConfiguredApiPath = env.ZULIP_API_PATH.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return trimmed
+    .replace(new RegExp(`${escapedConfiguredApiPath}$`), "")
+    .replace(/\/api\/v1$/, "")
+    .replace(/\/json$/, "")
+    .replace(/\/api$/, "")
+    .replace(/\/+$/, "");
+}
+
+function workspaceOrgApiOriginForWorkspaceRest(instance: InstanceCredentials): string {
+  const stored = instance.workspaceOrgOrigin?.trim() ?? "";
+  if (stored !== "" && isAllowedDevWorkspaceProxyTargetOrigin(stored)) {
+    return new URL(stored).origin;
+  }
+  return workspaceOrgApiOriginFromZulipRealmRoot(normalizeInstanceRealmRoot(instance.realm));
+}
+
+/**
+ * DEV: canonical Zulip realm origin (where `/user_uploads` is served), not the Workspace gateway.
+ */
+function zulipRealmOriginForDevUserUploads(instance: InstanceCredentials): string {
+  const root = normalizeInstanceRealmRoot(instance.realm);
+  if (root === "") {
+    return "";
+  }
+  try {
+    return new URL(/^https?:\/\//i.test(root) ? root : `https://${root}`).origin;
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * DEV: Zulip realm origin for Vite `/user_uploads` proxy (`X-Workspace-Dev-Target-Origin`).
+ * Uses the instance realm host, not {@link workspaceOrgApiOriginForWorkspaceRest} (gateway).
+ */
+export function getDevUserUploadsProxyTargetOrigin(): string | null {
+  if (!import.meta.env.DEV) {
+    return null;
+  }
+  const instance = getCurrentInstance();
+  if (instance == null) {
+    return null;
+  }
+  const realmOrigin = zulipRealmOriginForDevUserUploads(instance);
+  if (realmOrigin === "") {
+    return null;
+  }
+  if (!isAllowedDevWorkspaceProxyTargetOrigin(realmOrigin)) {
+    return null;
+  }
+  return realmOrigin;
+}
+
+/**
+ * DEV: adds `X-Workspace-Dev-Target-Origin` for same-origin fetches to `/user_uploads` so the Vite
+ * middleware forwards to the Zulip realm (see `vite-dev-workspace-org-proxy.ts`).
+ */
+export function appendDevUserUploadsProxyHeaders(
+  candidateUrl: string,
+  headers: Record<string, string>,
+): Record<string, string> {
+  if (!import.meta.env.DEV || typeof document === "undefined") {
+    return headers;
+  }
+  const target = getDevUserUploadsProxyTargetOrigin();
+  if (target == null) {
+    return headers;
+  }
+  try {
+    const parsed = new URL(candidateUrl, window.location.origin);
+    if (parsed.origin !== window.location.origin) {
+      return headers;
+    }
+    const pathOnly = parsed.pathname;
+    if (pathOnly !== "/user_uploads" && !pathOnly.startsWith("/user_uploads/")) {
+      return headers;
+    }
+    if (headers[X_WORKSPACE_DEV_TARGET_ORIGIN]) {
+      return headers;
+    }
+    return { ...headers, [X_WORKSPACE_DEV_TARGET_ORIGIN]: target };
+  } catch {
+    return headers;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -139,6 +238,44 @@ const sessionCsrfMiddleware: Middleware = async (req, next) => {
   return next(req);
 };
 
+function pathnameUnderWorkspaceDevPrefix(pathname: string, prefix: string): boolean {
+  const p = prefix.replace(/\/+$/, "");
+  return pathname === p || pathname.startsWith(`${p}/`);
+}
+
+function workspaceDevHeaderTargetPathPrefixes(): readonly string[] {
+  const mount = devWorkspaceBrowserMountPath(env.WORKSPACE_REST_API_PATH).replace(/\/+$/, "");
+  const escaped = `${DEV_WORKSPACE_ORG_PROXY_PATH_PREFIX}${mount}`.replace(/\/+$/, "");
+  return /^https?:\/\//i.test(env.WORKSPACE_API_BASE) ? [escaped] : [mount];
+}
+
+/** DEV: tells Vite dev proxy which org host to forward Workspace REST to. */
+const devWorkspaceOrgTargetHeaderMiddleware: Middleware = async (req, next) => {
+  if (!import.meta.env.DEV) {
+    return next(req);
+  }
+  let pathname: string;
+  try {
+    pathname = new URL(req.url).pathname;
+  } catch {
+    return next(req);
+  }
+  const prefixes = workspaceDevHeaderTargetPathPrefixes();
+  if (!prefixes.some((p) => pathnameUnderWorkspaceDevPrefix(pathname, p))) {
+    return next(req);
+  }
+  const instance = getCurrentInstance();
+  if (instance == null) {
+    return next(req);
+  }
+  const orgOrigin = workspaceOrgApiOriginForWorkspaceRest(instance);
+  if (orgOrigin === "") {
+    return next(req);
+  }
+  req.headers[X_WORKSPACE_DEV_TARGET_ORIGIN] = orgOrigin;
+  return next(req);
+};
+
 const loggingMiddleware: Middleware = async (req, next) => {
   const start = performance.now();
   try {
@@ -207,15 +344,22 @@ const retryMiddleware: Middleware = async (req, next) => {
   throw lastError;
 };
 
-function shouldSkipAuth401Handling(url: string): boolean {
+function shouldSkipAuth401Handling(req: ApiRequest): boolean {
   try {
-    const parsed = new URL(url);
+    const parsed = new URL(req.url);
     const path = parsed.pathname;
-    return (
+    if (
       /\/fetch_api_key\/?$/.test(path) ||
       /\/server_settings\/?$/.test(path) ||
       /\/accounts\/login\/?$/.test(path)
-    );
+    ) {
+      return true;
+    }
+    // Workspace folders list: 401 often means Workspace API / gateway policy, not invalid Zulip credentials.
+    if (req.method === "GET" && /\/v1\/folders\/?$/.test(path)) {
+      return true;
+    }
+    return false;
   } catch {
     return false;
   }
@@ -226,7 +370,7 @@ const authErrorMiddleware: Middleware = async (req, next) => {
   if (res.status !== 401) {
     return res;
   }
-  if (shouldSkipAuth401Handling(req.url)) {
+  if (shouldSkipAuth401Handling(req)) {
     return res;
   }
   if (getCurrentInstance() == null) {
@@ -243,6 +387,24 @@ const authErrorMiddleware: Middleware = async (req, next) => {
 
   return res;
 };
+
+// ---------------------------------------------------------------------------
+// URL resolution (shared by default base and per-request base override)
+// ---------------------------------------------------------------------------
+
+function buildResolvedApiUrl(baseUrl: string, path: string, params?: Record<string, string>): string {
+  const base = baseUrl.replace(/\/+$/, "");
+  const cleanPath = path.replace(/^\//, "");
+  const isAbsoluteBase = /^https?:\/\//i.test(base);
+  const normalizedRelativeBase = base.startsWith("/") ? base : `/${base}`;
+  const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost";
+  const resolvedBase = isAbsoluteBase ? base : `${origin}${normalizedRelativeBase}`;
+  const url = new URL(`${resolvedBase}/${cleanPath}`);
+  if (params) {
+    Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+  }
+  return url.toString();
+}
 
 // ---------------------------------------------------------------------------
 // Client
@@ -293,17 +455,7 @@ class ApiClient {
   }
 
   private buildUrl(path: string, params?: Record<string, string>): string {
-    const base = this.baseUrl.replace(/\/+$/, "");
-    const cleanPath = path.replace(/^\//, "");
-    const isAbsoluteBase = /^https?:\/\//i.test(base);
-    const normalizedRelativeBase = base.startsWith("/") ? base : `/${base}`;
-    const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost";
-    const resolvedBase = isAbsoluteBase ? base : `${origin}${normalizedRelativeBase}`;
-    const url = new URL(`${resolvedBase}/${cleanPath}`);
-    if (params) {
-      Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-    }
-    return url.toString();
+    return buildResolvedApiUrl(this.baseUrl, path, params);
   }
 
   private async execute(req: ApiRequest): Promise<ApiResponse> {
@@ -356,6 +508,22 @@ class ApiClient {
     return this.execute({
       method: "GET",
       url: this.buildUrl(path, params),
+      headers: {},
+      signal,
+      meta: {},
+    });
+  }
+
+  /** GET with an explicit base (avoids mutating {@link setBaseUrl} — safe for concurrent requests). */
+  async getWithBase(
+    baseUrl: string,
+    path: string,
+    params?: Record<string, string>,
+    signal?: AbortSignal,
+  ): Promise<ApiResponse> {
+    return this.execute({
+      method: "GET",
+      url: buildResolvedApiUrl(baseUrl, path, params),
       headers: {},
       signal,
       meta: {},
@@ -436,33 +604,79 @@ class ApiClient {
 // Singleton instances
 // ---------------------------------------------------------------------------
 
+function workspaceRestPathSuffix(): string {
+  return workspaceRestApiPathSuffix(env.WORKSPACE_REST_API_PATH);
+}
+
+function devWorkspaceMountPathOnLocalhost(): string {
+  return devWorkspaceBrowserMountPath(env.WORKSPACE_REST_API_PATH);
+}
+
+/** Same-origin base for multi-org Workspace REST in dev (matches Vite `server.proxy` path when relative). */
+function getDevWorkspaceProxyBase(): string {
+  const base = env.WORKSPACE_API_BASE;
+  if (/^https?:\/\//i.test(base)) {
+    return `${DEV_WORKSPACE_ORG_PROXY_PATH_PREFIX}${devWorkspaceMountPathOnLocalhost()}`.replace(
+      /\/+$/,
+      "",
+    );
+  }
+  return base.replace(/\/+$/, "");
+}
+
+/**
+ * Base URL for Workspace REST (`/v1/...`) scoped to the active org (Workspace API origin, not necessarily the Zulip realm host).
+ * Used for folder listing so multi-org and gateway setups hit the correct host.
+ */
+export function getWorkspaceApiBaseForCurrentInstance(): string {
+  const instance = getCurrentInstance();
+
+  if (instance == null) {
+    return env.WORKSPACE_API_BASE;
+  }
+
+  if (import.meta.env.DEV) {
+    return getDevWorkspaceProxyBase();
+  }
+
+  const orgOrigin = workspaceOrgApiOriginForWorkspaceRest(instance);
+  return `${orgOrigin}${workspaceRestPathSuffix()}`;
+}
+
 function getZulipBaseUrl(): string {
   const instance = getCurrentInstance();
   if (!instance) return "";
   const authType = resolveInstanceAuthType(instance);
   const apiPath = authType === "session" ? "/json" : env.ZULIP_API_PATH;
-  const escapedConfiguredApiPath = env.ZULIP_API_PATH.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const realm = instance.realm
-    .trim()
-    .replace(/\/+$/, "")
-    .replace(new RegExp(`${escapedConfiguredApiPath}$`), "")
-    .replace(/\/api\/v1$/, "")
-    .replace(/\/json$/, "")
-    .replace(/\/api$/, "")
-    .replace(/\/+$/, "");
+  const realm = normalizeInstanceRealmRoot(instance.realm);
   return `${realm}${apiPath}`;
 }
 
 export const zulipApi = new ApiClient("");
 export const workspaceApi = new ApiClient(env.WORKSPACE_API_BASE);
 
+workspaceApi.useBefore(sessionCsrfMiddleware, devWorkspaceOrgTargetHeaderMiddleware);
+
 export function refreshZulipApiBase(): void {
   zulipApi.setBaseUrl(getZulipBaseUrl());
+}
+
+/** DEV: point Workspace REST at the org-aware Vite proxy when an instance is selected. */
+export function refreshWorkspaceApiBase(): void {
+  if (!import.meta.env.DEV) {
+    return;
+  }
+  if (getCurrentInstance() != null) {
+    workspaceApi.setBaseUrl(getDevWorkspaceProxyBase());
+  } else {
+    workspaceApi.setBaseUrl(env.WORKSPACE_API_BASE);
+  }
 }
 
 export {
   noCacheMiddleware,
   authMiddleware,
+  sessionCsrfMiddleware,
   loggingMiddleware,
   retryMiddleware,
   authErrorMiddleware,

@@ -129,7 +129,7 @@ describe("InstanceSwitcher", () => {
     );
     expect(thirdItem?.querySelector("img")).toHaveAttribute(
       "src",
-      expect.stringContaining("/organization-fallback.svg"),
+      expect.stringContaining("organization-fallback.svg"),
     );
     expect(firstItem?.querySelector("img")).toHaveClass("h-9");
     expect(firstItem?.querySelector("img")).toHaveClass("w-9");
@@ -199,6 +199,30 @@ describe("InstanceSwitcher", () => {
     expect(useInstancesStore.getState().currentInstanceId).toBe("inst-2");
   });
 
+  it("resolves realm-relative organization icon against instance realm url", () => {
+    useInstancesStore.setState({
+      instances: [
+        {
+          id: "inst-1",
+          realm: "https://chat.example.com",
+          email: "a@example.com",
+          apiKey: "k1",
+          realmIcon: "/user_avatars/1/realm/icon.png",
+        },
+      ],
+      currentInstanceId: "inst-1",
+      unreadCountsByInstance: {},
+    });
+
+    renderWithProviders(<InstanceSwitcher />);
+
+    const logo = screen.getByTestId("instance-quick-inst-1").querySelector("img");
+    expect(logo).toHaveAttribute(
+      "src",
+      "https://chat.example.com/user_avatars/1/realm/icon.png",
+    );
+  });
+
   it("uses organization logo in quick header slots when realm icon is available", () => {
     useInstancesStore.setState({
       instances: [
@@ -227,7 +251,7 @@ describe("InstanceSwitcher", () => {
     expect(firstButton.querySelector("img")).not.toHaveClass("rounded-full");
     expect(secondButton.querySelector("img")).toHaveAttribute(
       "src",
-      expect.stringContaining("/organization-fallback.svg"),
+      expect.stringContaining("organization-fallback.svg"),
     );
     expect(secondButton.querySelector("img")).not.toHaveClass("rounded-full");
   });
@@ -254,7 +278,7 @@ describe("InstanceSwitcher", () => {
 
     fireEvent.error(logo!);
 
-    expect(logo).toHaveAttribute("src", expect.stringContaining("/organization-fallback.svg"));
+    expect(logo).toHaveAttribute("src", expect.stringContaining("organization-fallback.svg"));
   });
 
   it("shows only three organizations in header and moves rest to dropdown overflow", () => {

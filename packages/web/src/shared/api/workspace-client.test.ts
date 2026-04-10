@@ -2,10 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceFolder } from "./workspace-client";
 
 const getCurrentInstance = vi.fn();
+const getWorkspaceApiBaseForCurrentInstance = vi.fn(() => "https://zulip.genesis-core.tech");
 let workspaceBaseUrl = "/workspace";
 
 const workspaceApi = {
   get: vi.fn(),
+  getWithBase: vi.fn(
+    (_base: string, path: string, params?: Record<string, string>, signal?: AbortSignal) =>
+      workspaceApi.get(path, params, signal),
+  ),
   postJson: vi.fn(),
   putJson: vi.fn(),
   delete: vi.fn(),
@@ -19,6 +24,8 @@ type WorkspaceGetResponse = Awaited<ReturnType<typeof workspaceApi.get>>;
 vi.mock("./client", () => ({
   workspaceApi,
   getCurrentInstance,
+  getWorkspaceApiBaseForCurrentInstance,
+  refreshWorkspaceApiBase: vi.fn(),
 }));
 
 describe("workspace-client", () => {
@@ -39,7 +46,7 @@ describe("workspace-client", () => {
     vi.clearAllMocks();
   });
 
-  it("delegates folder listing to workspaceApi.get", async () => {
+  it("delegates folder listing to workspaceApi.getWithBase using org workspace base", async () => {
     workspaceApi.get.mockResolvedValue({
       ok: true,
       data: [{ uuid: "f1", title: "Work", unread_messages: [] }],
@@ -48,7 +55,8 @@ describe("workspace-client", () => {
     const { getFolders } = await import("./workspace-client");
     await getFolders();
 
-    expect(workspaceApi.get).toHaveBeenCalledWith("/v1/folders/", undefined, undefined);
+    expect(getWorkspaceApiBaseForCurrentInstance).toHaveBeenCalled();
+    expect(workspaceApi.getWithBase).toHaveBeenCalledWith("https://zulip.genesis-core.tech", "/v1/folders/");
   });
 
   it("getFolders keeps folders when unread_messages is omitted or null", async () => {
@@ -159,7 +167,7 @@ describe("workspace-client", () => {
     const firstRequest = getFolders();
     const secondRequest = getFolders();
 
-    expect(workspaceApi.get).toHaveBeenCalledTimes(1);
+    expect(workspaceApi.getWithBase).toHaveBeenCalledTimes(1);
 
     resolveGet({
       ok: true,

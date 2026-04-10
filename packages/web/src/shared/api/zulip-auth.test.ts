@@ -23,6 +23,8 @@ describe("fetchServerSettings", () => {
     expect(result).toEqual({
       realm_name: "Test Realm",
       realm_icon: "/icon.png",
+      realm_uri: "",
+      realm_url: "",
       external_authentication_methods: [
         { name: "google", display_name: "Google", login_url: "/google" },
       ],
@@ -53,8 +55,33 @@ describe("fetchServerSettings", () => {
     expect(result).toEqual({
       realm_name: "",
       realm_icon: "",
+      realm_uri: "",
+      realm_url: "",
       external_authentication_methods: [],
     });
+  });
+
+  it("returns realm_url when present", async () => {
+    mockFetch.mockResolvedValue(
+      jsonResponse({
+        realm_url: "https://canonical.zulip.example.com",
+        realm_name: "Org",
+      }),
+    );
+    const result = await fetchServerSettings("https://gw.example.com");
+    expect(result?.realm_url).toBe("https://canonical.zulip.example.com");
+    expect(result?.realm_uri).toBe("https://canonical.zulip.example.com");
+  });
+
+  it("prefers realm_url over realm_uri when both present", async () => {
+    mockFetch.mockResolvedValue(
+      jsonResponse({
+        realm_url: "https://preferred.example.com",
+        realm_uri: "https://legacy.example.com",
+      }),
+    );
+    const result = await fetchServerSettings("https://zulip.example.com");
+    expect(result?.realm_url).toBe("https://preferred.example.com");
   });
 
   it("strips /api/v1 suffix before constructing URL", async () => {

@@ -1,6 +1,6 @@
 /**
  * Expands Zulip markdown-style upload links `[file](user_uploads/...)` into inline
- * `<img>` (plus caption link) for image paths so protected-media fetch + blob preview applies.
+ * `<img>` for image paths so protected-media fetch + blob preview applies.
  *
  * `mediaBaseUrl` must match `sanitizeHtml` base (realm / uploads origin) so `src` is absolute
  * like native Zulip `<img>` markup — relative-only `src` breaks authenticated fetch off-proxy.
@@ -38,16 +38,7 @@ export function expandUserUploadImageLinks(html: string, mediaBaseUrl?: string):
     img.setAttribute("src", resolvedSrc);
     img.setAttribute("alt", altText);
 
-    const caption = document.createElement("a");
-    caption.setAttribute("href", resolvedSrc);
-    caption.textContent = altText;
-
-    const block = document.createElement("span");
-    block.className = "flex flex-col gap-1";
-    block.appendChild(img);
-    block.appendChild(caption);
-
-    link.replaceWith(block);
+    link.replaceWith(img);
   }
 
   return container.innerHTML;

@@ -9,6 +9,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  APP_SHELL_MIN_WIDTH_PX,
   SCROLL_AREA_CLASS,
   DESKTOP_MIN_VIEWPORT_WIDTH_PX,
   JITSI_MEET_DOMAIN,
@@ -79,10 +80,11 @@ describe("constants", () => {
     expect(JITSI_PARTICIPANTS_POLL_MS).toBeGreaterThan(0);
   });
 
-  it("layout constants match narrow-page = desktop min width - 1", () => {
+  it("layout constants match narrow-page = desktop reference width - 1", () => {
     expect(MAIN_WORKSPACE_MAX_WIDTH_PX).toBeGreaterThan(0);
     expect(LAYOUT_MIN_HEIGHT_PX).toBeGreaterThan(0);
     expect(DESKTOP_MIN_VIEWPORT_WIDTH_PX).toBeGreaterThan(0);
     expect(NARROW_PAGE_MAX_WIDTH_PX).toBe(DESKTOP_MIN_VIEWPORT_WIDTH_PX - 1);
+    expect(APP_SHELL_MIN_WIDTH_PX).toBe(360);
   });
 });

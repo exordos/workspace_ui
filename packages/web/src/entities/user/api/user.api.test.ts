@@ -1,15 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useUsersStore } from "../user.model";
 
-const { mockGet, mockPost, getCurrentInstance, refreshZulipApiBase, mockGetUserStatusCacheRow, mockPutUserStatusCacheRow } =
-  vi.hoisted(() => ({
-    mockGet: vi.fn(),
-    mockPost: vi.fn(),
-    getCurrentInstance: vi.fn(),
-    refreshZulipApiBase: vi.fn(),
-    mockGetUserStatusCacheRow: vi.fn(),
-    mockPutUserStatusCacheRow: vi.fn(),
-  }));
+const {
+  mockGet,
+  mockPost,
+  getCurrentInstance,
+  refreshZulipApiBase,
+  refreshWorkspaceApiBase,
+  mockGetUserStatusCacheRow,
+  mockPutUserStatusCacheRow,
+} = vi.hoisted(() => ({
+  mockGet: vi.fn(),
+  mockPost: vi.fn(),
+  getCurrentInstance: vi.fn(),
+  refreshZulipApiBase: vi.fn(),
+  refreshWorkspaceApiBase: vi.fn(),
+  mockGetUserStatusCacheRow: vi.fn(),
+  mockPutUserStatusCacheRow: vi.fn(),
+}));
 
 vi.mock("~/shared/api/client", () => ({
   zulipApi: {
@@ -18,6 +26,7 @@ vi.mock("~/shared/api/client", () => ({
   },
   getCurrentInstance,
   refreshZulipApiBase,
+  refreshWorkspaceApiBase,
 }));
 
 vi.mock("~/shared/lib/logger", () => ({

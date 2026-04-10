@@ -112,15 +112,15 @@ describe("FolderRail visual parity", () => {
 
     const visualWrapper = customButton?.parentElement;
     const outerSlot = customButton?.parentElement?.parentElement;
-    expect(outerSlot).toHaveClass("h-[85px]");
-    expect(outerSlot).toHaveClass("w-[67px]");
+    expect(outerSlot).toHaveClass("h-[72px]");
+    expect(outerSlot).toHaveClass("w-[56px]");
     expect(outerSlot).toHaveClass("p-1");
     expect(visualWrapper).toHaveClass("scale-100");
     expect(visualWrapper).not.toHaveClass("scale-110");
     expect(customButton).toHaveClass("text-text-muted");
     expect(customLabel).toHaveClass("text-text-muted");
-    expect(customLabel).toHaveClass("text-sm");
-    expect(customLabel).toHaveClass("leading-5");
+    expect(customLabel).toHaveClass("text-xs");
+    expect(customLabel).toHaveClass("leading-4");
     expect(customButton?.getAttribute("style")).toBeNull();
     expect(customLabel?.getAttribute("style")).toBeNull();
   });
@@ -145,8 +145,8 @@ describe("FolderRail visual parity", () => {
 
     const visualWrapper = customButton?.parentElement;
     const outerSlot = customButton?.parentElement?.parentElement;
-    expect(outerSlot).toHaveClass("h-[85px]");
-    expect(outerSlot).toHaveClass("w-[67px]");
+    expect(outerSlot).toHaveClass("h-[72px]");
+    expect(outerSlot).toHaveClass("w-[56px]");
     expect(outerSlot).toHaveClass("p-1");
     expect(visualWrapper).toHaveClass("scale-110");
     expect(visualWrapper).not.toHaveClass("scale-100");
@@ -307,8 +307,8 @@ describe("FolderRail visual parity", () => {
     );
 
     const addFolderButton = screen.getByRole("button", { name: "Add folder" });
-    expect(addFolderButton).toHaveClass("h-10");
-    expect(addFolderButton).toHaveClass("w-10");
+    expect(addFolderButton).toHaveClass("h-8");
+    expect(addFolderButton).toHaveClass("w-8");
     expect(addFolderButton).not.toHaveClass("border-border-subtle");
     const addIconPath = addFolderButton.querySelector("path");
     expect(addIconPath?.getAttribute("fill")).toBe("currentColor");

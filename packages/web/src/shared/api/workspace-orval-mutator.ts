@@ -3,7 +3,7 @@
  */
 
 import { setWorkspaceApiMutator } from "workspace-api/workspace-api-mutator";
-import { workspaceApi } from "./client";
+import { refreshWorkspaceApiBase, workspaceApi } from "./client";
 import type { ApiResponse } from "./client";
 
 export class WorkspaceApiHttpError extends Error {
@@ -54,6 +54,9 @@ function assertOk(res: ApiResponse): void {
 }
 
 export async function workspaceOrvalMutator<T>(url: string, init: RequestInit): Promise<T> {
+  if (import.meta.env.DEV) {
+    refreshWorkspaceApiBase();
+  }
   const method = (init.method ?? "GET").toUpperCase();
   const signal = init.signal ?? undefined;
 

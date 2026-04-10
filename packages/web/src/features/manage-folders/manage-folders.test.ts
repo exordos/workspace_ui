@@ -14,6 +14,7 @@ vi.mock("~/shared/api/client", () => ({
     putJson: vi.fn(),
     delete: vi.fn(),
   },
+  refreshWorkspaceApiBase: vi.fn(),
 }));
 
 beforeEach(async () => {

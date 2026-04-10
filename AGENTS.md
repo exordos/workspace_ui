@@ -530,3 +530,4 @@ npm run version:bump <patch|minor|major>  # Bump semver + CHANGELOG
 | `docs/adr/005-white-label.md`              | White-label strategy                     |
 | `docs/adr/006-versioning.md`               | Semantic Versioning with synced monorepo |
 | `docs/adr/007-open-source.md`              | Open source (Apache 2.0)                 |
+| `docs/adr/008-workspace-http-path-defaults.md` | Gateway vs vanilla Zulip HTTP path defaults |

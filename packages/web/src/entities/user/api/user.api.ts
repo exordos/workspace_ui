@@ -1,7 +1,12 @@
 // Файл с публичными API-методами user-слайса.
 // Здесь только вызовы endpoint'ов и связывание с оркестратором загрузки статусов.
 
-import { getCurrentInstance, refreshZulipApiBase, zulipApi } from "~/shared/api/client";
+import {
+  getCurrentInstance,
+  refreshWorkspaceApiBase,
+  refreshZulipApiBase,
+  zulipApi,
+} from "~/shared/api/client";
 import { createLogger } from "~/shared/lib/logger";
 import { requestUserStatusWithPolicy } from "./user.api.orchestrator";
 import {
@@ -44,6 +49,7 @@ export async function reportPresence(status: "active" | "idle", pingOnly = false
 
   try {
     refreshZulipApiBase();
+    refreshWorkspaceApiBase();
     await zulipApi.post("/users/me/presence", {
       status: pingOnly ? "idle" : status,
       client: "workspace-web",
@@ -63,6 +69,7 @@ async function fetchUserStatusDetailed(userId: number): Promise<StatusFetchOutco
 
   try {
     refreshZulipApiBase();
+    refreshWorkspaceApiBase();
     const response = await zulipApi.get(`/users/${userId}/status`);
     const data = (response.data ?? {}) as ZulipGetUserStatusResponse;
 
@@ -118,6 +125,7 @@ export async function updateOwnStatus(params: UpdateOwnStatusParams): Promise<Us
 
   try {
     refreshZulipApiBase();
+    refreshWorkspaceApiBase();
     const payload: Record<string, string> = {
       status_text: text,
       status_emoji: emojiName,

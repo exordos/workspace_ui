@@ -1,3 +1,4 @@
+import { appendDevUserUploadsProxyHeaders } from "~/shared/api/client";
 import { sanitizeFilename } from "~/shared/lib/validation";
 
 const USER_UPLOADS_SEGMENT = "/user_uploads/";
@@ -122,7 +123,7 @@ export async function downloadUserUploadAttachment(
   }
 
   const response = await fetchImpl(normalizedPath, {
-    headers: authHeaders,
+    headers: appendDevUserUploadsProxyHeaders(normalizedPath, authHeaders),
     credentials,
   });
   if (!response.ok) return false;

@@ -1,36 +1,62 @@
 /**
  * Helpers for loading Zulip user-upload media with auth (avoids browser basic-auth prompts).
  */
+import { appendDevUserUploadsProxyHeaders } from "~/shared/api/client";
 import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
 import {
   appendUserUploadsPathPrefix,
   normalizeRealmSiteOriginForUploads,
+  shouldApplyUserUploadsPathPrefixForRealmBase,
 } from "~/shared/api/zulip-realm.internal";
 import { env } from "~/shared/lib/env";
+import {
+  collapseDuplicateWorkspaceV1InUrl,
+  extractUserUploadsPathAndQuery,
+} from "~/shared/lib/user-uploads-url.lib";
+
+export { collapseDuplicateWorkspaceV1InUrl };
+
 import {
   isUserUploadImagePath,
   isUserUploadThumbnailUrl,
   toUserUploadThumbnailUrl,
+  USER_UPLOAD_THUMBNAIL_DISPLAY_MAX_HEIGHT,
+  USER_UPLOAD_THUMBNAIL_DISPLAY_MAX_WIDTH,
 } from "./message-bubble-user-upload-thumbnail.lib";
 
 export const AUTH_MEDIA_SRC_DATA_ATTR = "data-auth-src";
 export const AUTH_MEDIA_POSTER_DATA_ATTR = "data-auth-poster";
-export const AUTH_IMAGE_PLACEHOLDER_SRC =
-  "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
 
-/** Whether `src` / `poster` is still the 1×1 placeholder (awaiting blob or fallback URL). */
+/**
+ * 160×160 decorative SVG placeholder (gradient + frame icon). Inline `data:` — no extra request
+ * before authenticated fetch; colors are neutral so it reads acceptably on dark chat bubbles.
+ */
+const AUTH_IMAGE_PLACEHOLDER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160" aria-hidden="true">
+  <defs>
+    <linearGradient id="ph" x1="0" y1="0" x2="160" y2="160" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#252528"/>
+      <stop offset="0.45" stop-color="#323238"/>
+      <stop offset="1" stop-color="#28282c"/>
+    </linearGradient>
+    <linearGradient id="phg" x1="32" y1="24" x2="128" y2="136" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffffff" stop-opacity="0.04"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="160" height="160" rx="10" fill="url(#ph)"/>
+  <rect width="160" height="160" rx="10" fill="url(#phg)"/>
+  <rect x="52" y="48" width="56" height="44" rx="5" fill="none" stroke="#8b8b93" stroke-opacity="0.35" stroke-width="1.25"/>
+  <circle cx="64" cy="60" r="5" fill="#8b8b93" fill-opacity="0.35"/>
+  <path d="M56 84 L72 68 L84 80 L96 64 L104 84 Z" fill="#8b8b93" fill-opacity="0.22"/>
+  <line x1="48" y1="112" x2="112" y2="112" stroke="#6b6b72" stroke-opacity="0.2" stroke-width="2" stroke-linecap="round"/>
+</svg>`;
+
+export const AUTH_IMAGE_PLACEHOLDER_SRC = `data:image/svg+xml,${encodeURIComponent(AUTH_IMAGE_PLACEHOLDER_SVG)}`;
+
+/** Whether `src` / `poster` is still the auth placeholder image (awaiting blob or fallback URL). */
 export function isAuthMediaPlaceholderAttr(value: string | null): boolean {
   if (value == null || value === "") return true;
   return value === AUTH_IMAGE_PLACEHOLDER_SRC;
-}
-
-/** Collapses mistaken `/workspace/v1/workspace/v1/` (and repeats) in upload URLs. */
-export function collapseDuplicateWorkspaceV1InUrl(raw: string): string {
-  let s = raw.trim();
-  while (s.includes("/workspace/v1/workspace/v1")) {
-    s = s.replace(/\/workspace\/v1\/workspace\/v1/g, "/workspace/v1");
-  }
-  return s;
 }
 
 export function isProtectedUserUploadUrl(url: string): boolean {
@@ -46,21 +72,7 @@ export function isProtectedUserUploadUrl(url: string): boolean {
 }
 
 export function normalizeProtectedUploadPath(url: string): string | null {
-  const value = url.trim();
-  if (value.length === 0) return null;
-  try {
-    const base = typeof window !== "undefined" ? window.location.origin : "https://localhost";
-    const parsed = new URL(value, base);
-    if (parsed.pathname.includes("/user_uploads/")) {
-      const normalizedPath = parsed.pathname.replace(/^\/api\/v1(?=\/user_uploads\/)/, "");
-      return `${normalizedPath}${parsed.search}`;
-    }
-  } catch {
-    if (value.includes("/user_uploads/")) {
-      return value.replace(/^\/api\/v1(?=\/user_uploads\/)/, "");
-    }
-  }
-  return null;
+  return extractUserUploadsPathAndQuery(url);
 }
 
 /** In Vite dev server, only same-origin candidates hit the `/user_uploads` proxy (no CORS). */
@@ -92,14 +104,17 @@ export function buildProtectedUploadFetchCandidates(url: string): string[] {
     const fallback = value.length > 0 ? [collapseDuplicateWorkspaceV1InUrl(value)] : [];
     return preferViteDevProxyCandidates(fallback);
   }
-  const site = normalizeRealmSiteOriginForUploads(getRealmBaseUrl()).trim().replace(/\/+$/, "");
+  const realm = getRealmBaseUrl();
+  const site = normalizeRealmSiteOriginForUploads(realm).trim().replace(/\/+$/, "");
   const prefix = env.USER_UPLOADS_PATH_PREFIX;
-  const uploadsBase = site !== "" ? appendUserUploadsPathPrefix(site, prefix) : "";
-  const candidates = [
-    normalizedPath,
-    value,
-    uploadsBase !== "" ? `${uploadsBase}${normalizedPath}` : "",
-  ]
+  const uploadsBase =
+    site !== ""
+      ? shouldApplyUserUploadsPathPrefixForRealmBase(realm, site)
+        ? appendUserUploadsPathPrefix(site, prefix)
+        : site
+      : "";
+  const canonicalFull = uploadsBase !== "" ? `${uploadsBase}${normalizedPath}` : "";
+  const candidates = [canonicalFull, normalizedPath, value]
     .filter((candidate) => candidate.length > 0)
     .map(collapseDuplicateWorkspaceV1InUrl);
   return Array.from(new Set(preferViteDevProxyCandidates(candidates)));
@@ -109,6 +124,7 @@ export function resolveProtectedUploadFetchOptions(
   candidate: string,
   headers: Record<string, string>,
 ): RequestInit {
+  const withDevUploadProxy = appendDevUserUploadsProxyHeaders(candidate, headers);
   try {
     const base = typeof window !== "undefined" ? window.location.origin : "https://localhost";
     const parsed = new URL(candidate, base);
@@ -116,12 +132,12 @@ export function resolveProtectedUploadFetchOptions(
     if (isCrossOrigin) {
       // Still send Basic auth: Zulip may answer CORS preflight with Allow-Headers: authorization.
       // Omitting `headers` here always produced 401 on cross-origin deployments (SPA host ≠ realm).
-      return { headers, credentials: "omit" };
+      return { headers: withDevUploadProxy, credentials: "omit" };
     }
   } catch {
     // Ignore parse failures and use the authenticated same-origin options.
   }
-  return { headers, credentials: "include" };
+  return { headers: withDevUploadProxy, credentials: "include" };
 }
 
 function mergeFetchCandidateLists(primary: string, fallbackFullUrl?: string): string[] {
@@ -169,6 +185,46 @@ export async function fetchProtectedUploadBlob(
   return null;
 }
 
+/** Avoid huge `data:` strings in DOM if a full-resolution fetch slips through on `file://`. */
+const FILE_PROTOCOL_BLOB_AS_DATA_URL_MAX_BYTES = 15 * 1024 * 1024;
+
+/**
+ * Builds a value suitable for `<img src>` / `poster` after an authenticated `fetch` of a `Blob`.
+ * On `file://` (packaged Electron), `URL.createObjectURL` yields `blob:file:///…`, which Chromium
+ * does not treat as loadable media; use a `data:` URL when the blob is below a size cap.
+ */
+export async function createDisplayableBlobUrl(
+  blob: Blob,
+  revokeRegistry: string[],
+): Promise<string> {
+  const preferDataUrl =
+    typeof window !== "undefined" &&
+    window.location.protocol === "file:" &&
+    blob.size <= FILE_PROTOCOL_BLOB_AS_DATA_URL_MAX_BYTES;
+
+  if (!preferDataUrl) {
+    const url = URL.createObjectURL(blob);
+    revokeRegistry.push(url);
+    return url;
+  }
+
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const r = reader.result;
+      if (typeof r === "string") {
+        resolve(r);
+        return;
+      }
+      reject(reader.error ?? new Error("FileReader: expected data URL string"));
+    };
+    reader.onerror = () => {
+      reject(reader.error ?? new Error("FileReader failed"));
+    };
+    reader.readAsDataURL(blob);
+  });
+}
+
 export function protectUserUploadMediaSources(html: string): string {
   if (!html.includes("/user_uploads/") || typeof document === "undefined") return html;
 
@@ -192,6 +248,10 @@ export function protectUserUploadMediaSources(html: string): string {
     if (element instanceof HTMLImageElement) {
       element.dataset.originalSrc = fullResolutionSrc;
       element.setAttribute("src", AUTH_IMAGE_PLACEHOLDER_SRC);
+      if (isUserUploadThumbnailUrl(authFetchSrc)) {
+        element.setAttribute("width", String(USER_UPLOAD_THUMBNAIL_DISPLAY_MAX_WIDTH));
+        element.setAttribute("height", String(USER_UPLOAD_THUMBNAIL_DISPLAY_MAX_HEIGHT));
+      }
     } else {
       element.removeAttribute("src");
     }

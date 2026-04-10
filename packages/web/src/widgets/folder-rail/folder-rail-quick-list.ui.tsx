@@ -142,11 +142,11 @@ export const FolderQuickList: React.FC<FolderQuickListProps> = React.memo(functi
       <DropdownMenu.Trigger asChild>
         <button
           type="button"
-          className="hover:bg-bg/60 flex h-10 w-10 items-center justify-center rounded-lg border border-border-subtle text-text-muted transition-colors hover:text-text-primary"
+          className="hover:bg-bg/60 flex h-8 w-8 items-center justify-center rounded-lg border border-border-subtle text-text-muted transition-colors hover:text-text-primary"
           aria-label={t("folder.openQuickList")}
           title={t("folder.openQuickList")}
         >
-          <Icon name="more" size={40} className="shrink-0" />
+          <Icon name="more" size={28} className="shrink-0" />
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>

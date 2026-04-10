@@ -30,6 +30,7 @@ const mockZulipApi = vi.hoisted(() => ({
 }));
 
 const mockRefreshZulipApiBase = vi.hoisted(() => vi.fn());
+const mockRefreshWorkspaceApiBase = vi.hoisted(() => vi.fn());
 
 export function getMockZulipApi() {
   return mockZulipApi;
@@ -39,10 +40,15 @@ export function getMockRefreshZulipApiBase() {
   return mockRefreshZulipApiBase;
 }
 
+export function getMockRefreshWorkspaceApiBase() {
+  return mockRefreshWorkspaceApiBase;
+}
+
 vi.mock("./client", () => ({
   getCurrentInstance: vi.fn(),
   zulipApi: mockZulipApi,
   refreshZulipApiBase: mockRefreshZulipApiBase,
+  refreshWorkspaceApiBase: mockRefreshWorkspaceApiBase,
 }));
 
 vi.mock("~/shared/lib/auth-guard", () => ({
@@ -107,6 +113,7 @@ beforeEach(() => {
   mockZulipApi.patch.mockReset();
   mockZulipApi.delete.mockReset();
   mockRefreshZulipApiBase.mockReset();
+  mockRefreshWorkspaceApiBase.mockReset();
 });
 
 afterEach(() => {

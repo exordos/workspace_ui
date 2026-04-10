@@ -1,6 +1,9 @@
 import { contextBridge, ipcRenderer } from "electron";
 
 const electronAPI = {
+  /** Sync OS id for renderer (e.g. macOS title bar inset). Same as `app.getPlatform()`. */
+  platform: process.platform,
+
   app: {
     getVersion: (): Promise<string> => ipcRenderer.invoke("app:getVersion"),
     getPlatform: (): Promise<string> => ipcRenderer.invoke("app:getPlatform"),

@@ -22,6 +22,8 @@ export interface TopBarSectionNavProps {
   sections: TopBarSectionNavItem[];
   activeSection: TopBarSection;
   onSectionChange: (section: TopBarSection) => void;
+  /** Merged onto the root slot (e.g. `electron-no-drag` on macOS). */
+  className?: string;
 }
 
 export interface TopBarSearchButtonProps {

@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { t } from "~/i18n/i18n";
 import { fetchApiKey, fetchServerSettings } from "~/shared/api/zulip-auth";
+import { normalizeRealm } from "~/shared/api/zulip-realm.internal";
 import { ZulipAuthError } from "~/shared/api/zulip.types";
 import {
   buildDesktopFlowLoginUrl,
@@ -10,7 +11,8 @@ import {
   saveDesktopFlowState,
 } from "~/shared/lib/oidc-desktop";
 import { extractOrgRouteFromPathname } from "~/shared/lib/org-route";
-import { ORGANIZATION_FALLBACK_LOGO_URL } from "~/shared/lib/organization-branding";
+import { getOrganizationFallbackLogoUrl } from "~/shared/lib/organization-branding";
+import { workspaceOrgOriginFromLoginServerUrlInput } from "~/shared/lib/workspace-org-origin.lib";
 import { isValidRealmUrl, isValidUrl } from "~/shared/lib/validation";
 import { Icon } from "~/shared/ui/icon";
 import { LoginPageCredentialsForm } from "./login-page-credentials-form.ui";
@@ -35,7 +37,12 @@ export const LoginPage: React.FC = () => {
   const [serverSettings, setServerSettings] = useState<{
     realm_base: string;
     realm_name: string;
+    /** Resolved for login preview (may be empty when same-origin is blocked in the browser). */
     realm_icon: string;
+    /** Raw `realm_icon` from Zulip server_settings (path or absolute URL). */
+    realm_icon_raw: string;
+    realm_uri: string;
+    realm_url: string;
     external_authentication_methods: {
       name: string;
       display_name: string;
@@ -86,6 +93,9 @@ export const LoginPage: React.FC = () => {
             realm_base: base,
             realm_name: data.realm_name,
             realm_icon: resolveLoginIconUrl(base, data.realm_icon),
+            realm_icon_raw: (data.realm_icon ?? "").trim(),
+            realm_uri: data.realm_uri,
+            realm_url: data.realm_url,
             external_authentication_methods: data.external_authentication_methods,
           });
         } else {
@@ -119,8 +129,8 @@ export const LoginPage: React.FC = () => {
 
   const handleRealmLogoError = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
     const currentSrc = e.currentTarget.getAttribute("src") ?? "";
-    if (currentSrc.includes(ORGANIZATION_FALLBACK_LOGO_URL)) return;
-    e.currentTarget.src = ORGANIZATION_FALLBACK_LOGO_URL;
+    if (currentSrc.includes("organization-fallback.svg")) return;
+    e.currentTarget.src = getOrganizationFallbackLogoUrl();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -139,21 +149,29 @@ export const LoginPage: React.FC = () => {
     setLoading(true);
     try {
       const result = await fetchApiKey(realmTrim, usernameTrim, password);
-      const normalizedRealm =
+      const normalizedFromInput =
         realmTrim
           .replace(/\/+$/, "")
           .replace(/\/api\/v1$/, "")
           .replace(/\/api$/, "") || realmTrim;
+      const canonicalFromServer =
+        serverSettings?.realm_url?.trim() || serverSettings?.realm_uri?.trim() || "";
+      const realmToStore =
+        canonicalFromServer.length > 0 && isValidRealmUrl(canonicalFromServer)
+          ? normalizeRealm(canonicalFromServer)
+          : normalizedFromInput;
+      const rawRealmIcon = serverSettings?.realm_icon_raw?.trim() ?? "";
       const realmIcon =
-        serverSettings?.realm_base === normalizedRealm &&
-        serverSettings.realm_icon.trim().length > 0
-          ? serverSettings.realm_icon
+        serverSettings?.realm_base === normalizedFromInput && rawRealmIcon.length > 0
+          ? rawRealmIcon
           : undefined;
+      const workspaceOrgOrigin = workspaceOrgOriginFromLoginServerUrlInput(realmTrim);
       addInstance({
-        realm: normalizedRealm,
+        realm: realmToStore,
         email: result.email,
         apiKey: result.api_key,
         realmIcon,
+        ...(workspaceOrgOrigin !== "" ? { workspaceOrgOrigin } : {}),
       });
       void navigate(redirectTarget ?? "/", { replace: true });
     } catch (err) {

@@ -1,8 +1,8 @@
 /**
  * Sentry integration — error tracking and performance monitoring.
  *
- * Activated only when VITE_SENTRY_DSN is set.
- * In dev mode: disabled by default (set VITE_SENTRY_DEV=1 to override).
+ * Activated only when VITE_SENTRY_DSN is set in production builds (`env.PROD`).
+ * Development: DSN is ignored so local errors are not sent to Sentry.
  *
  * Security: PII stripping, credential redaction, user data anonymization.
  *

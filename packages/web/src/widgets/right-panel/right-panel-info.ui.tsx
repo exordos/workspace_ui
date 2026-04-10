@@ -3,14 +3,12 @@ import { useNavigate } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { ensureUserStatusLoaded } from "~/entities/user/api/user.api";
-import { ProfileCustomFieldsBlock } from "~/entities/user/profile-custom-fields-block.ui";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useChatInfoStore } from "~/features/chat-info/chat-info.model";
 import { muteStream, unmuteStream } from "~/features/mute-chat/mute-chat.api";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { t } from "~/i18n/i18n";
-import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
 import { deleteStream, updateStream } from "~/shared/api/zulip-streams";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { createLogger } from "~/shared/lib/logger";
@@ -165,7 +163,6 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
         isOwner: i === 0,
         isOnline: m.isOnline,
         avatarUrl: m.avatarUrl,
-        profileData: m.profileData,
       }))
     : [];
   const rawChannelDescription =
@@ -454,13 +451,6 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
                         )}
                       </div>
                     </button>
-                    <ProfileCustomFieldsBlock
-                      profileData={p.profileData}
-                      baseUrl={getRealmBaseUrl() || undefined}
-                      density="compact"
-                      className="mt-2 pl-[calc(2rem+0.75rem)] pr-1"
-                      onOpenUserProfile={handleOpenUserProfile}
-                    />
                   </div>
                 </li>
               ))}

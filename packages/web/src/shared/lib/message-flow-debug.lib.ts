@@ -1,7 +1,9 @@
 /**
- * Optional browser-console trace for the chat message / folder pipeline (store ↔ IndexedDB ↔ UI).
+ * Optional browser-console traces for data pipelines (messages, folders, chat list).
  *
- * Gated by `env.MESSAGE_FLOW_DEBUG` (`VITE_MESSAGE_FLOW_DEBUG`, default on in dev).
+ * - `logMessageFlow` / `logFolderFlow`: gated by `env.MESSAGE_FLOW_DEBUG` (`VITE_MESSAGE_FLOW_DEBUG`).
+ * - `logChatListFlow`: gated by `env.CHAT_LIST_FLOW_DEBUG` (`VITE_CHAT_LIST_FLOW_DEBUG`).
+ *
  * Each line includes a monotonic `#seq` and `+elapsedMs` from the first trace in the tab
  * so you can see real order and timing. Disable via env when done.
  */
@@ -50,4 +52,27 @@ export function logFolderFlow(phase: string, data?: Record<string, unknown>): vo
   const { seq, elapsedMs } = nextPipelineTrace();
   // eslint-disable-next-line no-console -- intentional diagnostic; gated by MESSAGE_FLOW_DEBUG
   console.info(`[folder-flow] #${seq} +${elapsedMs}ms ${phase}`, data ?? "");
+}
+
+/** Min/max message id and count for chat-list / API traces (no message content). */
+export function summarizeZulipMessagesForFlowDebug(
+  messages: readonly { id: number }[],
+): { count: number; minId: number | null; maxId: number | null } {
+  if (messages.length === 0) {
+    return { count: 0, minId: null, maxId: null };
+  }
+  let minId = messages[0]!.id;
+  let maxId = messages[0]!.id;
+  for (const m of messages) {
+    if (m.id < minId) minId = m.id;
+    if (m.id > maxId) maxId = m.id;
+  }
+  return { count: messages.length, minId, maxId };
+}
+
+export function logChatListFlow(phase: string, data?: Record<string, unknown>): void {
+  if (!env.CHAT_LIST_FLOW_DEBUG) return;
+  const { seq, elapsedMs } = nextPipelineTrace();
+  // eslint-disable-next-line no-console -- intentional diagnostic; gated by CHAT_LIST_FLOW_DEBUG
+  console.info(`[chat-list-flow] #${seq} +${elapsedMs}ms ${phase}`, data ?? "");
 }

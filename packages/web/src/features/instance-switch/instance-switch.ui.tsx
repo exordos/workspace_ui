@@ -3,10 +3,10 @@ import React from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { t } from "~/i18n/i18n";
-import { buildOrgRouteIdFromRealm, replaceOrgRouteInPath } from "~/shared/lib/org-route";
+import { buildOrgRouteIdForZulipInstance, replaceOrgRouteInPath } from "~/shared/lib/org-route";
 import {
+  getOrganizationFallbackLogoUrl,
   getOrganizationLogoSrc,
-  ORGANIZATION_FALLBACK_LOGO_URL,
 } from "~/shared/lib/organization-branding";
 import { Badge } from "~/shared/ui/badge";
 import { Icon } from "~/shared/ui/icon";
@@ -24,12 +24,17 @@ const MAX_VISIBLE_INSTANCES = 3;
 
 const OrganizationLogo = React.memo(function OrganizationLogo({
   realmIcon,
+  realmBaseUrl,
   className,
 }: {
   realmIcon?: string;
+  realmBaseUrl?: string;
   className: string;
 }) {
-  const preferredSrc = React.useMemo(() => getOrganizationLogoSrc(realmIcon), [realmIcon]);
+  const preferredSrc = React.useMemo(
+    () => getOrganizationLogoSrc(realmIcon, realmBaseUrl),
+    [realmIcon, realmBaseUrl],
+  );
   const [logoSrc, setLogoSrc] = React.useState(preferredSrc);
 
   React.useEffect(() => {
@@ -37,9 +42,8 @@ const OrganizationLogo = React.memo(function OrganizationLogo({
   }, [preferredSrc]);
 
   const handleError = React.useCallback(() => {
-    setLogoSrc((current) =>
-      current === ORGANIZATION_FALLBACK_LOGO_URL ? current : ORGANIZATION_FALLBACK_LOGO_URL,
-    );
+    const fallback = getOrganizationFallbackLogoUrl();
+    setLogoSrc((current) => (current === fallback ? current : fallback));
   }, []);
 
   return <img src={logoSrc} alt="" className={className} onError={handleError} />;
@@ -51,6 +55,7 @@ const InstanceQuickButton = React.memo(function InstanceQuickButton({
   isActive,
   unreadCount,
   realmIcon,
+  realmBaseUrl,
   onSelect,
 }: {
   instanceId: string;
@@ -58,6 +63,7 @@ const InstanceQuickButton = React.memo(function InstanceQuickButton({
   isActive: boolean;
   unreadCount: number;
   realmIcon?: string;
+  realmBaseUrl?: string;
   onSelect: (id: string) => void;
 }) {
   return (
@@ -73,7 +79,11 @@ const InstanceQuickButton = React.memo(function InstanceQuickButton({
       aria-label={isActive ? `${t("auth.currentServer")}: ${label}` : label}
       title={label}
     >
-      <OrganizationLogo realmIcon={realmIcon} className="h-9 w-9 object-contain" />
+      <OrganizationLogo
+        realmIcon={realmIcon}
+        realmBaseUrl={realmBaseUrl}
+        className="h-9 w-9 object-contain"
+      />
       {unreadCount > 0 && (
         <span
           className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border border-bg-elevated bg-badge-bg"
@@ -107,7 +117,7 @@ export const InstanceSwitcher: React.FC = () => {
       const currentPath = `${location.pathname}${location.search}${location.hash}`;
       const nextPath = replaceOrgRouteInPath(
         currentPath,
-        buildOrgRouteIdFromRealm(selectedInstance.realm),
+        buildOrgRouteIdForZulipInstance(selectedInstance),
       );
       if (nextPath !== currentPath) {
         void navigate(nextPath, { replace: true });
@@ -129,6 +139,7 @@ export const InstanceSwitcher: React.FC = () => {
             isActive={inst.id === currentInstanceId}
             unreadCount={unreadCount}
             realmIcon={inst.realmIcon}
+            realmBaseUrl={inst.realm}
             onSelect={handleSelectInstance}
           />
         );
@@ -172,6 +183,7 @@ export const InstanceSwitcher: React.FC = () => {
                   >
                     <OrganizationLogo
                       realmIcon={inst.realmIcon}
+                      realmBaseUrl={inst.realm}
                       className="h-9 w-9 object-contain"
                     />
                     {unreadCount > 0 && (

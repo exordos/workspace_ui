@@ -30,7 +30,6 @@ vi.mock("~/shared/lib/env", async (importOriginal) => {
     env: {
       ...mod.env,
       CHAT_MESSAGES_PERSIST_INDEXEDDB: true,
-      CHAT_MESSAGES_SOURCE_INDEXEDDB: true,
     },
   };
 });

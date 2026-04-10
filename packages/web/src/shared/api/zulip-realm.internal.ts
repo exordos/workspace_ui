@@ -58,3 +58,21 @@ export function appendUserUploadsPathPrefix(site: string, prefix: string): strin
   }
   return `${s}${p}`;
 }
+
+/**
+ * Whether to append {@link env.USER_UPLOADS_PATH_PREFIX} when building upload URLs from a Zulip
+ * instance realm. Prefix matches gateway mounts; after stripping `/workspace/v1` from the stored
+ * realm we must re-append it. A canonical realm host (`https://zulip.example.com`) already serves
+ * `/user_uploads/` at the origin — no prefix unless {@link env.USER_UPLOADS_PREFIX_ON_ZULIP_REALM}.
+ */
+export function shouldApplyUserUploadsPathPrefixForRealmBase(
+  realmBaseAfterApiStrip: string,
+  uploadSiteOrigin: string,
+): boolean {
+  if (env.USER_UPLOADS_PATH_PREFIX === "") return false;
+  const realm = realmBaseAfterApiStrip.trim().replace(/\/+$/, "");
+  const site = uploadSiteOrigin.trim().replace(/\/+$/, "");
+  if (realm === "" || site === "") return false;
+  if (realm !== site) return true;
+  return env.USER_UPLOADS_PREFIX_ON_ZULIP_REALM;
+}

@@ -15,6 +15,10 @@ import { t } from "~/i18n/i18n";
 import { getBasicAuthValue } from "~/shared/lib/auth-guard";
 import { env } from "~/shared/lib/env";
 import { guard, invariant } from "~/shared/lib/guards";
+import {
+  logChatListFlow,
+  summarizeZulipMessagesForFlowDebug,
+} from "~/shared/lib/message-flow-debug.lib";
 import { toResolvedTopicName, toUnresolvedTopicName } from "~/shared/lib/topic-resolve";
 import { isValidEmail, isValidRealmUrl, validateFileUpload } from "~/shared/lib/validation";
 import {
@@ -23,8 +27,9 @@ import {
   ZULIP_STREAM_CHAT_NUM_AFTER,
   ZULIP_STREAM_CHAT_NUM_BEFORE,
 } from "~/shared/lib/zulip-message-window.lib";
-import { getCurrentInstance, refreshZulipApiBase, zulipApi } from "./client";
+import { getCurrentInstance, refreshWorkspaceApiBase, refreshZulipApiBase, zulipApi } from "./client";
 import { mockMessageFromGetMessageApiData, rawMessageToMockMessage } from "./zulip-message-map.lib";
+import { parseServerThumbnailFormats } from "./zulip-register-metadata.lib";
 import { parseUnreadMessagesCount } from "./zulip-unread.lib";
 
 if (typeof (globalThis as unknown as { Buffer?: unknown }).Buffer === "undefined") {
@@ -594,6 +599,7 @@ function ensureZulipApiReady(): void {
     throw new Error(t("app.noInstance"));
   }
   refreshZulipApiBase();
+  refreshWorkspaceApiBase();
 }
 
 async function zulipPipelineGet(
@@ -630,17 +636,16 @@ async function zulipPipelineDelete(path: string, body?: Record<string, string>) 
 
 // --- Real-time events API (register + get-events) ---
 
-export interface RegisterQueueResult {
-  queue_id: string;
-  last_event_id: number;
-  event_queue_longpoll_timeout_seconds?: number;
-  user_topics?: ZulipUserTopic[];
-  // Зачем: metadata recent DM для первичного построения списка диалогов.
-  recent_private_conversations?: Record<string, ZulipRecentPrivateConversation>;
-}
+import type { RegisterQueueResult, ZulipServerThumbnailFormat } from "./zulip.types";
 
-// Зачем: по умолчанию подтягиваем metadata, чтобы быстрее собрать sidebar без полной истории сообщений.
-const DEFAULT_REGISTER_FETCH_EVENT_TYPES = ["user_topics", "recent_private_conversations"] as const;
+export type { RegisterQueueResult, ZulipServerThumbnailFormat };
+
+// Зачем: `realm` — в т.ч. `server_thumbnail_formats`; остальное — sidebar metadata.
+const DEFAULT_REGISTER_FETCH_EVENT_TYPES = [
+  "user_topics",
+  "recent_private_conversations",
+  "realm",
+] as const;
 
 export interface ZulipEvent {
   id: number;
@@ -711,6 +716,7 @@ export async function registerQueue(
     event_queue_longpoll_timeout_seconds?: number;
     user_topics?: unknown;
     recent_private_conversations?: unknown;
+    server_thumbnail_formats?: unknown;
   } | null;
   if (data == null || typeof data !== "object") {
     throw new Error(t("app.invalidResponse"));
@@ -726,6 +732,7 @@ export async function registerQueue(
   const recentPrivateConversations = parseRecentPrivateConversations(
     data.recent_private_conversations,
   );
+  const serverThumbnailFormats = parseServerThumbnailFormats(data.server_thumbnail_formats);
   const cacheKey = getCurrentUserTopicsCacheKey();
   if (cacheKey && userTopics) {
     setCachedUserTopicsForKey(cacheKey, userTopics);
@@ -739,6 +746,7 @@ export async function registerQueue(
     ...(recentPrivateConversations
       ? { recent_private_conversations: recentPrivateConversations }
       : {}),
+    ...(serverThumbnailFormats ? { server_thumbnail_formats: serverThumbnailFormats } : {}),
   };
 }
 
@@ -781,6 +789,7 @@ export async function registerQueueForCredentials(
     event_queue_longpoll_timeout_seconds?: number;
     user_topics?: unknown;
     recent_private_conversations?: unknown;
+    server_thumbnail_formats?: unknown;
   };
   try {
     data = (await response.json()) as typeof data;
@@ -799,6 +808,7 @@ export async function registerQueueForCredentials(
   const recentPrivateConversations = parseRecentPrivateConversations(
     data.recent_private_conversations,
   );
+  const serverThumbnailFormats = parseServerThumbnailFormats(data.server_thumbnail_formats);
   setCachedUserTopicsForKey(
     buildUserTopicsCacheKey(credentials.realm, credentials.email),
     userTopics ?? [],
@@ -812,6 +822,7 @@ export async function registerQueueForCredentials(
     ...(recentPrivateConversations
       ? { recent_private_conversations: recentPrivateConversations }
       : {}),
+    ...(serverThumbnailFormats ? { server_thumbnail_formats: serverThumbnailFormats } : {}),
   };
 }
 
@@ -1308,6 +1319,8 @@ interface MessageWindowOptions {
   numAfter: number;
   includeAnchor?: boolean;
   narrow?: { operator: string; operand: string | number | number[] }[];
+  /** When set and `CHAT_LIST_FLOW_DEBUG` is on, logs GET /messages request/response for sidebar bootstrap. */
+  flowDebugLabel?: string;
 }
 
 type MessagesApiAnchor = number | "newest" | "oldest" | "first_unread";
@@ -1331,7 +1344,16 @@ function validateNonNegativeInteger(value: number, label: string): number {
 }
 
 async function fetchMessageWindow(options: MessageWindowOptions): Promise<ZulipRawMessage[]> {
-  const { anchor, numBefore, numAfter, includeAnchor, narrow } = options;
+  const { anchor, numBefore, numAfter, includeAnchor, narrow, flowDebugLabel } = options;
+  if (flowDebugLabel != null) {
+    logChatListFlow(`api: GET /messages → ${flowDebugLabel} (request)`, {
+      anchor,
+      numBefore,
+      numAfter,
+      includeAnchor: includeAnchor ?? null,
+      hasNarrow: narrow != null,
+    });
+  }
   const res = await zulipPipelineGet("/messages", {
     anchor: String(anchor),
     ...(includeAnchor == null ? {} : { include_anchor: includeAnchor ? "true" : "false" }),
@@ -1342,10 +1364,28 @@ async function fetchMessageWindow(options: MessageWindowOptions): Promise<ZulipR
     allow_empty_topic_name: "true",
     apply_markdown: "false",
   });
-  if (!res?.ok) return [];
+  if (!res?.ok) {
+    if (flowDebugLabel != null) {
+      logChatListFlow(`api: GET /messages → ${flowDebugLabel} (non-ok)`, { ok: res?.ok ?? false });
+    }
+    return [];
+  }
   const data = res.data as { result?: string; messages?: ZulipRawMessage[] };
-  if (!data || data.result === "error") return [];
-  return data.messages ?? [];
+  if (!data || data.result === "error") {
+    if (flowDebugLabel != null) {
+      logChatListFlow(`api: GET /messages → ${flowDebugLabel} (error payload)`, {
+        result: data?.result,
+      });
+    }
+    return [];
+  }
+  const messages = data.messages ?? [];
+  if (flowDebugLabel != null) {
+    logChatListFlow(`api: GET /messages → ${flowDebugLabel} (response)`, {
+      ...summarizeZulipMessagesForFlowDebug(messages),
+    });
+  }
+  return messages;
 }
 
 /** Fetches the latest 1000 messages (no narrow) to build the sidebar chat/channel list. */
@@ -1354,6 +1394,7 @@ export async function fetchRecentMessages(): Promise<ZulipRawMessage[]> {
     anchor: "newest",
     numBefore: 1000,
     numAfter: 0,
+    flowDebugLabel: "fetchRecentMessages (chat list bootstrap / reconnect fallback)",
   });
 }
 
@@ -1368,6 +1409,7 @@ export async function fetchMessagesBeforeAnchor(
     numBefore,
     numAfter: 0,
     includeAnchor: false,
+    flowDebugLabel: "fetchMessagesBeforeAnchor (chat list deep history)",
   });
 }
 
@@ -1382,6 +1424,7 @@ export async function fetchMessagesAfterAnchor(
     numBefore: 0,
     numAfter,
     includeAnchor: false,
+    flowDebugLabel: "fetchMessagesAfterAnchor (chat list delta / reconnect)",
   });
 }
 
@@ -1399,6 +1442,11 @@ export async function fetchDirectMessagesPage(
   const normalizedAnchor =
     anchor === "newest" ? anchor : guard.messageId(anchor, "fetchDirectMessagesPage.anchor");
   const safeNumBefore = validateNonNegativeInteger(numBefore, "fetchDirectMessagesPage.numBefore");
+  logChatListFlow("api: GET /messages → fetchDirectMessagesPage (request)", {
+    anchor: normalizedAnchor,
+    numBefore: safeNumBefore,
+    narrow: "is:dm",
+  });
   const res = await zulipPipelineGet("/messages", {
     anchor: String(normalizedAnchor),
     include_anchor: "false",
@@ -1408,17 +1456,31 @@ export async function fetchDirectMessagesPage(
     client_gravatar: "true",
     allow_empty_topic_name: "true",
   });
-  if (!res?.ok) return { messages: [], foundOldest: false };
+  if (!res?.ok) {
+    logChatListFlow("api: GET /messages → fetchDirectMessagesPage (non-ok)", { ok: false });
+    return { messages: [], foundOldest: false };
+  }
   const data = res.data as {
     result?: string;
     messages?: ZulipRawMessage[];
     found_oldest?: boolean;
     foundOldest?: boolean;
   };
-  if (!data || data.result === "error") return { messages: [], foundOldest: false };
+  if (!data || data.result === "error") {
+    logChatListFlow("api: GET /messages → fetchDirectMessagesPage (error payload)", {
+      result: data?.result,
+    });
+    return { messages: [], foundOldest: false };
+  }
+  const dmPageMessages = data.messages ?? [];
+  const foundOldest = data.found_oldest ?? data.foundOldest ?? false;
+  logChatListFlow("api: GET /messages → fetchDirectMessagesPage (response)", {
+    ...summarizeZulipMessagesForFlowDebug(dmPageMessages),
+    foundOldest,
+  });
   return {
-    messages: data.messages ?? [],
-    foundOldest: data.found_oldest ?? data.foundOldest ?? false,
+    messages: dmPageMessages,
+    foundOldest,
   };
 }
 

@@ -8,7 +8,6 @@ import { brand } from "~/shared/lib/brand";
 import type { RightDrawerMode } from "~/widgets/right-panel/right-drawer.model";
 import type { RightPanelUserInfo } from "~/widgets/right-panel/right-panel.types";
 import { TopBar } from "~/widgets/top-bar/top-bar.ui";
-import { DESKTOP_MIN_VIEWPORT_STYLE } from "./layout-desktop-viewport.lib";
 import { LayoutMainWorkspace } from "./layout-main-workspace.ui";
 
 export interface LayoutAppShellProps {
@@ -58,10 +57,9 @@ export const LayoutAppShell = React.memo<LayoutAppShellProps>(function LayoutApp
         }}
       >
         <div
-          className="flex h-screen max-h-[100dvh] min-h-app-shell flex-col items-stretch overflow-hidden bg-bg text-text-primary"
+          className="flex h-screen max-h-[100dvh] min-h-app-shell w-full min-w-app-shell-min flex-col items-stretch overflow-hidden bg-bg text-text-primary"
           role="application"
           aria-label={brand.appName}
-          style={DESKTOP_MIN_VIEWPORT_STYLE}
         >
           {!online && (
             <div className="bg-notice-base/90 text-badge-text shrink-0 py-1 text-center text-xs">

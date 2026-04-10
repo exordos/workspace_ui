@@ -8,13 +8,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceFolder } from "~/shared/api/workspace-client";
 import { getFolders, mapWorkspaceFoldersToRail } from "./folder.api";
 
-const { workspaceApi } = vi.hoisted(() => ({
-  workspaceApi: {
-    get: vi.fn(),
-    getBaseUrl: vi.fn(() => "/api/v1"),
-    setBaseUrl: vi.fn(),
-  },
-}));
+const { workspaceApi } = vi.hoisted(() => {
+  const get = vi.fn();
+  return {
+    workspaceApi: {
+      get,
+      getWithBase: vi.fn(
+        (_base: string, path: string, params?: Record<string, string>, signal?: AbortSignal) =>
+          get(path, params, signal),
+      ),
+      getBaseUrl: vi.fn(() => "/api/v1"),
+      setBaseUrl: vi.fn(),
+    },
+  };
+});
 
 vi.mock("~/shared/api/client", () => ({
   workspaceApi,
@@ -24,6 +31,7 @@ vi.mock("~/shared/api/client", () => ({
     email: "test@test.com",
     apiKey: "test",
   }),
+  getWorkspaceApiBaseForCurrentInstance: () => "https://zulip.test",
   setInstanceProvider: vi.fn(),
 }));
 
@@ -181,7 +189,7 @@ describe("getFolders", () => {
     await expect(getFolders()).rejects.toThrow("Network failure");
   });
 
-  it("delegates to workspaceApi.get with the folders path", async () => {
+  it("delegates to workspaceApi.getWithBase with org workspace base and folders path", async () => {
     workspaceApi.get.mockResolvedValue({
       ok: true,
       status: 200,
@@ -191,6 +199,6 @@ describe("getFolders", () => {
 
     await getFolders();
 
-    expect(workspaceApi.get).toHaveBeenCalledWith("/v1/folders/", undefined, undefined);
+    expect(workspaceApi.getWithBase).toHaveBeenCalledWith("https://zulip.test", "/v1/folders/");
   });
 });

@@ -212,9 +212,9 @@ export const VerticalFolderItem: React.FC<FolderItemProps> = React.memo(
     return (
       <DropdownMenu.Root open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenu.Trigger asChild>
-          <div className="flex h-[85px] w-[67px] items-center justify-center p-1">
+          <div className="flex h-[72px] w-[56px] items-center justify-center p-1">
             <div
-              className={`relative h-[77px] w-[59px] origin-center transform-gpu transition-transform duration-150 ease-out motion-reduce:transition-none ${verticalScaleClass}`}
+              className={`relative h-[64px] w-[48px] origin-center transform-gpu transition-transform duration-150 ease-out motion-reduce:transition-none ${verticalScaleClass}`}
             >
               <button
                 type="button"
@@ -225,11 +225,11 @@ export const VerticalFolderItem: React.FC<FolderItemProps> = React.memo(
                 onKeyDown={handleKeyboardContextMenu}
                 onMouseEnter={() => setIsHovered(true)}
                 onMouseLeave={() => setIsHovered(false)}
-                className={`absolute left-1/2 top-[17px] flex h-10 w-10 -translate-x-1/2 items-center justify-center rounded-lg transition-colors ${verticalToneClass}`}
+                className={`absolute left-1/2 top-[10px] flex h-8 w-8 -translate-x-1/2 items-center justify-center rounded-lg transition-colors ${verticalToneClass}`}
                 title={folder.label}
               >
                 <span className="inline-flex shrink-0">
-                  <Icon name={visualState.iconName} size={40} className="shrink-0" />
+                  <Icon name={visualState.iconName} size={32} className="shrink-0" />
                 </span>
               </button>
               {folder.badge !== undefined && (
@@ -238,7 +238,7 @@ export const VerticalFolderItem: React.FC<FolderItemProps> = React.memo(
                 </span>
               )}
               <span
-                className={`absolute left-1/2 top-[57px] w-[62px] -translate-x-1/2 cursor-pointer truncate text-center text-sm leading-5 transition-colors ${verticalToneClass}`}
+                className={`absolute left-1/2 top-[42px] w-[52px] -translate-x-1/2 cursor-pointer truncate text-center text-xs leading-4 transition-colors ${verticalToneClass}`}
                 title={folder.label}
                 role="button"
                 tabIndex={0}

@@ -7,7 +7,12 @@
  * in the user's browser session.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("~/shared/lib/zulip-message-media-base.lib", () => ({
+  getMessageImagesBaseUrl: vi.fn(() => "https://zulip.example.com"),
+}));
+
 import { resolveMessageMediaUrl, stripHtml, sanitizeHtml } from "./html";
 
 // stripHtml is used to extract plain text from messages (e.g. for notifications, previews)
@@ -88,10 +93,25 @@ describe("sanitizeHtml", () => {
     expect(result).not.toContain(`${scriptProtocol}:`);
   });
 
+  it("opens safe links in a new tab with noopener", () => {
+    const html = '<a href="https://example.com/path">go</a>';
+    const result = sanitizeHtml(html);
+    expect(result).toContain('target="_blank"');
+    expect(result).toContain('rel="noopener noreferrer"');
+    expect(result).toContain('href="https://example.com/path"');
+  });
+
   // img src must be preserved — Zulip messages frequently contain inline images
   it("keeps img src attribute", () => {
     const html = '<img src="https://example.com/img.png" alt="test">';
     expect(sanitizeHtml(html)).toContain('src="https://example.com/img.png"');
+  });
+
+  it("keeps img width and height for layout stability", () => {
+    const html = '<img src="https://example.com/img.png" alt="x" width="840" height="560">';
+    const result = sanitizeHtml(html);
+    expect(result).toContain('width="840"');
+    expect(result).toContain('height="560"');
   });
 
   // Zulip serves user uploads at relative paths — they must be rewritten to absolute
@@ -101,11 +121,32 @@ describe("sanitizeHtml", () => {
     expect(result).toContain('src="https://zulip.example.com/user_uploads/1/img.png"');
   });
 
+  // Electron `file://` shell: `sanitizeHtml` may be called without baseUrl; still resolve `/user_uploads/` via realm
+  it("rewrites relative user_uploads when baseUrl omitted (realm media base fallback)", () => {
+    const html = '<img src="/user_uploads/1/img.png" alt="">';
+    const result = sanitizeHtml(html);
+    expect(result).toContain('src="https://zulip.example.com/user_uploads/1/img.png"');
+  });
+
   // Already-absolute URLs from external CDNs should not be modified
   it("does not rewrite absolute img src", () => {
     const html = '<img src="https://cdn.example.com/img.png">';
     const result = sanitizeHtml(html, "https://zulip.example.com");
     expect(result).toContain('src="https://cdn.example.com/img.png"');
+  });
+
+  it("rewrites absolute user_uploads img src to canonical base", () => {
+    const html =
+      '<img src="https://sys.platform.tokens.team/user_uploads/1/x.png" alt="">';
+    const result = sanitizeHtml(html, "https://zulip.example.com");
+    expect(result).toContain('src="https://zulip.example.com/user_uploads/1/x.png"');
+  });
+
+  it("rewrites user_uploads link href to canonical base", () => {
+    const html =
+      '<a href="https://sys.platform.tokens.team/user_uploads/1/x.png">file</a>';
+    const result = sanitizeHtml(html, "https://zulip.example.com");
+    expect(result).toContain('href="https://zulip.example.com/user_uploads/1/x.png"');
   });
 
   // iframes can load arbitrary content and bypass CSP — always remove

@@ -13,6 +13,10 @@ import {
   deserializeStreamEntry,
   type ChatListSnapshotSerialized,
 } from "~/shared/lib/chat-list-snapshot-serialize.lib";
+import {
+  logChatListFlow,
+  summarizeZulipMessagesForFlowDebug,
+} from "~/shared/lib/message-flow-debug.lib";
 import { dmConversationKey } from "~/shared/lib/dm-key";
 import { saveRecentDmPartners } from "~/shared/lib/recent-dms";
 import type {
@@ -320,6 +324,13 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
     const avatarMap = getAvatarMap();
     const { streamsMap, dmsMap } = buildSidebarFromMessages(messages, effectiveUserId, avatarMap);
     const messageIdToLocation = buildMessageIdToLocation(messages, effectiveUserId);
+    logChatListFlow("store: setFromMessages (full rebuild from messages)", {
+      ...summarizeZulipMessagesForFlowDebug(messages),
+      currentUserId: effectiveUserId,
+      streamsMapSize: streamsMap.size,
+      dmsMapSize: dmsMap.size,
+      messageIdToLocationSize: messageIdToLocation.size,
+    });
     set({
       streamsMap,
       dmsMap,
@@ -349,6 +360,13 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
       messageIdToLocation,
       currentUserId: snapshot.currentUserId ?? get().currentUserId,
       lastAppliedMessages: null,
+    });
+    logChatListFlow("store: hydrateFromIndexedDbSnapshot", {
+      streamsMapSize: streamsMap.size,
+      dmsMapSize: dmsMap.size,
+      messageIdToLocationSize: messageIdToLocation.size,
+      lastMessageId: snapshot.lastMessageId,
+      currentUserId: snapshot.currentUserId ?? get().currentUserId,
     });
     persistRecentDmPartnersFromMap(dmsMap);
   },
@@ -438,6 +456,13 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
   },
 
   addMessages(messages) {
+    logChatListFlow("store: addMessages (merge batch)", {
+      ...summarizeZulipMessagesForFlowDebug(messages),
+      rawCount: messages.length,
+      currentUserId: get().currentUserId,
+      streamsMapSizeBefore: get().streamsMap.size,
+      dmsMapSizeBefore: get().dmsMap.size,
+    });
     const currentUserId = get().currentUserId;
     const streamByKey = new Map<number, ZulipRawMessage>();
     const dmByKey = new Map<string, ZulipRawMessage>();
@@ -542,10 +567,15 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
       return { streamsMap: nextStreams, dmsMap: nextDms, messageIdToLocation: nextLoc };
     });
     persistRecentDmPartnersFromMap(get().dmsMap);
+    logChatListFlow("store: addMessages (done)", {
+      streamsMapSizeAfter: get().streamsMap.size,
+      dmsMapSizeAfter: get().dmsMap.size,
+    });
   },
 
   upsertStreamMetadataRows(rows) {
     if (rows.length === 0) return;
+    logChatListFlow("store: upsertStreamMetadataRows", { rowCount: rows.length });
     set((state) => {
       let changed = false;
       let nextStreams = state.streamsMap;
@@ -573,6 +603,7 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
 
   upsertDmMetadataRows(rows) {
     if (rows.length === 0) return;
+    logChatListFlow("store: upsertDmMetadataRows", { rowCount: rows.length });
     const currentUserId = get().currentUserId;
     set((state) => {
       let changed = false;
@@ -683,6 +714,7 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
   },
 
   clear() {
+    logChatListFlow("store: clear", {});
     _cachedStreams = null;
     _cachedStreamsMapRef = null;
     _cachedDms = null;

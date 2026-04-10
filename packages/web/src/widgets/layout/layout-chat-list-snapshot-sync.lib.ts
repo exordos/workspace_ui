@@ -3,6 +3,7 @@
 // и записывалось из одного места вместо разрозненных вызовов persist.
 import { persistChatListSnapshotToIndexedDb } from "~/entities/chat-list/chat-list-snapshot-persist.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { logChatListFlow } from "~/shared/lib/message-flow-debug.lib";
 
 // Базовое окно debounce для записи снапшота в IDB.
 const CHAT_LIST_SNAPSHOT_SYNC_DEBOUNCE_MS = 750;
@@ -67,10 +68,14 @@ export function startChatListSnapshotSync(options: StartChatListSnapshotSyncOpti
     if (inFlight || !queued) return;
     queued = false;
     inFlight = true;
+    logChatListFlow("idb: chatListSnapshot persist flush (start)", { instanceId });
     void persistSnapshot(instanceId)
-      .catch(() => {})
+      .catch(() => {
+        logChatListFlow("idb: chatListSnapshot persist flush (persist rejected)", { instanceId });
+      })
       .finally(() => {
         inFlight = false;
+        logChatListFlow("idb: chatListSnapshot persist flush (done)", { instanceId });
         // Если во время записи накопились новые изменения, планируем следующий flush.
         if (queued) {
           scheduleFlush();
@@ -89,7 +94,14 @@ export function startChatListSnapshotSync(options: StartChatListSnapshotSyncOpti
 
   // Помечает необходимость записи.
   const queueFlush = () => {
+    const wasQueued = queued;
     queued = true;
+    logChatListFlow(
+      wasQueued
+        ? "idb: chatListSnapshot persist re-queued (while pending or writing)"
+        : "idb: chatListSnapshot persist queued (store maps changed)",
+      { instanceId, inFlight },
+    );
     if (inFlight) return;
     scheduleFlush();
   };

@@ -70,7 +70,7 @@
     "services": "Сервисы",
     "profile": "Профиль",
     "activity": "Моя активность",
-    "allChats": "Все чаты",
+    "allChats": "Все",
     "channels": "Каналы",
     "directMessages": "Личные сообщения",
     "groupChats": "Групповые чаты",
@@ -469,7 +469,7 @@
     "title": "Горячие клавиши"
   },
   "folder": {
-    "allChats": "Все чаты",
+    "allChats": "Все",
     "personal": "Личные",
     "channels": "Каналы",
     "addFolder": "Добавить папку",
