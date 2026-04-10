@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import type {
   DmEntryInternal,
   SidebarChat,
@@ -6,6 +5,7 @@ import type {
   StreamWithLast,
   TopicWithLast,
 } from "~/shared/types/sidebar-chat";
+import type { ReactNode } from "react";
 
 export type { TopicWithLast, SidebarChat, StreamWithLast, StreamEntryInternal, DmEntryInternal };
 
@@ -27,7 +27,6 @@ export interface SidebarProps {
   sidebarChatsLoading?: boolean;
   pinReorderMode?: boolean;
   onExitPinReorderMode?: () => void;
-  onFolderAssignmentsChanged?: (affectedFolderUuid?: string) => void | Promise<void>;
 }
 
 export interface SidebarUiProps extends SidebarProps {

@@ -1,10 +1,9 @@
-import React, { useState, useMemo, useEffect, useCallback } from "react";
+import React, { useMemo, useEffect, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { CreateChatDialog } from "~/features/create-chat/create-chat-dialog.ui";
 import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
-import { selectSidebarChatsLoading } from "~/features/folder-sync/folder-sync.selectors";
 import { usePinStore } from "~/features/pin-chat/pin-chat.model";
 import { t } from "~/i18n/i18n";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
@@ -12,13 +11,13 @@ import { ScrollArea } from "~/shared/ui/scroll-area";
 import { SidebarActivity } from "./sidebar-activity.ui";
 import { useSidebarConfigStore } from "./sidebar-config.model";
 import { SidebarDmList } from "./sidebar-dm-list.ui";
+import { doesSidebarChatMatchQuery, normalizeSidebarSearchQuery } from "./sidebar-filtering.lib";
 import { SidebarFolderChatList } from "./sidebar-folder-chat-list.ui";
 import { SidebarPinReorderBanner } from "./sidebar-pin-reorder-banner.ui";
 import { SidebarSearchHeader } from "./sidebar-search-header.ui";
 import { SidebarStreamList } from "./sidebar-stream-list.ui";
-import { chatToWorkspaceChatId, getStreamChats, parseDmSlugToUserIds } from "./sidebar.lib";
-import { doesSidebarChatMatchQuery, normalizeSidebarSearchQuery } from "./sidebar-filtering.lib";
-import type { SidebarChat, SidebarUiProps, StreamWithLast } from "./sidebar.types";
+import { chatToWorkspaceChatId, getStreamChats } from "./sidebar.lib";
+import type { SidebarChat, SidebarUiProps } from "./sidebar.types";
 
 const EMPTY_PIN_REORDER_CHAT_IDS: string[] = [];
 
@@ -34,20 +33,24 @@ export const Sidebar: React.FC<SidebarUiProps> = ({
   sidebarChatsLoading: sidebarChatsLoadingProp = false,
   pinReorderMode: pinReorderModeProp = false,
   onExitPinReorderMode,
-  onFolderAssignmentsChanged,
   activityPanelBottomSlot,
 }) => {
   const navigate = useNavigate();
-  const { streamSlug, topicName, dmId: dmIdParamFromRoute } = useParams<{
+  const {
+    streamSlug,
+    topicName,
+    dmId: dmIdParamFromRoute,
+  } = useParams<{
     streamSlug?: string;
     topicName?: string;
     dmId?: string;
   }>();
 
-  const streams = streamsProp ?? useChatListStore((s) => s.streams());
-  const sidebarDms = sidebarDmsProp ?? useChatListStore((s) => s.dms());
+  const streamsFromStore = useChatListStore((s) => s.streams());
+  const sidebarDmsFromStore = useChatListStore((s) => s.dms());
+  const streams = streamsProp ?? streamsFromStore;
+  const sidebarDms = sidebarDmsProp ?? sidebarDmsFromStore;
   const selectedFolderIdFromUi = useSidebarConfigStore((s) => s.selectedFolderId);
-  const setSelectedFolderIdFromUi = useSidebarConfigStore((s) => s.setSelectedFolderId);
   const pinReorderModeFromUi = useSidebarConfigStore((s) => s.pinReorderMode);
   const setPinReorderModeFromUi = useSidebarConfigStore((s) => s.setPinReorderMode);
   const selectedFolderIdFromSync = useFolderSyncStore((s) => s.selectedFolderId);
@@ -55,9 +58,6 @@ export const Sidebar: React.FC<SidebarUiProps> = ({
     selectedFolderIdProp ?? selectedFolderIdFromSync ?? selectedFolderIdFromUi;
   const sidebarChats = sidebarChatsProp ?? null;
   const sidebarChatsLoading = sidebarChatsLoadingProp || false;
-  const selectFolderSync = useFolderSyncStore((s) => s.selectFolder);
-  const refreshFolderSync = useFolderSyncStore((s) => s.refresh);
-  const refreshFolderItemsCache = useFolderSyncStore((s) => s.refreshFolderItemsCache);
   const pinFolderId = pinFolderIdProp ?? undefined;
   const pinReorderMode = pinReorderModeProp || pinReorderModeFromUi;
   const activeStreamSlug = activeStreamSlugProp ?? streamSlug ?? null;
@@ -103,7 +103,7 @@ export const Sidebar: React.FC<SidebarUiProps> = ({
     };
   }, [activeDmIdParam, expandedStreamSlug, setExpandedStreamSlug]);
 
-  const streamChats = useMemo(() => getStreamChats(streams as StreamWithLast[]), [streams]);
+  const streamChats = useMemo(() => getStreamChats(streams), [streams]);
 
   const listChats = useMemo<SidebarChat[]>(() => sidebarChats ?? [], [sidebarChats]);
   const folderChatListLoading = sidebarChatsLoading && listChats.length === 0;
@@ -158,19 +158,6 @@ export const Sidebar: React.FC<SidebarUiProps> = ({
     setPinReorderModeFromUi(false);
   }, [onExitPinReorderMode, setPinReorderModeFromUi]);
 
-  const handleFoldersChanged = useCallback(
-    async (affectedFolderUuid?: string) => {
-      const uuid = affectedFolderUuid?.trim();
-      if (uuid != null && uuid.length > 0) {
-        await refreshFolderItemsCache(uuid);
-      } else {
-        await refreshFolderSync("mutation");
-      }
-      await onFolderAssignmentsChanged?.(affectedFolderUuid);
-    },
-    [refreshFolderItemsCache, refreshFolderSync, onFolderAssignmentsChanged],
-  );
-
   return (
     <aside
       className="flex min-h-0 w-sidebar min-w-sidebar max-w-sidebar flex-shrink-0 overflow-hidden rounded-xl bg-sidebar-bg"
@@ -197,9 +184,7 @@ export const Sidebar: React.FC<SidebarUiProps> = ({
               </div>
             </>
           )}
-          {pinReorderMode && (
-            <SidebarPinReorderBanner onClose={handleExitPinReorderMode} />
-          )}
+          {pinReorderMode && <SidebarPinReorderBanner onClose={handleExitPinReorderMode} />}
           <SidebarFolderChatList
             chats={filteredFolderChats}
             selectedFolderId={selectedFolderId}
@@ -213,7 +198,6 @@ export const Sidebar: React.FC<SidebarUiProps> = ({
             reorderPinnedOnly={pinReorderMode}
             loading={folderChatListLoading}
             showEmptyState={sidebarChats != null && normalizedQuery.length === 0}
-            onFolderAssignmentsChanged={handleFoldersChanged}
           />
           {!sidebarChats && (
             <SidebarStreamList

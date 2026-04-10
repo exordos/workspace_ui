@@ -62,7 +62,6 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
   reorderPinnedOnly = false,
   loading = false,
   showEmptyState = false,
-  onFolderAssignmentsChanged,
 }) => {
   const activeStreamSlug = activeStreamSlugProp ?? null;
   const activeTopic = activeTopicProp ?? null;
@@ -267,7 +266,6 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
                               })
                           : undefined
                       }
-                      onFolderAssignmentsChanged={onFolderAssignmentsChanged}
                     >
                       <div className="group/stream relative">
                         <Link
@@ -418,7 +416,6 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
                             })
                         : undefined
                     }
-                    onFolderAssignmentsChanged={onFolderAssignmentsChanged}
                   >
                     <Link
                       to={`/stream/${streamSlug}`}
@@ -458,12 +455,7 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
                 );
               }
               return wrapPinned(
-                <DmContextMenu
-                  key={`dm-${chat.slug}`}
-                  chat={chat}
-                  folderId={pinScopeFolderId}
-                  onFolderAssignmentsChanged={onFolderAssignmentsChanged}
-                >
+                <DmContextMenu key={`dm-${chat.slug}`} chat={chat} folderId={pinScopeFolderId}>
                   <DmChatRow
                     chat={chat}
                     isActive={chat.slug === activeDmIdParam}

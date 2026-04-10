@@ -51,7 +51,6 @@ export interface SidebarProps {
   sidebarChatsLoading?: boolean;
   pinReorderMode?: boolean;
   onExitPinReorderMode?: () => void;
-  onFolderAssignmentsChanged?: (affectedFolderUuid?: string) => void;
 }
 
 export interface StreamWithLast {

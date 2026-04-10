@@ -13,7 +13,6 @@ export interface SidebarFolderChatListProps {
   reorderPinnedOnly?: boolean;
   loading?: boolean;
   showEmptyState?: boolean;
-  onFolderAssignmentsChanged?: (affectedFolderUuid?: string) => void;
 }
 
 export interface NewTopicDialogState {

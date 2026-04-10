@@ -3,6 +3,7 @@ import { useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useUsersStore } from "~/entities/user/user.model";
+import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import type * as PinChatApiModule from "~/features/pin-chat/pin-chat.api";
 import { usePinStore } from "~/features/pin-chat/pin-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
@@ -118,6 +119,7 @@ function RoutePathProbe() {
 
 describe("Sidebar", () => {
   afterEach(() => {
+    useFolderSyncStore.getState().clear();
     useUsersStore.getState().clear();
     useTypingIndicatorStore.getState().clearAll();
     usePinStore.getState().clear();
