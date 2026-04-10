@@ -134,7 +134,7 @@ export const ChatPage: React.FC = () => {
   }>();
   const streamsMap = useChatListStore((s) => s.streamsMap);
   const dmsFromStore = useChatListStore((s) => s.dms());
-  const setExpandedStreamSlug = useSidebarConfigStore((s) => s.setExpandedStreamSlug);
+  const expandStreamSlug = useSidebarConfigStore((s) => s.expandStreamSlug);
   const currentUserId = useChatListStore((s) => s.currentUserId);
   const route = useChatRouteContext({
     streamSlug,
@@ -710,8 +710,10 @@ export const ChatPage: React.FC = () => {
 
   const handleExpandCurrentStreamTopics = useCallback(() => {
     if (!streamSlug) return;
-    setExpandedStreamSlug(streamSlug);
-  }, [setExpandedStreamSlug, streamSlug]);
+    // Используется кнопкой "выбрать топик" в композере:
+    // раскрывает текущий stream в sidebar без дублирования slug в store.
+    expandStreamSlug(streamSlug);
+  }, [expandStreamSlug, streamSlug]);
 
   useChatToastAutoClear({
     toastMessage,

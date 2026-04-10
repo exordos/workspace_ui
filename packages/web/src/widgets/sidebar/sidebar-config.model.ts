@@ -1,21 +1,20 @@
-/**
- * Sidebar config store — persists sidebar UI preferences.
- *
- * Stores collapsible section states (e.g. activity panel). Persisted to localStorage.
- */
+// Модуль состояния sidebar: хранит UI-настройки и состояние раскрытия каналов между сессиями.
 import { create } from "zustand";
-import { SYSTEM_ALL_FOLDER_ID } from "~/features/folder-sync/folder-sync-constants.lib";
 import { useInstancesStore } from "~/entities/instance/instance.model";
+import { SYSTEM_ALL_FOLDER_ID } from "~/features/folder-sync/folder-sync-constants.lib";
 import { buildOrgScopedStorageKey } from "~/shared/lib/org-scoped-storage";
 import type { SidebarConfig, SidebarConfigState, SidebarUiState } from "./sidebar-config.types";
 
+// Базовый ключ localStorage; реальный ключ дополняется organization id.
 const SIDEBAR_CONFIG_STORAGE_KEY = "zulip-web-sidebar-config";
 
+// Дефолт именно для persist-полей sidebar.
 const DEFAULT_CONFIG: SidebarConfig = {
   activityOpen: false,
-  expandedStreamSlug: null,
+  expandedStreamSlugs: [],
 };
 
+// Дефолт для неперсистентных полей UI-состояния sidebar.
 const DEFAULT_UI_STATE: SidebarUiState = {
   selectedFolderId: SYSTEM_ALL_FOLDER_ID,
   pinReorderMode: false,
@@ -25,6 +24,26 @@ const DEFAULT_UI_STATE: SidebarUiState = {
 
 function getStorageKeyForOrganization(organizationId: string | null): string {
   return buildOrgScopedStorageKey(SIDEBAR_CONFIG_STORAGE_KEY, organizationId);
+}
+
+// Нормализует список раскрытых stream slug: отбрасывает мусор и дубликаты.
+function normalizeExpandedStreamSlugs(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const unique = new Set<string>();
+  for (const item of value) {
+    if (typeof item !== "string") continue;
+    const slug = item.trim();
+    if (slug.length === 0) continue;
+    unique.add(slug);
+  }
+  return [...unique];
+}
+
+function buildPersistedConfig(state: Pick<SidebarConfigState, keyof SidebarConfig>): SidebarConfig {
+  return {
+    activityOpen: state.activityOpen,
+    expandedStreamSlugs: normalizeExpandedStreamSlugs(state.expandedStreamSlugs),
+  };
 }
 
 function loadConfig(
@@ -42,8 +61,13 @@ function loadConfig(
     if (legacyFallbackKey != null && window.localStorage.getItem(scopedKey) == null) {
       window.localStorage.setItem(scopedKey, raw);
     }
+    // Legacy single-slug формат намеренно игнорируем:
+    // читаем только expandedStreamSlugs и activityOpen.
     const parsed = JSON.parse(raw) as Partial<SidebarConfig>;
-    return { ...DEFAULT_CONFIG, ...parsed };
+    return {
+      activityOpen: parsed.activityOpen === true,
+      expandedStreamSlugs: normalizeExpandedStreamSlugs(parsed.expandedStreamSlugs),
+    };
   } catch {
     return DEFAULT_CONFIG;
   }
@@ -69,21 +93,73 @@ export const useSidebarConfigStore = create<SidebarConfigState>((set) => ({
   setActivityOpen: (activityOpen) =>
     set((state) => {
       const next = { ...state, activityOpen };
-      saveConfig(next);
+      saveConfig(buildPersistedConfig(next));
       return next;
     }),
 
-  setExpandedStreamSlug: (expandedStreamSlug) =>
+  toggleExpandedStreamSlug: (slug) =>
     set((state) => {
-      const next = { ...state, expandedStreamSlug };
-      saveConfig(next);
+      // Тоггл ручного раскрытия/сворачивания по кнопке в sidebar.
+      const streamSlug = slug.trim();
+      if (streamSlug.length === 0) return state;
+      const expandedStreamSlugs = state.expandedStreamSlugs.includes(streamSlug)
+        ? state.expandedStreamSlugs.filter((value) => value !== streamSlug)
+        : [...state.expandedStreamSlugs, streamSlug];
+      const next = { ...state, expandedStreamSlugs };
+      saveConfig(buildPersistedConfig(next));
+      return next;
+    }),
+
+  expandStreamSlug: (slug) =>
+    set((state) => {
+      // Идемпотентное раскрытие: не дублируем slug, если уже раскрыт.
+      const streamSlug = slug.trim();
+      if (streamSlug.length === 0 || state.expandedStreamSlugs.includes(streamSlug)) {
+        return state;
+      }
+      const next = { ...state, expandedStreamSlugs: [...state.expandedStreamSlugs, streamSlug] };
+      saveConfig(buildPersistedConfig(next));
+      return next;
+    }),
+
+  collapseExpandedStreamsExcept: (slug) =>
+    set((state) => {
+      // Навигационный режим: оставляем раскрытым только целевой stream.
+      const streamSlug = slug.trim();
+      if (streamSlug.length === 0) {
+        if (state.expandedStreamSlugs.length === 0) return state;
+        const next = { ...state, expandedStreamSlugs: [] };
+        saveConfig(buildPersistedConfig(next));
+        return next;
+      }
+      if (state.expandedStreamSlugs.length === 1 && state.expandedStreamSlugs[0] === streamSlug) {
+        return state;
+      }
+      const next = { ...state, expandedStreamSlugs: [streamSlug] };
+      saveConfig(buildPersistedConfig(next));
+      return next;
+    }),
+
+  collapseAllExpandedStreams: () =>
+    set((state) => {
+      // Полный сброс раскрытий при переходах в DM и не-чатовые роуты.
+      if (state.expandedStreamSlugs.length === 0) return state;
+      const next = { ...state, expandedStreamSlugs: [] };
+      saveConfig(buildPersistedConfig(next));
       return next;
     }),
 
   setConfig: (patch) =>
     set((state) => {
-      const next = { ...state, ...patch };
-      saveConfig(next);
+      const next = {
+        ...state,
+        ...patch,
+        expandedStreamSlugs:
+          patch.expandedStreamSlugs == null
+            ? state.expandedStreamSlugs
+            : normalizeExpandedStreamSlugs(patch.expandedStreamSlugs),
+      };
+      saveConfig(buildPersistedConfig(next));
       return next;
     }),
 
@@ -110,6 +186,7 @@ if (typeof window !== "undefined") {
     }
 
     previousOrganizationId = nextOrganizationId;
+    // При переключении организации поднимаем scoped persist-данные и сбрасываем transient UI-флаги.
     useSidebarConfigStore.setState((prev) => ({
       ...DEFAULT_UI_STATE,
       ...loadConfig(nextOrganizationId),

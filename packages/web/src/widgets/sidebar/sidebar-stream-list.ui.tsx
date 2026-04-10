@@ -52,7 +52,7 @@ export const SidebarStreamList: React.FC<SidebarStreamListProps> = ({
   streamChats,
   activeStreamSlug,
   activeTopic,
-  expandedStreamSlug,
+  expandedStreamSlugs,
   onToggleStream,
   onNewTopic,
 }) => {
@@ -82,7 +82,8 @@ export const SidebarStreamList: React.FC<SidebarStreamListProps> = ({
         {streams.map((stream) => {
           const streamSlug = slugForStream(stream);
           const isActive = streamSlug === activeStreamSlug;
-          const expanded = expandedStreamSlug === streamSlug;
+          // В legacy stream-list используем ту же модель множественного раскрытия, что и в folder-list.
+          const expanded = expandedStreamSlugs.includes(streamSlug);
           const isGeneral = stream.name.toLowerCase() === "general";
           const displayName = isGeneral ? t("chat.generalChat") : stream.name;
           const topics = stream.topics ?? [];

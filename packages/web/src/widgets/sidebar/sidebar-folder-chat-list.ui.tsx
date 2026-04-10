@@ -56,7 +56,7 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
   activeStreamSlug: activeStreamSlugProp,
   activeDmIdParam: activeDmIdParamProp,
   activeTopic: activeTopicProp,
-  expandedStreamSlug,
+  expandedStreamSlugs,
   onToggleStream,
   onNewTopic,
   reorderPinnedOnly = false,
@@ -70,7 +70,8 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
   const [newTopicName, setNewTopicName] = useState("");
   const [muteTopicOnCreate, setMuteTopicOnCreate] = useState(false);
   const isCompactDensity = useSettingsStore((s) => s.chatListDensity === "compact");
-  const canExpandStreams = onToggleStream != null && expandedStreamSlug !== undefined;
+  // Защита для совместимости: если управление раскрытиями не передано, рендерим без topic-expand логики.
+  const canExpandStreams = onToggleStream != null && expandedStreamSlugs !== undefined;
   const pinScopeFolderId = pinFolderId ?? selectedFolderId;
 
   const pinnedChatIds = usePinStore((s) =>
@@ -152,10 +153,11 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
 
   const openTopicDialogForStream = useCallback(
     ({ streamId, streamName, streamSlug }: NewTopicDialogState) => {
+      // Перед созданием топика принудительно раскрываем stream, чтобы пользователь видел контекст.
       if (
         onToggleStream != null &&
-        expandedStreamSlug !== undefined &&
-        expandedStreamSlug !== streamSlug
+        expandedStreamSlugs !== undefined &&
+        !expandedStreamSlugs.includes(streamSlug)
       ) {
         onToggleStream(streamSlug);
       }
@@ -163,7 +165,7 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
       setNewTopicName("");
       setMuteTopicOnCreate(false);
     },
-    [expandedStreamSlug, onToggleStream],
+    [expandedStreamSlugs, onToggleStream],
   );
 
   const handleCreateTopicFromDialog = useCallback(() => {
@@ -232,7 +234,7 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
               if (chat.type === "stream") {
                 const streamSlug = slugForStream(chat);
                 const isActive = streamSlug === activeStreamSlug;
-                const expanded = canExpandStreams && expandedStreamSlug === streamSlug;
+                const expanded = canExpandStreams && expandedStreamSlugs.includes(streamSlug);
                 const displayName =
                   chat.name.toLowerCase() === "general" ? t("chat.generalChat") : chat.name;
                 const topics = chat.topics ?? [];

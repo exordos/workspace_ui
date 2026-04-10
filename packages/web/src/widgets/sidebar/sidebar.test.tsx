@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useUsersStore } from "~/entities/user/user.model";
@@ -117,6 +117,15 @@ function RoutePathProbe() {
   return <output data-testid="route-path">{location.pathname}</output>;
 }
 
+function RouteNavigateButton({ to, label }: { to: string; label: string }) {
+  const navigate = useNavigate();
+  return (
+    <button type="button" onClick={() => void navigate(to)}>
+      {label}
+    </button>
+  );
+}
+
 describe("Sidebar", () => {
   afterEach(() => {
     useFolderSyncStore.getState().clear();
@@ -124,7 +133,7 @@ describe("Sidebar", () => {
     useTypingIndicatorStore.getState().clearAll();
     usePinStore.getState().clear();
     useChatListStore.setState({ currentUserId: null });
-    useSidebarConfigStore.getState().setConfig({ expandedStreamSlug: null });
+    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: [] });
     useSidebarConfigStore.getState().setSearchQuery("");
     useSidebarConfigStore.getState().setCreateChatOpen(false);
     useSettingsStore.getState().resetToDefaults();
@@ -991,12 +1000,13 @@ describe("Sidebar", () => {
       ...STREAM_CHAT,
       topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
     };
-    useSidebarConfigStore.getState().setExpandedStreamSlug("11-engineering");
+    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
 
     renderWithProviders(
       <Sidebar
         streams={[]}
         selectedFolderId="all"
+        activeStreamSlug="11-engineering"
         sidebarChats={[streamWithTopics]}
         sidebarDms={[]}
       />,
@@ -1005,7 +1015,7 @@ describe("Sidebar", () => {
     expect(screen.getByText("# incident")).toBeInTheDocument();
   });
 
-  it("shows topic last message sender name in folder stream list", () => {
+  it("shows topic last message sender name in folder stream list", async () => {
     const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
       ...STREAM_CHAT,
       topics: [
@@ -1017,18 +1027,22 @@ describe("Sidebar", () => {
         },
       ],
     };
-    useSidebarConfigStore.getState().setExpandedStreamSlug("11-engineering");
+    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
 
     renderWithProviders(
       <Sidebar
         streams={[]}
         selectedFolderId="all"
+        activeStreamSlug="11-engineering"
         sidebarChats={[streamWithTopics]}
         sidebarDms={[]}
       />,
     );
 
-    expect(screen.getByText("Topic Sender")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("# incident")).toBeInTheDocument();
+      expect(screen.getByText("Topic Sender")).toBeInTheDocument();
+    });
   });
 
   it("hides topic sender row in folder stream list when sender name is missing", () => {
@@ -1036,7 +1050,7 @@ describe("Sidebar", () => {
       ...STREAM_CHAT,
       topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
     };
-    useSidebarConfigStore.getState().setExpandedStreamSlug("11-engineering");
+    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
 
     renderWithProviders(
       <Sidebar
@@ -1051,7 +1065,7 @@ describe("Sidebar", () => {
   });
 
   it("shows topic last message sender name in stream list when sidebarChats is absent", () => {
-    useSidebarConfigStore.getState().setExpandedStreamSlug("11-engineering");
+    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
 
     renderWithProviders(
       <Sidebar
@@ -1072,6 +1086,7 @@ describe("Sidebar", () => {
           },
         ]}
         selectedFolderId="all"
+        activeStreamSlug="11-engineering"
         sidebarDms={[]}
       />,
     );
@@ -1159,12 +1174,139 @@ describe("Sidebar", () => {
     expect(screen.getByText("# incident")).toBeInTheDocument();
   });
 
+  it("allows opening multiple stream topic lists via expand buttons", () => {
+    const streamWithIncidentTopic: Extract<SidebarChat, { type: "stream" }> = {
+      ...STREAM_CHAT,
+      topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
+    };
+    const streamWithLaunchTopic: Extract<SidebarChat, { type: "stream" }> = {
+      ...STREAM_CHAT_SECOND,
+      topics: [{ subject: "launch", badge: 0, lastMessage: "Launch checklist" }],
+    };
+
+    renderWithProviders(
+      <Sidebar
+        streams={[]}
+        selectedFolderId="all"
+        sidebarChats={[streamWithIncidentTopic, streamWithLaunchTopic]}
+        sidebarDms={[]}
+      />,
+    );
+
+    const toggleButtons = screen.getAllByRole("button", { name: /expand topics/i });
+    fireEvent.click(toggleButtons[0]!);
+    fireEvent.click(toggleButtons[1]!);
+
+    expect(screen.getByText("# incident")).toBeInTheDocument();
+    expect(screen.getByText("# launch")).toBeInTheDocument();
+  });
+
+  it("keeps stream topics expanded after manual toggle when dm chat is active", () => {
+    const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
+      ...STREAM_CHAT,
+      topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
+    };
+
+    renderWithProviders(
+      <Sidebar
+        streams={[]}
+        selectedFolderId="all"
+        sidebarChats={[streamWithTopics, DM_CHAT]}
+        sidebarDms={[DM_CHAT]}
+        activeDmIdParam={DM_CHAT.slug}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /expand topics/i }));
+
+    expect(screen.getByText("# incident")).toBeInTheDocument();
+  });
+
+  it("collapses all but target stream topics after stream navigation", async () => {
+    const streamWithIncidentTopic: Extract<SidebarChat, { type: "stream" }> = {
+      ...STREAM_CHAT,
+      topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
+    };
+    const streamWithLaunchTopic: Extract<SidebarChat, { type: "stream" }> = {
+      ...STREAM_CHAT_SECOND,
+      topics: [{ subject: "launch", badge: 0, lastMessage: "Launch checklist" }],
+    };
+
+    renderWithProviders(
+      <>
+        <Sidebar
+          streams={[]}
+          selectedFolderId="all"
+          sidebarChats={[streamWithIncidentTopic, streamWithLaunchTopic]}
+          sidebarDms={[]}
+        />
+        <RoutePathProbe />
+      </>,
+    );
+
+    const toggleButtons = screen.getAllByRole("button", { name: /expand topics/i });
+    fireEvent.click(toggleButtons[0]!);
+    fireEvent.click(toggleButtons[1]!);
+    expect(screen.getByText("# incident")).toBeInTheDocument();
+    expect(screen.getByText("# launch")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("link", { name: /marketing/i }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("route-path")).toHaveTextContent("/stream/12-marketing");
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("# incident")).not.toBeInTheDocument();
+      expect(screen.getByText("# launch")).toBeInTheDocument();
+    });
+  });
+
+  it("collapses all expanded stream topics after non-chat navigation", async () => {
+    const streamWithIncidentTopic: Extract<SidebarChat, { type: "stream" }> = {
+      ...STREAM_CHAT,
+      topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
+    };
+    const streamWithLaunchTopic: Extract<SidebarChat, { type: "stream" }> = {
+      ...STREAM_CHAT_SECOND,
+      topics: [{ subject: "launch", badge: 0, lastMessage: "Launch checklist" }],
+    };
+
+    renderWithProviders(
+      <>
+        <Sidebar
+          streams={[]}
+          selectedFolderId="all"
+          sidebarChats={[streamWithIncidentTopic, streamWithLaunchTopic]}
+          sidebarDms={[]}
+        />
+        <RouteNavigateButton to="/inbox" label="go-inbox" />
+        <RoutePathProbe />
+      </>,
+    );
+
+    const toggleButtons = screen.getAllByRole("button", { name: /expand topics/i });
+    fireEvent.click(toggleButtons[0]!);
+    fireEvent.click(toggleButtons[1]!);
+    expect(screen.getByText("# incident")).toBeInTheDocument();
+    expect(screen.getByText("# launch")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "go-inbox" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("route-path")).toHaveTextContent("/inbox");
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("# incident")).not.toBeInTheDocument();
+      expect(screen.queryByText("# launch")).not.toBeInTheDocument();
+    });
+  });
+
   it("collapses expanded stream topics when a direct message chat is active", async () => {
     const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
       ...STREAM_CHAT,
       topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
     };
-    useSidebarConfigStore.getState().setExpandedStreamSlug("11-engineering");
+    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
 
     renderWithProviders(
       <Sidebar
@@ -1213,7 +1355,7 @@ describe("Sidebar", () => {
     expect(chatMenuButton).not.toHaveClass("right-10");
 
     expect(expandButton).toHaveClass("absolute");
-    expect(expandButton).toHaveClass("right-1");
+    expect(expandButton).toHaveClass("right-1.5");
     expect(expandButton).toHaveClass("top-2.5");
     expect(expandButton).toHaveClass("h-5");
     expect(expandButton).toHaveClass("w-5");
@@ -1256,12 +1398,13 @@ describe("Sidebar", () => {
       ...STREAM_CHAT,
       topics: [{ subject: "incident", badge: 2, lastMessage: "Topic update" }],
     };
-    useSidebarConfigStore.getState().setExpandedStreamSlug("11-engineering");
+    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
 
     renderWithProviders(
       <Sidebar
         streams={[]}
         selectedFolderId="all"
+        activeStreamSlug="11-engineering"
         sidebarChats={[streamWithTopics]}
         sidebarDms={[]}
       />,
@@ -1283,13 +1426,14 @@ describe("Sidebar", () => {
       ...STREAM_CHAT,
       topics: [{ subject: "incident", badge: 2, lastMessage: "Topic update" }],
     };
-    useSidebarConfigStore.getState().setExpandedStreamSlug("11-engineering");
+    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
 
     renderWithProviders(
       <>
         <Sidebar
           streams={[]}
           selectedFolderId="all"
+          activeStreamSlug="11-engineering"
           sidebarChats={[streamWithTopics]}
           sidebarDms={[]}
         />
@@ -1306,7 +1450,7 @@ describe("Sidebar", () => {
   });
 
   it("does not navigate when topic mute action is clicked", () => {
-    useSidebarConfigStore.getState().setExpandedStreamSlug("11-engineering");
+    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
 
     renderWithProviders(
       <>
@@ -1321,6 +1465,7 @@ describe("Sidebar", () => {
             },
           ]}
           selectedFolderId="all"
+          activeStreamSlug="11-engineering"
           sidebarDms={[]}
         />
         <RoutePathProbe />
@@ -1338,13 +1483,14 @@ describe("Sidebar", () => {
       ...STREAM_CHAT,
       topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
     };
-    useSidebarConfigStore.getState().setExpandedStreamSlug("11-engineering");
+    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
 
     renderWithProviders(
       <>
         <Sidebar
           streams={[]}
           selectedFolderId="all"
+          activeStreamSlug="11-engineering"
           sidebarChats={[streamWithTopics]}
           sidebarDms={[]}
         />
@@ -1367,12 +1513,13 @@ describe("Sidebar", () => {
       ...STREAM_CHAT,
       topics: [{ subject: "\u2714 incident", badge: 0, lastMessage: "Topic update" }],
     };
-    useSidebarConfigStore.getState().setExpandedStreamSlug("11-engineering");
+    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
 
     renderWithProviders(
       <Sidebar
         streams={[]}
         selectedFolderId="all"
+        activeStreamSlug="11-engineering"
         sidebarChats={[streamWithTopics]}
         sidebarDms={[]}
       />,
