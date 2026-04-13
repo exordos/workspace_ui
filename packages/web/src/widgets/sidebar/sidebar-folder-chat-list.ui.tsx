@@ -333,9 +333,6 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
                               {isPinnedChat && (
                                 <Icon name="pin" size={12} className="text-text-muted" />
                               )}
-                              {streamMuted && (
-                                <Icon name="bell" size={12} className="text-notice-base" />
-                              )}
                               {chat.badge !== undefined && chat.badge > 0 && (
                                 <Badge count={chat.badge} variant="unread" />
                               )}
@@ -490,9 +487,6 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
                         <div className="flex items-center gap-1">
                           {isPinnedChat && (
                             <Icon name="pin" size={12} className="text-text-muted" />
-                          )}
-                          {streamMuted && (
-                            <Icon name="bell" size={12} className="text-notice-base" />
                           )}
                           <span className="text-xs text-text-muted">{chat.time ?? ""}</span>
                           {chat.badge !== undefined && chat.badge > 0 && (

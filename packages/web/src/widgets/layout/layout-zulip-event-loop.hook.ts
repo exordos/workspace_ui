@@ -27,6 +27,7 @@ import type {
   ZulipRawMessage,
   ZulipRecentPrivateConversation,
   ZulipUserMember,
+  ZulipUserTopic,
 } from "~/shared/api/zulip.types";
 import {
   loadDmIndexEntries,
@@ -126,7 +127,7 @@ function persistDmIndexFromStore(instanceId: string): void {
 export function useLayoutZulipEventLoop(options: {
   currentInstanceId: string | null;
   loadBootstrapMessages: () => Promise<ChatListBootstrapResult>;
-  loadMuteSnapshot: () => Promise<{
+  loadMuteSnapshot: (bootstrapUserTopics?: ZulipUserTopic[]) => Promise<{
     mutedStreamIds: number[];
     mutedTopics: { streamId: number; topic: string }[];
     unmutedTopics: { streamId: number; topic: string }[];
@@ -379,7 +380,7 @@ export function useLayoutZulipEventLoop(options: {
           onReconnect: refreshStaleData,
           onBadQueue: refreshStaleData,
           fetchEventTypes: metadataBootstrapEnabled
-            ? ["user_topics", "recent_private_conversations"]
+            ? ["user_topic", "recent_private_conversations"]
             : undefined,
           onQueueRegistered: (id, registration) => {
             queueIdRef.current = id;
@@ -396,7 +397,7 @@ export function useLayoutZulipEventLoop(options: {
               }
             }
             void loadMuteSnapshotRef
-              .current()
+              .current(registration?.user_topics)
               .then((snapshot) => {
                 if (!cancelled) {
                   useMuteStore.getState().setFromServer(snapshot);

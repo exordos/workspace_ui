@@ -640,7 +640,7 @@ export interface RegisterQueueResult {
 }
 
 // Зачем: по умолчанию подтягиваем metadata, чтобы быстрее собрать sidebar без полной истории сообщений.
-const DEFAULT_REGISTER_FETCH_EVENT_TYPES = ["user_topics", "recent_private_conversations"] as const;
+const DEFAULT_REGISTER_FETCH_EVENT_TYPES = ["user_topic", "recent_private_conversations"] as const;
 
 export interface ZulipEvent {
   id: number;

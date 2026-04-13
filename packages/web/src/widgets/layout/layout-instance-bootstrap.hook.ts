@@ -3,7 +3,9 @@ import { ensureStarredLoaded } from "~/entities/activity/activity-starred-loader
 import { useActivityStore } from "~/entities/activity/activity.model";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
-import { fetchSubscriptions, fetchUserTopics } from "~/shared/api/zulip";
+import { fetchSubscriptions } from "~/shared/api/zulip";
+import { fetchUserTopics } from "~/shared/api/zulip-queue";
+import type { ZulipUserTopic } from "~/shared/api/zulip.types";
 
 export interface LayoutMuteSnapshot {
   mutedStreamIds: number[];
@@ -15,27 +17,31 @@ export function useLayoutInstanceBootstrap(options: {
   currentInstanceId: string | null;
   currentUserStatus: "idle" | "loading" | "ready" | "error";
 }): {
-  loadMuteSnapshot: () => Promise<LayoutMuteSnapshot>;
+  loadMuteSnapshot: (bootstrapUserTopics?: ZulipUserTopic[]) => Promise<LayoutMuteSnapshot>;
 } {
   const { currentInstanceId, currentUserStatus } = options;
   const starredSummaryStale = useActivityStore((s) => s.starredSummary.stale);
   const starredBootstrapInstanceRef = useRef<string | null>(null);
 
   // Загружает mute-снимок инстанса (muted streams/topics) для консистентной UI-модели.
-  const loadMuteSnapshot = useCallback(async (): Promise<LayoutMuteSnapshot> => {
-    const [subs, userTopics] = await Promise.all([fetchSubscriptions(), fetchUserTopics()]);
-    const mutedStreamIds = subs.filter((s) => s.is_muted).map((s) => s.stream_id);
-    const mutedTopics: { streamId: number; topic: string }[] = [];
-    const unmutedTopics: { streamId: number; topic: string }[] = [];
-    for (const ut of userTopics) {
-      if (ut.visibility_policy === 1) {
-        mutedTopics.push({ streamId: ut.stream_id, topic: ut.topic_name });
-      } else if (ut.visibility_policy === 2 || ut.visibility_policy === 3) {
-        unmutedTopics.push({ streamId: ut.stream_id, topic: ut.topic_name });
+  const loadMuteSnapshot = useCallback(
+    async (bootstrapUserTopics?: ZulipUserTopic[]): Promise<LayoutMuteSnapshot> => {
+      const [subs, cachedUserTopics] = await Promise.all([fetchSubscriptions(), fetchUserTopics()]);
+      const userTopics = bootstrapUserTopics ?? cachedUserTopics;
+      const mutedStreamIds = subs.filter((s) => s.is_muted).map((s) => s.stream_id);
+      const mutedTopics: { streamId: number; topic: string }[] = [];
+      const unmutedTopics: { streamId: number; topic: string }[] = [];
+      for (const ut of userTopics) {
+        if (ut.visibility_policy === 1) {
+          mutedTopics.push({ streamId: ut.stream_id, topic: ut.topic_name });
+        } else if (ut.visibility_policy === 2 || ut.visibility_policy === 3) {
+          unmutedTopics.push({ streamId: ut.stream_id, topic: ut.topic_name });
+        }
       }
-    }
-    return { mutedStreamIds, mutedTopics, unmutedTopics };
-  }, []);
+      return { mutedStreamIds, mutedTopics, unmutedTopics };
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!currentInstanceId || currentUserStatus !== "ready") return;

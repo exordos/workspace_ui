@@ -122,7 +122,6 @@ export const SidebarStreamList: React.FC<SidebarStreamListProps> = ({
                     )}
                   </div>
                   <div className="flex flex-shrink-0 flex-col items-end gap-1">
-                    {streamMuted && <Icon name="bell" size={12} className="text-notice-base" />}
                     {stream.badge !== undefined && stream.badge > 0 && (
                       <Badge count={stream.badge} variant="unread" />
                     )}

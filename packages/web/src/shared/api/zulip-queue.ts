@@ -32,7 +32,7 @@ import type {
 } from "./zulip.types";
 
 // Зачем: просим у Zulip только те metadata-секции, которые нужны для sidebar без загрузки больших пачек сообщений.
-const DEFAULT_REGISTER_FETCH_EVENT_TYPES = ["user_topics", "recent_private_conversations"] as const;
+const DEFAULT_REGISTER_FETCH_EVENT_TYPES = ["user_topic", "recent_private_conversations"] as const;
 
 function isPositiveInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value > 0;
