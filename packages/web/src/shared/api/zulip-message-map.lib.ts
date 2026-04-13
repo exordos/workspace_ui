@@ -53,8 +53,7 @@ export function mockMessageFromGetMessageApiData(data: unknown): MockMessage | n
   }
   if (row?.id == null) return null;
 
-  const markdownFromMarkdownMode =
-    row.content_type === "text/x-markdown" ? row.content : undefined;
+  const markdownFromMarkdownMode = row.content_type === "text/x-markdown" ? row.content : undefined;
   const markdownSource =
     rawContent !== undefined && rawContent.trim().length > 0
       ? rawContent

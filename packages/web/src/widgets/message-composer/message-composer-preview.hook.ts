@@ -55,4 +55,3 @@ export function useMessageComposerPreview(options: {
 
   return { html, loading, error };
 }
-

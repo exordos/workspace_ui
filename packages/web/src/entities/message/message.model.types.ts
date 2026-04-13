@@ -1,8 +1,4 @@
-import type {
-  MockMessage,
-  MockMessageDeliveryStatus,
-  Reaction,
-} from "~/shared/api/zulip.types";
+import type { MockMessage, MockMessageDeliveryStatus, Reaction } from "~/shared/api/zulip.types";
 
 export type CurrentChatContext =
   | {
@@ -48,6 +44,12 @@ export interface CurrentChatMessagesState {
     focusedMessageId: number | null;
     currentUserId: number | null;
   }) => Promise<void>;
-  loadOlderBoundaryPage: (options: { pageSize: number; currentUserId: number | null }) => Promise<void>;
-  loadNewerBoundaryPage: (options: { pageSize: number; currentUserId: number | null }) => Promise<void>;
+  loadOlderBoundaryPage: (options: {
+    pageSize: number;
+    currentUserId: number | null;
+  }) => Promise<void>;
+  loadNewerBoundaryPage: (options: {
+    pageSize: number;
+    currentUserId: number | null;
+  }) => Promise<void>;
 }

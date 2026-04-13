@@ -54,7 +54,7 @@ export const MessageBubbleReactionsRow = React.memo(function MessageBubbleReacti
             className={`inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1 rounded-lg border px-2 py-0.5 text-sm transition-colors ${
               hasCurrentUser
                 ? "border-accent/40 bg-accent/15 hover:border-accent/50 hover:bg-accent/25"
-                : "border-border-subtle bg-bg-elevated/90 hover:bg-bg-elevated"
+                : "bg-bg-elevated/90 border-border-subtle hover:bg-bg-elevated"
             }`}
             title={hideReactionChipMeta ? undefined : reactionTitle}
             aria-label={reactionTitle}

@@ -1,3 +1,4 @@
+// Тесты chat-list store: проверяем построение sidebar, unread-логику и reconcile с сервером.
 /**
  * Tests for chatListStore — the central store that manages sidebar chat entries.
  *
@@ -117,6 +118,35 @@ describe("chatListStore", () => {
       expect(streams[0]!.stream_id).toBe(5);
       expect(streams[0]!.topics).toBeDefined();
       expect(streams[0]!.topics!.length).toBe(2);
+    });
+
+    it("maps stream and topic last message sender names", () => {
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: 1,
+            stream_id: 5,
+            subject: "topic1",
+            timestamp: 1000,
+            sender_full_name: "Alice",
+          }),
+          streamMsg({
+            id: 2,
+            stream_id: 5,
+            subject: "topic2",
+            timestamp: 2000,
+            sender_full_name: "Bob",
+          }),
+        ],
+        10,
+      );
+
+      const stream = useChatListStore.getState().streams()[0]!;
+      expect(stream.lastMessageSenderName).toBe("Bob");
+      const topic1 = stream.topics?.find((topic) => topic.subject === "topic1");
+      const topic2 = stream.topics?.find((topic) => topic.subject === "topic2");
+      expect(topic1?.lastMessageSenderName).toBe("Alice");
+      expect(topic2?.lastMessageSenderName).toBe("Bob");
     });
 
     // Private messages must produce DM entries with type "dm".
@@ -256,7 +286,9 @@ describe("chatListStore", () => {
     it("does not increment unread count for own stream messages", () => {
       useChatListStore.getState().setFromMessages([streamMsg({ id: 1, flags: ["read"] })], 10);
 
-      useChatListStore.getState().addMessage(streamMsg({ id: 2, flags: [], timestamp: 3000, sender_id: 10 }));
+      useChatListStore
+        .getState()
+        .addMessage(streamMsg({ id: 2, flags: [], timestamp: 3000, sender_id: 10 }));
 
       const streams = useChatListStore.getState().streams();
       expect(streams[0]!.badge).toBeUndefined();
@@ -290,8 +322,12 @@ describe("chatListStore", () => {
     it("increments unread count for unread DM messages", () => {
       useChatListStore.setState({ currentUserId: 10 });
 
-      useChatListStore.getState().addMessage(dmMsg({ id: 60, flags: [], timestamp: 3000, sender_id: OTHER_SENDER_ID }));
-      useChatListStore.getState().addMessage(dmMsg({ id: 61, flags: [], timestamp: 4000, sender_id: OTHER_SENDER_ID }));
+      useChatListStore
+        .getState()
+        .addMessage(dmMsg({ id: 60, flags: [], timestamp: 3000, sender_id: OTHER_SENDER_ID }));
+      useChatListStore
+        .getState()
+        .addMessage(dmMsg({ id: 61, flags: [], timestamp: 4000, sender_id: OTHER_SENDER_ID }));
 
       const dms = useChatListStore.getState().dms();
       const dm = dms.find((d) => d.type === "dm");
@@ -301,8 +337,12 @@ describe("chatListStore", () => {
     it("does not increment unread count for own DM messages", () => {
       useChatListStore.setState({ currentUserId: 10 });
 
-      useChatListStore.getState().setFromMessages([dmMsg({ id: 59, flags: ["read"], timestamp: 1000 })], 10);
-      useChatListStore.getState().addMessage(dmMsg({ id: 60, flags: [], timestamp: 3000, sender_id: 10 }));
+      useChatListStore
+        .getState()
+        .setFromMessages([dmMsg({ id: 59, flags: ["read"], timestamp: 1000 })], 10);
+      useChatListStore
+        .getState()
+        .addMessage(dmMsg({ id: 60, flags: [], timestamp: 3000, sender_id: 10 }));
 
       const dms = useChatListStore.getState().dms();
       const dm = dms.find((d) => d.type === "dm");
@@ -576,6 +616,37 @@ describe("chatListStore", () => {
       expect(topicNames).toContain("topicB");
     });
 
+    it("recalculates stream last sender from remaining newest topic", () => {
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: 1,
+            stream_id: 5,
+            subject: "topicA",
+            timestamp: 1000,
+            sender_full_name: "Alice",
+          }),
+          streamMsg({
+            id: 2,
+            stream_id: 5,
+            subject: "topicB",
+            timestamp: 2000,
+            sender_full_name: "Bob",
+          }),
+        ],
+        10,
+      );
+
+      useChatListStore.getState().handleDeleteMessages([2]);
+
+      const stream = useChatListStore
+        .getState()
+        .streams()
+        .find((item) => item.stream_id === 5);
+      expect(stream).toBeDefined();
+      expect(stream?.lastMessageSenderName).toBe("Alice");
+    });
+
     // A stream with zero topics must be removed entirely from the sidebar.
     it("removes the entire stream when its only topic is deleted", () => {
       useChatListStore
@@ -677,6 +748,57 @@ describe("chatListStore", () => {
 
       expect(useChatListStore.getState().currentUserId).toBe(10);
       expect(useChatListStore.getState().streams().length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("rebuilds metadata-only DM rows when userId arrives late", () => {
+      useUsersStore.getState().mergeUser({ user_id: 10, full_name: "Alice", email: "a@x.test" });
+      useUsersStore.getState().mergeUser({ user_id: 20, full_name: "Bob", email: "b@x.test" });
+      useChatListStore.getState().upsertDmMetadataRows([{ userIds: [10, 20], unreadCount: 1 }]);
+
+      const before = [...useChatListStore.getState().dmsMap.values()][0];
+      expect(before?.isGroup).toBe(true);
+
+      useChatListStore.getState().setCurrentUserId(10);
+
+      const after = [...useChatListStore.getState().dmsMap.values()][0];
+      expect(after?.isGroup).toBe(false);
+      expect(after?.id).toBe(20);
+    });
+  });
+
+  describe("metadata upserts", () => {
+    it("adds missing stream rows from metadata", () => {
+      useChatListStore.getState().upsertStreamMetadataRows([
+        { streamId: 11, name: "engineering" },
+        { streamId: 12, name: "design" },
+      ]);
+
+      const streams = useChatListStore.getState().streamsMap;
+      expect(streams.has(11)).toBe(true);
+      expect(streams.has(12)).toBe(true);
+      expect(streams.get(11)?.topics.size).toBe(0);
+    });
+
+    it("adds personal DM rows from metadata with unread count", () => {
+      useUsersStore.getState().mergeUser({ user_id: 10, full_name: "Alice", email: "a@x.test" });
+      useUsersStore.getState().mergeUser({ user_id: 20, full_name: "Bob", email: "b@x.test" });
+      useChatListStore.getState().setCurrentUserId(10);
+
+      useChatListStore.getState().upsertDmMetadataRows([
+        {
+          userIds: [10, 20],
+          unreadCount: 3,
+          lastMessageId: 123,
+          lastActivityTs: 1_700_000_000,
+        },
+      ]);
+
+      const dm = useChatListStore.getState().dmsMap.get("10,20");
+      expect(dm).toBeDefined();
+      expect(dm?.isGroup).toBe(false);
+      expect(dm?.id).toBe(20);
+      expect(dm?.unreadCount).toBe(3);
+      expect(dm?.lastMessageId).toBe(123);
     });
   });
 

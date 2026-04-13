@@ -12,14 +12,14 @@ import {
   type RealmProfileFieldDefinition,
 } from "~/shared/lib/zulip-profile-fields-map.lib";
 
-export type ZulipCustomProfileFieldEntry = {
+export interface ZulipCustomProfileFieldEntry {
   value?: string;
   rendered_value?: string;
-};
+}
 
 export type ZulipCustomProfileDataMap = Readonly<Record<string, ZulipCustomProfileFieldEntry>>;
 
-export type CustomProfileFieldLine = {
+export interface CustomProfileFieldLine {
   fieldKey: string;
   /** Sanitized snippet from `rendered_value` when non-empty after sanitization. */
   html: string | null;
@@ -29,7 +29,7 @@ export type CustomProfileFieldLine = {
   managerProfileUserId?: number;
   /** Label if the users store has not loaded the manager's name yet. */
   managerDisplayFallback?: string;
-};
+}
 
 /**
  * Parses Zulip person-picker `value` (e.g. `"[42]"` per GET /users examples) or plain numeric id.

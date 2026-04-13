@@ -8,14 +8,15 @@ import { zulipApi } from "~/shared/api/client";
 import { fetchRealmProfileFieldDefinitions } from "~/shared/api/zulip-realm-profile-fields";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
-import {
-  mapZulipProfileDataToSemanticFields,
-} from "~/shared/lib/zulip-profile-fields-map.lib";
+import { mapZulipProfileDataToSemanticFields } from "~/shared/lib/zulip-profile-fields-map.lib";
 import type { OwnStatusData, UserProfileData } from "./user-profile.types";
 
 const log = createLogger("user-profile:api");
 
-export { clearRealmProfileFieldsCache, fetchRealmProfileFieldDefinitions } from "~/shared/api/zulip-realm-profile-fields";
+export {
+  clearRealmProfileFieldsCache,
+  fetchRealmProfileFieldDefinitions,
+} from "~/shared/api/zulip-realm-profile-fields";
 
 interface ZulipUserResponse {
   user: {

@@ -47,7 +47,7 @@ export const MessageBubbleOwnDeliveryIndicator = React.memo(
         >
           <span className="sr-only">{t("message.sending")}</span>
           <span
-            className="size-2 shrink-0 animate-pulse rounded-full bg-text-muted/60"
+            className="bg-text-muted/60 size-2 shrink-0 animate-pulse rounded-full"
             aria-hidden
           />
         </span>

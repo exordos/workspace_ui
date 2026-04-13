@@ -7,7 +7,6 @@ import {
   normalizeRealmSiteOriginForUploads,
 } from "~/shared/api/zulip-realm.internal";
 import { env } from "~/shared/lib/env";
-
 import {
   isUserUploadImagePath,
   isUserUploadThumbnailUrl,
@@ -90,14 +89,12 @@ export function buildProtectedUploadFetchCandidates(url: string): string[] {
   const value = collapseDuplicateWorkspaceV1InUrl(url);
   const normalizedPath = normalizeProtectedUploadPath(value);
   if (!normalizedPath) {
-    const fallback =
-      value.length > 0 ? [collapseDuplicateWorkspaceV1InUrl(value)] : [];
+    const fallback = value.length > 0 ? [collapseDuplicateWorkspaceV1InUrl(value)] : [];
     return preferViteDevProxyCandidates(fallback);
   }
   const site = normalizeRealmSiteOriginForUploads(getRealmBaseUrl()).trim().replace(/\/+$/, "");
   const prefix = env.USER_UPLOADS_PATH_PREFIX;
-  const uploadsBase =
-    site !== "" ? appendUserUploadsPathPrefix(site, prefix) : "";
+  const uploadsBase = site !== "" ? appendUserUploadsPathPrefix(site, prefix) : "";
   const candidates = [
     normalizedPath,
     value,

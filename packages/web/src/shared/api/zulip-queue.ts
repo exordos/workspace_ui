@@ -3,9 +3,8 @@
  */
 import { t } from "~/i18n/i18n";
 import { getBasicAuthValue } from "~/shared/lib/auth-guard";
-import { getCurrentInstance, zulipApi } from "./client";
 import { env } from "~/shared/lib/env";
-import { parseUnreadMessagesCount } from "./zulip-unread.lib";
+import { getCurrentInstance, zulipApi } from "./client";
 import {
   getAuthValueForCredentials,
   getValidatedCredentialsRealm,
@@ -15,6 +14,7 @@ import {
   zulipPipelinePost,
   ensureZulipApiReady,
 } from "./zulip-pipeline.internal";
+import { parseUnreadMessagesCount } from "./zulip-unread.lib";
 import {
   buildUserTopicsCacheKey,
   getCachedUserTopicsForKey,
@@ -22,19 +22,68 @@ import {
   parseUserTopics,
   setCachedUserTopicsForKey,
 } from "./zulip-user-topics.internal";
+import { validateEventCursor, validateQueueId } from "./zulip-validation.internal";
 import type {
   GetEventsResult,
   RegisterQueueResult,
   ZulipCredentials,
+  ZulipRecentPrivateConversation,
   ZulipUserTopic,
 } from "./zulip.types";
-import { validateEventCursor, validateQueueId } from "./zulip-validation.internal";
+
+// Зачем: просим у Zulip только те metadata-секции, которые нужны для sidebar без загрузки больших пачек сообщений.
+const DEFAULT_REGISTER_FETCH_EVENT_TYPES = ["user_topics", "recent_private_conversations"] as const;
+
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0;
+}
+
+// Что делает: безопасно читает recent_private_conversations из register-ответа и отбрасывает битые записи.
+function parseRecentPrivateConversations(
+  data: unknown,
+): Record<string, ZulipRecentPrivateConversation> | null {
+  if (data == null || typeof data !== "object" || Array.isArray(data)) {
+    return null;
+  }
+
+  const entries = Object.entries(data as Record<string, unknown>);
+  if (entries.length === 0) {
+    return {};
+  }
+
+  const parsed: Record<string, ZulipRecentPrivateConversation> = {};
+  for (const [key, value] of entries) {
+    if (value == null || typeof value !== "object" || Array.isArray(value)) continue;
+    const record = value as Record<string, unknown>;
+    if (!Array.isArray(record.user_ids)) continue;
+    const userIds = record.user_ids.filter(isPositiveInteger);
+    if (userIds.length === 0) continue;
+    const unreadMessageIds = Array.isArray(record.unread_message_ids)
+      ? record.unread_message_ids.filter(isPositiveInteger)
+      : [];
+    const maxMessageId = isPositiveInteger(record.max_message_id) ? record.max_message_id : null;
+    parsed[key] = {
+      user_ids: Array.from(new Set(userIds)).sort((left, right) => left - right),
+      max_message_id: maxMessageId,
+      unread_message_ids: unreadMessageIds,
+    };
+  }
+
+  return parsed;
+}
 
 /** Registers an event queue (POST /api/v1/register). Returns queue_id for subsequent long-polling. */
-export async function registerQueue(eventTypes: string[]): Promise<RegisterQueueResult> {
+export async function registerQueue(
+  eventTypes: string[],
+  fetchEventTypes: string[] = [...DEFAULT_REGISTER_FETCH_EVENT_TYPES],
+): Promise<RegisterQueueResult> {
   const body: Record<string, string> = {
     event_types: JSON.stringify(eventTypes),
   };
+  if (fetchEventTypes.length > 0) {
+    // Зачем: Zulip вернет в register дополнительные metadata-блоки одним запросом.
+    body.fetch_event_types = JSON.stringify(fetchEventTypes);
+  }
   const res = await zulipPipelinePost("register", body);
   const data = res.data as {
     result?: string;
@@ -44,6 +93,7 @@ export async function registerQueue(eventTypes: string[]): Promise<RegisterQueue
     last_event_id?: number;
     event_queue_longpoll_timeout_seconds?: number;
     user_topics?: unknown;
+    recent_private_conversations?: unknown;
   } | null;
   if (data == null || typeof data !== "object") {
     throw new Error(t("app.invalidResponse"));
@@ -56,6 +106,9 @@ export async function registerQueue(eventTypes: string[]): Promise<RegisterQueue
   }
 
   const userTopics = parseUserTopics(data.user_topics);
+  const recentPrivateConversations = parseRecentPrivateConversations(
+    data.recent_private_conversations,
+  );
   const cacheKey = getCurrentUserTopicsCacheKey();
   if (cacheKey && userTopics) {
     setCachedUserTopicsForKey(cacheKey, userTopics);
@@ -66,6 +119,9 @@ export async function registerQueue(eventTypes: string[]): Promise<RegisterQueue
     last_event_id: data.last_event_id,
     event_queue_longpoll_timeout_seconds: data.event_queue_longpoll_timeout_seconds,
     ...(userTopics ? { user_topics: userTopics } : {}),
+    ...(recentPrivateConversations
+      ? { recent_private_conversations: recentPrivateConversations }
+      : {}),
   };
 }
 
@@ -73,6 +129,7 @@ export async function registerQueue(eventTypes: string[]): Promise<RegisterQueue
 export async function registerQueueForCredentials(
   credentials: ZulipCredentials,
   eventTypes: string[],
+  fetchEventTypes: string[] = [...DEFAULT_REGISTER_FETCH_EVENT_TYPES],
 ): Promise<RegisterQueueResult> {
   const base = getValidatedCredentialsRealm(credentials, "registerQueueForCredentials");
   const authValue = getAuthValueForCredentials(credentials);
@@ -88,6 +145,10 @@ export async function registerQueueForCredentials(
       },
       body: new URLSearchParams({
         event_types: JSON.stringify(eventTypes),
+        // Зачем: сохраняем одинаковое поведение register и для фоновых инстансов.
+        ...(fetchEventTypes.length > 0
+          ? { fetch_event_types: JSON.stringify(fetchEventTypes) }
+          : {}),
       }).toString(),
     });
   } catch {
@@ -102,6 +163,7 @@ export async function registerQueueForCredentials(
     last_event_id?: number;
     event_queue_longpoll_timeout_seconds?: number;
     user_topics?: unknown;
+    recent_private_conversations?: unknown;
   };
   try {
     data = (await response.json()) as typeof data;
@@ -117,6 +179,9 @@ export async function registerQueueForCredentials(
   }
 
   const userTopics = parseUserTopics(data.user_topics);
+  const recentPrivateConversations = parseRecentPrivateConversations(
+    data.recent_private_conversations,
+  );
   setCachedUserTopicsForKey(
     buildUserTopicsCacheKey(credentials.realm, credentials.email),
     userTopics ?? [],
@@ -127,6 +192,9 @@ export async function registerQueueForCredentials(
     last_event_id: data.last_event_id,
     event_queue_longpoll_timeout_seconds: data.event_queue_longpoll_timeout_seconds,
     ...(userTopics ? { user_topics: userTopics } : {}),
+    ...(recentPrivateConversations
+      ? { recent_private_conversations: recentPrivateConversations }
+      : {}),
   };
 }
 
@@ -165,7 +233,7 @@ export async function deleteQueue(queueId: string, credentials?: ZulipCredential
 }
 
 /**
- * Reads total unread count for any instance credentials (GET /api/v1/users/me/unread_messages).
+ * Reads total unread count for any instance credentials (GET /api/v1/messages?narrow=is:unread).
  * Returns null when request fails or payload cannot be parsed.
  */
 export async function fetchUnreadMessagesCountForCredentials(
@@ -178,7 +246,13 @@ export async function fetchUnreadMessagesCountForCredentials(
   } catch {
     return null;
   }
-  const url = `${base}${env.ZULIP_API_PATH}/users/me/unread_messages`;
+  const url = new URL(`${base}${env.ZULIP_API_PATH}/messages`);
+  url.searchParams.set("anchor", "newest");
+  url.searchParams.set("num_before", "5000");
+  url.searchParams.set("num_after", "0");
+  url.searchParams.set("narrow", JSON.stringify([{ operator: "is", operand: "unread" }]));
+  url.searchParams.set("allow_empty_topic_name", "true");
+  url.searchParams.set("client_gravatar", "true");
   const authValue = getBasicAuthValue({
     email: credentials.email,
     apiKey: credentials.apiKey,
@@ -187,7 +261,7 @@ export async function fetchUnreadMessagesCountForCredentials(
 
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await fetch(url.toString(), {
       method: "GET",
       headers: {
         Authorization: authValue,

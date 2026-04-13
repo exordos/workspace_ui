@@ -55,12 +55,12 @@ export function getReactionDisplayChar(reaction: Reaction): string {
   return EMOJI_NAME_TO_CHAR[reaction.emoji_name] ?? reaction.emoji_name;
 }
 
-export type GroupedReaction = {
+export interface GroupedReaction {
   key: string;
   count: number;
   userIds: number[];
   displayChar: string;
-};
+}
 
 /** Group reactions by (emoji_name, reaction_type): { count, userIds, displayChar }. */
 export function groupReactions(reactions: Reaction[]): GroupedReaction[] {

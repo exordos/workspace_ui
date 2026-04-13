@@ -10,11 +10,7 @@ export interface ChatPageComposerSectionProps {
   onExpandStreamTopics: () => void;
   sending: boolean;
   uploadProgress: ComposerUploadProgressState | null;
-  onSend: (
-    content: string,
-    subjectOverride?: string,
-    files?: File[],
-  ) => void | Promise<void>;
+  onSend: (content: string, subjectOverride?: string, files?: File[]) => void | Promise<void>;
   onCreateCallLink: (() => string | null) | undefined;
   onCancelUpload: () => void;
   activeTopic: string | null | undefined;

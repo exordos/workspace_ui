@@ -66,7 +66,10 @@ describe("MessageBubble markdown body", () => {
 
     const longToken = `https://example.com/${"segment".repeat(24)}`;
     const { container } = render(
-      <MessageBubble message={createMessage({ content: `<pre>${longToken}</pre>` })} isOwn={false} />,
+      <MessageBubble
+        message={createMessage({ content: `<pre>${longToken}</pre>` })}
+        isOwn={false}
+      />,
     );
 
     const body = container.querySelector(".message-body");

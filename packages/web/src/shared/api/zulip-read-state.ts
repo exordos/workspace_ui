@@ -4,11 +4,7 @@
 import { t } from "~/i18n/i18n";
 import { guard } from "~/shared/lib/guards";
 import { toResolvedTopicName, toUnresolvedTopicName } from "~/shared/lib/topic-resolve";
-import {
-  zulipPipelineGet,
-  zulipPipelinePatch,
-  zulipPipelinePost,
-} from "./zulip-pipeline.internal";
+import { zulipPipelineGet, zulipPipelinePatch, zulipPipelinePost } from "./zulip-pipeline.internal";
 import { validateMessageIds } from "./zulip-validation.internal";
 
 /** Marks messages as read (POST /api/v1/messages/flags). Call when opening a chat. */

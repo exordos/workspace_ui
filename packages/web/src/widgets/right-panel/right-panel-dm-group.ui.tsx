@@ -1,14 +1,13 @@
 import React, { useMemo } from "react";
-import { useUsersStore } from "~/entities/user/user.model";
+import { ProfileCustomFieldsBlock } from "~/entities/user/profile-custom-fields-block.ui";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
+import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
 import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
-import { ProfileCustomFieldsBlock } from "~/entities/user/profile-custom-fields-block.ui";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { ScrollArea } from "~/shared/ui/scroll-area";
-
 import { resolveAvatarSrc } from "./right-panel.lib";
 import type { RightPanelDmGroupProps } from "./right-panel-dm-group.types";
 

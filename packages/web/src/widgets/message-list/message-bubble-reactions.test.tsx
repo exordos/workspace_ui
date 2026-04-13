@@ -224,9 +224,7 @@ describe("MessageBubble quick reactions", () => {
       />,
     );
 
-    let btn = screen
-      .getAllByRole("button")
-      .find((b) => b.getAttribute("title")?.startsWith("👍 "));
+    let btn = screen.getAllByRole("button").find((b) => b.getAttribute("title")?.startsWith("👍 "));
     expect(btn?.textContent).toContain("Ann");
     expect(btn?.textContent).not.toMatch(/^👍\s*1$/);
 
@@ -256,9 +254,7 @@ describe("MessageBubble quick reactions", () => {
         })}
       />,
     );
-    btn = screen
-      .getAllByRole("button")
-      .find((b) => b.getAttribute("title")?.startsWith("👍 "));
+    btn = screen.getAllByRole("button").find((b) => b.getAttribute("title")?.startsWith("👍 "));
     expect(btn?.textContent).toContain("Ann");
     expect(btn?.textContent).toContain("Bob");
     expect(btn?.textContent).toContain("Cara");
@@ -296,9 +292,7 @@ describe("MessageBubble quick reactions", () => {
         })}
       />,
     );
-    btn = screen
-      .getAllByRole("button")
-      .find((b) => b.getAttribute("title")?.startsWith("👍 "));
+    btn = screen.getAllByRole("button").find((b) => b.getAttribute("title")?.startsWith("👍 "));
     expect(btn?.textContent).toBe("👍4");
     expect(btn?.getAttribute("title")).toContain("Ann");
     expect(btn?.getAttribute("title")).toContain("Dan");

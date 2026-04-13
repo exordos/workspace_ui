@@ -9,15 +9,19 @@ describe("encodeZulipHashComponent", () => {
 
 describe("buildZulipMessageWebPermalink", () => {
   it("builds DM permalink matching Zulip pm_perma_link (sorted ids + -dm)", () => {
-    const url = buildZulipMessageWebPermalink("https://zulip.example.com", {
-      id: 5635212,
-      stream_id: null,
-      subject: "",
-      display_recipient: [
-        { id: 422, full_name: "Me" },
-        { id: 507, full_name: "Doublek" },
-      ],
-    }, () => undefined);
+    const url = buildZulipMessageWebPermalink(
+      "https://zulip.example.com",
+      {
+        id: 5635212,
+        stream_id: null,
+        subject: "",
+        display_recipient: [
+          { id: 422, full_name: "Me" },
+          { id: 507, full_name: "Doublek" },
+        ],
+      },
+      () => undefined,
+    );
     expect(url).toBe("https://zulip.example.com/#narrow/dm/422,507-dm/near/5635212");
   });
 

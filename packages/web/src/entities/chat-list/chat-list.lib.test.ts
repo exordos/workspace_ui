@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import { useUsersStore } from "~/entities/user/user.model";
-import { messageToDmEntry } from "./chat-list.lib";
+import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import { messageToDmEntry, messageToStreamEntry } from "./chat-list.lib";
 
 function dmMessage(overrides: Partial<ZulipRawMessage> = {}): ZulipRawMessage {
   return {
@@ -70,5 +70,45 @@ describe("messageToDmEntry", () => {
     expect(entry).not.toBeNull();
     expect(entry!.isGroup).toBe(true);
     expect(entry!.userIds).toHaveLength(3);
+  });
+});
+
+describe("messageToStreamEntry", () => {
+  it("maps sender_full_name as stream and topic last message sender", () => {
+    const entry = messageToStreamEntry({
+      id: 9,
+      sender_id: 20,
+      sender_full_name: "Bob",
+      content: "hello stream",
+      timestamp: 1_700_000_000,
+      type: "stream",
+      stream_id: 10,
+      display_recipient: "engineering",
+      subject: "general",
+      flags: [],
+    });
+
+    expect(entry).not.toBeNull();
+    expect(entry?.stream.lastMessageSenderName).toBe("Bob");
+    expect(entry?.topic.lastMessageSenderName).toBe("Bob");
+  });
+
+  it("stores undefined sender name when sender_full_name is empty", () => {
+    const entry = messageToStreamEntry({
+      id: 10,
+      sender_id: 20,
+      sender_full_name: "   ",
+      content: "hello stream",
+      timestamp: 1_700_000_001,
+      type: "stream",
+      stream_id: 10,
+      display_recipient: "engineering",
+      subject: "general",
+      flags: [],
+    });
+
+    expect(entry).not.toBeNull();
+    expect(entry?.stream.lastMessageSenderName).toBeUndefined();
+    expect(entry?.topic.lastMessageSenderName).toBeUndefined();
   });
 });

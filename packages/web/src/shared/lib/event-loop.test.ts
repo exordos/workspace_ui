@@ -121,7 +121,11 @@ describe("startZulipEventLoop", () => {
 
     await Promise.resolve();
 
-    expect(registerQueueForCredentialsMock).toHaveBeenCalledWith(credentials, expect.any(Array));
+    expect(registerQueueForCredentialsMock).toHaveBeenCalledWith(
+      credentials,
+      expect.any(Array),
+      undefined,
+    );
     expect(getEventsForCredentialsMock).toHaveBeenCalledWith(
       credentials,
       "q-cred",

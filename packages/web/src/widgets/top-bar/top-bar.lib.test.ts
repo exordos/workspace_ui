@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { getSectionFromPathname, getTopBarSectionNavItems, resolveTopBarActiveSection } from "./top-bar.lib";
+import {
+  getSectionFromPathname,
+  getTopBarSectionNavItems,
+  resolveTopBarActiveSection,
+} from "./top-bar.lib";
 import type { TopBarSection } from "./top-bar.types";
 
 describe("getSectionFromPathname", () => {

@@ -6,7 +6,6 @@
  * like native Zulip `<img>` markup — relative-only `src` breaks authenticated fetch off-proxy.
  */
 import { resolveMessageMediaUrl } from "~/shared/lib/html";
-
 import { isProtectedUserUploadUrl } from "./message-bubble-protected-media.lib";
 
 const USER_UPLOAD_IMAGE_EXT = /\.(apng|avif|bmp|gif|jpe?g|png|svg|webp)(\?|#|$)/i;

@@ -15,7 +15,7 @@ import {
   registerQueue,
   registerQueueForCredentials,
 } from "~/shared/api/zulip-queue";
-import type { ZulipCredentials, ZulipEvent } from "~/shared/api/zulip.types";
+import type { RegisterQueueResult, ZulipCredentials, ZulipEvent } from "~/shared/api/zulip.types";
 import { createLogger } from "~/shared/lib/logger";
 import { isOnline, waitForOnline, onReconnect } from "~/shared/lib/network";
 import { onTabResume } from "~/shared/lib/visibility";
@@ -44,9 +44,11 @@ export interface StartZulipEventLoopOptions {
   onBadQueue?: () => void;
   onReconnect?: () => void;
   /** Called when a queue is registered (for cleanup on logout/instance switch). */
-  onQueueRegistered?: (queueId: string) => void;
+  onQueueRegistered?: (queueId: string, registration?: RegisterQueueResult) => void;
   signal?: AbortSignal;
   eventTypes?: string[];
+  // Что делает: передает в register список metadata-блоков, которые нужно получить сразу при старте очереди.
+  fetchEventTypes?: string[];
 }
 
 export interface StartZulipEventLoopForCredentialsOptions extends StartZulipEventLoopOptions {
@@ -54,7 +56,10 @@ export interface StartZulipEventLoopForCredentialsOptions extends StartZulipEven
 }
 
 interface EventLoopTransport {
-  registerQueue: (eventTypes: string[]) => ReturnType<typeof registerQueue>;
+  registerQueue: (
+    eventTypes: string[],
+    fetchEventTypes?: string[],
+  ) => ReturnType<typeof registerQueue>;
   getEvents: (
     queueId: string,
     lastEventId: number,
@@ -73,6 +78,7 @@ function startZulipEventLoopWithTransport(
     onQueueRegistered,
     signal,
     eventTypes = [...DEFAULT_EVENT_TYPES],
+    fetchEventTypes,
   } = options;
   const queueState: { id: string | null } = { id: null };
   let lastEventId = -1;
@@ -168,7 +174,8 @@ function startZulipEventLoopWithTransport(
       if (queueState.id == null) {
         try {
           log.info("Registering event queue");
-          const reg = await transport.registerQueue(eventTypes);
+          // Зачем: вместе с queue_id сразу получаем metadata для быстрого bootstrap sidebar.
+          const reg = await transport.registerQueue(eventTypes, fetchEventTypes);
           const nextQueueId = reg.queue_id;
           setQueueId(nextQueueId);
           lastEventId = reg.last_event_id;
@@ -176,7 +183,7 @@ function startZulipEventLoopWithTransport(
             reg.event_queue_longpoll_timeout_seconds ?? DEFAULT_LONGPOLL_TIMEOUT_SEC;
           retryCount = 0;
           log.info("Queue registered", { queueId: nextQueueId, lastEventId });
-          onQueueRegistered?.(nextQueueId);
+          onQueueRegistered?.(nextQueueId, reg);
           onReconnectCb?.();
         } catch {
           if (signal?.aborted) return;
@@ -243,7 +250,7 @@ function startZulipEventLoopWithTransport(
 export function startZulipEventLoop(options: StartZulipEventLoopOptions): void {
   startZulipEventLoopWithTransport(
     {
-      registerQueue: (eventTypes) => registerQueue(eventTypes),
+      registerQueue: (eventTypes, fetchEventTypes) => registerQueue(eventTypes, fetchEventTypes),
       getEvents: (queueId, lastEventId, requestOptions) =>
         getEvents(queueId, lastEventId, requestOptions),
     },
@@ -257,7 +264,8 @@ export function startZulipEventLoopForCredentials(
   const { credentials, ...loopOptions } = options;
   startZulipEventLoopWithTransport(
     {
-      registerQueue: (eventTypes) => registerQueueForCredentials(credentials, eventTypes),
+      registerQueue: (eventTypes, fetchEventTypes) =>
+        registerQueueForCredentials(credentials, eventTypes, fetchEventTypes),
       getEvents: (queueId, lastEventId, requestOptions) =>
         getEventsForCredentials(credentials, queueId, lastEventId, requestOptions),
     },

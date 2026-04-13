@@ -21,10 +21,7 @@ export function computeMentionPopoverPosition({
   viewportHeight,
 }: MentionPopoverPositionInput): { left: number; top: number; width: number } {
   const width = Math.min(popoverWidth, Math.max(160, viewportWidth - VIEWPORT_MARGIN * 2));
-  const fallbackTop = Math.max(
-    VIEWPORT_MARGIN,
-    viewportHeight - popoverHeight - VIEWPORT_MARGIN,
-  );
+  const fallbackTop = Math.max(VIEWPORT_MARGIN, viewportHeight - popoverHeight - VIEWPORT_MARGIN);
   if (anchorRect == null) {
     return { left: VIEWPORT_MARGIN, top: fallbackTop, width };
   }
@@ -39,10 +36,7 @@ export function computeMentionPopoverPosition({
   }
 
   const topBelow = anchorRect.bottom + GAP;
-  const maxTop = Math.max(
-    VIEWPORT_MARGIN,
-    viewportHeight - popoverHeight - VIEWPORT_MARGIN,
-  );
+  const maxTop = Math.max(VIEWPORT_MARGIN, viewportHeight - popoverHeight - VIEWPORT_MARGIN);
   return {
     left,
     top: Math.min(Math.max(VIEWPORT_MARGIN, topBelow), maxTop),

@@ -17,7 +17,11 @@ import {
 } from "./message.model";
 
 function resetStore() {
-  useCurrentChatMessagesStore.setState({ context: null, messages: [], pendingOutgoingEchoKeys: [] });
+  useCurrentChatMessagesStore.setState({
+    context: null,
+    messages: [],
+    pendingOutgoingEchoKeys: [],
+  });
 }
 
 function mockMsg(overrides: Partial<MockMessage> = {}): MockMessage {

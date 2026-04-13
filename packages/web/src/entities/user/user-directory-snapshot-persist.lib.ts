@@ -10,7 +10,9 @@ export function shouldPersistUsersDirectorySnapshot(members: ZulipUserMember[]):
 }
 
 /** Strips volatile store-only fields; keeps Zulip directory shape for mergeUsers. */
-export function serializeDirectoryMembersForSnapshot(members: ZulipUserMember[]): ZulipUserMember[] {
+export function serializeDirectoryMembersForSnapshot(
+  members: ZulipUserMember[],
+): ZulipUserMember[] {
   const out: ZulipUserMember[] = [];
   for (const m of members) {
     if (m.user_id == null) continue;

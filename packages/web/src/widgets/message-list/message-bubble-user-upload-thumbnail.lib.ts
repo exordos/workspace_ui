@@ -46,7 +46,7 @@ export function toUserUploadThumbnailUrl(fullUrl: string): string {
   if (/^https?:\/\//i.test(trimmed)) {
     try {
       const u = new URL(trimmed);
-      const m = u.pathname.match(PATH_BEFORE_USER_UPLOADS);
+      const m = PATH_BEFORE_USER_UPLOADS.exec(u.pathname);
       if (m?.[2] == null || m[2] === "") {
         return trimmed;
       }
@@ -66,7 +66,7 @@ export function toUserUploadThumbnailUrl(fullUrl: string): string {
   if (hash >= 0) cut = Math.min(cut, hash);
   const basePart = trimmed.slice(0, cut);
   const tail = trimmed.slice(cut);
-  const m = basePart.match(PATH_BEFORE_USER_UPLOADS);
+  const m = PATH_BEFORE_USER_UPLOADS.exec(basePart);
   if (m?.[2] == null || m[2] === "") {
     return trimmed;
   }

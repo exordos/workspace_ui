@@ -27,9 +27,7 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
     const replyQuotePreview = useMemo(() => {
       if (replyQuote == null) return "";
       const plain = plainTextPreviewFromMessageBody(replyQuote.content).trim();
-      return plain.length <= QUOTE_PREVIEW_MAX
-        ? plain
-        : plain.slice(0, QUOTE_PREVIEW_MAX) + "…";
+      return plain.length <= QUOTE_PREVIEW_MAX ? plain : plain.slice(0, QUOTE_PREVIEW_MAX) + "…";
     }, [replyQuote]);
 
     return (

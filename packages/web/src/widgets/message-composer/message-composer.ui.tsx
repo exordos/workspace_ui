@@ -1,4 +1,3 @@
-import type { EmojiClickData } from "emoji-picker-react";
 import React, { useState, useRef, useMemo, useCallback } from "react";
 import { useUsersStore } from "~/entities/user/user.model";
 import { AiComposerButton } from "~/features/ai-reply/ai-reply.ui";
@@ -6,11 +5,19 @@ import { filterUsers } from "~/features/mention-suggest/mention-suggest.lib";
 import { useMentionSuggestStore } from "~/features/mention-suggest/mention-suggest.model";
 import type { MentionSuggestion } from "~/features/mention-suggest/mention-suggest.types";
 import { t } from "~/i18n/i18n";
-import { createSavedSnippet, fetchSavedSnippets } from "~/shared/api/zulip-messages";
 import { type SavedSnippet } from "~/shared/api/zulip";
+import { createSavedSnippet, fetchSavedSnippets } from "~/shared/api/zulip-messages";
 import { useViewportKeyboard } from "~/shared/lib/touch";
 import { isWebView } from "~/shared/lib/webview";
 import { Icon } from "~/shared/ui/icon";
+import {
+  MessageComposerAiActionMenuLayer,
+  MessageComposerSmartReplyStrip,
+} from "./message-composer-ai-surfaces.ui";
+import {
+  buildOutgoingMessageBody,
+  resolveTomorrowMorningTimestamp,
+} from "./message-composer-body.lib";
 import {
   COMPOSER_TEXTAREA_MAX_HEIGHT_PX,
   COMPOSER_TEXTAREA_MIN_HEIGHT_PX,
@@ -24,35 +31,28 @@ import {
   STICKER_PICKER_HEIGHT,
   STICKER_PICKER_WIDTH,
 } from "./message-composer-constants.lib";
-import {
-  buildOutgoingMessageBody,
-  resolveTomorrowMorningTimestamp,
-} from "./message-composer-body.lib";
 import { getFloatingPickerStyle } from "./message-composer-floating.lib";
 import { resolveComposerKeyboardInsetPx } from "./message-composer-keyboard-inset.lib";
-import {
-  MessageComposerAiActionMenuLayer,
-  MessageComposerSmartReplyStrip,
-} from "./message-composer-ai-surfaces.ui";
-import { MessageComposerPreviewBody } from "./message-composer-preview-body.ui";
-import { MessageComposerWriteBody } from "./message-composer-write-body.ui";
 import { MessageComposerMediaPickerPopover } from "./message-composer-media-picker-popover.ui";
 import { ComposerModeTabs } from "./message-composer-mode-tabs.ui";
-import { MessageComposerSchedulePopover } from "./message-composer-schedule-popover.ui";
-import type { ScheduleMenuOption } from "./message-composer-schedule-popover.types";
 import { MessageComposerPreface } from "./message-composer-preface.ui";
+import { MessageComposerPreviewBody } from "./message-composer-preview-body.ui";
+import { useMessageComposerPreview } from "./message-composer-preview.hook";
 import { MessageComposerSavedSnippetsDialog } from "./message-composer-saved-snippets-dialog.ui";
+import { MessageComposerSchedulePopover } from "./message-composer-schedule-popover.ui";
 import { wrapSelection } from "./message-composer-selection.lib";
 import { TOOLBAR_BTN } from "./message-composer-styles.lib";
 import { FormattingToolbar } from "./message-composer-toolbar.ui";
+import { useMessageComposerUpload } from "./message-composer-upload.hook";
+import { MessageComposerWriteBody } from "./message-composer-write-body.ui";
+import type { ScheduleMenuOption } from "./message-composer-schedule-popover.types";
 import type {
   ComposerMode,
   MediaPickerTab,
   MessageComposerProps,
   ScheduledComposerMessage,
 } from "./message-composer.types";
-import { useMessageComposerPreview } from "./message-composer-preview.hook";
-import { useMessageComposerUpload } from "./message-composer-upload.hook";
+import type { EmojiClickData } from "emoji-picker-react";
 
 export type { ReplyQuote } from "./message-composer.types";
 
@@ -919,7 +919,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
               void handleSend();
             }}
             disabled={disabled}
-            className="flex h-9 w-9 flex-shrink-0 items-center justify-center gap-0 self-center rounded-r-xl rounded-l-xl bg-composer-send text-on-accent transition-opacity hover:opacity-90 disabled:opacity-50"
+            className="flex h-9 w-9 flex-shrink-0 items-center justify-center gap-0 self-center rounded-l-xl rounded-r-xl bg-composer-send text-on-accent transition-opacity hover:opacity-90 disabled:opacity-50"
             aria-label={t("chat.sendPlaceholder")}
           >
             <Icon name="send" size={18} className="text-on-accent" />

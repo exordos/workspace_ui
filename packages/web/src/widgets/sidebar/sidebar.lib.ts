@@ -124,6 +124,7 @@ export function getStreamChats(streams: StreamWithLast[]): SidebarChat[] {
     stream_id: s.stream_id,
     name: s.name,
     lastMessage: s.lastMessage,
+    lastMessageSenderName: s.lastMessageSenderName,
     time: s.time,
     topics: s.topics,
     badge: s.badge,
@@ -193,8 +194,9 @@ export function resolveStreamRouteFromSlug(
     return { resolvedStreamName: "", resolvedStreamId: null };
   }
   const resolvedStreamId =
-    Array.from(streamsMap.entries()).find(([, stream]) => stream.name === resolvedStreamName)?.[0] ??
-    null;
+    Array.from(streamsMap.entries()).find(
+      ([, stream]) => stream.name === resolvedStreamName,
+    )?.[0] ?? null;
   return { resolvedStreamName, resolvedStreamId };
 }
 
@@ -229,6 +231,9 @@ export function chatToWorkspaceChatId(chat: SidebarChat): string {
   if (chat.type === "stream") {
     return `stream:${chat.stream_id}:general`;
   }
-  const userIds = parseDmSlugToUserIds(chat.slug);
+  const userIds =
+    Array.isArray(chat.userIds) && chat.userIds.length > 0
+      ? chat.userIds
+      : parseDmSlugToUserIds(chat.slug);
   return `dm:${userIds.join(",")}`;
 }

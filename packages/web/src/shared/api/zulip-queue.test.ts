@@ -1,7 +1,6 @@
 /**
  * Tests for Zulip API (zulip-queue module).
  */
-import "./zulip.test.setup";
 import { describe, expect, it, vi } from "vitest";
 import { getCurrentInstance } from "./client";
 import {
@@ -45,6 +44,7 @@ describe("registerQueue", () => {
     expect(mockRefreshZulipApiBase).toHaveBeenCalled();
     expect(mockZulipApi.post).toHaveBeenCalledWith("/register", {
       event_types: JSON.stringify(["message", "presence"]),
+      fetch_event_types: JSON.stringify(["user_topics", "recent_private_conversations"]),
     });
   });
 
@@ -76,6 +76,35 @@ describe("registerQueue", () => {
       raw: { statusText: "OK" },
     });
     await expect(registerQueue(["message"])).rejects.toThrow();
+  });
+
+  it("parses recent_private_conversations from register payload", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        queue_id: "q-123",
+        last_event_id: -1,
+        recent_private_conversations: {
+          "1": {
+            user_ids: [10, 20],
+            max_message_id: 555,
+            unread_message_ids: [551, 552],
+          },
+        },
+      },
+      raw: { statusText: "OK" },
+    });
+
+    const result = await registerQueue(["message"]);
+    expect(result.recent_private_conversations).toEqual({
+      "1": {
+        user_ids: [10, 20],
+        max_message_id: 555,
+        unread_message_ids: [551, 552],
+      },
+    });
   });
 });
 
@@ -211,15 +240,10 @@ describe("deleteQueue", () => {
 // ---------------------------------------------------------------------------
 
 describe("fetchUnreadMessagesCountForCredentials", () => {
-  it("returns unread count from unread_msgs payload", async () => {
+  it("returns unread count from messages payload", async () => {
     mockFetch.mockResolvedValue(
       jsonResponse({
-        unread_msgs: {
-          streams: [{ unread_message_ids: [1, 2] }],
-          pms: [{ unread_message_ids: [3] }],
-          huddles: [],
-          mentions: [],
-        },
+        messages: [{ id: 1 }, { id: 2 }, { id: 3 }],
       }),
     );
 
@@ -230,9 +254,17 @@ describe("fetchUnreadMessagesCountForCredentials", () => {
     });
 
     expect(count).toBe(3);
-    expect(mockFetch).toHaveBeenCalledWith(
-      "https://other.example.com/api/v1/users/me/unread_messages",
-      expect.objectContaining({ method: "GET" }),
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const fetchArgs = mockFetch.mock.calls[0];
+    const calledUrl = new URL(String(fetchArgs?.[0]));
+    expect(fetchArgs?.[1]).toEqual(expect.objectContaining({ method: "GET" }));
+    expect(calledUrl.origin).toBe("https://other.example.com");
+    expect(calledUrl.pathname).toBe("/api/v1/messages");
+    expect(calledUrl.searchParams.get("anchor")).toBe("newest");
+    expect(calledUrl.searchParams.get("num_before")).toBe("5000");
+    expect(calledUrl.searchParams.get("num_after")).toBe("0");
+    expect(calledUrl.searchParams.get("narrow")).toBe(
+      JSON.stringify([{ operator: "is", operand: "unread" }]),
     );
   });
 
@@ -251,12 +283,7 @@ describe("fetchUnreadMessagesCountForCredentials", () => {
   it("returns null without network call when realm url is invalid", async () => {
     mockFetch.mockResolvedValue(
       jsonResponse({
-        unread_msgs: {
-          streams: [{ unread_message_ids: [1] }],
-          pms: [],
-          huddles: [],
-          mentions: [],
-        },
+        messages: [{ id: 1 }],
       }),
     );
 

@@ -56,10 +56,7 @@ vi.mock("~/shared/api/zulip", async (importOriginal) => {
   };
 });
 
-import {
-  useCurrentChatMessagesStore,
-  type CurrentChatContext,
-} from "./message.model";
+import { useCurrentChatMessagesStore, type CurrentChatContext } from "./message.model";
 
 function mockMsg(overrides: Partial<MockMessage> = {}): MockMessage {
   return {

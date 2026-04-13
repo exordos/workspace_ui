@@ -59,6 +59,8 @@ describe("buildMessageMediaGallery", () => {
     ]);
 
     expect(gallery.items).toHaveLength(1);
-    expect(gallery.items[0]?.url).toMatch(/\/user_uploads\/2\/ff\/aP3oHiNs40xdmpUNVol7Z5ga\/image\.png$/);
+    expect(gallery.items[0]?.url).toMatch(
+      /\/user_uploads\/2\/ff\/aP3oHiNs40xdmpUNVol7Z5ga\/image\.png$/,
+    );
   });
 });

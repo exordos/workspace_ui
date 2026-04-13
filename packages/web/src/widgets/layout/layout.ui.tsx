@@ -1,3 +1,4 @@
+// Корневой layout приложения: собирает shell, стор-оркестрацию и фоновые синки для активного инстанса.
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
@@ -16,6 +17,7 @@ import { LayoutAppShell } from "./layout-app-shell.ui";
 import { useLayoutAuthErrorHandler } from "./layout-auth-error-handler.hook";
 import { useLayoutAuthGuard } from "./layout-auth-guard.hook";
 import { runChatListBootstrap } from "./layout-chat-list-bootstrap.lib";
+import { useLayoutChatListSnapshotSync } from "./layout-chat-list-snapshot-sync.hook";
 import { shouldRenderChatShell } from "./layout-chat-shell.lib";
 import { useLayoutFolderSyncOrchestration } from "./layout-folder-sync-orchestration.hook";
 import { useInactiveInstancesBackgroundWork } from "./layout-inactive-instances-background-work.hook";
@@ -87,18 +89,21 @@ export const Layout: React.FC = () => {
       prioritizeUnmutedUnreadChannels,
     ],
   );
-  const { realmIcon: currentInstanceRealmIcon, unreadCount: unreadCountForCurrentInstance, activeChatWindowTitle } =
-    useLayoutUnreadAndTitle({
-      instances,
-      currentInstanceId,
-      streams: streamsFromStore,
-      dms: dmsFromStore,
-      streamsMap,
-      activeStreamSlug,
-      activeTopic,
-      dmIdParam,
-      currentUserId,
-    });
+  const {
+    realmIcon: currentInstanceRealmIcon,
+    unreadCount: unreadCountForCurrentInstance,
+    activeChatWindowTitle,
+  } = useLayoutUnreadAndTitle({
+    instances,
+    currentInstanceId,
+    streams: streamsFromStore,
+    dms: dmsFromStore,
+    streamsMap,
+    activeStreamSlug,
+    activeTopic,
+    dmIdParam,
+    currentUserId,
+  });
 
   const selectedFolderId = useFolderSyncStore((s) => s.selectedFolderId);
   const selectedFolderChatIds = useFolderSyncStore((s) => s.selectedFolderChatIds);
@@ -136,6 +141,9 @@ export const Layout: React.FC = () => {
     if (!currentInstanceId) return;
     setInstanceUnreadCount(currentInstanceId, unreadCountForCurrentInstance);
   }, [currentInstanceId, unreadCountForCurrentInstance, setInstanceUnreadCount]);
+
+  // Централизованный debounce-sync chat-list snapshot в IndexedDB.
+  useLayoutChatListSnapshotSync(currentInstanceId);
 
   useLayoutWindowBranding({
     unreadCount: unreadCountForCurrentInstance,

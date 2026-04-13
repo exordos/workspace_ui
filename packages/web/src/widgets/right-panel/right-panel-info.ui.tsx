@@ -3,8 +3,9 @@ import { useNavigate } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { ensureUserStatusLoaded } from "~/entities/user/api/user.api";
-import { useUsersStore } from "~/entities/user/user.model";
+import { ProfileCustomFieldsBlock } from "~/entities/user/profile-custom-fields-block.ui";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
+import { useUsersStore } from "~/entities/user/user.model";
 import { useChatInfoStore } from "~/features/chat-info/chat-info.model";
 import { muteStream, unmuteStream } from "~/features/mute-chat/mute-chat.api";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
@@ -15,16 +16,14 @@ import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { createLogger } from "~/shared/lib/logger";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { hasPermission, parseRole } from "~/shared/lib/roles";
-import { ProfileCustomFieldsBlock } from "~/entities/user/profile-custom-fields-block.ui";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { ScrollArea } from "~/shared/ui/scroll-area";
-
 import { RightPanelDmGroup } from "./right-panel-dm-group.ui";
+import { RightPanelUser } from "./right-panel-user.ui";
 import { buildStreamSlug, resolveAvatarSrc } from "./right-panel.lib";
 import type { RightPanelInfoProps } from "./right-panel.types";
-import { RightPanelUser } from "./right-panel-user.ui";
 
 const log = createLogger("right-panel");
 

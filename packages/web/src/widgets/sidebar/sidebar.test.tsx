@@ -1,12 +1,14 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useUsersStore } from "~/entities/user/user.model";
-import { usePinStore } from "~/features/pin-chat/pin-chat.model";
+import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import type * as PinChatApiModule from "~/features/pin-chat/pin-chat.api";
+import { usePinStore } from "~/features/pin-chat/pin-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
-import { buildDmTypingChatKey } from "~/features/typing-indicator/typing-key";
 import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indicator.model";
+import { buildDmTypingChatKey } from "~/features/typing-indicator/typing-key";
 import { t } from "~/i18n/i18n";
 import type * as WorkspaceApiModule from "~/shared/api/workspace-client";
 import type { SidebarChat } from "~/shared/types/sidebar-chat";
@@ -110,13 +112,28 @@ const STREAM_CHAT_SECOND: Extract<SidebarChat, { type: "stream" }> = {
   topics: [],
 };
 
+function RoutePathProbe() {
+  const location = useLocation();
+  return <output data-testid="route-path">{location.pathname}</output>;
+}
+
+function RouteNavigateButton({ to, label }: { to: string; label: string }) {
+  const navigate = useNavigate();
+  return (
+    <button type="button" onClick={() => void navigate(to)}>
+      {label}
+    </button>
+  );
+}
+
 describe("Sidebar", () => {
   afterEach(() => {
+    useFolderSyncStore.getState().clear();
     useUsersStore.getState().clear();
     useTypingIndicatorStore.getState().clearAll();
     usePinStore.getState().clear();
     useChatListStore.setState({ currentUserId: null });
-    useSidebarConfigStore.getState().setConfig({ expandedStreamSlug: null });
+    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: [] });
     useSidebarConfigStore.getState().setSearchQuery("");
     useSidebarConfigStore.getState().setCreateChatOpen(false);
     useSettingsStore.getState().resetToDefaults();
@@ -983,7 +1000,57 @@ describe("Sidebar", () => {
       ...STREAM_CHAT,
       topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
     };
-    useSidebarConfigStore.getState().setExpandedStreamSlug("11-engineering");
+    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
+
+    renderWithProviders(
+      <Sidebar
+        streams={[]}
+        selectedFolderId="all"
+        activeStreamSlug="11-engineering"
+        sidebarChats={[streamWithTopics]}
+        sidebarDms={[]}
+      />,
+    );
+
+    expect(screen.getByText("# incident")).toBeInTheDocument();
+  });
+
+  it("shows topic last message sender name in folder stream list", async () => {
+    const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
+      ...STREAM_CHAT,
+      topics: [
+        {
+          subject: "incident",
+          badge: 0,
+          lastMessage: "Topic update",
+          lastMessageSenderName: "Topic Sender",
+        },
+      ],
+    };
+    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
+
+    renderWithProviders(
+      <Sidebar
+        streams={[]}
+        selectedFolderId="all"
+        activeStreamSlug="11-engineering"
+        sidebarChats={[streamWithTopics]}
+        sidebarDms={[]}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("# incident")).toBeInTheDocument();
+      expect(screen.getByText("Topic Sender")).toBeInTheDocument();
+    });
+  });
+
+  it("hides topic sender row in folder stream list when sender name is missing", () => {
+    const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
+      ...STREAM_CHAT,
+      topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
+    };
+    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
 
     renderWithProviders(
       <Sidebar
@@ -994,7 +1061,97 @@ describe("Sidebar", () => {
       />,
     );
 
+    expect(screen.queryByText(t("roles.member"))).not.toBeInTheDocument();
+  });
+
+  it("shows topic last message sender name in stream list when sidebarChats is absent", () => {
+    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
+
+    renderWithProviders(
+      <Sidebar
+        streams={[
+          {
+            stream_id: 11,
+            name: "Engineering",
+            lastMessage: "Deploy today",
+            time: "12:10",
+            topics: [
+              {
+                subject: "incident",
+                badge: 0,
+                lastMessage: "Topic update",
+                lastMessageSenderName: "Legacy Sender",
+              },
+            ],
+          },
+        ]}
+        selectedFolderId="all"
+        activeStreamSlug="11-engineering"
+        sidebarDms={[]}
+      />,
+    );
+
+    expect(screen.getByText("Legacy Sender")).toBeInTheDocument();
+  });
+
+  it("opens stream from folder list when stream meta area is clicked", () => {
+    const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
+      ...STREAM_CHAT,
+      badge: 3,
+      topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
+    };
+
+    renderWithProviders(
+      <>
+        <Sidebar
+          streams={[]}
+          selectedFolderId="all"
+          sidebarChats={[streamWithTopics]}
+          sidebarDms={[]}
+        />
+        <RoutePathProbe />
+      </>,
+    );
+
+    expect(screen.getByTestId("route-path")).toHaveTextContent("/");
+    expect(screen.queryByText("# incident")).not.toBeInTheDocument();
+
+    const streamLink = screen.getByRole("link", { name: /engineering/i });
+    fireEvent.click(within(streamLink).getByText("3"));
+
     expect(screen.getByText("# incident")).toBeInTheDocument();
+    expect(screen.getByTestId("route-path")).toHaveTextContent("/stream/11-engineering");
+  });
+
+  it("opens stream from stream list when unread badge in meta area is clicked", () => {
+    renderWithProviders(
+      <>
+        <Sidebar
+          streams={[
+            {
+              stream_id: 11,
+              name: "Engineering",
+              lastMessage: "Deploy today",
+              time: "12:10",
+              badge: 3,
+              topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
+            },
+          ]}
+          selectedFolderId="all"
+          sidebarDms={[]}
+        />
+        <RoutePathProbe />
+      </>,
+    );
+
+    expect(screen.getByTestId("route-path")).toHaveTextContent("/");
+    expect(screen.queryByText("# incident")).not.toBeInTheDocument();
+
+    const streamLink = screen.getByRole("link", { name: /engineering/i });
+    fireEvent.click(within(streamLink).getByText("3"));
+
+    expect(screen.getByText("# incident")).toBeInTheDocument();
+    expect(screen.getByTestId("route-path")).toHaveTextContent("/stream/11-engineering");
   });
 
   it("auto-expands stream topics when stream is clicked in sidebar", () => {
@@ -1017,12 +1174,139 @@ describe("Sidebar", () => {
     expect(screen.getByText("# incident")).toBeInTheDocument();
   });
 
+  it("allows opening multiple stream topic lists via expand buttons", () => {
+    const streamWithIncidentTopic: Extract<SidebarChat, { type: "stream" }> = {
+      ...STREAM_CHAT,
+      topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
+    };
+    const streamWithLaunchTopic: Extract<SidebarChat, { type: "stream" }> = {
+      ...STREAM_CHAT_SECOND,
+      topics: [{ subject: "launch", badge: 0, lastMessage: "Launch checklist" }],
+    };
+
+    renderWithProviders(
+      <Sidebar
+        streams={[]}
+        selectedFolderId="all"
+        sidebarChats={[streamWithIncidentTopic, streamWithLaunchTopic]}
+        sidebarDms={[]}
+      />,
+    );
+
+    const toggleButtons = screen.getAllByRole("button", { name: /expand topics/i });
+    fireEvent.click(toggleButtons[0]!);
+    fireEvent.click(toggleButtons[1]!);
+
+    expect(screen.getByText("# incident")).toBeInTheDocument();
+    expect(screen.getByText("# launch")).toBeInTheDocument();
+  });
+
+  it("keeps stream topics expanded after manual toggle when dm chat is active", () => {
+    const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
+      ...STREAM_CHAT,
+      topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
+    };
+
+    renderWithProviders(
+      <Sidebar
+        streams={[]}
+        selectedFolderId="all"
+        sidebarChats={[streamWithTopics, DM_CHAT]}
+        sidebarDms={[DM_CHAT]}
+        activeDmIdParam={DM_CHAT.slug}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /expand topics/i }));
+
+    expect(screen.getByText("# incident")).toBeInTheDocument();
+  });
+
+  it("collapses all but target stream topics after stream navigation", async () => {
+    const streamWithIncidentTopic: Extract<SidebarChat, { type: "stream" }> = {
+      ...STREAM_CHAT,
+      topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
+    };
+    const streamWithLaunchTopic: Extract<SidebarChat, { type: "stream" }> = {
+      ...STREAM_CHAT_SECOND,
+      topics: [{ subject: "launch", badge: 0, lastMessage: "Launch checklist" }],
+    };
+
+    renderWithProviders(
+      <>
+        <Sidebar
+          streams={[]}
+          selectedFolderId="all"
+          sidebarChats={[streamWithIncidentTopic, streamWithLaunchTopic]}
+          sidebarDms={[]}
+        />
+        <RoutePathProbe />
+      </>,
+    );
+
+    const toggleButtons = screen.getAllByRole("button", { name: /expand topics/i });
+    fireEvent.click(toggleButtons[0]!);
+    fireEvent.click(toggleButtons[1]!);
+    expect(screen.getByText("# incident")).toBeInTheDocument();
+    expect(screen.getByText("# launch")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("link", { name: /marketing/i }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("route-path")).toHaveTextContent("/stream/12-marketing");
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("# incident")).not.toBeInTheDocument();
+      expect(screen.getByText("# launch")).toBeInTheDocument();
+    });
+  });
+
+  it("collapses all expanded stream topics after non-chat navigation", async () => {
+    const streamWithIncidentTopic: Extract<SidebarChat, { type: "stream" }> = {
+      ...STREAM_CHAT,
+      topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
+    };
+    const streamWithLaunchTopic: Extract<SidebarChat, { type: "stream" }> = {
+      ...STREAM_CHAT_SECOND,
+      topics: [{ subject: "launch", badge: 0, lastMessage: "Launch checklist" }],
+    };
+
+    renderWithProviders(
+      <>
+        <Sidebar
+          streams={[]}
+          selectedFolderId="all"
+          sidebarChats={[streamWithIncidentTopic, streamWithLaunchTopic]}
+          sidebarDms={[]}
+        />
+        <RouteNavigateButton to="/inbox" label="go-inbox" />
+        <RoutePathProbe />
+      </>,
+    );
+
+    const toggleButtons = screen.getAllByRole("button", { name: /expand topics/i });
+    fireEvent.click(toggleButtons[0]!);
+    fireEvent.click(toggleButtons[1]!);
+    expect(screen.getByText("# incident")).toBeInTheDocument();
+    expect(screen.getByText("# launch")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "go-inbox" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("route-path")).toHaveTextContent("/inbox");
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("# incident")).not.toBeInTheDocument();
+      expect(screen.queryByText("# launch")).not.toBeInTheDocument();
+    });
+  });
+
   it("collapses expanded stream topics when a direct message chat is active", async () => {
     const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
       ...STREAM_CHAT,
       topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
     };
-    useSidebarConfigStore.getState().setExpandedStreamSlug("11-engineering");
+    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
 
     renderWithProviders(
       <Sidebar
@@ -1056,9 +1340,8 @@ describe("Sidebar", () => {
 
     const chatMenuButton = screen.getByRole("button", { name: /chat menu/i });
     const expandButton = screen.getByRole("button", { name: /expand topics/i });
-    const streamTime = screen.getByText("12:10");
     const streamUnreadBadge = screen.getByText("3");
-    const streamMetaRow = streamTime.parentElement;
+    const streamMetaRow = streamUnreadBadge.parentElement;
 
     expect(streamMetaRow).not.toBeNull();
     expect(streamMetaRow!).toContainElement(streamUnreadBadge);
@@ -1072,16 +1355,12 @@ describe("Sidebar", () => {
     expect(chatMenuButton).not.toHaveClass("right-10");
 
     expect(expandButton).toHaveClass("absolute");
-    expect(expandButton).toHaveClass("left-5");
-    expect(expandButton).toHaveClass("top-5");
-    expect(expandButton).toHaveClass("-translate-x-1/2");
-    expect(expandButton).toHaveClass("-translate-y-1/2");
-    expect(expandButton).toHaveClass("h-8");
-    expect(expandButton).toHaveClass("w-8");
+    expect(expandButton).toHaveClass("right-1.5");
+    expect(expandButton).toHaveClass("top-2.5");
+    expect(expandButton).toHaveClass("h-5");
+    expect(expandButton).toHaveClass("w-5");
     expect(expandButton).toHaveClass("bg-bg/60");
-    expect(expandButton).toHaveClass("opacity-0");
-    expect(expandButton).toHaveClass("group-hover/stream:opacity-100");
-    expect(expandButton).toHaveClass("group-focus-within/stream:opacity-100");
+    expect(expandButton).not.toHaveClass("opacity-0");
   });
 
   it("aligns dm chat-menu trigger horizontally with unread and keeps time left of unread", () => {
@@ -1110,8 +1389,8 @@ describe("Sidebar", () => {
     expect(dmMetaRow!).not.toHaveClass("flex-col");
 
     const chatMenuButton = screen.getByRole("button", { name: /chat menu/i });
-    expect(chatMenuButton).toHaveClass("top-1");
-    expect(chatMenuButton).not.toHaveClass("top-8");
+    expect(chatMenuButton).toHaveClass("top-8");
+    expect(chatMenuButton).not.toHaveClass("top-1");
   });
 
   it("places topic mute control under topic unread badge", () => {
@@ -1119,12 +1398,13 @@ describe("Sidebar", () => {
       ...STREAM_CHAT,
       topics: [{ subject: "incident", badge: 2, lastMessage: "Topic update" }],
     };
-    useSidebarConfigStore.getState().setExpandedStreamSlug("11-engineering");
+    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
 
     renderWithProviders(
       <Sidebar
         streams={[]}
         selectedFolderId="all"
+        activeStreamSlug="11-engineering"
         sidebarChats={[streamWithTopics]}
         sidebarDms={[]}
       />,
@@ -1132,13 +1412,69 @@ describe("Sidebar", () => {
 
     const topicMuteButton = screen.getByRole("button", { name: /mute topic/i });
     const actionsContainer = topicMuteButton.parentElement;
+    const topicLink = screen.getByRole("link", { name: /incident/i });
 
     expect(actionsContainer).toBeTruthy();
     expect(actionsContainer).toHaveClass("flex-col");
     expect(actionsContainer).toHaveClass("items-end");
+    expect(within(topicLink).getByText("2")).toBeInTheDocument();
+    expect(within(actionsContainer as HTMLElement).queryByText("2")).toBeNull();
+  });
 
-    const topicBadge = within(actionsContainer as HTMLElement).getByText("2");
-    expect(actionsContainer?.firstElementChild).toBe(topicBadge);
+  it("navigates to topic when topic unread badge is clicked", () => {
+    const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
+      ...STREAM_CHAT,
+      topics: [{ subject: "incident", badge: 2, lastMessage: "Topic update" }],
+    };
+    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
+
+    renderWithProviders(
+      <>
+        <Sidebar
+          streams={[]}
+          selectedFolderId="all"
+          activeStreamSlug="11-engineering"
+          sidebarChats={[streamWithTopics]}
+          sidebarDms={[]}
+        />
+        <RoutePathProbe />
+      </>,
+    );
+
+    const topicLink = screen.getByRole("link", { name: /incident/i });
+    fireEvent.click(within(topicLink).getByText("2"));
+
+    expect(screen.getByTestId("route-path")).toHaveTextContent(
+      "/stream/11-engineering/topic/incident",
+    );
+  });
+
+  it("does not navigate when topic mute action is clicked", () => {
+    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
+
+    renderWithProviders(
+      <>
+        <Sidebar
+          streams={[
+            {
+              stream_id: 11,
+              name: "Engineering",
+              lastMessage: "Deploy today",
+              time: "12:10",
+              topics: [{ subject: "incident", badge: 2, lastMessage: "Topic update" }],
+            },
+          ]}
+          selectedFolderId="all"
+          activeStreamSlug="11-engineering"
+          sidebarDms={[]}
+        />
+        <RoutePathProbe />
+      </>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /mute topic/i }));
+
+    expect(screen.getByTestId("route-path")).toHaveTextContent("/");
   });
 
   it("marks topic as done from topic row action", async () => {
@@ -1147,15 +1483,19 @@ describe("Sidebar", () => {
       ...STREAM_CHAT,
       topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
     };
-    useSidebarConfigStore.getState().setExpandedStreamSlug("11-engineering");
+    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
 
     renderWithProviders(
-      <Sidebar
-        streams={[]}
-        selectedFolderId="all"
-        sidebarChats={[streamWithTopics]}
-        sidebarDms={[]}
-      />,
+      <>
+        <Sidebar
+          streams={[]}
+          selectedFolderId="all"
+          activeStreamSlug="11-engineering"
+          sidebarChats={[streamWithTopics]}
+          sidebarDms={[]}
+        />
+        <RoutePathProbe />
+      </>,
     );
 
     const markDoneButton = screen.getByRole("button", { name: /mark topic as done/i });
@@ -1164,6 +1504,7 @@ describe("Sidebar", () => {
     await waitFor(() => {
       expect(setTopicResolvedStateMock).toHaveBeenCalledWith(11, "incident", true);
     });
+    expect(screen.getByTestId("route-path")).toHaveTextContent("/");
   });
 
   it("marks resolved topic as not done from topic row action", async () => {
@@ -1172,12 +1513,13 @@ describe("Sidebar", () => {
       ...STREAM_CHAT,
       topics: [{ subject: "\u2714 incident", badge: 0, lastMessage: "Topic update" }],
     };
-    useSidebarConfigStore.getState().setExpandedStreamSlug("11-engineering");
+    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
 
     renderWithProviders(
       <Sidebar
         streams={[]}
         selectedFolderId="all"
+        activeStreamSlug="11-engineering"
         sidebarChats={[streamWithTopics]}
         sidebarDms={[]}
       />,

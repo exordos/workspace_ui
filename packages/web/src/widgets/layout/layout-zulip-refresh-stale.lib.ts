@@ -1,12 +1,12 @@
+// Восстановительный refresh после reconnect/bad queue.
+// Обновляет сообщения и presence без полного сброса event loop.
 /**
  * Reconnect / bad-queue recovery: refetch recent or delta messages and merge realm presence.
  * Used by `useLayoutZulipEventLoop` without resetting the long-poll loop.
  */
 import { useActivityStore } from "~/entities/activity/activity.model";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
-import { persistChatListSnapshotToIndexedDb } from "~/entities/chat-list/chat-list-snapshot-persist.lib";
 import { useInboxStore } from "~/entities/inbox/inbox.model";
-import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import {
   fetchMessagesAfterAnchor,
@@ -40,10 +40,6 @@ export function runLayoutReconnectRefresh(options: RunLayoutReconnectRefreshOpti
         }
         setFromMessages(freshMsgs, uid);
         latestMessageIdRef.current = getNewestMessageId(freshMsgs);
-        const idPersist = useInstancesStore.getState().currentInstanceId;
-        if (idPersist != null) {
-          void persistChatListSnapshotToIndexedDb(idPersist);
-        }
       })
       .catch(() => {});
   };
@@ -68,10 +64,6 @@ export function runLayoutReconnectRefresh(options: RunLayoutReconnectRefreshOpti
           getNewestMessageId(deltaMessages) ?? latestMessageIdRef.current;
         useActivityStore.getState().markStale();
         useInboxStore.getState().markStale();
-        const idPersist = useInstancesStore.getState().currentInstanceId;
-        if (idPersist != null) {
-          void persistChatListSnapshotToIndexedDb(idPersist);
-        }
       })
       .catch(() => {
         hydrateFromRecentWindow();

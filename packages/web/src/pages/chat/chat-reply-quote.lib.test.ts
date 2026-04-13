@@ -4,10 +4,7 @@ import { resolveReplyQuoteContent } from "./chat-reply-quote.lib";
 describe("resolveReplyQuoteContent", () => {
   it("returns trimmed selection when non-empty", () => {
     expect(
-      resolveReplyQuoteContent(
-        { content: "<p>x</p>", markdown_source: "x" },
-        "  picked  ",
-      ),
+      resolveReplyQuoteContent({ content: "<p>x</p>", markdown_source: "x" }, "  picked  "),
     ).toBe("picked");
   });
 

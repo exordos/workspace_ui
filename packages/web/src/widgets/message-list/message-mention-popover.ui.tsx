@@ -2,15 +2,15 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { createPortal } from "react-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { ensureUserStatusLoaded } from "~/entities/user/api/user.api";
+import { ProfileCustomFieldsBlock } from "~/entities/user/profile-custom-fields-block.ui";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
-import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
 import { fetchUser } from "~/shared/api/zulip";
+import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
 import { formatLastSeen, getPresenceState } from "~/shared/lib/format";
 import { getRoleLabel, parseRole } from "~/shared/lib/roles";
 import { isValidEmail } from "~/shared/lib/validation";
-import { ProfileCustomFieldsBlock } from "~/entities/user/profile-custom-fields-block.ui";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { resolveAvatarSrc } from "./message-avatar.lib";
@@ -19,8 +19,8 @@ import {
   MENTION_POPOVER_EST_HEIGHT,
   MENTION_POPOVER_WIDTH,
 } from "./message-mention-popover-position.lib";
-import type { MessageMentionPopoverProps } from "./message-mention-popover.types";
 import { extractMentionNicknameFromEmail } from "./message-mention-popover-user.lib";
+import type { MessageMentionPopoverProps } from "./message-mention-popover.types";
 
 type MentionInfoIcon = "profile" | "mail" | "at" | "group";
 
@@ -37,7 +37,9 @@ const MentionPopoverInfoRow = React.memo(function MentionPopoverInfoRow({
     <li className="flex gap-2">
       <Icon name={icon} size={16} className="mt-0.5 shrink-0 text-icon-base" aria-hidden />
       <div className="min-w-0 flex-1">
-        <p className="text-[11px] font-medium uppercase tracking-wide text-text-secondary">{label}</p>
+        <p className="text-[11px] font-medium uppercase tracking-wide text-text-secondary">
+          {label}
+        </p>
         <div className="truncate text-sm text-text-primary">{children}</div>
       </div>
     </li>
@@ -91,9 +93,7 @@ export const MessageMentionPopover = React.memo(function MessageMentionPopover({
       : fallbackName.replace(/^@/, "").trim() || `#${userId}`;
 
   const presenceState =
-    user?.presence != null
-      ? getPresenceState(user.presence.timestamp, user.presence.status)
-      : null;
+    user?.presence != null ? getPresenceState(user.presence.timestamp, user.presence.status) : null;
   const lastSeen =
     user?.presence != null
       ? formatLastSeen(user.presence.timestamp, user.presence.status)
@@ -122,8 +122,7 @@ export const MessageMentionPopover = React.memo(function MessageMentionPopover({
   const mentionNickname = extractMentionNicknameFromEmail(user?.email);
   const mentionDisplay =
     mentionNickname != null && mentionNickname.length > 0 ? `@${mentionNickname}` : undefined;
-  const roleLabel =
-    user?.role != null ? getRoleLabel(parseRole(user.role)) : undefined;
+  const roleLabel = user?.role != null ? getRoleLabel(parseRole(user.role)) : undefined;
 
   const positionStyle = useMemo(() => {
     if (typeof window === "undefined") {
@@ -197,13 +196,12 @@ export const MessageMentionPopover = React.memo(function MessageMentionPopover({
         role="dialog"
         aria-modal="true"
         aria-label={t("message.mentionUserCard")}
-        className="bg-card-bg border-border-subtle z-modal fixed rounded-lg border p-3 shadow-lg"
+        className="fixed z-modal rounded-lg border border-border-subtle bg-card-bg p-3 shadow-lg"
         style={{
           left: positionStyle.left,
           top: positionStyle.top,
           width: positionStyle.width,
         }}
-        onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-3">
           <div className="relative shrink-0">
@@ -216,13 +214,13 @@ export const MessageMentionPopover = React.memo(function MessageMentionPopover({
             </Avatar>
             {presenceState === "active" && (
               <span
-                className="border-border-subtle bg-indicator-green absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2"
+                className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-border-subtle bg-indicator-green"
                 aria-label={t("a11y.online")}
               />
             )}
             {presenceState === "idle" && (
               <span
-                className="border-border-subtle bg-indicator-orange absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2"
+                className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-border-subtle bg-indicator-orange"
                 aria-label={t("a11y.away")}
               />
             )}
@@ -232,7 +230,7 @@ export const MessageMentionPopover = React.memo(function MessageMentionPopover({
             <p className="truncate text-xs text-text-muted">{statusLine}</p>
           </div>
         </div>
-        <div className="border-border-subtle mt-2 max-h-44 overflow-y-auto border-t pt-2">
+        <div className="mt-2 max-h-44 overflow-y-auto border-t border-border-subtle pt-2">
           <ProfileCustomFieldsBlock
             profileData={user?.profile_data}
             baseUrl={getRealmBaseUrl() || undefined}
@@ -241,7 +239,7 @@ export const MessageMentionPopover = React.memo(function MessageMentionPopover({
             className=""
             onOpenUserProfile={onOpenUserProfile}
           />
-          <ul className="border-border-subtle space-y-2 border-t pt-2 first:border-t-0 first:pt-0">
+          <ul className="space-y-2 border-t border-border-subtle pt-2 first:border-t-0 first:pt-0">
             <MentionPopoverInfoRow icon="profile" label={t("info.userId")}>
               {String(userId)}
             </MentionPopoverInfoRow>
@@ -270,7 +268,7 @@ export const MessageMentionPopover = React.memo(function MessageMentionPopover({
         </div>
         <button
           type="button"
-          className="bg-accent text-on-accent mt-3 flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium hover:opacity-90"
+          className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-on-accent hover:opacity-90"
           onClick={handleOpenDm}
         >
           <Icon name="chatBubble" size={16} className="shrink-0 text-current" />

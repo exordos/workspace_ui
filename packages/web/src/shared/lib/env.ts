@@ -43,6 +43,15 @@ const chatMessagesPersistIndexedDb = (() => {
   return legacy !== "false" && legacy !== "0";
 })();
 
+function parseBooleanEnvFlag(value: string, fallback: boolean): boolean {
+  // Что делает: единообразно парсит true/false и 1/0 из env, чтобы флаги не вели себя по-разному в разных местах.
+  const normalized = value.trim().toLowerCase();
+  if (normalized.length === 0) return fallback;
+  if (normalized === "true" || normalized === "1") return true;
+  if (normalized === "false" || normalized === "0") return false;
+  return fallback;
+}
+
 const WORKSPACE_API_ORIGIN_RAW = required("VITE_WORKSPACE_API_ORIGIN");
 const ZULIP_REALM_ORIGIN_RAW = optional("VITE_ZULIP_REALM_ORIGIN");
 const ZULIP_API_PATH = optional("VITE_ZULIP_API_PATH", "/api/v1");
@@ -222,4 +231,16 @@ export const env = {
     const v = optional("VITE_TOP_BAR_SERVICES_NAV", "false").toLowerCase();
     return v === "true" || v === "1";
   })(),
+
+  // Зачем: включает сбор списка чатов из metadata (register/subscriptions), а не из большой выборки сообщений.
+  METADATA_CHAT_BOOTSTRAP_ENABLED: parseBooleanEnvFlag(
+    optional("VITE_METADATA_CHAT_BOOTSTRAP_ENABLED", "false"),
+    false,
+  ),
+
+  // Зачем: добавляет фоновый добор старых DM поверх metadata-first, чтобы поднять покрытие диалогов.
+  METADATA_DM_BACKFILL_ENABLED: parseBooleanEnvFlag(
+    optional("VITE_METADATA_DM_BACKFILL_ENABLED", "false"),
+    false,
+  ),
 } as const;

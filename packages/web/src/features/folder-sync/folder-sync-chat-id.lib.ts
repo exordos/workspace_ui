@@ -5,7 +5,7 @@ export interface FolderSyncUserLike {
   email?: string;
 }
 
-function parseNumericChatId(chatId: string): number | null {
+export function parseNumericChatId(chatId: string): number | null {
   const trimmed = chatId.trim();
   if (!/^[0-9]+$/.test(trimmed)) {
     return null;

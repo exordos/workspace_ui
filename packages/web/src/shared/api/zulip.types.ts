@@ -36,6 +36,15 @@ export interface ZulipUserTopic {
   visibility_policy: number;
 }
 
+export interface ZulipRecentPrivateConversation {
+  // Что делает: список участников DM (включая текущего пользователя).
+  user_ids: number[];
+  // Что делает: id последнего сообщения в этом DM, если сервер его знает.
+  max_message_id: number | null;
+  // Что делает: список непрочитанных сообщений в DM для быстрого unread-индикатора.
+  unread_message_ids: number[];
+}
+
 export interface SavedSnippet {
   id: number;
   title: string;
@@ -48,6 +57,8 @@ export interface RegisterQueueResult {
   last_event_id: number;
   event_queue_longpoll_timeout_seconds?: number;
   user_topics?: ZulipUserTopic[];
+  // Зачем: metadata recent DM для первичного построения списка диалогов.
+  recent_private_conversations?: Record<string, ZulipRecentPrivateConversation>;
 }
 
 export interface ZulipEvent {
@@ -178,7 +189,7 @@ export interface MockMessage {
 }
 
 /** Input shape for normalizing API messages to MockMessage. */
-export type RawMessageToMockInput = {
+export interface RawMessageToMockInput {
   id: number;
   sender_id: number;
   sender_full_name?: string;
@@ -192,7 +203,7 @@ export type RawMessageToMockInput = {
   stream_id?: number | null;
   flags?: string[];
   reactions?: Reaction[];
-};
+}
 
 export interface ZulipSubscription {
   stream_id: number;

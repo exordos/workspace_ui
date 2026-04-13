@@ -340,7 +340,7 @@ describe("MessageBubble edit/delete actions parity", () => {
       if (
         s.includes("/user_uploads/thumbnail/1/private.png/840x560.webp") ||
         s === "/user_uploads/1/private.png" ||
-        /\/user_uploads\/1\/private\.png$/.test(s)
+        s.endsWith("/user_uploads/1/private.png")
       ) {
         return Promise.resolve({
           ok: true,

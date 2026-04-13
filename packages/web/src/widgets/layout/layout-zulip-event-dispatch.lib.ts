@@ -5,11 +5,11 @@ import { getCurrentInstance } from "~/shared/api/client";
 import type { ZulipEvent, ZulipRawMessage } from "~/shared/api/zulip";
 import { rawMessageToMockMessage } from "~/shared/api/zulip";
 import { getElectronAPI } from "~/shared/lib/electron";
-import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
 import {
   applyZulipEventToMessageIndexedDb,
   isChatMessagesPersistToIndexedDbEnabled,
 } from "~/shared/lib/message-idb-from-zulip.lib";
+import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
 import { shouldNotify } from "~/shared/lib/notifications-policy";
 import { closeReadMessageNotifications } from "./layout-notification-tags.lib";
 import type {
@@ -17,6 +17,36 @@ import type {
   LayoutNotificationsActions,
   LayoutZulipEventDispatchContext,
 } from "./layout-zulip-event-dispatch.types";
+
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0;
+}
+
+// Что делает: приводит payload subscription/add к минимальному виду для store (id + имя канала).
+function parseSubscriptionRows(value: unknown): { streamId: number; name: string }[] {
+  if (!Array.isArray(value)) return [];
+  const rows: { streamId: number; name: string }[] = [];
+  for (const row of value) {
+    if (row == null || typeof row !== "object" || Array.isArray(row)) continue;
+    const record = row as Record<string, unknown>;
+    const streamIdRaw = record.stream_id;
+    const name = record.name;
+    if (!isPositiveInteger(streamIdRaw) || typeof name !== "string") continue;
+    rows.push({ streamId: streamIdRaw, name: name.trim() });
+  }
+  return rows;
+}
+
+// Что делает: читает stream_ids из subscription/remove, где сервер иногда шлет только массив id.
+function parseSubscriptionStreamIds(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+  const ids: number[] = [];
+  for (const raw of value) {
+    if (!isPositiveInteger(raw)) continue;
+    ids.push(raw);
+  }
+  return ids;
+}
 
 export function dispatchZulipEvent(event: ZulipEvent, ctx: LayoutZulipEventDispatchContext): void {
   const { chatList, currentChat, users, typing, mute, activity, inbox, notifications, jitsiCall } =
@@ -33,6 +63,8 @@ export function dispatchZulipEvent(event: ZulipEvent, ctx: LayoutZulipEventDispa
 
   if (event.type === "message" && event.message) {
     const raw = event.message as unknown as ZulipRawMessage;
+    // Зачем: даем внешнему обработчику обновить побочные индексы (например, локальный DM-индекс).
+    ctx.onMessage?.(raw);
     users.mergeFromMessage(raw);
     chatList.addMessage(raw);
     ctx.updateLatestMessageId(raw.id);
@@ -239,15 +271,45 @@ export function dispatchZulipEvent(event: ZulipEvent, ctx: LayoutZulipEventDispa
 
   if (event.type === "subscription") {
     const op = event.op as "update" | "add" | "remove" | "peer_add" | "peer_remove" | undefined;
+    if (op === "add") {
+      // Что делает: добавляет новый канал в sidebar даже если сообщений по нему еще не пришло.
+      const rows = parseSubscriptionRows(event.subscriptions);
+      if (rows.length > 0) {
+        chatList.upsertStreamMetadataRows(rows);
+      }
+      return;
+    }
+    if (op === "remove") {
+      // Что делает: удаляет канал из списка, поддерживая оба формата события от Zulip.
+      const fromArray = parseSubscriptionRows(event.subscriptions).map((row) => row.streamId);
+      const fromIds = parseSubscriptionStreamIds(event.stream_ids);
+      const ids = Array.from(new Set([...fromArray, ...fromIds]));
+      for (const streamId of ids) {
+        chatList.removeStream(streamId);
+      }
+      return;
+    }
     if (op === "update") {
       const streamId = event.stream_id as number | undefined;
       const property = event.property as string | undefined;
-      const value = event.value as boolean | undefined;
-      if (streamId != null && property === "is_muted" && value != null) {
+      if (!Number.isInteger(streamId) || streamId == null || streamId <= 0) {
+        return;
+      }
+      if (property === "is_muted") {
+        const value = event.value as boolean | undefined;
+        if (value == null) return;
         if (value) {
           mute.muteStream(streamId);
         } else {
           mute.unmuteStream(streamId);
+        }
+        return;
+      }
+      if (property === "name") {
+        // Что делает: обновляет название канала без пересборки всего списка.
+        const value = event.value as string | undefined;
+        if (typeof value === "string" && value.trim().length > 0) {
+          chatList.renameStream(streamId, value);
         }
       }
     }

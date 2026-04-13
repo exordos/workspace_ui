@@ -32,6 +32,7 @@ export function sortChatsByLastMessage(
       .map((t) => ({
         subject: t.subject,
         lastMessage: t.lastMessage,
+        lastMessageSenderName: t.lastMessageSenderName,
         time: t.time,
         badge: t.unreadCount > 0 ? t.unreadCount : undefined,
       }));
@@ -43,6 +44,7 @@ export function sortChatsByLastMessage(
         stream_id: s.stream_id,
         name: s.name,
         lastMessage: s.lastMessage,
+        lastMessageSenderName: s.lastMessageSenderName,
         time: s.time,
         topics,
         badge: badge > 0 ? badge : undefined,

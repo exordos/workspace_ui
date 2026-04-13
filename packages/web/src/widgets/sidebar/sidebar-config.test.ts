@@ -1,13 +1,10 @@
 /**
  * Tests for sidebarConfigStore — persists sidebar UI preferences.
  *
- * Currently manages the activityOpen toggle (whether the Activity section is
- * expanded). Persisted to localStorage so the sidebar remembers its state
- * across page reloads.
+ * Covers activity toggle and expanded stream topics state.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useInstancesStore } from "~/entities/instance/instance.model";
-import { SYSTEM_ALL_FOLDER_ID } from "~/features/folder-sync/folder-sync-constants.lib";
 import { useSidebarConfigStore } from "./sidebar-config.model";
 
 const STORAGE_KEY = "zulip-web-sidebar-config";
@@ -19,14 +16,7 @@ function resetStore() {
     currentInstanceId: null,
     unreadCountsByInstance: {},
   });
-  useSidebarConfigStore.setState({
-    activityOpen: false,
-    expandedStreamSlug: null,
-    searchQuery: "",
-    pinReorderMode: false,
-    createChatOpen: false,
-    selectedFolderId: SYSTEM_ALL_FOLDER_ID,
-  });
+  useSidebarConfigStore.setState({ activityOpen: false, expandedStreamSlugs: [] });
 }
 
 function setInstanceScope(instanceIds: string[], currentInstanceId: string): void {
@@ -47,15 +37,13 @@ describe("sidebarConfigStore", () => {
   beforeEach(resetStore);
   afterEach(resetStore);
 
-  // Default state defines the first-launch experience.
   describe("default state", () => {
-    // Activity section should be collapsed by default to reduce left-rail noise.
     it("starts with activityOpen = false", () => {
       expect(useSidebarConfigStore.getState().activityOpen).toBe(false);
     });
 
-    it("starts with no expanded stream slug", () => {
-      expect(useSidebarConfigStore.getState().expandedStreamSlug).toBeNull();
+    it("starts with no expanded stream slugs", () => {
+      expect(useSidebarConfigStore.getState().expandedStreamSlugs).toEqual([]);
     });
 
     it("loads collapsed default from storage when localStorage is empty", async () => {
@@ -63,84 +51,91 @@ describe("sidebarConfigStore", () => {
       vi.resetModules();
       const { useSidebarConfigStore: freshStore } = await import("./sidebar-config.model");
       expect(freshStore.getState().activityOpen).toBe(false);
+      expect(freshStore.getState().expandedStreamSlugs).toEqual([]);
     });
   });
 
-  // setActivityOpen is the direct setter for the Activity section toggle.
   describe("setActivityOpen", () => {
-    // User collapses the section — must be reflected immediately.
     it("sets activityOpen to false", () => {
       useSidebarConfigStore.getState().setActivityOpen(false);
       expect(useSidebarConfigStore.getState().activityOpen).toBe(false);
     });
 
-    // Re-expanding must restore the open state.
     it("sets activityOpen to true", () => {
       useSidebarConfigStore.getState().setActivityOpen(false);
       useSidebarConfigStore.getState().setActivityOpen(true);
       expect(useSidebarConfigStore.getState().activityOpen).toBe(true);
     });
 
-    // Preference must survive page reload via localStorage.
     it("persists to localStorage", () => {
       useSidebarConfigStore.getState().setActivityOpen(false);
 
       const stored = JSON.parse(window.localStorage.getItem(STORAGE_KEY)!);
       expect(stored.activityOpen).toBe(false);
     });
+  });
 
-    it("does not persist search query when saving activity state", () => {
-      useSidebarConfigStore.getState().setSearchQuery("find me");
-      useSidebarConfigStore.getState().setActivityOpen(true);
+  describe("expanded stream slugs", () => {
+    it("toggles stream slug in expanded list", () => {
+      useSidebarConfigStore.getState().toggleExpandedStreamSlug("11-engineering");
+      expect(useSidebarConfigStore.getState().expandedStreamSlugs).toEqual(["11-engineering"]);
 
-      const stored = JSON.parse(window.localStorage.getItem(STORAGE_KEY)!);
-      expect(stored).toEqual({
-        activityOpen: true,
-        expandedStreamSlug: null,
+      useSidebarConfigStore.getState().toggleExpandedStreamSlug("11-engineering");
+      expect(useSidebarConfigStore.getState().expandedStreamSlugs).toEqual([]);
+    });
+
+    it("expands stream slug idempotently", () => {
+      useSidebarConfigStore.getState().expandStreamSlug("11-engineering");
+      useSidebarConfigStore.getState().expandStreamSlug("11-engineering");
+      useSidebarConfigStore.getState().expandStreamSlug("22-product");
+      expect(useSidebarConfigStore.getState().expandedStreamSlugs).toEqual([
+        "11-engineering",
+        "22-product",
+      ]);
+    });
+
+    it("collapses all expanded stream slugs except target", () => {
+      useSidebarConfigStore.getState().setConfig({
+        expandedStreamSlugs: ["11-engineering", "22-product", "33-support"],
       });
-    });
-  });
-
-  describe("setExpandedStreamSlug", () => {
-    it("stores expanded stream slug", () => {
-      useSidebarConfigStore.getState().setExpandedStreamSlug("11-engineering");
-      expect(useSidebarConfigStore.getState().expandedStreamSlug).toBe("11-engineering");
+      useSidebarConfigStore.getState().collapseExpandedStreamsExcept("22-product");
+      expect(useSidebarConfigStore.getState().expandedStreamSlugs).toEqual(["22-product"]);
     });
 
-    it("allows clearing expanded stream slug", () => {
-      useSidebarConfigStore.getState().setExpandedStreamSlug("11-engineering");
-      useSidebarConfigStore.getState().setExpandedStreamSlug(null);
-      expect(useSidebarConfigStore.getState().expandedStreamSlug).toBeNull();
+    it("collapses all expanded stream slugs", () => {
+      useSidebarConfigStore.getState().setConfig({
+        expandedStreamSlugs: ["11-engineering", "22-product"],
+      });
+      useSidebarConfigStore.getState().collapseAllExpandedStreams();
+      expect(useSidebarConfigStore.getState().expandedStreamSlugs).toEqual([]);
     });
 
-    it("persists expanded stream slug to localStorage", () => {
-      useSidebarConfigStore.getState().setExpandedStreamSlug("11-engineering");
+    it("persists expanded stream slugs to localStorage", () => {
+      useSidebarConfigStore
+        .getState()
+        .setConfig({ expandedStreamSlugs: ["11-engineering", "22-product"] });
 
       const stored = JSON.parse(window.localStorage.getItem(STORAGE_KEY)!);
-      expect(stored.expandedStreamSlug).toBe("11-engineering");
+      expect(stored.expandedStreamSlugs).toEqual(["11-engineering", "22-product"]);
     });
   });
 
-  // setConfig applies a partial patch — used for bulk config updates.
   describe("setConfig", () => {
-    // Partial patch must override only the specified keys.
     it("applies a partial config patch", () => {
       useSidebarConfigStore.getState().setConfig({ activityOpen: false });
       expect(useSidebarConfigStore.getState().activityOpen).toBe(false);
     });
 
-    // Patched config must also be persisted.
     it("persists patched config to localStorage", () => {
       useSidebarConfigStore
         .getState()
-        .setConfig({ activityOpen: false, expandedStreamSlug: "11-engineering" });
+        .setConfig({ activityOpen: false, expandedStreamSlugs: ["11-engineering"] });
 
       const stored = JSON.parse(window.localStorage.getItem(STORAGE_KEY)!);
       expect(stored.activityOpen).toBe(false);
-      expect(stored.expandedStreamSlug).toBe("11-engineering");
+      expect(stored.expandedStreamSlugs).toEqual(["11-engineering"]);
     });
 
-    // Empty patch (no keys) must not reset any fields — safe no-op.
     it("empty patch preserves existing state", () => {
       useSidebarConfigStore.getState().setActivityOpen(false);
       useSidebarConfigStore.getState().setConfig({});
@@ -152,46 +147,42 @@ describe("sidebarConfigStore", () => {
   describe("organization scope", () => {
     it("persists sidebar config under active organization id", () => {
       setInstanceScope(["org-a"], "org-a");
-      useSidebarConfigStore.getState().setExpandedStreamSlug("11-engineering");
+      useSidebarConfigStore.getState().expandStreamSlug("11-engineering");
 
       const scopedRaw = window.localStorage.getItem("zulip-web-sidebar-config:org-a");
       expect(scopedRaw).not.toBeNull();
       const stored = JSON.parse(scopedRaw!);
-      expect(stored.expandedStreamSlug).toBe("11-engineering");
+      expect(stored.expandedStreamSlugs).toEqual(["11-engineering"]);
       expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
     });
 
     it("loads sidebar config for the newly selected organization", () => {
       window.localStorage.setItem(
         "zulip-web-sidebar-config:org-a",
-        JSON.stringify({ activityOpen: true, expandedStreamSlug: "11-engineering" }),
+        JSON.stringify({ activityOpen: true, expandedStreamSlugs: ["11-engineering"] }),
       );
       window.localStorage.setItem(
         "zulip-web-sidebar-config:org-b",
-        JSON.stringify({ activityOpen: false, expandedStreamSlug: "22-product" }),
+        JSON.stringify({ activityOpen: false, expandedStreamSlugs: ["22-product"] }),
       );
 
       setInstanceScope(["org-a", "org-b"], "org-a");
-      expect(useSidebarConfigStore.getState().expandedStreamSlug).toBe("11-engineering");
+      expect(useSidebarConfigStore.getState().expandedStreamSlugs).toEqual(["11-engineering"]);
 
       useInstancesStore.getState().setCurrentInstanceId("org-b");
-      expect(useSidebarConfigStore.getState().expandedStreamSlug).toBe("22-product");
+      expect(useSidebarConfigStore.getState().expandedStreamSlugs).toEqual(["22-product"]);
     });
-  });
 
-  describe("search query (ephemeral)", () => {
-    it("ignores legacy searchQuery in localStorage on module init", async () => {
+    it("ignores legacy single-slug shape from localStorage", () => {
       window.localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({
-          activityOpen: false,
-          expandedStreamSlug: null,
-          searchQuery: "stale filter",
-        }),
+        "zulip-web-sidebar-config:org-a",
+        JSON.stringify({ activityOpen: true, expandedStreamSlug: "11-engineering" }),
       );
-      vi.resetModules();
-      const { useSidebarConfigStore: freshStore } = await import("./sidebar-config.model");
-      expect(freshStore.getState().searchQuery).toBe("");
+
+      setInstanceScope(["org-a"], "org-a");
+
+      expect(useSidebarConfigStore.getState().activityOpen).toBe(true);
+      expect(useSidebarConfigStore.getState().expandedStreamSlugs).toEqual([]);
     });
   });
 });

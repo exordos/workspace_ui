@@ -1,6 +1,7 @@
 export interface TopicWithLast {
   subject: string;
   lastMessage?: string;
+  lastMessageSenderName?: string;
   time?: string;
   badge?: number;
 }
@@ -11,6 +12,7 @@ export type SidebarChat =
       stream_id: number;
       name: string;
       lastMessage?: string;
+      lastMessageSenderName?: string;
       time?: string;
       topics?: TopicWithLast[];
       badge?: number;
@@ -49,13 +51,13 @@ export interface SidebarProps {
   sidebarChatsLoading?: boolean;
   pinReorderMode?: boolean;
   onExitPinReorderMode?: () => void;
-  onFolderAssignmentsChanged?: (affectedFolderUuid?: string) => void;
 }
 
 export interface StreamWithLast {
   stream_id: number;
   name: string;
   lastMessage?: string;
+  lastMessageSenderName?: string;
   time?: string;
   topics?: TopicWithLast[];
   badge?: number;
@@ -65,6 +67,7 @@ export interface StreamEntryInternal {
   stream_id: number;
   name: string;
   lastMessage: string;
+  lastMessageSenderName?: string;
   time: string;
   ts: number;
   topics: Map<
@@ -72,6 +75,7 @@ export interface StreamEntryInternal {
     {
       subject: string;
       lastMessage: string;
+      lastMessageSenderName?: string;
       time: string;
       ts: number;
       unreadCount: number;

@@ -25,7 +25,12 @@ function parseRealmProfileFields(data: unknown): RealmProfileFieldDefinition[] |
     const name = typeof r.name === "string" ? r.name : "";
     const type = typeof r.type === "number" ? r.type : Number(r.type);
     const order = typeof r.order === "number" ? r.order : Number(r.order);
-    if (!Number.isFinite(id) || name.length === 0 || !Number.isFinite(type) || !Number.isFinite(order)) {
+    if (
+      !Number.isFinite(id) ||
+      name.length === 0 ||
+      !Number.isFinite(type) ||
+      !Number.isFinite(order)
+    ) {
       continue;
     }
     out.push({ id, name, type, order });
@@ -37,7 +42,9 @@ function parseRealmProfileFields(data: unknown): RealmProfileFieldDefinition[] |
  * Loads realm custom profile field definitions (cached per instance).
  * Returns `null` if unauthenticated or the request fails.
  */
-export async function fetchRealmProfileFieldDefinitions(): Promise<RealmProfileFieldDefinition[] | null> {
+export async function fetchRealmProfileFieldDefinitions(): Promise<
+  RealmProfileFieldDefinition[] | null
+> {
   const inst = getCurrentInstance();
   if (inst == null) return null;
 

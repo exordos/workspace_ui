@@ -9,15 +9,15 @@ import { useSearchModalStore } from "~/widgets/search-modal/search-modal.model";
 import { SearchModal } from "~/widgets/search-modal/search-modal.ui";
 import { slugForStream } from "~/widgets/sidebar/sidebar.lib";
 import { TopBarDownloadCenter } from "./top-bar-download-center.ui";
+import { TopBarProfileTrigger } from "./top-bar-profile-trigger.ui";
+import { TopBarSearchButton } from "./top-bar-search-button.ui";
+import { useTopBarSearchModal } from "./top-bar-search-modal.hook";
+import { TopBarSectionNav } from "./top-bar-section-nav.ui";
 import {
   getSectionFromPathname,
   getTopBarSectionNavItems,
   resolveTopBarActiveSection,
 } from "./top-bar.lib";
-import { TopBarProfileTrigger } from "./top-bar-profile-trigger.ui";
-import { useTopBarSearchModal } from "./top-bar-search-modal.hook";
-import { TopBarSearchButton } from "./top-bar-search-button.ui";
-import { TopBarSectionNav } from "./top-bar-section-nav.ui";
 import type { TopBarSection } from "./top-bar.types";
 
 export const TopBar: React.FC = () => {
@@ -39,10 +39,7 @@ export const TopBar: React.FC = () => {
       }),
     [],
   );
-  const visibleSectionIds = useMemo(
-    () => new Set(sections.map((item) => item.id)),
-    [sections],
-  );
+  const visibleSectionIds = useMemo(() => new Set(sections.map((item) => item.id)), [sections]);
   const activeSection = useMemo(() => {
     const fromPath = getSectionFromPathname(location.pathname);
     return resolveTopBarActiveSection(fromPath, visibleSectionIds);

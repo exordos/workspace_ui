@@ -55,26 +55,19 @@ describe("getCustomProfileFieldLines", () => {
     const defs: RealmProfileFieldDefinition[] = [
       { id: 2, name: "Руководитель", type: 6, order: 1 },
     ];
-    const lines = getCustomProfileFieldLines(
-      { "2": { value: "[99]" } },
-      undefined,
-      defs,
-    );
+    const lines = getCustomProfileFieldLines({ "2": { value: "[99]" } }, undefined, defs);
     expect(lines).toHaveLength(1);
     expect(lines[0]!.managerProfileUserId).toBe(99);
     expect(lines[0]!.html).toBeNull();
   });
 
   it("extracts manager user id from rendered user mention HTML", () => {
-    const defs: RealmProfileFieldDefinition[] = [
-      { id: 2, name: "Manager", type: 1, order: 1 },
-    ];
+    const defs: RealmProfileFieldDefinition[] = [{ id: 2, name: "Manager", type: 1, order: 1 }];
     const lines = getCustomProfileFieldLines(
       {
         "2": {
           value: "x",
-          rendered_value:
-            '<span class="user-mention" data-user-id="42">@lead</span>',
+          rendered_value: '<span class="user-mention" data-user-id="42">@lead</span>',
         },
       },
       undefined,

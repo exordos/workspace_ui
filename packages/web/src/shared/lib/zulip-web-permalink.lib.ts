@@ -44,7 +44,11 @@ function streamIdToZulipSlug(streamId: number, streamName: string): string {
 function privateRecipientUserIds(
   displayRecipient: MockMessage["display_recipient"],
 ): number[] | null {
-  if (displayRecipient == null || typeof displayRecipient === "string" || displayRecipient.length === 0) {
+  if (
+    displayRecipient == null ||
+    typeof displayRecipient === "string" ||
+    displayRecipient.length === 0
+  ) {
     return null;
   }
   return [...displayRecipient.map((r) => r.id)].sort((a, b) => a - b);

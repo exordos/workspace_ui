@@ -3,6 +3,12 @@
  */
 import { t } from "~/i18n/i18n";
 import { guard } from "~/shared/lib/guards";
+import {
+  ZULIP_DM_CHAT_NUM_AFTER,
+  ZULIP_DM_CHAT_NUM_BEFORE,
+  ZULIP_STREAM_CHAT_NUM_AFTER,
+  ZULIP_STREAM_CHAT_NUM_BEFORE,
+} from "~/shared/lib/zulip-message-window.lib";
 import { getClient, type ZulipClient } from "./zulip-client.internal";
 import { mockMessageFromGetMessageApiData, rawMessageToMockMessage } from "./zulip-message-map.lib";
 import {
@@ -11,6 +17,11 @@ import {
   zulipPipelinePatch,
   zulipPipelinePost,
 } from "./zulip-pipeline.internal";
+import {
+  validateMessageIds,
+  validateMessagesApiAnchor,
+  validateNonNegativeInteger,
+} from "./zulip-validation.internal";
 import type {
   ActivityFilter,
   ActivityMessagesPageResult,
@@ -22,17 +33,6 @@ import type {
   SendMessageParams,
   ZulipRawMessage,
 } from "./zulip.types";
-import {
-  validateMessageIds,
-  validateMessagesApiAnchor,
-  validateNonNegativeInteger,
-} from "./zulip-validation.internal";
-import {
-  ZULIP_DM_CHAT_NUM_AFTER,
-  ZULIP_DM_CHAT_NUM_BEFORE,
-  ZULIP_STREAM_CHAT_NUM_AFTER,
-  ZULIP_STREAM_CHAT_NUM_BEFORE,
-} from "~/shared/lib/zulip-message-window.lib";
 
 interface MessageWindowOptions {
   anchor: string | number;
@@ -242,8 +242,7 @@ export async function fetchMessagesWithNarrowPage(
       found_newest?: boolean;
       foundNewest?: boolean;
     };
-    if (data.result === "error")
-      return { messages: [], foundOldest: false, foundNewest: false };
+    if (data.result === "error") return { messages: [], foundOldest: false, foundNewest: false };
     return {
       messages: (data.messages ?? []).map(mapZulipMessage),
       foundOldest: data.found_oldest ?? data.foundOldest ?? false,

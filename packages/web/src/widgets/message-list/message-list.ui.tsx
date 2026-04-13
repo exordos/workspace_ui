@@ -387,8 +387,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                 }
 
                 if (isOwn) {
-                  const ownGroupKey =
-                    senderMessages[0]!.local_echo_key ?? senderMessages[0]!.id;
+                  const ownGroupKey = senderMessages[0]!.local_echo_key ?? senderMessages[0]!.id;
                   return (
                     <React.Fragment key={`own-${ownGroupKey}`}>
                       {showTopicSeparator && (

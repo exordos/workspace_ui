@@ -1,6 +1,5 @@
-/**
- * Types for the chat-list Zustand store (see chat-list.model.ts).
- */
+// Типы Zustand-store для chat-list.
+// Здесь описаны состояние и публичные actions, которые используют layout/widgets.
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import type { ChatListSnapshotSerialized } from "~/shared/lib/chat-list-snapshot-serialize.lib";
 import type {
@@ -9,6 +8,24 @@ import type {
   StreamEntryInternal,
   DmEntryInternal,
 } from "~/shared/types/sidebar-chat";
+
+export interface ChatListStreamMetadataRow {
+  // Что делает: id канала из subscriptions/register metadata.
+  streamId: number;
+  // Что делает: текущее имя канала.
+  name: string;
+}
+
+export interface ChatListDmMetadataRow {
+  // Что делает: участники DM, по ним строится стабильный ключ диалога.
+  userIds: number[];
+  // Что делает: время активности, нужно для сортировки диалогов.
+  lastActivityTs?: number;
+  // Что делает: последний известный message id в диалоге.
+  lastMessageId?: number | null;
+  // Что делает: количество непрочитанных сообщений, если оно известно.
+  unreadCount?: number;
+}
 
 export type MessageLocation =
   | { type: "stream"; stream_id: number; topic: string }
@@ -25,6 +42,10 @@ export interface ChatListState {
   hydrateFromIndexedDbSnapshot: (snapshot: ChatListSnapshotSerialized) => void;
   addMessage: (message: ZulipRawMessage) => void;
   addMessages: (messages: ZulipRawMessage[]) => void;
+  // Что делает: добавляет каналы в список из metadata, даже если сообщений по ним нет в памяти.
+  upsertStreamMetadataRows: (rows: ChatListStreamMetadataRow[]) => void;
+  // Что делает: добавляет/обновляет DM-строки из metadata и локального DM-индекса.
+  upsertDmMetadataRows: (rows: ChatListDmMetadataRow[]) => void;
   setCurrentUserId: (id: number | null) => void;
   renameStream: (streamId: number, nextName: string) => void;
   removeStream: (streamId: number) => void;

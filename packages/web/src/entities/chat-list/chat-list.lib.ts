@@ -2,6 +2,15 @@
  * Chat-list building helpers — pure functions that transform
  * Zulip raw messages into sidebar-ready structures.
  */
+import {
+  GROUP_DM_ID_OFFSET,
+  formatMessageTime,
+  getDisplayName,
+  getDmPartnerName,
+  hashKey,
+  slugify,
+  truncatePreview,
+} from "~/entities/chat-list/chat-list-format.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
@@ -12,15 +21,6 @@ import type {
   StreamEntryInternal,
   DmEntryInternal,
 } from "~/shared/types/sidebar-chat";
-import {
-  GROUP_DM_ID_OFFSET,
-  formatMessageTime,
-  getDisplayName,
-  getDmPartnerName,
-  hashKey,
-  slugify,
-  truncatePreview,
-} from "~/entities/chat-list/chat-list-format.lib";
 
 export { dmConversationKey } from "~/shared/lib/dm-key";
 
@@ -31,6 +31,7 @@ export { dmConversationKey } from "~/shared/lib/dm-key";
 interface StreamTopicEntry {
   subject: string;
   lastMessage: string;
+  lastMessageSenderName?: string;
   time: string;
   ts: number;
   unreadCount: number;
@@ -54,12 +55,14 @@ export function messageToStreamEntry(m: ZulipRawMessage): {
 } | null {
   if (m.type !== "stream" || m.stream_id == null) return null;
   const lastMsg = truncatePreview(m.content);
+  const lastMessageSenderName = m.sender_full_name?.trim() || undefined;
   const time = formatMessageTime(m.timestamp);
   const name = typeof m.display_recipient === "string" ? m.display_recipient : String(m.stream_id);
   const subject = (m.subject ?? "").trim() || "general";
   const topicEntry: StreamTopicEntry = {
     subject,
     lastMessage: lastMsg,
+    lastMessageSenderName,
     time,
     ts: m.timestamp,
     unreadCount: isUnread(m) ? 1 : 0,
@@ -70,6 +73,7 @@ export function messageToStreamEntry(m: ZulipRawMessage): {
       stream_id: m.stream_id,
       name,
       lastMessage: lastMsg,
+      lastMessageSenderName,
       time,
       ts: m.timestamp,
       topics: new Map([[subject, topicEntry]]),
@@ -112,9 +116,7 @@ export function messageToDmEntry(
     usersStore.getAvatarUrl(userId) ?? avatarUrlByUserId?.get(userId);
   const rawStoreName = otherUsers[0] != null ? nameFromStore(otherUsers[0].id) : undefined;
   const fromStore =
-    rawStoreName != null &&
-    rawStoreName.length > 0 &&
-    rawStoreName !== "Unknown"
+    rawStoreName != null && rawStoreName.length > 0 && rawStoreName !== "Unknown"
       ? rawStoreName
       : undefined;
   const name = isGroup
@@ -122,12 +124,12 @@ export function messageToDmEntry(
         .map((u) => nameFromStore(u.id) || getDisplayName(u))
         .filter(Boolean)
         .join(", ") || t("dm.groupChat")
-    : fromStore ??
+    : (fromStore ??
       getDmPartnerName({
         id: otherUsers[0]?.id,
         full_name: otherUsers[0]?.full_name,
         email: otherUsers[0]?.email,
-      });
+      }));
   let id: number;
   let userIds: number[] | undefined;
   let avatar_url: string | undefined;
@@ -203,7 +205,7 @@ export function buildSidebarFromMessages(
   for (const m of messages) {
     const streamResult = messageToStreamEntry(m);
     if (streamResult) {
-      const { stream_id, name, lastMessage, time, ts } = streamResult.stream;
+      const { stream_id, name, lastMessage, lastMessageSenderName, time, ts } = streamResult.stream;
       const topicEntry = streamResult.topic;
       const unreadKey = `${stream_id}\t${topicEntry.subject}`;
       const topicWithUnread: StreamTopicEntry = {
@@ -215,7 +217,15 @@ export function buildSidebarFromMessages(
       if (!existing) {
         const topics = new Map<string, StreamTopicEntry>();
         topics.set(topicWithUnread.subject, topicWithUnread);
-        streamsByKey.set(stream_id, { stream_id, name, lastMessage, time, ts, topics });
+        streamsByKey.set(stream_id, {
+          stream_id,
+          name,
+          lastMessage,
+          lastMessageSenderName,
+          time,
+          ts,
+          topics,
+        });
       } else {
         const existingTopic = existing.topics.get(topicWithUnread.subject);
         const nextTopics = new Map(existing.topics);
@@ -232,6 +242,9 @@ export function buildSidebarFromMessages(
           stream_id,
           name: existing.name,
           lastMessage: newerStream ? lastMessage : existing.lastMessage,
+          lastMessageSenderName: newerStream
+            ? lastMessageSenderName
+            : existing.lastMessageSenderName,
           time: newerStream ? time : existing.time,
           ts: Math.max(existing.ts, m.timestamp),
           topics: nextTopics,
@@ -268,6 +281,7 @@ export function buildSidebarFromMessages(
         .map((t) => ({
           subject: t.subject,
           lastMessage: t.lastMessage,
+          lastMessageSenderName: t.lastMessageSenderName,
           time: t.time,
           badge: t.unreadCount > 0 ? t.unreadCount : undefined,
         }));
@@ -276,6 +290,7 @@ export function buildSidebarFromMessages(
         stream_id: s.stream_id,
         name: s.name,
         lastMessage: s.lastMessage,
+        lastMessageSenderName: s.lastMessageSenderName,
         time: s.time,
         topics,
         badge: badge > 0 ? badge : undefined,

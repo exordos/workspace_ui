@@ -4,11 +4,16 @@ import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import {
+  fetchOwnStatus,
+  fetchUserProfile,
+  updateOwnProfile,
+  updateOwnStatus,
+} from "~/features/user-profile/user-profile.api";
+import { useUserProfileStore } from "~/features/user-profile/user-profile.model";
+import {
   type OwnStatusData,
   type UserProfileData,
 } from "~/features/user-profile/user-profile.types";
-import { useUserProfileStore } from "~/features/user-profile/user-profile.model";
-import { fetchOwnStatus, fetchUserProfile, updateOwnProfile, updateOwnStatus } from "~/features/user-profile/user-profile.api";
 import { t } from "~/i18n/i18n";
 import { getRoleLabel, parseRole } from "~/shared/lib/roles";
 import { isValidRealmUrl } from "~/shared/lib/validation";

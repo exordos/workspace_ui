@@ -1,5 +1,9 @@
 import type { UserRecord } from "~/entities/user/user.model";
-import type { ChatInfoData, ChatInfoMember, ChatInfoTopic } from "~/features/chat-info/chat-info.types";
+import type {
+  ChatInfoData,
+  ChatInfoMember,
+  ChatInfoTopic,
+} from "~/features/chat-info/chat-info.types";
 import type { ChatInfoContextInput } from "./layout-chat-info.types";
 
 export function hasChatInfoContext({ hasDmChat, streamId }: ChatInfoContextInput): boolean {

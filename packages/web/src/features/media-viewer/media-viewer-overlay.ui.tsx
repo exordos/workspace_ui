@@ -1,8 +1,8 @@
 import React, { useCallback } from "react";
-import { useMediaViewerStore } from "./media-viewer.model";
 import { MediaViewerBackdrop } from "./media-viewer-backdrop.ui";
 import { MediaViewerControls } from "./media-viewer-controls.ui";
 import { useMediaViewerZoom } from "./media-viewer-zoom.hook";
+import { useMediaViewerStore } from "./media-viewer.model";
 
 export const MediaViewerOverlay: React.FC = () => {
   const isOpen = useMediaViewerStore((s) => s.isOpen);
@@ -47,4 +47,3 @@ export const MediaViewerOverlay: React.FC = () => {
     </MediaViewerBackdrop>
   );
 };
-

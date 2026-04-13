@@ -7,9 +7,11 @@ import type {
   LayoutZulipEventDispatchContext,
 } from "./layout-zulip-event-dispatch.types";
 
-function buildCtx(overrides: {
-  updateMessageContentMock?: ReturnType<typeof vi.fn>;
-} = {}) {
+function buildCtx(
+  overrides: {
+    updateMessageContentMock?: ReturnType<typeof vi.fn>;
+  } = {},
+) {
   const noop = vi.fn();
   const updateMessageContentMock = overrides.updateMessageContentMock ?? vi.fn();
   const ctx: LayoutZulipEventDispatchContext = {
@@ -26,7 +28,8 @@ function buildCtx(overrides: {
       updateMessageFlags: noop,
       updateMessageReaction: noop,
       removeMessages: noop,
-      updateMessageContent: updateMessageContentMock as LayoutCurrentChatActions["updateMessageContent"],
+      updateMessageContent:
+        updateMessageContentMock as LayoutCurrentChatActions["updateMessageContent"],
     },
     users: {
       mergeFromMessage: noop,

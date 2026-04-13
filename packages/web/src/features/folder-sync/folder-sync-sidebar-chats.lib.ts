@@ -4,15 +4,13 @@ import {
   addChatIdAliases,
   chatToWorkspaceChatId,
   type FolderSyncUserLike,
+  parseNumericChatId,
   parseFolderItemDmUserIds,
   parseFolderItemStreamId,
   resolveFallbackUserName,
   slugifyFallbackName,
 } from "./folder-sync-chat-id.lib";
-import {
-  SYSTEM_CHANNELS_FOLDER_ID,
-  SYSTEM_PERSONAL_FOLDER_ID,
-} from "./folder-sync-constants.lib";
+import { SYSTEM_CHANNELS_FOLDER_ID, SYSTEM_PERSONAL_FOLDER_ID } from "./folder-sync-constants.lib";
 
 export interface SelectedFolderSidebarProjectionInput {
   selectedFolderId: string;
@@ -24,6 +22,8 @@ export interface SelectedFolderSidebarProjectionInput {
   currentUserId: number | null;
 }
 
+// Зачем: из folder items приходит набор chat_id в разных форматах, который нужен для быстрого membership-check.
+// Что делает: нормализует все chat_id через alias-правила и складывает их в Set.
 export function toChatIdSet(items: readonly FolderItemForClient[]): Set<string> {
   const chatIdSet = new Set<string>();
   for (const item of items) {
@@ -32,6 +32,8 @@ export function toChatIdSet(items: readonly FolderItemForClient[]): Set<string> 
   return chatIdSet;
 }
 
+// Зачем: один и тот же чат может иметь несколько представлений chat_id (legacy/numeric/stream/dm).
+// Что делает: проверяет совпадение chat_id с учетом всех его alias-вариантов.
 export function hasMatchingChatId(chatIdSet: ReadonlySet<string>, chatId: string): boolean {
   const aliases = new Set<string>();
   addChatIdAliases(aliases, chatId);
@@ -43,6 +45,34 @@ export function hasMatchingChatId(chatIdSet: ReadonlySet<string>, chatId: string
   return false;
 }
 
+// Зачем: self-DM должен быть доступен только из «Моя активность», а не в обычном списке чатов.
+// Что делает: определяет, является ли конкретный DM персональным чатом пользователя с самим собой.
+function isSelfDmChat(chat: SidebarChat, currentUserId: number | null): boolean {
+  if (chat.type !== "dm") return false;
+  if (chat.isGroup === true) return false;
+  if (currentUserId == null) return false;
+  return chat.id === currentUserId;
+}
+
+// Зачем: групповые DM и self-DM не должны попадать в sidebar-проекцию чатов.
+// Что делает: возвращает true для DM-чатов, которые нужно скрыть из сайдбара.
+function shouldHideDmChat(chat: SidebarChat, currentUserId: number | null): boolean {
+  if (chat.type !== "dm") return false;
+  if (chat.isGroup === true) return true;
+  return isSelfDmChat(chat, currentUserId);
+}
+
+// Зачем: правило скрытия должно применяться единообразно для всех путей построения списка чатов.
+// Что делает: удаляет из входного массива все DM, отмеченные как скрываемые.
+function filterHiddenDmChats(
+  chats: readonly SidebarChat[],
+  currentUserId: number | null,
+): SidebarChat[] {
+  return chats.filter((chat) => !shouldHideDmChat(chat, currentUserId));
+}
+
+// Зачем: sidebar рендерится из единой проекции выбранной папки, чтобы поиск/навигация/список были согласованы.
+// Что делает: строит итоговый список чатов для выбранной папки с учетом folder items, fallback и фильтрации DM.
 export function buildSelectedFolderSidebarChats(
   input: SelectedFolderSidebarProjectionInput,
 ): SidebarChat[] {
@@ -57,14 +87,20 @@ export function buildSelectedFolderSidebarChats(
   } = input;
 
   if (selectedFolderId === SYSTEM_PERSONAL_FOLDER_ID) {
-    return chatsSortedByLastMessage.filter((chat) => chat.type === "dm");
+    return filterHiddenDmChats(
+      chatsSortedByLastMessage.filter((chat) => chat.type === "dm"),
+      currentUserId,
+    );
   }
   if (selectedFolderId === SYSTEM_CHANNELS_FOLDER_ID) {
-    return chatsSortedByLastMessage.filter((chat) => chat.type === "stream");
+    return filterHiddenDmChats(
+      chatsSortedByLastMessage.filter((chat) => chat.type === "stream"),
+      currentUserId,
+    );
   }
 
   if (folderChatIds == null) {
-    return [...chatsSortedByLastMessage];
+    return filterHiddenDmChats(chatsSortedByLastMessage, currentUserId);
   }
 
   const matchedChats = chatsSortedByLastMessage.filter((chat) =>
@@ -72,14 +108,62 @@ export function buildSelectedFolderSidebarChats(
   );
   const selectedFolderItems = folderItemsByFolderId.get(selectedFolderId) ?? [];
   if (selectedFolderItems.length === 0) {
-    return matchedChats;
+    return filterHiddenDmChats(matchedChats, currentUserId);
   }
 
+  // Зачем: legacy numeric chat_id могут конфликтовать между stream и dm, нужен явный приоритет.
+  // Что делает: извлекает числового DM-кандидата для дедупликации неоднозначных numeric id.
+  const resolveDmNumericCandidate = (dmUserIds: readonly number[]): number | null => {
+    if (dmUserIds.length === 1) {
+      return dmUserIds[0] ?? null;
+    }
+    if (dmUserIds.length !== 2) {
+      return null;
+    }
+    const sortedPair = [...dmUserIds].sort((left, right) => left - right);
+    if (currentUserId == null) {
+      return sortedPair[0] ?? null;
+    }
+    return sortedPair.find((id) => id !== currentUserId) ?? sortedPair[0] ?? null;
+  };
+
+  const numericFolderItemIds = new Set<number>();
+  const preferredDmNumericIds = new Set<number>();
+  for (const item of selectedFolderItems) {
+    const numericChatId = parseNumericChatId(item.chatId);
+    if (numericChatId != null) {
+      numericFolderItemIds.add(numericChatId);
+      continue;
+    }
+    const dmUserIds = parseFolderItemDmUserIds(item.chatId);
+    if (dmUserIds == null) {
+      continue;
+    }
+    const dmNumericCandidate = resolveDmNumericCandidate(dmUserIds);
+    if (dmNumericCandidate != null) {
+      preferredDmNumericIds.add(dmNumericCandidate);
+    }
+  }
+  for (const chat of matchedChats) {
+    if (chat.type !== "dm" || chat.isGroup) {
+      continue;
+    }
+    preferredDmNumericIds.add(chat.id);
+  }
+  const matchedChatsWithoutAmbiguousNumericStreams = matchedChats.filter((chat) => {
+    if (chat.type !== "stream") {
+      return true;
+    }
+    return !(numericFolderItemIds.has(chat.stream_id) && preferredDmNumericIds.has(chat.stream_id));
+  });
+
   const knownMatchedStreamIds = new Set(
-    matchedChats.filter((chat) => chat.type === "stream").map((chat) => chat.stream_id),
+    matchedChatsWithoutAmbiguousNumericStreams
+      .filter((chat) => chat.type === "stream")
+      .map((chat) => chat.stream_id),
   );
   const knownMatchedDmKeys = new Set(
-    matchedChats
+    matchedChatsWithoutAmbiguousNumericStreams
       .filter((chat): chat is Extract<SidebarChat, { type: "dm" }> => chat.type === "dm")
       .map((chat) => chatToWorkspaceChatId(chat)),
   );
@@ -119,7 +203,7 @@ export function buildSelectedFolderSidebarChats(
           const sortedPair = [...dmUserIds].sort((left, right) => left - right);
           const peerId =
             currentUserId != null
-              ? sortedPair.find((id) => id !== currentUserId) ?? sortedPair[0]!
+              ? (sortedPair.find((id) => id !== currentUserId) ?? sortedPair[0]!)
               : sortedPair[0]!;
           const dmUser = usersMapForChatInfo.get(peerId);
           const dmName = resolveFallbackUserName(dmUser, `User ${peerId}`);
@@ -169,6 +253,10 @@ export function buildSelectedFolderSidebarChats(
     if (streamId == null) {
       continue;
     }
+    const numericChatId = parseNumericChatId(item.chatId);
+    if (numericChatId != null && preferredDmNumericIds.has(numericChatId)) {
+      continue;
+    }
     if (knownMatchedStreamIds.has(streamId) || seenFallbackStreamIds.has(streamId)) {
       continue;
     }
@@ -185,9 +273,14 @@ export function buildSelectedFolderSidebarChats(
     });
   }
 
-  return [...fallbackDmChats, ...fallbackStreamChats, ...matchedChats];
+  return filterHiddenDmChats(
+    [...fallbackDmChats, ...fallbackStreamChats, ...matchedChatsWithoutAmbiguousNumericStreams],
+    currentUserId,
+  );
 }
 
+// Зачем: системные папки рендерятся синтетически и не должны показывать loader при выборке items.
+// Что делает: возвращает флаг loading для sidebar в зависимости от типа выбранной папки.
 export function resolveSelectedFolderSidebarLoading(
   selectedFolderId: string,
   loading: boolean,

@@ -38,6 +38,8 @@ describe("env", () => {
     expect(env).toHaveProperty("MAIL_EMBED_URL");
     expect(env).toHaveProperty("CHAT_MESSAGES_PERSIST_INDEXEDDB");
     expect(env).toHaveProperty("CHAT_MESSAGES_SOURCE_INDEXEDDB");
+    expect(env).toHaveProperty("METADATA_CHAT_BOOTSTRAP_ENABLED");
+    expect(env).toHaveProperty("METADATA_DM_BACKFILL_ENABLED");
     expect(env).toHaveProperty("MESSAGE_FLOW_DEBUG");
     expect(env).toHaveProperty("TOP_BAR_CALLS_NAV");
     expect(env).toHaveProperty("TOP_BAR_SERVICES_NAV");
@@ -48,6 +50,8 @@ describe("env", () => {
     const { env } = await import("./env");
     expect(typeof env.DEV).toBe("boolean");
     expect(typeof env.PROD).toBe("boolean");
+    expect(typeof env.METADATA_CHAT_BOOTSTRAP_ENABLED).toBe("boolean");
+    expect(typeof env.METADATA_DM_BACKFILL_ENABLED).toBe("boolean");
   });
 
   // MODE is "development", "production", or "test"

@@ -5,10 +5,7 @@ import { Buffer } from "buffer";
 import zulipInitDefault from "zulip-js";
 import { t } from "~/i18n/i18n";
 import { getCurrentInstance } from "./client";
-import {
-  zulipPipelineGet,
-  zulipPipelinePost,
-} from "./zulip-pipeline.internal";
+import { zulipPipelineGet, zulipPipelinePost } from "./zulip-pipeline.internal";
 import { normalizeRealm as normalizeRealmUrl } from "./zulip-realm.internal";
 
 if (typeof (globalThis as unknown as { Buffer?: unknown }).Buffer === "undefined") {

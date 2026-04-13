@@ -14,6 +14,7 @@ import {
   fetchMessagesWithNarrowPage,
 } from "~/shared/api/zulip";
 import type { MockMessage, Reaction } from "~/shared/api/zulip.types";
+import { createLogger } from "~/shared/lib/logger";
 import {
   deleteMessagesByIds,
   getChatMessagesAscending,
@@ -25,20 +26,16 @@ import {
   updateChatMetaPatch,
   upsertChatMessages,
 } from "~/shared/lib/message-cache-db";
-import {
-  logMessageFlow,
-  summarizeChatContextForLog,
-} from "~/shared/lib/message-flow-debug.lib";
-import { createLogger } from "~/shared/lib/logger";
+import { chatKeyFromContext, chatKeyFromMockMessage } from "~/shared/lib/message-cache-keys.lib";
+import { logMessageFlow, summarizeChatContextForLog } from "~/shared/lib/message-flow-debug.lib";
 import {
   computeHasNewerAfterLoadNewerIdbPage,
   computeHasOlderAfterLoadOlderIdbPage,
 } from "~/shared/lib/message-pagination-boundary.lib";
-import { chatKeyFromContext, chatKeyFromMockMessage } from "~/shared/lib/message-cache-keys.lib";
 import { zulipMessageCacheWindowN } from "~/shared/lib/zulip-message-window.lib";
-import { outgoingEchoContentMatches } from "./message-outgoing-echo.lib";
 import { parseDmKeyToUserIds } from "./message-chat-context.lib";
 import { persistChatMessagesToIndexedDb } from "./message-local-cache.lib";
+import { outgoingEchoContentMatches } from "./message-outgoing-echo.lib";
 import { deriveFocusedPaginationFlags } from "./message-pagination-helpers.lib";
 import type { CurrentChatContext, CurrentChatMessagesState } from "./message.model.types";
 
@@ -92,12 +89,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     const cachedMessages: MockMessage[] = [];
 
     let nextContext: CurrentChatContext | null = context;
-    if (
-      prev != null &&
-      context != null &&
-      context.type === "stream" &&
-      prev.type === "stream"
-    ) {
+    if (prev != null && context?.type === "stream" && prev.type === "stream") {
       nextContext = {
         ...prev,
         streamName: context.streamName,
@@ -261,7 +253,9 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
 
   commitOutgoingMessage(optimisticId, finalMessage) {
     const idbRef: {
-      current: { kind: "none" } | { kind: "sync"; deleteNegativeId: number | null; message: MockMessage };
+      current:
+        | { kind: "none" }
+        | { kind: "sync"; deleteNegativeId: number | null; message: MockMessage };
     } = { current: { kind: "none" } };
 
     set((state) => {
@@ -325,7 +319,8 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
   removeMessage(messageId) {
     set((state) => {
       const removed = state.messages.find((m) => m.id === messageId);
-      const echoKey = removed?.local_echo_key ?? (removed != null && removed.id < 0 ? removed.id : null);
+      const echoKey =
+        removed?.local_echo_key ?? (removed != null && removed.id < 0 ? removed.id : null);
       const nextQueue =
         echoKey != null
           ? state.pendingOutgoingEchoKeys.filter((k) => k !== echoKey)

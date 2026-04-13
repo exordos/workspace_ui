@@ -89,7 +89,7 @@ describe("useUserProfileStore", () => {
       });
       vi.mocked(zulipApi.get).mockImplementation(async (path: string) => {
         if (path === "/realm/profile_fields") {
-          return {
+          return Promise.resolve({
             ok: true,
             status: 200,
             data: {
@@ -101,9 +101,9 @@ describe("useUserProfileStore", () => {
             headers: new Headers(),
             raw: new Response(),
             durationMs: 1,
-          };
+          });
         }
-        return {
+        return Promise.resolve({
           ok: true,
           status: 200,
           data: {
@@ -122,7 +122,7 @@ describe("useUserProfileStore", () => {
           headers: new Headers(),
           raw: new Response(),
           durationMs: 1,
-        };
+        });
       });
 
       await useUserProfileStore.getState().loadProfile(7);

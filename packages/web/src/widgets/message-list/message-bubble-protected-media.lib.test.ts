@@ -63,10 +63,7 @@ describe("resolveProtectedUploadFetchOptions", () => {
       location: { origin: "https://zulip.example.com" },
     });
     const headers = { Authorization: "Basic abc" };
-    const init = resolveProtectedUploadFetchOptions(
-      "/user_uploads/1/a.png",
-      headers,
-    );
+    const init = resolveProtectedUploadFetchOptions("/user_uploads/1/a.png", headers);
     expect(init.credentials).toBe("include");
     expect(init.headers).toEqual(headers);
   });

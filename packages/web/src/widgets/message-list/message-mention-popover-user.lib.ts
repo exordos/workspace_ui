@@ -3,7 +3,9 @@
  */
 
 /** Local part before @ for @mention display (aligned with right-panel resolveMentionNickname email branch). */
-export function extractMentionNicknameFromEmail(email: string | undefined | null): string | undefined {
+export function extractMentionNicknameFromEmail(
+  email: string | undefined | null,
+): string | undefined {
   if (email == null) return undefined;
   const trimmed = email.trim();
   if (trimmed.length === 0) return undefined;

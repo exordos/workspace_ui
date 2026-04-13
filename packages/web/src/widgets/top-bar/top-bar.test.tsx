@@ -1,5 +1,5 @@
-import React from "react";
 import { act, fireEvent, screen, within } from "@testing-library/react";
+import React from "react";
 import { useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
@@ -69,7 +69,10 @@ describe("TopBar", () => {
   it("sets aria-current on the section that matches the URL", () => {
     renderWithProviders(<TopBar />, { route: "/calendar" });
 
-    expect(screen.getByRole("button", { name: /calendar/i })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("button", { name: /calendar/i })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
     expect(screen.getByRole("button", { name: /chats\s*&\s*channels/i })).not.toHaveAttribute(
       "aria-current",
     );

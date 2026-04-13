@@ -459,7 +459,12 @@ describe("fetchMessagesWithNarrow", () => {
       found_oldest: true,
       found_newest: true,
     });
-    const page = await fetchMessagesWithNarrowPage([{ operator: "is", operand: "unread" }], "newest", 1, 1);
+    const page = await fetchMessagesWithNarrowPage(
+      [{ operator: "is", operand: "unread" }],
+      "newest",
+      1,
+      1,
+    );
     expect(page.foundOldest).toBe(true);
     expect(page.foundNewest).toBe(true);
     expect(page.messages).toHaveLength(1);

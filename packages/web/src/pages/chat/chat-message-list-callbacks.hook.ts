@@ -10,8 +10,8 @@ import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { buildZulipMessageWebPermalink } from "~/shared/lib/zulip-web-permalink.lib";
 import type { MessageListCallbacks } from "~/widgets/message-list/message-list.types";
 import { slugForStream } from "~/widgets/sidebar/sidebar.lib";
-import type { UseChatMessageListCallbacksParams } from "./chat-message-list-callbacks.types";
 import { resolveReplyQuoteContent } from "./chat-reply-quote.lib";
+import type { UseChatMessageListCallbacksParams } from "./chat-message-list-callbacks.types";
 
 export function useChatMessageListCallbacks(
   params: UseChatMessageListCallbacksParams,
@@ -46,8 +46,10 @@ export function useChatMessageListCallbacks(
       onMessageReply(msg, selectedText) {
         const permalinkUrl =
           realmBaseUrl.trim().length > 0
-            ? buildZulipMessageWebPermalink(realmBaseUrl, msg, (streamId) =>
-                streams.find((s) => s.stream_id === streamId)?.name,
+            ? buildZulipMessageWebPermalink(
+                realmBaseUrl,
+                msg,
+                (streamId) => streams.find((s) => s.stream_id === streamId)?.name,
               )
             : null;
         setReplyQuote({
