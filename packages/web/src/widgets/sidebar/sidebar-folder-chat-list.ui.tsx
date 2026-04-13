@@ -222,6 +222,7 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
             {visibleChats.map((chat) => {
               const chatWsId = chatToWorkspaceChatId(chat);
               const isPinnedChat = pinnedChatIdSet.has(chatWsId);
+              const dmTriggerOffsetClassName = isCompactDensity ? "right-1 top-6" : "right-1 top-8";
               const wrapPinned = (el: React.ReactElement) =>
                 isPinnedChat ? (
                   <SortablePinnedItem key={chatWsId} id={chatWsId}>
@@ -457,7 +458,12 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
                 );
               }
               return wrapPinned(
-                <DmContextMenu key={`dm-${chat.slug}`} chat={chat} folderId={pinScopeFolderId}>
+                <DmContextMenu
+                  key={`dm-${chat.slug}`}
+                  chat={chat}
+                  folderId={pinScopeFolderId}
+                  triggerOffsetClassName={dmTriggerOffsetClassName}
+                >
                   <DmChatRow
                     chat={chat}
                     isActive={chat.slug === activeDmIdParam}
