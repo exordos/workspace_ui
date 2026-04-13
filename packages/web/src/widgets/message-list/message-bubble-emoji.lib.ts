@@ -1,7 +1,7 @@
 /**
  * Emoji display helpers for message reactions (Zulip emoji_name / emoji_code).
  */
-import type { Reaction } from "~/shared/api/zulip.types";
+import type { MockMessage, Reaction } from "~/shared/api/zulip.types";
 
 /** Common emoji_name → character map (fallback when emoji_code cannot be converted). */
 export const EMOJI_NAME_TO_CHAR: Record<string, string> = {
@@ -37,18 +37,30 @@ export function emojiCodeToChar(emojiCode: string): string {
   }
 }
 
+/**
+ * True for a Zulip 1:1 DM (`private` with exactly two recipients). Group huddles have three or more.
+ * Aligned with `messageToDmEntry` in `entities/chat-list/chat-list.lib.ts`.
+ */
+export function isOneToOneDirectMessage(message: MockMessage): boolean {
+  return (
+    message.stream_id == null &&
+    Array.isArray(message.display_recipient) &&
+    message.display_recipient.length === 2
+  );
+}
+
 export function getReactionDisplayChar(reaction: Reaction): string {
   const fromCode = emojiCodeToChar(reaction.emoji_code);
   if (fromCode) return fromCode;
   return EMOJI_NAME_TO_CHAR[reaction.emoji_name] ?? reaction.emoji_name;
 }
 
-export type GroupedReaction = {
+export interface GroupedReaction {
   key: string;
   count: number;
   userIds: number[];
   displayChar: string;
-};
+}
 
 /** Group reactions by (emoji_name, reaction_type): { count, userIds, displayChar }. */
 export function groupReactions(reactions: Reaction[]): GroupedReaction[] {

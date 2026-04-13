@@ -1,12 +1,20 @@
 /**
  * Outgoing message body and attachment label helpers for the composer.
  */
+import { t } from "~/i18n/i18n";
 import type { ReplyQuote } from "./message-composer.types";
 
+/** Zulip-style reply: silent user mention, optional “wrote” permalink link, and fenced `quote` block. */
 export function buildOutgoingMessageBody(value: string, replyQuote?: ReplyQuote | null): string {
   let body = value.trim();
   if (replyQuote) {
-    const quoteBlock = `> **${replyQuote.sender_full_name}:**\n\n${replyQuote.content}\n\n`;
+    const wrote = t("message.replyQuoteWrote");
+    const link =
+      replyQuote.permalinkUrl != null && replyQuote.permalinkUrl.length > 0
+        ? ` [${wrote}](${replyQuote.permalinkUrl})`
+        : "";
+    const header = `@_**${replyQuote.sender_full_name}|${replyQuote.sender_id}**${link}:`;
+    const quoteBlock = `${header}\n\`\`\`quote\n${replyQuote.content}\n\`\`\`\n\n`;
     body = quoteBlock + body;
   }
   return body;

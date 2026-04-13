@@ -3,16 +3,21 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { InstanceSwitcher } from "~/features/instance-switch/instance-switch.ui";
 import { t } from "~/i18n/i18n";
+import { env } from "~/shared/lib/env";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { useSearchModalStore } from "~/widgets/search-modal/search-modal.model";
 import { SearchModal } from "~/widgets/search-modal/search-modal.ui";
 import { slugForStream } from "~/widgets/sidebar/sidebar.lib";
 import { TopBarDownloadCenter } from "./top-bar-download-center.ui";
-import { getSectionFromPathname, getTopBarSectionNavItems } from "./top-bar.lib";
 import { TopBarProfileTrigger } from "./top-bar-profile-trigger.ui";
-import { useTopBarSearchModal } from "./top-bar-search-modal.hook";
 import { TopBarSearchButton } from "./top-bar-search-button.ui";
+import { useTopBarSearchModal } from "./top-bar-search-modal.hook";
 import { TopBarSectionNav } from "./top-bar-section-nav.ui";
+import {
+  getSectionFromPathname,
+  getTopBarSectionNavItems,
+  resolveTopBarActiveSection,
+} from "./top-bar.lib";
 import type { TopBarSection } from "./top-bar.types";
 
 export const TopBar: React.FC = () => {
@@ -26,12 +31,19 @@ export const TopBar: React.FC = () => {
     onSelectUser: handleSearchSelectUser,
   } = useTopBarSearchModal({ navigate });
   const streamsFromStore = useChatListStore((s) => s.streams());
-
-  const sections = useMemo(() => getTopBarSectionNavItems(), []);
-  const activeSection = useMemo(
-    () => getSectionFromPathname(location.pathname),
-    [location.pathname],
+  const sections = useMemo(
+    () =>
+      getTopBarSectionNavItems({
+        showCallsNav: env.TOP_BAR_CALLS_NAV,
+        showServicesNav: env.TOP_BAR_SERVICES_NAV,
+      }),
+    [],
   );
+  const visibleSectionIds = useMemo(() => new Set(sections.map((item) => item.id)), [sections]);
+  const activeSection = useMemo(() => {
+    const fromPath = getSectionFromPathname(location.pathname);
+    return resolveTopBarActiveSection(fromPath, visibleSectionIds);
+  }, [location.pathname, visibleSectionIds]);
 
   const handleSectionChange = useCallback(
     (section: TopBarSection) => {

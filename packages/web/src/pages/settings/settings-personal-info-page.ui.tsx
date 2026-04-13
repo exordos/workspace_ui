@@ -4,11 +4,16 @@ import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import {
+  fetchOwnStatus,
+  fetchUserProfile,
+  updateOwnProfile,
+  updateOwnStatus,
+} from "~/features/user-profile/user-profile.api";
+import { useUserProfileStore } from "~/features/user-profile/user-profile.model";
+import {
   type OwnStatusData,
   type UserProfileData,
 } from "~/features/user-profile/user-profile.types";
-import { useUserProfileStore } from "~/features/user-profile/user-profile.model";
-import { fetchOwnStatus, fetchUserProfile, updateOwnProfile, updateOwnStatus } from "~/features/user-profile/user-profile.api";
 import { t } from "~/i18n/i18n";
 import { getRoleLabel, parseRole } from "~/shared/lib/roles";
 import { isValidRealmUrl } from "~/shared/lib/validation";
@@ -348,6 +353,28 @@ export const SettingsPersonalInfoPage: React.FC = () => {
               </div>
             </li>
             <li className="flex items-start gap-3 rounded-lg px-1 py-1.5 text-sm">
+              <Icon name="businessCenter" size={20} className="mt-0.5 shrink-0 text-icon-base" />
+              <div className="min-w-0 flex-1">
+                <p className="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-text-secondary">
+                  {t("info.jobTitle")}
+                </p>
+                <span className="block truncate whitespace-nowrap text-text-primary">
+                  {jobTitle}
+                </span>
+              </div>
+            </li>
+            <li className="flex items-start gap-3 rounded-lg px-1 py-1.5 text-sm">
+              <Icon name="handshake" size={20} className="mt-0.5 shrink-0 text-icon-base" />
+              <div className="min-w-0 flex-1">
+                <p className="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-text-secondary">
+                  {t("info.manager")}
+                </p>
+                <span className="block truncate whitespace-nowrap text-text-primary">
+                  {manager}
+                </span>
+              </div>
+            </li>
+            <li className="flex items-start gap-3 rounded-lg px-1 py-1.5 text-sm">
               <Icon name="phone" size={20} className="mt-0.5 shrink-0 text-icon-base" />
               <div className="min-w-0 flex-1">
                 <p className="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-text-secondary">
@@ -417,28 +444,6 @@ export const SettingsPersonalInfoPage: React.FC = () => {
                 </p>
                 <span className="block truncate whitespace-nowrap text-text-primary">
                   {joinedDate}
-                </span>
-              </div>
-            </li>
-            <li className="flex items-start gap-3 rounded-lg px-1 py-1.5 text-sm">
-              <Icon name="businessCenter" size={20} className="mt-0.5 shrink-0 text-icon-base" />
-              <div className="min-w-0 flex-1">
-                <p className="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-text-secondary">
-                  {t("info.jobTitle")}
-                </p>
-                <span className="block truncate whitespace-nowrap text-text-primary">
-                  {jobTitle}
-                </span>
-              </div>
-            </li>
-            <li className="flex items-start gap-3 rounded-lg px-1 py-1.5 text-sm">
-              <Icon name="handshake" size={20} className="mt-0.5 shrink-0 text-icon-base" />
-              <div className="min-w-0 flex-1">
-                <p className="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-text-secondary">
-                  {t("info.manager")}
-                </p>
-                <span className="block truncate whitespace-nowrap text-text-primary">
-                  {manager}
                 </span>
               </div>
             </li>

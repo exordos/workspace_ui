@@ -56,10 +56,7 @@ vi.mock("~/shared/api/zulip", async (importOriginal) => {
   };
 });
 
-import {
-  useCurrentChatMessagesStore,
-  type CurrentChatContext,
-} from "./message.model";
+import { useCurrentChatMessagesStore, type CurrentChatContext } from "./message.model";
 
 function mockMsg(overrides: Partial<MockMessage> = {}): MockMessage {
   return {
@@ -86,6 +83,7 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
     useCurrentChatMessagesStore.setState({
       context: null,
       messages: [],
+      pendingOutgoingEchoKeys: [],
       hasOlderMessages: true,
       hasNewerMessages: false,
     });
@@ -100,6 +98,7 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
     useCurrentChatMessagesStore.setState({
       context: null,
       messages: [],
+      pendingOutgoingEchoKeys: [],
       hasOlderMessages: true,
       hasNewerMessages: false,
     });

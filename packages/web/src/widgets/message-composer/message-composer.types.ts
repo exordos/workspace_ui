@@ -1,13 +1,16 @@
 /**
  * Types for the message composer widget.
  */
-import type { RefObject, ReactNode } from "react";
 import type { AiMessageContext, AiReplyRequest } from "~/features/ai-reply/ai-reply.types";
+import type { RefObject, ReactNode } from "react";
 
 export interface ReplyQuote {
   id: number;
   content: string;
   sender_full_name: string;
+  sender_id: number;
+  /** Full Zulip web URL (`https://realm/#narrow/.../near/id`); omit link text if null */
+  permalinkUrl: string | null;
 }
 
 export interface ComposerUploadProgress {

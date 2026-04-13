@@ -2,11 +2,12 @@
  * Text/time formatting helpers for chat-list sidebar preview labels.
  */
 import { t, getLocale } from "~/i18n/i18n";
+import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
 
 const MAX_PREVIEW_LEN = 60;
 
 export function truncatePreview(text: string): string {
-  const plain = text.replace(/<[^>]+>/g, "").trim();
+  const plain = plainTextPreviewFromMessageBody(text).trim();
   if (plain.length <= MAX_PREVIEW_LEN) return plain;
   return plain.slice(0, MAX_PREVIEW_LEN) + "…";
 }

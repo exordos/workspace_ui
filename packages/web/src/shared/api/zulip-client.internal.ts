@@ -5,10 +5,7 @@ import { Buffer } from "buffer";
 import zulipInitDefault from "zulip-js";
 import { t } from "~/i18n/i18n";
 import { getCurrentInstance } from "./client";
-import {
-  zulipPipelineGet,
-  zulipPipelinePost,
-} from "./zulip-pipeline.internal";
+import { zulipPipelineGet, zulipPipelinePost } from "./zulip-pipeline.internal";
 import { normalizeRealm as normalizeRealmUrl } from "./zulip-realm.internal";
 
 if (typeof (globalThis as unknown as { Buffer?: unknown }).Buffer === "undefined") {
@@ -34,6 +31,10 @@ const zulipInit = zulipInitDefault as unknown as (config: {
       anchor?: string | number;
       num_before?: number;
       num_after?: number;
+      include_anchor?: boolean;
+      client_gravatar?: boolean;
+      allow_empty_topic_name?: boolean;
+      apply_markdown?: boolean;
     }) => Promise<{
       messages?: {
         id: number;
@@ -82,6 +83,7 @@ export function buildMessagesQueryParams(params: {
     num_after: String(params.num_after ?? 0),
     allow_empty_topic_name: "true",
     client_gravatar: "true",
+    apply_markdown: "false",
   };
   if (params.narrow != null) {
     query.narrow = JSON.stringify(params.narrow);

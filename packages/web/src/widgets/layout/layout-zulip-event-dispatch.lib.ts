@@ -5,11 +5,11 @@ import { getCurrentInstance } from "~/shared/api/client";
 import type { ZulipEvent, ZulipRawMessage } from "~/shared/api/zulip";
 import { rawMessageToMockMessage } from "~/shared/api/zulip";
 import { getElectronAPI } from "~/shared/lib/electron";
-import { stripHtml } from "~/shared/lib/html";
 import {
   applyZulipEventToMessageIndexedDb,
   isChatMessagesPersistToIndexedDbEnabled,
 } from "~/shared/lib/message-idb-from-zulip.lib";
+import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
 import { shouldNotify } from "~/shared/lib/notifications-policy";
 import { closeReadMessageNotifications } from "./layout-notification-tags.lib";
 import type {
@@ -90,7 +90,7 @@ export function dispatchZulipEvent(event: ZulipEvent, ctx: LayoutZulipEventDispa
 
       if (shouldNotify({ isFromSelf, isForCurrentChat, isMuted })) {
         const senderName = raw.sender_full_name ?? "New message";
-        const contentPreview = stripHtml(raw.content ?? "").slice(0, 100);
+        const contentPreview = plainTextPreviewFromMessageBody(raw.content ?? "").slice(0, 100);
         notifications
           .show({
             title: senderName,
@@ -196,9 +196,25 @@ export function dispatchZulipEvent(event: ZulipEvent, ctx: LayoutZulipEventDispa
     activity.markStale();
     activity.markStarredSummaryStale();
     const messageId = event.message_id as number | undefined;
-    const newContent = event.rendered_content as string | undefined;
-    if (messageId != null && newContent != null) {
-      currentChat.updateMessageContent(messageId, newContent);
+    const renderingOnly = event.rendering_only === true;
+    const newMarkdown =
+      !renderingOnly && typeof event.content === "string" ? event.content : undefined;
+    const newHtml = event.rendered_content as string | undefined;
+    if (messageId == null) return;
+    if (renderingOnly) {
+      return;
+    }
+    if (newMarkdown != null) {
+      const trimmed = newMarkdown.trim();
+      currentChat.updateMessageContent(
+        messageId,
+        newMarkdown,
+        trimmed.length > 0 ? newMarkdown : undefined,
+      );
+      return;
+    }
+    if (newHtml != null) {
+      currentChat.updateMessageContent(messageId, newHtml);
     }
     return;
   }

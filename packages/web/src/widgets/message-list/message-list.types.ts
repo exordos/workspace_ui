@@ -17,6 +17,9 @@ export interface MessageListCallbacks {
   onMessageOpenInChat?: (message: MockMessage) => void;
   onTopicSeparatorClick?: (message: MockMessage) => void;
   onMessageAuthorClick?: (userId: number) => void;
+  onOpenDirectMessage?: (userId: number) => void;
+  onRetryFailedOutgoing?: (message: MockMessage) => void;
+  onRemoveFailedOutgoing?: (message: MockMessage) => void;
 }
 
 /** Props for grouped non-own messages (avatar column + bubbles). */

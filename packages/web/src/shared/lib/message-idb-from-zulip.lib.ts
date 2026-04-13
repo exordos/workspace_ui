@@ -87,9 +87,17 @@ export async function applyZulipEventToMessageIndexedDb(options: {
 
   if (event.type === "update_message") {
     const messageId = event.message_id as number | undefined;
-    const newContent = event.rendered_content as string | undefined;
-    if (messageId != null && newContent != null) {
-      await patchMessageContentInCache({ instanceId, messageId, content: newContent });
+    const newHtml = event.rendered_content as string | undefined;
+    const renderingOnly = event.rendering_only === true;
+    const newMarkdown =
+      !renderingOnly && typeof event.content === "string" ? event.content : undefined;
+    if (messageId != null && newHtml != null) {
+      await patchMessageContentInCache({
+        instanceId,
+        messageId,
+        content: newHtml,
+        ...(newMarkdown !== undefined ? { markdown_source: newMarkdown } : {}),
+      });
     }
   }
 }

@@ -1,11 +1,10 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect } from "react";
 import { ensureUserStatusLoaded } from "~/entities/user/api/user.api";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
 import { t } from "~/i18n/i18n";
-import { createLogger } from "~/shared/lib/logger";
-import { isValidUrl } from "~/shared/lib/validation";
+import { isValidEmail, isValidUrl } from "~/shared/lib/validation";
 import { Avatar } from "~/shared/ui/avatar";
 import { Copyable } from "~/shared/ui/copyable";
 import { Icon } from "~/shared/ui/icon";
@@ -15,11 +14,8 @@ import {
   buildTelHref,
   formatDateJoined,
   resolveAvatarSrc,
-  resolveMentionNickname,
 } from "./right-panel.lib";
 import type { RightPanelUserProps } from "./right-panel-user.types";
-
-const log = createLogger("right-panel");
 
 export const RightPanelUser = React.memo(function RightPanelUser({
   user,
@@ -42,6 +38,7 @@ export const RightPanelUser = React.memo(function RightPanelUser({
     user.isBot == null ? undefined : user.isBot ? t("info.botAccount") : t("info.humanAccount");
   const accountStatus =
     user.isActive == null ? undefined : user.isActive ? t("info.active") : t("info.deactivated");
+  const managerTrimmed = user.manager?.trim();
   const contactRows = [
     user.userId != null && {
       label: t("info.userId"),
@@ -56,8 +53,21 @@ export const RightPanelUser = React.memo(function RightPanelUser({
       primaryEmail.length > 0 && {
         label: t("common.email"),
         value: primaryEmail,
+        copyValue: primaryEmail,
+        copyAriaLabel: t("info.copyEmail"),
         icon: "mail" as const,
-        href: buildMailtoHref(primaryEmail),
+      },
+    user.jobTitle && {
+      label: t("info.jobTitle"),
+      value: user.jobTitle,
+      icon: "businessCenter" as const,
+    },
+    managerTrimmed != null &&
+      managerTrimmed.length > 0 && {
+        label: t("info.manager"),
+        value: managerTrimmed,
+        icon: "handshake" as const,
+        href: isValidEmail(managerTrimmed) ? buildMailtoHref(managerTrimmed) : undefined,
       },
     user.phone && {
       label: t("info.phone"),
@@ -79,17 +89,6 @@ export const RightPanelUser = React.memo(function RightPanelUser({
       icon: "calendar" as const,
     },
     joinedDate && { label: t("info.joined"), value: joinedDate, icon: "calendar" as const },
-    user.jobTitle && {
-      label: t("info.jobTitle"),
-      value: user.jobTitle,
-      icon: "businessCenter" as const,
-    },
-    user.manager && {
-      label: t("info.manager"),
-      value: user.manager,
-      icon: "handshake" as const,
-      href: buildMailtoHref(user.manager),
-    },
     user.birthday && { label: t("info.birthday"), value: user.birthday, icon: "calendar" as const },
   ].filter(Boolean) as {
     label: string;
@@ -110,68 +109,10 @@ export const RightPanelUser = React.memo(function RightPanelUser({
   }[];
   const avatarSrc = resolveAvatarSrc(user.avatarUrl);
   const openMediaViewer = useMediaViewerStore((s) => s.open);
-  const emailCopyValue = user.email?.trim() || undefined;
-  const userIdCopyValue = user.userId != null ? String(user.userId) : undefined;
-  const mentionNickname = resolveMentionNickname({ username: user.username, email: primaryEmail });
-  const mentionCopyValue = mentionNickname != null ? `@${mentionNickname}` : undefined;
   const liveStatus = useUsersStore((s) =>
     user.userId != null ? s.getUser(user.userId)?.status : undefined,
   );
   const statusLabel = formatUserStatusLabel(liveStatus) ?? user.status;
-  const [mentionCopyState, setMentionCopyState] = useState<"idle" | "success" | "error">("idle");
-  const [emailCopyState, setEmailCopyState] = useState<"idle" | "success" | "error">("idle");
-  const [userIdCopyState, setUserIdCopyState] = useState<"idle" | "success" | "error">("idle");
-  const mentionCopyButtonLabel =
-    mentionCopyState === "success"
-      ? t("message.copied")
-      : mentionCopyState === "error"
-        ? t("message.copyFailed")
-        : t("info.copyMentionNickname");
-  const emailCopyButtonLabel =
-    emailCopyState === "success"
-      ? t("message.copied")
-      : emailCopyState === "error"
-        ? t("message.copyFailed")
-        : t("info.copyEmail");
-  const userIdCopyButtonLabel =
-    userIdCopyState === "success"
-      ? t("message.copied")
-      : userIdCopyState === "error"
-        ? t("message.copyFailed")
-        : t("info.copyUserId");
-
-  const copyProfileValue = useCallback(
-    async (value: string, field: "mention nickname" | "email" | "user id"): Promise<boolean> => {
-      const clipboardApi = navigator.clipboard;
-      if (clipboardApi?.writeText == null) {
-        log.warn("Clipboard API unavailable while copying profile field", {
-          field,
-          userId: user.userId ?? null,
-        });
-        return false;
-      }
-
-      try {
-        await clipboardApi.writeText(value);
-        return true;
-      } catch (error) {
-        log.warn("Failed to copy profile field", {
-          field,
-          userId: user.userId ?? null,
-          error: String(error),
-        });
-        return false;
-      }
-    },
-    [user.userId],
-  );
-
-  const handleCopyEmail = useCallback(async () => {
-    if (!emailCopyValue) return;
-    setEmailCopyState("idle");
-    const copied = await copyProfileValue(emailCopyValue, "email");
-    setEmailCopyState(copied ? "success" : "error");
-  }, [copyProfileValue, emailCopyValue]);
 
   const handleOpenAvatarPreview = useCallback(() => {
     if (!avatarSrc) return;
@@ -229,31 +170,16 @@ export const RightPanelUser = React.memo(function RightPanelUser({
               )}
             </div>
           </div>
-          {(directMessageUserId != null ||
-            mentionCopyValue != null ||
-            emailCopyValue != null ||
-            userIdCopyValue != null) && (
+          {directMessageUserId != null && (
             <div className="mt-3 space-y-2">
-              {directMessageUserId != null && (
-                <button
-                  type="button"
-                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-on-accent hover:opacity-90"
-                  onClick={() => onOpenDirectMessage?.(directMessageUserId)}
-                >
-                  <Icon name="chatBubble" size={16} className="shrink-0 text-current" />
-                  <span>{t("info.openDirectMessages")}</span>
-                </button>
-              )}
-              {emailCopyValue != null && (
-                <button
-                  type="button"
-                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-card-bg"
-                  onClick={() => void handleCopyEmail()}
-                >
-                  <Icon name="mail" size={16} className="shrink-0 text-current" />
-                  <span>{emailCopyButtonLabel}</span>
-                </button>
-              )}
+              <button
+                type="button"
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-on-accent hover:opacity-90"
+                onClick={() => onOpenDirectMessage?.(directMessageUserId)}
+              >
+                <Icon name="chatBubble" size={16} className="shrink-0 text-current" />
+                <span>{t("info.openDirectMessages")}</span>
+              </button>
             </div>
           )}
           {contactRows.length > 0 && (

@@ -102,7 +102,7 @@ afterEach(() => {
 });
 
 describe("MessageComposer async send behavior", () => {
-  it("waits for async onSend before clearing the composer", async () => {
+  it("clears the composer as soon as send starts, before onSend resolves", async () => {
     let resolveSend: () => void = () => {
       throw new Error("Expected send resolver to be assigned");
     };
@@ -119,16 +119,14 @@ describe("MessageComposer async send behavior", () => {
     fireEvent.click(screen.getByRole("button", { name: /write a message/i }));
 
     expect(onSend).toHaveBeenCalledWith("Hello world", "general", undefined);
-    expect(textbox).toHaveValue("Hello world");
-
-    resolveSend();
-
     await waitFor(() => {
       expect(textbox).toHaveValue("");
     });
+
+    resolveSend();
   });
 
-  it("keeps the composer content when async onSend rejects", async () => {
+  it("leaves the composer empty when async onSend rejects", async () => {
     const onSend = vi.fn().mockRejectedValue(new Error("send failed"));
 
     renderWithProviders(<MessageComposer onSend={onSend} />);
@@ -141,7 +139,7 @@ describe("MessageComposer async send behavior", () => {
       expect(onSend).toHaveBeenCalledWith("Draft text", "general", undefined);
     });
 
-    expect(textbox).toHaveValue("Draft text");
+    expect(textbox).toHaveValue("");
   });
 });
 

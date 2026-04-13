@@ -31,7 +31,10 @@ export async function getCurrentUser(): Promise<ZulipCurrentUser | null> {
 
 /** Fetches the full user list (GET /users) for populating usersStore. */
 export async function fetchUsers(): Promise<ZulipUserMember[]> {
-  const res = await zulipPipelineGet("/users", { client_gravatar: "false" });
+  const res = await zulipPipelineGet("/users", {
+    client_gravatar: "false",
+    include_custom_profile_fields: "true",
+  });
   if (!res?.ok) {
     return [];
   }
@@ -47,7 +50,10 @@ export async function fetchUsers(): Promise<ZulipUserMember[]> {
 /** Fetches a single user by ID (GET /users/{user_id}). Used for DM profile panel. */
 export async function fetchUser(userId: number): Promise<ZulipUserMember | null> {
   guard.userId(userId, "fetchUser");
-  const res = await zulipPipelineGet(`/users/${userId}`, { client_gravatar: "false" });
+  const res = await zulipPipelineGet(`/users/${userId}`, {
+    client_gravatar: "false",
+    include_custom_profile_fields: "true",
+  });
   if (!res?.ok) {
     return null;
   }
