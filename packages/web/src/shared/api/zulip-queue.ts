@@ -28,11 +28,16 @@ import type {
   RegisterQueueResult,
   ZulipCredentials,
   ZulipRecentPrivateConversation,
+  ZulipSubscription,
   ZulipUserTopic,
 } from "./zulip.types";
 
 // Зачем: просим у Zulip только те metadata-секции, которые нужны для sidebar без загрузки больших пачек сообщений.
-const DEFAULT_REGISTER_FETCH_EVENT_TYPES = ["user_topic", "recent_private_conversations"] as const;
+const DEFAULT_REGISTER_FETCH_EVENT_TYPES = [
+  "subscription",
+  "user_topic",
+  "recent_private_conversations",
+] as const;
 
 function isPositiveInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value > 0;
@@ -72,6 +77,32 @@ function parseRecentPrivateConversations(
   return parsed;
 }
 
+function parseSubscriptions(data: unknown): ZulipSubscription[] | null {
+  if (!Array.isArray(data)) {
+    return null;
+  }
+  return data
+    .filter(
+      (
+        value,
+      ): value is {
+        stream_id: number;
+        name: string;
+        is_muted?: boolean;
+        in_home_view?: boolean;
+      } =>
+        typeof value === "object" &&
+        value != null &&
+        typeof (value as { stream_id?: unknown }).stream_id === "number" &&
+        typeof (value as { name?: unknown }).name === "string",
+    )
+    .map((subscription) => ({
+      stream_id: subscription.stream_id,
+      name: subscription.name,
+      is_muted: subscription.is_muted ?? !(subscription.in_home_view ?? true),
+    }));
+}
+
 /** Registers an event queue (POST /api/v1/register). Returns queue_id for subsequent long-polling. */
 export async function registerQueue(
   eventTypes: string[],
@@ -92,6 +123,7 @@ export async function registerQueue(
     queue_id?: string;
     last_event_id?: number;
     event_queue_longpoll_timeout_seconds?: number;
+    subscriptions?: unknown;
     user_topics?: unknown;
     recent_private_conversations?: unknown;
   } | null;
@@ -105,6 +137,7 @@ export async function registerQueue(
     throw new Error(t("app.invalidRegisterResponse"));
   }
 
+  const subscriptions = parseSubscriptions(data.subscriptions);
   const userTopics = parseUserTopics(data.user_topics);
   const recentPrivateConversations = parseRecentPrivateConversations(
     data.recent_private_conversations,
@@ -118,6 +151,7 @@ export async function registerQueue(
     queue_id: data.queue_id,
     last_event_id: data.last_event_id,
     event_queue_longpoll_timeout_seconds: data.event_queue_longpoll_timeout_seconds,
+    ...(subscriptions ? { subscriptions } : {}),
     ...(userTopics ? { user_topics: userTopics } : {}),
     ...(recentPrivateConversations
       ? { recent_private_conversations: recentPrivateConversations }
@@ -162,6 +196,7 @@ export async function registerQueueForCredentials(
     queue_id?: string;
     last_event_id?: number;
     event_queue_longpoll_timeout_seconds?: number;
+    subscriptions?: unknown;
     user_topics?: unknown;
     recent_private_conversations?: unknown;
   };
@@ -178,6 +213,7 @@ export async function registerQueueForCredentials(
     throw new Error(t("app.invalidRegisterResponse"));
   }
 
+  const subscriptions = parseSubscriptions(data.subscriptions);
   const userTopics = parseUserTopics(data.user_topics);
   const recentPrivateConversations = parseRecentPrivateConversations(
     data.recent_private_conversations,
@@ -191,6 +227,7 @@ export async function registerQueueForCredentials(
     queue_id: data.queue_id,
     last_event_id: data.last_event_id,
     event_queue_longpoll_timeout_seconds: data.event_queue_longpoll_timeout_seconds,
+    ...(subscriptions ? { subscriptions } : {}),
     ...(userTopics ? { user_topics: userTopics } : {}),
     ...(recentPrivateConversations
       ? { recent_private_conversations: recentPrivateConversations }

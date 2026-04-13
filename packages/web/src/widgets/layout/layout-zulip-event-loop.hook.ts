@@ -18,7 +18,6 @@ import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indi
 import {
   deleteQueue,
   fetchDirectMessagesPage,
-  fetchSubscriptions,
   fetchUsers,
   getCurrentUser,
   type ZulipEvent,
@@ -27,7 +26,6 @@ import type {
   ZulipRawMessage,
   ZulipRecentPrivateConversation,
   ZulipUserMember,
-  ZulipUserTopic,
 } from "~/shared/api/zulip.types";
 import {
   loadDmIndexEntries,
@@ -48,6 +46,7 @@ import {
 } from "./layout-zulip-event-dispatch.lib";
 import { runLayoutReconnectRefresh } from "./layout-zulip-refresh-stale.lib";
 import type { ChatListBootstrapResult } from "./layout-chat-list-bootstrap.lib";
+import type { LayoutMuteBootstrapData } from "./layout-instance-bootstrap.hook";
 
 // Что делает: размер одной фоновой страницы DM-backfill.
 const METADATA_DM_BACKFILL_PAGE_SIZE = 5000;
@@ -55,8 +54,14 @@ const METADATA_DM_BACKFILL_PAGE_SIZE = 5000;
 const METADATA_DM_BACKFILL_MAX_BATCHES = 3;
 // Что делает: останавливает backfill, если несколько батчей подряд не добавляют новые DM.
 const METADATA_DM_BACKFILL_STAGNATION_LIMIT = 2;
+// Что делает: всегда подтягивает register-снимок для subscription/topic mute и DM metadata.
+const REGISTER_FETCH_EVENT_TYPES = [
+  "subscription",
+  "user_topic",
+  "recent_private_conversations",
+] as const;
 
-// Что делает: превращает subscriptions API в строки metadata для chat-list store.
+// Что делает: превращает register subscriptions metadata в строки для chat-list store.
 function toStreamMetadataRows(
   subscriptions: readonly { stream_id: number; name: string }[],
 ): ChatListStreamMetadataRow[] {
@@ -127,7 +132,7 @@ function persistDmIndexFromStore(instanceId: string): void {
 export function useLayoutZulipEventLoop(options: {
   currentInstanceId: string | null;
   loadBootstrapMessages: () => Promise<ChatListBootstrapResult>;
-  loadMuteSnapshot: (bootstrapUserTopics?: ZulipUserTopic[]) => Promise<{
+  loadMuteSnapshot: (bootstrap?: LayoutMuteBootstrapData) => Promise<{
     mutedStreamIds: number[];
     mutedTopics: { streamId: number; topic: string }[];
     unmutedTopics: { streamId: number; topic: string }[];
@@ -195,6 +200,7 @@ export function useLayoutZulipEventLoop(options: {
       useCurrentChatMessagesStore.getState().setContext(null);
       useCurrentChatMessagesStore.getState().setMessages([]);
       useJitsiCallStore.getState().clear();
+      useMuteStore.getState().clear();
       latestMessageIdRef.current = null;
     }
 
@@ -218,7 +224,6 @@ export function useLayoutZulipEventLoop(options: {
         metadataBootstrapEnabled && env.METADATA_DM_BACKFILL_ENABLED;
       const pUsers = fetchUsers();
       const pMessages = loadBootstrapMessagesRef.current();
-      const pSubscriptions = metadataBootstrapEnabled ? fetchSubscriptions() : Promise.resolve([]);
       const pCurrentUserId = getCurrentUser()
         .then((user) => {
           if (cancelled) return null;
@@ -243,10 +248,9 @@ export function useLayoutZulipEventLoop(options: {
         });
 
       try {
-        const [members, bootstrap, subscriptions, resolvedCurrentUserId] = await Promise.all([
+        const [members, bootstrap, resolvedCurrentUserId] = await Promise.all([
           pUsers,
           pMessages,
-          pSubscriptions,
           pCurrentUserId,
         ]);
         if (cancelled) return;
@@ -257,11 +261,7 @@ export function useLayoutZulipEventLoop(options: {
         const uid = resolvedCurrentUserId ?? useChatListStore.getState().currentUserId ?? null;
 
         if (metadataBootstrapEnabled) {
-          // Что делает: сначала показываем каналы/DM из metadata, даже если окно сообщений пустое.
-          const streamMetadataRows = toStreamMetadataRows(subscriptions);
-          if (streamMetadataRows.length > 0) {
-            useChatListStore.getState().upsertStreamMetadataRows(streamMetadataRows);
-          }
+          // Что делает: сначала показываем DM из metadata, даже если окно сообщений пустое.
           const dmIndexEntries = loadDmIndexEntries(currentInstanceId);
           if (dmIndexEntries.length > 0) {
             useChatListStore
@@ -379,12 +379,14 @@ export function useLayoutZulipEventLoop(options: {
           signal: eventLoopAbortRef.current.signal,
           onReconnect: refreshStaleData,
           onBadQueue: refreshStaleData,
-          fetchEventTypes: metadataBootstrapEnabled
-            ? ["user_topic", "recent_private_conversations"]
-            : undefined,
+          fetchEventTypes: [...REGISTER_FETCH_EVENT_TYPES],
           onQueueRegistered: (id, registration) => {
             queueIdRef.current = id;
             if (metadataBootstrapEnabled) {
+              const streamRows = toStreamMetadataRows(registration?.subscriptions ?? []);
+              if (streamRows.length > 0) {
+                useChatListStore.getState().upsertStreamMetadataRows(streamRows);
+              }
               // Что делает: подмешивает recent_private_conversations сразу после register.
               const rows = toDmMetadataRowsFromRecentConversations(
                 registration?.recent_private_conversations,
@@ -397,7 +399,10 @@ export function useLayoutZulipEventLoop(options: {
               }
             }
             void loadMuteSnapshotRef
-              .current(registration?.user_topics)
+              .current({
+                subscriptions: registration?.subscriptions,
+                userTopics: registration?.user_topics,
+              })
               .then((snapshot) => {
                 if (!cancelled) {
                   useMuteStore.getState().setFromServer(snapshot);

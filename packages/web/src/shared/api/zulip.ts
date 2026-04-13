@@ -334,6 +334,32 @@ function parseUserTopics(data: unknown): ZulipUserTopic[] | null {
   return data.filter(isZulipUserTopic);
 }
 
+function parseSubscriptions(data: unknown): ZulipSubscription[] | null {
+  if (!Array.isArray(data)) {
+    return null;
+  }
+  return data
+    .filter(
+      (
+        value,
+      ): value is {
+        stream_id: number;
+        name: string;
+        is_muted?: boolean;
+        in_home_view?: boolean;
+      } =>
+        typeof value === "object" &&
+        value != null &&
+        typeof (value as { stream_id?: unknown }).stream_id === "number" &&
+        typeof (value as { name?: unknown }).name === "string",
+    )
+    .map((subscription) => ({
+      stream_id: subscription.stream_id,
+      name: subscription.name,
+      is_muted: subscription.is_muted ?? !(subscription.in_home_view ?? true),
+    }));
+}
+
 function isPositiveInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value > 0;
 }
@@ -634,13 +660,18 @@ export interface RegisterQueueResult {
   queue_id: string;
   last_event_id: number;
   event_queue_longpoll_timeout_seconds?: number;
+  subscriptions?: ZulipSubscription[];
   user_topics?: ZulipUserTopic[];
   // Зачем: metadata recent DM для первичного построения списка диалогов.
   recent_private_conversations?: Record<string, ZulipRecentPrivateConversation>;
 }
 
 // Зачем: по умолчанию подтягиваем metadata, чтобы быстрее собрать sidebar без полной истории сообщений.
-const DEFAULT_REGISTER_FETCH_EVENT_TYPES = ["user_topic", "recent_private_conversations"] as const;
+const DEFAULT_REGISTER_FETCH_EVENT_TYPES = [
+  "subscription",
+  "user_topic",
+  "recent_private_conversations",
+] as const;
 
 export interface ZulipEvent {
   id: number;
@@ -709,6 +740,7 @@ export async function registerQueue(
     queue_id?: string;
     last_event_id?: number;
     event_queue_longpoll_timeout_seconds?: number;
+    subscriptions?: unknown;
     user_topics?: unknown;
     recent_private_conversations?: unknown;
   } | null;
@@ -722,6 +754,7 @@ export async function registerQueue(
     throw new Error(t("app.invalidRegisterResponse"));
   }
 
+  const subscriptions = parseSubscriptions(data.subscriptions);
   const userTopics = parseUserTopics(data.user_topics);
   const recentPrivateConversations = parseRecentPrivateConversations(
     data.recent_private_conversations,
@@ -735,6 +768,7 @@ export async function registerQueue(
     queue_id: data.queue_id,
     last_event_id: data.last_event_id,
     event_queue_longpoll_timeout_seconds: data.event_queue_longpoll_timeout_seconds,
+    ...(subscriptions ? { subscriptions } : {}),
     ...(userTopics ? { user_topics: userTopics } : {}),
     ...(recentPrivateConversations
       ? { recent_private_conversations: recentPrivateConversations }
@@ -779,6 +813,7 @@ export async function registerQueueForCredentials(
     queue_id?: string;
     last_event_id?: number;
     event_queue_longpoll_timeout_seconds?: number;
+    subscriptions?: unknown;
     user_topics?: unknown;
     recent_private_conversations?: unknown;
   };
@@ -795,6 +830,7 @@ export async function registerQueueForCredentials(
     throw new Error(t("app.invalidRegisterResponse"));
   }
 
+  const subscriptions = parseSubscriptions(data.subscriptions);
   const userTopics = parseUserTopics(data.user_topics);
   const recentPrivateConversations = parseRecentPrivateConversations(
     data.recent_private_conversations,
@@ -808,6 +844,7 @@ export async function registerQueueForCredentials(
     queue_id: data.queue_id,
     last_event_id: data.last_event_id,
     event_queue_longpoll_timeout_seconds: data.event_queue_longpoll_timeout_seconds,
+    ...(subscriptions ? { subscriptions } : {}),
     ...(userTopics ? { user_topics: userTopics } : {}),
     ...(recentPrivateConversations
       ? { recent_private_conversations: recentPrivateConversations }

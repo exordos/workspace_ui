@@ -494,7 +494,11 @@ describe("registerQueue", () => {
     expect(mockRefreshZulipApiBase).toHaveBeenCalled();
     expect(mockZulipApi.post).toHaveBeenCalledWith("/register", {
       event_types: JSON.stringify(["message", "presence"]),
-      fetch_event_types: JSON.stringify(["user_topic", "recent_private_conversations"]),
+      fetch_event_types: JSON.stringify([
+        "subscription",
+        "user_topic",
+        "recent_private_conversations",
+      ]),
     });
   });
 

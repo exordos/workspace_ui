@@ -2,10 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { ensureStarredLoaded } from "~/entities/activity/activity-starred-loader.lib";
 import { useActivityStore } from "~/entities/activity/activity.model";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
-import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
-import { fetchSubscriptions } from "~/shared/api/zulip";
-import { fetchUserTopics } from "~/shared/api/zulip-queue";
-import type { ZulipUserTopic } from "~/shared/api/zulip.types";
+import type { ZulipSubscription, ZulipUserTopic } from "~/shared/api/zulip.types";
 
 export interface LayoutMuteSnapshot {
   mutedStreamIds: number[];
@@ -13,11 +10,16 @@ export interface LayoutMuteSnapshot {
   unmutedTopics: { streamId: number; topic: string }[];
 }
 
+export interface LayoutMuteBootstrapData {
+  subscriptions?: ZulipSubscription[];
+  userTopics?: ZulipUserTopic[];
+}
+
 export function useLayoutInstanceBootstrap(options: {
   currentInstanceId: string | null;
   currentUserStatus: "idle" | "loading" | "ready" | "error";
 }): {
-  loadMuteSnapshot: (bootstrapUserTopics?: ZulipUserTopic[]) => Promise<LayoutMuteSnapshot>;
+  loadMuteSnapshot: (bootstrap?: LayoutMuteBootstrapData) => Promise<LayoutMuteSnapshot>;
 } {
   const { currentInstanceId, currentUserStatus } = options;
   const starredSummaryStale = useActivityStore((s) => s.starredSummary.stale);
@@ -25,10 +27,10 @@ export function useLayoutInstanceBootstrap(options: {
 
   // Загружает mute-снимок инстанса (muted streams/topics) для консистентной UI-модели.
   const loadMuteSnapshot = useCallback(
-    async (bootstrapUserTopics?: ZulipUserTopic[]): Promise<LayoutMuteSnapshot> => {
-      const [subs, cachedUserTopics] = await Promise.all([fetchSubscriptions(), fetchUserTopics()]);
-      const userTopics = bootstrapUserTopics ?? cachedUserTopics;
-      const mutedStreamIds = subs.filter((s) => s.is_muted).map((s) => s.stream_id);
+    (bootstrap?: LayoutMuteBootstrapData): Promise<LayoutMuteSnapshot> => {
+      const subscriptions = bootstrap?.subscriptions ?? [];
+      const userTopics = bootstrap?.userTopics ?? [];
+      const mutedStreamIds = subscriptions.filter((s) => s.is_muted).map((s) => s.stream_id);
       const mutedTopics: { streamId: number; topic: string }[] = [];
       const unmutedTopics: { streamId: number; topic: string }[] = [];
       for (const ut of userTopics) {
@@ -38,27 +40,10 @@ export function useLayoutInstanceBootstrap(options: {
           unmutedTopics.push({ streamId: ut.stream_id, topic: ut.topic_name });
         }
       }
-      return { mutedStreamIds, mutedTopics, unmutedTopics };
+      return Promise.resolve({ mutedStreamIds, mutedTopics, unmutedTopics });
     },
     [],
   );
-
-  useEffect(() => {
-    if (!currentInstanceId || currentUserStatus !== "ready") return;
-    let cancelled = false;
-
-    loadMuteSnapshot()
-      .then((snapshot) => {
-        if (!cancelled) {
-          useMuteStore.getState().setFromServer(snapshot);
-        }
-      })
-      .catch(() => {});
-
-    return () => {
-      cancelled = true;
-    };
-  }, [currentInstanceId, currentUserStatus, loadMuteSnapshot]);
 
   useEffect(() => {
     // Единый bootstrap starred для общего activity-store.

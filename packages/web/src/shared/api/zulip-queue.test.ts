@@ -44,7 +44,11 @@ describe("registerQueue", () => {
     expect(mockRefreshZulipApiBase).toHaveBeenCalled();
     expect(mockZulipApi.post).toHaveBeenCalledWith("/register", {
       event_types: JSON.stringify(["message", "presence"]),
-      fetch_event_types: JSON.stringify(["user_topic", "recent_private_conversations"]),
+      fetch_event_types: JSON.stringify([
+        "subscription",
+        "user_topic",
+        "recent_private_conversations",
+      ]),
     });
   });
 
@@ -105,6 +109,29 @@ describe("registerQueue", () => {
         unread_message_ids: [551, 552],
       },
     });
+  });
+
+  it("parses subscriptions from register payload", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        queue_id: "q-123",
+        last_event_id: -1,
+        subscriptions: [
+          { stream_id: 10, name: "general", is_muted: true },
+          { stream_id: 11, name: "dev", in_home_view: false },
+        ],
+      },
+      raw: { statusText: "OK" },
+    });
+
+    const result = await registerQueue(["message"], ["subscription"]);
+    expect(result.subscriptions).toEqual([
+      { stream_id: 10, name: "general", is_muted: true },
+      { stream_id: 11, name: "dev", is_muted: true },
+    ]);
   });
 });
 
