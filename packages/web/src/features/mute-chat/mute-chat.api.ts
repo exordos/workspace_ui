@@ -1,7 +1,7 @@
 /**
  * Mute/unmute API — calls Zulip endpoints for stream and topic muting.
  *
- * Stream mute: PATCH /users/me/subscriptions/properties
+ * Stream mute: POST /users/me/subscriptions/properties
  * Topic mute: POST /user_topics
  */
 
@@ -90,4 +90,8 @@ export async function muteTopic(streamId: number, topic: string): Promise<boolea
 
 export async function unmuteTopic(streamId: number, topic: string): Promise<boolean> {
   return setTopicVisibility(streamId, topic, VISIBILITY_POLICY.INHERIT);
+}
+
+export async function unmuteTopicInMutedStream(streamId: number, topic: string): Promise<boolean> {
+  return setTopicVisibility(streamId, topic, VISIBILITY_POLICY.UNMUTED);
 }

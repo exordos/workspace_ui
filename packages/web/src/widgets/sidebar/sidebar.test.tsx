@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
+import type * as MuteChatApiModule from "~/features/mute-chat/mute-chat.api";
+import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import type * as PinChatApiModule from "~/features/pin-chat/pin-chat.api";
 import { usePinStore } from "~/features/pin-chat/pin-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
@@ -20,6 +22,11 @@ import { Sidebar } from "./sidebar.ui";
 const createChannelMock = vi.fn();
 const markDmAsReadMock = vi.fn();
 const setTopicResolvedStateMock = vi.fn();
+const muteStreamMock = vi.fn();
+const unmuteStreamMock = vi.fn();
+const muteTopicMock = vi.fn();
+const unmuteTopicMock = vi.fn();
+const unmuteTopicInMutedStreamMock = vi.fn();
 const pinChatInFolderMock = vi.fn();
 const unpinChatInFolderMock = vi.fn();
 const getFolderItemsMock = vi.fn();
@@ -41,6 +48,18 @@ vi.mock("~/shared/api/zulip", async (importOriginal) => {
     ...actual,
     markDmAsRead: (...args: unknown[]) => markDmAsReadMock(...args),
     setTopicResolvedState: (...args: unknown[]) => setTopicResolvedStateMock(...args),
+  };
+});
+
+vi.mock("~/features/mute-chat/mute-chat.api", async (importOriginal) => {
+  const actual = await importOriginal<typeof MuteChatApiModule>();
+  return {
+    ...actual,
+    muteStream: (...args: unknown[]) => muteStreamMock(...args),
+    unmuteStream: (...args: unknown[]) => unmuteStreamMock(...args),
+    muteTopic: (...args: unknown[]) => muteTopicMock(...args),
+    unmuteTopic: (...args: unknown[]) => unmuteTopicMock(...args),
+    unmuteTopicInMutedStream: (...args: unknown[]) => unmuteTopicInMutedStreamMock(...args),
   };
 });
 
@@ -131,6 +150,7 @@ describe("Sidebar", () => {
     useFolderSyncStore.getState().clear();
     useUsersStore.getState().clear();
     useTypingIndicatorStore.getState().clearAll();
+    useMuteStore.getState().clear();
     usePinStore.getState().clear();
     useChatListStore.setState({ currentUserId: null });
     useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: [] });
@@ -140,6 +160,16 @@ describe("Sidebar", () => {
     createChannelMock.mockReset();
     markDmAsReadMock.mockReset();
     setTopicResolvedStateMock.mockReset();
+    muteStreamMock.mockReset();
+    unmuteStreamMock.mockReset();
+    muteTopicMock.mockReset();
+    unmuteTopicMock.mockReset();
+    unmuteTopicInMutedStreamMock.mockReset();
+    muteStreamMock.mockResolvedValue(true);
+    unmuteStreamMock.mockResolvedValue(true);
+    muteTopicMock.mockResolvedValue(true);
+    unmuteTopicMock.mockResolvedValue(true);
+    unmuteTopicInMutedStreamMock.mockResolvedValue(true);
     pinChatInFolderMock.mockReset();
     unpinChatInFolderMock.mockReset();
     getFolderItemsMock.mockReset();
@@ -935,6 +965,31 @@ describe("Sidebar", () => {
     expect(await screen.findByRole("menuitem", { name: /mark as read/i })).toBeInTheDocument();
   });
 
+  it("rolls back stream mute and shows retry feedback when API call fails", async () => {
+    muteStreamMock.mockResolvedValue(false);
+
+    renderWithProviders(
+      <Sidebar streams={[]} selectedFolderId="all" sidebarChats={[STREAM_CHAT]} sidebarDms={[]} />,
+    );
+
+    const streamLink = screen.getByRole("link", { name: /engineering/i });
+    fireEvent.contextMenu(streamLink);
+
+    const muteItem = await screen.findByRole("menuitem", { name: /mute notifications/i });
+    fireEvent.click(muteItem);
+
+    await waitFor(() => {
+      expect(muteStreamMock).toHaveBeenCalledWith(11);
+      expect(useMuteStore.getState().isStreamMuted(11)).toBe(false);
+      expect(screen.getByText(t("app.error"))).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+    await waitFor(() => {
+      expect(muteStreamMock).toHaveBeenCalledTimes(2);
+    });
+  });
+
   it("adds stream chat to folder from context submenu item click", async () => {
     getFoldersMock.mockResolvedValue([
       {
@@ -1419,6 +1474,80 @@ describe("Sidebar", () => {
     expect(actionsContainer).toHaveClass("items-end");
     expect(within(topicLink).getByText("2")).toBeInTheDocument();
     expect(within(actionsContainer as HTMLElement).queryByText("2")).toBeNull();
+  });
+
+  it("uses effective mute state for topic action label when stream is muted", () => {
+    useMuteStore.getState().muteStream(11);
+    const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
+      ...STREAM_CHAT,
+      topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
+    };
+    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
+
+    renderWithProviders(
+      <Sidebar
+        streams={[]}
+        selectedFolderId="all"
+        sidebarChats={[streamWithTopics]}
+        sidebarDms={[]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /expand topics/i }));
+    expect(screen.getByRole("button", { name: /unmute topic/i })).toBeInTheDocument();
+  });
+
+  it("uses visibility_policy=2 endpoint when unmuting topic in muted stream", async () => {
+    useMuteStore.getState().muteStream(11);
+    const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
+      ...STREAM_CHAT,
+      topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
+    };
+    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
+
+    renderWithProviders(
+      <Sidebar
+        streams={[]}
+        selectedFolderId="all"
+        sidebarChats={[streamWithTopics]}
+        sidebarDms={[]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /expand topics/i }));
+    fireEvent.click(screen.getByRole("button", { name: /unmute topic/i }));
+
+    await waitFor(() => {
+      expect(unmuteTopicInMutedStreamMock).toHaveBeenCalledWith(11, "incident");
+      expect(useMuteStore.getState().isTopicUnmuted(11, "incident")).toBe(true);
+    });
+  });
+
+  it("rolls back topic mute and shows retry feedback when topic API fails", async () => {
+    muteTopicMock.mockResolvedValue(false);
+    const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
+      ...STREAM_CHAT,
+      topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
+    };
+    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
+
+    renderWithProviders(
+      <Sidebar
+        streams={[]}
+        selectedFolderId="all"
+        sidebarChats={[streamWithTopics]}
+        sidebarDms={[]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /expand topics/i }));
+    fireEvent.click(screen.getByRole("button", { name: /mute topic/i }));
+
+    await waitFor(() => {
+      expect(muteTopicMock).toHaveBeenCalledWith(11, "incident");
+      expect(useMuteStore.getState().isTopicMuted(11, "incident")).toBe(false);
+      expect(screen.getByText(t("app.error"))).toBeInTheDocument();
+    });
   });
 
   it("navigates to topic when topic unread badge is clicked", () => {

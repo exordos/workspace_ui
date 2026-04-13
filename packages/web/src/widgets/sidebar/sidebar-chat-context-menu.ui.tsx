@@ -176,6 +176,7 @@ export const StreamContextMenu = React.memo(function StreamContextMenu({
   chat,
   folderId,
   onCreateTopic,
+  onMuteError,
   triggerOffsetClassName = "right-1 top-8",
   children,
 }: {
@@ -183,10 +184,12 @@ export const StreamContextMenu = React.memo(function StreamContextMenu({
   chat: Extract<SidebarChat, { type: "stream" }>;
   folderId?: string;
   onCreateTopic?: () => void;
+  onMuteError?: (retry: () => void) => void;
   triggerOffsetClassName?: string;
   children: React.ReactNode;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [mutePending, setMutePending] = useState(false);
   const isMuted = useMuteStore((s) => s.isStreamMuted(streamId));
   const chatId = chatToWorkspaceChatId(chat);
   const isPinnedInFolder = usePinStore((s) =>
@@ -199,16 +202,36 @@ export const StreamContextMenu = React.memo(function StreamContextMenu({
     setMenuOpen(true);
   }, []);
 
-  const handleToggleMute = useCallback(() => {
-    if (isMuted) {
-      useMuteStore.getState().unmuteStream(streamId);
-      void unmuteStream(streamId);
-    } else {
-      useMuteStore.getState().muteStream(streamId);
-      void muteStream(streamId);
-    }
+  function handleToggleMute(): void {
+    if (mutePending) return;
     setMenuOpen(false);
-  }, [streamId, isMuted]);
+
+    const muteStore = useMuteStore.getState();
+    const wasMuted = isMuted;
+    if (wasMuted) {
+      muteStore.unmuteStream(streamId);
+    } else {
+      muteStore.muteStream(streamId);
+    }
+
+    setMutePending(true);
+    const request = wasMuted ? unmuteStream(streamId) : muteStream(streamId);
+    void request
+      .then((ok) => {
+        if (ok) return;
+        if (wasMuted) {
+          muteStore.muteStream(streamId);
+        } else {
+          muteStore.unmuteStream(streamId);
+        }
+        onMuteError?.(() => {
+          handleToggleMute();
+        });
+      })
+      .finally(() => {
+        setMutePending(false);
+      });
+  }
 
   const handleMarkAsRead = useCallback(() => {
     void markStreamAsRead(streamId);

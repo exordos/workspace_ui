@@ -30,7 +30,7 @@ export function useLayoutInstanceBootstrap(options: {
     for (const ut of userTopics) {
       if (ut.visibility_policy === 1) {
         mutedTopics.push({ streamId: ut.stream_id, topic: ut.topic_name });
-      } else if (ut.visibility_policy === 2) {
+      } else if (ut.visibility_policy === 2 || ut.visibility_policy === 3) {
         unmutedTopics.push({ streamId: ut.stream_id, topic: ut.topic_name });
       }
     }

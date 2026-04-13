@@ -11,6 +11,7 @@ import { useMuteStore, topicKey } from "./mute-chat.model";
 vi.mock("~/shared/api/client", () => ({
   zulipApi: {
     post: vi.fn(),
+    patch: vi.fn(),
   },
 }));
 
@@ -55,11 +56,18 @@ describe("useMuteStore", () => {
       expect(useMuteStore.getState().isTopicMuted(10, "announcements")).toBe(true);
     });
 
-    // Unmuting should remove it
-    it("unmuteTopic removes topic from muted set", () => {
+    it("unmuteTopic stores topic as explicitly unmuted", () => {
       useMuteStore.getState().muteTopic(10, "announcements");
       useMuteStore.getState().unmuteTopic(10, "announcements");
       expect(useMuteStore.getState().isTopicMuted(10, "announcements")).toBe(false);
+      expect(useMuteStore.getState().isTopicUnmuted(10, "announcements")).toBe(true);
+    });
+
+    it("clearTopicVisibilityOverride removes explicit topic overrides", () => {
+      useMuteStore.getState().muteTopic(10, "announcements");
+      useMuteStore.getState().clearTopicVisibilityOverride(10, "announcements");
+      expect(useMuteStore.getState().isTopicMuted(10, "announcements")).toBe(false);
+      expect(useMuteStore.getState().isTopicUnmuted(10, "announcements")).toBe(false);
     });
 
     // Topic muting is independent of stream muting
@@ -118,9 +126,11 @@ describe("useMuteStore", () => {
     it("resets all mute state", () => {
       useMuteStore.getState().muteStream(10);
       useMuteStore.getState().muteTopic(10, "x");
+      useMuteStore.getState().unmuteTopic(10, "y");
       useMuteStore.getState().clear();
       expect(useMuteStore.getState().isStreamMuted(10)).toBe(false);
       expect(useMuteStore.getState().isTopicMuted(10, "x")).toBe(false);
+      expect(useMuteStore.getState().isTopicUnmuted(10, "y")).toBe(false);
     });
   });
 });
@@ -156,28 +166,37 @@ describe("mute-chat API", () => {
     durationMs: 10,
   };
 
+  const mockMethodNotAllowed = {
+    ok: false,
+    status: 405,
+    data: null,
+    headers: new Headers(),
+    raw: new Response(),
+    durationMs: 10,
+  };
+
   describe("setStreamMuted", () => {
     it("sends mute request with correct subscription data", async () => {
       const { zulipApi } = await import("~/shared/api/client");
-      vi.mocked(zulipApi.post).mockResolvedValue(mockOk);
+      vi.mocked(zulipApi.patch).mockResolvedValue(mockOk);
 
       const { setStreamMuted } = await import("./mute-chat.api");
       const result = await setStreamMuted(10, true);
 
       expect(result).toBe(true);
-      expect(zulipApi.post).toHaveBeenCalledWith("/users/me/subscriptions/properties", {
+      expect(zulipApi.patch).toHaveBeenCalledWith("/users/me/subscriptions/properties", {
         subscription_data: JSON.stringify([{ stream_id: 10, property: "is_muted", value: true }]),
       });
     });
 
     it("sends unmute request with value=false", async () => {
       const { zulipApi } = await import("~/shared/api/client");
-      vi.mocked(zulipApi.post).mockResolvedValue(mockOk);
+      vi.mocked(zulipApi.patch).mockResolvedValue(mockOk);
 
       const { setStreamMuted } = await import("./mute-chat.api");
       await setStreamMuted(10, false);
 
-      expect(zulipApi.post).toHaveBeenCalledWith(
+      expect(zulipApi.patch).toHaveBeenCalledWith(
         "/users/me/subscriptions/properties",
         expect.objectContaining({
           subscription_data: JSON.stringify([
@@ -189,15 +208,34 @@ describe("mute-chat API", () => {
 
     it("returns false on API failure", async () => {
       const { zulipApi } = await import("~/shared/api/client");
-      vi.mocked(zulipApi.post).mockResolvedValue(mockFail);
+      vi.mocked(zulipApi.patch).mockResolvedValue(mockFail);
 
       const { setStreamMuted } = await import("./mute-chat.api");
       expect(await setStreamMuted(10, true)).toBe(false);
     });
 
+    it("falls back to POST when PATCH is not allowed", async () => {
+      const { zulipApi } = await import("~/shared/api/client");
+      vi.mocked(zulipApi.patch).mockResolvedValue(mockMethodNotAllowed);
+      vi.mocked(zulipApi.post).mockResolvedValue(mockOk);
+
+      const { setStreamMuted } = await import("./mute-chat.api");
+      const result = await setStreamMuted(10, true);
+
+      expect(result).toBe(true);
+      expect(zulipApi.patch).toHaveBeenCalledWith(
+        "/users/me/subscriptions/properties",
+        expect.any(Object),
+      );
+      expect(zulipApi.post).toHaveBeenCalledWith(
+        "/users/me/subscriptions/properties",
+        expect.any(Object),
+      );
+    });
+
     it("returns false on network error", async () => {
       const { zulipApi } = await import("~/shared/api/client");
-      vi.mocked(zulipApi.post).mockRejectedValue(new Error("Timeout"));
+      vi.mocked(zulipApi.patch).mockRejectedValue(new Error("Timeout"));
 
       const { setStreamMuted } = await import("./mute-chat.api");
       expect(await setStreamMuted(10, true)).toBe(false);
@@ -241,25 +279,25 @@ describe("mute-chat API", () => {
   describe("muteStream / unmuteStream", () => {
     it("muteStream calls setStreamMuted with true", async () => {
       const { zulipApi } = await import("~/shared/api/client");
-      vi.mocked(zulipApi.post).mockResolvedValue(mockOk);
+      vi.mocked(zulipApi.patch).mockResolvedValue(mockOk);
 
       const { muteStream } = await import("./mute-chat.api");
       expect(await muteStream(42)).toBe(true);
 
-      const body = vi.mocked(zulipApi.post).mock.calls[0]![1];
+      const body = vi.mocked(zulipApi.patch).mock.calls[0]![1];
       const data = JSON.parse(body.subscription_data!) as { value: boolean }[];
       expect(data[0]!.value).toBe(true);
     });
 
     it("unmuteStream calls setStreamMuted with false", async () => {
       const { zulipApi } = await import("~/shared/api/client");
-      vi.mocked(zulipApi.post).mockClear();
-      vi.mocked(zulipApi.post).mockResolvedValue(mockOk);
+      vi.mocked(zulipApi.patch).mockClear();
+      vi.mocked(zulipApi.patch).mockResolvedValue(mockOk);
 
       const { unmuteStream } = await import("./mute-chat.api");
       expect(await unmuteStream(42)).toBe(true);
 
-      const body = vi.mocked(zulipApi.post).mock.calls[0]![1];
+      const body = vi.mocked(zulipApi.patch).mock.calls[0]![1];
       const data = JSON.parse(body.subscription_data!) as { value: boolean }[];
       expect(data[0]!.value).toBe(false);
     });
@@ -291,6 +329,20 @@ describe("mute-chat API", () => {
         stream_id: "10",
         topic: "off-topic",
         visibility_policy: "0",
+      });
+    });
+
+    it("unmuteTopicInMutedStream sends UNMUTED policy (2)", async () => {
+      const { zulipApi } = await import("~/shared/api/client");
+      vi.mocked(zulipApi.post).mockResolvedValue(mockOk);
+
+      const { unmuteTopicInMutedStream } = await import("./mute-chat.api");
+      expect(await unmuteTopicInMutedStream(10, "off-topic")).toBe(true);
+
+      expect(zulipApi.post).toHaveBeenCalledWith("/user_topics", {
+        stream_id: "10",
+        topic: "off-topic",
+        visibility_policy: "2",
       });
     });
   });
