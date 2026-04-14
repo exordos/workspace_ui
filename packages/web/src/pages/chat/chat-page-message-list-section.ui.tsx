@@ -5,6 +5,7 @@ import type { ChatPageMessageListSectionProps } from "./chat-page-message-list-s
 
 export const ChatPageMessageListSection = React.memo(function ChatPageMessageListSection({
   messagesLoading,
+  hasInitialPayload,
   isDmView,
   activeDmUserIds,
   activeStream,
@@ -24,7 +25,9 @@ export const ChatPageMessageListSection = React.memo(function ChatPageMessageLis
   onUnreadMessagesVisible,
   onUnreadMessagesAtBottom,
 }: ChatPageMessageListSectionProps) {
-  const showBlockingLoader = messagesLoading && messages.length === 0;
+  // Что делает: блокирует экран только пока нет ни кэшированных, ни серверных сообщений.
+  const showBlockingLoader = messagesLoading && !hasInitialPayload;
+  // Что делает: когда данные уже есть, оставляет только неблокирующий overlay-индикатор.
   const showLoadingOverlay =
     !showBlockingLoader && messages.length > 0 && (messagesLoading || isLoadingMore);
 

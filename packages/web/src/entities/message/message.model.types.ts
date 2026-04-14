@@ -43,6 +43,9 @@ export interface CurrentChatMessagesState {
     context: CurrentChatContext;
     focusedMessageId: number | null;
     currentUserId: number | null;
+    // Что делает: сигнализирует UI, что cache-first payload уже применён в store.
+    // Зачем: отделить блокирующий loader (нет данных) от фонового refresh (данные уже есть).
+    onCacheHydrated?: () => void;
   }) => Promise<void>;
   loadOlderBoundaryPage: (options: {
     pageSize: number;

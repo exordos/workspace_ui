@@ -8,6 +8,7 @@ import { ZULIP_STREAM_CHAT_NUM_BEFORE } from "~/shared/lib/zulip-message-window.
 
 const {
   mockGetChatMessagesAscending,
+  mockGetStreamMessagesAscending,
   mockFetchMessages,
   mockFetchDmMessages,
   mockFetchMessagesWithNarrow,
@@ -16,6 +17,7 @@ const {
   mockUpsertChatMessages,
 } = vi.hoisted(() => ({
   mockGetChatMessagesAscending: vi.fn(),
+  mockGetStreamMessagesAscending: vi.fn(),
   mockFetchMessages: vi.fn(),
   mockFetchDmMessages: vi.fn(),
   mockFetchMessagesWithNarrow: vi.fn(),
@@ -40,6 +42,7 @@ vi.mock("~/shared/lib/message-cache-db", async (importOriginal) => {
   return {
     ...actual,
     getChatMessagesAscending: mockGetChatMessagesAscending,
+    getStreamMessagesAscending: mockGetStreamMessagesAscending,
     getChatMeta: mockGetChatMeta,
     updateChatMetaPatch: mockUpdateChatMetaPatch,
     upsertChatMessages: mockUpsertChatMessages,
@@ -91,6 +94,7 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
     mockGetChatMeta.mockResolvedValue({ reachedOldest: false, reachedNewest: false });
     mockUpdateChatMetaPatch.mockResolvedValue(undefined);
     mockUpsertChatMessages.mockResolvedValue(undefined);
+    mockGetStreamMessagesAscending.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -178,5 +182,95 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
 
     expect(mockGetChatMessagesAscending).not.toHaveBeenCalled();
     expect(mockFetchMessagesWithNarrow).toHaveBeenCalled();
+  });
+
+  it("uses explicit topic narrow for general topic route", async () => {
+    const ctx: CurrentChatContext = {
+      type: "stream",
+      streamId: 5,
+      streamName: "general",
+      topic: "general",
+      streamWideView: false,
+    };
+    mockGetChatMessagesAscending.mockResolvedValue([]);
+    mockFetchMessages.mockResolvedValue([mockMsg({ id: 2, stream_id: 5, subject: "general" })]);
+
+    await useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
+      context: ctx,
+      focusedMessageId: null,
+      currentUserId: 1,
+    });
+
+    expect(mockFetchMessages).toHaveBeenCalledWith("general", "general");
+  });
+
+  it("hydrates stream-wide mode from merged stream cache and limits to 100", async () => {
+    const ctx: CurrentChatContext = {
+      type: "stream",
+      streamId: 5,
+      streamName: "general",
+      topic: "general",
+      streamWideView: true,
+    };
+    const cachedWide = Array.from({ length: 130 }, (_, i) =>
+      mockMsg({
+        id: i + 1,
+        stream_id: 5,
+        subject: i % 2 === 0 ? "alpha" : "beta",
+      }),
+    );
+    mockGetStreamMessagesAscending.mockResolvedValue(cachedWide);
+
+    const deferred = Promise.withResolvers<MockMessage[]>();
+    mockFetchMessages.mockReturnValue(deferred.promise);
+
+    const loadPromise = useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
+      context: ctx,
+      focusedMessageId: null,
+      currentUserId: 1,
+    });
+
+    await vi.waitFor(() => {
+      expect(mockGetStreamMessagesAscending).toHaveBeenCalledWith("test-instance", 5);
+    });
+    await vi.waitFor(() => {
+      expect(useCurrentChatMessagesStore.getState().messages).toHaveLength(100);
+    });
+
+    const hydrated = useCurrentChatMessagesStore.getState().messages;
+    expect(hydrated).toHaveLength(100);
+    expect(hydrated[0]!.id).toBe(31);
+    expect(hydrated[99]!.id).toBe(130);
+
+    deferred.resolve([mockMsg({ id: 999, stream_id: 5, subject: "alpha" })]);
+    await loadPromise;
+  });
+
+  it("persists stream-wide response by topic partitions instead of single stream key", async () => {
+    const ctx: CurrentChatContext = {
+      type: "stream",
+      streamId: 5,
+      streamName: "general",
+      topic: "general",
+      streamWideView: true,
+    };
+    mockGetStreamMessagesAscending.mockResolvedValue([]);
+    mockFetchMessages.mockResolvedValue([
+      mockMsg({ id: 10, stream_id: 5, subject: "alpha" }),
+      mockMsg({ id: 11, stream_id: 5, subject: "beta" }),
+    ]);
+
+    await useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
+      context: ctx,
+      focusedMessageId: null,
+      currentUserId: 1,
+    });
+
+    const upsertCalls = mockUpsertChatMessages.mock.calls.map(
+      (call) => (call[0] as { chatKey: string }).chatKey,
+    );
+    expect(upsertCalls).toContain("stream:5:alpha");
+    expect(upsertCalls).toContain("stream:5:beta");
+    expect(upsertCalls).not.toContain("stream:5:general");
   });
 });

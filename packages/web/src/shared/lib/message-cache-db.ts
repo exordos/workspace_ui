@@ -223,6 +223,46 @@ export async function getInstanceMessagesAscending(instanceId: string): Promise<
   }
 }
 
+// Возвращает кэшированные сообщения по всем topic-partitions конкретного stream в рамках инстанса.
+// Используется для cache-first bootstrap stream-wide режима (`/stream/:slug`).
+export async function getStreamMessagesAscending(
+  instanceId: string,
+  streamId: number,
+): Promise<MockMessage[]> {
+  if (!isIndexedDBAvailable()) return [];
+  try {
+    const db = await openMessageCacheDb();
+    // Что делает: формирует префикс диапазона для всех topic-partitions одного stream.
+    const indexPrefix = instanceChatKey(instanceId, `stream:${streamId}:`);
+    return await new Promise<MockMessage[]>((resolve, reject) => {
+      const tx = db.transaction(STORE_MESSAGES, "readonly");
+      const store = tx.objectStore(STORE_MESSAGES);
+      const index = store.index("byChatOrder");
+      // Что делает: читает все записи вида `instance::stream:{id}:*` одним range-запросом.
+      const range = IDBKeyRange.bound(
+        [indexPrefix, 0],
+        [`${indexPrefix}\uffff`, Number.MAX_SAFE_INTEGER],
+      );
+      const req = index.openCursor(range);
+      const rows: MessageCacheRow[] = [];
+
+      req.onerror = () => reject(idbError(req.error));
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (cursor) {
+          rows.push(cursor.value as MessageCacheRow);
+          cursor.continue();
+          return;
+        }
+        rows.sort((a, b) => a.messageId - b.messageId);
+        resolve(rows.map((row) => row.message));
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
 // Возвращает id сообщений, уже лежащих в кэше чата (нужно для dedupe пагинации).
 export async function getExistingMessageIdsInChat(
   instanceId: string,

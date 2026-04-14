@@ -6,6 +6,7 @@ import {
   getChatMessageBounds,
   getChatMessagesAscending,
   getInstanceMessagesAscending,
+  getStreamMessagesAscending,
   openMessageCacheDb,
   resetMessageCacheDbSingletonForTests,
   upsertChatMessages,
@@ -110,5 +111,30 @@ describe("message-cache-db", () => {
 
     const rows = await getInstanceMessagesAscending("inst-a");
     expect(rows.map((m) => m.id)).toEqual([10, 20, 30]);
+  });
+
+  it("getStreamMessagesAscending merges all topic partitions for a stream", async () => {
+    await openMessageCacheDb();
+    await upsertChatMessages({
+      instanceId: "inst-a",
+      chatKey: "stream:1:alpha",
+      messages: [msg(30), msg(10)],
+      windowSizeN: 200,
+    });
+    await upsertChatMessages({
+      instanceId: "inst-a",
+      chatKey: "stream:1:beta",
+      messages: [msg(25)],
+      windowSizeN: 200,
+    });
+    await upsertChatMessages({
+      instanceId: "inst-a",
+      chatKey: "stream:2:other",
+      messages: [msg(15)],
+      windowSizeN: 200,
+    });
+
+    const rows = await getStreamMessagesAscending("inst-a", 1);
+    expect(rows.map((m) => m.id)).toEqual([10, 25, 30]);
   });
 });

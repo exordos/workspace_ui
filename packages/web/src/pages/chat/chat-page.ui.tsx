@@ -220,6 +220,9 @@ export const ChatPage: React.FC = () => {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [readReceiptsOpen, setReadReceiptsOpen] = useState(false);
   const [messagesLoading, setMessagesLoading] = useState(false);
+  // Что делает: отделяет "данные уже есть" от "network refresh всё ещё идёт".
+  // Зачем: показывать blocking-loader только на реальном cold-start/cold-switch.
+  const [hasInitialMessagesPayload, setHasInitialMessagesPayload] = useState(false);
   const markAsReadBatcherRef = useRef<ReturnType<typeof createMarkAsReadBatcher> | null>(null);
   const optimisticMessageIdRef = useRef(-1);
   const uploadAbortControllerRef = useRef<AbortController | null>(null);
@@ -754,18 +757,24 @@ export const ChatPage: React.FC = () => {
   // Загружаем стартовую порцию stream-сообщений только по параметрам маршрута и фокусу.
   useEffect(() => {
     if (!streamSlug) {
+      setHasInitialMessagesPayload(false);
       setMessagesLoading(false);
       return;
     }
     if (!resolvedStreamName) {
+      setHasInitialMessagesPayload(false);
       setMessagesLoading(false);
       return;
     }
     if (resolvedStreamId == null) {
+      setHasInitialMessagesPayload(false);
       setMessagesLoading(false);
       return;
     }
 
+    // Что делает: каждый route-switch стартует с чистого признака initial payload.
+    // Далее он поднимется через onCacheHydrated или после успешного API.
+    setHasInitialMessagesPayload(false);
     setMessagesLoading(true);
     let cancelled = false;
     logMessageFlow("ui:stream loadInitial effect → invoke store.loadInitialMessagesForContext", {
@@ -783,10 +792,17 @@ export const ChatPage: React.FC = () => {
       },
       focusedMessageId,
       currentUserId,
+      // Что делает: фиксирует момент cache-first гидрации для UI-флагов.
+      onCacheHydrated: () => {
+        if (!cancelled) {
+          setHasInitialMessagesPayload(true);
+        }
+      },
     })
       .then(() => {
         if (!cancelled) {
           logMessageFlow("ui:stream loadInitial effect → fulfilled", { cancelled: false });
+          setHasInitialMessagesPayload(true);
           setMessagesLoading(false);
         } else {
           logMessageFlow("ui:stream loadInitial effect → fulfilled (ignored, unmounted)", {
@@ -842,6 +858,8 @@ export const ChatPage: React.FC = () => {
     );
     if (userIds.length === 0) return;
 
+    // Что делает: для нового DM-роута заново ожидаем initial payload.
+    setHasInitialMessagesPayload(false);
     setMessagesLoading(true);
     let cancelled = false;
     const dmKey = dmRouteKey(userIds, currentUserId);
@@ -853,10 +871,17 @@ export const ChatPage: React.FC = () => {
       context: { type: "dm", dmKey },
       focusedMessageId,
       currentUserId,
+      // Что делает: фиксирует момент cache-first гидрации для UI-флагов.
+      onCacheHydrated: () => {
+        if (!cancelled) {
+          setHasInitialMessagesPayload(true);
+        }
+      },
     })
       .then(() => {
         if (!cancelled) {
           logMessageFlow("ui:dm loadInitial effect → fulfilled", { cancelled: false });
+          setHasInitialMessagesPayload(true);
           setMessagesLoading(false);
         } else {
           logMessageFlow("ui:dm loadInitial effect → fulfilled (ignored, unmounted)", {
@@ -1558,6 +1583,7 @@ export const ChatPage: React.FC = () => {
       <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <ChatPageMessageListSection
           messagesLoading={messagesLoading}
+          hasInitialPayload={hasInitialMessagesPayload}
           isDmView={isDmView}
           activeDmUserIds={activeDmUserIds}
           activeStream={activeStream}
