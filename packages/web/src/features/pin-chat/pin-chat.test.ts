@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { usePinStore } from "./pin-chat.model";
 
 vi.mock("~/shared/api/client", () => ({
+  refreshWorkspaceApiBase: vi.fn(),
   workspaceApi: {
     post: vi.fn(),
   },

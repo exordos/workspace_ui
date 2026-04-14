@@ -8,6 +8,21 @@ import type * as AttachmentDownloadModule from "./message-attachment-download.li
 
 const downloadUserUploadAttachmentMock = vi.fn();
 
+vi.mock("~/shared/api/zulip-client.internal", () => ({
+  getRealmBaseUrl: () => "https://uploads.example.com",
+}));
+
+vi.mock("~/shared/lib/env", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("~/shared/lib/env")>();
+  return {
+    ...actual,
+    env: {
+      ...actual.env,
+      USER_UPLOADS_PATH_PREFIX: "",
+    },
+  };
+});
+
 vi.mock("./message-attachment-download.lib", async () => {
   const actual = await vi.importActual<typeof AttachmentDownloadModule>(
     "./message-attachment-download.lib",

@@ -3,7 +3,7 @@
  *
  * The env module is the single access point for all VITE_* env vars.
  * It normalizes values (strips trailing slashes, provides defaults),
- * and warns in production when required vars are missing.
+ * `VITE_WORKSPACE_API_ORIGIN` is optional (empty string when unset).
  * Incorrect env handling would break API connections or Jitsi integration.
  */
 
@@ -23,11 +23,11 @@ describe("env", () => {
     expect(env).toHaveProperty("PROD");
     expect(env).toHaveProperty("MODE");
     expect(env).toHaveProperty("WORKSPACE_API_ORIGIN");
-    expect(env).toHaveProperty("ZULIP_REALM_ORIGIN");
     expect(env).toHaveProperty("ZULIP_API_PATH");
     expect(env).toHaveProperty("WORKSPACE_API_PATH");
     expect(env).toHaveProperty("WORKSPACE_REST_API_PATH");
     expect(env).toHaveProperty("USER_UPLOADS_PATH_PREFIX");
+    expect(env).toHaveProperty("USER_UPLOADS_PREFIX_ON_ZULIP_REALM");
     expect(env).toHaveProperty("WORKSPACE_API_BASE");
     expect(env).toHaveProperty("WORKSPACE_UPLOADS_ORIGIN");
     expect(env).toHaveProperty("JITSI_MEET_DOMAIN");
@@ -37,10 +37,10 @@ describe("env", () => {
     expect(env).toHaveProperty("CALENDAR_EMBED_URL");
     expect(env).toHaveProperty("MAIL_EMBED_URL");
     expect(env).toHaveProperty("CHAT_MESSAGES_PERSIST_INDEXEDDB");
-    expect(env).toHaveProperty("CHAT_MESSAGES_SOURCE_INDEXEDDB");
     expect(env).toHaveProperty("METADATA_CHAT_BOOTSTRAP_ENABLED");
     expect(env).toHaveProperty("METADATA_DM_BACKFILL_ENABLED");
     expect(env).toHaveProperty("MESSAGE_FLOW_DEBUG");
+    expect(env).toHaveProperty("CHAT_LIST_FLOW_DEBUG");
     expect(env).toHaveProperty("TOP_BAR_CALLS_NAV");
     expect(env).toHaveProperty("TOP_BAR_SERVICES_NAV");
   });
@@ -52,6 +52,7 @@ describe("env", () => {
     expect(typeof env.PROD).toBe("boolean");
     expect(typeof env.METADATA_CHAT_BOOTSTRAP_ENABLED).toBe("boolean");
     expect(typeof env.METADATA_DM_BACKFILL_ENABLED).toBe("boolean");
+    expect(typeof env.USER_UPLOADS_PREFIX_ON_ZULIP_REALM).toBe("boolean");
   });
 
   // MODE is "development", "production", or "test"
@@ -72,6 +73,7 @@ describe("env", () => {
   // Default API paths must match Zulip's standard — missing defaults would break API calls
   describe("default API paths (isolated from repo .env)", () => {
     beforeEach(() => {
+      vi.unstubAllEnvs();
       vi.stubEnv("VITE_WORKSPACE_API_ORIGIN", "https://zulip.test");
       vi.stubEnv("VITE_ZULIP_API_PATH", "");
       vi.stubEnv("VITE_WORKSPACE_API_PATH", "");
@@ -90,33 +92,15 @@ describe("env", () => {
       expect(env.ZULIP_API_PATH).toBe("/api/v1");
     });
 
-    it("WORKSPACE_API_PATH defaults to /api/v1", async () => {
+    it("WORKSPACE_API_PATH defaults to gateway /workspace/v1", async () => {
       const { env } = await import("./env");
-      expect(env.WORKSPACE_API_PATH).toBe("/api/v1");
+      expect(env.WORKSPACE_API_PATH).toBe("/workspace/v1");
     });
 
     it("USER_UPLOADS_PATH_PREFIX is empty by default", async () => {
       const { env } = await import("./env");
       expect(env.USER_UPLOADS_PATH_PREFIX).toBe("");
     });
-
-    it("ZULIP_REALM_ORIGIN matches WORKSPACE_API_ORIGIN when VITE_ZULIP_REALM_ORIGIN is unset", async () => {
-      const { env } = await import("./env");
-      expect(env.ZULIP_REALM_ORIGIN).toBe(env.WORKSPACE_API_ORIGIN);
-    });
-  });
-
-  it("ZULIP_REALM_ORIGIN uses VITE_ZULIP_REALM_ORIGIN when set", async () => {
-    vi.stubEnv("VITE_WORKSPACE_API_ORIGIN", "https://workspace.gateway.test");
-    vi.stubEnv("VITE_ZULIP_REALM_ORIGIN", "https://zulip.tokens.team/");
-    vi.stubEnv("VITE_ZULIP_API_PATH", "");
-    vi.stubEnv("VITE_WORKSPACE_API_PATH", "");
-    vi.stubEnv("VITE_WORKSPACE_REST_API_PATH", "");
-    vi.stubEnv("VITE_USER_UPLOADS_PATH_PREFIX", "");
-    vi.resetModules();
-    const { env } = await import("./env");
-    expect(env.ZULIP_REALM_ORIGIN).toBe("https://zulip.tokens.team");
-    vi.unstubAllEnvs();
   });
 
   it("USER_UPLOADS_PATH_PREFIX normalizes slashes", async () => {
@@ -141,7 +125,6 @@ describe("env", () => {
     const stringKeys = [
       "MODE",
       "WORKSPACE_API_ORIGIN",
-      "ZULIP_REALM_ORIGIN",
       "ZULIP_API_PATH",
       "WORKSPACE_API_PATH",
       "WORKSPACE_REST_API_PATH",
@@ -185,32 +168,18 @@ describe("env", () => {
   });
 });
 
-// Warning path: production builds should loudly report missing required env vars
-describe("env required() warning path", () => {
-  // Missing API origin in production is a deployment misconfiguration — must be logged
-  it("logs console.error in production when required var is missing", async () => {
-    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-
-    vi.stubEnv("PROD", true);
-    vi.stubEnv("VITE_WORKSPACE_API_ORIGIN", "");
-    vi.resetModules();
-
-    await import("./env");
-
-    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining("Missing required env var"));
-
-    consoleSpy.mockRestore();
+describe("VITE_WORKSPACE_API_ORIGIN optional", () => {
+  afterEach(() => {
     vi.unstubAllEnvs();
+    vi.resetModules();
   });
 
-  // Missing vars should return empty string (not undefined) so consumers can handle it
-  it("returns empty string for missing required var", async () => {
+  it("returns empty string when unset", async () => {
     vi.stubEnv("VITE_WORKSPACE_API_ORIGIN", "");
+    vi.stubEnv("VITE_WORKSPACE_API_PATH", "/api/v1");
     vi.resetModules();
-
     const { env } = await import("./env");
     expect(env.WORKSPACE_API_ORIGIN).toBe("");
-
-    vi.unstubAllEnvs();
+    expect(env.WORKSPACE_UPLOADS_ORIGIN).toBe("");
   });
 });

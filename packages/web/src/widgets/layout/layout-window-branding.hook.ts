@@ -8,8 +8,9 @@ export function useLayoutWindowBranding(options: {
   unreadCount: number;
   activeChatWindowTitle: string | null;
   realmIcon?: string;
+  realmBaseUrl?: string;
 }): void {
-  const { unreadCount, activeChatWindowTitle, realmIcon } = options;
+  const { unreadCount, activeChatWindowTitle, realmIcon, realmBaseUrl } = options;
 
   useEffect(() => {
     if (getElectronAPI() != null) return;
@@ -22,7 +23,7 @@ export function useLayoutWindowBranding(options: {
 
   useEffect(() => {
     if (getElectronAPI() != null) return;
-    return syncOrganizationFavicon(realmIcon);
-  }, [realmIcon]);
+    return syncOrganizationFavicon(realmIcon, realmBaseUrl);
+  }, [realmIcon, realmBaseUrl]);
 }
 

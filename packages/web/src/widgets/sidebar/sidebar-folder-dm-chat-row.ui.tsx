@@ -4,7 +4,6 @@ import { resolvePersonalDmSidebarTitle } from "~/entities/chat-list/chat-list-fo
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { ensureUserStatusLoaded } from "~/entities/user/api/user.api";
 import { useUsersStore } from "~/entities/user/user.model";
-import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indicator.model";
 import { t } from "~/i18n/i18n";
 import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
@@ -14,6 +13,8 @@ import { sidebarRowClass, getPresenceState } from "~/shared/lib/format";
 import { Avatar } from "~/shared/ui/avatar";
 import { Badge } from "~/shared/ui/badge";
 import { Icon } from "~/shared/ui/icon";
+import { PresenceIndicator } from "~/shared/ui/presence-indicator";
+import { SidebarUserStatusEmoji } from "./sidebar-user-status-emoji.ui";
 import { isDmPartnerTyping } from "./sidebar-dm-list.lib";
 import { parseDmSlugToUserIds } from "./sidebar.lib";
 import type { DmChatRowProps } from "./sidebar-folder-dm-chat-row.types";
@@ -59,14 +60,7 @@ export const DmChatRow = React.memo<DmChatRowProps>(function DmChatRow({
     currentUserId,
     typingMap,
   });
-  const statusLabel = formatUserStatusLabel(user?.status);
-  const secondaryText = partnerIsTyping
-    ? t("chat.typing")
-    : statusLabel != null && statusLabel.length > 0
-      ? chat.lastMessage != null && chat.lastMessage.length > 0
-        ? `${statusLabel} · ${chat.lastMessage}`
-        : statusLabel
-      : (chat.lastMessage ?? "");
+  const secondaryText = partnerIsTyping ? t("chat.typing") : (chat.lastMessage ?? "");
   const presenceState =
     user?.presence != null ? getPresenceState(user.presence.timestamp, user.presence.status) : null;
   const avatarSrc = !isGroupDm
@@ -100,21 +94,15 @@ export const DmChatRow = React.memo<DmChatRowProps>(function DmChatRow({
             rowTitle.slice(0, 1)
           )}
         </Avatar>
-        {presenceState === "active" && (
-          <span
-            className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-bg bg-indicator-green"
-            aria-label={t("a11y.online")}
-          />
-        )}
-        {presenceState === "idle" && (
-          <span
-            className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-bg bg-indicator-orange"
-            aria-label={t("a11y.away")}
-          />
+        {!isGroupDm && (
+          <PresenceIndicator status={presenceState} size="sm" className="absolute bottom-0 right-0" />
         )}
       </div>
       <div className="flex min-w-0 flex-1 flex-col justify-center">
-        <span className="block truncate text-sm font-medium text-text-primary">{rowTitle}</span>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className="min-w-0 truncate text-sm font-medium text-text-primary">{rowTitle}</span>
+          {!isGroupDm && <SidebarUserStatusEmoji status={user?.status} />}
+        </div>
         {!compact && (
           <span
             className={`mt-0.5 block truncate text-[11px] ${

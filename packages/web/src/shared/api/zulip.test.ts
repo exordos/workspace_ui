@@ -78,11 +78,13 @@ const mockZulipApi = vi.hoisted(() => ({
 }));
 
 const mockRefreshZulipApiBase = vi.hoisted(() => vi.fn());
+const mockRefreshWorkspaceApiBase = vi.hoisted(() => vi.fn());
 
 vi.mock("./client", () => ({
   getCurrentInstance: vi.fn(),
   zulipApi: mockZulipApi,
   refreshZulipApiBase: mockRefreshZulipApiBase,
+  refreshWorkspaceApiBase: mockRefreshWorkspaceApiBase,
 }));
 
 vi.mock("~/shared/lib/auth-guard", () => ({
@@ -151,6 +153,7 @@ beforeEach(() => {
   mockZulipApi.patch.mockReset();
   mockZulipApi.delete.mockReset();
   mockRefreshZulipApiBase.mockReset();
+  mockRefreshWorkspaceApiBase.mockReset();
 });
 
 afterEach(() => {
@@ -494,7 +497,7 @@ describe("registerQueue", () => {
     expect(mockRefreshZulipApiBase).toHaveBeenCalled();
     expect(mockZulipApi.post).toHaveBeenCalledWith("/register", {
       event_types: JSON.stringify(["message", "presence"]),
-      fetch_event_types: JSON.stringify(["user_topics", "recent_private_conversations"]),
+      fetch_event_types: JSON.stringify(["user_topics", "recent_private_conversations", "realm"]),
     });
   });
 
@@ -555,6 +558,31 @@ describe("registerQueue", () => {
         unread_message_ids: [700, 701],
       },
     });
+  });
+
+  it("parses server_thumbnail_formats from register payload", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        queue_id: "q-123",
+        last_event_id: -1,
+        server_thumbnail_formats: [
+          {
+            name: "840x560.webp",
+            max_width: 840,
+            max_height: 560,
+            format: "webp",
+            animated: false,
+          },
+        ],
+      },
+      raw: { statusText: "OK" },
+    });
+
+    const result = await registerQueue(["message"]);
+    expect(result.server_thumbnail_formats?.[0]?.name).toBe("840x560.webp");
   });
 });
 

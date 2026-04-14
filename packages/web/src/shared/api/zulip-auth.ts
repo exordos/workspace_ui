@@ -36,6 +36,8 @@ export async function fetchServerSettings(realmUrl: string): Promise<ZulipServer
     const data = (await res.json()) as {
       realm_name?: string;
       realm_icon?: string;
+      realm_uri?: string;
+      realm_url?: string;
       external_authentication_methods?: {
         name?: string;
         display_name?: string;
@@ -43,9 +45,17 @@ export async function fetchServerSettings(realmUrl: string): Promise<ZulipServer
         login_url?: string;
       }[];
     };
+    const realmUrlRaw =
+      typeof data.realm_url === "string" && data.realm_url.trim() !== ""
+        ? data.realm_url.trim()
+        : typeof data.realm_uri === "string"
+          ? data.realm_uri.trim()
+          : "";
     return {
       realm_name: data.realm_name ?? "",
       realm_icon: data.realm_icon ?? "",
+      realm_uri: realmUrlRaw,
+      realm_url: realmUrlRaw,
       external_authentication_methods: Array.isArray(data.external_authentication_methods)
         ? data.external_authentication_methods.map((m) => ({
             name: m.name ?? "",

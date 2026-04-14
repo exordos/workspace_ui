@@ -14,7 +14,7 @@ export const RightDrawer: React.FC<RightDrawerProps> = ({ onClose, children }) =
       <button
         type="button"
         onClick={onClose}
-        className="absolute right-4 top-5 flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-card-bg-active hover:text-text-primary"
+        className="absolute right-4 top-2 z-sticky flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-card-bg-active hover:text-text-primary"
         aria-label={t("common.close")}
       >
         <Icon name="close" size={16} className="text-current" />

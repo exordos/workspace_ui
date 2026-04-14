@@ -105,6 +105,11 @@ export const Layout: React.FC = () => {
     currentUserId,
   });
 
+  const currentInstanceRealmBaseUrl = useMemo(
+    () => instances.find((instance) => instance.id === currentInstanceId)?.realm,
+    [instances, currentInstanceId],
+  );
+
   const selectedFolderId = useFolderSyncStore((s) => s.selectedFolderId);
   const selectedFolderChatIds = useFolderSyncStore((s) => s.selectedFolderChatIds);
   const folderItemsByFolderId = useFolderSyncStore((s) => s.folderItemsByFolderId);
@@ -130,9 +135,11 @@ export const Layout: React.FC = () => {
     currentUserStatus,
   });
 
-  const loadBootstrapMessages = useCallback(async () => {
-    return runChatListBootstrap(currentInstanceId);
-  }, [currentInstanceId]);
+  const loadBootstrapMessages = useCallback(
+    async (signal: AbortSignal, isStale: () => boolean) =>
+      runChatListBootstrap(currentInstanceId, { signal, isStale }),
+    [currentInstanceId],
+  );
 
   const online = useLayoutOnlineStatus();
   useHydrateDrafts(currentInstanceId, currentUserStatus);
@@ -149,6 +156,7 @@ export const Layout: React.FC = () => {
     unreadCount: unreadCountForCurrentInstance,
     activeChatWindowTitle: activeChatWindowTitle ?? "",
     realmIcon: currentInstanceRealmIcon,
+    realmBaseUrl: currentInstanceRealmBaseUrl,
   });
 
   useInactiveInstancesBackgroundWork({

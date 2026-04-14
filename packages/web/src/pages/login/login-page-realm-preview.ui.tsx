@@ -1,5 +1,5 @@
 import React from "react";
-import { getOrganizationLogoSrc, ORGANIZATION_FALLBACK_LOGO_URL } from "~/shared/lib/organization-branding";
+import { getOrganizationLogoSrc } from "~/shared/lib/organization-branding";
 
 export interface LoginPageRealmPreviewProps {
   realmName: string;

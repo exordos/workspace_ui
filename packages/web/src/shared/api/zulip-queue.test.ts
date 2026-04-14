@@ -2,6 +2,12 @@
  * Tests for Zulip API (zulip-queue module).
  */
 import { describe, expect, it, vi } from "vitest";
+import {
+  getMockRefreshZulipApiBase,
+  getMockZulipApi,
+  jsonResponse,
+  mockFetch,
+} from "./zulip.test.setup";
 import { getCurrentInstance } from "./client";
 import {
   deleteQueue,
@@ -11,12 +17,6 @@ import {
   registerQueue,
   registerQueueForCredentials,
 } from "./zulip-queue";
-import {
-  getMockRefreshZulipApiBase,
-  getMockZulipApi,
-  jsonResponse,
-  mockFetch,
-} from "./zulip.test.setup";
 
 const mockZulipApi = getMockZulipApi();
 const mockRefreshZulipApiBase = getMockRefreshZulipApiBase();
@@ -44,7 +44,7 @@ describe("registerQueue", () => {
     expect(mockRefreshZulipApiBase).toHaveBeenCalled();
     expect(mockZulipApi.post).toHaveBeenCalledWith("/register", {
       event_types: JSON.stringify(["message", "presence"]),
-      fetch_event_types: JSON.stringify(["user_topics", "recent_private_conversations"]),
+      fetch_event_types: JSON.stringify(["user_topics", "recent_private_conversations", "realm"]),
     });
   });
 
@@ -105,6 +105,39 @@ describe("registerQueue", () => {
         unread_message_ids: [551, 552],
       },
     });
+  });
+
+  it("parses server_thumbnail_formats when realm metadata is returned", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        queue_id: "q-123",
+        last_event_id: -1,
+        server_thumbnail_formats: [
+          {
+            name: "840x560.webp",
+            max_width: 840,
+            max_height: 560,
+            format: "webp",
+            animated: false,
+          },
+        ],
+      },
+      raw: { statusText: "OK" },
+    });
+
+    const result = await registerQueue(["message"]);
+    expect(result.server_thumbnail_formats).toEqual([
+      {
+        name: "840x560.webp",
+        max_width: 840,
+        max_height: 560,
+        format: "webp",
+        animated: false,
+      },
+    ]);
   });
 });
 

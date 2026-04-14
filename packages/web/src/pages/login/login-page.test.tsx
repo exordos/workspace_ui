@@ -187,6 +187,8 @@ describe("LoginPage", () => {
   it("stores realm icon in instance data after successful login", async () => {
     fetchServerSettings.mockResolvedValue({
       realm_name: "Example Zulip",
+      realm_uri: "",
+      realm_url: "",
       realm_icon: "https://cdn.example.com/realm-logo.svg",
       external_authentication_methods: [],
     });
@@ -223,9 +225,92 @@ describe("LoginPage", () => {
     );
   });
 
+  it("stores raw relative realm_icon path for post-login logo resolution", async () => {
+    fetchServerSettings.mockResolvedValue({
+      realm_name: "Example Zulip",
+      realm_uri: "",
+      realm_url: "",
+      realm_icon: "/user_avatars/1/realm/icon.png",
+      external_authentication_methods: [],
+    });
+    fetchApiKey.mockResolvedValue({
+      api_key: "key-123",
+      email: "user@example.com",
+      user_id: 7,
+    });
+
+    renderWithProviders(<LoginPage />, {
+      route: "/login?realm=https%3A%2F%2Fchat.example.com",
+    });
+
+    const realmInput = await screen.findByLabelText(/zulip server address/i);
+    fireEvent.blur(realmInput);
+
+    await waitFor(() => {
+      expect(screen.getByText("Example Zulip")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText(/email/i), {
+      target: { value: "user@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText(/^password$/i), {
+      target: { value: "secret" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /login/i }));
+
+    await waitFor(() => {
+      expect(navigateSpy).toHaveBeenCalledWith("/", { replace: true });
+    });
+    expect(useInstancesStore.getState().instances[0]?.realmIcon).toBe(
+      "/user_avatars/1/realm/icon.png",
+    );
+  });
+
+  it("stores canonical realm from server_settings when logging in", async () => {
+    fetchServerSettings.mockResolvedValue({
+      realm_name: "Canonical Org",
+      realm_uri: "https://canonical.example.com",
+      realm_url: "https://canonical.example.com",
+      realm_icon: "",
+      external_authentication_methods: [],
+    });
+    fetchApiKey.mockResolvedValue({
+      api_key: "key-123",
+      email: "user@example.com",
+      user_id: 7,
+    });
+
+    renderWithProviders(<LoginPage />, {
+      route: "/login?realm=https%3A%2F%2Fgw.example.com",
+    });
+
+    const realmInput = await screen.findByLabelText(/zulip server address/i);
+    fireEvent.blur(realmInput);
+
+    await waitFor(() => {
+      expect(screen.getByText("Canonical Org")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText(/email/i), {
+      target: { value: "user@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText(/^password$/i), {
+      target: { value: "secret" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /login/i }));
+
+    await waitFor(() => {
+      expect(navigateSpy).toHaveBeenCalledWith("/", { replace: true });
+    });
+    expect(useInstancesStore.getState().instances[0]?.realm).toBe("https://canonical.example.com");
+    expect(useInstancesStore.getState().instances[0]?.workspaceOrgOrigin).toBe("https://gw.example.com");
+  });
+
   it("shows fallback organization logo when realm icon is absent", async () => {
     fetchServerSettings.mockResolvedValue({
       realm_name: "Example Zulip",
+      realm_uri: "",
+      realm_url: "",
       realm_icon: "",
       external_authentication_methods: [],
     });
@@ -243,7 +328,7 @@ describe("LoginPage", () => {
 
     expect(screen.getByTestId("realm-logo-preview")).toHaveAttribute(
       "src",
-      expect.stringContaining("/organization-fallback.svg"),
+      expect.stringContaining("organization-fallback.svg"),
     );
   });
 
@@ -251,6 +336,8 @@ describe("LoginPage", () => {
     const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
     fetchServerSettings.mockResolvedValue({
       realm_name: "Example Zulip",
+      realm_uri: "",
+      realm_url: "",
       realm_icon: "",
       external_authentication_methods: [
         {
@@ -284,6 +371,8 @@ describe("LoginPage", () => {
   it("renders multiple external auth providers from server settings", async () => {
     fetchServerSettings.mockResolvedValue({
       realm_name: "Example Zulip",
+      realm_uri: "",
+      realm_url: "",
       realm_icon: "",
       external_authentication_methods: [
         {
@@ -322,6 +411,8 @@ describe("LoginPage", () => {
     const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
     fetchServerSettings.mockResolvedValue({
       realm_name: "Example Zulip",
+      realm_uri: "",
+      realm_url: "",
       realm_icon: "",
       external_authentication_methods: [
         {
@@ -355,6 +446,8 @@ describe("LoginPage", () => {
     const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
     fetchServerSettings.mockResolvedValue({
       realm_name: "Example Zulip",
+      realm_uri: "",
+      realm_url: "",
       realm_icon: "",
       external_authentication_methods: [
         {
@@ -383,6 +476,8 @@ describe("LoginPage", () => {
   it("renders fallback realm logo and omits invalid provider icons", async () => {
     fetchServerSettings.mockResolvedValue({
       realm_name: "Example Zulip",
+      realm_uri: "",
+      realm_url: "",
       realm_icon: "mailto:icons@example.com",
       external_authentication_methods: [
         {
@@ -402,7 +497,7 @@ describe("LoginPage", () => {
 
     expect(screen.getByTestId("realm-logo-preview")).toHaveAttribute(
       "src",
-      expect.stringContaining("/organization-fallback.svg"),
+      expect.stringContaining("organization-fallback.svg"),
     );
     expect(container.querySelectorAll("img")).toHaveLength(1);
   });
@@ -410,6 +505,8 @@ describe("LoginPage", () => {
   it("uses fallback realm logo and blocks same-origin icon urls before auth", async () => {
     fetchServerSettings.mockResolvedValue({
       realm_name: "Example Zulip",
+      realm_uri: "",
+      realm_url: "",
       realm_icon: "/user_avatars/1/realm/icon.png",
       external_authentication_methods: [
         {
@@ -430,7 +527,7 @@ describe("LoginPage", () => {
     const fallbackLogo = screen.getByTestId("realm-logo-preview");
     expect(fallbackLogo).toHaveAttribute(
       "src",
-      expect.stringContaining("/organization-fallback.svg"),
+      expect.stringContaining("organization-fallback.svg"),
     );
     expect(fallbackLogo.getAttribute("src")).not.toContain("/user_avatars/");
     expect(container.querySelectorAll("img")).toHaveLength(1);

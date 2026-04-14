@@ -5,7 +5,8 @@
  * This file re-exports them for backward compatibility and adds non-env constants.
  *
  * Layout pixel values that appear in Tailwind are duplicated in
- * `packages/web/tailwind.config.ts` (named theme keys) — keep both in sync.
+ * `packages/web/tailwind.config.ts` (named theme keys) — keep both in sync
+ * (e.g. `APP_SHELL_MIN_WIDTH_PX` ↔ `min-w-app-shell-min`).
  */
 import { env } from "~/shared/lib/env";
 
@@ -42,11 +43,17 @@ export const MAIN_WORKSPACE_MAX_WIDTH_PX = 1920;
 /** Minimum shell height — mirror Tailwind `min-h-app-shell`. */
 export const LAYOUT_MIN_HEIGHT_PX = 400;
 
-/** Minimum viewport width treated as desktop shell — mirror Tailwind where used. */
+/**
+ * Reference width for the primary content column (`max-w-narrow-page` / Tailwind).
+ * Not the minimum window width — use `APP_SHELL_MIN_WIDTH_PX` for the root shell floor.
+ */
 export const DESKTOP_MIN_VIEWPORT_WIDTH_PX = 1200;
 
 /**
- * Max width for routed page roots below the desktop breakpoint.
+ * Max width for routed page roots aligned with the reference column width.
  * One pixel under `DESKTOP_MIN_VIEWPORT_WIDTH_PX` — mirror Tailwind `max-w-narrow-page`.
  */
 export const NARROW_PAGE_MAX_WIDTH_PX = DESKTOP_MIN_VIEWPORT_WIDTH_PX - 1;
+
+/** Minimum root app shell width — mirror Tailwind `min-w-app-shell-min`. */
+export const APP_SHELL_MIN_WIDTH_PX = 360;

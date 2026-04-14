@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  ORGANIZATION_FALLBACK_LOGO_URL,
+  getOrganizationFallbackLogoUrl,
   getOrganizationLogoSrc,
   resolveOrganizationLogoUrl,
   setOrganizationFaviconHref,
@@ -17,6 +17,9 @@ describe("organization-branding", () => {
     expect(resolveOrganizationLogoUrl("")).toBeNull();
     expect(resolveOrganizationLogoUrl("   ")).toBeNull();
     expect(resolveOrganizationLogoUrl("mailto:logo@example.com")).toBeNull();
+    expect(resolveOrganizationLogoUrl("/user_avatars/1/realm/icon.png")).toBeNull();
+    expect(resolveOrganizationLogoUrl("/user_avatars/1/realm/icon.png", "")).toBeNull();
+    expect(resolveOrganizationLogoUrl("/user_avatars/1/realm/icon.png", "   ")).toBeNull();
   });
 
   it("returns normalized logo url for valid organization logos", () => {
@@ -25,15 +28,28 @@ describe("organization-branding", () => {
     );
   });
 
+  it("resolves realm-relative realm_icon against organization url", () => {
+    expect(
+      resolveOrganizationLogoUrl(
+        "/user_avatars/1/realm/icon.png",
+        "https://chat.example.com",
+      ),
+    ).toBe("https://chat.example.com/user_avatars/1/realm/icon.png");
+  });
+
   it("returns fallback logo when organization logo is missing", () => {
-    expect(getOrganizationLogoSrc()).toBe(ORGANIZATION_FALLBACK_LOGO_URL);
-    expect(getOrganizationLogoSrc("")).toBe(ORGANIZATION_FALLBACK_LOGO_URL);
+    const fallback = getOrganizationFallbackLogoUrl();
+    expect(getOrganizationLogoSrc()).toBe(fallback);
+    expect(getOrganizationLogoSrc("")).toBe(fallback);
   });
 
   it("uses organization logo when available", () => {
     expect(getOrganizationLogoSrc("https://cdn.example.com/logo.svg")).toBe(
       "https://cdn.example.com/logo.svg",
     );
+    expect(
+      getOrganizationLogoSrc("/user_avatars/1/realm/icon.png", "https://chat.example.com"),
+    ).toBe("https://chat.example.com/user_avatars/1/realm/icon.png");
   });
 
   it("creates and updates dynamic favicon link", () => {
@@ -50,7 +66,7 @@ describe("organization-branding", () => {
     syncOrganizationFavicon();
 
     const dynamic = document.getElementById("organization-favicon");
-    expect(dynamic).toHaveAttribute("href", ORGANIZATION_FALLBACK_LOGO_URL);
+    expect(dynamic).toHaveAttribute("href", getOrganizationFallbackLogoUrl());
   });
 
   it("falls back favicon when organization logo cannot be loaded", () => {
@@ -66,7 +82,7 @@ describe("organization-branding", () => {
     syncOrganizationFavicon("https://cdn.example.com/broken.svg");
 
     const dynamic = document.getElementById("organization-favicon");
-    expect(dynamic).toHaveAttribute("href", ORGANIZATION_FALLBACK_LOGO_URL);
+    expect(dynamic).toHaveAttribute("href", getOrganizationFallbackLogoUrl());
     vi.unstubAllGlobals();
   });
 });

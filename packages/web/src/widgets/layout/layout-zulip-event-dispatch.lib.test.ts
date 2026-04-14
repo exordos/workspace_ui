@@ -21,6 +21,9 @@ function buildCtx(
       decrementUnreadForMessages: noop,
       incrementUnreadForMessages: noop,
       handleDeleteMessages: noop,
+      upsertStreamMetadataRows: noop,
+      renameStream: noop,
+      removeStream: noop,
     },
     currentChat: {
       context: null,

@@ -7,6 +7,7 @@ import { build } from "esbuild";
 import { cpSync, existsSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { getMainEsbuildDefine } from "./get-main-esbuild-define.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
@@ -29,6 +30,7 @@ async function main() {
       entryPoints: [resolve(root, "src", "main.ts")],
       outfile: resolve(root, "dist", "main.js"),
       format: "cjs",
+      define: getMainEsbuildDefine(),
     }),
     build({
       ...commonOptions,

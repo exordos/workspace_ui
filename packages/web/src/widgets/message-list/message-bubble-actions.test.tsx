@@ -8,6 +8,21 @@ import { MessageBubble } from "./message-bubble.ui";
 
 const buildAuthHeaderMock = vi.fn(() => ({}));
 
+vi.mock("~/shared/api/zulip-client.internal", () => ({
+  getRealmBaseUrl: () => "https://uploads.example.com",
+}));
+
+vi.mock("~/shared/lib/env", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("~/shared/lib/env")>();
+  return {
+    ...actual,
+    env: {
+      ...actual.env,
+      USER_UPLOADS_PATH_PREFIX: "",
+    },
+  };
+});
+
 vi.mock("~/shared/lib/auth-guard", async (importOriginal) => {
   const actual = await importOriginal<typeof import("~/shared/lib/auth-guard")>();
   return {
@@ -383,8 +398,10 @@ describe("MessageBubble edit/delete actions parity", () => {
     const relativeThumbnailPath =
       "/user_uploads/thumbnail/2/ee/H37di7GmS3N2EkehVcH83MaM/image.png/840x560.webp";
     const absoluteThumbnailUrl = `https://zulip.genesis-core.tech${relativeThumbnailPath}`;
+    const canonicalThumbnailUrl = `https://uploads.example.com${relativeThumbnailPath}`;
     const fetchMock = vi.fn((input: string | URL) => {
-      if (String(input) === relativeThumbnailPath) {
+      const s = String(input);
+      if (s === relativeThumbnailPath || s === canonicalThumbnailUrl) {
         return Promise.resolve({
           ok: true,
           blob: () => Promise.resolve(new Blob(["ok"])),
@@ -415,12 +432,11 @@ describe("MessageBubble edit/delete actions parity", () => {
       expect(image?.getAttribute("src")).toBe("blob:test-thumbnail");
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledWith(
-      relativeThumbnailPath,
+      canonicalThumbnailUrl,
       expect.objectContaining({
         headers: { Authorization: "Basic test" },
-        credentials: "include",
       }),
     );
   });

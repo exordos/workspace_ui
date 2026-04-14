@@ -36,7 +36,11 @@ import {
 } from "~/shared/lib/dm-index";
 import { env } from "~/shared/lib/env";
 import { startZulipEventLoop } from "~/shared/lib/event-loop";
-import { logMessageFlow } from "~/shared/lib/message-flow-debug.lib";
+import {
+  logChatListFlow,
+  logMessageFlow,
+  summarizeZulipMessagesForFlowDebug,
+} from "~/shared/lib/message-flow-debug.lib";
 import { playNotificationSound } from "~/shared/lib/notification-sound";
 import { notificationService } from "~/shared/lib/notifications";
 import { loadUsersDirectoryRow } from "~/shared/lib/users-directory-snapshot-db";
@@ -47,6 +51,9 @@ import {
 } from "./layout-zulip-event-dispatch.lib";
 import { runLayoutReconnectRefresh } from "./layout-zulip-refresh-stale.lib";
 import type { ChatListBootstrapResult } from "./layout-chat-list-bootstrap.lib";
+
+// Increments on effect cleanup so superseded `runChatListBootstrap` runs skip hydrate/API (React Strict Mode).
+let chatListBootstrapEffectEpoch = 0;
 
 // Что делает: размер одной фоновой страницы DM-backfill.
 const METADATA_DM_BACKFILL_PAGE_SIZE = 5000;
@@ -125,7 +132,10 @@ function persistDmIndexFromStore(instanceId: string): void {
 
 export function useLayoutZulipEventLoop(options: {
   currentInstanceId: string | null;
-  loadBootstrapMessages: () => Promise<ChatListBootstrapResult>;
+  loadBootstrapMessages: (
+    signal: AbortSignal,
+    isStale: () => boolean,
+  ) => Promise<ChatListBootstrapResult>;
   loadMuteSnapshot: () => Promise<{
     mutedStreamIds: number[];
     mutedTopics: { streamId: number; topic: string }[];
@@ -180,6 +190,9 @@ export function useLayoutZulipEventLoop(options: {
       return;
     }
     let cancelled = false;
+    const bootstrapAbort = new AbortController();
+    const bootstrapEpoch = ++chatListBootstrapEffectEpoch;
+    const isBootstrapStale = () => bootstrapEpoch !== chatListBootstrapEffectEpoch;
 
     const instanceSwitched = prevInstanceForBootstrapRef.current !== currentInstanceId;
     if (instanceSwitched) {
@@ -216,7 +229,7 @@ export function useLayoutZulipEventLoop(options: {
       const metadataDmBackfillEnabled =
         metadataBootstrapEnabled && env.METADATA_DM_BACKFILL_ENABLED;
       const pUsers = fetchUsers();
-      const pMessages = loadBootstrapMessagesRef.current();
+      const pMessages = loadBootstrapMessagesRef.current(bootstrapAbort.signal, isBootstrapStale);
       const pSubscriptions = metadataBootstrapEnabled ? fetchSubscriptions() : Promise.resolve([]);
       const pCurrentUserId = getCurrentUser()
         .then((user) => {
@@ -255,6 +268,20 @@ export function useLayoutZulipEventLoop(options: {
 
         const uid = resolvedCurrentUserId ?? useChatListStore.getState().currentUserId ?? null;
 
+        logChatListFlow("eventLoop: bootstrap Promise.all settled", {
+          instanceId: currentInstanceId,
+          metadataBootstrapEnabled,
+          metadataDmBackfillEnabled,
+          bootstrapMode: result.mode,
+          usersMerged: apiMembers.length,
+          subscriptionsRows: subscriptions.length,
+          currentUserId: uid,
+          bootstrapMessages: summarizeZulipMessagesForFlowDebug(
+            result.mode === "full" || result.mode === "delta" ? result.messages : [],
+          ),
+          latestMessageIdHint: result.latestMessageIdHint,
+        });
+
         if (metadataBootstrapEnabled) {
           // Что делает: сначала показываем каналы/DM из metadata, даже если окно сообщений пустое.
           const streamMetadataRows = toStreamMetadataRows(subscriptions);
@@ -284,6 +311,11 @@ export function useLayoutZulipEventLoop(options: {
             upsertDmIndexFromMessages(currentInstanceId, msgs, uid);
           }
           latestMessageIdRef.current = getNewestMessageId(msgs);
+          logChatListFlow("eventLoop: applied bootstrap full to chat list", {
+            usedAddMessagesMerge: metadataBootstrapEnabled,
+            streamsMapSize: useChatListStore.getState().streamsMap.size,
+            dmsMapSize: useChatListStore.getState().dmsMap.size,
+          });
         } else if (result.mode === "delta") {
           for (const m of result.messages) {
             useUsersStore.getState().mergeFromMessage(m);
@@ -296,13 +328,27 @@ export function useLayoutZulipEventLoop(options: {
           const prev = result.latestMessageIdHint;
           latestMessageIdRef.current =
             newest != null && (prev == null || newest > prev) ? newest : (prev ?? newest);
+          logChatListFlow("eventLoop: applied bootstrap delta (addMessages)", {
+            streamsMapSize: useChatListStore.getState().streamsMap.size,
+            dmsMapSize: useChatListStore.getState().dmsMap.size,
+            latestMessageIdRef: latestMessageIdRef.current,
+          });
         } else {
           if (result.latestMessageIdHint != null) {
             latestMessageIdRef.current = result.latestMessageIdHint;
           }
+          logChatListFlow("eventLoop: bootstrap mode none after metadata/hydrate", {
+            streamsMapSize: useChatListStore.getState().streamsMap.size,
+            dmsMapSize: useChatListStore.getState().dmsMap.size,
+            latestMessageIdRef: latestMessageIdRef.current,
+          });
         }
 
         if (metadataDmBackfillEnabled && currentInstanceId != null) {
+          logChatListFlow("eventLoop: starting metadata DM backfill loop", {
+            maxBatches: METADATA_DM_BACKFILL_MAX_BATCHES,
+            pageSize: METADATA_DM_BACKFILL_PAGE_SIZE,
+          });
           void (async () => {
             let anchor: number | "newest" = "newest";
             let stagnantBatches = 0;
@@ -389,6 +435,9 @@ export function useLayoutZulipEventLoop(options: {
                 registration?.recent_private_conversations,
               );
               if (rows.length > 0) {
+                logChatListFlow("eventLoop: registerQueue → upsertDmMetadataRows from recent_private_conversations", {
+                  rowCount: rows.length,
+                });
                 useChatListStore.getState().upsertDmMetadataRows(rows);
                 if (currentInstanceId != null) {
                   persistDmIndexFromStore(currentInstanceId);
@@ -467,6 +516,8 @@ export function useLayoutZulipEventLoop(options: {
 
     return () => {
       cancelled = true;
+      chatListBootstrapEffectEpoch += 1;
+      bootstrapAbort.abort();
       const qid = queueIdRef.current;
       const creds = instanceAtLoopStartRef.current;
       if (qid && creds) {

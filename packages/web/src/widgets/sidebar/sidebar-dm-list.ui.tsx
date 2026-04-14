@@ -3,7 +3,6 @@ import { Link } from "react-router-dom";
 import { resolvePersonalDmSidebarTitle } from "~/entities/chat-list/chat-list-format.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useUsersStore } from "~/entities/user/user.model";
-import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indicator.model";
 import { t } from "~/i18n/i18n";
@@ -15,6 +14,7 @@ import { Avatar } from "~/shared/ui/avatar";
 import { Badge } from "~/shared/ui/badge";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
+import { SidebarUserStatusEmoji } from "./sidebar-user-status-emoji.ui";
 import { isDmPartnerTyping, sortDmAllUsersForDisplay } from "./sidebar-dm-list.lib";
 import { MOCK_DMS, parseDmSlugToUserIds } from "./sidebar.lib";
 import type { SidebarChat } from "./sidebar.types";
@@ -105,14 +105,7 @@ export const SidebarDmList: React.FC<SidebarDmListProps> = ({ activeDmId, dms })
               currentUserId,
               typingMap,
             });
-            const statusLabel = formatUserStatusLabel(recentDmUser?.status);
-            const secondaryText = isTyping
-              ? t("chat.typing")
-              : statusLabel != null && statusLabel.length > 0
-                ? chat.lastMessage != null && chat.lastMessage.length > 0
-                  ? `${statusLabel} · ${chat.lastMessage}`
-                  : statusLabel
-                : (chat.lastMessage ?? "");
+            const secondaryText = isTyping ? t("chat.typing") : (chat.lastMessage ?? "");
             const avatarSrc = resolvePersonalDmListAvatarSrc(
               chat.avatar_url,
               recentDmUser?.avatar_url,
@@ -138,9 +131,12 @@ export const SidebarDmList: React.FC<SidebarDmListProps> = ({ activeDmId, dms })
                   />
                 </div>
                 <div className="flex min-w-0 flex-1 flex-col justify-center">
-                  <span className="block truncate text-sm font-medium text-text-primary">
-                    {rowTitle}
-                  </span>
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <span className="min-w-0 truncate text-sm font-medium text-text-primary">
+                      {rowTitle}
+                    </span>
+                    <SidebarUserStatusEmoji status={recentDmUser?.status} />
+                  </div>
                   {!isCompactDensity && (
                     <span
                       className={`mt-0.5 block truncate text-[11px] ${
@@ -173,7 +169,6 @@ export const SidebarDmList: React.FC<SidebarDmListProps> = ({ activeDmId, dms })
               currentUserId,
               typingMap,
             });
-            const statusLabel = formatUserStatusLabel(user.status);
             const allUsersAvatarSrc = resolveAvatarUrl(user.avatar_url, getRealmBaseUrl());
             return (
               <Link
@@ -194,16 +189,19 @@ export const SidebarDmList: React.FC<SidebarDmListProps> = ({ activeDmId, dms })
                   />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium text-text-primary">
-                    {user.full_name}
-                  </span>
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <span className="min-w-0 truncate text-sm font-medium text-text-primary">
+                      {user.full_name}
+                    </span>
+                    <SidebarUserStatusEmoji status={user.status} />
+                  </div>
                   {!isCompactDensity && isTyping ? (
                     <span className="block truncate text-[11px] italic text-text-primary">
                       {t("chat.typing")}
                     </span>
                   ) : !isCompactDensity ? (
                     <span className="block truncate text-[11px] text-text-secondary">
-                      {statusLabel ?? user.email ?? ""}
+                      {user.email ?? ""}
                     </span>
                   ) : null}
                 </div>

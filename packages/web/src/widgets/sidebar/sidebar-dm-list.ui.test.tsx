@@ -135,7 +135,7 @@ describe("SidebarDmList", () => {
     expect(screen.getByRole("status", { name: /away/i })).toBeInTheDocument();
   });
 
-  it("shows custom status labels in recent and all users tabs", () => {
+  it("shows status emoji next to name but not status text in recent or all users rows", () => {
     useChatListStore.setState({ currentUserId: 999 });
     useUsersStore
       .getState()
@@ -151,11 +151,16 @@ describe("SidebarDmList", () => {
 
     renderWithProviders(<SidebarDmList activeDmId={42} dms={RECENT_DMS} />);
 
-    expect(screen.getByText("💬 Deep work · Hello")).toBeInTheDocument();
+    expect(screen.getByText("Hello")).toBeInTheDocument();
+    expect(screen.queryByText(/Deep work/)).not.toBeInTheDocument();
+    expect(screen.getAllByTestId("sidebar-user-status-emoji")).toHaveLength(2);
 
     fireEvent.click(screen.getByRole("button", { name: /all users/i }));
 
-    expect(screen.getByText("💬 Deep work")).toBeInTheDocument();
-    expect(screen.getByText("🏠 WFH")).toBeInTheDocument();
+    expect(screen.getByText("alice@example.com")).toBeInTheDocument();
+    expect(screen.getByText("bob@example.com")).toBeInTheDocument();
+    expect(screen.queryByText(/Deep work/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/WFH/)).not.toBeInTheDocument();
+    expect(screen.getAllByTestId("sidebar-user-status-emoji").length).toBeGreaterThanOrEqual(2);
   });
 });

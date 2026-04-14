@@ -19,7 +19,7 @@ import { clearLocalStatePreservingCriticalKeys } from "~/shared/lib/local-reset"
 import { createLogger } from "~/shared/lib/logger";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { pushService } from "~/shared/lib/push/push.service";
-import { isValidUrl } from "~/shared/lib/validation";
+import { resolveOrganizationLogoUrl } from "~/shared/lib/organization-branding";
 import { Icon } from "~/shared/ui/icon";
 import type { MenuItem, ProfileDrawerProps } from "./profile-drawer.types";
 
@@ -59,13 +59,6 @@ function getInstanceLabel(realm: string, email: string): string {
   }
 }
 
-function resolveRealmIconUrl(realmIcon?: string): string | null {
-  if (realmIcon == null) return null;
-  const trimmed = realmIcon.trim();
-  if (trimmed.length === 0) return null;
-  return isValidUrl(trimmed) ? trimmed : null;
-}
-
 export const ProfileDrawer: React.FC<ProfileDrawerProps> = ({
   open,
   onOpenChange,
@@ -103,8 +96,8 @@ export const ProfileDrawer: React.FC<ProfileDrawerProps> = ({
     [currentInstance],
   );
   const currentServerIconUrl = useMemo(
-    () => resolveRealmIconUrl(currentInstance?.realmIcon),
-    [currentInstance?.realmIcon],
+    () => resolveOrganizationLogoUrl(currentInstance?.realmIcon, currentInstance?.realm),
+    [currentInstance?.realmIcon, currentInstance?.realm],
   );
 
   const handleCycleLanguage = useCallback(() => {

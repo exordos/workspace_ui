@@ -8,6 +8,7 @@ import { useUsersStore } from "~/entities/user/user.model";
 import { renderWithProviders } from "~/test/render";
 import { useRightDrawerStore } from "~/widgets/right-panel/right-drawer.model";
 import { useSearchModalStore } from "~/widgets/search-modal/search-modal.model";
+import { ELECTRON_MAC_TITLEBAR_STRIP_CLASS } from "~/shared/lib/electron-title-bar.lib";
 import { TopBar } from "./top-bar.ui";
 
 function LocationProbe() {
@@ -25,6 +26,7 @@ function resetTopBarRelatedStores(): void {
 describe("TopBar", () => {
   afterEach(() => {
     resetTopBarRelatedStores();
+    delete (window as unknown as Record<string, unknown>).electronAPI;
   });
 
   it("navigates to calendar when calendar section is clicked", () => {
@@ -95,13 +97,35 @@ describe("TopBar", () => {
   it("opens user menu in right drawer when profile trigger is clicked", () => {
     renderWithProviders(<TopBar />);
 
+    const profileButton = screen.getByRole("button", { name: /profile/i });
+    expect(profileButton).toHaveAttribute("aria-expanded", "false");
+
     act(() => {
-      fireEvent.click(screen.getByRole("button", { name: /profile/i }));
+      fireEvent.click(profileButton);
     });
 
     const drawer = useRightDrawerStore.getState();
     expect(drawer.open).toBe(true);
     expect(drawer.mode).toBe("user-menu");
+    expect(profileButton).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("closes user menu when profile trigger is clicked again", () => {
+    renderWithProviders(<TopBar />);
+
+    const profileButton = screen.getByRole("button", { name: /profile/i });
+    act(() => {
+      fireEvent.click(profileButton);
+    });
+    expect(useRightDrawerStore.getState().open).toBe(true);
+
+    act(() => {
+      fireEvent.click(profileButton);
+    });
+
+    const drawer = useRightDrawerStore.getState();
+    expect(drawer.open).toBe(false);
+    expect(profileButton).toHaveAttribute("aria-expanded", "false");
   });
 
   it("uses semantic token class for active section background from route", () => {
@@ -115,11 +139,26 @@ describe("TopBar", () => {
 
     const header = screen.getByRole("banner", { name: /top bar/i });
     expect(header).toHaveClass("rounded-b-xl");
-    expect(header).toHaveClass("p-2");
+    expect(screen.getByTestId("topbar-toolbar-row")).toHaveClass("p-2");
   });
 
   it("uses left slot inset to align server switcher with folder rail", () => {
     renderWithProviders(<TopBar />);
+
+    const leftSlot = screen.getByTestId("topbar-left-slot");
+    expect(leftSlot).toHaveClass("pl-5");
+  });
+
+  it("reserves macOS traffic light region when Electron reports darwin", () => {
+    (window as unknown as Record<string, unknown>).electronAPI = {
+      platform: "darwin",
+      notifications: { show: vi.fn() },
+    };
+    renderWithProviders(<TopBar />);
+
+    const strip = screen.getByTestId("topbar-mac-titlebar-strip");
+    expect(strip).toHaveClass("electron-drag");
+    expect(strip).toHaveClass(ELECTRON_MAC_TITLEBAR_STRIP_CLASS);
 
     const leftSlot = screen.getByTestId("topbar-left-slot");
     expect(leftSlot).toHaveClass("pl-5");

@@ -240,6 +240,17 @@ describe("instancesStore", () => {
       expect(stored[0].realm).toBe("https://a.test");
     });
 
+    it("persists workspaceOrgOrigin when present", () => {
+      useInstancesStore.getState().addInstance({
+        realm: "https://z.test",
+        email: "a@a.com",
+        apiKey: "k1",
+        workspaceOrgOrigin: "https://gw.example.com",
+      });
+      const stored = JSON.parse(window.localStorage.getItem(INSTANCES_KEY) ?? "[]");
+      expect(stored[0].workspaceOrgOrigin).toBe("https://gw.example.com");
+    });
+
     // The active instance ID is stored separately so it survives independently.
     it("persists current instance id to localStorage", () => {
       const id = useInstancesStore

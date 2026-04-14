@@ -10,6 +10,7 @@ import {
   parseDesktopFlowCredentials,
   parseDesktopFlowLoginToken,
 } from "~/shared/lib/oidc-desktop";
+import { workspaceOrgOriginFromLoginServerUrlInput } from "~/shared/lib/workspace-org-origin.lib";
 import { isValidRealmUrl } from "~/shared/lib/validation";
 import { Button } from "~/shared/ui/button";
 import { Icon } from "~/shared/ui/icon";
@@ -74,12 +75,15 @@ export const PasteTokenPage: React.FC = () => {
       }
 
       const credentials = parseDesktopFlowCredentials(payload);
+      const workspaceOrgOrigin = workspaceOrgOriginFromLoginServerUrlInput(realm);
+      const orgFields = workspaceOrgOrigin !== "" ? { workspaceOrgOrigin } : {};
       if (credentials) {
         addInstance({
           realm,
           email: credentials.email,
           apiKey: credentials.apiKey,
           authType: "api_key",
+          ...orgFields,
         });
       } else {
         const loginToken = parseDesktopFlowLoginToken(payload);
@@ -97,6 +101,7 @@ export const PasteTokenPage: React.FC = () => {
           email: exchanged.email,
           apiKey: exchanged.authType === "api_key" ? (exchanged.apiKey ?? "") : "",
           authType: exchanged.authType,
+          ...orgFields,
         });
       }
       clearDesktopFlowState();

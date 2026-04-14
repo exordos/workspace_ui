@@ -5,17 +5,22 @@
  * Thumbnail: `{same prefix}/user_uploads/thumbnail/{id}/{shard}/{name}.png/840x560.webp`
  */
 
+import { collapseDuplicateWorkspaceV1InUrl } from "~/shared/lib/user-uploads-url.lib";
+
 const USER_UPLOAD_IMAGE_EXT = /\.(apng|avif|bmp|gif|jpe?g|png|svg|webp)(\?|#|$)/i;
 
 export const USER_UPLOAD_THUMBNAIL_SIZE = "840x560.webp";
 
-function collapseDuplicateWorkspaceV1InUrl(raw: string): string {
-  let s = raw.trim();
-  while (s.includes("/workspace/v1/workspace/v1")) {
-    s = s.replace(/\/workspace\/v1\/workspace\/v1/g, "/workspace/v1");
-  }
-  return s;
-}
+/** Intrinsic pixel size of Zulip’s server-generated thumbnail file (`840x560.webp`). */
+export const USER_UPLOAD_THUMBNAIL_INTRINSIC_WIDTH = 840;
+export const USER_UPLOAD_THUMBNAIL_INTRINSIC_HEIGHT = 560;
+
+/**
+ * Reserved `width`/`height` on inline `<img>` in the chat bubble: same aspect ratio as the
+ * Zulip thumbnail (840×560), scaled to match the bubble max displayed height (160px).
+ */
+export const USER_UPLOAD_THUMBNAIL_DISPLAY_MAX_WIDTH = 240;
+export const USER_UPLOAD_THUMBNAIL_DISPLAY_MAX_HEIGHT = 160;
 
 /** Whether the path looks like an image user-upload (eligible for server thumbnail URL). */
 export function isUserUploadImagePath(src: string): boolean {

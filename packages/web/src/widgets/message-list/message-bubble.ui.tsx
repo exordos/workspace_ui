@@ -38,6 +38,7 @@ import {
   AUTH_MEDIA_POSTER_DATA_ATTR,
   AUTH_MEDIA_SRC_DATA_ATTR,
   collapseDuplicateWorkspaceV1InUrl,
+  createDisplayableBlobUrl,
   fetchProtectedUploadBlob,
   isAuthMediaPlaceholderAttr,
   protectUserUploadMediaSources,
@@ -53,6 +54,9 @@ import type {
   MessageBubbleProps,
 } from "./message-bubble.types";
 import type { EmojiClickData } from "emoji-picker-react";
+
+/** Prefetch protected media slightly before it scrolls into the chat viewport. */
+const PROTECTED_MEDIA_IO_ROOT_MARGIN = "200px 0px";
 
 export type { MessageBubbleCallbacks, MessageBubbleProps } from "./message-bubble.types";
 
@@ -78,7 +82,16 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       fallbackName: string;
     } | null>(null);
     const getUser = useUsersStore((s) => s.getUser);
+    const users = useUsersStore((s) => s.users);
     const user = useUsersStore((s) => s.getUser(message.sender_id));
+    const resolveUserMention = useCallback((displayName: string): number | null => {
+      const trimmed = displayName.trim();
+      if (trimmed.length === 0) return null;
+      for (const [, u] of users) {
+        if (u.full_name.trim() === trimmed) return u.user_id;
+      }
+      return null;
+    }, [users]);
     const trimmedUserName = user?.full_name?.trim();
     const displayName =
       trimmedUserName != null && trimmedUserName.length > 0
@@ -112,7 +125,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     );
     const imagesBase = getMessageImagesBaseUrl();
     const { safeMessageHtml, displayHtmlForJitsi } = useMemo(() => {
-      const rawHtml = messageBodyToUnsanitizedDisplayHtml(message.content);
+      const rawHtml = messageBodyToUnsanitizedDisplayHtml(message.content, {
+        resolveUserMention,
+      });
       const sanitized = sanitizeHtml(rawHtml, imagesBase);
       return {
         safeMessageHtml: protectUserUploadMediaSources(
@@ -120,7 +135,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
         ),
         displayHtmlForJitsi: rawHtml,
       };
-    }, [message.content, imagesBase]);
+    }, [message.content, imagesBase, resolveUserMention]);
 
     const messageBodyRef = useRef<HTMLDivElement>(null);
     const lastInjectedMessageHtmlRef = useRef<string | null>(null);
@@ -185,16 +200,20 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     }, [safeMessageHtml]);
 
     // Load protected uploads with authenticated fetch to avoid browser auth popups.
+    // Defer fetch until media intersects the chat scroll container (`role="feed"`), when available.
     useEffect(() => {
       const div = messageBodyRef.current;
       if (!div) return;
 
-      const protectedMediaElements = div.querySelectorAll<HTMLElement>(
-        `[${AUTH_MEDIA_SRC_DATA_ATTR}], [${AUTH_MEDIA_POSTER_DATA_ATTR}]`,
+      const protectedMediaElements = Array.from(
+        div.querySelectorAll<HTMLElement>(
+          `[${AUTH_MEDIA_SRC_DATA_ATTR}], [${AUTH_MEDIA_POSTER_DATA_ATTR}]`,
+        ),
       );
       if (protectedMediaElements.length === 0) return;
 
       const headers = buildAuthHeader();
+      const scrollRoot = div.closest<HTMLElement>('[role="feed"]');
 
       const blobUrls: string[] = [];
       let cancelled = false;
@@ -237,15 +256,30 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
         };
 
         void fetchProtectedUploadBlob(rawValue, headers, fetchFallbackFull)
-          .then((blob) => {
+          .then(async (blob) => {
             if (cancelled) return;
             if (!blob) {
               restoreOriginalSource();
               return;
             }
-            const url = URL.createObjectURL(blob);
-            blobUrls.push(url);
-            element.setAttribute(targetAttr, url);
+            let displayUrl: string;
+            try {
+              displayUrl = await createDisplayableBlobUrl(blob, blobUrls);
+            } catch {
+              restoreOriginalSource();
+              return;
+            }
+            if (cancelled) {
+              if (displayUrl.startsWith("blob:")) {
+                URL.revokeObjectURL(displayUrl);
+                const idx = blobUrls.indexOf(displayUrl);
+                if (idx >= 0) {
+                  blobUrls.splice(idx, 1);
+                }
+              }
+              return;
+            }
+            element.setAttribute(targetAttr, displayUrl);
             if (targetAttr === "src") {
               if (element instanceof HTMLImageElement) {
                 element.dataset.originalSrc = fullResolutionUrl ?? rawValue;
@@ -260,17 +294,56 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
           });
       };
 
-      protectedMediaElements.forEach((element) => {
+      const startFetchForElement = (element: HTMLElement) => {
         if (element.hasAttribute(AUTH_MEDIA_SRC_DATA_ATTR)) {
           fetchIntoAttribute(element, AUTH_MEDIA_SRC_DATA_ATTR, "src");
         }
         if (element.hasAttribute(AUTH_MEDIA_POSTER_DATA_ATTR)) {
           fetchIntoAttribute(element, AUTH_MEDIA_POSTER_DATA_ATTR, "poster");
         }
-      });
+      };
+
+      const useImmediateFetch =
+        scrollRoot == null ||
+        typeof IntersectionObserver === "undefined" ||
+        typeof IntersectionObserver !== "function";
+
+      if (useImmediateFetch) {
+        for (const element of protectedMediaElements) {
+          startFetchForElement(element);
+        }
+        return () => {
+          cancelled = true;
+          for (const url of blobUrls) {
+            URL.revokeObjectURL(url);
+          }
+        };
+      }
+
+      const observer = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+            const target = entry.target;
+            if (!(target instanceof HTMLElement)) continue;
+            observer.unobserve(target);
+            startFetchForElement(target);
+          }
+        },
+        {
+          root: scrollRoot,
+          rootMargin: PROTECTED_MEDIA_IO_ROOT_MARGIN,
+          threshold: 0,
+        },
+      );
+
+      for (const element of protectedMediaElements) {
+        observer.observe(element);
+      }
 
       return () => {
         cancelled = true;
+        observer.disconnect();
         for (const url of blobUrls) {
           URL.revokeObjectURL(url);
         }
@@ -457,12 +530,18 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
 
     const handleMessageBodyClick = useCallback(
       (event: MouseEvent) => {
-        const target = event.target;
-        if (!(target instanceof HTMLElement)) return;
-        if (target.tagName === "IMG") {
+        const rawTarget = event.target;
+        const hit =
+          rawTarget instanceof HTMLElement
+            ? rawTarget
+            : rawTarget instanceof Node
+              ? rawTarget.parentElement
+              : null;
+        if (hit == null) return;
+        if (hit.tagName === "IMG") {
           event.preventDefault();
           event.stopPropagation();
-          const image = target as HTMLImageElement;
+          const image = hit as HTMLImageElement;
           const src = image.currentSrc || image.src;
           if (src) {
             if (src.startsWith("blob:")) {
@@ -481,7 +560,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
           return;
         }
 
-        const mentionSpan = target.closest("span.user-mention[data-user-id]");
+        const mentionSpan = hit.closest("span.user-mention[data-user-id]");
         if (
           mentionSpan != null &&
           callbacks?.onOpenDirectMessage != null &&
@@ -503,7 +582,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
           }
         }
 
-        const spoilerHeader = target.closest(".spoiler-header");
+        const spoilerHeader = hit.closest(".spoiler-header");
         if (spoilerHeader) {
           event.preventDefault();
           event.stopPropagation();
@@ -511,7 +590,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
           return;
         }
 
-        const attachmentLink = target.closest<HTMLAnchorElement>("a[href]");
+        const attachmentLink = hit.closest<HTMLAnchorElement>("a[href]");
         if (attachmentLink) {
           const attachmentPath = extractUserUploadPath(attachmentLink.getAttribute("href") ?? "");
           const containsImage = attachmentLink.querySelector("img") != null;
@@ -664,7 +743,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
         >
           <div
             ref={messageBodyRef}
-            className="message-body min-w-0 max-w-full select-text break-words [&_a]:text-accent [&_a]:underline hover:[&_a]:opacity-90 [&_blockquote]:border-l-2 [&_blockquote]:border-border-subtle [&_blockquote]:pl-2 [&_blockquote]:italic [&_blockquote]:text-text-muted [&_img]:my-1 [&_img]:h-auto [&_img]:max-w-full [&_img]:cursor-pointer [&_img]:rounded [&_p:last-child]:mb-0 [&_p]:mb-1 [&_pre]:my-1 [&_pre]:min-w-0 [&_pre]:max-w-full [&_pre]:whitespace-pre-wrap [&_pre]:border-l-2 [&_pre]:border-border-subtle [&_pre]:py-2 [&_pre]:pl-2 [&_pre]:pr-2 [&_pre]:font-mono [&_pre]:text-sm [&_pre]:italic [&_pre]:text-text-muted [&_pre]:[overflow-wrap:anywhere] [&_pre_code]:min-w-0 [&_pre_code]:max-w-full [&_pre_code]:whitespace-pre-wrap [&_pre_code]:[overflow-wrap:anywhere] [&_span.user-mention]:cursor-pointer [&_span.user-mention]:text-accent hover:[&_span.user-mention]:opacity-90 [&_table]:my-2 [&_table]:w-full [&_table]:border-collapse [&_table]:text-sm [&_td]:border [&_td]:border-border-subtle [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-border-subtle [&_th]:px-2 [&_th]:py-1 [&_th]:text-left"
+            className="message-body min-w-0 max-w-full select-text break-words [&_a]:text-accent [&_a]:underline hover:[&_a]:opacity-90 [&_blockquote]:border-l-2 [&_blockquote]:border-border-subtle [&_blockquote]:pl-2 [&_blockquote]:italic [&_blockquote]:text-text-muted [&_img]:my-1 [&_img]:max-h-[160px] [&_img]:max-w-full [&_img]:w-auto [&_img]:h-auto [&_img]:cursor-pointer [&_img]:rounded [&_img]:object-contain [&_p:last-child]:mb-0 [&_p]:mb-1 [&_pre]:my-1 [&_pre]:min-w-0 [&_pre]:max-w-full [&_pre]:whitespace-pre-wrap [&_pre]:border-l-2 [&_pre]:border-border-subtle [&_pre]:py-2 [&_pre]:pl-2 [&_pre]:pr-2 [&_pre]:font-mono [&_pre]:text-sm [&_pre]:italic [&_pre]:text-text-muted [&_pre]:[overflow-wrap:anywhere] [&_pre_code]:min-w-0 [&_pre_code]:max-w-full [&_pre_code]:whitespace-pre-wrap [&_pre_code]:[overflow-wrap:anywhere] [&_span.user-mention]:cursor-pointer [&_span.user-mention]:text-accent hover:[&_span.user-mention]:opacity-90 [&_table]:my-2 [&_table]:w-full [&_table]:border-collapse [&_table]:text-sm [&_td]:border [&_td]:border-border-subtle [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-border-subtle [&_th]:px-2 [&_th]:py-1 [&_th]:text-left"
           />
           <div className="absolute bottom-2 right-2 flex items-center gap-1 text-[11px] text-text-muted">
             <span>{time}</span>
@@ -694,9 +773,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
             role="button"
             tabIndex={0}
             onKeyDown={handleKeyboardContextMenu}
-            className={`selectable hover:bg-bg-elevated/30 group relative flex items-start gap-2 py-2 ${
-              isSelected ? `${bubbleSurfaceClass} ring-1 ring-accent` : ""
-            } ${isFocused ? `${bubbleSurfaceClass} ring-2 ring-accent-soft` : ""}`}
+            className={`selectable group relative flex items-start gap-2 py-2 ${
+              !isSelected ? "hover:bg-bg-elevated/30" : ""
+            } ${isSelected ? "bg-msg-selected" : ""} ${
+              !isSelected && isFocused ? "bg-accent-soft/35" : ""
+            }`}
           >
             {selectionMode && (
               <button
@@ -750,11 +831,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
           role="button"
           tabIndex={0}
           onKeyDown={handleKeyboardContextMenu}
-          className={`selectable hover:bg-bg-elevated/30 group relative flex gap-2 px-4 py-2 ${
+          className={`selectable group relative flex gap-2 px-4 py-2 ${
             isOwn ? "flex-row-reverse" : ""
-          } ${isSelected ? `${bubbleSurfaceClass} ring-1 ring-accent` : ""} ${
-            isFocused ? `${bubbleSurfaceClass} ring-2 ring-accent-soft` : ""
-          }`}
+          } ${!isSelected ? "hover:bg-bg-elevated/30" : ""} ${
+            isSelected ? "bg-msg-selected" : ""
+          } ${!isSelected && isFocused ? "bg-accent-soft/35" : ""}`}
         >
           {selectionMode && (
             <button

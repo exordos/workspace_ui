@@ -16,6 +16,10 @@ export class ZulipAuthError extends Error {
 export interface ZulipServerSettings {
   realm_name: string;
   realm_icon: string;
+  /** Canonical organization URL (Zulip 9+: prefer {@link realm_url}). */
+  realm_uri: string;
+  /** Canonical organization URL (Zulip 9+). Alias of realm_uri in older docs. */
+  realm_url: string;
   external_authentication_methods: {
     name: string;
     display_name: string;
@@ -52,6 +56,15 @@ export interface SavedSnippet {
   date_created: number;
 }
 
+/** One server-supported user-upload thumbnail variant (Zulip 9.0+; see `server_thumbnail_formats` in register). */
+export interface ZulipServerThumbnailFormat {
+  name: string;
+  max_width: number;
+  max_height: number;
+  format: string;
+  animated: boolean;
+}
+
 export interface RegisterQueueResult {
   queue_id: string;
   last_event_id: number;
@@ -59,6 +72,8 @@ export interface RegisterQueueResult {
   user_topics?: ZulipUserTopic[];
   // Зачем: metadata recent DM для первичного построения списка диалогов.
   recent_private_conversations?: Record<string, ZulipRecentPrivateConversation>;
+  /** Present when `realm` is included in `fetch_event_types` (Zulip 9.0+). */
+  server_thumbnail_formats?: ZulipServerThumbnailFormat[];
 }
 
 export interface ZulipEvent {

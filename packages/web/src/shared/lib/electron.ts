@@ -9,6 +9,12 @@ export function isElectron(): boolean {
   return typeof window !== "undefined" && window.electronAPI != null;
 }
 
+/** True only in Electron on macOS (hidden title bar + traffic lights). */
+export function isElectronDarwin(): boolean {
+  const api = getElectronAPI();
+  return api?.platform === "darwin";
+}
+
 export function getElectronAPI() {
   return window.electronAPI ?? null;
 }

@@ -10,7 +10,9 @@ import { useRightDrawerStore } from "~/widgets/right-panel/right-drawer.model";
 import { resolveTopBarAvatarSrc } from "./top-bar.lib";
 
 export const TopBarProfileTrigger = React.memo(function TopBarProfileTrigger() {
+  const isUserMenuOpen = useRightDrawerStore((s) => s.open && s.mode === "user-menu");
   const openUserMenu = useRightDrawerStore((s) => s.openUserMenu);
+  const closeDrawer = useRightDrawerStore((s) => s.close);
   const currentUserId = useChatListStore((s) => s.currentUserId);
   const currentUser = useUsersStore((s) =>
     currentUserId != null ? s.getUser(currentUserId) : undefined,
@@ -34,8 +36,12 @@ export const TopBarProfileTrigger = React.memo(function TopBarProfileTrigger() {
   const statusLabel = currentStatus.statusLabel;
 
   const handleClick = useCallback(() => {
-    openUserMenu();
-  }, [openUserMenu]);
+    if (isUserMenuOpen) {
+      closeDrawer();
+    } else {
+      openUserMenu();
+    }
+  }, [closeDrawer, isUserMenuOpen, openUserMenu]);
 
   return (
     <button
@@ -43,6 +49,7 @@ export const TopBarProfileTrigger = React.memo(function TopBarProfileTrigger() {
       onClick={handleClick}
       className="hover:bg-bg/50 relative flex items-center gap-2 rounded-lg p-1.5 text-left transition-colors"
       aria-label={t("nav.profile")}
+      aria-expanded={isUserMenuOpen}
     >
       <div className="relative flex-shrink-0">
         <Avatar size="xs" src={avatarSrc}>
@@ -80,7 +87,11 @@ export const TopBarProfileTrigger = React.memo(function TopBarProfileTrigger() {
           </span>
         )}
       </div>
-      <Icon name="chevron-down" size={16} className="shrink-0 text-text-muted" />
+      <Icon
+        name="chevron-down"
+        size={16}
+        className={`shrink-0 text-text-muted transition-transform ${isUserMenuOpen ? "rotate-180" : ""}`}
+      />
     </button>
   );
 });

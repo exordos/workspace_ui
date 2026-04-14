@@ -8,52 +8,54 @@ alwaysApply: false
 
 ## Access
 
-The single access point for env vars is `~/shared/lib/env`:
+**Core app config** — `~/shared/lib/env`:
 
 ```typescript
 import { env } from "~/shared/lib/env";
 
-env.WORKSPACE_API_ORIGIN    // "https://zulip.example.com"
-env.WORKSPACE_API_BASE      // dev: "/workspace-api/api/v1", prod: "https://…/api/v1"
-env.JITSI_MEET_DOMAIN       // "meet.example.com" or ""
-env.JITSI_MEET_BASE_URL     // "https://meet.example.com" or ""
-env.WORKSPACE_UPLOADS_ORIGIN // "https://…/api/v1" (for img src)
-env.ZULIP_API_PATH          // "/api/v1" (default) or custom
-env.WORKSPACE_API_PATH      // "/api/v1" (default) or custom
-env.CDN_URL                 // "https://cdn.example.com/workspace" or ""
-env.BASE_URL                // Vite resolved base ("/" or CDN URL)
-env.DEV                     // true in dev, false in prod
-env.PROD                    // true in prod
+env.WORKSPACE_API_ORIGIN // optional default origin (multi-org uses instance at runtime)
+env.WORKSPACE_API_BASE // dev: `/workspace{rest}`; prod: origin + rest or override
+env.JITSI_MEET_DOMAIN
+env.JITSI_MEET_BASE_URL
+env.WORKSPACE_UPLOADS_ORIGIN
+env.ZULIP_API_PATH
+env.WORKSPACE_API_PATH
+env.CDN_URL
+env.BASE_URL
+env.DEV
+env.PROD
 ```
+
+**Integrations** (read `import.meta.env` in dedicated modules — do not duplicate in `env.ts` unless widely used): `~/shared/lib/brand` (`VITE_BRAND_*`), analytics (`VITE_GA4_*`, `VITE_YM_*`), FCM (`VITE_FIREBASE_*`), `VITE_APP_VERSION` in UI, `VITE_SENTRY_DSN` in `sentry.ts`.
 
 ## Rules
 
-- NEVER write `import.meta.env.VITE_*` in components/stores — only through `env`
-- `constants.ts` re-exports from `env` for backward compatibility
-- New env vars: add in 3 places:
-  1. `ImportMetaEnv` in `vite-env.d.ts` (TypeScript types)
-  2. `shared/lib/env.ts` (parsing + validation)
-  3. `.env.example` (documentation)
+- Prefer `env` or a single module (`brand`, `analytics/setup`) per concern — avoid scattering new `import.meta.env` reads in random components.
+- `constants.ts` re-exports from `env` for backward compatibility.
+- New **core** env vars: add to `ImportMetaEnv` in `vite-env.d.ts`, parsing in `shared/lib/env.ts` if part of the core object, and `.env.example`.
 
-## Variables
+## Variables (core `env`)
 
-| Variable | Required | Runtime | Description |
-|----------|----------|---------|------------|
-| `VITE_WORKSPACE_API_ORIGIN` | Yes | client | Zulip/Workspace API origin |
-| `VITE_JITSI_MEET_DOMAIN` | No | client | Jitsi Meet domain (without protocol) |
-| `VITE_WORKSPACE_API_BASE_URL` | No | client | Override for API base URL |
-| `VITE_ZULIP_API_PATH` | No | client | Zulip API path (default `/api/v1`) |
-| `VITE_WORKSPACE_API_PATH` | No | client | Workspace API path (default `/api/v1`) |
-| `VITE_CDN_URL` | No | build-time | CDN origin for static assets (JS, CSS, images) |
-| `VITE_SENTRY_DSN` | No | client | Sentry DSN for error tracking |
-| `VITE_APP_VERSION` | No | build-time | Version for Sentry releases (set by CI) |
-| `ELECTRON` | No | build-only | Disables PWA, enables HashRouter |
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `VITE_WORKSPACE_API_ORIGIN` | No | Optional default API/realm host; multi-org uses instance + `X-Workspace-Dev-Target-Origin` in dev |
+| `VITE_WORKSPACE_API_PATH` / `VITE_WORKSPACE_REST_API_PATH` / `VITE_USER_UPLOADS_PATH_PREFIX` / `VITE_ZULIP_API_PATH` | No | When unset, defaults come from `~/shared/config/workspace-api-layout` (gateway-first; vanilla: set `/api/v1` — ADR-008) |
+| `VITE_JITSI_MEET_DOMAIN` | No | Jitsi Meet domain (without protocol) |
+| `VITE_WORKSPACE_API_BASE_URL` | No | Override Workspace REST base |
+| `VITE_ZULIP_API_PATH` | No | Zulip API path (default `/api/v1`) |
+| `VITE_WORKSPACE_API_PATH` | No | Workspace API path (default `/api/v1`) |
+| `VITE_CDN_URL` | No | CDN origin for static assets |
+| `VITE_SENTRY_DSN` | No | Sentry DSN (production only when set; see `sentry.ts`) |
+| `VITE_APP_VERSION` | No | Version string for Sentry / about UI |
+| `ELECTRON` | No | Build-time (Vite config): disables PWA, `./` base — set by Electron `npm` scripts, not usually in `.env` |
+
+See `vite-env.d.ts` for the full `VITE_*` list (flags, embed, metadata bootstrap, brand, etc.).
 
 ## Security
 
 - `VITE_*` variables end up in the client bundle — DO NOT store secrets
 - API Key is stored in localStorage, not in env vars
-- `ELECTRON` does NOT have the `VITE_` prefix — not included in the bundle
+- `ELECTRON` does NOT have the `VITE_` prefix — not exposed to client bundle via Vite env injection
 
 ## Environment files (Vite order)
 

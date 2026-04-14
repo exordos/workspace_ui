@@ -14,6 +14,7 @@ vi.mock("~/shared/api/client", () => {
     zulipApi: { get },
     workspaceApi: { get: vi.fn() },
     refreshZulipApiBase: vi.fn(),
+    refreshWorkspaceApiBase: vi.fn(),
   };
 });
 

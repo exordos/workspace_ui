@@ -12,7 +12,11 @@ import {
 import { autoUpdater } from "electron-updater";
 import path from "node:path";
 
+/** Set at compile time via `ELECTRON_DISABLE_AUTO_UPDATE` in esbuild (`get-main-esbuild-define.mjs`). */
+declare const __ELECTRON_DISABLE_AUTO_UPDATE__: boolean;
+
 const IS_DEV = !app.isPackaged;
+const IS_AUTO_UPDATE_DISABLED = __ELECTRON_DISABLE_AUTO_UPDATE__;
 const DEV_SERVER_URL = "http://localhost:5173";
 const PRELOAD_PATH = path.join(__dirname, "preload.js");
 const RESOURCES_PATH = path.join(__dirname, "..", "resources");
@@ -440,7 +444,9 @@ app.whenReady().then(() => {
   configureSecurityPolicy();
   buildNativeMenu();
   registerIpcHandlers();
-  configureAutoUpdater();
+  if (!IS_AUTO_UPDATE_DISABLED) {
+    configureAutoUpdater();
+  }
   createWindow();
   createTray();
 });
@@ -521,8 +527,38 @@ function buildNativeMenu(): void {
 // Security
 // ---------------------------------------------------------------------------
 
+/**
+ * Shell CSP must apply only to our SPA (Vite dev server or packaged `file:` assets).
+ * If we set it on every response, cross-origin documents (e.g. Jitsi Meet in an iframe)
+ * inherit `script-src 'self'` where `'self'` is the app origin — inline scripts on the
+ * Meet page break. Third-party pages keep their own CSP from the network response.
+ */
+function shouldApplyShellContentSecurityPolicy(requestUrl: string): boolean {
+  if (IS_DEV) {
+    try {
+      const u = new URL(requestUrl);
+      const port = u.port || (u.protocol === "https:" ? "443" : "80");
+      const local = u.hostname === "localhost" || u.hostname === "127.0.0.1";
+      const http = u.protocol === "http:" || u.protocol === "https:";
+      return http && local && port === "5173";
+    } catch {
+      return false;
+    }
+  }
+  try {
+    return new URL(requestUrl).protocol === "file:";
+  } catch {
+    return false;
+  }
+}
+
 function configureSecurityPolicy(): void {
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    if (!shouldApplyShellContentSecurityPolicy(details.url)) {
+      callback({ responseHeaders: details.responseHeaders });
+      return;
+    }
+
     const csp = IS_DEV
       ? [
           "default-src 'self'",
@@ -706,14 +742,14 @@ function registerIpcHandlers(): void {
     }
   });
 
-  // Updater
+  // Updater (skipped when built with ELECTRON_DISABLE_AUTO_UPDATE=1)
   ipcMain.on("updater:check", () => {
-    if (!IS_DEV) autoUpdater.checkForUpdates().catch(() => {});
+    if (IS_DEV || IS_AUTO_UPDATE_DISABLED) return;
+    autoUpdater.checkForUpdates().catch(() => {});
   });
   ipcMain.on("updater:install", () => {
-    if (!IS_DEV) {
-      autoUpdater.quitAndInstall(false, true);
-    }
+    if (IS_DEV || IS_AUTO_UPDATE_DISABLED) return;
+    autoUpdater.quitAndInstall(false, true);
   });
 }
 
@@ -722,7 +758,7 @@ function registerIpcHandlers(): void {
 // ---------------------------------------------------------------------------
 
 function configureAutoUpdater(): void {
-  if (IS_DEV) return;
+  if (IS_DEV || IS_AUTO_UPDATE_DISABLED) return;
 
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;

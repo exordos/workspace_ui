@@ -10,6 +10,7 @@
 import React, { Suspense, useEffect } from "react";
 import { Routes, Route, useNavigate, useLocation, Navigate, useParams } from "react-router-dom";
 import { useInstancesStore } from "~/entities/instance/instance.model";
+import { workspaceOrgOriginFromLoginServerUrlInput } from "~/shared/lib/workspace-org-origin.lib";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { selectMode, selectPalette } from "~/features/theme-picker/theme-picker.model";
 import { setLocale } from "~/i18n/i18n";
@@ -85,7 +86,13 @@ export const WebViewShell: React.FC = () => {
 
   useEffect(() => {
     const unsub = onAuthFromNative(({ email, apiKey, realm }) => {
-      addInstance({ realm, email, apiKey });
+      const workspaceOrgOrigin = workspaceOrgOriginFromLoginServerUrlInput(realm);
+      addInstance({
+        realm,
+        email,
+        apiKey,
+        ...(workspaceOrgOrigin !== "" ? { workspaceOrgOrigin } : {}),
+      });
     });
     return unsub;
   }, [addInstance]);

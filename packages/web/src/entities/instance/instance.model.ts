@@ -18,6 +18,8 @@ export interface ZulipInstance {
   apiKey: string;
   authType?: ZulipAuthType;
   realmIcon?: string;
+  /** Workspace REST origin from the server URL entered at login (not canonical Zulip realm). */
+  workspaceOrgOrigin?: string;
 }
 
 interface StoredState {
@@ -59,6 +61,7 @@ function normalizeStoredInstances(value: unknown): ZulipInstance[] {
     ) {
       continue;
     }
+    const workspaceOrgOriginRaw = record.workspaceOrgOrigin;
     normalized.push({
       id: record.id,
       realm: record.realm,
@@ -66,6 +69,10 @@ function normalizeStoredInstances(value: unknown): ZulipInstance[] {
       apiKey: record.apiKey,
       authType: normalizeAuthType(record.authType),
       realmIcon: typeof record.realmIcon === "string" ? record.realmIcon : undefined,
+      workspaceOrgOrigin:
+        typeof workspaceOrgOriginRaw === "string" && workspaceOrgOriginRaw.trim() !== ""
+          ? workspaceOrgOriginRaw.trim()
+          : undefined,
     });
   }
   return normalized;

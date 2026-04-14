@@ -1,8 +1,9 @@
 /**
  * Centralized environment variable access.
  *
- * Single source of truth for all env vars.
- * Validates required vars on import. Falls back to defaults for optional vars.
+ * Single source of truth for core env-derived config.
+ * Optional vars fall back to defaults. `VITE_WORKSPACE_API_ORIGIN` is optional (multi-org;
+ * instance realm and dev `X-Workspace-Dev-Target-Origin` supply targets at runtime).
  *
  * Usage:
  *   import { env } from "~/lib/env";
@@ -10,17 +11,8 @@
  *   console.log(env.JITSI_MEET_DOMAIN);
  */
 
-function required(key: string): string {
-  const value = import.meta.env[key] as string | undefined;
-  if (!value?.trim()) {
-    const msg = `Missing required env var: ${key}. Check packages/web/.env`;
-    if (import.meta.env.PROD) {
-      console.error(msg);
-    }
-    return "";
-  }
-  return value.trim();
-}
+import { devWorkspaceBrowserMountPath } from "~/shared/config/dev-workspace-org-proxy";
+import { WORKSPACE_HTTP_PATH_DEFAULTS } from "~/shared/config/workspace-api-layout";
 
 function optional(key: string, fallback = ""): string {
   const value = import.meta.env[key] as string | undefined;
@@ -52,12 +44,17 @@ function parseBooleanEnvFlag(value: string, fallback: boolean): boolean {
   return fallback;
 }
 
-const WORKSPACE_API_ORIGIN_RAW = required("VITE_WORKSPACE_API_ORIGIN");
-const ZULIP_REALM_ORIGIN_RAW = optional("VITE_ZULIP_REALM_ORIGIN");
-const ZULIP_API_PATH = optional("VITE_ZULIP_API_PATH", "/api/v1");
-const WORKSPACE_API_PATH = optional("VITE_WORKSPACE_API_PATH", "/api/v1");
+const WORKSPACE_API_ORIGIN_RAW = optional("VITE_WORKSPACE_API_ORIGIN", "");
+const ZULIP_API_PATH = optional("VITE_ZULIP_API_PATH", WORKSPACE_HTTP_PATH_DEFAULTS.zulipApiPath);
+const WORKSPACE_API_PATH = optional(
+  "VITE_WORKSPACE_API_PATH",
+  WORKSPACE_HTTP_PATH_DEFAULTS.workspaceApiPath,
+);
 /** Path segment(s) after origin for Workspace REST (OpenAPI paths start with `/v1/`). Default empty. */
-const WORKSPACE_REST_API_PATH = optional("VITE_WORKSPACE_REST_API_PATH", "");
+const WORKSPACE_REST_API_PATH = optional(
+  "VITE_WORKSPACE_REST_API_PATH",
+  WORKSPACE_HTTP_PATH_DEFAULTS.workspaceRestApiPath,
+);
 
 function normalizeUserUploadsPathPrefix(raw: string): string {
   const t = raw.trim().replace(/\/+$/, "");
@@ -66,7 +63,13 @@ function normalizeUserUploadsPathPrefix(raw: string): string {
 }
 
 const USER_UPLOADS_PATH_PREFIX = normalizeUserUploadsPathPrefix(
-  optional("VITE_USER_UPLOADS_PATH_PREFIX", ""),
+  optional("VITE_USER_UPLOADS_PATH_PREFIX", WORKSPACE_HTTP_PATH_DEFAULTS.userUploadsPathPrefix),
+);
+
+/** Rare: Zulip webroot is bare origin but uploads are only under {@link USER_UPLOADS_PATH_PREFIX}. */
+const USER_UPLOADS_PREFIX_ON_ZULIP_REALM = parseBooleanEnvFlag(
+  optional("VITE_USER_UPLOADS_PREFIX_ON_ZULIP_REALM", ""),
+  false,
 );
 
 export const env = {
@@ -80,20 +83,12 @@ export const env = {
   MODE: import.meta.env.MODE,
 
   /**
-   * Workspace/Zulip API origin (e.g. `https://zulip.example.com`).
-   * Used as proxy target in dev, direct URL in prod.
-   * REQUIRED.
+   * Optional default Workspace/Zulip API origin (e.g. `https://zulip.example.com`).
+   * Dev: optional static Vite `server.proxy` target; multi-org uses instance + `X-Workspace-Dev-Target-Origin`
+   * for `/workspace` and `/user_uploads` fetches.
+   * Prod: use with `VITE_WORKSPACE_API_BASE_URL` or instance-derived bases when empty.
    */
   WORKSPACE_API_ORIGIN: cleanOrigin(WORKSPACE_API_ORIGIN_RAW),
-
-  /**
-   * Zulip realm origin (host where `/user_uploads/` and the web app live).
-   * Defaults to {@link WORKSPACE_API_ORIGIN}. Override when Workspace API and Zulip realm differ.
-   * Dev: Vite proxies `/user_uploads/*` to this origin.
-   */
-  ZULIP_REALM_ORIGIN: ZULIP_REALM_ORIGIN_RAW
-    ? cleanOrigin(ZULIP_REALM_ORIGIN_RAW)
-    : cleanOrigin(WORKSPACE_API_ORIGIN_RAW),
 
   /**
    * Zulip API path (default `/api/v1`).
@@ -120,6 +115,13 @@ export const env = {
   USER_UPLOADS_PATH_PREFIX: USER_UPLOADS_PATH_PREFIX,
 
   /**
+   * When true, append {@link USER_UPLOADS_PATH_PREFIX} even if the realm base equals the upload site
+   * origin (no gateway tail was stripped). Default false — canonical Zulip serves `/user_uploads/`
+   * at the realm root.
+   */
+  USER_UPLOADS_PREFIX_ON_ZULIP_REALM: USER_UPLOADS_PREFIX_ON_ZULIP_REALM,
+
+  /**
    * Workspace REST API base (Orval paths are `/v1/...`).
    * Default: dev `/workspace`, prod `origin` — no extra suffix so URLs are `{base}/v1/...` (→ `/workspace/v1/...`).
    * Zulip uploads still use {@link WORKSPACE_API_PATH}. Override: `VITE_WORKSPACE_REST_API_PATH`
@@ -130,7 +132,10 @@ export const env = {
     if (override) return override.replace(/\/+$/, "");
     const origin = cleanOrigin(WORKSPACE_API_ORIGIN_RAW);
     const restPath = WORKSPACE_REST_API_PATH.replace(/\/+$/, "");
-    return import.meta.env.DEV ? `/workspace${restPath}` : `${origin}${restPath}`;
+    if (import.meta.env.DEV) {
+      return devWorkspaceBrowserMountPath(restPath).replace(/\/+$/, "");
+    }
+    return origin ? `${origin}${restPath}` : restPath;
   })(),
 
   /**
@@ -196,12 +201,6 @@ export const env = {
   CHAT_MESSAGES_PERSIST_INDEXEDDB: chatMessagesPersistIndexedDb,
 
   /**
-   * Alias of CHAT_MESSAGES_PERSIST_INDEXEDDB for backward compatibility.
-   * Prefer CHAT_MESSAGES_PERSIST_INDEXEDDB in new code.
-   */
-  CHAT_MESSAGES_SOURCE_INDEXEDDB: chatMessagesPersistIndexedDb,
-
-  /**
    * When true, `[message-flow]` traces appear in the browser console (chat store + IDB + chat page merge).
    * Default: on in development, off in production. Set `VITE_MESSAGE_FLOW_DEBUG=false` to silence in dev.
    */
@@ -209,6 +208,20 @@ export const env = {
     if (import.meta.env.MODE === "test") return false;
     const v = optional(
       "VITE_MESSAGE_FLOW_DEBUG",
+      import.meta.env.DEV ? "true" : "false",
+    ).toLowerCase();
+    return v === "true" || v === "1";
+  })(),
+
+  /**
+   * When true, `[chat-list-flow]` traces appear in the browser console (IndexedDB snapshot, GET /messages
+   * for sidebar bootstrap, Zustand chat-list updates, IDB persist debounce).
+   * Default: on in development, off in production. Set `VITE_CHAT_LIST_FLOW_DEBUG=false` to silence in dev.
+   */
+  CHAT_LIST_FLOW_DEBUG: (() => {
+    if (import.meta.env.MODE === "test") return false;
+    const v = optional(
+      "VITE_CHAT_LIST_FLOW_DEBUG",
       import.meta.env.DEV ? "true" : "false",
     ).toLowerCase();
     return v === "true" || v === "1";
