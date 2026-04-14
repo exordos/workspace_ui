@@ -50,6 +50,7 @@ export const MessageListSenderGroup = React.memo<MessageListSenderGroupProps>(
                   size="lg"
                   className="bg-bg-elevated text-accent-soft"
                   src={avatarSrc ?? undefined}
+                  imageLoading="lazy"
                 >
                   {displayName.slice(0, 1)}
                 </Avatar>

@@ -28,6 +28,31 @@ export const AUTH_MEDIA_SRC_DATA_ATTR = "data-auth-src";
 export const AUTH_MEDIA_POSTER_DATA_ATTR = "data-auth-poster";
 
 /**
+ * Replaces `<img src>` with the inline placeholder and `data-auth-src` (thumbnail when applicable).
+ * Call this instead of assigning a bare `https://…/user_uploads/…` to `src` on a detached node:
+ * assigning a real URL first can trigger a browser image request during `innerHTML` / DOM parse
+ * before the authenticated `fetch` path runs.
+ */
+export function prepareProtectedUserUploadImageElement(
+  img: HTMLImageElement,
+  srcAttrValue: string,
+): void {
+  const collapsedSrc = collapseDuplicateWorkspaceV1InUrl(srcAttrValue);
+  const fullResolutionSrc = collapsedSrc;
+  const useThumb =
+    isUserUploadImagePath(collapsedSrc) && !isUserUploadThumbnailUrl(collapsedSrc);
+  const authFetchSrc = useThumb ? toUserUploadThumbnailUrl(collapsedSrc) : collapsedSrc;
+
+  img.setAttribute(AUTH_MEDIA_SRC_DATA_ATTR, authFetchSrc);
+  img.dataset.originalSrc = fullResolutionSrc;
+  img.setAttribute("src", AUTH_IMAGE_PLACEHOLDER_SRC);
+  if (isUserUploadThumbnailUrl(authFetchSrc)) {
+    img.setAttribute("width", String(USER_UPLOAD_THUMBNAIL_DISPLAY_MAX_WIDTH));
+    img.setAttribute("height", String(USER_UPLOAD_THUMBNAIL_DISPLAY_MAX_HEIGHT));
+  }
+}
+
+/**
  * 160×160 decorative SVG placeholder (gradient + frame icon). Inline `data:` — no extra request
  * before authenticated fetch; colors are neutral so it reads acceptably on dark chat bubbles.
  */
@@ -237,24 +262,14 @@ export function protectUserUploadMediaSources(html: string): string {
     if (!src || !isProtectedUserUploadUrl(src)) continue;
 
     const collapsedSrc = collapseDuplicateWorkspaceV1InUrl(src);
-    const fullResolutionSrc = collapsedSrc;
-    const useThumb =
-      element instanceof HTMLImageElement &&
-      isUserUploadImagePath(collapsedSrc) &&
-      !isUserUploadThumbnailUrl(collapsedSrc);
-    const authFetchSrc = useThumb ? toUserUploadThumbnailUrl(collapsedSrc) : collapsedSrc;
 
-    element.setAttribute(AUTH_MEDIA_SRC_DATA_ATTR, authFetchSrc);
     if (element instanceof HTMLImageElement) {
-      element.dataset.originalSrc = fullResolutionSrc;
-      element.setAttribute("src", AUTH_IMAGE_PLACEHOLDER_SRC);
-      if (isUserUploadThumbnailUrl(authFetchSrc)) {
-        element.setAttribute("width", String(USER_UPLOAD_THUMBNAIL_DISPLAY_MAX_WIDTH));
-        element.setAttribute("height", String(USER_UPLOAD_THUMBNAIL_DISPLAY_MAX_HEIGHT));
-      }
-    } else {
-      element.removeAttribute("src");
+      prepareProtectedUserUploadImageElement(element, src);
+      continue;
     }
+
+    element.setAttribute(AUTH_MEDIA_SRC_DATA_ATTR, collapsedSrc);
+    element.removeAttribute("src");
   }
 
   const videosWithPoster = container.querySelectorAll<HTMLVideoElement>("video[poster]");

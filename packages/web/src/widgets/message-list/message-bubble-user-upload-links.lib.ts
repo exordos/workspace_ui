@@ -2,11 +2,18 @@
  * Expands Zulip markdown-style upload links `[file](user_uploads/...)` into inline
  * `<img>` for image paths so protected-media fetch + blob preview applies.
  *
- * `mediaBaseUrl` must match `sanitizeHtml` base (realm / uploads origin) so `src` is absolute
- * like native Zulip `<img>` markup — relative-only `src` breaks authenticated fetch off-proxy.
+ * New `<img>` nodes use the same placeholder + `data-auth-src` as {@link protectUserUploadMediaSources}
+ * (never a bare `https://…/user_uploads/…` in `src`), so the browser does not start a decoder `GET`
+ * during in-memory `innerHTML` parsing before the authenticated `fetch` effect runs.
+ *
+ * `mediaBaseUrl` must match `sanitizeHtml` base (realm / uploads origin) so `data-auth-src` URLs
+ * are absolute — relative-only URLs break authenticated fetch off-proxy.
  */
 import { resolveMessageMediaUrl } from "~/shared/lib/html";
-import { isProtectedUserUploadUrl } from "./message-bubble-protected-media.lib";
+import {
+  isProtectedUserUploadUrl,
+  prepareProtectedUserUploadImageElement,
+} from "./message-bubble-protected-media.lib";
 
 const USER_UPLOAD_IMAGE_EXT = /\.(apng|avif|bmp|gif|jpe?g|png|svg|webp)(\?|#|$)/i;
 
@@ -35,8 +42,8 @@ export function expandUserUploadImageLinks(html: string, mediaBaseUrl?: string):
     const altText = alt != null && alt.length > 0 ? alt : "image";
 
     const img = document.createElement("img");
-    img.setAttribute("src", resolvedSrc);
     img.setAttribute("alt", altText);
+    prepareProtectedUserUploadImageElement(img, resolvedSrc);
 
     link.replaceWith(img);
   }

@@ -860,6 +860,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
                     size="lg"
                     className="flex-shrink-0 bg-bg-elevated text-accent-soft"
                     src={avatarSrc ?? undefined}
+                    imageLoading="lazy"
                   >
                     {displayName.slice(0, 1)}
                   </Avatar>
