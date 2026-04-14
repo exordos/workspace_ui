@@ -445,7 +445,10 @@ export async function getEventsForCredentials(
   }
 }
 
-/** Returns user topic visibility overrides from the register-queue snapshot cache. */
+/**
+ * Legacy accessor user_topic-override из in-memory register cache.
+ * Зачем нужен: обратная совместимость старых мест вызова, не использующих bootstrap-пайплайн.
+ */
 export function fetchUserTopics(): Promise<ZulipUserTopic[]> {
   const cacheKey = getCurrentUserTopicsCacheKey();
   if (!cacheKey) {

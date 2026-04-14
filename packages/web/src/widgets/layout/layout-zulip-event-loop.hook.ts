@@ -36,6 +36,7 @@ import {
 import { env } from "~/shared/lib/env";
 import { startZulipEventLoop } from "~/shared/lib/event-loop";
 import { logMessageFlow } from "~/shared/lib/message-flow-debug.lib";
+import { loadMuteSnapshotRow, persistMuteSnapshotRow } from "~/shared/lib/mute-snapshot-db";
 import { playNotificationSound } from "~/shared/lib/notification-sound";
 import { notificationService } from "~/shared/lib/notifications";
 import { loadUsersDirectoryRow } from "~/shared/lib/users-directory-snapshot-db";
@@ -129,6 +130,24 @@ function persistDmIndexFromStore(instanceId: string): void {
   }
 }
 
+// Нормализует формат строки IDB к контракту, который ожидает mute-store.
+// Зачем: отделить структуру хранения от структуры применения в store.
+function toLayoutMuteSnapshotFromRow(row: {
+  mutedStreamIds: number[];
+  mutedTopics: { streamId: number; topic: string }[];
+  unmutedTopics: { streamId: number; topic: string }[];
+}): {
+  mutedStreamIds: number[];
+  mutedTopics: { streamId: number; topic: string }[];
+  unmutedTopics: { streamId: number; topic: string }[];
+} {
+  return {
+    mutedStreamIds: row.mutedStreamIds,
+    mutedTopics: row.mutedTopics,
+    unmutedTopics: row.unmutedTopics,
+  };
+}
+
 export function useLayoutZulipEventLoop(options: {
   currentInstanceId: string | null;
   loadBootstrapMessages: () => Promise<ChatListBootstrapResult>;
@@ -188,6 +207,14 @@ export function useLayoutZulipEventLoop(options: {
     let cancelled = false;
 
     const instanceSwitched = prevInstanceForBootstrapRef.current !== currentInstanceId;
+    // Флаг authoritative-применения из register; после него кэш больше не должен "переехать" состояние.
+    let registerMuteSnapshotApplied = false;
+    // Параллельная загрузка кэша mute: запускаем заранее, чтобы быстрее отрисовать состояние после switch.
+    const cachedMuteSnapshotPromise = instanceSwitched
+      ? loadMuteSnapshotRow(currentInstanceId)
+          .then((row) => (row ? toLayoutMuteSnapshotFromRow(row) : null))
+          .catch(() => null)
+      : null;
     if (instanceSwitched) {
       logMessageFlow("eventLoop:clear stores (instance switched)", {
         instanceId: currentInstanceId,
@@ -205,6 +232,15 @@ export function useLayoutZulipEventLoop(options: {
     }
 
     void (async () => {
+      // Cache-first: применяем локальный snapshot до network/register, если он доступен.
+      if (instanceSwitched && cachedMuteSnapshotPromise != null) {
+        const cachedMuteSnapshot = await cachedMuteSnapshotPromise;
+        if (cancelled) return;
+        if (cachedMuteSnapshot && !registerMuteSnapshotApplied) {
+          useMuteStore.getState().setFromServer(cachedMuteSnapshot);
+        }
+      }
+
       if (instanceSwitched) {
         const row = await loadUsersDirectoryRow(currentInstanceId);
         if (cancelled) return;
@@ -405,7 +441,20 @@ export function useLayoutZulipEventLoop(options: {
               })
               .then((snapshot) => {
                 if (!cancelled) {
+                  // Register всегда authoritative: после него считаем состояние истинным.
+                  registerMuteSnapshotApplied = true;
                   useMuteStore.getState().setFromServer(snapshot);
+                  if (currentInstanceId != null) {
+                    // Сразу обновляем IDB-снапшот, чтобы следующий cold start поднялся из актуального состояния.
+                    void persistMuteSnapshotRow({
+                      instanceId: currentInstanceId,
+                      version: 1,
+                      savedAt: Date.now(),
+                      mutedStreamIds: snapshot.mutedStreamIds,
+                      mutedTopics: snapshot.mutedTopics,
+                      unmutedTopics: snapshot.unmutedTopics,
+                    });
+                  }
                 }
               })
               .catch(() => {});

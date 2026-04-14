@@ -1606,7 +1606,10 @@ export async function fetchSubscriptions(): Promise<ZulipSubscription[]> {
   }));
 }
 
-/** Returns user topic visibility overrides from the register-queue snapshot cache. */
+/**
+ * Legacy accessor user_topic-override из in-memory register cache.
+ * Зачем нужен: обратная совместимость старых вызовов, где нет прямого доступа к register snapshot.
+ */
 export function fetchUserTopics(): Promise<ZulipUserTopic[]> {
   const cacheKey = getCurrentUserTopicsCacheKey();
   if (!cacheKey) {

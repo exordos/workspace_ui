@@ -12,7 +12,7 @@ function idbError(reason: unknown): Error {
 }
 
 const DB_NAME = "workspace-message-cache-v1";
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 
 // Размер retention по умолчанию, если caller явно не передал windowSizeN.
 export const MESSAGE_CACHE_DEFAULT_WINDOW_SIZE = ZULIP_CHAT_MESSAGE_CACHE_MAX_WINDOW;
@@ -23,6 +23,8 @@ const STORE_CHAT_LIST_SNAPSHOT = "chatListSnapshot";
 const STORE_USERS_DIRECTORY = "usersDirectory";
 const STORE_USER_STATUS_CACHE = "userStatusCache";
 const STORE_FOLDERS_SNAPSHOT = "foldersSnapshot";
+// Снапшот mute-состояния (muted streams + topic overrides) для cache-first bootstrap.
+const STORE_MUTE_SNAPSHOT = "muteSnapshot";
 
 export interface MessageCacheRow {
   // Уникальный ключ строки сообщения.
@@ -90,6 +92,10 @@ export function openMessageCacheDb(): Promise<IDBDatabase> {
       }
       if (oldVersion < 5 && !db.objectStoreNames.contains(STORE_FOLDERS_SNAPSHOT)) {
         db.createObjectStore(STORE_FOLDERS_SNAPSHOT, { keyPath: "instanceId" });
+      }
+      // Миграция v6: добавляет хранилище mute snapshot по ключу instanceId.
+      if (oldVersion < 6 && !db.objectStoreNames.contains(STORE_MUTE_SNAPSHOT)) {
+        db.createObjectStore(STORE_MUTE_SNAPSHOT, { keyPath: "instanceId" });
       }
     };
   });
