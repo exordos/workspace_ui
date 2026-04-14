@@ -46,6 +46,9 @@ export interface CurrentChatMessagesState {
     // Что делает: сигнализирует UI, что cache-first payload уже применён в store.
     // Зачем: отделить блокирующий loader (нет данных) от фонового refresh (данные уже есть).
     onCacheHydrated?: () => void;
+    // Что делает: позволяет отменить in-flight initial загрузку при быстром route-switch.
+    // Зачем: старый запрос не должен продолжать сетевую работу и конкурировать с новым.
+    signal?: AbortSignal;
   }) => Promise<void>;
   loadOlderBoundaryPage: (options: {
     pageSize: number;

@@ -33,6 +33,9 @@ export interface LoadInitialMessagesRouteDrivenOptions {
   currentUserId: number | null;
   persistToIndexedDb: boolean;
   instanceId: string | null;
+  // Что делает: прокидывает отмену во всю initial pipeline.
+  // Зачем: прерывать устаревший route-запрос до применения результатов.
+  signal?: AbortSignal;
   // Что делает: сообщает вызывающему, что cache-first payload уже готов для UI.
   // Зачем: отключать блокирующий loader до окончания сетевого refresh.
   onCacheHydrated?: (snapshot: CachedSnapshot) => void;
@@ -44,6 +47,14 @@ export interface LoadInitialMessagesRouteDrivenResult {
   nextContext: CurrentChatContext;
   hasOlderMessages: boolean;
   hasNewerMessages: boolean;
+}
+
+// Что делает: синхронно проверяет отмену текущего запроса.
+// Зачем: не запускать следующую фазу пайплайна, если route уже сменился.
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
 }
 
 // Что делает: определяет стратегию загрузки строго по route-контексту.
@@ -93,8 +104,10 @@ async function fetchNetworkMessagesByMode(options: {
   context: CurrentChatContext;
   focusedMessageId: number | null;
   currentUserId: number | null;
+  signal?: AbortSignal;
 }): Promise<MockMessage[]> {
-  const { mode, context, focusedMessageId, currentUserId } = options;
+  const { mode, context, focusedMessageId, currentUserId, signal } = options;
+  throwIfAborted(signal);
   if (context.type === "dm") {
     if (focusedMessageId != null) {
       return fetchMessagesWithNarrow(
@@ -102,9 +115,10 @@ async function fetchNetworkMessagesByMode(options: {
         focusedMessageId,
         60,
         60,
+        { signal },
       );
     }
-    return fetchDmMessages(parseDmKeyToUserIds(context.dmKey, currentUserId));
+    return fetchDmMessages(parseDmKeyToUserIds(context.dmKey, currentUserId), { signal });
   }
 
   if (focusedMessageId != null) {
@@ -115,15 +129,15 @@ async function fetchNetworkMessagesByMode(options: {
             { operator: "stream", operand: context.streamName },
             { operator: "topic", operand: context.topic },
           ];
-    return fetchMessagesWithNarrow(narrow, focusedMessageId, 60, 60);
+    return fetchMessagesWithNarrow(narrow, focusedMessageId, 60, 60, { signal });
   }
 
   if (mode === "stream-wide") {
     // Что делает: wide-mode всегда грузит stream-narrow без topic.
-    return fetchMessages(context.streamName);
+    return fetchMessages(context.streamName, undefined, undefined, { signal });
   }
   // Что делает: explicit topic-route всегда грузит topic-narrow, включая "general".
-  return fetchMessages(context.streamName, context.topic);
+  return fetchMessages(context.streamName, context.topic, undefined, { signal });
 }
 
 // Что делает: нормализует итоговый контекст после API-ответа.
@@ -210,6 +224,7 @@ async function persistNetworkMessagesByMode(options: {
 export async function loadInitialMessagesRouteDriven(
   options: LoadInitialMessagesRouteDrivenOptions,
 ): Promise<LoadInitialMessagesRouteDrivenResult> {
+  throwIfAborted(options.signal);
   const mode = resolveInitialLoadMode(options.context);
 
   if (
@@ -223,6 +238,7 @@ export async function loadInitialMessagesRouteDriven(
       context: options.context,
       instanceId: options.instanceId,
     });
+    throwIfAborted(options.signal);
     if (cachedSnapshot.messages.length > 0) {
       options.onCacheHydrated?.(cachedSnapshot);
     }
@@ -233,7 +249,9 @@ export async function loadInitialMessagesRouteDriven(
     context: options.context,
     focusedMessageId: options.focusedMessageId,
     currentUserId: options.currentUserId,
+    signal: options.signal,
   });
+  throwIfAborted(options.signal);
   const flags = deriveFocusedPaginationFlags(messages, options.focusedMessageId);
   const nextContext = resolveNextContextFromApi({
     mode,
@@ -251,6 +269,7 @@ export async function loadInitialMessagesRouteDriven(
     persistToIndexedDb: options.persistToIndexedDb,
     instanceId: options.instanceId,
   });
+  throwIfAborted(options.signal);
 
   return {
     mode,

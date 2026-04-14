@@ -776,7 +776,7 @@ export const ChatPage: React.FC = () => {
     // Далее он поднимется через onCacheHydrated или после успешного API.
     setHasInitialMessagesPayload(false);
     setMessagesLoading(true);
-    let cancelled = false;
+    const initialLoadController = new AbortController();
     logMessageFlow("ui:stream loadInitial effect → invoke store.loadInitialMessagesForContext", {
       streamId: resolvedStreamId,
       topic: streamRouteTopic,
@@ -792,15 +792,16 @@ export const ChatPage: React.FC = () => {
       },
       focusedMessageId,
       currentUserId,
+      signal: initialLoadController.signal,
       // Что делает: фиксирует момент cache-first гидрации для UI-флагов.
       onCacheHydrated: () => {
-        if (!cancelled) {
+        if (!initialLoadController.signal.aborted) {
           setHasInitialMessagesPayload(true);
         }
       },
     })
       .then(() => {
-        if (!cancelled) {
+        if (!initialLoadController.signal.aborted) {
           logMessageFlow("ui:stream loadInitial effect → fulfilled", { cancelled: false });
           setHasInitialMessagesPayload(true);
           setMessagesLoading(false);
@@ -811,11 +812,14 @@ export const ChatPage: React.FC = () => {
         }
       })
       .catch((e) => {
+        if (isAbortLikeError(e) || initialLoadController.signal.aborted) {
+          return;
+        }
         logMessageFlow("ui:stream loadInitial rejected", { error: String(e) });
-        if (!cancelled) setMessagesLoading(false);
+        setMessagesLoading(false);
       });
     return () => {
-      cancelled = true;
+      initialLoadController.abort();
     };
   }, [
     streamSlug,
@@ -861,7 +865,7 @@ export const ChatPage: React.FC = () => {
     // Что делает: для нового DM-роута заново ожидаем initial payload.
     setHasInitialMessagesPayload(false);
     setMessagesLoading(true);
-    let cancelled = false;
+    const initialLoadController = new AbortController();
     const dmKey = dmRouteKey(userIds, currentUserId);
     logMessageFlow("ui:dm loadInitial effect → invoke store.loadInitialMessagesForContext", {
       dmKey,
@@ -871,15 +875,16 @@ export const ChatPage: React.FC = () => {
       context: { type: "dm", dmKey },
       focusedMessageId,
       currentUserId,
+      signal: initialLoadController.signal,
       // Что делает: фиксирует момент cache-first гидрации для UI-флагов.
       onCacheHydrated: () => {
-        if (!cancelled) {
+        if (!initialLoadController.signal.aborted) {
           setHasInitialMessagesPayload(true);
         }
       },
     })
       .then(() => {
-        if (!cancelled) {
+        if (!initialLoadController.signal.aborted) {
           logMessageFlow("ui:dm loadInitial effect → fulfilled", { cancelled: false });
           setHasInitialMessagesPayload(true);
           setMessagesLoading(false);
@@ -890,11 +895,14 @@ export const ChatPage: React.FC = () => {
         }
       })
       .catch((e) => {
+        if (isAbortLikeError(e) || initialLoadController.signal.aborted) {
+          return;
+        }
         logMessageFlow("ui:dm loadInitial rejected", { error: String(e) });
-        if (!cancelled) setMessagesLoading(false);
+        setMessagesLoading(false);
       });
     return () => {
-      cancelled = true;
+      initialLoadController.abort();
     };
   }, [dmIdParam, focusedMessageId, currentUserId, loadInitialMessagesForContext]);
 

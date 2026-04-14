@@ -129,7 +129,12 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
     });
 
     expect(mockGetChatMessagesAscending).toHaveBeenCalled();
-    expect(mockFetchMessages).toHaveBeenCalledWith("general", "topic1");
+    expect(mockFetchMessages).toHaveBeenCalledWith(
+      "general",
+      "topic1",
+      undefined,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
     expect(useCurrentChatMessagesStore.getState().messages).toEqual(boot);
     expect(mockUpsertChatMessages).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -156,7 +161,12 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
       currentUserId: 1,
     });
 
-    expect(mockFetchMessages).toHaveBeenCalledWith("general", "topic1");
+    expect(mockFetchMessages).toHaveBeenCalledWith(
+      "general",
+      "topic1",
+      undefined,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
     expect(mockUpsertChatMessages).toHaveBeenCalledWith(
       expect.objectContaining({
         messages: boot,
@@ -201,7 +211,12 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
       currentUserId: 1,
     });
 
-    expect(mockFetchMessages).toHaveBeenCalledWith("general", "general");
+    expect(mockFetchMessages).toHaveBeenCalledWith(
+      "general",
+      "general",
+      undefined,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
   });
 
   it("hydrates stream-wide mode from merged stream cache and limits to 100", async () => {
@@ -272,5 +287,50 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
     expect(upsertCalls).toContain("stream:5:alpha");
     expect(upsertCalls).toContain("stream:5:beta");
     expect(upsertCalls).not.toContain("stream:5:general");
+  });
+
+  it("ignores stale initial response when previous request resolves after route switch", async () => {
+    const firstCtx: CurrentChatContext = {
+      type: "stream",
+      streamId: 5,
+      streamName: "general",
+      topic: "topic-1",
+      streamWideView: false,
+    };
+    const secondCtx: CurrentChatContext = {
+      type: "stream",
+      streamId: 5,
+      streamName: "general",
+      topic: "topic-2",
+      streamWideView: false,
+    };
+
+    mockGetChatMessagesAscending.mockResolvedValue([]);
+    const firstDeferred = Promise.withResolvers<MockMessage[]>();
+    const secondDeferred = Promise.withResolvers<MockMessage[]>();
+    mockFetchMessages.mockImplementation((_, topic) => {
+      if (topic === "topic-1") return firstDeferred.promise;
+      if (topic === "topic-2") return secondDeferred.promise;
+      return Promise.resolve([]);
+    });
+
+    const firstLoad = useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
+      context: firstCtx,
+      focusedMessageId: null,
+      currentUserId: 1,
+    });
+    const secondLoad = useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
+      context: secondCtx,
+      focusedMessageId: null,
+      currentUserId: 1,
+    });
+
+    secondDeferred.resolve([mockMsg({ id: 202, stream_id: 5, subject: "topic-2" })]);
+    await secondLoad;
+    expect(useCurrentChatMessagesStore.getState().messages[0]?.subject).toBe("topic-2");
+
+    firstDeferred.resolve([mockMsg({ id: 101, stream_id: 5, subject: "topic-1" })]);
+    await firstLoad;
+    expect(useCurrentChatMessagesStore.getState().messages[0]?.subject).toBe("topic-2");
   });
 });

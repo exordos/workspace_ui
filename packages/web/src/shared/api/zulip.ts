@@ -625,16 +625,23 @@ function ensureZulipApiReady(): void {
 async function zulipPipelineGet(
   path: string,
   params?: Record<string, string>,
+  signal?: AbortSignal,
 ): Promise<{ ok: boolean; status: number; data: unknown } | null> {
   try {
     ensureZulipApiReady();
-    const response = await zulipApi.get(normalizeApiPath(path), params);
+    const response =
+      signal == null
+        ? await zulipApi.get(normalizeApiPath(path), params)
+        : await zulipApi.get(normalizeApiPath(path), params, signal);
     return {
       ok: response.ok,
       status: response.status,
       data: response.data,
     };
-  } catch {
+  } catch (error) {
+    if (isAbortError(error) || signal?.aborted) {
+      throw error;
+    }
     return null;
   }
 }
@@ -1634,6 +1641,7 @@ export async function fetchMessages(
   stream?: string,
   topic?: string,
   q?: string,
+  options?: { signal?: AbortSignal },
 ): Promise<MockMessage[]> {
   const normalizedStream =
     stream == null ? undefined : guard.nonEmpty(stream, "fetchMessages.stream");
@@ -1650,6 +1658,7 @@ export async function fetchMessages(
     "newest",
     ZULIP_STREAM_CHAT_NUM_BEFORE,
     ZULIP_STREAM_CHAT_NUM_AFTER,
+    options,
   );
   return page.messages;
 }
@@ -1693,14 +1702,98 @@ function buildMessagesPageInFlightKey(
   });
 }
 
+// Что делает: нормализует payload страницы сообщений к единому виду.
+// Зачем: одинаковая обработка результатов для путей с сигналом и без него.
+function toMessagesPageResultFromRaw(data: {
+  result?: string;
+  messages?: Parameters<typeof mapZulipMessage>[0][];
+  found_oldest?: boolean;
+  foundOldest?: boolean;
+  found_newest?: boolean;
+  foundNewest?: boolean;
+}): MessagesPageResult {
+  if (data.result === "error") {
+    return { messages: [], foundOldest: false, foundNewest: false };
+  }
+  return {
+    messages: (data.messages ?? []).map(mapZulipMessage),
+    foundOldest: data.found_oldest ?? data.foundOldest ?? false,
+    foundNewest: data.found_newest ?? data.foundNewest ?? false,
+  };
+}
+
+// Что делает: исполняет запрос страницы сообщений в abortable/regular режимах.
+// Зачем: сохранить совместимость старого client-path и добавить реальную отмену через signal.
+async function runMessagesWithNarrowPageRequest(options: {
+  narrow: MessagesApiNarrow[];
+  anchor: string | number;
+  numBefore: number;
+  numAfter: number;
+  signal?: AbortSignal;
+}): Promise<MessagesPageResult> {
+  const { narrow, anchor, numBefore, numAfter, signal } = options;
+  try {
+    if (signal) {
+      const response = await zulipPipelineGet(
+        "/messages",
+        buildMessagesQueryParams({
+          narrow: narrow.length > 0 ? narrow : undefined,
+          anchor,
+          num_before: numBefore,
+          num_after: numAfter,
+        }),
+        signal,
+      );
+      if (!response?.ok) {
+        return { messages: [], foundOldest: false, foundNewest: false };
+      }
+      const data = response.data as {
+        result?: string;
+        messages?: Parameters<typeof mapZulipMessage>[0][];
+        found_oldest?: boolean;
+        foundOldest?: boolean;
+        found_newest?: boolean;
+        foundNewest?: boolean;
+      };
+      if (signal.aborted) {
+        throw new DOMException("Aborted", "AbortError");
+      }
+      return toMessagesPageResultFromRaw(data);
+    }
+
+    const client = await getClient();
+    const data = (await client.messages.retrieve({
+      narrow: narrow.length > 0 ? narrow : undefined,
+      anchor,
+      num_before: numBefore,
+      num_after: numAfter,
+      apply_markdown: false,
+    })) as {
+      result?: string;
+      messages?: Parameters<typeof mapZulipMessage>[0][];
+      found_oldest?: boolean;
+      foundOldest?: boolean;
+      found_newest?: boolean;
+      foundNewest?: boolean;
+    };
+    return toMessagesPageResultFromRaw(data);
+  } catch (error) {
+    if (isAbortError(error) || signal?.aborted) {
+      throw error;
+    }
+    return { messages: [], foundOldest: false, foundNewest: false };
+  }
+}
+
 /** Универсальная загрузка сообщений по narrow с настраиваемыми anchor и лимитами. */
 export async function fetchMessagesWithNarrow(
   narrow: MessagesApiNarrow[],
   anchor: string | number = "newest",
   numBefore = ZULIP_STREAM_CHAT_NUM_BEFORE,
   numAfter = ZULIP_STREAM_CHAT_NUM_AFTER,
+  options?: { signal?: AbortSignal },
 ): Promise<MockMessage[]> {
-  const page = await fetchMessagesWithNarrowPage(narrow, anchor, numBefore, numAfter);
+  const page = await fetchMessagesWithNarrowPage(narrow, anchor, numBefore, numAfter, options);
   return page.messages;
 }
 
@@ -1716,10 +1809,29 @@ export async function fetchMessagesWithNarrowPage(
   anchor: string | number = "newest",
   numBefore = ZULIP_STREAM_CHAT_NUM_BEFORE,
   numAfter = ZULIP_STREAM_CHAT_NUM_AFTER,
+  options?: { signal?: AbortSignal },
 ): Promise<MessagesPageResult> {
   const validatedAnchor = validateMessagesApiAnchor(anchor, "fetchMessagesWithNarrowPage");
   const validatedNumBefore = validateNonNegativeInteger(numBefore, "numBefore");
   const validatedNumAfter = validateNonNegativeInteger(numAfter, "numAfter");
+  if (options?.signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
+  // Что делает: abortable-запросы не делят общий in-flight promise.
+  // Зачем: отмена одного route-запроса не должна влиять на другой.
+  if (options?.signal) {
+    const direct = await runMessagesWithNarrowPageRequest({
+      narrow,
+      anchor: validatedAnchor,
+      numBefore: validatedNumBefore,
+      numAfter: validatedNumAfter,
+      signal: options.signal,
+    });
+    if (options.signal.aborted) {
+      throw new DOMException("Aborted", "AbortError");
+    }
+    return direct;
+  }
   const requestKey = buildMessagesPageInFlightKey(
     narrow,
     validatedAnchor,
@@ -1731,33 +1843,12 @@ export async function fetchMessagesWithNarrowPage(
     return inFlight;
   }
 
-  const request = (async () => {
-    const client = await getClient();
-    try {
-      const data = (await client.messages.retrieve({
-        narrow: narrow.length > 0 ? narrow : undefined,
-        anchor: validatedAnchor,
-        num_before: validatedNumBefore,
-        num_after: validatedNumAfter,
-        apply_markdown: false,
-      })) as {
-        result?: string;
-        messages?: Parameters<typeof mapZulipMessage>[0][];
-        found_oldest?: boolean;
-        foundOldest?: boolean;
-        found_newest?: boolean;
-        foundNewest?: boolean;
-      };
-      if (data.result === "error") return { messages: [], foundOldest: false, foundNewest: false };
-      return {
-        messages: (data.messages ?? []).map(mapZulipMessage),
-        foundOldest: data.found_oldest ?? data.foundOldest ?? false,
-        foundNewest: data.found_newest ?? data.foundNewest ?? false,
-      };
-    } catch {
-      return { messages: [], foundOldest: false, foundNewest: false };
-    }
-  })();
+  const request = runMessagesWithNarrowPageRequest({
+    narrow,
+    anchor: validatedAnchor,
+    numBefore: validatedNumBefore,
+    numAfter: validatedNumAfter,
+  });
 
   messagesPageInFlight.set(requestKey, request);
   return request.finally(() => {
@@ -1828,8 +1919,64 @@ function buildDmMessagesInFlightKey(userIds: readonly number[]): string {
     .join(",");
 }
 
+// Что делает: исполняет DM-запрос в abortable/regular режимах.
+// Зачем: на signal-пути нужна реальная отмена, но legacy-путь с дедупликацией должен сохраниться.
+async function runDmMessagesRequest(ids: number[], signal?: AbortSignal): Promise<MockMessage[]> {
+  try {
+    if (signal) {
+      const response = await zulipPipelineGet(
+        "/messages",
+        buildMessagesQueryParams({
+          narrow: [{ negated: false, operator: "dm", operand: ids }] as DmNarrow[],
+          anchor: "newest",
+          num_before: ZULIP_DM_CHAT_NUM_BEFORE,
+          num_after: ZULIP_DM_CHAT_NUM_AFTER,
+        }),
+        signal,
+      );
+      if (!response?.ok) {
+        return [];
+      }
+      const data = response.data as {
+        result?: string;
+        messages?: Parameters<typeof mapZulipMessage>[0][];
+      };
+      if (data.result === "error") return [];
+      if (signal.aborted) {
+        throw new DOMException("Aborted", "AbortError");
+      }
+      return (data.messages ?? []).map(mapZulipMessage);
+    }
+
+    const params = {
+      narrow: [{ negated: false, operator: "dm", operand: ids }] as DmNarrow[],
+      anchor: "newest",
+      num_before: ZULIP_DM_CHAT_NUM_BEFORE,
+      num_after: ZULIP_DM_CHAT_NUM_AFTER,
+      client_gravatar: true,
+      allow_empty_topic_name: true,
+      apply_markdown: false,
+    };
+    const client = await getClient();
+    const data = await client.messages.retrieve(
+      params as Parameters<ZulipClient["messages"]["retrieve"]>[0],
+    );
+    const raw = data as { result?: string; messages?: Parameters<typeof mapZulipMessage>[0][] };
+    if (raw.result === "error") return [];
+    return (raw.messages ?? []).map(mapZulipMessage);
+  } catch (error) {
+    if (isAbortError(error) || signal?.aborted) {
+      throw error;
+    }
+    return [];
+  }
+}
+
 /** Загружает сообщения DM (1:1 или групповой). Для 1:1 передайте id собеседника. */
-export async function fetchDmMessages(userIds: number | number[]): Promise<MockMessage[]> {
+export async function fetchDmMessages(
+  userIds: number | number[],
+  options?: { signal?: AbortSignal },
+): Promise<MockMessage[]> {
   const rawIds = Array.isArray(userIds) ? userIds : [userIds];
   if (rawIds.length === 0) return [];
   const validatedIds = rawIds.map((userId, index) =>
@@ -1839,34 +1986,18 @@ export async function fetchDmMessages(userIds: number | number[]): Promise<MockM
   if (ids.some((id) => id >= GROUP_DM_ID_OFFSET)) return [];
 
   const requestKey = buildDmMessagesInFlightKey(ids);
+  if (options?.signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
+  if (options?.signal) {
+    return runDmMessagesRequest(ids, options.signal);
+  }
   const inFlight = dmMessagesInFlight.get(requestKey);
   if (inFlight) {
     return inFlight;
   }
 
-  const params = {
-    narrow: [{ negated: false, operator: "dm", operand: ids }] as DmNarrow[],
-    anchor: "newest",
-    num_before: ZULIP_DM_CHAT_NUM_BEFORE,
-    num_after: ZULIP_DM_CHAT_NUM_AFTER,
-    client_gravatar: true,
-    allow_empty_topic_name: true,
-    apply_markdown: false,
-  };
-  const request = (async () => {
-    try {
-      const client = await getClient();
-      const data = await client.messages.retrieve(
-        params as Parameters<ZulipClient["messages"]["retrieve"]>[0],
-      );
-      const raw = data as { result?: string; messages?: Parameters<typeof mapZulipMessage>[0][] };
-      if (raw.result === "error") return [];
-      const list = raw.messages ?? [];
-      return list.map(mapZulipMessage);
-    } catch {
-      return [];
-    }
-  })();
+  const request = runDmMessagesRequest(ids);
 
   dmMessagesInFlight.set(requestKey, request);
   return request.finally(() => {

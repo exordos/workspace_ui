@@ -457,7 +457,7 @@ export async function updateChatMetaPatch(
     newestMessageId: patch.newestMessageId ?? prev?.newestMessageId ?? null,
     oldestMessageId: patch.oldestMessageId ?? prev?.oldestMessageId ?? null,
     hasGaps: patch.hasGaps ?? prev?.hasGaps ?? false,
-    windowSizeN: patch.windowSizeN ?? prev?.windowSizeN ?? 200,
+    windowSizeN: patch.windowSizeN ?? prev?.windowSizeN ?? MESSAGE_CACHE_DEFAULT_WINDOW_SIZE,
     lastEventIdApplied: patch.lastEventIdApplied ?? prev?.lastEventIdApplied ?? null,
     lastSyncedAt: Date.now(),
     reachedOldest: patch.reachedOldest ?? prev?.reachedOldest ?? false,

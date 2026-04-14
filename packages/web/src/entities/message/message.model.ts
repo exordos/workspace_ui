@@ -41,6 +41,44 @@ export { contextFromMessage, isMessageForContext } from "./message-chat-context.
 
 const loadOlderLog = createLogger("messages:loadOlder");
 
+// Что делает: хранит актуальный "поколенческий" номер initial-load запроса.
+// Зачем: чтобы поздние ответы старых запросов нельзя было применить в store.
+let initialLoadGeneration = 0;
+
+// Что делает: хранит AbortController для текущей initial-load загрузки.
+// Зачем: при новом клике по чату немедленно отменять предыдущий network refresh.
+let initialLoadAbortController: AbortController | null = null;
+
+// Что делает: проверяет abort-ошибку единым образом.
+// Зачем: корректно отличать штатную отмену от реальной ошибки загрузки.
+function isAbortLikeError(error: unknown): boolean {
+  return (
+    (error instanceof DOMException && error.name === "AbortError") ||
+    (error instanceof Error && error.name === "AbortError")
+  );
+}
+
+// Что делает: подписывает внутренний controller на внешний signal (если он есть).
+// Зачем: cleanup эффекта в UI должен отменять тот же in-flight запрос, что контролирует store.
+function bindExternalAbortSignal(
+  controller: AbortController,
+  externalSignal?: AbortSignal,
+): () => void {
+  if (!externalSignal) {
+    return () => {};
+  }
+  const onExternalAbort = () => {
+    controller.abort();
+  };
+  externalSignal.addEventListener("abort", onExternalAbort);
+  if (externalSignal.aborted) {
+    controller.abort();
+  }
+  return () => {
+    externalSignal.removeEventListener("abort", onExternalAbort);
+  };
+}
+
 function mergeUsersFromMessages(messages: readonly MockMessage[]): void {
   const store = useUsersStore.getState();
   for (const msg of messages) {
@@ -478,7 +516,18 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     focusedMessageId,
     currentUserId,
     onCacheHydrated,
+    signal,
   }) {
+    // Что делает: каждый новый initial-load инвалидирует предыдущий запрос.
+    // Зачем: убрать race-condition при быстром переключении между чатами.
+    initialLoadGeneration += 1;
+    const generation = initialLoadGeneration;
+    initialLoadAbortController?.abort();
+    const currentController = new AbortController();
+    initialLoadAbortController = currentController;
+    const cleanupExternalAbort = bindExternalAbortSignal(currentController, signal);
+    const effectiveSignal = currentController.signal;
+
     logMessageFlow("store:loadInitial start", {
       context: summarizeChatContextForLog(context),
       focusedMessageId,
@@ -494,9 +543,13 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         currentUserId,
         persistToIndexedDb: persistChatMessagesToIndexedDb(),
         instanceId: getCurrentInstance()?.id ?? null,
+        signal: effectiveSignal,
         // Что делает: прокидывает кэшированный payload в store до завершения API.
         // Зачем: UI может показать сообщения сразу и не держать blocking-loader.
         onCacheHydrated: ({ messages, hasOlderMessages, hasNewerMessages }) => {
+          if (effectiveSignal.aborted || generation !== initialLoadGeneration) {
+            return;
+          }
           mergeUsersFromMessages(messages);
           logMessageFlow("store:loadInitial idb hydrate before api", {
             chatKey: chatKeyFromContext(context),
@@ -512,11 +565,27 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         },
       });
     } catch (e) {
+      if (isAbortLikeError(e) || effectiveSignal.aborted || generation !== initialLoadGeneration) {
+        logMessageFlow("store:loadInitial aborted", {
+          context: summarizeChatContextForLog(context),
+          generation,
+        });
+        return;
+      }
       logMessageFlow("store:loadInitial fetch failed", {
         context: summarizeChatContextForLog(context),
         error: String(e),
       });
       throw e;
+    } finally {
+      cleanupExternalAbort();
+      if (initialLoadAbortController?.signal === effectiveSignal) {
+        initialLoadAbortController = null;
+      }
+    }
+
+    if (effectiveSignal.aborted || generation !== initialLoadGeneration) {
+      return;
     }
 
     logMessageFlow("store:loadInitial api response", {
