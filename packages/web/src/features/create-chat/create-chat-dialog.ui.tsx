@@ -3,8 +3,8 @@ import React from "react";
 import { t } from "~/i18n/i18n";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
-import type { CreateChatDialogProps } from "./create-chat-dialog.types";
 import { useCreateChatDialog } from "./create-chat-dialog.hook";
+import type { CreateChatDialogProps } from "./create-chat-dialog.types";
 
 export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
   open,
@@ -38,12 +38,14 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
             </Dialog.Close>
           </div>
 
-          <div className="flex border-b border-border-subtle" role="tablist" aria-label={t("nav.newChat")}>
+          <div
+            className="flex border-b border-border-subtle"
+            role="tablist"
+            aria-label={t("nav.newChat")}
+          >
             <button
               type="button"
-              ref={(node) => {
-                vm.tabRefs.current.dm = node;
-              }}
+              ref={(node) => vm.setTabRef("dm", node)}
               role="tab"
               id={vm.tabIds.dm}
               aria-selected={vm.tab === "dm"}
@@ -61,9 +63,7 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
             </button>
             <button
               type="button"
-              ref={(node) => {
-                vm.tabRefs.current.group = node;
-              }}
+              ref={(node) => vm.setTabRef("group", node)}
               role="tab"
               id={vm.tabIds.group}
               aria-selected={vm.tab === "group"}
@@ -81,9 +81,7 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
             </button>
             <button
               type="button"
-              ref={(node) => {
-                vm.tabRefs.current.channel = node;
-              }}
+              ref={(node) => vm.setTabRef("channel", node)}
               role="tab"
               id={vm.tabIds.channel}
               aria-selected={vm.tab === "channel"}
@@ -303,6 +301,9 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                     })
                   )}
                 </div>
+                {vm.channelCreateBlockedReasonKey != null && (
+                  <p className="text-xs text-text-muted">{t(vm.channelCreateBlockedReasonKey)}</p>
+                )}
                 <div className="flex justify-end gap-2 pt-2">
                   <Dialog.Close asChild>
                     <button
@@ -314,7 +315,7 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                   </Dialog.Close>
                   <button
                     type="button"
-                    disabled={!vm.channelName.trim() || vm.creating}
+                    disabled={!vm.channelName.trim() || vm.creating || vm.channelCreateBlocked}
                     onClick={vm.createChannel}
                     className="rounded-lg bg-accent px-3 py-1.5 text-sm text-bg hover:opacity-90 disabled:opacity-50"
                   >
@@ -329,4 +330,3 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
     </Dialog.Root>
   );
 };
-

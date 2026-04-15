@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
-import { useUsersStore } from "~/entities/user/user.model";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
+import { useUsersStore } from "~/entities/user/user.model";
 import { getPresenceState } from "~/shared/lib/format";
-import { createChannel } from "./create-chat.api";
 import {
   buildDmSlug,
   getCreateChatTabs,
   resolveNextTabFromKey,
   type CreateChatTab,
 } from "./create-chat-dialog.lib";
+import { createChannel } from "./create-chat.api";
 
 export interface UseCreateChatDialogResult {
   tab: CreateChatTab;
@@ -17,16 +17,16 @@ export interface UseCreateChatDialogResult {
 
   tabIds: Record<CreateChatTab, string>;
   panelIds: Record<CreateChatTab, string>;
-  tabRefs: React.MutableRefObject<Record<CreateChatTab, HTMLButtonElement | null>>;
+  setTabRef: (tab: CreateChatTab, node: HTMLButtonElement | null) => void;
   onTabKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>, currentTab: CreateChatTab) => void;
 
   userSearch: string;
   setUserSearch: (v: string) => void;
-  filteredUsers: Array<{
+  filteredUsers: {
     user_id: number;
     full_name: string;
     email?: string | undefined;
-  }>;
+  }[];
 
   groupSelectedUserIds: Set<number>;
   toggleGroupUser: (userId: number) => void;
@@ -46,6 +46,8 @@ export interface UseCreateChatDialogResult {
   channelAnnounce: boolean;
   setChannelAnnounce: (v: boolean) => void;
   creating: boolean;
+  channelCreateBlocked: boolean;
+  channelCreateBlockedReasonKey: string | null;
   createChannel: () => void;
 
   resolvePresenceState: (userId: number) => ReturnType<typeof getPresenceState> | null;
@@ -98,6 +100,12 @@ export function useCreateChatDialog(options: {
 
   const allUsers = useUsersStore((s) => s.users);
   const currentUserId = useChatListStore((s) => s.currentUserId ?? null);
+  // Что делает: до загрузки собственного профиля не даем создать канал,
+  // иначе нельзя гарантировать автоподписку автора.
+  const channelCreateBlocked = currentUserId == null || currentUserId <= 0;
+  const channelCreateBlockedReasonKey = channelCreateBlocked
+    ? "channel.creatorProfileLoading"
+    : null;
 
   const filteredUsers = useMemo(() => {
     const list = Array.from(allUsers.values()).filter((u) => u.user_id !== currentUserId);
@@ -179,6 +187,11 @@ export function useCreateChatDialog(options: {
     tabRefs.current[nextTab]?.focus();
   }, []);
 
+  // Что делает: инкапсулирует мутацию ref внутри хука, чтобы UI не мутировал результат hook напрямую.
+  const setTabRef = useCallback((tab: CreateChatTab, node: HTMLButtonElement | null) => {
+    tabRefs.current[tab] = node;
+  }, []);
+
   const onTabKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLButtonElement>, currentTab: CreateChatTab) => {
       const nextTab = resolveNextTabFromKey({ key: event.key, currentTab });
@@ -191,12 +204,17 @@ export function useCreateChatDialog(options: {
   );
 
   const createChannelAction = useCallback(() => {
-    if (!channelName.trim() || creating) return;
+    if (!channelName.trim() || creating || currentUserId == null || currentUserId <= 0) return;
+    // Что делает: всегда включаем автора канала в principals,
+    // даже если он не выбран вручную в списке участников.
+    const subscribers = Array.from(new Set([...channelSelectedUserIds, currentUserId])).sort(
+      (a, b) => a - b,
+    );
     setCreating(true);
     createChannel({
       name: channelName.trim(),
       description: channelDesc.trim(),
-      subscribers: Array.from(channelSelectedUserIds).sort((a, b) => a - b),
+      subscribers,
       inviteOnly: channelInviteOnly,
       announce: channelAnnounce,
     })
@@ -218,6 +236,7 @@ export function useCreateChatDialog(options: {
     channelInviteOnly,
     channelAnnounce,
     creating,
+    currentUserId,
     onChannelCreated,
   ]);
 
@@ -233,7 +252,7 @@ export function useCreateChatDialog(options: {
     setTab,
     tabIds,
     panelIds,
-    tabRefs,
+    setTabRef,
     onTabKeyDown,
     userSearch,
     setUserSearch,
@@ -254,10 +273,11 @@ export function useCreateChatDialog(options: {
     channelAnnounce,
     setChannelAnnounce,
     creating,
+    channelCreateBlocked,
+    channelCreateBlockedReasonKey,
     createChannel: createChannelAction,
     resolvePresenceState,
     resolveStatusLabel,
     buildDmSlug: buildDmSlugFn,
   };
 }
-

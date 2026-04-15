@@ -173,6 +173,7 @@
     "addMembers": "Add members",
     "inviteByLink": "Invite by link",
     "channelCreated": "Channel created",
+    "creatorProfileLoading": "Profile is still loading. Try again in a moment.",
     "participants_one": "{{count}} member",
     "participants_other": "{{count}} members",
     "online_one": "{{count}} online",
