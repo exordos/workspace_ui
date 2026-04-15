@@ -69,6 +69,7 @@ export interface RegisterQueueResult {
   queue_id: string;
   last_event_id: number;
   event_queue_longpoll_timeout_seconds?: number;
+  subscriptions?: ZulipSubscription[];
   user_topics?: ZulipUserTopic[];
   // Зачем: metadata recent DM для первичного построения списка диалогов.
   recent_private_conversations?: Record<string, ZulipRecentPrivateConversation>;

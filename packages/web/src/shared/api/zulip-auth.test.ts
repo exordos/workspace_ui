@@ -4,8 +4,8 @@
 import "./zulip.test.setup";
 import { describe, expect, it } from "vitest";
 import { exchangeDesktopFlowToken, fetchApiKey, fetchServerSettings } from "./zulip-auth";
-import { ZulipAuthError } from "./zulip.types";
 import { jsonResponse, mockFetch } from "./zulip.test.setup";
+import { ZulipAuthError } from "./zulip.types";
 
 describe("fetchServerSettings", () => {
   it("returns settings on success", async () => {

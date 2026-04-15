@@ -24,13 +24,9 @@ import { isWebView } from "~/shared/lib/webview";
 import { ErrorBoundary, PageErrorFallback, PageLoader } from "~/shared/ui/error-boundary";
 import { normalizeElectronDeeplinkRoute } from "./app-deeplink.lib";
 import { isForceUpdateRequiredStatus, shouldRedirectToForceUpdate } from "./app-force-update.lib";
-import {
-  AuthenticatedAppRoutes,
-  LoginAppRoutes,
-  WebViewAppRoutes,
-} from "./app-route-definitions";
-import { buildShortcutHelpSections } from "./app-shortcuts-help.lib";
+import { AuthenticatedAppRoutes, LoginAppRoutes, WebViewAppRoutes } from "./app-route-definitions";
 import { AppShortcutsHelpModal } from "./app-shortcuts-help-modal.ui";
+import { buildShortcutHelpSections } from "./app-shortcuts-help.lib";
 import { resolveGlobalNavigationRoute, resolveGlobalShortcutAction } from "./app-shortcuts.lib";
 
 const DEFAULT_STREAM = "general";

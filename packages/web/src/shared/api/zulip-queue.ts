@@ -14,6 +14,7 @@ import {
   zulipPipelinePost,
   ensureZulipApiReady,
 } from "./zulip-pipeline.internal";
+import { parseServerThumbnailFormats } from "./zulip-register-metadata.lib";
 import { parseUnreadMessagesCount } from "./zulip-unread.lib";
 import {
   buildUserTopicsCacheKey,
@@ -22,19 +23,21 @@ import {
   parseUserTopics,
   setCachedUserTopicsForKey,
 } from "./zulip-user-topics.internal";
-import { parseServerThumbnailFormats } from "./zulip-register-metadata.lib";
 import { validateEventCursor, validateQueueId } from "./zulip-validation.internal";
 import type {
   GetEventsResult,
   RegisterQueueResult,
   ZulipCredentials,
   ZulipRecentPrivateConversation,
+  ZulipSubscription,
   ZulipUserTopic,
 } from "./zulip.types";
 
-// Зачем: `realm` — в т.ч. `server_thumbnail_formats` (размеры превью user_uploads); остальное — sidebar metadata.
+// Зачем: просим у Zulip только те metadata-секции, которые нужны для sidebar без загрузки больших пачек сообщений.
+// `realm` — в т.ч. `server_thumbnail_formats` (размеры превью user_uploads); остальное — sidebar metadata.
 const DEFAULT_REGISTER_FETCH_EVENT_TYPES = [
-  "user_topics",
+  "subscription",
+  "user_topic",
   "recent_private_conversations",
   "realm",
 ] as const;
@@ -77,6 +80,32 @@ function parseRecentPrivateConversations(
   return parsed;
 }
 
+function parseSubscriptions(data: unknown): ZulipSubscription[] | null {
+  if (!Array.isArray(data)) {
+    return null;
+  }
+  return data
+    .filter(
+      (
+        value,
+      ): value is {
+        stream_id: number;
+        name: string;
+        is_muted?: boolean;
+        in_home_view?: boolean;
+      } =>
+        typeof value === "object" &&
+        value != null &&
+        typeof (value as { stream_id?: unknown }).stream_id === "number" &&
+        typeof (value as { name?: unknown }).name === "string",
+    )
+    .map((subscription) => ({
+      stream_id: subscription.stream_id,
+      name: subscription.name,
+      is_muted: subscription.is_muted ?? !(subscription.in_home_view ?? true),
+    }));
+}
+
 /** Registers an event queue (POST /api/v1/register). Returns queue_id for subsequent long-polling. */
 export async function registerQueue(
   eventTypes: string[],
@@ -97,6 +126,7 @@ export async function registerQueue(
     queue_id?: string;
     last_event_id?: number;
     event_queue_longpoll_timeout_seconds?: number;
+    subscriptions?: unknown;
     user_topics?: unknown;
     recent_private_conversations?: unknown;
     server_thumbnail_formats?: unknown;
@@ -111,6 +141,7 @@ export async function registerQueue(
     throw new Error(t("app.invalidRegisterResponse"));
   }
 
+  const subscriptions = parseSubscriptions(data.subscriptions);
   const userTopics = parseUserTopics(data.user_topics);
   const recentPrivateConversations = parseRecentPrivateConversations(
     data.recent_private_conversations,
@@ -125,6 +156,7 @@ export async function registerQueue(
     queue_id: data.queue_id,
     last_event_id: data.last_event_id,
     event_queue_longpoll_timeout_seconds: data.event_queue_longpoll_timeout_seconds,
+    ...(subscriptions ? { subscriptions } : {}),
     ...(userTopics ? { user_topics: userTopics } : {}),
     ...(recentPrivateConversations
       ? { recent_private_conversations: recentPrivateConversations }
@@ -170,6 +202,7 @@ export async function registerQueueForCredentials(
     queue_id?: string;
     last_event_id?: number;
     event_queue_longpoll_timeout_seconds?: number;
+    subscriptions?: unknown;
     user_topics?: unknown;
     recent_private_conversations?: unknown;
     server_thumbnail_formats?: unknown;
@@ -187,6 +220,7 @@ export async function registerQueueForCredentials(
     throw new Error(t("app.invalidRegisterResponse"));
   }
 
+  const subscriptions = parseSubscriptions(data.subscriptions);
   const userTopics = parseUserTopics(data.user_topics);
   const recentPrivateConversations = parseRecentPrivateConversations(
     data.recent_private_conversations,
@@ -201,6 +235,7 @@ export async function registerQueueForCredentials(
     queue_id: data.queue_id,
     last_event_id: data.last_event_id,
     event_queue_longpoll_timeout_seconds: data.event_queue_longpoll_timeout_seconds,
+    ...(subscriptions ? { subscriptions } : {}),
     ...(userTopics ? { user_topics: userTopics } : {}),
     ...(recentPrivateConversations
       ? { recent_private_conversations: recentPrivateConversations }
@@ -419,7 +454,10 @@ export async function getEventsForCredentials(
   }
 }
 
-/** Returns user topic visibility overrides from the register-queue snapshot cache. */
+/**
+ * Legacy accessor user_topic-override из in-memory register cache.
+ * Зачем нужен: обратная совместимость старых мест вызова, не использующих bootstrap-пайплайн.
+ */
 export function fetchUserTopics(): Promise<ZulipUserTopic[]> {
   const cacheKey = getCurrentUserTopicsCacheKey();
   if (!cacheKey) {

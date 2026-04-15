@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { muteTopic, unmuteTopic } from "~/features/mute-chat/mute-chat.api";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
@@ -8,6 +7,7 @@ import { sidebarRowClass } from "~/shared/lib/format";
 import { Avatar } from "~/shared/ui/avatar";
 import { Badge } from "~/shared/ui/badge";
 import { Icon } from "~/shared/ui/icon";
+import { TopicMuteButton } from "./sidebar-folder-topic-buttons.ui";
 import { slugForStream, TOPIC_BAR_COLORS } from "./sidebar.lib";
 import type { SidebarStreamListProps } from "./sidebar-stream-list.types";
 import type { SidebarChat } from "./sidebar.types";
@@ -15,38 +15,6 @@ import type { SidebarChat } from "./sidebar.types";
 function isStream(chat: SidebarChat): chat is Extract<SidebarChat, { type: "stream" }> {
   return chat.type === "stream";
 }
-
-const TopicMuteButton = React.memo<{ streamId: number; topic: string }>(({ streamId, topic }) => {
-  const isMuted = useMuteStore((s) => s.isTopicMuted(streamId, topic));
-  const handleClick = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (isMuted) {
-        useMuteStore.getState().unmuteTopic(streamId, topic);
-        void unmuteTopic(streamId, topic).catch(() => {});
-      } else {
-        useMuteStore.getState().muteTopic(streamId, topic);
-        void muteTopic(streamId, topic).catch(() => {});
-      }
-    },
-    [streamId, topic, isMuted],
-  );
-
-  return (
-    <button
-      type="button"
-      onClick={handleClick}
-      className={`flex h-6 w-6 items-center justify-center rounded text-text-muted transition-opacity hover:text-text-primary ${
-        isMuted ? "opacity-100" : "opacity-0 group-hover/topic:opacity-100"
-      }`}
-      aria-label={isMuted ? t("channel.unmuteTopic") : t("channel.muteTopic")}
-      title={isMuted ? t("channel.unmuteTopic") : t("channel.muteTopic")}
-    >
-      <Icon name="bell" size={14} className={isMuted ? "opacity-40" : ""} />
-    </button>
-  );
-});
 
 export const SidebarStreamList: React.FC<SidebarStreamListProps> = ({
   streamChats,
@@ -58,8 +26,10 @@ export const SidebarStreamList: React.FC<SidebarStreamListProps> = ({
 }) => {
   const streams = useMemo(() => streamChats.filter(isStream), [streamChats]);
   const isCompactDensity = useSettingsStore((s) => s.chatListDensity === "compact");
+  const isStreamMuted = useMuteStore((s) => s.isStreamMuted);
   const [creatingTopicForSlug, setCreatingTopicForSlug] = useState<string | null>(null);
   const [newTopicName, setNewTopicName] = useState("");
+  const [muteErrorRetry, setMuteErrorRetry] = useState<(() => void) | null>(null);
   const newTopicInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -76,8 +46,38 @@ export const SidebarStreamList: React.FC<SidebarStreamListProps> = ({
     };
   }, [creatingTopicForSlug]);
 
+  useEffect(() => {
+    if (muteErrorRetry == null) return;
+    const timerId = window.setTimeout(() => {
+      setMuteErrorRetry(null);
+    }, 4500);
+    return () => {
+      window.clearTimeout(timerId);
+    };
+  }, [muteErrorRetry]);
+
+  const handleMuteError = useCallback((retry: () => void) => {
+    setMuteErrorRetry(() => retry);
+  }, []);
+
   return (
     <nav className="px-3 py-2">
+      {muteErrorRetry && (
+        <div className="border-notice-base/30 bg-notice-base/10 mb-2 flex items-center justify-between gap-2 rounded-md border px-2 py-1.5 text-xs text-notice-base">
+          <span>{t("app.error")}</span>
+          <button
+            type="button"
+            className="hover:bg-notice-base/20 rounded px-1.5 py-0.5 text-notice-base transition-colors"
+            onClick={() => {
+              const retry = muteErrorRetry;
+              setMuteErrorRetry(null);
+              retry?.();
+            }}
+          >
+            {t("common.retry")}
+          </button>
+        </div>
+      )}
       <div className="space-y-0.5">
         {streams.map((stream) => {
           const streamSlug = slugForStream(stream);
@@ -86,6 +86,7 @@ export const SidebarStreamList: React.FC<SidebarStreamListProps> = ({
           const expanded = expandedStreamSlugs.includes(streamSlug);
           const isGeneral = stream.name.toLowerCase() === "general";
           const displayName = isGeneral ? t("chat.generalChat") : stream.name;
+          const streamMuted = isStreamMuted(stream.stream_id);
           const topics = stream.topics ?? [];
           const streamRowClass = isCompactDensity
             ? "flex items-start gap-2 rounded-md px-2 py-1.5 transition-colors"
@@ -107,7 +108,11 @@ export const SidebarStreamList: React.FC<SidebarStreamListProps> = ({
                 >
                   <Avatar size={isCompactDensity ? "sm" : "md"}>#</Avatar>
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium text-text-primary">
+                    <div
+                      className={`truncate text-sm font-medium ${
+                        streamMuted ? "text-text-muted" : "text-text-primary"
+                      }`}
+                    >
                       #{displayName}
                     </div>
                     {!isCompactDensity && (
@@ -229,7 +234,11 @@ export const SidebarStreamList: React.FC<SidebarStreamListProps> = ({
                             )}
                           </Link>
                           <div className="flex shrink-0 items-center py-2 pr-2">
-                            <TopicMuteButton streamId={stream.stream_id} topic={topic.subject} />
+                            <TopicMuteButton
+                              streamId={stream.stream_id}
+                              topic={topic.subject}
+                              onMuteError={handleMuteError}
+                            />
                           </div>
                         </div>
                       );

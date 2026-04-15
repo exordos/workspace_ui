@@ -13,11 +13,11 @@ import {
   deserializeStreamEntry,
   type ChatListSnapshotSerialized,
 } from "~/shared/lib/chat-list-snapshot-serialize.lib";
+import { dmConversationKey } from "~/shared/lib/dm-key";
 import {
   logChatListFlow,
   summarizeZulipMessagesForFlowDebug,
 } from "~/shared/lib/message-flow-debug.lib";
-import { dmConversationKey } from "~/shared/lib/dm-key";
 import { saveRecentDmPartners } from "~/shared/lib/recent-dms";
 import type {
   SidebarChat,

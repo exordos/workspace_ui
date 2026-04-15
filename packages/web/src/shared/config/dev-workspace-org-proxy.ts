@@ -48,16 +48,19 @@ export function workspaceDevProxyUpstreamPathname(input: {
   const mountNorm = input.mount.replace(/\/+$/, "");
   let effective = input.pathname;
   if (input.onDevEscaped) {
-    const stripped =
-      input.pathname.slice(DEV_WORKSPACE_ORG_PROXY_PATH_PREFIX.length) || "/";
+    const stripped = input.pathname.slice(DEV_WORKSPACE_ORG_PROXY_PATH_PREFIX.length) || "/";
     effective = stripped.startsWith("/") ? stripped : `/${stripped}`;
   }
   if (!(effective === mountNorm || effective.startsWith(`${mountNorm}/`))) {
     throw new Error("Workspace dev proxy path mismatch");
   }
-  const relative =
-    effective === mountNorm ? "/" : effective.slice(mountNorm.length);
-  const rel = relative === "" || relative === "/" ? "/" : relative.startsWith("/") ? relative : `/${relative}`;
+  const relative = effective === mountNorm ? "/" : effective.slice(mountNorm.length);
+  const rel =
+    relative === "" || relative === "/"
+      ? "/"
+      : relative.startsWith("/")
+        ? relative
+        : `/${relative}`;
   const suffix = workspaceRestApiPathSuffix(input.workspaceRestPathRaw);
   if (suffix === "") {
     return rel === "/" ? "/" : rel;

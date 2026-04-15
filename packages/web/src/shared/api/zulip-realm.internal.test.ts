@@ -78,9 +78,8 @@ describe("shouldApplyUserUploadsPathPrefixForRealmBase", () => {
     vi.stubEnv("VITE_WORKSPACE_API_ORIGIN", "https://zulip.test");
     vi.stubEnv("VITE_USER_UPLOADS_PATH_PREFIX", "");
     vi.resetModules();
-    const { shouldApplyUserUploadsPathPrefixForRealmBase: should } = await import(
-      "./zulip-realm.internal"
-    );
+    const { shouldApplyUserUploadsPathPrefixForRealmBase: should } =
+      await import("./zulip-realm.internal");
     expect(should("https://zulip.example.com", "https://zulip.example.com")).toBe(false);
   });
 
@@ -89,9 +88,8 @@ describe("shouldApplyUserUploadsPathPrefixForRealmBase", () => {
     vi.stubEnv("VITE_USER_UPLOADS_PATH_PREFIX", "/workspace/v1");
     vi.stubEnv("VITE_USER_UPLOADS_PREFIX_ON_ZULIP_REALM", "");
     vi.resetModules();
-    const { shouldApplyUserUploadsPathPrefixForRealmBase: should } = await import(
-      "./zulip-realm.internal"
-    );
+    const { shouldApplyUserUploadsPathPrefixForRealmBase: should } =
+      await import("./zulip-realm.internal");
     expect(should("https://zulip.tokens.team", "https://zulip.tokens.team")).toBe(false);
   });
 
@@ -99,9 +97,8 @@ describe("shouldApplyUserUploadsPathPrefixForRealmBase", () => {
     vi.stubEnv("VITE_WORKSPACE_API_ORIGIN", "https://zulip.test");
     vi.stubEnv("VITE_USER_UPLOADS_PATH_PREFIX", "/workspace/v1");
     vi.resetModules();
-    const { shouldApplyUserUploadsPathPrefixForRealmBase: should } = await import(
-      "./zulip-realm.internal"
-    );
+    const { shouldApplyUserUploadsPathPrefixForRealmBase: should } =
+      await import("./zulip-realm.internal");
     expect(should("https://gw.example.com/workspace/v1", "https://gw.example.com")).toBe(true);
   });
 
@@ -110,9 +107,8 @@ describe("shouldApplyUserUploadsPathPrefixForRealmBase", () => {
     vi.stubEnv("VITE_USER_UPLOADS_PATH_PREFIX", "/workspace/v1");
     vi.stubEnv("VITE_USER_UPLOADS_PREFIX_ON_ZULIP_REALM", "true");
     vi.resetModules();
-    const { shouldApplyUserUploadsPathPrefixForRealmBase: should } = await import(
-      "./zulip-realm.internal"
-    );
+    const { shouldApplyUserUploadsPathPrefixForRealmBase: should } =
+      await import("./zulip-realm.internal");
     expect(should("https://zulip.tokens.team", "https://zulip.tokens.team")).toBe(true);
   });
 });

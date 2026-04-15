@@ -17,9 +17,9 @@ describe("resolveLoginIconUrl", () => {
 
   it("blocks same-origin icon urls in the browser to avoid Basic Auth on img", () => {
     vi.spyOn(electron, "isElectron").mockReturnValue(false);
-    expect(
-      resolveLoginIconUrl("https://chat.example.com", "/user_avatars/1/realm/icon.png"),
-    ).toBe("");
+    expect(resolveLoginIconUrl("https://chat.example.com", "/user_avatars/1/realm/icon.png")).toBe(
+      "",
+    );
   });
 
   it("resolves same-origin icon urls in Electron", () => {

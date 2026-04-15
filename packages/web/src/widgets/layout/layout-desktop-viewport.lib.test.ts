@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  APP_SHELL_MIN_WIDTH_PX,
-  DESKTOP_MIN_VIEWPORT_WIDTH_PX,
-} from "~/shared/config/constants";
+import { APP_SHELL_MIN_WIDTH_PX, DESKTOP_MIN_VIEWPORT_WIDTH_PX } from "~/shared/config/constants";
 import * as LayoutViewport from "./layout-desktop-viewport.lib";
 
 describe("layout-desktop-viewport", () => {

@@ -55,11 +55,18 @@ describe("useMuteStore", () => {
       expect(useMuteStore.getState().isTopicMuted(10, "announcements")).toBe(true);
     });
 
-    // Unmuting should remove it
-    it("unmuteTopic removes topic from muted set", () => {
+    it("unmuteTopic stores topic as explicitly unmuted", () => {
       useMuteStore.getState().muteTopic(10, "announcements");
       useMuteStore.getState().unmuteTopic(10, "announcements");
       expect(useMuteStore.getState().isTopicMuted(10, "announcements")).toBe(false);
+      expect(useMuteStore.getState().isTopicUnmuted(10, "announcements")).toBe(true);
+    });
+
+    it("clearTopicVisibilityOverride removes explicit topic overrides", () => {
+      useMuteStore.getState().muteTopic(10, "announcements");
+      useMuteStore.getState().clearTopicVisibilityOverride(10, "announcements");
+      expect(useMuteStore.getState().isTopicMuted(10, "announcements")).toBe(false);
+      expect(useMuteStore.getState().isTopicUnmuted(10, "announcements")).toBe(false);
     });
 
     // Topic muting is independent of stream muting
@@ -118,9 +125,11 @@ describe("useMuteStore", () => {
     it("resets all mute state", () => {
       useMuteStore.getState().muteStream(10);
       useMuteStore.getState().muteTopic(10, "x");
+      useMuteStore.getState().unmuteTopic(10, "y");
       useMuteStore.getState().clear();
       expect(useMuteStore.getState().isStreamMuted(10)).toBe(false);
       expect(useMuteStore.getState().isTopicMuted(10, "x")).toBe(false);
+      expect(useMuteStore.getState().isTopicUnmuted(10, "y")).toBe(false);
     });
   });
 });
@@ -291,6 +300,20 @@ describe("mute-chat API", () => {
         stream_id: "10",
         topic: "off-topic",
         visibility_policy: "0",
+      });
+    });
+
+    it("unmuteTopicInMutedStream sends UNMUTED policy (2)", async () => {
+      const { zulipApi } = await import("~/shared/api/client");
+      vi.mocked(zulipApi.post).mockResolvedValue(mockOk);
+
+      const { unmuteTopicInMutedStream } = await import("./mute-chat.api");
+      expect(await unmuteTopicInMutedStream(10, "off-topic")).toBe(true);
+
+      expect(zulipApi.post).toHaveBeenCalledWith("/user_topics", {
+        stream_id: "10",
+        topic: "off-topic",
+        visibility_policy: "2",
       });
     });
   });

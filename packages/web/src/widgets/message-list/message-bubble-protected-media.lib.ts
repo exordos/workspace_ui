@@ -39,8 +39,7 @@ export function prepareProtectedUserUploadImageElement(
 ): void {
   const collapsedSrc = collapseDuplicateWorkspaceV1InUrl(srcAttrValue);
   const fullResolutionSrc = collapsedSrc;
-  const useThumb =
-    isUserUploadImagePath(collapsedSrc) && !isUserUploadThumbnailUrl(collapsedSrc);
+  const useThumb = isUserUploadImagePath(collapsedSrc) && !isUserUploadThumbnailUrl(collapsedSrc);
   const authFetchSrc = useThumb ? toUserUploadThumbnailUrl(collapsedSrc) : collapsedSrc;
 
   img.setAttribute(AUTH_MEDIA_SRC_DATA_ATTR, authFetchSrc);

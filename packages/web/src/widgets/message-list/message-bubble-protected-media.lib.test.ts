@@ -51,8 +51,7 @@ describe("protectUserUploadMediaSources", () => {
   });
 
   it("sets width and height when src is already a user-upload thumbnail URL", () => {
-    const html =
-      '<p><img src="/user_uploads/thumbnail/1/abc/t.png/840x560.webp" alt="x" /></p>';
+    const html = '<p><img src="/user_uploads/thumbnail/1/abc/t.png/840x560.webp" alt="x" /></p>';
     const out = protectUserUploadMediaSources(html);
     expect(out).toContain('width="240"');
     expect(out).toContain('height="160"');

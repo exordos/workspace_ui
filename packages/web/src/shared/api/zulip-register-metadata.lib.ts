@@ -4,7 +4,9 @@
 import type { ZulipServerThumbnailFormat } from "./zulip.types";
 
 /** Validates and returns `server_thumbnail_formats` from register JSON (Zulip 9.0+). */
-export function parseServerThumbnailFormats(data: unknown): ZulipServerThumbnailFormat[] | undefined {
+export function parseServerThumbnailFormats(
+  data: unknown,
+): ZulipServerThumbnailFormat[] | undefined {
   if (data == null || !Array.isArray(data)) {
     return undefined;
   }

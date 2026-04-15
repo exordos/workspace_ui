@@ -14,11 +14,11 @@ import { Avatar } from "~/shared/ui/avatar";
 import { Badge } from "~/shared/ui/badge";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
-import { SidebarUserStatusEmoji } from "./sidebar-user-status-emoji.ui";
 import { isDmPartnerTyping, sortDmAllUsersForDisplay } from "./sidebar-dm-list.lib";
+import { SidebarUserStatusEmoji } from "./sidebar-user-status-emoji.ui";
 import { MOCK_DMS, parseDmSlugToUserIds } from "./sidebar.lib";
-import type { SidebarChat } from "./sidebar.types";
 import type { SidebarDmListProps, SidebarDmTab } from "./sidebar-dm-list.types";
+import type { SidebarChat } from "./sidebar.types";
 
 function isPersonalDmChat(
   chat: SidebarChat,
@@ -33,7 +33,9 @@ function resolvePersonalDmListAvatarSrc(
   userAvatarUrl: string | undefined | null,
 ): string | undefined {
   const base = getRealmBaseUrl();
-  return resolveAvatarUrl(chatAvatarUrl, base) ?? resolveAvatarUrl(userAvatarUrl ?? undefined, base);
+  return (
+    resolveAvatarUrl(chatAvatarUrl, base) ?? resolveAvatarUrl(userAvatarUrl ?? undefined, base)
+  );
 }
 
 export const SidebarDmList: React.FC<SidebarDmListProps> = ({ activeDmId, dms }) => {

@@ -10,7 +10,6 @@
 import React, { Suspense, useEffect } from "react";
 import { Routes, Route, useNavigate, useLocation, Navigate, useParams } from "react-router-dom";
 import { useInstancesStore } from "~/entities/instance/instance.model";
-import { workspaceOrgOriginFromLoginServerUrlInput } from "~/shared/lib/workspace-org-origin.lib";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { selectMode, selectPalette } from "~/features/theme-picker/theme-picker.model";
 import { setLocale } from "~/i18n/i18n";
@@ -24,6 +23,7 @@ import {
   onAuthFromNative,
   type NativeMessage,
 } from "~/shared/lib/webview";
+import { workspaceOrgOriginFromLoginServerUrlInput } from "~/shared/lib/workspace-org-origin.lib";
 import { ErrorBoundary, PageErrorFallback, PageLoader } from "~/shared/ui/error-boundary";
 
 const ChatPage = React.lazy(() =>

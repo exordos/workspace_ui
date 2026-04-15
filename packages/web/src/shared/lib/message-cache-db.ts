@@ -12,7 +12,7 @@ function idbError(reason: unknown): Error {
 }
 
 const DB_NAME = "workspace-message-cache-v1";
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 
 // Размер retention по умолчанию, если caller явно не передал windowSizeN.
 export const MESSAGE_CACHE_DEFAULT_WINDOW_SIZE = ZULIP_CHAT_MESSAGE_CACHE_MAX_WINDOW;
@@ -23,6 +23,8 @@ const STORE_CHAT_LIST_SNAPSHOT = "chatListSnapshot";
 const STORE_USERS_DIRECTORY = "usersDirectory";
 const STORE_USER_STATUS_CACHE = "userStatusCache";
 const STORE_FOLDERS_SNAPSHOT = "foldersSnapshot";
+// Снапшот mute-состояния (muted streams + topic overrides) для cache-first bootstrap.
+const STORE_MUTE_SNAPSHOT = "muteSnapshot";
 
 export interface MessageCacheRow {
   // Уникальный ключ строки сообщения.
@@ -90,6 +92,10 @@ export function openMessageCacheDb(): Promise<IDBDatabase> {
       }
       if (oldVersion < 5 && !db.objectStoreNames.contains(STORE_FOLDERS_SNAPSHOT)) {
         db.createObjectStore(STORE_FOLDERS_SNAPSHOT, { keyPath: "instanceId" });
+      }
+      // Миграция v6: добавляет хранилище mute snapshot по ключу instanceId.
+      if (oldVersion < 6 && !db.objectStoreNames.contains(STORE_MUTE_SNAPSHOT)) {
+        db.createObjectStore(STORE_MUTE_SNAPSHOT, { keyPath: "instanceId" });
       }
     };
   });
@@ -213,6 +219,46 @@ export async function getInstanceMessagesAscending(instanceId: string): Promise<
   } catch {
     // Кэш используется как best-effort bootstrap,
     // поэтому в случае ошибки просто возвращаем пустой массив
+    return [];
+  }
+}
+
+// Возвращает кэшированные сообщения по всем topic-partitions конкретного stream в рамках инстанса.
+// Используется для cache-first bootstrap stream-wide режима (`/stream/:slug`).
+export async function getStreamMessagesAscending(
+  instanceId: string,
+  streamId: number,
+): Promise<MockMessage[]> {
+  if (!isIndexedDBAvailable()) return [];
+  try {
+    const db = await openMessageCacheDb();
+    // Что делает: формирует префикс диапазона для всех topic-partitions одного stream.
+    const indexPrefix = instanceChatKey(instanceId, `stream:${streamId}:`);
+    return await new Promise<MockMessage[]>((resolve, reject) => {
+      const tx = db.transaction(STORE_MESSAGES, "readonly");
+      const store = tx.objectStore(STORE_MESSAGES);
+      const index = store.index("byChatOrder");
+      // Что делает: читает все записи вида `instance::stream:{id}:*` одним range-запросом.
+      const range = IDBKeyRange.bound(
+        [indexPrefix, 0],
+        [`${indexPrefix}\uffff`, Number.MAX_SAFE_INTEGER],
+      );
+      const req = index.openCursor(range);
+      const rows: MessageCacheRow[] = [];
+
+      req.onerror = () => reject(idbError(req.error));
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (cursor) {
+          rows.push(cursor.value as MessageCacheRow);
+          cursor.continue();
+          return;
+        }
+        rows.sort((a, b) => a.messageId - b.messageId);
+        resolve(rows.map((row) => row.message));
+      };
+    });
+  } catch {
     return [];
   }
 }
@@ -411,7 +457,7 @@ export async function updateChatMetaPatch(
     newestMessageId: patch.newestMessageId ?? prev?.newestMessageId ?? null,
     oldestMessageId: patch.oldestMessageId ?? prev?.oldestMessageId ?? null,
     hasGaps: patch.hasGaps ?? prev?.hasGaps ?? false,
-    windowSizeN: patch.windowSizeN ?? prev?.windowSizeN ?? 200,
+    windowSizeN: patch.windowSizeN ?? prev?.windowSizeN ?? MESSAGE_CACHE_DEFAULT_WINDOW_SIZE,
     lastEventIdApplied: patch.lastEventIdApplied ?? prev?.lastEventIdApplied ?? null,
     lastSyncedAt: Date.now(),
     reachedOldest: patch.reachedOldest ?? prev?.reachedOldest ?? false,

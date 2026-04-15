@@ -136,15 +136,13 @@ describe("sanitizeHtml", () => {
   });
 
   it("rewrites absolute user_uploads img src to canonical base", () => {
-    const html =
-      '<img src="https://sys.platform.tokens.team/user_uploads/1/x.png" alt="">';
+    const html = '<img src="https://sys.platform.tokens.team/user_uploads/1/x.png" alt="">';
     const result = sanitizeHtml(html, "https://zulip.example.com");
     expect(result).toContain('src="https://zulip.example.com/user_uploads/1/x.png"');
   });
 
   it("rewrites user_uploads link href to canonical base", () => {
-    const html =
-      '<a href="https://sys.platform.tokens.team/user_uploads/1/x.png">file</a>';
+    const html = '<a href="https://sys.platform.tokens.team/user_uploads/1/x.png">file</a>';
     const result = sanitizeHtml(html, "https://zulip.example.com");
     expect(result).toContain('href="https://zulip.example.com/user_uploads/1/x.png"');
   });

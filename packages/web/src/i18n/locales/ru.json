@@ -175,6 +175,7 @@
     "addMembers": "Добавить участников",
     "inviteByLink": "Пригласить по ссылке",
     "channelCreated": "Канал создан",
+    "creatorProfileLoading": "Профиль ещё загружается. Попробуйте через пару секунд.",
     "participants_one": "{{count}} участник",
     "participants_few": "{{count}} участника",
     "participants_many": "{{count}} участников",

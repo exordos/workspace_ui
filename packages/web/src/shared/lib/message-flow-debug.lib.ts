@@ -55,9 +55,11 @@ export function logFolderFlow(phase: string, data?: Record<string, unknown>): vo
 }
 
 /** Min/max message id and count for chat-list / API traces (no message content). */
-export function summarizeZulipMessagesForFlowDebug(
-  messages: readonly { id: number }[],
-): { count: number; minId: number | null; maxId: number | null } {
+export function summarizeZulipMessagesForFlowDebug(messages: readonly { id: number }[]): {
+  count: number;
+  minId: number | null;
+  maxId: number | null;
+} {
   if (messages.length === 0) {
     return { count: 0, minId: null, maxId: null };
   }

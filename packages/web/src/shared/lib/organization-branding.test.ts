@@ -30,10 +30,7 @@ describe("organization-branding", () => {
 
   it("resolves realm-relative realm_icon against organization url", () => {
     expect(
-      resolveOrganizationLogoUrl(
-        "/user_avatars/1/realm/icon.png",
-        "https://chat.example.com",
-      ),
+      resolveOrganizationLogoUrl("/user_avatars/1/realm/icon.png", "https://chat.example.com"),
     ).toBe("https://chat.example.com/user_avatars/1/realm/icon.png");
   });
 

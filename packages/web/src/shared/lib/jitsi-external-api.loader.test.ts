@@ -4,7 +4,9 @@ import { ensureJitsiExternalApiLoaded } from "./jitsi-external-api.loader";
 describe("jitsi-external-api.loader", () => {
   afterEach(() => {
     Reflect.deleteProperty(window, "JitsiMeetExternalAPI");
-    document.head.querySelectorAll("script[src*='jitsi-external_api']").forEach((el) => el.remove());
+    document.head
+      .querySelectorAll("script[src*='jitsi-external_api']")
+      .forEach((el) => el.remove());
   });
 
   it("resolves immediately when JitsiMeetExternalAPI is already on window", async () => {

@@ -323,10 +323,10 @@ export function dispatchZulipEvent(event: ZulipEvent, ctx: LayoutZulipEventDispa
     if (streamId != null && topicName != null && visibilityPolicy != null) {
       if (visibilityPolicy === 1) {
         mute.muteTopic(streamId, topicName);
-      } else if (visibilityPolicy === 2) {
+      } else if (visibilityPolicy === 2 || visibilityPolicy === 3) {
         mute.unmuteTopic(streamId, topicName);
       } else {
-        mute.unmuteTopic(streamId, topicName);
+        mute.clearTopicVisibilityOverride(streamId, topicName);
       }
     }
   }

@@ -37,8 +37,7 @@ export interface ZulipMentionToken {
  * Combined mention matcher: `@_**Name|id**` (reply/silent with id), `@_**Name**` (silent),
  * `@**Name**` (regular). Order inside `_**…**` prefers `Name|digits` before bare `Name`.
  */
-const ZULIP_MENTION_COMBINED =
-  /@(?:_\*\*(?:([^*|]+)\|(\d+)|([^*|]+))\*\*|\*\*([^*]+)\*\*)/g;
+const ZULIP_MENTION_COMBINED = /@(?:_\*\*(?:([^*|]+)\|(\d+)|([^*|]+))\*\*|\*\*([^*]+)\*\*)/g;
 
 function isStreamWildcard(displayName: string): boolean {
   return STREAM_WILDCARD_DISPLAY_NAMES.has(displayName.trim().toLowerCase());

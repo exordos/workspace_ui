@@ -22,9 +22,11 @@ interface MuteStoreState {
   unmuteStream: (streamId: number) => void;
   muteTopic: (streamId: number, topic: string) => void;
   unmuteTopic: (streamId: number, topic: string) => void;
+  clearTopicVisibilityOverride: (streamId: number, topic: string) => void;
 
   isStreamMuted: (streamId: number) => boolean;
   isTopicMuted: (streamId: number, topic: string) => boolean;
+  isTopicUnmuted: (streamId: number, topic: string) => boolean;
   isEffectivelyMuted: (streamId: number, topic: string) => boolean;
 
   setFromServer: (data: {
@@ -83,12 +85,28 @@ export const useMuteStore = create<MuteStoreState>((set, get) => ({
     });
   },
 
+  clearTopicVisibilityOverride(streamId, topic) {
+    logStoreAction("mute", "clearTopicVisibilityOverride", { streamId, topic });
+    set((s) => {
+      const key = topicKey(streamId, topic);
+      const nextMuted = new Set(s.mutedTopicKeys);
+      const nextUnmuted = new Set(s.unmutedTopicKeys);
+      nextMuted.delete(key);
+      nextUnmuted.delete(key);
+      return { mutedTopicKeys: nextMuted, unmutedTopicKeys: nextUnmuted };
+    });
+  },
+
   isStreamMuted(streamId) {
     return get().mutedStreamIds.has(streamId);
   },
 
   isTopicMuted(streamId, topic) {
     return get().mutedTopicKeys.has(topicKey(streamId, topic));
+  },
+
+  isTopicUnmuted(streamId, topic) {
+    return get().unmutedTopicKeys.has(topicKey(streamId, topic));
   },
 
   isEffectivelyMuted(streamId, topic) {

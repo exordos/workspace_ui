@@ -12,8 +12,8 @@ import {
 } from "~/shared/lib/oidc-desktop";
 import { extractOrgRouteFromPathname } from "~/shared/lib/org-route";
 import { getOrganizationFallbackLogoUrl } from "~/shared/lib/organization-branding";
-import { workspaceOrgOriginFromLoginServerUrlInput } from "~/shared/lib/workspace-org-origin.lib";
 import { isValidRealmUrl, isValidUrl } from "~/shared/lib/validation";
+import { workspaceOrgOriginFromLoginServerUrlInput } from "~/shared/lib/workspace-org-origin.lib";
 import { Icon } from "~/shared/ui/icon";
 import { LoginPageCredentialsForm } from "./login-page-credentials-form.ui";
 import { LoginPageExternalAuth } from "./login-page-external-auth.ui";

@@ -5,10 +5,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useDownloadStore } from "~/entities/download/download.model";
 import { useUsersStore } from "~/entities/user/user.model";
+import { ELECTRON_MAC_TITLEBAR_STRIP_CLASS } from "~/shared/lib/electron-title-bar.lib";
 import { renderWithProviders } from "~/test/render";
 import { useRightDrawerStore } from "~/widgets/right-panel/right-drawer.model";
 import { useSearchModalStore } from "~/widgets/search-modal/search-modal.model";
-import { ELECTRON_MAC_TITLEBAR_STRIP_CLASS } from "~/shared/lib/electron-title-bar.lib";
 import { TopBar } from "./top-bar.ui";
 
 function LocationProbe() {

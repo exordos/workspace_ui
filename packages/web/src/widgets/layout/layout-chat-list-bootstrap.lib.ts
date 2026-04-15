@@ -84,7 +84,9 @@ export async function runChatListBootstrap(
       });
       const delta = await fetchMessagesAfterAnchor(snap.lastMessageId, DELTA_AFTER_ANCHOR_LIMIT);
       if (isBootstrapSuperseded(options)) {
-        logChatListFlow("bootstrap: superseded after delta fetch (result discarded)", { instanceId });
+        logChatListFlow("bootstrap: superseded after delta fetch (result discarded)", {
+          instanceId,
+        });
         return { mode: "none", latestMessageIdHint: hint };
       }
       logChatListFlow("bootstrap: delta path success", {

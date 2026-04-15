@@ -6,18 +6,14 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { muteTopic } from "~/features/mute-chat/mute-chat.api";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
-import { pinChatInFolder, unpinChatInFolder } from "~/features/pin-chat/pin-chat.api";
 import { usePinStore } from "~/features/pin-chat/pin-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
 import { updateFolderItemOrder } from "~/shared/api/workspace-client";
-import { getRealmBaseUrl } from "~/shared/api/zulip";
-import { resolveAvatarUrl } from "~/shared/lib/avatar";
 import { sidebarRowClass } from "~/shared/lib/format";
 import { Avatar } from "~/shared/ui/avatar";
 import { Badge } from "~/shared/ui/badge";
@@ -32,10 +28,6 @@ import type {
   SidebarFolderChatListProps,
 } from "./sidebar-folder-chat-list.types";
 import type { SidebarChat } from "./sidebar.types";
-
-function getAvatarUrl(avatarUrl: string | undefined): string | null {
-  return resolveAvatarUrl(avatarUrl, getRealmBaseUrl()) ?? null;
-}
 
 const EMPTY_PINNED_IDS: string[] = [];
 
@@ -69,7 +61,12 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
   const [topicDialogState, setTopicDialogState] = useState<NewTopicDialogState | null>(null);
   const [newTopicName, setNewTopicName] = useState("");
   const [muteTopicOnCreate, setMuteTopicOnCreate] = useState(false);
+  const [muteErrorState, setMuteErrorState] = useState<{
+    id: number;
+    retry: (() => void) | null;
+  } | null>(null);
   const isCompactDensity = useSettingsStore((s) => s.chatListDensity === "compact");
+  const isStreamMuted = useMuteStore((s) => s.isStreamMuted);
   // Защита для совместимости: если управление раскрытиями не передано, рендерим без topic-expand логики.
   const canExpandStreams = onToggleStream != null && expandedStreamSlugs !== undefined;
   const pinScopeFolderId = pinFolderId ?? selectedFolderId;
@@ -184,6 +181,20 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
     closeTopicDialog();
   }, [closeTopicDialog, muteTopicOnCreate, newTopicName, onNewTopic, topicDialogState]);
 
+  useEffect(() => {
+    if (muteErrorState == null) return;
+    const timerId = window.setTimeout(() => {
+      setMuteErrorState(null);
+    }, 4500);
+    return () => {
+      window.clearTimeout(timerId);
+    };
+  }, [muteErrorState]);
+
+  const handleMuteError = useCallback((retry: () => void) => {
+    setMuteErrorState({ id: Date.now(), retry });
+  }, []);
+
   if (loading) {
     // Плейсхолдер списка чатов на время переключения/дозагрузки выбранной папки.
     return (
@@ -216,6 +227,24 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
 
   return (
     <>
+      {muteErrorState && (
+        <div className="px-3 pt-2">
+          <div className="border-notice-base/30 bg-notice-base/10 flex items-center justify-between gap-2 rounded-md border px-2 py-1.5 text-xs text-notice-base">
+            <span>{t("app.error")}</span>
+            <button
+              type="button"
+              className="hover:bg-notice-base/20 rounded px-1.5 py-0.5 text-notice-base transition-colors"
+              onClick={() => {
+                const retry = muteErrorState.retry;
+                setMuteErrorState(null);
+                retry?.();
+              }}
+            >
+              {t("common.retry")}
+            </button>
+          </div>
+        </div>
+      )}
       <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={pinnedChatIds} strategy={verticalListSortingStrategy}>
           <div className="space-y-0.5 px-2">
@@ -235,6 +264,7 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
               if (chat.type === "stream") {
                 const streamSlug = slugForStream(chat);
                 const isActive = streamSlug === activeStreamSlug;
+                const streamMuted = isStreamMuted(chat.stream_id);
                 const expanded = canExpandStreams && expandedStreamSlugs.includes(streamSlug);
                 const displayName =
                   chat.name.toLowerCase() === "general" ? t("chat.generalChat") : chat.name;
@@ -258,6 +288,7 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
                       streamId={chat.stream_id}
                       chat={chat}
                       folderId={pinScopeFolderId}
+                      onMuteError={handleMuteError}
                       triggerOffsetClassName={streamTriggerOffsetClassName}
                       onCreateTopic={
                         onNewTopic
@@ -284,7 +315,11 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
                         >
                           <Avatar size={streamAvatarSize}>#</Avatar>
                           <div className="min-w-0 flex-1">
-                            <div className="truncate text-sm font-medium text-text-primary">
+                            <div
+                              className={`truncate text-sm font-medium ${
+                                streamMuted ? "text-text-muted" : "text-text-primary"
+                              }`}
+                            >
                               #{displayName}
                             </div>
                             {!isCompactDensity && (
@@ -384,6 +419,7 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
                                     <TopicMuteButton
                                       streamId={chat.stream_id}
                                       topic={topic.subject}
+                                      onMuteError={handleMuteError}
                                     />
                                     <TopicResolvedButton
                                       streamId={chat.stream_id}
@@ -408,6 +444,7 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
                     streamId={chat.stream_id}
                     chat={chat}
                     folderId={pinScopeFolderId}
+                    onMuteError={handleMuteError}
                     triggerOffsetClassName={streamTriggerOffsetClassName}
                     onCreateTopic={
                       onNewTopic
@@ -426,7 +463,11 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
                     >
                       <Avatar size={streamAvatarSize}>#</Avatar>
                       <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-medium text-text-primary">
+                        <div
+                          className={`truncate text-sm font-medium ${
+                            streamMuted ? "text-text-muted" : "text-text-primary"
+                          }`}
+                        >
                           #{displayName}
                         </div>
                         {!isCompactDensity && (

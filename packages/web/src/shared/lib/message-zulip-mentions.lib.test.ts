@@ -55,7 +55,9 @@ describe("injectZulipMentionPlaceholders", () => {
   });
 
   it("resolves @_**Name** without id via resolver", () => {
-    const { tokens } = injectZulipMentionPlaceholders("@_**Alice**", (n) => (n === "Alice" ? 3 : null));
+    const { tokens } = injectZulipMentionPlaceholders("@_**Alice**", (n) =>
+      n === "Alice" ? 3 : null,
+    );
     expect(tokens[0]?.userId).toBe(3);
     expect(tokens[0]?.kind).toBe("user");
   });

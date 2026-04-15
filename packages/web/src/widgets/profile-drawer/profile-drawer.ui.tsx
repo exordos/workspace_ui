@@ -18,8 +18,8 @@ import { wipeCredentials } from "~/shared/lib/auth-guard";
 import { clearLocalStatePreservingCriticalKeys } from "~/shared/lib/local-reset";
 import { createLogger } from "~/shared/lib/logger";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
-import { pushService } from "~/shared/lib/push/push.service";
 import { resolveOrganizationLogoUrl } from "~/shared/lib/organization-branding";
+import { pushService } from "~/shared/lib/push/push.service";
 import { Icon } from "~/shared/ui/icon";
 import type { MenuItem, ProfileDrawerProps } from "./profile-drawer.types";
 

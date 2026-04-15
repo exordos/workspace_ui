@@ -27,8 +27,8 @@ import {
 } from "~/shared/config/dev-workspace-org-proxy";
 import { getBasicAuthValue, wipeCredentials } from "~/shared/lib/auth-guard";
 import { env } from "~/shared/lib/env";
-import { workspaceOrgApiOriginFromZulipRealmRoot } from "~/shared/lib/workspace-org-origin.lib";
 import { logApiCall } from "~/shared/lib/logger";
+import { workspaceOrgApiOriginFromZulipRealmRoot } from "~/shared/lib/workspace-org-origin.lib";
 
 // ---------------------------------------------------------------------------
 // Instance provider (FSD: injected by app layer to avoid shared→entities import)
@@ -392,7 +392,11 @@ const authErrorMiddleware: Middleware = async (req, next) => {
 // URL resolution (shared by default base and per-request base override)
 // ---------------------------------------------------------------------------
 
-function buildResolvedApiUrl(baseUrl: string, path: string, params?: Record<string, string>): string {
+function buildResolvedApiUrl(
+  baseUrl: string,
+  path: string,
+  params?: Record<string, string>,
+): string {
   const base = baseUrl.replace(/\/+$/, "");
   const cleanPath = path.replace(/^\//, "");
   const isAbsoluteBase = /^https?:\/\//i.test(base);

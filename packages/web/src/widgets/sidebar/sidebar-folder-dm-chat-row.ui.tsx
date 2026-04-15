@@ -14,8 +14,8 @@ import { Avatar } from "~/shared/ui/avatar";
 import { Badge } from "~/shared/ui/badge";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
-import { SidebarUserStatusEmoji } from "./sidebar-user-status-emoji.ui";
 import { isDmPartnerTyping } from "./sidebar-dm-list.lib";
+import { SidebarUserStatusEmoji } from "./sidebar-user-status-emoji.ui";
 import { parseDmSlugToUserIds } from "./sidebar.lib";
 import type { DmChatRowProps } from "./sidebar-folder-dm-chat-row.types";
 
@@ -64,7 +64,7 @@ export const DmChatRow = React.memo<DmChatRowProps>(function DmChatRow({
   const presenceState =
     user?.presence != null ? getPresenceState(user.presence.timestamp, user.presence.status) : null;
   const avatarSrc = !isGroupDm
-    ? getAvatarUrl(chat.avatar_url) ?? getAvatarUrl(user?.avatar_url ?? undefined)
+    ? (getAvatarUrl(chat.avatar_url) ?? getAvatarUrl(user?.avatar_url ?? undefined))
     : null;
   const rowClass = compact
     ? "flex items-start gap-2 rounded-md px-2 py-1.5 transition-colors"
@@ -95,7 +95,11 @@ export const DmChatRow = React.memo<DmChatRowProps>(function DmChatRow({
           )}
         </Avatar>
         {!isGroupDm && (
-          <PresenceIndicator status={presenceState} size="sm" className="absolute bottom-0 right-0" />
+          <PresenceIndicator
+            status={presenceState}
+            size="sm"
+            className="absolute bottom-0 right-0"
+          />
         )}
       </div>
       <div className="flex min-w-0 flex-1 flex-col justify-center">

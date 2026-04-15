@@ -1,8 +1,8 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import * as manageFolders from "~/features/manage-folders/manage-folders.api";
 import { folderColorValueToCssHex } from "~/features/manage-folders/folder-colors";
+import * as manageFolders from "~/features/manage-folders/manage-folders.api";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { applyTheme } from "~/shared/lib/themes/engine";
 import { FolderRail } from "./folder-rail.ui";

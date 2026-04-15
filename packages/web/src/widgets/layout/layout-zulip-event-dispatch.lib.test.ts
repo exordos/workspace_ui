@@ -18,6 +18,9 @@ function buildCtx(
     chatList: {
       currentUserId: 1,
       addMessage: noop,
+      upsertStreamMetadataRows: noop,
+      renameStream: noop,
+      removeStream: noop,
       decrementUnreadForMessages: noop,
       incrementUnreadForMessages: noop,
       handleDeleteMessages: noop,
@@ -46,6 +49,7 @@ function buildCtx(
       unmuteStream: noop,
       muteTopic: noop,
       unmuteTopic: noop,
+      clearTopicVisibilityOverride: noop,
     },
     activity: { markStale: noop, markStarredSummaryStale: noop },
     inbox: { markStale: noop },
@@ -104,6 +108,44 @@ describe("dispatchZulipEvent", () => {
         ctx,
       );
       expect(updateMessageContentMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("user_topic", () => {
+    it("maps policy=0 to clearing topic visibility override", () => {
+      const { ctx } = buildCtx();
+      const clearSpy = vi.spyOn(ctx.mute, "clearTopicVisibilityOverride");
+
+      dispatchZulipEvent(
+        {
+          id: 3,
+          type: "user_topic",
+          stream_id: 42,
+          topic_name: "incidents",
+          visibility_policy: 0,
+        } as ZulipEvent,
+        ctx,
+      );
+
+      expect(clearSpy).toHaveBeenCalledWith(42, "incidents");
+    });
+
+    it("maps policy=3 (followed) to topic unmuted state for mute logic", () => {
+      const { ctx } = buildCtx();
+      const unmuteSpy = vi.spyOn(ctx.mute, "unmuteTopic");
+
+      dispatchZulipEvent(
+        {
+          id: 4,
+          type: "user_topic",
+          stream_id: 42,
+          topic_name: "incidents",
+          visibility_policy: 3,
+        } as ZulipEvent,
+        ctx,
+      );
+
+      expect(unmuteSpy).toHaveBeenCalledWith(42, "incidents");
     });
   });
 });

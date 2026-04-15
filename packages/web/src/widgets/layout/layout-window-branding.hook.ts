@@ -26,4 +26,3 @@ export function useLayoutWindowBranding(options: {
     return syncOrganizationFavicon(realmIcon, realmBaseUrl);
   }, [realmIcon, realmBaseUrl]);
 }
-

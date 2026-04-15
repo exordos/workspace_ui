@@ -56,7 +56,10 @@ describe("workspace-client", () => {
     await getFolders();
 
     expect(getWorkspaceApiBaseForCurrentInstance).toHaveBeenCalled();
-    expect(workspaceApi.getWithBase).toHaveBeenCalledWith("https://zulip.genesis-core.tech", "/v1/folders/");
+    expect(workspaceApi.getWithBase).toHaveBeenCalledWith(
+      "https://zulip.genesis-core.tech",
+      "/v1/folders/",
+    );
   });
 
   it("getFolders keeps folders when unread_messages is omitted or null", async () => {
@@ -261,7 +264,11 @@ describe("workspace-client", () => {
         updatedAt: "2026-03-14T02:00:00Z",
       },
     ]);
-    expect(workspaceApi.get).toHaveBeenCalledWith("/v1/folders/folder-1/items/", undefined, undefined);
+    expect(workspaceApi.get).toHaveBeenCalledWith(
+      "/v1/folders/folder-1/items/",
+      undefined,
+      undefined,
+    );
     expect(workspaceApi.setBaseUrl).not.toHaveBeenCalled();
   });
 

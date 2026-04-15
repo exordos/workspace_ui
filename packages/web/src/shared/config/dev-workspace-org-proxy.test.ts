@@ -84,6 +84,6 @@ describe("isAllowedDevWorkspaceProxyTargetOrigin", () => {
 
   it("rejects non-http protocols", () => {
     expect(isAllowedDevWorkspaceProxyTargetOrigin("file:///etc/passwd")).toBe(false);
-    expect(isAllowedDevWorkspaceProxyTargetOrigin("javascript:alert(1)")).toBe(false);
+    expect(isAllowedDevWorkspaceProxyTargetOrigin("ftp://chat.example.com")).toBe(false);
   });
 });

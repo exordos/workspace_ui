@@ -27,10 +27,7 @@ export const FolderRailVerticalView: React.FC<FolderRailVerticalViewProps> = Rea
       [indexedFolders],
     );
     const allFolderEntry = orderedEntries[0] ?? null;
-    const scrollableFolderEntries = useMemo(
-      () => orderedEntries.slice(1),
-      [orderedEntries],
-    );
+    const scrollableFolderEntries = useMemo(() => orderedEntries.slice(1), [orderedEntries]);
 
     // Quick-list нужен только когда колонка становится длинной.
     const showQuickList = orderedEntries.length > FOLDER_QUICK_LIST_THRESHOLD;

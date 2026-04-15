@@ -7,18 +7,11 @@
 import { create } from "zustand";
 import { useUsersStore } from "~/entities/user/user.model";
 import { getCurrentInstance } from "~/shared/api/client";
-import {
-  fetchDmMessages,
-  fetchMessages,
-  fetchMessagesWithNarrow,
-  fetchMessagesWithNarrowPage,
-} from "~/shared/api/zulip";
-import type { MockMessage, Reaction } from "~/shared/api/zulip.types";
+import { fetchMessagesWithNarrowPage } from "~/shared/api/zulip";
+import type { MockMessage } from "~/shared/api/zulip.types";
 import { createLogger } from "~/shared/lib/logger";
 import {
   deleteMessagesByIds,
-  getChatMessagesAscending,
-  getChatMeta,
   patchMessageContentInCache,
   patchMessageFlagsInCache,
   patchMessageReactionInCache,
@@ -26,23 +19,65 @@ import {
   updateChatMetaPatch,
   upsertChatMessages,
 } from "~/shared/lib/message-cache-db";
-import { chatKeyFromContext, chatKeyFromMockMessage } from "~/shared/lib/message-cache-keys.lib";
+import { chatKeyFromContext } from "~/shared/lib/message-cache-keys.lib";
 import { logMessageFlow, summarizeChatContextForLog } from "~/shared/lib/message-flow-debug.lib";
 import {
   computeHasNewerAfterLoadNewerIdbPage,
   computeHasOlderAfterLoadOlderIdbPage,
 } from "~/shared/lib/message-pagination-boundary.lib";
 import { zulipMessageCacheWindowN } from "~/shared/lib/zulip-message-window.lib";
+import {
+  patchPartitionMetaByMessages,
+  upsertMessagesByChatPartitions,
+} from "./message-cache-partition.lib";
 import { parseDmKeyToUserIds } from "./message-chat-context.lib";
+import { loadInitialMessagesRouteDriven } from "./message-initial-loader.lib";
 import { persistChatMessagesToIndexedDb } from "./message-local-cache.lib";
 import { outgoingEchoContentMatches } from "./message-outgoing-echo.lib";
-import { deriveFocusedPaginationFlags } from "./message-pagination-helpers.lib";
 import type { CurrentChatContext, CurrentChatMessagesState } from "./message.model.types";
 
 export type { CurrentChatContext } from "./message.model.types";
 export { contextFromMessage, isMessageForContext } from "./message-chat-context.lib";
 
 const loadOlderLog = createLogger("messages:loadOlder");
+
+// Что делает: хранит актуальный "поколенческий" номер initial-load запроса.
+// Зачем: чтобы поздние ответы старых запросов нельзя было применить в store.
+let initialLoadGeneration = 0;
+
+// Что делает: хранит AbortController для текущей initial-load загрузки.
+// Зачем: при новом клике по чату немедленно отменять предыдущий network refresh.
+let initialLoadAbortController: AbortController | null = null;
+
+// Что делает: проверяет abort-ошибку единым образом.
+// Зачем: корректно отличать штатную отмену от реальной ошибки загрузки.
+function isAbortLikeError(error: unknown): boolean {
+  return (
+    (error instanceof DOMException && error.name === "AbortError") ||
+    (error instanceof Error && error.name === "AbortError")
+  );
+}
+
+// Что делает: подписывает внутренний controller на внешний signal (если он есть).
+// Зачем: cleanup эффекта в UI должен отменять тот же in-flight запрос, что контролирует store.
+function bindExternalAbortSignal(
+  controller: AbortController,
+  externalSignal?: AbortSignal,
+): () => void {
+  if (!externalSignal) {
+    return () => {};
+  }
+  const onExternalAbort = () => {
+    controller.abort();
+  };
+  externalSignal.addEventListener("abort", onExternalAbort);
+  if (externalSignal.aborted) {
+    controller.abort();
+  }
+  return () => {
+    externalSignal.removeEventListener("abort", onExternalAbort);
+  };
+}
 
 function mergeUsersFromMessages(messages: readonly MockMessage[]): void {
   const store = useUsersStore.getState();
@@ -61,12 +96,24 @@ function withOutgoingDeliveryStatus(message: MockMessage): MockMessage {
   return { ...message, delivery_status: "failed" };
 }
 
+// Что делает: синхронизирует текущий набор сообщений из store в IDB.
+// Зачем: после локальных мутаций (append/prepend/replace) держать cache-слой актуальным.
 function schedulePersistFullChatMessages(get: () => CurrentChatMessagesState): void {
   if (!persistChatMessagesToIndexedDb()) return;
   const inst = getCurrentInstance()?.id;
   const ctx = get().context;
   const msgs = get().messages;
   if (!inst || !ctx || msgs.length === 0) return;
+  // Что делает: в wide-контексте пишет сообщения по topic-partitions,
+  // чтобы не складывать всю stream-ленту в один general-ключ.
+  if (ctx.type === "stream" && ctx.streamWideView) {
+    void upsertMessagesByChatPartitions({
+      instanceId: inst,
+      currentUserId: null,
+      messages: msgs,
+    });
+    return;
+  }
   const windowN = zulipMessageCacheWindowN(ctx);
   void upsertChatMessages({
     instanceId: inst,
@@ -74,6 +121,22 @@ function schedulePersistFullChatMessages(get: () => CurrentChatMessagesState): v
     messages: msgs,
     windowSizeN: windowN,
   });
+}
+
+// Что делает: выбирает chat key для сохранения конкретного сообщения.
+// Зачем: даже при wide-контексте запись должна идти в key фактического topic.
+function resolvePersistChatKeyForMessage(
+  context: CurrentChatContext,
+  message: MockMessage,
+): string {
+  if (context.type === "stream" && context.streamWideView) {
+    return chatKeyFromContext({
+      type: "stream",
+      streamId: context.streamId,
+      topic: (message.subject ?? "").trim() || "general",
+    });
+  }
+  return chatKeyFromContext(context);
 }
 
 export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set, get) => ({
@@ -234,7 +297,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     if (idbPlan.kind === "put") {
       void putSingleMessage({
         instanceId: inst,
-        chatKey: chatKeyFromContext(state.context),
+        chatKey: resolvePersistChatKeyForMessage(state.context, idbPlan.message),
         message: idbPlan.message,
         windowSizeN: zulipMessageCacheWindowN(state.context),
       });
@@ -244,7 +307,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       }
       void putSingleMessage({
         instanceId: inst,
-        chatKey: chatKeyFromContext(state.context),
+        chatKey: resolvePersistChatKeyForMessage(state.context, idbPlan.message),
         message: idbPlan.message,
         windowSizeN: zulipMessageCacheWindowN(state.context),
       });
@@ -309,7 +372,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     if (idbPlan.message.id > 0) {
       void putSingleMessage({
         instanceId: inst,
-        chatKey: chatKeyFromContext(state.context),
+        chatKey: resolvePersistChatKeyForMessage(state.context, idbPlan.message),
         message: idbPlan.message,
         windowSizeN: zulipMessageCacheWindowN(state.context),
       });
@@ -446,7 +509,25 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     set({ hasNewerMessages: has });
   },
 
-  async loadInitialMessagesForContext({ context, focusedMessageId, currentUserId }) {
+  // Что делает: запускает route-driven initial loader и обновляет store в 2 фазы:
+  // cache-first (если есть) и затем authoritative API-снимок.
+  async loadInitialMessagesForContext({
+    context,
+    focusedMessageId,
+    currentUserId,
+    onCacheHydrated,
+    signal,
+  }) {
+    // Что делает: каждый новый initial-load инвалидирует предыдущий запрос.
+    // Зачем: убрать race-condition при быстром переключении между чатами.
+    initialLoadGeneration += 1;
+    const generation = initialLoadGeneration;
+    initialLoadAbortController?.abort();
+    const currentController = new AbortController();
+    initialLoadAbortController = currentController;
+    const cleanupExternalAbort = bindExternalAbortSignal(currentController, signal);
+    const effectiveSignal = currentController.signal;
+
     logMessageFlow("store:loadInitial start", {
       context: summarizeChatContextForLog(context),
       focusedMessageId,
@@ -454,123 +535,78 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       persistIdb: persistChatMessagesToIndexedDb(),
     });
 
-    const inst = getCurrentInstance()?.id;
-    if (persistChatMessagesToIndexedDb() && inst != null && focusedMessageId == null) {
-      const chatKey = chatKeyFromContext(context);
-      const cached = await getChatMessagesAscending(inst, chatKey).catch(() => [] as MockMessage[]);
-      const meta = await getChatMeta(inst, chatKey).catch(() => null);
-      if (cached.length > 0) {
-        set({
-          messages: cached,
-          pendingOutgoingEchoKeys: [],
-          hasOlderMessages: meta?.reachedOldest !== true,
-          hasNewerMessages: meta?.reachedNewest !== true,
-        });
-        logMessageFlow("store:loadInitial idb hydrate before api", {
-          chatKey,
-          cachedCount: cached.length,
-        });
-      }
-    }
-
-    const load =
-      context.type === "stream"
-        ? focusedMessageId != null
-          ? fetchMessagesWithNarrow(
-              context.streamWideView
-                ? [{ operator: "stream", operand: context.streamName }]
-                : [
-                    { operator: "stream", operand: context.streamName },
-                    { operator: "topic", operand: context.topic },
-                  ],
-              focusedMessageId,
-              60,
-              60,
-            )
-          : fetchMessages(
-              context.streamName,
-              context.streamWideView || context.topic === "general" ? undefined : context.topic,
-            )
-        : focusedMessageId != null
-          ? fetchMessagesWithNarrow(
-              [{ operator: "dm", operand: parseDmKeyToUserIds(context.dmKey, currentUserId) }],
-              focusedMessageId,
-              60,
-              60,
-            )
-          : fetchDmMessages(parseDmKeyToUserIds(context.dmKey, currentUserId));
-
-    let messages: MockMessage[];
+    let loadResult: Awaited<ReturnType<typeof loadInitialMessagesRouteDriven>>;
     try {
-      messages = await load;
+      loadResult = await loadInitialMessagesRouteDriven({
+        context,
+        focusedMessageId,
+        currentUserId,
+        persistToIndexedDb: persistChatMessagesToIndexedDb(),
+        instanceId: getCurrentInstance()?.id ?? null,
+        signal: effectiveSignal,
+        // Что делает: прокидывает кэшированный payload в store до завершения API.
+        // Зачем: UI может показать сообщения сразу и не держать blocking-loader.
+        onCacheHydrated: ({ messages, hasOlderMessages, hasNewerMessages }) => {
+          if (effectiveSignal.aborted || generation !== initialLoadGeneration) {
+            return;
+          }
+          mergeUsersFromMessages(messages);
+          logMessageFlow("store:loadInitial idb hydrate before api", {
+            chatKey: chatKeyFromContext(context),
+            cachedCount: messages.length,
+          });
+          set({
+            messages,
+            pendingOutgoingEchoKeys: [],
+            hasOlderMessages,
+            hasNewerMessages,
+          });
+          onCacheHydrated?.();
+        },
+      });
     } catch (e) {
+      if (isAbortLikeError(e) || effectiveSignal.aborted || generation !== initialLoadGeneration) {
+        logMessageFlow("store:loadInitial aborted", {
+          context: summarizeChatContextForLog(context),
+          generation,
+        });
+        return;
+      }
       logMessageFlow("store:loadInitial fetch failed", {
         context: summarizeChatContextForLog(context),
         error: String(e),
       });
       throw e;
-    }
-    logMessageFlow("store:loadInitial api response", {
-      context: summarizeChatContextForLog(context),
-      messageCount: messages.length,
-    });
-    mergeUsersFromMessages(messages);
-
-    const flags = deriveFocusedPaginationFlags(messages, focusedMessageId);
-
-    let nextContext: CurrentChatContext = context;
-    if (messages.length > 0) {
-      const first = messages[0]!;
-      const fromKey = chatKeyFromMockMessage(first, currentUserId);
-      if (context.type === "stream") {
-        const topic = (first.subject ?? "").trim() || "general";
-        nextContext = { ...context, topic, streamWideView: context.streamWideView };
-      } else if (fromKey?.startsWith("dm:")) {
-        const k = fromKey.slice(3);
-        if (k !== context.dmKey) {
-          nextContext = { type: "dm", dmKey: k };
-        }
+    } finally {
+      cleanupExternalAbort();
+      if (initialLoadAbortController?.signal === effectiveSignal) {
+        initialLoadAbortController = null;
       }
     }
-    const chatKeyForMeta =
-      messages.length > 0
-        ? (chatKeyFromMockMessage(messages[0]!, currentUserId) ?? chatKeyFromContext(nextContext))
-        : chatKeyFromContext(nextContext);
 
-    if (persistChatMessagesToIndexedDb() && inst) {
-      await updateChatMetaPatch(inst, chatKeyForMeta, {
-        reachedOldest: false,
-        reachedNewest: false,
-      });
+    if (effectiveSignal.aborted || generation !== initialLoadGeneration) {
+      return;
     }
 
-    set({
-      context: nextContext,
-      messages,
-      pendingOutgoingEchoKeys: [],
-      hasOlderMessages: flags.hasOlderMessages,
-      hasNewerMessages: flags.hasNewerMessages,
+    logMessageFlow("store:loadInitial api response", {
+      context: summarizeChatContextForLog(context),
+      messageCount: loadResult.messages.length,
+      mode: loadResult.mode,
     });
 
-    if (persistChatMessagesToIndexedDb() && inst && messages.length > 0) {
-      logMessageFlow("store:loadInitial idb upsert after api", {
-        chatKey: chatKeyForMeta,
-        instanceId: inst,
-        count: messages.length,
-        nextContext: summarizeChatContextForLog(nextContext),
-      });
-      await upsertChatMessages({
-        instanceId: inst,
-        chatKey: chatKeyForMeta,
-        messages,
-        windowSizeN: zulipMessageCacheWindowN(nextContext),
-      });
-    }
-
+    mergeUsersFromMessages(loadResult.messages);
+    set({
+      context: loadResult.nextContext,
+      messages: loadResult.messages,
+      pendingOutgoingEchoKeys: [],
+      hasOlderMessages: loadResult.hasOlderMessages,
+      hasNewerMessages: loadResult.hasNewerMessages,
+    });
     logMessageFlow("store:loadInitial done", {
-      count: messages.length,
-      hasOlder: flags.hasOlderMessages,
-      hasNewer: flags.hasNewerMessages,
+      mode: loadResult.mode,
+      count: loadResult.messages.length,
+      hasOlder: loadResult.hasOlderMessages,
+      hasNewer: loadResult.hasNewerMessages,
     });
   },
 
@@ -599,6 +635,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
 
     const inst = getCurrentInstance()?.id;
     const chatKey = chatKeyFromContext(ctx);
+    const isStreamWide = ctx.type === "stream" && ctx.streamWideView === true;
 
     logMessageFlow("store:loadOlder start", {
       context: summarizeChatContextForLog(ctx),
@@ -629,7 +666,16 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       });
 
       if (page.foundOldest && persistChatMessagesToIndexedDb() && inst) {
-        await updateChatMetaPatch(inst, chatKey, { reachedOldest: true });
+        if (isStreamWide) {
+          await patchPartitionMetaByMessages({
+            instanceId: inst,
+            currentUserId,
+            messages: withoutAnchor,
+            patch: { reachedOldest: true },
+          });
+        } else {
+          await updateChatMetaPatch(inst, chatKey, { reachedOldest: true });
+        }
       }
 
       set({
@@ -652,13 +698,21 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       }
 
       if (persistChatMessagesToIndexedDb() && inst && fresh.length > 0) {
-        const windowN = zulipMessageCacheWindowN(ctx);
-        await upsertChatMessages({
-          instanceId: inst,
-          chatKey,
-          messages: fresh,
-          windowSizeN: windowN,
-        });
+        if (isStreamWide) {
+          await upsertMessagesByChatPartitions({
+            instanceId: inst,
+            currentUserId,
+            messages: fresh,
+          });
+        } else {
+          const windowN = zulipMessageCacheWindowN(ctx);
+          await upsertChatMessages({
+            instanceId: inst,
+            chatKey,
+            messages: fresh,
+            windowSizeN: windowN,
+          });
+        }
       }
       logMessageFlow("store:loadOlder done", {
         context: summarizeChatContextForLog(ctx),
@@ -698,6 +752,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
 
     const inst = getCurrentInstance()?.id;
     const chatKey = chatKeyFromContext(ctx);
+    const isStreamWide = ctx.type === "stream" && ctx.streamWideView === true;
 
     logMessageFlow("store:loadNewer start", {
       context: summarizeChatContextForLog(ctx),
@@ -721,7 +776,16 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       const fresh = withoutAnchor.filter((m) => !existingIds.has(m.id));
 
       if (page.foundNewest && persistChatMessagesToIndexedDb() && inst) {
-        await updateChatMetaPatch(inst, chatKey, { reachedNewest: true });
+        if (isStreamWide) {
+          await patchPartitionMetaByMessages({
+            instanceId: inst,
+            currentUserId,
+            messages: withoutAnchor,
+            patch: { reachedNewest: true },
+          });
+        } else {
+          await updateChatMetaPatch(inst, chatKey, { reachedNewest: true });
+        }
       }
 
       set({
@@ -739,13 +803,21 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       }
 
       if (persistChatMessagesToIndexedDb() && inst && fresh.length > 0) {
-        const windowN = zulipMessageCacheWindowN(ctx);
-        await upsertChatMessages({
-          instanceId: inst,
-          chatKey,
-          messages: fresh,
-          windowSizeN: windowN,
-        });
+        if (isStreamWide) {
+          await upsertMessagesByChatPartitions({
+            instanceId: inst,
+            currentUserId,
+            messages: fresh,
+          });
+        } else {
+          const windowN = zulipMessageCacheWindowN(ctx);
+          await upsertChatMessages({
+            instanceId: inst,
+            chatKey,
+            messages: fresh,
+            windowSizeN: windowN,
+          });
+        }
       }
       logMessageFlow("store:loadNewer done", {
         context: summarizeChatContextForLog(ctx),

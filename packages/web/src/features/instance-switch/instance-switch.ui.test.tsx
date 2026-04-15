@@ -217,10 +217,7 @@ describe("InstanceSwitcher", () => {
     renderWithProviders(<InstanceSwitcher />);
 
     const logo = screen.getByTestId("instance-quick-inst-1").querySelector("img");
-    expect(logo).toHaveAttribute(
-      "src",
-      "https://chat.example.com/user_avatars/1/realm/icon.png",
-    );
+    expect(logo).toHaveAttribute("src", "https://chat.example.com/user_avatars/1/realm/icon.png");
   });
 
   it("uses organization logo in quick header slots when realm icon is available", () => {

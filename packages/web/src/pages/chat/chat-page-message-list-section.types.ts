@@ -3,6 +3,9 @@ import type { MessageListCallbacks } from "~/widgets/message-list/message-list.t
 
 export interface ChatPageMessageListSectionProps {
   messagesLoading: boolean;
+  // Что делает: показывает, что для текущего route-контекста уже есть initial payload.
+  // Зачем: блокирующий loader должен зависеть от факта наличия данных, а не только от флага загрузки.
+  hasInitialPayload: boolean;
   isDmView: boolean;
   activeDmUserIds: number[] | null;
   activeStream: string | null | undefined;

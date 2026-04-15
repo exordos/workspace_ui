@@ -86,11 +86,11 @@ export const TopBar: React.FC = () => {
         ) : null}
         <div
           data-testid="topbar-toolbar-row"
-          className="flex min-w-0 w-full items-center justify-between gap-4 p-2"
+          className="flex w-full min-w-0 items-center justify-between gap-4 p-2"
         >
           <div data-testid="topbar-left-slot" className="electron-no-drag min-w-0 pl-5">
             <div
-              className={`max-w-xs min-w-0 overflow-x-auto ${SCROLL_AREA_CLASS}`}
+              className={`min-w-0 max-w-xs overflow-x-auto ${SCROLL_AREA_CLASS}`}
               data-testid="topbar-instance-switcher-scroll"
             >
               <InstanceSwitcher />

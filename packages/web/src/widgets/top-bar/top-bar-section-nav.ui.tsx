@@ -15,7 +15,10 @@ export const TopBarSectionNav = React.memo<TopBarSectionNavProps>(
     return (
       <div
         data-testid="topbar-sections-slot"
-        className={["flex min-w-0 flex-1 flex-col items-start justify-center gap-1.5 pl-2", className]
+        className={[
+          "flex min-w-0 flex-1 flex-col items-start justify-center gap-1.5 pl-2",
+          className,
+        ]
           .filter(Boolean)
           .join(" ")}
       >

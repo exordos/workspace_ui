@@ -13,9 +13,8 @@
  *   const plain = stripHtml(message.content);
  */
 import DOMPurify from "dompurify";
-
-import { getMessageImagesBaseUrl } from "~/shared/lib/zulip-message-media-base.lib";
 import { rewriteUserUploadMediaUrlToCanonical } from "~/shared/lib/user-uploads-url.lib";
+import { getMessageImagesBaseUrl } from "~/shared/lib/zulip-message-media-base.lib";
 
 /** When baseUrl is omitted (e.g. Electron `file://` shell), resolve `/user_uploads/` via realm so `src` is not `file:///user_uploads/...`. */
 function resolveSanitizeMediaBaseUrl(html: string, baseUrl?: string): string | undefined {
@@ -111,8 +110,9 @@ function rewriteCanonicalUserUploadMediaAttrs(html: string, canonicalUploadsBase
   if (!canonicalUploadsBase?.trim()) return html;
   const rewrite = (url: string) => rewriteUserUploadMediaUrlToCanonical(url, canonicalUploadsBase);
 
-  let result = html.replace(/<(?:img|video|source)\s[^>]*?src=(["'])([^"']+)\1/gi, (match, _q, src) =>
-    match.replace(src, rewrite(src)),
+  let result = html.replace(
+    /<(?:img|video|source)\s[^>]*?src=(["'])([^"']+)\1/gi,
+    (match, _q, src) => match.replace(src, rewrite(src)),
   );
   result = result.replace(/<video\s[^>]*?poster=(["'])([^"']+)\1/gi, (match, _q, poster) =>
     match.replace(poster, rewrite(poster)),

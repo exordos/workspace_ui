@@ -18,7 +18,9 @@ describe("workspaceOrgOriginFromLoginServerUrlInput", () => {
   });
 
   it("adds https when scheme omitted", () => {
-    expect(workspaceOrgOriginFromLoginServerUrlInput("gw.example.com")).toBe("https://gw.example.com");
+    expect(workspaceOrgOriginFromLoginServerUrlInput("gw.example.com")).toBe(
+      "https://gw.example.com",
+    );
   });
 });
 
@@ -48,6 +50,8 @@ describe("workspaceOrgApiOriginFromZulipRealmRoot", () => {
   });
 
   it("returns trimmed input when URL cannot be parsed", () => {
-    expect(workspaceOrgApiOriginFromZulipRealmRoot("https://not a host")).toBe("https://not a host");
+    expect(workspaceOrgApiOriginFromZulipRealmRoot("https://not a host")).toBe(
+      "https://not a host",
+    );
   });
 });

@@ -5,8 +5,8 @@ import { t } from "~/i18n/i18n";
 import { env } from "~/shared/lib/env";
 import { isValidEmail, isValidRealmUrl } from "~/shared/lib/validation";
 import { normalizeRealm } from "./zulip-realm.internal";
-import type { DesktopFlowExchangeResult, ZulipServerSettings } from "./zulip.types";
 import { ZulipAuthError } from "./zulip.types";
+import type { DesktopFlowExchangeResult, ZulipServerSettings } from "./zulip.types";
 
 interface FetchApiKeyResult {
   api_key: string;

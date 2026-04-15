@@ -10,8 +10,8 @@ import {
   parseDesktopFlowCredentials,
   parseDesktopFlowLoginToken,
 } from "~/shared/lib/oidc-desktop";
-import { workspaceOrgOriginFromLoginServerUrlInput } from "~/shared/lib/workspace-org-origin.lib";
 import { isValidRealmUrl } from "~/shared/lib/validation";
+import { workspaceOrgOriginFromLoginServerUrlInput } from "~/shared/lib/workspace-org-origin.lib";
 import { Button } from "~/shared/ui/button";
 import { Icon } from "~/shared/ui/icon";
 import { sanitizeInternalRedirectTarget } from "./login-redirect.lib";

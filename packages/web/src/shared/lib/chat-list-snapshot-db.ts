@@ -3,8 +3,8 @@
  * and stores `lastMessageId` for incremental bootstrap via `fetchMessagesAfterAnchor`.
  */
 import type { ChatListSnapshotSerialized } from "~/shared/lib/chat-list-snapshot-serialize.lib";
-import { logChatListFlow } from "~/shared/lib/message-flow-debug.lib";
 import { openMessageCacheDb } from "~/shared/lib/message-cache-db";
+import { logChatListFlow } from "~/shared/lib/message-flow-debug.lib";
 
 const STORE_CHAT_LIST_SNAPSHOT = "chatListSnapshot";
 
@@ -56,7 +56,9 @@ function logSnapshotLoad(instanceId: string, row: ChatListSnapshotRow | null): v
   });
 }
 
-export async function loadChatListSnapshotRow(instanceId: string): Promise<ChatListSnapshotRow | null> {
+export async function loadChatListSnapshotRow(
+  instanceId: string,
+): Promise<ChatListSnapshotRow | null> {
   if (typeof indexedDB === "undefined") return null;
   try {
     const db = await openMessageCacheDb();

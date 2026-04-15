@@ -18,7 +18,6 @@ import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indi
 import {
   deleteQueue,
   fetchDirectMessagesPage,
-  fetchSubscriptions,
   fetchUsers,
   getCurrentUser,
   type ZulipEvent,
@@ -41,6 +40,7 @@ import {
   logMessageFlow,
   summarizeZulipMessagesForFlowDebug,
 } from "~/shared/lib/message-flow-debug.lib";
+import { loadMuteSnapshotRow, persistMuteSnapshotRow } from "~/shared/lib/mute-snapshot-db";
 import { playNotificationSound } from "~/shared/lib/notification-sound";
 import { notificationService } from "~/shared/lib/notifications";
 import { loadUsersDirectoryRow } from "~/shared/lib/users-directory-snapshot-db";
@@ -51,6 +51,7 @@ import {
 } from "./layout-zulip-event-dispatch.lib";
 import { runLayoutReconnectRefresh } from "./layout-zulip-refresh-stale.lib";
 import type { ChatListBootstrapResult } from "./layout-chat-list-bootstrap.lib";
+import type { LayoutMuteBootstrapData } from "./layout-instance-bootstrap.hook";
 
 // Increments on effect cleanup so superseded `runChatListBootstrap` runs skip hydrate/API (React Strict Mode).
 let chatListBootstrapEffectEpoch = 0;
@@ -61,8 +62,14 @@ const METADATA_DM_BACKFILL_PAGE_SIZE = 5000;
 const METADATA_DM_BACKFILL_MAX_BATCHES = 3;
 // Что делает: останавливает backfill, если несколько батчей подряд не добавляют новые DM.
 const METADATA_DM_BACKFILL_STAGNATION_LIMIT = 2;
+// Что делает: всегда подтягивает register-снимок для subscription/topic mute и DM metadata.
+const REGISTER_FETCH_EVENT_TYPES = [
+  "subscription",
+  "user_topic",
+  "recent_private_conversations",
+] as const;
 
-// Что делает: превращает subscriptions API в строки metadata для chat-list store.
+// Что делает: превращает register subscriptions metadata в строки для chat-list store.
 function toStreamMetadataRows(
   subscriptions: readonly { stream_id: number; name: string }[],
 ): ChatListStreamMetadataRow[] {
@@ -130,13 +137,31 @@ function persistDmIndexFromStore(instanceId: string): void {
   }
 }
 
+// Нормализует формат строки IDB к контракту, который ожидает mute-store.
+// Зачем: отделить структуру хранения от структуры применения в store.
+function toLayoutMuteSnapshotFromRow(row: {
+  mutedStreamIds: number[];
+  mutedTopics: { streamId: number; topic: string }[];
+  unmutedTopics: { streamId: number; topic: string }[];
+}): {
+  mutedStreamIds: number[];
+  mutedTopics: { streamId: number; topic: string }[];
+  unmutedTopics: { streamId: number; topic: string }[];
+} {
+  return {
+    mutedStreamIds: row.mutedStreamIds,
+    mutedTopics: row.mutedTopics,
+    unmutedTopics: row.unmutedTopics,
+  };
+}
+
 export function useLayoutZulipEventLoop(options: {
   currentInstanceId: string | null;
   loadBootstrapMessages: (
     signal: AbortSignal,
     isStale: () => boolean,
   ) => Promise<ChatListBootstrapResult>;
-  loadMuteSnapshot: () => Promise<{
+  loadMuteSnapshot: (bootstrap?: LayoutMuteBootstrapData) => Promise<{
     mutedStreamIds: number[];
     mutedTopics: { streamId: number; topic: string }[];
     unmutedTopics: { streamId: number; topic: string }[];
@@ -195,6 +220,14 @@ export function useLayoutZulipEventLoop(options: {
     const isBootstrapStale = () => bootstrapEpoch !== chatListBootstrapEffectEpoch;
 
     const instanceSwitched = prevInstanceForBootstrapRef.current !== currentInstanceId;
+    // Флаг authoritative-применения из register; после него кэш больше не должен "переехать" состояние.
+    let registerMuteSnapshotApplied = false;
+    // Параллельная загрузка кэша mute: запускаем заранее, чтобы быстрее отрисовать состояние после switch.
+    const cachedMuteSnapshotPromise = instanceSwitched
+      ? loadMuteSnapshotRow(currentInstanceId)
+          .then((row) => (row ? toLayoutMuteSnapshotFromRow(row) : null))
+          .catch(() => null)
+      : null;
     if (instanceSwitched) {
       logMessageFlow("eventLoop:clear stores (instance switched)", {
         instanceId: currentInstanceId,
@@ -207,10 +240,20 @@ export function useLayoutZulipEventLoop(options: {
       useCurrentChatMessagesStore.getState().setContext(null);
       useCurrentChatMessagesStore.getState().setMessages([]);
       useJitsiCallStore.getState().clear();
+      useMuteStore.getState().clear();
       latestMessageIdRef.current = null;
     }
 
     void (async () => {
+      // Cache-first: применяем локальный snapshot до network/register, если он доступен.
+      if (instanceSwitched && cachedMuteSnapshotPromise != null) {
+        const cachedMuteSnapshot = await cachedMuteSnapshotPromise;
+        if (cancelled) return;
+        if (cachedMuteSnapshot && !registerMuteSnapshotApplied) {
+          useMuteStore.getState().setFromServer(cachedMuteSnapshot);
+        }
+      }
+
       if (instanceSwitched) {
         const row = await loadUsersDirectoryRow(currentInstanceId);
         if (cancelled) return;
@@ -255,10 +298,9 @@ export function useLayoutZulipEventLoop(options: {
         });
 
       try {
-        const [members, bootstrap, subscriptions, resolvedCurrentUserId] = await Promise.all([
+        const [members, bootstrap, resolvedCurrentUserId] = await Promise.all([
           pUsers,
           pMessages,
-          pSubscriptions,
           pCurrentUserId,
         ]);
         if (cancelled) return;
@@ -283,11 +325,7 @@ export function useLayoutZulipEventLoop(options: {
         });
 
         if (metadataBootstrapEnabled) {
-          // Что делает: сначала показываем каналы/DM из metadata, даже если окно сообщений пустое.
-          const streamMetadataRows = toStreamMetadataRows(subscriptions);
-          if (streamMetadataRows.length > 0) {
-            useChatListStore.getState().upsertStreamMetadataRows(streamMetadataRows);
-          }
+          // Что делает: сначала показываем DM из metadata, даже если окно сообщений пустое.
           const dmIndexEntries = loadDmIndexEntries(currentInstanceId);
           if (dmIndexEntries.length > 0) {
             useChatListStore
@@ -424,20 +462,25 @@ export function useLayoutZulipEventLoop(options: {
           signal: eventLoopAbortRef.current.signal,
           onReconnect: refreshStaleData,
           onBadQueue: refreshStaleData,
-          fetchEventTypes: metadataBootstrapEnabled
-            ? ["user_topics", "recent_private_conversations"]
-            : undefined,
+          fetchEventTypes: [...REGISTER_FETCH_EVENT_TYPES],
           onQueueRegistered: (id, registration) => {
             queueIdRef.current = id;
             if (metadataBootstrapEnabled) {
+              const streamRows = toStreamMetadataRows(registration?.subscriptions ?? []);
+              if (streamRows.length > 0) {
+                useChatListStore.getState().upsertStreamMetadataRows(streamRows);
+              }
               // Что делает: подмешивает recent_private_conversations сразу после register.
               const rows = toDmMetadataRowsFromRecentConversations(
                 registration?.recent_private_conversations,
               );
               if (rows.length > 0) {
-                logChatListFlow("eventLoop: registerQueue → upsertDmMetadataRows from recent_private_conversations", {
-                  rowCount: rows.length,
-                });
+                logChatListFlow(
+                  "eventLoop: registerQueue → upsertDmMetadataRows from recent_private_conversations",
+                  {
+                    rowCount: rows.length,
+                  },
+                );
                 useChatListStore.getState().upsertDmMetadataRows(rows);
                 if (currentInstanceId != null) {
                   persistDmIndexFromStore(currentInstanceId);
@@ -445,10 +488,26 @@ export function useLayoutZulipEventLoop(options: {
               }
             }
             void loadMuteSnapshotRef
-              .current()
+              .current({
+                subscriptions: registration?.subscriptions,
+                userTopics: registration?.user_topics,
+              })
               .then((snapshot) => {
                 if (!cancelled) {
+                  // Register всегда authoritative: после него считаем состояние истинным.
+                  registerMuteSnapshotApplied = true;
                   useMuteStore.getState().setFromServer(snapshot);
+                  if (currentInstanceId != null) {
+                    // Сразу обновляем IDB-снапшот, чтобы следующий cold start поднялся из актуального состояния.
+                    void persistMuteSnapshotRow({
+                      instanceId: currentInstanceId,
+                      version: 1,
+                      savedAt: Date.now(),
+                      mutedStreamIds: snapshot.mutedStreamIds,
+                      mutedTopics: snapshot.mutedTopics,
+                      unmutedTopics: snapshot.unmutedTopics,
+                    });
+                  }
                 }
               })
               .catch(() => {});

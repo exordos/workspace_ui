@@ -213,10 +213,10 @@ Import rule: use **concrete segment files** (no barrel `index.ts` re-exports). E
 
 ### Shared API (`shared/api/`)
 
-| File                  | Purpose                                                     |
-| --------------------- | ----------------------------------------------------------- |
-| `client.ts`           | Middleware pipeline client (auth → logging → retry → parse) |
-| `workspace-client.ts` | Workspace-specific API extensions                           |
+| File                  | Purpose                                                             |
+| --------------------- | ------------------------------------------------------------------- |
+| `client.ts`           | Middleware pipeline client (auth → logging → retry → parse)         |
+| `workspace-client.ts` | Workspace-specific API extensions                                   |
 | `index.ts`            | Legacy entrypoints only — prefer importing `*.ts` segments directly |
 
 ### Shared UI Primitives (`shared/ui/`)
@@ -520,14 +520,14 @@ npm run version:bump <patch|minor|major>  # Bump semver + CHANGELOG
 
 ### Architectural Decision Records (`docs/adr/`)
 
-| ADR                                        | Decision                                 |
-| ------------------------------------------ | ---------------------------------------- |
-| `docs/adr/000-template.md`                 | ADR template                             |
-| `docs/adr/001-react-zustand-tailwind.md`   | React + Zustand + Tailwind stack choice  |
-| `docs/adr/002-electron-pwa-dual-target.md` | Electron + PWA dual target               |
-| `docs/adr/003-fsd-architecture.md`         | FSD architecture adoption                |
-| `docs/adr/004-dual-ci.md`                  | Dual CI (GitHub Actions + GitLab)        |
-| `docs/adr/005-white-label.md`              | White-label strategy                     |
-| `docs/adr/006-versioning.md`               | Semantic Versioning with synced monorepo |
-| `docs/adr/007-open-source.md`              | Open source (Apache 2.0)                 |
+| ADR                                            | Decision                                    |
+| ---------------------------------------------- | ------------------------------------------- |
+| `docs/adr/000-template.md`                     | ADR template                                |
+| `docs/adr/001-react-zustand-tailwind.md`       | React + Zustand + Tailwind stack choice     |
+| `docs/adr/002-electron-pwa-dual-target.md`     | Electron + PWA dual target                  |
+| `docs/adr/003-fsd-architecture.md`             | FSD architecture adoption                   |
+| `docs/adr/004-dual-ci.md`                      | Dual CI (GitHub Actions + GitLab)           |
+| `docs/adr/005-white-label.md`                  | White-label strategy                        |
+| `docs/adr/006-versioning.md`                   | Semantic Versioning with synced monorepo    |
+| `docs/adr/007-open-source.md`                  | Open source (Apache 2.0)                    |
 | `docs/adr/008-workspace-http-path-defaults.md` | Gateway vs vanilla Zulip HTTP path defaults |

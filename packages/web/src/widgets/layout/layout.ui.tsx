@@ -24,6 +24,7 @@ import { useInactiveInstancesBackgroundWork } from "./layout-inactive-instances-
 import { useLayoutInstanceBootstrap } from "./layout-instance-bootstrap.hook";
 import { useLayoutLegacyStreamSlugRedirect } from "./layout-legacy-stream-redirect.hook";
 import { LayoutLoadingGate } from "./layout-loading-gate.ui";
+import { useLayoutMuteSnapshotSync } from "./layout-mute-snapshot-sync.hook";
 import { useLayoutOnlineStatus } from "./layout-online-status.hook";
 import { useLayoutPresencePolling } from "./layout-presence-polling.hook";
 import { useLayoutPushClickRouting } from "./layout-push-click-routing.hook";
@@ -151,6 +152,8 @@ export const Layout: React.FC = () => {
 
   // Централизованный debounce-sync chat-list snapshot в IndexedDB.
   useLayoutChatListSnapshotSync(currentInstanceId);
+  // Централизованный debounce-sync mute snapshot в IndexedDB.
+  useLayoutMuteSnapshotSync(currentInstanceId);
 
   useLayoutWindowBranding({
     unreadCount: unreadCountForCurrentInstance,

@@ -3,8 +3,8 @@
  * Does not render status text — only the emoji picture/character from Zulip payload.
  */
 import React from "react";
-import type { UserStatus } from "~/entities/user/user.model";
 import { getUserStatusEmoji } from "~/entities/user/user-status.lib";
+import type { UserStatus } from "~/entities/user/user.model";
 
 export interface SidebarUserStatusEmojiProps {
   status: UserStatus | null | undefined;

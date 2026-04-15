@@ -1,7 +1,7 @@
 import React, { useCallback } from "react";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
-import { useUsersStore } from "~/entities/user/user.model";
 import { useUserStatus } from "~/entities/user/user-status.hooks";
+import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
 import { getPresenceState } from "~/shared/lib/format";
 import { Avatar } from "~/shared/ui/avatar";

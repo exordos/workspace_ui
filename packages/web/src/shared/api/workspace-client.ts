@@ -17,11 +17,15 @@ import {
   getV1FoldersFolderUuidItemsFolderItemUuid,
   updateV1FoldersFolderUuidItemsFolderItemUuid,
 } from "workspace-api/workspace-api.generated";
-import type { FolderFilter, FolderItemCreate, ServiceFilter } from "workspace-api/workspace-api.generated";
 import { guard, invariant } from "~/shared/lib/guards";
 import { isValidUrl } from "~/shared/lib/validation";
 import { getCurrentInstance, getWorkspaceApiBaseForCurrentInstance, workspaceApi } from "./client";
 import { WorkspaceApiHttpError } from "./workspace-orval-mutator";
+import type {
+  FolderFilter,
+  FolderItemCreate,
+  ServiceFilter,
+} from "workspace-api/workspace-api.generated";
 
 const inFlightWorkspaceGets = new Map<string, Promise<unknown>>();
 
@@ -85,10 +89,8 @@ function isWorkspaceFolder(value: unknown): value is FolderFilter {
     return false;
   }
   const bg = value.background_color_value;
-  const bgOk =
-    bg === undefined || bg === null || (typeof bg === "number" && Number.isFinite(bg));
-  const unreadOk =
-    value.unread_messages == null || Array.isArray(value.unread_messages);
+  const bgOk = bg === undefined || bg === null || (typeof bg === "number" && Number.isFinite(bg));
+  const unreadOk = value.unread_messages == null || Array.isArray(value.unread_messages);
   return (
     typeof value.uuid === "string" &&
     typeof value.created_at === "string" &&
@@ -258,8 +260,7 @@ function mapToFolderItemForClient(
   }
   const uuid = typeof raw.uuid === "string" ? raw.uuid.trim() : "";
   const folderUuidRaw = typeof raw.folder_uuid === "string" ? raw.folder_uuid.trim() : "";
-  const folderUuid =
-    folderUuidRaw.length > 0 ? folderUuidRaw : requestFolderUuid.trim();
+  const folderUuid = folderUuidRaw.length > 0 ? folderUuidRaw : requestFolderUuid.trim();
   const chatId = parseFolderItemChatId(raw.chat_id);
   if (uuid.length === 0 || folderUuid.length === 0 || chatId == null) {
     return null;

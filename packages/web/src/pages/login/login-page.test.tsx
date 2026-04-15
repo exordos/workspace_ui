@@ -18,9 +18,8 @@ vi.mock("react-router-dom", async () => {
 });
 
 vi.mock("~/shared/api/zulip-auth", async () => {
-  const actual = await vi.importActual<typeof import("~/shared/api/zulip-auth")>(
-    "~/shared/api/zulip-auth",
-  );
+  const actual =
+    await vi.importActual<typeof import("~/shared/api/zulip-auth")>("~/shared/api/zulip-auth");
   return {
     ...actual,
     fetchApiKey,
@@ -303,7 +302,9 @@ describe("LoginPage", () => {
       expect(navigateSpy).toHaveBeenCalledWith("/", { replace: true });
     });
     expect(useInstancesStore.getState().instances[0]?.realm).toBe("https://canonical.example.com");
-    expect(useInstancesStore.getState().instances[0]?.workspaceOrgOrigin).toBe("https://gw.example.com");
+    expect(useInstancesStore.getState().instances[0]?.workspaceOrgOrigin).toBe(
+      "https://gw.example.com",
+    );
   });
 
   it("shows fallback organization logo when realm icon is absent", async () => {

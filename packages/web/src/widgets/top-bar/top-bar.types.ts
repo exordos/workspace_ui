@@ -2,12 +2,12 @@ import type { DownloadEntry } from "~/entities/download/download.types";
 
 export type TopBarSection = "chat" | "calendar" | "mail" | "calls" | "services";
 
-export type TopBarSectionNavItem = {
+export interface TopBarSectionNavItem {
   id: TopBarSection;
   icon: "chatBubble" | "calendar" | "mail" | "phone" | "grid";
   label: string;
   available: boolean;
-};
+}
 
 export interface TopBarSectionButtonProps {
   id: TopBarSection;

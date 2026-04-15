@@ -2,12 +2,6 @@
  * Tests for Zulip API (zulip-queue module).
  */
 import { describe, expect, it, vi } from "vitest";
-import {
-  getMockRefreshZulipApiBase,
-  getMockZulipApi,
-  jsonResponse,
-  mockFetch,
-} from "./zulip.test.setup";
 import { getCurrentInstance } from "./client";
 import {
   deleteQueue,
@@ -17,6 +11,12 @@ import {
   registerQueue,
   registerQueueForCredentials,
 } from "./zulip-queue";
+import {
+  getMockRefreshZulipApiBase,
+  getMockZulipApi,
+  jsonResponse,
+  mockFetch,
+} from "./zulip.test.setup";
 
 const mockZulipApi = getMockZulipApi();
 const mockRefreshZulipApiBase = getMockRefreshZulipApiBase();
@@ -44,7 +44,12 @@ describe("registerQueue", () => {
     expect(mockRefreshZulipApiBase).toHaveBeenCalled();
     expect(mockZulipApi.post).toHaveBeenCalledWith("/register", {
       event_types: JSON.stringify(["message", "presence"]),
-      fetch_event_types: JSON.stringify(["user_topics", "recent_private_conversations", "realm"]),
+      fetch_event_types: JSON.stringify([
+        "subscription",
+        "user_topic",
+        "recent_private_conversations",
+        "realm",
+      ]),
     });
   });
 
@@ -105,6 +110,29 @@ describe("registerQueue", () => {
         unread_message_ids: [551, 552],
       },
     });
+  });
+
+  it("parses subscriptions from register payload", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        queue_id: "q-123",
+        last_event_id: -1,
+        subscriptions: [
+          { stream_id: 10, name: "general", is_muted: true },
+          { stream_id: 11, name: "dev", in_home_view: false },
+        ],
+      },
+      raw: { statusText: "OK" },
+    });
+
+    const result = await registerQueue(["message"], ["subscription"]);
+    expect(result.subscriptions).toEqual([
+      { stream_id: 10, name: "general", is_muted: true },
+      { stream_id: 11, name: "dev", is_muted: true },
+    ]);
   });
 
   it("parses server_thumbnail_formats when realm metadata is returned", async () => {
