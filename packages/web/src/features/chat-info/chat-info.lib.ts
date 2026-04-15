@@ -37,6 +37,17 @@ function mapMember(user: UserRecord): ChatInfoMember {
   };
 }
 
+/** Stream channel member list: no custom profile fields (shown only in DM info / full profile). */
+function mapStreamMember(user: UserRecord): ChatInfoMember {
+  return {
+    userId: user.user_id,
+    fullName: user.full_name?.trim() || "",
+    email: user.email ?? "",
+    avatarUrl: user.avatar_url ?? null,
+    isOnline: user.presence?.status === "active",
+  };
+}
+
 export function buildDmChatInfoData(
   dmName: string,
   participants: UserRecord[],
@@ -70,7 +81,7 @@ export function buildStreamChatInfoData(
   },
 ): ChatInfoData {
   // Для stream учитываем server memberIds как источник total memberCount.
-  const members = users.map(mapMember);
+  const members = users.map(mapStreamMember);
   const description = metadata?.description?.trim() ? metadata.description.trim() : null;
   const topics =
     metadata?.topics?.map((topic) => ({

@@ -14,6 +14,7 @@ import {
   zulipPipelinePost,
   ensureZulipApiReady,
 } from "./zulip-pipeline.internal";
+import { parseServerThumbnailFormats } from "./zulip-register-metadata.lib";
 import { parseUnreadMessagesCount } from "./zulip-unread.lib";
 import {
   buildUserTopicsCacheKey,
@@ -33,10 +34,12 @@ import type {
 } from "./zulip.types";
 
 // Зачем: просим у Zulip только те metadata-секции, которые нужны для sidebar без загрузки больших пачек сообщений.
+// `realm` — в т.ч. `server_thumbnail_formats` (размеры превью user_uploads); остальное — sidebar metadata.
 const DEFAULT_REGISTER_FETCH_EVENT_TYPES = [
   "subscription",
   "user_topic",
   "recent_private_conversations",
+  "realm",
 ] as const;
 
 function isPositiveInteger(value: unknown): value is number {
@@ -126,6 +129,7 @@ export async function registerQueue(
     subscriptions?: unknown;
     user_topics?: unknown;
     recent_private_conversations?: unknown;
+    server_thumbnail_formats?: unknown;
   } | null;
   if (data == null || typeof data !== "object") {
     throw new Error(t("app.invalidResponse"));
@@ -142,6 +146,7 @@ export async function registerQueue(
   const recentPrivateConversations = parseRecentPrivateConversations(
     data.recent_private_conversations,
   );
+  const serverThumbnailFormats = parseServerThumbnailFormats(data.server_thumbnail_formats);
   const cacheKey = getCurrentUserTopicsCacheKey();
   if (cacheKey && userTopics) {
     setCachedUserTopicsForKey(cacheKey, userTopics);
@@ -156,6 +161,7 @@ export async function registerQueue(
     ...(recentPrivateConversations
       ? { recent_private_conversations: recentPrivateConversations }
       : {}),
+    ...(serverThumbnailFormats ? { server_thumbnail_formats: serverThumbnailFormats } : {}),
   };
 }
 
@@ -199,6 +205,7 @@ export async function registerQueueForCredentials(
     subscriptions?: unknown;
     user_topics?: unknown;
     recent_private_conversations?: unknown;
+    server_thumbnail_formats?: unknown;
   };
   try {
     data = (await response.json()) as typeof data;
@@ -218,6 +225,7 @@ export async function registerQueueForCredentials(
   const recentPrivateConversations = parseRecentPrivateConversations(
     data.recent_private_conversations,
   );
+  const serverThumbnailFormats = parseServerThumbnailFormats(data.server_thumbnail_formats);
   setCachedUserTopicsForKey(
     buildUserTopicsCacheKey(credentials.realm, credentials.email),
     userTopics ?? [],
@@ -232,6 +240,7 @@ export async function registerQueueForCredentials(
     ...(recentPrivateConversations
       ? { recent_private_conversations: recentPrivateConversations }
       : {}),
+    ...(serverThumbnailFormats ? { server_thumbnail_formats: serverThumbnailFormats } : {}),
   };
 }
 

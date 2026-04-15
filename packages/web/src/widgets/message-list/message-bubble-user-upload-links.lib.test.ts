@@ -19,29 +19,31 @@ describe("isUserUploadImageHref", () => {
 });
 
 describe("expandUserUploadImageLinks", () => {
-  it("replaces user_upload image link with img, caption link, and absolute URLs when base provided", () => {
+  it("replaces user_upload image link with img and absolute URLs when base provided", () => {
     const html =
       '<p><a href="/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png">image.png</a></p>';
     const out = expandUserUploadImageLinks(html, "https://zulip.example.com");
     expect(out).toContain("<img");
+    expect(out).toContain("data-auth-src=");
     expect(out).toContain(
-      'src="https://zulip.example.com/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png"',
-    );
-    expect(out).toContain(
-      'href="https://zulip.example.com/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png"',
+      "https://zulip.example.com/user_uploads/thumbnail/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png/840x560.webp",
     );
     expect(out).toContain('alt="image.png"');
-    expect(out).toContain("flex flex-col gap-1");
+    expect(out).toContain("data:image/svg+xml");
     expect(out.match(/<img\b/g)?.length).toBe(1);
-    expect(out.match(/<a\b/g)?.length).toBe(1);
+    expect(out.match(/<a\b/g) ?? []).toHaveLength(0);
   });
 
   it("keeps relative URLs when media base is omitted", () => {
     const html =
       '<p><a href="/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png">image.png</a></p>';
     const out = expandUserUploadImageLinks(html);
-    expect(out).toContain('src="/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png"');
-    expect(out).toContain('href="/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png"');
+    expect(out).toContain("data-auth-src=");
+    expect(out).toContain(
+      "/user_uploads/thumbnail/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png/840x560.webp",
+    );
+    expect(out).toContain("data:image/svg+xml");
+    expect(out.match(/<a\b/g) ?? []).toHaveLength(0);
   });
 
   it("leaves pdf upload link as anchor", () => {

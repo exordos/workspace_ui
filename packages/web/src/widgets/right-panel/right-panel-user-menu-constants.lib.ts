@@ -4,7 +4,6 @@ import type {
   NotificationSound,
 } from "~/features/settings/settings.types";
 import type { ThemeMode } from "~/shared/lib/themes/tokens";
-import { isValidUrl } from "~/shared/lib/validation";
 
 export const APP_VERSION = import.meta.env.VITE_APP_VERSION ?? "dev";
 
@@ -64,11 +63,4 @@ export function getInstanceLabel(realm: string, email: string): string {
   } catch {
     return email;
   }
-}
-
-export function resolveRealmIconUrl(realmIcon?: string): string | null {
-  if (realmIcon == null) return null;
-  const trimmed = realmIcon.trim();
-  if (trimmed.length === 0) return null;
-  return isValidUrl(trimmed) ? trimmed : null;
 }

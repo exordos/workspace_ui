@@ -1,8 +1,9 @@
 /**
  * Organization-scoped routing helpers.
  *
- * Builds deterministic org route IDs from realm URLs and provides helpers to
- * prefix or replace `/org/:orgId` in internal routes while preserving query/hash.
+ * Builds deterministic `/org/:orgId` segments from the Workspace gateway origin
+ * saved at login (`workspaceOrgOrigin`) when present; otherwise from Zulip realm.
+ * Helpers prefix or replace `/org/:orgId` in internal routes while preserving query/hash.
  */
 
 const ORG_PATH_PREFIX = "/org/";
@@ -74,6 +75,24 @@ export function buildOrgRouteIdFromRealm(realm: string): string {
       .replace(/^-|-$/g, "");
     return fallback.length > 0 ? fallback : "org";
   }
+}
+
+/** Minimal persisted instance fields needed to derive the org segment (shared layer — no entity import). */
+export interface OrgRouteInstanceInput {
+  realm: string;
+  /** Origin of the server URL entered at login; aligns with Workspace REST / folders when set. */
+  workspaceOrgOrigin?: string;
+}
+
+/**
+ * Org route id for multi-tab routing: prefer login gateway origin over canonical Zulip realm.
+ */
+export function buildOrgRouteIdForZulipInstance(instance: OrgRouteInstanceInput): string {
+  const fromLogin = instance.workspaceOrgOrigin?.trim() ?? "";
+  if (fromLogin.length > 0) {
+    return buildOrgRouteIdFromRealm(fromLogin);
+  }
+  return buildOrgRouteIdFromRealm(instance.realm);
 }
 
 export function extractOrgRouteFromPathname(pathname: string): OrgRouteMatch {

@@ -48,6 +48,7 @@ describe("registerQueue", () => {
         "subscription",
         "user_topic",
         "recent_private_conversations",
+        "realm",
       ]),
     });
   });
@@ -131,6 +132,39 @@ describe("registerQueue", () => {
     expect(result.subscriptions).toEqual([
       { stream_id: 10, name: "general", is_muted: true },
       { stream_id: 11, name: "dev", is_muted: true },
+    ]);
+  });
+
+  it("parses server_thumbnail_formats when realm metadata is returned", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        queue_id: "q-123",
+        last_event_id: -1,
+        server_thumbnail_formats: [
+          {
+            name: "840x560.webp",
+            max_width: 840,
+            max_height: 560,
+            format: "webp",
+            animated: false,
+          },
+        ],
+      },
+      raw: { statusText: "OK" },
+    });
+
+    const result = await registerQueue(["message"]);
+    expect(result.server_thumbnail_formats).toEqual([
+      {
+        name: "840x560.webp",
+        max_width: 840,
+        max_height: 560,
+        format: "webp",
+        animated: false,
+      },
     ]);
   });
 });

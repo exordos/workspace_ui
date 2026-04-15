@@ -14,6 +14,10 @@ import {
   fetchRealmPresence,
 } from "~/shared/api/zulip";
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import {
+  logChatListFlow,
+  summarizeZulipMessagesForFlowDebug,
+} from "~/shared/lib/message-flow-debug.lib";
 import { getNewestMessageId } from "./layout-chat-history-sync.lib";
 import { applyRealmPresenceResponseToUsers } from "./layout-zulip-presence-apply.lib";
 
@@ -32,6 +36,7 @@ export function runLayoutReconnectRefresh(options: RunLayoutReconnectRefreshOpti
 
   const uid = useChatListStore.getState().currentUserId ?? null;
   const hydrateFromRecentWindow = () => {
+    logChatListFlow("reconnectRefresh: no anchor → fetchRecentMessages + setFromMessages", {});
     fetchRecentMessages()
       .then((freshMsgs) => {
         if (cancelled) return;
@@ -40,18 +45,31 @@ export function runLayoutReconnectRefresh(options: RunLayoutReconnectRefreshOpti
         }
         setFromMessages(freshMsgs, uid);
         latestMessageIdRef.current = getNewestMessageId(freshMsgs);
+        logChatListFlow("reconnectRefresh: recent window applied", {
+          ...summarizeZulipMessagesForFlowDebug(freshMsgs),
+          latestMessageIdRef: latestMessageIdRef.current,
+        });
       })
-      .catch(() => {});
+      .catch(() => {
+        logChatListFlow("reconnectRefresh: fetchRecentMessages failed", {});
+      });
   };
 
   const latestMessageId = latestMessageIdRef.current;
   if (latestMessageId == null) {
     hydrateFromRecentWindow();
   } else {
+    logChatListFlow("reconnectRefresh: delta after anchor via addMessage", {
+      anchorMessageId: latestMessageId,
+      batchSize: RECONNECT_DELTA_BATCH_SIZE,
+    });
     fetchMessagesAfterAnchor(latestMessageId, RECONNECT_DELTA_BATCH_SIZE)
       .then((deltaMessages) => {
         if (cancelled) return;
-        if (deltaMessages.length === 0) return;
+        if (deltaMessages.length === 0) {
+          logChatListFlow("reconnectRefresh: delta empty (no new messages)", {});
+          return;
+        }
 
         const usersStore = useUsersStore.getState();
         const chatListStore = useChatListStore.getState();
@@ -64,8 +82,13 @@ export function runLayoutReconnectRefresh(options: RunLayoutReconnectRefreshOpti
           getNewestMessageId(deltaMessages) ?? latestMessageIdRef.current;
         useActivityStore.getState().markStale();
         useInboxStore.getState().markStale();
+        logChatListFlow("reconnectRefresh: delta merged into chat list", {
+          ...summarizeZulipMessagesForFlowDebug(deltaMessages),
+          latestMessageIdRef: latestMessageIdRef.current,
+        });
       })
       .catch(() => {
+        logChatListFlow("reconnectRefresh: delta failed → fallback recent window", {});
         hydrateFromRecentWindow();
       });
   }

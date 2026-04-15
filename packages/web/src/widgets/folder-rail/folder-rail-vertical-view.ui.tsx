@@ -27,10 +27,7 @@ export const FolderRailVerticalView: React.FC<FolderRailVerticalViewProps> = Rea
       [indexedFolders],
     );
     const allFolderEntry = orderedEntries[0] ?? null;
-    const scrollableFolderEntries = useMemo(
-      () => orderedEntries.slice(1),
-      [orderedEntries],
-    );
+    const scrollableFolderEntries = useMemo(() => orderedEntries.slice(1), [orderedEntries]);
 
     // Quick-list нужен только когда колонка становится длинной.
     const showQuickList = orderedEntries.length > FOLDER_QUICK_LIST_THRESHOLD;
@@ -39,7 +36,7 @@ export const FolderRailVerticalView: React.FC<FolderRailVerticalViewProps> = Rea
       <div
         data-testid="folder-rail-vertical"
         data-folder-rail-view="vertical"
-        className="flex min-h-0 w-[90px] flex-shrink-0 flex-col items-center gap-1 py-3"
+        className="flex min-h-0 w-[72px] flex-shrink-0 flex-col items-center gap-0.5 py-2"
       >
         {allFolderEntry && (
           <VerticalFolderItem
@@ -58,7 +55,7 @@ export const FolderRailVerticalView: React.FC<FolderRailVerticalViewProps> = Rea
 
         <div
           data-testid="folder-rail-scroll-list"
-          className="mt-1 flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto px-1"
+          className="mt-0.5 flex min-h-0 flex-1 flex-col items-center gap-0.5 overflow-y-auto px-0.5"
         >
           {scrollableFolderEntries.map(({ folder, index }) => (
             <VerticalFolderItem
@@ -79,10 +76,10 @@ export const FolderRailVerticalView: React.FC<FolderRailVerticalViewProps> = Rea
             type="button"
             onClick={onOpenCreateDialog}
             data-folder-rail-action="add-folder"
-            className="mt-3 flex h-10 w-10 shrink-0 items-center justify-center text-text-primary"
+            className="mt-2 flex h-8 w-8 shrink-0 items-center justify-center text-text-primary"
             aria-label={t("a11y.addFolder")}
           >
-            <Icon name="add" size={40} className="shrink-0" />
+            <Icon name="add" size={28} className="shrink-0" />
           </button>
         </div>
 

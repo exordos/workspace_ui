@@ -23,6 +23,7 @@ import {
   onAuthFromNative,
   type NativeMessage,
 } from "~/shared/lib/webview";
+import { workspaceOrgOriginFromLoginServerUrlInput } from "~/shared/lib/workspace-org-origin.lib";
 import { ErrorBoundary, PageErrorFallback, PageLoader } from "~/shared/ui/error-boundary";
 
 const ChatPage = React.lazy(() =>
@@ -85,7 +86,13 @@ export const WebViewShell: React.FC = () => {
 
   useEffect(() => {
     const unsub = onAuthFromNative(({ email, apiKey, realm }) => {
-      addInstance({ realm, email, apiKey });
+      const workspaceOrgOrigin = workspaceOrgOriginFromLoginServerUrlInput(realm);
+      addInstance({
+        realm,
+        email,
+        apiKey,
+        ...(workspaceOrgOrigin !== "" ? { workspaceOrgOrigin } : {}),
+      });
     });
     return unsub;
   }, [addInstance]);

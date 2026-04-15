@@ -13,6 +13,7 @@ import { spawn } from "node:child_process";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import http from "node:http";
+import { getMainEsbuildDefine } from "./get-main-esbuild-define.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
@@ -34,6 +35,7 @@ async function buildElectron() {
       entryPoints: [resolve(root, "src", "main.ts")],
       outfile: resolve(root, "dist", "main.js"),
       format: "cjs",
+      define: getMainEsbuildDefine(),
     }),
     build({
       ...commonOptions,

@@ -2,8 +2,8 @@ import { fireEvent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useUsersStore } from "~/entities/user/user.model";
-import { buildDmTypingChatKey } from "~/features/typing-indicator/typing-key";
 import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indicator.model";
+import { buildDmTypingChatKey } from "~/features/typing-indicator/typing-key";
 import { createUser } from "~/test/factories";
 import { renderWithProviders } from "~/test/render";
 import { SidebarDmList } from "./sidebar-dm-list.ui";
@@ -135,7 +135,7 @@ describe("SidebarDmList", () => {
     expect(screen.getByRole("status", { name: /away/i })).toBeInTheDocument();
   });
 
-  it("shows custom status labels in recent and all users tabs", () => {
+  it("shows status emoji next to name but not status text in recent or all users rows", () => {
     useChatListStore.setState({ currentUserId: 999 });
     useUsersStore
       .getState()
@@ -151,11 +151,16 @@ describe("SidebarDmList", () => {
 
     renderWithProviders(<SidebarDmList activeDmId={42} dms={RECENT_DMS} />);
 
-    expect(screen.getByText("💬 Deep work · Hello")).toBeInTheDocument();
+    expect(screen.getByText("Hello")).toBeInTheDocument();
+    expect(screen.queryByText(/Deep work/)).not.toBeInTheDocument();
+    expect(screen.getAllByTestId("sidebar-user-status-emoji")).toHaveLength(2);
 
     fireEvent.click(screen.getByRole("button", { name: /all users/i }));
 
-    expect(screen.getByText("💬 Deep work")).toBeInTheDocument();
-    expect(screen.getByText("🏠 WFH")).toBeInTheDocument();
+    expect(screen.getByText("alice@example.com")).toBeInTheDocument();
+    expect(screen.getByText("bob@example.com")).toBeInTheDocument();
+    expect(screen.queryByText(/Deep work/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/WFH/)).not.toBeInTheDocument();
+    expect(screen.getAllByTestId("sidebar-user-status-emoji").length).toBeGreaterThanOrEqual(2);
   });
 });

@@ -209,6 +209,7 @@ export const MessageMentionPopover = React.memo(function MessageMentionPopover({
               size="md"
               className="border-border-subtle bg-bg-elevated text-text-muted"
               src={avatarSrc}
+              imageLoading="lazy"
             >
               {displayName.slice(0, 1).toUpperCase()}
             </Avatar>

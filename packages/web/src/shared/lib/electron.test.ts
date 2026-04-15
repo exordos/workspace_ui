@@ -8,7 +8,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { isElectron, getElectronAPI, showDesktopNotification } from "./electron";
+import { getElectronAPI, isElectron, isElectronDarwin, showDesktopNotification } from "./electron";
 
 describe("electron", () => {
   const originalElectronAPI = window.electronAPI;
@@ -51,6 +51,28 @@ describe("electron", () => {
     it("returns false when electronAPI is undefined", () => {
       (window as unknown as Record<string, unknown>).electronAPI = undefined;
       expect(isElectron()).toBe(false);
+    });
+  });
+
+  describe("isElectronDarwin", () => {
+    it("returns false when not in Electron", () => {
+      expect(isElectronDarwin()).toBe(false);
+    });
+
+    it("returns false when platform is linux", () => {
+      (window as unknown as Record<string, unknown>).electronAPI = {
+        platform: "linux",
+        notifications: { show: vi.fn() },
+      };
+      expect(isElectronDarwin()).toBe(false);
+    });
+
+    it("returns true when platform is darwin", () => {
+      (window as unknown as Record<string, unknown>).electronAPI = {
+        platform: "darwin",
+        notifications: { show: vi.fn() },
+      };
+      expect(isElectronDarwin()).toBe(true);
     });
   });
 

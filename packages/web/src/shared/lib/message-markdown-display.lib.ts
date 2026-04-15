@@ -16,6 +16,10 @@
 import hljs from "highlight.js/lib/common";
 import { marked } from "marked";
 import { stripHtml } from "~/shared/lib/html";
+import {
+  injectZulipMentionPlaceholders,
+  restoreZulipMentionPlaceholders,
+} from "~/shared/lib/message-zulip-mentions.lib";
 
 const LANGUAGE_CLASS_PATTERN = /\b(?:language|lang)-([a-z0-9#+-]+)\b/i;
 
@@ -93,15 +97,36 @@ export function applySyntaxHighlighting(html: string): string {
   return wrapper.innerHTML;
 }
 
+export interface MessageBodyDisplayOptions {
+  /** Resolves `@**DisplayName**` to a user id for client-side mention spans. Wildcards (`@**all**`, …) do not use this. */
+  resolveUserMention?: (displayName: string) => number | null;
+}
+
 /** Markdown → HTML (marked + GFM + highlight). Caller must `sanitizeHtml` before DOM insertion. */
-export function messageBodyToUnsanitizedDisplayHtml(body: string): string {
+export function messageBodyToUnsanitizedDisplayHtml(
+  body: string,
+  options?: MessageBodyDisplayOptions,
+): string {
   const t = body.trim();
   if (t.length === 0) return "";
   if (isLikelyRenderedMessageHtml(t)) {
     return t;
   }
-  const mdHtml = renderMarkdownFallbackHtml(t);
-  return applySyntaxHighlighting(mdHtml);
+  let mdInput = t;
+  let mentionTokens: ReturnType<typeof injectZulipMentionPlaceholders>["tokens"] | undefined;
+  if (options?.resolveUserMention != null) {
+    const prepared = injectZulipMentionPlaceholders(t, options.resolveUserMention);
+    if (prepared.tokens.length > 0) {
+      mdInput = prepared.markdown;
+      mentionTokens = prepared.tokens;
+    }
+  }
+  const mdHtml = renderMarkdownFallbackHtml(mdInput);
+  let html = applySyntaxHighlighting(mdHtml);
+  if (mentionTokens != null && mentionTokens.length > 0) {
+    html = restoreZulipMentionPlaceholders(html, mentionTokens);
+  }
+  return html;
 }
 
 /** One-line / list previews: strip tags; Markdown is converted via marked first. */

@@ -16,6 +16,7 @@ describe("RightDrawer", () => {
     expect(drawer).toHaveClass("px-2");
     expect(drawer).toHaveClass("py-5");
     expect(drawer).toHaveClass("bg-sidebar-bg");
+    expect(drawer).toHaveClass("relative");
   });
 
   it("uses semantic token classes for close button", () => {
@@ -26,6 +27,8 @@ describe("RightDrawer", () => {
     );
 
     const closeButton = screen.getByRole("button");
+    expect(closeButton).toHaveClass("absolute");
+    expect(closeButton).toHaveClass("top-2");
     expect(closeButton).toHaveClass("text-text-muted");
     expect(closeButton).toHaveClass("hover:bg-card-bg-active");
     expect(closeButton).toHaveClass("hover:text-text-primary");

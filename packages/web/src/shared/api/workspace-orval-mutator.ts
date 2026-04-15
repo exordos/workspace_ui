@@ -3,7 +3,7 @@
  */
 
 import { setWorkspaceApiMutator } from "workspace-api/workspace-api-mutator";
-import { workspaceApi } from "./client";
+import { refreshWorkspaceApiBase, workspaceApi } from "./client";
 import type { ApiResponse } from "./client";
 
 export class WorkspaceApiHttpError extends Error {
@@ -50,10 +50,17 @@ function assertOk(res: ApiResponse): void {
     return;
   }
   const statusText = res.raw?.statusText ? ` ${res.raw.statusText}` : "";
-  throw new WorkspaceApiHttpError(`Workspace API error: ${res.status}${statusText}`, res.status, res.data);
+  throw new WorkspaceApiHttpError(
+    `Workspace API error: ${res.status}${statusText}`,
+    res.status,
+    res.data,
+  );
 }
 
 export async function workspaceOrvalMutator<T>(url: string, init: RequestInit): Promise<T> {
+  if (import.meta.env.DEV) {
+    refreshWorkspaceApiBase();
+  }
   const method = (init.method ?? "GET").toUpperCase();
   const signal = init.signal ?? undefined;
 
@@ -71,8 +78,7 @@ export async function workspaceOrvalMutator<T>(url: string, init: RequestInit): 
 
   if (method === "POST") {
     if (contentTypeIsJson(init.headers)) {
-      const body =
-        typeof init.body === "string" ? (JSON.parse(init.body) as unknown) : init.body;
+      const body = typeof init.body === "string" ? (JSON.parse(init.body) as unknown) : init.body;
       const res = await workspaceApi.postJson(url, body);
       assertOk(res);
       return (res.data ?? undefined) as T;
@@ -96,8 +102,7 @@ export async function workspaceOrvalMutator<T>(url: string, init: RequestInit): 
 
   if (method === "PUT") {
     if (contentTypeIsJson(init.headers)) {
-      const body =
-        typeof init.body === "string" ? (JSON.parse(init.body) as unknown) : init.body;
+      const body = typeof init.body === "string" ? (JSON.parse(init.body) as unknown) : init.body;
       const res = await workspaceApi.putJson(url, body);
       assertOk(res);
       return (res.data ?? undefined) as T;

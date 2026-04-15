@@ -2,7 +2,9 @@
  * Client for the Workspace API (separate from Zulip).
  *
  * HTTP is implemented via Orval-generated calls + `workspaceOrvalMutator` → `workspaceApi`
- * (auth, logging, retries). Base URL from env — paths are `/v1/...` (see `VITE_WORKSPACE_REST_API_PATH`).
+ * (auth, logging, retries). Folder listing uses {@link getWorkspaceApiBaseForCurrentInstance}
+ * (Workspace gateway origin, often `workspace.*` when the Zulip realm is `zulip.*`); other routes use env default base.
+ * Paths are `/v1/...` (see `VITE_WORKSPACE_REST_API_PATH`).
  *
  * Usage:
  *   import { getFolders, mapWorkspaceFoldersToRail } from "~/shared/api/workspace-client";
@@ -10,16 +12,20 @@
 import {
   createV1FoldersFolderUuidItems,
   deleteV1FoldersFolderUuidItemsFolderItemUuid,
-  filterV1Folders,
   filterV1FoldersFolderUuidItems,
   filterV1Services,
   getV1FoldersFolderUuidItemsFolderItemUuid,
   updateV1FoldersFolderUuidItemsFolderItemUuid,
 } from "workspace-api/workspace-api.generated";
-import type { FolderFilter, FolderItemCreate, ServiceFilter } from "workspace-api/workspace-api.generated";
 import { guard, invariant } from "~/shared/lib/guards";
 import { isValidUrl } from "~/shared/lib/validation";
-import { getCurrentInstance } from "./client";
+import { getCurrentInstance, getWorkspaceApiBaseForCurrentInstance, workspaceApi } from "./client";
+import { WorkspaceApiHttpError } from "./workspace-orval-mutator";
+import type {
+  FolderFilter,
+  FolderItemCreate,
+  ServiceFilter,
+} from "workspace-api/workspace-api.generated";
 
 const inFlightWorkspaceGets = new Map<string, Promise<unknown>>();
 
@@ -83,10 +89,8 @@ function isWorkspaceFolder(value: unknown): value is FolderFilter {
     return false;
   }
   const bg = value.background_color_value;
-  const bgOk =
-    bg === undefined || bg === null || (typeof bg === "number" && Number.isFinite(bg));
-  const unreadOk =
-    value.unread_messages == null || Array.isArray(value.unread_messages);
+  const bgOk = bg === undefined || bg === null || (typeof bg === "number" && Number.isFinite(bg));
+  const unreadOk = value.unread_messages == null || Array.isArray(value.unread_messages);
   return (
     typeof value.uuid === "string" &&
     typeof value.created_at === "string" &&
@@ -171,8 +175,20 @@ export async function getWorkspaceServices(): Promise<WorkspaceServiceForClient[
 
 /** Fetches all workspace folders. */
 export async function getFolders(): Promise<WorkspaceFolder[]> {
-  const data = await workspaceGetDeduped("/v1/folders/", () => filterV1Folders());
-  return Array.isArray(data) ? data.filter(isWorkspaceFolder) : [];
+  return workspaceGetDeduped("/v1/folders/", async () => {
+    const base = getWorkspaceApiBaseForCurrentInstance();
+    const res = await workspaceApi.getWithBase(base, "/v1/folders/");
+    if (!res.ok) {
+      const statusText = res.raw?.statusText ? ` ${res.raw.statusText}` : "";
+      throw new WorkspaceApiHttpError(
+        `Workspace API error: ${res.status}${statusText}`,
+        res.status,
+        res.data,
+      );
+    }
+    const data = res.data;
+    return Array.isArray(data) ? data.filter(isWorkspaceFolder) : [];
+  });
 }
 
 /** Folder shape for the FolderRail component. */
@@ -244,8 +260,7 @@ function mapToFolderItemForClient(
   }
   const uuid = typeof raw.uuid === "string" ? raw.uuid.trim() : "";
   const folderUuidRaw = typeof raw.folder_uuid === "string" ? raw.folder_uuid.trim() : "";
-  const folderUuid =
-    folderUuidRaw.length > 0 ? folderUuidRaw : requestFolderUuid.trim();
+  const folderUuid = folderUuidRaw.length > 0 ? folderUuidRaw : requestFolderUuid.trim();
   const chatId = parseFolderItemChatId(raw.chat_id);
   if (uuid.length === 0 || folderUuid.length === 0 || chatId == null) {
     return null;

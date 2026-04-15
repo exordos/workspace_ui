@@ -2,12 +2,12 @@ import type { DownloadEntry } from "~/entities/download/download.types";
 
 export type TopBarSection = "chat" | "calendar" | "mail" | "calls" | "services";
 
-export type TopBarSectionNavItem = {
+export interface TopBarSectionNavItem {
   id: TopBarSection;
   icon: "chatBubble" | "calendar" | "mail" | "phone" | "grid";
   label: string;
   available: boolean;
-};
+}
 
 export interface TopBarSectionButtonProps {
   id: TopBarSection;
@@ -22,6 +22,8 @@ export interface TopBarSectionNavProps {
   sections: TopBarSectionNavItem[];
   activeSection: TopBarSection;
   onSectionChange: (section: TopBarSection) => void;
+  /** Merged onto the root slot (e.g. `electron-no-drag` on macOS). */
+  className?: string;
 }
 
 export interface TopBarSearchButtonProps {

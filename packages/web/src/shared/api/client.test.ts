@@ -23,6 +23,7 @@ vi.mock("../lib/logger", () => ({
 vi.mock("../lib/env", () => ({
   env: {
     WORKSPACE_API_BASE: "https://workspace.test/api/v1",
+    WORKSPACE_REST_API_PATH: "",
     ZULIP_API_PATH: "/api/v1",
   },
 }));
@@ -399,6 +400,27 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
     expect(init.body).toBe(JSON.stringify({ order_index: 3 }));
   });
 
+  it("getWithBase builds URL from explicit base without changing workspaceApi baseUrl", async () => {
+    const { setInstanceProvider, workspaceApi } = await import("./client");
+    setInstanceProvider(() => ({
+      id: "i1",
+      realm: "https://zulip.test",
+      email: "u@t.com",
+      apiKey: "key123",
+    }));
+
+    mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true, folders: [] }));
+
+    const before = workspaceApi.getBaseUrl();
+    const res = await workspaceApi.getWithBase("https://org.example.com/workspace", "/v1/folders/");
+    const after = workspaceApi.getBaseUrl();
+
+    expect(res.ok).toBe(true);
+    expect(before).toBe(after);
+    const [url] = mockFetch.mock.calls[0] as [string];
+    expect(url).toBe("https://org.example.com/workspace/v1/folders/");
+  });
+
   // postFormData must preserve browser-managed multipart headers.
   it("postFormData sends FormData body without explicit Content-Type", async () => {
     const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
@@ -718,6 +740,33 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
     setAuthErrorHandler(null);
   });
 
+  it("does not wipe credentials on GET workspace /v1/folders/ 401", async () => {
+    const { setInstanceProvider, workspaceApi, setAuthErrorHandler } = await import("./client");
+    const onAuthError = vi.fn();
+
+    setInstanceProvider(() => ({
+      id: "i1",
+      realm: "https://zulip.test",
+      email: "u@t.com",
+      apiKey: "key123",
+    }));
+    setAuthErrorHandler(onAuthError);
+
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ detail: "Unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const res = await workspaceApi.get("/v1/folders/");
+
+    expect(res.status).toBe(401);
+    expect(vi.mocked(wipeCredentials)).not.toHaveBeenCalled();
+    expect(onAuthError).not.toHaveBeenCalled();
+    setAuthErrorHandler(null);
+  });
+
   // Some endpoints return plain text (e.g. /health) — must not crash on JSON parse.
   it("handles non-JSON response body gracefully", async () => {
     const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
@@ -817,5 +866,39 @@ describe("ApiClient middleware management", () => {
     await zulipApi.get("/test");
 
     expect(called).toBe(false);
+  });
+});
+
+describe("appendDevUserUploadsProxyHeaders", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("returns unchanged headers when no instance supplies a dev upload target", async () => {
+    const { appendDevUserUploadsProxyHeaders, setInstanceProvider } = await import("./client");
+    setInstanceProvider(() => null);
+    const headers = { Authorization: "Basic x" };
+    expect(appendDevUserUploadsProxyHeaders("/user_uploads/1/a.png", headers)).toBe(headers);
+  });
+
+  it("uses Zulip realm origin as target, not workspace gateway", async () => {
+    vi.stubGlobal("window", { location: { origin: "http://localhost:5173" } });
+    const { appendDevUserUploadsProxyHeaders, setInstanceProvider } = await import("./client");
+    setInstanceProvider(() => ({
+      id: "i1",
+      realm: "https://zulip.realm.test",
+      email: "u@t.com",
+      apiKey: "k",
+      workspaceOrgOrigin: "https://workspace.gateway.test",
+    }));
+    const out = appendDevUserUploadsProxyHeaders("/user_uploads/1/a.png", {
+      Authorization: "Basic x",
+    });
+    if (!import.meta.env.DEV) {
+      expect(out["X-Workspace-Dev-Target-Origin"]).toBeUndefined();
+      return;
+    }
+    expect(out["X-Workspace-Dev-Target-Origin"]).toBe("https://zulip.realm.test");
+    setInstanceProvider(() => null);
   });
 });

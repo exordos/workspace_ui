@@ -78,7 +78,7 @@ export default {
         header: "123px",
         "panel-right": "299px",
       },
-      /* Mirror layout constants in `src/shared/config/constants.ts` (main / narrow / shell). */
+      /* Mirror layout constants in `src/shared/config/constants.ts` (main / narrow / shell min). */
       maxWidth: {
         "main-workspace": "1920px",
         "narrow-page": "1199px",
@@ -86,6 +86,7 @@ export default {
         "drawer-profile": "360px",
       },
       minWidth: {
+        "app-shell-min": "360px",
         "context-menu": "160px",
         "context-menu-message": "200px",
         "context-menu-wide": "220px",

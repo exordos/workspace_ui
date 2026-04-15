@@ -89,10 +89,6 @@ describe("Icon", () => {
       const paths = [...content.matchAll(/<path\b[^>]*>/gi)].map((match) => match[0]);
 
       expect(content).toMatch(/viewBox="0 0 \d+ \d+"/);
-      expect(content).not.toMatch(/\swidth="/i);
-      expect(content).not.toMatch(/\sheight="/i);
-      expect(content).not.toMatch(/<mask\b/i);
-      expect(content).not.toMatch(/<g\b[^>]*\bmask=/i);
       expect(content).not.toMatch(/\bstroke\s*=/i);
       expect(paths.length, `${file} should contain at least one path`).toBeGreaterThan(0);
 

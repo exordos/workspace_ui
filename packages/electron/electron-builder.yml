@@ -138,6 +138,8 @@ rpm:
     - at-spi2-core
 
 # ──────────────────────────── Auto-update ────────────────────────────
+# Feed URL embedded in the packaged app. To stop the running app from contacting
+# the update server, rebuild main with ELECTRON_DISABLE_AUTO_UPDATE=1 (see packages/electron/.env.example).
 publish:
   provider: generic
   url: https://update.workspace.genesis-core.tech/releases

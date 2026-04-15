@@ -27,6 +27,7 @@ import { clearLocalStatePreservingCriticalKeys } from "~/shared/lib/local-reset"
 import { createLogger } from "~/shared/lib/logger";
 import { playNotificationSound } from "~/shared/lib/notification-sound";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
+import { resolveOrganizationLogoUrl } from "~/shared/lib/organization-branding";
 import { Icon } from "~/shared/ui/icon";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import {
@@ -43,7 +44,6 @@ import {
   MODE_LABEL_KEYS,
   NOTIFICATION_SOUND_LABEL_KEYS,
   NOTIFICATION_SOUNDS,
-  resolveRealmIconUrl,
   THEME_MODES,
 } from "./right-panel-user-menu-constants.lib";
 import { RightPanelUserMenuStatusDialog } from "./right-panel-user-menu-status-dialog.ui";
@@ -110,8 +110,8 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
     [currentInstance],
   );
   const currentServerIconUrl = useMemo(
-    () => resolveRealmIconUrl(currentInstance?.realmIcon),
-    [currentInstance?.realmIcon],
+    () => resolveOrganizationLogoUrl(currentInstance?.realmIcon, currentInstance?.realm),
+    [currentInstance?.realmIcon, currentInstance?.realm],
   );
   const currentStatus = useUserStatus(currentUserId);
   const currentStatusLabel = useMemo(
