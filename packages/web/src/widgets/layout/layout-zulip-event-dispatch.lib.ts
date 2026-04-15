@@ -289,6 +289,15 @@ export function dispatchZulipEvent(event: ZulipEvent, ctx: LayoutZulipEventDispa
       }
       return;
     }
+    if (op === "peer_add" || op === "peer_remove") {
+      const fromArray = parseSubscriptionRows(event.subscriptions).map((row) => row.streamId);
+      const fromIds = parseSubscriptionStreamIds(event.stream_ids);
+      const streamIds = Array.from(new Set([...fromArray, ...fromIds]));
+      if (streamIds.length > 0) {
+        ctx.onStreamPeerMembersChanged?.(streamIds);
+      }
+      return;
+    }
     if (op === "update") {
       const streamId = event.stream_id as number | undefined;
       const property = event.property as string | undefined;

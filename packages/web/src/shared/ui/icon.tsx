@@ -46,6 +46,7 @@ import MoreIcon from "../assets/icons/more.svg?react";
 import MoreVertIcon from "../assets/icons/more_vert.svg?react";
 import NewWindowIcon from "../assets/icons/new_window.svg?react";
 import PenIcon from "../assets/icons/pen.svg?react";
+import PersonAddIcon from "../assets/icons/person_add.svg?react";
 import PhoneIcon from "../assets/icons/phone.svg?react";
 import PinIcon from "../assets/icons/pin.svg?react";
 import PlusIcon from "../assets/icons/plus.svg?react";
@@ -78,6 +79,7 @@ const ICONS: Record<string, IconSvgComponent> = {
   at: AtIcon,
   smile: SmileIcon,
   pen: PenIcon,
+  person_add: PersonAddIcon,
   folder: FolderIcon,
   folder_open: FolderOpenIcon,
   folders: FoldersIcon,

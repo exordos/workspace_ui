@@ -11,6 +11,7 @@ import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { persistUsersDirectoryToIndexedDb } from "~/entities/user/user-directory-snapshot-persist.lib";
 import { useUsersStore } from "~/entities/user/user.model";
+import { useChatInfoStore } from "~/features/chat-info/chat-info.model";
 import { useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
@@ -273,7 +274,6 @@ export function useLayoutZulipEventLoop(options: {
         metadataBootstrapEnabled && env.METADATA_DM_BACKFILL_ENABLED;
       const pUsers = fetchUsers();
       const pMessages = loadBootstrapMessagesRef.current(bootstrapAbort.signal, isBootstrapStale);
-      const pSubscriptions = metadataBootstrapEnabled ? fetchSubscriptions() : Promise.resolve([]);
       const pCurrentUserId = getCurrentUser()
         .then((user) => {
           if (cancelled) return null;
@@ -316,7 +316,7 @@ export function useLayoutZulipEventLoop(options: {
           metadataDmBackfillEnabled,
           bootstrapMode: result.mode,
           usersMerged: apiMembers.length,
-          subscriptionsRows: subscriptions.length,
+          streamsMapSizeBeforeApply: useChatListStore.getState().streamsMap.size,
           currentUserId: uid,
           bootstrapMessages: summarizeZulipMessagesForFlowDebug(
             result.mode === "full" || result.mode === "delta" ? result.messages : [],
@@ -556,6 +556,13 @@ export function useLayoutZulipEventLoop(options: {
                   latestMessageIdRef.current = id;
                 }
               },
+              onStreamPeerMembersChanged: (streamIds) => {
+                if (currentInstanceId == null) return;
+                const chatInfoStore = useChatInfoStore.getState();
+                for (const streamId of streamIds) {
+                  chatInfoStore.invalidateStream(currentInstanceId, streamId);
+                }
+              },
               onMessage: (message) => {
                 if (currentInstanceId == null) return;
                 // Зачем: каждое новое DM-сообщение обновляет локальный индекс для следующего старта.
@@ -568,8 +575,11 @@ export function useLayoutZulipEventLoop(options: {
             });
           },
         });
-      } catch {
-        // ignore: bootstrap / users fetch may fail
+      } catch (error) {
+        logChatListFlow("eventLoop: bootstrap/users initialization failed", {
+          instanceId: currentInstanceId,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     })().catch(() => {});
 

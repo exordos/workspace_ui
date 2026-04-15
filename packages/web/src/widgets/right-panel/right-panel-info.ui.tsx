@@ -1,10 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { ensureUserStatusLoaded } from "~/entities/user/api/user.api";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore } from "~/entities/user/user.model";
+import { AddStreamMembersDialog } from "~/features/add-stream-members/add-stream-members-dialog.ui";
+import { useAddStreamMembersStore } from "~/features/add-stream-members/add-stream-members.model";
 import { useChatInfoStore } from "~/features/chat-info/chat-info.model";
 import { muteStream, unmuteStream } from "~/features/mute-chat/mute-chat.api";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
@@ -13,7 +16,7 @@ import { deleteStream, updateStream } from "~/shared/api/zulip-streams";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { createLogger } from "~/shared/lib/logger";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
-import { hasPermission, parseRole } from "~/shared/lib/roles";
+import { hasPermission, parseRole, UserRole } from "~/shared/lib/roles";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
@@ -36,7 +39,9 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
   const navigate = useNavigate();
   const rightDrawer = useRightDrawer();
   const chatInfoData = useChatInfoStore((s) => s.data);
+  const streamMemberIds = useChatInfoStore((s) => s.streamMemberIds);
   const currentUserId = useChatListStore((s) => s.currentUserId);
+  const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
   const currentUserRoleCode = useUsersStore((s) =>
     currentUserId != null ? s.getUser(currentUserId)?.role : undefined,
   );
@@ -44,8 +49,12 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
   const context = useCurrentChatMessagesStore((s) => s.context);
   const streamId = context?.type === "stream" ? context.streamId : null;
   const currentUserRole = parseRole(currentUserRoleCode);
+  const hasCurrentUserRole = currentUserRoleCode != null;
   const canEditChannel = streamId != null && hasPermission(currentUserRole, "channel:edit");
   const canDeleteChannel = streamId != null && hasPermission(currentUserRole, "channel:delete");
+  const canAddMembers =
+    streamId != null &&
+    (hasCurrentUserRole ? hasPermission(currentUserRole, "channel:subscribe:others") : true);
   const isStreamMuted = useMuteStore((s) => (streamId ? s.isStreamMuted(streamId) : false));
   const [mutePending, setMutePending] = useState(false);
   const [muteError, setMuteError] = useState<string | null>(null);
@@ -54,6 +63,8 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
   const [editOpen, setEditOpen] = useState(false);
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
+  const openAddMembers = useAddStreamMembersStore((s) => s.openForStream);
+  const syncExistingMembers = useAddStreamMembersStore((s) => s.setExistingMemberIds);
 
   const handleToggleMute = useCallback(async () => {
     if (streamId == null || mutePending) return;
@@ -121,7 +132,11 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
       if (streamId == null) {
         return;
       }
-      const streamName = streamInfoName?.trim() || title;
+      const streamInfoNameTrimmed = streamInfoName?.trim();
+      const streamName =
+        streamInfoNameTrimmed != null && streamInfoNameTrimmed.length > 0
+          ? streamInfoNameTrimmed
+          : title;
       void navigate(
         withCurrentOrgRoute(
           `/stream/${buildStreamSlug(streamId, streamName)}/topic/${encodeURIComponent(topicName)}`,
@@ -130,6 +145,33 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
     },
     [navigate, streamId, streamInfoName, title],
   );
+  const streamInfoData = chatInfoData?.type === "stream" ? chatInfoData : null;
+  const handleOpenAddMembers = useCallback(() => {
+    if (streamId == null) return;
+    const streamNameFromInfo = streamInfoData?.name?.trim();
+    const resolvedStreamName =
+      streamNameFromInfo != null && streamNameFromInfo.length > 0
+        ? streamNameFromInfo
+        : title.trim();
+    if (resolvedStreamName.length === 0) return;
+    openAddMembers({
+      streamId,
+      streamName: resolvedStreamName,
+      existingMemberIds: streamMemberIds,
+    });
+  }, [openAddMembers, streamId, streamInfoData, streamMemberIds, title]);
+  const handleAddMembersSuccess = useCallback(
+    (updatedStreamId: number) => {
+      if (currentInstanceId == null) return;
+      useChatInfoStore.getState().invalidateStream(currentInstanceId, updatedStreamId);
+    },
+    [currentInstanceId],
+  );
+
+  useEffect(() => {
+    if (streamInfoData == null) return;
+    syncExistingMembers(streamMemberIds);
+  }, [streamInfoData, streamMemberIds, syncExistingMembers]);
 
   if (user) {
     return (
@@ -151,16 +193,15 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
     );
   }
 
-  const streamInfoData = chatInfoData?.type === "stream" ? chatInfoData : null;
   const hasRealMembers = streamInfoData != null && streamInfoData.members.length > 0;
   const members = hasRealMembers
-    ? streamInfoData.members.map((m, i) => ({
+    ? streamInfoData.members.map((m) => ({
         userId: m.userId,
         name: m.fullName || t("roles.member"),
         status:
           formatUserStatusLabel(users.get(m.userId)?.status) ??
           (m.isOnline ? t("presence.online") : t("presence.offline")),
-        isOwner: i === 0,
+        isOwner: parseRole(users.get(m.userId)?.role) === UserRole.Owner,
         isOnline: m.isOnline,
         avatarUrl: m.avatarUrl,
       }))
@@ -406,9 +447,19 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
         <div>
           <h3 className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-text-secondary">
             <span className="flex items-center gap-2">
-              <Icon name="profile" size={14} className="shrink-0 text-current" />
+              <Icon name="profile" size={16} className="shrink-0 text-current" />
               {t("channel.members")}
             </span>
+            {canAddMembers && (
+              <button
+                type="button"
+                aria-label={t("channel.addMembers")}
+                onClick={handleOpenAddMembers}
+                className="flex h-6 w-6 items-center justify-center rounded text-text-secondary transition-colors hover:bg-bg-elevated hover:text-text-primary"
+              >
+                <Icon name="person_add" size={16} className="text-current" />
+              </button>
+            )}
           </h3>
           {members.length === 0 ? (
             <p className="px-2 py-3 text-center text-sm text-text-muted">
@@ -458,6 +509,7 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
           )}
         </div>
       </ScrollArea>
+      <AddStreamMembersDialog currentUserId={currentUserId} onSuccess={handleAddMembersSuccess} />
     </div>
   );
 };

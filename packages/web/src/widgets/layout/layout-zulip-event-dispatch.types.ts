@@ -103,6 +103,8 @@ export interface LayoutZulipEventDispatchContext {
   notifications: LayoutNotificationsActions;
   jitsiCall: LayoutJitsiCallActions;
   updateLatestMessageId: (id: number) => void;
+  // Что делает: сигнализирует об изменениях состава участников stream из peer_add/peer_remove.
+  onStreamPeerMembersChanged?: (streamIds: number[]) => void;
   // Зачем: позволяет снаружи обновлять дополнительные индексы на каждое message-событие.
   onMessage?: (message: ZulipRawMessage) => void;
 }

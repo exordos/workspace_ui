@@ -24,9 +24,6 @@ function buildCtx(
       decrementUnreadForMessages: noop,
       incrementUnreadForMessages: noop,
       handleDeleteMessages: noop,
-      upsertStreamMetadataRows: noop,
-      renameStream: noop,
-      removeStream: noop,
     },
     currentChat: {
       context: null,
@@ -146,6 +143,48 @@ describe("dispatchZulipEvent", () => {
       );
 
       expect(unmuteSpy).toHaveBeenCalledWith(42, "incidents");
+    });
+  });
+
+  describe("subscription peer events", () => {
+    it("notifies peer_add stream ids from stream_ids payload", () => {
+      const { ctx } = buildCtx();
+      const onStreamPeerMembersChanged = vi.fn();
+
+      dispatchZulipEvent(
+        {
+          id: 5,
+          type: "subscription",
+          op: "peer_add",
+          stream_ids: [10, 11],
+        } as ZulipEvent,
+        {
+          ...ctx,
+          onStreamPeerMembersChanged,
+        },
+      );
+
+      expect(onStreamPeerMembersChanged).toHaveBeenCalledWith([10, 11]);
+    });
+
+    it("notifies peer_remove stream ids from subscriptions payload", () => {
+      const { ctx } = buildCtx();
+      const onStreamPeerMembersChanged = vi.fn();
+
+      dispatchZulipEvent(
+        {
+          id: 6,
+          type: "subscription",
+          op: "peer_remove",
+          subscriptions: [{ stream_id: 42, name: "engineering" }],
+        } as ZulipEvent,
+        {
+          ...ctx,
+          onStreamPeerMembersChanged,
+        },
+      );
+
+      expect(onStreamPeerMembersChanged).toHaveBeenCalledWith([42]);
     });
   });
 });

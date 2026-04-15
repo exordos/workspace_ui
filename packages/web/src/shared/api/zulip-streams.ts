@@ -2,13 +2,68 @@
  * Zulip streams, subscriptions, topics, and stream admin API.
  */
 import { guard } from "~/shared/lib/guards";
+import { createLogger } from "~/shared/lib/logger";
 import { getClient } from "./zulip-client.internal";
 import {
   zulipPipelineDelete,
   zulipPipelineGet,
+  zulipPipelinePost,
   zulipPipelinePatch,
 } from "./zulip-pipeline.internal";
 import type { MockStream, ZulipSubscription } from "./zulip.types";
+
+const log = createLogger("zulip-streams");
+
+export interface AddStreamMembersParams {
+  streamName: string;
+  userIds: number[];
+  authorizationErrorsFatal?: boolean;
+}
+
+export interface AddStreamMembersResult {
+  ok: boolean;
+  addedUserIds: number[];
+  alreadySubscribedUserIds: number[];
+  unauthorizedStreams: string[];
+  errorCode?: string;
+}
+
+function parsePrincipalKeyToUserId(value: string): number | null {
+  const numeric = Number(value);
+  if (!Number.isInteger(numeric) || numeric <= 0) {
+    return null;
+  }
+  return numeric;
+}
+
+function parseUserIdsFromPrincipalMap(value: unknown): number[] {
+  if (value == null || typeof value !== "object" || Array.isArray(value)) {
+    return [];
+  }
+  const ids: number[] = [];
+  for (const key of Object.keys(value)) {
+    const userId = parsePrincipalKeyToUserId(key);
+    if (userId != null) {
+      ids.push(userId);
+    }
+  }
+  return ids;
+}
+
+function parseUnauthorizedStreams(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .filter((row): row is string => typeof row === "string")
+      .map((row) => row.trim())
+      .filter((row) => row.length > 0);
+  }
+  if (value != null && typeof value === "object" && !Array.isArray(value)) {
+    return Object.keys(value)
+      .filter((row) => row.trim().length > 0)
+      .map((row) => row.trim());
+  }
+  return [];
+}
 
 /** Fetches the user's subscriptions (GET /users/me/subscriptions) including is_muted per stream. */
 export async function fetchSubscriptions(): Promise<ZulipSubscription[]> {
@@ -41,6 +96,94 @@ export async function fetchStreams(): Promise<MockStream[]> {
     description: s.description ?? "",
     is_announcement_only: false,
   }));
+}
+
+/** Adds users to an existing stream (POST /users/me/subscriptions with principals). */
+export async function addMembersToStream(
+  params: AddStreamMembersParams,
+): Promise<AddStreamMembersResult> {
+  const streamName = guard.nonEmpty(params.streamName, "addMembersToStream.streamName").trim();
+  const requestedUserIds = Array.from(
+    new Set(params.userIds.map((userId) => guard.userId(userId, "addMembersToStream.userIds"))),
+  ).sort((a, b) => a - b);
+
+  if (requestedUserIds.length === 0) {
+    return {
+      ok: true,
+      addedUserIds: [],
+      alreadySubscribedUserIds: [],
+      unauthorizedStreams: [],
+    };
+  }
+
+  const requestBody: Record<string, string> = {
+    subscriptions: JSON.stringify([{ name: streamName }]),
+    principals: JSON.stringify(requestedUserIds),
+  };
+
+  if (params.authorizationErrorsFatal != null) {
+    requestBody.authorization_errors_fatal = String(params.authorizationErrorsFatal);
+  }
+
+  try {
+    const response = await zulipPipelinePost("/users/me/subscriptions", requestBody);
+    if (!response.ok) {
+      return {
+        ok: false,
+        addedUserIds: [],
+        alreadySubscribedUserIds: [],
+        unauthorizedStreams: [],
+        errorCode: `http_${response.status}`,
+      };
+    }
+
+    const payload = response.data as {
+      result?: string;
+      code?: string;
+      msg?: string;
+      subscribed?: unknown;
+      already_subscribed?: unknown;
+      unauthorized?: unknown;
+    };
+    if (payload.result === "error") {
+      return {
+        ok: false,
+        addedUserIds: [],
+        alreadySubscribedUserIds: [],
+        unauthorizedStreams: parseUnauthorizedStreams(payload.unauthorized),
+        errorCode: payload.code ?? "unknown_error",
+      };
+    }
+
+    const alreadySubscribedUserIds = parseUserIdsFromPrincipalMap(payload.already_subscribed);
+    const addedFromPayload = parseUserIdsFromPrincipalMap(payload.subscribed);
+    const addedUserIds =
+      addedFromPayload.length > 0
+        ? addedFromPayload
+        : requestedUserIds.filter((userId) => !alreadySubscribedUserIds.includes(userId));
+
+    log.info("Stream members added", {
+      streamNameLength: streamName.length,
+      requestedCount: requestedUserIds.length,
+      addedCount: addedUserIds.length,
+      alreadySubscribedCount: alreadySubscribedUserIds.length,
+    });
+
+    return {
+      ok: true,
+      addedUserIds,
+      alreadySubscribedUserIds,
+      unauthorizedStreams: parseUnauthorizedStreams(payload.unauthorized),
+    };
+  } catch {
+    return {
+      ok: false,
+      addedUserIds: [],
+      alreadySubscribedUserIds: [],
+      unauthorizedStreams: [],
+      errorCode: "network_error",
+    };
+  }
 }
 
 /** Fetches subscriber IDs for a stream (GET /streams/{stream_id}/members). */
