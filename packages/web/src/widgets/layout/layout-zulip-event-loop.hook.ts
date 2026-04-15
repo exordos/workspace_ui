@@ -20,6 +20,7 @@ import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indi
 import {
   deleteQueue,
   fetchDirectMessagesPage,
+  fetchSubscriptions,
   fetchUsers,
   getCurrentUser,
   type ZulipEvent,
@@ -313,10 +314,11 @@ export function useLayoutZulipEventLoop(options: {
         });
 
       try {
-        const [members, bootstrap, resolvedCurrentUserId] = await Promise.all([
+        const [members, bootstrap, resolvedCurrentUserId, subscriptions] = await Promise.all([
           pUsers,
           pMessages,
           pCurrentUserId,
+          pSubscriptions,
         ]);
         if (cancelled) return;
         const result = bootstrap;
