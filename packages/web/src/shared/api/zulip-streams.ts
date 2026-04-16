@@ -66,6 +66,10 @@ function parseUnauthorizedStreams(value: unknown): string[] {
   return [];
 }
 
+function hasPrincipalMap(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+
 /** Fetches the user's subscriptions (GET /users/me/subscriptions) including is_muted per stream. */
 export async function fetchSubscriptions(): Promise<ZulipSubscription[]> {
   const res = await zulipPipelineGet("/users/me/subscriptions");
@@ -179,10 +183,10 @@ export async function addMembersToStream(
 
     const alreadySubscribedUserIds = parseUserIdsFromPrincipalMap(payload.already_subscribed);
     const addedFromPayload = parseUserIdsFromPrincipalMap(payload.subscribed);
-    const addedUserIds =
-      addedFromPayload.length > 0
-        ? addedFromPayload
-        : requestedUserIds.filter((userId) => !alreadySubscribedUserIds.includes(userId));
+    // Что делает: если сервер прислал subscribed, доверяем только ему.
+    const addedUserIds = hasPrincipalMap(payload.subscribed)
+      ? addedFromPayload
+      : requestedUserIds.filter((userId) => !alreadySubscribedUserIds.includes(userId));
 
     log.info("Stream members added", {
       streamNameLength: streamName.length,

@@ -9,14 +9,10 @@ import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { useAddStreamMembersStore } from "./add-stream-members.model";
 
 export interface AddStreamMembersDialogProps {
-  currentUserId: number | null;
   onSuccess: (streamId: number) => void;
 }
 
-export const AddStreamMembersDialog: React.FC<AddStreamMembersDialogProps> = ({
-  currentUserId,
-  onSuccess,
-}) => {
+export const AddStreamMembersDialog: React.FC<AddStreamMembersDialogProps> = ({ onSuccess }) => {
   const open = useAddStreamMembersStore((s) => s.open);
   const streamName = useAddStreamMembersStore((s) => s.streamName);
   const existingMemberIds = useAddStreamMembersStore((s) => s.existingMemberIds);
@@ -43,10 +39,7 @@ export const AddStreamMembersDialog: React.FC<AddStreamMembersDialogProps> = ({
     [users],
   );
 
-  const excludedUserIds = useMemo(
-    () => (currentUserId != null ? [...existingMemberIds, currentUserId] : existingMemberIds),
-    [currentUserId, existingMemberIds],
-  );
+  const excludedUserIds = useMemo(() => existingMemberIds, [existingMemberIds]);
 
   const options = useMemo(
     () =>
@@ -62,8 +55,8 @@ export const AddStreamMembersDialog: React.FC<AddStreamMembersDialogProps> = ({
   const selectedUserIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
 
   const handleSubmit = useCallback(() => {
-    void submit({ currentUserId, onSuccess });
-  }, [currentUserId, onSuccess, submit]);
+    void submit({ onSuccess });
+  }, [onSuccess, submit]);
 
   const handleOpenChange = useCallback(
     (nextOpen: boolean) => {

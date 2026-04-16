@@ -2,6 +2,11 @@ type PresenceStatus = "active" | "idle";
 
 export type UserPickerPresence = "active" | "idle" | "offline" | null;
 
+// Что делает: порог (в секундах), в течение которого статус active остается активным.
+const ACTIVE_PRESENCE_WINDOW_SECONDS = 2 * 60;
+// Что делает: порог (в секундах), после которого активность считается offline.
+const IDLE_PRESENCE_WINDOW_SECONDS = 10 * 60;
+
 export interface UserPickerOption {
   userId: number;
   fullName: string;
@@ -38,10 +43,10 @@ function toPresence(
 ): UserPickerPresence {
   if (status == null || timestamp == null) return null;
   const diff = nowUnixSeconds - timestamp;
-  if (status === "active" && diff <= 2 * 60) {
+  if (status === "active" && diff <= ACTIVE_PRESENCE_WINDOW_SECONDS) {
     return "active";
   }
-  if (diff <= 10 * 60) {
+  if (diff <= IDLE_PRESENCE_WINDOW_SECONDS) {
     return "idle";
   }
   return "offline";

@@ -192,7 +192,7 @@ describe("addMembersToStream", () => {
     });
   });
 
-  it("falls back to requested-minus-already when subscribed map does not contain numeric principals", async () => {
+  it("does not assume additions when subscribed map has no numeric principals", async () => {
     mockZulipApi.post.mockResolvedValue({
       ok: true,
       status: 200,
@@ -201,6 +201,32 @@ describe("addMembersToStream", () => {
         subscribed: {
           "alice@example.com": [{ id: 10, name: "engineering" }],
         },
+        already_subscribed: {
+          "2": [{ id: 10, name: "engineering" }],
+        },
+      },
+      raw: { statusText: "OK" },
+    });
+
+    await expect(
+      addMembersToStream({
+        streamName: "engineering",
+        userIds: [1, 2, 3],
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      addedUserIds: [],
+      alreadySubscribedUserIds: [2],
+      unauthorizedStreams: [],
+    });
+  });
+
+  it("falls back to requested-minus-already only when subscribed is absent", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
         already_subscribed: {
           "2": [{ id: 10, name: "engineering" }],
         },

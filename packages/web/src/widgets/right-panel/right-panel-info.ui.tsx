@@ -522,7 +522,7 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
           )}
         </div>
       </ScrollArea>
-      <AddStreamMembersDialog currentUserId={currentUserId} onSuccess={handleAddMembersSuccess} />
+      <AddStreamMembersDialog onSuccess={handleAddMembersSuccess} />
     </div>
   );
 };

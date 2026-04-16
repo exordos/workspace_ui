@@ -57,7 +57,7 @@ describe("useAddStreamMembersStore", () => {
     store.openForStream({ streamId: 10, streamName: "engineering", existingMemberIds: [77] });
     store.toggleSelected(88);
 
-    await store.submit({ currentUserId: 42, onSuccess });
+    await store.submit({ onSuccess });
 
     expect(addStreamMembers).toHaveBeenCalledWith({
       streamName: "engineering",
@@ -83,11 +83,31 @@ describe("useAddStreamMembersStore", () => {
     store.openForStream({ streamId: 10, streamName: "engineering", existingMemberIds: [] });
     store.toggleSelected(88);
 
-    await store.submit({ currentUserId: 42 });
+    await store.submit({});
 
     const nextState = useAddStreamMembersStore.getState();
     expect(nextState.open).toBe(true);
     expect(nextState.error).toBe("app.error");
     expect(nextState.submitting).toBe(false);
+  });
+
+  it("allows submitting current user id when selected", async () => {
+    vi.mocked(addStreamMembers).mockResolvedValue({
+      ok: true,
+      addedUserIds: [42],
+      alreadySubscribedUserIds: [],
+      unauthorizedStreams: [],
+    });
+
+    const store = useAddStreamMembersStore.getState();
+    store.openForStream({ streamId: 10, streamName: "engineering", existingMemberIds: [] });
+    store.toggleSelected(42);
+
+    await store.submit({});
+
+    expect(addStreamMembers).toHaveBeenCalledWith({
+      streamName: "engineering",
+      userIds: [42],
+    });
   });
 });
