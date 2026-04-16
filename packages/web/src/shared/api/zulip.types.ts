@@ -49,6 +49,30 @@ export interface ZulipRecentPrivateConversation {
   unread_message_ids: number[];
 }
 
+export interface ZulipGroupSettingValueObject {
+  // Что делает: явные пользователи, которым выдано право.
+  direct_members: number[];
+  // Что делает: подгруппы, чьи участники наследуют право.
+  direct_subgroups: number[];
+}
+
+// Что делает: универсальный формат group-setting значения Zulip.
+// Может быть ссылкой на одну группу (id) или объектом с direct members/subgroups.
+export type ZulipGroupSettingValue = number | ZulipGroupSettingValueObject;
+
+export interface ZulipRealmUserGroup {
+  // Уникальный id группы в организации.
+  id: number;
+  // Отображаемое имя группы.
+  name: string;
+  // Прямые участники группы.
+  members: number[];
+  // Вложенные подгруппы (наследуемое членство).
+  direct_subgroup_ids: number[];
+  // Признак системной группы Zulip.
+  is_system_group?: boolean;
+}
+
 export interface SavedSnippet {
   id: number;
   title: string;
@@ -73,6 +97,9 @@ export interface RegisterQueueResult {
   user_topics?: ZulipUserTopic[];
   // Зачем: metadata recent DM для первичного построения списка диалогов.
   recent_private_conversations?: Record<string, ZulipRecentPrivateConversation>;
+  // Все группы организации из register metadata.
+  // Используется для расчета channel-level прав через group-setting поля канала.
+  realm_user_groups?: ZulipRealmUserGroup[];
   /** Present when `realm` is included in `fetch_event_types` (Zulip 9.0+). */
   server_thumbnail_formats?: ZulipServerThumbnailFormat[];
 }
@@ -225,6 +252,12 @@ export interface ZulipSubscription {
   stream_id: number;
   name: string;
   is_muted: boolean;
+  // Что делает: приватность канала (true = private stream).
+  invite_only?: boolean;
+  // Что делает: group-setting, определяющий кто может добавлять подписчиков.
+  can_add_subscribers_group?: ZulipGroupSettingValue;
+  // Что делает: group-setting администраторов конкретного канала.
+  can_administer_channel_group?: ZulipGroupSettingValue;
 }
 
 export interface MessagesPageResult {

@@ -17,6 +17,7 @@ function buildCtx(
   const ctx: LayoutZulipEventDispatchContext = {
     chatList: {
       currentUserId: 1,
+      streamsMap: new Map(),
       addMessage: noop,
       upsertStreamMetadataRows: noop,
       renameStream: noop,
@@ -24,9 +25,6 @@ function buildCtx(
       decrementUnreadForMessages: noop,
       incrementUnreadForMessages: noop,
       handleDeleteMessages: noop,
-      upsertStreamMetadataRows: noop,
-      renameStream: noop,
-      removeStream: noop,
     },
     currentChat: {
       context: null,
@@ -146,6 +144,81 @@ describe("dispatchZulipEvent", () => {
       );
 
       expect(unmuteSpy).toHaveBeenCalledWith(42, "incidents");
+    });
+  });
+
+  describe("subscription peer events", () => {
+    it("notifies peer_add stream ids from stream_ids payload", () => {
+      const { ctx } = buildCtx();
+      const onStreamPeerMembersChanged = vi.fn();
+
+      dispatchZulipEvent(
+        {
+          id: 5,
+          type: "subscription",
+          op: "peer_add",
+          stream_ids: [10, 11],
+        } as ZulipEvent,
+        {
+          ...ctx,
+          onStreamPeerMembersChanged,
+        },
+      );
+
+      expect(onStreamPeerMembersChanged).toHaveBeenCalledWith([10, 11]);
+    });
+
+    it("notifies peer_remove stream ids from subscriptions payload", () => {
+      const { ctx } = buildCtx();
+      const onStreamPeerMembersChanged = vi.fn();
+
+      dispatchZulipEvent(
+        {
+          id: 6,
+          type: "subscription",
+          op: "peer_remove",
+          subscriptions: [{ stream_id: 42, name: "engineering" }],
+        } as ZulipEvent,
+        {
+          ...ctx,
+          onStreamPeerMembersChanged,
+        },
+      );
+
+      expect(onStreamPeerMembersChanged).toHaveBeenCalledWith([42]);
+    });
+
+    it("updates channel add-subscribers metadata on subscription update event", () => {
+      const { ctx } = buildCtx();
+      const upsertSpy = vi.spyOn(ctx.chatList, "upsertStreamMetadataRows");
+      ctx.chatList.streamsMap.set(42, {
+        stream_id: 42,
+        name: "engineering",
+        lastMessage: "",
+        time: "",
+        ts: 0,
+        topics: new Map(),
+      });
+
+      dispatchZulipEvent(
+        {
+          id: 7,
+          type: "subscription",
+          op: "update",
+          stream_id: 42,
+          property: "can_add_subscribers_group",
+          value: { direct_members: [1, 2], direct_subgroups: [] },
+        } as ZulipEvent,
+        ctx,
+      );
+
+      expect(upsertSpy).toHaveBeenCalledWith([
+        {
+          streamId: 42,
+          name: "engineering",
+          canAddSubscribersGroup: { direct_members: [1, 2], direct_subgroups: [] },
+        },
+      ]);
     });
   });
 });

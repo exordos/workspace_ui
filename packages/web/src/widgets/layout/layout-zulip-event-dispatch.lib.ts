@@ -4,6 +4,7 @@ import { resolveTypingEventRoute } from "~/features/typing-indicator/typing-even
 import { getCurrentInstance } from "~/shared/api/client";
 import type { ZulipEvent, ZulipRawMessage } from "~/shared/api/zulip";
 import { rawMessageToMockMessage } from "~/shared/api/zulip";
+import type { ZulipGroupSettingValue } from "~/shared/api/zulip.types";
 import { getElectronAPI } from "~/shared/lib/electron";
 import {
   applyZulipEventToMessageIndexedDb,
@@ -11,6 +12,7 @@ import {
 } from "~/shared/lib/message-idb-from-zulip.lib";
 import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
 import { shouldNotify } from "~/shared/lib/notifications-policy";
+import { normalizeGroupSettingValue } from "~/shared/lib/zulip-group-setting.lib";
 import { closeReadMessageNotifications } from "./layout-notification-tags.lib";
 import type {
   LayoutMessageFlagOp,
@@ -18,21 +20,44 @@ import type {
   LayoutZulipEventDispatchContext,
 } from "./layout-zulip-event-dispatch.types";
 
+// Проверяет, что значение является валидным положительным id.
 function isPositiveInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value > 0;
 }
 
-// Что делает: приводит payload subscription/add к минимальному виду для store (id + имя канала).
-function parseSubscriptionRows(value: unknown): { streamId: number; name: string }[] {
+// Что делает: приводит payload subscription/add к metadata-формату для store.
+function parseSubscriptionRows(value: unknown): {
+  streamId: number;
+  name: string;
+  inviteOnly?: boolean;
+  canAddSubscribersGroup?: ZulipGroupSettingValue;
+  canAdministerChannelGroup?: ZulipGroupSettingValue;
+}[] {
   if (!Array.isArray(value)) return [];
-  const rows: { streamId: number; name: string }[] = [];
+  const rows: {
+    streamId: number;
+    name: string;
+    inviteOnly?: boolean;
+    canAddSubscribersGroup?: ZulipGroupSettingValue;
+    canAdministerChannelGroup?: ZulipGroupSettingValue;
+  }[] = [];
   for (const row of value) {
     if (row == null || typeof row !== "object" || Array.isArray(row)) continue;
     const record = row as Record<string, unknown>;
     const streamIdRaw = record.stream_id;
     const name = record.name;
     if (!isPositiveInteger(streamIdRaw) || typeof name !== "string") continue;
-    rows.push({ streamId: streamIdRaw, name: name.trim() });
+    const canAddSubscribersGroup = normalizeGroupSettingValue(record.can_add_subscribers_group);
+    const canAdministerChannelGroup = normalizeGroupSettingValue(
+      record.can_administer_channel_group,
+    );
+    rows.push({
+      streamId: streamIdRaw,
+      name: name.trim(),
+      ...(typeof record.invite_only === "boolean" ? { inviteOnly: record.invite_only } : {}),
+      ...(canAddSubscribersGroup != null ? { canAddSubscribersGroup } : {}),
+      ...(canAdministerChannelGroup != null ? { canAdministerChannelGroup } : {}),
+    });
   }
   return rows;
 }
@@ -289,6 +314,15 @@ export function dispatchZulipEvent(event: ZulipEvent, ctx: LayoutZulipEventDispa
       }
       return;
     }
+    if (op === "peer_add" || op === "peer_remove") {
+      const fromArray = parseSubscriptionRows(event.subscriptions).map((row) => row.streamId);
+      const fromIds = parseSubscriptionStreamIds(event.stream_ids);
+      const streamIds = Array.from(new Set([...fromArray, ...fromIds]));
+      if (streamIds.length > 0) {
+        ctx.onStreamPeerMembersChanged?.(streamIds);
+      }
+      return;
+    }
     if (op === "update") {
       const streamId = event.stream_id as number | undefined;
       const property = event.property as string | undefined;
@@ -311,6 +345,53 @@ export function dispatchZulipEvent(event: ZulipEvent, ctx: LayoutZulipEventDispa
         if (typeof value === "string" && value.trim().length > 0) {
           chatList.renameStream(streamId, value);
         }
+        return;
+      }
+      if (
+        property === "can_add_subscribers_group" ||
+        property === "can_administer_channel_group" ||
+        property === "invite_only"
+      ) {
+        // Что делает: собирает partial metadata update для конкретного канала.
+        // Берем текущее состояние из streamsMap и обновляем только изменившееся поле.
+        const existing = chatList.streamsMap.get(streamId);
+        const streamName = existing?.name?.trim() ?? "";
+        if (streamName.length === 0) return;
+        const row: {
+          streamId: number;
+          name: string;
+          inviteOnly?: boolean;
+          canAddSubscribersGroup?: ZulipGroupSettingValue;
+          canAdministerChannelGroup?: ZulipGroupSettingValue;
+        } = {
+          streamId,
+          name: streamName,
+          ...(existing?.inviteOnly != null ? { inviteOnly: existing.inviteOnly } : {}),
+          ...(existing?.canAddSubscribersGroup != null
+            ? { canAddSubscribersGroup: existing.canAddSubscribersGroup }
+            : {}),
+          ...(existing?.canAdministerChannelGroup != null
+            ? { canAdministerChannelGroup: existing.canAdministerChannelGroup }
+            : {}),
+        };
+        if (property === "invite_only") {
+          if (typeof event.value === "boolean") {
+            row.inviteOnly = event.value;
+          }
+        } else if (property === "can_add_subscribers_group") {
+          // Что делает: нормализует group-setting в единый формат перед записью в store.
+          const parsed = normalizeGroupSettingValue(event.value);
+          if (parsed != null) {
+            row.canAddSubscribersGroup = parsed;
+          }
+        } else {
+          // Что делает: нормализует channel-admin group-setting и синхронизирует metadata.
+          const parsed = normalizeGroupSettingValue(event.value);
+          if (parsed != null) {
+            row.canAdministerChannelGroup = parsed;
+          }
+        }
+        chatList.upsertStreamMetadataRows([row]);
       }
     }
     return;

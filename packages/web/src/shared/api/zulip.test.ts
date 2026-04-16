@@ -502,6 +502,7 @@ describe("registerQueue", () => {
         "user_topic",
         "recent_private_conversations",
         "realm",
+        "realm_user_groups",
       ]),
     });
   });

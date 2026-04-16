@@ -1,11 +1,13 @@
 /**
  * Tests for Zulip API (zulip-streams module).
  */
-import "./zulip.test.setup";
 import { describe, expect, it, vi } from "vitest";
+// eslint-disable-next-line import-x/order -- must run before API modules to register vi.mock hooks
+import { getMockZulipApi, getMockZulipClient, TEST_INSTANCE } from "./zulip.test.setup";
 import { getCurrentInstance } from "./client";
 import { fetchUserTopics, registerQueue } from "./zulip-queue";
 import {
+  addMembersToStream,
   deleteStream,
   fetchStreamMembers,
   fetchStreams,
@@ -13,7 +15,6 @@ import {
   fetchTopics,
   updateStream,
 } from "./zulip-streams";
-import { getMockZulipApi, getMockZulipClient, TEST_INSTANCE } from "./zulip.test.setup";
 
 const mockZulipApi = getMockZulipApi();
 const mockZulipClient = getMockZulipClient();
@@ -83,6 +84,176 @@ describe("fetchStreamMembers", () => {
 
     await expect(fetchStreamMembers(10)).resolves.toEqual([1, 2, 3]);
     expect(mockZulipApi.get).toHaveBeenCalledWith("/streams/10/members", undefined);
+  });
+});
+
+describe("addMembersToStream", () => {
+  it("posts subscriptions and principals and returns normalized success result", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        subscribed: {
+          "1": [{ id: 10, name: "engineering" }],
+          "3": [{ id: 10, name: "engineering" }],
+        },
+        already_subscribed: {
+          "2": [{ id: 10, name: "engineering" }],
+        },
+      },
+      raw: { statusText: "OK" },
+    });
+
+    await expect(
+      addMembersToStream({
+        streamName: "engineering",
+        userIds: [3, 1, 2, 1],
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      addedUserIds: [1, 3],
+      alreadySubscribedUserIds: [2],
+      unauthorizedStreams: [],
+    });
+    expect(mockZulipApi.post).toHaveBeenCalledWith("/users/me/subscriptions", {
+      subscriptions: JSON.stringify([{ name: "engineering" }]),
+      principals: JSON.stringify([1, 2, 3]),
+    });
+  });
+
+  it("passes authorization_errors_fatal when provided", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { result: "success" },
+      raw: { statusText: "OK" },
+    });
+
+    await addMembersToStream({
+      streamName: "engineering",
+      userIds: [1],
+      authorizationErrorsFatal: false,
+    });
+
+    expect(mockZulipApi.post).toHaveBeenCalledWith(
+      "/users/me/subscriptions",
+      expect.objectContaining({
+        authorization_errors_fatal: "false",
+      }),
+    );
+  });
+
+  it("returns error result for non-ok http response", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: false,
+      status: 403,
+      data: { msg: "forbidden" },
+      raw: { statusText: "Forbidden" },
+    });
+
+    await expect(
+      addMembersToStream({
+        streamName: "engineering",
+        userIds: [1],
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      addedUserIds: [],
+      alreadySubscribedUserIds: [],
+      unauthorizedStreams: [],
+      errorCode: "http_403",
+    });
+  });
+
+  it("returns error result when api response is result=error", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "error",
+        code: "BAD_REQUEST",
+        unauthorized: ["engineering"],
+      },
+      raw: { statusText: "OK" },
+    });
+
+    await expect(
+      addMembersToStream({
+        streamName: "engineering",
+        userIds: [1],
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      addedUserIds: [],
+      alreadySubscribedUserIds: [],
+      unauthorizedStreams: ["engineering"],
+      errorCode: "BAD_REQUEST",
+    });
+  });
+
+  it("does not assume additions when subscribed map has no numeric principals", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        subscribed: {
+          "alice@example.com": [{ id: 10, name: "engineering" }],
+        },
+        already_subscribed: {
+          "2": [{ id: 10, name: "engineering" }],
+        },
+      },
+      raw: { statusText: "OK" },
+    });
+
+    await expect(
+      addMembersToStream({
+        streamName: "engineering",
+        userIds: [1, 2, 3],
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      addedUserIds: [],
+      alreadySubscribedUserIds: [2],
+      unauthorizedStreams: [],
+    });
+  });
+
+  it("falls back to requested-minus-already only when subscribed is absent", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        already_subscribed: {
+          "2": [{ id: 10, name: "engineering" }],
+        },
+      },
+      raw: { statusText: "OK" },
+    });
+
+    await expect(
+      addMembersToStream({
+        streamName: "engineering",
+        userIds: [1, 2, 3],
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      addedUserIds: [1, 3],
+      alreadySubscribedUserIds: [2],
+      unauthorizedStreams: [],
+    });
+  });
+
+  it("throws on blank stream name (guard)", async () => {
+    await expect(
+      addMembersToStream({
+        streamName: "   ",
+        userIds: [1],
+      }),
+    ).rejects.toThrow(/addMembersToStream\.streamName must be a non-empty string/);
   });
 });
 

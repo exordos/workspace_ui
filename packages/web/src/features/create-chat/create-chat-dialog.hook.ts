@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore } from "~/entities/user/user.model";
-import { getPresenceState } from "~/shared/lib/format";
+import { buildUserPickerOptions, type UserPickerOption } from "~/shared/lib/user-picker";
 import {
   buildDmSlug,
   getCreateChatTabs,
@@ -22,11 +22,7 @@ export interface UseCreateChatDialogResult {
 
   userSearch: string;
   setUserSearch: (v: string) => void;
-  filteredUsers: {
-    user_id: number;
-    full_name: string;
-    email?: string | undefined;
-  }[];
+  filteredUsers: UserPickerOption[];
 
   groupSelectedUserIds: Set<number>;
   toggleGroupUser: (userId: number) => void;
@@ -49,9 +45,6 @@ export interface UseCreateChatDialogResult {
   channelCreateBlocked: boolean;
   channelCreateBlockedReasonKey: string | null;
   createChannel: () => void;
-
-  resolvePresenceState: (userId: number) => ReturnType<typeof getPresenceState> | null;
-  resolveStatusLabel: (userId: number) => string | null;
 
   buildDmSlug: (userId: number, fullName: string) => string;
 }
@@ -107,41 +100,56 @@ export function useCreateChatDialog(options: {
     ? "channel.creatorProfileLoading"
     : null;
 
-  const filteredUsers = useMemo(() => {
-    const list = Array.from(allUsers.values()).filter((u) => u.user_id !== currentUserId);
-    const q = userSearch.trim().toLowerCase();
-    if (!q) return list;
-    return list.filter(
-      (u) => u.full_name.toLowerCase().includes(q) || (u.email?.toLowerCase().includes(q) ?? false),
-    );
-  }, [allUsers, userSearch, currentUserId]);
-
-  const resolvePresenceState = useCallback(
-    (userId: number) => {
-      const presence = allUsers.get(userId)?.presence;
-      return presence != null ? getPresenceState(presence.timestamp, presence.status) : null;
-    },
+  const pickerCandidates = useMemo(
+    () =>
+      Array.from(allUsers.values()).map((user) => ({
+        userId: user.user_id,
+        fullName: user.full_name,
+        email: user.email,
+        presenceStatus: user.presence?.status,
+        presenceTimestamp: user.presence?.timestamp,
+        statusLabel: formatUserStatusLabel(user.status),
+      })),
     [allUsers],
   );
 
-  const resolveStatusLabel = useCallback(
-    (userId: number) => formatUserStatusLabel(allUsers.get(userId)?.status),
-    [allUsers],
+  const excludedUserIds = useMemo(
+    () => (currentUserId != null ? [currentUserId] : []),
+    [currentUserId],
   );
 
-  const groupUsers = useMemo(() => {
-    return [
-      ...filteredUsers.filter((u) => groupSelectedUserIds.has(u.user_id)),
-      ...filteredUsers.filter((u) => !groupSelectedUserIds.has(u.user_id)),
-    ];
-  }, [filteredUsers, groupSelectedUserIds]);
+  const filteredUsers = useMemo(
+    () =>
+      buildUserPickerOptions({
+        candidates: pickerCandidates,
+        selectedUserIds: [],
+        excludedUserIds,
+        query: userSearch,
+      }),
+    [pickerCandidates, excludedUserIds, userSearch],
+  );
 
-  const channelUsers = useMemo(() => {
-    return [
-      ...filteredUsers.filter((u) => channelSelectedUserIds.has(u.user_id)),
-      ...filteredUsers.filter((u) => !channelSelectedUserIds.has(u.user_id)),
-    ];
-  }, [filteredUsers, channelSelectedUserIds]);
+  const groupUsers = useMemo(
+    () =>
+      buildUserPickerOptions({
+        candidates: pickerCandidates,
+        selectedUserIds: Array.from(groupSelectedUserIds),
+        excludedUserIds,
+        query: userSearch,
+      }),
+    [pickerCandidates, groupSelectedUserIds, excludedUserIds, userSearch],
+  );
+
+  const channelUsers = useMemo(
+    () =>
+      buildUserPickerOptions({
+        candidates: pickerCandidates,
+        selectedUserIds: Array.from(channelSelectedUserIds),
+        excludedUserIds,
+        query: userSearch,
+      }),
+    [pickerCandidates, channelSelectedUserIds, excludedUserIds, userSearch],
+  );
 
   useEffect(() => {
     if (open) return;
@@ -276,8 +284,6 @@ export function useCreateChatDialog(options: {
     channelCreateBlocked,
     channelCreateBlockedReasonKey,
     createChannel: createChannelAction,
-    resolvePresenceState,
-    resolveStatusLabel,
     buildDmSlug: buildDmSlugFn,
   };
 }

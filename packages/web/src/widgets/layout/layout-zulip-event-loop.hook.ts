@@ -11,6 +11,8 @@ import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { persistUsersDirectoryToIndexedDb } from "~/entities/user/user-directory-snapshot-persist.lib";
 import { useUsersStore } from "~/entities/user/user.model";
+import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
+import { useChatInfoStore } from "~/features/chat-info/chat-info.model";
 import { useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
@@ -25,6 +27,7 @@ import {
 import type {
   ZulipRawMessage,
   ZulipRecentPrivateConversation,
+  ZulipSubscription,
   ZulipUserMember,
 } from "~/shared/api/zulip.types";
 import {
@@ -62,20 +65,21 @@ const METADATA_DM_BACKFILL_PAGE_SIZE = 5000;
 const METADATA_DM_BACKFILL_MAX_BATCHES = 3;
 // Что делает: останавливает backfill, если несколько батчей подряд не добавляют новые DM.
 const METADATA_DM_BACKFILL_STAGNATION_LIMIT = 2;
-// Что делает: всегда подтягивает register-снимок для subscription/topic mute и DM metadata.
+// Что делает: всегда подтягивает register-снимок для subscription/topic mute, DM metadata и групп пользователей.
 const REGISTER_FETCH_EVENT_TYPES = [
   "subscription",
   "user_topic",
   "recent_private_conversations",
+  "realm_user_groups",
 ] as const;
 
 // Что делает: превращает register subscriptions metadata в строки для chat-list store.
 function toStreamMetadataRows(
-  subscriptions: readonly { stream_id: number; name: string }[],
+  subscriptions: readonly ZulipSubscription[],
 ): ChatListStreamMetadataRow[] {
   return subscriptions
     .filter(
-      (subscription): subscription is { stream_id: number; name: string } =>
+      (subscription): subscription is ZulipSubscription =>
         Number.isInteger(subscription.stream_id) &&
         subscription.stream_id > 0 &&
         subscription.name.trim().length > 0,
@@ -83,6 +87,16 @@ function toStreamMetadataRows(
     .map((subscription) => ({
       streamId: subscription.stream_id,
       name: subscription.name,
+      // Что делает: пробрасывает channel-level metadata в store, чтобы UI решал права без raw Zulip payload.
+      ...(typeof subscription.invite_only === "boolean"
+        ? { inviteOnly: subscription.invite_only }
+        : {}),
+      ...(subscription.can_add_subscribers_group != null
+        ? { canAddSubscribersGroup: subscription.can_add_subscribers_group }
+        : {}),
+      ...(subscription.can_administer_channel_group != null
+        ? { canAdministerChannelGroup: subscription.can_administer_channel_group }
+        : {}),
     }));
 }
 
@@ -212,6 +226,7 @@ export function useLayoutZulipEventLoop(options: {
   useEffect(() => {
     if (!currentInstanceId) {
       prevInstanceForBootstrapRef.current = null;
+      useUserGroupsStore.getState().clear();
       return;
     }
     let cancelled = false;
@@ -234,6 +249,7 @@ export function useLayoutZulipEventLoop(options: {
       });
       prevInstanceForBootstrapRef.current = currentInstanceId;
       useUsersStore.getState().clear();
+      useUserGroupsStore.getState().clear();
       useActivityStore.getState().clear();
       useInboxStore.getState().clear();
       useChatListStore.getState().clear();
@@ -273,7 +289,6 @@ export function useLayoutZulipEventLoop(options: {
         metadataBootstrapEnabled && env.METADATA_DM_BACKFILL_ENABLED;
       const pUsers = fetchUsers();
       const pMessages = loadBootstrapMessagesRef.current(bootstrapAbort.signal, isBootstrapStale);
-      const pSubscriptions = metadataBootstrapEnabled ? fetchSubscriptions() : Promise.resolve([]);
       const pCurrentUserId = getCurrentUser()
         .then((user) => {
           if (cancelled) return null;
@@ -316,7 +331,7 @@ export function useLayoutZulipEventLoop(options: {
           metadataDmBackfillEnabled,
           bootstrapMode: result.mode,
           usersMerged: apiMembers.length,
-          subscriptionsRows: subscriptions.length,
+          streamsMapSizeBeforeApply: useChatListStore.getState().streamsMap.size,
           currentUserId: uid,
           bootstrapMessages: summarizeZulipMessagesForFlowDebug(
             result.mode === "full" || result.mode === "delta" ? result.messages : [],
@@ -465,11 +480,12 @@ export function useLayoutZulipEventLoop(options: {
           fetchEventTypes: [...REGISTER_FETCH_EVENT_TYPES],
           onQueueRegistered: (id, registration) => {
             queueIdRef.current = id;
+            useUserGroupsStore.getState().setGroups(registration?.realm_user_groups ?? []);
+            const streamRows = toStreamMetadataRows(registration?.subscriptions ?? []);
+            if (streamRows.length > 0) {
+              useChatListStore.getState().upsertStreamMetadataRows(streamRows);
+            }
             if (metadataBootstrapEnabled) {
-              const streamRows = toStreamMetadataRows(registration?.subscriptions ?? []);
-              if (streamRows.length > 0) {
-                useChatListStore.getState().upsertStreamMetadataRows(streamRows);
-              }
               // Что делает: подмешивает recent_private_conversations сразу после register.
               const rows = toDmMetadataRowsFromRecentConversations(
                 registration?.recent_private_conversations,
@@ -556,6 +572,13 @@ export function useLayoutZulipEventLoop(options: {
                   latestMessageIdRef.current = id;
                 }
               },
+              onStreamPeerMembersChanged: (streamIds) => {
+                if (currentInstanceId == null) return;
+                const chatInfoStore = useChatInfoStore.getState();
+                for (const streamId of streamIds) {
+                  chatInfoStore.invalidateStream(currentInstanceId, streamId);
+                }
+              },
               onMessage: (message) => {
                 if (currentInstanceId == null) return;
                 // Зачем: каждое новое DM-сообщение обновляет локальный индекс для следующего старта.
@@ -568,8 +591,11 @@ export function useLayoutZulipEventLoop(options: {
             });
           },
         });
-      } catch {
-        // ignore: bootstrap / users fetch may fail
+      } catch (error) {
+        logChatListFlow("eventLoop: bootstrap/users initialization failed", {
+          instanceId: currentInstanceId,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     })().catch(() => {});
 

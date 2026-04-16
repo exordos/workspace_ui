@@ -21,6 +21,7 @@ import {
 } from "~/shared/lib/message-flow-debug.lib";
 import { toResolvedTopicName, toUnresolvedTopicName } from "~/shared/lib/topic-resolve";
 import { isValidEmail, isValidRealmUrl, validateFileUpload } from "~/shared/lib/validation";
+import { normalizeGroupSettingValue } from "~/shared/lib/zulip-group-setting.lib";
 import {
   ZULIP_DM_CHAT_NUM_AFTER,
   ZULIP_DM_CHAT_NUM_BEFORE,
@@ -344,30 +345,94 @@ function parseUserTopics(data: unknown): ZulipUserTopic[] | null {
   return data.filter(isZulipUserTopic);
 }
 
+// Что делает: нормализует список подписок из register payload.
+// Поднимает channel-level поля (`can_*_group`) в доменный формат.
 function parseSubscriptions(data: unknown): ZulipSubscription[] | null {
   if (!Array.isArray(data)) {
     return null;
   }
-  return data
-    .filter(
-      (
-        value,
-      ): value is {
-        stream_id: number;
-        name: string;
-        is_muted?: boolean;
-        in_home_view?: boolean;
-      } =>
-        typeof value === "object" &&
-        value != null &&
-        typeof (value as { stream_id?: unknown }).stream_id === "number" &&
-        typeof (value as { name?: unknown }).name === "string",
-    )
-    .map((subscription) => ({
+  const parsed: ZulipSubscription[] = [];
+  for (const row of data) {
+    if (typeof row !== "object" || row == null || Array.isArray(row)) {
+      continue;
+    }
+    const subscription = row as {
+      stream_id?: unknown;
+      name?: unknown;
+      is_muted?: unknown;
+      in_home_view?: unknown;
+      invite_only?: unknown;
+      can_add_subscribers_group?: unknown;
+      can_administer_channel_group?: unknown;
+    };
+    if (!isPositiveInteger(subscription.stream_id) || typeof subscription.name !== "string") {
+      continue;
+    }
+    const canAddSubscribersGroup = normalizeGroupSettingValue(
+      subscription.can_add_subscribers_group,
+    );
+    const canAdministerChannelGroup = normalizeGroupSettingValue(
+      subscription.can_administer_channel_group,
+    );
+    parsed.push({
       stream_id: subscription.stream_id,
       name: subscription.name,
-      is_muted: subscription.is_muted ?? !(subscription.in_home_view ?? true),
-    }));
+      is_muted:
+        typeof subscription.is_muted === "boolean"
+          ? subscription.is_muted
+          : subscription.in_home_view === false,
+      ...(typeof subscription.invite_only === "boolean"
+        ? { invite_only: subscription.invite_only }
+        : {}),
+      ...(canAddSubscribersGroup != null
+        ? { can_add_subscribers_group: canAddSubscribersGroup }
+        : {}),
+      ...(canAdministerChannelGroup != null
+        ? { can_administer_channel_group: canAdministerChannelGroup }
+        : {}),
+    });
+  }
+  return parsed;
+}
+
+// Что делает: парсит список групп организации из register metadata.
+// Используется для расчета membership в channel-level permissions.
+function parseRealmUserGroups(data: unknown): ZulipRealmUserGroup[] | null {
+  if (!Array.isArray(data)) {
+    return null;
+  }
+  const parsed: ZulipRealmUserGroup[] = [];
+  for (const row of data) {
+    if (row == null || typeof row !== "object" || Array.isArray(row)) {
+      continue;
+    }
+    const record = row as Record<string, unknown>;
+    const id = record.id;
+    const name = record.name;
+    if (!isPositiveInteger(id) || typeof name !== "string") {
+      continue;
+    }
+    const members = Array.isArray(record.members)
+      ? Array.from(new Set(record.members.filter(isPositiveInteger))).sort(
+          (left, right) => left - right,
+        )
+      : [];
+    const directSubgroupIds = Array.isArray(record.direct_subgroup_ids)
+      ? Array.from(new Set(record.direct_subgroup_ids.filter(isPositiveInteger))).sort(
+          (left, right) => left - right,
+        )
+      : [];
+    parsed.push({
+      id,
+      name,
+      members,
+      direct_subgroup_ids: directSubgroupIds,
+      ...(typeof record.is_system_group === "boolean"
+        ? { is_system_group: record.is_system_group }
+        : {}),
+    });
+  }
+  return parsed;
 }
 
 function isPositiveInteger(value: unknown): value is number {
@@ -674,15 +739,20 @@ async function zulipPipelineDelete(path: string, body?: Record<string, string>) 
 
 // --- Real-time events API (register + get-events) ---
 
-import type { RegisterQueueResult, ZulipServerThumbnailFormat } from "./zulip.types";
+import type {
+  RegisterQueueResult,
+  ZulipRealmUserGroup,
+  ZulipServerThumbnailFormat,
+} from "./zulip.types";
 
 // Зачем: по умолчанию подтягиваем metadata, чтобы быстрее собрать sidebar без полной истории сообщений.
-// `realm` — в т.ч. `server_thumbnail_formats`; остальное — sidebar metadata.
+// `realm` — в т.ч. `server_thumbnail_formats`, а `realm_user_groups` нужен для channel-level permission checks.
 const DEFAULT_REGISTER_FETCH_EVENT_TYPES = [
   "subscription",
-  "user_topics",
+  "user_topic",
   "recent_private_conversations",
   "realm",
+  "realm_user_groups",
 ] as const;
 
 export interface ZulipEvent {
@@ -755,6 +825,7 @@ export async function registerQueue(
     subscriptions?: unknown;
     user_topics?: unknown;
     recent_private_conversations?: unknown;
+    realm_user_groups?: unknown;
     server_thumbnail_formats?: unknown;
   } | null;
   if (data == null || typeof data !== "object") {
@@ -772,6 +843,8 @@ export async function registerQueue(
   const recentPrivateConversations = parseRecentPrivateConversations(
     data.recent_private_conversations,
   );
+  // Что делает: подхватывает группы организации, чтобы UI мог корректно решать channel-level права.
+  const realmUserGroups = parseRealmUserGroups(data.realm_user_groups);
   const serverThumbnailFormats = parseServerThumbnailFormats(data.server_thumbnail_formats);
   const cacheKey = getCurrentUserTopicsCacheKey();
   if (cacheKey && userTopics) {
@@ -787,6 +860,7 @@ export async function registerQueue(
     ...(recentPrivateConversations
       ? { recent_private_conversations: recentPrivateConversations }
       : {}),
+    ...(realmUserGroups ? { realm_user_groups: realmUserGroups } : {}),
     ...(serverThumbnailFormats ? { server_thumbnail_formats: serverThumbnailFormats } : {}),
   };
 }
@@ -831,6 +905,7 @@ export async function registerQueueForCredentials(
     subscriptions?: unknown;
     user_topics?: unknown;
     recent_private_conversations?: unknown;
+    realm_user_groups?: unknown;
     server_thumbnail_formats?: unknown;
   };
   try {
@@ -851,6 +926,8 @@ export async function registerQueueForCredentials(
   const recentPrivateConversations = parseRecentPrivateConversations(
     data.recent_private_conversations,
   );
+  // Что делает: подхватывает группы и для explicit-credentials/background режима.
+  const realmUserGroups = parseRealmUserGroups(data.realm_user_groups);
   const serverThumbnailFormats = parseServerThumbnailFormats(data.server_thumbnail_formats);
   setCachedUserTopicsForKey(
     buildUserTopicsCacheKey(credentials.realm, credentials.email),
@@ -866,6 +943,7 @@ export async function registerQueueForCredentials(
     ...(recentPrivateConversations
       ? { recent_private_conversations: recentPrivateConversations }
       : {}),
+    ...(realmUserGroups ? { realm_user_groups: realmUserGroups } : {}),
     ...(serverThumbnailFormats ? { server_thumbnail_formats: serverThumbnailFormats } : {}),
   };
 }
@@ -1652,6 +1730,9 @@ export interface ZulipSubscription {
   stream_id: number;
   name: string;
   is_muted: boolean;
+  invite_only?: boolean;
+  can_add_subscribers_group?: number | { direct_members: number[]; direct_subgroups: number[] };
+  can_administer_channel_group?: number | { direct_members: number[]; direct_subgroups: number[] };
 }
 
 /** Fetches the user's subscriptions (GET /users/me/subscriptions) including is_muted per stream. */
@@ -1666,13 +1747,34 @@ export async function fetchSubscriptions(): Promise<ZulipSubscription[]> {
       name: string;
       is_muted?: boolean;
       in_home_view?: boolean;
+      invite_only?: boolean;
+      can_add_subscribers_group?: unknown;
+      can_administer_channel_group?: unknown;
     }[];
   };
-  return (data.subscriptions ?? []).map((s) => ({
-    stream_id: s.stream_id,
-    name: s.name,
-    is_muted: s.is_muted ?? !(s.in_home_view ?? true),
-  }));
+  // Что делает: возвращает нормализованные подписки с channel-level permission metadata.
+  return (data.subscriptions ?? []).map((subscription) => {
+    const canAddSubscribersGroup = normalizeGroupSettingValue(
+      subscription.can_add_subscribers_group,
+    );
+    const canAdministerChannelGroup = normalizeGroupSettingValue(
+      subscription.can_administer_channel_group,
+    );
+    return {
+      stream_id: subscription.stream_id,
+      name: subscription.name,
+      is_muted: subscription.is_muted ?? !(subscription.in_home_view ?? true),
+      ...(typeof subscription.invite_only === "boolean"
+        ? { invite_only: subscription.invite_only }
+        : {}),
+      ...(canAddSubscribersGroup != null
+        ? { can_add_subscribers_group: canAddSubscribersGroup }
+        : {}),
+      ...(canAdministerChannelGroup != null
+        ? { can_administer_channel_group: canAdministerChannelGroup }
+        : {}),
+    };
+  });
 }
 
 /**

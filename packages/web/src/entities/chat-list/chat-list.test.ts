@@ -779,6 +779,26 @@ describe("chatListStore", () => {
       expect(streams.get(11)?.topics.size).toBe(0);
     });
 
+    it("stores channel-level add-members permissions from metadata", () => {
+      useChatListStore.getState().upsertStreamMetadataRows([
+        {
+          streamId: 11,
+          name: "engineering",
+          inviteOnly: true,
+          canAddSubscribersGroup: { direct_members: [42], direct_subgroups: [] },
+          canAdministerChannelGroup: 5001,
+        },
+      ]);
+
+      const stream = useChatListStore.getState().streamsMap.get(11);
+      expect(stream?.inviteOnly).toBe(true);
+      expect(stream?.canAddSubscribersGroup).toEqual({
+        direct_members: [42],
+        direct_subgroups: [],
+      });
+      expect(stream?.canAdministerChannelGroup).toBe(5001);
+    });
+
     it("adds personal DM rows from metadata with unread count", () => {
       useUsersStore.getState().mergeUser({ user_id: 10, full_name: "Alice", email: "a@x.test" });
       useUsersStore.getState().mergeUser({ user_id: 20, full_name: "Bob", email: "b@x.test" });

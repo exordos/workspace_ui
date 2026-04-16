@@ -121,21 +121,19 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                     </p>
                   ) : (
                     vm.filteredUsers.map((u) => {
-                      const presenceState = vm.resolvePresenceState(u.user_id);
-                      const statusLabel = vm.resolveStatusLabel(u.user_id);
                       return (
                         <button
                           type="button"
-                          key={u.user_id}
+                          key={u.userId}
                           className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-primary transition-colors hover:bg-bg-elevated"
-                          onClick={() => onNavigateDm(vm.buildDmSlug(u.user_id, u.full_name))}
+                          onClick={() => onNavigateDm(vm.buildDmSlug(u.userId, u.fullName))}
                         >
-                          <PresenceIndicator status={presenceState} size="sm" />
+                          <PresenceIndicator status={u.presence} size="sm" />
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate font-medium">{u.full_name}</span>
-                            {(statusLabel ?? u.email) && (
+                            <span className="block truncate font-medium">{u.fullName}</span>
+                            {(u.statusLabel ?? u.email) && (
                               <span className="block truncate text-[11px] text-text-secondary">
-                                {statusLabel ?? u.email}
+                                {u.statusLabel ?? u.email}
                               </span>
                             )}
                           </span>
@@ -168,25 +166,23 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                     </p>
                   ) : (
                     vm.groupUsers.map((u) => {
-                      const presenceState = vm.resolvePresenceState(u.user_id);
-                      const statusLabel = vm.resolveStatusLabel(u.user_id);
                       return (
                         <label
-                          key={u.user_id}
+                          key={u.userId}
                           className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-text-primary transition-colors hover:bg-bg-elevated"
                         >
                           <input
                             type="checkbox"
-                            checked={vm.groupSelectedUserIds.has(u.user_id)}
-                            onChange={() => vm.toggleGroupUser(u.user_id)}
+                            checked={vm.groupSelectedUserIds.has(u.userId)}
+                            onChange={() => vm.toggleGroupUser(u.userId)}
                             className="h-4 w-4 rounded border-border-subtle"
                           />
-                          <PresenceIndicator status={presenceState} size="sm" />
+                          <PresenceIndicator status={u.presence} size="sm" />
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate font-medium">{u.full_name}</span>
-                            {(statusLabel ?? u.email) && (
+                            <span className="block truncate font-medium">{u.fullName}</span>
+                            {(u.statusLabel ?? u.email) && (
                               <span className="block truncate text-[11px] text-text-secondary">
-                                {statusLabel ?? u.email}
+                                {u.statusLabel ?? u.email}
                               </span>
                             )}
                           </span>
@@ -274,25 +270,23 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                     </p>
                   ) : (
                     vm.channelUsers.map((u) => {
-                      const presenceState = vm.resolvePresenceState(u.user_id);
-                      const statusLabel = vm.resolveStatusLabel(u.user_id);
                       return (
                         <label
-                          key={u.user_id}
+                          key={u.userId}
                           className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-text-primary transition-colors hover:bg-bg-elevated"
                         >
                           <input
                             type="checkbox"
-                            checked={vm.channelSelectedUserIds.has(u.user_id)}
-                            onChange={() => vm.toggleChannelUser(u.user_id)}
+                            checked={vm.channelSelectedUserIds.has(u.userId)}
+                            onChange={() => vm.toggleChannelUser(u.userId)}
                             className="h-4 w-4 rounded border-border-subtle"
                           />
-                          <PresenceIndicator status={presenceState} size="sm" />
+                          <PresenceIndicator status={u.presence} size="sm" />
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate font-medium">{u.full_name}</span>
-                            {(statusLabel ?? u.email) && (
+                            <span className="block truncate font-medium">{u.fullName}</span>
+                            {(u.statusLabel ?? u.email) && (
                               <span className="block truncate text-[11px] text-text-secondary">
-                                {statusLabel ?? u.email}
+                                {u.statusLabel ?? u.email}
                               </span>
                             )}
                           </span>
