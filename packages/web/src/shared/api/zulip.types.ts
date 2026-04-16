@@ -256,6 +256,8 @@ export interface ZulipSubscription {
   invite_only?: boolean;
   // Что делает: group-setting, определяющий кто может добавлять подписчиков.
   can_add_subscribers_group?: ZulipGroupSettingValue;
+  // Что делает: group-setting, определяющий кто может удалять (отписывать) подписчиков.
+  can_remove_subscribers_group?: ZulipGroupSettingValue;
   // Что делает: group-setting администраторов конкретного канала.
   can_administer_channel_group?: ZulipGroupSettingValue;
 }

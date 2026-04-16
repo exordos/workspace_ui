@@ -618,6 +618,7 @@
     "infoPanel": "Info panel",
     "conversation": "Conversation",
     "openUserProfile": "Open profile: {{name}}",
+    "removeMemberFromChannel": "Remove from channel: {{name}}",
     "online": "Online",
     "away": "Away",
     "stickers": "Stickers",

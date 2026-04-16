@@ -363,6 +363,7 @@ function parseSubscriptions(data: unknown): ZulipSubscription[] | null {
       in_home_view?: unknown;
       invite_only?: unknown;
       can_add_subscribers_group?: unknown;
+      can_remove_subscribers_group?: unknown;
       can_administer_channel_group?: unknown;
     };
     if (!isPositiveInteger(subscription.stream_id) || typeof subscription.name !== "string") {
@@ -370,6 +371,9 @@ function parseSubscriptions(data: unknown): ZulipSubscription[] | null {
     }
     const canAddSubscribersGroup = normalizeGroupSettingValue(
       subscription.can_add_subscribers_group,
+    );
+    const canRemoveSubscribersGroup = normalizeGroupSettingValue(
+      subscription.can_remove_subscribers_group,
     );
     const canAdministerChannelGroup = normalizeGroupSettingValue(
       subscription.can_administer_channel_group,
@@ -386,6 +390,9 @@ function parseSubscriptions(data: unknown): ZulipSubscription[] | null {
         : {}),
       ...(canAddSubscribersGroup != null
         ? { can_add_subscribers_group: canAddSubscribersGroup }
+        : {}),
+      ...(canRemoveSubscribersGroup != null
+        ? { can_remove_subscribers_group: canRemoveSubscribersGroup }
         : {}),
       ...(canAdministerChannelGroup != null
         ? { can_administer_channel_group: canAdministerChannelGroup }
@@ -1732,6 +1739,7 @@ export interface ZulipSubscription {
   is_muted: boolean;
   invite_only?: boolean;
   can_add_subscribers_group?: number | { direct_members: number[]; direct_subgroups: number[] };
+  can_remove_subscribers_group?: number | { direct_members: number[]; direct_subgroups: number[] };
   can_administer_channel_group?: number | { direct_members: number[]; direct_subgroups: number[] };
 }
 
@@ -1749,6 +1757,7 @@ export async function fetchSubscriptions(): Promise<ZulipSubscription[]> {
       in_home_view?: boolean;
       invite_only?: boolean;
       can_add_subscribers_group?: unknown;
+      can_remove_subscribers_group?: unknown;
       can_administer_channel_group?: unknown;
     }[];
   };
@@ -1756,6 +1765,9 @@ export async function fetchSubscriptions(): Promise<ZulipSubscription[]> {
   return (data.subscriptions ?? []).map((subscription) => {
     const canAddSubscribersGroup = normalizeGroupSettingValue(
       subscription.can_add_subscribers_group,
+    );
+    const canRemoveSubscribersGroup = normalizeGroupSettingValue(
+      subscription.can_remove_subscribers_group,
     );
     const canAdministerChannelGroup = normalizeGroupSettingValue(
       subscription.can_administer_channel_group,
@@ -1769,6 +1781,9 @@ export async function fetchSubscriptions(): Promise<ZulipSubscription[]> {
         : {}),
       ...(canAddSubscribersGroup != null
         ? { can_add_subscribers_group: canAddSubscribersGroup }
+        : {}),
+      ...(canRemoveSubscribersGroup != null
+        ? { can_remove_subscribers_group: canRemoveSubscribersGroup }
         : {}),
       ...(canAdministerChannelGroup != null
         ? { can_administer_channel_group: canAdministerChannelGroup }

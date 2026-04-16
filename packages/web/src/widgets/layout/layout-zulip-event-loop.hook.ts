@@ -95,6 +95,9 @@ function toStreamMetadataRows(
       ...(subscription.can_add_subscribers_group != null
         ? { canAddSubscribersGroup: subscription.can_add_subscribers_group }
         : {}),
+      ...(subscription.can_remove_subscribers_group != null
+        ? { canRemoveSubscribersGroup: subscription.can_remove_subscribers_group }
+        : {}),
       ...(subscription.can_administer_channel_group != null
         ? { canAdministerChannelGroup: subscription.can_administer_channel_group }
         : {}),

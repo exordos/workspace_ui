@@ -154,6 +154,7 @@ function mergeStreamEntry(
     // Сообщения не должны затирать permission-поля канала.
     inviteOnly: existing.inviteOnly,
     canAddSubscribersGroup: existing.canAddSubscribersGroup,
+    canRemoveSubscribersGroup: existing.canRemoveSubscribersGroup,
     canAdministerChannelGroup: existing.canAdministerChannelGroup,
     topics: nextTopics,
   };
@@ -286,6 +287,8 @@ function buildStreamMetadataEntry(
   const name = row.name.trim();
   const inviteOnly = row.inviteOnly ?? existing?.inviteOnly;
   const canAddSubscribersGroup = row.canAddSubscribersGroup ?? existing?.canAddSubscribersGroup;
+  const canRemoveSubscribersGroup =
+    row.canRemoveSubscribersGroup ?? existing?.canRemoveSubscribersGroup;
   const canAdministerChannelGroup =
     row.canAdministerChannelGroup ?? existing?.canAdministerChannelGroup;
   if (existing) {
@@ -294,6 +297,7 @@ function buildStreamMetadataEntry(
       name: name.length > 0 ? name : existing.name,
       ...(inviteOnly != null ? { inviteOnly } : {}),
       ...(canAddSubscribersGroup != null ? { canAddSubscribersGroup } : {}),
+      ...(canRemoveSubscribersGroup != null ? { canRemoveSubscribersGroup } : {}),
       ...(canAdministerChannelGroup != null ? { canAdministerChannelGroup } : {}),
     };
   }
@@ -306,6 +310,7 @@ function buildStreamMetadataEntry(
     ts: 0,
     ...(inviteOnly != null ? { inviteOnly } : {}),
     ...(canAddSubscribersGroup != null ? { canAddSubscribersGroup } : {}),
+    ...(canRemoveSubscribersGroup != null ? { canRemoveSubscribersGroup } : {}),
     ...(canAdministerChannelGroup != null ? { canAdministerChannelGroup } : {}),
     topics: new Map(),
   };
@@ -322,6 +327,14 @@ function hasStreamMetadataAccessChanged(
   }
   if (
     !areGroupSettingValuesEqual(existing.canAddSubscribersGroup, nextEntry.canAddSubscribersGroup)
+  ) {
+    return true;
+  }
+  if (
+    !areGroupSettingValuesEqual(
+      existing.canRemoveSubscribersGroup,
+      nextEntry.canRemoveSubscribersGroup,
+    )
   ) {
     return true;
   }

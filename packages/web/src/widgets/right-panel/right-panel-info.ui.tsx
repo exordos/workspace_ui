@@ -13,6 +13,8 @@ import { canAddMembersToStream } from "~/features/add-stream-members/add-stream-
 import { useChatInfoStore } from "~/features/chat-info/chat-info.model";
 import { muteStream, unmuteStream } from "~/features/mute-chat/mute-chat.api";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
+import { useRemoveStreamMembersStore } from "~/features/remove-stream-members/remove-stream-members.model";
+import { canRemoveMembersFromStream } from "~/features/remove-stream-members/remove-stream-members.permissions";
 import { t } from "~/i18n/i18n";
 import { deleteStream, updateStream } from "~/shared/api/zulip-streams";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
@@ -67,6 +69,15 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
       canAdministerChannelGroup: streamEntry?.canAdministerChannelGroup,
       isUserInGroupSetting,
     });
+  // Что делает: гейт удаления участников через org-level + channel-level can_remove_subscribers_group.
+  const canRemoveMembers =
+    streamId != null &&
+    canRemoveMembersFromStream({
+      currentUserId,
+      orgRole: currentUserRole,
+      canRemoveSubscribersGroup: streamEntry?.canRemoveSubscribersGroup,
+      isUserInGroupSetting,
+    });
 
   const isStreamMuted = useMuteStore((s) => (streamId ? s.isStreamMuted(streamId) : false));
   const [mutePending, setMutePending] = useState(false);
@@ -78,6 +89,10 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
   const [editDescription, setEditDescription] = useState("");
   const openAddMembers = useAddStreamMembersStore((s) => s.openForStream);
   const syncExistingMembers = useAddStreamMembersStore((s) => s.setExistingMemberIds);
+  const removeMember = useRemoveStreamMembersStore((s) => s.submit);
+  const removeMemberPendingUserIds = useRemoveStreamMembersStore((s) => s.pendingUserIds);
+  const removeMemberLastError = useRemoveStreamMembersStore((s) => s.lastError);
+  const clearRemoveMembersState = useRemoveStreamMembersStore((s) => s.clear);
 
   const handleToggleMute = useCallback(async () => {
     if (streamId == null || mutePending) return;
@@ -173,18 +188,41 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
       existingMemberIds: streamMemberIds,
     });
   }, [openAddMembers, streamId, streamInfoData, streamMemberIds, title]);
-  const handleAddMembersSuccess = useCallback(
+  // Что делает: после add/remove инвалидации состав участников канала подтягивается заново.
+  const handleStreamMembersChangedSuccess = useCallback(
     (updatedStreamId: number) => {
       if (currentInstanceId == null) return;
       useChatInfoStore.getState().invalidateStream(currentInstanceId, updatedStreamId);
     },
     [currentInstanceId],
   );
+  const handleRemoveMember = useCallback(
+    (userId: number) => {
+      if (streamId == null) return;
+      const streamNameFromInfo = streamInfoData?.name?.trim();
+      const resolvedStreamName =
+        streamNameFromInfo != null && streamNameFromInfo.length > 0
+          ? streamNameFromInfo
+          : title.trim();
+      if (resolvedStreamName.length === 0) return;
+      void removeMember({
+        streamId,
+        streamName: resolvedStreamName,
+        userId,
+        onSuccess: handleStreamMembersChangedSuccess,
+      });
+    },
+    [handleStreamMembersChangedSuccess, removeMember, streamId, streamInfoData, title],
+  );
 
   useEffect(() => {
     if (streamInfoData == null) return;
     syncExistingMembers(streamMemberIds);
   }, [streamInfoData, streamMemberIds, syncExistingMembers]);
+
+  useEffect(() => {
+    clearRemoveMembersState();
+  }, [clearRemoveMembersState, streamId]);
 
   if (user) {
     return (
@@ -481,11 +519,11 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
           ) : (
             <ul className="space-y-2">
               {members.map((p) => (
-                <li key={p.userId}>
-                  <div className="rounded-lg px-1.5 py-1 transition-colors hover:bg-bg-elevated">
+                <li key={p.userId} className="group/member">
+                  <div className="flex items-center gap-2 rounded-lg px-1.5 py-1 transition-colors hover:bg-bg-elevated">
                     <button
                       type="button"
-                      className="flex w-full items-center gap-3 text-left"
+                      className="flex min-w-0 flex-1 items-center gap-3 text-left"
                       onClick={() => handleOpenUserProfile(p.userId)}
                       aria-label={t("a11y.openUserProfile", { name: p.name })}
                     >
@@ -515,14 +553,48 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
                         )}
                       </div>
                     </button>
+                    {canRemoveMembers &&
+                      currentUserId != null &&
+                      p.userId !== currentUserId &&
+                      !p.isOwner && (
+                        <button
+                          type="button"
+                          aria-label={t("a11y.removeMemberFromChannel", { name: p.name })}
+                          disabled={removeMemberPendingUserIds.includes(p.userId)}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            handleRemoveMember(p.userId);
+                          }}
+                          className="hover:bg-notice-base/10 flex h-6 w-6 shrink-0 items-center justify-center rounded text-notice-base opacity-0 transition-opacity group-focus-within/member:opacity-100 group-hover/member:opacity-100 focus-visible:opacity-100 disabled:opacity-40"
+                        >
+                          <Icon name="close" size={14} className="text-current" />
+                        </button>
+                      )}
+                    <button
+                      type="button"
+                      aria-label={t("a11y.removeMemberFromChannel", { name: p.name })}
+                      disabled={removeMemberPendingUserIds.includes(p.userId)}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        handleRemoveMember(p.userId);
+                      }}
+                      className="hover:bg-notice-base/10 flex h-6 w-6 shrink-0 items-center justify-center rounded text-notice-base opacity-0 transition-opacity group-focus-within/member:opacity-100 group-hover/member:opacity-100 focus-visible:opacity-100 disabled:opacity-40"
+                    >
+                      <Icon name="close" size={14} className="text-current" />
+                    </button>
                   </div>
                 </li>
               ))}
             </ul>
           )}
+          {removeMemberLastError && (
+            <p className="mt-2 px-2 text-xs text-notice-base">{t(removeMemberLastError)}</p>
+          )}
         </div>
       </ScrollArea>
-      <AddStreamMembersDialog onSuccess={handleAddMembersSuccess} />
+      <AddStreamMembersDialog onSuccess={handleStreamMembersChangedSuccess} />
     </div>
   );
 };

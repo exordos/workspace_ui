@@ -18,6 +18,8 @@ export interface ChatListStreamMetadataRow {
   inviteOnly?: boolean;
   // Что делает: channel-level группа, которой разрешено добавлять участников.
   canAddSubscribersGroup?: ZulipGroupSettingValue;
+  // Что делает: channel-level группа, которой разрешено удалять участников.
+  canRemoveSubscribersGroup?: ZulipGroupSettingValue;
   // Что делает: channel-level группа администраторов канала.
   canAdministerChannelGroup?: ZulipGroupSettingValue;
 }

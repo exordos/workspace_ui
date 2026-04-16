@@ -76,6 +76,8 @@ export interface StreamEntryInternal {
   inviteOnly?: boolean;
   // Что делает: channel-level group-setting для добавления участников.
   canAddSubscribersGroup?: ZulipGroupSettingValue;
+  // Что делает: channel-level group-setting для удаления участников.
+  canRemoveSubscribersGroup?: ZulipGroupSettingValue;
   // Что делает: channel-level group-setting админов канала.
   canAdministerChannelGroup?: ZulipGroupSettingValue;
   topics: Map<

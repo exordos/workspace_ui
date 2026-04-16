@@ -786,6 +786,7 @@ describe("chatListStore", () => {
           name: "engineering",
           inviteOnly: true,
           canAddSubscribersGroup: { direct_members: [42], direct_subgroups: [] },
+          canRemoveSubscribersGroup: 7002,
           canAdministerChannelGroup: 5001,
         },
       ]);
@@ -796,6 +797,7 @@ describe("chatListStore", () => {
         direct_members: [42],
         direct_subgroups: [],
       });
+      expect(stream?.canRemoveSubscribersGroup).toBe(7002);
       expect(stream?.canAdministerChannelGroup).toBe(5001);
     });
 

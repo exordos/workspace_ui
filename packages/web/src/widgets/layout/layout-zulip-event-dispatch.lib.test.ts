@@ -220,5 +220,38 @@ describe("dispatchZulipEvent", () => {
         },
       ]);
     });
+
+    it("updates channel remove-subscribers metadata on subscription update event", () => {
+      const { ctx } = buildCtx();
+      const upsertSpy = vi.spyOn(ctx.chatList, "upsertStreamMetadataRows");
+      ctx.chatList.streamsMap.set(42, {
+        stream_id: 42,
+        name: "engineering",
+        lastMessage: "",
+        time: "",
+        ts: 0,
+        topics: new Map(),
+      });
+
+      dispatchZulipEvent(
+        {
+          id: 8,
+          type: "subscription",
+          op: "update",
+          stream_id: 42,
+          property: "can_remove_subscribers_group",
+          value: { direct_members: [7], direct_subgroups: [] },
+        } as ZulipEvent,
+        ctx,
+      );
+
+      expect(upsertSpy).toHaveBeenCalledWith([
+        {
+          streamId: 42,
+          name: "engineering",
+          canRemoveSubscribersGroup: { direct_members: [7], direct_subgroups: [] },
+        },
+      ]);
+    });
   });
 });
