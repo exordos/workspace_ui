@@ -111,7 +111,7 @@ export const AddStreamMembersDialog: React.FC<AddStreamMembersDialogProps> = ({
               placeholder={t("message.searchUsers")}
             />
 
-            <div className="max-h-64 overflow-y-auto rounded-lg border border-border-subtle">
+            <div className="h-96 overflow-y-auto rounded-lg border border-border-subtle">
               {options.length === 0 ? (
                 <p className="px-3 py-4 text-center text-sm text-text-muted">
                   {t("search.noResults")}

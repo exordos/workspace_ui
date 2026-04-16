@@ -1,6 +1,6 @@
 // Типы Zustand-store для chat-list.
 // Здесь описаны состояние и публичные actions, которые используют layout/widgets.
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { ZulipGroupSettingValue, ZulipRawMessage } from "~/shared/api/zulip.types";
 import type { ChatListSnapshotSerialized } from "~/shared/lib/chat-list-snapshot-serialize.lib";
 import type {
   SidebarChat,
@@ -14,6 +14,12 @@ export interface ChatListStreamMetadataRow {
   streamId: number;
   // Что делает: текущее имя канала.
   name: string;
+  // Что делает: признак приватности канала.
+  inviteOnly?: boolean;
+  // Что делает: channel-level группа, которой разрешено добавлять участников.
+  canAddSubscribersGroup?: ZulipGroupSettingValue;
+  // Что делает: channel-level группа администраторов канала.
+  canAdministerChannelGroup?: ZulipGroupSettingValue;
 }
 
 export interface ChatListDmMetadataRow {

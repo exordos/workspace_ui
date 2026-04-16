@@ -5,6 +5,7 @@ import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { useThemeStore } from "~/entities/theme/theme.model";
 import { useUsersStore } from "~/entities/user/user.model";
+import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
 import { useAddStreamMembersStore } from "~/features/add-stream-members/add-stream-members.model";
 import { useChatInfoStore } from "~/features/chat-info/chat-info.model";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
@@ -78,6 +79,7 @@ describe("RightPanel truthfulness", () => {
       unreadCountsByInstance: {},
     });
     useUsersStore.getState().clear();
+    useUserGroupsStore.getState().clear();
     useAddStreamMembersStore.setState({
       open: false,
       streamId: null,
@@ -745,7 +747,7 @@ describe("RightPanel truthfulness", () => {
     expect(screen.getByText("💬 In focus")).toBeInTheDocument();
   });
 
-  it("shows add members action for users with subscribe-others permission", () => {
+  it("shows add members action for admin role", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({
         context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
@@ -784,7 +786,7 @@ describe("RightPanel truthfulness", () => {
     expect(screen.getByRole("button", { name: /add members/i })).toBeInTheDocument();
   });
 
-  it("does not show add members action for members without subscribe-others permission", () => {
+  it("does not show add members action for members without channel-level permission", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({
         context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
@@ -821,6 +823,60 @@ describe("RightPanel truthfulness", () => {
     renderWithProviders(<RightPanel title="engineering" participantsCount={1} onlineCount={1} />);
 
     expect(screen.queryByRole("button", { name: /add members/i })).not.toBeInTheDocument();
+  });
+
+  it("shows add members action for channel-level add-subscribers group member", () => {
+    act(() => {
+      useCurrentChatMessagesStore.setState({
+        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        messages: [],
+        isLoadingMore: false,
+        hasOlderMessages: true,
+        hasNewerMessages: false,
+      });
+      useChatInfoStore.setState({
+        data: {
+          type: "stream",
+          name: "engineering",
+          memberCount: 1,
+          onlineCount: 1,
+          members: [
+            {
+              userId: 77,
+              fullName: "Alice",
+              email: "alice@example.com",
+              avatarUrl: null,
+              isOnline: true,
+            },
+          ],
+          description: null,
+          isMuted: false,
+          topics: [],
+        },
+        streamMemberIds: [77],
+      });
+      useChatListStore.getState().upsertStreamMetadataRows([
+        {
+          streamId: 10,
+          name: "engineering",
+          canAddSubscribersGroup: 9123,
+        },
+      ]);
+      useChatListStore.getState().setCurrentUserId(42);
+      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Member", role: 400 });
+      useUserGroupsStore.getState().setGroups([
+        {
+          id: 9123,
+          name: "channel-adders",
+          members: [42],
+          direct_subgroup_ids: [],
+        },
+      ]);
+    });
+
+    renderWithProviders(<RightPanel title="engineering" participantsCount={1} onlineCount={1} />);
+
+    expect(screen.getByRole("button", { name: /add members/i })).toBeInTheDocument();
   });
 
   it("submits add-members dialog and calls stream members api", async () => {

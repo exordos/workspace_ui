@@ -17,6 +17,7 @@ function buildCtx(
   const ctx: LayoutZulipEventDispatchContext = {
     chatList: {
       currentUserId: 1,
+      streamsMap: new Map(),
       addMessage: noop,
       upsertStreamMetadataRows: noop,
       renameStream: noop,
@@ -185,6 +186,39 @@ describe("dispatchZulipEvent", () => {
       );
 
       expect(onStreamPeerMembersChanged).toHaveBeenCalledWith([42]);
+    });
+
+    it("updates channel add-subscribers metadata on subscription update event", () => {
+      const { ctx } = buildCtx();
+      const upsertSpy = vi.spyOn(ctx.chatList, "upsertStreamMetadataRows");
+      ctx.chatList.streamsMap.set(42, {
+        stream_id: 42,
+        name: "engineering",
+        lastMessage: "",
+        time: "",
+        ts: 0,
+        topics: new Map(),
+      });
+
+      dispatchZulipEvent(
+        {
+          id: 7,
+          type: "subscription",
+          op: "update",
+          stream_id: 42,
+          property: "can_add_subscribers_group",
+          value: { direct_members: [1, 2], direct_subgroups: [] },
+        } as ZulipEvent,
+        ctx,
+      );
+
+      expect(upsertSpy).toHaveBeenCalledWith([
+        {
+          streamId: 42,
+          name: "engineering",
+          canAddSubscribersGroup: { direct_members: [1, 2], direct_subgroups: [] },
+        },
+      ]);
     });
   });
 });

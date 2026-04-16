@@ -6,8 +6,10 @@ import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { ensureUserStatusLoaded } from "~/entities/user/api/user.api";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore } from "~/entities/user/user.model";
+import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
 import { AddStreamMembersDialog } from "~/features/add-stream-members/add-stream-members-dialog.ui";
 import { useAddStreamMembersStore } from "~/features/add-stream-members/add-stream-members.model";
+import { canAddMembersToStream } from "~/features/add-stream-members/add-stream-members.permissions";
 import { useChatInfoStore } from "~/features/chat-info/chat-info.model";
 import { muteStream, unmuteStream } from "~/features/mute-chat/mute-chat.api";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
@@ -40,21 +42,32 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
   const rightDrawer = useRightDrawer();
   const chatInfoData = useChatInfoStore((s) => s.data);
   const streamMemberIds = useChatInfoStore((s) => s.streamMemberIds);
+  const context = useCurrentChatMessagesStore((s) => s.context);
+  const streamId = context?.type === "stream" ? context.streamId : null;
   const currentUserId = useChatListStore((s) => s.currentUserId);
+  const streamEntry = useChatListStore((s) =>
+    streamId != null ? s.streamsMap.get(streamId) : undefined,
+  );
   const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
   const currentUserRoleCode = useUsersStore((s) =>
     currentUserId != null ? s.getUser(currentUserId)?.role : undefined,
   );
+  const isUserInGroupSetting = useUserGroupsStore((s) => s.isUserInGroupSetting);
   const users = useUsersStore((s) => s.users);
-  const context = useCurrentChatMessagesStore((s) => s.context);
-  const streamId = context?.type === "stream" ? context.streamId : null;
   const currentUserRole = parseRole(currentUserRoleCode);
-  const hasCurrentUserRole = currentUserRoleCode != null;
   const canEditChannel = streamId != null && hasPermission(currentUserRole, "channel:edit");
   const canDeleteChannel = streamId != null && hasPermission(currentUserRole, "channel:delete");
+  // Что делает: гейт кнопки add-members через org-level + channel-level модель прав Zulip.
   const canAddMembers =
     streamId != null &&
-    (hasCurrentUserRole ? hasPermission(currentUserRole, "channel:subscribe:others") : true);
+    canAddMembersToStream({
+      currentUserId,
+      orgRole: currentUserRole,
+      canAddSubscribersGroup: streamEntry?.canAddSubscribersGroup,
+      canAdministerChannelGroup: streamEntry?.canAdministerChannelGroup,
+      isUserInGroupSetting,
+    });
+
   const isStreamMuted = useMuteStore((s) => (streamId ? s.isStreamMuted(streamId) : false));
   const [mutePending, setMutePending] = useState(false);
   const [muteError, setMuteError] = useState<string | null>(null);

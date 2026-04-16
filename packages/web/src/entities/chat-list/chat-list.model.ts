@@ -19,6 +19,7 @@ import {
   summarizeZulipMessagesForFlowDebug,
 } from "~/shared/lib/message-flow-debug.lib";
 import { saveRecentDmPartners } from "~/shared/lib/recent-dms";
+import { areGroupSettingValuesEqual } from "~/shared/lib/zulip-group-setting.lib";
 import type {
   SidebarChat,
   StreamWithLast,
@@ -149,6 +150,11 @@ function mergeStreamEntry(
     lastMessageSenderName: newerStream ? lastMessageSenderName : existing.lastMessageSenderName,
     time: newerStream ? time : existing.time,
     ts: Math.max(existing.ts, ts),
+    // Что делает: сохраняет channel-level metadata из подписок при приходе новых сообщений.
+    // Сообщения не должны затирать permission-поля канала.
+    inviteOnly: existing.inviteOnly,
+    canAddSubscribersGroup: existing.canAddSubscribersGroup,
+    canAdministerChannelGroup: existing.canAdministerChannelGroup,
     topics: nextTopics,
   };
 }
@@ -278,10 +284,17 @@ function buildStreamMetadataEntry(
   existing: StreamEntryInternal | undefined,
 ): StreamEntryInternal {
   const name = row.name.trim();
+  const inviteOnly = row.inviteOnly ?? existing?.inviteOnly;
+  const canAddSubscribersGroup = row.canAddSubscribersGroup ?? existing?.canAddSubscribersGroup;
+  const canAdministerChannelGroup =
+    row.canAdministerChannelGroup ?? existing?.canAdministerChannelGroup;
   if (existing) {
     return {
       ...existing,
       name: name.length > 0 ? name : existing.name,
+      ...(inviteOnly != null ? { inviteOnly } : {}),
+      ...(canAddSubscribersGroup != null ? { canAddSubscribersGroup } : {}),
+      ...(canAdministerChannelGroup != null ? { canAdministerChannelGroup } : {}),
     };
   }
   return {
@@ -291,8 +304,36 @@ function buildStreamMetadataEntry(
     lastMessageSenderName: undefined,
     time: "",
     ts: 0,
+    ...(inviteOnly != null ? { inviteOnly } : {}),
+    ...(canAddSubscribersGroup != null ? { canAddSubscribersGroup } : {}),
+    ...(canAdministerChannelGroup != null ? { canAdministerChannelGroup } : {}),
     topics: new Map(),
   };
+}
+
+// Что делает: определяет, изменились ли permission-связанные поля metadata канала.
+// Нужно, чтобы не триггерить лишние state-апдейты при неизменных данных.
+function hasStreamMetadataAccessChanged(
+  existing: StreamEntryInternal,
+  nextEntry: StreamEntryInternal,
+): boolean {
+  if (existing.inviteOnly !== nextEntry.inviteOnly) {
+    return true;
+  }
+  if (
+    !areGroupSettingValuesEqual(existing.canAddSubscribersGroup, nextEntry.canAddSubscribersGroup)
+  ) {
+    return true;
+  }
+  if (
+    !areGroupSettingValuesEqual(
+      existing.canAdministerChannelGroup,
+      nextEntry.canAdministerChannelGroup,
+    )
+  ) {
+    return true;
+  }
+  return false;
 }
 
 function buildMessageIdToLocation(
@@ -591,6 +632,12 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
           continue;
         }
         if (existing.name !== nextEntry.name) {
+          if (!changed) nextStreams = new Map(nextStreams);
+          changed = true;
+          nextStreams.set(row.streamId, nextEntry);
+          continue;
+        }
+        if (hasStreamMetadataAccessChanged(existing, nextEntry)) {
           if (!changed) nextStreams = new Map(nextStreams);
           changed = true;
           nextStreams.set(row.streamId, nextEntry);

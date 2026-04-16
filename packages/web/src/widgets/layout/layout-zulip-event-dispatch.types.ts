@@ -2,11 +2,14 @@ import type { ChatListStreamMetadataRow } from "~/entities/chat-list/chat-list.m
 import type { CurrentChatContext } from "~/entities/message/message.model";
 import type { IncomingDmCallInvite } from "~/features/jitsi-call/jitsi-call.model";
 import type { MockMessage, ZulipRawMessage } from "~/shared/api/zulip";
+import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
 
 export type LayoutMessageFlagOp = "add" | "remove";
 
 export interface LayoutChatListActions {
   currentUserId: number | null;
+  // Что делает: доступ к текущему stream metadata (нужен для partial update channel-level прав).
+  streamsMap: Map<number, StreamEntryInternal>;
   addMessage: (message: ZulipRawMessage) => void;
   // Что делает: добавляет/обновляет каналы из metadata и subscription-событий.
   upsertStreamMetadataRows: (rows: ChatListStreamMetadataRow[]) => void;

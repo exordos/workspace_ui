@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
+import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
 import { useLayoutZulipEventLoop } from "./layout-zulip-event-loop.hook";
 
 const startZulipEventLoopMock = vi.hoisted(() => vi.fn());
@@ -80,6 +81,7 @@ describe("useLayoutZulipEventLoop", () => {
   beforeEach(() => {
     useChatListStore.getState().clear();
     useUsersStore.getState().clear();
+    useUserGroupsStore.getState().clear();
     useInstancesStore.setState({
       instances: [
         {
@@ -98,6 +100,7 @@ describe("useLayoutZulipEventLoop", () => {
     vi.clearAllMocks();
     useChatListStore.getState().clear();
     useUsersStore.getState().clear();
+    useUserGroupsStore.getState().clear();
     useInstancesStore.setState({
       instances: [],
       currentInstanceId: null,
@@ -119,6 +122,7 @@ describe("useLayoutZulipEventLoop", () => {
       "subscription",
       "user_topic",
       "recent_private_conversations",
+      "realm_user_groups",
     ]);
   });
 });

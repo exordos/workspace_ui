@@ -4,6 +4,7 @@
 import { t } from "~/i18n/i18n";
 import { getBasicAuthValue } from "~/shared/lib/auth-guard";
 import { env } from "~/shared/lib/env";
+import { normalizeGroupSettingValue } from "~/shared/lib/zulip-group-setting.lib";
 import { getCurrentInstance, zulipApi } from "./client";
 import {
   getAuthValueForCredentials,
@@ -29,19 +30,22 @@ import type {
   RegisterQueueResult,
   ZulipCredentials,
   ZulipRecentPrivateConversation,
+  ZulipRealmUserGroup,
   ZulipSubscription,
   ZulipUserTopic,
 } from "./zulip.types";
 
 // Зачем: просим у Zulip только те metadata-секции, которые нужны для sidebar без загрузки больших пачек сообщений.
-// `realm` — в т.ч. `server_thumbnail_formats` (размеры превью user_uploads); остальное — sidebar metadata.
+// `realm` — в т.ч. `server_thumbnail_formats` (размеры превью user_uploads), а `realm_user_groups` нужен для channel-level permission checks.
 const DEFAULT_REGISTER_FETCH_EVENT_TYPES = [
   "subscription",
   "user_topic",
   "recent_private_conversations",
   "realm",
+  "realm_user_groups",
 ] as const;
 
+// Что делает: проверяет, что значение является положительным целым id.
 function isPositiveInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value > 0;
 }
@@ -80,30 +84,94 @@ function parseRecentPrivateConversations(
   return parsed;
 }
 
+// Что делает: нормализует список подписок из register-ответа.
+// Дополнительно поднимает channel-level поля прав (`can_*_group`) и приватность канала.
 function parseSubscriptions(data: unknown): ZulipSubscription[] | null {
   if (!Array.isArray(data)) {
     return null;
   }
-  return data
-    .filter(
-      (
-        value,
-      ): value is {
-        stream_id: number;
-        name: string;
-        is_muted?: boolean;
-        in_home_view?: boolean;
-      } =>
-        typeof value === "object" &&
-        value != null &&
-        typeof (value as { stream_id?: unknown }).stream_id === "number" &&
-        typeof (value as { name?: unknown }).name === "string",
-    )
-    .map((subscription) => ({
+  const parsed: ZulipSubscription[] = [];
+  for (const row of data) {
+    if (typeof row !== "object" || row == null || Array.isArray(row)) {
+      continue;
+    }
+    const subscription = row as {
+      stream_id?: unknown;
+      name?: unknown;
+      is_muted?: unknown;
+      in_home_view?: unknown;
+      invite_only?: unknown;
+      can_add_subscribers_group?: unknown;
+      can_administer_channel_group?: unknown;
+    };
+    if (!isPositiveInteger(subscription.stream_id) || typeof subscription.name !== "string") {
+      continue;
+    }
+    const canAddSubscribersGroup = normalizeGroupSettingValue(
+      subscription.can_add_subscribers_group,
+    );
+    const canAdministerChannelGroup = normalizeGroupSettingValue(
+      subscription.can_administer_channel_group,
+    );
+    parsed.push({
       stream_id: subscription.stream_id,
       name: subscription.name,
-      is_muted: subscription.is_muted ?? !(subscription.in_home_view ?? true),
-    }));
+      is_muted:
+        typeof subscription.is_muted === "boolean"
+          ? subscription.is_muted
+          : subscription.in_home_view === false,
+      ...(typeof subscription.invite_only === "boolean"
+        ? { invite_only: subscription.invite_only }
+        : {}),
+      ...(canAddSubscribersGroup != null
+        ? { can_add_subscribers_group: canAddSubscribersGroup }
+        : {}),
+      ...(canAdministerChannelGroup != null
+        ? { can_administer_channel_group: canAdministerChannelGroup }
+        : {}),
+    });
+  }
+  return parsed;
+}
+
+// Что делает: парсит список realm user groups из register metadata.
+// Нужен для вычисления membership в channel-level group-setting значениях.
+function parseRealmUserGroups(data: unknown): ZulipRealmUserGroup[] | null {
+  if (!Array.isArray(data)) {
+    return null;
+  }
+  const parsed: ZulipRealmUserGroup[] = [];
+  for (const row of data) {
+    if (row == null || typeof row !== "object" || Array.isArray(row)) {
+      continue;
+    }
+    const record = row as Record<string, unknown>;
+    const id = record.id;
+    const name = record.name;
+    if (!isPositiveInteger(id) || typeof name !== "string") {
+      continue;
+    }
+    const members = Array.isArray(record.members)
+      ? Array.from(new Set(record.members.filter(isPositiveInteger))).sort(
+          (left, right) => left - right,
+        )
+      : [];
+    const directSubgroupIds = Array.isArray(record.direct_subgroup_ids)
+      ? Array.from(new Set(record.direct_subgroup_ids.filter(isPositiveInteger))).sort(
+          (left, right) => left - right,
+        )
+      : [];
+    parsed.push({
+      id,
+      name,
+      members,
+      direct_subgroup_ids: directSubgroupIds,
+      ...(typeof record.is_system_group === "boolean"
+        ? { is_system_group: record.is_system_group }
+        : {}),
+    });
+  }
+  return parsed;
 }
 
 /** Registers an event queue (POST /api/v1/register). Returns queue_id for subsequent long-polling. */
@@ -129,6 +197,7 @@ export async function registerQueue(
     subscriptions?: unknown;
     user_topics?: unknown;
     recent_private_conversations?: unknown;
+    realm_user_groups?: unknown;
     server_thumbnail_formats?: unknown;
   } | null;
   if (data == null || typeof data !== "object") {
@@ -146,6 +215,8 @@ export async function registerQueue(
   const recentPrivateConversations = parseRecentPrivateConversations(
     data.recent_private_conversations,
   );
+  // Что делает: собирает группы организации для последующей проверки channel permissions в UI/store.
+  const realmUserGroups = parseRealmUserGroups(data.realm_user_groups);
   const serverThumbnailFormats = parseServerThumbnailFormats(data.server_thumbnail_formats);
   const cacheKey = getCurrentUserTopicsCacheKey();
   if (cacheKey && userTopics) {
@@ -161,6 +232,7 @@ export async function registerQueue(
     ...(recentPrivateConversations
       ? { recent_private_conversations: recentPrivateConversations }
       : {}),
+    ...(realmUserGroups ? { realm_user_groups: realmUserGroups } : {}),
     ...(serverThumbnailFormats ? { server_thumbnail_formats: serverThumbnailFormats } : {}),
   };
 }
@@ -205,6 +277,7 @@ export async function registerQueueForCredentials(
     subscriptions?: unknown;
     user_topics?: unknown;
     recent_private_conversations?: unknown;
+    realm_user_groups?: unknown;
     server_thumbnail_formats?: unknown;
   };
   try {
@@ -225,6 +298,8 @@ export async function registerQueueForCredentials(
   const recentPrivateConversations = parseRecentPrivateConversations(
     data.recent_private_conversations,
   );
+  // Что делает: сохраняет группы и для background-loop сценариев.
+  const realmUserGroups = parseRealmUserGroups(data.realm_user_groups);
   const serverThumbnailFormats = parseServerThumbnailFormats(data.server_thumbnail_formats);
   setCachedUserTopicsForKey(
     buildUserTopicsCacheKey(credentials.realm, credentials.email),
@@ -240,6 +315,7 @@ export async function registerQueueForCredentials(
     ...(recentPrivateConversations
       ? { recent_private_conversations: recentPrivateConversations }
       : {}),
+    ...(realmUserGroups ? { realm_user_groups: realmUserGroups } : {}),
     ...(serverThumbnailFormats ? { server_thumbnail_formats: serverThumbnailFormats } : {}),
   };
 }

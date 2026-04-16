@@ -3,6 +3,7 @@
  */
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
+import { normalizeGroupSettingValue } from "~/shared/lib/zulip-group-setting.lib";
 import { getClient } from "./zulip-client.internal";
 import {
   zulipPipelineDelete,
@@ -77,13 +78,34 @@ export async function fetchSubscriptions(): Promise<ZulipSubscription[]> {
       name: string;
       is_muted?: boolean;
       in_home_view?: boolean;
+      invite_only?: boolean;
+      can_add_subscribers_group?: unknown;
+      can_administer_channel_group?: unknown;
     }[];
   };
-  return (data.subscriptions ?? []).map((s) => ({
-    stream_id: s.stream_id,
-    name: s.name,
-    is_muted: s.is_muted ?? !(s.in_home_view ?? true),
-  }));
+  // Что делает: нормализует channel-level поля прав из ответа /users/me/subscriptions.
+  return (data.subscriptions ?? []).map((subscription) => {
+    const canAddSubscribersGroup = normalizeGroupSettingValue(
+      subscription.can_add_subscribers_group,
+    );
+    const canAdministerChannelGroup = normalizeGroupSettingValue(
+      subscription.can_administer_channel_group,
+    );
+    return {
+      stream_id: subscription.stream_id,
+      name: subscription.name,
+      is_muted: subscription.is_muted ?? !(subscription.in_home_view ?? true),
+      ...(typeof subscription.invite_only === "boolean"
+        ? { invite_only: subscription.invite_only }
+        : {}),
+      ...(canAddSubscribersGroup != null
+        ? { can_add_subscribers_group: canAddSubscribersGroup }
+        : {}),
+      ...(canAdministerChannelGroup != null
+        ? { can_administer_channel_group: canAdministerChannelGroup }
+        : {}),
+    };
+  });
 }
 
 export async function fetchStreams(): Promise<MockStream[]> {

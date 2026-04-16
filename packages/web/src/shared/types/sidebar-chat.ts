@@ -1,3 +1,5 @@
+import type { ZulipGroupSettingValue } from "~/shared/api/zulip.types";
+
 export interface TopicWithLast {
   subject: string;
   lastMessage?: string;
@@ -70,6 +72,12 @@ export interface StreamEntryInternal {
   lastMessageSenderName?: string;
   time: string;
   ts: number;
+  // Что делает: флаг приватности канала из metadata подписок.
+  inviteOnly?: boolean;
+  // Что делает: channel-level group-setting для добавления участников.
+  canAddSubscribersGroup?: ZulipGroupSettingValue;
+  // Что делает: channel-level group-setting админов канала.
+  canAdministerChannelGroup?: ZulipGroupSettingValue;
   topics: Map<
     string,
     {
