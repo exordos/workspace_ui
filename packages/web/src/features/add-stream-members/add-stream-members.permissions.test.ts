@@ -43,4 +43,15 @@ describe("canAddMembersToStream", () => {
       }),
     ).toBe(true);
   });
+
+  it("allows member when they are in channel admins group", () => {
+    expect(
+      canAddMembersToStream({
+        currentUserId: 10,
+        orgRole: UserRole.Member,
+        canAdministerChannelGroup: 66,
+        isUserInGroupSetting: (setting, userId) => setting === 66 && userId === 10,
+      }),
+    ).toBe(true);
+  });
 });

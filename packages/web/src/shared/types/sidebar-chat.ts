@@ -72,6 +72,8 @@ export interface StreamEntryInternal {
   lastMessageSenderName?: string;
   time: string;
   ts: number;
+  // Что делает: id создателя канала (metadata из подписок/streams API).
+  creatorId?: number;
   // Что делает: флаг приватности канала из metadata подписок.
   inviteOnly?: boolean;
   // Что делает: channel-level group-setting для добавления участников.

@@ -1394,7 +1394,7 @@ describe("fetchSubscriptions", () => {
       status: 200,
       data: {
         subscriptions: [
-          { stream_id: 1, name: "general", is_muted: true },
+          { stream_id: 1, name: "general", is_muted: true, creator_id: 77 },
           { stream_id: 2, name: "dev", in_home_view: false },
         ],
       },
@@ -1402,7 +1402,7 @@ describe("fetchSubscriptions", () => {
     });
 
     await expect(fetchSubscriptions()).resolves.toEqual([
-      { stream_id: 1, name: "general", is_muted: true },
+      { stream_id: 1, name: "general", is_muted: true, creator_id: 77 },
       { stream_id: 2, name: "dev", is_muted: true },
     ]);
     expect(mockZulipApi.get).toHaveBeenCalledWith("/users/me/subscriptions", undefined);

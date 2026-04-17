@@ -69,16 +69,16 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
       canAdministerChannelGroup: streamEntry?.canAdministerChannelGroup,
       isUserInGroupSetting,
     });
-  // Что делает: гейт удаления участников через org-level + channel-level can_remove_subscribers_group.
+  // Что делает: гейт удаления участников через org-level + channel-admin + can_remove_subscribers_group.
   const canRemoveMembers =
     streamId != null &&
     canRemoveMembersFromStream({
       currentUserId,
       orgRole: currentUserRole,
+      canAdministerChannelGroup: streamEntry?.canAdministerChannelGroup,
       canRemoveSubscribersGroup: streamEntry?.canRemoveSubscribersGroup,
       isUserInGroupSetting,
     });
-
   const isStreamMuted = useMuteStore((s) => (streamId ? s.isStreamMuted(streamId) : false));
   const [mutePending, setMutePending] = useState(false);
   const [muteError, setMuteError] = useState<string | null>(null);
@@ -245,17 +245,27 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
   }
 
   const hasRealMembers = streamInfoData != null && streamInfoData.members.length > 0;
+  const streamCreatorId = streamEntry?.creatorId;
+  const canAdministerChannelGroup = streamEntry?.canAdministerChannelGroup;
   const members = hasRealMembers
-    ? streamInfoData.members.map((m) => ({
-        userId: m.userId,
-        name: m.fullName || t("roles.member"),
-        status:
-          formatUserStatusLabel(users.get(m.userId)?.status) ??
-          (m.isOnline ? t("presence.online") : t("presence.offline")),
-        isOwner: parseRole(users.get(m.userId)?.role) === UserRole.Owner,
-        isOnline: m.isOnline,
-        avatarUrl: m.avatarUrl,
-      }))
+    ? streamInfoData.members.map((m) => {
+        const memberRole = parseRole(users.get(m.userId)?.role);
+        return {
+          userId: m.userId,
+          name: m.fullName || t("roles.member"),
+          status:
+            formatUserStatusLabel(users.get(m.userId)?.status) ??
+            (m.isOnline ? t("presence.online") : t("presence.offline")),
+          isOrgOwner: memberRole === UserRole.Owner,
+          isCreator: streamCreatorId != null && m.userId === streamCreatorId,
+          isChannelAdmin:
+            memberRole === UserRole.Owner ||
+            memberRole === UserRole.Admin ||
+            isUserInGroupSetting(canAdministerChannelGroup, m.userId),
+          isOnline: m.isOnline,
+          avatarUrl: m.avatarUrl,
+        };
+      })
     : [];
   const rawChannelDescription =
     streamInfoData != null ? streamInfoData.description?.trim() : undefined;
@@ -542,9 +552,14 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
                       <div className="min-w-0 flex-1">
                         <p className="flex items-center gap-1.5 truncate text-sm text-text-primary">
                           {p.name}
-                          {p.isOwner && (
+                          {p.isCreator && (
                             <span className="text-[10px] font-normal text-text-secondary">
-                              {t("roles.owner")}
+                              {t("channel.memberBadgeCreator")}
+                            </span>
+                          )}
+                          {!p.isCreator && p.isChannelAdmin && (
+                            <span className="text-[10px] font-normal text-text-secondary">
+                              {t("channel.memberBadgeChannelAdmin")}
                             </span>
                           )}
                         </p>
@@ -556,7 +571,8 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
                     {canRemoveMembers &&
                       currentUserId != null &&
                       p.userId !== currentUserId &&
-                      !p.isOwner && (
+                      !p.isCreator &&
+                      !p.isOrgOwner && (
                         <button
                           type="button"
                           aria-label={t("a11y.removeMemberFromChannel", { name: p.name })}
@@ -571,19 +587,6 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
                           <Icon name="close" size={14} className="text-current" />
                         </button>
                       )}
-                    <button
-                      type="button"
-                      aria-label={t("a11y.removeMemberFromChannel", { name: p.name })}
-                      disabled={removeMemberPendingUserIds.includes(p.userId)}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        handleRemoveMember(p.userId);
-                      }}
-                      className="hover:bg-notice-base/10 flex h-6 w-6 shrink-0 items-center justify-center rounded text-notice-base opacity-0 transition-opacity group-focus-within/member:opacity-100 group-hover/member:opacity-100 focus-visible:opacity-100 disabled:opacity-40"
-                    >
-                      <Icon name="close" size={14} className="text-current" />
-                    </button>
                   </div>
                 </li>
               ))}

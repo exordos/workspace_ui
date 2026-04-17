@@ -152,6 +152,7 @@ function mergeStreamEntry(
     ts: Math.max(existing.ts, ts),
     // Что делает: сохраняет channel-level metadata из подписок при приходе новых сообщений.
     // Сообщения не должны затирать permission-поля канала.
+    creatorId: existing.creatorId,
     inviteOnly: existing.inviteOnly,
     canAddSubscribersGroup: existing.canAddSubscribersGroup,
     canRemoveSubscribersGroup: existing.canRemoveSubscribersGroup,
@@ -285,6 +286,7 @@ function buildStreamMetadataEntry(
   existing: StreamEntryInternal | undefined,
 ): StreamEntryInternal {
   const name = row.name.trim();
+  const creatorId = row.creatorId ?? existing?.creatorId;
   const inviteOnly = row.inviteOnly ?? existing?.inviteOnly;
   const canAddSubscribersGroup = row.canAddSubscribersGroup ?? existing?.canAddSubscribersGroup;
   const canRemoveSubscribersGroup =
@@ -295,6 +297,7 @@ function buildStreamMetadataEntry(
     return {
       ...existing,
       name: name.length > 0 ? name : existing.name,
+      ...(creatorId != null ? { creatorId } : {}),
       ...(inviteOnly != null ? { inviteOnly } : {}),
       ...(canAddSubscribersGroup != null ? { canAddSubscribersGroup } : {}),
       ...(canRemoveSubscribersGroup != null ? { canRemoveSubscribersGroup } : {}),
@@ -308,6 +311,7 @@ function buildStreamMetadataEntry(
     lastMessageSenderName: undefined,
     time: "",
     ts: 0,
+    ...(creatorId != null ? { creatorId } : {}),
     ...(inviteOnly != null ? { inviteOnly } : {}),
     ...(canAddSubscribersGroup != null ? { canAddSubscribersGroup } : {}),
     ...(canRemoveSubscribersGroup != null ? { canRemoveSubscribersGroup } : {}),
@@ -322,6 +326,9 @@ function hasStreamMetadataAccessChanged(
   existing: StreamEntryInternal,
   nextEntry: StreamEntryInternal,
 ): boolean {
+  if (existing.creatorId !== nextEntry.creatorId) {
+    return true;
+  }
   if (existing.inviteOnly !== nextEntry.inviteOnly) {
     return true;
   }

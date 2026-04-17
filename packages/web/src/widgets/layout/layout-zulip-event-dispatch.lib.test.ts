@@ -221,6 +221,29 @@ describe("dispatchZulipEvent", () => {
       ]);
     });
 
+    it("maps creator_id on subscription add metadata row", () => {
+      const { ctx } = buildCtx();
+      const upsertSpy = vi.spyOn(ctx.chatList, "upsertStreamMetadataRows");
+
+      dispatchZulipEvent(
+        {
+          id: 17,
+          type: "subscription",
+          op: "add",
+          subscriptions: [{ stream_id: 42, name: "engineering", creator_id: 77 }],
+        } as ZulipEvent,
+        ctx,
+      );
+
+      expect(upsertSpy).toHaveBeenCalledWith([
+        {
+          streamId: 42,
+          name: "engineering",
+          creatorId: 77,
+        },
+      ]);
+    });
+
     it("updates channel remove-subscribers metadata on subscription update event", () => {
       const { ctx } = buildCtx();
       const upsertSpy = vi.spyOn(ctx.chatList, "upsertStreamMetadataRows");

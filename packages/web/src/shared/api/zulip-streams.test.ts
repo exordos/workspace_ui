@@ -51,6 +51,7 @@ describe("fetchSubscriptions", () => {
             stream_id: 1,
             name: "general",
             is_muted: false,
+            creator_id: 77,
             can_remove_subscribers_group: { direct_members: [42], direct_subgroups: [] },
           },
         ],
@@ -63,6 +64,7 @@ describe("fetchSubscriptions", () => {
         stream_id: 1,
         name: "general",
         is_muted: false,
+        creator_id: 77,
         can_remove_subscribers_group: { direct_members: [42], direct_subgroups: [] },
       },
     ]);

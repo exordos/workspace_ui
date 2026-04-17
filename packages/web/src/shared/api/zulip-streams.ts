@@ -96,6 +96,7 @@ export async function fetchSubscriptions(): Promise<ZulipSubscription[]> {
       name: string;
       is_muted?: boolean;
       in_home_view?: boolean;
+      creator_id?: unknown;
       invite_only?: boolean;
       can_add_subscribers_group?: unknown;
       can_remove_subscribers_group?: unknown;
@@ -104,6 +105,12 @@ export async function fetchSubscriptions(): Promise<ZulipSubscription[]> {
   };
   // Что делает: нормализует channel-level поля прав из ответа /users/me/subscriptions.
   return (data.subscriptions ?? []).map((subscription) => {
+    const creatorId =
+      typeof subscription.creator_id === "number" &&
+      Number.isInteger(subscription.creator_id) &&
+      subscription.creator_id > 0
+        ? subscription.creator_id
+        : undefined;
     const canAddSubscribersGroup = normalizeGroupSettingValue(
       subscription.can_add_subscribers_group,
     );
@@ -117,6 +124,7 @@ export async function fetchSubscriptions(): Promise<ZulipSubscription[]> {
       stream_id: subscription.stream_id,
       name: subscription.name,
       is_muted: subscription.is_muted ?? !(subscription.in_home_view ?? true),
+      ...(creatorId != null ? { creator_id: creatorId } : {}),
       ...(typeof subscription.invite_only === "boolean"
         ? { invite_only: subscription.invite_only }
         : {}),

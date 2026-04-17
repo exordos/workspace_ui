@@ -100,6 +100,7 @@ function parseSubscriptions(data: unknown): ZulipSubscription[] | null {
       name?: unknown;
       is_muted?: unknown;
       in_home_view?: unknown;
+      creator_id?: unknown;
       invite_only?: unknown;
       can_add_subscribers_group?: unknown;
       can_remove_subscribers_group?: unknown;
@@ -124,6 +125,9 @@ function parseSubscriptions(data: unknown): ZulipSubscription[] | null {
         typeof subscription.is_muted === "boolean"
           ? subscription.is_muted
           : subscription.in_home_view === false,
+      ...(isPositiveInteger(subscription.creator_id)
+        ? { creator_id: subscription.creator_id }
+        : {}),
       ...(typeof subscription.invite_only === "boolean"
         ? { invite_only: subscription.invite_only }
         : {}),

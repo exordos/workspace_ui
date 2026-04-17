@@ -29,6 +29,7 @@ function isPositiveInteger(value: unknown): value is number {
 function parseSubscriptionRows(value: unknown): {
   streamId: number;
   name: string;
+  creatorId?: number;
   inviteOnly?: boolean;
   canAddSubscribersGroup?: ZulipGroupSettingValue;
   canRemoveSubscribersGroup?: ZulipGroupSettingValue;
@@ -38,6 +39,7 @@ function parseSubscriptionRows(value: unknown): {
   const rows: {
     streamId: number;
     name: string;
+    creatorId?: number;
     inviteOnly?: boolean;
     canAddSubscribersGroup?: ZulipGroupSettingValue;
     canRemoveSubscribersGroup?: ZulipGroupSettingValue;
@@ -49,6 +51,7 @@ function parseSubscriptionRows(value: unknown): {
     const streamIdRaw = record.stream_id;
     const name = record.name;
     if (!isPositiveInteger(streamIdRaw) || typeof name !== "string") continue;
+    const creatorId = isPositiveInteger(record.creator_id) ? record.creator_id : undefined;
     const canAddSubscribersGroup = normalizeGroupSettingValue(record.can_add_subscribers_group);
     const canRemoveSubscribersGroup = normalizeGroupSettingValue(
       record.can_remove_subscribers_group,
@@ -59,6 +62,7 @@ function parseSubscriptionRows(value: unknown): {
     rows.push({
       streamId: streamIdRaw,
       name: name.trim(),
+      ...(creatorId != null ? { creatorId } : {}),
       ...(typeof record.invite_only === "boolean" ? { inviteOnly: record.invite_only } : {}),
       ...(canAddSubscribersGroup != null ? { canAddSubscribersGroup } : {}),
       ...(canRemoveSubscribersGroup != null ? { canRemoveSubscribersGroup } : {}),

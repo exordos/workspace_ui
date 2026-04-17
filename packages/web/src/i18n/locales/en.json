@@ -185,6 +185,8 @@
     "inviteOnly": "Invite only",
     "announceChannel": "Announce channel",
     "members": "Members",
+    "memberBadgeCreator": "Creator",
+    "memberBadgeChannelAdmin": "Channel admin",
     "editChannel": "Edit channel",
     "deleteChannel": "Delete channel",
     "muteChannel": "Mute notifications",

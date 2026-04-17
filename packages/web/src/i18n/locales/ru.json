@@ -189,6 +189,8 @@
     "inviteOnly": "Только по приглашению",
     "announceChannel": "Канал объявлений",
     "members": "Участники",
+    "memberBadgeCreator": "Создатель",
+    "memberBadgeChannelAdmin": "Админ канала",
     "editChannel": "Редактировать канал",
     "deleteChannel": "Удалить канал",
     "muteChannel": "Выключить уведомления",

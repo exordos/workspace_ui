@@ -1,9 +1,16 @@
 // Доменная проверка прав на добавление участников в канал.
 // Логика объединяет org-level guard и channel-level group-setting права Zulip.
 import type { ZulipGroupSettingValue } from "~/shared/api/zulip.types";
-import { UserRole } from "~/shared/lib/roles";
+import type { UserRole } from "~/shared/lib/roles";
+import {
+  canManageMembersInStream,
+  type CanManageMembersInStreamInput,
+} from "~/shared/lib/stream-member-management-permissions.lib";
 
-interface AddStreamMembersPermissionInput {
+interface AddStreamMembersPermissionInput extends Omit<
+  CanManageMembersInStreamInput,
+  "operation" | "operationGroup"
+> {
   currentUserId: number | null;
   orgRole: UserRole;
   canAddSubscribersGroup?: ZulipGroupSettingValue;
@@ -17,21 +24,12 @@ interface AddStreamMembersPermissionInput {
 // 2) Owner/Admin допускаются как realm-level fallback.
 // 3) Для остальных проверяем membership в channel admin/add-subscribers group-setting.
 export function canAddMembersToStream(input: AddStreamMembersPermissionInput): boolean {
-  const { currentUserId, orgRole, canAddSubscribersGroup, canAdministerChannelGroup } = input;
-  if (currentUserId == null) {
-    return false;
-  }
-  if (orgRole === UserRole.Guest) {
-    return false;
-  }
-  if (orgRole === UserRole.Owner || orgRole === UserRole.Admin) {
-    return true;
-  }
-  if (input.isUserInGroupSetting(canAdministerChannelGroup, currentUserId)) {
-    return true;
-  }
-  if (input.isUserInGroupSetting(canAddSubscribersGroup, currentUserId)) {
-    return true;
-  }
-  return false;
+  return canManageMembersInStream({
+    operation: "add",
+    currentUserId: input.currentUserId,
+    orgRole: input.orgRole,
+    canAdministerChannelGroup: input.canAdministerChannelGroup,
+    operationGroup: input.canAddSubscribersGroup,
+    isUserInGroupSetting: input.isUserInGroupSetting,
+  });
 }

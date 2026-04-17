@@ -43,4 +43,16 @@ describe("canRemoveMembersFromStream", () => {
       }),
     ).toBe(true);
   });
+
+  it("allows member when they are in channel admins group even without remove-group membership", () => {
+    expect(
+      canRemoveMembersFromStream({
+        currentUserId: 10,
+        orgRole: UserRole.Member,
+        canAdministerChannelGroup: 66,
+        canRemoveSubscribersGroup: 55,
+        isUserInGroupSetting: (setting, userId) => setting === 66 && userId === 10,
+      }),
+    ).toBe(true);
+  });
 });
