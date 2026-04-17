@@ -4,7 +4,6 @@ import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { ensureUserStatusLoaded } from "~/entities/user/api/user.api";
-import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
 import { AddStreamMembersDialog } from "~/features/add-stream-members/add-stream-members-dialog.ui";
@@ -20,14 +19,15 @@ import { deleteStream, updateStream } from "~/shared/api/zulip-streams";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { createLogger } from "~/shared/lib/logger";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
-import { hasPermission, parseRole, UserRole } from "~/shared/lib/roles";
+import { hasPermission, parseRole } from "~/shared/lib/roles";
+import { useInputMode } from "~/shared/lib/touch";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import { RightPanelDmGroup } from "./right-panel-dm-group.ui";
 import { RightPanelUser } from "./right-panel-user.ui";
-import { buildStreamSlug, resolveAvatarSrc } from "./right-panel.lib";
+import { buildRightPanelStreamMembers, buildStreamSlug, resolveAvatarSrc } from "./right-panel.lib";
 import type { RightPanelInfoProps } from "./right-panel.types";
 
 const log = createLogger("right-panel");
@@ -54,6 +54,7 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
   const currentUserRoleCode = useUsersStore((s) =>
     currentUserId != null ? s.getUser(currentUserId)?.role : undefined,
   );
+  const inputMode = useInputMode();
   const isUserInGroupSetting = useUserGroupsStore((s) => s.isUserInGroupSetting);
   const users = useUsersStore((s) => s.users);
   const currentUserRole = parseRole(currentUserRoleCode);
@@ -154,40 +155,31 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
     }
   }, [memberStatusIds]);
 
-  const streamInfoName = chatInfoData?.type === "stream" ? chatInfoData.name : undefined;
+  const streamInfoData = chatInfoData?.type === "stream" ? chatInfoData : null;
+  // Что делает: единый нормализованный stream name для routing и add/remove members действий.
+  const resolvedStreamName = (streamInfoData?.name?.trim() ?? "") || title.trim();
   const handleOpenTopic = useCallback(
     (topicName: string) => {
       if (streamId == null) {
         return;
       }
-      const streamInfoNameTrimmed = streamInfoName?.trim();
-      const streamName =
-        streamInfoNameTrimmed != null && streamInfoNameTrimmed.length > 0
-          ? streamInfoNameTrimmed
-          : title;
       void navigate(
         withCurrentOrgRoute(
-          `/stream/${buildStreamSlug(streamId, streamName)}/topic/${encodeURIComponent(topicName)}`,
+          `/stream/${buildStreamSlug(streamId, resolvedStreamName)}/topic/${encodeURIComponent(topicName)}`,
         ),
       );
     },
-    [navigate, streamId, streamInfoName, title],
+    [navigate, resolvedStreamName, streamId],
   );
-  const streamInfoData = chatInfoData?.type === "stream" ? chatInfoData : null;
   const handleOpenAddMembers = useCallback(() => {
     if (streamId == null) return;
-    const streamNameFromInfo = streamInfoData?.name?.trim();
-    const resolvedStreamName =
-      streamNameFromInfo != null && streamNameFromInfo.length > 0
-        ? streamNameFromInfo
-        : title.trim();
     if (resolvedStreamName.length === 0) return;
     openAddMembers({
       streamId,
       streamName: resolvedStreamName,
       existingMemberIds: streamMemberIds,
     });
-  }, [openAddMembers, streamId, streamInfoData, streamMemberIds, title]);
+  }, [openAddMembers, resolvedStreamName, streamId, streamMemberIds]);
   // Что делает: после add/remove инвалидации состав участников канала подтягивается заново.
   const handleStreamMembersChangedSuccess = useCallback(
     (updatedStreamId: number) => {
@@ -199,11 +191,6 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
   const handleRemoveMember = useCallback(
     (userId: number) => {
       if (streamId == null) return;
-      const streamNameFromInfo = streamInfoData?.name?.trim();
-      const resolvedStreamName =
-        streamNameFromInfo != null && streamNameFromInfo.length > 0
-          ? streamNameFromInfo
-          : title.trim();
       if (resolvedStreamName.length === 0) return;
       void removeMember({
         streamId,
@@ -212,7 +199,46 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
         onSuccess: handleStreamMembersChangedSuccess,
       });
     },
-    [handleStreamMembersChangedSuccess, removeMember, streamId, streamInfoData, title],
+    [handleStreamMembersChangedSuccess, removeMember, resolvedStreamName, streamId],
+  );
+  const streamMembers = streamInfoData?.members;
+  const hasRealMembers = streamMembers != null && streamMembers.length > 0;
+  const streamCreatorId = streamEntry?.creatorId;
+  const canAdministerChannelGroup = streamEntry?.canAdministerChannelGroup;
+  const memberFallbackLabel = t("roles.member");
+  const onlineLabel = t("presence.online");
+  const offlineLabel = t("presence.offline");
+  // Что делает: на touch-устройствах action всегда видим (нет hover), на pointer оставляем hover/focus поведение.
+  const removeMemberActionClassName =
+    inputMode === "touch"
+      ? "hover:bg-notice-base/10 flex h-6 w-6 shrink-0 items-center justify-center rounded text-notice-base opacity-100 transition-opacity focus-visible:opacity-100 disabled:opacity-40"
+      : "hover:bg-notice-base/10 flex h-6 w-6 shrink-0 items-center justify-center rounded text-notice-base opacity-0 transition-opacity group-focus-within/member:opacity-100 group-hover/member:opacity-100 focus-visible:opacity-100 disabled:opacity-40";
+  // Что делает: мемоизирует view-model участников, чтобы не пересчитывать map при UI-only ререндерах.
+  const members = useMemo(
+    () =>
+      hasRealMembers && streamMembers != null
+        ? buildRightPanelStreamMembers({
+            members: streamMembers,
+            users,
+            streamCreatorId,
+            canAdministerChannelGroup,
+            isUserInGroupSetting,
+            memberFallbackLabel,
+            onlineLabel,
+            offlineLabel,
+          })
+        : [],
+    [
+      canAdministerChannelGroup,
+      hasRealMembers,
+      isUserInGroupSetting,
+      memberFallbackLabel,
+      offlineLabel,
+      onlineLabel,
+      streamCreatorId,
+      streamMembers,
+      users,
+    ],
   );
 
   useEffect(() => {
@@ -244,29 +270,6 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
     );
   }
 
-  const hasRealMembers = streamInfoData != null && streamInfoData.members.length > 0;
-  const streamCreatorId = streamEntry?.creatorId;
-  const canAdministerChannelGroup = streamEntry?.canAdministerChannelGroup;
-  const members = hasRealMembers
-    ? streamInfoData.members.map((m) => {
-        const memberRole = parseRole(users.get(m.userId)?.role);
-        return {
-          userId: m.userId,
-          name: m.fullName || t("roles.member"),
-          status:
-            formatUserStatusLabel(users.get(m.userId)?.status) ??
-            (m.isOnline ? t("presence.online") : t("presence.offline")),
-          isOrgOwner: memberRole === UserRole.Owner,
-          isCreator: streamCreatorId != null && m.userId === streamCreatorId,
-          isChannelAdmin:
-            memberRole === UserRole.Owner ||
-            memberRole === UserRole.Admin ||
-            isUserInGroupSetting(canAdministerChannelGroup, m.userId),
-          isOnline: m.isOnline,
-          avatarUrl: m.avatarUrl,
-        };
-      })
-    : [];
   const rawChannelDescription =
     streamInfoData != null ? streamInfoData.description?.trim() : undefined;
   const channelDescription =
@@ -582,7 +585,7 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
                             event.stopPropagation();
                             handleRemoveMember(p.userId);
                           }}
-                          className="hover:bg-notice-base/10 flex h-6 w-6 shrink-0 items-center justify-center rounded text-notice-base opacity-0 transition-opacity group-focus-within/member:opacity-100 group-hover/member:opacity-100 focus-visible:opacity-100 disabled:opacity-40"
+                          className={removeMemberActionClassName}
                         >
                           <Icon name="close" size={14} className="text-current" />
                         </button>
