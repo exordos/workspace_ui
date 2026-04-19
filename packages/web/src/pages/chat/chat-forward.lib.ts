@@ -1,12 +1,21 @@
+import type { MockMessage } from "~/shared/api/zulip.types";
 import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
+import { buildZulipQuoteHeader } from "~/shared/lib/zulip-quote-header.lib";
+import { buildZulipMessageWebPermalink } from "~/shared/lib/zulip-web-permalink.lib";
 import { slugForStream } from "~/widgets/sidebar/sidebar.lib";
 
-export interface ForwardableMessage {
-  id: number;
-  sender_full_name: string;
-  content: string;
-}
+export type ForwardableMessage = Pick<
+  MockMessage,
+  | "id"
+  | "sender_full_name"
+  | "sender_id"
+  | "content"
+  | "stream_id"
+  | "subject"
+  | "display_recipient"
+  | "channel"
+>;
 
 interface ForwardTargetStream {
   stream_id: number;
@@ -22,8 +31,30 @@ interface ForwardDraftTarget {
 
 const pendingForwardPrefills = new Map<string, string>();
 
-function buildSingleForwardQuote(senderName: string, content: string): string {
-  return `@_**${senderName}**\n\`\`\`quote\n${content}\n\`\`\``;
+interface ForwardQuotePermalinkOptions {
+  realmBaseUrl: string;
+  wroteLabel: string;
+  resolveStreamName: (streamId: number, message: ForwardableMessage) => string | undefined;
+}
+
+function buildSingleForwardQuote(
+  message: ForwardableMessage,
+  content: string,
+  permalinkOptions?: ForwardQuotePermalinkOptions,
+): string {
+  const permalinkUrl =
+    permalinkOptions != null && permalinkOptions.realmBaseUrl.trim().length > 0
+      ? buildZulipMessageWebPermalink(permalinkOptions.realmBaseUrl, message, (streamId) =>
+          permalinkOptions.resolveStreamName(streamId, message),
+        )
+      : null;
+  const header = buildZulipQuoteHeader({
+    senderName: message.sender_full_name,
+    senderId: message.sender_id,
+    wroteLabel: permalinkOptions?.wroteLabel ?? "wrote",
+    permalinkUrl,
+  });
+  return `${header}\n\`\`\`quote\n${content}\n\`\`\``;
 }
 
 function normalizeForwardPayloadContent(content: string): string {
@@ -33,6 +64,7 @@ function normalizeForwardPayloadContent(content: string): string {
 export function buildForwardQuote(
   messages: ForwardableMessage[],
   selectedTextQuote?: string,
+  permalinkOptions?: ForwardQuotePermalinkOptions,
 ): string {
   if (messages.length === 0) return "";
   const normalizedQuote = selectedTextQuote?.trim();
@@ -42,10 +74,11 @@ export function buildForwardQuote(
   return messages
     .map((message, index) =>
       buildSingleForwardQuote(
-        message.sender_full_name,
+        message,
         messages.length === 1 && index === 0 && singleMessageQuote != null
           ? singleMessageQuote
           : normalizeForwardPayloadContent(message.content),
+        permalinkOptions,
       ),
     )
     .join("\n");

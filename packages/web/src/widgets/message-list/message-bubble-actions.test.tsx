@@ -636,4 +636,26 @@ describe("MessageBubble edit/delete actions parity", () => {
       }),
     );
   });
+
+  it("delegates zulip permalink clicks to callback navigation handler", async () => {
+    const onPermalinkClick = vi.fn(() => true);
+
+    render(
+      <MessageBubble
+        message={createMessage({
+          id: 108,
+          content:
+            "@_**Alice|77** [wrote](https://zulip.example.com/#narrow/dm/42-dm/near/987):\n```quote\nHi\n```",
+        })}
+        isOwn={false}
+        callbacks={{ onPermalinkClick }}
+      />,
+    );
+
+    const link = await screen.findByRole("link", { name: "wrote" });
+    fireEvent.click(link);
+    expect(onPermalinkClick).toHaveBeenCalledWith(
+      "https://zulip.example.com/#narrow/dm/42-dm/near/987",
+    );
+  });
 });

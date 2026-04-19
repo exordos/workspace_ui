@@ -15,6 +15,7 @@ export interface MessageListCallbacks {
   onOpenJitsiCall?: (url: string, locationName?: string) => void;
   onMessageViews?: (message: MockMessage) => void;
   onMessageOpenInChat?: (message: MockMessage) => void;
+  onMessagePermalinkClick?: (href: string) => boolean;
   onTopicSeparatorClick?: (message: MockMessage) => void;
   onMessageAuthorClick?: (userId: number) => void;
   onOpenDirectMessage?: (userId: number) => void;

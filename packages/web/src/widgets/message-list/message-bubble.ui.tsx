@@ -593,16 +593,17 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
           return;
         }
 
-        const attachmentLink = hit.closest<HTMLAnchorElement>("a[href]");
-        if (attachmentLink) {
-          const attachmentPath = extractUserUploadPath(attachmentLink.getAttribute("href") ?? "");
-          const containsImage = attachmentLink.querySelector("img") != null;
+        const clickedLink = hit.closest<HTMLAnchorElement>("a[href]");
+        if (clickedLink) {
+          const href = clickedLink.getAttribute("href") ?? "";
+          const attachmentPath = extractUserUploadPath(href);
+          const containsImage = clickedLink.querySelector("img") != null;
           if (attachmentPath != null && !containsImage) {
             event.preventDefault();
             event.stopPropagation();
 
             const fileName = deriveAttachmentFileName(
-              attachmentLink.textContent ?? "",
+              clickedLink.textContent ?? "",
               attachmentPath,
             );
             if (!startDownload(attachmentPath, fileName)) {
@@ -629,11 +630,19 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
                 setAttachmentStatus(attachmentPath, "error");
                 scheduleAttachmentStatusClear(attachmentPath);
               });
+            return;
+          }
+
+          if (callbacks?.onPermalinkClick?.(href) === true) {
+            event.preventDefault();
+            event.stopPropagation();
+            return;
           }
         }
       },
       [
         callbacks?.onOpenDirectMessage,
+        callbacks?.onPermalinkClick,
         finishDownload,
         mediaGallery,
         scheduleAttachmentStatusClear,

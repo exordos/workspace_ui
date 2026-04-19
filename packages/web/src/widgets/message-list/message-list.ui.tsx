@@ -77,6 +77,7 @@ export const MessageList: React.FC<MessageListProps> = ({
             onOpenJitsiCall: callbacks.onOpenJitsiCall,
             onViews: callbacks.onMessageViews,
             onOpenInChat: callbacks.onMessageOpenInChat,
+            onPermalinkClick: callbacks.onMessagePermalinkClick,
             onAuthorClick: callbacks.onMessageAuthorClick,
             onOpenDirectMessage: callbacks.onOpenDirectMessage,
             onRetryFailedOutgoing: callbacks.onRetryFailedOutgoing,

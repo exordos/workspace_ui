@@ -137,6 +137,29 @@ describe("MessageRedirectPage", () => {
     expect(getCurrentUser).not.toHaveBeenCalled();
   });
 
+  it("shows access denied error when target message is unavailable", async () => {
+    useInstancesStore.setState({
+      instances: [
+        { id: "1", realm: "https://zulip.example.com", email: "a@test.com", apiKey: "k" },
+      ],
+      currentInstanceId: "1",
+    });
+    useChatListStore.setState({ currentUserId: 7 });
+    fetchMessageById.mockResolvedValue(null);
+
+    render(
+      <MemoryRouter initialEntries={["/message/123"]}>
+        <Routes>
+          <Route path="/message/:messageId" element={<MessageRedirectPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("No access to the original message or chat")).toBeInTheDocument();
+    });
+  });
+
   it("ignores invalid realm query values and resolves within current instance", async () => {
     useInstancesStore.setState({
       instances: [
