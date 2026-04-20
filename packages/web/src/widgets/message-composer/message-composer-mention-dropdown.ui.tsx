@@ -4,7 +4,9 @@ import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
 import { getRealmBaseUrl } from "~/shared/api/zulip";
 import { resolveAvatarUrl } from "~/shared/lib/avatar";
+import { getPresenceState } from "~/shared/lib/format";
 import { Avatar } from "~/shared/ui/avatar";
+import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import type { ComposerMentionDropdownProps } from "./message-composer-mention-dropdown.types";
 
 export const ComposerMentionDropdown = React.memo(function ComposerMentionDropdown({
@@ -35,6 +37,8 @@ export const ComposerMentionDropdown = React.memo(function ComposerMentionDropdo
       {suggestions.length > 0 ? (
         suggestions.map((user, index) => {
           const u = getUser(user.userId);
+          const presenceState =
+            u?.presence != null ? getPresenceState(u.presence.timestamp, u.presence.status) : null;
           const statusLabel = formatUserStatusLabel(u?.status);
           const avatarSrc = resolveAvatarUrl(user.avatarUrl, realmBaseUrl);
           return (
@@ -57,7 +61,16 @@ export const ComposerMentionDropdown = React.memo(function ComposerMentionDropdo
                 {user.fullName.slice(0, 1)}
               </Avatar>
               <span className="min-w-0 flex-1">
-                <span className="block truncate font-medium">{user.fullName}</span>
+                <span className="flex min-w-0 items-center justify-between gap-2">
+                  <span className="truncate font-medium">{user.fullName}</span>
+                  <PresenceIndicator
+                    status={presenceState}
+                    size="sm"
+                    tone="header"
+                    pulse={false}
+                    withBorder={false}
+                  />
+                </span>
                 {(statusLabel ?? user.email) && (
                   <span className="block truncate text-[11px] text-text-secondary">
                     {statusLabel ?? user.email}

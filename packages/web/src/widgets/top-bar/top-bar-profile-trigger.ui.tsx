@@ -6,6 +6,7 @@ import { t } from "~/i18n/i18n";
 import { getPresenceState } from "~/shared/lib/format";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
+import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { useRightDrawerStore } from "~/widgets/right-panel/right-drawer.model";
 import { resolveTopBarAvatarSrc } from "./top-bar.lib";
 
@@ -55,18 +56,13 @@ export const TopBarProfileTrigger = React.memo(function TopBarProfileTrigger() {
         <Avatar size="xs" src={avatarSrc}>
           {avatarLetter}
         </Avatar>
-        {presenceState === "active" && (
-          <span
-            className="absolute right-0 top-0 h-2.5 w-2.5 rounded-full border-2 border-bg-elevated bg-indicator-green"
-            aria-label={t("a11y.online")}
-          />
-        )}
-        {presenceState === "idle" && (
-          <span
-            className="absolute right-0 top-0 h-2.5 w-2.5 rounded-full border-2 border-bg-elevated bg-indicator-orange"
-            aria-label={t("a11y.away")}
-          />
-        )}
+        <PresenceIndicator
+          status={presenceState}
+          size="md"
+          tone="header"
+          pulse={false}
+          className="absolute right-0 top-0 ring-bg-elevated"
+        />
       </div>
       <div className="hidden min-w-0 flex-col items-start leading-tight sm:flex">
         <span className="text-sm font-medium text-text-primary">{displayName}</span>

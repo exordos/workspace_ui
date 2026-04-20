@@ -5,4 +5,6 @@ export interface PresenceIndicatorProps {
   size?: "sm" | "md" | "lg";
   className?: string;
   withBorder?: boolean;
+  tone?: "default" | "header";
+  pulse?: boolean;
 }
