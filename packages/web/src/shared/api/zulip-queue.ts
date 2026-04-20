@@ -100,8 +100,10 @@ function parseSubscriptions(data: unknown): ZulipSubscription[] | null {
       name?: unknown;
       is_muted?: unknown;
       in_home_view?: unknown;
+      creator_id?: unknown;
       invite_only?: unknown;
       can_add_subscribers_group?: unknown;
+      can_remove_subscribers_group?: unknown;
       can_administer_channel_group?: unknown;
     };
     if (!isPositiveInteger(subscription.stream_id) || typeof subscription.name !== "string") {
@@ -109,6 +111,9 @@ function parseSubscriptions(data: unknown): ZulipSubscription[] | null {
     }
     const canAddSubscribersGroup = normalizeGroupSettingValue(
       subscription.can_add_subscribers_group,
+    );
+    const canRemoveSubscribersGroup = normalizeGroupSettingValue(
+      subscription.can_remove_subscribers_group,
     );
     const canAdministerChannelGroup = normalizeGroupSettingValue(
       subscription.can_administer_channel_group,
@@ -120,11 +125,17 @@ function parseSubscriptions(data: unknown): ZulipSubscription[] | null {
         typeof subscription.is_muted === "boolean"
           ? subscription.is_muted
           : subscription.in_home_view === false,
+      ...(isPositiveInteger(subscription.creator_id)
+        ? { creator_id: subscription.creator_id }
+        : {}),
       ...(typeof subscription.invite_only === "boolean"
         ? { invite_only: subscription.invite_only }
         : {}),
       ...(canAddSubscribersGroup != null
         ? { can_add_subscribers_group: canAddSubscribersGroup }
+        : {}),
+      ...(canRemoveSubscribersGroup != null
+        ? { can_remove_subscribers_group: canRemoveSubscribersGroup }
         : {}),
       ...(canAdministerChannelGroup != null
         ? { can_administer_channel_group: canAdministerChannelGroup }

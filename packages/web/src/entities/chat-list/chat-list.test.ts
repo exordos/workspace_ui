@@ -784,18 +784,22 @@ describe("chatListStore", () => {
         {
           streamId: 11,
           name: "engineering",
+          creatorId: 77,
           inviteOnly: true,
           canAddSubscribersGroup: { direct_members: [42], direct_subgroups: [] },
+          canRemoveSubscribersGroup: 7002,
           canAdministerChannelGroup: 5001,
         },
       ]);
 
       const stream = useChatListStore.getState().streamsMap.get(11);
+      expect(stream?.creatorId).toBe(77);
       expect(stream?.inviteOnly).toBe(true);
       expect(stream?.canAddSubscribersGroup).toEqual({
         direct_members: [42],
         direct_subgroups: [],
       });
+      expect(stream?.canRemoveSubscribersGroup).toBe(7002);
       expect(stream?.canAdministerChannelGroup).toBe(5001);
     });
 

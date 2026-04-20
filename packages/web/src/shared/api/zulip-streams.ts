@@ -29,6 +29,20 @@ export interface AddStreamMembersResult {
   errorCode?: string;
 }
 
+export interface RemoveStreamMembersParams {
+  streamName: string;
+  userIds: number[];
+  authorizationErrorsFatal?: boolean;
+}
+
+export interface RemoveStreamMembersResult {
+  ok: boolean;
+  removedUserIds: number[];
+  alreadyUnsubscribedUserIds: number[];
+  unauthorizedStreams: string[];
+  errorCode?: string;
+}
+
 function parsePrincipalKeyToUserId(value: string): number | null {
   const numeric = Number(value);
   if (!Number.isInteger(numeric) || numeric <= 0) {
@@ -82,15 +96,26 @@ export async function fetchSubscriptions(): Promise<ZulipSubscription[]> {
       name: string;
       is_muted?: boolean;
       in_home_view?: boolean;
+      creator_id?: unknown;
       invite_only?: boolean;
       can_add_subscribers_group?: unknown;
+      can_remove_subscribers_group?: unknown;
       can_administer_channel_group?: unknown;
     }[];
   };
   // Что делает: нормализует channel-level поля прав из ответа /users/me/subscriptions.
   return (data.subscriptions ?? []).map((subscription) => {
+    const creatorId =
+      typeof subscription.creator_id === "number" &&
+      Number.isInteger(subscription.creator_id) &&
+      subscription.creator_id > 0
+        ? subscription.creator_id
+        : undefined;
     const canAddSubscribersGroup = normalizeGroupSettingValue(
       subscription.can_add_subscribers_group,
+    );
+    const canRemoveSubscribersGroup = normalizeGroupSettingValue(
+      subscription.can_remove_subscribers_group,
     );
     const canAdministerChannelGroup = normalizeGroupSettingValue(
       subscription.can_administer_channel_group,
@@ -99,11 +124,15 @@ export async function fetchSubscriptions(): Promise<ZulipSubscription[]> {
       stream_id: subscription.stream_id,
       name: subscription.name,
       is_muted: subscription.is_muted ?? !(subscription.in_home_view ?? true),
+      ...(creatorId != null ? { creator_id: creatorId } : {}),
       ...(typeof subscription.invite_only === "boolean"
         ? { invite_only: subscription.invite_only }
         : {}),
       ...(canAddSubscribersGroup != null
         ? { can_add_subscribers_group: canAddSubscribersGroup }
+        : {}),
+      ...(canRemoveSubscribersGroup != null
+        ? { can_remove_subscribers_group: canRemoveSubscribersGroup }
         : {}),
       ...(canAdministerChannelGroup != null
         ? { can_administer_channel_group: canAdministerChannelGroup }
@@ -206,6 +235,110 @@ export async function addMembersToStream(
       ok: false,
       addedUserIds: [],
       alreadySubscribedUserIds: [],
+      unauthorizedStreams: [],
+      errorCode: "network_error",
+    };
+  }
+}
+
+/** Удаляет участников из существующего stream (DELETE /users/me/subscriptions с principals). */
+export async function removeMembersFromStream(
+  params: RemoveStreamMembersParams,
+): Promise<RemoveStreamMembersResult> {
+  const streamName = guard.nonEmpty(params.streamName, "removeMembersFromStream.streamName").trim();
+  const requestedUserIds = Array.from(
+    new Set(
+      params.userIds.map((userId) => guard.userId(userId, "removeMembersFromStream.userIds")),
+    ),
+  ).sort((a, b) => a - b);
+
+  if (requestedUserIds.length === 0) {
+    return {
+      ok: true,
+      removedUserIds: [],
+      alreadyUnsubscribedUserIds: [],
+      unauthorizedStreams: [],
+    };
+  }
+
+  const requestBody: Record<string, string> = {
+    subscriptions: JSON.stringify([streamName]),
+    principals: JSON.stringify(requestedUserIds),
+  };
+
+  if (params.authorizationErrorsFatal != null) {
+    requestBody.authorization_errors_fatal = String(params.authorizationErrorsFatal);
+  }
+
+  try {
+    const response = await zulipPipelineDelete("/users/me/subscriptions", requestBody);
+    if (!response.ok) {
+      return {
+        ok: false,
+        removedUserIds: [],
+        alreadyUnsubscribedUserIds: [],
+        unauthorizedStreams: [],
+        errorCode: `http_${response.status}`,
+      };
+    }
+
+    const payload = response.data as {
+      result?: string;
+      code?: string;
+      msg?: string;
+      removed?: unknown;
+      unsubscribed?: unknown;
+      already_unsubscribed?: unknown;
+      not_removed?: unknown;
+      unauthorized?: unknown;
+    };
+    if (payload.result === "error") {
+      return {
+        ok: false,
+        removedUserIds: [],
+        alreadyUnsubscribedUserIds: [],
+        unauthorizedStreams: parseUnauthorizedStreams(payload.unauthorized),
+        errorCode: payload.code ?? "unknown_error",
+      };
+    }
+
+    const alreadyUnsubscribedUserIds = Array.from(
+      new Set([
+        ...parseUserIdsFromPrincipalMap(payload.already_unsubscribed),
+        ...parseUserIdsFromPrincipalMap(payload.not_removed),
+      ]),
+    ).sort((a, b) => a - b);
+    const removedFromPayload = Array.from(
+      new Set([
+        ...parseUserIdsFromPrincipalMap(payload.removed),
+        ...parseUserIdsFromPrincipalMap(payload.unsubscribed),
+      ]),
+    ).sort((a, b) => a - b);
+    // Что делает: если сервер явно прислал removed/unsubscribed, доверяем payload;
+    // иначе считаем removed как requested минус already-unsubscribed.
+    const hasRemovedMap = hasPrincipalMap(payload.removed) || hasPrincipalMap(payload.unsubscribed);
+    const removedUserIds = hasRemovedMap
+      ? removedFromPayload
+      : requestedUserIds.filter((userId) => !alreadyUnsubscribedUserIds.includes(userId));
+
+    log.info("Stream members removed", {
+      streamNameLength: streamName.length,
+      requestedCount: requestedUserIds.length,
+      removedCount: removedUserIds.length,
+      alreadyUnsubscribedCount: alreadyUnsubscribedUserIds.length,
+    });
+
+    return {
+      ok: true,
+      removedUserIds,
+      alreadyUnsubscribedUserIds,
+      unauthorizedStreams: parseUnauthorizedStreams(payload.unauthorized),
+    };
+  } catch {
+    return {
+      ok: false,
+      removedUserIds: [],
+      alreadyUnsubscribedUserIds: [],
       unauthorizedStreams: [],
       errorCode: "network_error",
     };

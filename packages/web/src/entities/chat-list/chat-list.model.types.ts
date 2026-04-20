@@ -14,10 +14,14 @@ export interface ChatListStreamMetadataRow {
   streamId: number;
   // Что делает: текущее имя канала.
   name: string;
+  // Что делает: id создателя канала (если сервер вернул creator_id).
+  creatorId?: number;
   // Что делает: признак приватности канала.
   inviteOnly?: boolean;
   // Что делает: channel-level группа, которой разрешено добавлять участников.
   canAddSubscribersGroup?: ZulipGroupSettingValue;
+  // Что делает: channel-level группа, которой разрешено удалять участников.
+  canRemoveSubscribersGroup?: ZulipGroupSettingValue;
   // Что делает: channel-level группа администраторов канала.
   canAdministerChannelGroup?: ZulipGroupSettingValue;
 }

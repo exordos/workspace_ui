@@ -72,10 +72,14 @@ export interface StreamEntryInternal {
   lastMessageSenderName?: string;
   time: string;
   ts: number;
+  // Что делает: id создателя канала (metadata из подписок/streams API).
+  creatorId?: number;
   // Что делает: флаг приватности канала из metadata подписок.
   inviteOnly?: boolean;
   // Что делает: channel-level group-setting для добавления участников.
   canAddSubscribersGroup?: ZulipGroupSettingValue;
+  // Что делает: channel-level group-setting для удаления участников.
+  canRemoveSubscribersGroup?: ZulipGroupSettingValue;
   // Что делает: channel-level group-setting админов канала.
   canAdministerChannelGroup?: ZulipGroupSettingValue;
   topics: Map<

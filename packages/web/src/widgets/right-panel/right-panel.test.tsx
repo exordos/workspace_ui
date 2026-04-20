@@ -11,6 +11,7 @@ import { useChatInfoStore } from "~/features/chat-info/chat-info.model";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
 import * as muteChat from "~/features/mute-chat/mute-chat.api";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
+import { useRemoveStreamMembersStore } from "~/features/remove-stream-members/remove-stream-members.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { setLocale } from "~/i18n/i18n";
 import * as zulipStreams from "~/shared/api/zulip-streams";
@@ -91,6 +92,7 @@ describe("RightPanel truthfulness", () => {
       error: null,
       lastResult: null,
     });
+    useRemoveStreamMembersStore.getState().clear();
     useThemeStore.getState().setMode("dark");
     useThemeStore.getState().setPalette("orange-warm");
     useSettingsStore.getState().resetToDefaults();
@@ -879,6 +881,121 @@ describe("RightPanel truthfulness", () => {
     expect(screen.getByRole("button", { name: /add members/i })).toBeInTheDocument();
   });
 
+  it("shows remove-member action for channel-level remove-subscribers group member", () => {
+    act(() => {
+      useCurrentChatMessagesStore.setState({
+        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        messages: [],
+        isLoadingMore: false,
+        hasOlderMessages: true,
+        hasNewerMessages: false,
+      });
+      useChatInfoStore.setState({
+        data: {
+          type: "stream",
+          name: "engineering",
+          memberCount: 1,
+          onlineCount: 1,
+          members: [
+            {
+              userId: 77,
+              fullName: "Alice",
+              email: "alice@example.com",
+              avatarUrl: null,
+              isOnline: true,
+            },
+          ],
+          description: null,
+          isMuted: false,
+          topics: [],
+        },
+        streamMemberIds: [77],
+      });
+      useChatListStore.getState().upsertStreamMetadataRows([
+        {
+          streamId: 10,
+          name: "engineering",
+          canRemoveSubscribersGroup: 9124,
+        },
+      ]);
+      useChatListStore.getState().setCurrentUserId(42);
+      useUsersStore.getState().mergeUsers([
+        { user_id: 42, full_name: "Member", role: 400 },
+        { user_id: 77, full_name: "Alice", role: 400 },
+      ]);
+      useUserGroupsStore.getState().setGroups([
+        {
+          id: 9124,
+          name: "channel-removers",
+          members: [42],
+          direct_subgroup_ids: [],
+        },
+      ]);
+    });
+
+    renderWithProviders(<RightPanel title="engineering" participantsCount={1} onlineCount={1} />);
+
+    expect(screen.getByRole("button", { name: /remove from channel: alice/i })).toBeInTheDocument();
+  });
+
+  it("shows remove-member action for channel admin even without remove-subscribers group membership", () => {
+    act(() => {
+      useCurrentChatMessagesStore.setState({
+        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        messages: [],
+        isLoadingMore: false,
+        hasOlderMessages: true,
+        hasNewerMessages: false,
+      });
+      useChatInfoStore.setState({
+        data: {
+          type: "stream",
+          name: "engineering",
+          memberCount: 1,
+          onlineCount: 1,
+          members: [
+            {
+              userId: 77,
+              fullName: "Alice",
+              email: "alice@example.com",
+              avatarUrl: null,
+              isOnline: true,
+            },
+          ],
+          description: null,
+          isMuted: false,
+          topics: [],
+        },
+        streamMemberIds: [77],
+      });
+      useChatListStore.getState().upsertStreamMetadataRows([
+        {
+          streamId: 10,
+          name: "engineering",
+          canAdministerChannelGroup: 9126,
+          canRemoveSubscribersGroup: 9124,
+        },
+      ]);
+      useChatListStore.getState().setCurrentUserId(42);
+      useUsersStore.getState().mergeUsers([
+        { user_id: 42, full_name: "Member", role: 400 },
+        { user_id: 77, full_name: "Alice", role: 400 },
+      ]);
+      useUserGroupsStore.getState().setGroups([
+        {
+          id: 9126,
+          name: "channel-admins",
+          members: [42],
+          direct_subgroup_ids: [],
+        },
+      ]);
+    });
+
+    renderWithProviders(<RightPanel title="engineering" participantsCount={1} onlineCount={1} />);
+
+    expect(screen.getByRole("button", { name: /remove from channel: alice/i })).toBeInTheDocument();
+  });
+
   it("submits add-members dialog and calls stream members api", async () => {
     const addMembersSpy = vi.spyOn(zulipStreams, "addMembersToStream").mockResolvedValue({
       ok: true,
@@ -927,7 +1044,7 @@ describe("RightPanel truthfulness", () => {
     renderWithProviders(<RightPanel title="engineering" participantsCount={1} onlineCount={1} />);
 
     fireEvent.click(screen.getByRole("button", { name: /add members/i }));
-    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("checkbox", { name: /bob/i }));
     fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
 
     await waitFor(() => {
@@ -936,6 +1053,271 @@ describe("RightPanel truthfulness", () => {
         userIds: [88],
       });
     });
+  });
+
+  it("shows remove-member action for removable members and hides for self/creator/org-owner", () => {
+    act(() => {
+      useCurrentChatMessagesStore.setState({
+        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        messages: [],
+        isLoadingMore: false,
+        hasOlderMessages: true,
+        hasNewerMessages: false,
+      });
+      useChatInfoStore.setState({
+        data: {
+          type: "stream",
+          name: "engineering",
+          memberCount: 4,
+          onlineCount: 1,
+          members: [
+            {
+              userId: 42,
+              fullName: "Current User",
+              email: "me@example.com",
+              avatarUrl: null,
+              isOnline: true,
+            },
+            {
+              userId: 77,
+              fullName: "Alice",
+              email: "alice@example.com",
+              avatarUrl: null,
+              isOnline: true,
+            },
+            {
+              userId: 100,
+              fullName: "Org Owner",
+              email: "owner@example.com",
+              avatarUrl: null,
+              isOnline: false,
+            },
+            {
+              userId: 88,
+              fullName: "Stream Creator",
+              email: "creator@example.com",
+              avatarUrl: null,
+              isOnline: false,
+            },
+          ],
+          description: null,
+          isMuted: false,
+          topics: [],
+        },
+        streamMemberIds: [42, 77, 88, 100],
+      });
+      useChatListStore
+        .getState()
+        .upsertStreamMetadataRows([{ streamId: 10, name: "engineering", creatorId: 88 }]);
+      useChatListStore.getState().setCurrentUserId(42);
+      useUsersStore.getState().mergeUsers([
+        { user_id: 42, full_name: "Current User", role: 200 },
+        { user_id: 77, full_name: "Alice", role: 400 },
+        { user_id: 100, full_name: "Org Owner", role: 100 },
+        { user_id: 88, full_name: "Stream Creator", role: 400 },
+      ]);
+    });
+
+    renderWithProviders(<RightPanel title="engineering" participantsCount={4} onlineCount={1} />);
+
+    expect(screen.getByRole("button", { name: /remove from channel: alice/i })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /remove from channel: current user/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /remove from channel: stream creator/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /remove from channel: org owner/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders Creator and Channel admin badges from channel metadata", () => {
+    act(() => {
+      useCurrentChatMessagesStore.setState({
+        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        messages: [],
+        isLoadingMore: false,
+        hasOlderMessages: true,
+        hasNewerMessages: false,
+      });
+      useChatInfoStore.setState({
+        data: {
+          type: "stream",
+          name: "engineering",
+          memberCount: 2,
+          onlineCount: 1,
+          members: [
+            {
+              userId: 77,
+              fullName: "Stream Creator",
+              email: "creator@example.com",
+              avatarUrl: null,
+              isOnline: true,
+            },
+            {
+              userId: 88,
+              fullName: "Channel Admin",
+              email: "admin@example.com",
+              avatarUrl: null,
+              isOnline: true,
+            },
+          ],
+          description: null,
+          isMuted: false,
+          topics: [],
+        },
+        streamMemberIds: [77, 88],
+      });
+      useChatListStore.getState().upsertStreamMetadataRows([
+        {
+          streamId: 10,
+          name: "engineering",
+          creatorId: 77,
+          canAdministerChannelGroup: 9126,
+        },
+      ]);
+      useChatListStore.getState().setCurrentUserId(42);
+      useUsersStore.getState().mergeUsers([
+        { user_id: 42, full_name: "Current User", role: 200 },
+        { user_id: 77, full_name: "Stream Creator", role: 400 },
+        { user_id: 88, full_name: "Channel Admin", role: 400 },
+      ]);
+      useUserGroupsStore.getState().setGroups([
+        {
+          id: 9126,
+          name: "channel-admins",
+          members: [88],
+          direct_subgroup_ids: [],
+        },
+      ]);
+    });
+
+    renderWithProviders(<RightPanel title="engineering" participantsCount={2} onlineCount={1} />);
+
+    expect(screen.getByText("Creator")).toBeInTheDocument();
+    expect(screen.getByText("Channel admin")).toBeInTheDocument();
+  });
+
+  it("prioritizes Creator badge over Channel admin for the same user", () => {
+    act(() => {
+      useCurrentChatMessagesStore.setState({
+        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        messages: [],
+        isLoadingMore: false,
+        hasOlderMessages: true,
+        hasNewerMessages: false,
+      });
+      useChatInfoStore.setState({
+        data: {
+          type: "stream",
+          name: "engineering",
+          memberCount: 1,
+          onlineCount: 1,
+          members: [
+            {
+              userId: 77,
+              fullName: "Creator Admin",
+              email: "creator-admin@example.com",
+              avatarUrl: null,
+              isOnline: true,
+            },
+          ],
+          description: null,
+          isMuted: false,
+          topics: [],
+        },
+        streamMemberIds: [77],
+      });
+      useChatListStore.getState().upsertStreamMetadataRows([
+        {
+          streamId: 10,
+          name: "engineering",
+          creatorId: 77,
+          canAdministerChannelGroup: 9126,
+        },
+      ]);
+      useChatListStore.getState().setCurrentUserId(42);
+      useUsersStore.getState().mergeUsers([
+        { user_id: 42, full_name: "Current User", role: 200 },
+        { user_id: 77, full_name: "Creator Admin", role: 400 },
+      ]);
+      useUserGroupsStore.getState().setGroups([
+        {
+          id: 9126,
+          name: "channel-admins",
+          members: [77],
+          direct_subgroup_ids: [],
+        },
+      ]);
+    });
+
+    renderWithProviders(<RightPanel title="engineering" participantsCount={1} onlineCount={1} />);
+
+    expect(screen.getByText("Creator")).toBeInTheDocument();
+    expect(screen.queryByText("Channel admin")).not.toBeInTheDocument();
+  });
+
+  it("removes stream member via hover cross and does not open profile on click", async () => {
+    const removeMembersSpy = vi.spyOn(zulipStreams, "removeMembersFromStream").mockResolvedValue({
+      ok: true,
+      removedUserIds: [77],
+      alreadyUnsubscribedUserIds: [],
+      unauthorizedStreams: [],
+    });
+    const openUserProfile = vi.fn();
+
+    act(() => {
+      useCurrentChatMessagesStore.setState({
+        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        messages: [],
+        isLoadingMore: false,
+        hasOlderMessages: true,
+        hasNewerMessages: false,
+      });
+      useChatInfoStore.setState({
+        data: {
+          type: "stream",
+          name: "engineering",
+          memberCount: 1,
+          onlineCount: 1,
+          members: [
+            {
+              userId: 77,
+              fullName: "Alice",
+              email: "alice@example.com",
+              avatarUrl: null,
+              isOnline: true,
+            },
+          ],
+          description: null,
+          isMuted: false,
+          topics: [],
+        },
+        streamMemberIds: [77],
+      });
+      useChatListStore.getState().setCurrentUserId(42);
+      useUsersStore.getState().mergeUsers([
+        { user_id: 42, full_name: "Admin", email: "admin@example.com", role: 200 },
+        { user_id: 77, full_name: "Alice", email: "alice@example.com", role: 400 },
+      ]);
+    });
+
+    renderWithProviders(
+      <RightDrawerContext.Provider value={{ open: true, setOpen: vi.fn(), openUserProfile }}>
+        <RightPanel title="engineering" participantsCount={1} onlineCount={1} />
+      </RightDrawerContext.Provider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /remove from channel: alice/i }));
+
+    await waitFor(() => {
+      expect(removeMembersSpy).toHaveBeenCalledWith({
+        streamName: "engineering",
+        userIds: [77],
+      });
+    });
+    expect(openUserProfile).not.toHaveBeenCalled();
   });
 
   it("hides channel edit/delete actions for member role", () => {
