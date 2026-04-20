@@ -146,6 +146,11 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
   isLoadingMore: false,
   hasOlderMessages: true,
   hasNewerMessages: false,
+  boundaryLoadFailed: false,
+
+  clearBoundaryLoadFailed() {
+    set({ boundaryLoadFailed: false });
+  },
 
   setContext(context) {
     const prev = get().context;
@@ -176,6 +181,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       isLoadingMore: false,
       hasOlderMessages: true,
       hasNewerMessages: false,
+      boundaryLoadFailed: false,
     });
   },
 
@@ -601,6 +607,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       pendingOutgoingEchoKeys: [],
       hasOlderMessages: loadResult.hasOlderMessages,
       hasNewerMessages: loadResult.hasNewerMessages,
+      boundaryLoadFailed: false,
     });
     logMessageFlow("store:loadInitial done", {
       mode: loadResult.mode,
@@ -723,6 +730,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     } catch (e) {
       logMessageFlow("store:loadOlder failed", { error: String(e) });
       loadOlderLog.warn("loadOlder failed", { error: String(e) });
+      set({ boundaryLoadFailed: true });
     } finally {
       set({ isLoadingMore: false });
     }
@@ -827,6 +835,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       });
     } catch (e) {
       logMessageFlow("store:loadNewer failed", { error: String(e) });
+      set({ boundaryLoadFailed: true });
     } finally {
       set({ isLoadingMore: false });
     }

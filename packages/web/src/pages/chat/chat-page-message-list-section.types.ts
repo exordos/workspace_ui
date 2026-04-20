@@ -1,6 +1,8 @@
 import type { MockMessage } from "~/shared/api/zulip.types";
 import type { MessageListCallbacks } from "~/widgets/message-list/message-list.types";
 
+export type ChatMessagesLoadErrorKind = "initial" | "refresh";
+
 export interface ChatPageMessageListSectionProps {
   messagesLoading: boolean;
   // Что делает: показывает, что для текущего route-контекста уже есть initial payload.
@@ -24,4 +26,10 @@ export interface ChatPageMessageListSectionProps {
   focusedMessageId: number | null | undefined;
   onUnreadMessagesVisible: (messageIds: number[]) => void;
   onUnreadMessagesAtBottom: (messageIds: number[]) => void;
+  /** Failed initial load (no cache) vs network refresh failed after IndexedDB hydrate. */
+  messagesLoadError: ChatMessagesLoadErrorKind | null;
+  onRetryMessagesLoad: () => void;
+  /** Paginating older/newer messages failed (store). */
+  boundaryLoadFailed: boolean;
+  onDismissBoundaryLoadFailed: () => void;
 }
