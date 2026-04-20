@@ -13,6 +13,7 @@ import {
   fetchStreams,
   fetchSubscriptions,
   fetchTopics,
+  removeMembersFromStream,
   updateStream,
 } from "./zulip-streams";
 
@@ -38,6 +39,35 @@ describe("fetchSubscriptions", () => {
       { stream_id: 2, name: "dev", is_muted: true },
     ]);
     expect(mockZulipApi.get).toHaveBeenCalledWith("/users/me/subscriptions", undefined);
+  });
+
+  it("maps channel-level remove-members group metadata", async () => {
+    mockZulipApi.get.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        subscriptions: [
+          {
+            stream_id: 1,
+            name: "general",
+            is_muted: false,
+            creator_id: 77,
+            can_remove_subscribers_group: { direct_members: [42], direct_subgroups: [] },
+          },
+        ],
+      },
+      raw: { statusText: "OK" },
+    });
+
+    await expect(fetchSubscriptions()).resolves.toEqual([
+      {
+        stream_id: 1,
+        name: "general",
+        is_muted: false,
+        creator_id: 77,
+        can_remove_subscribers_group: { direct_members: [42], direct_subgroups: [] },
+      },
+    ]);
   });
 });
 
@@ -254,6 +284,122 @@ describe("addMembersToStream", () => {
         userIds: [1],
       }),
     ).rejects.toThrow(/addMembersToStream\.streamName must be a non-empty string/);
+  });
+});
+
+describe("removeMembersFromStream", () => {
+  it("sends delete payload and returns normalized success result", async () => {
+    mockZulipApi.delete.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        removed: {
+          "1": [{ id: 10, name: "engineering" }],
+          "3": [{ id: 10, name: "engineering" }],
+        },
+        already_unsubscribed: {
+          "2": [{ id: 10, name: "engineering" }],
+        },
+      },
+      raw: { statusText: "OK" },
+    });
+
+    await expect(
+      removeMembersFromStream({
+        streamName: "engineering",
+        userIds: [3, 1, 2, 1],
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      removedUserIds: [1, 3],
+      alreadyUnsubscribedUserIds: [2],
+      unauthorizedStreams: [],
+    });
+
+    expect(mockZulipApi.delete).toHaveBeenCalledWith("/users/me/subscriptions", {
+      subscriptions: JSON.stringify(["engineering"]),
+      principals: JSON.stringify([1, 2, 3]),
+    });
+  });
+
+  it("passes authorization_errors_fatal when provided", async () => {
+    mockZulipApi.delete.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { result: "success" },
+      raw: { statusText: "OK" },
+    });
+
+    await removeMembersFromStream({
+      streamName: "engineering",
+      userIds: [1],
+      authorizationErrorsFatal: false,
+    });
+
+    expect(mockZulipApi.delete).toHaveBeenCalledWith(
+      "/users/me/subscriptions",
+      expect.objectContaining({
+        authorization_errors_fatal: "false",
+      }),
+    );
+  });
+
+  it("returns error result for non-ok http response", async () => {
+    mockZulipApi.delete.mockResolvedValue({
+      ok: false,
+      status: 403,
+      data: { msg: "forbidden" },
+      raw: { statusText: "Forbidden" },
+    });
+
+    await expect(
+      removeMembersFromStream({
+        streamName: "engineering",
+        userIds: [1],
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      removedUserIds: [],
+      alreadyUnsubscribedUserIds: [],
+      unauthorizedStreams: [],
+      errorCode: "http_403",
+    });
+  });
+
+  it("returns error result when api response is result=error", async () => {
+    mockZulipApi.delete.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "error",
+        code: "BAD_REQUEST",
+        unauthorized: ["engineering"],
+      },
+      raw: { statusText: "OK" },
+    });
+
+    await expect(
+      removeMembersFromStream({
+        streamName: "engineering",
+        userIds: [1],
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      removedUserIds: [],
+      alreadyUnsubscribedUserIds: [],
+      unauthorizedStreams: ["engineering"],
+      errorCode: "BAD_REQUEST",
+    });
+  });
+
+  it("throws on blank stream name (guard)", async () => {
+    await expect(
+      removeMembersFromStream({
+        streamName: "   ",
+        userIds: [1],
+      }),
+    ).rejects.toThrow(/removeMembersFromStream\.streamName must be a non-empty string/);
   });
 });
 

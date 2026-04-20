@@ -29,16 +29,20 @@ function isPositiveInteger(value: unknown): value is number {
 function parseSubscriptionRows(value: unknown): {
   streamId: number;
   name: string;
+  creatorId?: number;
   inviteOnly?: boolean;
   canAddSubscribersGroup?: ZulipGroupSettingValue;
+  canRemoveSubscribersGroup?: ZulipGroupSettingValue;
   canAdministerChannelGroup?: ZulipGroupSettingValue;
 }[] {
   if (!Array.isArray(value)) return [];
   const rows: {
     streamId: number;
     name: string;
+    creatorId?: number;
     inviteOnly?: boolean;
     canAddSubscribersGroup?: ZulipGroupSettingValue;
+    canRemoveSubscribersGroup?: ZulipGroupSettingValue;
     canAdministerChannelGroup?: ZulipGroupSettingValue;
   }[] = [];
   for (const row of value) {
@@ -47,15 +51,21 @@ function parseSubscriptionRows(value: unknown): {
     const streamIdRaw = record.stream_id;
     const name = record.name;
     if (!isPositiveInteger(streamIdRaw) || typeof name !== "string") continue;
+    const creatorId = isPositiveInteger(record.creator_id) ? record.creator_id : undefined;
     const canAddSubscribersGroup = normalizeGroupSettingValue(record.can_add_subscribers_group);
+    const canRemoveSubscribersGroup = normalizeGroupSettingValue(
+      record.can_remove_subscribers_group,
+    );
     const canAdministerChannelGroup = normalizeGroupSettingValue(
       record.can_administer_channel_group,
     );
     rows.push({
       streamId: streamIdRaw,
       name: name.trim(),
+      ...(creatorId != null ? { creatorId } : {}),
       ...(typeof record.invite_only === "boolean" ? { inviteOnly: record.invite_only } : {}),
       ...(canAddSubscribersGroup != null ? { canAddSubscribersGroup } : {}),
+      ...(canRemoveSubscribersGroup != null ? { canRemoveSubscribersGroup } : {}),
       ...(canAdministerChannelGroup != null ? { canAdministerChannelGroup } : {}),
     });
   }
@@ -349,6 +359,7 @@ export function dispatchZulipEvent(event: ZulipEvent, ctx: LayoutZulipEventDispa
       }
       if (
         property === "can_add_subscribers_group" ||
+        property === "can_remove_subscribers_group" ||
         property === "can_administer_channel_group" ||
         property === "invite_only"
       ) {
@@ -362,6 +373,7 @@ export function dispatchZulipEvent(event: ZulipEvent, ctx: LayoutZulipEventDispa
           name: string;
           inviteOnly?: boolean;
           canAddSubscribersGroup?: ZulipGroupSettingValue;
+          canRemoveSubscribersGroup?: ZulipGroupSettingValue;
           canAdministerChannelGroup?: ZulipGroupSettingValue;
         } = {
           streamId,
@@ -369,6 +381,9 @@ export function dispatchZulipEvent(event: ZulipEvent, ctx: LayoutZulipEventDispa
           ...(existing?.inviteOnly != null ? { inviteOnly: existing.inviteOnly } : {}),
           ...(existing?.canAddSubscribersGroup != null
             ? { canAddSubscribersGroup: existing.canAddSubscribersGroup }
+            : {}),
+          ...(existing?.canRemoveSubscribersGroup != null
+            ? { canRemoveSubscribersGroup: existing.canRemoveSubscribersGroup }
             : {}),
           ...(existing?.canAdministerChannelGroup != null
             ? { canAdministerChannelGroup: existing.canAdministerChannelGroup }
@@ -383,6 +398,12 @@ export function dispatchZulipEvent(event: ZulipEvent, ctx: LayoutZulipEventDispa
           const parsed = normalizeGroupSettingValue(event.value);
           if (parsed != null) {
             row.canAddSubscribersGroup = parsed;
+          }
+        } else if (property === "can_remove_subscribers_group") {
+          // Что делает: обновляет группу прав на удаление участников канала.
+          const parsed = normalizeGroupSettingValue(event.value);
+          if (parsed != null) {
+            row.canRemoveSubscribersGroup = parsed;
           }
         } else {
           // Что делает: нормализует channel-admin group-setting и синхронизирует metadata.

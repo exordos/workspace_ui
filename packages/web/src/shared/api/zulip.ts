@@ -37,6 +37,7 @@ import {
 import { mockMessageFromGetMessageApiData, rawMessageToMockMessage } from "./zulip-message-map.lib";
 import { parseServerThumbnailFormats } from "./zulip-register-metadata.lib";
 import { parseUnreadMessagesCount } from "./zulip-unread.lib";
+import type { RegisterQueueResult, ZulipRealmUserGroup } from "./zulip.types";
 
 if (typeof (globalThis as unknown as { Buffer?: unknown }).Buffer === "undefined") {
   (globalThis as unknown as { Buffer: typeof Buffer }).Buffer = Buffer;
@@ -363,6 +364,7 @@ function parseSubscriptions(data: unknown): ZulipSubscription[] | null {
       in_home_view?: unknown;
       invite_only?: unknown;
       can_add_subscribers_group?: unknown;
+      can_remove_subscribers_group?: unknown;
       can_administer_channel_group?: unknown;
     };
     if (!isPositiveInteger(subscription.stream_id) || typeof subscription.name !== "string") {
@@ -370,6 +372,9 @@ function parseSubscriptions(data: unknown): ZulipSubscription[] | null {
     }
     const canAddSubscribersGroup = normalizeGroupSettingValue(
       subscription.can_add_subscribers_group,
+    );
+    const canRemoveSubscribersGroup = normalizeGroupSettingValue(
+      subscription.can_remove_subscribers_group,
     );
     const canAdministerChannelGroup = normalizeGroupSettingValue(
       subscription.can_administer_channel_group,
@@ -386,6 +391,9 @@ function parseSubscriptions(data: unknown): ZulipSubscription[] | null {
         : {}),
       ...(canAddSubscribersGroup != null
         ? { can_add_subscribers_group: canAddSubscribersGroup }
+        : {}),
+      ...(canRemoveSubscribersGroup != null
+        ? { can_remove_subscribers_group: canRemoveSubscribersGroup }
         : {}),
       ...(canAdministerChannelGroup != null
         ? { can_administer_channel_group: canAdministerChannelGroup }
@@ -738,12 +746,6 @@ async function zulipPipelineDelete(path: string, body?: Record<string, string>) 
 }
 
 // --- Real-time events API (register + get-events) ---
-
-import type {
-  RegisterQueueResult,
-  ZulipRealmUserGroup,
-  ZulipServerThumbnailFormat,
-} from "./zulip.types";
 
 // Зачем: по умолчанию подтягиваем metadata, чтобы быстрее собрать sidebar без полной истории сообщений.
 // `realm` — в т.ч. `server_thumbnail_formats`, а `realm_user_groups` нужен для channel-level permission checks.
@@ -1730,8 +1732,10 @@ export interface ZulipSubscription {
   stream_id: number;
   name: string;
   is_muted: boolean;
+  creator_id?: number;
   invite_only?: boolean;
   can_add_subscribers_group?: number | { direct_members: number[]; direct_subgroups: number[] };
+  can_remove_subscribers_group?: number | { direct_members: number[]; direct_subgroups: number[] };
   can_administer_channel_group?: number | { direct_members: number[]; direct_subgroups: number[] };
 }
 
@@ -1747,15 +1751,26 @@ export async function fetchSubscriptions(): Promise<ZulipSubscription[]> {
       name: string;
       is_muted?: boolean;
       in_home_view?: boolean;
+      creator_id?: unknown;
       invite_only?: boolean;
       can_add_subscribers_group?: unknown;
+      can_remove_subscribers_group?: unknown;
       can_administer_channel_group?: unknown;
     }[];
   };
   // Что делает: возвращает нормализованные подписки с channel-level permission metadata.
   return (data.subscriptions ?? []).map((subscription) => {
+    const creatorId =
+      typeof subscription.creator_id === "number" &&
+      Number.isInteger(subscription.creator_id) &&
+      subscription.creator_id > 0
+        ? subscription.creator_id
+        : undefined;
     const canAddSubscribersGroup = normalizeGroupSettingValue(
       subscription.can_add_subscribers_group,
+    );
+    const canRemoveSubscribersGroup = normalizeGroupSettingValue(
+      subscription.can_remove_subscribers_group,
     );
     const canAdministerChannelGroup = normalizeGroupSettingValue(
       subscription.can_administer_channel_group,
@@ -1764,11 +1779,15 @@ export async function fetchSubscriptions(): Promise<ZulipSubscription[]> {
       stream_id: subscription.stream_id,
       name: subscription.name,
       is_muted: subscription.is_muted ?? !(subscription.in_home_view ?? true),
+      ...(creatorId != null ? { creator_id: creatorId } : {}),
       ...(typeof subscription.invite_only === "boolean"
         ? { invite_only: subscription.invite_only }
         : {}),
       ...(canAddSubscribersGroup != null
         ? { can_add_subscribers_group: canAddSubscribersGroup }
+        : {}),
+      ...(canRemoveSubscribersGroup != null
+        ? { can_remove_subscribers_group: canRemoveSubscribersGroup }
         : {}),
       ...(canAdministerChannelGroup != null
         ? { can_administer_channel_group: canAdministerChannelGroup }

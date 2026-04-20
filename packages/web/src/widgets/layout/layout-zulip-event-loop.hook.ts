@@ -20,7 +20,6 @@ import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indi
 import {
   deleteQueue,
   fetchDirectMessagesPage,
-  fetchSubscriptions,
   fetchUsers,
   getCurrentUser,
   type ZulipEvent,
@@ -39,6 +38,7 @@ import {
 } from "~/shared/lib/dm-index";
 import { env } from "~/shared/lib/env";
 import { startZulipEventLoop } from "~/shared/lib/event-loop";
+import { createLogger } from "~/shared/lib/logger";
 import {
   logChatListFlow,
   logMessageFlow,
@@ -73,6 +73,7 @@ const REGISTER_FETCH_EVENT_TYPES = [
   "recent_private_conversations",
   "realm_user_groups",
 ] as const;
+const log = createLogger("layout-zulip-event-loop");
 
 // Что делает: превращает register subscriptions metadata в строки для chat-list store.
 function toStreamMetadataRows(
@@ -85,20 +86,32 @@ function toStreamMetadataRows(
         subscription.stream_id > 0 &&
         subscription.name.trim().length > 0,
     )
-    .map((subscription) => ({
-      streamId: subscription.stream_id,
-      name: subscription.name,
-      // Что делает: пробрасывает channel-level metadata в store, чтобы UI решал права без raw Zulip payload.
-      ...(typeof subscription.invite_only === "boolean"
-        ? { inviteOnly: subscription.invite_only }
-        : {}),
-      ...(subscription.can_add_subscribers_group != null
-        ? { canAddSubscribersGroup: subscription.can_add_subscribers_group }
-        : {}),
-      ...(subscription.can_administer_channel_group != null
-        ? { canAdministerChannelGroup: subscription.can_administer_channel_group }
-        : {}),
-    }));
+    .map((subscription) => {
+      const creatorId =
+        typeof subscription.creator_id === "number" &&
+        Number.isInteger(subscription.creator_id) &&
+        subscription.creator_id > 0
+          ? subscription.creator_id
+          : undefined;
+      return {
+        streamId: subscription.stream_id,
+        name: subscription.name,
+        // Что делает: пробрасывает channel-level metadata в store, чтобы UI решал права без raw Zulip payload.
+        ...(creatorId != null ? { creatorId } : {}),
+        ...(typeof subscription.invite_only === "boolean"
+          ? { inviteOnly: subscription.invite_only }
+          : {}),
+        ...(subscription.can_add_subscribers_group != null
+          ? { canAddSubscribersGroup: subscription.can_add_subscribers_group }
+          : {}),
+        ...(subscription.can_remove_subscribers_group != null
+          ? { canRemoveSubscribersGroup: subscription.can_remove_subscribers_group }
+          : {}),
+        ...(subscription.can_administer_channel_group != null
+          ? { canAdministerChannelGroup: subscription.can_administer_channel_group }
+          : {}),
+      };
+    });
 }
 
 // Что делает: преобразует локальный DM-индекс в формат, который понимает chat-list store.
@@ -315,11 +328,10 @@ export function useLayoutZulipEventLoop(options: {
         });
 
       try {
-        const [members, bootstrap, resolvedCurrentUserId, subscriptions] = await Promise.all([
+        const [members, bootstrap, resolvedCurrentUserId] = await Promise.all([
           pUsers,
           pMessages,
           pCurrentUserId,
-          pSubscriptions,
         ]);
         if (cancelled) return;
         const result = bootstrap;
@@ -600,12 +612,21 @@ export function useLayoutZulipEventLoop(options: {
           },
         });
       } catch (error) {
+        log.error("Bootstrap/users initialization failed before starting event loop", {
+          instanceId: currentInstanceId,
+          error: error instanceof Error ? error.message : String(error),
+        });
         logChatListFlow("eventLoop: bootstrap/users initialization failed", {
           instanceId: currentInstanceId,
           error: error instanceof Error ? error.message : String(error),
         });
       }
-    })().catch(() => {});
+    })().catch((error) => {
+      log.error("Unhandled bootstrap orchestration failure", {
+        instanceId: currentInstanceId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
 
     return () => {
       cancelled = true;
