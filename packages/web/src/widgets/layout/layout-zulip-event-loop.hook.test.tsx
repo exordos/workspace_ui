@@ -5,10 +5,12 @@ import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
+import { loadUsersDirectoryRow } from "~/shared/lib/users-directory-snapshot-db";
 import { useLayoutZulipEventLoop } from "./layout-zulip-event-loop.hook";
 
 const startZulipEventLoopMock = vi.hoisted(() => vi.fn());
 const fetchUsersMock = vi.hoisted(() => vi.fn(() => Promise.resolve([])));
+const fetchSubscriptionsMock = vi.hoisted(() => vi.fn(() => Promise.resolve([])));
 const getCurrentUserMock = vi.hoisted(() => vi.fn(() => Promise.resolve({ user_id: 7 })));
 const deleteQueueMock = vi.hoisted(() => vi.fn(() => Promise.resolve(undefined)));
 const fetchDirectMessagesPageMock = vi.hoisted(() =>
@@ -22,6 +24,7 @@ vi.mock("~/shared/lib/event-loop", () => ({
 vi.mock("~/shared/api/zulip", () => ({
   deleteQueue: deleteQueueMock,
   fetchDirectMessagesPage: fetchDirectMessagesPageMock,
+  fetchSubscriptions: fetchSubscriptionsMock,
   fetchUsers: fetchUsersMock,
   getCurrentUser: getCurrentUserMock,
 }));
@@ -45,34 +48,55 @@ vi.mock("~/shared/lib/dm-index", () => ({
   upsertDmIndexFromMessages: vi.fn(),
 }));
 
-function Harness({ currentInstanceId }: { currentInstanceId: string | null }) {
-  const loadBootstrapMessages = vi.fn<
-    (
-      signal: AbortSignal,
-      isStale: () => boolean,
-    ) => Promise<{ mode: "none"; latestMessageIdHint: number | null }>
-  >(() => Promise.resolve({ mode: "none", latestMessageIdHint: null }));
-  const loadMuteSnapshot = vi.fn<
-    () => Promise<{
-      mutedStreamIds: number[];
-      mutedTopics: { streamId: number; topic: string }[];
-      unmutedTopics: { streamId: number; topic: string }[];
-    }>
-  >(() =>
-    Promise.resolve({
-      mutedStreamIds: [],
-      mutedTopics: [],
-      unmutedTopics: [],
-    }),
-  );
+function createHarnessProps() {
+  return {
+    loadBootstrapMessages: vi.fn<
+      (
+        signal: AbortSignal,
+        isStale: () => boolean,
+      ) => Promise<{ mode: "none"; latestMessageIdHint: number | null }>
+    >(() => Promise.resolve({ mode: "none", latestMessageIdHint: null })),
+    loadMuteSnapshot: vi.fn<
+      () => Promise<{
+        mutedStreamIds: number[];
+        mutedTopics: { streamId: number; topic: string }[];
+        unmutedTopics: { streamId: number; topic: string }[];
+      }>
+    >(() =>
+      Promise.resolve({
+        mutedStreamIds: [],
+        mutedTopics: [],
+        unmutedTopics: [],
+      }),
+    ),
+    setFromMessages: vi.fn(),
+    setCurrentUserId: vi.fn(),
+    setCurrentUserStatus: vi.fn(),
+  };
+}
+
+function Harness({
+  currentInstanceId,
+  props = createHarnessProps(),
+}: {
+  currentInstanceId: string | null;
+  props?: ReturnType<typeof createHarnessProps>;
+}) {
+  const {
+    loadBootstrapMessages,
+    loadMuteSnapshot,
+    setFromMessages,
+    setCurrentUserId,
+    setCurrentUserStatus,
+  } = props;
 
   useLayoutZulipEventLoop({
     currentInstanceId,
     loadBootstrapMessages,
     loadMuteSnapshot,
-    setFromMessages: vi.fn(),
-    setCurrentUserId: vi.fn(),
-    setCurrentUserStatus: vi.fn(),
+    setFromMessages,
+    setCurrentUserId,
+    setCurrentUserStatus,
   });
   return null;
 }
@@ -114,6 +138,7 @@ describe("useLayoutZulipEventLoop", () => {
     await waitFor(() => {
       expect(startZulipEventLoopMock).toHaveBeenCalledTimes(1);
     });
+    expect(fetchSubscriptionsMock).toHaveBeenCalledTimes(1);
 
     const firstCallArg = startZulipEventLoopMock.mock.calls[0]?.[0] as
       | { fetchEventTypes?: string[] }
@@ -124,5 +149,17 @@ describe("useLayoutZulipEventLoop", () => {
       "recent_private_conversations",
       "realm_user_groups",
     ]);
+  });
+
+  it("switches current user status to error when bootstrap orchestration fails before event loop start", async () => {
+    vi.mocked(loadUsersDirectoryRow).mockRejectedValueOnce(new Error("idb failed"));
+    const props = createHarnessProps();
+
+    render(<Harness currentInstanceId="inst-1" props={props} />);
+
+    await waitFor(() => {
+      expect(props.setCurrentUserStatus).toHaveBeenCalledWith("error");
+    });
+    expect(startZulipEventLoopMock).not.toHaveBeenCalled();
   });
 });

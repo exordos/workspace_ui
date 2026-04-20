@@ -224,6 +224,8 @@ export const ChatPage: React.FC = () => {
   );
   const loadOlderBoundaryPage = useCurrentChatMessagesStore((s) => s.loadOlderBoundaryPage);
   const loadNewerBoundaryPage = useCurrentChatMessagesStore((s) => s.loadNewerBoundaryPage);
+  const boundaryLoadFailed = useCurrentChatMessagesStore((s) => s.boundaryLoadFailed);
+  const clearBoundaryLoadFailed = useCurrentChatMessagesStore((s) => s.clearBoundaryLoadFailed);
   const [sending, setSending] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<ComposerUploadProgressState | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -246,6 +248,9 @@ export const ChatPage: React.FC = () => {
   // Что делает: отделяет "данные уже есть" от "network refresh всё ещё идёт".
   // Зачем: показывать blocking-loader только на реальном cold-start/cold-switch.
   const [hasInitialMessagesPayload, setHasInitialMessagesPayload] = useState(false);
+  const [messagesLoadError, setMessagesLoadError] = useState<"initial" | "refresh" | null>(null);
+  const [messagesReloadNonce, setMessagesReloadNonce] = useState(0);
+  const cacheHydratedBeforeApiRef = useRef(false);
   const markAsReadBatcherRef = useRef<ReturnType<typeof createMarkAsReadBatcher> | null>(null);
   const optimisticMessageIdRef = useRef(-1);
   const uploadAbortControllerRef = useRef<AbortController | null>(null);
@@ -802,6 +807,8 @@ export const ChatPage: React.FC = () => {
 
     // Что делает: каждый route-switch стартует с чистого признака initial payload.
     // Далее он поднимется через onCacheHydrated или после успешного API.
+    cacheHydratedBeforeApiRef.current = false;
+    setMessagesLoadError(null);
     setHasInitialMessagesPayload(false);
     if (focusedMessageId != null) {
       setActionError(null);
@@ -827,6 +834,7 @@ export const ChatPage: React.FC = () => {
       // Что делает: фиксирует момент cache-first гидрации для UI-флагов.
       onCacheHydrated: () => {
         if (!initialLoadController.signal.aborted) {
+          cacheHydratedBeforeApiRef.current = true;
           setHasInitialMessagesPayload(true);
         }
       },
@@ -834,6 +842,7 @@ export const ChatPage: React.FC = () => {
       .then(() => {
         if (!initialLoadController.signal.aborted) {
           logMessageFlow("ui:stream loadInitial effect → fulfilled", { cancelled: false });
+          setMessagesLoadError(null);
           setHasInitialMessagesPayload(true);
           if (
             focusedMessageId != null &&
@@ -856,6 +865,7 @@ export const ChatPage: React.FC = () => {
         if (focusedMessageId != null) {
           setActionError(t("message.anchorAccessDenied"));
         }
+        setMessagesLoadError(cacheHydratedBeforeApiRef.current ? "refresh" : "initial");
         setMessagesLoading(false);
       });
     return () => {
@@ -871,6 +881,7 @@ export const ChatPage: React.FC = () => {
     currentUserId,
     loadInitialMessagesForContext,
     isFocusedMessageLoadedInCurrentRoute,
+    messagesReloadNonce,
     setActionError,
     t,
   ]);
@@ -911,6 +922,8 @@ export const ChatPage: React.FC = () => {
     }
 
     // Что делает: для нового DM-роута заново ожидаем initial payload.
+    cacheHydratedBeforeApiRef.current = false;
+    setMessagesLoadError(null);
     setHasInitialMessagesPayload(false);
     if (focusedMessageId != null) {
       setActionError(null);
@@ -930,6 +943,7 @@ export const ChatPage: React.FC = () => {
       // Что делает: фиксирует момент cache-first гидрации для UI-флагов.
       onCacheHydrated: () => {
         if (!initialLoadController.signal.aborted) {
+          cacheHydratedBeforeApiRef.current = true;
           setHasInitialMessagesPayload(true);
         }
       },
@@ -937,6 +951,7 @@ export const ChatPage: React.FC = () => {
       .then(() => {
         if (!initialLoadController.signal.aborted) {
           logMessageFlow("ui:dm loadInitial effect → fulfilled", { cancelled: false });
+          setMessagesLoadError(null);
           setHasInitialMessagesPayload(true);
           if (
             focusedMessageId != null &&
@@ -959,6 +974,7 @@ export const ChatPage: React.FC = () => {
         if (focusedMessageId != null) {
           setActionError(t("message.anchorAccessDenied"));
         }
+        setMessagesLoadError(cacheHydratedBeforeApiRef.current ? "refresh" : "initial");
         setMessagesLoading(false);
       });
     return () => {
@@ -970,6 +986,7 @@ export const ChatPage: React.FC = () => {
     currentUserId,
     loadInitialMessagesForContext,
     isFocusedMessageLoadedInCurrentRoute,
+    messagesReloadNonce,
     setActionError,
     t,
   ]);
@@ -1027,6 +1044,14 @@ export const ChatPage: React.FC = () => {
     });
     void loadNewerBoundaryPage({ pageSize: PAGE_SIZE, currentUserId });
   }, [PAGE_SIZE, currentUserId, loadNewerBoundaryPage]);
+
+  const handleRetryMessagesLoad = useCallback(() => {
+    setMessagesReloadNonce((n) => n + 1);
+  }, []);
+
+  const handleDismissBoundaryLoadFailed = useCallback(() => {
+    clearBoundaryLoadFailed();
+  }, [clearBoundaryLoadFailed]);
 
   const callTarget = useMemo(
     () =>
@@ -1694,6 +1719,10 @@ export const ChatPage: React.FC = () => {
           focusedMessageId={focusedMessageId}
           onUnreadMessagesVisible={handleUnreadMessagesVisible}
           onUnreadMessagesAtBottom={handleUnreadMessagesAtBottom}
+          messagesLoadError={messagesLoadError}
+          onRetryMessagesLoad={handleRetryMessagesLoad}
+          boundaryLoadFailed={boundaryLoadFailed}
+          onDismissBoundaryLoadFailed={handleDismissBoundaryLoadFailed}
         />
         {selectionMode && selectedMessageIds.size > 0 && (
           <ChatPageSelectionBar

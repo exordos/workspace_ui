@@ -20,6 +20,7 @@ import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indi
 import {
   deleteQueue,
   fetchDirectMessagesPage,
+  fetchSubscriptions,
   fetchUsers,
   getCurrentUser,
   type ZulipEvent,
@@ -302,6 +303,7 @@ export function useLayoutZulipEventLoop(options: {
       const metadataDmBackfillEnabled =
         metadataBootstrapEnabled && env.METADATA_DM_BACKFILL_ENABLED;
       const pUsers = fetchUsers();
+      const pSubscriptions = fetchSubscriptions();
       const pMessages = loadBootstrapMessagesRef.current(bootstrapAbort.signal, isBootstrapStale);
       const pCurrentUserId = getCurrentUser()
         .then((user) => {
@@ -327,8 +329,9 @@ export function useLayoutZulipEventLoop(options: {
         });
 
       try {
-        const [members, bootstrap, resolvedCurrentUserId] = await Promise.all([
+        const [members, subscriptions, bootstrap, resolvedCurrentUserId] = await Promise.all([
           pUsers,
+          pSubscriptions,
           pMessages,
           pCurrentUserId,
         ]);
@@ -336,6 +339,11 @@ export function useLayoutZulipEventLoop(options: {
         const result = bootstrap;
         const apiMembers: ZulipUserMember[] = members ?? [];
         useUsersStore.getState().mergeUsers(apiMembers);
+
+        const streamRowsFromSubscriptions = toStreamMetadataRows(subscriptions ?? []);
+        if (streamRowsFromSubscriptions.length > 0) {
+          useChatListStore.getState().upsertStreamMetadataRows(streamRowsFromSubscriptions);
+        }
 
         const uid = resolvedCurrentUserId ?? useChatListStore.getState().currentUserId ?? null;
 
@@ -616,6 +624,7 @@ export function useLayoutZulipEventLoop(options: {
         });
       }
     })().catch((error) => {
+      setCurrentUserStatusRef.current("error");
       log.error("Unhandled bootstrap orchestration failure", {
         instanceId: currentInstanceId,
         error: error instanceof Error ? error.message : String(error),

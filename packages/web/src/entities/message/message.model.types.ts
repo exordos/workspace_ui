@@ -22,6 +22,9 @@ export interface CurrentChatMessagesState {
   isLoadingMore: boolean;
   hasOlderMessages: boolean;
   hasNewerMessages: boolean;
+  /** True after loadOlder/loadNewer network failure until cleared from UI. */
+  boundaryLoadFailed: boolean;
+  clearBoundaryLoadFailed: () => void;
   setContext: (context: CurrentChatContext | null) => void;
   setMessages: (messages: MockMessage[]) => void;
   prependMessages: (msgs: MockMessage[]) => void;
