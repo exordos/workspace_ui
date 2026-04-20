@@ -4,7 +4,6 @@ import { folderColorValueToCssHex, folderColorValueToCssRgba } from "~/features/
 import { t } from "~/i18n/i18n";
 import { Badge } from "~/shared/ui/badge";
 import { Icon } from "~/shared/ui/icon";
-
 import {
   DELETE_MENU_ITEM_CLASS,
   isContextMenuKeyboardTrigger,
@@ -114,7 +113,7 @@ export const FolderRailFolderItem = React.memo(function FolderRailFolderItem({
     const buttonColorStyle = labelUsesCustomColor ? { color: folderColor } : undefined;
     const horizontalButtonStyle =
       buttonColorStyle != null || folderSurfaceStyle != null
-        ? { ...(buttonColorStyle ?? {}), ...(folderSurfaceStyle ?? {}) }
+        ? { ...buttonColorStyle, ...folderSurfaceStyle }
         : undefined;
 
     return (

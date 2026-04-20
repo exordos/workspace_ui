@@ -245,7 +245,9 @@ const App: React.FC = () => {
       {shortcutsHelpOpen && (
         <AppShortcutsHelpModal sections={shortcutHelpSections} onClose={closeShortcutsHelp} />
       )}
-      <ErrorBoundary fallback={(api) => <PageErrorFallback onRetry={api.resetErrorBoundary} />}>
+      <ErrorBoundary
+        fallback={(api) => <PageErrorFallback onRetry={api.resetErrorBoundary} />}
+      >
         <Suspense fallback={<PageLoader />}>
           <AuthenticatedAppRoutes defaultInboxRoute={defaultInboxRoute} />
         </Suspense>

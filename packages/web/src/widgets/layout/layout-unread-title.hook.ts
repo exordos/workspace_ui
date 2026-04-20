@@ -3,11 +3,10 @@ import { resolvePersonalDmSidebarTitle } from "~/entities/chat-list/chat-list-fo
 import type { ZulipInstance } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { computeIsGroupDmView, normalizeDmRouteUserIds } from "~/shared/lib/dm-route.lib";
-import type { StreamWithLast } from "~/widgets/sidebar/sidebar.types";
-import { computeInstanceUnreadCount } from "./layout-instance-unread.lib";
-import { buildActiveChatWindowTitle } from "./layout-instance-unread.lib";
-import { getDmById, parseDmSlugToUserIds, parseStreamSlug } from "~/widgets/sidebar/sidebar.lib";
 import type { SidebarChat } from "~/shared/types/sidebar-chat";
+import { getDmById, parseDmSlugToUserIds, parseStreamSlug } from "~/widgets/sidebar/sidebar.lib";
+import type { StreamWithLast } from "~/widgets/sidebar/sidebar.types";
+import { computeInstanceUnreadCount, buildActiveChatWindowTitle  } from "./layout-instance-unread.lib";
 
 type DmSidebarChat = Extract<SidebarChat, { type: "dm" }>;
 

@@ -44,8 +44,8 @@
     "react-rnd": "10.5.3",
     "react-router-dom": "^7.0.0",
     "tinyexec": "^1.0.3",
-    "zulip-js": "^2.1.0",
     "workspace-api": "0.1.0",
+    "zulip-js": "^2.1.0",
     "zustand": "^4.5.0"
   },
   "devDependencies": {
@@ -65,8 +65,11 @@
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-import-x": "^4.16.2",
     "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-promise": "7.2.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
+    "eslint-plugin-sonarjs": "4.0.3",
+    "eslint-plugin-unicorn": "64.0.0",
     "fake-indexeddb": "6.0.0",
     "globals": "^17.4.0",
     "http-proxy": "1.18.1",

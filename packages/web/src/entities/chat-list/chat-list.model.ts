@@ -132,8 +132,7 @@ function mergeStreamEntry(
         unreadCount: number;
         lastMessageId?: number;
       }
-    >();
-    topics.set(topicSubject, topicEntry);
+    >([[topicSubject, topicEntry]]);
     return { stream_id: streamId, name, lastMessage, lastMessageSenderName, time, ts, topics };
   }
   const nextTopics = new Map(existing.topics);

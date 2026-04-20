@@ -653,7 +653,7 @@ describe("Sidebar", () => {
       expect(createChannelMock).toHaveBeenCalledWith({
         name: "Engineering",
         description: "",
-        subscribers: [1002],
+        subscribers: [1001, 1002],
         inviteOnly: true,
         announce: true,
       });
@@ -863,10 +863,10 @@ describe("Sidebar", () => {
       />,
     );
 
-    const streamLinks = screen
+    const streamLink = screen
       .getAllByRole("link")
-      .filter((link) => link.getAttribute("href")?.startsWith("/stream/"));
-    expect(streamLinks[0]).toHaveAttribute("href", "/stream/12-marketing");
+      .find((link) => link.getAttribute("href")?.startsWith("/stream/"));
+    expect(streamLink).toHaveAttribute("href", "/stream/12-marketing");
   });
 
   it("uses pinFolderId for pin action in system folders", async () => {

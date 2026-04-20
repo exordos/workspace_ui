@@ -21,6 +21,7 @@ function getAvatarInitials(name: string): string {
 export const MessageBubbleJitsiCard = React.memo(function MessageBubbleJitsiCard({
   message,
   jitsiUrl,
+  jitsiLinkOptions,
   isOwn,
   time,
   ownDeliveryIndicator,
@@ -34,9 +35,9 @@ export const MessageBubbleJitsiCard = React.memo(function MessageBubbleJitsiCard
     jitsiUrl ? (s.participantsByUrl[jitsiUrl] ?? EMPTY_PARTICIPANTS) : EMPTY_PARTICIPANTS,
   );
   const jitsiCallName = useMemo(() => {
-    const roomName = formatJitsiRoomDisplayName(jitsiUrl);
+    const roomName = formatJitsiRoomDisplayName(jitsiUrl, jitsiLinkOptions);
     return roomName.length > 0 ? roomName : t("call.callName");
-  }, [jitsiUrl]);
+  }, [jitsiUrl, jitsiLinkOptions]);
   const jitsiTopicName = useMemo(() => {
     const topic = message.subject.trim();
     return topic.length > 0 ? topic : "";

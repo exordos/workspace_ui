@@ -135,9 +135,9 @@ describe("folder-sync.api", () => {
       },
     ]);
     const callOrder: string[] = [];
-    vi.mocked(getFolderItems).mockImplementation(async (uuid: string) => {
+    vi.mocked(getFolderItems).mockImplementation((uuid: string) => {
       callOrder.push(uuid);
-      return [];
+      return Promise.resolve([]);
     });
 
     await loadFolderSyncSnapshot("inst-a", { priorityFolderUuid: "folder-b" });

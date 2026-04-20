@@ -30,7 +30,7 @@ export function useMessageComposerUpload(options: {
 }): {
   files: File[];
   setFiles: React.Dispatch<React.SetStateAction<File[]>>;
-  filePreviewUrls: Array<string | null>;
+  filePreviewUrls: (string | null)[];
 
   isDragOver: boolean;
   onDragOver: (e: React.DragEvent) => void;

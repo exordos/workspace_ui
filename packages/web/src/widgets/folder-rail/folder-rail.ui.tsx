@@ -1,14 +1,14 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import React, { useCallback, useMemo, useState } from "react";
-import { createFolder, deleteFolder, updateFolder } from "~/features/manage-folders/manage-folders.api";
 import { CreateFolderModal } from "~/features/manage-folders/create-folder-modal.ui";
+import { createFolder, deleteFolder, updateFolder } from "~/features/manage-folders/manage-folders.api";
 import { UpdateFolderModal } from "~/features/manage-folders/update-folder-modal.ui";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
 import { FolderRailHorizontalView } from "./folder-rail-horizontal-view.ui";
 import { FolderRailVerticalView } from "./folder-rail-vertical-view.ui";
-import type { FolderRailFolder, FolderRailLayout, FolderRailProps } from "./folder-rail.types";
 import type { IndexedFolderEntry } from "./folder-rail.lib";
+import type { FolderRailFolder, FolderRailLayout, FolderRailProps } from "./folder-rail.types";
 
 export type {
   FolderRailFolder,

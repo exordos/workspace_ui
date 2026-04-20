@@ -2,23 +2,64 @@
  * Jitsi Meet URL helpers.
  *
  * Extracts, parses, and builds Jitsi meeting URLs.
- * Supports both the configured instance domain and the public meet.jit.si.
+ * Resolution order for "this organization's" Jitsi host: optional {@link JitsiLinkOptions.serverBaseUrl}
+ * (from Zulip `POST /register`) then `VITE_JITSI_MEET_DOMAIN` via constants; public `meet.jit.si` is always
+ * accepted for link detection and parsing.
  *
  * Usage:
- *   import { getJitsiMeetingUrl, parseJitsiUrl, buildJitsiMeetingUrl } from "~/lib/jitsi";
+ *   import { getJitsiMeetingUrl, parseJitsiUrl, buildJitsiMeetingUrl } from "~/shared/lib/jitsi";
  */
 import { JITSI_MEET_BASE_URL, JITSI_MEET_DOMAIN } from "~/shared/config/constants";
 
-/** Extracts the first Jitsi meeting URL from text (own instance or meet.jit.si). */
-export function getJitsiMeetingUrl(content: string): string | null {
+/** Optional overrides from Zulip register (per realm), see module header. */
+export interface JitsiLinkOptions {
+  /** Effective Jitsi base URL (`https://host`, no trailing slash), e.g. from Zulip register. */
+  serverBaseUrl?: string | null;
+}
+
+function normalizeHttpOrigin(raw: string): string | null {
+  try {
+    const u = new URL(raw.trim());
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    return u.origin.replace(/\/+$/, "");
+  } catch {
+    return null;
+  }
+}
+
+function getEffectiveJitsiBaseAndDomain(options?: JitsiLinkOptions): {
+  baseUrl: string;
+  domain: string;
+} {
+  const fromRegister =
+    options?.serverBaseUrl != null && String(options.serverBaseUrl).trim() !== ""
+      ? normalizeHttpOrigin(String(options.serverBaseUrl))
+      : null;
+  if (fromRegister) {
+    return {
+      baseUrl: fromRegister,
+      domain: new URL(fromRegister).hostname.toLowerCase(),
+    };
+  }
+  const base = JITSI_MEET_BASE_URL.replace(/\/+$/, "");
+  const domain = JITSI_MEET_DOMAIN.trim().toLowerCase();
+  if (base.length > 0 && domain.length > 0) {
+    return { baseUrl: base, domain };
+  }
+  return { baseUrl: "", domain: "" };
+}
+
+/** Extracts the first Jitsi meeting URL from text (configured host, Zulip register host, or meet.jit.si). */
+export function getJitsiMeetingUrl(content: string, options?: JitsiLinkOptions): string | null {
+  const { baseUrl, domain } = getEffectiveJitsiBaseAndDomain(options);
   const trimmed = content.trim();
-  if (trimmed.startsWith(JITSI_MEET_BASE_URL + "/")) return trimmed;
-  if (trimmed === JITSI_MEET_BASE_URL) return null;
-  // Match our domain or meet.jit.si anywhere in the text
-  const pattern = new RegExp(
-    `https?://(?:${escapeRegex(JITSI_MEET_DOMAIN)}|meet\\.jit\\.si)/([^\\s<>"']+)`,
-    "i",
-  );
+  if (baseUrl.length > 0) {
+    if (trimmed.startsWith(`${baseUrl}/`)) return trimmed;
+    if (trimmed === baseUrl) return null;
+  }
+  const hostsPattern =
+    domain.length > 0 ? `(?:${escapeRegex(domain)}|meet\\.jit\\.si)` : `meet\\.jit\\.si`;
+  const pattern = new RegExp(`https?://${hostsPattern}/([^\\s<>"']+)`, "i");
   const match = trimmed.match(pattern);
   return match ? match[0] : null;
 }
@@ -33,7 +74,7 @@ export interface JitsiUrlParts {
 }
 
 /** Parses a Jitsi URL into domain and room name. */
-export function parseJitsiUrl(url: string): JitsiUrlParts | null {
+export function parseJitsiUrl(url: string, options?: JitsiLinkOptions): JitsiUrlParts | null {
   try {
     const u = new URL(url);
     if (u.protocol !== "https:" && u.protocol !== "http:") {
@@ -42,8 +83,8 @@ export function parseJitsiUrl(url: string): JitsiUrlParts | null {
     const host = u.hostname.toLowerCase();
     const path = u.pathname.replace(/^\/+/, "").split("/")[0];
     if (!path) return null;
-    // Accept our configured instance and the public meet.jit.si
-    if (host === JITSI_MEET_DOMAIN || host === "meet.jit.si") {
+    const { domain: effectiveDomain } = getEffectiveJitsiBaseAndDomain(options);
+    if (host === "meet.jit.si" || (effectiveDomain.length > 0 && host === effectiveDomain)) {
       return {
         domain: host,
         roomName: decodeURIComponent(path),
@@ -56,7 +97,11 @@ export function parseJitsiUrl(url: string): JitsiUrlParts | null {
 }
 
 /** Builds a full meeting URL from a room name. */
-export function buildJitsiMeetingUrl(roomName: string): string {
+export function buildJitsiMeetingUrl(roomName: string, options?: JitsiLinkOptions): string {
   const encoded = encodeURIComponent(roomName);
+  const { baseUrl } = getEffectiveJitsiBaseAndDomain(options);
+  if (baseUrl.length > 0) {
+    return `${baseUrl}/${encoded}`;
+  }
   return `${JITSI_MEET_BASE_URL}/${encoded}`;
 }

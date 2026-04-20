@@ -1,7 +1,7 @@
 import { useEffect } from "react";
-import type { NavigateFunction } from "react-router-dom";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { parseStreamSlug, slugForStream } from "~/widgets/sidebar/sidebar.lib";
+import type { NavigateFunction } from "react-router-dom";
 
 /**
  * Redirects legacy `/stream/general`-style slugs (no stream_id) to the first known channel slug

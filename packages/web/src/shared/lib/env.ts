@@ -149,12 +149,13 @@ export const env = {
 
   /**
    * Jitsi Meet domain without protocol (e.g. `meet.example.com`).
-   * Used for JitsiMeeting component `domain` prop and link detection.
-   * Optional — video calls disabled if empty.
+   * Build-time fallback when the server does not return a Jitsi URL in `POST /api/v1/register`.
+   * Runtime resolution: Zulip register `jitsi_server_url` / realm+server fields → this env →
+   * link detection still accepts public `meet.jit.si` (see `~/shared/lib/jitsi`).
    */
   JITSI_MEET_DOMAIN: optional("VITE_JITSI_MEET_DOMAIN"),
 
-  /** Jitsi Meet full URL (e.g. `https://meet.example.com`). Empty if domain not set. */
+  /** `https://` + {@link JITSI_MEET_DOMAIN}, or empty when the env domain is unset. */
   JITSI_MEET_BASE_URL: (() => {
     const domain = optional("VITE_JITSI_MEET_DOMAIN");
     return domain ? `https://${domain}` : "";

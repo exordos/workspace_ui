@@ -3,8 +3,8 @@ import { useDownloadStore } from "~/entities/download/download.model";
 import type { DownloadEntry } from "~/entities/download/download.types";
 import { t } from "~/i18n/i18n";
 import { Icon } from "~/shared/ui/icon";
-import { formatDownloadBytes } from "./top-bar.lib";
 import { TopBarDownloadRow } from "./top-bar-download-row.ui";
+import { formatDownloadBytes } from "./top-bar.lib";
 
 export const TopBarDownloadCenter = React.memo(function TopBarDownloadCenter() {
   const downloads = useDownloadStore((s) => s.entries);

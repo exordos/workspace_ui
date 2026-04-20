@@ -10,10 +10,10 @@ import {
   getV1FoldersFolderUuid,
   updateV1FoldersFolderUuid,
 } from "workspace-api/workspace-api.generated";
-import type { FolderCreate, FolderUpdate } from "workspace-api/workspace-api.generated";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
 import type { CreateFolderInput, FolderItem, UpdateFolderInput } from "./manage-folders.types";
+import type { FolderCreate, FolderUpdate } from "workspace-api/workspace-api.generated";
 
 const log = createLogger("manage-folders:api");
 

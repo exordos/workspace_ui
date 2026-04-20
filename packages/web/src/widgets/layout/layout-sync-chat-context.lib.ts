@@ -9,11 +9,15 @@ import { dmRouteKey } from "~/shared/lib/dm-key";
 import { normalizeStreamTopicForMessageCache } from "~/shared/lib/message-cache-keys.lib";
 import { parseDmSlugToUserIds, parseStreamSlug } from "~/widgets/sidebar/sidebar.lib";
 
+const ORG_PREFIX_PATH = /^\/org\/[^/]+(\/.*)?$/;
+const DM_PATH_SEGMENT = /^\/dm\/([^/]+)(?:\/|$)/;
+const STREAM_PATH_SEGMENT = /^\/stream\/([^/]+)(?:\/topic\/([^/]+))?/;
+
 /**
  * Turns `/org/:orgId/dm/x` → `/dm/x` (and same for stream). Leaves non-org paths unchanged.
  */
 export function stripOrgSegmentFromPathname(pathname: string): string {
-  const m = pathname.match(/^\/org\/[^/]+(\/.*)?$/);
+  const m = ORG_PREFIX_PATH.exec(pathname);
   if (m?.[1] != null && m[1].length > 0) {
     return m[1];
   }
@@ -62,7 +66,7 @@ export function parseChatContextFromPathname(options: {
   const { streamsMap, currentUserId } = options;
   const pathname = stripOrgSegmentFromPathname(options.pathname);
 
-  const dmMatch = pathname.match(/^\/dm\/([^/]+)(?:\/|$)/);
+  const dmMatch = DM_PATH_SEGMENT.exec(pathname);
   if (dmMatch) {
     const dmSlug = decodeURIComponent(dmMatch[1] ?? "");
     const userIds = parseDmSlugToUserIds(dmSlug);
@@ -70,7 +74,7 @@ export function parseChatContextFromPathname(options: {
     return { context: { type: "dm", dmKey }, streamTopicExplicitInUrl: false };
   }
 
-  const streamMatch = pathname.match(/^\/stream\/([^/]+)(?:\/topic\/([^/]+))?/);
+  const streamMatch = STREAM_PATH_SEGMENT.exec(pathname);
   if (streamMatch) {
     const streamSlug = decodeURIComponent(streamMatch[1] ?? "");
     const topicExplicit = streamMatch[2] != null && streamMatch[2].length > 0;

@@ -104,7 +104,7 @@ export function withDefaultSystemFolders(
 
   const syntheticAll = createSyntheticAllFolder(labels);
   const normalizedAllFolder: WorkspaceFolderForRail =
-    preferredAllFolder != null && preferredAllFolder.badge !== undefined
+    preferredAllFolder?.badge !== undefined
       ? { ...syntheticAll, badge: preferredAllFolder.badge }
       : syntheticAll;
 

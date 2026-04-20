@@ -6,8 +6,8 @@
  * remains a no-op.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { initAnalytics } from "./setup";
 import { analytics } from "./analytics";
+import { initAnalytics } from "./setup";
 
 vi.mock("./analytics", () => ({
   analytics: {

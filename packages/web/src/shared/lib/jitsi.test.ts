@@ -86,6 +86,13 @@ describe("getJitsiMeetingUrl", () => {
     expect(getJitsiMeetingUrl("https://other.example.com/room")).toBeNull();
   });
 
+  it("detects meeting URL on serverBaseUrl host from Zulip register", () => {
+    const text = "Join https://corp-jitsi.example.com/standup";
+    expect(
+      getJitsiMeetingUrl(text, { serverBaseUrl: "https://corp-jitsi.example.com" }),
+    ).toBe("https://corp-jitsi.example.com/standup");
+  });
+
   // Domain matching should be case-insensitive per URL spec
   it("is case-insensitive for domain matching", () => {
     const text = "Go to HTTPS://MEET.JIT.SI/Room";
@@ -169,6 +176,17 @@ describe("parseJitsiUrl", () => {
   it("returns null for ftp scheme", () => {
     expect(parseJitsiUrl("ftp://meet.example.com/room")).toBeNull();
   });
+
+  it("accepts host from serverBaseUrl option when env domain differs", () => {
+    expect(
+      parseJitsiUrl("https://realm-jitsi.example.com/my-room", {
+        serverBaseUrl: "https://realm-jitsi.example.com",
+      }),
+    ).toEqual({
+      domain: "realm-jitsi.example.com",
+      roomName: "my-room",
+    });
+  });
 });
 
 // buildJitsiMeetingUrl creates a meeting URL from a room name — used by "Start Call" button
@@ -200,5 +218,11 @@ describe("buildJitsiMeetingUrl", () => {
     const roomName = "café";
     const url = buildJitsiMeetingUrl(roomName);
     expect(url).toBe(`https://meet.example.com/${encodeURIComponent(roomName)}`);
+  });
+
+  it("uses serverBaseUrl when provided", () => {
+    expect(
+      buildJitsiMeetingUrl("room-1", { serverBaseUrl: "https://custom.example.com" }),
+    ).toBe("https://custom.example.com/room-1");
   });
 });

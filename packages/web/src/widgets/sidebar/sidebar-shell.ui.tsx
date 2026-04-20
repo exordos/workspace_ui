@@ -1,6 +1,6 @@
 import React, { useCallback } from "react";
-import { selectSidebarChatsLoading } from "~/features/folder-sync/folder-sync.selectors";
 import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
+import { selectSidebarChatsLoading } from "~/features/folder-sync/folder-sync.selectors";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import type { FolderRailFoldersChangedDetail } from "~/widgets/folder-rail/folder-rail.types";
 import { FolderRail } from "~/widgets/folder-rail/folder-rail.ui";

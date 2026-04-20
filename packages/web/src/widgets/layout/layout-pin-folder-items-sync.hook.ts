@@ -1,6 +1,6 @@
 import { useEffect } from "react";
-import type { FolderItemForClient } from "~/shared/api/workspace-client";
 import { usePinStore } from "~/features/pin-chat/pin-chat.model";
+import type { FolderItemForClient } from "~/shared/api/workspace-client";
 
 /** Mirrors folder API items into the pin store for ordering UI. */
 export function useLayoutPinFolderItemsSync(

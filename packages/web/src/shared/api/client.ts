@@ -30,6 +30,10 @@ import { getBasicAuthValue, wipeCredentials } from "~/shared/lib/auth-guard";
 import { env } from "~/shared/lib/env";
 import { logApiCall } from "~/shared/lib/logger";
 import { workspaceOrgApiOriginFromZulipRealmRoot } from "~/shared/lib/workspace-org-origin.lib";
+import {
+  ingestZulipRateLimitFromApiResponse,
+  waitUntilZulipRateLimitReleased,
+} from "~/shared/lib/zulip-rate-limit-gate";
 
 // ---------------------------------------------------------------------------
 // Instance provider (FSD: injected by app layer to avoid shared→entities import)
@@ -353,6 +357,13 @@ const retryMiddleware: Middleware = async (req, next) => {
     }
   }
   throw lastError;
+};
+
+const zulipRateLimitGateMiddleware: Middleware = async (req, next) => {
+  await waitUntilZulipRateLimitReleased(req.signal);
+  const res = await next(req);
+  ingestZulipRateLimitFromApiResponse(res.status, res.data, res.headers);
+  return res;
 };
 
 function shouldSkipAuth401Handling(req: ApiRequest): boolean {
@@ -721,6 +732,7 @@ function getZulipBaseUrl(): string {
 }
 
 export const zulipApi = new ApiClient("");
+zulipApi.useBefore(retryMiddleware, zulipRateLimitGateMiddleware);
 zulipApi.useBefore(authErrorMiddleware, zulipRequestTimeoutMiddleware);
 
 export const workspaceApi = new ApiClient(env.WORKSPACE_API_BASE);
@@ -749,6 +761,7 @@ export {
   sessionCsrfMiddleware,
   loggingMiddleware,
   retryMiddleware,
+  zulipRateLimitGateMiddleware,
   authErrorMiddleware,
   type ApiClient,
 };

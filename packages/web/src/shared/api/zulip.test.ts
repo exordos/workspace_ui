@@ -590,6 +590,23 @@ describe("registerQueue", () => {
     const result = await registerQueue(["message"]);
     expect(result.server_thumbnail_formats?.[0]?.name).toBe("840x560.webp");
   });
+
+  it("includes jitsi_server_url_effective from register payload", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        queue_id: "q-123",
+        last_event_id: -1,
+        realm_jitsi_server_url: "https://realm-jitsi.example.com",
+      },
+      raw: { statusText: "OK" },
+    });
+
+    const result = await registerQueue(["message"]);
+    expect(result.jitsi_server_url_effective).toBe("https://realm-jitsi.example.com");
+  });
 });
 
 describe("registerQueueForCredentials", () => {
@@ -1232,9 +1249,9 @@ describe("fetchRecentMessages", () => {
     expect(await fetchRecentMessages()).toEqual([]);
   });
 
-  it("returns empty array on transport error", async () => {
+  it("throws on transport error (network failure maps to null from pipeline)", async () => {
     mockZulipApi.get.mockRejectedValue(new SyntaxError("bad"));
-    expect(await fetchRecentMessages()).toEqual([]);
+    await expect(fetchRecentMessages()).rejects.toThrow("Zulip request failed");
   });
 });
 
@@ -1304,9 +1321,9 @@ describe("fetchMessagesAfterAnchor", () => {
     });
   });
 
-  it("returns empty array on transport error", async () => {
+  it("throws on transport error (network failure maps to null from pipeline)", async () => {
     mockZulipApi.get.mockRejectedValue(new Error("boom"));
-    await expect(fetchMessagesAfterAnchor(100)).resolves.toEqual([]);
+    await expect(fetchMessagesAfterAnchor(100)).rejects.toThrow("Zulip request failed");
   });
 });
 
@@ -1605,6 +1622,27 @@ describe("fetchMessages", () => {
     expect(await fetchMessages("general")).toEqual([]);
   });
 
+  it("throws when pipeline returns non-ok with abort signal", async () => {
+    mockZulipApi.get.mockResolvedValue({
+      ok: false,
+      status: 503,
+      data: {},
+      raw: { statusText: "Service Unavailable" },
+    });
+    const controller = new AbortController();
+    await expect(
+      fetchMessages("general", "topic1", undefined, { signal: controller.signal }),
+    ).rejects.toThrow(/app\.errorStatus/);
+  });
+
+  it("throws when pipeline returns null on network error (signal path, not aborted)", async () => {
+    mockZulipApi.get.mockRejectedValue(new TypeError("Failed to fetch"));
+    const controller = new AbortController();
+    await expect(
+      fetchMessages("dev", undefined, undefined, { signal: controller.signal }),
+    ).rejects.toThrow("Zulip request failed");
+  });
+
   it("passes no narrow when no filters given", async () => {
     mockZulipClient.messages.retrieve.mockResolvedValue({ messages: [] });
     await fetchMessages();
@@ -1848,6 +1886,25 @@ describe("fetchDmMessages", () => {
   it("returns empty on exception", async () => {
     mockZulipClient.messages.retrieve.mockRejectedValue(new Error("fail"));
     expect(await fetchDmMessages(42)).toEqual([]);
+  });
+
+  it("throws when pipeline returns non-ok with abort signal", async () => {
+    mockZulipApi.get.mockResolvedValue({
+      ok: false,
+      status: 0,
+      data: {},
+      raw: {},
+    });
+    const controller = new AbortController();
+    await expect(fetchDmMessages(42, { signal: controller.signal })).rejects.toThrow(/app\.errorStatus/);
+  });
+
+  it("throws when pipeline returns null on network error (signal path, not aborted)", async () => {
+    mockZulipApi.get.mockRejectedValue(new TypeError("network"));
+    const controller = new AbortController();
+    await expect(fetchDmMessages(42, { signal: controller.signal })).rejects.toThrow(
+      "Zulip request failed",
+    );
   });
 
   it("throws for invalid user id", async () => {

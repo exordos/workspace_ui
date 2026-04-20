@@ -9,6 +9,7 @@
     "underDevelopment": "Section under development",
     "webModeUnavailable": "This section is temporarily unavailable in web mode.",
     "offline": "No internet connection",
+    "rateLimitResume": "Connection will resume in {{seconds}} s",
     "noInstance": "No Zulip instance selected",
     "networkError": "Network error",
     "connectFailed": "Failed to connect to server: {{message}}",

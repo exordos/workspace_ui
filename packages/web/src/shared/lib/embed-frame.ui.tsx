@@ -8,8 +8,8 @@
 
 import React, { useCallback, useState } from "react";
 import { getSandboxPolicy, isEmbedAllowed } from "./embed.lib";
-import type { EmbedFrameProps } from "./embed-frame.types";
 import { createLogger } from "./logger";
+import type { EmbedFrameProps } from "./embed-frame.types";
 
 const log = createLogger("embed");
 

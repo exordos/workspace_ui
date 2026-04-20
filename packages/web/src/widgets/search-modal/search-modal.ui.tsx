@@ -1,14 +1,14 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
-import { useUsersStore } from "~/entities/user/user.model";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
+import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
 import { fetchMessages } from "~/shared/api/zulip-messages";
 import type { MockMessage } from "~/shared/api/zulip.types";
+import { SEARCH_INPUT_DEBOUNCE_MS } from "~/shared/config/constants";
 import { getPresenceState } from "~/shared/lib/format";
 import { Icon } from "~/shared/ui/icon";
 import { ScrollArea } from "~/shared/ui/scroll-area";
-import { SEARCH_INPUT_DEBOUNCE_MS } from "~/shared/config/constants";
 import { filterSearchMessages } from "./search-modal-filters.lib";
 import {
   MAX_USER_RESULTS,

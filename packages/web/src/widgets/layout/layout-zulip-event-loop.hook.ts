@@ -502,6 +502,11 @@ export function useLayoutZulipEventLoop(options: {
           fetchEventTypes: [...REGISTER_FETCH_EVENT_TYPES],
           onQueueRegistered: (id, registration) => {
             queueIdRef.current = id;
+            if (registration?.jitsi_server_url_effective != null) {
+              useInstancesStore.getState().setJitsiMeetBaseUrl(registration.jitsi_server_url_effective);
+            } else {
+              useInstancesStore.getState().setJitsiMeetBaseUrl(null);
+            }
             useUserGroupsStore.getState().setGroups(registration?.realm_user_groups ?? []);
             const streamRows = toStreamMetadataRows(registration?.subscriptions ?? []);
             if (streamRows.length > 0) {

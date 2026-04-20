@@ -5,8 +5,8 @@
  * Tests cover success/error paths and verify correct parameters are forwarded.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { MockMessage } from "~/shared/api/zulip.types";
 import { fetchAllMessagesPage } from "~/shared/api/zulip-messages";
+import type { MockMessage } from "~/shared/api/zulip.types";
 import { createMessage, createMessages } from "~/test/factories";
 import { fetchFeedMessages } from "./feed.api";
 

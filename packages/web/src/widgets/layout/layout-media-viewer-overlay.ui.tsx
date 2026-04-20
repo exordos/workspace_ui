@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { t } from "~/i18n/i18n";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
+import { t } from "~/i18n/i18n";
 
 export const LayoutMediaViewerOverlay: React.FC = () => {
   const isOpen = useMediaViewerStore((s) => s.isOpen);

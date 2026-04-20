@@ -4,12 +4,12 @@
 import { Buffer } from "buffer";
 import { t } from "~/i18n/i18n";
 import { getBasicAuthValue } from "~/shared/lib/auth-guard";
-import { getCurrentInstance, zulipApi } from "./client";
 import { env } from "~/shared/lib/env";
 import { validateFileUpload } from "~/shared/lib/validation";
+import { getCurrentInstance, zulipApi } from "./client";
 import { ensureZulipApiReady } from "./zulip-pipeline.internal";
-import type { ZulipCredentials } from "./zulip.types";
 import { normalizeRealm } from "./zulip-realm.internal";
+import type { ZulipCredentials } from "./zulip.types";
 
 const TUS_VERSION = "1.0.0";
 const TUS_UPLOAD_THRESHOLD_BYTES = 15 * 1024 * 1024;

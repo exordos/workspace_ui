@@ -261,6 +261,14 @@ export async function loadInitialMessagesRouteDriven(
     currentUserId: options.currentUserId,
     signal: options.signal,
   });
+  // Belt-and-suspenders: some transports/clients resolve failures as empty message lists while offline.
+  if (
+    messages.length === 0 &&
+    typeof navigator !== "undefined" &&
+    navigator.onLine === false
+  ) {
+    throw new Error("Network offline");
+  }
   throwIfAborted(options.signal);
   const flags = deriveFocusedPaginationFlags(messages, options.focusedMessageId);
   const nextContext = resolveNextContextFromApi({

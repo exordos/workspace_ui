@@ -17,6 +17,7 @@ function resetStore() {
     instances: [],
     currentInstanceId: null,
     unreadCountsByInstance: {},
+    jitsiMeetBaseUrl: null,
   });
   window.localStorage.clear();
 }
@@ -134,6 +135,31 @@ describe("instancesStore", () => {
     });
   });
 
+  describe("setJitsiMeetBaseUrl", () => {
+    it("stores normalized base URL and clears with null", () => {
+      useInstancesStore.getState().setJitsiMeetBaseUrl("https://calls.example.com/");
+      expect(useInstancesStore.getState().jitsiMeetBaseUrl).toBe("https://calls.example.com");
+
+      useInstancesStore.getState().setJitsiMeetBaseUrl(null);
+      expect(useInstancesStore.getState().jitsiMeetBaseUrl).toBeNull();
+    });
+
+    it("clears Jitsi URL when switching current instance", () => {
+      const id1 = useInstancesStore
+        .getState()
+        .addInstance({ realm: "https://a.test", email: "a@a.com", apiKey: "k1" });
+      const id2 = useInstancesStore
+        .getState()
+        .addInstance({ realm: "https://b.test", email: "b@b.com", apiKey: "k2" });
+
+      useInstancesStore.getState().setJitsiMeetBaseUrl("https://jitsi.a.test");
+      useInstancesStore.getState().setCurrentInstanceId(id2);
+
+      expect(useInstancesStore.getState().jitsiMeetBaseUrl).toBeNull();
+      expect(useInstancesStore.getState().currentInstanceId).toBe(id2);
+    });
+  });
+
   // Switching instances triggers data reload — must only accept valid IDs.
   describe("setCurrentInstanceId / switchInstance", () => {
     // Valid ID must update the selection immediately.
@@ -221,7 +247,11 @@ describe("instancesStore", () => {
 
     // Orphaned ID (e.g. after data corruption) must not crash — returns null.
     it("returns null when currentInstanceId does not match any instance", () => {
-      useInstancesStore.setState({ instances: [], currentInstanceId: "ghost" });
+      useInstancesStore.setState({
+        instances: [],
+        currentInstanceId: "ghost",
+        jitsiMeetBaseUrl: null,
+      });
 
       expect(useInstancesStore.getState().getCurrentInstance()).toBeNull();
     });

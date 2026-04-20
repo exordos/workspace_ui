@@ -1,12 +1,12 @@
 import { useMemo } from "react";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
-import { useUsersStore } from "~/entities/user/user.model";
 import { selectUserStatusSnapshot } from "~/entities/user/user-status.hooks";
+import { useUsersStore } from "~/entities/user/user.model";
 import { useUserProfileStore } from "~/features/user-profile/user-profile.model";
-import type { SidebarChat } from "~/widgets/sidebar/sidebar.types";
 import type { RightPanelUserInfo } from "~/widgets/right-panel/right-panel.types";
-import { buildRightPanelCommonGroups, buildRightPanelUserInfo } from "./layout-right-panel.lib";
+import type { SidebarChat } from "~/widgets/sidebar/sidebar.types";
 import { buildRightPanelMedia } from "./layout-media.lib";
+import { buildRightPanelCommonGroups, buildRightPanelUserInfo } from "./layout-right-panel.lib";
 
 export function useLayoutRightPanelUser(options: {
   rightDrawerTargetUserId: number | undefined;

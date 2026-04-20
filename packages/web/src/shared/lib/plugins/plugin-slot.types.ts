@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
 import type { SlotName } from "./types";
+import type { ReactNode } from "react";
 
 export interface PluginSlotProps<T = unknown> {
   name: SlotName;

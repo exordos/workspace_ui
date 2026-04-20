@@ -50,10 +50,10 @@ export function collectUnreadMessageIds(
 }
 
 /** Message shape needed to decide if an id still counts as unread for optimistic read application. */
-export type MessageReadFlagSlice = {
+export interface MessageReadFlagSlice {
   id: number;
   flags?: string[];
-};
+}
 
 /**
  * Resolves each message id against the in-memory store first, then the effective on-screen list

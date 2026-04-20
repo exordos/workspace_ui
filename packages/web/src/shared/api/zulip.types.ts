@@ -102,6 +102,11 @@ export interface RegisterQueueResult {
   realm_user_groups?: ZulipRealmUserGroup[];
   /** Present when `realm` is included in `fetch_event_types` (Zulip 9.0+). */
   server_thumbnail_formats?: ZulipServerThumbnailFormat[];
+  /**
+   * Effective Jitsi Meet base URL from register (`jitsi_server_url` or realm/server fields).
+   * Canonical origin without trailing slash.
+   */
+  jitsi_server_url_effective?: string;
 }
 
 export interface ZulipEvent {
@@ -114,6 +119,8 @@ export interface GetEventsResult {
   result?: string;
   msg?: string;
   code?: string;
+  /** Seconds until the client may retry (Zulip rate limit JSON). */
+  "retry-after"?: number;
   events?: ZulipEvent[];
   queue_id?: string;
 }

@@ -1,10 +1,10 @@
 import { useCallback } from "react";
-import type { NavigateFunction } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import type { MockMessage } from "~/shared/api/zulip";
-import { buildRouteFromMessage } from "~/shared/lib/push-click";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
+import { buildRouteFromMessage } from "~/shared/lib/push-click";
 import { useSearchModalStore } from "~/widgets/search-modal/search-modal.model";
+import type { NavigateFunction } from "react-router-dom";
 
 export function useTopBarSearchModal(options: { navigate: NavigateFunction }): {
   open: boolean;

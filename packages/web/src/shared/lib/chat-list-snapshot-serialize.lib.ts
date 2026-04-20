@@ -30,7 +30,7 @@ export type StreamEntryInternalSerialized = Omit<StreamEntryInternal, "topics"> 
 export function serializeStreamEntry(s: StreamEntryInternal): StreamEntryInternalSerialized {
   return {
     ...s,
-    topics: Array.from(s.topics.entries()) as [string, TopicRow][],
+    topics: Array.from(s.topics.entries()),
   };
 }
 

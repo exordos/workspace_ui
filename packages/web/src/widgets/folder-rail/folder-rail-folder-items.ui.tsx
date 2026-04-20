@@ -122,7 +122,7 @@ export const HorizontalFolderItem: React.FC<FolderItemProps> = React.memo(
       : undefined;
     const horizontalButtonStyle =
       buttonColorStyle != null || visualState.folderSurfaceStyle != null
-        ? { ...(buttonColorStyle ?? {}), ...(visualState.folderSurfaceStyle ?? {}) }
+        ? { ...buttonColorStyle, ...visualState.folderSurfaceStyle }
         : undefined;
 
     return (

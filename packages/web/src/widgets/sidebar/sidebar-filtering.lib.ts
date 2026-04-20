@@ -1,5 +1,5 @@
-import type { SidebarChat } from "./sidebar.types";
 import { parseDmSlugToUserIds } from "./sidebar.lib";
+import type { SidebarChat } from "./sidebar.types";
 
 export function normalizeSidebarSearchQuery(query: string): string {
   return query.trim().toLowerCase();

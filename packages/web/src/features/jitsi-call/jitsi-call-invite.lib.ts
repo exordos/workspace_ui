@@ -1,5 +1,5 @@
 import type { ZulipRawMessage } from "~/shared/api/zulip";
-import { getJitsiMeetingUrl, parseJitsiUrl } from "~/shared/lib/jitsi";
+import { getJitsiMeetingUrl, parseJitsiUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
 import { parseJitsiMeetingUrlLoose } from "./jitsi-call-url.lib";
 import type { IncomingDmCallInvite } from "./jitsi-call.model";
 
@@ -21,16 +21,18 @@ function isOneToOneDmForCurrentUser(message: ZulipRawMessage, currentUserId: num
 export function resolveIncomingDmCallInvite(
   message: ZulipRawMessage,
   currentUserId: number | null,
+  jitsiLinkOptions?: JitsiLinkOptions,
 ): IncomingDmCallInvite | null {
   if (currentUserId == null) return null;
   if (message.type !== "private") return null;
   if (message.sender_id === currentUserId) return null;
   if (!isOneToOneDmForCurrentUser(message, currentUserId)) return null;
 
-  const meetingUrl = getJitsiMeetingUrl(message.content);
+  const meetingUrl = getJitsiMeetingUrl(message.content, jitsiLinkOptions);
   if (meetingUrl == null) return null;
 
-  const parsed = parseJitsiUrl(meetingUrl) ?? parseJitsiMeetingUrlLoose(meetingUrl);
+  const parsed =
+    parseJitsiUrl(meetingUrl, jitsiLinkOptions) ?? parseJitsiMeetingUrlLoose(meetingUrl);
   if (parsed == null) return null;
   if (!parsed.roomName.startsWith(DM_ROOM_PREFIX)) return null;
 

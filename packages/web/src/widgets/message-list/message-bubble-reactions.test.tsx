@@ -323,12 +323,12 @@ describe("MessageBubble quick reactions", () => {
     }
 
     const reactionRow = reactionButton.parentElement;
-    expect(reactionRow).toHaveClass("absolute", "bottom-2", "left-2", "right-14", "items-end");
+    expect(reactionRow).toHaveClass("flex", "flex-1", "flex-wrap", "items-end", "justify-start");
     expect(reactionRow).not.toHaveClass("mt-1.5");
 
     expect(reactionButton).toHaveClass("border", "border-border-subtle", "rounded-lg");
 
-    const bubbleSurface = reactionRow?.parentElement;
-    expect(bubbleSurface?.querySelector(".absolute.bottom-2.right-2")).not.toBeNull();
+    const bubbleSurface = reactionRow?.parentElement?.parentElement;
+    expect(bubbleSurface?.querySelector(".flex.shrink-0.items-center.gap-1")).not.toBeNull();
   });
 });

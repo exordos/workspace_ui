@@ -931,6 +931,42 @@ describe("ApiClient middleware management", () => {
   });
 });
 
+describe("zulipRateLimitGateMiddleware", () => {
+  beforeEach(async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-15T12:00:00.000Z"));
+    const { resetZulipRateLimitGateForTests } = await import("~/shared/lib/zulip-rate-limit-gate");
+    resetZulipRateLimitGateForTests();
+  });
+
+  afterEach(async () => {
+    vi.useRealTimers();
+    const { resetZulipRateLimitGateForTests } = await import("~/shared/lib/zulip-rate-limit-gate");
+    resetZulipRateLimitGateForTests();
+  });
+
+  it("waits before calling next again after a JSON RATE_LIMIT_HIT response", async () => {
+    const { zulipRateLimitGateMiddleware } = await import("./client");
+    const fetchFn = vi.fn().mockResolvedValue(
+      createMockResponse({
+        data: { result: "error", code: "RATE_LIMIT_HIT", msg: "limit", "retry-after": 0.5 },
+      }),
+    );
+    const chain = buildChain([zulipRateLimitGateMiddleware], fetchFn);
+
+    await chain(makeReq());
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+
+    const second = chain(makeReq());
+    await vi.advanceTimersByTimeAsync(400);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(200);
+    await second;
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe("appendDevUserUploadsProxyHeaders", () => {
   afterEach(() => {
     vi.unstubAllGlobals();

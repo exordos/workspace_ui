@@ -1,8 +1,8 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import React, { useEffect, useMemo, useState } from "react";
-import { useUsersStore } from "~/entities/user/user.model";
 import { ensureUserStatusLoaded } from "~/entities/user/api/user.api";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
+import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
 import { Icon } from "~/shared/ui/icon";
 import { toggleForwardRecipient } from "./chat-forward.lib";

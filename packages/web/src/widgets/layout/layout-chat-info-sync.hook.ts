@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
-import type { ChatInfoContext } from "~/features/chat-info/chat-info.types";
 import { getChatInfoNetworkKey } from "~/features/chat-info/chat-info.lib";
 import { useChatInfoStore } from "~/features/chat-info/chat-info.model";
+import type { ChatInfoContext } from "~/features/chat-info/chat-info.types";
 import type { SidebarChat } from "~/widgets/sidebar/sidebar.types";
 
 export function useLayoutChatInfoSync(options: {
@@ -11,7 +11,7 @@ export function useLayoutChatInfoSync(options: {
   activeStreamId: number | null;
   activeStreamName: string | null;
   mutedStreamIds: Set<number>;
-  topics: Array<{ name: string; unreadCount: number }>;
+  topics: { name: string; unreadCount: number }[];
   usersMapForChatInfo: Map<number, unknown>;
 }) {
   const {

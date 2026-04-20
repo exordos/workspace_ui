@@ -141,7 +141,9 @@ export const WebViewShell: React.FC = () => {
 
   return (
     <div className="safe-area-all flex h-screen flex-col bg-bg text-text-primary">
-      <ErrorBoundary fallback={(api) => <PageErrorFallback onRetry={api.resetErrorBoundary} />}>
+      <ErrorBoundary
+        fallback={(api) => <PageErrorFallback onRetry={api.resetErrorBoundary} />}
+      >
         <Suspense fallback={<PageLoader />}>
           <main className="touch-scroll flex-1 overflow-auto">
             <Routes>
