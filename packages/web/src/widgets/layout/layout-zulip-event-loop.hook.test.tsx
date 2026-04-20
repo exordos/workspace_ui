@@ -9,6 +9,7 @@ import { useLayoutZulipEventLoop } from "./layout-zulip-event-loop.hook";
 
 const startZulipEventLoopMock = vi.hoisted(() => vi.fn());
 const fetchUsersMock = vi.hoisted(() => vi.fn(() => Promise.resolve([])));
+const fetchSubscriptionsMock = vi.hoisted(() => vi.fn(() => Promise.resolve([])));
 const getCurrentUserMock = vi.hoisted(() => vi.fn(() => Promise.resolve({ user_id: 7 })));
 const deleteQueueMock = vi.hoisted(() => vi.fn(() => Promise.resolve(undefined)));
 const fetchDirectMessagesPageMock = vi.hoisted(() =>
@@ -22,6 +23,7 @@ vi.mock("~/shared/lib/event-loop", () => ({
 vi.mock("~/shared/api/zulip", () => ({
   deleteQueue: deleteQueueMock,
   fetchDirectMessagesPage: fetchDirectMessagesPageMock,
+  fetchSubscriptions: fetchSubscriptionsMock,
   fetchUsers: fetchUsersMock,
   getCurrentUser: getCurrentUserMock,
 }));
@@ -114,6 +116,7 @@ describe("useLayoutZulipEventLoop", () => {
     await waitFor(() => {
       expect(startZulipEventLoopMock).toHaveBeenCalledTimes(1);
     });
+    expect(fetchSubscriptionsMock).toHaveBeenCalledTimes(1);
 
     const firstCallArg = startZulipEventLoopMock.mock.calls[0]?.[0] as
       | { fetchEventTypes?: string[] }

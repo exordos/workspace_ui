@@ -289,6 +289,7 @@ export function useLayoutZulipEventLoop(options: {
       const metadataDmBackfillEnabled =
         metadataBootstrapEnabled && env.METADATA_DM_BACKFILL_ENABLED;
       const pUsers = fetchUsers();
+      const pSubscriptions = fetchSubscriptions();
       const pMessages = loadBootstrapMessagesRef.current(bootstrapAbort.signal, isBootstrapStale);
       const pCurrentUserId = getCurrentUser()
         .then((user) => {
@@ -324,6 +325,11 @@ export function useLayoutZulipEventLoop(options: {
         const result = bootstrap;
         const apiMembers: ZulipUserMember[] = members ?? [];
         useUsersStore.getState().mergeUsers(apiMembers);
+
+        const streamRowsFromSubscriptions = toStreamMetadataRows(subscriptions ?? []);
+        if (streamRowsFromSubscriptions.length > 0) {
+          useChatListStore.getState().upsertStreamMetadataRows(streamRowsFromSubscriptions);
+        }
 
         const uid = resolvedCurrentUserId ?? useChatListStore.getState().currentUserId ?? null;
 
