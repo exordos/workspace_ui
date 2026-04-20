@@ -4,6 +4,7 @@ import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
 import { resolveAvatarUrl } from "~/shared/lib/avatar";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
+import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import type { ChatHeaderProps } from "./chat-header.types";
 
 function resolveAvatarSrc(url: string | undefined | null): string | undefined {
@@ -53,18 +54,13 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
               >
                 {dmPartner.name.slice(0, 1).toUpperCase()}
               </Avatar>
-              {dmPartner.presenceState === "active" && (
-                <span
-                  className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-border-subtle bg-indicator-green"
-                  aria-label={t("a11y.online")}
-                />
-              )}
-              {dmPartner.presenceState === "idle" && (
-                <span
-                  className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-border-subtle bg-indicator-orange"
-                  aria-label={t("a11y.away")}
-                />
-              )}
+              <PresenceIndicator
+                status={dmPartner.presenceState}
+                size="md"
+                tone="header"
+                pulse={false}
+                className="absolute bottom-0 right-0 ring-border-subtle"
+              />
             </div>
             <div className="flex min-w-0 flex-1 flex-col">
               <h1 className="truncate text-sm font-semibold text-text-primary">{dmPartner.name}</h1>

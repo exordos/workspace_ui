@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildMessageRedirectRouteFromZulipPermalink,
   buildPushClickUrl,
   buildRouteFromMessage,
   findInstanceIdByRealmUri,
@@ -176,6 +177,28 @@ describe("buildMessageRedirectRoute", () => {
   it("omits realm query when missing", async () => {
     const { buildMessageRedirectRoute } = await import("./push-click");
     expect(buildMessageRedirectRoute(123)).toBe("/message/123");
+  });
+});
+
+describe("buildMessageRedirectRouteFromZulipPermalink", () => {
+  it("maps absolute Zulip narrow permalink to internal message redirect route", () => {
+    expect(
+      buildMessageRedirectRouteFromZulipPermalink(
+        "https://zulip.example.com/#narrow/channel/33-InternalServicesDev/topic/Workspace/near/5743236",
+      ),
+    ).toBe("/message/5743236?realm=https%3A%2F%2Fzulip.example.com");
+  });
+
+  it("maps hash-only narrow permalink to current-instance redirect route", () => {
+    expect(buildMessageRedirectRouteFromZulipPermalink("#narrow/dm/7,42-dm/near/123")).toBe(
+      "/message/123",
+    );
+  });
+
+  it("returns null for non-message permalinks", () => {
+    expect(
+      buildMessageRedirectRouteFromZulipPermalink("https://zulip.example.com/#narrow/channel/1-a"),
+    ).toBeNull();
   });
 });
 

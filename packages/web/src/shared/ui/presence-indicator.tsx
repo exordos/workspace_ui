@@ -23,18 +23,27 @@ const COLOR_MAP: Record<NonNullable<PresenceVisual>, string> = {
   offline: "bg-text-muted",
 };
 
+const HEADER_COLOR_MAP: Record<NonNullable<PresenceVisual>, string> = {
+  active: "bg-indicator-green",
+  idle: "bg-indicator-orange",
+  offline: "bg-text-muted",
+};
+
 export const PresenceIndicator: React.FC<PresenceIndicatorProps> = ({
   status,
   size = "md",
   className = "",
   withBorder = true,
+  tone = "default",
+  pulse,
 }) => {
   if (!status) return null;
 
   const sizeClass = SIZE_MAP[size];
-  const colorClass = COLOR_MAP[status];
+  const colorClass = (tone === "header" ? HEADER_COLOR_MAP : COLOR_MAP)[status];
   const borderClass = withBorder ? "ring-2 ring-bg" : "";
-  const pulseClass = status === "active" ? "animate-pulse" : "";
+  const shouldPulse = pulse ?? tone === "default";
+  const pulseClass = shouldPulse && status === "active" ? "animate-pulse" : "";
 
   return (
     <span

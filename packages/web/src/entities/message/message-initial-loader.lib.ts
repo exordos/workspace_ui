@@ -9,6 +9,10 @@ import {
 } from "~/shared/lib/message-cache-db";
 import { chatKeyFromContext, chatKeyFromMockMessage } from "~/shared/lib/message-cache-keys.lib";
 import {
+  ZULIP_DM_ANCHOR_NUM_AFTER,
+  ZULIP_DM_ANCHOR_NUM_BEFORE,
+  ZULIP_STREAM_ANCHOR_NUM_AFTER,
+  ZULIP_STREAM_ANCHOR_NUM_BEFORE,
   ZULIP_STREAM_CHAT_NUM_BEFORE,
   zulipMessageCacheWindowN,
 } from "~/shared/lib/zulip-message-window.lib";
@@ -113,8 +117,8 @@ async function fetchNetworkMessagesByMode(options: {
       return fetchMessagesWithNarrow(
         [{ operator: "dm", operand: parseDmKeyToUserIds(context.dmKey, currentUserId) }],
         focusedMessageId,
-        60,
-        60,
+        ZULIP_DM_ANCHOR_NUM_BEFORE,
+        ZULIP_DM_ANCHOR_NUM_AFTER,
         { signal },
       );
     }
@@ -129,7 +133,13 @@ async function fetchNetworkMessagesByMode(options: {
             { operator: "stream", operand: context.streamName },
             { operator: "topic", operand: context.topic },
           ];
-    return fetchMessagesWithNarrow(narrow, focusedMessageId, 60, 60, { signal });
+    return fetchMessagesWithNarrow(
+      narrow,
+      focusedMessageId,
+      ZULIP_STREAM_ANCHOR_NUM_BEFORE,
+      ZULIP_STREAM_ANCHOR_NUM_AFTER,
+      { signal },
+    );
   }
 
   if (mode === "stream-wide") {

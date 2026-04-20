@@ -58,6 +58,7 @@ import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
 import { useSidebarConfigStore } from "~/widgets/sidebar/sidebar-config.model";
 import { getDmById, parseStreamSlug, parseDmSlugToUserIds } from "~/widgets/sidebar/sidebar.lib";
 import type { StreamWithLast } from "~/widgets/sidebar/sidebar.types";
+import { isFocusedMessageLoadedInRoute } from "./chat-anchor-load.lib";
 import { startCallFromHeader } from "./chat-call-start.lib";
 import {
   buildCallRoomName,
@@ -158,6 +159,27 @@ export const ChatPage: React.FC = () => {
 
   const chatContextForMessages = useCurrentChatMessagesStore((s) => s.context);
   const messages = useCurrentChatMessagesStore((s) => s.messages);
+  const isFocusedMessageLoadedInCurrentRoute = useMemo(() => {
+    return isFocusedMessageLoadedInRoute({
+      focusedMessageId,
+      messages,
+      isDmView,
+      currentUserId,
+      dmRecipientIds,
+      resolvedStreamId,
+      topicName,
+      streamRouteTopic,
+    });
+  }, [
+    focusedMessageId,
+    messages,
+    isDmView,
+    currentUserId,
+    dmRecipientIds,
+    resolvedStreamId,
+    topicName,
+    streamRouteTopic,
+  ]);
 
   /** Same array as passed to `MessageList`; used when applying read flags so we do not rely on store alone. */
   const effectiveMessagesForReadRef = useRef<MockMessage[]>(messages);
@@ -175,6 +197,7 @@ export const ChatPage: React.FC = () => {
     });
   }, [messages.length, messages, chatContextForMessages]);
   const streams = useChatListStore((s) => s.streams());
+  const realmBaseUrl = getRealmBaseUrl();
   const firstUnreadId = useMemo(
     () => resolveFirstUnreadBoundaryMessageId(messages, currentUserId),
     [messages, currentUserId],
@@ -776,12 +799,20 @@ export const ChatPage: React.FC = () => {
       setMessagesLoading(false);
       return;
     }
+    if (focusedMessageId != null && isFocusedMessageLoadedInCurrentRoute) {
+      setHasInitialMessagesPayload(true);
+      setMessagesLoading(false);
+      return;
+    }
 
     // Что делает: каждый route-switch стартует с чистого признака initial payload.
     // Далее он поднимется через onCacheHydrated или после успешного API.
     cacheHydratedBeforeApiRef.current = false;
     setMessagesLoadError(null);
     setHasInitialMessagesPayload(false);
+    if (focusedMessageId != null) {
+      setActionError(null);
+    }
     setMessagesLoading(true);
     const initialLoadController = new AbortController();
     logMessageFlow("ui:stream loadInitial effect → invoke store.loadInitialMessagesForContext", {
@@ -813,6 +844,12 @@ export const ChatPage: React.FC = () => {
           logMessageFlow("ui:stream loadInitial effect → fulfilled", { cancelled: false });
           setMessagesLoadError(null);
           setHasInitialMessagesPayload(true);
+          if (
+            focusedMessageId != null &&
+            useCurrentChatMessagesStore.getState().messages.length === 0
+          ) {
+            setActionError(t("message.anchorAccessDenied"));
+          }
           setMessagesLoading(false);
         } else {
           logMessageFlow("ui:stream loadInitial effect → fulfilled (ignored, unmounted)", {
@@ -825,6 +862,9 @@ export const ChatPage: React.FC = () => {
           return;
         }
         logMessageFlow("ui:stream loadInitial rejected", { error: String(e) });
+        if (focusedMessageId != null) {
+          setActionError(t("message.anchorAccessDenied"));
+        }
         setMessagesLoadError(cacheHydratedBeforeApiRef.current ? "refresh" : "initial");
         setMessagesLoading(false);
       });
@@ -840,7 +880,10 @@ export const ChatPage: React.FC = () => {
     focusedMessageId,
     currentUserId,
     loadInitialMessagesForContext,
+    isFocusedMessageLoadedInCurrentRoute,
     messagesReloadNonce,
+    setActionError,
+    t,
   ]);
 
   // Синхронизируем контекст активного DM с маршрутом и текущим пользователем.
@@ -872,11 +915,19 @@ export const ChatPage: React.FC = () => {
       (userId) => Number.isSafeInteger(userId) && userId > 0,
     );
     if (userIds.length === 0) return;
+    if (focusedMessageId != null && isFocusedMessageLoadedInCurrentRoute) {
+      setHasInitialMessagesPayload(true);
+      setMessagesLoading(false);
+      return;
+    }
 
     // Что делает: для нового DM-роута заново ожидаем initial payload.
     cacheHydratedBeforeApiRef.current = false;
     setMessagesLoadError(null);
     setHasInitialMessagesPayload(false);
+    if (focusedMessageId != null) {
+      setActionError(null);
+    }
     setMessagesLoading(true);
     const initialLoadController = new AbortController();
     const dmKey = dmRouteKey(userIds, currentUserId);
@@ -902,6 +953,12 @@ export const ChatPage: React.FC = () => {
           logMessageFlow("ui:dm loadInitial effect → fulfilled", { cancelled: false });
           setMessagesLoadError(null);
           setHasInitialMessagesPayload(true);
+          if (
+            focusedMessageId != null &&
+            useCurrentChatMessagesStore.getState().messages.length === 0
+          ) {
+            setActionError(t("message.anchorAccessDenied"));
+          }
           setMessagesLoading(false);
         } else {
           logMessageFlow("ui:dm loadInitial effect → fulfilled (ignored, unmounted)", {
@@ -914,13 +971,25 @@ export const ChatPage: React.FC = () => {
           return;
         }
         logMessageFlow("ui:dm loadInitial rejected", { error: String(e) });
+        if (focusedMessageId != null) {
+          setActionError(t("message.anchorAccessDenied"));
+        }
         setMessagesLoadError(cacheHydratedBeforeApiRef.current ? "refresh" : "initial");
         setMessagesLoading(false);
       });
     return () => {
       initialLoadController.abort();
     };
-  }, [dmIdParam, focusedMessageId, currentUserId, loadInitialMessagesForContext, messagesReloadNonce]);
+  }, [
+    dmIdParam,
+    focusedMessageId,
+    currentUserId,
+    loadInitialMessagesForContext,
+    isFocusedMessageLoadedInCurrentRoute,
+    messagesReloadNonce,
+    setActionError,
+    t,
+  ]);
 
   const PAGE_SIZE = 50;
 
@@ -1304,7 +1373,7 @@ export const ChatPage: React.FC = () => {
   const messageCallbacks = useChatMessageListCallbacks({
     selectionMode,
     currentUserId,
-    realmBaseUrl: getRealmBaseUrl(),
+    realmBaseUrl,
     streams,
     locationPathname: location.pathname,
     navigate,
@@ -1352,7 +1421,14 @@ export const ChatPage: React.FC = () => {
     (stream: string, topic: string, to?: number[]) => {
       if (forwardMessages.length === 0) return;
       setSendError(null);
-      const quoted = buildForwardQuote(forwardMessages, forwardSelectedText);
+      const quoted = buildForwardQuote(forwardMessages, forwardSelectedText, {
+        realmBaseUrl,
+        wroteLabel: t("message.replyQuoteWrote"),
+        resolveStreamName: (streamId, message) =>
+          streams.find((candidate) => candidate.stream_id === streamId)?.name ??
+          message.channel ??
+          (typeof message.display_recipient === "string" ? message.display_recipient : undefined),
+      });
       const target = resolveForwardDraftTarget(stream, topic, to, streams);
       if (target == null) {
         setSendError(t("message.forwardError"));
@@ -1390,7 +1466,16 @@ export const ChatPage: React.FC = () => {
         composerValueRef.current = mergedForwardContent;
       }
     },
-    [forwardMessages, selectionMode, streams, forwardSelectedText, location.pathname, navigate],
+    [
+      forwardMessages,
+      selectionMode,
+      streams,
+      forwardSelectedText,
+      location.pathname,
+      navigate,
+      realmBaseUrl,
+      t,
+    ],
   );
 
   const handleToggleRightPanel = useCallback(() => {

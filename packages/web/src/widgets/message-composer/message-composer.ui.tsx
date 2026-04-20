@@ -239,10 +239,11 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   const detectMention = useCallback(
     (text: string, cursorPos: number) => {
       const before = text.slice(0, cursorPos);
-      const match = /@(\S*)$/.exec(before);
+      const match = /(?:^|[\s([{,.:;!?])@(\S*)$/.exec(before);
       if (match) {
-        setMentionQuery(match[1] ?? "");
-        setMentionStartPos(cursorPos - (match[0]?.length ?? 0));
+        const query = match[1] ?? "";
+        setMentionQuery(query);
+        setMentionStartPos(cursorPos - query.length - 1);
         showMentionDropdown();
         setActiveMentionIndex(0);
       } else {
@@ -832,7 +833,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
             onStartCreate={startCreateSavedSnippet}
           />
         )}
-        <div className="flex min-h-10 items-stretch overflow-hidden rounded-2xl bg-bg px-1.5">
+        <div className="flex min-h-10 items-stretch overflow-visible rounded-2xl bg-bg px-1.5">
           <input
             ref={fileInputRef}
             type="file"

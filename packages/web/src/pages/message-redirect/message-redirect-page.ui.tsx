@@ -77,20 +77,20 @@ export const MessageRedirectPage: React.FC = () => {
         if (cancelled) return;
 
         if (!message) {
-          setError(t("app.pageLoadError"));
+          setError(t("message.anchorAccessDenied"));
           return;
         }
 
         const route = buildRouteFromMessage(message, resolvedCurrentUserId);
         if (!route) {
-          setError(t("app.pageLoadError"));
+          setError(t("message.anchorAccessDenied"));
           return;
         }
 
         void navigate(route, { replace: true });
       } catch {
         if (cancelled) return;
-        setError(t("app.pageLoadError"));
+        setError(t("message.anchorAccessDenied"));
       }
     };
 

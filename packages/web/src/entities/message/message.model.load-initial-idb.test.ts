@@ -4,8 +4,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setInstanceProvider } from "~/shared/api/client";
 import type { MockMessage } from "~/shared/api/zulip.types";
-import { ZULIP_STREAM_CHAT_NUM_BEFORE } from "~/shared/lib/zulip-message-window.lib";
-
+import {
+  ZULIP_DM_ANCHOR_NUM_AFTER,
+  ZULIP_DM_ANCHOR_NUM_BEFORE,
+  ZULIP_STREAM_ANCHOR_NUM_AFTER,
+  ZULIP_STREAM_ANCHOR_NUM_BEFORE,
+  ZULIP_STREAM_CHAT_NUM_BEFORE,
+} from "~/shared/lib/zulip-message-window.lib";
 const {
   mockGetChatMessagesAscending,
   mockGetStreamMessagesAscending,
@@ -190,7 +195,39 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
     });
 
     expect(mockGetChatMessagesAscending).not.toHaveBeenCalled();
-    expect(mockFetchMessagesWithNarrow).toHaveBeenCalled();
+    expect(mockFetchMessagesWithNarrow).toHaveBeenCalledWith(
+      [
+        { operator: "stream", operand: "general" },
+        { operator: "topic", operand: "topic1" },
+      ],
+      50,
+      ZULIP_STREAM_ANCHOR_NUM_BEFORE,
+      ZULIP_STREAM_ANCHOR_NUM_AFTER,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+
+  it("uses DM default narrow window when focused message id is provided in dm context", async () => {
+    const ctx: CurrentChatContext = {
+      type: "dm",
+      dmKey: "7,42",
+    };
+    const focusedDm = [mockMsg({ id: 50, stream_id: null })];
+    mockFetchMessagesWithNarrow.mockResolvedValue(focusedDm);
+
+    await useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
+      context: ctx,
+      focusedMessageId: 50,
+      currentUserId: 7,
+    });
+
+    expect(mockFetchMessagesWithNarrow).toHaveBeenCalledWith(
+      [{ operator: "dm", operand: [42] }],
+      50,
+      ZULIP_DM_ANCHOR_NUM_BEFORE,
+      ZULIP_DM_ANCHOR_NUM_AFTER,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
   });
 
   it("uses explicit topic narrow for general topic route", async () => {

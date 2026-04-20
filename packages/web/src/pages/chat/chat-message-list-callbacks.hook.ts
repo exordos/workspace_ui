@@ -7,6 +7,7 @@ import { t } from "~/i18n/i18n";
 import { addMessageFlag, addReaction, removeMessageFlag, removeReaction } from "~/shared/api/zulip";
 import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
+import { buildMessageRedirectRouteFromZulipPermalink } from "~/shared/lib/push-click";
 import { buildZulipMessageWebPermalink } from "~/shared/lib/zulip-web-permalink.lib";
 import type { MessageListCallbacks } from "~/widgets/message-list/message-list.types";
 import { slugForStream } from "~/widgets/sidebar/sidebar.lib";
@@ -140,6 +141,12 @@ export function useChatMessageListCallbacks(
       },
       onOpenJitsiCall(url: string, locationName?: string) {
         openJitsiCall(url, locationName?.trim() ?? "");
+      },
+      onMessagePermalinkClick(href) {
+        const redirectRoute = buildMessageRedirectRouteFromZulipPermalink(href);
+        if (redirectRoute == null) return false;
+        void navigate(redirectRoute);
+        return true;
       },
       onMessageViews(msg) {
         void useMessageReadersStore.getState().fetchReadReceipts(msg.id);

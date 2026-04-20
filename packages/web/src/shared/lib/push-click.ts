@@ -44,6 +44,26 @@ function normalizeNonEmpty(value: string | undefined): string | undefined {
   return normalized.length > 0 ? normalized : undefined;
 }
 
+function parseNearMessageIdFromZulipHash(hash: string): number | undefined {
+  const normalizedHash = hash.startsWith("#") ? hash.slice(1) : hash;
+  if (!normalizedHash.startsWith("narrow/")) {
+    return undefined;
+  }
+  const nearMatch = /(?:^|\/)near\/([^/?#]+)/i.exec(normalizedHash);
+  if (nearMatch == null) {
+    return undefined;
+  }
+  const rawNear = nearMatch[1];
+  if (rawNear == null || rawNear.length === 0) {
+    return undefined;
+  }
+  try {
+    return parsePositiveInt(decodeURIComponent(rawNear));
+  } catch {
+    return parsePositiveInt(rawNear);
+  }
+}
+
 export function buildPushClickUrl(input: PushClickTargetInput): string {
   const withMessageId = (base: string): string =>
     input.messageId != null ? `${base}?msg=${input.messageId}` : base;
@@ -72,6 +92,28 @@ export function buildPushClickUrl(input: PushClickTargetInput): string {
 export function buildMessageRedirectRoute(messageId: number, realmUri?: string): string {
   const base = withCurrentOrgRoute(`/message/${messageId}`);
   return realmUri ? `${base}?realm=${encodeURIComponent(realmUri)}` : base;
+}
+
+export function buildMessageRedirectRouteFromZulipPermalink(permalink: string): string | null {
+  const normalizedPermalink = permalink.trim();
+  if (normalizedPermalink.length === 0) {
+    return null;
+  }
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(normalizedPermalink, "https://workspace.local");
+  } catch {
+    return null;
+  }
+
+  const nearMessageId = parseNearMessageIdFromZulipHash(parsedUrl.hash);
+  if (nearMessageId == null) {
+    return null;
+  }
+
+  const isAbsoluteHttpPermalink = /^https?:\/\//i.test(normalizedPermalink);
+  const realmUri = isAbsoluteHttpPermalink ? parsedUrl.origin : undefined;
+  return buildMessageRedirectRoute(nearMessageId, realmUri);
 }
 
 export function buildRouteFromPushNotificationClick(payload: PushNotificationClickPayload): string {

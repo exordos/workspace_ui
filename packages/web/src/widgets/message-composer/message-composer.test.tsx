@@ -301,6 +301,55 @@ describe("MessageComposer saved snippets", () => {
 });
 
 describe("MessageComposer mention suggestions", () => {
+  it("opens mention popup for a standalone @ after supported delimiters", async () => {
+    useUsersStore
+      .getState()
+      .mergeUsers([
+        createUser({ user_id: 1001, full_name: "Alice Johnson", email: "alice@example.com" }),
+      ]);
+
+    renderWithProviders(<MessageComposer onSend={vi.fn()} />);
+
+    const textbox = screen.getByRole("textbox");
+
+    fireEvent.change(textbox, { target: { value: "@", selectionStart: 1 } });
+    await screen.findByText("Alice Johnson");
+    expect(useMentionSuggestStore.getState().visible).toBe(true);
+    expect(useMentionSuggestStore.getState().query).toBe("");
+
+    fireEvent.change(textbox, { target: { value: "hi @a", selectionStart: 5 } });
+    await screen.findByText("Alice Johnson");
+    expect(useMentionSuggestStore.getState().visible).toBe(true);
+    expect(useMentionSuggestStore.getState().query).toBe("a");
+
+    fireEvent.change(textbox, { target: { value: "hi,@a", selectionStart: 5 } });
+    await screen.findByText("Alice Johnson");
+    expect(useMentionSuggestStore.getState().visible).toBe(true);
+    expect(useMentionSuggestStore.getState().query).toBe("a");
+
+    fireEvent.change(textbox, { target: { value: "(@a", selectionStart: 3 } });
+    await screen.findByText("Alice Johnson");
+    expect(useMentionSuggestStore.getState().visible).toBe(true);
+    expect(useMentionSuggestStore.getState().query).toBe("a");
+  });
+
+  it("does not open mention popup when @ is inside a word or email", () => {
+    useUsersStore
+      .getState()
+      .mergeUsers([
+        createUser({ user_id: 1001, full_name: "Alice Johnson", email: "alice@example.com" }),
+      ]);
+
+    renderWithProviders(<MessageComposer onSend={vi.fn()} />);
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "hello@a", selectionStart: 7 } });
+
+    expect(useMentionSuggestStore.getState().visible).toBe(false);
+    expect(useMentionSuggestStore.getState().query).toBe("");
+    expect(screen.queryByText("Alice Johnson")).not.toBeInTheDocument();
+  });
+
   it("uses mention store state and inserts the first suggestion on Enter", async () => {
     useUsersStore
       .getState()
@@ -364,6 +413,56 @@ describe("MessageComposer mention suggestions", () => {
     fireEvent.change(textbox, { target: { value: "@zzz", selectionStart: 4 } });
 
     await screen.findByText("No results found");
+  });
+
+  it("updates mention suggestions as the query changes", async () => {
+    useUsersStore
+      .getState()
+      .mergeUsers([
+        createUser({ user_id: 2001, full_name: "Alice Johnson", email: "alice@example.com" }),
+        createUser({ user_id: 2002, full_name: "Alex Roe", email: "alex@example.com" }),
+      ]);
+
+    renderWithProviders(<MessageComposer onSend={vi.fn()} />);
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "@a", selectionStart: 2 } });
+
+    await screen.findByText("Alice Johnson");
+    await screen.findByText("Alex Roe");
+
+    fireEvent.change(textbox, { target: { value: "@ali", selectionStart: 4 } });
+
+    await screen.findByText("Alice Johnson");
+    await waitFor(() => {
+      expect(screen.queryByText("Alex Roe")).not.toBeInTheDocument();
+    });
+    expect(useMentionSuggestStore.getState().query).toBe("ali");
+  });
+
+  it("renders a compact, scrollable mention dropdown", async () => {
+    useUsersStore
+      .getState()
+      .mergeUsers([
+        createUser({ user_id: 3001, full_name: "Alice Johnson", email: "alice@example.com" }),
+      ]);
+
+    renderWithProviders(<MessageComposer onSend={vi.fn()} />);
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "@zzz", selectionStart: 4 } });
+
+    const noResults = await screen.findByText("No results found");
+    const dropdown = noResults.parentElement;
+    expect(dropdown).not.toBeNull();
+    expect(dropdown).toHaveClass("w-80");
+    expect(dropdown).toHaveClass("max-h-48");
+    expect(dropdown).toHaveClass("overflow-y-auto");
+    expect(dropdown?.className).toContain("max-w-[calc(100vw-1rem)]");
+
+    const inputRow = textbox.closest(".flex.min-h-10.items-stretch");
+    expect(inputRow).not.toBeNull();
+    expect(inputRow).toHaveClass("overflow-visible");
   });
 
   it("renders presence indicators in mention suggestions", async () => {

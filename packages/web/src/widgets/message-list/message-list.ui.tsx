@@ -15,6 +15,7 @@ import { MessageListSenderGroup } from "./message-list-sender-group.ui";
 import type { MessageListProps } from "./message-list.types";
 
 const SCROLL_AT_BOTTOM_THRESHOLD = 80;
+const FOCUSED_MESSAGE_HIGHLIGHT_DURATION_MS = 6_000;
 
 function getDateKey(ts: number): string {
   const d = new Date(ts * 1000);
@@ -77,6 +78,7 @@ export const MessageList: React.FC<MessageListProps> = ({
             onOpenJitsiCall: callbacks.onOpenJitsiCall,
             onViews: callbacks.onMessageViews,
             onOpenInChat: callbacks.onMessageOpenInChat,
+            onPermalinkClick: callbacks.onMessagePermalinkClick,
             onAuthorClick: callbacks.onMessageAuthorClick,
             onOpenDirectMessage: callbacks.onOpenDirectMessage,
             onRetryFailedOutgoing: callbacks.onRetryFailedOutgoing,
@@ -95,7 +97,23 @@ export const MessageList: React.FC<MessageListProps> = ({
   const pendingScrollToBottomKeyRef = useRef<string | null>(null);
   const unreadScrollKeyRef = useRef<string | null>(null);
   const bottomReadDispatchKeyRef = useRef<string | null>(null);
+  const focusedHighlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const focusedHighlightFrameRef = useRef<number | null>(null);
+  const highlightedFocusedMessageRef = useRef<number | null>(null);
+  const [flashFocusedMessageId, setFlashFocusedMessageId] = useState<number | null>(
+    focusedMessageId,
+  );
   const [isAtBottom, setIsAtBottom] = useState(true);
+
+  const scheduleFlashFocusedMessageId = useCallback((nextFocusedMessageId: number | null) => {
+    if (focusedHighlightFrameRef.current != null) {
+      cancelAnimationFrame(focusedHighlightFrameRef.current);
+    }
+    focusedHighlightFrameRef.current = requestAnimationFrame(() => {
+      focusedHighlightFrameRef.current = null;
+      setFlashFocusedMessageId(nextFocusedMessageId);
+    });
+  }, []);
 
   const messageTailLen = messages.length;
   const messageFirstId = messages[0]?.id;
@@ -315,8 +333,49 @@ export const MessageList: React.FC<MessageListProps> = ({
     const target = el.querySelector<HTMLElement>(`[data-message-id="${focusedMessageId}"]`);
     if (target) {
       target.scrollIntoView({ block: "center", behavior: "instant" });
+      if (highlightedFocusedMessageRef.current !== focusedMessageId) {
+        highlightedFocusedMessageRef.current = focusedMessageId;
+        scheduleFlashFocusedMessageId(focusedMessageId);
+        if (focusedHighlightTimerRef.current != null) {
+          clearTimeout(focusedHighlightTimerRef.current);
+        }
+        focusedHighlightTimerRef.current = setTimeout(() => {
+          setFlashFocusedMessageId((current) => (current === focusedMessageId ? null : current));
+          if (highlightedFocusedMessageRef.current === focusedMessageId) {
+            highlightedFocusedMessageRef.current = null;
+          }
+          focusedHighlightTimerRef.current = null;
+        }, FOCUSED_MESSAGE_HIGHLIGHT_DURATION_MS);
+      }
     }
-  }, [focusedMessageId, messages.length]);
+  }, [focusedMessageId, messages.length, scheduleFlashFocusedMessageId]);
+
+  useEffect(() => {
+    if (focusedMessageId == null) {
+      highlightedFocusedMessageRef.current = null;
+      scheduleFlashFocusedMessageId(null);
+      if (focusedHighlightTimerRef.current != null) {
+        clearTimeout(focusedHighlightTimerRef.current);
+        focusedHighlightTimerRef.current = null;
+      }
+      return;
+    }
+    highlightedFocusedMessageRef.current = null;
+    scheduleFlashFocusedMessageId(focusedMessageId);
+  }, [focusedMessageId, scheduleFlashFocusedMessageId]);
+
+  useEffect(() => {
+    return () => {
+      if (focusedHighlightTimerRef.current != null) {
+        clearTimeout(focusedHighlightTimerRef.current);
+        focusedHighlightTimerRef.current = null;
+      }
+      if (focusedHighlightFrameRef.current != null) {
+        cancelAnimationFrame(focusedHighlightFrameRef.current);
+        focusedHighlightFrameRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (focusedMessageId != null || firstUnreadId == null) return;
@@ -413,7 +472,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                           callbacks={bubbleCallbacks}
                           selectionMode={selectionMode}
                           isSelected={selectedMessageIds?.has(m.id)}
-                          isFocused={focusedMessageId === m.id}
+                          isFocused={flashFocusedMessageId === m.id}
                           mediaGallery={mediaGallery}
                         />
                       ))}
@@ -441,7 +500,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                       bubbleCallbacks={bubbleCallbacks}
                       selectionMode={selectionMode}
                       selectedMessageIds={selectedMessageIds}
-                      focusedMessageId={focusedMessageId}
+                      focusedMessageId={flashFocusedMessageId}
                       mediaGallery={mediaGallery}
                     />
                   </React.Fragment>

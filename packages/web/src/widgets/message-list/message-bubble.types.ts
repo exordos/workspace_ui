@@ -20,6 +20,8 @@ export interface MessageBubbleCallbacks {
   onOpenJitsiCall?: (url: string, locationName?: string) => void;
   onViews?: (message: MockMessage) => void;
   onOpenInChat?: (message: MockMessage) => void;
+  /** Intercepts anchor clicks inside message body. Return true when handled by app navigation. */
+  onPermalinkClick?: (href: string) => boolean;
   onAuthorClick?: (userId: number) => void;
   onOpenDirectMessage?: (userId: number) => void;
   /** Resend a failed optimistic outgoing message (negative id, delivery failed). */

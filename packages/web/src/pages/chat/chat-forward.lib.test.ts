@@ -9,34 +9,70 @@ import {
   toggleForwardRecipient,
 } from "./chat-forward.lib";
 
+const permalinkOptions = {
+  realmBaseUrl: "https://zulip.example.com",
+  wroteLabel: "wrote",
+  resolveStreamName: (streamId: number) => (streamId === 33 ? "InternalServicesDev" : "general"),
+};
+
 describe("buildForwardQuote", () => {
   it("formats a single forwarded message", () => {
     expect(
-      buildForwardQuote([
-        {
-          id: 1,
-          sender_full_name: "Alice",
-          content: "Hello",
-        },
-      ]),
-    ).toBe("@_**Alice**\n```quote\nHello\n```");
+      buildForwardQuote(
+        [
+          {
+            id: 1,
+            sender_full_name: "Alice",
+            sender_id: 42,
+            content: "Hello",
+            stream_id: null,
+            subject: "",
+            display_recipient: [
+              { id: 7, full_name: "You" },
+              { id: 42, full_name: "Alice" },
+            ],
+          },
+        ],
+        undefined,
+        permalinkOptions,
+      ),
+    ).toBe(
+      "@_**Alice|42** [wrote](https://zulip.example.com/#narrow/dm/7,42-dm/near/1):\n```quote\nHello\n```",
+    );
   });
 
   it("formats multiple forwarded messages in order", () => {
     expect(
-      buildForwardQuote([
-        {
-          id: 10,
-          sender_full_name: "Alice",
-          content: "First",
-        },
-        {
-          id: 11,
-          sender_full_name: "Bob",
-          content: "Second",
-        },
-      ]),
-    ).toBe("@_**Alice**\n```quote\nFirst\n```\n@_**Bob**\n```quote\nSecond\n```");
+      buildForwardQuote(
+        [
+          {
+            id: 10,
+            sender_full_name: "Alice",
+            sender_id: 42,
+            content: "First",
+            stream_id: null,
+            subject: "",
+            display_recipient: [
+              { id: 7, full_name: "You" },
+              { id: 42, full_name: "Alice" },
+            ],
+          },
+          {
+            id: 11,
+            sender_full_name: "Bob",
+            sender_id: 55,
+            content: "Second",
+            stream_id: 33,
+            subject: "Workspace",
+            display_recipient: "InternalServicesDev",
+          },
+        ],
+        undefined,
+        permalinkOptions,
+      ),
+    ).toBe(
+      "@_**Alice|42** [wrote](https://zulip.example.com/#narrow/dm/7,42-dm/near/10):\n```quote\nFirst\n```\n@_**Bob|55** [wrote](https://zulip.example.com/#narrow/channel/33-InternalServicesDev/topic/Workspace/near/11):\n```quote\nSecond\n```",
+    );
   });
 
   it("uses selected text quote for single-message forward", () => {
@@ -46,24 +82,41 @@ describe("buildForwardQuote", () => {
           {
             id: 1,
             sender_full_name: "Alice",
+            sender_id: 42,
             content: "Original",
+            stream_id: null,
+            subject: "",
+            display_recipient: [{ id: 42, full_name: "Alice" }],
           },
         ],
         "Selected excerpt",
+        permalinkOptions,
       ),
-    ).toBe("@_**Alice**\n```quote\nSelected excerpt\n```");
+    ).toBe(
+      "@_**Alice|42** [wrote](https://zulip.example.com/#narrow/dm/42-dm/near/1):\n```quote\nSelected excerpt\n```",
+    );
   });
 
   it("strips html tags from forwarded content payload", () => {
     expect(
-      buildForwardQuote([
-        {
-          id: 1,
-          sender_full_name: "Alice",
-          content: "<p>Hello <strong>world</strong></p>",
-        },
-      ]),
-    ).toBe("@_**Alice**\n```quote\nHello world\n```");
+      buildForwardQuote(
+        [
+          {
+            id: 1,
+            sender_full_name: "Alice",
+            sender_id: 42,
+            content: "<p>Hello <strong>world</strong></p>",
+            stream_id: null,
+            subject: "",
+            display_recipient: [{ id: 42, full_name: "Alice" }],
+          },
+        ],
+        undefined,
+        permalinkOptions,
+      ),
+    ).toBe(
+      "@_**Alice|42** [wrote](https://zulip.example.com/#narrow/dm/42-dm/near/1):\n```quote\nHello world\n```",
+    );
   });
 
   it("ignores selected text override for multi-forward payload", () => {
@@ -73,17 +126,31 @@ describe("buildForwardQuote", () => {
           {
             id: 10,
             sender_full_name: "Alice",
+            sender_id: 42,
             content: "First",
+            stream_id: null,
+            subject: "",
+            display_recipient: [
+              { id: 7, full_name: "You" },
+              { id: 42, full_name: "Alice" },
+            ],
           },
           {
             id: 11,
             sender_full_name: "Bob",
+            sender_id: 55,
             content: "Second",
+            stream_id: 33,
+            subject: "Workspace",
+            display_recipient: "InternalServicesDev",
           },
         ],
         "Selected excerpt",
+        permalinkOptions,
       ),
-    ).toBe("@_**Alice**\n```quote\nFirst\n```\n@_**Bob**\n```quote\nSecond\n```");
+    ).toBe(
+      "@_**Alice|42** [wrote](https://zulip.example.com/#narrow/dm/7,42-dm/near/10):\n```quote\nFirst\n```\n@_**Bob|55** [wrote](https://zulip.example.com/#narrow/channel/33-InternalServicesDev/topic/Workspace/near/11):\n```quote\nSecond\n```",
+    );
   });
 
   it("returns an empty string for empty input", () => {

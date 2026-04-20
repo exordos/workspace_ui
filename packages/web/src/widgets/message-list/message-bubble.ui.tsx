@@ -593,16 +593,17 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
           return;
         }
 
-        const attachmentLink = hit.closest<HTMLAnchorElement>("a[href]");
-        if (attachmentLink) {
-          const attachmentPath = extractUserUploadPath(attachmentLink.getAttribute("href") ?? "");
-          const containsImage = attachmentLink.querySelector("img") != null;
+        const clickedLink = hit.closest<HTMLAnchorElement>("a[href]");
+        if (clickedLink) {
+          const href = clickedLink.getAttribute("href") ?? "";
+          const attachmentPath = extractUserUploadPath(href);
+          const containsImage = clickedLink.querySelector("img") != null;
           if (attachmentPath != null && !containsImage) {
             event.preventDefault();
             event.stopPropagation();
 
             const fileName = deriveAttachmentFileName(
-              attachmentLink.textContent ?? "",
+              clickedLink.textContent ?? "",
               attachmentPath,
             );
             if (!startDownload(attachmentPath, fileName)) {
@@ -629,11 +630,18 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
                 setAttachmentStatus(attachmentPath, "error");
                 scheduleAttachmentStatusClear(attachmentPath);
               });
+            return;
+          }
+
+          if (callbacks?.onPermalinkClick?.(href) === true) {
+            event.preventDefault();
+            event.stopPropagation();
+            return;
           }
         }
       },
       [
-        callbacks?.onOpenDirectMessage,
+        callbacks,
         finishDownload,
         mediaGallery,
         scheduleAttachmentStatusClear,
@@ -675,6 +683,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
         />
       ) : null;
     const bubbleSurfaceClass = "rounded-[18px]";
+    const focusedBubbleBackgroundClass = !isSelected && isFocused ? "bg-card-bg-active" : null;
+    const ownBubbleBackgroundClass = focusedBubbleBackgroundClass ?? "bg-msg-own-bg";
+    const peerBubbleBackgroundClass = focusedBubbleBackgroundClass ?? "bg-bg-elevated";
     const ownBubbleTailClass = "rounded-br-[6px]";
     const peerBubbleTailClass = "rounded-bl-[6px]";
     const hasReactions = reactionGroups.length > 0;
@@ -738,10 +749,10 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
         <div
           className={`relative overflow-hidden px-3 py-2 pr-14 ${
             hasReactions ? "pb-10" : "pb-5"
-          } ${bubbleSurfaceClass} ${
+          } ${bubbleSurfaceClass} transition-colors duration-700 ${
             isOwn
-              ? `${ownBubbleTailClass} bg-msg-own-bg text-text-primary`
-              : `${peerBubbleTailClass} bg-bg-elevated text-text-primary`
+              ? `${ownBubbleTailClass} ${ownBubbleBackgroundClass} text-text-primary`
+              : `${peerBubbleTailClass} ${peerBubbleBackgroundClass} text-text-primary`
           }`}
         >
           <div
@@ -776,11 +787,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
             role="button"
             tabIndex={0}
             onKeyDown={handleKeyboardContextMenu}
-            className={`selectable group relative flex items-start gap-2 py-2 ${
+            className={`selectable group relative flex items-start gap-2 py-2 transition-colors duration-500 ${
               !isSelected ? "hover:bg-bg-elevated/30" : ""
-            } ${isSelected ? "bg-msg-selected" : ""} ${
-              !isSelected && isFocused ? "bg-accent-soft/35" : ""
-            }`}
+            } ${isSelected ? "bg-msg-selected" : ""}`}
           >
             {selectionMode && (
               <button
@@ -834,11 +843,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
           role="button"
           tabIndex={0}
           onKeyDown={handleKeyboardContextMenu}
-          className={`selectable group relative flex gap-2 px-4 py-2 ${
+          className={`selectable group relative flex gap-2 px-4 py-2 transition-colors duration-500 ${
             isOwn ? "flex-row-reverse" : ""
-          } ${!isSelected ? "hover:bg-bg-elevated/30" : ""} ${
-            isSelected ? "bg-msg-selected" : ""
-          } ${!isSelected && isFocused ? "bg-accent-soft/35" : ""}`}
+          } ${!isSelected ? "hover:bg-bg-elevated/30" : ""} ${isSelected ? "bg-msg-selected" : ""}`}
         >
           {selectionMode && (
             <button

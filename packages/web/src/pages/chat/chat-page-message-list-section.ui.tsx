@@ -87,7 +87,7 @@ export const ChatPageMessageListSection = React.memo(function ChatPageMessageLis
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       {showRefreshLoadError ? (
-        <div className="mx-3 mt-2 flex shrink-0 items-center justify-between gap-2 rounded-lg border border-border-subtle bg-bg-elevated/50 px-3 py-2 text-sm text-notice-base">
+        <div className="bg-bg-elevated/50 mx-3 mt-2 flex shrink-0 items-center justify-between gap-2 rounded-lg border border-border-subtle px-3 py-2 text-sm text-notice-base">
           <span className="min-w-0 flex-1">{t("chat.messagesRefreshError")}</span>
           <button
             type="button"
@@ -99,7 +99,7 @@ export const ChatPageMessageListSection = React.memo(function ChatPageMessageLis
         </div>
       ) : null}
       {boundaryLoadFailed ? (
-        <div className="mx-3 mt-2 flex shrink-0 items-center justify-between gap-2 rounded-lg border border-border-subtle bg-bg-elevated/50 px-3 py-2 text-sm text-notice-base">
+        <div className="bg-bg-elevated/50 mx-3 mt-2 flex shrink-0 items-center justify-between gap-2 rounded-lg border border-border-subtle px-3 py-2 text-sm text-notice-base">
           <span className="min-w-0 flex-1">{t("chat.boundaryPaginationError")}</span>
           <button
             type="button"

@@ -125,6 +125,7 @@
     "reactionError": "Reaction error",
     "saveError": "Failed to save",
     "forwardError": "Failed to forward",
+    "anchorAccessDenied": "No access to the original message or chat",
     "sendFailed": "Failed to send message",
     "sending": "Sending…",
     "retrySend": "Retry send",

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { MockMessage } from "~/shared/api/zulip.types";
@@ -72,6 +72,23 @@ describe("MessageList focused message behavior", () => {
     expect(focused).toHaveAttribute("data-focused", "true");
     expect(scrollIntoView).toHaveBeenCalled();
     expect(scrollTargets).toContain("2");
+  });
+
+  it("clears focused highlight after temporary flash duration", () => {
+    vi.useFakeTimers();
+    try {
+      render(
+        <MessageList messages={[msg(1), msg(2), msg(3)]} currentUserId={7} focusedMessageId={2} />,
+      );
+      expect(screen.getByTestId("message-2")).toHaveAttribute("data-focused", "true");
+
+      act(() => {
+        vi.advanceTimersByTime(8_000);
+      });
+      expect(screen.getByTestId("message-2")).toHaveAttribute("data-focused", "false");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("scrolls first unread message into view when no focused message is set", () => {
