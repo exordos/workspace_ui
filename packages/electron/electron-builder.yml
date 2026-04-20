@@ -15,7 +15,7 @@ extraMetadata:
   main: dist/main.js
 
 asar: true
-compression: maximum
+compression: normal
 
 # ──────────────────────────── Windows 11 ────────────────────────────
 win:
@@ -138,8 +138,8 @@ rpm:
     - at-spi2-core
 
 # ──────────────────────────── Auto-update ────────────────────────────
-# Feed URL embedded in the packaged app. To stop the running app from contacting
-# the update server, rebuild main with ELECTRON_DISABLE_AUTO_UPDATE=1 (see packages/electron/.env.example).
+# Feed URL embedded when you build with `npm run build:electron:with-updates`.
+# Default `npm run build:electron` bakes in no updater (ELECTRON_DISABLE_AUTO_UPDATE=1).
 publish:
   provider: generic
   url: https://update.workspace.genesis-core.tech/releases

@@ -7,6 +7,7 @@
  * HTTP methods (GET/POST/PATCH/DELETE), JSON handling, and middleware management.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ZULIP_API_FETCH_TIMEOUT_MS } from "../config/constants";
 import { wipeCredentials } from "../lib/auth-guard";
 import type { Middleware, ApiRequest, ApiResponse, NextFn } from "./client";
 
@@ -275,6 +276,67 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
     expect(res.ok).toBe(true);
     expect(res.status).toBe(200);
     expect(res.data).toEqual({ result: "success", messages: [] });
+  });
+
+  // Hung Zulip responses must not block the UI indefinitely.
+  it("zulipApi aborts a hung fetch after ZULIP_API_FETCH_TIMEOUT_MS", async () => {
+    vi.useFakeTimers();
+    try {
+      const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
+      setInstanceProvider(() => ({
+        id: "i1",
+        realm: "https://zulip.test",
+        email: "u@t.com",
+        apiKey: "key123",
+      }));
+      refreshZulipApiBase();
+
+      mockFetch.mockImplementation((_url: string, init?: RequestInit) => {
+        return new Promise<Response>((_resolve, reject) => {
+          const s = init?.signal;
+          if (s?.aborted) {
+            reject(new DOMException("Aborted", "AbortError"));
+            return;
+          }
+          s?.addEventListener("abort", () => {
+            reject(new DOMException("Aborted", "AbortError"));
+          });
+        });
+      });
+
+      const pending = zulipApi.get("/messages", { anchor: "newest" });
+      const assertRejected = expect(pending).rejects.toMatchObject({ name: "AbortError" });
+      await vi.advanceTimersByTimeAsync(ZULIP_API_FETCH_TIMEOUT_MS);
+      await assertRejected;
+      expect(mockFetch).toHaveBeenCalledOnce();
+      const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+      expect(init.signal?.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // Long-poll GET /events is held open by the server; do not merge the REST deadline signal.
+  it("zulipApi GET /events skips wall-clock fetch timeout", async () => {
+    const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
+    setInstanceProvider(() => ({
+      id: "i1",
+      realm: "https://zulip.test",
+      email: "u@t.com",
+      apiKey: "key123",
+    }));
+    refreshZulipApiBase();
+
+    mockFetch.mockResolvedValueOnce(mockJsonResponse({ result: "success", events: [] }));
+    await zulipApi.get("/events", { queue_id: "q-1", last_event_id: "0" });
+    const [, initNoCaller] = mockFetch.mock.calls[0] as [string, RequestInit];
+    expect(initNoCaller.signal).toBeUndefined();
+
+    const user = new AbortController();
+    mockFetch.mockResolvedValueOnce(mockJsonResponse({ result: "success", events: [] }));
+    await zulipApi.get("/events", { queue_id: "q-1", last_event_id: "1" }, user.signal);
+    const [, initWithCaller] = mockFetch.mock.calls[1] as [string, RequestInit];
+    expect(initWithCaller.signal).toBe(user.signal);
   });
 
   // POST must use application/x-www-form-urlencoded (Zulip API convention).
