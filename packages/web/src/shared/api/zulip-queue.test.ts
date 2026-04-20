@@ -2,6 +2,12 @@
  * Tests for Zulip API (zulip-queue module).
  */
 import { describe, expect, it, vi } from "vitest";
+import {
+  getMockRefreshZulipApiBase,
+  getMockZulipApi,
+  jsonResponse,
+  mockFetch,
+} from "./zulip.test.setup";
 import { getCurrentInstance } from "./client";
 import {
   deleteQueue,
@@ -11,12 +17,6 @@ import {
   registerQueue,
   registerQueueForCredentials,
 } from "./zulip-queue";
-import {
-  getMockRefreshZulipApiBase,
-  getMockZulipApi,
-  jsonResponse,
-  mockFetch,
-} from "./zulip.test.setup";
 
 const mockZulipApi = getMockZulipApi();
 const mockRefreshZulipApiBase = getMockRefreshZulipApiBase();

@@ -18,6 +18,7 @@
  *   apiClient.use(myMiddleware);
  */
 
+import { ZULIP_API_FETCH_TIMEOUT_MS } from "~/shared/config/constants";
 import {
   DEV_WORKSPACE_ORG_PROXY_PATH_PREFIX,
   X_WORKSPACE_DEV_TARGET_ORIGIN,
@@ -315,6 +316,13 @@ function resolveRetryDelayMs(retryAfterHeader: string | null, attempt: number): 
   return Math.min(parsedSeconds * 1000, 10000);
 }
 
+function isAbortError(err: unknown): boolean {
+  return (
+    (err instanceof DOMException && err.name === "AbortError") ||
+    (err instanceof Error && err.name === "AbortError")
+  );
+}
+
 const retryMiddleware: Middleware = async (req, next) => {
   const MAX_RETRIES = 2;
   const RETRY_STATUSES = new Set([429, 502, 503, 504]);
@@ -334,6 +342,9 @@ const retryMiddleware: Middleware = async (req, next) => {
         });
       }
     } catch (err) {
+      if (isAbortError(err)) {
+        throw err;
+      }
       lastError = err;
       if (attempt >= MAX_RETRIES) throw err;
       await new Promise<void>((r) => {
@@ -364,6 +375,59 @@ function shouldSkipAuth401Handling(req: ApiRequest): boolean {
     return false;
   }
 }
+
+/** Merges an optional caller signal with a wall-clock deadline (whichever fires first). */
+function createLinkedAbortSignal(
+  outer: AbortSignal | undefined,
+  timeoutMs: number,
+): { signal: AbortSignal; cleanup: () => void } {
+  const controller = new AbortController();
+  const id = setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
+  const onOuterAbort = () => {
+    controller.abort();
+  };
+  if (outer) {
+    if (outer.aborted) {
+      controller.abort();
+    } else {
+      outer.addEventListener("abort", onOuterAbort);
+    }
+  }
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      clearTimeout(id);
+      outer?.removeEventListener("abort", onOuterAbort);
+    },
+  };
+}
+
+/** Zulip event-queue long-poll must not use the generic REST timeout (server holds the connection). */
+function isZulipEventsLongPollGet(req: ApiRequest): boolean {
+  if (req.method !== "GET") {
+    return false;
+  }
+  try {
+    return /\/events\/?$/.test(new URL(req.url).pathname);
+  } catch {
+    return false;
+  }
+}
+
+/** Enforces {@link ZULIP_API_FETCH_TIMEOUT_MS} per attempt; placed after retry so each retry gets a new deadline. */
+const zulipRequestTimeoutMiddleware: Middleware = async (req, next) => {
+  if (isZulipEventsLongPollGet(req)) {
+    return next(req);
+  }
+  const { signal, cleanup } = createLinkedAbortSignal(req.signal, ZULIP_API_FETCH_TIMEOUT_MS);
+  try {
+    return await next({ ...req, signal });
+  } finally {
+    cleanup();
+  }
+};
 
 const authErrorMiddleware: Middleware = async (req, next) => {
   const res = await next(req);
@@ -657,6 +721,8 @@ function getZulipBaseUrl(): string {
 }
 
 export const zulipApi = new ApiClient("");
+zulipApi.useBefore(authErrorMiddleware, zulipRequestTimeoutMiddleware);
+
 export const workspaceApi = new ApiClient(env.WORKSPACE_API_BASE);
 
 workspaceApi.useBefore(sessionCsrfMiddleware, devWorkspaceOrgTargetHeaderMiddleware);
