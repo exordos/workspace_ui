@@ -15,7 +15,7 @@ extraMetadata:
   main: dist/main.js
 
 asar: true
-compression: maximum
+compression: normal
 
 # ──────────────────────────── Windows 11 ────────────────────────────
 win:
