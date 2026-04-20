@@ -3,16 +3,31 @@
  * IndexedDB retention per chat should match these totals so cold cache aligns with API.
  */
 
+/**
+ * Focused anchor window for stream chats (`anchor=<message_id>`).
+ * We intentionally request both sides so `near` navigation loads context around the anchor,
+ * not just history before it.
+ */
+export const ZULIP_STREAM_ANCHOR_NUM_BEFORE = 100;
+export const ZULIP_STREAM_ANCHOR_NUM_AFTER = 100;
+
 /** Matches `fetchMessages` (stream/topic, anchor newest). */
-export const ZULIP_STREAM_CHAT_NUM_BEFORE = 100;
+export const ZULIP_STREAM_CHAT_NUM_BEFORE = ZULIP_STREAM_ANCHOR_NUM_BEFORE;
 export const ZULIP_STREAM_CHAT_NUM_AFTER = 0;
 
-/** Matches `fetchDmMessages` (anchor newest). */
-export const ZULIP_DM_CHAT_NUM_BEFORE = 60;
-export const ZULIP_DM_CHAT_NUM_AFTER = 150;
+/**
+ * Focused anchor window for DM chats (`anchor=<message_id>`).
+ * Keeps context after the anchor for permalink navigation.
+ */
+export const ZULIP_DM_ANCHOR_NUM_BEFORE = 60;
+export const ZULIP_DM_ANCHOR_NUM_AFTER = 150;
 
-/** Max messages returned by initial DM fetch (60 + 150). */
-export const ZULIP_DM_INITIAL_WINDOW_TOTAL = ZULIP_DM_CHAT_NUM_BEFORE + ZULIP_DM_CHAT_NUM_AFTER;
+/** Matches `fetchDmMessages` (anchor newest). */
+export const ZULIP_DM_CHAT_NUM_BEFORE = ZULIP_DM_ANCHOR_NUM_BEFORE;
+export const ZULIP_DM_CHAT_NUM_AFTER = 0;
+
+/** Largest DM window we may load around an anchor (60 + 150). */
+export const ZULIP_DM_INITIAL_WINDOW_TOTAL = ZULIP_DM_ANCHOR_NUM_BEFORE + ZULIP_DM_ANCHOR_NUM_AFTER;
 
 /** Largest per-chat retention window we persist (DM). */
 export const ZULIP_CHAT_MESSAGE_CACHE_MAX_WINDOW = ZULIP_DM_INITIAL_WINDOW_TOTAL;

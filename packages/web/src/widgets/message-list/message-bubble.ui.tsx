@@ -641,8 +641,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
         }
       },
       [
-        callbacks?.onOpenDirectMessage,
-        callbacks?.onPermalinkClick,
+        callbacks,
         finishDownload,
         mediaGallery,
         scheduleAttachmentStatusClear,
@@ -684,6 +683,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
         />
       ) : null;
     const bubbleSurfaceClass = "rounded-[18px]";
+    const focusedBubbleBackgroundClass = !isSelected && isFocused ? "bg-card-bg-active" : null;
+    const ownBubbleBackgroundClass = focusedBubbleBackgroundClass ?? "bg-msg-own-bg";
+    const peerBubbleBackgroundClass = focusedBubbleBackgroundClass ?? "bg-bg-elevated";
     const ownBubbleTailClass = "rounded-br-[6px]";
     const peerBubbleTailClass = "rounded-bl-[6px]";
     const hasReactions = reactionGroups.length > 0;
@@ -747,10 +749,10 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
         <div
           className={`relative overflow-hidden px-3 py-2 pr-14 ${
             hasReactions ? "pb-10" : "pb-5"
-          } ${bubbleSurfaceClass} ${
+          } ${bubbleSurfaceClass} transition-colors duration-700 ${
             isOwn
-              ? `${ownBubbleTailClass} bg-msg-own-bg text-text-primary`
-              : `${peerBubbleTailClass} bg-bg-elevated text-text-primary`
+              ? `${ownBubbleTailClass} ${ownBubbleBackgroundClass} text-text-primary`
+              : `${peerBubbleTailClass} ${peerBubbleBackgroundClass} text-text-primary`
           }`}
         >
           <div
@@ -785,11 +787,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
             role="button"
             tabIndex={0}
             onKeyDown={handleKeyboardContextMenu}
-            className={`selectable group relative flex items-start gap-2 py-2 ${
+            className={`selectable group relative flex items-start gap-2 py-2 transition-colors duration-500 ${
               !isSelected ? "hover:bg-bg-elevated/30" : ""
-            } ${isSelected ? "bg-msg-selected" : ""} ${
-              !isSelected && isFocused ? "bg-accent-soft/35" : ""
-            }`}
+            } ${isSelected ? "bg-msg-selected" : ""}`}
           >
             {selectionMode && (
               <button
@@ -843,11 +843,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
           role="button"
           tabIndex={0}
           onKeyDown={handleKeyboardContextMenu}
-          className={`selectable group relative flex gap-2 px-4 py-2 ${
+          className={`selectable group relative flex gap-2 px-4 py-2 transition-colors duration-500 ${
             isOwn ? "flex-row-reverse" : ""
-          } ${!isSelected ? "hover:bg-bg-elevated/30" : ""} ${
-            isSelected ? "bg-msg-selected" : ""
-          } ${!isSelected && isFocused ? "bg-accent-soft/35" : ""}`}
+          } ${!isSelected ? "hover:bg-bg-elevated/30" : ""} ${isSelected ? "bg-msg-selected" : ""}`}
         >
           {selectionMode && (
             <button
