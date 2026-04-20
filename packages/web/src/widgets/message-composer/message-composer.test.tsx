@@ -301,7 +301,7 @@ describe("MessageComposer saved snippets", () => {
 });
 
 describe("MessageComposer mention suggestions", () => {
-  it("opens mention popup for a standalone @ at start and after whitespace", async () => {
+  it("opens mention popup for a standalone @ after supported delimiters", async () => {
     useUsersStore
       .getState()
       .mergeUsers([
@@ -318,6 +318,16 @@ describe("MessageComposer mention suggestions", () => {
     expect(useMentionSuggestStore.getState().query).toBe("");
 
     fireEvent.change(textbox, { target: { value: "hi @a", selectionStart: 5 } });
+    await screen.findByText("Alice Johnson");
+    expect(useMentionSuggestStore.getState().visible).toBe(true);
+    expect(useMentionSuggestStore.getState().query).toBe("a");
+
+    fireEvent.change(textbox, { target: { value: "hi,@a", selectionStart: 5 } });
+    await screen.findByText("Alice Johnson");
+    expect(useMentionSuggestStore.getState().visible).toBe(true);
+    expect(useMentionSuggestStore.getState().query).toBe("a");
+
+    fireEvent.change(textbox, { target: { value: "(@a", selectionStart: 3 } });
     await screen.findByText("Alice Johnson");
     expect(useMentionSuggestStore.getState().visible).toBe(true);
     expect(useMentionSuggestStore.getState().query).toBe("a");

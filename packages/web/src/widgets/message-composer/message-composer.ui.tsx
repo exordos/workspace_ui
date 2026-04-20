@@ -239,7 +239,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   const detectMention = useCallback(
     (text: string, cursorPos: number) => {
       const before = text.slice(0, cursorPos);
-      const match = /(?:^|\s)@(\S*)$/.exec(before);
+      const match = /(?:^|[\s([{,.:;!?])@(\S*)$/.exec(before);
       if (match) {
         const query = match[1] ?? "";
         setMentionQuery(query);
