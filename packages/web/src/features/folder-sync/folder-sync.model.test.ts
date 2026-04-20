@@ -307,7 +307,7 @@ describe("folder-sync model orchestration", () => {
     await useFolderSyncStore.getState().selectFolder("folder-7");
     expect(loadFolderItemsForSelection).toHaveBeenCalledTimes(1);
     expect(useFolderSyncStore.getState().selectedFolderChatIds?.size).toBe(0);
-    expect(useFolderSyncStore.getState().folderItemsByFolderId.has("folder-7")).toBe(false);
+    expect(useFolderSyncStore.getState().folderItemsByFolderId.get("folder-7")).toEqual([]);
     expect(useFolderSyncStore.getState().staleFolderIds.has("folder-7")).toBe(true);
 
     await useFolderSyncStore.getState().selectFolder("folder-7");
@@ -410,6 +410,46 @@ describe("folder-sync model orchestration", () => {
     const state = useFolderSyncStore.getState();
     expect(state.loading).toBe(false);
     expect(state.selectedFolderChatIds?.has("dm:fallback")).toBe(true);
+  });
+
+  it("onFoldersLoaded updates rail only and keeps cached folder items until snapshot completes", async () => {
+    const fullSnapshot = makeFolderSnapshot({ folderId: "folder-7" });
+    const folders = fullSnapshot.folders;
+    const folderEntry = fullSnapshot.itemsByFolderId.get("folder-7");
+    const cachedItems = folderEntry?.ok === true ? folderEntry.items : [];
+
+    let stateAfterFoldersLoaded: ReturnType<typeof useFolderSyncStore.getState> | null = null;
+
+    vi.mocked(loadFolderSyncSnapshot).mockImplementation(
+      async (
+        _instanceId: string,
+        options?: Parameters<typeof loadFolderSyncSnapshot>[1],
+      ) => {
+        await options?.onFoldersLoaded?.(folders);
+        stateAfterFoldersLoaded = useFolderSyncStore.getState();
+        return makeFolderSnapshot({ folderId: "folder-7", selectedChatId: "dm:final" });
+      },
+    );
+
+    useFolderSyncStore.setState({
+      instanceId: "inst-a",
+      labels: { allChats: "All", personal: "Personal", channels: "Channels" },
+      showSystemFolders: false,
+      selectedFolderId: "folder-7",
+      folders: [
+        { id: SYSTEM_ALL_FOLDER_ID, label: "All", backgroundColor: 0, systemType: "all" },
+        { id: "folder-7", label: "Team", backgroundColor: 0, systemType: "created" },
+      ],
+      folderItemsByFolderId: new Map([["folder-7", cachedItems]]),
+      selectedFolderChatIds: new Set(["dm:42"]),
+    });
+
+    await useFolderSyncStore.getState().refresh("polling");
+
+    expect(stateAfterFoldersLoaded).not.toBeNull();
+    expect(stateAfterFoldersLoaded!.folderItemsByFolderId.get("folder-7")).toEqual(cachedItems);
+    expect(stateAfterFoldersLoaded!.selectedFolderChatIds?.has("dm:42")).toBe(true);
+    expect(useFolderSyncStore.getState().selectedFolderChatIds?.has("dm:final")).toBe(true);
   });
 
   it("enables loading for mutation refresh while request is in flight", async () => {

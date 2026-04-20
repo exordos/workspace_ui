@@ -1,8 +1,8 @@
 /**
  * Textarea selection mutations for markdown formatting in the composer.
  */
-import type { RefObject } from "react";
 import type { SelectionMutation } from "./message-composer.types";
+import type { RefObject } from "react";
 
 export function mutateSelection(
   textareaRef: RefObject<HTMLTextAreaElement | null>,

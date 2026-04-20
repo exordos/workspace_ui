@@ -1,7 +1,7 @@
 import { useEffect } from "react";
-import type { NavigateFunction } from "react-router-dom";
 import type { ZulipInstance } from "~/entities/instance/instance.model";
 import { buildRouteFromPushNotificationClick, findInstanceIdByRealmUri } from "~/shared/lib/push-click";
+import type { NavigateFunction } from "react-router-dom";
 
 export function useLayoutPushClickRouting(options: {
   currentInstanceId: string | null;

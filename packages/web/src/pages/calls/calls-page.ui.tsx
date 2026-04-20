@@ -1,12 +1,13 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useInstancesStore } from "~/entities/instance/instance.model";
 import { JitsiCallModal } from "~/features/jitsi-call/jitsi-call.ui";
 import { t } from "~/i18n/i18n";
-import type { MockMessage } from "~/shared/api/zulip.types";
 import { fetchAllMessagesPage } from "~/shared/api/zulip-messages";
+import type { MockMessage } from "~/shared/api/zulip.types";
 import { formatMessageTime } from "~/shared/lib/format";
-import { getJitsiMeetingUrl, parseJitsiUrl } from "~/shared/lib/jitsi";
+import { getJitsiMeetingUrl, parseJitsiUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
 import { createLogger } from "~/shared/lib/logger";
 import { buildNavigableRouteFromMessage } from "~/shared/lib/push-click";
 import { Icon } from "~/shared/ui/icon";
@@ -44,8 +45,12 @@ function resolveCallLocationName(message: MockMessage): string {
   return names.join(", ");
 }
 
-function formatCallRoomLabel(meetingUrl: string, fallbackLabel: string): string {
-  const parsed = parseJitsiUrl(meetingUrl);
+function formatCallRoomLabel(
+  meetingUrl: string,
+  fallbackLabel: string,
+  jitsiLinkOptions?: JitsiLinkOptions,
+): string {
+  const parsed = parseJitsiUrl(meetingUrl, jitsiLinkOptions);
   const roomName = parsed?.roomName?.trim();
   if (roomName == null || roomName.length === 0) {
     return fallbackLabel;
@@ -72,19 +77,20 @@ function resolveCallContextLabel(
 
 function collectRecentJitsiCalls(
   messages: MockMessage[],
-  options: { fallbackRoomLabel: string; dmFallbackLabel: string },
+  options: { fallbackRoomLabel: string; dmFallbackLabel: string; jitsiLinkOptions?: JitsiLinkOptions },
 ): RecentJitsiCallEntry[] {
   const entriesByUrl = new Map<string, RecentJitsiCallEntry>();
+  const jitsiLinkOptions = options.jitsiLinkOptions;
 
   for (const message of messages) {
-    const meetingUrl = getJitsiMeetingUrl(message.content);
+    const meetingUrl = getJitsiMeetingUrl(message.content, jitsiLinkOptions);
     if (!meetingUrl) continue;
 
     const locationName = resolveCallLocationName(message);
     const entry: RecentJitsiCallEntry = {
       id: message.id,
       meetingUrl,
-      roomLabel: formatCallRoomLabel(meetingUrl, options.fallbackRoomLabel),
+      roomLabel: formatCallRoomLabel(meetingUrl, options.fallbackRoomLabel, jitsiLinkOptions),
       locationName,
       contextLabel: resolveCallContextLabel(message, locationName, options.dmFallbackLabel),
       message,
@@ -164,6 +170,11 @@ CallsRow.displayName = "CallsRow";
 export const CallsPage: React.FC = () => {
   const navigate = useNavigate();
   const currentUserId = useChatListStore((s) => s.currentUserId ?? null);
+  const jitsiMeetBaseUrl = useInstancesStore((s) => s.jitsiMeetBaseUrl);
+  const jitsiLinkOptions = useMemo<JitsiLinkOptions>(
+    () => ({ serverBaseUrl: jitsiMeetBaseUrl }),
+    [jitsiMeetBaseUrl],
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [recentCalls, setRecentCalls] = useState<RecentJitsiCallEntry[]>([]);
@@ -181,6 +192,7 @@ export const CallsPage: React.FC = () => {
           collectRecentJitsiCalls(page.messages, {
             fallbackRoomLabel: t("call.call"),
             dmFallbackLabel: t("dm.private"),
+            jitsiLinkOptions,
           }),
         );
       })
@@ -196,7 +208,7 @@ export const CallsPage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [jitsiLinkOptions, t]);
 
   const handleJoinCall = useCallback((entry: RecentJitsiCallEntry) => {
     setActiveCall(entry);

@@ -1,11 +1,11 @@
 import "fake-indexeddb/auto";
 import { afterEach, describe, expect, it } from "vitest";
+import { openMessageCacheDb, resetMessageCacheDbSingletonForTests } from "~/shared/lib/message-cache-db";
 import {
   deleteUsersDirectoryRow,
   loadUsersDirectoryRow,
   persistUsersDirectoryRow,
 } from "~/shared/lib/users-directory-snapshot-db";
-import { openMessageCacheDb, resetMessageCacheDbSingletonForTests } from "~/shared/lib/message-cache-db";
 
 const INSTANCE = "inst-users";
 
@@ -19,7 +19,10 @@ afterEach(async () => {
   resetMessageCacheDbSingletonForTests();
   await new Promise<void>((resolve, reject) => {
     const req = indexedDB.deleteDatabase("workspace-message-cache-v1");
-    req.onerror = () => reject(req.error);
+    req.onerror = () =>
+      reject(
+        req.error instanceof Error ? req.error : new Error(String(req.error ?? "deleteDatabase failed")),
+      );
     req.onsuccess = () => resolve();
   });
 });

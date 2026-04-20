@@ -15,6 +15,9 @@ extraMetadata:
   main: dist/main.js
 
 asar: true
+# PNG icons must be readable from a real path on Linux: nativeImage / GTK do not load from inside app.asar.
+asarUnpack:
+  - resources/**
 compression: normal
 
 # ──────────────────────────── Windows 11 ────────────────────────────
@@ -109,10 +112,10 @@ linux:
         - arm64
   icon: resources/icons
   category: Network;InstantMessaging;Chat
+  # Must be a map of Desktop Entry keys — not a raw .desktop string (breaks Icon=/Name=/Exec= merge).
   desktop:
-    entry: |
-      [Desktop Entry]
-      StartupWMClass=workspace
+    entry:
+      StartupWMClass: workspace
   artifactName: "${productName}-${version}-linux-${arch}.${ext}"
 
 deb:

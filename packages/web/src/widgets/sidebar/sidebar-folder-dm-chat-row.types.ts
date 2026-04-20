@@ -1,5 +1,5 @@
-import type { KeyboardEventHandler, MouseEventHandler } from "react";
 import type { SidebarChat } from "./sidebar.types";
+import type { KeyboardEventHandler, MouseEventHandler } from "react";
 
 export interface DmChatRowProps {
   chat: Extract<SidebarChat, { type: "dm" }>;

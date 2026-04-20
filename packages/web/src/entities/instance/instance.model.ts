@@ -4,6 +4,7 @@
  * Persists realm URLs, credentials, and active instance selection to localStorage.
  */
 import { create } from "zustand";
+import { logStoreAction } from "~/shared/lib/logger";
 
 const INSTANCES_STORAGE_KEY = "zulip-web-instances";
 const CURRENT_INSTANCE_KEY = "zulip-web-current-instance";
@@ -151,6 +152,9 @@ function generateId(): string {
 }
 
 interface InstancesState extends StoredState {
+  /** Effective Jitsi base URL from last Zulip register for the active instance (not persisted). */
+  jitsiMeetBaseUrl: string | null;
+  setJitsiMeetBaseUrl: (url: string | null) => void;
   addInstance: (instance: Omit<ZulipInstance, "id">) => string;
   removeInstance: (id: string) => void;
   setCurrentInstanceId: (id: string | null) => void;
@@ -161,6 +165,13 @@ interface InstancesState extends StoredState {
 
 export const useInstancesStore = create<InstancesState>((set, get) => ({
   ...loadFromStorage(),
+  jitsiMeetBaseUrl: null,
+
+  setJitsiMeetBaseUrl: (url) => {
+    const next = url != null && url.trim() !== "" ? url.trim().replace(/\/+$/, "") : null;
+    logStoreAction("instances", "setJitsiMeetBaseUrl", { hasUrl: next != null });
+    set({ jitsiMeetBaseUrl: next });
+  },
 
   addInstance: (instance) => {
     const id = generateId();
@@ -181,6 +192,7 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
 
   removeInstance: (id) => {
     set((state) => {
+      const removedWasCurrent = state.currentInstanceId === id;
       const instances = state.instances.filter((i) => i.id !== id);
       let currentInstanceId = state.currentInstanceId;
       if (currentInstanceId === id) {
@@ -189,7 +201,12 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
       const unreadCountsByInstance = { ...state.unreadCountsByInstance };
       delete unreadCountsByInstance[id];
       persist(instances, currentInstanceId, unreadCountsByInstance);
-      return { instances, currentInstanceId, unreadCountsByInstance };
+      return {
+        instances,
+        currentInstanceId,
+        unreadCountsByInstance,
+        ...(removedWasCurrent ? { jitsiMeetBaseUrl: null as string | null } : {}),
+      };
     });
   },
 
@@ -204,7 +221,12 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
               ...state.instances.filter((instance) => instance.id !== id),
             ];
       persist(instances, id, state.unreadCountsByInstance);
-      return { currentInstanceId: id, instances };
+      const switched = id !== state.currentInstanceId;
+      return {
+        currentInstanceId: id,
+        instances,
+        ...(switched ? { jitsiMeetBaseUrl: null as string | null } : {}),
+      };
     });
   },
 

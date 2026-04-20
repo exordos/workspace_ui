@@ -15,6 +15,7 @@ import {
   zulipPipelinePost,
   ensureZulipApiReady,
 } from "./zulip-pipeline.internal";
+import { parseRegisterResponseJitsiServerUrl } from "./zulip-register-jitsi.lib";
 import { parseServerThumbnailFormats } from "./zulip-register-metadata.lib";
 import { parseUnreadMessagesCount } from "./zulip-unread.lib";
 import {
@@ -229,6 +230,7 @@ export async function registerQueue(
   // Что делает: собирает группы организации для последующей проверки channel permissions в UI/store.
   const realmUserGroups = parseRealmUserGroups(data.realm_user_groups);
   const serverThumbnailFormats = parseServerThumbnailFormats(data.server_thumbnail_formats);
+  const jitsiServerUrlEffective = parseRegisterResponseJitsiServerUrl(data);
   const cacheKey = getCurrentUserTopicsCacheKey();
   if (cacheKey && userTopics) {
     setCachedUserTopicsForKey(cacheKey, userTopics);
@@ -245,6 +247,7 @@ export async function registerQueue(
       : {}),
     ...(realmUserGroups ? { realm_user_groups: realmUserGroups } : {}),
     ...(serverThumbnailFormats ? { server_thumbnail_formats: serverThumbnailFormats } : {}),
+    ...(jitsiServerUrlEffective ? { jitsi_server_url_effective: jitsiServerUrlEffective } : {}),
   };
 }
 
@@ -312,6 +315,7 @@ export async function registerQueueForCredentials(
   // Что делает: сохраняет группы и для background-loop сценариев.
   const realmUserGroups = parseRealmUserGroups(data.realm_user_groups);
   const serverThumbnailFormats = parseServerThumbnailFormats(data.server_thumbnail_formats);
+  const jitsiServerUrlEffective = parseRegisterResponseJitsiServerUrl(data);
   setCachedUserTopicsForKey(
     buildUserTopicsCacheKey(credentials.realm, credentials.email),
     userTopics ?? [],
@@ -328,6 +332,7 @@ export async function registerQueueForCredentials(
       : {}),
     ...(realmUserGroups ? { realm_user_groups: realmUserGroups } : {}),
     ...(serverThumbnailFormats ? { server_thumbnail_formats: serverThumbnailFormats } : {}),
+    ...(jitsiServerUrlEffective ? { jitsi_server_url_effective: jitsiServerUrlEffective } : {}),
   };
 }
 

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useDownloadStore } from "~/entities/download/download.model";
+import { useInstancesStore } from "~/entities/instance/instance.model";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
@@ -8,7 +9,7 @@ import type { MockMessage } from "~/shared/api/zulip.types";
 import { buildAuthHeader } from "~/shared/lib/auth-guard";
 import { formatMessageTime, getPresenceState } from "~/shared/lib/format";
 import { sanitizeHtml } from "~/shared/lib/html";
-import { getJitsiMeetingUrl } from "~/shared/lib/jitsi";
+import { getJitsiMeetingUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
 import { messageBodyToUnsanitizedDisplayHtml } from "~/shared/lib/message-markdown-display.lib";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
@@ -81,6 +82,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       anchorRect: DOMRect;
       fallbackName: string;
     } | null>(null);
+    const jitsiMeetBaseUrl = useInstancesStore((s) => s.jitsiMeetBaseUrl);
+    const jitsiLinkOptions = useMemo<JitsiLinkOptions>(
+      () => ({ serverBaseUrl: jitsiMeetBaseUrl }),
+      [jitsiMeetBaseUrl],
+    );
     const getUser = useUsersStore((s) => s.getUser);
     const users = useUsersStore((s) => s.users);
     const user = useUsersStore((s) => s.getUser(message.sender_id));
@@ -660,7 +666,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       };
     }, [handleMessageBodyClick]);
 
-    const jitsiUrl = getJitsiMeetingUrl(message.content) ?? getJitsiMeetingUrl(displayHtmlForJitsi);
+    const jitsiUrl =
+      getJitsiMeetingUrl(message.content, jitsiLinkOptions) ??
+      getJitsiMeetingUrl(displayHtmlForJitsi, jitsiLinkOptions);
     const isJitsiCall = jitsiUrl != null;
     const jitsiLocationName = isJitsiCall ? resolveJitsiLocationName(message) : "";
     const ownDeliveryStatus = isOwn ? resolveOwnMessageDeliveryStatus(message) : null;
@@ -734,6 +742,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
         <MessageBubbleJitsiCard
           message={message}
           jitsiUrl={jitsiUrl}
+          jitsiLinkOptions={jitsiLinkOptions}
           isOwn={isOwn}
           time={time}
           ownDeliveryIndicator={ownDeliveryIndicator}
@@ -747,8 +756,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     ) : (
       <>
         <div
-          className={`relative overflow-hidden px-3 py-2 pr-14 ${
-            hasReactions ? "pb-10" : "pb-5"
+          className={`relative overflow-hidden px-3 pr-14 ${
+            hasReactions ? "pb-2 pt-2" : "py-2 pb-5"
           } ${bubbleSurfaceClass} transition-colors duration-700 ${
             isOwn
               ? `${ownBubbleTailClass} ${ownBubbleBackgroundClass} text-text-primary`
@@ -759,18 +768,27 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
             ref={messageBodyRef}
             className="message-body min-w-0 max-w-full select-text break-words [&_a]:text-accent [&_a]:underline hover:[&_a]:opacity-90 [&_blockquote]:border-l-2 [&_blockquote]:border-border-subtle [&_blockquote]:pl-2 [&_blockquote]:italic [&_blockquote]:text-text-muted [&_img]:my-1 [&_img]:h-auto [&_img]:max-h-[160px] [&_img]:w-auto [&_img]:max-w-full [&_img]:cursor-pointer [&_img]:rounded [&_img]:object-contain [&_p:last-child]:mb-0 [&_p]:mb-1 [&_pre]:my-1 [&_pre]:min-w-0 [&_pre]:max-w-full [&_pre]:whitespace-pre-wrap [&_pre]:border-l-2 [&_pre]:border-border-subtle [&_pre]:py-2 [&_pre]:pl-2 [&_pre]:pr-2 [&_pre]:font-mono [&_pre]:text-sm [&_pre]:italic [&_pre]:text-text-muted [&_pre]:[overflow-wrap:anywhere] [&_pre_code]:min-w-0 [&_pre_code]:max-w-full [&_pre_code]:whitespace-pre-wrap [&_pre_code]:[overflow-wrap:anywhere] [&_span.user-mention]:cursor-pointer [&_span.user-mention]:text-accent hover:[&_span.user-mention]:opacity-90 [&_table]:my-2 [&_table]:w-full [&_table]:border-collapse [&_table]:text-sm [&_td]:border [&_td]:border-border-subtle [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-border-subtle [&_th]:px-2 [&_th]:py-1 [&_th]:text-left"
           />
-          <div className="absolute bottom-2 right-2 flex items-center gap-1 text-[11px] text-text-muted">
-            <span>{time}</span>
-            {ownDeliveryIndicator}
-          </div>
-          <MessageBubbleReactionsRow
-            message={message}
-            isOwn={isOwn}
-            currentUserId={currentUserId}
-            reactionGroups={reactionGroups}
-            resolveReactionAuthorLabel={resolveReactionAuthorLabel}
-            callbacks={callbacks}
-          />
+          {hasReactions ? (
+            <div className="mt-1 flex min-w-0 items-end gap-2">
+              <MessageBubbleReactionsRow
+                message={message}
+                isOwn={isOwn}
+                currentUserId={currentUserId}
+                reactionGroups={reactionGroups}
+                resolveReactionAuthorLabel={resolveReactionAuthorLabel}
+                callbacks={callbacks}
+              />
+              <div className="flex shrink-0 items-center gap-1 text-[11px] text-text-muted">
+                <span>{time}</span>
+                {ownDeliveryIndicator}
+              </div>
+            </div>
+          ) : (
+            <div className="absolute bottom-2 right-2 flex items-center gap-1 text-[11px] text-text-muted">
+              <span>{time}</span>
+              {ownDeliveryIndicator}
+            </div>
+          )}
         </div>
         {contextMenu}
       </>

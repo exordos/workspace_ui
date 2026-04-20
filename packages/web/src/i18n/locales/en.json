@@ -9,6 +9,7 @@
     "underDevelopment": "Section under development",
     "webModeUnavailable": "This section is temporarily unavailable in web mode.",
     "offline": "No internet connection",
+    "rateLimitResume": "Connection will resume in {{seconds}} s",
     "noInstance": "No Zulip instance selected",
     "networkError": "Network error",
     "connectFailed": "Failed to connect to server: {{message}}",
@@ -553,6 +554,12 @@
     "retry": "Retry"
   },
   "sidebar": {
+    "emptyAllChats": "No chats yet",
+    "emptyAllChatsHint": "When you have conversations, they will show up here.",
+    "emptyPersonalChats": "No direct messages yet",
+    "emptyPersonalChatsHint": "Start a DM from the compose menu or directory.",
+    "emptyChannelList": "No channels yet",
+    "emptyChannelListHint": "Subscribe to streams you care about to see them here.",
     "markAsRead": "Mark as read",
     "pin": "Pin",
     "unpin": "Unpin",

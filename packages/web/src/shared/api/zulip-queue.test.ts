@@ -2,6 +2,12 @@
  * Tests for Zulip API (zulip-queue module).
  */
 import { describe, expect, it, vi } from "vitest";
+import {
+  getMockRefreshZulipApiBase,
+  getMockZulipApi,
+  jsonResponse,
+  mockFetch,
+} from "./zulip.test.setup";
 import { getCurrentInstance } from "./client";
 import {
   deleteQueue,
@@ -11,12 +17,6 @@ import {
   registerQueue,
   registerQueueForCredentials,
 } from "./zulip-queue";
-import {
-  getMockRefreshZulipApiBase,
-  getMockZulipApi,
-  jsonResponse,
-  mockFetch,
-} from "./zulip.test.setup";
 
 const mockZulipApi = getMockZulipApi();
 const mockRefreshZulipApiBase = getMockRefreshZulipApiBase();
@@ -167,6 +167,23 @@ describe("registerQueue", () => {
         animated: false,
       },
     ]);
+  });
+
+  it("includes jitsi_server_url_effective from register payload", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        queue_id: "q-123",
+        last_event_id: -1,
+        jitsi_server_url: "https://calls.example.com/",
+      },
+      raw: { statusText: "OK" },
+    });
+
+    const result = await registerQueue(["message"]);
+    expect(result.jitsi_server_url_effective).toBe("https://calls.example.com");
   });
 });
 

@@ -35,6 +35,7 @@ import {
   zulipApi,
 } from "./client";
 import { mockMessageFromGetMessageApiData, rawMessageToMockMessage } from "./zulip-message-map.lib";
+import { parseRegisterResponseJitsiServerUrl } from "./zulip-register-jitsi.lib";
 import { parseServerThumbnailFormats } from "./zulip-register-metadata.lib";
 import { parseUnreadMessagesCount } from "./zulip-unread.lib";
 import type { RegisterQueueResult, ZulipRealmUserGroup } from "./zulip.types";
@@ -167,7 +168,8 @@ function createSessionClient(): Promise<ZulipClient> {
     messages: {
       retrieve: async (params) => {
         const res = await zulipPipelineGet("/messages", buildMessagesQueryParams(params));
-        if (!res?.ok) {
+        throwIfZulipPipelineGetNull(res);
+        if (!res.ok) {
           return { result: "error", messages: [] };
         }
         const data = res.data as {
@@ -730,6 +732,21 @@ async function zulipPipelineGet(
   }
 }
 
+/**
+ * zulipPipelineGet returns null on network failure (non-abort). Message loaders must throw so
+ * callers can show errors instead of treating an empty list as success.
+ */
+function throwIfZulipPipelineGetNull(
+  response: { ok: boolean; status: number; data: unknown } | null,
+  signal?: AbortSignal,
+): asserts response is { ok: boolean; status: number; data: unknown } {
+  if (response != null) return;
+  if (signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
+  throw new Error("Zulip request failed");
+}
+
 async function zulipPipelinePost(path: string, body: Record<string, string>) {
   ensureZulipApiReady();
   return zulipApi.post(normalizeApiPath(path), body);
@@ -767,6 +784,7 @@ export interface GetEventsResult {
   result?: string;
   msg?: string;
   code?: string;
+  "retry-after"?: number;
   events?: ZulipEvent[];
   queue_id?: string;
 }
@@ -848,6 +866,7 @@ export async function registerQueue(
   // Что делает: подхватывает группы организации, чтобы UI мог корректно решать channel-level права.
   const realmUserGroups = parseRealmUserGroups(data.realm_user_groups);
   const serverThumbnailFormats = parseServerThumbnailFormats(data.server_thumbnail_formats);
+  const jitsiServerUrlEffective = parseRegisterResponseJitsiServerUrl(data);
   const cacheKey = getCurrentUserTopicsCacheKey();
   if (cacheKey && userTopics) {
     setCachedUserTopicsForKey(cacheKey, userTopics);
@@ -864,6 +883,7 @@ export async function registerQueue(
       : {}),
     ...(realmUserGroups ? { realm_user_groups: realmUserGroups } : {}),
     ...(serverThumbnailFormats ? { server_thumbnail_formats: serverThumbnailFormats } : {}),
+    ...(jitsiServerUrlEffective ? { jitsi_server_url_effective: jitsiServerUrlEffective } : {}),
   };
 }
 
@@ -931,6 +951,7 @@ export async function registerQueueForCredentials(
   // Что делает: подхватывает группы и для explicit-credentials/background режима.
   const realmUserGroups = parseRealmUserGroups(data.realm_user_groups);
   const serverThumbnailFormats = parseServerThumbnailFormats(data.server_thumbnail_formats);
+  const jitsiServerUrlEffective = parseRegisterResponseJitsiServerUrl(data);
   setCachedUserTopicsForKey(
     buildUserTopicsCacheKey(credentials.realm, credentials.email),
     userTopics ?? [],
@@ -947,6 +968,7 @@ export async function registerQueueForCredentials(
       : {}),
     ...(realmUserGroups ? { realm_user_groups: realmUserGroups } : {}),
     ...(serverThumbnailFormats ? { server_thumbnail_formats: serverThumbnailFormats } : {}),
+    ...(jitsiServerUrlEffective ? { jitsi_server_url_effective: jitsiServerUrlEffective } : {}),
   };
 }
 
@@ -1488,9 +1510,10 @@ async function fetchMessageWindow(options: MessageWindowOptions): Promise<ZulipR
     allow_empty_topic_name: "true",
     apply_markdown: "false",
   });
-  if (!res?.ok) {
+  throwIfZulipPipelineGetNull(res);
+  if (!res.ok) {
     if (flowDebugLabel != null) {
-      logChatListFlow(`api: GET /messages → ${flowDebugLabel} (non-ok)`, { ok: res?.ok ?? false });
+      logChatListFlow(`api: GET /messages → ${flowDebugLabel} (non-ok)`, { ok: false });
     }
     return [];
   }
@@ -1580,7 +1603,8 @@ export async function fetchDirectMessagesPage(
     client_gravatar: "true",
     allow_empty_topic_name: "true",
   });
-  if (!res?.ok) {
+  throwIfZulipPipelineGetNull(res);
+  if (!res.ok) {
     logChatListFlow("api: GET /messages → fetchDirectMessagesPage (non-ok)", { ok: false });
     return { messages: [], foundOldest: false };
   }
@@ -1673,7 +1697,8 @@ export async function fetchActivityMessagesPage(
     client_gravatar: "true",
     apply_markdown: "false",
   });
-  if (!res?.ok) return { messages: [], foundOldest: false };
+  throwIfZulipPipelineGetNull(res);
+  if (!res.ok) return { messages: [], foundOldest: false };
   const data = res.data as {
     result?: string;
     messages?: ZulipRawMessage[];
@@ -1927,8 +1952,9 @@ async function runMessagesWithNarrowPageRequest(options: {
         }),
         signal,
       );
-      if (!response?.ok) {
-        return { messages: [], foundOldest: false, foundNewest: false };
+      throwIfZulipPipelineGetNull(response, signal);
+      if (!response.ok) {
+        throw new Error(t("app.errorStatus", { status: String(response.status) }));
       }
       const data = response.data as {
         result?: string;
@@ -1963,6 +1989,9 @@ async function runMessagesWithNarrowPageRequest(options: {
   } catch (error) {
     if (isAbortError(error) || signal?.aborted) {
       throw error;
+    }
+    if (signal) {
+      throw error instanceof Error ? error : new Error(t("app.networkError"));
     }
     return { messages: [], foundOldest: false, foundNewest: false };
   }
@@ -2058,7 +2087,8 @@ export async function fetchAllMessagesPage(
     apply_markdown: "false",
   });
 
-  if (!res?.ok) {
+  throwIfZulipPipelineGetNull(res);
+  if (!res.ok) {
     return { messages: [], foundOldest: false, foundNewest: false };
   }
 
@@ -2117,8 +2147,9 @@ async function runDmMessagesRequest(ids: number[], signal?: AbortSignal): Promis
         }),
         signal,
       );
-      if (!response?.ok) {
-        return [];
+      throwIfZulipPipelineGetNull(response, signal);
+      if (!response.ok) {
+        throw new Error(t("app.errorStatus", { status: String(response.status) }));
       }
       const data = response.data as {
         result?: string;
@@ -2150,6 +2181,9 @@ async function runDmMessagesRequest(ids: number[], signal?: AbortSignal): Promis
   } catch (error) {
     if (isAbortError(error) || signal?.aborted) {
       throw error;
+    }
+    if (signal) {
+      throw error instanceof Error ? error : new Error(t("app.networkError"));
     }
     return [];
   }

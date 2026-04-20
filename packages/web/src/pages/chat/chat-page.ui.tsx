@@ -14,6 +14,7 @@ import { resolveDraftTargetIds } from "~/entities/draft/draft-chat-target.lib";
 import { createDraft, deleteDraftOnServer, updateDraftOnServer } from "~/entities/draft/draft.api";
 import { useDraftStore } from "~/entities/draft/draft.model";
 import type { DraftType } from "~/entities/draft/draft.types";
+import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore } from "~/entities/user/user.model";
@@ -50,7 +51,7 @@ import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { dmRouteKey } from "~/shared/lib/dm-key";
 import { normalizeDmRouteUserIds } from "~/shared/lib/dm-route.lib";
 import { getPresenceState, formatLastSeen } from "~/shared/lib/format";
-import { buildJitsiMeetingUrl } from "~/shared/lib/jitsi";
+import { buildJitsiMeetingUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
 import { createLogger } from "~/shared/lib/logger";
 import { logMessageFlow, summarizeChatContextForLog } from "~/shared/lib/message-flow-debug.lib";
 import { useShortcut } from "~/shared/lib/shortcuts";
@@ -865,7 +866,10 @@ export const ChatPage: React.FC = () => {
         if (focusedMessageId != null) {
           setActionError(t("message.anchorAccessDenied"));
         }
-        setMessagesLoadError(cacheHydratedBeforeApiRef.current ? "refresh" : "initial");
+        const hadCachedMessages = useCurrentChatMessagesStore.getState().messages.length > 0;
+        setMessagesLoadError(
+          cacheHydratedBeforeApiRef.current && hadCachedMessages ? "refresh" : "initial",
+        );
         setMessagesLoading(false);
       });
     return () => {
@@ -974,7 +978,10 @@ export const ChatPage: React.FC = () => {
         if (focusedMessageId != null) {
           setActionError(t("message.anchorAccessDenied"));
         }
-        setMessagesLoadError(cacheHydratedBeforeApiRef.current ? "refresh" : "initial");
+        const hadCachedMessages = useCurrentChatMessagesStore.getState().messages.length > 0;
+        setMessagesLoadError(
+          cacheHydratedBeforeApiRef.current && hadCachedMessages ? "refresh" : "initial",
+        );
         setMessagesLoading(false);
       });
     return () => {
@@ -1093,6 +1100,12 @@ export const ChatPage: React.FC = () => {
   }, [callTarget, isGroupDmView, dmChat, partnerUser, t]);
   const isOneToOneDm = isDmView && !isGroupDmView;
 
+  const jitsiMeetBaseUrl = useInstancesStore((s) => s.jitsiMeetBaseUrl);
+  const jitsiLinkOptions = useMemo<JitsiLinkOptions>(
+    () => ({ serverBaseUrl: jitsiMeetBaseUrl }),
+    [jitsiMeetBaseUrl],
+  );
+
   const buildCurrentCallLink = useCallback(() => {
     if (!canStartCallFromHeader({ target: callTarget, currentUserId }) || callTarget == null) {
       return null;
@@ -1102,8 +1115,8 @@ export const ChatPage: React.FC = () => {
       currentUserId,
       chatLabel: callRoomChatLabel,
     });
-    return buildJitsiMeetingUrl(roomName);
-  }, [callTarget, currentUserId, callRoomChatLabel]);
+    return buildJitsiMeetingUrl(roomName, jitsiLinkOptions);
+  }, [callTarget, currentUserId, callRoomChatLabel, jitsiLinkOptions]);
 
   const handleCallClick = useCallback(async () => {
     if (!canStartCallFromHeader({ target: callTarget, currentUserId }) || callTarget == null)

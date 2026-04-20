@@ -19,7 +19,10 @@ afterEach(async () => {
   resetMessageCacheDbSingletonForTests();
   await new Promise<void>((resolve, reject) => {
     const req = indexedDB.deleteDatabase("workspace-message-cache-v1");
-    req.onerror = () => reject(req.error);
+    req.onerror = () =>
+      reject(
+        req.error instanceof Error ? req.error : new Error(String(req.error ?? "deleteDatabase failed")),
+      );
     req.onsuccess = () => resolve();
   });
 });

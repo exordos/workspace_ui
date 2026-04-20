@@ -10,6 +10,10 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { muteTopic } from "~/features/mute-chat/mute-chat.api";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
+import {
+  SYSTEM_CHANNELS_FOLDER_ID,
+  SYSTEM_PERSONAL_FOLDER_ID,
+} from "~/features/folder-sync/folder-sync-constants.lib";
 import { usePinStore } from "~/features/pin-chat/pin-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
@@ -22,7 +26,13 @@ import { DmContextMenu, StreamContextMenu } from "./sidebar-chat-context-menu.ui
 import { DmChatRow } from "./sidebar-folder-dm-row.ui";
 import { SidebarFolderNewTopicDialog } from "./sidebar-folder-new-topic-dialog.ui";
 import { TopicMuteButton, TopicResolvedButton } from "./sidebar-folder-topic-buttons.ui";
-import { slugForStream, TOPIC_BAR_COLORS, chatToWorkspaceChatId } from "./sidebar.lib";
+import {
+  isSidebarSystemFolderScope,
+  slugForStream,
+  TOPIC_BAR_COLORS,
+  chatToWorkspaceChatId,
+} from "./sidebar.lib";
+import type { IconName } from "~/shared/ui/icon";
 import type {
   NewTopicDialogState,
   SidebarFolderChatListProps,
@@ -195,11 +205,55 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
     setMuteErrorState({ id: Date.now(), retry });
   }, []);
 
+  const emptyStatePresentation = useMemo(() => {
+    if (reorderPinnedOnly) {
+      return {
+        title: t("folder.noPinnedChats"),
+        hint: t("folder.noPinnedChatsHint"),
+        icon: "pin" as const satisfies IconName,
+      };
+    }
+    const folderKey = selectedFolderId ?? "";
+    if (!isSidebarSystemFolderScope(folderKey)) {
+      return {
+        title: t("folder.emptyFolder"),
+        hint: t("folder.emptyFolderHint"),
+        icon: "folder" as const satisfies IconName,
+      };
+    }
+    if (folderKey === SYSTEM_PERSONAL_FOLDER_ID) {
+      return {
+        title: t("sidebar.emptyPersonalChats"),
+        hint: t("sidebar.emptyPersonalChatsHint"),
+        icon: "mail_outline" as const satisfies IconName,
+      };
+    }
+    if (folderKey === SYSTEM_CHANNELS_FOLDER_ID) {
+      return {
+        title: t("sidebar.emptyChannelList"),
+        hint: t("sidebar.emptyChannelListHint"),
+        icon: "channels" as const satisfies IconName,
+      };
+    }
+    return {
+      title: t("sidebar.emptyAllChats"),
+      hint: t("sidebar.emptyAllChatsHint"),
+      icon: "grid" as const satisfies IconName,
+    };
+  }, [reorderPinnedOnly, selectedFolderId]);
+
   if (loading) {
     // Плейсхолдер списка чатов на время переключения/дозагрузки выбранной папки.
     return (
       <div className="px-3 py-4">
-        <div className="bg-bg-elevated/40 flex items-center justify-center rounded-lg border border-dashed border-border-subtle px-3 py-5 text-center">
+        <div
+          className="bg-bg-elevated/40 flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border-subtle px-3 py-6 text-center"
+          role="status"
+          aria-live="polite"
+          aria-busy="true"
+          aria-label={t("app.loading")}
+        >
+          <div className="h-8 w-8 shrink-0 animate-spin rounded-full border-2 border-border-subtle border-t-accent" />
           <p className="text-sm text-text-muted">{t("app.loading")}</p>
         </div>
       </div>
@@ -209,17 +263,12 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
   if (visibleChats.length === 0) {
     if (!showEmptyState) return null;
 
-    const emptyTitle = reorderPinnedOnly ? t("folder.noPinnedChats") : t("folder.emptyFolder");
-    const emptyHint = reorderPinnedOnly
-      ? t("folder.noPinnedChatsHint")
-      : t("folder.emptyFolderHint");
-
     return (
       <div className="px-3 py-4">
         <div className="bg-bg-elevated/40 flex flex-col items-center gap-2 rounded-lg border border-dashed border-border-subtle px-3 py-5 text-center">
-          <Icon name={reorderPinnedOnly ? "pin" : "folder"} size={18} className="text-text-muted" />
-          <p className="text-sm font-medium text-text-primary">{emptyTitle}</p>
-          <p className="max-w-[220px] text-xs text-text-muted">{emptyHint}</p>
+          <Icon name={emptyStatePresentation.icon} size={18} className="text-text-muted" />
+          <p className="text-sm font-medium text-text-primary">{emptyStatePresentation.title}</p>
+          <p className="max-w-[220px] text-xs text-text-muted">{emptyStatePresentation.hint}</p>
         </div>
       </div>
     );

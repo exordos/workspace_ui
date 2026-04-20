@@ -87,7 +87,7 @@ describe("useUserProfileStore", () => {
         email: "a@b.com",
         apiKey: "key",
       });
-      vi.mocked(zulipApi.get).mockImplementation(async (path: string) => {
+      vi.mocked(zulipApi.get).mockImplementation((path: string) => {
         if (path === "/realm/profile_fields") {
           return Promise.resolve({
             ok: true,

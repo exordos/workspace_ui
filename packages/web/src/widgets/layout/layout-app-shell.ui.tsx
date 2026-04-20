@@ -9,6 +9,7 @@ import type { RightDrawerMode } from "~/widgets/right-panel/right-drawer.model";
 import type { RightPanelUserInfo } from "~/widgets/right-panel/right-panel.types";
 import { TopBar } from "~/widgets/top-bar/top-bar.ui";
 import { LayoutMainWorkspace } from "./layout-main-workspace.ui";
+import { useZulipRateLimitCountdownSeconds } from "./layout-zulip-rate-limit-banner.hook";
 
 export interface LayoutAppShellProps {
   openSearch: () => void;
@@ -47,6 +48,8 @@ export const LayoutAppShell = React.memo<LayoutAppShellProps>(function LayoutApp
   onOpenSettingsDrawer,
   onOpenAboutDrawer,
 }) {
+  const rateLimitSeconds = useZulipRateLimitCountdownSeconds(online);
+
   return (
     <OpenSearchContext.Provider value={openSearch}>
       <RightDrawerContext.Provider
@@ -64,6 +67,16 @@ export const LayoutAppShell = React.memo<LayoutAppShellProps>(function LayoutApp
           {!online && (
             <div className="bg-notice-base/90 text-badge-text shrink-0 py-1 text-center text-xs">
               {t("app.offline")}
+            </div>
+          )}
+          {online && rateLimitSeconds > 0 && (
+            <div
+              className="bg-notice-base/90 text-badge-text shrink-0 py-1 text-center text-xs"
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+            >
+              {t("app.rateLimitResume", { seconds: rateLimitSeconds })}
             </div>
           )}
           <MediaViewerOverlay />

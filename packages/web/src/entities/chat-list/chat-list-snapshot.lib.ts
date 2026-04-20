@@ -2,8 +2,7 @@
  * Build / bounds helpers for persisting chat-list projection to IndexedDB.
  */
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
-import type { ChatListSnapshotSerialized } from "~/shared/lib/chat-list-snapshot-serialize.lib";
-import type { ChatListSnapshotMessageLocation } from "~/shared/lib/chat-list-snapshot-serialize.lib";
+import type { ChatListSnapshotSerialized, ChatListSnapshotMessageLocation  } from "~/shared/lib/chat-list-snapshot-serialize.lib";
 import { serializeStreamEntry } from "~/shared/lib/chat-list-snapshot-serialize.lib";
 import type { ChatListState } from "./chat-list.model.types";
 

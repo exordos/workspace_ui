@@ -20,7 +20,7 @@ export const MessageBubbleReactionsRow = React.memo(function MessageBubbleReacti
 
   return (
     <div
-      className={`absolute bottom-2 left-2 right-14 flex flex-wrap items-end gap-1 ${
+      className={`flex min-w-0 flex-1 flex-wrap items-end gap-1 ${
         isOwn ? "justify-end" : "justify-start"
       }`}
     >

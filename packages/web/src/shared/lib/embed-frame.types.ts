@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
 import type { EmbedSandbox } from "./embed.lib";
+import type { ReactNode } from "react";
 
 export interface EmbedFrameProps {
   url: string;

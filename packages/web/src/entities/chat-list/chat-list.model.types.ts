@@ -44,6 +44,11 @@ export type MessageLocation =
 export interface ChatListState {
   streamsMap: Map<number, StreamEntryInternal>;
   dmsMap: Map<string, DmEntryInternal>;
+  /**
+   * True once the sidebar can rely on local chat sources: first setFromMessages/addMessages,
+   * metadata upserts that changed maps, or IDB hydrate with non-empty maps. False after clear.
+   */
+  sidebarDataHydrated: boolean;
   currentUserId: number | null;
   lastAppliedMessages: ZulipRawMessage[] | null;
   messageIdToLocation: Map<number, MessageLocation>;

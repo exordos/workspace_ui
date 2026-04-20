@@ -2,8 +2,8 @@
  * Client for the Workspace API (separate from Zulip).
  *
  * HTTP is implemented via Orval-generated calls + `workspaceOrvalMutator` → `workspaceApi`
- * (auth, logging, retries). Folder listing uses {@link getWorkspaceApiBaseForCurrentInstance}
- * (Workspace gateway origin, often `workspace.*` when the Zulip realm is `zulip.*`); other routes use env default base.
+ * (auth, logging, retries). All Workspace REST calls use {@link getWorkspaceApiBaseForCurrentInstance}
+ * (login origin + realm; gateway `workspace.*` when Zulip realm is `zulip.*`).
  * Paths are `/v1/...` (see `VITE_WORKSPACE_REST_API_PATH`).
  *
  * Usage:
@@ -126,6 +126,11 @@ async function workspaceGetDeduped<T>(path: string, fetcher: () => Promise<T>): 
       inFlightWorkspaceGets.delete(requestKey);
     }
   }
+}
+
+/** Clears in-flight Workspace GET dedupe when switching Zulip instance (avoids stale reuse). */
+export function clearInFlightWorkspaceFolderRequests(): void {
+  inFlightWorkspaceGets.clear();
 }
 
 // ---------------------------------------------------------------------------

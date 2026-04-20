@@ -30,6 +30,10 @@ import { getBasicAuthValue, wipeCredentials } from "~/shared/lib/auth-guard";
 import { env } from "~/shared/lib/env";
 import { logApiCall } from "~/shared/lib/logger";
 import { workspaceOrgApiOriginFromZulipRealmRoot } from "~/shared/lib/workspace-org-origin.lib";
+import {
+  ingestZulipRateLimitFromApiResponse,
+  waitUntilZulipRateLimitReleased,
+} from "~/shared/lib/zulip-rate-limit-gate";
 
 // ---------------------------------------------------------------------------
 // Instance provider (FSD: injected by app layer to avoid shared→entities import)
@@ -355,6 +359,13 @@ const retryMiddleware: Middleware = async (req, next) => {
   throw lastError;
 };
 
+const zulipRateLimitGateMiddleware: Middleware = async (req, next) => {
+  await waitUntilZulipRateLimitReleased(req.signal);
+  const res = await next(req);
+  ingestZulipRateLimitFromApiResponse(res.status, res.data, res.headers);
+  return res;
+};
+
 function shouldSkipAuth401Handling(req: ApiRequest): boolean {
   try {
     const parsed = new URL(req.url);
@@ -366,8 +377,9 @@ function shouldSkipAuth401Handling(req: ApiRequest): boolean {
     ) {
       return true;
     }
-    // Workspace folders list: 401 often means Workspace API / gateway policy, not invalid Zulip credentials.
-    if (req.method === "GET" && /\/v1\/folders\/?$/.test(path)) {
+    // Workspace REST (folders, services): 401 often means gateway policy / missing Workspace feature,
+    // not invalid Zulip credentials — never wipe multi-org state for these routes.
+    if (path.includes("/v1/folders") || path.includes("/v1/services")) {
       return true;
     }
     return false;
@@ -598,6 +610,67 @@ class ApiClient {
     });
   }
 
+  async deleteWithBase(
+    baseUrl: string,
+    path: string,
+    body?: Record<string, string>,
+  ): Promise<ApiResponse> {
+    const hasBody = body && Object.keys(body).length > 0;
+    return this.execute({
+      method: "DELETE",
+      url: buildResolvedApiUrl(baseUrl, path),
+      headers: hasBody ? { "Content-Type": "application/x-www-form-urlencoded" } : {},
+      body: hasBody ? new URLSearchParams(body).toString() : undefined,
+      meta: {},
+    });
+  }
+
+  async postWithBase(
+    baseUrl: string,
+    path: string,
+    body: Record<string, string>,
+    signal?: AbortSignal,
+  ): Promise<ApiResponse> {
+    return this.execute({
+      method: "POST",
+      url: buildResolvedApiUrl(baseUrl, path),
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams(body).toString(),
+      signal,
+      meta: {},
+    });
+  }
+
+  async postJsonWithBase<T = unknown>(
+    baseUrl: string,
+    path: string,
+    body: unknown,
+  ): Promise<ApiResponse & { data: T }> {
+    const res = await this.execute({
+      method: "POST",
+      url: buildResolvedApiUrl(baseUrl, path),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      meta: {},
+    });
+    return res as ApiResponse & { data: T };
+  }
+
+  async putJsonWithBase<T = unknown>(
+    baseUrl: string,
+    path: string,
+    body: unknown,
+  ): Promise<ApiResponse & { data: T }> {
+    const res = await this.execute({
+      method: "PUT",
+      url: buildResolvedApiUrl(baseUrl, path),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      meta: {},
+    });
+    return res as ApiResponse & { data: T };
+  }
+
   async post(
     path: string,
     body: Record<string, string>,
@@ -721,6 +794,7 @@ function getZulipBaseUrl(): string {
 }
 
 export const zulipApi = new ApiClient("");
+zulipApi.useBefore(retryMiddleware, zulipRateLimitGateMiddleware);
 zulipApi.useBefore(authErrorMiddleware, zulipRequestTimeoutMiddleware);
 
 export const workspaceApi = new ApiClient(env.WORKSPACE_API_BASE);
@@ -749,6 +823,7 @@ export {
   sessionCsrfMiddleware,
   loggingMiddleware,
   retryMiddleware,
+  zulipRateLimitGateMiddleware,
   authErrorMiddleware,
   type ApiClient,
 };

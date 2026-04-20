@@ -6,6 +6,16 @@ import importX from "eslint-plugin-import-x";
 import jsxA11y from "eslint-plugin-jsx-a11y";
 import prettier from "eslint-config-prettier";
 import globals from "globals";
+import sonarjs from "eslint-plugin-sonarjs";
+import eslintPluginPromise from "eslint-plugin-promise";
+import eslintPluginUnicorn from "eslint-plugin-unicorn";
+
+/** Map plugin preset "error" to "warn" so new quality rules do not fail CI until addressed. */
+function softenErrors(rules) {
+  return Object.fromEntries(
+    Object.entries(rules).map(([key, value]) => [key, value === "error" ? "warn" : value]),
+  );
+}
 
 export default tseslint.config(
   { ignores: ["dist", "node_modules", "*.config.*"] },
@@ -26,6 +36,30 @@ export default tseslint.config(
 
   {
     files: ["**/src/**/*.{ts,tsx}"],
+    ...sonarjs.configs.recommended,
+    rules: softenErrors(sonarjs.configs.recommended.rules),
+  },
+
+  {
+    files: ["**/src/**/*.{ts,tsx}"],
+    plugins: { promise: eslintPluginPromise },
+    rules: softenErrors(eslintPluginPromise.configs["flat/recommended"].rules),
+  },
+
+  {
+    files: ["**/src/**/*.{ts,tsx}"],
+    rules: {
+      // Promise: `always-return` is noisy for void async handlers and fire-and-forget in React.
+      "promise/always-return": "off",
+      // SonarJS: micro-optimisation hints that dominate the report without catching logic bugs.
+      "sonarjs/slow-regex": "off",
+      // Default Sonar threshold (15) is tight for real-world React/store code; 25 still flags very heavy functions.
+      "sonarjs/cognitive-complexity": ["warn", 25],
+    },
+  },
+
+  {
+    files: ["**/src/**/*.{ts,tsx}"],
     languageOptions: {
       ecmaVersion: 2022,
       globals: {
@@ -41,6 +75,7 @@ export default tseslint.config(
       "react-refresh": reactRefresh,
       "import-x": importX,
       "jsx-a11y": jsxA11y,
+      unicorn: eslintPluginUnicorn,
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
@@ -156,6 +191,18 @@ export default tseslint.config(
       "jsx-a11y/label-has-associated-control": "warn",
       "jsx-a11y/no-autofocus": "warn",
       "jsx-a11y/no-redundant-roles": "warn",
+
+      // Anti-patterns (eslint-plugin-unicorn — curated; full preset is too noisy for this codebase)
+      "unicorn/no-invalid-remove-event-listener": "warn",
+      "unicorn/no-abusive-eslint-disable": "warn",
+      "unicorn/no-immediate-mutation": "warn",
+      "unicorn/no-await-expression-member": "warn",
+      "unicorn/prefer-array-find": "warn",
+      "unicorn/error-message": "warn",
+      "unicorn/no-useless-fallback-in-spread": "warn",
+      "unicorn/no-useless-promise-resolve-reject": "warn",
+      "unicorn/no-single-promise-in-promise-methods": "warn",
+      "unicorn/no-useless-spread": "warn",
     },
   },
 );

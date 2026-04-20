@@ -7,12 +7,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { usePinStore } from "./pin-chat.model";
 
-vi.mock("~/shared/api/client", () => ({
-  refreshWorkspaceApiBase: vi.fn(),
-  workspaceApi: {
-    post: vi.fn(),
-  },
-}));
+vi.mock("~/shared/api/client", () => {
+  const api = { post: vi.fn() };
+  return {
+    refreshWorkspaceApiBase: vi.fn(),
+    getWorkspaceApiBaseForCurrentInstance: vi.fn(() => "https://test.example.com"),
+    workspaceApi: {
+      post: api.post,
+      postWithBase: vi.fn(
+        (base: string, path: string, body: Record<string, string>, signal?: AbortSignal) =>
+          api.post(path, body, signal),
+      ),
+    },
+  };
+});
 
 describe("usePinStore", () => {
   afterEach(() => {

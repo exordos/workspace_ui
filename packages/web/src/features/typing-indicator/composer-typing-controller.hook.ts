@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useRef } from "react";
 import {
-  resolveComposerTypingTransition,
-  resolveTypingIdleTransition,
-} from "./typing-transition";
-import {
   sendStreamTypingStart,
   sendStreamTypingStop,
   sendTypingStart,
   sendTypingStop,
 } from "./typing-indicator.api";
+import {
+  resolveComposerTypingTransition,
+  resolveTypingIdleTransition,
+} from "./typing-transition";
 
 type ComposerTypingTarget =
   | { kind: "dm"; userIds: number[] }

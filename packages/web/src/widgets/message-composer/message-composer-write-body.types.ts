@@ -1,10 +1,10 @@
+import type { MentionSuggestion } from "~/features/mention-suggest/mention-suggest.types";
 import type {
   ClipboardEvent,
   Dispatch,
   RefObject,
   SetStateAction,
 } from "react";
-import type { MentionSuggestion } from "~/features/mention-suggest/mention-suggest.types";
 
 export interface MessageComposerWriteBodyProps {
   value: string;

@@ -7,15 +7,29 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useManageFoldersStore } from "./manage-folders.model";
 
-vi.mock("~/shared/api/client", () => ({
-  workspaceApi: {
+vi.mock("~/shared/api/client", () => {
+  const api = {
     get: vi.fn(),
     postJson: vi.fn(),
     putJson: vi.fn(),
     delete: vi.fn(),
-  },
-  refreshWorkspaceApiBase: vi.fn(),
-}));
+  };
+  return {
+    workspaceApi: {
+      ...api,
+      getWithBase: vi.fn((base: string, path: string, params?: Record<string, string>, signal?: AbortSignal) =>
+        api.get(path, params, signal),
+      ),
+      postJsonWithBase: vi.fn((base: string, path: string, body: unknown) => api.postJson(path, body)),
+      putJsonWithBase: vi.fn((base: string, path: string, body: unknown) => api.putJson(path, body)),
+      deleteWithBase: vi.fn((base: string, path: string, body?: Record<string, string>) =>
+        api.delete(path, body),
+      ),
+    },
+    getWorkspaceApiBaseForCurrentInstance: vi.fn(() => "https://test.example.com"),
+    refreshWorkspaceApiBase: vi.fn(),
+  };
+});
 
 beforeEach(async () => {
   const { registerWorkspaceOrvalMutator } = await import("~/shared/api/workspace-orval-mutator");
@@ -337,7 +351,7 @@ describe("manage-folders API", () => {
       const result = await deleteFolder("folder-1");
 
       expect(result).toBe(true);
-      expect(workspaceApi.delete).toHaveBeenCalledWith("/v1/folders/folder-1");
+      expect(workspaceApi.delete).toHaveBeenCalledWith("/v1/folders/folder-1", undefined);
     });
 
     it("returns false on API failure", async () => {

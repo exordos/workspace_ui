@@ -7,13 +7,27 @@ let workspaceBaseUrl = "/workspace";
 
 const workspaceApi = {
   get: vi.fn(),
+  post: vi.fn(),
   getWithBase: vi.fn(
     (_base: string, path: string, params?: Record<string, string>, signal?: AbortSignal) =>
       workspaceApi.get(path, params, signal),
   ),
   postJson: vi.fn(),
+  postJsonWithBase: vi.fn(
+    (_base: string, path: string, body: unknown) => workspaceApi.postJson(path, body),
+  ),
   putJson: vi.fn(),
+  putJsonWithBase: vi.fn(
+    (_base: string, path: string, body: unknown) => workspaceApi.putJson(path, body),
+  ),
   delete: vi.fn(),
+  deleteWithBase: vi.fn((_base: string, path: string, body?: Record<string, string>) =>
+    workspaceApi.delete(path, body),
+  ),
+  postWithBase: vi.fn(
+    (_base: string, path: string, body: Record<string, string>, signal?: AbortSignal) =>
+      workspaceApi.post(path, body, signal),
+  ),
   setBaseUrl: vi.fn((nextBase: string) => {
     workspaceBaseUrl = nextBase;
   }),
@@ -25,7 +39,6 @@ vi.mock("./client", () => ({
   workspaceApi,
   getCurrentInstance,
   getWorkspaceApiBaseForCurrentInstance,
-  refreshWorkspaceApiBase: vi.fn(),
 }));
 
 describe("workspace-client", () => {
@@ -405,7 +418,7 @@ describe("workspace-client", () => {
     const { removeChatFromFolder } = await import("./workspace-client");
     await expect(removeChatFromFolder("folder-1", "item-1")).resolves.toBe(true);
 
-    expect(workspaceApi.delete).toHaveBeenCalledWith("/v1/folders/folder-1/items/item-1");
+    expect(workspaceApi.delete).toHaveBeenCalledWith("/v1/folders/folder-1/items/item-1", undefined);
     expect(workspaceApi.setBaseUrl).not.toHaveBeenCalled();
   });
 

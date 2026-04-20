@@ -6,8 +6,8 @@ import { Avatar } from "~/shared/ui/avatar";
 import { Badge } from "~/shared/ui/badge";
 import { Icon } from "~/shared/ui/icon";
 import { MOCK_GROUPS, parseDmSlugToUserIds } from "./sidebar.lib";
-import type { SidebarChat } from "./sidebar.types";
 import type { SidebarGroupListProps } from "./sidebar-group-list.types";
+import type { SidebarChat } from "./sidebar.types";
 
 export const SidebarGroupList: React.FC<SidebarGroupListProps> = ({
   activeDmIdParam,

@@ -20,6 +20,14 @@ describe("message-jitsi-location", () => {
     expect(formatJitsiRoomDisplayName("https://meet.jit.si/hello_world")).toBe("hello world");
   });
 
+  it("formats room name for Zulip register Jitsi host via options", () => {
+    expect(
+      formatJitsiRoomDisplayName("https://corp-jitsi.example.com/team_sync", {
+        serverBaseUrl: "https://corp-jitsi.example.com",
+      }),
+    ).toBe("team sync");
+  });
+
   it("returns empty string when room cannot be parsed", () => {
     expect(formatJitsiRoomDisplayName("not-a-url")).toBe("");
   });

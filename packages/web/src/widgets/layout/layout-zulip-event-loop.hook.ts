@@ -276,28 +276,36 @@ export function useLayoutZulipEventLoop(options: {
     }
 
     void (async () => {
-      // Cache-first: применяем локальный snapshot до network/register, если он доступен.
-      if (instanceSwitched && cachedMuteSnapshotPromise != null) {
-        const cachedMuteSnapshot = await cachedMuteSnapshotPromise;
-        if (cancelled) return;
-        if (cachedMuteSnapshot && !registerMuteSnapshotApplied) {
-          useMuteStore.getState().setFromServer(cachedMuteSnapshot);
-        }
-      }
-
-      if (instanceSwitched) {
-        const row = await loadUsersDirectoryRow(currentInstanceId);
-        if (cancelled) return;
-        if (row?.members?.length) {
-          useUsersStore.getState().mergeUsers(row.members);
-        }
-      }
-
       if (cancelled) return;
 
       void Promise.resolve().then(() => {
         if (!cancelled) setCurrentUserStatusRef.current("loading");
       });
+
+      // Cache-first mute + users directory run in parallel with chat-list IDB bootstrap and API,
+      // so hydrateFromIndexedDbSnapshot is not blocked by unrelated IDB reads.
+      const pMuteHydrate =
+        instanceSwitched && cachedMuteSnapshotPromise != null
+          ? cachedMuteSnapshotPromise.then((cachedMuteSnapshot) => {
+              if (cancelled) return;
+              if (cachedMuteSnapshot && !registerMuteSnapshotApplied) {
+                useMuteStore.getState().setFromServer(cachedMuteSnapshot);
+              }
+            })
+          : Promise.resolve();
+
+      const pUsersDir = instanceSwitched
+        ? loadUsersDirectoryRow(currentInstanceId)
+            .then((row) => {
+              if (cancelled) return;
+              if (row?.members?.length) {
+                useUsersStore.getState().mergeUsers(row.members);
+              }
+            })
+            .catch(() => {
+              // best-effort cache; fetchUsers still hydrates the directory.
+            })
+        : Promise.resolve();
 
       const metadataBootstrapEnabled = env.METADATA_CHAT_BOOTSTRAP_ENABLED;
       const metadataDmBackfillEnabled =
@@ -329,13 +337,19 @@ export function useLayoutZulipEventLoop(options: {
         });
 
       try {
-        const [members, subscriptions, bootstrap, resolvedCurrentUserId] = await Promise.all([
+        const bootstrapBundle = await Promise.all([
+          pMuteHydrate,
+          pUsersDir,
           pUsers,
           pSubscriptions,
           pMessages,
           pCurrentUserId,
         ]);
         if (cancelled) return;
+        const members = bootstrapBundle[2];
+        const subscriptions = bootstrapBundle[3];
+        const bootstrap = bootstrapBundle[4];
+        const resolvedCurrentUserId = bootstrapBundle[5];
         const result = bootstrap;
         const apiMembers: ZulipUserMember[] = members ?? [];
         useUsersStore.getState().mergeUsers(apiMembers);
@@ -502,6 +516,11 @@ export function useLayoutZulipEventLoop(options: {
           fetchEventTypes: [...REGISTER_FETCH_EVENT_TYPES],
           onQueueRegistered: (id, registration) => {
             queueIdRef.current = id;
+            if (registration?.jitsi_server_url_effective != null) {
+              useInstancesStore.getState().setJitsiMeetBaseUrl(registration.jitsi_server_url_effective);
+            } else {
+              useInstancesStore.getState().setJitsiMeetBaseUrl(null);
+            }
             useUserGroupsStore.getState().setGroups(registration?.realm_user_groups ?? []);
             const streamRows = toStreamMetadataRows(registration?.subscriptions ?? []);
             if (streamRows.length > 0) {

@@ -1,6 +1,6 @@
 import type { UserRecord } from "~/entities/user/user.model";
-import { buildDmTypingChatKey } from "~/features/typing-indicator/typing-key";
 import type { TypingUser } from "~/features/typing-indicator/typing-indicator.types";
+import { buildDmTypingChatKey } from "~/features/typing-indicator/typing-key";
 
 function presenceRank(status: "active" | "idle" | undefined): number {
   if (status === "active") return 0;

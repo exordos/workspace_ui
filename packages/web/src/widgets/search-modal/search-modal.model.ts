@@ -1,6 +1,6 @@
 import { create } from "zustand";
-import { logStoreAction } from "~/shared/lib/logger";
 import type { MockMessage } from "~/shared/api/zulip.types";
+import { logStoreAction } from "~/shared/lib/logger";
 
 interface SearchModalState {
   open: boolean;

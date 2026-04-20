@@ -10,7 +10,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setLocale } from "~/i18n/i18n";
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { ChatListSnapshotSerialized } from "~/shared/lib/chat-list-snapshot-serialize.lib";
 import { sortChatsByLastMessage } from "~/shared/lib/chat-sorting";
+import { buildChatListSnapshotSerialized } from "./chat-list-snapshot.lib";
 import { useUsersStore } from "../user/user.model";
 import { useChatListStore } from "./chat-list.model";
 
@@ -93,9 +95,47 @@ describe("chatListStore", () => {
       const state = useChatListStore.getState();
       expect(state.streamsMap.size).toBe(0);
       expect(state.dmsMap.size).toBe(0);
+      expect(state.sidebarDataHydrated).toBe(false);
       expect(state.currentUserId).toBeNull();
       expect(state.lastAppliedMessages).toBeNull();
       expect(state.messageIdToLocation.size).toBe(0);
+    });
+  });
+
+  describe("sidebarDataHydrated", () => {
+    it("stays false after hydrateFromIndexedDbSnapshot until setFromMessages", () => {
+      const snapshot: ChatListSnapshotSerialized = {
+        version: 1,
+        currentUserId: null,
+        lastMessageId: null,
+        oldestMessageId: null,
+        streamsEntries: [],
+        dmsEntries: [],
+        messageIdToLocationEntries: [],
+        updatedAt: Date.now(),
+      };
+      expect(useChatListStore.getState().sidebarDataHydrated).toBe(false);
+      useChatListStore.getState().hydrateFromIndexedDbSnapshot(snapshot);
+      expect(useChatListStore.getState().sidebarDataHydrated).toBe(false);
+      useChatListStore.getState().setFromMessages([], null);
+      expect(useChatListStore.getState().sidebarDataHydrated).toBe(true);
+      useChatListStore.getState().clear();
+      expect(useChatListStore.getState().sidebarDataHydrated).toBe(false);
+    });
+
+    it("becomes true after setFromMessages", () => {
+      expect(useChatListStore.getState().sidebarDataHydrated).toBe(false);
+      useChatListStore.getState().setFromMessages([streamMsg()], 10);
+      expect(useChatListStore.getState().sidebarDataHydrated).toBe(true);
+    });
+
+    it("becomes true on hydrate when snapshot already contains streams or DMs", () => {
+      useChatListStore.getState().setFromMessages([streamMsg()], 10);
+      const snapshot = buildChatListSnapshotSerialized(useChatListStore.getState());
+      useChatListStore.getState().clear();
+      expect(useChatListStore.getState().sidebarDataHydrated).toBe(false);
+      useChatListStore.getState().hydrateFromIndexedDbSnapshot(snapshot);
+      expect(useChatListStore.getState().sidebarDataHydrated).toBe(true);
     });
   });
 

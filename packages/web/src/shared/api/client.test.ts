@@ -829,6 +829,36 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
     setAuthErrorHandler(null);
   });
 
+  it("does not wipe credentials on GET workspace folder items 401", async () => {
+    const { setInstanceProvider, workspaceApi, setAuthErrorHandler } = await import("./client");
+    const onAuthError = vi.fn();
+
+    setInstanceProvider(() => ({
+      id: "i1",
+      realm: "https://zulip.test",
+      email: "u@t.com",
+      apiKey: "key123",
+    }));
+    setAuthErrorHandler(onAuthError);
+
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ detail: "Unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const res = await workspaceApi.getWithBase(
+      "https://zulip.test",
+      "/v1/folders/folder-1/items/",
+    );
+
+    expect(res.status).toBe(401);
+    expect(vi.mocked(wipeCredentials)).not.toHaveBeenCalled();
+    expect(onAuthError).not.toHaveBeenCalled();
+    setAuthErrorHandler(null);
+  });
+
   // Some endpoints return plain text (e.g. /health) — must not crash on JSON parse.
   it("handles non-JSON response body gracefully", async () => {
     const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
@@ -928,6 +958,42 @@ describe("ApiClient middleware management", () => {
     await zulipApi.get("/test");
 
     expect(called).toBe(false);
+  });
+});
+
+describe("zulipRateLimitGateMiddleware", () => {
+  beforeEach(async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-15T12:00:00.000Z"));
+    const { resetZulipRateLimitGateForTests } = await import("~/shared/lib/zulip-rate-limit-gate");
+    resetZulipRateLimitGateForTests();
+  });
+
+  afterEach(async () => {
+    vi.useRealTimers();
+    const { resetZulipRateLimitGateForTests } = await import("~/shared/lib/zulip-rate-limit-gate");
+    resetZulipRateLimitGateForTests();
+  });
+
+  it("waits before calling next again after a JSON RATE_LIMIT_HIT response", async () => {
+    const { zulipRateLimitGateMiddleware } = await import("./client");
+    const fetchFn = vi.fn().mockResolvedValue(
+      createMockResponse({
+        data: { result: "error", code: "RATE_LIMIT_HIT", msg: "limit", "retry-after": 0.5 },
+      }),
+    );
+    const chain = buildChain([zulipRateLimitGateMiddleware], fetchFn);
+
+    await chain(makeReq());
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+
+    const second = chain(makeReq());
+    await vi.advanceTimersByTimeAsync(400);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(200);
+    await second;
+    expect(fetchFn).toHaveBeenCalledTimes(2);
   });
 });
 

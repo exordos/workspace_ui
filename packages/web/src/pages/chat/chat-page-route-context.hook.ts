@@ -1,13 +1,13 @@
 import { useMemo } from "react";
-import type { Location } from "react-router-dom";
 import { dmRouteKey } from "~/shared/lib/dm-key";
+import { computeIsGroupDmView, normalizeDmRouteUserIds } from "~/shared/lib/dm-route.lib";
 import {
   getDmById,
   parseDmSlugToUserIds,
   parseStreamSlug,
   resolveStreamRouteFromSlug,
 } from "~/widgets/sidebar/sidebar.lib";
-import { computeIsGroupDmView, normalizeDmRouteUserIds } from "~/shared/lib/dm-route.lib";
+import type { Location } from "react-router-dom";
 
 function parsePositiveIntFromSearch(location: Location, key: string): number | null {
   const raw = new URLSearchParams(location.search).get(key);

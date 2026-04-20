@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, useCallback } from "react";
+import React, { useState, useRef, useMemo, useCallback, useLayoutEffect } from "react";
 import { useUsersStore } from "~/entities/user/user.model";
 import { AiComposerButton } from "~/features/ai-reply/ai-reply.ui";
 import { filterUsers } from "~/features/mention-suggest/mention-suggest.lib";
@@ -103,6 +103,13 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const [mentionStartPos, setMentionStartPos] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const prevDisabledRef = useRef(disabled);
+  useLayoutEffect(() => {
+    if (prevDisabledRef.current && !disabled && mode === "write") {
+      textareaRef.current?.focus();
+    }
+    prevDisabledRef.current = disabled;
+  }, [disabled, mode]);
   const emojiButtonRef = useRef<HTMLButtonElement>(null);
   const scheduleButtonRef = useRef<HTMLButtonElement>(null);
   const savedSnippetsButtonRef = useRef<HTMLButtonElement>(null);

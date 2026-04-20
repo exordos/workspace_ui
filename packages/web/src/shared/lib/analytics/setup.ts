@@ -5,9 +5,9 @@
  * If no measurement IDs are configured, analytics is a no-op.
  */
 
+import { analytics } from "./analytics";
 import { createGA4Provider } from "./ga4";
 import { createYMProvider } from "./ym";
-import { analytics } from "./analytics";
 
 export function initAnalytics(): void {
   const ga4Id = import.meta.env.VITE_GA4_MEASUREMENT_ID ?? "";

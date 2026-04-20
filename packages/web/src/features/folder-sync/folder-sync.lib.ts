@@ -104,7 +104,7 @@ export function withDefaultSystemFolders(
 
   const syntheticAll = createSyntheticAllFolder(labels);
   const normalizedAllFolder: WorkspaceFolderForRail =
-    preferredAllFolder != null && preferredAllFolder.badge !== undefined
+    preferredAllFolder?.badge !== undefined
       ? { ...syntheticAll, badge: preferredAllFolder.badge }
       : syntheticAll;
 
@@ -150,6 +150,18 @@ export function shouldLoadFolderItemsForSelection(
   if (!hasFolderId(folders, selectedFolderId)) return false;
   const selectedFolderType = resolveSelectedFolderSystemType(folders, selectedFolderId);
   return selectedFolderType === "created";
+}
+
+/** True until folder items for the selected created folder are present in the local cache map (in-flight selectFolder / first hydrate). */
+export function sidebarFolderItemsMembershipPending(
+  folders: readonly FolderLike[],
+  selectedFolderId: string,
+  folderItemsByFolderId: ReadonlyMap<string, FolderItemForClient[]>,
+): boolean {
+  if (!shouldLoadFolderItemsForSelection(folders, selectedFolderId)) {
+    return false;
+  }
+  return !folderItemsByFolderId.has(selectedFolderId);
 }
 
 export function mergeFolderItemsSnapshot(

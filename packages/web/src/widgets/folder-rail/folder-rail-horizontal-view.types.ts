@@ -1,5 +1,5 @@
-import type { FolderRailFolder } from "./folder-rail.types";
 import type { IndexedFolderEntry } from "./folder-rail.lib";
+import type { FolderRailFolder } from "./folder-rail.types";
 
 /** Пропсы только для horizontal-представления; бизнес-логика остается в контейнере `FolderRail`. */
 export interface FolderRailHorizontalViewProps {

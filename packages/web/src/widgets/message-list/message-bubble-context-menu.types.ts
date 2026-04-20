@@ -1,5 +1,5 @@
-import type { EmojiClickData } from "emoji-picker-react";
 import type { ContextItemLabel } from "./message-bubble-context.lib";
+import type { EmojiClickData } from "emoji-picker-react";
 
 export interface MessageBubbleContextMenuProps {
   open: boolean;

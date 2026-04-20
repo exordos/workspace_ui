@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { SYSTEM_ALL_FOLDER_ID } from "./folder-sync-constants.lib";
 import { hasMatchingChatId, toChatIdSet } from "./folder-sync-sidebar-chats.lib";
-import { withDefaultSystemFolders } from "./folder-sync.lib";
+import { sidebarFolderItemsMembershipPending, withDefaultSystemFolders } from "./folder-sync.lib";
 
 const BASE_ITEM = {
   uuid: "item-1",
@@ -54,5 +54,35 @@ describe("folder-sync chat id matching", () => {
   it("matches numeric folder ids against canonical stream id", () => {
     const chatIdSet = toChatIdSet([{ ...BASE_ITEM, chatId: "11" }]);
     expect(hasMatchingChatId(chatIdSet, "stream:11:general")).toBe(true);
+  });
+});
+
+describe("sidebarFolderItemsMembershipPending", () => {
+  const createdFolder = { id: "folder-1", systemType: "created" as const };
+
+  it("returns false for system «all» selection", () => {
+    expect(
+      sidebarFolderItemsMembershipPending(
+        [{ id: SYSTEM_ALL_FOLDER_ID, systemType: "all" }],
+        SYSTEM_ALL_FOLDER_ID,
+        new Map(),
+      ),
+    ).toBe(false);
+  });
+
+  it("returns true when created folder has no items row in the cache map yet", () => {
+    expect(
+      sidebarFolderItemsMembershipPending([createdFolder], "folder-1", new Map()),
+    ).toBe(true);
+  });
+
+  it("returns false once the cache map contains the folder key (even with zero items)", () => {
+    expect(
+      sidebarFolderItemsMembershipPending(
+        [createdFolder],
+        "folder-1",
+        new Map([["folder-1", []]]),
+      ),
+    ).toBe(false);
   });
 });

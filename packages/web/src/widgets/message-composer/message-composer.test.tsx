@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { useCallback, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useMentionSuggestStore } from "~/features/mention-suggest/mention-suggest.model";
@@ -140,6 +141,31 @@ describe("MessageComposer async send behavior", () => {
     });
 
     expect(textbox).toHaveValue("");
+  });
+
+  it("restores textarea focus when parent re-enables composer after async send", async () => {
+    const ComposerWithSendLock = () => {
+      const [locked, setLocked] = useState(false);
+      const onSend = useCallback(async () => {
+        setLocked(true);
+        await Promise.resolve();
+        setLocked(false);
+      }, []);
+      return <MessageComposer onSend={onSend} disabled={locked} />;
+    };
+
+    renderWithProviders(<ComposerWithSendLock />);
+
+    const textbox = screen.getByRole("textbox");
+    textbox.focus();
+    expect(textbox).toHaveFocus();
+
+    fireEvent.change(textbox, { target: { value: "hello" } });
+    fireEvent.click(screen.getByRole("button", { name: /write a message/i }));
+
+    await waitFor(() => {
+      expect(textbox).toHaveFocus();
+    });
   });
 });
 

@@ -5,10 +5,12 @@
 import { useEffect, useRef } from "react";
 import type { FolderSyncSystemLabels } from "~/features/folder-sync/folder-sync.lib";
 import type { FolderRefreshReason } from "~/features/folder-sync/folder-sync.model";
+import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { t } from "~/i18n/i18n";
 import type { FolderItemForClient } from "~/shared/api/workspace-client";
 import { createLogger } from "~/shared/lib/logger";
 import type { SidebarChat, StreamEntryInternal } from "~/shared/types/sidebar-chat";
+import { shouldBootstrapFolderSyncForLayout } from "./layout-folder-sync-bootstrap.lib";
 import { startFolderPolling } from "./layout-folder-polling.lib";
 import { useLayoutPinFolderItemsSync } from "./layout-pin-folder-items-sync.hook";
 
@@ -120,7 +122,18 @@ export function useLayoutFolderSyncOrchestration(
   ]);
 
   useEffect(() => {
-    if (!currentInstanceId || currentUserStatus !== "ready") return;
+    if (currentInstanceId == null) {
+      return;
+    }
+    if (
+      !shouldBootstrapFolderSyncForLayout({
+        folderSyncInstanceId: useFolderSyncStore.getState().instanceId,
+        currentInstanceId,
+        currentUserStatus,
+      })
+    ) {
+      return;
+    }
     const { showSystemFolders: showSys, labels } = folderSyncConfigRef.current;
     void bootstrapFolderSync({
       instanceId: currentInstanceId,

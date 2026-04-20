@@ -132,8 +132,7 @@ function mergeStreamEntry(
         unreadCount: number;
         lastMessageId?: number;
       }
-    >();
-    topics.set(topicSubject, topicEntry);
+    >([[topicSubject, topicEntry]]);
     return { stream_id: streamId, name, lastMessage, lastMessageSenderName, time, ts, topics };
   }
   const nextTopics = new Map(existing.topics);
@@ -376,6 +375,7 @@ function buildMessageIdToLocation(
 export const useChatListStore = create<ChatListState>((set, get) => ({
   streamsMap: emptyStreamsMap(),
   dmsMap: emptyDmsMap(),
+  sidebarDataHydrated: false,
   currentUserId: null,
   lastAppliedMessages: null,
   messageIdToLocation: new Map(),
@@ -395,6 +395,7 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
     set({
       streamsMap,
       dmsMap,
+      sidebarDataHydrated: true,
       currentUserId: effectiveUserId,
       lastAppliedMessages: messages,
       messageIdToLocation,
@@ -415,9 +416,11 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
     _cachedStreamsMapRef = null;
     _cachedDms = null;
     _cachedDmsMapRef = null;
+    const sidebarDataHydrated = streamsMap.size > 0 || dmsMap.size > 0;
     set({
       streamsMap,
       dmsMap,
+      sidebarDataHydrated,
       messageIdToLocation,
       currentUserId: snapshot.currentUserId ?? get().currentUserId,
       lastAppliedMessages: null,
@@ -625,7 +628,12 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
         });
       }
 
-      return { streamsMap: nextStreams, dmsMap: nextDms, messageIdToLocation: nextLoc };
+      return {
+        streamsMap: nextStreams,
+        dmsMap: nextDms,
+        messageIdToLocation: nextLoc,
+        sidebarDataHydrated: true,
+      };
     });
     persistRecentDmPartnersFromMap(get().dmsMap);
     logChatListFlow("store: addMessages (done)", {
@@ -664,7 +672,7 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
         }
       }
       if (!changed) return state;
-      return { streamsMap: nextStreams };
+      return { streamsMap: nextStreams, sidebarDataHydrated: true };
     });
   },
 
@@ -687,7 +695,7 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
         nextDms.set(merged.key, merged.entry);
       }
       if (!changed) return state;
-      return { dmsMap: nextDms };
+      return { dmsMap: nextDms, sidebarDataHydrated: true };
     });
     persistRecentDmPartnersFromMap(get().dmsMap);
   },
@@ -789,6 +797,7 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
     set({
       streamsMap: emptyStreamsMap(),
       dmsMap: emptyDmsMap(),
+      sidebarDataHydrated: false,
       currentUserId: null,
       lastAppliedMessages: null,
       messageIdToLocation: new Map(),

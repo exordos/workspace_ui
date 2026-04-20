@@ -1,6 +1,6 @@
+import type { MediaPickerTab } from "./message-composer.types";
 import type { EmojiClickData } from "emoji-picker-react";
 import type { CSSProperties } from "react";
-import type { MediaPickerTab } from "./message-composer.types";
 
 export interface MessageComposerMediaPickerPopoverProps {
   mediaPickerStyle: CSSProperties;

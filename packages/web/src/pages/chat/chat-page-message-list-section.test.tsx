@@ -52,6 +52,25 @@ describe("ChatPageMessageListSection", () => {
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
+  it("shows initial load error card when stale messages remain from previous chat", async () => {
+    const user = userEvent.setup();
+    const onRetry = vi.fn();
+    const msg = createMessage({ id: 1 }) as MockMessage;
+    render(
+      <ChatPageMessageListSection
+        {...baseProps}
+        messages={[msg]}
+        hasInitialPayload
+        messagesLoadError="initial"
+        onRetryMessagesLoad={onRetry}
+      />,
+    );
+    expect(screen.getByText(t("chat.messagesLoadError"))).toBeInTheDocument();
+    expect(screen.queryByText("Message 1")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: t("chat.retryLoadMessages") }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
   it("shows refresh error banner above list when cache existed but refresh failed", async () => {
     const user = userEvent.setup();
     const onRetry = vi.fn();

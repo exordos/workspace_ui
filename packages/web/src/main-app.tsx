@@ -6,11 +6,8 @@ import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useThemeStore } from "~/entities/theme/theme.model";
 import { reportPresence } from "~/entities/user/api/user.api";
-import {
-  refreshWorkspaceApiBase,
-  refreshZulipApiBase,
-  setInstanceProvider,
-} from "~/shared/api/client";
+import { refreshWorkspaceApiBase, refreshZulipApiBase, setInstanceProvider } from "~/shared/api/client";
+import { clearInFlightWorkspaceFolderRequests } from "~/shared/api/workspace-client";
 import { registerWorkspaceOrvalMutator } from "~/shared/api/workspace-orval-mutator";
 import { initAnalytics } from "~/shared/lib/analytics/setup";
 import { setStoreWiper, setAuthInstanceGetter } from "~/shared/lib/auth-guard";
@@ -56,6 +53,7 @@ function syncApiBasesAfterInstanceChange(): void {
 useInstancesStore.subscribe((state, prev) => {
   if (state.currentInstanceId !== prev.currentInstanceId) {
     syncApiBasesAfterInstanceChange();
+    clearInFlightWorkspaceFolderRequests();
   }
 });
 

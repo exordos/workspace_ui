@@ -215,8 +215,7 @@ export function buildSidebarFromMessages(
       };
       const existing = streamsByKey.get(stream_id);
       if (!existing) {
-        const topics = new Map<string, StreamTopicEntry>();
-        topics.set(topicWithUnread.subject, topicWithUnread);
+        const topics = new Map<string, StreamTopicEntry>([[topicWithUnread.subject, topicWithUnread]]);
         streamsByKey.set(stream_id, {
           stream_id,
           name,
