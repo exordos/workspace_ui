@@ -1,7 +1,7 @@
 // Страница /feed.
 // Паттерн работы: мгновенный hydrate из IDB -> фоновый refresh с сервера ->
 // authoritative replace для newest и append+dedupe для load more.
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useLayoutEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { fetchFeedMessages, hydrateFeedMessagesFromCache } from "~/entities/feed/feed.api";
@@ -90,7 +90,7 @@ export const FeedPage: React.FC = () => {
   const setError = useFeedStore((s) => s.setError);
   const startRequest = useFeedStore((s) => s.startRequest);
   const listRef = useRef<HTMLUListElement>(null);
-  const didAutoScrollToLatestRef = useRef(false);
+  const initialScrollPositionKeyRef = useRef<string | null>(null);
   const pendingScrollRestoreRef = useRef<{ scrollTop: number; scrollHeight: number } | null>(null);
   // Если refresh стартовал при "приклеенном" низе, после ответа оставляем пользователя внизу.
   const shouldStickToBottomAfterRefreshRef = useRef(false);
@@ -98,6 +98,7 @@ export const FeedPage: React.FC = () => {
   const topPaginationArmedRef = useRef(true);
   // Нужен для отображения кнопки "прокрутить вниз", как в обычном message-list.
   const [isAtBottom, setIsAtBottom] = React.useState(true);
+  const initialScrollPositionKey = currentInstanceId ?? null;
 
   useEffect(() => {
     if (currentInstanceId == null) {
@@ -110,7 +111,7 @@ export const FeedPage: React.FC = () => {
     if (cachedInstanceId != null && cachedInstanceId !== currentInstanceId) {
       useFeedStore.getState().clear();
     }
-    didAutoScrollToLatestRef.current = false;
+    initialScrollPositionKeyRef.current = null;
     pendingScrollRestoreRef.current = null;
 
     void (async () => {
@@ -146,14 +147,15 @@ export const FeedPage: React.FC = () => {
     };
   }, [currentInstanceId, setError, setMessages, setMessagesIfActual, startRequest]);
 
-  useEffect(() => {
-    if (isInitialLoading || messages.length === 0 || didAutoScrollToLatestRef.current) return;
+  useLayoutEffect(() => {
+    if (initialScrollPositionKey == null || isInitialLoading || messages.length === 0) return;
+    if (initialScrollPositionKeyRef.current === initialScrollPositionKey) return;
     const el = listRef.current;
     if (!el) return;
     scrollFeedToBottom(el);
-    didAutoScrollToLatestRef.current = true;
+    initialScrollPositionKeyRef.current = initialScrollPositionKey;
     topPaginationArmedRef.current = true;
-  }, [isInitialLoading, messages.length]);
+  }, [initialScrollPositionKey, isInitialLoading, messages.length]);
 
   useEffect(() => {
     // После завершения refresh мягко возвращаемся к последним сообщениям,
@@ -336,17 +338,6 @@ export const FeedPage: React.FC = () => {
                   </li>
                 );
               })}
-              {!isAllLoaded && !isLoadingMore && (
-                <li className="py-2 text-center">
-                  <button
-                    type="button"
-                    onClick={() => handleLoadMore(false)}
-                    className="bg-bg-elevated/50 hover:border-accent-soft/40 rounded-xl border border-border-subtle px-4 py-2 text-sm font-medium text-accent transition-colors hover:bg-card-bg"
-                  >
-                    {t("common.loadMore")}
-                  </button>
-                </li>
-              )}
             </ul>
             <FloatingLoadingOverlay visible={isLoadingMore || isRefreshing} />
             {!isAtBottom && (

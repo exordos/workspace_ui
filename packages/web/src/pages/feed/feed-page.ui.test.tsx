@@ -29,6 +29,28 @@ vi.mock("~/entities/feed/feed.api", async () => {
   };
 });
 
+const scrollHeightDescriptor = Object.getOwnPropertyDescriptor(
+  HTMLElement.prototype,
+  "scrollHeight",
+);
+
+function mockElementScrollHeight(value: number): () => void {
+  Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+    configurable: true,
+    get() {
+      return value;
+    },
+  });
+
+  return () => {
+    if (scrollHeightDescriptor) {
+      Object.defineProperty(HTMLElement.prototype, "scrollHeight", scrollHeightDescriptor);
+      return;
+    }
+    Reflect.deleteProperty(HTMLElement.prototype, "scrollHeight");
+  };
+}
+
 describe("FeedPage forward action", () => {
   afterEach(() => {
     navigateSpy.mockReset();
@@ -314,6 +336,72 @@ describe("FeedPage forward action", () => {
     );
 
     expect(screen.getByText("Cached feed item")).toBeInTheDocument();
+  });
+
+  it("initializes the feed list at the latest messages", async () => {
+    const restoreScrollHeight = mockElementScrollHeight(1200);
+    try {
+      useInstancesStore.setState({
+        instances: [
+          {
+            id: "instance-1",
+            realm: "https://zulip.example.com",
+            email: "user@example.com",
+            apiKey: "api-key",
+          },
+        ],
+        currentInstanceId: "instance-1",
+        unreadCountsByInstance: {},
+      });
+
+      fetchFeedMessages.mockResolvedValue({
+        messages: [
+          createMessage({
+            id: 60,
+            sender_id: 42,
+            sender_full_name: "Alice",
+            stream_id: 10,
+            subject: "scroll",
+            content: "Feed first item",
+            timestamp: 1,
+            type: "stream",
+            display_recipient: "engineering",
+            channel: "engineering",
+          }),
+          createMessage({
+            id: 61,
+            sender_id: 42,
+            sender_full_name: "Alice",
+            stream_id: 10,
+            subject: "scroll",
+            content: "Feed latest item",
+            timestamp: 2,
+            type: "stream",
+            display_recipient: "engineering",
+            channel: "engineering",
+          }),
+        ],
+        foundOldest: true,
+      });
+
+      const { container } = render(
+        <MemoryRouter initialEntries={["/feed"]}>
+          <Routes>
+            <Route path="/feed" element={<FeedPage />} />
+          </Routes>
+        </MemoryRouter>,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText("Feed latest item")).toBeInTheDocument();
+      });
+
+      const list = container.querySelector("ul");
+      expect(list).not.toBeNull();
+      expect((list as HTMLUListElement).scrollTop).toBe(1200);
+    } finally {
+      restoreScrollHeight();
+    }
   });
 
   it("shows scroll-to-bottom button when feed list is away from bottom and scrolls down on click", async () => {
