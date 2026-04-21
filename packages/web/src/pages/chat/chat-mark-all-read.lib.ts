@@ -11,10 +11,6 @@ export type MarkAllAsReadTarget =
       userIds: number[];
     }
   | {
-      type: "stream";
-      streamId: number;
-    }
-  | {
       type: "topic";
       streamId: number;
       topic: string;
@@ -32,10 +28,9 @@ export function resolveMarkAllAsReadTarget({
   }
 
   if (activeStreamId == null) return null;
-  if (activeTopic != null) {
-    return { type: "topic", streamId: activeStreamId, topic: activeTopic };
-  }
-  return { type: "stream", streamId: activeStreamId };
+  // Stream-wide route (no topic in URL): do not resolve a mark-all target — reading is per-topic only.
+  if (activeTopic == null) return null;
+  return { type: "topic", streamId: activeStreamId, topic: activeTopic };
 }
 
 export function collectUnreadMessageIds(

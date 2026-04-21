@@ -41,7 +41,6 @@ import {
   updateMessage,
   deleteMessage,
   markDmAsRead,
-  markStreamAsRead,
   markTopicAsRead,
   uploadFile,
   type MockMessage,
@@ -541,16 +540,10 @@ export const ChatPage: React.FC = () => {
       const bottomFallbackContext: ReadFallbackContext =
         target.type === "dm"
           ? { type: "dm", dmKey: dmRouteKey(target.userIds, currentUserId) }
-          : target.type === "topic"
-            ? { type: "stream", streamId: target.streamId, topic: target.topic }
-            : { type: "stream", streamId: target.streamId, topic: activeTopic ?? "general" };
+          : { type: "stream", streamId: target.streamId, topic: target.topic };
 
       const request =
-        target.type === "dm"
-          ? markDmAsRead(target.userIds)
-          : target.type === "topic"
-            ? markTopicAsRead(target.streamId, target.topic)
-            : markStreamAsRead(target.streamId);
+        target.type === "dm" ? markDmAsRead(target.userIds) : markTopicAsRead(target.streamId, target.topic);
 
       request
         .then((ok) => {
@@ -569,9 +562,13 @@ export const ChatPage: React.FC = () => {
     ],
   );
 
-  const handleUnreadMessagesVisible = useCallback((messageIds: number[]) => {
-    markAsReadBatcherRef.current?.schedule(messageIds);
-  }, []);
+  const handleUnreadMessagesVisible = useCallback(
+    (messageIds: number[]) => {
+      if (!isDmView && activeTopic == null) return;
+      markAsReadBatcherRef.current?.schedule(messageIds);
+    },
+    [isDmView, activeTopic],
+  );
 
   useEffect(() => {
     const batchFallbackContext: ReadFallbackContext | undefined = isDmView
@@ -652,18 +649,12 @@ export const ChatPage: React.FC = () => {
 
     const unreadIds = collectUnreadMessageIds(messages);
     const request =
-      target.type === "dm"
-        ? markDmAsRead(target.userIds)
-        : target.type === "topic"
-          ? markTopicAsRead(target.streamId, target.topic)
-          : markStreamAsRead(target.streamId);
+      target.type === "dm" ? markDmAsRead(target.userIds) : markTopicAsRead(target.streamId, target.topic);
 
     const markFallbackContext: ReadFallbackContext | undefined =
       target.type === "dm"
         ? { type: "dm", dmKey: dmRouteKey(target.userIds, currentUserId) }
-        : target.type === "topic"
-          ? { type: "stream", streamId: target.streamId, topic: target.topic }
-          : { type: "stream", streamId: target.streamId, topic: activeTopic ?? "general" };
+        : { type: "stream", streamId: target.streamId, topic: target.topic };
 
     request
       .then((ok) => {
@@ -684,7 +675,9 @@ export const ChatPage: React.FC = () => {
 
   useShortcut("mod+shift+m", handleMarkAllAsRead, {
     context: "chat",
-    enabled: isDmView ? (activeDmUserIds?.length ?? 0) > 0 : activeStreamId != null,
+    enabled: isDmView
+      ? (activeDmUserIds?.length ?? 0) > 0
+      : activeStreamId != null && activeTopic != null,
   });
 
   const handleComposerValueChange = useCallback(
