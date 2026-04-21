@@ -1,8 +1,14 @@
 import { fireEvent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { useLocation } from "react-router-dom";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { renderWithProviders } from "~/test/render";
 import { InstanceSwitcher } from "./instance-switch.ui";
+
+function PathnameProbe() {
+  const { pathname } = useLocation();
+  return <span data-testid="pathname-probe">{pathname}</span>;
+}
 
 function resetStore() {
   useInstancesStore.setState({
@@ -197,6 +203,29 @@ describe("InstanceSwitcher", () => {
     fireEvent.click(secondInstanceButton);
 
     expect(useInstancesStore.getState().currentInstanceId).toBe("inst-2");
+  });
+
+  it("navigates to target organization inbox when switching from a DM route", () => {
+    useInstancesStore.setState({
+      instances: [
+        { id: "inst-1", realm: "https://a.example.com", email: "a@example.com", apiKey: "k1" },
+        { id: "inst-2", realm: "https://b.example.com", email: "b@example.com", apiKey: "k2" },
+      ],
+      currentInstanceId: "inst-1",
+      unreadCountsByInstance: { "inst-1": 0, "inst-2": 0 },
+    });
+
+    renderWithProviders(
+      <>
+        <PathnameProbe />
+        <InstanceSwitcher />
+      </>,
+      { route: "/org/a.example.com/dm/42" },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "b.example.com" }));
+
+    expect(screen.getByTestId("pathname-probe")).toHaveTextContent("/org/b.example.com/inbox");
   });
 
   it("resolves realm-relative organization icon against instance realm url", () => {
