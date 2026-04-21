@@ -126,17 +126,14 @@ export const ProfileCustomFieldsBlock = React.memo(function ProfileCustomFieldsB
 
   const textClass =
     density === "compact"
-      ? "text-[11px] leading-snug text-text-primary"
+      ? "text-sm leading-normal text-text-primary"
       : "text-sm text-text-primary";
-  const labelClass =
-    density === "compact"
-      ? "mb-1 text-[10px] font-medium uppercase tracking-wide text-text-secondary"
-      : "mb-1.5 text-[11px] font-medium uppercase tracking-wide text-text-secondary";
+  const labelClass = "mb-1.5 text-[11px] font-medium uppercase tracking-wide text-text-secondary";
 
   return (
     <div className={className}>
       {showSectionTitle ? <p className={labelClass}>{t("info.customProfileFields")}</p> : null}
-      <ul className={`space-y-1.5 ${textClass}`}>
+      <ul className={`space-y-2 ${textClass}`}>
         {lines.map((line) => (
           <li key={line.fieldKey} className={`min-w-0 break-words ${textClass}`}>
             {renderLineContent(line, onOpenUserProfile, textClass, baseUrl)}

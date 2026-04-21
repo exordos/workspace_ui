@@ -13,6 +13,7 @@ import { formatLastSeen, getPresenceState } from "~/shared/lib/format";
 import { getRoleLabel, parseRole } from "~/shared/lib/roles";
 import { isValidEmail } from "~/shared/lib/validation";
 import { Avatar } from "~/shared/ui/avatar";
+import { Copyable } from "~/shared/ui/copyable";
 import { Icon } from "~/shared/ui/icon";
 import { resolveAvatarSrc } from "./message-avatar.lib";
 import {
@@ -20,7 +21,7 @@ import {
   MENTION_POPOVER_EST_HEIGHT,
   MENTION_POPOVER_WIDTH,
 } from "./message-mention-popover-position.lib";
-import { extractMentionNicknameFromEmail } from "./message-mention-popover-user.lib";
+import { resolveMentionDisplayForPopover } from "./message-mention-popover-user.lib";
 import type { MessageMentionPopoverProps } from "./message-mention-popover.types";
 
 type MentionInfoIcon = "profile" | "mail" | "at" | "group";
@@ -29,10 +30,14 @@ const MentionPopoverInfoRow = React.memo(function MentionPopoverInfoRow({
   icon,
   label,
   children,
+  copyValue,
+  copyAriaLabel,
 }: {
   icon: MentionInfoIcon;
   label: string;
   children: React.ReactNode;
+  copyValue?: string;
+  copyAriaLabel?: string;
 }) {
   return (
     <li className="flex gap-2">
@@ -41,7 +46,18 @@ const MentionPopoverInfoRow = React.memo(function MentionPopoverInfoRow({
         <p className="text-[11px] font-medium uppercase tracking-wide text-text-secondary">
           {label}
         </p>
-        <div className="truncate text-sm text-text-primary">{children}</div>
+        {copyValue != null ? (
+          <Copyable
+            value={copyValue}
+            copyAriaLabel={copyAriaLabel}
+            className="max-w-full"
+            contentClassName="min-w-0 truncate text-sm text-text-primary"
+          >
+            {children}
+          </Copyable>
+        ) : (
+          <div className="truncate text-sm text-text-primary">{children}</div>
+        )}
       </div>
     </li>
   );
@@ -120,9 +136,7 @@ export const MessageMentionPopover = React.memo(function MessageMentionPopover({
     emailTrimmed != null && emailTrimmed.length > 0 && isValidEmail(emailTrimmed)
       ? `mailto:${emailTrimmed}`
       : undefined;
-  const mentionNickname = extractMentionNicknameFromEmail(user?.email);
-  const mentionDisplay =
-    mentionNickname != null && mentionNickname.length > 0 ? `@${mentionNickname}` : undefined;
+  const mentionDisplay = resolveMentionDisplayForPopover(user?.email, fallbackName);
   const roleLabel = user?.role != null ? getRoleLabel(parseRole(user.role)) : undefined;
 
   const positionStyle = useMemo(() => {
@@ -237,45 +251,63 @@ export const MessageMentionPopover = React.memo(function MessageMentionPopover({
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-text-primary">{displayName}</p>
+            <Copyable value={displayName} className="w-full">
+              <p className="truncate text-sm font-semibold text-text-primary">{displayName}</p>
+            </Copyable>
             <p className="truncate text-xs text-text-muted">{statusLine}</p>
           </div>
         </div>
-        <div className="mt-2 max-h-44 overflow-y-auto border-t border-border-subtle pt-2">
-          <ProfileCustomFieldsBlock
-            profileData={user?.profile_data}
-            baseUrl={getRealmBaseUrl() || undefined}
-            density="compact"
-            showSectionTitle={false}
-            className=""
-            onOpenUserProfile={onOpenUserProfile}
-          />
-          <ul className="space-y-2 border-t border-border-subtle pt-2 first:border-t-0 first:pt-0">
-            <MentionPopoverInfoRow icon="profile" label={t("info.userId")}>
-              {String(userId)}
-            </MentionPopoverInfoRow>
-            {mailtoHref != null && emailTrimmed != null ? (
-              <MentionPopoverInfoRow icon="mail" label={t("common.email")}>
-                <a
-                  href={mailtoHref}
-                  className="text-accent underline-offset-2 hover:underline"
-                  onClick={(e) => e.stopPropagation()}
+        <div className="mt-3 max-h-44 overflow-y-auto border-t border-border-subtle pt-3">
+          <div className="flex flex-col gap-3">
+            <ProfileCustomFieldsBlock
+              profileData={user?.profile_data}
+              baseUrl={getRealmBaseUrl() || undefined}
+              density="compact"
+              showSectionTitle={false}
+              onOpenUserProfile={onOpenUserProfile}
+            />
+            <ul className="space-y-2 border-t border-border-subtle pt-3 first:border-t-0 first:pt-0">
+              <MentionPopoverInfoRow
+                icon="profile"
+                label={t("info.userId")}
+                copyValue={String(userId)}
+                copyAriaLabel={t("info.copyUserId")}
+              >
+                {String(userId)}
+              </MentionPopoverInfoRow>
+              {mailtoHref != null && emailTrimmed != null ? (
+                <MentionPopoverInfoRow
+                  icon="mail"
+                  label={t("common.email")}
+                  copyValue={emailTrimmed}
+                  copyAriaLabel={t("info.copyEmail")}
                 >
-                  {emailTrimmed}
-                </a>
-              </MentionPopoverInfoRow>
-            ) : null}
-            {mentionDisplay != null ? (
-              <MentionPopoverInfoRow icon="at" label={t("info.atMention")}>
-                <span className="text-accent">{mentionDisplay}</span>
-              </MentionPopoverInfoRow>
-            ) : null}
-            {roleLabel != null ? (
-              <MentionPopoverInfoRow icon="group" label={t("info.role")}>
-                {roleLabel}
-              </MentionPopoverInfoRow>
-            ) : null}
-          </ul>
+                  <a
+                    href={mailtoHref}
+                    className="text-accent underline-offset-2 hover:underline"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {emailTrimmed}
+                  </a>
+                </MentionPopoverInfoRow>
+              ) : null}
+              {mentionDisplay != null ? (
+                <MentionPopoverInfoRow
+                  icon="at"
+                  label={t("info.atMention")}
+                  copyValue={mentionDisplay}
+                  copyAriaLabel={t("info.copyMentionNickname")}
+                >
+                  <span className="text-accent">{mentionDisplay}</span>
+                </MentionPopoverInfoRow>
+              ) : null}
+              {roleLabel != null ? (
+                <MentionPopoverInfoRow icon="group" label={t("info.role")}>
+                  {roleLabel}
+                </MentionPopoverInfoRow>
+              ) : null}
+            </ul>
+          </div>
         </div>
         <div className="mt-3 flex gap-2">
           <button
