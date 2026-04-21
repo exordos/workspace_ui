@@ -364,6 +364,25 @@ describe("MessageList focused message behavior", () => {
       expect(onUnreadMessagesVisible).toHaveBeenCalledWith([2]);
     });
   });
+
+  it("uses smooth scrolling when the scroll-to-bottom button is clicked", () => {
+    render(<MessageList messages={[msg(1), msg(2), msg(3)]} currentUserId={7} />);
+
+    const feed = screen.getByRole("feed", { name: /conversation/i });
+    const scrollTo = vi.fn();
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 1200 });
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 400 });
+    Object.defineProperty(feed, "scrollTop", { configurable: true, writable: true, value: 120 });
+    Object.defineProperty(feed, "scrollTo", {
+      configurable: true,
+      value: scrollTo,
+    });
+
+    fireEvent.scroll(feed);
+    fireEvent.click(screen.getByRole("button", { name: /scroll to bottom/i }));
+
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 1200, behavior: "smooth" });
+  });
 });
 
 describe("MessageList selection mode", () => {

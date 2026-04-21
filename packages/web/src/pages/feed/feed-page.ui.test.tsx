@@ -33,6 +33,7 @@ const scrollHeightDescriptor = Object.getOwnPropertyDescriptor(
   HTMLElement.prototype,
   "scrollHeight",
 );
+const scrollToDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollTo");
 
 function mockElementScrollHeight(value: number): () => void {
   Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
@@ -48,6 +49,23 @@ function mockElementScrollHeight(value: number): () => void {
       return;
     }
     Reflect.deleteProperty(HTMLElement.prototype, "scrollHeight");
+  };
+}
+
+function mockElementScrollTo(
+  impl: (this: HTMLElement, options: ScrollToOptions) => void,
+): () => void {
+  Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+    configurable: true,
+    value: impl,
+  });
+
+  return () => {
+    if (scrollToDescriptor) {
+      Object.defineProperty(HTMLElement.prototype, "scrollTo", scrollToDescriptor);
+      return;
+    }
+    Reflect.deleteProperty(HTMLElement.prototype, "scrollTo");
   };
 }
 
@@ -340,6 +358,14 @@ describe("FeedPage forward action", () => {
 
   it("initializes the feed list at the latest messages", async () => {
     const restoreScrollHeight = mockElementScrollHeight(1200);
+    const scrollTo = vi.fn(function (this: HTMLElement, options: ScrollToOptions) {
+      Object.defineProperty(this, "scrollTop", {
+        configurable: true,
+        writable: true,
+        value: options.top ?? 0,
+      });
+    });
+    const restoreScrollTo = mockElementScrollTo(scrollTo);
     try {
       useInstancesStore.setState({
         instances: [
@@ -399,66 +425,81 @@ describe("FeedPage forward action", () => {
       const list = container.querySelector("ul");
       expect(list).not.toBeNull();
       expect((list as HTMLUListElement).scrollTop).toBe(1200);
+      expect(scrollTo).toHaveBeenCalledWith({ top: 1200, behavior: "instant" });
     } finally {
+      restoreScrollTo();
       restoreScrollHeight();
     }
   });
 
   it("shows scroll-to-bottom button when feed list is away from bottom and scrolls down on click", async () => {
-    useInstancesStore.setState({
-      instances: [
-        {
-          id: "instance-1",
-          realm: "https://zulip.example.com",
-          email: "user@example.com",
-          apiKey: "api-key",
-        },
-      ],
-      currentInstanceId: "instance-1",
-      unreadCountsByInstance: {},
+    const scrollTo = vi.fn(function (this: HTMLElement, options: ScrollToOptions) {
+      Object.defineProperty(this, "scrollTop", {
+        configurable: true,
+        writable: true,
+        value: options.top ?? 0,
+      });
     });
+    const restoreScrollTo = mockElementScrollTo(scrollTo);
+    try {
+      useInstancesStore.setState({
+        instances: [
+          {
+            id: "instance-1",
+            realm: "https://zulip.example.com",
+            email: "user@example.com",
+            apiKey: "api-key",
+          },
+        ],
+        currentInstanceId: "instance-1",
+        unreadCountsByInstance: {},
+      });
 
-    const message = createMessage({
-      id: 59,
-      sender_id: 42,
-      sender_full_name: "Alice",
-      stream_id: 10,
-      subject: "scroll",
-      content: "Scroll button target",
-      timestamp: 1,
-      type: "stream",
-      display_recipient: "engineering",
-      channel: "engineering",
-    });
+      const message = createMessage({
+        id: 59,
+        sender_id: 42,
+        sender_full_name: "Alice",
+        stream_id: 10,
+        subject: "scroll",
+        content: "Scroll button target",
+        timestamp: 1,
+        type: "stream",
+        display_recipient: "engineering",
+        channel: "engineering",
+      });
 
-    fetchFeedMessages.mockResolvedValue({
-      messages: [message],
-      foundOldest: true,
-    });
+      fetchFeedMessages.mockResolvedValue({
+        messages: [message],
+        foundOldest: true,
+      });
 
-    const { container } = render(
-      <MemoryRouter initialEntries={["/feed"]}>
-        <Routes>
-          <Route path="/feed" element={<FeedPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
+      const { container } = render(
+        <MemoryRouter initialEntries={["/feed"]}>
+          <Routes>
+            <Route path="/feed" element={<FeedPage />} />
+          </Routes>
+        </MemoryRouter>,
+      );
 
-    await waitFor(() => {
-      expect(screen.getByText("Scroll button target")).toBeInTheDocument();
-    });
+      await waitFor(() => {
+        expect(screen.getByText("Scroll button target")).toBeInTheDocument();
+      });
 
-    const list = container.querySelector("ul") as HTMLUListElement;
-    Object.defineProperty(list, "scrollHeight", { configurable: true, value: 1200 });
-    Object.defineProperty(list, "clientHeight", { configurable: true, value: 400 });
-    Object.defineProperty(list, "scrollTop", { configurable: true, writable: true, value: 120 });
+      const list = container.querySelector("ul") as HTMLUListElement;
+      Object.defineProperty(list, "scrollHeight", { configurable: true, value: 1200 });
+      Object.defineProperty(list, "clientHeight", { configurable: true, value: 400 });
+      Object.defineProperty(list, "scrollTop", { configurable: true, writable: true, value: 120 });
 
-    fireEvent.scroll(list);
+      fireEvent.scroll(list);
 
-    const scrollButton = screen.getByRole("button", { name: /scroll to bottom/i });
-    expect(scrollButton).toBeInTheDocument();
+      const scrollButton = screen.getByRole("button", { name: /scroll to bottom/i });
+      expect(scrollButton).toBeInTheDocument();
 
-    fireEvent.click(scrollButton);
-    expect(list.scrollTop).toBe(1200);
+      fireEvent.click(scrollButton);
+      expect(list.scrollTop).toBe(1200);
+      expect(scrollTo).toHaveBeenLastCalledWith({ top: 1200, behavior: "smooth" });
+    } finally {
+      restoreScrollTo();
+    }
   });
 });

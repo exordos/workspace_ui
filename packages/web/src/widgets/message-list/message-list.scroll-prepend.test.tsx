@@ -3,8 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { MessageList } from "./message-list.ui";
 
-vi.mock("./message-list-grouping.lib", async (importOriginal) => {
-  const mod = await importOriginal<typeof import("./message-list-grouping.lib")>();
+vi.mock("~/shared/lib/scroll-position.lib", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("~/shared/lib/scroll-position.lib")>();
   return { ...mod, scrollToBottom: vi.fn() };
 });
 
@@ -42,9 +42,7 @@ describe("MessageList prepend scroll anchor", () => {
     expect(onLoadMore).toHaveBeenCalledTimes(1);
 
     act(() => {
-      rerender(
-        <MessageList messages={initial} onLoadMore={onLoadMore} isLoadingMore={true} />,
-      );
+      rerender(<MessageList messages={initial} onLoadMore={onLoadMore} isLoadingMore={true} />);
     });
 
     act(() => {

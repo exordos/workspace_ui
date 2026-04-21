@@ -31,6 +31,7 @@ import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-d
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { buildNavigableRouteFromMessage } from "~/shared/lib/push-click";
 import { runInFlightDeduped } from "~/shared/lib/request-lifecycle.lib";
+import { scrollToBottom } from "~/shared/lib/scroll-position.lib";
 import { FloatingLoadingOverlay } from "~/shared/ui/floating-loading-overlay";
 import { Icon } from "~/shared/ui/icon";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
@@ -75,11 +76,6 @@ function formatItemTime(ts: number): string {
   if (d.getDate() === yesterday.getDate() && d.getMonth() === yesterday.getMonth())
     return t("chat.yesterday") + " " + formatMessageTime(ts);
   return d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
-}
-
-function scrollActivityListToBottom(el: HTMLElement | null): void {
-  if (!el) return;
-  el.scrollTo({ top: el.scrollHeight, behavior: "instant" });
 }
 
 function ActivitySenderName({ senderId, fallback }: { senderId: number; fallback: string }) {
@@ -224,7 +220,7 @@ export const ActivityPage: React.FC = () => {
     if (initialScrollPositionKeyRef.current === initialScrollPositionKey) return;
     const el = listScrollRef.current;
     if (!el) return;
-    scrollActivityListToBottom(el);
+    scrollToBottom(el);
     initialScrollPositionKeyRef.current = initialScrollPositionKey;
   }, [initialScrollPositionKey, listLength, loading]);
 

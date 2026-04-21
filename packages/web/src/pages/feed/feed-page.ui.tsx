@@ -15,7 +15,9 @@ import { createLogger } from "~/shared/lib/logger";
 import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
 import { buildNavigableRouteFromMessage } from "~/shared/lib/push-click";
 import { runInFlightDeduped } from "~/shared/lib/request-lifecycle.lib";
+import { scrollToBottom } from "~/shared/lib/scroll-position.lib";
 import { FloatingLoadingOverlay } from "~/shared/ui/floating-loading-overlay";
+import { FloatingScrollToBottomButton } from "~/shared/ui/floating-scroll-to-bottom-button";
 import { Icon } from "~/shared/ui/icon";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
 import { appendForwardIntentQuery } from "./feed-forward-intent.lib";
@@ -65,12 +67,6 @@ const FEED_ACTION_BUTTON_CLASS =
 // Проверяем, находится ли скролл около низа списка.
 function isNearBottom(el: HTMLElement, thresholdPx = FEED_BOTTOM_THRESHOLD_PX): boolean {
   return el.scrollHeight - el.scrollTop - el.clientHeight <= thresholdPx;
-}
-
-// Мгновенно скроллим список к последним сообщениям (без плавной анимации).
-function scrollFeedToBottom(el: HTMLElement | null): void {
-  if (!el) return;
-  el.scrollTo({ top: el.scrollHeight, behavior: "instant" });
 }
 
 export const FeedPage: React.FC = () => {
@@ -152,7 +148,7 @@ export const FeedPage: React.FC = () => {
     if (initialScrollPositionKeyRef.current === initialScrollPositionKey) return;
     const el = listRef.current;
     if (!el) return;
-    scrollFeedToBottom(el);
+    scrollToBottom(el);
     initialScrollPositionKeyRef.current = initialScrollPositionKey;
     topPaginationArmedRef.current = true;
   }, [initialScrollPositionKey, isInitialLoading, messages.length]);
@@ -164,7 +160,7 @@ export const FeedPage: React.FC = () => {
       return;
     const el = listRef.current;
     if (!el) return;
-    scrollFeedToBottom(el);
+    scrollToBottom(el);
     shouldStickToBottomAfterRefreshRef.current = false;
     topPaginationArmedRef.current = true;
   }, [isRefreshing, messages.length]);
@@ -245,8 +241,10 @@ export const FeedPage: React.FC = () => {
     [handleLoadMore, isLoadingMore, isAllLoaded, isRefreshing, lastMessageId],
   );
 
+  // Для кнопки "вниз" используем плавную прокрутку,
+  // но автоскроллы загрузки и refresh выше остаются мгновенными.
   const handleScrollToBottomClick = React.useCallback(() => {
-    scrollFeedToBottom(listRef.current);
+    scrollToBottom(listRef.current, "smooth");
     setIsAtBottom(true);
     topPaginationArmedRef.current = true;
   }, []);
@@ -340,18 +338,7 @@ export const FeedPage: React.FC = () => {
               })}
             </ul>
             <FloatingLoadingOverlay visible={isLoadingMore || isRefreshing} />
-            {!isAtBottom && (
-              <div className="absolute bottom-4 right-4 z-float">
-                <button
-                  type="button"
-                  onClick={handleScrollToBottomClick}
-                  className="hover:bg-bg-elevated/90 flex h-10 w-10 items-center justify-center rounded-full border border-border-subtle bg-bg-elevated text-text-primary shadow-lg focus:outline-none focus:ring-2 focus:ring-accent-soft"
-                  aria-label={t("a11y.scrollToBottom")}
-                >
-                  <Icon name="chevron-down" className="h-5 w-5" />
-                </button>
-              </div>
-            )}
+            {!isAtBottom && <FloatingScrollToBottomButton onClick={handleScrollToBottomClick} />}
           </div>
         )}
       </section>

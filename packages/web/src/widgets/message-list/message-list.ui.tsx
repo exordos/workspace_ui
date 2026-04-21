@@ -5,11 +5,12 @@ import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
 import { createLogger } from "~/shared/lib/logger";
 import { normalizeStreamTopicForMessageCache } from "~/shared/lib/message-cache-keys.lib";
 import { logMessageFlow } from "~/shared/lib/message-flow-debug.lib";
+import { scrollToBottom } from "~/shared/lib/scroll-position.lib";
 import { computeScrollTopAfterPrepend } from "~/shared/lib/scroll-prepend-anchor.lib";
 import { FloatingLoadingOverlay } from "~/shared/ui/floating-loading-overlay";
-import { Icon } from "~/shared/ui/icon";
+import { FloatingScrollToBottomButton } from "~/shared/ui/floating-scroll-to-bottom-button";
 import { MessageBubble, type MessageBubbleCallbacks } from "./message-bubble.ui";
-import { getSenderGroups, scrollToBottom } from "./message-list-grouping.lib";
+import { getSenderGroups } from "./message-list-grouping.lib";
 import { buildMessageMediaGallery } from "./message-list-media.lib";
 import { MessageListSenderGroup } from "./message-list-sender-group.ui";
 import type { MessageListProps } from "./message-list.types";
@@ -391,9 +392,11 @@ export const MessageList: React.FC<MessageListProps> = ({
     unreadScrollKeyRef.current = unreadScrollKey;
   }, [focusedMessageId, firstUnreadId, scrollToBottomKey, messages.length]);
 
-  const scrollToBottomClick = () => {
-    scrollToBottom(scrollRef.current);
-  };
+  // По клику пользователя используем плавную прокрутку.
+  // Это единственный сценарий в message-list, где анимация нужна намеренно.
+  const handleScrollToBottomClick = useCallback(() => {
+    scrollToBottom(scrollRef.current, "smooth");
+  }, []);
 
   const groups = useMemo(() => {
     const result: { dateKey: string; items: MockMessage[] }[] = [];
@@ -522,18 +525,7 @@ export const MessageList: React.FC<MessageListProps> = ({
         )}
         <div className="h-2 shrink-0" aria-hidden />
       </div>
-      {!isAtBottom && (
-        <div className="absolute bottom-4 right-4 z-float">
-          <button
-            type="button"
-            onClick={scrollToBottomClick}
-            className="hover:bg-bg-elevated/90 flex h-10 w-10 items-center justify-center rounded-full border border-border-subtle bg-bg-elevated text-text-primary shadow-lg focus:outline-none focus:ring-2 focus:ring-accent-soft"
-            aria-label={t("a11y.scrollToBottom")}
-          >
-            <Icon name="chevron-down" className="h-5 w-5" />
-          </button>
-        </div>
-      )}
+      {!isAtBottom && <FloatingScrollToBottomButton onClick={handleScrollToBottomClick} />}
       <FloatingLoadingOverlay
         visible={showLoadingOverlay}
         label={t("chat.loadingMessages")}
