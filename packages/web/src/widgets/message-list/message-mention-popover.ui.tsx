@@ -10,7 +10,6 @@ import { t } from "~/i18n/i18n";
 import { fetchUser } from "~/shared/api/zulip";
 import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
 import { formatLastSeen, getPresenceState } from "~/shared/lib/format";
-import { getRoleLabel, parseRole } from "~/shared/lib/roles";
 import { isValidEmail } from "~/shared/lib/validation";
 import { Avatar } from "~/shared/ui/avatar";
 import { Copyable } from "~/shared/ui/copyable";
@@ -21,10 +20,9 @@ import {
   MENTION_POPOVER_EST_HEIGHT,
   MENTION_POPOVER_WIDTH,
 } from "./message-mention-popover-position.lib";
-import { resolveMentionDisplayForPopover } from "./message-mention-popover-user.lib";
 import type { MessageMentionPopoverProps } from "./message-mention-popover.types";
 
-type MentionInfoIcon = "profile" | "mail" | "at" | "group";
+type MentionInfoIcon = "profile" | "mail";
 
 const MentionPopoverInfoRow = React.memo(function MentionPopoverInfoRow({
   icon,
@@ -136,9 +134,6 @@ export const MessageMentionPopover = React.memo(function MessageMentionPopover({
     emailTrimmed != null && emailTrimmed.length > 0 && isValidEmail(emailTrimmed)
       ? `mailto:${emailTrimmed}`
       : undefined;
-  const mentionDisplay = resolveMentionDisplayForPopover(user?.email, fallbackName);
-  const roleLabel = user?.role != null ? getRoleLabel(parseRole(user.role)) : undefined;
-
   const positionStyle = useMemo(() => {
     if (typeof window === "undefined") {
       return { left: 0, top: 0, width: MENTION_POPOVER_WIDTH };
@@ -166,8 +161,6 @@ export const MessageMentionPopover = React.memo(function MessageMentionPopover({
     user?.avatar_url,
     user?.profile_data,
     emailTrimmed,
-    mentionDisplay,
-    roleLabel,
     onOpenUserProfile,
   ]);
 
@@ -257,7 +250,7 @@ export const MessageMentionPopover = React.memo(function MessageMentionPopover({
             <p className="truncate text-xs text-text-muted">{statusLine}</p>
           </div>
         </div>
-        <div className="mt-3 max-h-44 overflow-y-auto border-t border-border-subtle pt-3">
+        <div className="mt-3 max-h-[calc(100dvh-12rem)] min-h-0 overflow-y-auto overscroll-contain border-t border-border-subtle pt-3">
           <div className="flex flex-col gap-3">
             <ProfileCustomFieldsBlock
               profileData={user?.profile_data}
@@ -289,21 +282,6 @@ export const MessageMentionPopover = React.memo(function MessageMentionPopover({
                   >
                     {emailTrimmed}
                   </a>
-                </MentionPopoverInfoRow>
-              ) : null}
-              {mentionDisplay != null ? (
-                <MentionPopoverInfoRow
-                  icon="at"
-                  label={t("info.atMention")}
-                  copyValue={mentionDisplay}
-                  copyAriaLabel={t("info.copyMentionNickname")}
-                >
-                  <span className="text-accent">{mentionDisplay}</span>
-                </MentionPopoverInfoRow>
-              ) : null}
-              {roleLabel != null ? (
-                <MentionPopoverInfoRow icon="group" label={t("info.role")}>
-                  {roleLabel}
                 </MentionPopoverInfoRow>
               ) : null}
             </ul>
