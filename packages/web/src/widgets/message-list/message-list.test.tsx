@@ -190,7 +190,7 @@ describe("MessageList focused message behavior", () => {
       <MessageList
         messages={[
           msg(1, {
-            content: `<p><span class="user-mention" data-user-id="99">Bob</span> hi</p>`,
+            content: `<p><span class="user-mention" data-user-id="99">@Bob</span> hi</p>`,
           }),
         ]}
         currentUserId={7}
@@ -198,7 +198,7 @@ describe("MessageList focused message behavior", () => {
       />,
     );
 
-    fireEvent.click(screen.getByText("Bob"));
+    fireEvent.click(screen.getByText("@Bob"));
     expect(await screen.findByRole("dialog", { name: /user mention/i })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /open direct messages/i }));
@@ -222,7 +222,7 @@ describe("MessageList focused message behavior", () => {
       <MessageList
         messages={[
           msg(1, {
-            content: `<p><span class="user-mention" data-user-id="99">Bob</span> hi</p>`,
+            content: `<p><span class="user-mention" data-user-id="99">@Bob</span> hi</p>`,
           }),
         ]}
         currentUserId={7}
@@ -230,7 +230,7 @@ describe("MessageList focused message behavior", () => {
       />,
     );
 
-    fireEvent.click(screen.getByText("Bob"));
+    fireEvent.click(screen.getByText("@Bob"));
     expect(await screen.findByRole("dialog", { name: /user mention/i })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /^call$/i }));
@@ -259,7 +259,7 @@ describe("MessageList focused message behavior", () => {
       />,
     );
 
-    fireEvent.click(screen.getByText("Bob"));
+    fireEvent.click(screen.getByText("@Bob"));
     expect(await screen.findByRole("dialog", { name: /user mention/i })).toBeInTheDocument();
     expect(onOpenDirectMessage).not.toHaveBeenCalled();
   });

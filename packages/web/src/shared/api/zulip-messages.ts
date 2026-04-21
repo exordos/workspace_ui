@@ -9,6 +9,10 @@ import {
   ZULIP_STREAM_CHAT_NUM_AFTER,
   ZULIP_STREAM_CHAT_NUM_BEFORE,
 } from "~/shared/lib/zulip-message-window.lib";
+import {
+  normalizeZulipMessagesNarrowForApi,
+  zulipTopicNarrowOperandForApi,
+} from "~/shared/lib/zulip-topic-narrow.lib";
 import { getClient, type ZulipClient } from "./zulip-client.internal";
 import { mockMessageFromGetMessageApiData, rawMessageToMockMessage } from "./zulip-message-map.lib";
 import {
@@ -180,14 +184,19 @@ export async function fetchMessages(
 ): Promise<MockMessage[]> {
   const normalizedStream =
     stream == null ? undefined : guard.nonEmpty(stream, "fetchMessages.stream");
-  const normalizedTopic = topic == null ? undefined : guard.nonEmpty(topic, "fetchMessages.topic");
+  const normalizedTopic =
+    topic == null || topic.trim() === ""
+      ? undefined
+      : guard.nonEmpty(topic.trim(), "fetchMessages.topic");
   if (normalizedTopic !== undefined && normalizedStream === undefined) {
     throw new Error("fetchMessages.stream is required when topic is provided");
   }
   const client = await getClient();
   const narrow: { operator: string; operand: string }[] = [];
   if (normalizedStream) narrow.push({ operator: "stream", operand: normalizedStream });
-  if (normalizedTopic) narrow.push({ operator: "topic", operand: normalizedTopic });
+  if (normalizedTopic !== undefined) {
+    narrow.push({ operator: "topic", operand: zulipTopicNarrowOperandForApi(normalizedTopic) });
+  }
   if (q?.trim()) narrow.push({ operator: "search", operand: q.trim() });
   try {
     const data = (await client.messages.retrieve({
@@ -226,10 +235,11 @@ export async function fetchMessagesWithNarrowPage(
   const validatedAnchor = validateMessagesApiAnchor(anchor, "fetchMessagesWithNarrowPage");
   const validatedNumBefore = validateNonNegativeInteger(numBefore, "numBefore");
   const validatedNumAfter = validateNonNegativeInteger(numAfter, "numAfter");
+  const apiNarrow = normalizeZulipMessagesNarrowForApi(narrow);
   const client = await getClient();
   try {
     const data = (await client.messages.retrieve({
-      narrow: narrow.length > 0 ? narrow : undefined,
+      narrow: apiNarrow.length > 0 ? apiNarrow : undefined,
       anchor: validatedAnchor,
       num_before: validatedNumBefore,
       num_after: validatedNumAfter,

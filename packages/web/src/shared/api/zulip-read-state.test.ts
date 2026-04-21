@@ -163,6 +163,25 @@ describe("markTopicAsRead", () => {
   it("throws for empty topic", async () => {
     await expect(markTopicAsRead(10, "")).rejects.toThrow(/non-empty string/);
   });
+
+  it("uses empty topic operand for default topic general", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { result: "success" },
+      raw: { statusText: "OK" },
+    });
+    await markTopicAsRead(10, "general");
+    expect(mockZulipApi.post).toHaveBeenCalledWith(
+      "/messages/flags/narrow",
+      expect.objectContaining({
+        narrow: JSON.stringify([
+          { operator: "stream", operand: 10 },
+          { operator: "topic", operand: "" },
+        ]),
+      }),
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -1612,6 +1612,19 @@ describe("fetchMessages", () => {
     expect(result[0]!.id).toBe(10);
   });
 
+  it("uses empty topic narrow operand for default topic route name general", async () => {
+    mockZulipClient.messages.retrieve.mockResolvedValue({ messages: [] });
+    await fetchMessages("engineering", "general");
+    expect(mockZulipClient.messages.retrieve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        narrow: [
+          { operator: "stream", operand: "engineering" },
+          { operator: "topic", operand: "" },
+        ],
+      }),
+    );
+  });
+
   it("returns empty array on error result", async () => {
     mockZulipClient.messages.retrieve.mockResolvedValue({ result: "error" });
     expect(await fetchMessages("general")).toEqual([]);
@@ -1715,6 +1728,27 @@ describe("fetchMessagesWithNarrow", () => {
         num_before: 200,
         num_after: 0,
         apply_markdown: false,
+      }),
+    );
+  });
+
+  it("normalizes topic operand general to empty string", async () => {
+    mockZulipClient.messages.retrieve.mockResolvedValue({ messages: [] });
+    await fetchMessagesWithNarrow(
+      [
+        { operator: "stream", operand: "dev" },
+        { operator: "topic", operand: "general" },
+      ],
+      "newest",
+      50,
+      0,
+    );
+    expect(mockZulipClient.messages.retrieve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        narrow: [
+          { operator: "stream", operand: "dev" },
+          { operator: "topic", operand: "" },
+        ],
       }),
     );
   });
@@ -2521,6 +2555,25 @@ describe("markTopicAsRead", () => {
 
   it("throws for empty topic", async () => {
     await expect(markTopicAsRead(10, "")).rejects.toThrow(/non-empty string/);
+  });
+
+  it("uses empty topic operand for default topic general", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { result: "success" },
+      raw: { statusText: "OK" },
+    });
+    await markTopicAsRead(10, "general");
+    expect(mockZulipApi.post).toHaveBeenCalledWith(
+      "/messages/flags/narrow",
+      expect.objectContaining({
+        narrow: JSON.stringify([
+          { operator: "stream", operand: 10 },
+          { operator: "topic", operand: "" },
+        ]),
+      }),
+    );
   });
 });
 

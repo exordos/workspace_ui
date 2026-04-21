@@ -35,7 +35,7 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
     });
     expect(html).toContain('class="user-mention"');
     expect(html).toContain('data-user-id="99"');
-    expect(html).toContain(">Octane<");
+    expect(html).toContain(">@Octane<");
     expect(html).not.toContain("**");
     expect(html).not.toContain("@<strong>");
   });
@@ -46,6 +46,7 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
     });
     expect(html).toContain('class="user-mention"');
     expect(html).not.toContain("data-user-id");
+    expect(html).toContain(">@Ghost<");
     expect(html).not.toContain("@<strong>");
   });
 
@@ -62,7 +63,7 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
       resolveUserMention: () => null,
     });
     expect(html).toContain('data-user-id="507"');
-    expect(html).toContain(">Doublek<");
+    expect(html).toContain(">@Doublek<");
     expect(html).not.toContain("**");
   });
 });

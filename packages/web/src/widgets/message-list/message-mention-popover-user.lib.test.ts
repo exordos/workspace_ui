@@ -28,6 +28,7 @@ describe("resolveMentionDisplayForPopover", () => {
   it("uses fallback when email yields no nick", () => {
     expect(resolveMentionDisplayForPopover(undefined, "Bob")).toBe("@Bob");
     expect(resolveMentionDisplayForPopover("", "  @carol  ")).toBe("@carol");
+    expect(resolveMentionDisplayForPopover(undefined, "@Bob")).toBe("@Bob");
   });
 
   it("returns undefined when fallback is empty", () => {

@@ -19,7 +19,7 @@ import {
   updateChatMetaPatch,
   upsertChatMessages,
 } from "~/shared/lib/message-cache-db";
-import { chatKeyFromContext } from "~/shared/lib/message-cache-keys.lib";
+import { chatKeyFromContext, chatKeyFromMockMessage } from "~/shared/lib/message-cache-keys.lib";
 import { logMessageFlow, summarizeChatContextForLog } from "~/shared/lib/message-flow-debug.lib";
 import {
   computeHasNewerAfterLoadNewerIdbPage,
@@ -40,6 +40,27 @@ export type { CurrentChatContext } from "./message.model.types";
 export { contextFromMessage, isMessageForContext } from "./message-chat-context.lib";
 
 const loadOlderLog = createLogger("messages:loadOlder");
+
+function hydratedMessagesMatchContext(
+  messages: readonly MockMessage[],
+  next: CurrentChatContext,
+  currentUserId: number | null,
+): boolean {
+  if (messages.length === 0) return true;
+  if (next.type === "dm") {
+    const expected = chatKeyFromContext({ type: "dm", dmKey: next.dmKey });
+    return messages.every((m) => chatKeyFromMockMessage(m, currentUserId) === expected);
+  }
+  if (next.streamWideView) {
+    return messages.every((m) => m.stream_id === next.streamId);
+  }
+  const expected = chatKeyFromContext({
+    type: "stream",
+    streamId: next.streamId,
+    topic: next.topic,
+  });
+  return messages.every((m) => chatKeyFromMockMessage(m, currentUserId) === expected);
+}
 
 // Что делает: хранит актуальный "поколенческий" номер initial-load запроса.
 // Зачем: чтобы поздние ответы старых запросов нельзя было применить в store.
@@ -600,7 +621,41 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       mode: loadResult.mode,
     });
 
+    const snapshotBeforeApiApply = get();
     mergeUsersFromMessages(loadResult.messages);
+
+    const preserveHydratedOnEmptyApi =
+      loadResult.messages.length === 0 &&
+      snapshotBeforeApiApply.messages.length > 0 &&
+      hydratedMessagesMatchContext(
+        snapshotBeforeApiApply.messages,
+        loadResult.nextContext,
+        currentUserId,
+      );
+
+    if (preserveHydratedOnEmptyApi) {
+      logMessageFlow("store:loadInitial preserve hydrated on empty api", {
+        context: summarizeChatContextForLog(loadResult.nextContext),
+        keptCount: snapshotBeforeApiApply.messages.length,
+      });
+      set({
+        context: loadResult.nextContext,
+        messages: snapshotBeforeApiApply.messages,
+        pendingOutgoingEchoKeys: [],
+        hasOlderMessages: snapshotBeforeApiApply.hasOlderMessages,
+        hasNewerMessages: snapshotBeforeApiApply.hasNewerMessages,
+        boundaryLoadFailed: snapshotBeforeApiApply.boundaryLoadFailed,
+      });
+      logMessageFlow("store:loadInitial done", {
+        mode: loadResult.mode,
+        count: snapshotBeforeApiApply.messages.length,
+        hasOlder: snapshotBeforeApiApply.hasOlderMessages,
+        hasNewer: snapshotBeforeApiApply.hasNewerMessages,
+        preserved: true,
+      });
+      return;
+    }
+
     set({
       context: loadResult.nextContext,
       messages: loadResult.messages,

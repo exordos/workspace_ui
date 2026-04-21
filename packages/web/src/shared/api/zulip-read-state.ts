@@ -4,6 +4,7 @@
 import { t } from "~/i18n/i18n";
 import { guard } from "~/shared/lib/guards";
 import { toResolvedTopicName, toUnresolvedTopicName } from "~/shared/lib/topic-resolve";
+import { zulipTopicNarrowOperandForApi } from "~/shared/lib/zulip-topic-narrow.lib";
 import { zulipPipelineGet, zulipPipelinePatch, zulipPipelinePost } from "./zulip-pipeline.internal";
 import { validateMessageIds } from "./zulip-validation.internal";
 
@@ -61,7 +62,7 @@ export async function markTopicAsRead(streamId: number, topic: string): Promise<
     num_after: "0",
     narrow: JSON.stringify([
       { operator: "stream", operand: streamId },
-      { operator: "topic", operand: topic },
+      { operator: "topic", operand: zulipTopicNarrowOperandForApi(topic) },
     ]),
     op: "add",
     flag: "read",
@@ -100,7 +101,7 @@ export async function setTopicResolvedState(
     apply_markdown: "false",
     narrow: JSON.stringify([
       { operator: "stream", operand: streamId },
-      { operator: "topic", operand: normalizedTopic },
+      { operator: "topic", operand: zulipTopicNarrowOperandForApi(normalizedTopic) },
     ]),
   });
 
