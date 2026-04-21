@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
 import { ensureUserStatusLoaded } from "~/entities/user/api/user.api";
 import { ProfileCustomFieldsBlock } from "~/entities/user/profile-custom-fields-block.ui";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
@@ -161,6 +162,15 @@ export const MessageMentionPopover = React.memo(function MessageMentionPopover({
     onClose();
   }, [onClose, onOpenDirectMessage, userId]);
 
+  const currentUserId = useChatListStore((s) => s.currentUserId);
+  const profileDmCallHandlerReady = useChatDmCallBridgeStore(
+    (s) => s.invokeDmCallFromProfileHandler != null,
+  );
+  const handleProfileDmCall = useCallback(() => {
+    useChatDmCallBridgeStore.getState().invokeDmCallFromProfile(userId);
+    onClose();
+  }, [onClose, userId]);
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -267,14 +277,27 @@ export const MessageMentionPopover = React.memo(function MessageMentionPopover({
             ) : null}
           </ul>
         </div>
-        <button
-          type="button"
-          className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-on-accent hover:opacity-90"
-          onClick={handleOpenDm}
-        >
-          <Icon name="chatBubble" size={16} className="shrink-0 text-current" />
-          <span>{t("info.openDirectMessages")}</span>
-        </button>
+        <div className="mt-3 flex gap-2">
+          <button
+            type="button"
+            className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-on-accent hover:opacity-90"
+            onClick={handleOpenDm}
+          >
+            <Icon name="chatBubble" size={16} className="shrink-0 text-current" />
+            <span className="truncate">{t("info.openDirectMessages")}</span>
+          </button>
+          {profileDmCallHandlerReady && currentUserId != null && userId !== currentUserId && (
+            <button
+              type="button"
+              className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2 text-sm font-medium text-text-primary hover:bg-bg"
+              onClick={handleProfileDmCall}
+              aria-label={t("call.call")}
+            >
+              <Icon name="phone" size={16} className="shrink-0 text-current" />
+              <span className="truncate">{t("call.call")}</span>
+            </button>
+          )}
+        </div>
       </div>
     </>,
     document.body,

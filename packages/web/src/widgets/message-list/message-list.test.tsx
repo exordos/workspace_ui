@@ -1,6 +1,8 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useUsersStore } from "~/entities/user/user.model";
+import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { createUser } from "~/test/factories";
 import { MessageList } from "./message-list.ui";
@@ -61,6 +63,9 @@ describe("MessageList focused message behavior", () => {
     vi.restoreAllMocks();
     globalThis.IntersectionObserver = originalIntersectionObserver;
     useUsersStore.getState().clear();
+    useChatDmCallBridgeStore.getState().setInvokeDmCallFromProfileHandler(null);
+    useChatDmCallBridgeStore.getState().clearPendingDmCallPartner();
+    useChatListStore.getState().setCurrentUserId(null);
   });
 
   it("marks and scrolls the focused message into view", () => {
@@ -199,6 +204,38 @@ describe("MessageList focused message behavior", () => {
     fireEvent.click(screen.getByRole("button", { name: /open direct messages/i }));
     expect(onOpenDirectMessage).toHaveBeenCalledTimes(1);
     expect(onOpenDirectMessage).toHaveBeenCalledWith(99);
+  });
+
+  it("shows call in mention popover and invokes dm call bridge", async () => {
+    const onOpenDirectMessage = vi.fn();
+    const invokeDmCall = vi.fn();
+    useChatListStore.getState().setCurrentUserId(7);
+    useChatDmCallBridgeStore.getState().setInvokeDmCallFromProfileHandler(invokeDmCall);
+    useUsersStore.getState().mergeUser(
+      createUser({
+        user_id: 99,
+        full_name: "Bob",
+      }),
+    );
+
+    render(
+      <MessageList
+        messages={[
+          msg(1, {
+            content: `<p><span class="user-mention" data-user-id="99">Bob</span> hi</p>`,
+          }),
+        ]}
+        currentUserId={7}
+        callbacks={{ onOpenDirectMessage }}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Bob"));
+    expect(await screen.findByRole("dialog", { name: /user mention/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /^call$/i }));
+    expect(invokeDmCall).toHaveBeenCalledTimes(1);
+    expect(invokeDmCall).toHaveBeenCalledWith(99);
   });
 
   it("opens user mention card when body is Zulip Markdown @**Name**", async () => {

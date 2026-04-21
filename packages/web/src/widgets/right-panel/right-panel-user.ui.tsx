@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect } from "react";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { ensureUserStatusLoaded } from "~/entities/user/api/user.api";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore } from "~/entities/user/user.model";
+import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
 import { t } from "~/i18n/i18n";
 import { isValidEmail, isValidUrl } from "~/shared/lib/validation";
@@ -125,6 +127,15 @@ export const RightPanelUser = React.memo(function RightPanelUser({
     ]);
   }, [avatarSrc, openMediaViewer, user.name]);
 
+  const currentUserId = useChatListStore((s) => s.currentUserId);
+  const profileDmCallHandlerReady = useChatDmCallBridgeStore(
+    (s) => s.invokeDmCallFromProfileHandler != null,
+  );
+  const handleProfileDmCall = useCallback(() => {
+    if (directMessageUserId == null) return;
+    useChatDmCallBridgeStore.getState().invokeDmCallFromProfile(directMessageUserId);
+  }, [directMessageUserId]);
+
   useEffect(() => {
     if (user.userId == null) {
       return;
@@ -171,15 +182,28 @@ export const RightPanelUser = React.memo(function RightPanelUser({
             </div>
           </div>
           {directMessageUserId != null && (
-            <div className="mt-3 space-y-2">
+            <div className="mt-3 flex gap-2">
               <button
                 type="button"
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-on-accent hover:opacity-90"
+                className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-on-accent hover:opacity-90"
                 onClick={() => onOpenDirectMessage?.(directMessageUserId)}
               >
                 <Icon name="chatBubble" size={16} className="shrink-0 text-current" />
-                <span>{t("info.openDirectMessages")}</span>
+                <span className="truncate">{t("info.openDirectMessages")}</span>
               </button>
+              {profileDmCallHandlerReady &&
+                currentUserId != null &&
+                directMessageUserId !== currentUserId && (
+                  <button
+                    type="button"
+                    className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2 text-sm font-medium text-text-primary hover:bg-bg"
+                    onClick={handleProfileDmCall}
+                    aria-label={t("call.call")}
+                  >
+                    <Icon name="phone" size={16} className="shrink-0 text-current" />
+                    <span className="truncate">{t("call.call")}</span>
+                  </button>
+                )}
             </div>
           )}
           {contactRows.length > 0 && (
