@@ -16,6 +16,8 @@ interface RightDrawerState {
   openAbout: () => void;
   openBuilds: () => void;
   openUserProfile: (userId: number) => void;
+  /** Clears nested user profile (from members list / message author) while keeping the drawer open on chat info. */
+  clearUserProfileOverride: () => void;
 }
 
 export const useRightDrawerStore = create<RightDrawerState>((set) => ({
@@ -54,6 +56,10 @@ export const useRightDrawerStore = create<RightDrawerState>((set) => ({
   openUserProfile(userId) {
     logStoreAction("rightDrawer", "openUserProfile", { userId });
     set({ open: true, mode: "info", userIdOverride: userId });
+  },
+  clearUserProfileOverride() {
+    logStoreAction("rightDrawer", "clearUserProfileOverride", {});
+    set({ userIdOverride: null });
   },
 }));
 

@@ -17,6 +17,7 @@ import {
   formatDateJoined,
   resolveAvatarSrc,
 } from "./right-panel.lib";
+import { useRightDrawerStore } from "./right-drawer.model";
 import type { RightPanelUserProps } from "./right-panel-user.types";
 
 export const RightPanelUser = React.memo(function RightPanelUser({
@@ -143,11 +144,38 @@ export const RightPanelUser = React.memo(function RightPanelUser({
     void ensureUserStatusLoaded(user.userId);
   }, [user.userId]);
 
+  const userIdOverride = useRightDrawerStore((s) => s.userIdOverride);
+  const clearUserProfileOverride = useRightDrawerStore((s) => s.clearUserProfileOverride);
+  const handleBackFromNestedProfile = useCallback(() => {
+    clearUserProfileOverride();
+  }, [clearUserProfileOverride]);
+  const showBackToChatInfo = userIdOverride != null;
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden text-text-primary">
       <ScrollArea className="flex-1 px-4 py-3">
         <header className="border-b border-border-subtle pb-3">
-          <h2 className="mb-3 text-sm font-semibold text-text-primary">{t("info.information")}</h2>
+          {showBackToChatInfo ? (
+            <div className="mb-3 flex min-h-8 items-center gap-2">
+              <button
+                type="button"
+                onClick={handleBackFromNestedProfile}
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-lg p-0 leading-none text-text-muted transition-colors hover:bg-card-bg-active hover:text-text-primary"
+                aria-label={t("common.back")}
+              >
+                <Icon
+                  name="chevron-right"
+                  size={14}
+                  className="translate-x-px rotate-180 text-current"
+                />
+              </button>
+              <h2 className="min-w-0 flex-1 text-sm font-semibold text-text-primary">
+                {t("info.information")}
+              </h2>
+            </div>
+          ) : (
+            <h2 className="mb-3 text-sm font-semibold text-text-primary">{t("info.information")}</h2>
+          )}
           <div className="flex items-center gap-3">
             {avatarSrc != null ? (
               <button
