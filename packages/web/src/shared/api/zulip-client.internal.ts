@@ -82,7 +82,7 @@ export function buildMessagesQueryParams(params: {
     num_after: String(params.num_after ?? 0),
     allow_empty_topic_name: "true",
     client_gravatar: "true",
-    apply_markdown: "true",
+    apply_markdown: "false",
   };
   if (params.narrow != null) {
     query.narrow = JSON.stringify(params.narrow);

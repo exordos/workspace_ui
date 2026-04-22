@@ -660,7 +660,9 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
                 { operator: "topic", operand: ctx.topic },
               ]
           : [{ operator: "dm", operand: parseDmKeyToUserIds(ctx.dmKey, currentUserId) }];
-      const page = await fetchMessagesWithNarrowPage(narrow, oldest.id, pageSize, 0);
+      const page = await fetchMessagesWithNarrowPage(narrow, oldest.id, pageSize, 0, {
+        applyMarkdown: true,
+      });
       const withoutAnchor = page.messages.filter((m) => m.id !== oldest.id);
       const existingIds = new Set(get().messages.map((m) => m.id));
       const fresh = withoutAnchor.filter((m) => !existingIds.has(m.id));
@@ -778,7 +780,9 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
                 { operator: "topic", operand: ctx.topic },
               ]
           : [{ operator: "dm", operand: parseDmKeyToUserIds(ctx.dmKey, currentUserId) }];
-      const page = await fetchMessagesWithNarrowPage(narrow, newest.id, 0, pageSize);
+      const page = await fetchMessagesWithNarrowPage(narrow, newest.id, 0, pageSize, {
+        applyMarkdown: true,
+      });
       const withoutAnchor = page.messages.filter((m) => m.id !== newest.id);
       const existingIds = new Set(get().messages.map((m) => m.id));
       const fresh = withoutAnchor.filter((m) => !existingIds.has(m.id));

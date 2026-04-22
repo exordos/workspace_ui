@@ -117,7 +117,7 @@ function buildMessagesQueryParams(params: {
     num_after: String(params.num_after ?? 0),
     allow_empty_topic_name: "true",
     client_gravatar: "true",
-    apply_markdown: "true",
+    apply_markdown: "false",
   };
   if (params.narrow != null) {
     query.narrow = JSON.stringify(params.narrow);
@@ -1491,7 +1491,7 @@ async function fetchMessageWindow(options: MessageWindowOptions): Promise<ZulipR
     numAfter,
     includeAnchor,
     narrow,
-    applyMarkdown = true,
+    applyMarkdown = false,
     flowDebugLabel,
   } = options;
   if (flowDebugLabel != null) {
@@ -1708,7 +1708,7 @@ export async function fetchActivityMessagesPage(
     narrow: JSON.stringify(narrow),
     allow_empty_topic_name: "true",
     client_gravatar: "true",
-    apply_markdown: "true",
+    apply_markdown: "false",
   });
   throwIfZulipPipelineGetNull(res);
   if (!res.ok) return { messages: [], foundOldest: false };
@@ -1879,7 +1879,7 @@ export async function fetchMessages(
     "newest",
     ZULIP_STREAM_CHAT_NUM_BEFORE,
     ZULIP_STREAM_CHAT_NUM_AFTER,
-    options,
+    { ...options, applyMarkdown: true },
   );
   return page.messages;
 }
@@ -1908,6 +1908,7 @@ function buildMessagesPageInFlightKey(
   anchor: string | number,
   numBefore: number,
   numAfter: number,
+  applyMarkdown = false,
 ): string {
   const instanceId = getCurrentInstance()?.id ?? "__no_instance__";
   const normalizedNarrow = narrow.map((entry) => ({
@@ -1920,6 +1921,7 @@ function buildMessagesPageInFlightKey(
     anchor,
     numBefore,
     numAfter,
+    applyMarkdown,
   });
 }
 
@@ -1950,21 +1952,20 @@ async function runMessagesWithNarrowPageRequest(options: {
   anchor: string | number;
   numBefore: number;
   numAfter: number;
+  applyMarkdown?: boolean;
   signal?: AbortSignal;
 }): Promise<MessagesPageResult> {
-  const { narrow, anchor, numBefore, numAfter, signal } = options;
+  const { narrow, anchor, numBefore, numAfter, applyMarkdown = false, signal } = options;
   try {
     if (signal) {
-      const response = await zulipPipelineGet(
-        "/messages",
-        buildMessagesQueryParams({
-          narrow: narrow.length > 0 ? narrow : undefined,
-          anchor,
-          num_before: numBefore,
-          num_after: numAfter,
-        }),
-        signal,
-      );
+      const query = buildMessagesQueryParams({
+        narrow: narrow.length > 0 ? narrow : undefined,
+        anchor,
+        num_before: numBefore,
+        num_after: numAfter,
+      });
+      query.apply_markdown = applyMarkdown ? "true" : "false";
+      const response = await zulipPipelineGet("/messages", query, signal);
       throwIfZulipPipelineGetNull(response, signal);
       if (!response.ok) {
         throw new Error(t("app.errorStatus", { status: String(response.status) }));
@@ -1989,7 +1990,7 @@ async function runMessagesWithNarrowPageRequest(options: {
       anchor,
       num_before: numBefore,
       num_after: numAfter,
-      apply_markdown: true,
+      apply_markdown: applyMarkdown,
     })) as {
       result?: string;
       messages?: Parameters<typeof mapZulipMessage>[0][];
@@ -2016,7 +2017,7 @@ export async function fetchMessagesWithNarrow(
   anchor: string | number = "newest",
   numBefore = ZULIP_STREAM_CHAT_NUM_BEFORE,
   numAfter = ZULIP_STREAM_CHAT_NUM_AFTER,
-  options?: { signal?: AbortSignal },
+  options?: { signal?: AbortSignal; applyMarkdown?: boolean },
 ): Promise<MockMessage[]> {
   const page = await fetchMessagesWithNarrowPage(narrow, anchor, numBefore, numAfter, options);
   return page.messages;
@@ -2034,7 +2035,7 @@ export async function fetchMessagesWithNarrowPage(
   anchor: string | number = "newest",
   numBefore = ZULIP_STREAM_CHAT_NUM_BEFORE,
   numAfter = ZULIP_STREAM_CHAT_NUM_AFTER,
-  options?: { signal?: AbortSignal },
+  options?: { signal?: AbortSignal; applyMarkdown?: boolean },
 ): Promise<MessagesPageResult> {
   const validatedAnchor = validateMessagesApiAnchor(anchor, "fetchMessagesWithNarrowPage");
   const validatedNumBefore = validateNonNegativeInteger(numBefore, "numBefore");
@@ -2050,6 +2051,7 @@ export async function fetchMessagesWithNarrowPage(
       anchor: validatedAnchor,
       numBefore: validatedNumBefore,
       numAfter: validatedNumAfter,
+      applyMarkdown: options?.applyMarkdown,
       signal: options.signal,
     });
     if (options.signal.aborted) {
@@ -2062,6 +2064,7 @@ export async function fetchMessagesWithNarrowPage(
     validatedAnchor,
     validatedNumBefore,
     validatedNumAfter,
+    options?.applyMarkdown,
   );
   const inFlight = messagesPageInFlight.get(requestKey);
   if (inFlight) {
@@ -2073,6 +2076,7 @@ export async function fetchMessagesWithNarrowPage(
     anchor: validatedAnchor,
     numBefore: validatedNumBefore,
     numAfter: validatedNumAfter,
+    applyMarkdown: options?.applyMarkdown,
   });
 
   messagesPageInFlight.set(requestKey, request);
@@ -2091,7 +2095,7 @@ export async function fetchAllMessagesPage(
 ): Promise<MessagesPageResult> {
   const validatedAnchor = validateMessagesApiAnchor(anchor, "fetchAllMessagesPage");
   const validatedNumBefore = validateNonNegativeInteger(numBefore, "numBefore");
-  const applyMarkdown = options?.applyMarkdown ?? true;
+  const applyMarkdown = options?.applyMarkdown ?? false;
   const res = await zulipPipelineGet("/messages", {
     anchor: String(validatedAnchor),
     num_before: String(validatedNumBefore),

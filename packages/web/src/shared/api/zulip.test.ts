@@ -1350,7 +1350,7 @@ describe("fetchActivityMessages", () => {
       narrow: JSON.stringify([{ negated: false, operator: "is", operand: "starred" }]),
       allow_empty_topic_name: "true",
       client_gravatar: "true",
-      apply_markdown: "true",
+      apply_markdown: "false",
     });
   });
 
@@ -1714,6 +1714,19 @@ describe("fetchMessagesWithNarrow", () => {
         anchor: "newest",
         num_before: 200,
         num_after: 0,
+        apply_markdown: false,
+      }),
+    );
+  });
+
+  it("allows chat paths to explicitly request rendered HTML", async () => {
+    mockZulipClient.messages.retrieve.mockResolvedValue({ messages: [] });
+    await fetchMessagesWithNarrow([{ operator: "stream", operand: "general" }], "newest", 200, 0, {
+      applyMarkdown: true,
+    });
+    expect(mockZulipClient.messages.retrieve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        narrow: [{ operator: "stream", operand: "general" }],
         apply_markdown: true,
       }),
     );
@@ -1837,6 +1850,32 @@ describe("fetchMessagesWithNarrow", () => {
 // ---------------------------------------------------------------------------
 
 describe("fetchAllMessagesPage", () => {
+  it("defaults to raw markdown for metadata-only callers", async () => {
+    mockZulipApi.get.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        messages: [],
+        found_oldest: false,
+        found_newest: false,
+      },
+      raw: { statusText: "OK" },
+    });
+
+    await fetchAllMessagesPage("newest", 25);
+
+    expect(mockZulipApi.get).toHaveBeenCalledWith("/messages", {
+      anchor: "newest",
+      num_before: "25",
+      num_after: "0",
+      narrow: "[]",
+      allow_empty_topic_name: "true",
+      client_gravatar: "true",
+      apply_markdown: "false",
+    });
+  });
+
   it("throws for unsupported anchor string", async () => {
     await expect(fetchAllMessagesPage("invalid_anchor")).rejects.toThrow(/anchor must be one of/i);
     expect(mockZulipApi.get).not.toHaveBeenCalled();

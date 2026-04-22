@@ -119,7 +119,7 @@ async function fetchNetworkMessagesByMode(options: {
         focusedMessageId,
         ZULIP_DM_ANCHOR_NUM_BEFORE,
         ZULIP_DM_ANCHOR_NUM_AFTER,
-        { signal },
+        { signal, applyMarkdown: true },
       );
     }
     return fetchDmMessages(parseDmKeyToUserIds(context.dmKey, currentUserId), { signal });
@@ -138,7 +138,7 @@ async function fetchNetworkMessagesByMode(options: {
       focusedMessageId,
       ZULIP_STREAM_ANCHOR_NUM_BEFORE,
       ZULIP_STREAM_ANCHOR_NUM_AFTER,
-      { signal },
+      { signal, applyMarkdown: true },
     );
   }
 
@@ -262,11 +262,7 @@ export async function loadInitialMessagesRouteDriven(
     signal: options.signal,
   });
   // Belt-and-suspenders: some transports/clients resolve failures as empty message lists while offline.
-  if (
-    messages.length === 0 &&
-    typeof navigator !== "undefined" &&
-    navigator.onLine === false
-  ) {
+  if (messages.length === 0 && typeof navigator !== "undefined" && navigator.onLine === false) {
     throw new Error("Network offline");
   }
   throwIfAborted(options.signal);

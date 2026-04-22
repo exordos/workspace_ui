@@ -70,7 +70,7 @@ function getActivityNarrow(filter: ActivityFilter, currentUserId?: number | null
 }
 
 async function fetchMessageWindow(options: MessageWindowOptions): Promise<ZulipRawMessage[]> {
-  const { anchor, numBefore, numAfter, includeAnchor, applyMarkdown = true } = options;
+  const { anchor, numBefore, numAfter, includeAnchor, applyMarkdown = false } = options;
   const res = await zulipPipelineGet("/messages", {
     anchor: String(anchor),
     ...(includeAnchor == null ? {} : { include_anchor: includeAnchor ? "true" : "false" }),
@@ -157,7 +157,7 @@ export async function fetchActivityMessagesPage(
     narrow: JSON.stringify(narrow),
     allow_empty_topic_name: "true",
     client_gravatar: "true",
-    apply_markdown: "true",
+    apply_markdown: "false",
   });
   if (!res?.ok) return { messages: [], foundOldest: false };
   const data = res.data as {
@@ -218,8 +218,9 @@ export async function fetchMessagesWithNarrow(
   anchor: string | number = "newest",
   numBefore = ZULIP_STREAM_CHAT_NUM_BEFORE,
   numAfter = ZULIP_STREAM_CHAT_NUM_AFTER,
+  options?: { applyMarkdown?: boolean },
 ): Promise<MockMessage[]> {
-  const page = await fetchMessagesWithNarrowPage(narrow, anchor, numBefore, numAfter);
+  const page = await fetchMessagesWithNarrowPage(narrow, anchor, numBefore, numAfter, options);
   return page.messages;
 }
 
@@ -230,10 +231,12 @@ export async function fetchMessagesWithNarrowPage(
   anchor: string | number = "newest",
   numBefore = ZULIP_STREAM_CHAT_NUM_BEFORE,
   numAfter = ZULIP_STREAM_CHAT_NUM_AFTER,
+  options?: { applyMarkdown?: boolean },
 ): Promise<MessagesPageResult> {
   const validatedAnchor = validateMessagesApiAnchor(anchor, "fetchMessagesWithNarrowPage");
   const validatedNumBefore = validateNonNegativeInteger(numBefore, "numBefore");
   const validatedNumAfter = validateNonNegativeInteger(numAfter, "numAfter");
+  const applyMarkdown = options?.applyMarkdown ?? false;
   const client = await getClient();
   try {
     const data = (await client.messages.retrieve({
@@ -241,7 +244,7 @@ export async function fetchMessagesWithNarrowPage(
       anchor: validatedAnchor,
       num_before: validatedNumBefore,
       num_after: validatedNumAfter,
-      apply_markdown: true,
+      apply_markdown: applyMarkdown,
     })) as {
       result?: string;
       messages?: RawMessageToMockInput[];
@@ -269,7 +272,7 @@ export async function fetchAllMessagesPage(
 ): Promise<MessagesPageResult> {
   const validatedAnchor = validateMessagesApiAnchor(anchor, "fetchAllMessagesPage");
   const validatedNumBefore = validateNonNegativeInteger(numBefore, "numBefore");
-  const applyMarkdown = options?.applyMarkdown ?? true;
+  const applyMarkdown = options?.applyMarkdown ?? false;
   const res = await zulipPipelineGet("/messages", {
     anchor: String(validatedAnchor),
     num_before: String(validatedNumBefore),

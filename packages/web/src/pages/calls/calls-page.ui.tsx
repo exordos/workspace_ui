@@ -189,7 +189,7 @@ export const CallsPage: React.FC = () => {
     setLoading(true);
     setError(null);
 
-    void fetchAllMessagesPage("newest", CALLS_SCAN_LIMIT, { applyMarkdown: false })
+    void fetchAllMessagesPage("newest", CALLS_SCAN_LIMIT)
       .then((page) => {
         if (cancelled) return;
         setRecentCalls(

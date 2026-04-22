@@ -345,7 +345,7 @@ describe("fetchMessageById", () => {
     expect(result?.markdown_source).toBe("hello");
     expect(mockZulipApi.get).toHaveBeenCalledWith("/messages/100", {
       allow_empty_topic_name: "true",
-      apply_markdown: "false",
+      apply_markdown: "true",
     });
   });
 });
@@ -384,7 +384,7 @@ describe("fetchMessages", () => {
     mockZulipClient.messages.retrieve.mockResolvedValue({ messages: [] });
     await fetchMessages();
     expect(mockZulipClient.messages.retrieve).toHaveBeenCalledWith(
-      expect.objectContaining({ narrow: undefined, apply_markdown: false }),
+      expect.objectContaining({ narrow: undefined, apply_markdown: true }),
     );
   });
 
@@ -425,6 +425,19 @@ describe("fetchMessagesWithNarrow", () => {
   it("returns empty on error result", async () => {
     mockZulipClient.messages.retrieve.mockResolvedValue({ result: "error" });
     expect(await fetchMessagesWithNarrow([])).toEqual([]);
+  });
+
+  it("allows callers to explicitly request rendered HTML", async () => {
+    mockZulipClient.messages.retrieve.mockResolvedValue({ messages: [] });
+    await fetchMessagesWithNarrow([{ operator: "stream", operand: "general" }], "newest", 200, 0, {
+      applyMarkdown: true,
+    });
+    expect(mockZulipClient.messages.retrieve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        narrow: [{ operator: "stream", operand: "general" }],
+        apply_markdown: true,
+      }),
+    );
   });
 
   it("throws for unsupported anchor string", async () => {
@@ -476,7 +489,7 @@ describe("fetchMessagesWithNarrow", () => {
 // ---------------------------------------------------------------------------
 
 describe("fetchAllMessagesPage", () => {
-  it("allows disabling rendered HTML for metadata-only callers", async () => {
+  it("defaults to raw markdown for metadata-only callers", async () => {
     mockZulipApi.get.mockResolvedValue({
       ok: true,
       status: 200,
@@ -489,7 +502,7 @@ describe("fetchAllMessagesPage", () => {
       raw: { statusText: "OK" },
     });
 
-    await fetchAllMessagesPage("newest", 25, { applyMarkdown: false });
+    await fetchAllMessagesPage("newest", 25);
 
     expect(mockZulipApi.get).toHaveBeenCalledWith("/messages", {
       anchor: "newest",
