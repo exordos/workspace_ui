@@ -213,6 +213,13 @@ function getWebRoot(): string {
 }
 
 function getIconPath(name: string): string {
+  if (app.isPackaged) {
+    const fs = require("node:fs") as typeof import("node:fs");
+    const unpacked = path.join(process.resourcesPath, "app.asar.unpacked", "resources", name);
+    if (fs.existsSync(unpacked)) {
+      return unpacked;
+    }
+  }
   return path.join(RESOURCES_PATH, name);
 }
 

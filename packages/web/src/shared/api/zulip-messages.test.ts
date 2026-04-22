@@ -370,6 +370,19 @@ describe("fetchMessages", () => {
     expect(result[0]!.id).toBe(10);
   });
 
+  it("uses empty topic narrow operand for default topic route name general", async () => {
+    mockZulipClient.messages.retrieve.mockResolvedValue({ messages: [] });
+    await fetchMessages("engineering", "general");
+    expect(mockZulipClient.messages.retrieve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        narrow: [
+          { operator: "stream", operand: "engineering" },
+          { operator: "topic", operand: "" },
+        ],
+      }),
+    );
+  });
+
   it("returns empty array on error result", async () => {
     mockZulipClient.messages.retrieve.mockResolvedValue({ result: "error" });
     expect(await fetchMessages("general")).toEqual([]);

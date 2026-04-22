@@ -1,3 +1,4 @@
+import { isSystemRailFolderId } from "~/features/folder-sync/folder-sync-constants.lib";
 import type { SidebarChat, StreamWithLast } from "~/shared/types/sidebar-chat";
 
 export { dmConversationKey } from "~/shared/lib/dm-key";
@@ -7,6 +8,12 @@ export {
   messageToDmEntry,
   isUnread,
 } from "~/entities/chat-list/chat-list.lib";
+
+/** System rail folders plus legacy `selectedFolderId="all"` used in tests and older routes. */
+export function isSidebarSystemFolderScope(folderId: string | undefined): boolean {
+  if (folderId == null || folderId === "") return false;
+  return isSystemRailFolderId(folderId) || folderId === "all";
+}
 
 /**
  * Sidebar activity metadata.

@@ -64,6 +64,13 @@ describe("injectZulipMentionPlaceholders", () => {
 });
 
 describe("restoreZulipMentionPlaceholders", () => {
+  it("prefixes wildcard mention label with @", () => {
+    const { markdown, tokens } = injectZulipMentionPlaceholders("Hi @**all**", () => null);
+    const html = restoreZulipMentionPlaceholders(`<p>${markdown}</p>`, tokens);
+    expect(html).toContain(">@all<");
+    expect(html).toContain("user-group-mention");
+  });
+
   it("replaces markers with span markup matching sanitizeHtml expectations", () => {
     const { markdown, tokens } = injectZulipMentionPlaceholders("@**Octane** hi", (n) =>
       n === "Octane" ? 7 : null,
@@ -72,7 +79,7 @@ describe("restoreZulipMentionPlaceholders", () => {
     const html = restoreZulipMentionPlaceholders(markedLike, tokens);
     expect(html).toContain('class="user-mention"');
     expect(html).toContain('data-user-id="7"');
-    expect(html).toContain(">Octane<");
+    expect(html).toContain(">@Octane<");
     expect(html).not.toContain("**");
   });
 });

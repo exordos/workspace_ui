@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect } from "react";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { ensureUserStatusLoaded } from "~/entities/user/api/user.api";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore } from "~/entities/user/user.model";
+import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
 import { t } from "~/i18n/i18n";
 import { isValidEmail, isValidUrl } from "~/shared/lib/validation";
@@ -9,6 +11,7 @@ import { Avatar } from "~/shared/ui/avatar";
 import { Copyable } from "~/shared/ui/copyable";
 import { Icon } from "~/shared/ui/icon";
 import { ScrollArea } from "~/shared/ui/scroll-area";
+import { useRightDrawerStore } from "./right-drawer.model";
 import {
   buildMailtoHref,
   buildTelHref,
@@ -125,6 +128,15 @@ export const RightPanelUser = React.memo(function RightPanelUser({
     ]);
   }, [avatarSrc, openMediaViewer, user.name]);
 
+  const currentUserId = useChatListStore((s) => s.currentUserId);
+  const profileDmCallHandlerReady = useChatDmCallBridgeStore(
+    (s) => s.invokeDmCallFromProfileHandler != null,
+  );
+  const handleProfileDmCall = useCallback(() => {
+    if (directMessageUserId == null) return;
+    useChatDmCallBridgeStore.getState().invokeDmCallFromProfile(directMessageUserId);
+  }, [directMessageUserId]);
+
   useEffect(() => {
     if (user.userId == null) {
       return;
@@ -132,11 +144,40 @@ export const RightPanelUser = React.memo(function RightPanelUser({
     void ensureUserStatusLoaded(user.userId);
   }, [user.userId]);
 
+  const userIdOverride = useRightDrawerStore((s) => s.userIdOverride);
+  const clearUserProfileOverride = useRightDrawerStore((s) => s.clearUserProfileOverride);
+  const handleBackFromNestedProfile = useCallback(() => {
+    clearUserProfileOverride();
+  }, [clearUserProfileOverride]);
+  const showBackToChatInfo = userIdOverride != null;
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden text-text-primary">
       <ScrollArea className="flex-1 px-4 py-3">
         <header className="border-b border-border-subtle pb-3">
-          <h2 className="mb-3 text-sm font-semibold text-text-primary">{t("info.information")}</h2>
+          {showBackToChatInfo ? (
+            <div className="mb-3 flex min-h-8 items-center gap-2">
+              <button
+                type="button"
+                onClick={handleBackFromNestedProfile}
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-lg p-0 leading-none text-text-muted transition-colors hover:bg-card-bg-active hover:text-text-primary"
+                aria-label={t("common.back")}
+              >
+                <Icon
+                  name="chevron-right"
+                  size={14}
+                  className="translate-x-px rotate-180 text-current"
+                />
+              </button>
+              <h2 className="min-w-0 flex-1 text-sm font-semibold text-text-primary">
+                {t("info.information")}
+              </h2>
+            </div>
+          ) : (
+            <h2 className="mb-3 text-sm font-semibold text-text-primary">
+              {t("info.information")}
+            </h2>
+          )}
           <div className="flex items-center gap-3">
             {avatarSrc != null ? (
               <button
@@ -171,15 +212,28 @@ export const RightPanelUser = React.memo(function RightPanelUser({
             </div>
           </div>
           {directMessageUserId != null && (
-            <div className="mt-3 space-y-2">
+            <div className="mt-3 flex gap-2">
               <button
                 type="button"
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-on-accent hover:opacity-90"
+                className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-on-accent hover:opacity-90"
                 onClick={() => onOpenDirectMessage?.(directMessageUserId)}
               >
                 <Icon name="chatBubble" size={16} className="shrink-0 text-current" />
-                <span>{t("info.openDirectMessages")}</span>
+                <span className="truncate">{t("info.openDirectMessages")}</span>
               </button>
+              {profileDmCallHandlerReady &&
+                currentUserId != null &&
+                directMessageUserId !== currentUserId && (
+                  <button
+                    type="button"
+                    className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2 text-sm font-medium text-text-primary hover:bg-bg"
+                    onClick={handleProfileDmCall}
+                    aria-label={t("call.call")}
+                  >
+                    <Icon name="phone" size={16} className="shrink-0 text-current" />
+                    <span className="truncate">{t("call.call")}</span>
+                  </button>
+                )}
             </div>
           )}
           {contactRows.length > 0 && (

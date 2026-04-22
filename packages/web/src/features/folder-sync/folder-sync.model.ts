@@ -476,8 +476,13 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
             return state;
           }
           const nextStaleFolderIds = markFolderAsStale(state.staleFolderIds, nextFolderId);
+          const nextFolderItemsByFolderId = new Map(state.folderItemsByFolderId);
+          // Пустой кэш по ключу снимает «membership pending» в сайдбаре после ошибки сети.
+          nextFolderItemsByFolderId.set(nextFolderId, []);
           return {
+            folderItemsByFolderId: nextFolderItemsByFolderId,
             staleFolderIds: nextStaleFolderIds,
+            selectedFolderChatIds: new Set<string>(),
             loading: false,
             error: "folder-sync:select_failed",
           };
@@ -537,26 +542,18 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
               const selectedFolderId =
                 resolveSelectedFolderId(foldersWithSystemDefaults, phaseState.selectedFolderId) ??
                 phaseState.selectedFolderId;
-              const nextFolderItemsByFolderId = mergeFolderItemsSnapshot(
-                phaseState.folderItemsByFolderId,
-                phaseSnapshot,
-              );
-
-              let selectedFolderChatIds: Set<string> | null = null;
-              if (shouldLoadFolderItemsForSelection(foldersWithSystemDefaults, selectedFolderId)) {
-                const stale = nextFolderItemsByFolderId.get(selectedFolderId);
-                selectedFolderChatIds = stale ? toChatIdSet(stale) : new Set<string>();
-              }
               const nextStaleFolderIds = filterStaleFolderIdsByFolders(
                 phaseState.staleFolderIds,
                 foldersWithSystemDefaults,
               );
 
+              // Важно: на этом шаге getFolders() уже ответил, а batch getFolderItems() ещё в полёте.
+              // mergeFolderItemsSnapshot(…, пустой itemsByFolderId) + `if (stale)` трактует [] как truthy
+              // и затирает selectedFolderChatIds — сайдбар показывает «папка пуста» до конца refresh.
+              // Обновляем только rail (folders + selection + stale), кэш items ждём из полного snapshot.
               set({
                 folders: foldersWithSystemDefaults,
                 selectedFolderId,
-                selectedFolderChatIds,
-                folderItemsByFolderId: nextFolderItemsByFolderId,
                 staleFolderIds: nextStaleFolderIds,
                 error: null,
               });

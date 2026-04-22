@@ -59,8 +59,8 @@ function tokenFromDisplayName(
 }
 
 function buildMentionSpanHtml(token: ZulipMentionToken): string {
-  // Visible label: display name only (no leading `@`; Zulip source uses `@**Name**` / `@_**Name|id**`).
-  const label = escapeHtmlText(token.displayName);
+  // Visible label: leading `@` + display name (Zulip source already has `@**…**`; we mirror that in HTML).
+  const label = `@${escapeHtmlText(token.displayName)}`;
   if (token.kind === "wildcard") {
     return `<span class="user-mention user-group-mention" data-user-id="*">${label}</span>`;
   }

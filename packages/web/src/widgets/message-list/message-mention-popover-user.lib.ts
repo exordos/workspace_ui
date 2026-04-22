@@ -14,3 +14,21 @@ export function extractMentionNicknameFromEmail(
   const normalizedNick = rawNick.trim();
   return normalizedNick.length > 0 ? normalizedNick : undefined;
 }
+
+/**
+ * @handle for mention card (list + clipboard): prefer email local-part, else label from the
+ * clicked `span.user-mention` (GET /users email may be missing on first paint).
+ */
+export function resolveMentionDisplayForPopover(
+  email: string | undefined | null,
+  fallbackName: string,
+): string | undefined {
+  const fromEmail = extractMentionNicknameFromEmail(email);
+  if (fromEmail != null && fromEmail.length > 0) {
+    return `@${fromEmail}`;
+  }
+  const ft = fallbackName.trim();
+  if (ft.length === 0) return undefined;
+  if (ft.startsWith("@")) return ft;
+  return `@${ft}`;
+}

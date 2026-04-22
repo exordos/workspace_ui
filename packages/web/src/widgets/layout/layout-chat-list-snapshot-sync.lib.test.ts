@@ -16,6 +16,7 @@ describe("startChatListSnapshotSync", () => {
 
   it("coalesces frequent tracked changes into one debounced persist call", async () => {
     const persistSnapshot = vi.fn(async () => {});
+    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 1, name: "general" }]);
     const stop = startChatListSnapshotSync({
       instanceId: "inst-1",
       debounceMs: 750,
@@ -39,6 +40,7 @@ describe("startChatListSnapshotSync", () => {
 
   it("flushes pending changes on stop/cleanup", () => {
     const persistSnapshot = vi.fn(async () => {});
+    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 1, name: "general" }]);
     const stop = startChatListSnapshotSync({
       instanceId: "inst-1",
       debounceMs: 750,
@@ -67,5 +69,21 @@ describe("startChatListSnapshotSync", () => {
     expect(persistSnapshot).toHaveBeenCalledTimes(0);
 
     stop();
+  });
+
+  it("does not flush empty store before sidebar is hydrated (avoids clobbering IndexedDB)", async () => {
+    const persistSnapshot = vi.fn(async () => {});
+    const stop = startChatListSnapshotSync({
+      instanceId: "inst-1",
+      debounceMs: 750,
+      persistSnapshot,
+    });
+
+    useChatListStore.setState((state) => ({ streamsMap: new Map(state.streamsMap) }));
+    await vi.advanceTimersByTimeAsync(800);
+    expect(persistSnapshot).toHaveBeenCalledTimes(0);
+
+    stop();
+    expect(persistSnapshot).toHaveBeenCalledTimes(0);
   });
 });

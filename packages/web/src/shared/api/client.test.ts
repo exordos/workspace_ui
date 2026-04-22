@@ -835,6 +835,33 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
 
   // Некоторые endpoint'ы возвращают plain text, например `/health`,
   // и это не должно ломаться на JSON parse.
+  it("does not wipe credentials on GET workspace folder items 401", async () => {
+    const { setInstanceProvider, workspaceApi, setAuthErrorHandler } = await import("./client");
+    const onAuthError = vi.fn();
+
+    setInstanceProvider(() => ({
+      id: "i1",
+      realm: "https://zulip.test",
+      email: "u@t.com",
+      apiKey: "key123",
+    }));
+    setAuthErrorHandler(onAuthError);
+
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ detail: "Unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const res = await workspaceApi.getWithBase("https://zulip.test", "/v1/folders/folder-1/items/");
+
+    expect(res.status).toBe(401);
+    expect(vi.mocked(wipeCredentials)).not.toHaveBeenCalled();
+    expect(onAuthError).not.toHaveBeenCalled();
+    setAuthErrorHandler(null);
+  });
+
   it("handles non-JSON response body gracefully", async () => {
     const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
     setInstanceProvider(() => ({

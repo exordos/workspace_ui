@@ -38,7 +38,7 @@ describe("chat-mark-all-read", () => {
     );
   });
 
-  it("returns stream target for stream chat without explicit topic", () => {
+  it("returns null for stream-wide chat (no topic in route)", () => {
     expectTarget(
       resolveMarkAllAsReadTarget({
         isDmView: false,
@@ -46,7 +46,7 @@ describe("chat-mark-all-read", () => {
         activeStreamId: 10,
         activeTopic: undefined,
       }),
-      { type: "stream", streamId: 10 },
+      null,
     );
   });
 

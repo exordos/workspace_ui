@@ -7,6 +7,7 @@ import { useThemeStore } from "~/entities/theme/theme.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
 import { useAddStreamMembersStore } from "~/features/add-stream-members/add-stream-members.model";
+import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
 import { useChatInfoStore } from "~/features/chat-info/chat-info.model";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
 import * as muteChat from "~/features/mute-chat/mute-chat.api";
@@ -103,6 +104,8 @@ describe("RightPanel truthfulness", () => {
     act(() => {
       setLocale("en");
     });
+    useChatDmCallBridgeStore.getState().setInvokeDmCallFromProfileHandler(null);
+    useChatDmCallBridgeStore.getState().clearPendingDmCallPartner();
     vi.restoreAllMocks();
   });
 
@@ -476,6 +479,28 @@ describe("RightPanel truthfulness", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /open direct messages/i }));
     expect(onOpenDirectMessage).toHaveBeenCalledWith(42);
+  });
+
+  it("renders call button when dm call bridge is registered and invokes handler", () => {
+    const onOpenDirectMessage = vi.fn();
+    const invokeDmCall = vi.fn();
+    useChatListStore.getState().setCurrentUserId(7);
+    useChatDmCallBridgeStore.getState().setInvokeDmCallFromProfileHandler(invokeDmCall);
+
+    renderWithProviders(
+      <RightPanel
+        title="Alice"
+        user={{
+          name: "Alice",
+          userId: 42,
+        }}
+        onOpenDirectMessage={onOpenDirectMessage}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /^call$/i }));
+    expect(invokeDmCall).toHaveBeenCalledTimes(1);
+    expect(invokeDmCall).toHaveBeenCalledWith(42);
   });
 
   it("renders group dm member info without channel-only sections", () => {

@@ -388,9 +388,9 @@ function shouldSkipAuth401Handling(req: ApiRequest): boolean {
     ) {
       return true;
     }
-    // Для списка Workspace folders ответ 401 часто означает политику gateway / Workspace API,
-    // а не невалидные Zulip credentials.
-    if (req.method === "GET" && /\/v1\/folders\/?$/.test(path)) {
+    // Для Workspace REST (`folders`, `services`) ответ 401 часто означает политику gateway
+    // или отключенную фичу Workspace API, а не невалидные Zulip credentials.
+    if (/\/v1\/(?:folders|services)(?:\/|$)/.test(path)) {
       return true;
     }
     return false;
@@ -623,6 +623,67 @@ class ApiClient {
       signal,
       meta: {},
     });
+  }
+
+  async deleteWithBase(
+    baseUrl: string,
+    path: string,
+    body?: Record<string, string>,
+  ): Promise<ApiResponse> {
+    const hasBody = body && Object.keys(body).length > 0;
+    return this.execute({
+      method: "DELETE",
+      url: buildResolvedApiUrl(baseUrl, path),
+      headers: hasBody ? { "Content-Type": "application/x-www-form-urlencoded" } : {},
+      body: hasBody ? new URLSearchParams(body).toString() : undefined,
+      meta: {},
+    });
+  }
+
+  async postWithBase(
+    baseUrl: string,
+    path: string,
+    body: Record<string, string>,
+    signal?: AbortSignal,
+  ): Promise<ApiResponse> {
+    return this.execute({
+      method: "POST",
+      url: buildResolvedApiUrl(baseUrl, path),
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams(body).toString(),
+      signal,
+      meta: {},
+    });
+  }
+
+  async postJsonWithBase<T = unknown>(
+    baseUrl: string,
+    path: string,
+    body: unknown,
+  ): Promise<ApiResponse & { data: T }> {
+    const res = await this.execute({
+      method: "POST",
+      url: buildResolvedApiUrl(baseUrl, path),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      meta: {},
+    });
+    return res as ApiResponse & { data: T };
+  }
+
+  async putJsonWithBase<T = unknown>(
+    baseUrl: string,
+    path: string,
+    body: unknown,
+  ): Promise<ApiResponse & { data: T }> {
+    const res = await this.execute({
+      method: "PUT",
+      url: buildResolvedApiUrl(baseUrl, path),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      meta: {},
+    });
+    return res as ApiResponse & { data: T };
   }
 
   async post(

@@ -148,6 +148,32 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
     );
   });
 
+  it("keeps IDB-hydrated messages when the network refresh returns an empty list", async () => {
+    const ctx: CurrentChatContext = {
+      type: "stream",
+      streamId: 5,
+      streamName: "general",
+      topic: "topic1",
+    };
+    const cached = [mockMsg({ id: 86, stream_id: 5, subject: "topic1", content: "<p>cached</p>" })];
+    mockGetChatMessagesAscending.mockResolvedValue(cached);
+    mockFetchMessages.mockResolvedValue([]);
+
+    await useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
+      context: ctx,
+      focusedMessageId: null,
+      currentUserId: 1,
+    });
+
+    expect(useCurrentChatMessagesStore.getState().messages).toEqual(cached);
+    expect(useCurrentChatMessagesStore.getState().context).toMatchObject({
+      type: "stream",
+      streamId: 5,
+      streamName: "general",
+      topic: "topic1",
+    });
+  });
+
   it("with empty IDB cache uses stream bootstrap fetchMessages", async () => {
     const ctx: CurrentChatContext = {
       type: "stream",

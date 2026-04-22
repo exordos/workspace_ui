@@ -151,15 +151,15 @@ describe("useLayoutZulipEventLoop", () => {
     ]);
   });
 
-  it("switches current user status to error when bootstrap orchestration fails before event loop start", async () => {
+  it("still starts the event loop when users directory IndexedDB read fails", async () => {
     vi.mocked(loadUsersDirectoryRow).mockRejectedValueOnce(new Error("idb failed"));
     const props = createHarnessProps();
 
     render(<Harness currentInstanceId="inst-1" props={props} />);
 
     await waitFor(() => {
-      expect(props.setCurrentUserStatus).toHaveBeenCalledWith("error");
+      expect(startZulipEventLoopMock).toHaveBeenCalledTimes(1);
     });
-    expect(startZulipEventLoopMock).not.toHaveBeenCalled();
+    expect(props.setCurrentUserStatus).not.toHaveBeenCalledWith("error");
   });
 });

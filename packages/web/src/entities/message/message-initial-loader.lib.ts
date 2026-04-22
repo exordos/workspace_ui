@@ -146,7 +146,7 @@ async function fetchNetworkMessagesByMode(options: {
     // Что делает: wide-mode всегда грузит stream-narrow без topic.
     return fetchMessages(context.streamName, undefined, undefined, { signal });
   }
-  // Что делает: explicit topic-route всегда грузит topic-narrow, включая "general".
+  // Что делает: explicit topic-route всегда грузит topic-narrow; "general" мапится в пустой operand в API.
   return fetchMessages(context.streamName, context.topic, undefined, { signal });
 }
 

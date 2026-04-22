@@ -194,7 +194,7 @@ describe("Sidebar", () => {
   });
 
   it("renders loading state for folder chat list", () => {
-    // При явной загрузке списка папки должен показываться текстовый loading-state.
+    // При явной загрузке списка папки показываем явный loading-state (спиннер + подпись).
     renderWithProviders(
       <Sidebar
         streams={[]}
@@ -205,6 +205,7 @@ describe("Sidebar", () => {
       />,
     );
 
+    expect(screen.getByRole("status", { name: t("app.loading") })).toBeInTheDocument();
     expect(screen.getByText(t("app.loading"))).toBeInTheDocument();
   });
 

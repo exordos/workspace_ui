@@ -3,7 +3,7 @@ import React from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { t } from "~/i18n/i18n";
-import { buildOrgRouteIdForZulipInstance, replaceOrgRouteInPath } from "~/shared/lib/org-route";
+import { buildOrgRouteIdForZulipInstance, withOrgRoutePrefix } from "~/shared/lib/org-route";
 import {
   getOrganizationFallbackLogoUrl,
   getOrganizationLogoSrc,
@@ -110,20 +110,30 @@ export const InstanceSwitcher: React.FC = () => {
   const hiddenInstancesCount = instances.length - visibleInstances.length;
   const handleSelectInstance = React.useCallback(
     (id: string) => {
+      if (id === currentInstanceId) return;
       const selectedInstance = instances.find((instance) => instance.id === id);
       if (selectedInstance == null) return;
       setCurrentInstanceId(id);
 
-      const currentPath = `${location.pathname}${location.search}${location.hash}`;
-      const nextPath = replaceOrgRouteInPath(
-        currentPath,
+      // Chat context (DM / stream / topic) is org-specific; always land on inbox after switch.
+      const inboxPath = withOrgRoutePrefix(
+        "/inbox",
         buildOrgRouteIdForZulipInstance(selectedInstance),
       );
-      if (nextPath !== currentPath) {
-        void navigate(nextPath, { replace: true });
+      const currentPath = `${location.pathname}${location.search}${location.hash}`;
+      if (inboxPath !== currentPath) {
+        void navigate(inboxPath, { replace: true });
       }
     },
-    [instances, location.pathname, location.search, location.hash, navigate, setCurrentInstanceId],
+    [
+      instances,
+      currentInstanceId,
+      location.pathname,
+      location.search,
+      location.hash,
+      navigate,
+      setCurrentInstanceId,
+    ],
   );
 
   return (

@@ -66,6 +66,16 @@ export function startChatListSnapshotSync(options: StartChatListSnapshotSyncOpti
   // Немедленный flush очереди (если запись не в процессе).
   const flushNow = () => {
     if (inFlight || !queued) return;
+    const snapshotState = useChatListStore.getState();
+    // Зачем: после clear() до hydrate/bootstrap стор пустой — не перезаписываем IDB пустым снимком
+    // (иначе быстрая смена org затирает кеш другой организации).
+    if (!snapshotState.sidebarDataHydrated) {
+      queued = false;
+      logChatListFlow("idb: chatListSnapshot persist flush (skipped, sidebar not hydrated)", {
+        instanceId,
+      });
+      return;
+    }
     queued = false;
     inFlight = true;
     logChatListFlow("idb: chatListSnapshot persist flush (start)", { instanceId });

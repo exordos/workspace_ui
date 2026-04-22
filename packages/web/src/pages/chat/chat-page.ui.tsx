@@ -15,10 +15,12 @@ import { createDraft, deleteDraftOnServer, updateDraftOnServer } from "~/entitie
 import { useDraftStore } from "~/entities/draft/draft.model";
 import type { DraftType } from "~/entities/draft/draft.types";
 import { useInstancesStore } from "~/entities/instance/instance.model";
+import { isMessageForContext } from "~/entities/message/message-chat-context.lib";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { AiMessageContext, AiReplyRequest } from "~/features/ai-reply/ai-reply.types";
+import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
 import { useChatInfoStore } from "~/features/chat-info/chat-info.model";
 import { useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { useMessageReadersStore } from "~/features/message-readers/message-readers.model";
@@ -41,7 +43,6 @@ import {
   updateMessage,
   deleteMessage,
   markDmAsRead,
-  markStreamAsRead,
   markTopicAsRead,
   uploadFile,
   type MockMessage,
@@ -54,6 +55,7 @@ import { getPresenceState, formatLastSeen } from "~/shared/lib/format";
 import { buildJitsiMeetingUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
 import { createLogger } from "~/shared/lib/logger";
 import { logMessageFlow, summarizeChatContextForLog } from "~/shared/lib/message-flow-debug.lib";
+import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { useShortcut } from "~/shared/lib/shortcuts";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
 import { useSidebarConfigStore } from "~/widgets/sidebar/sidebar-config.model";
@@ -254,6 +256,7 @@ export const ChatPage: React.FC = () => {
   const cacheHydratedBeforeApiRef = useRef(false);
   const markAsReadBatcherRef = useRef<ReturnType<typeof createMarkAsReadBatcher> | null>(null);
   const optimisticMessageIdRef = useRef(-1);
+  const jitsiHeaderCallInFlightRef = useRef(false);
   const uploadAbortControllerRef = useRef<AbortController | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<
     { type: "single"; messageId: number } | { type: "bulk"; messageIds: number[] } | null
@@ -541,16 +544,12 @@ export const ChatPage: React.FC = () => {
       const bottomFallbackContext: ReadFallbackContext =
         target.type === "dm"
           ? { type: "dm", dmKey: dmRouteKey(target.userIds, currentUserId) }
-          : target.type === "topic"
-            ? { type: "stream", streamId: target.streamId, topic: target.topic }
-            : { type: "stream", streamId: target.streamId, topic: activeTopic ?? "general" };
+          : { type: "stream", streamId: target.streamId, topic: target.topic };
 
       const request =
         target.type === "dm"
           ? markDmAsRead(target.userIds)
-          : target.type === "topic"
-            ? markTopicAsRead(target.streamId, target.topic)
-            : markStreamAsRead(target.streamId);
+          : markTopicAsRead(target.streamId, target.topic);
 
       request
         .then((ok) => {
@@ -569,9 +568,13 @@ export const ChatPage: React.FC = () => {
     ],
   );
 
-  const handleUnreadMessagesVisible = useCallback((messageIds: number[]) => {
-    markAsReadBatcherRef.current?.schedule(messageIds);
-  }, []);
+  const handleUnreadMessagesVisible = useCallback(
+    (messageIds: number[]) => {
+      if (!isDmView && activeTopic == null) return;
+      markAsReadBatcherRef.current?.schedule(messageIds);
+    },
+    [isDmView, activeTopic],
+  );
 
   useEffect(() => {
     const batchFallbackContext: ReadFallbackContext | undefined = isDmView
@@ -654,16 +657,12 @@ export const ChatPage: React.FC = () => {
     const request =
       target.type === "dm"
         ? markDmAsRead(target.userIds)
-        : target.type === "topic"
-          ? markTopicAsRead(target.streamId, target.topic)
-          : markStreamAsRead(target.streamId);
+        : markTopicAsRead(target.streamId, target.topic);
 
     const markFallbackContext: ReadFallbackContext | undefined =
       target.type === "dm"
         ? { type: "dm", dmKey: dmRouteKey(target.userIds, currentUserId) }
-        : target.type === "topic"
-          ? { type: "stream", streamId: target.streamId, topic: target.topic }
-          : { type: "stream", streamId: target.streamId, topic: activeTopic ?? "general" };
+        : { type: "stream", streamId: target.streamId, topic: target.topic };
 
     request
       .then((ok) => {
@@ -684,7 +683,9 @@ export const ChatPage: React.FC = () => {
 
   useShortcut("mod+shift+m", handleMarkAllAsRead, {
     context: "chat",
-    enabled: isDmView ? (activeDmUserIds?.length ?? 0) > 0 : activeStreamId != null,
+    enabled: isDmView
+      ? (activeDmUserIds?.length ?? 0) > 0
+      : activeStreamId != null && activeTopic != null,
   });
 
   const handleComposerValueChange = useCallback(
@@ -1118,41 +1119,107 @@ export const ChatPage: React.FC = () => {
     return buildJitsiMeetingUrl(roomName, jitsiLinkOptions);
   }, [callTarget, currentUserId, callRoomChatLabel, jitsiLinkOptions]);
 
-  const handleCallClick = useCallback(async () => {
+  const appendMessageIfContextMatches = useCallback(
+    (msg: MockMessage) => {
+      const state = useCurrentChatMessagesStore.getState();
+      if (isMessageForContext(msg, state.context, currentUserId)) {
+        state.appendMessage(msg);
+      }
+    },
+    [currentUserId],
+  );
+
+  const performStartCallFromHeader = useCallback(async () => {
     if (!canStartCallFromHeader({ target: callTarget, currentUserId }) || callTarget == null)
       return;
+    if (jitsiHeaderCallInFlightRef.current) {
+      return;
+    }
+    jitsiHeaderCallInFlightRef.current = true;
     setSendError(null);
     setSending(true);
-    const result = await startCallFromHeader({
-      target: callTarget,
-      currentUserId,
-      buildCurrentCallLink,
-      isOneToOneDm,
-      callRoomChatLabel,
-      fallbackDmPartnerLabel: t("dm.partner"),
-      currentUserLabel: t("common.you"),
-      sendMessage,
-      appendMessageToStore,
-      openModal: (url, locationName) => {
-        openJitsiCall({ meetingUrl: url, locationName });
-      },
-      resolveErrorMessage: (error) =>
-        error instanceof Error ? error.message : t("call.createFailed"),
-    });
-    if (!result.ok && result.error != null) {
-      setSendError(result.error);
+    try {
+      const result = await startCallFromHeader({
+        target: callTarget,
+        currentUserId,
+        buildCurrentCallLink,
+        isOneToOneDm,
+        callRoomChatLabel,
+        fallbackDmPartnerLabel: t("dm.partner"),
+        currentUserLabel: t("common.you"),
+        sendMessage,
+        appendMessageToStore: appendMessageIfContextMatches,
+        openModal: (url, locationName) => {
+          openJitsiCall({ meetingUrl: url, locationName });
+        },
+        resolveErrorMessage: (error) =>
+          error instanceof Error ? error.message : t("call.createFailed"),
+      });
+      if (!result.ok && result.error != null) {
+        setSendError(result.error);
+      }
+    } finally {
+      jitsiHeaderCallInFlightRef.current = false;
+      setSending(false);
     }
-    setSending(false);
   }, [
     callTarget,
     currentUserId,
     buildCurrentCallLink,
     t,
     sendMessage,
-    appendMessageToStore,
+    appendMessageIfContextMatches,
     openJitsiCall,
     isOneToOneDm,
     callRoomChatLabel,
+  ]);
+
+  const handleCallClick = performStartCallFromHeader;
+
+  const invokeDmCallFromProfileHandler = useCallback(
+    (targetUserId: number) => {
+      if (currentUserId == null || targetUserId === currentUserId) return;
+      const inOneToOneWithPartner =
+        isDmView && !isGroupDmView && partnerUserId != null && partnerUserId === targetUserId;
+      if (inOneToOneWithPartner) {
+        void performStartCallFromHeader();
+        return;
+      }
+      useChatDmCallBridgeStore.getState().setPendingDmCallPartnerUserId(targetUserId);
+      void navigate(withCurrentOrgRoute(`/dm/${targetUserId}`));
+    },
+    [currentUserId, isDmView, isGroupDmView, partnerUserId, navigate, performStartCallFromHeader],
+  );
+
+  useEffect(() => {
+    useChatDmCallBridgeStore
+      .getState()
+      .setInvokeDmCallFromProfileHandler(invokeDmCallFromProfileHandler);
+    return () => {
+      useChatDmCallBridgeStore.getState().setInvokeDmCallFromProfileHandler(null);
+    };
+  }, [invokeDmCallFromProfileHandler]);
+
+  useEffect(() => {
+    return () => {
+      useChatDmCallBridgeStore.getState().clearPendingDmCallPartner();
+    };
+  }, []);
+
+  const pendingDmCallPartnerUserId = useChatDmCallBridgeStore((s) => s.pendingDmCallPartnerUserId);
+
+  useEffect(() => {
+    if (pendingDmCallPartnerUserId == null) return;
+    if (!isDmView || isGroupDmView) return;
+    if (partnerUserId !== pendingDmCallPartnerUserId) return;
+    useChatDmCallBridgeStore.getState().clearPendingDmCallPartner();
+    void performStartCallFromHeader();
+  }, [
+    pendingDmCallPartnerUserId,
+    isDmView,
+    isGroupDmView,
+    partnerUserId,
+    performStartCallFromHeader,
   ]);
 
   const handleSend = async (content: string, subjectOverride?: string, files?: File[]) => {

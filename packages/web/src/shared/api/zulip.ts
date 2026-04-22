@@ -27,6 +27,10 @@ import {
   ZULIP_STREAM_CHAT_NUM_BEFORE,
 } from "~/shared/lib/zulip-message-window.lib";
 import {
+  normalizeZulipMessagesNarrowForApi,
+  zulipTopicNarrowOperandForApi,
+} from "~/shared/lib/zulip-topic-narrow.lib";
+import {
   getCurrentInstance,
   refreshWorkspaceApiBase,
   refreshZulipApiBase,
@@ -1242,7 +1246,7 @@ export async function markTopicAsRead(streamId: number, topic: string): Promise<
     num_after: "0",
     narrow: JSON.stringify([
       { operator: "stream", operand: streamId },
-      { operator: "topic", operand: topic },
+      { operator: "topic", operand: zulipTopicNarrowOperandForApi(topic) },
     ]),
     op: "add",
     flag: "read",
@@ -1281,7 +1285,7 @@ export async function setTopicResolvedState(
     apply_markdown: "false",
     narrow: JSON.stringify([
       { operator: "stream", operand: streamId },
-      { operator: "topic", operand: normalizedTopic },
+      { operator: "topic", operand: zulipTopicNarrowOperandForApi(normalizedTopic) },
     ]),
   });
 
@@ -1866,13 +1870,18 @@ export async function fetchMessages(
 ): Promise<MockMessage[]> {
   const normalizedStream =
     stream == null ? undefined : guard.nonEmpty(stream, "fetchMessages.stream");
-  const normalizedTopic = topic == null ? undefined : guard.nonEmpty(topic, "fetchMessages.topic");
+  const normalizedTopic =
+    topic == null || topic.trim() === ""
+      ? undefined
+      : guard.nonEmpty(topic.trim(), "fetchMessages.topic");
   if (normalizedTopic !== undefined && normalizedStream === undefined) {
     throw new Error("fetchMessages.stream is required when topic is provided");
   }
   const narrow: MessagesApiNarrow[] = [];
   if (normalizedStream) narrow.push({ operator: "stream", operand: normalizedStream });
-  if (normalizedTopic) narrow.push({ operator: "topic", operand: normalizedTopic });
+  if (normalizedTopic !== undefined) {
+    narrow.push({ operator: "topic", operand: zulipTopicNarrowOperandForApi(normalizedTopic) });
+  }
   if (q?.trim()) narrow.push({ operator: "search", operand: q.trim() });
   const page = await fetchMessagesWithNarrowPage(
     narrow,
@@ -2040,6 +2049,7 @@ export async function fetchMessagesWithNarrowPage(
   const validatedAnchor = validateMessagesApiAnchor(anchor, "fetchMessagesWithNarrowPage");
   const validatedNumBefore = validateNonNegativeInteger(numBefore, "numBefore");
   const validatedNumAfter = validateNonNegativeInteger(numAfter, "numAfter");
+  const apiNarrow = normalizeZulipMessagesNarrowForApi(narrow);
   if (options?.signal?.aborted) {
     throw new DOMException("Aborted", "AbortError");
   }
@@ -2047,7 +2057,7 @@ export async function fetchMessagesWithNarrowPage(
   // Зачем: отмена одного route-запроса не должна влиять на другой.
   if (options?.signal) {
     const direct = await runMessagesWithNarrowPageRequest({
-      narrow,
+      narrow: apiNarrow,
       anchor: validatedAnchor,
       numBefore: validatedNumBefore,
       numAfter: validatedNumAfter,
@@ -2060,7 +2070,7 @@ export async function fetchMessagesWithNarrowPage(
     return direct;
   }
   const requestKey = buildMessagesPageInFlightKey(
-    narrow,
+    apiNarrow,
     validatedAnchor,
     validatedNumBefore,
     validatedNumAfter,
@@ -2072,7 +2082,7 @@ export async function fetchMessagesWithNarrowPage(
   }
 
   const request = runMessagesWithNarrowPageRequest({
-    narrow,
+    narrow: apiNarrow,
     anchor: validatedAnchor,
     numBefore: validatedNumBefore,
     numAfter: validatedNumAfter,

@@ -3,7 +3,7 @@
  */
 
 import { setWorkspaceApiMutator } from "workspace-api/workspace-api-mutator";
-import { refreshWorkspaceApiBase, workspaceApi } from "./client";
+import { getWorkspaceApiBaseForCurrentInstance, workspaceApi } from "./client";
 import type { ApiResponse } from "./client";
 
 export class WorkspaceApiHttpError extends Error {
@@ -58,20 +58,18 @@ function assertOk(res: ApiResponse): void {
 }
 
 export async function workspaceOrvalMutator<T>(url: string, init: RequestInit): Promise<T> {
-  if (import.meta.env.DEV) {
-    refreshWorkspaceApiBase();
-  }
+  const base = getWorkspaceApiBaseForCurrentInstance();
   const method = (init.method ?? "GET").toUpperCase();
   const signal = init.signal ?? undefined;
 
   if (method === "GET") {
-    const res = await workspaceApi.get(url, undefined, signal);
+    const res = await workspaceApi.getWithBase(base, url, undefined, signal);
     assertOk(res);
     return (res.data ?? undefined) as T;
   }
 
   if (method === "DELETE") {
-    const res = await workspaceApi.delete(url);
+    const res = await workspaceApi.deleteWithBase(base, url);
     assertOk(res);
     return (res.data ?? undefined) as T;
   }
@@ -79,7 +77,7 @@ export async function workspaceOrvalMutator<T>(url: string, init: RequestInit): 
   if (method === "POST") {
     if (contentTypeIsJson(init.headers)) {
       const body = typeof init.body === "string" ? (JSON.parse(init.body) as unknown) : init.body;
-      const res = await workspaceApi.postJson(url, body);
+      const res = await workspaceApi.postJsonWithBase(base, url, body);
       assertOk(res);
       return (res.data ?? undefined) as T;
     }
@@ -88,12 +86,12 @@ export async function workspaceOrvalMutator<T>(url: string, init: RequestInit): 
       init.body.forEach((value, key) => {
         obj[key] = value;
       });
-      const res = await workspaceApi.post(url, obj, signal);
+      const res = await workspaceApi.postWithBase(base, url, obj, signal);
       assertOk(res);
       return (res.data ?? undefined) as T;
     }
     if (init.body === undefined || init.body === null) {
-      const res = await workspaceApi.post(url, {}, signal);
+      const res = await workspaceApi.postWithBase(base, url, {}, signal);
       assertOk(res);
       return (res.data ?? undefined) as T;
     }
@@ -103,7 +101,7 @@ export async function workspaceOrvalMutator<T>(url: string, init: RequestInit): 
   if (method === "PUT") {
     if (contentTypeIsJson(init.headers)) {
       const body = typeof init.body === "string" ? (JSON.parse(init.body) as unknown) : init.body;
-      const res = await workspaceApi.putJson(url, body);
+      const res = await workspaceApi.putJsonWithBase(base, url, body);
       assertOk(res);
       return (res.data ?? undefined) as T;
     }

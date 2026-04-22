@@ -150,11 +150,6 @@ export const Layout: React.FC = () => {
     setInstanceUnreadCount(currentInstanceId, unreadCountForCurrentInstance);
   }, [currentInstanceId, unreadCountForCurrentInstance, setInstanceUnreadCount]);
 
-  // Централизованный debounce-sync chat-list snapshot в IndexedDB.
-  useLayoutChatListSnapshotSync(currentInstanceId);
-  // Централизованный debounce-sync mute snapshot в IndexedDB.
-  useLayoutMuteSnapshotSync(currentInstanceId);
-
   useLayoutWindowBranding({
     unreadCount: unreadCountForCurrentInstance,
     activeChatWindowTitle: activeChatWindowTitle ?? "",
@@ -203,6 +198,11 @@ export const Layout: React.FC = () => {
     setCurrentUserId,
     setCurrentUserStatus,
   });
+
+  // После zulip: clear/hydrate для нового instanceId уже отработали — не подписываемся на persist раньше,
+  // иначе в IDB уйдёт пустой снимок под ключ новой организации (см. layout-chat-list-snapshot-sync.lib).
+  useLayoutChatListSnapshotSync(currentInstanceId);
+  useLayoutMuteSnapshotSync(currentInstanceId);
 
   // Allow main shell while auth/history sync runs if sidebar was hydrated from IndexedDB.
   const showFullscreenLoader =

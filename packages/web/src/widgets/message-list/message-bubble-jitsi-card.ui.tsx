@@ -99,7 +99,6 @@ export const MessageBubbleJitsiCard = React.memo(function MessageBubbleJitsiCard
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 flex-1 items-center gap-2 text-text-muted">
           <Icon name="chevron-right" size={12} className="shrink-0 rotate-45 text-current" />
-          <span className="shrink-0 text-[11px]">0:47</span>
           <div
             data-testid={`jitsi-call-participants-${message.id}`}
             className="ml-0.5 flex min-w-0 items-center -space-x-2"

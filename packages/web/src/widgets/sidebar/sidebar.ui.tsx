@@ -16,7 +16,7 @@ import { SidebarFolderChatList } from "./sidebar-folder-chat-list.ui";
 import { SidebarPinReorderBanner } from "./sidebar-pin-reorder-banner.ui";
 import { SidebarSearchHeader } from "./sidebar-search-header.ui";
 import { SidebarStreamList } from "./sidebar-stream-list.ui";
-import { chatToWorkspaceChatId, getStreamChats } from "./sidebar.lib";
+import { chatToWorkspaceChatId, getStreamChats, isSidebarSystemFolderScope } from "./sidebar.lib";
 import type { SidebarChat, SidebarUiProps } from "./sidebar.types";
 
 const EMPTY_PIN_REORDER_CHAT_IDS: string[] = [];
@@ -75,6 +75,7 @@ export const Sidebar: React.FC<SidebarUiProps> = ({
 
   const streamsFromStore = useChatListStore((s) => s.streams());
   const sidebarDmsFromStore = useChatListStore((s) => s.dms());
+  const sidebarDataHydrated = useChatListStore((s) => s.sidebarDataHydrated);
   const streams = streamsProp ?? streamsFromStore;
   const sidebarDms = sidebarDmsProp ?? sidebarDmsFromStore;
   const selectedFolderIdFromUi = useSidebarConfigStore((s) => s.selectedFolderId);
@@ -134,7 +135,12 @@ export const Sidebar: React.FC<SidebarUiProps> = ({
   const streamChats = useMemo(() => getStreamChats(streams), [streams]);
 
   const listChats = useMemo<SidebarChat[]>(() => sidebarChats ?? [], [sidebarChats]);
-  const folderChatListLoading = sidebarChatsLoading && listChats.length === 0;
+  const systemFolderAwaitingChatHydration = useMemo(
+    () => isSidebarSystemFolderScope(selectedFolderId) && !sidebarDataHydrated,
+    [selectedFolderId, sidebarDataHydrated],
+  );
+  const folderChatListLoading =
+    (sidebarChatsLoading || systemFolderAwaitingChatHydration) && listChats.length === 0;
   const normalizedQuery = useMemo(() => normalizeSidebarSearchQuery(searchQuery), [searchQuery]);
 
   const doesChatMatchQuery = useCallback(

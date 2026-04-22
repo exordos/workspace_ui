@@ -5,13 +5,14 @@ import { ensureUserStatusLoaded } from "~/entities/user/api/user.api";
 import { ProfileCustomFieldsBlock } from "~/entities/user/profile-custom-fields-block.ui";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore } from "~/entities/user/user.model";
+import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
 import { t } from "~/i18n/i18n";
 import { fetchUser } from "~/shared/api/zulip";
 import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
 import { formatLastSeen, getPresenceState } from "~/shared/lib/format";
-import { getRoleLabel, parseRole } from "~/shared/lib/roles";
 import { isValidEmail } from "~/shared/lib/validation";
 import { Avatar } from "~/shared/ui/avatar";
+import { Copyable } from "~/shared/ui/copyable";
 import { Icon } from "~/shared/ui/icon";
 import { resolveAvatarSrc } from "./message-avatar.lib";
 import {
@@ -19,19 +20,22 @@ import {
   MENTION_POPOVER_EST_HEIGHT,
   MENTION_POPOVER_WIDTH,
 } from "./message-mention-popover-position.lib";
-import { extractMentionNicknameFromEmail } from "./message-mention-popover-user.lib";
 import type { MessageMentionPopoverProps } from "./message-mention-popover.types";
 
-type MentionInfoIcon = "profile" | "mail" | "at" | "group";
+type MentionInfoIcon = "profile" | "mail";
 
 const MentionPopoverInfoRow = React.memo(function MentionPopoverInfoRow({
   icon,
   label,
   children,
+  copyValue,
+  copyAriaLabel,
 }: {
   icon: MentionInfoIcon;
   label: string;
   children: React.ReactNode;
+  copyValue?: string;
+  copyAriaLabel?: string;
 }) {
   return (
     <li className="flex gap-2">
@@ -40,7 +44,18 @@ const MentionPopoverInfoRow = React.memo(function MentionPopoverInfoRow({
         <p className="text-[11px] font-medium uppercase tracking-wide text-text-secondary">
           {label}
         </p>
-        <div className="truncate text-sm text-text-primary">{children}</div>
+        {copyValue != null ? (
+          <Copyable
+            value={copyValue}
+            copyAriaLabel={copyAriaLabel}
+            className="max-w-full"
+            contentClassName="min-w-0 truncate text-sm text-text-primary"
+          >
+            {children}
+          </Copyable>
+        ) : (
+          <div className="truncate text-sm text-text-primary">{children}</div>
+        )}
       </div>
     </li>
   );
@@ -119,11 +134,6 @@ export const MessageMentionPopover = React.memo(function MessageMentionPopover({
     emailTrimmed != null && emailTrimmed.length > 0 && isValidEmail(emailTrimmed)
       ? `mailto:${emailTrimmed}`
       : undefined;
-  const mentionNickname = extractMentionNicknameFromEmail(user?.email);
-  const mentionDisplay =
-    mentionNickname != null && mentionNickname.length > 0 ? `@${mentionNickname}` : undefined;
-  const roleLabel = user?.role != null ? getRoleLabel(parseRole(user.role)) : undefined;
-
   const positionStyle = useMemo(() => {
     if (typeof window === "undefined") {
       return { left: 0, top: 0, width: MENTION_POPOVER_WIDTH };
@@ -151,8 +161,6 @@ export const MessageMentionPopover = React.memo(function MessageMentionPopover({
     user?.avatar_url,
     user?.profile_data,
     emailTrimmed,
-    mentionDisplay,
-    roleLabel,
     onOpenUserProfile,
   ]);
 
@@ -160,6 +168,15 @@ export const MessageMentionPopover = React.memo(function MessageMentionPopover({
     onOpenDirectMessage(userId);
     onClose();
   }, [onClose, onOpenDirectMessage, userId]);
+
+  const currentUserId = useChatListStore((s) => s.currentUserId);
+  const profileDmCallHandlerReady = useChatDmCallBridgeStore(
+    (s) => s.invokeDmCallFromProfileHandler != null,
+  );
+  const handleProfileDmCall = useCallback(() => {
+    useChatDmCallBridgeStore.getState().invokeDmCallFromProfile(userId);
+    onClose();
+  }, [onClose, userId]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -227,54 +244,70 @@ export const MessageMentionPopover = React.memo(function MessageMentionPopover({
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-text-primary">{displayName}</p>
+            <Copyable value={displayName} className="w-full">
+              <p className="truncate text-sm font-semibold text-text-primary">{displayName}</p>
+            </Copyable>
             <p className="truncate text-xs text-text-muted">{statusLine}</p>
           </div>
         </div>
-        <div className="mt-2 max-h-44 overflow-y-auto border-t border-border-subtle pt-2">
-          <ProfileCustomFieldsBlock
-            profileData={user?.profile_data}
-            baseUrl={getRealmBaseUrl() || undefined}
-            density="compact"
-            showSectionTitle={false}
-            className=""
-            onOpenUserProfile={onOpenUserProfile}
-          />
-          <ul className="space-y-2 border-t border-border-subtle pt-2 first:border-t-0 first:pt-0">
-            <MentionPopoverInfoRow icon="profile" label={t("info.userId")}>
-              {String(userId)}
-            </MentionPopoverInfoRow>
-            {mailtoHref != null && emailTrimmed != null ? (
-              <MentionPopoverInfoRow icon="mail" label={t("common.email")}>
-                <a
-                  href={mailtoHref}
-                  className="text-accent underline-offset-2 hover:underline"
-                  onClick={(e) => e.stopPropagation()}
+        <div className="mt-3 max-h-[calc(100dvh-12rem)] min-h-0 overflow-y-auto overscroll-contain border-t border-border-subtle pt-3">
+          <div className="flex flex-col gap-3">
+            <ProfileCustomFieldsBlock
+              profileData={user?.profile_data}
+              baseUrl={getRealmBaseUrl() || undefined}
+              density="compact"
+              showSectionTitle={false}
+              onOpenUserProfile={onOpenUserProfile}
+            />
+            <ul className="space-y-2 border-t border-border-subtle pt-3 first:border-t-0 first:pt-0">
+              <MentionPopoverInfoRow
+                icon="profile"
+                label={t("info.userId")}
+                copyValue={String(userId)}
+                copyAriaLabel={t("info.copyUserId")}
+              >
+                {String(userId)}
+              </MentionPopoverInfoRow>
+              {mailtoHref != null && emailTrimmed != null ? (
+                <MentionPopoverInfoRow
+                  icon="mail"
+                  label={t("common.email")}
+                  copyValue={emailTrimmed}
+                  copyAriaLabel={t("info.copyEmail")}
                 >
-                  {emailTrimmed}
-                </a>
-              </MentionPopoverInfoRow>
-            ) : null}
-            {mentionDisplay != null ? (
-              <MentionPopoverInfoRow icon="at" label={t("info.atMention")}>
-                <span className="text-accent">{mentionDisplay}</span>
-              </MentionPopoverInfoRow>
-            ) : null}
-            {roleLabel != null ? (
-              <MentionPopoverInfoRow icon="group" label={t("info.role")}>
-                {roleLabel}
-              </MentionPopoverInfoRow>
-            ) : null}
-          </ul>
+                  <a
+                    href={mailtoHref}
+                    className="text-accent underline-offset-2 hover:underline"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {emailTrimmed}
+                  </a>
+                </MentionPopoverInfoRow>
+              ) : null}
+            </ul>
+          </div>
         </div>
-        <button
-          type="button"
-          className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-on-accent hover:opacity-90"
-          onClick={handleOpenDm}
-        >
-          <Icon name="chatBubble" size={16} className="shrink-0 text-current" />
-          <span>{t("info.openDirectMessages")}</span>
-        </button>
+        <div className="mt-3 flex gap-2">
+          <button
+            type="button"
+            className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-on-accent hover:opacity-90"
+            onClick={handleOpenDm}
+          >
+            <Icon name="chatBubble" size={16} className="shrink-0 text-current" />
+            <span className="truncate">{t("info.openDirectMessages")}</span>
+          </button>
+          {profileDmCallHandlerReady && currentUserId != null && userId !== currentUserId && (
+            <button
+              type="button"
+              className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2 text-sm font-medium text-text-primary hover:bg-bg"
+              onClick={handleProfileDmCall}
+              aria-label={t("call.call")}
+            >
+              <Icon name="phone" size={16} className="shrink-0 text-current" />
+              <span className="truncate">{t("call.call")}</span>
+            </button>
+          )}
+        </div>
       </div>
     </>,
     document.body,
