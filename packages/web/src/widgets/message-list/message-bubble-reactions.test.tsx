@@ -298,7 +298,7 @@ describe("MessageBubble quick reactions", () => {
     expect(btn?.getAttribute("title")).toContain("Dan");
   });
 
-  it("renders reactions on the same bottom row as message time in bordered chips", () => {
+  it("keeps message metadata pinned to the bottom-right corner when reactions appear", () => {
     render(
       <MessageBubble
         message={createMessage({
@@ -324,11 +324,60 @@ describe("MessageBubble quick reactions", () => {
 
     const reactionRow = reactionButton.parentElement;
     expect(reactionRow).toHaveClass("flex", "flex-1", "flex-wrap", "items-end", "justify-start");
-    expect(reactionRow).not.toHaveClass("mt-1.5");
-
     expect(reactionButton).toHaveClass("border", "border-border-subtle", "rounded-lg");
 
     const bubbleSurface = reactionRow?.parentElement?.parentElement;
-    expect(bubbleSurface?.querySelector(".flex.shrink-0.items-center.gap-1")).not.toBeNull();
+    expect(bubbleSurface).toHaveClass("pr-14", "pb-5");
+    expect(
+      bubbleSurface?.querySelector(".absolute.bottom-2.right-2.flex.items-center.gap-1"),
+    ).not.toBeNull();
+  });
+
+  it("keeps the delivery indicator in the same pinned metadata block for own messages", () => {
+    render(
+      <MessageBubble
+        isOwn
+        message={createMessage({
+          id: 101,
+          delivery_status: "sent",
+          reactions: [
+            {
+              emoji_name: "thumbs_up",
+              emoji_code: "1f44d",
+              reaction_type: "unicode_emoji",
+              user_id: 77,
+            },
+            {
+              emoji_name: "party_popper",
+              emoji_code: "1f389",
+              reaction_type: "unicode_emoji",
+              user_id: 88,
+            },
+            {
+              emoji_name: "tada",
+              emoji_code: "1f389",
+              reaction_type: "unicode_emoji",
+              user_id: 89,
+            },
+            {
+              emoji_name: "clap",
+              emoji_code: "1f44f",
+              reaction_type: "unicode_emoji",
+              user_id: 90,
+            },
+          ],
+        })}
+      />,
+    );
+
+    const bubbleRoot = screen.getByTestId("message-101");
+    const bubbleSurface = bubbleRoot.querySelector(".overflow-hidden.rounded-\\[18px\\]");
+    expect(bubbleSurface).toHaveClass("pr-14", "pb-5");
+
+    const metadata = bubbleSurface?.querySelector(
+      ".absolute.bottom-2.right-2.flex.items-center.gap-1",
+    );
+    expect(metadata).not.toBeNull();
+    expect(metadata?.querySelector('[data-testid="message-delivery-101"]')).not.toBeNull();
   });
 });
