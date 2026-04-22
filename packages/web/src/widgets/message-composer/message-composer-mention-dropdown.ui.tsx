@@ -26,7 +26,7 @@ export const ComposerMentionDropdown = React.memo(function ComposerMentionDropdo
     const activeItem = itemRefs.current[activeIndex];
     if (container == null || activeItem == null || !container.contains(activeItem)) return;
     if (typeof activeItem.scrollIntoView !== "function") return;
-    activeItem.scrollIntoView({ block: "nearest", inline: "nearest" });
+    activeItem.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
   }, [activeIndex, suggestions]);
 
   return (

@@ -309,11 +309,6 @@ button:not(:disabled):not([data-icon-hover="custom"]):has(> svg):not(:has(> *:no
   @apply bg-accent text-on-accent;
 }
 
-/* Плавный скролл */
-* {
-  scroll-behavior: smooth;
-}
-
 /* Запрещаем перетаскивание картинок */
 img {
   -webkit-user-drag: none;
