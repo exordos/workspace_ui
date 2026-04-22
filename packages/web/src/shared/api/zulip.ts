@@ -1,14 +1,12 @@
 // Основной API-слой для работы с Zulip (очереди, unread, сообщения, флаги, профили и т.д.).
-/**
- * Zulip API client (via zulip-js).
- *
- * Uses the currently selected instance from instancesStore.
- * Client is cached per instanceId to avoid redundant handshakes.
- * Supports both Basic auth (email:apiKey) and cookie session auth.
- *
- * Usage:
- *   import { fetchStreams, fetchMessages, sendMessage, registerQueue } from "~/shared/api/zulip";
- */
+// Клиент Zulip API через `zulip-js`.
+//
+// Использует текущий выбранный инстанс из `instancesStore`.
+// Клиент кэшируется по `instanceId`, чтобы не делать лишние handshakes.
+// Поддерживает и Basic auth через `email:apiKey`, и cookie session auth.
+//
+// Использование:
+//   import { fetchStreams, fetchMessages, sendMessage, registerQueue } from "~/shared/api/zulip";
 import { Buffer } from "buffer";
 import zulipInitDefault from "zulip-js";
 import { t } from "~/i18n/i18n";
@@ -119,7 +117,7 @@ function buildMessagesQueryParams(params: {
     num_after: String(params.num_after ?? 0),
     allow_empty_topic_name: "true",
     client_gravatar: "true",
-    apply_markdown: "false",
+    apply_markdown: "true",
   };
   if (params.narrow != null) {
     query.narrow = JSON.stringify(params.narrow);
@@ -244,7 +242,7 @@ function getClient(): Promise<ZulipClient> {
   return promise;
 }
 
-/** Realm base URL without API path — used for absolute URLs (avatars, uploads). */
+// Realm base URL без API path. Используется для абсолютных URL, например для аватаров и uploads.
 export function getRealmBaseUrl(): string {
   const instance = getCurrentInstance();
   if (!instance) return "";
@@ -483,10 +481,8 @@ function parseRecentPrivateConversations(
   return parsed;
 }
 
-/**
- * Fetches server settings (GET /api/v1/server_settings). No auth required.
- * Used on login page to show realm icon, name, and auth methods.
- */
+// Загружает server settings без авторизации.
+// Используется на странице логина, чтобы показать иконку realm, имя и auth-методы.
 export async function fetchServerSettings(realmUrl: string): Promise<{
   realm_name: string;
   realm_icon: string;
@@ -538,11 +534,9 @@ export async function fetchServerSettings(realmUrl: string): Promise<{
   }
 }
 
-/**
- * Exchanges credentials for an API key (POST /api/v1/fetch_api_key).
- * Used at login; password is never persisted.
- * @throws ZulipAuthError on auth or network failure
- */
+// Обменивает credentials на API key.
+// Используется на логине; пароль никогда не сохраняется.
+// Бросает `ZulipAuthError` при auth- или network-сбое.
 export async function fetchApiKey(
   realm: string,
   username: string,
@@ -634,12 +628,11 @@ function buildSessionFallbackEmail(baseRealm: string): string {
   }
 }
 
-/**
- * Completes OIDC desktop flow by exchanging decrypted login token
- * against /accounts/login/subdomain/<token>.
- *
- * Backend may return API credentials directly or establish cookie-based session auth.
- */
+// Завершает OIDC desktop flow, обменивая расшифрованный login token
+// на `/accounts/login/subdomain/<token>`.
+//
+// Backend может либо сразу вернуть API credentials,
+// либо поднять cookie-based session auth.
 export async function exchangeDesktopFlowToken(
   realm: string,
   token: string,
@@ -732,10 +725,9 @@ async function zulipPipelineGet(
   }
 }
 
-/**
- * zulipPipelineGet returns null on network failure (non-abort). Message loaders must throw so
- * callers can show errors instead of treating an empty list as success.
- */
+// `zulipPipelineGet` возвращает null при сетевой ошибке, если это не abort.
+// Message loader'ы должны бросать ошибку, чтобы вызывающий код показал ее пользователю,
+// а не принял пустой список за успешный ответ.
 function throwIfZulipPipelineGetNull(
   response: { ok: boolean; status: number; data: unknown } | null,
   signal?: AbortSignal,
@@ -822,13 +814,14 @@ function validateEventCursor(lastEventId: number, context: string): number {
   return lastEventId;
 }
 
-/** Registers an event queue (POST /api/v1/register). Returns queue_id for subsequent long-polling. */
+// Регистрирует очередь событий и возвращает `queue_id` для последующего long-polling.
 export async function registerQueue(
   eventTypes: string[],
   fetchEventTypes: string[] = [...DEFAULT_REGISTER_FETCH_EVENT_TYPES],
 ): Promise<RegisterQueueResult> {
   const body: Record<string, string> = {
     event_types: JSON.stringify(eventTypes),
+    apply_markdown: "true",
   };
   if (fetchEventTypes.length > 0) {
     // Что делает: просит Zulip добавить в register нужные metadata-поля.
@@ -887,7 +880,8 @@ export async function registerQueue(
   };
 }
 
-/** Registers queue with explicit credentials (used for background multi-org loops). */
+// Регистрирует очередь с явными credentials.
+// Используется для фоновых multi-org loop.
 export async function registerQueueForCredentials(
   credentials: ZulipCredentials,
   eventTypes: string[],
@@ -972,11 +966,10 @@ export async function registerQueueForCredentials(
   };
 }
 
-/**
- * Deletes an event queue (DELETE /api/v1/events).
- * Best-effort cleanup on logout/instance switch — swallows errors.
- * Pass credentials when cleaning up during instance switch (getCurrentInstance may already have changed).
- */
+// Удаляет очередь событий.
+// Это best-effort cleanup при logout или переключении инстанса, поэтому ошибки глотаются.
+// Credentials нужно передавать явно при cleanup во время instance switch,
+// потому что `getCurrentInstance()` уже мог смениться.
 export async function deleteQueue(queueId: string, credentials?: ZulipCredentials): Promise<void> {
   try {
     const safeQueueId = queueId.trim();
@@ -1010,10 +1003,8 @@ const UNREAD_MESSAGES_NUM_BEFORE = 5000;
 const UNREAD_MESSAGES_NUM_AFTER = 0;
 const UNREAD_MESSAGES_NARROW = JSON.stringify([{ operator: "is", operand: "unread" }]);
 
-/**
- * Reads total unread count for any instance credentials (GET /api/v1/messages?narrow=is:unread).
- * Returns null when request fails or payload cannot be parsed.
- */
+// Читает общее число непрочитанных сообщений для любых instance credentials.
+// Если запрос упал или payload не удалось распарсить, возвращает null.
 export async function fetchUnreadMessagesCountForCredentials(
   credentials: ZulipCredentials,
   options?: { signal?: AbortSignal },
@@ -1060,7 +1051,7 @@ export async function fetchUnreadMessagesCountForCredentials(
   }
 }
 
-/** Long-polls for events (GET /api/v1/events). Supports timeout and AbortSignal. */
+// Делает long-poll за событиями. Поддерживает timeout и `AbortSignal`.
 export async function getEvents(
   queueId: string,
   lastEventId: number,
@@ -1113,7 +1104,8 @@ export async function getEvents(
   }
 }
 
-/** Long-polls events using explicit credentials (used for background multi-org loops). */
+// Делает long-poll за событиями с явными credentials.
+// Используется для фоновых multi-org loop.
 export async function getEventsForCredentials(
   credentials: ZulipCredentials,
   queueId: string,
@@ -1196,7 +1188,7 @@ function validateMessageIds(messageIds: number[], context: string): number[] {
   return messageIds.map((messageId, index) => guard.messageId(messageId, `${context}[${index}]`));
 }
 
-/** Marks messages as read (POST /api/v1/messages/flags). Call when opening a chat. */
+// Помечает сообщения как прочитанные. Вызывается при открытии чата.
 export async function markMessagesAsRead(messageIds: number[]): Promise<void> {
   if (messageIds.length === 0) return;
   const validatedMessageIds = validateMessageIds(messageIds, "markMessagesAsRead.messageIds");
@@ -1207,7 +1199,7 @@ export async function markMessagesAsRead(messageIds: number[]): Promise<void> {
   });
 }
 
-/** Bulk-marks all messages in a DM chat as read (POST /api/v1/messages/flags/narrow). */
+// Массово помечает все сообщения в DM-чате как прочитанные.
 export async function markDmAsRead(userIds: number[]): Promise<boolean> {
   const validatedUserIds = guard
     .nonEmptyArray(userIds, "markDmAsRead.userIds")
@@ -1224,7 +1216,7 @@ export async function markDmAsRead(userIds: number[]): Promise<boolean> {
   return res.ok;
 }
 
-/** Bulk-marks all messages in a stream as read (POST /api/v1/messages/flags/narrow). */
+// Массово помечает все сообщения в стриме как прочитанные.
 export async function markStreamAsRead(streamId: number): Promise<boolean> {
   guard.streamId(streamId, "markStreamAsRead");
   const res = await zulipPipelinePost("messages/flags/narrow", {
@@ -1239,7 +1231,7 @@ export async function markStreamAsRead(streamId: number): Promise<boolean> {
   return res.ok;
 }
 
-/** Bulk-marks all messages in a stream topic as read (POST /api/v1/messages/flags/narrow). */
+// Массово помечает все сообщения в теме стрима как прочитанные.
 export async function markTopicAsRead(streamId: number, topic: string): Promise<boolean> {
   guard.streamId(streamId, "markTopicAsRead");
   guard.nonEmpty(topic, "markTopicAsRead.topic");
@@ -1258,12 +1250,12 @@ export async function markTopicAsRead(streamId: number, topic: string): Promise<
   return res.ok;
 }
 
-/**
- * Marks a stream topic as resolved/unresolved by renaming the whole topic thread.
- *
- * Zulip models "resolved" as a topic-name convention (checkmark prefix).
- * We PATCH the first message in the topic with propagate_mode=change_all.
- */
+// Помечает тему стрима как resolved или unresolved,
+// переименовывая весь тред темы.
+//
+// В Zulip resolved-модель основана на соглашении по имени темы,
+// обычно это префикс с галочкой. Для этого PATCH'им первое сообщение темы
+// с `propagate_mode=change_all`.
 export async function setTopicResolvedState(
   streamId: number,
   topic: string,
@@ -1346,21 +1338,21 @@ export async function getCurrentUser(): Promise<ZulipCurrentUser | null> {
   };
 }
 
-/** Map of user_id to relative avatar_url path. */
+// Карта `user_id -> relative avatar_url`.
 export type AvatarUrlByUserId = Map<number, string>;
 
-/** A single user entry from GET /users. */
+// Одна запись пользователя из `GET /users`.
 export interface ZulipUserMember {
   user_id: number;
   full_name?: string;
   email?: string;
   avatar_url?: string | null;
   role?: number;
-  /** Present when `include_custom_profile_fields=true`. */
+  // Присутствует, когда включен `include_custom_profile_fields=true`.
   profile_data?: Record<string, { value?: string; rendered_value?: string }>;
 }
 
-/** Fetches the full user list (GET /users) for populating usersStore. */
+// Загружает полный список пользователей для заполнения `usersStore`.
 export async function fetchUsers(): Promise<ZulipUserMember[]> {
   const res = await zulipPipelineGet("/users", {
     client_gravatar: "false",
@@ -1378,7 +1370,7 @@ export async function fetchUsers(): Promise<ZulipUserMember[]> {
   return Array.isArray(data.members) ? data.members : Array.isArray(data.users) ? data.users : [];
 }
 
-/** Fetches a single user by ID (GET /users/{user_id}). Used for DM profile panel. */
+// Загружает одного пользователя по ID. Используется в DM profile panel.
 export async function fetchUser(userId: number): Promise<ZulipUserMember | null> {
   guard.userId(userId, "fetchUser");
   const res = await zulipPipelineGet(`/users/${userId}`, {
@@ -1396,7 +1388,7 @@ export async function fetchUser(userId: number): Promise<ZulipUserMember | null>
   return data.user;
 }
 
-/** Response shape from GET /api/v1/realm/presence (keyed by user email). */
+// Формат ответа `GET /api/v1/realm/presence`, где ключом выступает email пользователя.
 export interface RealmPresenceEntry {
   aggregated?: { status: string; timestamp: number };
   website?: { status: string; timestamp: number };
@@ -1408,7 +1400,7 @@ export interface RealmPresenceResponse {
   server_timestamp?: number;
 }
 
-/** Fetches presence data for all users (GET /api/v1/realm/presence). */
+// Загружает presence-данные для всех пользователей.
 export async function fetchRealmPresence(): Promise<RealmPresenceResponse> {
   const res = await zulipPipelineGet("/realm/presence");
   if (!res?.ok) {
@@ -1417,10 +1409,9 @@ export async function fetchRealmPresence(): Promise<RealmPresenceResponse> {
   return res.data as RealmPresenceResponse;
 }
 
-/**
- * Fetches users and returns a user_id → avatar_url map.
- * Prefer fetchUsers() + usersStore for caching; this is a convenience shortcut.
- */
+// Загружает пользователей и возвращает карту `user_id -> avatar_url`.
+// Для кэширования предпочтительнее использовать `fetchUsers()` вместе с `usersStore`;
+// это просто удобный shortcut.
 export async function fetchUsersAvatarMap(): Promise<AvatarUrlByUserId> {
   const list = await fetchUsers();
   const map = new Map<number, string>();
@@ -1432,7 +1423,7 @@ export async function fetchUsersAvatarMap(): Promise<AvatarUrlByUserId> {
   return map;
 }
 
-/** A single reaction on a message (Zulip API shape). */
+// Одна реакция на сообщение в формате Zulip API.
 export interface Reaction {
   emoji_name: string;
   emoji_code: string;
@@ -1440,12 +1431,14 @@ export interface Reaction {
   user_id: number;
 }
 
-/** Raw message from GET /messages. Absence of 'read' in flags means unread. */
+// Raw-сообщение из `GET /messages`.
+// Отсутствие `read` в flags означает, что сообщение непрочитано.
 export interface ZulipRawMessage {
   id: number;
   sender_id: number;
   sender_full_name?: string;
-  /** Sender avatar (relative path), present in GET /messages response. */
+  // Аватар отправителя в виде относительного пути.
+  // Присутствует в ответе `GET /messages`.
   avatar_url?: string | null;
   content: string;
   timestamp: number;
@@ -1465,7 +1458,9 @@ interface MessageWindowOptions {
   numAfter: number;
   includeAnchor?: boolean;
   narrow?: { operator: string; operand: string | number | number[] }[];
-  /** When set and `CHAT_LIST_FLOW_DEBUG` is on, logs GET /messages request/response for sidebar bootstrap. */
+  applyMarkdown?: boolean;
+  // Если поле задано и включен `CHAT_LIST_FLOW_DEBUG`,
+  // логирует запрос и ответ `GET /messages` для bootstrap sidebar.
   flowDebugLabel?: string;
 }
 
@@ -1490,7 +1485,15 @@ function validateNonNegativeInteger(value: number, label: string): number {
 }
 
 async function fetchMessageWindow(options: MessageWindowOptions): Promise<ZulipRawMessage[]> {
-  const { anchor, numBefore, numAfter, includeAnchor, narrow, flowDebugLabel } = options;
+  const {
+    anchor,
+    numBefore,
+    numAfter,
+    includeAnchor,
+    narrow,
+    applyMarkdown = true,
+    flowDebugLabel,
+  } = options;
   if (flowDebugLabel != null) {
     logChatListFlow(`api: GET /messages → ${flowDebugLabel} (request)`, {
       anchor,
@@ -1498,6 +1501,7 @@ async function fetchMessageWindow(options: MessageWindowOptions): Promise<ZulipR
       numAfter,
       includeAnchor: includeAnchor ?? null,
       hasNarrow: narrow != null,
+      applyMarkdown,
     });
   }
   const res = await zulipPipelineGet("/messages", {
@@ -1508,7 +1512,7 @@ async function fetchMessageWindow(options: MessageWindowOptions): Promise<ZulipR
     ...(narrow == null ? {} : { narrow: JSON.stringify(narrow) }),
     client_gravatar: "true",
     allow_empty_topic_name: "true",
-    apply_markdown: "false",
+    apply_markdown: applyMarkdown ? "true" : "false",
   });
   throwIfZulipPipelineGetNull(res);
   if (!res.ok) {
@@ -1535,17 +1539,20 @@ async function fetchMessageWindow(options: MessageWindowOptions): Promise<ZulipR
   return messages;
 }
 
-/** Fetches the latest 1000 messages (no narrow) to build the sidebar chat/channel list. */
+// Загружает последние 1000 сообщений без narrow,
+// чтобы собрать список чатов и каналов в sidebar.
 export async function fetchRecentMessages(): Promise<ZulipRawMessage[]> {
   return fetchMessageWindow({
     anchor: "newest",
     numBefore: 1000,
     numAfter: 0,
+    applyMarkdown: false,
     flowDebugLabel: "fetchRecentMessages (chat list bootstrap / reconnect fallback)",
   });
 }
 
-/** Fetches older chat-list messages before anchor (used for deep bootstrap backfill). */
+// Загружает более старые сообщения chat-list до anchor.
+// Используется для глубокого backfill на bootstrap.
 export async function fetchMessagesBeforeAnchor(
   anchorMessageId: number,
   numBefore = 5000,
@@ -1556,11 +1563,13 @@ export async function fetchMessagesBeforeAnchor(
     numBefore,
     numAfter: 0,
     includeAnchor: false,
+    applyMarkdown: false,
     flowDebugLabel: "fetchMessagesBeforeAnchor (chat list deep history)",
   });
 }
 
-/** Fetches newer chat-list messages after anchor (used after reconnect). */
+// Загружает более новые сообщения chat-list после anchor.
+// Используется после reconnect.
 export async function fetchMessagesAfterAnchor(
   anchorMessageId: number,
   numAfter = 5000,
@@ -1571,6 +1580,7 @@ export async function fetchMessagesAfterAnchor(
     numBefore: 0,
     numAfter,
     includeAnchor: false,
+    applyMarkdown: false,
     flowDebugLabel: "fetchMessagesAfterAnchor (chat list delta / reconnect)",
   });
 }
@@ -1580,7 +1590,8 @@ export interface DirectMessagesPageResult {
   foundOldest: boolean;
 }
 
-/** Fetches a page across all direct messages (narrow=is:dm) for metadata backfill. */
+// Загружает страницу по всем direct message через `narrow=is:dm`
+// для metadata backfill.
 export async function fetchDirectMessagesPage(
   anchor: number | "newest" = "newest",
   numBefore = 5000,
@@ -1602,6 +1613,7 @@ export async function fetchDirectMessagesPage(
     narrow: JSON.stringify([{ operator: "is", operand: "dm" }]),
     client_gravatar: "true",
     allow_empty_topic_name: "true",
+    apply_markdown: "false",
   });
   throwIfZulipPipelineGetNull(res);
   if (!res.ok) {
@@ -1663,7 +1675,8 @@ function getActivityNarrow(filter: ActivityFilter, currentUserId?: number | null
   }
 }
 
-/** Fetches messages for the "My Activity" section (starred, mentions, reactions). */
+// Загружает сообщения для раздела "Моя активность":
+// starred, mentions и reactions.
 export async function fetchActivityMessages(
   filter: ActivityFilter,
   currentUserId?: number | null,
@@ -1695,7 +1708,7 @@ export async function fetchActivityMessagesPage(
     narrow: JSON.stringify(narrow),
     allow_empty_topic_name: "true",
     client_gravatar: "true",
-    apply_markdown: "false",
+    apply_markdown: "true",
   });
   throwIfZulipPipelineGetNull(res);
   if (!res.ok) return { messages: [], foundOldest: false };
@@ -1732,18 +1745,19 @@ export interface MockMessage {
   channel?: string;
   subject: string;
   content: string;
-  /** Markdown for editing / quotes; mirrors Markdown `content` when not HTML. */
+  // Raw Markdown для редактирования и цитирования,
+  // когда API отдает его явно.
   markdown_source?: string;
   timestamp: number;
-  /** API flags (e.g. 'read', 'mentioned'). Missing 'read' = unread. */
+  // Флаги из API, например `read` или `mentioned`.
+  // Если `read` отсутствует, сообщение считается непрочитанным.
   flags?: string[];
   reactions?: Reaction[];
-  /** Local delivery state for optimistic outgoing messages. */
+  // Локальный delivery state для optimistic outgoing сообщений.
   delivery_status?: MockMessageDeliveryStatus;
-  /**
-   * Stable client key for list reconciliation (negative id while optimistic).
-   * Preserved after the server assigns a positive message id.
-   */
+  // Стабильный клиентский ключ для reconciliation в списке.
+  // Пока сообщение optimistic, это отрицательный id.
+  // После получения положительного id от сервера ключ сохраняется.
   local_echo_key?: number;
 }
 
@@ -1764,7 +1778,7 @@ export interface ZulipSubscription {
   can_administer_channel_group?: number | { direct_members: number[]; direct_subgroups: number[] };
 }
 
-/** Fetches the user's subscriptions (GET /users/me/subscriptions) including is_muted per stream. */
+// Загружает подписки пользователя, включая `is_muted` по каждому стриму.
 export async function fetchSubscriptions(): Promise<ZulipSubscription[]> {
   const res = await zulipPipelineGet("/users/me/subscriptions");
   if (!res?.ok) {
@@ -1821,10 +1835,9 @@ export async function fetchSubscriptions(): Promise<ZulipSubscription[]> {
   });
 }
 
-/**
- * Legacy accessor user_topic-override из in-memory register cache.
- * Зачем нужен: обратная совместимость старых вызовов, где нет прямого доступа к register snapshot.
- */
+// Legacy accessor `user_topic` из in-memory register cache.
+// Нужен для обратной совместимости старых вызовов,
+// где нет прямого доступа к register snapshot.
 export function fetchUserTopics(): Promise<ZulipUserTopic[]> {
   const cacheKey = getCurrentUserTopicsCacheKey();
   if (!cacheKey) {
@@ -1976,7 +1989,7 @@ async function runMessagesWithNarrowPageRequest(options: {
       anchor,
       num_before: numBefore,
       num_after: numAfter,
-      apply_markdown: false,
+      apply_markdown: true,
     })) as {
       result?: string;
       messages?: Parameters<typeof mapZulipMessage>[0][];
@@ -1997,7 +2010,7 @@ async function runMessagesWithNarrowPageRequest(options: {
   }
 }
 
-/** Универсальная загрузка сообщений по narrow с настраиваемыми anchor и лимитами. */
+// Универсальная загрузка сообщений по narrow с настраиваемыми anchor и лимитами.
 export async function fetchMessagesWithNarrow(
   narrow: MessagesApiNarrow[],
   anchor: string | number = "newest",
@@ -2015,7 +2028,7 @@ export interface MessagesPageResult {
   foundNewest: boolean;
 }
 
-/** Универсальная загрузка страницы сообщений по narrow с метаданными пагинации. */
+// Универсальная загрузка страницы сообщений по narrow с метаданными пагинации.
 export async function fetchMessagesWithNarrowPage(
   narrow: MessagesApiNarrow[],
   anchor: string | number = "newest",
@@ -2070,13 +2083,15 @@ export async function fetchMessagesWithNarrowPage(
   });
 }
 
-/** Fetches a page of all messages (no narrow) via API pipeline. */
+// Загружает страницу всех сообщений без narrow через API pipeline.
 export async function fetchAllMessagesPage(
   anchor: string | number = "newest",
   numBefore = 100,
+  options?: { applyMarkdown?: boolean },
 ): Promise<MessagesPageResult> {
   const validatedAnchor = validateMessagesApiAnchor(anchor, "fetchAllMessagesPage");
   const validatedNumBefore = validateNonNegativeInteger(numBefore, "numBefore");
+  const applyMarkdown = options?.applyMarkdown ?? true;
   const res = await zulipPipelineGet("/messages", {
     anchor: String(validatedAnchor),
     num_before: String(validatedNumBefore),
@@ -2084,7 +2099,7 @@ export async function fetchAllMessagesPage(
     narrow: "[]",
     allow_empty_topic_name: "true",
     client_gravatar: "true",
-    apply_markdown: "false",
+    apply_markdown: applyMarkdown ? "true" : "false",
   });
 
   throwIfZulipPipelineGetNull(res);
@@ -2113,7 +2128,7 @@ export async function fetchAllMessagesPage(
   };
 }
 
-/** Формат DM narrow: operand — массив user_id участников, например [427]. */
+// Формат DM narrow: `operand` — массив `user_id` участников, например `[427]`.
 interface DmNarrow {
   negated: false;
   operator: "dm";
@@ -2169,7 +2184,7 @@ async function runDmMessagesRequest(ids: number[], signal?: AbortSignal): Promis
       num_after: ZULIP_DM_CHAT_NUM_AFTER,
       client_gravatar: true,
       allow_empty_topic_name: true,
-      apply_markdown: false,
+      apply_markdown: true,
     };
     const client = await getClient();
     const data = await client.messages.retrieve(
@@ -2189,7 +2204,8 @@ async function runDmMessagesRequest(ids: number[], signal?: AbortSignal): Promis
   }
 }
 
-/** Загружает сообщения DM (1:1 или групповой). Для 1:1 передайте id собеседника. */
+// Загружает сообщения DM, то есть 1:1 или групповые.
+// Для 1:1 передайте id собеседника.
 export async function fetchDmMessages(
   userIds: number | number[],
   options?: { signal?: AbortSignal },
@@ -2224,12 +2240,13 @@ export async function fetchDmMessages(
   });
 }
 
-/** Fetches a single message by id. Returns null on non-ok/error response. */
+// Загружает одно сообщение по id.
+// Возвращает null, если ответ не `ok` или сервер вернул ошибку.
 export async function fetchMessageById(messageId: number): Promise<MockMessage | null> {
   guard.messageId(messageId, "fetchMessageById");
   const res = await zulipPipelineGet(`/messages/${messageId}`, {
     allow_empty_topic_name: "true",
-    apply_markdown: "false",
+    apply_markdown: "true",
   });
   if (!res?.ok) {
     return null;
@@ -2237,7 +2254,7 @@ export async function fetchMessageById(messageId: number): Promise<MockMessage |
   return mockMessageFromGetMessageApiData(res.data);
 }
 
-/** Fetches subscriber IDs for a stream (GET /streams/{stream_id}/members). */
+// Загружает id подписчиков стрима.
 export async function fetchStreamMembers(streamId: number): Promise<number[]> {
   guard.streamId(streamId, "fetchStreamMembers");
   const res = await zulipPipelineGet(`/streams/${streamId}/members`);
@@ -2260,19 +2277,19 @@ export async function fetchTopics(stream: string): Promise<string[]> {
 }
 
 export interface SendMessageParams {
-  /** For stream message: stream name. Omit when using `to` for private. */
+  // Для stream message: имя стрима. Если используется `to` для private, поле опускается.
   stream?: string;
-  /** Optional stream ID for a more faithful optimistic payload. */
+  // Необязательный stream ID для более точного optimistic payload.
   streamId?: number;
   subject?: string;
   content: string;
   sender_id?: number;
   sender_full_name?: string;
-  /** For private/DM message: recipient user ids. When set, `stream` is ignored. */
+  // Для private/DM message: id получателей. Если поле задано, `stream` игнорируется.
   to?: number[];
 }
 
-/** Fetches saved snippets for the current user (GET /api/v1/saved_snippets). */
+// Загружает saved snippets текущего пользователя.
 export async function fetchSavedSnippets(): Promise<SavedSnippet[]> {
   const res = await zulipPipelineGet("/saved_snippets");
   if (!res?.ok) {
@@ -2310,7 +2327,7 @@ export async function fetchSavedSnippets(): Promise<SavedSnippet[]> {
   return snippets;
 }
 
-/** Creates a saved snippet (POST /api/v1/saved_snippets). */
+// Создает saved snippet.
 export async function createSavedSnippet(params: {
   title: string;
   content: string;
@@ -2385,7 +2402,7 @@ export async function sendMessage(params: SendMessageParams): Promise<MockMessag
   };
 }
 
-/** Renders markdown content via Zulip for composer preview (POST /api/v1/messages/render). */
+// Рендерит markdown через Zulip для preview в composer.
 export async function renderMessageContent(content: string): Promise<string> {
   const normalizedContent = guard.nonEmpty(content, "renderMessageContent.content");
   const res = await zulipPipelinePost("messages/render", { content: normalizedContent });
@@ -2399,7 +2416,7 @@ export async function renderMessageContent(content: string): Promise<string> {
   return data.rendered;
 }
 
-/** Updates stream metadata (PATCH /api/v1/streams/{stream_id}). */
+// Обновляет метаданные стрима.
 export async function updateStream(
   streamId: number,
   params: { name?: string; description?: string },
@@ -2427,7 +2444,7 @@ export async function updateStream(
   }
 }
 
-/** Deletes a stream (DELETE /api/v1/streams/{stream_id}). */
+// Удаляет стрим.
 export async function deleteStream(streamId: number): Promise<boolean> {
   guard.streamId(streamId, "deleteStream.streamId");
   try {
@@ -2440,7 +2457,7 @@ export async function deleteStream(streamId: number): Promise<boolean> {
   }
 }
 
-/** Updates a message's content (PATCH /api/v1/messages/{message_id}). */
+// Обновляет содержимое сообщения.
 export async function updateMessage(messageId: number, params: { content: string }): Promise<void> {
   guard.messageId(messageId, "updateMessage");
   const content = guard.nonEmpty(params.content, "updateMessage.content");
@@ -2453,7 +2470,7 @@ export async function updateMessage(messageId: number, params: { content: string
   }
 }
 
-/** Deletes a message (DELETE /api/v1/messages/{message_id}). */
+// Удаляет сообщение.
 export async function deleteMessage(messageId: number): Promise<void> {
   guard.messageId(messageId, "deleteMessage");
   const res = await zulipPipelineDelete(`messages/${messageId}`);
@@ -2463,7 +2480,7 @@ export async function deleteMessage(messageId: number): Promise<void> {
   }
 }
 
-/** Adds a reaction to a message (POST /api/v1/messages/{message_id}/reactions). */
+// Добавляет реакцию к сообщению.
 export async function addReaction(
   messageId: number,
   emojiName: string,
@@ -2483,7 +2500,7 @@ export async function addReaction(
   }
 }
 
-/** Removes a reaction from a message (DELETE /api/v1/messages/{message_id}/reactions). */
+// Удаляет реакцию из сообщения.
 export async function removeReaction(
   messageId: number,
   emojiName: string,
@@ -2501,7 +2518,7 @@ export async function removeReaction(
   }
 }
 
-/** Adds or removes a flag on messages (POST /api/v1/messages/flags). */
+// Добавляет или удаляет флаг у сообщений.
 export async function updateMessageFlags(
   messageIds: number[],
   op: "add" | "remove",
@@ -2696,7 +2713,8 @@ async function uploadFileMultipart(
   return toUploadUri(res.data);
 }
 
-/** Uploads a file to Zulip. Uses TUS for large files and multipart fallback otherwise. */
+// Загружает файл в Zulip.
+// Для больших файлов использует TUS, иначе multipart fallback.
 export async function uploadFile(file: File, options?: { signal?: AbortSignal }): Promise<string> {
   ensureZulipApiReady();
   const instance = getCurrentInstance();
@@ -2715,7 +2733,7 @@ export async function uploadFile(file: File, options?: { signal?: AbortSignal })
       if (isAbortError(error) || options?.signal?.aborted) {
         throw error;
       }
-      // Keep compatibility on servers without TUS support.
+      // Сохраняем совместимость с серверами без поддержки TUS.
       return uploadFileMultipart(file, options);
     }
   }
@@ -2723,12 +2741,12 @@ export async function uploadFile(file: File, options?: { signal?: AbortSignal })
   return uploadFileMultipart(file, options);
 }
 
-/** Adds a flag to messages (e.g. "starred"). */
+// Добавляет флаг сообщениям, например `starred`.
 export async function addMessageFlag(messageIds: number[], flag: string): Promise<void> {
   await updateMessageFlags(messageIds, "add", flag);
 }
 
-/** Removes a flag from messages (e.g. unstar). */
+// Удаляет флаг у сообщений, например снимает `starred`.
 export async function removeMessageFlag(messageIds: number[], flag: string): Promise<void> {
   await updateMessageFlags(messageIds, "remove", flag);
 }

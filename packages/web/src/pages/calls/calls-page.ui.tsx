@@ -77,7 +77,11 @@ function resolveCallContextLabel(
 
 function collectRecentJitsiCalls(
   messages: MockMessage[],
-  options: { fallbackRoomLabel: string; dmFallbackLabel: string; jitsiLinkOptions?: JitsiLinkOptions },
+  options: {
+    fallbackRoomLabel: string;
+    dmFallbackLabel: string;
+    jitsiLinkOptions?: JitsiLinkOptions;
+  },
 ): RecentJitsiCallEntry[] {
   const entriesByUrl = new Map<string, RecentJitsiCallEntry>();
   const jitsiLinkOptions = options.jitsiLinkOptions;
@@ -185,7 +189,7 @@ export const CallsPage: React.FC = () => {
     setLoading(true);
     setError(null);
 
-    void fetchAllMessagesPage("newest", CALLS_SCAN_LIMIT)
+    void fetchAllMessagesPage("newest", CALLS_SCAN_LIMIT, { applyMarkdown: false })
       .then((page) => {
         if (cancelled) return;
         setRecentCalls(

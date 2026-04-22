@@ -1,6 +1,5 @@
-/**
- * Zulip-js client cache and session-backed client. Internal to shared/api zulip modules.
- */
+// Кэш клиента zulip-js и session-backed клиент.
+// Внутренний модуль для shared/api и файлов `zulip-*`.
 import { Buffer } from "buffer";
 import zulipInitDefault from "zulip-js";
 import { t } from "~/i18n/i18n";
@@ -83,7 +82,7 @@ export function buildMessagesQueryParams(params: {
     num_after: String(params.num_after ?? 0),
     allow_empty_topic_name: "true",
     client_gravatar: "true",
-    apply_markdown: "false",
+    apply_markdown: "true",
   };
   if (params.narrow != null) {
     query.narrow = JSON.stringify(params.narrow);
@@ -207,7 +206,8 @@ export function getClient(): Promise<ZulipClient> {
   return promise;
 }
 
-/** Realm base URL without API path — used for absolute URLs (avatars, uploads). */
+// Realm base URL без API path.
+// Используется для абсолютных URL, например для аватаров и uploads.
 export function getRealmBaseUrl(): string {
   const instance = getCurrentInstance();
   if (!instance) return "";

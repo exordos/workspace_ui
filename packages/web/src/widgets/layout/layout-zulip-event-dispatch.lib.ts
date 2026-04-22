@@ -22,7 +22,7 @@ import type {
 } from "./layout-zulip-event-dispatch.types";
 
 // ---
-// Subscription payload parsing
+// Разбор payload подписок
 // ---
 
 function isPositiveInteger(value: unknown): value is number {
@@ -70,12 +70,8 @@ function parseOneSubscriptionRow(record: Record<string, unknown>): {
   if (!isPositiveInteger(streamIdRaw) || typeof name !== "string") return null;
   const creatorId = isPositiveInteger(record.creator_id) ? record.creator_id : undefined;
   const canAddSubscribersGroup = normalizeGroupSettingValue(record.can_add_subscribers_group);
-  const canRemoveSubscribersGroup = normalizeGroupSettingValue(
-    record.can_remove_subscribers_group,
-  );
-  const canAdministerChannelGroup = normalizeGroupSettingValue(
-    record.can_administer_channel_group,
-  );
+  const canRemoveSubscribersGroup = normalizeGroupSettingValue(record.can_remove_subscribers_group);
+  const canAdministerChannelGroup = normalizeGroupSettingValue(record.can_administer_channel_group);
   return {
     streamId: streamIdRaw,
     name: name.trim(),
@@ -98,7 +94,7 @@ function parseSubscriptionStreamIds(value: unknown): number[] {
 }
 
 // ---
-// IndexedDB side effect
+// Побочный эффект в IndexedDB
 // ---
 
 function applyMessageCacheIndexedDb(event: ZulipEvent, ctx: LayoutZulipEventDispatchContext): void {
@@ -112,7 +108,8 @@ function applyMessageCacheIndexedDb(event: ZulipEvent, ctx: LayoutZulipEventDisp
 }
 
 // ---
-// Event-type handlers (keeps `dispatchZulipEvent` cognitive complexity low)
+// Обработчики по типам событий.
+// Это держит cognitive complexity у `dispatchZulipEvent` на низком уровне.
 // ---
 
 function handleIncomingMessage(event: ZulipEvent, ctx: LayoutZulipEventDispatchContext): void {
@@ -276,7 +273,13 @@ function handleUpdateMessage(event: ZulipEvent, ctx: LayoutZulipEventDispatchCon
     !renderingOnly && typeof event.content === "string" ? event.content : undefined;
   const newHtml = event.rendered_content as string | undefined;
   if (messageId == null) return;
-  if (renderingOnly) {
+  if (newHtml != null) {
+    const trimmed = newMarkdown?.trim();
+    currentChat.updateMessageContent(
+      messageId,
+      newHtml,
+      trimmed != null && trimmed.length > 0 ? newMarkdown : undefined,
+    );
     return;
   }
   if (newMarkdown != null) {
@@ -286,10 +289,6 @@ function handleUpdateMessage(event: ZulipEvent, ctx: LayoutZulipEventDispatchCon
       newMarkdown,
       trimmed.length > 0 ? newMarkdown : undefined,
     );
-    return;
-  }
-  if (newHtml != null) {
-    currentChat.updateMessageContent(messageId, newHtml);
   }
 }
 

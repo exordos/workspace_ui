@@ -1,10 +1,8 @@
-/**
- * Base URL for resolving Zulip message inline media (`/user_uploads/`) to absolute https URLs.
- *
- * In Electron the app shell may be `file://`; root-relative `/user_uploads/...` would otherwise
- * resolve to `file:///user_uploads/...`. Callers (e.g. {@link sanitizeHtml}) must pass this base
- * when rewriting message HTML.
- */
+// Базовые URL для резолва inline media из сообщений Zulip в абсолютные https URL.
+//
+// В Electron shell приложение может работать из `file://`,
+// и тогда root-relative пути `/user_uploads/...` или `/external_content/...`
+// иначе превратятся в `file:///...`.
 import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
 import {
   appendUserUploadsPathPrefix,
@@ -13,6 +11,24 @@ import {
 } from "~/shared/api/zulip-realm.internal";
 import { WORKSPACE_ORIGIN } from "~/shared/config/constants";
 import { env } from "~/shared/lib/env";
+
+function getMessageRealmSiteBase(): string | undefined {
+  const siteOnly = (site: string): string => site.trim().replace(/\/+$/, "");
+  const realm = getRealmBaseUrl();
+  if (realm) {
+    const site = normalizeRealmSiteOriginForUploads(realm);
+    return site !== "" ? siteOnly(site) : undefined;
+  }
+  if (WORKSPACE_ORIGIN) {
+    const site = normalizeRealmSiteOriginForUploads(WORKSPACE_ORIGIN);
+    return site !== "" ? siteOnly(site) : undefined;
+  }
+  return undefined;
+}
+
+export function getMessageRealmBaseUrl(): string | undefined {
+  return getMessageRealmSiteBase();
+}
 
 export function getMessageImagesBaseUrl(): string | undefined {
   const prefix = env.USER_UPLOADS_PATH_PREFIX;
@@ -31,13 +47,12 @@ export function getMessageImagesBaseUrl(): string | undefined {
   };
 
   const realm = getRealmBaseUrl();
-  if (realm) {
-    const site = normalizeRealmSiteOriginForUploads(realm);
-    return site !== "" ? withPrefixForRealm(realm, site) : undefined;
+  const site = getMessageRealmSiteBase();
+  if (realm && site) {
+    return withPrefixForRealm(realm, site);
   }
-  if (WORKSPACE_ORIGIN) {
-    const site = normalizeRealmSiteOriginForUploads(WORKSPACE_ORIGIN);
-    return site !== "" ? withPrefixForWorkspaceOrigin(site) : undefined;
+  if (site != null) {
+    return withPrefixForWorkspaceOrigin(site);
   }
   return undefined;
 }

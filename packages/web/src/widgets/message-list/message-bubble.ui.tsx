@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDownloadStore } from "~/entities/download/download.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
@@ -8,9 +8,10 @@ import { t } from "~/i18n/i18n";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { buildAuthHeader } from "~/shared/lib/auth-guard";
 import { formatMessageTime, getPresenceState } from "~/shared/lib/format";
-import { sanitizeHtml } from "~/shared/lib/html";
 import { getJitsiMeetingUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
 import { messageBodyToUnsanitizedDisplayHtml } from "~/shared/lib/message-markdown-display.lib";
+import { prepareProtectedMessageHtml } from "~/shared/lib/protected-message-media";
+import { useProtectedMessageHtml } from "~/shared/lib/protected-message-media.hook";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
@@ -35,18 +36,8 @@ import { resolveOwnMessageDeliveryStatus } from "./message-bubble-delivery.lib";
 import { groupReactions } from "./message-bubble-emoji.lib";
 import { MessageBubbleJitsiCard } from "./message-bubble-jitsi-card.ui";
 import { MessageBubbleOwnDeliveryIndicator } from "./message-bubble-own-delivery-indicator.ui";
-import {
-  AUTH_MEDIA_POSTER_DATA_ATTR,
-  AUTH_MEDIA_SRC_DATA_ATTR,
-  collapseDuplicateWorkspaceV1InUrl,
-  createDisplayableBlobUrl,
-  fetchProtectedUploadBlob,
-  isAuthMediaPlaceholderAttr,
-  protectUserUploadMediaSources,
-} from "./message-bubble-protected-media.lib";
 import { MessageBubbleReactionsRow } from "./message-bubble-reactions-row.ui";
 import { getMessageImagesBaseUrl } from "./message-bubble-realm-html.lib";
-import { expandUserUploadImageLinks } from "./message-bubble-user-upload-links.lib";
 import { resolveJitsiLocationName } from "./message-jitsi-location.lib";
 import { normalizeMediaUrl } from "./message-list-media.lib";
 import { MessageMentionPopover } from "./message-mention-popover.ui";
@@ -55,9 +46,6 @@ import type {
   MessageBubbleProps,
 } from "./message-bubble.types";
 import type { EmojiClickData } from "emoji-picker-react";
-
-/** Prefetch protected media slightly before it scrolls into the chat viewport. */
-const PROTECTED_MEDIA_IO_ROOT_MARGIN = "200px 0px";
 
 export type { MessageBubbleCallbacks, MessageBubbleProps } from "./message-bubble.types";
 
@@ -137,17 +125,13 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       const rawHtml = messageBodyToUnsanitizedDisplayHtml(message.content, {
         resolveUserMention,
       });
-      const sanitized = sanitizeHtml(rawHtml, imagesBase);
       return {
-        safeMessageHtml: protectUserUploadMediaSources(
-          expandUserUploadImageLinks(sanitized, imagesBase),
-        ),
+        safeMessageHtml: prepareProtectedMessageHtml(rawHtml, imagesBase),
         displayHtmlForJitsi: rawHtml,
       };
     }, [message.content, imagesBase, resolveUserMention]);
 
     const messageBodyRef = useRef<HTMLDivElement>(null);
-    const lastInjectedMessageHtmlRef = useRef<string | null>(null);
     const groupedContainerRef = useRef<HTMLDivElement>(null);
     const regularContainerRef = useRef<HTMLDivElement>(null);
     const attachmentStatusRef = useRef<Map<string, MessageBubbleAttachmentDownloadStatus>>(
@@ -193,171 +177,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       };
     }, []);
 
-    // Keep message HTML out of React's dangerouslySetInnerHTML on every render: parent re-renders
-    // (e.g. presence from useUsersStore) would reapply __html and wipe blob: URLs before effects re-run.
-    useLayoutEffect(() => {
-      const el = messageBodyRef.current;
-      if (!el) return;
-      if (lastInjectedMessageHtmlRef.current === safeMessageHtml) {
-        return;
-      }
-      el.innerHTML = safeMessageHtml;
-      lastInjectedMessageHtmlRef.current = safeMessageHtml;
-      return () => {
-        lastInjectedMessageHtmlRef.current = null;
-      };
-    }, [safeMessageHtml]);
-
-    // Load protected uploads with authenticated fetch to avoid browser auth popups.
-    // Defer fetch until media intersects the chat scroll container (`role="feed"`), when available.
-    useEffect(() => {
-      const div = messageBodyRef.current;
-      if (!div) return;
-
-      const protectedMediaElements = Array.from(
-        div.querySelectorAll<HTMLElement>(
-          `[${AUTH_MEDIA_SRC_DATA_ATTR}], [${AUTH_MEDIA_POSTER_DATA_ATTR}]`,
-        ),
-      );
-      if (protectedMediaElements.length === 0) return;
-
-      const headers = buildAuthHeader();
-      const scrollRoot = div.closest<HTMLElement>('[role="feed"]');
-
-      const blobUrls: string[] = [];
-      let cancelled = false;
-
-      const fetchIntoAttribute = (
-        element: HTMLElement,
-        sourceAttr: typeof AUTH_MEDIA_SRC_DATA_ATTR | typeof AUTH_MEDIA_POSTER_DATA_ATTR,
-        targetAttr: "src" | "poster",
-      ) => {
-        const rawValue = element.getAttribute(sourceAttr);
-        if (!rawValue) return;
-        if (!isAuthMediaPlaceholderAttr(element.getAttribute(targetAttr))) {
-          return;
-        }
-
-        const fullResolutionUrl =
-          element instanceof HTMLImageElement && element.dataset.originalSrc?.trim()
-            ? element.dataset.originalSrc.trim()
-            : undefined;
-        const fetchFallbackFull =
-          fullResolutionUrl != null &&
-          collapseDuplicateWorkspaceV1InUrl(fullResolutionUrl) !==
-            collapseDuplicateWorkspaceV1InUrl(rawValue)
-            ? fullResolutionUrl
-            : undefined;
-
-        const restoreOriginalSource = () => {
-          if (cancelled) return;
-          const restoreUrl =
-            targetAttr === "src" && fullResolutionUrl != null ? fullResolutionUrl : rawValue;
-          element.setAttribute(targetAttr, restoreUrl);
-          if (targetAttr === "src") {
-            if (element instanceof HTMLImageElement) {
-              element.dataset.originalSrc = fullResolutionUrl ?? rawValue;
-            }
-            if (element instanceof HTMLSourceElement || element instanceof HTMLVideoElement) {
-              element.closest("video")?.load();
-            }
-          }
-        };
-
-        void fetchProtectedUploadBlob(rawValue, headers, fetchFallbackFull)
-          .then(async (blob) => {
-            if (cancelled) return;
-            if (!blob) {
-              restoreOriginalSource();
-              return;
-            }
-            let displayUrl: string;
-            try {
-              displayUrl = await createDisplayableBlobUrl(blob, blobUrls);
-            } catch {
-              restoreOriginalSource();
-              return;
-            }
-            if (cancelled) {
-              if (displayUrl.startsWith("blob:")) {
-                URL.revokeObjectURL(displayUrl);
-                const idx = blobUrls.indexOf(displayUrl);
-                if (idx >= 0) {
-                  blobUrls.splice(idx, 1);
-                }
-              }
-              return;
-            }
-            element.setAttribute(targetAttr, displayUrl);
-            if (targetAttr === "src") {
-              if (element instanceof HTMLImageElement) {
-                element.dataset.originalSrc = fullResolutionUrl ?? rawValue;
-              }
-              if (element instanceof HTMLSourceElement || element instanceof HTMLVideoElement) {
-                element.closest("video")?.load();
-              }
-            }
-          })
-          .catch(() => {
-            restoreOriginalSource();
-          });
-      };
-
-      const startFetchForElement = (element: HTMLElement) => {
-        if (element.hasAttribute(AUTH_MEDIA_SRC_DATA_ATTR)) {
-          fetchIntoAttribute(element, AUTH_MEDIA_SRC_DATA_ATTR, "src");
-        }
-        if (element.hasAttribute(AUTH_MEDIA_POSTER_DATA_ATTR)) {
-          fetchIntoAttribute(element, AUTH_MEDIA_POSTER_DATA_ATTR, "poster");
-        }
-      };
-
-      const useImmediateFetch =
-        scrollRoot == null ||
-        typeof IntersectionObserver === "undefined" ||
-        typeof IntersectionObserver !== "function";
-
-      if (useImmediateFetch) {
-        for (const element of protectedMediaElements) {
-          startFetchForElement(element);
-        }
-        return () => {
-          cancelled = true;
-          for (const url of blobUrls) {
-            URL.revokeObjectURL(url);
-          }
-        };
-      }
-
-      const observer = new IntersectionObserver(
-        (entries) => {
-          for (const entry of entries) {
-            if (!entry.isIntersecting) continue;
-            const target = entry.target;
-            if (!(target instanceof HTMLElement)) continue;
-            observer.unobserve(target);
-            startFetchForElement(target);
-          }
-        },
-        {
-          root: scrollRoot,
-          rootMargin: PROTECTED_MEDIA_IO_ROOT_MARGIN,
-          threshold: 0,
-        },
-      );
-
-      for (const element of protectedMediaElements) {
-        observer.observe(element);
-      }
-
-      return () => {
-        cancelled = true;
-        observer.disconnect();
-        for (const url of blobUrls) {
-          URL.revokeObjectURL(url);
-        }
-      };
-    }, [safeMessageHtml]);
+    useProtectedMessageHtml(messageBodyRef, safeMessageHtml, {
+      deferRootSelector: '[role="feed"]',
+    });
 
     useEffect(() => {
       const div = messageBodyRef.current;

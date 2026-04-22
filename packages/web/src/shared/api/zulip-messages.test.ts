@@ -476,6 +476,32 @@ describe("fetchMessagesWithNarrow", () => {
 // ---------------------------------------------------------------------------
 
 describe("fetchAllMessagesPage", () => {
+  it("allows disabling rendered HTML for metadata-only callers", async () => {
+    mockZulipApi.get.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        messages: [],
+        found_oldest: false,
+        found_newest: false,
+      },
+      raw: { statusText: "OK" },
+    });
+
+    await fetchAllMessagesPage("newest", 25, { applyMarkdown: false });
+
+    expect(mockZulipApi.get).toHaveBeenCalledWith("/messages", {
+      anchor: "newest",
+      num_before: "25",
+      num_after: "0",
+      narrow: "[]",
+      allow_empty_topic_name: "true",
+      client_gravatar: "true",
+      apply_markdown: "false",
+    });
+  });
+
   it("throws for unsupported anchor string", async () => {
     await expect(fetchAllMessagesPage("invalid_anchor")).rejects.toThrow(/anchor must be one of/i);
     expect(mockZulipApi.get).not.toHaveBeenCalled();

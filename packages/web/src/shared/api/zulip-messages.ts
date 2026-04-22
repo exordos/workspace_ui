@@ -1,6 +1,4 @@
-/**
- * Zulip messages: fetch, send, edit, reactions, flags, snippets, activity narrow.
- */
+// Сообщения Zulip: загрузка, отправка, редактирование, реакции, флаги, snippets и activity narrow.
 import { t } from "~/i18n/i18n";
 import { guard } from "~/shared/lib/guards";
 import {
@@ -39,6 +37,7 @@ interface MessageWindowOptions {
   numBefore: number;
   numAfter: number;
   includeAnchor?: boolean;
+  applyMarkdown?: boolean;
 }
 
 interface NarrowEntry {
@@ -71,7 +70,7 @@ function getActivityNarrow(filter: ActivityFilter, currentUserId?: number | null
 }
 
 async function fetchMessageWindow(options: MessageWindowOptions): Promise<ZulipRawMessage[]> {
-  const { anchor, numBefore, numAfter, includeAnchor } = options;
+  const { anchor, numBefore, numAfter, includeAnchor, applyMarkdown = true } = options;
   const res = await zulipPipelineGet("/messages", {
     anchor: String(anchor),
     ...(includeAnchor == null ? {} : { include_anchor: includeAnchor ? "true" : "false" }),
@@ -79,7 +78,7 @@ async function fetchMessageWindow(options: MessageWindowOptions): Promise<ZulipR
     num_after: String(numAfter),
     client_gravatar: "true",
     allow_empty_topic_name: "true",
-    apply_markdown: "false",
+    apply_markdown: applyMarkdown ? "true" : "false",
   });
   if (!res?.ok) return [];
   const data = res.data as { result?: string; messages?: ZulipRawMessage[] };
@@ -87,16 +86,19 @@ async function fetchMessageWindow(options: MessageWindowOptions): Promise<ZulipR
   return data.messages ?? [];
 }
 
-/** Fetches the latest 1000 messages (no narrow) to build the sidebar chat/channel list. */
+// Загружает последние 1000 сообщений без narrow,
+// чтобы собрать список чатов и каналов в sidebar.
 export async function fetchRecentMessages(): Promise<ZulipRawMessage[]> {
   return fetchMessageWindow({
     anchor: "newest",
     numBefore: 1000,
     numAfter: 0,
+    applyMarkdown: false,
   });
 }
 
-/** Fetches older chat-list messages before anchor (used for deep bootstrap backfill). */
+// Загружает более старые сообщения chat-list до anchor.
+// Используется для глубокого backfill на bootstrap.
 export async function fetchMessagesBeforeAnchor(
   anchorMessageId: number,
   numBefore = 5000,
@@ -107,10 +109,12 @@ export async function fetchMessagesBeforeAnchor(
     numBefore,
     numAfter: 0,
     includeAnchor: false,
+    applyMarkdown: false,
   });
 }
 
-/** Fetches newer chat-list messages after anchor (used after reconnect). */
+// Загружает более новые сообщения chat-list после anchor.
+// Используется после reconnect.
 export async function fetchMessagesAfterAnchor(
   anchorMessageId: number,
   numAfter = 5000,
@@ -121,10 +125,12 @@ export async function fetchMessagesAfterAnchor(
     numBefore: 0,
     numAfter,
     includeAnchor: false,
+    applyMarkdown: false,
   });
 }
 
-/** Fetches messages for the "My Activity" section (starred, mentions, reactions). */
+// Загружает сообщения для раздела "Моя активность":
+// starred, mentions и reactions.
 export async function fetchActivityMessages(
   filter: ActivityFilter,
   currentUserId?: number | null,
@@ -151,7 +157,7 @@ export async function fetchActivityMessagesPage(
     narrow: JSON.stringify(narrow),
     allow_empty_topic_name: "true",
     client_gravatar: "true",
-    apply_markdown: "false",
+    apply_markdown: "true",
   });
   if (!res?.ok) return { messages: [], foundOldest: false };
   const data = res.data as {
@@ -195,7 +201,7 @@ export async function fetchMessages(
       anchor: "newest",
       num_before: ZULIP_STREAM_CHAT_NUM_BEFORE,
       num_after: ZULIP_STREAM_CHAT_NUM_AFTER,
-      apply_markdown: false,
+      apply_markdown: true,
     })) as { result?: string; messages?: RawMessageToMockInput[] };
     if (data.result === "error") return [];
     const list = data.messages ?? [];
@@ -205,7 +211,8 @@ export async function fetchMessages(
   }
 }
 
-/** Generic narrow-based message fetch with configurable anchor and counts. */
+// Универсальная загрузка сообщений по narrow
+// с настраиваемыми `anchor`, `numBefore` и `numAfter`.
 export async function fetchMessagesWithNarrow(
   narrow: { operator: string; operand: string | number | number[] }[],
   anchor: string | number = "newest",
@@ -216,7 +223,8 @@ export async function fetchMessagesWithNarrow(
   return page.messages;
 }
 
-/** Generic narrow-based message fetch with pagination metadata. */
+// Универсальная загрузка страницы сообщений по narrow
+// с метаданными пагинации.
 export async function fetchMessagesWithNarrowPage(
   narrow: { operator: string; operand: string | number | number[] }[],
   anchor: string | number = "newest",
@@ -233,7 +241,7 @@ export async function fetchMessagesWithNarrowPage(
       anchor: validatedAnchor,
       num_before: validatedNumBefore,
       num_after: validatedNumAfter,
-      apply_markdown: false,
+      apply_markdown: true,
     })) as {
       result?: string;
       messages?: RawMessageToMockInput[];
@@ -253,13 +261,15 @@ export async function fetchMessagesWithNarrowPage(
   }
 }
 
-/** Fetches a page of all messages (no narrow) via API pipeline. */
+// Загружает страницу всех сообщений без narrow через API pipeline.
 export async function fetchAllMessagesPage(
   anchor: string | number = "newest",
   numBefore = 100,
+  options?: { applyMarkdown?: boolean },
 ): Promise<MessagesPageResult> {
   const validatedAnchor = validateMessagesApiAnchor(anchor, "fetchAllMessagesPage");
   const validatedNumBefore = validateNonNegativeInteger(numBefore, "numBefore");
+  const applyMarkdown = options?.applyMarkdown ?? true;
   const res = await zulipPipelineGet("/messages", {
     anchor: String(validatedAnchor),
     num_before: String(validatedNumBefore),
@@ -267,7 +277,7 @@ export async function fetchAllMessagesPage(
     narrow: "[]",
     allow_empty_topic_name: "true",
     client_gravatar: "true",
-    apply_markdown: "false",
+    apply_markdown: applyMarkdown ? "true" : "false",
   });
 
   if (!res?.ok) {
@@ -303,7 +313,8 @@ interface DmNarrow {
 
 const GROUP_DM_ID_OFFSET = 2_000_000;
 
-/** Fetches DM messages (1-on-1 or group). Pass the other user's [userId] for 1-on-1. */
+// Загружает сообщения DM, то есть 1:1 или групповые.
+// Для 1:1 передайте `userId` собеседника.
 export async function fetchDmMessages(userIds: number | number[]): Promise<MockMessage[]> {
   const client = await getClient();
   const rawIds = Array.isArray(userIds) ? userIds : [userIds];
@@ -319,7 +330,7 @@ export async function fetchDmMessages(userIds: number | number[]): Promise<MockM
     num_after: ZULIP_DM_CHAT_NUM_AFTER,
     client_gravatar: true,
     allow_empty_topic_name: true,
-    apply_markdown: false,
+    apply_markdown: true,
   };
   try {
     const data = await client.messages.retrieve(
@@ -334,12 +345,13 @@ export async function fetchDmMessages(userIds: number | number[]): Promise<MockM
   }
 }
 
-/** Fetches a single message by id. Returns null on non-ok/error response. */
+// Загружает одно сообщение по id.
+// Возвращает null, если ответ не `ok` или сервер вернул ошибку.
 export async function fetchMessageById(messageId: number): Promise<MockMessage | null> {
   guard.messageId(messageId, "fetchMessageById");
   const res = await zulipPipelineGet(`/messages/${messageId}`, {
     allow_empty_topic_name: "true",
-    apply_markdown: "false",
+    apply_markdown: "true",
   });
   if (!res?.ok) {
     return null;
@@ -347,7 +359,7 @@ export async function fetchMessageById(messageId: number): Promise<MockMessage |
   return mockMessageFromGetMessageApiData(res.data);
 }
 
-/** Fetches saved snippets for the current user (GET /api/v1/saved_snippets). */
+// Загружает saved snippets текущего пользователя.
 export async function fetchSavedSnippets(): Promise<SavedSnippet[]> {
   const res = await zulipPipelineGet("/saved_snippets");
   if (!res?.ok) {
@@ -385,7 +397,7 @@ export async function fetchSavedSnippets(): Promise<SavedSnippet[]> {
   return snippets;
 }
 
-/** Creates a saved snippet (POST /api/v1/saved_snippets). */
+// Создает saved snippet.
 export async function createSavedSnippet(params: CreateSavedSnippetParams): Promise<number> {
   const title = guard.nonEmpty(params.title.trim(), "createSavedSnippet.title");
   const content = guard.nonEmpty(params.content.trim(), "createSavedSnippet.content");
@@ -457,7 +469,7 @@ export async function sendMessage(params: SendMessageParams): Promise<MockMessag
   };
 }
 
-/** Renders markdown content via Zulip for composer preview (POST /api/v1/messages/render). */
+// Рендерит markdown через Zulip для preview в composer.
 export async function renderMessageContent(content: string): Promise<string> {
   const normalizedContent = guard.nonEmpty(content, "renderMessageContent.content");
   const res = await zulipPipelinePost("messages/render", { content: normalizedContent });
@@ -471,7 +483,7 @@ export async function renderMessageContent(content: string): Promise<string> {
   return data.rendered;
 }
 
-/** Updates a message's content (PATCH /api/v1/messages/{message_id}). */
+// Обновляет содержимое сообщения.
 export async function updateMessage(messageId: number, params: { content: string }): Promise<void> {
   guard.messageId(messageId, "updateMessage");
   const content = guard.nonEmpty(params.content, "updateMessage.content");
@@ -484,7 +496,7 @@ export async function updateMessage(messageId: number, params: { content: string
   }
 }
 
-/** Deletes a message (DELETE /api/v1/messages/{message_id}). */
+// Удаляет сообщение.
 export async function deleteMessage(messageId: number): Promise<void> {
   guard.messageId(messageId, "deleteMessage");
   const res = await zulipPipelineDelete(`messages/${messageId}`);
@@ -494,7 +506,7 @@ export async function deleteMessage(messageId: number): Promise<void> {
   }
 }
 
-/** Adds a reaction to a message (POST /api/v1/messages/{message_id}/reactions). */
+// Добавляет реакцию к сообщению.
 export async function addReaction(
   messageId: number,
   emojiName: string,
@@ -514,7 +526,7 @@ export async function addReaction(
   }
 }
 
-/** Removes a reaction from a message (DELETE /api/v1/messages/{message_id}/reactions). */
+// Удаляет реакцию из сообщения.
 export async function removeReaction(
   messageId: number,
   emojiName: string,
@@ -532,7 +544,7 @@ export async function removeReaction(
   }
 }
 
-/** Adds or removes a flag on messages (POST /api/v1/messages/flags). */
+// Добавляет или удаляет флаг у сообщений.
 export async function updateMessageFlags(
   messageIds: number[],
   op: "add" | "remove",
@@ -548,12 +560,12 @@ export async function updateMessageFlags(
   });
 }
 
-/** Adds a flag to messages (e.g. "starred"). */
+// Добавляет флаг сообщениям, например `starred`.
 export async function addMessageFlag(messageIds: number[], flag: string): Promise<void> {
   await updateMessageFlags(messageIds, "add", flag);
 }
 
-/** Removes a flag from messages (e.g. unstar). */
+// Удаляет флаг у сообщений, например снимает `starred`.
 export async function removeMessageFlag(messageIds: number[], flag: string): Promise<void> {
   await updateMessageFlags(messageIds, "remove", flag);
 }

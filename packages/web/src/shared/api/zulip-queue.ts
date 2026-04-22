@@ -1,6 +1,5 @@
-/**
- * Zulip real-time event queue: register, poll, delete; unread count for credentials.
- */
+// Реалтайм-очередь событий Zulip:
+// register, poll, delete и загрузка unread count для credentials.
 import { t } from "~/i18n/i18n";
 import { getBasicAuthValue } from "~/shared/lib/auth-guard";
 import { env } from "~/shared/lib/env";
@@ -186,13 +185,15 @@ function parseRealmUserGroups(data: unknown): ZulipRealmUserGroup[] | null {
   return parsed;
 }
 
-/** Registers an event queue (POST /api/v1/register). Returns queue_id for subsequent long-polling. */
+// Регистрирует очередь событий и возвращает `queue_id`
+// для дальнейшего long-polling.
 export async function registerQueue(
   eventTypes: string[],
   fetchEventTypes: string[] = [...DEFAULT_REGISTER_FETCH_EVENT_TYPES],
 ): Promise<RegisterQueueResult> {
   const body: Record<string, string> = {
     event_types: JSON.stringify(eventTypes),
+    apply_markdown: "true",
   };
   if (fetchEventTypes.length > 0) {
     // Зачем: Zulip вернет в register дополнительные metadata-блоки одним запросом.
@@ -251,7 +252,8 @@ export async function registerQueue(
   };
 }
 
-/** Registers queue with explicit credentials (used for background multi-org loops). */
+// Регистрирует очередь с явными credentials.
+// Используется для фоновых multi-org loop.
 export async function registerQueueForCredentials(
   credentials: ZulipCredentials,
   eventTypes: string[],
@@ -271,7 +273,9 @@ export async function registerQueueForCredentials(
       },
       body: new URLSearchParams({
         event_types: JSON.stringify(eventTypes),
-        // Зачем: сохраняем одинаковое поведение register и для фоновых инстансов.
+        apply_markdown: "false",
+        // Для фоновых инстансов payload сообщений не рендерится в UI,
+        // поэтому HTML от backend здесь не нужен.
         ...(fetchEventTypes.length > 0
           ? { fetch_event_types: JSON.stringify(fetchEventTypes) }
           : {}),
@@ -336,11 +340,10 @@ export async function registerQueueForCredentials(
   };
 }
 
-/**
- * Deletes an event queue (DELETE /api/v1/events).
- * Best-effort cleanup on logout/instance switch — swallows errors.
- * Pass credentials when cleaning up during instance switch (getCurrentInstance may already have changed).
- */
+// Удаляет очередь событий.
+// Это best-effort cleanup при logout или переключении инстанса, поэтому ошибки глотаются.
+// Credentials нужно передавать явно при cleanup во время instance switch,
+// потому что `getCurrentInstance()` уже мог смениться.
 export async function deleteQueue(queueId: string, credentials?: ZulipCredentials): Promise<void> {
   try {
     const safeQueueId = queueId.trim();
@@ -366,14 +369,12 @@ export async function deleteQueue(queueId: string, credentials?: ZulipCredential
       body: new URLSearchParams({ queue_id: safeQueueId }).toString(),
     });
   } catch {
-    // Best-effort cleanup
+    // Best-effort cleanup.
   }
 }
 
-/**
- * Reads total unread count for any instance credentials (GET /api/v1/messages?narrow=is:unread).
- * Returns null when request fails or payload cannot be parsed.
- */
+// Читает общее число непрочитанных сообщений для любых instance credentials.
+// Если запрос упал или payload не удалось распарсить, возвращает null.
 export async function fetchUnreadMessagesCountForCredentials(
   credentials: ZulipCredentials,
   options?: { signal?: AbortSignal },
@@ -420,7 +421,8 @@ export async function fetchUnreadMessagesCountForCredentials(
   }
 }
 
-/** Long-polls for events (GET /api/v1/events). Supports timeout and AbortSignal. */
+// Делает long-poll за событиями.
+// Поддерживает timeout и `AbortSignal`.
 export async function getEvents(
   queueId: string,
   lastEventId: number,
@@ -473,7 +475,8 @@ export async function getEvents(
   }
 }
 
-/** Long-polls events using explicit credentials (used for background multi-org loops). */
+// Делает long-poll за событиями с явными credentials.
+// Используется для фоновых multi-org loop.
 export async function getEventsForCredentials(
   credentials: ZulipCredentials,
   queueId: string,
@@ -546,10 +549,9 @@ export async function getEventsForCredentials(
   }
 }
 
-/**
- * Legacy accessor user_topic-override из in-memory register cache.
- * Зачем нужен: обратная совместимость старых мест вызова, не использующих bootstrap-пайплайн.
- */
+// Legacy accessor `user_topic` из in-memory register cache.
+// Нужен для обратной совместимости старых мест вызова,
+// которые еще не используют bootstrap-пайплайн.
 export function fetchUserTopics(): Promise<ZulipUserTopic[]> {
   const cacheKey = getCurrentUserTopicsCacheKey();
   if (!cacheKey) {

@@ -20,10 +20,9 @@ function normalizeWorkspaceRestPath(raw: string | undefined): string {
   return (raw ?? "").trim().replace(/\/+$/, "");
 }
 
-/**
- * When `VITE_USER_UPLOADS_PATH_PREFIX` is unset, match dev Orval layout: uploads live at
- * `/workspace{REST}/v1/user_uploads/...` on the upstream (same as `/workspace` proxy).
- */
+// Если `VITE_USER_UPLOADS_PATH_PREFIX` не задан,
+// подстраиваемся под dev-layout Orval: uploads лежат на upstream по пути
+// `/workspace{REST}/v1/user_uploads/...`, то есть так же, как и `/workspace` proxy.
 function defaultDevUserUploadsProxyPrefix(workspaceRestPath: string): string {
   const rest = normalizeWorkspaceRestPath(workspaceRestPath);
   const segment = rest === "" ? "" : rest.startsWith("/") ? rest : `/${rest}`;
@@ -52,7 +51,8 @@ type ViteProxyEntry = {
   configure?: (proxy: unknown, options: unknown) => void;
 };
 
-/** Logs incoming dev path → resolved upstream URL (after rewrite). Gated by VITE_DEV_PROXY_DEBUG. */
+// Логирует входящий dev-path и итоговый upstream URL после rewrite.
+// Включается только через `VITE_DEV_PROXY_DEBUG`.
 function withDevProxyRequestLog(
   routeLabel: string,
   targetBase: string,
@@ -88,7 +88,8 @@ function withDevProxyRequestLog(
         } catch {
           upstream = `${base}${path}`;
         }
-        // Dev-only; vite.config.ts is ESLint-ignored. Intentionally not app logger (Node, no ~/shared).
+        // Это только dev-код; `vite.config.ts` исключен из ESLint.
+        // Намеренно не используем логгер приложения, потому что здесь Node-контекст и нет `~/shared`.
         console.info(`[vite-proxy:${routeLabel}] ${r.method ?? "?"} ${r.url ?? ""} → ${upstream}`);
       });
     },
@@ -174,11 +175,21 @@ export default defineConfig(({ mode }) => {
         changeOrigin: true,
         rewrite: (pathValue) => rewriteUserUploadsPathForUpstream(pathValue),
       }),
+      "/external_content": withDevProxyRequestLog(
+        "external_content",
+        workspaceOrigin,
+        proxyDebug,
+        {
+          target: workspaceOrigin,
+          changeOrigin: true,
+        },
+      ),
     } satisfies Record<string, ViteProxyEntry>);
 
   return {
     plugins: [
-      // Multi-org Workspace REST: same-origin `/workspace/...` + X-Workspace-Dev-Target-Origin (before server.proxy)
+      // Multi-org Workspace REST: same-origin-путь `/workspace/...`
+      // плюс `X-Workspace-Dev-Target-Origin` до прохода через `server.proxy`.
       ...(mode === "development" && !isElectron
         ? [
             {
@@ -268,6 +279,14 @@ export default defineConfig(({ mode }) => {
                     handler: "CacheFirst",
                     options: {
                       cacheName: "uploads-cache",
+                      expiration: { maxEntries: 200, maxAgeSeconds: 86400 * 30 },
+                    },
+                  },
+                  {
+                    urlPattern: /^https:\/\/.*\/external_content\//,
+                    handler: "CacheFirst",
+                    options: {
+                      cacheName: "external-content-cache",
                       expiration: { maxEntries: 200, maxAgeSeconds: 86400 * 30 },
                     },
                   },
