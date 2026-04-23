@@ -3,7 +3,7 @@
  *
  * This module maps Zulip's numeric role codes to a typed hierarchy
  * (Owner > Admin > Moderator > Member > Guest) and enforces permissions
- * for message editing, deletion, channel creation, and org settings.
+ * for message editing, deletion, moderation, and org settings.
  * Incorrect permission checks could allow unauthorized actions or
  * hide UI controls from users who should have access.
  */
@@ -167,7 +167,6 @@ describe("getPermissionsForRole", () => {
     expect(perms).toContain("message:edit:own");
     expect(perms).toContain("topic:mute");
     expect(perms).not.toContain("message:delete:own");
-    expect(perms).not.toContain("channel:create");
   });
 
   // Owner must have every permission in the system
@@ -242,6 +241,10 @@ describe("getAllPermissions", () => {
     expect(perms).toContain("message:send");
     expect(perms).toContain("user:change-role");
     expect(perms).toContain("org:settings");
+    expect(perms).not.toContain("channel:edit");
+    expect(perms).not.toContain("channel:delete");
+    expect(perms).not.toContain("channel:create");
+    expect(perms).not.toContain("channel:subscribe:others");
   });
 
   // Permission format is "domain:action" — colon separator is required

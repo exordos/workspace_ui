@@ -501,6 +501,7 @@ describe("registerQueue", () => {
         "user_topic",
         "recent_private_conversations",
         "realm",
+        "realm_user",
         "realm_user_groups",
       ]),
     });
@@ -605,6 +606,50 @@ describe("registerQueue", () => {
 
     const result = await registerQueue(["message"]);
     expect(result.jitsi_server_url_effective).toBe("https://realm-jitsi.example.com");
+  });
+
+  it("parses modern realm add-subscribers group from register payload", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        queue_id: "q-123",
+        last_event_id: -1,
+        realm_can_add_subscribers_group: {
+          direct_members: [10],
+          direct_subgroups: [14],
+        },
+      },
+      raw: { statusText: "OK" },
+    });
+
+    const result = await registerQueue(["message"]);
+    expect(result.realm_can_add_subscribers_group).toEqual({
+      direct_members: [10],
+      direct_subgroups: [14],
+    });
+  });
+
+  it("parses legacy realm_user runtime capabilities from register payload", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        queue_id: "q-123",
+        last_event_id: -1,
+        realm_user: {
+          can_subscribe_other_users: true,
+        },
+      },
+      raw: { statusText: "OK" },
+    });
+
+    const result = await registerQueue(["message"]);
+    expect(result.realm_user).toEqual({
+      can_subscribe_other_users: true,
+    });
   });
 });
 

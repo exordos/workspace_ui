@@ -8,18 +8,17 @@ import { useUsersStore } from "~/entities/user/user.model";
 import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
 import { AddStreamMembersDialog } from "~/features/add-stream-members/add-stream-members-dialog.ui";
 import { useAddStreamMembersStore } from "~/features/add-stream-members/add-stream-members.model";
-import { canAddMembersToStream } from "~/features/add-stream-members/add-stream-members.permissions";
 import { useChatInfoStore } from "~/features/chat-info/chat-info.model";
 import { muteStream, unmuteStream } from "~/features/mute-chat/mute-chat.api";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { useRemoveStreamMembersStore } from "~/features/remove-stream-members/remove-stream-members.model";
-import { canRemoveMembersFromStream } from "~/features/remove-stream-members/remove-stream-members.permissions";
 import { t } from "~/i18n/i18n";
 import { deleteStream, updateStream } from "~/shared/api/zulip-streams";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { createLogger } from "~/shared/lib/logger";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
-import { hasPermission, parseRole } from "~/shared/lib/roles";
+import { parseRole } from "~/shared/lib/roles";
+import { resolveCurrentUserChannelCapabilities } from "~/shared/lib/stream-member-management-permissions.lib";
 import { useInputMode } from "~/shared/lib/touch";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
@@ -57,29 +56,43 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
   const inputMode = useInputMode();
   const isUserInGroupSetting = useUserGroupsStore((s) => s.isUserInGroupSetting);
   const users = useUsersStore((s) => s.users);
+  const currentUserChannelCapabilities = useUsersStore((s) => s.currentUserChannelCapabilities);
   const currentUserRole = parseRole(currentUserRoleCode);
-  const canEditChannel = streamId != null && hasPermission(currentUserRole, "channel:edit");
-  const canDeleteChannel = streamId != null && hasPermission(currentUserRole, "channel:delete");
-  // Что делает: гейт кнопки add-members через org-level + channel-level модель прав Zulip.
-  const canAddMembers =
-    streamId != null &&
-    canAddMembersToStream({
+  const channelActionCapabilities = useMemo(
+    () =>
+      streamId != null
+        ? resolveCurrentUserChannelCapabilities({
+            currentUserId,
+            orgRole: currentUserRole,
+            currentUserChannelCapabilities,
+            inviteOnly: streamEntry?.inviteOnly,
+            canAddSubscribersGroup: streamEntry?.canAddSubscribersGroup,
+            canRemoveSubscribersGroup: streamEntry?.canRemoveSubscribersGroup,
+            canAdministerChannelGroup: streamEntry?.canAdministerChannelGroup,
+            isUserInGroupSetting,
+          })
+        : {
+            canAddSubscribers: false,
+            canRemoveSubscribers: false,
+            canEditChannelMetadata: false,
+            canArchiveChannel: false,
+          },
+    [
+      currentUserChannelCapabilities,
       currentUserId,
-      orgRole: currentUserRole,
-      canAddSubscribersGroup: streamEntry?.canAddSubscribersGroup,
-      canAdministerChannelGroup: streamEntry?.canAdministerChannelGroup,
+      currentUserRole,
       isUserInGroupSetting,
-    });
-  // Что делает: гейт удаления участников через org-level + channel-admin + can_remove_subscribers_group.
-  const canRemoveMembers =
-    streamId != null &&
-    canRemoveMembersFromStream({
-      currentUserId,
-      orgRole: currentUserRole,
-      canAdministerChannelGroup: streamEntry?.canAdministerChannelGroup,
-      canRemoveSubscribersGroup: streamEntry?.canRemoveSubscribersGroup,
-      isUserInGroupSetting,
-    });
+      streamEntry?.canAddSubscribersGroup,
+      streamEntry?.canAdministerChannelGroup,
+      streamEntry?.canRemoveSubscribersGroup,
+      streamEntry?.inviteOnly,
+      streamId,
+    ],
+  );
+  const canEditChannel = streamId != null && channelActionCapabilities.canEditChannelMetadata;
+  const canDeleteChannel = streamId != null && channelActionCapabilities.canArchiveChannel;
+  const canAddMembers = streamId != null && channelActionCapabilities.canAddSubscribers;
+  const canRemoveMembers = streamId != null && channelActionCapabilities.canRemoveSubscribers;
   const isStreamMuted = useMuteStore((s) => (streamId ? s.isStreamMuted(streamId) : false));
   const [mutePending, setMutePending] = useState(false);
   const [muteError, setMuteError] = useState<string | null>(null);

@@ -89,6 +89,11 @@ export interface ZulipServerThumbnailFormat {
   animated: boolean;
 }
 
+export interface ZulipRealmUser {
+  // Legacy boolean org-level capability для старых Zulip-серверов.
+  can_subscribe_other_users?: boolean;
+}
+
 export interface RegisterQueueResult {
   queue_id: string;
   last_event_id: number;
@@ -100,6 +105,10 @@ export interface RegisterQueueResult {
   // Все группы организации из register metadata.
   // Используется для расчета channel-level прав через group-setting поля канала.
   realm_user_groups?: ZulipRealmUserGroup[];
+  /** Present when `realm_user` is included in `fetch_event_types`. */
+  realm_user?: ZulipRealmUser;
+  /** Present when `realm` is included in `fetch_event_types` (modern Zulip 10+). */
+  realm_can_add_subscribers_group?: ZulipGroupSettingValue;
   /** Present when `realm` is included in `fetch_event_types` (Zulip 9.0+). */
   server_thumbnail_formats?: ZulipServerThumbnailFormat[];
   /**

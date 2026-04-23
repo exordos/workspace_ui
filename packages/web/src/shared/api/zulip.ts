@@ -40,7 +40,7 @@ import { mockMessageFromGetMessageApiData, rawMessageToMockMessage } from "./zul
 import { parseRegisterResponseJitsiServerUrl } from "./zulip-register-jitsi.lib";
 import { parseServerThumbnailFormats } from "./zulip-register-metadata.lib";
 import { parseUnreadMessagesCount } from "./zulip-unread.lib";
-import type { RegisterQueueResult, ZulipRealmUserGroup } from "./zulip.types";
+import type { RegisterQueueResult, ZulipRealmUser, ZulipRealmUserGroup } from "./zulip.types";
 
 if (typeof (globalThis as unknown as { Buffer?: unknown }).Buffer === "undefined") {
   (globalThis as unknown as { Buffer: typeof Buffer }).Buffer = Buffer;
@@ -447,6 +447,23 @@ function parseRealmUserGroups(data: unknown): ZulipRealmUserGroup[] | null {
   return parsed;
 }
 
+function parseRealmUser(data: unknown): ZulipRealmUser | null {
+  if (data == null || typeof data !== "object" || Array.isArray(data)) {
+    return null;
+  }
+  const record = data as Record<string, unknown>;
+  if (typeof record.can_subscribe_other_users !== "boolean") {
+    return null;
+  }
+  return {
+    can_subscribe_other_users: record.can_subscribe_other_users,
+  };
+}
+
+function parseRealmCanAddSubscribersGroup(data: unknown) {
+  return normalizeGroupSettingValue(data);
+}
+
 function isPositiveInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value > 0;
 }
@@ -767,6 +784,7 @@ const DEFAULT_REGISTER_FETCH_EVENT_TYPES = [
   "user_topic",
   "recent_private_conversations",
   "realm",
+  "realm_user",
   "realm_user_groups",
 ] as const;
 
@@ -842,6 +860,8 @@ export async function registerQueue(
     subscriptions?: unknown;
     user_topics?: unknown;
     recent_private_conversations?: unknown;
+    realm_can_add_subscribers_group?: unknown;
+    realm_user?: unknown;
     realm_user_groups?: unknown;
     server_thumbnail_formats?: unknown;
   } | null;
@@ -860,6 +880,10 @@ export async function registerQueue(
   const recentPrivateConversations = parseRecentPrivateConversations(
     data.recent_private_conversations,
   );
+  const realmCanAddSubscribersGroup = parseRealmCanAddSubscribersGroup(
+    data.realm_can_add_subscribers_group,
+  );
+  const realmUser = parseRealmUser(data.realm_user);
   // Что делает: подхватывает группы организации, чтобы UI мог корректно решать channel-level права.
   const realmUserGroups = parseRealmUserGroups(data.realm_user_groups);
   const serverThumbnailFormats = parseServerThumbnailFormats(data.server_thumbnail_formats);
@@ -878,6 +902,10 @@ export async function registerQueue(
     ...(recentPrivateConversations
       ? { recent_private_conversations: recentPrivateConversations }
       : {}),
+    ...(realmCanAddSubscribersGroup != null
+      ? { realm_can_add_subscribers_group: realmCanAddSubscribersGroup }
+      : {}),
+    ...(realmUser ? { realm_user: realmUser } : {}),
     ...(realmUserGroups ? { realm_user_groups: realmUserGroups } : {}),
     ...(serverThumbnailFormats ? { server_thumbnail_formats: serverThumbnailFormats } : {}),
     ...(jitsiServerUrlEffective ? { jitsi_server_url_effective: jitsiServerUrlEffective } : {}),
@@ -925,6 +953,8 @@ export async function registerQueueForCredentials(
     subscriptions?: unknown;
     user_topics?: unknown;
     recent_private_conversations?: unknown;
+    realm_can_add_subscribers_group?: unknown;
+    realm_user?: unknown;
     realm_user_groups?: unknown;
     server_thumbnail_formats?: unknown;
   };
@@ -946,6 +976,10 @@ export async function registerQueueForCredentials(
   const recentPrivateConversations = parseRecentPrivateConversations(
     data.recent_private_conversations,
   );
+  const realmCanAddSubscribersGroup = parseRealmCanAddSubscribersGroup(
+    data.realm_can_add_subscribers_group,
+  );
+  const realmUser = parseRealmUser(data.realm_user);
   // Что делает: подхватывает группы и для explicit-credentials/background режима.
   const realmUserGroups = parseRealmUserGroups(data.realm_user_groups);
   const serverThumbnailFormats = parseServerThumbnailFormats(data.server_thumbnail_formats);
@@ -964,6 +998,10 @@ export async function registerQueueForCredentials(
     ...(recentPrivateConversations
       ? { recent_private_conversations: recentPrivateConversations }
       : {}),
+    ...(realmCanAddSubscribersGroup != null
+      ? { realm_can_add_subscribers_group: realmCanAddSubscribersGroup }
+      : {}),
+    ...(realmUser ? { realm_user: realmUser } : {}),
     ...(realmUserGroups ? { realm_user_groups: realmUserGroups } : {}),
     ...(serverThumbnailFormats ? { server_thumbnail_formats: serverThumbnailFormats } : {}),
     ...(jitsiServerUrlEffective ? { jitsi_server_url_effective: jitsiServerUrlEffective } : {}),

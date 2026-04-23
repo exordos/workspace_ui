@@ -1,5 +1,5 @@
 // Тесты доменной проверки прав remove-members.
-// Проверяют org-level guard и channel-level group membership ветки.
+// Проверяют org-level и channel-level ветки.
 import { describe, expect, it } from "vitest";
 import { UserRole } from "~/shared/lib/roles";
 import { canRemoveMembersFromStream } from "./remove-stream-members.permissions";
@@ -16,7 +16,7 @@ describe("canRemoveMembersFromStream", () => {
     ).toBe(false);
   });
 
-  it("allows owner/admin as realm-level fallback", () => {
+  it("allows owner/admin regardless of channel groups", () => {
     expect(
       canRemoveMembersFromStream({
         currentUserId: 10,

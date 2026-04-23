@@ -906,6 +906,175 @@ describe("RightPanel truthfulness", () => {
     expect(screen.getByRole("button", { name: /add members/i })).toBeInTheDocument();
   });
 
+  it("shows add members action for modern org add-subscribers group in public channel", () => {
+    act(() => {
+      useCurrentChatMessagesStore.setState({
+        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        messages: [],
+        isLoadingMore: false,
+        hasOlderMessages: true,
+        hasNewerMessages: false,
+      });
+      useChatInfoStore.setState({
+        data: {
+          type: "stream",
+          name: "engineering",
+          memberCount: 1,
+          onlineCount: 1,
+          members: [
+            {
+              userId: 77,
+              fullName: "Alice",
+              email: "alice@example.com",
+              avatarUrl: null,
+              isOnline: true,
+            },
+          ],
+          description: null,
+          isMuted: false,
+          topics: [],
+        },
+        streamMemberIds: [77],
+      });
+      useChatListStore.getState().upsertStreamMetadataRows([
+        {
+          streamId: 10,
+          name: "engineering",
+          inviteOnly: false,
+          canAddSubscribersGroup: 9,
+        },
+      ]);
+      useChatListStore.getState().setCurrentUserId(42);
+      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Member", role: 400 });
+      useUsersStore.getState().setCurrentUserChannelCapabilities({
+        realmCanAddSubscribersGroup: 14,
+        legacyCanSubscribeOtherUsers: null,
+      });
+      useUserGroupsStore.getState().setGroups([
+        {
+          id: 14,
+          name: "role:members",
+          members: [42],
+          direct_subgroup_ids: [],
+        },
+      ]);
+    });
+
+    renderWithProviders(<RightPanel title="engineering" participantsCount={1} onlineCount={1} />);
+
+    expect(screen.getByRole("button", { name: /add members/i })).toBeInTheDocument();
+  });
+
+  it("shows add members action for channel admin in public channel", () => {
+    act(() => {
+      useCurrentChatMessagesStore.setState({
+        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        messages: [],
+        isLoadingMore: false,
+        hasOlderMessages: true,
+        hasNewerMessages: false,
+      });
+      useChatInfoStore.setState({
+        data: {
+          type: "stream",
+          name: "engineering",
+          memberCount: 1,
+          onlineCount: 1,
+          members: [
+            {
+              userId: 77,
+              fullName: "Alice",
+              email: "alice@example.com",
+              avatarUrl: null,
+              isOnline: true,
+            },
+          ],
+          description: null,
+          isMuted: false,
+          topics: [],
+        },
+        streamMemberIds: [77],
+      });
+      useChatListStore.getState().upsertStreamMetadataRows([
+        {
+          streamId: 10,
+          name: "engineering",
+          inviteOnly: false,
+          canAdministerChannelGroup: 9126,
+        },
+      ]);
+      useChatListStore.getState().setCurrentUserId(42);
+      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Member", role: 400 });
+      useUserGroupsStore.getState().setGroups([
+        {
+          id: 9126,
+          name: "channel-admins",
+          members: [42],
+          direct_subgroup_ids: [],
+        },
+      ]);
+    });
+
+    renderWithProviders(<RightPanel title="engineering" participantsCount={1} onlineCount={1} />);
+
+    expect(screen.getByRole("button", { name: /add members/i })).toBeInTheDocument();
+  });
+
+  it("hides add members action for channel admin in private channel without add-group permission", () => {
+    act(() => {
+      useCurrentChatMessagesStore.setState({
+        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        messages: [],
+        isLoadingMore: false,
+        hasOlderMessages: true,
+        hasNewerMessages: false,
+      });
+      useChatInfoStore.setState({
+        data: {
+          type: "stream",
+          name: "engineering",
+          memberCount: 1,
+          onlineCount: 1,
+          members: [
+            {
+              userId: 77,
+              fullName: "Alice",
+              email: "alice@example.com",
+              avatarUrl: null,
+              isOnline: true,
+            },
+          ],
+          description: null,
+          isMuted: false,
+          topics: [],
+        },
+        streamMemberIds: [77],
+      });
+      useChatListStore.getState().upsertStreamMetadataRows([
+        {
+          streamId: 10,
+          name: "engineering",
+          inviteOnly: true,
+          canAdministerChannelGroup: 9126,
+        },
+      ]);
+      useChatListStore.getState().setCurrentUserId(42);
+      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Member", role: 400 });
+      useUserGroupsStore.getState().setGroups([
+        {
+          id: 9126,
+          name: "channel-admins",
+          members: [42],
+          direct_subgroup_ids: [],
+        },
+      ]);
+    });
+
+    renderWithProviders(<RightPanel title="engineering" participantsCount={1} onlineCount={1} />);
+
+    expect(screen.queryByRole("button", { name: /add members/i })).not.toBeInTheDocument();
+  });
+
   it("shows remove-member action for channel-level remove-subscribers group member", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({
@@ -1420,5 +1589,49 @@ describe("RightPanel truthfulness", () => {
         description: "Platform discussions",
       });
     });
+  });
+
+  it("shows channel edit/delete actions for channel admin", () => {
+    act(() => {
+      useCurrentChatMessagesStore.setState({
+        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        messages: [],
+        isLoadingMore: false,
+        hasOlderMessages: true,
+        hasNewerMessages: false,
+      });
+      useChatInfoStore.getState().setData({
+        type: "stream",
+        name: "engineering",
+        memberCount: 3,
+        onlineCount: 1,
+        members: [],
+        description: "Engineering stream",
+        isMuted: false,
+        topics: [],
+      });
+      useChatListStore.getState().upsertStreamMetadataRows([
+        {
+          streamId: 10,
+          name: "engineering",
+          canAdministerChannelGroup: 9126,
+        },
+      ]);
+      useChatListStore.getState().setCurrentUserId(42);
+      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Member", role: 400 });
+      useUserGroupsStore.getState().setGroups([
+        {
+          id: 9126,
+          name: "channel-admins",
+          members: [42],
+          direct_subgroup_ids: [],
+        },
+      ]);
+    });
+
+    renderWithProviders(<RightPanel title="engineering" participantsCount={3} onlineCount={1} />);
+
+    expect(screen.getByRole("button", { name: /edit channel/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /delete channel/i })).toBeInTheDocument();
   });
 });
