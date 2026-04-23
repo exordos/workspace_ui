@@ -164,7 +164,7 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
       if (!isCurrentHydration(state, nextVersion, context)) return;
       const members = resolveUsersById(memberIds);
       const nextData = buildStreamChatInfoData(
-        context.streamName,
+        metadata.name ?? context.streamName,
         memberIds,
         members,
         context.isMuted,
@@ -227,8 +227,9 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
     // Stream derived-пересчет: topics/mute/presence без повторного HTTP.
     const members = resolveUsersById(state.streamMemberIds);
     const description = state.data?.type === "stream" ? state.data.description : null;
+    const streamName = state.data?.type === "stream" ? state.data.name : context.streamName;
     const nextData = buildStreamChatInfoData(
-      context.streamName,
+      streamName,
       state.streamMemberIds,
       members,
       context.isMuted,

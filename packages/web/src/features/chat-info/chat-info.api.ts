@@ -109,11 +109,14 @@ export async function loadStreamMetadata(
   instanceId: string,
   streamId: number,
   options?: { force?: boolean },
-): Promise<{ description: string | null }> {
-  // Метадату стрима (description) достаем из snapshot списка стримов.
+): Promise<{ name: string | null; description: string | null }> {
+  // Метадату стрима (имя + description) достаем из snapshot списка стримов.
   const streams = await loadStreamsSnapshot(instanceId, options);
-  const description = streams.find((stream) => stream.stream_id === streamId)?.description ?? null;
-  return { description };
+  const stream = streams.find((entry) => entry.stream_id === streamId);
+  return {
+    name: stream?.name ?? null,
+    description: stream?.description ?? null,
+  };
 }
 
 export function invalidateStream(instanceId: string, streamId: number): void {

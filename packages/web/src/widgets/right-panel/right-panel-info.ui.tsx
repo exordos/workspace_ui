@@ -19,6 +19,7 @@ import { createLogger } from "~/shared/lib/logger";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { parseRole } from "~/shared/lib/roles";
 import { resolveCurrentUserChannelCapabilities } from "~/shared/lib/stream-member-management-permissions.lib";
+import { resolveCanonicalStreamName } from "~/shared/lib/stream-name.lib";
 import { useInputMode } from "~/shared/lib/touch";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
@@ -169,8 +170,16 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
   }, [memberStatusIds]);
 
   const streamInfoData = chatInfoData?.type === "stream" ? chatInfoData : null;
-  // Что делает: единый нормализованный stream name для routing и add/remove members действий.
-  const resolvedStreamName = (streamInfoData?.name?.trim() ?? "") || title.trim();
+  const displayStreamName = (streamInfoData?.name?.trim() ?? "") || title.trim();
+  const canonicalStreamName = useMemo(
+    () =>
+      resolveCanonicalStreamName({
+        streamId,
+        streamMapName: streamEntry?.name,
+        legacyRouteName: title,
+      }),
+    [streamEntry?.name, streamId, title],
+  );
   const handleOpenTopic = useCallback(
     (topicName: string) => {
       if (streamId == null) {
@@ -178,21 +187,25 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
       }
       void navigate(
         withCurrentOrgRoute(
-          `/stream/${buildStreamSlug(streamId, resolvedStreamName)}/topic/${encodeURIComponent(topicName)}`,
+          `/stream/${buildStreamSlug(streamId, canonicalStreamName ?? displayStreamName)}/topic/${encodeURIComponent(topicName)}`,
         ),
       );
     },
-    [navigate, resolvedStreamName, streamId],
+    [canonicalStreamName, displayStreamName, navigate, streamId],
   );
   const handleOpenAddMembers = useCallback(() => {
     if (streamId == null) return;
-    if (resolvedStreamName.length === 0) return;
+    if (canonicalStreamName == null) {
+      log.warn("Blocked add-members without canonical stream name", { streamId });
+      setChannelActionError(t("app.error"));
+      return;
+    }
     openAddMembers({
       streamId,
-      streamName: resolvedStreamName,
+      streamName: canonicalStreamName,
       existingMemberIds: streamMemberIds,
     });
-  }, [openAddMembers, resolvedStreamName, streamId, streamMemberIds]);
+  }, [canonicalStreamName, openAddMembers, streamId, streamMemberIds]);
   // Что делает: после add/remove инвалидации состав участников канала подтягивается заново.
   const handleStreamMembersChangedSuccess = useCallback(
     (updatedStreamId: number) => {
@@ -204,15 +217,19 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
   const handleRemoveMember = useCallback(
     (userId: number) => {
       if (streamId == null) return;
-      if (resolvedStreamName.length === 0) return;
+      if (canonicalStreamName == null) {
+        log.warn("Blocked remove-member without canonical stream name", { streamId, userId });
+        setChannelActionError(t("app.error"));
+        return;
+      }
       void removeMember({
         streamId,
-        streamName: resolvedStreamName,
+        streamName: canonicalStreamName,
         userId,
         onSuccess: handleStreamMembersChangedSuccess,
       });
     },
-    [handleStreamMembersChangedSuccess, removeMember, resolvedStreamName, streamId],
+    [canonicalStreamName, handleStreamMembersChangedSuccess, removeMember, streamId],
   );
   const streamMembers = streamInfoData?.members;
   const hasRealMembers = streamMembers != null && streamMembers.length > 0;

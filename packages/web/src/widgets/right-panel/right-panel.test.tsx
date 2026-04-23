@@ -1226,6 +1226,7 @@ describe("RightPanel truthfulness", () => {
         },
         streamMemberIds: [77],
       });
+      useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 10, name: "Test clon" }]);
       useChatListStore.getState().setCurrentUserId(42);
       useUsersStore.getState().mergeUsers([
         { user_id: 42, full_name: "Admin", email: "admin@example.com", role: 200 },
@@ -1246,6 +1247,59 @@ describe("RightPanel truthfulness", () => {
         userIds: [88],
       });
     });
+  });
+
+  it("does not submit add-members when canonical stream name is unavailable", () => {
+    const addMembersSpy = vi.spyOn(zulipStreams, "addMembersToStream").mockResolvedValue({
+      ok: true,
+      addedUserIds: [88],
+      alreadySubscribedUserIds: [],
+      unauthorizedStreams: [],
+    });
+
+    act(() => {
+      useCurrentChatMessagesStore.setState({
+        context: { type: "stream", streamId: 10, streamName: "test-clon", topic: "general" },
+        messages: [],
+        isLoadingMore: false,
+        hasOlderMessages: true,
+        hasNewerMessages: false,
+      });
+      useChatInfoStore.setState({
+        data: {
+          type: "stream",
+          name: "test-clon",
+          memberCount: 1,
+          onlineCount: 1,
+          members: [
+            {
+              userId: 77,
+              fullName: "Alice",
+              email: "alice@example.com",
+              avatarUrl: null,
+              isOnline: true,
+            },
+          ],
+          description: null,
+          isMuted: false,
+          topics: [],
+        },
+        streamMemberIds: [77],
+      });
+      useChatListStore.getState().setCurrentUserId(42);
+      useUsersStore.getState().mergeUsers([
+        { user_id: 42, full_name: "Admin", email: "admin@example.com", role: 200 },
+        { user_id: 77, full_name: "Alice", email: "alice@example.com" },
+        { user_id: 88, full_name: "Bob", email: "bob@example.com" },
+      ]);
+    });
+
+    renderWithProviders(<RightPanel title="test-clon" participantsCount={1} onlineCount={1} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /add members/i }));
+
+    expect(addMembersSpy).not.toHaveBeenCalled();
+    expect(useAddStreamMembersStore.getState().open).toBe(false);
   });
 
   it("shows remove-member action for removable members and hides for self/creator/org-owner", () => {
@@ -1462,7 +1516,7 @@ describe("RightPanel truthfulness", () => {
 
     act(() => {
       useCurrentChatMessagesStore.setState({
-        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        context: { type: "stream", streamId: 10, streamName: "test-clon", topic: "general" },
         messages: [],
         isLoadingMore: false,
         hasOlderMessages: true,
@@ -1471,7 +1525,7 @@ describe("RightPanel truthfulness", () => {
       useChatInfoStore.setState({
         data: {
           type: "stream",
-          name: "engineering",
+          name: "test-clon",
           memberCount: 1,
           onlineCount: 1,
           members: [
@@ -1489,6 +1543,7 @@ describe("RightPanel truthfulness", () => {
         },
         streamMemberIds: [77],
       });
+      useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 10, name: "Test clon" }]);
       useChatListStore.getState().setCurrentUserId(42);
       useUsersStore.getState().mergeUsers([
         { user_id: 42, full_name: "Admin", email: "admin@example.com", role: 200 },
@@ -1498,7 +1553,7 @@ describe("RightPanel truthfulness", () => {
 
     renderWithProviders(
       <RightDrawerContext.Provider value={{ open: true, setOpen: vi.fn(), openUserProfile }}>
-        <RightPanel title="engineering" participantsCount={1} onlineCount={1} />
+        <RightPanel title="test-clon" participantsCount={1} onlineCount={1} />
       </RightDrawerContext.Provider>,
     );
 
@@ -1506,7 +1561,7 @@ describe("RightPanel truthfulness", () => {
 
     await waitFor(() => {
       expect(removeMembersSpy).toHaveBeenCalledWith({
-        streamName: "engineering",
+        streamName: "Test clon",
         userIds: [77],
       });
     });

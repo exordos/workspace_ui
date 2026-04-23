@@ -29,6 +29,7 @@ export function useChatRouteContext(options: {
   streamRouteTopic: string;
   activeStream: string | undefined;
   resolvedStreamName: string;
+  canonicalStreamName: string | null;
   resolvedStreamId: number | null;
   dmRecipientIds: number[];
   isDmView: boolean;
@@ -43,9 +44,12 @@ export function useChatRouteContext(options: {
     options;
 
   const activeTopic = topicName ?? undefined;
-  const parsedStream = useMemo(() => (streamSlug ? parseStreamSlug(streamSlug) : null), [streamSlug]);
+  const parsedStream = useMemo(
+    () => (streamSlug ? parseStreamSlug(streamSlug) : null),
+    [streamSlug],
+  );
 
-  const { resolvedStreamName, resolvedStreamId } = useMemo(
+  const { resolvedStreamName, resolvedCanonicalStreamName, resolvedStreamId } = useMemo(
     () => resolveStreamRouteFromSlug(parsedStream, streamsMap),
     [parsedStream, streamsMap],
   );
@@ -67,14 +71,16 @@ export function useChatRouteContext(options: {
   const isDmView = dmRecipientIds.length > 0;
 
   const dmChat = useMemo(
-    () => (dmIdParam != null && dmIdParam !== "" ? getDmById(dmIdParam, dmsFromStore as never) : undefined),
+    () =>
+      dmIdParam != null && dmIdParam !== ""
+        ? getDmById(dmIdParam, dmsFromStore as never)
+        : undefined,
     [dmIdParam, dmsFromStore],
   );
 
-  const isGroupDmView =
-    isDmView && computeIsGroupDmView(dmChat, dmRecipientIds, currentUserId);
+  const isGroupDmView = isDmView && computeIsGroupDmView(dmChat, dmRecipientIds, currentUserId);
   const partnerUserId =
-    isDmView && !isGroupDmView && dmRecipientIds.length > 0 ? dmRecipientIds[0] ?? null : null;
+    isDmView && !isGroupDmView && dmRecipientIds.length > 0 ? (dmRecipientIds[0] ?? null) : null;
 
   const dmKey = useMemo(() => {
     if (!isDmView || currentUserId == null) return null;
@@ -82,13 +88,17 @@ export function useChatRouteContext(options: {
   }, [dmRecipientIds, isDmView, currentUserId]);
 
   const focusedMessageId = useMemo(() => parsePositiveIntFromSearch(location, "msg"), [location]);
-  const forwardMessageId = useMemo(() => parsePositiveIntFromSearch(location, "forward"), [location]);
+  const forwardMessageId = useMemo(
+    () => parsePositiveIntFromSearch(location, "forward"),
+    [location],
+  );
 
   return {
     activeTopic,
     streamRouteTopic,
     activeStream,
     resolvedStreamName,
+    canonicalStreamName: resolvedCanonicalStreamName,
     resolvedStreamId,
     dmRecipientIds,
     isDmView,
@@ -100,4 +110,3 @@ export function useChatRouteContext(options: {
     forwardMessageId,
   };
 }
-
