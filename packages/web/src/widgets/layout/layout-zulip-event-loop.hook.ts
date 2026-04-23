@@ -73,7 +73,6 @@ const REGISTER_FETCH_EVENT_TYPES = [
   "user_topic",
   "recent_private_conversations",
   "realm",
-  "realm_user",
   "realm_user_groups",
 ] as const;
 const log = createLogger("layout-zulip-event-loop");
@@ -243,15 +242,11 @@ export function useLayoutZulipEventLoop(options: {
   useEffect(() => {
     if (!currentInstanceId) {
       prevInstanceForBootstrapRef.current = null;
-      useUsersStore.getState().setCurrentUserChannelCapabilities({
-        legacyCanSubscribeOtherUsers: null,
-      });
+      useUsersStore.getState().setCurrentUserChannelCapabilities({});
       useUserGroupsStore.getState().clear();
       return;
     }
-    useUsersStore.getState().setCurrentUserChannelCapabilities({
-      legacyCanSubscribeOtherUsers: null,
-    });
+    useUsersStore.getState().setCurrentUserChannelCapabilities({});
     let cancelled = false;
     const bootstrapAbort = new AbortController();
     const bootstrapEpoch = ++chatListBootstrapEffectEpoch;
@@ -537,8 +532,6 @@ export function useLayoutZulipEventLoop(options: {
                     realmCanAddSubscribersGroup: registration.realm_can_add_subscribers_group,
                   }
                 : {}),
-              legacyCanSubscribeOtherUsers:
-                registration?.realm_user?.can_subscribe_other_users ?? null,
             });
             useUserGroupsStore.getState().setGroups(registration?.realm_user_groups ?? []);
             const streamRows = toStreamMetadataRows(registration?.subscriptions ?? []);

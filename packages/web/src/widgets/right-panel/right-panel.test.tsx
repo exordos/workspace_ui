@@ -948,7 +948,6 @@ describe("RightPanel truthfulness", () => {
       useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Member", role: 400 });
       useUsersStore.getState().setCurrentUserChannelCapabilities({
         realmCanAddSubscribersGroup: 14,
-        legacyCanSubscribeOtherUsers: null,
       });
       useUserGroupsStore.getState().setGroups([
         {

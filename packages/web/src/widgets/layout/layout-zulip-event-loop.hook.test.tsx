@@ -148,7 +148,6 @@ describe("useLayoutZulipEventLoop", () => {
       "user_topic",
       "recent_private_conversations",
       "realm",
-      "realm_user",
       "realm_user_groups",
     ]);
   });
@@ -178,7 +177,6 @@ describe("useLayoutZulipEventLoop", () => {
             id: string,
             registration?: {
               realm_can_add_subscribers_group?: number;
-              realm_user?: { can_subscribe_other_users?: boolean };
             },
           ) => void;
         }
@@ -187,13 +185,11 @@ describe("useLayoutZulipEventLoop", () => {
     act(() => {
       firstCallArg?.onQueueRegistered?.("q-1", {
         realm_can_add_subscribers_group: 14,
-        realm_user: { can_subscribe_other_users: true },
       });
     });
 
     expect(useUsersStore.getState().currentUserChannelCapabilities).toEqual({
       realmCanAddSubscribersGroup: 14,
-      legacyCanSubscribeOtherUsers: true,
     });
   });
 });

@@ -68,7 +68,6 @@ export interface UserStatusFetchMeta {
 
 export interface CurrentUserChannelCapabilities {
   realmCanAddSubscribersGroup?: ZulipGroupSettingValue;
-  legacyCanSubscribeOtherUsers: boolean | null;
 }
 
 interface UsersState {
@@ -95,9 +94,7 @@ interface UsersState {
 
 const emptyUsers = (): Map<number, UserRecord> => new Map();
 const emptyEmailMap = (): Map<string, number> => new Map();
-const defaultCurrentUserChannelCapabilities = (): CurrentUserChannelCapabilities => ({
-  legacyCanSubscribeOtherUsers: null,
-});
+const defaultCurrentUserChannelCapabilities = (): CurrentUserChannelCapabilities => ({});
 
 let _cachedAvatarMap: Map<number, string> | null = null;
 let _cachedAvatarMapUsersRef: Map<number, UserRecord> | null = null;

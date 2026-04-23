@@ -56,16 +56,11 @@ export function resolveCurrentUserChannelCapabilities(
     input.canRemoveSubscribersGroup,
     currentUserId,
   );
-  const hasModernRealmAddSubscribersMetadata =
-    currentUserChannelCapabilities?.realmCanAddSubscribersGroup != null;
-  const legacyCanSubscribeOtherUsers =
-    currentUserChannelCapabilities?.legacyCanSubscribeOtherUsers ?? null;
   return {
     canAddSubscribers:
       isOrgAdmin ||
       inAddSubscribersGroup ||
       inRealmAddSubscribersGroup ||
-      (!hasModernRealmAddSubscribersMetadata && legacyCanSubscribeOtherUsers === true) ||
       (isChannelAdmin && input.inviteOnly !== true),
     canRemoveSubscribers: isOrgAdmin || isChannelAdmin || inRemoveSubscribersGroup,
     canEditChannelMetadata: isOrgAdmin || isChannelAdmin,

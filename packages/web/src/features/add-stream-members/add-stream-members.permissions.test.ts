@@ -40,33 +40,10 @@ describe("canAddMembersToStream", () => {
         orgRole: UserRole.Member,
         currentUserChannelCapabilities: {
           realmCanAddSubscribersGroup: 71,
-          legacyCanSubscribeOtherUsers: null,
         },
         isUserInGroupSetting: (setting, userId) => setting === 71 && userId === 10,
       }),
     ).toBe(true);
-  });
-
-  it("uses legacy org capability only when modern realm group metadata is absent", () => {
-    expect(
-      canAddMembersToStream({
-        currentUserId: 10,
-        orgRole: UserRole.Member,
-        currentUserChannelCapabilities: { legacyCanSubscribeOtherUsers: true },
-        isUserInGroupSetting: () => false,
-      }),
-    ).toBe(true);
-    expect(
-      canAddMembersToStream({
-        currentUserId: 10,
-        orgRole: UserRole.Member,
-        currentUserChannelCapabilities: {
-          realmCanAddSubscribersGroup: 71,
-          legacyCanSubscribeOtherUsers: true,
-        },
-        isUserInGroupSetting: () => false,
-      }),
-    ).toBe(false);
   });
 
   it("allows member when they are in channel add-subscribers group", () => {

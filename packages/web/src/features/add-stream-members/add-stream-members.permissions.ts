@@ -23,7 +23,6 @@ interface AddStreamMembersPermissionInput extends ResolveCurrentUserChannelCapab
 // 1) Пользователь должен быть известен и не быть Guest в организации.
 // 2) channel-level add-subscribers group и org-level realm group имеют приоритет.
 // 3) Channel admin может добавлять участников только в public channels.
-// 4) Legacy boolean capability учитывается только для старых Zulip-серверов.
 export function canAddMembersToStream(input: AddStreamMembersPermissionInput): boolean {
   return resolveCurrentUserChannelCapabilities(input).canAddSubscribers;
 }

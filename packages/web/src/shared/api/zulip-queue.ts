@@ -30,7 +30,6 @@ import type {
   RegisterQueueResult,
   ZulipCredentials,
   ZulipRecentPrivateConversation,
-  ZulipRealmUser,
   ZulipRealmUserGroup,
   ZulipSubscription,
   ZulipUserTopic,
@@ -43,7 +42,6 @@ const DEFAULT_REGISTER_FETCH_EVENT_TYPES = [
   "user_topic",
   "recent_private_conversations",
   "realm",
-  "realm_user",
   "realm_user_groups",
 ] as const;
 
@@ -187,19 +185,6 @@ function parseRealmUserGroups(data: unknown): ZulipRealmUserGroup[] | null {
   return parsed;
 }
 
-function parseRealmUser(data: unknown): ZulipRealmUser | null {
-  if (data == null || typeof data !== "object" || Array.isArray(data)) {
-    return null;
-  }
-  const record = data as Record<string, unknown>;
-  if (typeof record.can_subscribe_other_users !== "boolean") {
-    return null;
-  }
-  return {
-    can_subscribe_other_users: record.can_subscribe_other_users,
-  };
-}
-
 function parseRealmCanAddSubscribersGroup(data: unknown) {
   return normalizeGroupSettingValue(data);
 }
@@ -230,7 +215,6 @@ export async function registerQueue(
     user_topics?: unknown;
     recent_private_conversations?: unknown;
     realm_can_add_subscribers_group?: unknown;
-    realm_user?: unknown;
     realm_user_groups?: unknown;
     server_thumbnail_formats?: unknown;
   } | null;
@@ -252,7 +236,6 @@ export async function registerQueue(
   const realmCanAddSubscribersGroup = parseRealmCanAddSubscribersGroup(
     data.realm_can_add_subscribers_group,
   );
-  const realmUser = parseRealmUser(data.realm_user);
   // Что делает: собирает группы организации для последующей проверки channel permissions в UI/store.
   const realmUserGroups = parseRealmUserGroups(data.realm_user_groups);
   const serverThumbnailFormats = parseServerThumbnailFormats(data.server_thumbnail_formats);
@@ -274,7 +257,6 @@ export async function registerQueue(
     ...(realmCanAddSubscribersGroup != null
       ? { realm_can_add_subscribers_group: realmCanAddSubscribersGroup }
       : {}),
-    ...(realmUser ? { realm_user: realmUser } : {}),
     ...(realmUserGroups ? { realm_user_groups: realmUserGroups } : {}),
     ...(serverThumbnailFormats ? { server_thumbnail_formats: serverThumbnailFormats } : {}),
     ...(jitsiServerUrlEffective ? { jitsi_server_url_effective: jitsiServerUrlEffective } : {}),
@@ -325,7 +307,6 @@ export async function registerQueueForCredentials(
     user_topics?: unknown;
     recent_private_conversations?: unknown;
     realm_can_add_subscribers_group?: unknown;
-    realm_user?: unknown;
     realm_user_groups?: unknown;
     server_thumbnail_formats?: unknown;
   };
@@ -350,7 +331,6 @@ export async function registerQueueForCredentials(
   const realmCanAddSubscribersGroup = parseRealmCanAddSubscribersGroup(
     data.realm_can_add_subscribers_group,
   );
-  const realmUser = parseRealmUser(data.realm_user);
   // Что делает: сохраняет группы и для background-loop сценариев.
   const realmUserGroups = parseRealmUserGroups(data.realm_user_groups);
   const serverThumbnailFormats = parseServerThumbnailFormats(data.server_thumbnail_formats);
@@ -372,7 +352,6 @@ export async function registerQueueForCredentials(
     ...(realmCanAddSubscribersGroup != null
       ? { realm_can_add_subscribers_group: realmCanAddSubscribersGroup }
       : {}),
-    ...(realmUser ? { realm_user: realmUser } : {}),
     ...(realmUserGroups ? { realm_user_groups: realmUserGroups } : {}),
     ...(serverThumbnailFormats ? { server_thumbnail_formats: serverThumbnailFormats } : {}),
     ...(jitsiServerUrlEffective ? { jitsi_server_url_effective: jitsiServerUrlEffective } : {}),

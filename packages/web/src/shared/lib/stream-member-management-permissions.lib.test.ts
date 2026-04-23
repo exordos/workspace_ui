@@ -55,12 +55,11 @@ describe("resolveCurrentUserChannelCapabilities", () => {
     });
   });
 
-  it("keeps org admin add-members access even when legacy metadata explicitly denies it", () => {
+  it("keeps org admin add-members access without explicit realm group metadata", () => {
     expect(
       resolveCurrentUserChannelCapabilities({
         currentUserId: 10,
         orgRole: UserRole.Admin,
-        currentUserChannelCapabilities: { legacyCanSubscribeOtherUsers: false },
         isUserInGroupSetting: neverInGroup,
       }),
     ).toMatchObject({
@@ -78,39 +77,11 @@ describe("resolveCurrentUserChannelCapabilities", () => {
         orgRole: UserRole.Member,
         currentUserChannelCapabilities: {
           realmCanAddSubscribersGroup: 91,
-          legacyCanSubscribeOtherUsers: null,
         },
         isUserInGroupSetting: (setting, userId) => setting === 91 && userId === 10,
       }),
     ).toMatchObject({
       canAddSubscribers: true,
-    });
-  });
-
-  it("uses legacy boolean only when modern realm group metadata is absent", () => {
-    expect(
-      resolveCurrentUserChannelCapabilities({
-        currentUserId: 10,
-        orgRole: UserRole.Member,
-        currentUserChannelCapabilities: { legacyCanSubscribeOtherUsers: true },
-        isUserInGroupSetting: neverInGroup,
-      }),
-    ).toMatchObject({
-      canAddSubscribers: true,
-    });
-
-    expect(
-      resolveCurrentUserChannelCapabilities({
-        currentUserId: 10,
-        orgRole: UserRole.Member,
-        currentUserChannelCapabilities: {
-          realmCanAddSubscribersGroup: 91,
-          legacyCanSubscribeOtherUsers: true,
-        },
-        isUserInGroupSetting: neverInGroup,
-      }),
-    ).toMatchObject({
-      canAddSubscribers: false,
     });
   });
 

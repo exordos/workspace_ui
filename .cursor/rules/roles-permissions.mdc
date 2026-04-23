@@ -64,7 +64,6 @@ getRoleColor(role);  // "text-indicator-pink" (Tailwind class)
 - For channel actions, prefer server-derived capability helpers over static role maps.
 - For modern Zulip add-members UI, derive from `realm_can_add_subscribers_group`,
   `can_add_subscribers_group`, `can_administer_channel_group`, and channel privacy.
-- Use legacy `realm_user.can_subscribe_other_users` only as a backward-compatible fallback.
 
 ### When fetching data from the API
 
