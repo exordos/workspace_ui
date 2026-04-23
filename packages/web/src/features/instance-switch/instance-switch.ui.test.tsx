@@ -1,7 +1,12 @@
 import { fireEvent, screen } from "@testing-library/react";
+import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useInstancesStore } from "~/entities/instance/instance.model";
+import {
+  buildOrgRouteIdForZulipInstance,
+  extractOrgRouteFromPathname,
+} from "~/shared/lib/org-route";
 import { renderWithProviders } from "~/test/render";
 import { InstanceSwitcher } from "./instance-switch.ui";
 
@@ -10,12 +15,43 @@ function PathnameProbe() {
   return <span data-testid="pathname-probe">{pathname}</span>;
 }
 
+function OrgRouteInstanceSyncProbe() {
+  const location = useLocation();
+  const instances = useInstancesStore((s) => s.instances);
+  const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
+  const setCurrentInstanceId = useInstancesStore((s) => s.setCurrentInstanceId);
+
+  useEffect(() => {
+    const { orgId } = extractOrgRouteFromPathname(location.pathname);
+    if (orgId == null) return;
+    const matchedInstance = instances.find(
+      (instance) => buildOrgRouteIdForZulipInstance(instance) === orgId,
+    );
+    if (matchedInstance == null) return;
+    if (matchedInstance.id !== currentInstanceId) {
+      setCurrentInstanceId(matchedInstance.id);
+    }
+  }, [currentInstanceId, instances, location.pathname, setCurrentInstanceId]);
+
+  return null;
+}
+
 function resetStore() {
   useInstancesStore.setState({
     instances: [],
     currentInstanceId: null,
     unreadCountsByInstance: {},
   });
+}
+
+function renderInstanceSwitcher(route = "/") {
+  return renderWithProviders(
+    <>
+      <OrgRouteInstanceSyncProbe />
+      <InstanceSwitcher />
+    </>,
+    { route },
+  );
 }
 
 describe("InstanceSwitcher", () => {
@@ -34,7 +70,7 @@ describe("InstanceSwitcher", () => {
       unreadCountsByInstance: { "inst-1": 0, "inst-2": 4 },
     });
 
-    renderWithProviders(<InstanceSwitcher />);
+    renderInstanceSwitcher();
     fireEvent.pointerDown(screen.getByRole("button", { name: /select zulip server/i }), {
       button: 0,
       ctrlKey: false,
@@ -53,7 +89,7 @@ describe("InstanceSwitcher", () => {
       unreadCountsByInstance: { "inst-1": 0, "inst-2": 4 },
     });
 
-    renderWithProviders(<InstanceSwitcher />);
+    renderInstanceSwitcher();
     fireEvent.pointerDown(screen.getByRole("button", { name: /select zulip server/i }), {
       button: 0,
       ctrlKey: false,
@@ -79,7 +115,7 @@ describe("InstanceSwitcher", () => {
       unreadCountsByInstance: {},
     });
 
-    renderWithProviders(<InstanceSwitcher />);
+    renderInstanceSwitcher();
 
     expect(screen.queryByRole("button", { name: /add server/i })).not.toBeInTheDocument();
 
@@ -114,7 +150,7 @@ describe("InstanceSwitcher", () => {
       unreadCountsByInstance: {},
     });
 
-    renderWithProviders(<InstanceSwitcher />);
+    renderInstanceSwitcher();
     fireEvent.pointerDown(screen.getByRole("button", { name: /select zulip server/i }), {
       button: 0,
       ctrlKey: false,
@@ -160,7 +196,7 @@ describe("InstanceSwitcher", () => {
       unreadCountsByInstance: {},
     });
 
-    renderWithProviders(<InstanceSwitcher />);
+    renderInstanceSwitcher();
     fireEvent.pointerDown(screen.getByRole("button", { name: /select zulip server/i }), {
       button: 0,
       ctrlKey: false,
@@ -197,7 +233,7 @@ describe("InstanceSwitcher", () => {
       unreadCountsByInstance: { "inst-1": 0, "inst-2": 0 },
     });
 
-    renderWithProviders(<InstanceSwitcher />);
+    renderInstanceSwitcher();
 
     const secondInstanceButton = screen.getByRole("button", { name: "b.example.com" });
     fireEvent.click(secondInstanceButton);
@@ -206,6 +242,30 @@ describe("InstanceSwitcher", () => {
   });
 
   it("navigates to target organization inbox when switching from a DM route", () => {
+    useInstancesStore.setState({
+      instances: [
+        { id: "inst-1", realm: "https://a.example.com", email: "a@example.com", apiKey: "k1" },
+        { id: "inst-2", realm: "https://b.example.com", email: "b@example.com", apiKey: "k2" },
+      ],
+      currentInstanceId: "inst-1",
+      unreadCountsByInstance: { "inst-1": 0, "inst-2": 0 },
+    });
+
+    renderWithProviders(
+      <>
+        <OrgRouteInstanceSyncProbe />
+        <PathnameProbe />
+        <InstanceSwitcher />
+      </>,
+      { route: "/org/a.example.com/dm/42" },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "b.example.com" }));
+
+    expect(screen.getByTestId("pathname-probe")).toHaveTextContent("/org/b.example.com/inbox");
+  });
+
+  it("does not mutate current instance before route-based org sync catches up", () => {
     useInstancesStore.setState({
       instances: [
         { id: "inst-1", realm: "https://a.example.com", email: "a@example.com", apiKey: "k1" },
@@ -226,6 +286,7 @@ describe("InstanceSwitcher", () => {
     fireEvent.click(screen.getByRole("button", { name: "b.example.com" }));
 
     expect(screen.getByTestId("pathname-probe")).toHaveTextContent("/org/b.example.com/inbox");
+    expect(useInstancesStore.getState().currentInstanceId).toBe("inst-1");
   });
 
   it("resolves realm-relative organization icon against instance realm url", () => {
@@ -243,7 +304,7 @@ describe("InstanceSwitcher", () => {
       unreadCountsByInstance: {},
     });
 
-    renderWithProviders(<InstanceSwitcher />);
+    renderInstanceSwitcher();
 
     const logo = screen.getByTestId("instance-quick-inst-1").querySelector("img");
     expect(logo).toHaveAttribute("src", "https://chat.example.com/user_avatars/1/realm/icon.png");
@@ -265,7 +326,7 @@ describe("InstanceSwitcher", () => {
       unreadCountsByInstance: {},
     });
 
-    renderWithProviders(<InstanceSwitcher />);
+    renderInstanceSwitcher();
 
     const firstButton = screen.getByTestId("instance-quick-inst-1");
     const secondButton = screen.getByTestId("instance-quick-inst-2");
@@ -297,7 +358,7 @@ describe("InstanceSwitcher", () => {
       unreadCountsByInstance: {},
     });
 
-    renderWithProviders(<InstanceSwitcher />);
+    renderInstanceSwitcher();
 
     const logo = screen.getByTestId("instance-quick-inst-1").querySelector("img");
     expect(logo).toHaveAttribute("src", "https://cdn.example.com/broken-logo.svg");
@@ -320,7 +381,7 @@ describe("InstanceSwitcher", () => {
       unreadCountsByInstance: {},
     });
 
-    const { container } = renderWithProviders(<InstanceSwitcher />);
+    const { container } = renderInstanceSwitcher();
     const quickButtons = Array.from(
       container.querySelectorAll<HTMLElement>('[data-testid^="instance-quick-"]'),
     );
@@ -341,7 +402,7 @@ describe("InstanceSwitcher", () => {
       unreadCountsByInstance: {},
     });
 
-    const { container } = renderWithProviders(<InstanceSwitcher />);
+    const { container } = renderInstanceSwitcher();
     fireEvent.click(screen.getByRole("button", { name: "c.example.com" }));
 
     const quickIds = Array.from(
@@ -363,7 +424,7 @@ describe("InstanceSwitcher", () => {
       unreadCountsByInstance: {},
     });
 
-    const { container } = renderWithProviders(<InstanceSwitcher />);
+    const { container } = renderInstanceSwitcher();
     fireEvent.pointerDown(screen.getByRole("button", { name: /select zulip server/i }), {
       button: 0,
       ctrlKey: false,
@@ -387,7 +448,7 @@ describe("InstanceSwitcher", () => {
       unreadCountsByInstance: { "inst-1": 1, "inst-2": 0 },
     });
 
-    renderWithProviders(<InstanceSwitcher />);
+    renderInstanceSwitcher();
 
     const activeButton = screen.getByRole("button", { name: /current server: a.example.com/i });
     expect(activeButton).toHaveClass("h-9");
@@ -412,7 +473,7 @@ describe("InstanceSwitcher", () => {
       unreadCountsByInstance: { "inst-1": 2, "inst-2": 0 },
     });
 
-    renderWithProviders(<InstanceSwitcher />);
+    renderInstanceSwitcher();
     fireEvent.pointerDown(screen.getByRole("button", { name: /select zulip server/i }), {
       button: 0,
       ctrlKey: false,
@@ -432,7 +493,7 @@ describe("InstanceSwitcher", () => {
       unreadCountsByInstance: { "inst-1": 0, "inst-2": 0 },
     });
 
-    renderWithProviders(<InstanceSwitcher />);
+    renderInstanceSwitcher();
     fireEvent.pointerDown(screen.getByRole("button", { name: /select zulip server/i }), {
       button: 0,
       ctrlKey: false,
