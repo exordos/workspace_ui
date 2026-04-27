@@ -26,6 +26,7 @@ const fetchVersionCatalogMock = vi.hoisted(() => vi.fn());
 const useAppUpdateMock = vi.hoisted(() => vi.fn());
 const navigateMock = vi.hoisted(() => vi.fn());
 const statusEmojiPickerMock = vi.hoisted(() => vi.fn());
+const fetchRealmEmojisMock = vi.hoisted(() => vi.fn());
 
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual<typeof ReactRouterDom>("react-router-dom");
@@ -40,10 +41,19 @@ vi.mock("~/shared/lib/updater", () => ({
   useAppUpdate: useAppUpdateMock,
 }));
 
+vi.mock("~/shared/api/zulip", async () => {
+  const actual = await vi.importActual("~/shared/api/zulip");
+  return {
+    ...actual,
+    fetchRealmEmojis: (...args: unknown[]) => fetchRealmEmojisMock(...args),
+  };
+});
+
 vi.mock("emoji-picker-react", () => ({
   default: (props: {
     onEmojiClick?: (data: { emoji: string; names?: string[] }) => void;
     className?: string;
+    customEmojis?: unknown[];
   }) => {
     statusEmojiPickerMock(props);
     return (
@@ -101,6 +111,8 @@ describe("RightPanel truthfulness", () => {
     useAppUpdateMock.mockReset();
     navigateMock.mockReset();
     statusEmojiPickerMock.mockReset();
+    fetchRealmEmojisMock.mockReset();
+    fetchRealmEmojisMock.mockResolvedValue([]);
     act(() => {
       setLocale("en");
     });
@@ -229,13 +241,29 @@ describe("RightPanel truthfulness", () => {
     expect(within(statusDialog).getByRole("checkbox", { name: /away/i })).toBeInTheDocument();
   });
 
-  it("lets users pick any emoji in status dialog", () => {
+  it("lets users pick any emoji in status dialog", async () => {
+    const realmEmoji = {
+      id: "42",
+      names: ["party_parrot"],
+      imgUrl: "https://chat.example.test/user_avatars/realm/42.png",
+    };
+    fetchRealmEmojisMock.mockResolvedValue([realmEmoji]);
+
     renderWithProviders(<RightPanel mode="user-menu" title="Profile" />);
 
     fireEvent.click(screen.getByRole("button", { name: /^status/i }));
 
     const statusDialog = screen.getByRole("dialog", { name: /^status$/i });
     fireEvent.click(within(statusDialog).getByRole("button", { name: /choose emoji/i }));
+    await waitFor(() => {
+      expect(fetchRealmEmojisMock).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      const props = statusEmojiPickerMock.mock.calls.at(-1)?.[0] as
+        | { customEmojis?: unknown[] }
+        | undefined;
+      expect(props?.customEmojis).toEqual([realmEmoji]);
+    });
     fireEvent.click(within(statusDialog).getByRole("button", { name: /pick status emoji/i }));
 
     expect(within(statusDialog).getByText("🧪")).toBeInTheDocument();

@@ -18,6 +18,9 @@ export const MessageListSenderGroup = React.memo<MessageListSenderGroupProps>(
     selectedMessageIds,
     focusedMessageId,
     mediaGallery,
+    customEmojis,
+    onEmojiPickerOpen,
+    resolveCustomEmojiImageUrl,
   }) {
     const user = useUsersStore((s) => s.getUser(messages[0]!.sender_id));
     const trimmedUserName = user?.full_name?.trim();
@@ -76,6 +79,9 @@ export const MessageListSenderGroup = React.memo<MessageListSenderGroupProps>(
                 isSelected={selectedMessageIds?.has(m.id)}
                 isFocused={focusedMessageId === m.id}
                 mediaGallery={mediaGallery}
+                customEmojis={customEmojis}
+                onEmojiPickerOpen={onEmojiPickerOpen}
+                resolveCustomEmojiImageUrl={resolveCustomEmojiImageUrl}
               />
             ))}
           </div>

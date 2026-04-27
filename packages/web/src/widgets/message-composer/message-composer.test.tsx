@@ -14,6 +14,7 @@ const renderMessageContentMock = vi.hoisted(() => vi.fn());
 const fetchSavedSnippetsMock = vi.hoisted(() => vi.fn());
 const createSavedSnippetMock = vi.hoisted(() => vi.fn());
 const emojiPickerMock = vi.hoisted(() => vi.fn());
+const fetchRealmEmojisMock = vi.hoisted(() => vi.fn());
 
 vi.mock("~/shared/lib/webview", async () => {
   const actual = await vi.importActual("~/shared/lib/webview");
@@ -40,6 +41,14 @@ vi.mock("~/shared/api/zulip-messages", async () => {
     renderMessageContent: (...args: unknown[]) => renderMessageContentMock(...args),
     fetchSavedSnippets: (...args: unknown[]) => fetchSavedSnippetsMock(...args),
     createSavedSnippet: (...args: unknown[]) => createSavedSnippetMock(...args),
+  };
+});
+
+vi.mock("~/shared/api/zulip", async () => {
+  const actual = await vi.importActual("~/shared/api/zulip");
+  return {
+    ...actual,
+    fetchRealmEmojis: (...args: unknown[]) => fetchRealmEmojisMock(...args),
   };
 });
 
@@ -100,6 +109,8 @@ afterEach(() => {
   createSavedSnippetMock.mockReset();
   createSavedSnippetMock.mockResolvedValue(1);
   emojiPickerMock.mockReset();
+  fetchRealmEmojisMock.mockReset();
+  fetchRealmEmojisMock.mockResolvedValue([]);
 });
 
 describe("MessageComposer async send behavior", () => {
@@ -1066,6 +1077,29 @@ describe("MessageComposer emoji picker behavior", () => {
     const props = emojiPickerMock.mock.calls.at(-1)?.[0] as { className?: string } | undefined;
     expect(props?.className).toContain("composer-emoji-picker");
   });
+
+  it("loads and passes realm custom emojis to composer emoji picker", async () => {
+    const realmEmoji = {
+      id: "9001",
+      names: ["party_parrot"],
+      imgUrl: "https://chat.example.test/user_avatars/realm/9001.png",
+    };
+    fetchRealmEmojisMock.mockResolvedValue([realmEmoji]);
+
+    renderWithProviders(<MessageComposer onSend={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /emoji/i }));
+
+    await waitFor(() => {
+      expect(fetchRealmEmojisMock).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      const props = emojiPickerMock.mock.calls.at(-1)?.[0] as
+        | { customEmojis?: unknown[] }
+        | undefined;
+      expect(props?.customEmojis).toEqual([realmEmoji]);
+    });
+  });
 });
 
 describe("MessageComposer WebView keyboard adaptation", () => {
@@ -1227,7 +1261,7 @@ describe("MessageComposer AI context wiring", () => {
     expect(stickersTab).toBeDefined();
     expect(emojiTab).toHaveAttribute("aria-selected", "true");
 
-    fireEvent.click(stickersTab!);
+    fireEvent.click(stickersTab);
 
     expect(stickersTab).toHaveAttribute("aria-selected", "true");
     expect(within(picker).getByTestId("sticker-picker-mock")).toBeInTheDocument();

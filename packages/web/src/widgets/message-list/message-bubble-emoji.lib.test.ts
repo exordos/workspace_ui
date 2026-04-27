@@ -1,5 +1,9 @@
+import { SkinTones } from "emoji-picker-react";
 import { describe, expect, it } from "vitest";
-import { isOneToOneDirectMessage } from "./message-bubble-emoji.lib";
+import {
+  isOneToOneDirectMessage,
+  reactionPayloadFromEmojiClickData,
+} from "./message-bubble-emoji.lib";
 
 describe("isOneToOneDirectMessage", () => {
   it("returns false for stream messages", () => {
@@ -66,5 +70,44 @@ describe("isOneToOneDirectMessage", () => {
         timestamp: 0,
       }),
     ).toBe(false);
+  });
+});
+
+describe("reactionPayloadFromEmojiClickData", () => {
+  it("maps unicode emoji click payload", () => {
+    const payload = reactionPayloadFromEmojiClickData({
+      activeSkinTone: SkinTones.NEUTRAL,
+      unified: "1f44d",
+      unifiedWithoutSkinTone: "1f44d",
+      emoji: "👍",
+      names: ["thumbs_up"],
+      imageUrl: "https://example.com/thumbs_up.png",
+      getImageUrl: () => "https://example.com/thumbs_up.png",
+      isCustom: false,
+    });
+    expect(payload).toEqual({
+      emojiName: "thumbs_up",
+      reactionType: "unicode_emoji",
+      emojiCode: "1f44d",
+    });
+  });
+
+  it("maps custom emoji click payload", () => {
+    const payload = reactionPayloadFromEmojiClickData({
+      activeSkinTone: SkinTones.NEUTRAL,
+      unified: "43",
+      unifiedWithoutSkinTone: "43",
+      emoji: "43",
+      names: ["party_node"],
+      imageUrl: "https://cdn.example.com/party_node.png",
+      getImageUrl: () => "https://cdn.example.com/party_node.png",
+      isCustom: true,
+    });
+    expect(payload).toEqual({
+      emojiName: "party_node",
+      reactionType: "realm_emoji",
+      emojiCode: "43",
+      imageUrl: "https://cdn.example.com/party_node.png",
+    });
   });
 });

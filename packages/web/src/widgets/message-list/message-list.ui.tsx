@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback } from "react";
 import { t } from "~/i18n/i18n";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import { fetchRealmEmojis } from "~/shared/api/zulip";
+import type { MockMessage, Reaction, RealmEmoji } from "~/shared/api/zulip.types";
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
 import { createLogger } from "~/shared/lib/logger";
 import { normalizeStreamTopicForMessageCache } from "~/shared/lib/message-cache-keys.lib";
@@ -17,6 +18,7 @@ import type { MessageListProps } from "./message-list.types";
 
 const SCROLL_AT_BOTTOM_THRESHOLD = 80;
 const FOCUSED_MESSAGE_HIGHLIGHT_DURATION_MS = 6_000;
+const EMPTY_REALM_EMOJIS: RealmEmoji[] = [];
 
 function getDateKey(ts: number): string {
   const d = new Date(ts * 1000);
@@ -105,6 +107,68 @@ export const MessageList: React.FC<MessageListProps> = ({
     focusedMessageId,
   );
   const [isAtBottom, setIsAtBottom] = useState(true);
+  const [customEmojis, setCustomEmojis] = useState<RealmEmoji[]>(EMPTY_REALM_EMOJIS);
+  const customEmojisRequestedRef = useRef(false);
+  const customEmojisLoadingRef = useRef(false);
+
+  const ensureCustomEmojisLoaded = useCallback(() => {
+    if (customEmojisRequestedRef.current || customEmojisLoadingRef.current) {
+      return;
+    }
+    customEmojisRequestedRef.current = true;
+    customEmojisLoadingRef.current = true;
+    void fetchRealmEmojis()
+      .then((list) => {
+        if (list.length > 0) {
+          setCustomEmojis(list);
+        }
+      })
+      .catch(() => {
+        messageListLog.warn("Failed to load realm custom emojis for reaction picker");
+      })
+      .finally(() => {
+        customEmojisLoadingRef.current = false;
+      });
+  }, []);
+
+  const customEmojiById = useMemo(() => {
+    const map = new Map<string, RealmEmoji>();
+    for (const emoji of customEmojis) {
+      const id = emoji.id.trim();
+      if (id.length > 0) {
+        map.set(id, emoji);
+      }
+    }
+    return map;
+  }, [customEmojis]);
+
+  const customEmojiByName = useMemo(() => {
+    const map = new Map<string, RealmEmoji>();
+    for (const emoji of customEmojis) {
+      for (const name of emoji.names) {
+        const normalized = name.trim().toLowerCase();
+        if (normalized.length > 0) {
+          map.set(normalized, emoji);
+        }
+      }
+    }
+    return map;
+  }, [customEmojis]);
+
+  const resolveCustomEmojiImageUrl = useCallback(
+    (reaction: Reaction): string | undefined => {
+      if (reaction.reaction_type !== "realm_emoji") {
+        return undefined;
+      }
+      const byCode = customEmojiById.get(reaction.emoji_code.trim());
+      if (byCode != null) {
+        return byCode.imgUrl;
+      }
+      const byName = customEmojiByName.get(reaction.emoji_name.trim().toLowerCase());
+      return byName?.imgUrl;
+    },
+    [customEmojiById, customEmojiByName],
+  );
 
   const scheduleFlashFocusedMessageId = useCallback((nextFocusedMessageId: number | null) => {
     if (focusedHighlightFrameRef.current != null) {
@@ -477,6 +541,9 @@ export const MessageList: React.FC<MessageListProps> = ({
                           isSelected={selectedMessageIds?.has(m.id)}
                           isFocused={flashFocusedMessageId === m.id}
                           mediaGallery={mediaGallery}
+                          customEmojis={customEmojis}
+                          onEmojiPickerOpen={ensureCustomEmojisLoaded}
+                          resolveCustomEmojiImageUrl={resolveCustomEmojiImageUrl}
                         />
                       ))}
                     </React.Fragment>
@@ -505,6 +572,9 @@ export const MessageList: React.FC<MessageListProps> = ({
                       selectedMessageIds={selectedMessageIds}
                       focusedMessageId={flashFocusedMessageId}
                       mediaGallery={mediaGallery}
+                      customEmojis={customEmojis}
+                      onEmojiPickerOpen={ensureCustomEmojisLoaded}
+                      resolveCustomEmojiImageUrl={resolveCustomEmojiImageUrl}
                     />
                   </React.Fragment>
                 );

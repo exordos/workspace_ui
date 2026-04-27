@@ -5,7 +5,7 @@ import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
 import { t } from "~/i18n/i18n";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MessageReactionPayload, MockMessage } from "~/shared/api/zulip.types";
 import { buildAuthHeader } from "~/shared/lib/auth-guard";
 import { formatMessageTime, getPresenceState } from "~/shared/lib/format";
 import { getJitsiMeetingUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
@@ -33,7 +33,7 @@ import {
   type ContextItemLabel,
 } from "./message-bubble-context.lib";
 import { resolveOwnMessageDeliveryStatus } from "./message-bubble-delivery.lib";
-import { groupReactions } from "./message-bubble-emoji.lib";
+import { groupReactions, reactionPayloadFromEmojiClickData } from "./message-bubble-emoji.lib";
 import { MessageBubbleJitsiCard } from "./message-bubble-jitsi-card.ui";
 import { MessageBubbleOwnDeliveryIndicator } from "./message-bubble-own-delivery-indicator.ui";
 import { MessageBubbleReactionsRow } from "./message-bubble-reactions-row.ui";
@@ -61,6 +61,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     isSelected = false,
     isFocused = false,
     mediaGallery,
+    customEmojis,
+    onEmojiPickerOpen,
+    resolveCustomEmojiImageUrl,
     callbacks,
   }) => {
     const [open, setOpen] = useState(false);
@@ -109,8 +112,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     }, []);
     const time = formatMessageTime(message.timestamp);
     const reactionGroups = useMemo(
-      () => (message.reactions?.length ? groupReactions(message.reactions) : []),
-      [message.reactions],
+      () =>
+        message.reactions?.length
+          ? groupReactions(message.reactions, resolveCustomEmojiImageUrl)
+          : [],
+      [message.reactions, resolveCustomEmojiImageUrl],
     );
     const resolveReactionAuthorLabel = useCallback(
       (userId: number): string => {
@@ -348,16 +354,42 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       setOpen(nextOpen);
     }, []);
 
-    const handleReaction = (emojiName: string) => {
-      callbacks?.onAddReaction?.(message.id, emojiName);
-      setEmojiPickerOpen(false);
-      setOpen(false);
-    };
+    const handleReaction = useCallback(
+      (payload: MessageReactionPayload) => {
+        callbacks?.onAddReaction?.(message.id, payload);
+        setEmojiPickerOpen(false);
+        setOpen(false);
+      },
+      [callbacks, message.id],
+    );
+
+    const handleQuickReaction = useCallback(
+      (emojiName: string) => {
+        handleReaction({
+          emojiName,
+          reactionType: "unicode_emoji",
+        });
+      },
+      [handleReaction],
+    );
 
     const handleEmojiPick = (data: EmojiClickData) => {
-      const name = data.names?.[0] ?? data.emoji ?? "smile";
-      handleReaction(name);
+      const payload = reactionPayloadFromEmojiClickData(data);
+      if (payload == null) {
+        return;
+      }
+      handleReaction(payload);
     };
+
+    const handleEmojiPickerOpenChange = useCallback(
+      (nextOpen: boolean) => {
+        if (nextOpen) {
+          onEmojiPickerOpen?.();
+        }
+        setEmojiPickerOpen(nextOpen);
+      },
+      [onEmojiPickerOpen],
+    );
 
     const handleMessageBodyClick = useCallback(
       (event: MouseEvent) => {
@@ -539,11 +571,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
         onOpenChange={handleContextMenuOpenChange}
         isOwn={isOwn}
         emojiPickerOpen={emojiPickerOpen}
-        onEmojiPickerOpenChange={setEmojiPickerOpen}
+        onEmojiPickerOpenChange={handleEmojiPickerOpenChange}
         visibleContextSections={visibleContextSections}
         onMenuItem={handleMenuAction}
-        onQuickReaction={handleReaction}
+        onQuickReaction={handleQuickReaction}
         onEmojiPick={handleEmojiPick}
+        customEmojis={customEmojis}
       />
     );
 

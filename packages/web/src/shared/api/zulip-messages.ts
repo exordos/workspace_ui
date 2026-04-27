@@ -28,6 +28,7 @@ import type {
   ActivityFilter,
   ActivityMessagesPageResult,
   CreateSavedSnippetParams,
+  ReactionType,
   MockMessage,
   MessagesPageResult,
   RawMessageToMockInput,
@@ -523,14 +524,20 @@ export async function deleteMessage(messageId: number): Promise<void> {
 export async function addReaction(
   messageId: number,
   emojiName: string,
-  reactionType: "unicode_emoji" | "realm_emoji" | "zulip_extra_emoji" = "unicode_emoji",
+  options?: ReactionType | { emojiCode?: string; reactionType?: ReactionType },
 ): Promise<void> {
   guard.messageId(messageId, "addReaction");
   const normalizedEmojiName = guard.nonEmpty(emojiName, "addReaction.emojiName");
+  const normalizedOptions =
+    typeof options === "string" ? { reactionType: options } : (options ?? undefined);
+  const reactionType = normalizedOptions?.reactionType ?? "unicode_emoji";
   const body: Record<string, string> = {
     emoji_name: normalizedEmojiName,
     reaction_type: reactionType,
   };
+  if (normalizedOptions?.emojiCode) {
+    body.emoji_code = normalizedOptions.emojiCode;
+  }
   const res = await zulipPipelinePost(`messages/${messageId}/reactions`, body);
   if (!res.ok) {
     const data = res.data as { msg?: string; code?: string };
@@ -543,7 +550,7 @@ export async function addReaction(
 export async function removeReaction(
   messageId: number,
   emojiName: string,
-  options?: { emojiCode?: string; reactionType?: string },
+  options?: { emojiCode?: string; reactionType?: ReactionType },
 ): Promise<void> {
   guard.messageId(messageId, "removeReaction");
   const normalizedEmojiName = guard.nonEmpty(emojiName, "removeReaction.emojiName");

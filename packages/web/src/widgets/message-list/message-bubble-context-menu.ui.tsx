@@ -1,9 +1,9 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import EmojiPicker, { type EmojiClickData, Theme } from "emoji-picker-react";
+import EmojiPicker, { Theme } from "emoji-picker-react";
 import React from "react";
 import { t } from "~/i18n/i18n";
 import { Icon } from "~/shared/ui/icon";
-import { CONTEXT_ITEMS_BY_LABEL, type ContextItemLabel } from "./message-bubble-context.lib";
+import { CONTEXT_ITEMS_BY_LABEL } from "./message-bubble-context.lib";
 import { EMOJI_NAME_TO_CHAR, QUICK_REACTIONS } from "./message-bubble-emoji.lib";
 import type { MessageBubbleContextMenuProps } from "./message-bubble-context-menu.types";
 
@@ -17,6 +17,7 @@ export const MessageBubbleContextMenu = React.memo(function MessageBubbleContext
   onMenuItem,
   onQuickReaction,
   onEmojiPick,
+  customEmojis,
 }: MessageBubbleContextMenuProps) {
   return (
     <DropdownMenu.Root open={open} onOpenChange={onOpenChange}>
@@ -74,8 +75,11 @@ export const MessageBubbleContextMenu = React.memo(function MessageBubbleContext
                   <div className="absolute left-0 top-full z-dropdown mt-1 overflow-hidden rounded-xl border border-border-subtle bg-bg-elevated shadow-xl">
                     <EmojiPicker
                       onEmojiClick={onEmojiPick}
+                      customEmojis={customEmojis}
                       theme={
-                        document.documentElement.dataset.theme === "light" ? Theme.LIGHT : Theme.DARK
+                        document.documentElement.dataset.theme === "light"
+                          ? Theme.LIGHT
+                          : Theme.DARK
                       }
                       width={320}
                       height={360}

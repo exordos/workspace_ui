@@ -21,6 +21,8 @@ import {
   selectPalette,
 } from "~/features/theme-picker/theme-picker.model";
 import { useTranslation } from "~/i18n/i18n";
+import { fetchRealmEmojis } from "~/shared/api/zulip";
+import type { RealmEmoji } from "~/shared/api/zulip.types";
 import { IS_CONNECTION_DIAGNOSTICS_ENABLED } from "~/shared/config/constants";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { clearLocalStatePreservingCriticalKeys } from "~/shared/lib/local-reset";
@@ -50,6 +52,7 @@ import { RightPanelUserMenuStatusDialog } from "./right-panel-user-menu-status-d
 import type { RightPanelUserMenuProps } from "./right-panel-user-menu.types";
 
 const log = createLogger("right-panel-user-menu");
+const EMPTY_REALM_EMOJIS: RealmEmoji[] = [];
 
 export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   heading,
@@ -97,6 +100,9 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   const [statusEmojiCodeDraft, setStatusEmojiCodeDraft] = useState<string>("");
   const [statusEmojiPickerOpen, setStatusEmojiPickerOpen] = useState(false);
   const [statusSubmitting, setStatusSubmitting] = useState(false);
+  const [customEmojis, setCustomEmojis] = useState<RealmEmoji[]>(EMPTY_REALM_EMOJIS);
+  const customEmojisLoadedRef = React.useRef(false);
+  const customEmojisLoadingRef = React.useRef(false);
   const panelHeading = heading?.trim() ?? "";
   const currentLocaleName =
     locales.find((supportedLocale) => supportedLocale.id === currentLocale)?.nativeLabel ??
@@ -133,6 +139,24 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
     [currentThemeMode],
   );
 
+  const ensureCustomEmojisLoaded = useCallback(() => {
+    if (customEmojisLoadedRef.current || customEmojisLoadingRef.current) {
+      return;
+    }
+    customEmojisLoadingRef.current = true;
+    void fetchRealmEmojis()
+      .then((list) => {
+        setCustomEmojis(list.length > 0 ? list : EMPTY_REALM_EMOJIS);
+        customEmojisLoadedRef.current = true;
+      })
+      .catch(() => {
+        log.warn("Failed to load realm custom emojis for status picker");
+      })
+      .finally(() => {
+        customEmojisLoadingRef.current = false;
+      });
+  }, []);
+
   const closeDrawer = useCallback(() => {
     rightDrawer?.setOpen(false);
   }, [rightDrawer]);
@@ -162,6 +186,16 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
     setStatusEmojiCodeDraft("");
     setStatusEmojiPickerOpen(false);
   }, []);
+
+  const toggleStatusEmojiPicker = useCallback(() => {
+    setStatusEmojiPickerOpen((prevOpen) => {
+      const nextOpen = !prevOpen;
+      if (nextOpen) {
+        ensureCustomEmojisLoaded();
+      }
+      return nextOpen;
+    });
+  }, [ensureCustomEmojisLoaded]);
 
   const handleSaveStatus = useCallback(async () => {
     if (currentUserId == null) {
@@ -287,8 +321,17 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
 
   const handleStatusEmojiPick = useCallback((data: EmojiClickData) => {
     const emojiName = normalizeStatusEmojiName(data.names?.[0] ?? "");
+    if (!emojiName) {
+      return;
+    }
+    if (data.isCustom) {
+      setStatusEmojiNameDraft(emojiName);
+      setStatusEmojiCodeDraft("");
+      setStatusEmojiPickerOpen(false);
+      return;
+    }
     const emojiCode = encodeEmojiToCode(data.emoji ?? "");
-    if (!emojiName || !emojiCode) {
+    if (!emojiCode) {
       return;
     }
     setStatusEmojiNameDraft(emojiName);
@@ -614,6 +657,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
         }}
         closeStatusDialog={closeStatusDialog}
         statusEmojiPickerOpen={statusEmojiPickerOpen}
+        onStatusEmojiPickerToggle={toggleStatusEmojiPicker}
         setStatusEmojiPickerOpen={setStatusEmojiPickerOpen}
         statusEmojiNameDraft={statusEmojiNameDraft}
         setStatusEmojiNameDraft={setStatusEmojiNameDraft}
@@ -626,6 +670,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
         statusSubmitting={statusSubmitting}
         selectedStatusEmoji={selectedStatusEmoji}
         statusEmojiPickerTheme={statusEmojiPickerTheme}
+        customEmojis={customEmojis}
         t={t}
         handleStatusEmojiPick={handleStatusEmojiPick}
         clearStatusDraft={clearStatusDraft}
