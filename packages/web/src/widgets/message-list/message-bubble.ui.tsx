@@ -64,6 +64,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     customEmojis,
     onEmojiPickerOpen,
     resolveCustomEmojiImageUrl,
+    resolveCustomEmojiShortcodeImageUrl,
     callbacks,
   }) => {
     const [open, setOpen] = useState(false);
@@ -130,12 +131,13 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     const { safeMessageHtml, displayHtmlForJitsi } = useMemo(() => {
       const rawHtml = messageBodyToUnsanitizedDisplayHtml(message.content, {
         resolveUserMention,
+        resolveCustomEmojiShortcodeImageUrl,
       });
       return {
         safeMessageHtml: prepareProtectedMessageHtml(rawHtml, imagesBase),
         displayHtmlForJitsi: rawHtml,
       };
-    }, [message.content, imagesBase, resolveUserMention]);
+    }, [message.content, imagesBase, resolveUserMention, resolveCustomEmojiShortcodeImageUrl]);
 
     const messageBodyRef = useRef<HTMLDivElement>(null);
     const groupedContainerRef = useRef<HTMLDivElement>(null);
@@ -402,9 +404,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
               : null;
         if (hit == null) return;
         if (hit.tagName === "IMG") {
+          const image = hit as HTMLImageElement;
+          if (image.classList.contains("message-inline-emoji")) {
+            return;
+          }
           event.preventDefault();
           event.stopPropagation();
-          const image = hit as HTMLImageElement;
           const src = image.currentSrc || image.src;
           if (src) {
             if (src.startsWith("blob:")) {

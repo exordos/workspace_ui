@@ -1,7 +1,8 @@
-import { render } from "@testing-library/react";
+import { fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useCallParticipantsStore } from "~/entities/call/call.model";
 import { useUsersStore } from "~/entities/user/user.model";
+import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { createUser } from "~/test/factories";
 import { MessageBubble } from "./message-bubble.ui";
@@ -77,5 +78,45 @@ describe("MessageBubble markdown body", () => {
     expect(body?.className).toContain("[&_pre]:[overflow-wrap:anywhere]");
     expect(body?.className).toContain("min-w-0");
     expect(body?.querySelector("pre")?.textContent).toBe(longToken);
+  });
+
+  it("renders custom shortcode emoji as inline image with alt/title", () => {
+    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+
+    const { container } = render(
+      <MessageBubble
+        message={createMessage({ content: "Hi :party_parrot:" })}
+        isOwn={false}
+        resolveCustomEmojiShortcodeImageUrl={(shortcode) =>
+          shortcode === "party_parrot" ? "https://cdn.example.com/parrot.png" : undefined
+        }
+      />,
+    );
+
+    const emojiImage = container.querySelector("img.message-inline-emoji");
+    expect(emojiImage).toBeTruthy();
+    expect(emojiImage).toHaveAttribute("src", "https://cdn.example.com/parrot.png");
+    expect(emojiImage).toHaveAttribute("alt", ":party_parrot:");
+    expect(emojiImage).toHaveAttribute("title", ":party_parrot:");
+  });
+
+  it("does not open media viewer when clicking inline custom emoji", () => {
+    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+    const mediaViewerOpenSpy = vi.spyOn(useMediaViewerStore.getState(), "open");
+
+    const { container } = render(
+      <MessageBubble
+        message={createMessage({ content: "Hi :party_parrot:" })}
+        isOwn={false}
+        resolveCustomEmojiShortcodeImageUrl={(shortcode) =>
+          shortcode === "party_parrot" ? "https://cdn.example.com/parrot.png" : undefined
+        }
+      />,
+    );
+
+    const emojiImage = container.querySelector("img.message-inline-emoji");
+    expect(emojiImage).toBeTruthy();
+    fireEvent.click(emojiImage as HTMLImageElement);
+    expect(mediaViewerOpenSpy).not.toHaveBeenCalled();
   });
 });

@@ -1986,7 +1986,7 @@ export async function fetchMessages(
     "newest",
     ZULIP_STREAM_CHAT_NUM_BEFORE,
     ZULIP_STREAM_CHAT_NUM_AFTER,
-    { ...options, applyMarkdown: true },
+    { ...options, applyMarkdown: false },
   );
   return page.messages;
 }

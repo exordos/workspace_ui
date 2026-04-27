@@ -7,6 +7,16 @@ import type { MockMessage } from "~/shared/api/zulip.types";
 import { createUser } from "~/test/factories";
 import { MessageList } from "./message-list.ui";
 
+const fetchRealmEmojisMock = vi.hoisted(() => vi.fn());
+
+vi.mock("~/shared/api/zulip", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("~/shared/api/zulip")>();
+  return {
+    ...actual,
+    fetchRealmEmojis: (...args: unknown[]) => fetchRealmEmojisMock(...args),
+  };
+});
+
 function msg(id: number, overrides: Partial<MockMessage> = {}): MockMessage {
   return {
     id,
@@ -52,6 +62,8 @@ describe("MessageList focused message behavior", () => {
     scrollTargets.length = 0;
     scrollIntoView.mockReset();
     intersectionCallback = null;
+    fetchRealmEmojisMock.mockReset();
+    fetchRealmEmojisMock.mockResolvedValue([]);
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
       value: scrollIntoView,
@@ -262,6 +274,55 @@ describe("MessageList focused message behavior", () => {
     fireEvent.click(screen.getByText("@Bob"));
     expect(await screen.findByRole("dialog", { name: /user mention/i })).toBeInTheDocument();
     expect(onOpenDirectMessage).not.toHaveBeenCalled();
+  });
+
+  it("loads realm custom emojis once when markdown shortcode is present", async () => {
+    const { rerender } = render(
+      <MessageList
+        messages={[
+          msg(1, {
+            content: "Hi :party_parrot:",
+          }),
+        ]}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(fetchRealmEmojisMock).toHaveBeenCalledTimes(1);
+    });
+
+    rerender(
+      <MessageList
+        messages={[
+          msg(1, {
+            content: "Hi :party_parrot:",
+          }),
+          msg(2, {
+            content: "Still :party_parrot:",
+          }),
+        ]}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(fetchRealmEmojisMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("does not load realm custom emojis when no shortcode is present", async () => {
+    render(
+      <MessageList
+        messages={[
+          msg(1, {
+            content: "Hi there without emoji codes",
+          }),
+        ]}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(fetchRealmEmojisMock).not.toHaveBeenCalled();
+    });
   });
 
   it("uses large avatar size for grouped sender blocks", () => {

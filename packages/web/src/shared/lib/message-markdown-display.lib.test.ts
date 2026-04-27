@@ -66,6 +66,46 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
     expect(html).toContain(">@Doublek<");
     expect(html).not.toContain("**");
   });
+
+  it("renders unicode emoji from shortcode", () => {
+    const html = messageBodyToUnsanitizedDisplayHtml("Hi :smile:");
+    expect(html).toContain("😄");
+    expect(html).not.toContain(":smile:");
+  });
+
+  it("renders custom emoji shortcode as inline image when resolver returns URL", () => {
+    const html = messageBodyToUnsanitizedDisplayHtml("Hi :party_parrot:", {
+      resolveCustomEmojiShortcodeImageUrl: (shortcode) =>
+        shortcode === "party_parrot" ? "https://cdn.example.com/parrot.png" : undefined,
+    });
+    expect(html).toContain('class="message-inline-emoji"');
+    expect(html).toContain('src="https://cdn.example.com/parrot.png"');
+    expect(html).toContain('alt=":party_parrot:"');
+    expect(html).toContain('title=":party_parrot:"');
+  });
+
+  it("leaves unknown emoji shortcode as plain text", () => {
+    const html = messageBodyToUnsanitizedDisplayHtml("Hi :definitely_unknown_shortcode:");
+    expect(html).toContain(":definitely_unknown_shortcode:");
+  });
+
+  it("does not replace shortcode inside inline code or fenced code", () => {
+    const html = messageBodyToUnsanitizedDisplayHtml(
+      "Inline `:smile:` and block:\n```txt\n:smile:\n```\nOutside :smile:",
+    );
+    expect(html).toContain("<code>:smile:</code>");
+    expect(html).toMatch(/<pre><code[^>]*>:smile:\n<\/code><\/pre>/);
+    expect(html).toContain("Outside 😄");
+  });
+
+  it("renders mentions and emoji shortcodes together", () => {
+    const html = messageBodyToUnsanitizedDisplayHtml("Hello @**Octane** :smile:", {
+      resolveUserMention: (name) => (name === "Octane" ? 99 : null),
+    });
+    expect(html).toContain('class="user-mention"');
+    expect(html).toContain('data-user-id="99"');
+    expect(html).toContain("😄");
+  });
 });
 
 describe("plainTextPreviewFromMessageBody", () => {

@@ -126,6 +126,19 @@ body {
   margin: 4px 0;
 }
 
+.message-body img.message-inline-emoji {
+  display: inline-block;
+  width: 1.1em;
+  height: 1.1em;
+  max-width: none;
+  max-height: none;
+  margin: 0 0.08em;
+  border-radius: 0;
+  vertical-align: -0.15em;
+  object-fit: contain;
+  pointer-events: none;
+}
+
 /* ── Превью ссылок Zulip ──────────────────────────────── */
 
 .message-body .message_embed {

@@ -53,5 +53,6 @@ export interface MessageBubbleProps {
   customEmojis?: RealmEmoji[];
   onEmojiPickerOpen?: () => void;
   resolveCustomEmojiImageUrl?: (reaction: Reaction) => string | undefined;
+  resolveCustomEmojiShortcodeImageUrl?: (shortcode: string) => string | undefined;
   callbacks?: MessageBubbleCallbacks;
 }

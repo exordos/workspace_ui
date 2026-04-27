@@ -5,7 +5,12 @@ import type { MockMessage, Reaction, RealmEmoji } from "~/shared/api/zulip.types
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
 import { createLogger } from "~/shared/lib/logger";
 import { normalizeStreamTopicForMessageCache } from "~/shared/lib/message-cache-keys.lib";
+import {
+  containsEmojiShortcode,
+  normalizeEmojiShortcodeName,
+} from "~/shared/lib/message-emoji-shortcodes.lib";
 import { logMessageFlow } from "~/shared/lib/message-flow-debug.lib";
+import { isLikelyRenderedMessageHtml } from "~/shared/lib/message-markdown-display.lib";
 import { scrollToBottom } from "~/shared/lib/scroll-position.lib";
 import { computeScrollTopAfterPrepend } from "~/shared/lib/scroll-prepend-anchor.lib";
 import { FloatingLoadingOverlay } from "~/shared/ui/floating-loading-overlay";
@@ -146,7 +151,7 @@ export const MessageList: React.FC<MessageListProps> = ({
     const map = new Map<string, RealmEmoji>();
     for (const emoji of customEmojis) {
       for (const name of emoji.names) {
-        const normalized = name.trim().toLowerCase();
+        const normalized = normalizeEmojiShortcodeName(name);
         if (normalized.length > 0) {
           map.set(normalized, emoji);
         }
@@ -154,6 +159,24 @@ export const MessageList: React.FC<MessageListProps> = ({
     }
     return map;
   }, [customEmojis]);
+
+  const hasMarkdownEmojiShortcodes = useMemo(
+    () =>
+      messages.some((message) => {
+        const content = message.content.trim();
+        if (content.length === 0) return false;
+        if (isLikelyRenderedMessageHtml(content)) return false;
+        return containsEmojiShortcode(content);
+      }),
+    [messages],
+  );
+
+  useEffect(() => {
+    if (!hasMarkdownEmojiShortcodes) {
+      return;
+    }
+    ensureCustomEmojisLoaded();
+  }, [ensureCustomEmojisLoaded, hasMarkdownEmojiShortcodes]);
 
   const resolveCustomEmojiImageUrl = useCallback(
     (reaction: Reaction): string | undefined => {
@@ -164,10 +187,19 @@ export const MessageList: React.FC<MessageListProps> = ({
       if (byCode != null) {
         return byCode.imgUrl;
       }
-      const byName = customEmojiByName.get(reaction.emoji_name.trim().toLowerCase());
+      const byName = customEmojiByName.get(normalizeEmojiShortcodeName(reaction.emoji_name));
       return byName?.imgUrl;
     },
     [customEmojiById, customEmojiByName],
+  );
+
+  const resolveCustomEmojiShortcodeImageUrl = useCallback(
+    (shortcode: string): string | undefined => {
+      const normalized = normalizeEmojiShortcodeName(shortcode);
+      if (normalized.length === 0) return undefined;
+      return customEmojiByName.get(normalized)?.imgUrl;
+    },
+    [customEmojiByName],
   );
 
   const scheduleFlashFocusedMessageId = useCallback((nextFocusedMessageId: number | null) => {
@@ -544,6 +576,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                           customEmojis={customEmojis}
                           onEmojiPickerOpen={ensureCustomEmojisLoaded}
                           resolveCustomEmojiImageUrl={resolveCustomEmojiImageUrl}
+                          resolveCustomEmojiShortcodeImageUrl={resolveCustomEmojiShortcodeImageUrl}
                         />
                       ))}
                     </React.Fragment>
@@ -575,6 +608,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                       customEmojis={customEmojis}
                       onEmojiPickerOpen={ensureCustomEmojisLoaded}
                       resolveCustomEmojiImageUrl={resolveCustomEmojiImageUrl}
+                      resolveCustomEmojiShortcodeImageUrl={resolveCustomEmojiShortcodeImageUrl}
                     />
                   </React.Fragment>
                 );
