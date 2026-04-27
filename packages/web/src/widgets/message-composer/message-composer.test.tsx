@@ -3,6 +3,7 @@ import { useCallback, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useMentionSuggestStore } from "~/features/mention-suggest/mention-suggest.model";
+import type * as ZulipMessagesApi from "~/shared/api/zulip-messages";
 import { createUser } from "~/test/factories";
 import { renderWithProviders } from "~/test/render";
 import { computeFloatingPickerPosition } from "./message-composer-picker-position.lib";
@@ -33,9 +34,7 @@ vi.mock("~/shared/lib/touch", async () => {
 });
 
 vi.mock("~/shared/api/zulip-messages", async () => {
-  const actual = await vi.importActual<typeof import("~/shared/api/zulip-messages")>(
-    "~/shared/api/zulip-messages",
-  );
+  const actual = await vi.importActual<typeof ZulipMessagesApi>("~/shared/api/zulip-messages");
   return {
     ...actual,
     renderMessageContent: (...args: unknown[]) => renderMessageContentMock(...args),
@@ -53,7 +52,11 @@ vi.mock("~/shared/api/zulip", async () => {
 });
 
 vi.mock("emoji-picker-react", () => ({
-  default: (props: { onEmojiClick?: (data: { emoji: string }) => void; className?: string }) => {
+  default: (props: {
+    onEmojiClick?: (data: { emoji: string }) => void;
+    className?: string;
+    emojiStyle?: string;
+  }) => {
     emojiPickerMock(props);
     return (
       <button
@@ -68,6 +71,9 @@ vi.mock("emoji-picker-react", () => ({
   Theme: {
     LIGHT: "light",
     DARK: "dark",
+  },
+  EmojiStyle: {
+    NATIVE: "native",
   },
 }));
 
@@ -112,6 +118,12 @@ afterEach(() => {
   fetchRealmEmojisMock.mockReset();
   fetchRealmEmojisMock.mockResolvedValue([]);
 });
+
+const focusComposerInput = () => {
+  const textbox = screen.getByRole("textbox");
+  fireEvent.focus(textbox);
+  return textbox;
+};
 
 describe("MessageComposer async send behavior", () => {
   it("clears the composer as soon as send starts, before onSend resolves", async () => {
@@ -449,7 +461,7 @@ describe("MessageComposer mention suggestions", () => {
     const textbox = screen.getByRole("textbox");
     fireEvent.change(textbox, { target: { value: "@zzz", selectionStart: 4 } });
 
-    await screen.findByText("No results found");
+    expect(await screen.findByText("No results found")).toBeInTheDocument();
   });
 
   it("updates mention suggestions as the query changes", async () => {
@@ -735,12 +747,6 @@ describe("MessageComposer preview mode", () => {
 });
 
 describe("MessageComposer mode tabs", () => {
-  const focusComposerInput = () => {
-    const textbox = screen.getByRole("textbox");
-    fireEvent.focus(textbox);
-    return textbox;
-  };
-
   it("animates toolbar row visibility with a subtle transition", () => {
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
@@ -1074,8 +1080,11 @@ describe("MessageComposer emoji picker behavior", () => {
     fireEvent.click(screen.getByRole("button", { name: /emoji/i }));
     await screen.findByRole("button", { name: /pick emoji/i });
 
-    const props = emojiPickerMock.mock.calls.at(-1)?.[0] as { className?: string } | undefined;
+    const props = emojiPickerMock.mock.calls.at(-1)?.[0] as
+      | { className?: string; emojiStyle?: string }
+      | undefined;
     expect(props?.className).toContain("composer-emoji-picker");
+    expect(props?.emojiStyle).toBe("native");
   });
 
   it("loads and passes realm custom emojis to composer emoji picker", async () => {
@@ -1095,9 +1104,10 @@ describe("MessageComposer emoji picker behavior", () => {
     });
     await waitFor(() => {
       const props = emojiPickerMock.mock.calls.at(-1)?.[0] as
-        | { customEmojis?: unknown[] }
+        | { customEmojis?: unknown[]; emojiStyle?: string }
         | undefined;
       expect(props?.customEmojis).toEqual([realmEmoji]);
+      expect(props?.emojiStyle).toBe("native");
     });
   });
 });
@@ -1154,12 +1164,6 @@ describe("computeFloatingPickerPosition", () => {
 });
 
 describe("MessageComposer AI context wiring", () => {
-  const focusComposerInput = () => {
-    const textbox = screen.getByRole("textbox");
-    fireEvent.focus(textbox);
-    return textbox;
-  };
-
   it("renders attach trigger inside formatting toolbar", () => {
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
     focusComposerInput();
@@ -1256,9 +1260,10 @@ describe("MessageComposer AI context wiring", () => {
     const tabs = within(picker).getAllByRole("tab");
     const emojiTab = tabs.find((tab) => /emoji/i.test(tab.getAttribute("aria-label") ?? ""));
     const stickersTab = tabs.find((tab) => /stickers/i.test(tab.getAttribute("aria-label") ?? ""));
+    if (emojiTab == null || stickersTab == null) {
+      throw new Error("Expected emoji and stickers tabs in composer media picker");
+    }
 
-    expect(emojiTab).toBeDefined();
-    expect(stickersTab).toBeDefined();
     expect(emojiTab).toHaveAttribute("aria-selected", "true");
 
     fireEvent.click(stickersTab);

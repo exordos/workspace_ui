@@ -73,6 +73,14 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
     expect(html).not.toContain(":smile:");
   });
 
+  it("resolves frequently used zulip-style shortcodes from emojibase dataset", () => {
+    const html = messageBodyToUnsanitizedDisplayHtml("A :open_mouth: B :+1:");
+    expect(html).toContain("😮");
+    expect(html).toContain("👍");
+    expect(html).not.toContain(":open_mouth:");
+    expect(html).not.toContain(":+1:");
+  });
+
   it("renders custom emoji shortcode as inline image when resolver returns URL", () => {
     const html = messageBodyToUnsanitizedDisplayHtml("Hi :party_parrot:", {
       resolveCustomEmojiShortcodeImageUrl: (shortcode) =>

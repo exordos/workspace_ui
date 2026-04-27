@@ -1,5 +1,5 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import EmojiPicker, { type EmojiClickData } from "emoji-picker-react";
+import EmojiPicker, { EmojiStyle, type EmojiClickData } from "emoji-picker-react";
 import React from "react";
 import type { RealmEmoji } from "~/shared/api/zulip.types";
 import { STATUS_EMOJI_PRESETS } from "./right-panel-user-menu-constants.lib";
@@ -108,6 +108,7 @@ export const RightPanelUserMenuStatusDialog: React.FC<RightPanelUserMenuStatusDi
                 <EmojiPicker
                   onEmojiClick={handleStatusEmojiPick}
                   customEmojis={customEmojis}
+                  emojiStyle={EmojiStyle.NATIVE}
                   searchDisabled={false}
                   skinTonesDisabled
                   width="100%"

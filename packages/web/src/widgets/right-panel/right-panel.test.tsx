@@ -54,6 +54,7 @@ vi.mock("emoji-picker-react", () => ({
     onEmojiClick?: (data: { emoji: string; names?: string[] }) => void;
     className?: string;
     customEmojis?: unknown[];
+    emojiStyle?: string;
   }) => {
     statusEmojiPickerMock(props);
     return (
@@ -69,6 +70,9 @@ vi.mock("emoji-picker-react", () => ({
   Theme: {
     LIGHT: "light",
     DARK: "dark",
+  },
+  EmojiStyle: {
+    NATIVE: "native",
   },
 }));
 
@@ -260,9 +264,10 @@ describe("RightPanel truthfulness", () => {
     });
     await waitFor(() => {
       const props = statusEmojiPickerMock.mock.calls.at(-1)?.[0] as
-        | { customEmojis?: unknown[] }
+        | { customEmojis?: unknown[]; emojiStyle?: string }
         | undefined;
       expect(props?.customEmojis).toEqual([realmEmoji]);
+      expect(props?.emojiStyle).toBe("native");
     });
     fireEvent.click(within(statusDialog).getByRole("button", { name: /pick status emoji/i }));
 

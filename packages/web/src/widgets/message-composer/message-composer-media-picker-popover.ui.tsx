@@ -1,4 +1,4 @@
-import EmojiPicker, { Theme } from "emoji-picker-react";
+import EmojiPicker, { EmojiStyle, Theme } from "emoji-picker-react";
 import React from "react";
 import { buildStickerMarkdown } from "~/entities/sticker/sticker.api";
 import { StickerPicker } from "~/features/sticker-picker/sticker-picker.ui";
@@ -69,6 +69,7 @@ export const MessageComposerMediaPickerPopover = React.memo(
               onEmojiClick={onEmojiClick}
               customEmojis={customEmojis}
               className="composer-emoji-picker"
+              emojiStyle={EmojiStyle.NATIVE}
               theme={document.documentElement.dataset.theme === "light" ? Theme.LIGHT : Theme.DARK}
               width={Number(mediaPickerStyle.width ?? EMOJI_PICKER_WIDTH)}
               height={MEDIA_PICKER_CONTENT_HEIGHT}

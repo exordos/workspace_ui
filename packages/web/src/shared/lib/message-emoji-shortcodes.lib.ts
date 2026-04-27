@@ -1,33 +1,6 @@
-import emojiData from "emoji-picker-react/dist/data/emojis-en.json";
+import emojibaseShortcodes from "emojibase-data/en/shortcodes/emojibase.json";
 
-const EMOJI_SHORTCODE_PATTERN = /:([a-zA-Z0-9][a-zA-Z0-9_+\-\s]{0,62}):/g;
-
-const SHORTCODE_COMPAT_CODEPOINTS: Record<string, string> = {
-  "+1": "1f44d",
-  "-1": "1f44e",
-  alert: "1f6A8",
-  check: "2705",
-  clap: "1f44f",
-  cry: "1f622",
-  eyes: "1f440",
-  fire: "1f525",
-  grinning: "1f600",
-  heart: "2764-fe0f",
-  joy: "1f602",
-  open_mouth: "1f62e",
-  ok_hand: "1f44c",
-  rocket: "1f680",
-  smile: "1f604",
-  speech_balloon: "1f4ac",
-  squared_ok: "1f197",
-  tada: "1f389",
-  thinking: "1f914",
-  thumbs_down: "1f44e",
-  thumbs_up: "1f44d",
-  wave: "1f44b",
-  white_check_mark: "2705",
-  x: "274c",
-};
+const EMOJI_SHORTCODE_PATTERN = /:([a-zA-Z0-9+-][a-zA-Z0-9_+\s-]{0,62}):/g;
 
 let unicodeEmojiByShortcodeCache: ReadonlyMap<string, string> | null = null;
 
@@ -35,10 +8,8 @@ export interface RenderEmojiShortcodesOptions {
   resolveCustomEmojiShortcodeImageUrl?: (shortcode: string) => string | undefined;
 }
 
-interface EmojiDataEntry {
-  n?: string[];
-  u?: string;
-}
+type EmojibaseShortcodeEntry = string | string[];
+type EmojibaseShortcodeDataset = Record<string, EmojibaseShortcodeEntry>;
 
 function decodeUnicodeEmojiCode(code: string): string | null {
   const sanitized = code.trim().replace(/_/g, "-");
@@ -59,30 +30,6 @@ function decodeUnicodeEmojiCode(code: string): string | null {
   }
 }
 
-function isEmojiDataEntry(value: unknown): value is EmojiDataEntry {
-  if (value == null || typeof value !== "object") {
-    return false;
-  }
-  const row = value as EmojiDataEntry;
-  return typeof row.u === "string" && Array.isArray(row.n);
-}
-
-function collectEmojiEntries(): EmojiDataEntry[] {
-  const groups = Object.values(emojiData.emojis);
-  const entries: EmojiDataEntry[] = [];
-  for (const group of groups) {
-    if (!Array.isArray(group)) {
-      continue;
-    }
-    for (const row of group) {
-      if (isEmojiDataEntry(row)) {
-        entries.push(row);
-      }
-    }
-  }
-  return entries;
-}
-
 function normalizeEmojiAlias(value: string): string {
   return value
     .trim()
@@ -96,10 +43,12 @@ function normalizeEmojiAlias(value: string): string {
 
 function buildUnicodeEmojiShortcodeMap(): ReadonlyMap<string, string> {
   const aliasToCodepoints = new Map<string, Set<string>>();
-  for (const entry of collectEmojiEntries()) {
-    const codepoint = entry.u?.trim() ?? "";
+  const shortcodeDataset = emojibaseShortcodes as EmojibaseShortcodeDataset;
+
+  for (const [hexCodeRaw, aliasesRaw] of Object.entries(shortcodeDataset)) {
+    const codepoint = hexCodeRaw.trim();
     if (codepoint.length === 0) continue;
-    const aliases = entry.n ?? [];
+    const aliases = Array.isArray(aliasesRaw) ? aliasesRaw : [aliasesRaw];
     for (const aliasRaw of aliases) {
       const alias = normalizeEmojiAlias(aliasRaw);
       if (alias.length === 0) continue;
@@ -118,14 +67,6 @@ function buildUnicodeEmojiShortcodeMap(): ReadonlyMap<string, string> {
     const [single] = codepoints;
     if (single == null) continue;
     const unicode = decodeUnicodeEmojiCode(single);
-    if (unicode == null) continue;
-    unicodeByShortcode.set(alias, unicode);
-  }
-
-  for (const [aliasRaw, codepoint] of Object.entries(SHORTCODE_COMPAT_CODEPOINTS)) {
-    const alias = normalizeEmojiAlias(aliasRaw);
-    if (alias.length === 0) continue;
-    const unicode = decodeUnicodeEmojiCode(codepoint);
     if (unicode == null) continue;
     unicodeByShortcode.set(alias, unicode);
   }
