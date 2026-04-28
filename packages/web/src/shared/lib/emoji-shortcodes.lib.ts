@@ -349,6 +349,18 @@ const ZULIP_SHORTCODE_TO_UNIFIED_OVERRIDES: Readonly<Record<string, string>> = {
   japanese_secret_button: "3299-FE0F",
   japanese_open_for_business_button: "1F23A",
   japanese_no_vacancy_button: "1F235",
+  hash: "0023-FE0F-20E3",
+  asterisk: "002A-FE0F-20E3",
+  zero: "0030-FE0F-20E3",
+  one: "0031-FE0F-20E3",
+  two: "0032-FE0F-20E3",
+  three: "0033-FE0F-20E3",
+  four: "0034-FE0F-20E3",
+  five: "0035-FE0F-20E3",
+  six: "0036-FE0F-20E3",
+  seven: "0037-FE0F-20E3",
+  eight: "0038-FE0F-20E3",
+  nine: "0039-FE0F-20E3",
   yellow_large_square: "1F7E8",
   green_large_square: "1F7E9",
   red_triangle_up: "1F53A",
@@ -690,8 +702,13 @@ function normalizeUnifiedCodeForLookup(unified: string): string {
   if (!sanitized) {
     return "";
   }
-  const parts = sanitized.split("-").filter((part) => part.length > 0 && part !== "fe0f");
-  return parts.join("-");
+  const parts = sanitized.split("-").filter((part) => part.length > 0);
+  const hasKeycapCombiningMark = parts.includes("20e3");
+  if (hasKeycapCombiningMark) {
+    // Keycap emoji require VS16 to consistently render as emoji, not text glyphs.
+    return parts.join("-");
+  }
+  return parts.filter((part) => part !== "fe0f").join("-");
 }
 
 export function normalizeEmojiShortcodeName(value: string): string {
