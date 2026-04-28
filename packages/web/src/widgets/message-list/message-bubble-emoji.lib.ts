@@ -4,24 +4,10 @@
 import type { MessageReactionPayload, MockMessage, Reaction } from "~/shared/api/zulip.types";
 import {
   normalizeEmojiShortcodeName,
+  resolveShortcodeToUnicode,
   resolveUnicodeToCanonicalShortcode,
 } from "~/shared/lib/emoji-shortcodes.lib";
 import type { EmojiClickData } from "emoji-picker-react";
-
-/** Common emoji_name → character map (fallback when emoji_code cannot be converted). */
-export const EMOJI_NAME_TO_CHAR: Record<string, string> = {
-  thumbs_up: "👍",
-  heart: "❤️",
-  smile: "😄",
-  joy: "😂",
-  open_mouth: "😮",
-  cry: "😢",
-  clap: "👏",
-  "+1": "👍",
-  eyes: "👀",
-  tada: "🎉",
-  wave: "👋",
-};
 
 export const QUICK_REACTIONS = [
   { emojiName: "heart", a11yLabelKey: "a11y.like" },
@@ -31,6 +17,18 @@ export const QUICK_REACTIONS = [
   { emojiName: "cry", a11yLabelKey: "a11y.crying" },
   { emojiName: "clap", a11yLabelKey: "a11y.clap" },
 ] as const;
+
+export function resolveEmojiShortcodeDisplayGlyph(emojiName: string): string {
+  const normalizedEmojiName = normalizeEmojiShortcodeName(emojiName);
+  if (normalizedEmojiName.length === 0) {
+    return emojiName;
+  }
+  const fromSharedResolver = resolveShortcodeToUnicode(normalizedEmojiName);
+  if (fromSharedResolver != null) {
+    return fromSharedResolver;
+  }
+  return emojiName;
+}
 
 export function emojiCodeToChar(emojiCode: string): string {
   try {
@@ -87,12 +85,11 @@ export function reactionPayloadFromEmojiClickData(
 }
 
 export function getReactionDisplayChar(reaction: Reaction): string {
-  if (reaction.reaction_type !== "unicode_emoji") {
-    return EMOJI_NAME_TO_CHAR[reaction.emoji_name] ?? reaction.emoji_name;
+  if (reaction.reaction_type === "unicode_emoji") {
+    const fromCode = emojiCodeToChar(reaction.emoji_code);
+    if (fromCode) return fromCode;
   }
-  const fromCode = emojiCodeToChar(reaction.emoji_code);
-  if (fromCode) return fromCode;
-  return EMOJI_NAME_TO_CHAR[reaction.emoji_name] ?? reaction.emoji_name;
+  return resolveEmojiShortcodeDisplayGlyph(reaction.emoji_name);
 }
 
 export interface GroupedReaction {

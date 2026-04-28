@@ -1,9 +1,16 @@
 import { SkinTones } from "emoji-picker-react";
 import { describe, expect, it } from "vitest";
+import type { Reaction } from "~/shared/api/zulip.types";
 import {
+  getReactionDisplayChar,
   isOneToOneDirectMessage,
   reactionPayloadFromEmojiClickData,
+  resolveEmojiShortcodeDisplayGlyph,
 } from "./message-bubble-emoji.lib";
+
+function normalizeEmojiPresentation(emoji: string): string {
+  return emoji.normalize("NFC").replace(/\uFE0F/gu, "");
+}
 
 describe("isOneToOneDirectMessage", () => {
   it("returns false for stream messages", () => {
@@ -127,5 +134,55 @@ describe("reactionPayloadFromEmojiClickData", () => {
       emojiCode: "43",
       imageUrl: "https://cdn.example.com/party_node.png",
     });
+  });
+});
+
+describe("resolveEmojiShortcodeDisplayGlyph", () => {
+  it("prefers shared resolver for known shortcode aliases", () => {
+    expect(normalizeEmojiPresentation(resolveEmojiShortcodeDisplayGlyph("working_on_it"))).toBe(
+      normalizeEmojiPresentation("🛠️"),
+    );
+  });
+
+  it("resolves aliases via shared resolver", () => {
+    expect(resolveEmojiShortcodeDisplayGlyph(":+1:")).toBe("👍");
+  });
+
+  it("returns raw shortcode name when no resolver or fallback match exists", () => {
+    expect(resolveEmojiShortcodeDisplayGlyph("some unknown emoji")).toBe("some unknown emoji");
+  });
+});
+
+describe("getReactionDisplayChar", () => {
+  it("prefers emoji_code for unicode reactions", () => {
+    const reaction: Reaction = {
+      emoji_name: "heart",
+      emoji_code: "1f44d",
+      reaction_type: "unicode_emoji",
+      user_id: 1,
+    };
+    expect(getReactionDisplayChar(reaction)).toBe("👍");
+  });
+
+  it("falls back to shortcode resolver when unicode emoji_code is invalid", () => {
+    const reaction: Reaction = {
+      emoji_name: "working_on_it",
+      emoji_code: "not-a-code",
+      reaction_type: "unicode_emoji",
+      user_id: 1,
+    };
+    expect(normalizeEmojiPresentation(getReactionDisplayChar(reaction))).toBe(
+      normalizeEmojiPresentation("🛠️"),
+    );
+  });
+
+  it("falls back to raw emoji_name when no resolver can map it", () => {
+    const reaction: Reaction = {
+      emoji_name: "unknown-reaction",
+      emoji_code: "",
+      reaction_type: "realm_emoji",
+      user_id: 1,
+    };
+    expect(getReactionDisplayChar(reaction)).toBe("unknown-reaction");
   });
 });

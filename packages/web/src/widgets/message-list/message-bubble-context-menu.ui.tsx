@@ -4,7 +4,7 @@ import React from "react";
 import { t } from "~/i18n/i18n";
 import { Icon } from "~/shared/ui/icon";
 import { CONTEXT_ITEMS_BY_LABEL } from "./message-bubble-context.lib";
-import { EMOJI_NAME_TO_CHAR, QUICK_REACTIONS } from "./message-bubble-emoji.lib";
+import { QUICK_REACTIONS, resolveEmojiShortcodeDisplayGlyph } from "./message-bubble-emoji.lib";
 import type { MessageBubbleContextMenuProps } from "./message-bubble-context-menu.types";
 
 export const MessageBubbleContextMenu = React.memo(function MessageBubbleContextMenu({
@@ -49,7 +49,7 @@ export const MessageBubbleContextMenu = React.memo(function MessageBubbleContext
                 }}
               >
                 <span className="text-[15px] leading-none">
-                  {EMOJI_NAME_TO_CHAR[reaction.emojiName] ?? reaction.emojiName}
+                  {resolveEmojiShortcodeDisplayGlyph(reaction.emojiName)}
                 </span>
               </button>
             ))}
