@@ -7,6 +7,8 @@ const ZULIP_SHORTCODE_TO_UNIFIED_OVERRIDES: Readonly<Record<string, string>> = {
   working_on_it: "1F6E0",
   thumbs_up: "1F44D",
   hand: "270B",
+  stop: "1F91A",
+  high_five: "1F590-FE0F",
   spock: "1F596",
   palm_down_hand: "1FAF3",
   palm_up_hand: "1FAF4",
@@ -650,6 +652,7 @@ const ZULIP_SHORTCODE_TO_UNIFIED_OVERRIDES: Readonly<Record<string, string>> = {
   grinning_face_with_smiling_eyes: "1F604",
   rolling_on_the_floor_laughing: "1F923",
   slight_smile: "1F642",
+  smiling_face: "263A-FE0F",
   upside_down: "1F643",
   smiling_face_with_hearts: "1F970",
   heart_kiss: "1F618",
@@ -809,7 +812,8 @@ function applyZulipShortcodeOverrides(aliasToCodepoints: Map<string, Set<string>
     if (alias.length === 0 || unified.length === 0) {
       continue;
     }
-    addAliasToCodepoint(aliasToCodepoints, alias, unified);
+    // Zulip-specific aliases must take precedence over emojibase defaults.
+    aliasToCodepoints.set(alias, new Set([unified]));
   }
 }
 
