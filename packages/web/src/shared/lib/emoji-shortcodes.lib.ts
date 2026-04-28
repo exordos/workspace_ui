@@ -169,7 +169,7 @@ const ZULIP_SHORTCODE_TO_UNIFIED_OVERRIDES: Readonly<Record<string, string>> = {
   mountain_sunrise: "1F304",
   sunset: "1F307",
   bridge: "1F309",
-  brick: "1F312",
+  brick: "1F9F1",
   hot_springs: "2668-FE0F",
   carousel: "1F3A0",
   circus: "1F3AA",
@@ -296,6 +296,9 @@ const ZULIP_SHORTCODE_TO_UNIFIED_OVERRIDES: Readonly<Record<string, string>> = {
   prohibited: "1F6AB",
   no_phones: "1F4F5",
   alert: "1F6A8",
+  warning: "26A0-FE0F",
+  radioactive: "2622-FE0F",
+  biohazard: "2623-FE0F",
   upper_right: "2197-FE0F",
   right: "27A1-FE0F",
   lower_right: "2198-FE0F",
@@ -309,13 +312,28 @@ const ZULIP_SHORTCODE_TO_UNIFIED_OVERRIDES: Readonly<Record<string, string>> = {
   heading_up: "2934-FE0F",
   heading_down: "2935-FE0F",
   cross: "271D-FE0F",
+  atom: "269B-FE0F",
+  star_of_david: "2721-FE0F",
+  wheel_of_dharma: "2638-FE0F",
+  yin_yang: "262F-FE0F",
+  orthodox_cross: "2626-FE0F",
+  star_and_crescent: "262A-FE0F",
+  peace: "262E-FE0F",
   dotted_six_pointed_star: "1F52F",
+  play: "25B6-FE0F",
+  fast_forward: "23E9-FE0F",
+  next_track: "23ED-FE0F",
+  play_pause: "23EF-FE0F",
   play_reverse: "25C0-FE0F",
+  rewind: "23EA-FE0F",
+  previous_track: "23EE-FE0F",
   upvote: "1F53C",
   double_up: "23EB",
   downvote: "1F53D",
   double_down: "23EC",
+  pause: "23F8-FE0F",
   stop_button: "23F9-FE0F",
+  record: "23FA-FE0F",
   eject_button: "23CF-FE0F",
   brightness: "1F506",
   cell_reception: "1F4F6",
@@ -702,13 +720,21 @@ function normalizeUnifiedCodeForLookup(unified: string): string {
   if (!sanitized) {
     return "";
   }
-  const parts = sanitized.split("-").filter((part) => part.length > 0);
-  const hasKeycapCombiningMark = parts.includes("20e3");
-  if (hasKeycapCombiningMark) {
-    // Keycap emoji require VS16 to consistently render as emoji, not text glyphs.
-    return parts.join("-");
+  return sanitized
+    .split("-")
+    .filter((part) => part.length > 0)
+    .join("-");
+}
+
+function normalizeUnifiedCodeWithoutEmojiVariation(unified: string): string {
+  const normalized = normalizeUnifiedCodeForLookup(unified);
+  if (normalized.length === 0) {
+    return "";
   }
-  return parts.filter((part) => part !== "fe0f").join("-");
+  return normalized
+    .split("-")
+    .filter((part) => part.length > 0 && part !== "fe0f")
+    .join("-");
 }
 
 export function normalizeEmojiShortcodeName(value: string): string {
@@ -804,14 +830,35 @@ function buildUnicodeByShortcode(
 ): ReadonlyMap<string, string> {
   const unicodeByShortcode = new Map<string, string>();
   for (const [alias, codepoints] of aliasToCodepoints) {
-    if (codepoints.size !== 1) {
+    if (codepoints.size === 0) {
       continue;
     }
-    const [single] = codepoints;
-    if (single == null) {
+    const groupedByBase = new Map<string, string[]>();
+    for (const codepoint of codepoints) {
+      const base = normalizeUnifiedCodeWithoutEmojiVariation(codepoint);
+      if (base.length === 0) {
+        continue;
+      }
+      const variants = groupedByBase.get(base);
+      if (variants == null) {
+        groupedByBase.set(base, [codepoint]);
+      } else {
+        variants.push(codepoint);
+      }
+    }
+    if (groupedByBase.size !== 1) {
       continue;
     }
-    const unicode = decodeUnicodeEmojiCode(single);
+    const variants = groupedByBase.values().next().value;
+    if (variants == null || variants.length === 0) {
+      continue;
+    }
+    // Prefer the emoji presentation variant when VS16 is available.
+    const preferred = variants.find((variant: string) => variant.includes("fe0f")) ?? variants[0];
+    if (preferred == null) {
+      continue;
+    }
+    const unicode = decodeUnicodeEmojiCode(preferred);
     if (unicode == null) {
       continue;
     }
@@ -851,5 +898,14 @@ export function resolveUnicodeToCanonicalShortcode(unified: string): string | nu
   if (normalized.length === 0) {
     return null;
   }
-  return getShortcodeIndices().canonicalShortcodeByUnified.get(normalized) ?? null;
+  const canonical = getShortcodeIndices().canonicalShortcodeByUnified;
+  const exact = canonical.get(normalized);
+  if (exact != null) {
+    return exact;
+  }
+  const withoutVariation = normalizeUnifiedCodeWithoutEmojiVariation(normalized);
+  if (withoutVariation.length === 0) {
+    return null;
+  }
+  return canonical.get(withoutVariation) ?? null;
 }
