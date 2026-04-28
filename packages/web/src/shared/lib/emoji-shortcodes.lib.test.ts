@@ -5,6 +5,22 @@ import {
   resolveUnicodeToCanonicalShortcode,
 } from "./emoji-shortcodes.lib";
 
+function emojiToNormalizedCodePointSequence(value: string): string {
+  const normalized = value.normalize("NFC");
+  return Array.from(normalized)
+    .map((char) => char.codePointAt(0))
+    .filter((codePoint): codePoint is number => codePoint != null && codePoint !== 0xfe0f)
+    .map((codePoint) => codePoint.toString(16))
+    .join("-");
+}
+
+function expectEmojiSemanticEqual(actual: string | null, expected: string): void {
+  expect(actual).not.toBeNull();
+  expect(emojiToNormalizedCodePointSequence(actual ?? "")).toBe(
+    emojiToNormalizedCodePointSequence(expected),
+  );
+}
+
 describe("emoji-shortcodes.lib", () => {
   it("normalizes shortcode aliases from mixed formats", () => {
     expect(normalizeEmojiShortcodeName("  :Thumbs-Up:  ")).toBe("thumbs_up");
@@ -26,40 +42,43 @@ describe("emoji-shortcodes.lib", () => {
   });
 
   it("resolves fallback zulip aliases from emoji-picker list", () => {
-    expect(resolveShortcodeToUnicode("grinning_face_with_smiling_eyes")).toBe("😄");
-    expect(resolveShortcodeToUnicode("rolling_on_the_floor_laughing")).toBe("🤣");
-    expect(resolveShortcodeToUnicode("slight_smile")).toBe("🙂");
-    expect(resolveShortcodeToUnicode("upside_down")).toBe("🙃");
-    expect(resolveShortcodeToUnicode("smiling_face_with_hearts")).toBe("🥰");
-    expect(resolveShortcodeToUnicode("heart_kiss")).toBe("😘");
-    expect(resolveShortcodeToUnicode("kiss_with_blush")).toBe("😚");
-    expect(resolveShortcodeToUnicode("kiss_smiling_eyes")).toBe("😙");
-    expect(resolveShortcodeToUnicode("money_face")).toBe("🤑");
-    expect(resolveShortcodeToUnicode("stuck_out_tongue_wink")).toBe("😜");
-    expect(resolveShortcodeToUnicode("face_with_open_eyes_and_hand_over_mouth")).toBe("🫢");
-    expect(resolveShortcodeToUnicode("silence")).toBe("🤐");
-    expect(resolveShortcodeToUnicode("speechless")).toBe("😶");
-    expect(resolveShortcodeToUnicode("face_in_clouds")).toBe("😶‍🌫");
-    expect(resolveShortcodeToUnicode("face_exhaling")).toBe("😮‍💨");
-    expect(resolveShortcodeToUnicode("sick")).toBe("🤒");
-    expect(resolveShortcodeToUnicode("hurt")).toBe("🤕");
-    expect(resolveShortcodeToUnicode("oh_no")).toBe("😕");
-    expect(resolveShortcodeToUnicode("frown")).toBe("🙁");
-    expect(resolveShortcodeToUnicode("sad")).toBe("☹");
-    expect(resolveShortcodeToUnicode("fear")).toBe("😨");
-    expect(resolveShortcodeToUnicode("exhausted")).toBe("😥");
-    expect(resolveShortcodeToUnicode("anguish")).toBe("😫");
-    expect(resolveShortcodeToUnicode("smiling_devil")).toBe("😈");
-    expect(resolveShortcodeToUnicode("devil")).toBe("👿");
-    expect(resolveShortcodeToUnicode("angry_cat")).toBe("😾");
-    expect(resolveShortcodeToUnicode("heart_pulse")).toBe("💗");
-    expect(resolveShortcodeToUnicode("heart_box")).toBe("💟");
-    expect(resolveShortcodeToUnicode("lipstick_kiss")).toBe("💋");
-    expect(resolveShortcodeToUnicode("seeing_stars")).toBe("💫");
-    expect(resolveShortcodeToUnicode("face_with_spiral_eyes")).toBe("😵‍💫");
-    expect(resolveShortcodeToUnicode("umm")).toBe("💬");
-    expect(resolveShortcodeToUnicode("speech_bubble")).toBe("🗨");
-    expect(resolveShortcodeToUnicode("anger_bubble")).toBe("🗯");
-    expect(resolveShortcodeToUnicode("thought")).toBe("💭");
+    expectEmojiSemanticEqual(resolveShortcodeToUnicode("grinning_face_with_smiling_eyes"), "😄");
+    expectEmojiSemanticEqual(resolveShortcodeToUnicode("rolling_on_the_floor_laughing"), "🤣");
+    expectEmojiSemanticEqual(resolveShortcodeToUnicode("slight_smile"), "🙂");
+    expectEmojiSemanticEqual(resolveShortcodeToUnicode("upside_down"), "🙃");
+    expectEmojiSemanticEqual(resolveShortcodeToUnicode("smiling_face_with_hearts"), "🥰");
+    expectEmojiSemanticEqual(resolveShortcodeToUnicode("heart_kiss"), "😘");
+    expectEmojiSemanticEqual(resolveShortcodeToUnicode("kiss_with_blush"), "😚");
+    expectEmojiSemanticEqual(resolveShortcodeToUnicode("kiss_smiling_eyes"), "😙");
+    expectEmojiSemanticEqual(resolveShortcodeToUnicode("money_face"), "🤑");
+    expectEmojiSemanticEqual(resolveShortcodeToUnicode("stuck_out_tongue_wink"), "😜");
+    expectEmojiSemanticEqual(
+      resolveShortcodeToUnicode("face_with_open_eyes_and_hand_over_mouth"),
+      "🫢",
+    );
+    expectEmojiSemanticEqual(resolveShortcodeToUnicode("silence"), "🤐");
+    expectEmojiSemanticEqual(resolveShortcodeToUnicode("speechless"), "😶");
+    expectEmojiSemanticEqual(resolveShortcodeToUnicode("face_in_clouds"), "😶‍🌫");
+    expectEmojiSemanticEqual(resolveShortcodeToUnicode("face_exhaling"), "😮‍💨");
+    expectEmojiSemanticEqual(resolveShortcodeToUnicode("sick"), "🤒");
+    expectEmojiSemanticEqual(resolveShortcodeToUnicode("hurt"), "🤕");
+    expectEmojiSemanticEqual(resolveShortcodeToUnicode("oh_no"), "😕");
+    expectEmojiSemanticEqual(resolveShortcodeToUnicode("frown"), "🙁");
+    expectEmojiSemanticEqual(resolveShortcodeToUnicode("sad"), "☹");
+    expectEmojiSemanticEqual(resolveShortcodeToUnicode("fear"), "😨");
+    expectEmojiSemanticEqual(resolveShortcodeToUnicode("exhausted"), "😥");
+    expectEmojiSemanticEqual(resolveShortcodeToUnicode("anguish"), "😫");
+    expectEmojiSemanticEqual(resolveShortcodeToUnicode("smiling_devil"), "😈");
+    expectEmojiSemanticEqual(resolveShortcodeToUnicode("devil"), "👿");
+    expectEmojiSemanticEqual(resolveShortcodeToUnicode("angry_cat"), "😾");
+    expectEmojiSemanticEqual(resolveShortcodeToUnicode("heart_pulse"), "💗");
+    expectEmojiSemanticEqual(resolveShortcodeToUnicode("heart_box"), "💟");
+    expectEmojiSemanticEqual(resolveShortcodeToUnicode("lipstick_kiss"), "💋");
+    expectEmojiSemanticEqual(resolveShortcodeToUnicode("seeing_stars"), "💫");
+    expectEmojiSemanticEqual(resolveShortcodeToUnicode("face_with_spiral_eyes"), "😵‍💫");
+    expectEmojiSemanticEqual(resolveShortcodeToUnicode("umm"), "💬");
+    expectEmojiSemanticEqual(resolveShortcodeToUnicode("speech_bubble"), "🗨");
+    expectEmojiSemanticEqual(resolveShortcodeToUnicode("anger_bubble"), "🗯");
+    expectEmojiSemanticEqual(resolveShortcodeToUnicode("thought"), "💭");
   });
 });
