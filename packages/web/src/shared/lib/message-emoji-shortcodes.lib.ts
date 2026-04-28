@@ -3,7 +3,8 @@ import {
   resolveShortcodeToUnicode,
 } from "~/shared/lib/emoji-shortcodes.lib";
 
-const EMOJI_SHORTCODE_PATTERN = /:([a-zA-Z0-9+-][a-zA-Z0-9_+\s-]{0,62}):/g;
+const EMOJI_SHORTCODE_PATTERN = /:([\p{L}\p{N}+-][\p{L}\p{N}\p{M}_+\s-]{0,62}):/gu;
+const EMOJI_SHORTCODE_PATTERN_SOURCE = EMOJI_SHORTCODE_PATTERN.source;
 
 export interface RenderEmojiShortcodesOptions {
   resolveCustomEmojiShortcodeImageUrl?: (shortcode: string) => string | undefined;
@@ -71,7 +72,7 @@ function replaceEmojiShortcodesInTextNode(
   }
   const doc = node.ownerDocument;
   const fragment = doc.createDocumentFragment();
-  const regex = new RegExp(EMOJI_SHORTCODE_PATTERN.source, "g");
+  const regex = new RegExp(EMOJI_SHORTCODE_PATTERN_SOURCE, "gu");
   let changed = false;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
@@ -115,7 +116,7 @@ function replaceEmojiShortcodesInPlainText(text: string): string {
   if (!containsEmojiShortcode(text)) {
     return text;
   }
-  const regex = new RegExp(EMOJI_SHORTCODE_PATTERN.source, "g");
+  const regex = new RegExp(EMOJI_SHORTCODE_PATTERN_SOURCE, "gu");
   return text.replace(regex, (fullMatch, rawShortcode: string) => {
     const unicode = resolveShortcodeToUnicode(rawShortcode);
     return unicode ?? fullMatch;
@@ -140,7 +141,7 @@ export function renderEmojiShortcodesInHtml(
     if (options?.resolveCustomEmojiShortcodeImageUrl == null) {
       return replaceEmojiShortcodesInPlainText(html);
     }
-    const regex = new RegExp(EMOJI_SHORTCODE_PATTERN.source, "g");
+    const regex = new RegExp(EMOJI_SHORTCODE_PATTERN_SOURCE, "gu");
     return html.replace(regex, (fullMatch, rawShortcode: string) => {
       const normalized = normalizeEmojiShortcodeName(rawShortcode);
       if (normalized.length === 0) return fullMatch;
