@@ -25,6 +25,7 @@ import { fetchRealmEmojis } from "~/shared/api/zulip";
 import type { RealmEmoji } from "~/shared/api/zulip.types";
 import { IS_CONNECTION_DIAGNOSTICS_ENABLED } from "~/shared/config/constants";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
+import { resolveUnicodeToCanonicalShortcode } from "~/shared/lib/emoji-shortcodes.lib";
 import { clearLocalStatePreservingCriticalKeys } from "~/shared/lib/local-reset";
 import { createLogger } from "~/shared/lib/logger";
 import { playNotificationSound } from "~/shared/lib/notification-sound";
@@ -320,18 +321,28 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   }, [closeDrawer, currentInstance, currentServerLabel, removeInstance, t]);
 
   const handleStatusEmojiPick = useCallback((data: EmojiClickData) => {
-    const emojiName = normalizeStatusEmojiName(data.names?.[0] ?? "");
-    if (!emojiName) {
-      return;
-    }
+    const normalizedPickerName = normalizeStatusEmojiName(data.names?.[0] ?? "");
     if (data.isCustom) {
-      setStatusEmojiNameDraft(emojiName);
+      if (!normalizedPickerName) {
+        return;
+      }
+      setStatusEmojiNameDraft(normalizedPickerName);
       setStatusEmojiCodeDraft("");
       setStatusEmojiPickerOpen(false);
       return;
     }
-    const emojiCode = encodeEmojiToCode(data.emoji ?? "");
+    const emojiCode = (
+      data.unifiedWithoutSkinTone ||
+      data.unified ||
+      encodeEmojiToCode(data.emoji ?? "")
+    )
+      .trim()
+      .toLowerCase();
     if (!emojiCode) {
+      return;
+    }
+    const emojiName = resolveUnicodeToCanonicalShortcode(emojiCode) ?? normalizedPickerName;
+    if (!emojiName) {
       return;
     }
     setStatusEmojiNameDraft(emojiName);

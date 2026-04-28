@@ -81,6 +81,13 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
     expect(html).not.toContain(":+1:");
   });
 
+  it("resolves zulip alias overrides for unicode emoji shortcodes", () => {
+    const html = messageBodyToUnsanitizedDisplayHtml("A :working_on_it: B :hammer_and_wrench:");
+    expect(html).toContain("🛠");
+    expect(html).not.toContain(":working_on_it:");
+    expect(html).not.toContain(":hammer_and_wrench:");
+  });
+
   it("renders custom emoji shortcode as inline image when resolver returns URL", () => {
     const html = messageBodyToUnsanitizedDisplayHtml("Hi :party_parrot:", {
       resolveCustomEmojiShortcodeImageUrl: (shortcode) =>

@@ -92,6 +92,24 @@ describe("reactionPayloadFromEmojiClickData", () => {
     });
   });
 
+  it("derives canonical zulip shortcode from unified unicode, not picker keywords", () => {
+    const payload = reactionPayloadFromEmojiClickData({
+      activeSkinTone: SkinTones.NEUTRAL,
+      unified: "1f6e0-fe0f",
+      unifiedWithoutSkinTone: "1f6e0-fe0f",
+      emoji: "🛠️",
+      names: ["tool", "hammer", "wrench"],
+      imageUrl: "https://example.com/hammer_and_wrench.png",
+      getImageUrl: () => "https://example.com/hammer_and_wrench.png",
+      isCustom: false,
+    });
+    expect(payload).toEqual({
+      emojiName: "working_on_it",
+      reactionType: "unicode_emoji",
+      emojiCode: "1f6e0-fe0f",
+    });
+  });
+
   it("maps custom emoji click payload", () => {
     const payload = reactionPayloadFromEmojiClickData({
       activeSkinTone: SkinTones.NEUTRAL,

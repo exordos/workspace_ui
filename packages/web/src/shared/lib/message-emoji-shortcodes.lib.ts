@@ -1,93 +1,12 @@
-import emojibaseShortcodes from "emojibase-data/en/shortcodes/emojibase.json";
+import {
+  normalizeEmojiShortcodeName,
+  resolveShortcodeToUnicode,
+} from "~/shared/lib/emoji-shortcodes.lib";
 
 const EMOJI_SHORTCODE_PATTERN = /:([a-zA-Z0-9+-][a-zA-Z0-9_+\s-]{0,62}):/g;
 
-let unicodeEmojiByShortcodeCache: ReadonlyMap<string, string> | null = null;
-
 export interface RenderEmojiShortcodesOptions {
   resolveCustomEmojiShortcodeImageUrl?: (shortcode: string) => string | undefined;
-}
-
-type EmojibaseShortcodeEntry = string | string[];
-type EmojibaseShortcodeDataset = Record<string, EmojibaseShortcodeEntry>;
-
-function decodeUnicodeEmojiCode(code: string): string | null {
-  const sanitized = code.trim().replace(/_/g, "-");
-  if (!sanitized) {
-    return null;
-  }
-  const points = sanitized
-    .split("-")
-    .map((part) => Number.parseInt(part, 16))
-    .filter((point) => Number.isFinite(point));
-  if (points.length === 0) {
-    return null;
-  }
-  try {
-    return String.fromCodePoint(...points);
-  } catch {
-    return null;
-  }
-}
-
-function normalizeEmojiAlias(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/^:+|:+$/g, "")
-    .replace(/[\s-]+/g, "_")
-    .replace(/[^a-z0-9_+]+/g, "")
-    .replace(/_+/g, "_")
-    .replace(/^_+|_+$/g, "");
-}
-
-function buildUnicodeEmojiShortcodeMap(): ReadonlyMap<string, string> {
-  const aliasToCodepoints = new Map<string, Set<string>>();
-  const shortcodeDataset = emojibaseShortcodes as EmojibaseShortcodeDataset;
-
-  for (const [hexCodeRaw, aliasesRaw] of Object.entries(shortcodeDataset)) {
-    const codepoint = hexCodeRaw.trim();
-    if (codepoint.length === 0) continue;
-    const aliases = Array.isArray(aliasesRaw) ? aliasesRaw : [aliasesRaw];
-    for (const aliasRaw of aliases) {
-      const alias = normalizeEmojiAlias(aliasRaw);
-      if (alias.length === 0) continue;
-      const existing = aliasToCodepoints.get(alias);
-      if (existing == null) {
-        aliasToCodepoints.set(alias, new Set([codepoint]));
-      } else {
-        existing.add(codepoint);
-      }
-    }
-  }
-
-  const unicodeByShortcode = new Map<string, string>();
-  for (const [alias, codepoints] of aliasToCodepoints) {
-    if (codepoints.size !== 1) continue;
-    const [single] = codepoints;
-    if (single == null) continue;
-    const unicode = decodeUnicodeEmojiCode(single);
-    if (unicode == null) continue;
-    unicodeByShortcode.set(alias, unicode);
-  }
-
-  return unicodeByShortcode;
-}
-
-function getUnicodeEmojiShortcodeMap(): ReadonlyMap<string, string> {
-  if (unicodeEmojiByShortcodeCache != null) {
-    return unicodeEmojiByShortcodeCache;
-  }
-  unicodeEmojiByShortcodeCache = buildUnicodeEmojiShortcodeMap();
-  return unicodeEmojiByShortcodeCache;
-}
-
-function resolveUnicodeEmojiShortcode(shortcode: string): string | null {
-  const normalized = normalizeEmojiAlias(shortcode);
-  if (normalized.length === 0) {
-    return null;
-  }
-  return getUnicodeEmojiShortcodeMap().get(normalized) ?? null;
 }
 
 function escapeHtmlAttr(value: string): string {
@@ -123,7 +42,7 @@ function appendReplacementNodes(options: {
   resolveCustomEmojiShortcodeImageUrl?: (shortcode: string) => string | undefined;
 }): boolean {
   const { fragment, fullMatch, rawShortcode, doc, resolveCustomEmojiShortcodeImageUrl } = options;
-  const normalized = normalizeEmojiAlias(rawShortcode);
+  const normalized = normalizeEmojiShortcodeName(rawShortcode);
   if (normalized.length === 0) {
     fragment.append(doc.createTextNode(fullMatch));
     return false;
@@ -133,7 +52,7 @@ function appendReplacementNodes(options: {
     fragment.append(createInlineEmojiImage(doc, normalized, customEmojiImageUrl));
     return true;
   }
-  const unicode = resolveUnicodeEmojiShortcode(normalized);
+  const unicode = resolveShortcodeToUnicode(normalized);
   if (unicode != null) {
     fragment.append(doc.createTextNode(unicode));
     return true;
@@ -198,13 +117,9 @@ function replaceEmojiShortcodesInPlainText(text: string): string {
   }
   const regex = new RegExp(EMOJI_SHORTCODE_PATTERN.source, "g");
   return text.replace(regex, (fullMatch, rawShortcode: string) => {
-    const unicode = resolveUnicodeEmojiShortcode(rawShortcode);
+    const unicode = resolveShortcodeToUnicode(rawShortcode);
     return unicode ?? fullMatch;
   });
-}
-
-export function normalizeEmojiShortcodeName(name: string): string {
-  return normalizeEmojiAlias(name);
 }
 
 export function containsEmojiShortcode(text: string): boolean {
@@ -227,7 +142,7 @@ export function renderEmojiShortcodesInHtml(
     }
     const regex = new RegExp(EMOJI_SHORTCODE_PATTERN.source, "g");
     return html.replace(regex, (fullMatch, rawShortcode: string) => {
-      const normalized = normalizeEmojiAlias(rawShortcode);
+      const normalized = normalizeEmojiShortcodeName(rawShortcode);
       if (normalized.length === 0) return fullMatch;
       const customEmojiImageUrl =
         options.resolveCustomEmojiShortcodeImageUrl?.(normalized)?.trim() ?? "";
@@ -236,7 +151,7 @@ export function renderEmojiShortcodesInHtml(
         const safeLabel = escapeHtmlAttr(`:${normalized}:`);
         return `<img class="message-inline-emoji" src="${safeUrl}" alt="${safeLabel}" title="${safeLabel}" loading="lazy" decoding="async">`;
       }
-      const unicode = resolveUnicodeEmojiShortcode(normalized);
+      const unicode = resolveShortcodeToUnicode(normalized);
       return unicode ?? fullMatch;
     });
   }

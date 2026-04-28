@@ -2,6 +2,10 @@
  * Emoji display helpers for message reactions (Zulip emoji_name / emoji_code).
  */
 import type { MessageReactionPayload, MockMessage, Reaction } from "~/shared/api/zulip.types";
+import {
+  normalizeEmojiShortcodeName,
+  resolveUnicodeToCanonicalShortcode,
+} from "~/shared/lib/emoji-shortcodes.lib";
 import type { EmojiClickData } from "emoji-picker-react";
 
 /** Common emoji_name → character map (fallback when emoji_code cannot be converted). */
@@ -53,21 +57,26 @@ export function isOneToOneDirectMessage(message: MockMessage): boolean {
 export function reactionPayloadFromEmojiClickData(
   data: EmojiClickData,
 ): MessageReactionPayload | null {
-  const emojiName = data.names?.[0] ?? data.emoji ?? "";
-  if (emojiName.trim().length === 0) {
-    return null;
-  }
+  const normalizedPickerName = normalizeEmojiShortcodeName(data.names?.[0] ?? data.emoji ?? "");
+  const unifiedCode = (data.unifiedWithoutSkinTone || data.unified || "").trim().toLowerCase();
   if (data.isCustom) {
+    if (normalizedPickerName.length === 0) {
+      return null;
+    }
     const emojiCode = data.unifiedWithoutSkinTone || data.unified || data.emoji || "";
     if (emojiCode.trim().length === 0) {
       return null;
     }
     return {
-      emojiName,
+      emojiName: normalizedPickerName,
       reactionType: "realm_emoji",
       emojiCode,
       imageUrl: data.imageUrl || undefined,
     };
+  }
+  const emojiName = resolveUnicodeToCanonicalShortcode(unifiedCode) ?? normalizedPickerName;
+  if (emojiName.length === 0) {
+    return null;
   }
   const unicodeCode = data.unifiedWithoutSkinTone || data.unified || "";
   return {

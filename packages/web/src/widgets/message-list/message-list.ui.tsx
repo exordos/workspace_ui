@@ -3,12 +3,10 @@ import { t } from "~/i18n/i18n";
 import { fetchRealmEmojis } from "~/shared/api/zulip";
 import type { MockMessage, Reaction, RealmEmoji } from "~/shared/api/zulip.types";
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
+import { normalizeEmojiShortcodeName } from "~/shared/lib/emoji-shortcodes.lib";
 import { createLogger } from "~/shared/lib/logger";
 import { normalizeStreamTopicForMessageCache } from "~/shared/lib/message-cache-keys.lib";
-import {
-  containsEmojiShortcode,
-  normalizeEmojiShortcodeName,
-} from "~/shared/lib/message-emoji-shortcodes.lib";
+import { containsEmojiShortcode } from "~/shared/lib/message-emoji-shortcodes.lib";
 import { logMessageFlow } from "~/shared/lib/message-flow-debug.lib";
 import { isLikelyRenderedMessageHtml } from "~/shared/lib/message-markdown-display.lib";
 import { scrollToBottom } from "~/shared/lib/scroll-position.lib";
