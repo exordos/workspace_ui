@@ -5,9 +5,9 @@ import { filterUsers } from "~/features/mention-suggest/mention-suggest.lib";
 import { useMentionSuggestStore } from "~/features/mention-suggest/mention-suggest.model";
 import type { MentionSuggestion } from "~/features/mention-suggest/mention-suggest.types";
 import { t } from "~/i18n/i18n";
-import { fetchRealmEmojis, type SavedSnippet } from "~/shared/api/zulip";
+import type { SavedSnippet } from "~/shared/api/zulip";
 import { createSavedSnippet, fetchSavedSnippets } from "~/shared/api/zulip-messages";
-import type { RealmEmoji } from "~/shared/api/zulip.types";
+import { ensureRealmEmojisLoaded, getCachedRealmEmojis } from "~/shared/lib/realm-emojis-cache";
 import { useViewportKeyboard } from "~/shared/lib/touch";
 import { isWebView } from "~/shared/lib/webview";
 import { Icon } from "~/shared/ui/icon";
@@ -56,7 +56,6 @@ import type {
 import type { EmojiClickData } from "emoji-picker-react";
 
 export type { ReplyQuote } from "./message-composer.types";
-const EMPTY_REALM_EMOJIS: RealmEmoji[] = [];
 
 export const MessageComposer: React.FC<MessageComposerProps> = ({
   onSend,
@@ -94,7 +93,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   const [savedSnippetsReloadToken, setSavedSnippetsReloadToken] = useState(0);
   const [scheduledMessages, setScheduledMessages] = useState<ScheduledComposerMessage[]>([]);
   const [aiMenuOpen, setAiMenuOpen] = useState(false);
-  const [customEmojis, setCustomEmojis] = useState<RealmEmoji[]>(EMPTY_REALM_EMOJIS);
+  const [customEmojis, setCustomEmojis] = useState(() => getCachedRealmEmojis());
   const mentionQuery = useMentionSuggestStore((s) => s.query);
   const mentionSuggestions = useMentionSuggestStore((s) => s.results);
   const showMentions = useMentionSuggestStore((s) => s.visible);
@@ -107,8 +106,6 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   const [mentionStartPos, setMentionStartPos] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const prevDisabledRef = useRef(disabled);
-  const customEmojisLoadedRef = useRef(false);
-  const customEmojisLoadingRef = useRef(false);
   useLayoutEffect(() => {
     if (prevDisabledRef.current && !disabled && mode === "write") {
       textareaRef.current?.focus();
@@ -203,20 +200,12 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     [savedSnippetContent, savedSnippetSaving, savedSnippetTitle],
   );
   const ensureCustomEmojisLoaded = useCallback(() => {
-    if (customEmojisLoadedRef.current || customEmojisLoadingRef.current) {
-      return;
-    }
-    customEmojisLoadingRef.current = true;
-    void fetchRealmEmojis()
+    void ensureRealmEmojisLoaded()
       .then((list) => {
-        setCustomEmojis(list.length > 0 ? list : EMPTY_REALM_EMOJIS);
-        customEmojisLoadedRef.current = true;
+        setCustomEmojis(list);
       })
       .catch(() => {
         // Игнорируем ошибку загрузки: picker продолжает работать с Unicode emoji.
-      })
-      .finally(() => {
-        customEmojisLoadingRef.current = false;
       });
   }, []);
   const fileInputRef = useRef<HTMLInputElement>(null);

@@ -21,8 +21,6 @@ import {
   selectPalette,
 } from "~/features/theme-picker/theme-picker.model";
 import { useTranslation } from "~/i18n/i18n";
-import { fetchRealmEmojis } from "~/shared/api/zulip";
-import type { RealmEmoji } from "~/shared/api/zulip.types";
 import { IS_CONNECTION_DIAGNOSTICS_ENABLED } from "~/shared/config/constants";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { resolveUnicodeToCanonicalShortcode } from "~/shared/lib/emoji-shortcodes.lib";
@@ -31,6 +29,7 @@ import { createLogger } from "~/shared/lib/logger";
 import { playNotificationSound } from "~/shared/lib/notification-sound";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { resolveOrganizationLogoUrl } from "~/shared/lib/organization-branding";
+import { ensureRealmEmojisLoaded, getCachedRealmEmojis } from "~/shared/lib/realm-emojis-cache";
 import { Icon } from "~/shared/ui/icon";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import {
@@ -53,7 +52,6 @@ import { RightPanelUserMenuStatusDialog } from "./right-panel-user-menu-status-d
 import type { RightPanelUserMenuProps } from "./right-panel-user-menu.types";
 
 const log = createLogger("right-panel-user-menu");
-const EMPTY_REALM_EMOJIS: RealmEmoji[] = [];
 
 export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   heading,
@@ -101,9 +99,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   const [statusEmojiCodeDraft, setStatusEmojiCodeDraft] = useState<string>("");
   const [statusEmojiPickerOpen, setStatusEmojiPickerOpen] = useState(false);
   const [statusSubmitting, setStatusSubmitting] = useState(false);
-  const [customEmojis, setCustomEmojis] = useState<RealmEmoji[]>(EMPTY_REALM_EMOJIS);
-  const customEmojisLoadedRef = React.useRef(false);
-  const customEmojisLoadingRef = React.useRef(false);
+  const [customEmojis, setCustomEmojis] = useState(() => getCachedRealmEmojis());
   const panelHeading = heading?.trim() ?? "";
   const currentLocaleName =
     locales.find((supportedLocale) => supportedLocale.id === currentLocale)?.nativeLabel ??
@@ -141,20 +137,12 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   );
 
   const ensureCustomEmojisLoaded = useCallback(() => {
-    if (customEmojisLoadedRef.current || customEmojisLoadingRef.current) {
-      return;
-    }
-    customEmojisLoadingRef.current = true;
-    void fetchRealmEmojis()
+    void ensureRealmEmojisLoaded()
       .then((list) => {
-        setCustomEmojis(list.length > 0 ? list : EMPTY_REALM_EMOJIS);
-        customEmojisLoadedRef.current = true;
+        setCustomEmojis(list);
       })
       .catch(() => {
         log.warn("Failed to load realm custom emojis for status picker");
-      })
-      .finally(() => {
-        customEmojisLoadingRef.current = false;
       });
   }, []);
 

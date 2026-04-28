@@ -1,9 +1,10 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { useCallback, useState } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useMentionSuggestStore } from "~/features/mention-suggest/mention-suggest.model";
 import type * as ZulipMessagesApi from "~/shared/api/zulip-messages";
+import { resetRealmEmojisCacheForTests } from "~/shared/lib/realm-emojis-cache";
 import { createUser } from "~/test/factories";
 import { renderWithProviders } from "~/test/render";
 import { computeFloatingPickerPosition } from "./message-composer-picker-position.lib";
@@ -117,6 +118,10 @@ afterEach(() => {
   emojiPickerMock.mockReset();
   fetchRealmEmojisMock.mockReset();
   fetchRealmEmojisMock.mockResolvedValue([]);
+});
+
+beforeEach(() => {
+  resetRealmEmojisCacheForTests();
 });
 
 const focusComposerInput = () => {

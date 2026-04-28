@@ -4,6 +4,7 @@ import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
 import type { MockMessage } from "~/shared/api/zulip.types";
+import { resetRealmEmojisCacheForTests } from "~/shared/lib/realm-emojis-cache";
 import { createUser } from "~/test/factories";
 import { MessageList } from "./message-list.ui";
 
@@ -59,6 +60,7 @@ describe("MessageList focused message behavior", () => {
   }
 
   beforeEach(() => {
+    resetRealmEmojisCacheForTests();
     scrollTargets.length = 0;
     scrollIntoView.mockReset();
     intersectionCallback = null;
@@ -299,6 +301,62 @@ describe("MessageList focused message behavior", () => {
           }),
           msg(2, {
             content: "Still :party_parrot:",
+          }),
+        ]}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(fetchRealmEmojisMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("loads realm custom emojis and renders reaction image when message has realm_emoji reaction", async () => {
+    const realmEmoji = {
+      id: "9001",
+      names: ["party_parrot"],
+      imgUrl: "https://chat.example.test/user_avatars/realm/9001.png",
+    };
+    fetchRealmEmojisMock.mockResolvedValue([realmEmoji]);
+    const { rerender } = render(
+      <MessageList
+        messages={[
+          msg(1, {
+            content: "Hi there without emoji shortcodes",
+            reactions: [
+              {
+                emoji_name: "party_parrot",
+                emoji_code: "9001",
+                reaction_type: "realm_emoji",
+                user_id: 42,
+              },
+            ],
+          }),
+        ]}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(fetchRealmEmojisMock).toHaveBeenCalledTimes(1);
+    });
+    expect(await screen.findByAltText(":party_parrot:")).toBeInTheDocument();
+
+    rerender(
+      <MessageList
+        messages={[
+          msg(1, {
+            content: "Still no shortcodes",
+            reactions: [
+              {
+                emoji_name: "party_parrot",
+                emoji_code: "9001",
+                reaction_type: "realm_emoji",
+                user_id: 42,
+              },
+            ],
+          }),
+          msg(2, {
+            content: "No shortcode as well",
           }),
         ]}
       />,

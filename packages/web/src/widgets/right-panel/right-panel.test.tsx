@@ -1,5 +1,5 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
@@ -18,6 +18,7 @@ import { setLocale } from "~/i18n/i18n";
 import * as zulipStreams from "~/shared/api/zulip-streams";
 import { RightDrawerContext } from "~/shared/contexts/right-drawer";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
+import { resetRealmEmojisCacheForTests } from "~/shared/lib/realm-emojis-cache";
 import { renderWithProviders } from "~/test/render";
 import { RightPanel } from "./right-panel.ui";
 import type * as ReactRouterDom from "react-router-dom";
@@ -77,6 +78,10 @@ vi.mock("emoji-picker-react", () => ({
 }));
 
 describe("RightPanel truthfulness", () => {
+  beforeEach(() => {
+    resetRealmEmojisCacheForTests();
+  });
+
   afterEach(() => {
     useCurrentChatMessagesStore.setState({
       context: null,

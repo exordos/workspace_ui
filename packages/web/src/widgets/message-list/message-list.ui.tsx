@@ -1,6 +1,5 @@
 import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback } from "react";
 import { t } from "~/i18n/i18n";
-import { fetchRealmEmojis } from "~/shared/api/zulip";
 import type { MockMessage, Reaction, RealmEmoji } from "~/shared/api/zulip.types";
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
 import { normalizeEmojiShortcodeName } from "~/shared/lib/emoji-shortcodes.lib";
@@ -9,6 +8,7 @@ import { normalizeStreamTopicForMessageCache } from "~/shared/lib/message-cache-
 import { containsEmojiShortcode } from "~/shared/lib/message-emoji-shortcodes.lib";
 import { logMessageFlow } from "~/shared/lib/message-flow-debug.lib";
 import { isLikelyRenderedMessageHtml } from "~/shared/lib/message-markdown-display.lib";
+import { ensureRealmEmojisLoaded, getCachedRealmEmojis } from "~/shared/lib/realm-emojis-cache";
 import { scrollToBottom } from "~/shared/lib/scroll-position.lib";
 import { computeScrollTopAfterPrepend } from "~/shared/lib/scroll-prepend-anchor.lib";
 import { FloatingLoadingOverlay } from "~/shared/ui/floating-loading-overlay";
@@ -21,7 +21,6 @@ import type { MessageListProps } from "./message-list.types";
 
 const SCROLL_AT_BOTTOM_THRESHOLD = 80;
 const FOCUSED_MESSAGE_HIGHLIGHT_DURATION_MS = 6_000;
-const EMPTY_REALM_EMOJIS: RealmEmoji[] = [];
 
 function getDateKey(ts: number): string {
   const d = new Date(ts * 1000);
@@ -110,27 +109,15 @@ export const MessageList: React.FC<MessageListProps> = ({
     focusedMessageId,
   );
   const [isAtBottom, setIsAtBottom] = useState(true);
-  const [customEmojis, setCustomEmojis] = useState<RealmEmoji[]>(EMPTY_REALM_EMOJIS);
-  const customEmojisRequestedRef = useRef(false);
-  const customEmojisLoadingRef = useRef(false);
+  const [customEmojis, setCustomEmojis] = useState<RealmEmoji[]>(() => getCachedRealmEmojis());
 
   const ensureCustomEmojisLoaded = useCallback(() => {
-    if (customEmojisRequestedRef.current || customEmojisLoadingRef.current) {
-      return;
-    }
-    customEmojisRequestedRef.current = true;
-    customEmojisLoadingRef.current = true;
-    void fetchRealmEmojis()
+    void ensureRealmEmojisLoaded()
       .then((list) => {
-        if (list.length > 0) {
-          setCustomEmojis(list);
-        }
+        setCustomEmojis(list);
       })
       .catch(() => {
         messageListLog.warn("Failed to load realm custom emojis for reaction picker");
-      })
-      .finally(() => {
-        customEmojisLoadingRef.current = false;
       });
   }, []);
 
@@ -169,12 +156,20 @@ export const MessageList: React.FC<MessageListProps> = ({
     [messages],
   );
 
+  const hasRealmEmojiReactions = useMemo(
+    () =>
+      messages.some((message) =>
+        message.reactions?.some((reaction) => reaction.reaction_type === "realm_emoji"),
+      ),
+    [messages],
+  );
+
   useEffect(() => {
-    if (!hasMarkdownEmojiShortcodes) {
+    if (!hasMarkdownEmojiShortcodes && !hasRealmEmojiReactions) {
       return;
     }
     ensureCustomEmojisLoaded();
-  }, [ensureCustomEmojisLoaded, hasMarkdownEmojiShortcodes]);
+  }, [ensureCustomEmojisLoaded, hasMarkdownEmojiShortcodes, hasRealmEmojiReactions]);
 
   const resolveCustomEmojiImageUrl = useCallback(
     (reaction: Reaction): string | undefined => {
