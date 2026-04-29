@@ -1495,10 +1495,7 @@ export async function fetchRealmEmojis(): Promise<RealmEmoji[]> {
     if (!id || !name || !sourceUrl) {
       continue;
     }
-    const imgUrl =
-      sourceUrl.startsWith("http://") || sourceUrl.startsWith("https://")
-        ? sourceUrl
-        : resolveRealmRelativeUrl(sourceUrl);
+    const imgUrl = resolveRealmRelativeUrl(sourceUrl);
     if (!imgUrl) {
       continue;
     }
