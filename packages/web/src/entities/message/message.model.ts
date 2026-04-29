@@ -353,10 +353,27 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     set((state) => {
       const nextQueue = state.pendingOutgoingEchoKeys.filter((k) => k !== optimisticId);
       const delivered = withOutgoingDeliveryStatus(finalMessage);
-
       const optIdx = state.messages.findIndex(
         (m) => m.id === optimisticId || m.local_echo_key === optimisticId,
       );
+      const realIdx = state.messages.findIndex((m) => m.id === finalMessage.id);
+
+      if (optIdx >= 0 && realIdx >= 0 && optIdx !== realIdx) {
+        const optimistic = state.messages[optIdx]!;
+        const echoKey = optimistic.local_echo_key ?? optimistic.id;
+        const merged = { ...delivered, local_echo_key: echoKey };
+        const updated = [...state.messages];
+        updated.splice(optIdx, 1);
+        const targetIdx = realIdx > optIdx ? realIdx - 1 : realIdx;
+        updated[targetIdx] = merged;
+        idbRef.current = {
+          kind: "sync",
+          deleteNegativeId: optimistic.id < 0 ? optimistic.id : null,
+          message: merged,
+        };
+        return { messages: updated, pendingOutgoingEchoKeys: nextQueue };
+      }
+
       if (optIdx >= 0) {
         const prev = state.messages[optIdx]!;
         const echoKey = prev.local_echo_key ?? prev.id;
@@ -371,7 +388,6 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         return { messages: updated, pendingOutgoingEchoKeys: nextQueue };
       }
 
-      const realIdx = state.messages.findIndex((m) => m.id === finalMessage.id);
       if (realIdx >= 0) {
         const prev = state.messages[realIdx]!;
         const echoKey = prev.local_echo_key ?? optimisticId;

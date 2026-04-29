@@ -297,6 +297,86 @@ describe("currentChatMessagesStore", () => {
       expect(state.messages[0]!.local_echo_key).toBe(-1);
     });
 
+    it("commitOutgoingMessage collapses optimistic+server duplicates when content match fails", () => {
+      const me = 42;
+      useCurrentChatMessagesStore.getState().appendMessage({
+        ...mockMsg({
+          id: -1,
+          sender_id: me,
+          content: "emoji :party_parrot: /user_uploads/1/private.png",
+          stream_id: 5,
+        }),
+        delivery_status: "sending",
+        local_echo_key: -1,
+      });
+      useCurrentChatMessagesStore.getState().appendMessage({
+        ...mockMsg({
+          id: 777,
+          sender_id: me,
+          content:
+            '<p>emoji <img class="emoji" alt=":party_parrot:" src="/static/generated/emoji/parrot.png"></p><div class="message_inline_image"><img src="/spinner.png"></div>',
+          stream_id: 5,
+        }),
+      });
+
+      expect(useCurrentChatMessagesStore.getState().messages).toHaveLength(2);
+      expect(useCurrentChatMessagesStore.getState().pendingOutgoingEchoKeys).toEqual([-1]);
+
+      useCurrentChatMessagesStore.getState().commitOutgoingMessage(-1, {
+        ...mockMsg({
+          id: 777,
+          sender_id: me,
+          content: "<p>emoji delivered</p>",
+          stream_id: 5,
+        }),
+      });
+
+      const state = useCurrentChatMessagesStore.getState();
+      expect(state.messages).toHaveLength(1);
+      expect(state.messages[0]!.id).toBe(777);
+      expect(state.messages[0]!.delivery_status).toBe("sent");
+      expect(state.messages[0]!.local_echo_key).toBe(-1);
+      expect(state.pendingOutgoingEchoKeys).toEqual([]);
+    });
+
+    it("commitOutgoingMessage keeps a single row on repeated updates after duplicate collapse", () => {
+      const me = 42;
+      useCurrentChatMessagesStore.getState().appendMessage({
+        ...mockMsg({ id: -1, sender_id: me, content: "emoji :party_parrot:", stream_id: 5 }),
+        delivery_status: "sending",
+        local_echo_key: -1,
+      });
+      useCurrentChatMessagesStore.getState().appendMessage({
+        ...mockMsg({
+          id: 778,
+          sender_id: me,
+          content: '<p>emoji <img class="emoji" alt=":party_parrot:" src="/emoji.png"></p>',
+          stream_id: 5,
+        }),
+      });
+
+      useCurrentChatMessagesStore.getState().commitOutgoingMessage(-1, {
+        ...mockMsg({ id: 778, sender_id: me, content: "<p>first canonical</p>", stream_id: 5 }),
+      });
+      useCurrentChatMessagesStore.getState().commitOutgoingMessage(-1, {
+        ...mockMsg({
+          id: 778,
+          sender_id: me,
+          content: "<p>second canonical update</p>",
+          stream_id: 5,
+          flags: ["read"],
+        }),
+      });
+
+      const state = useCurrentChatMessagesStore.getState();
+      expect(state.messages).toHaveLength(1);
+      expect(state.messages[0]!.id).toBe(778);
+      expect(state.messages[0]!.content).toBe("<p>second canonical update</p>");
+      expect(state.messages[0]!.local_echo_key).toBe(-1);
+      expect(state.messages[0]!.flags).toEqual(["read"]);
+      expect(state.pendingOutgoingEchoKeys).toEqual([]);
+    });
+
     it("appendMessage merges distinct pendings using queue order and content", () => {
       const me = 99;
       useCurrentChatMessagesStore.getState().appendMessage({

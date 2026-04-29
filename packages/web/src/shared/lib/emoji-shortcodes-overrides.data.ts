@@ -12,6 +12,7 @@
 export const ZULIP_SHORTCODE_TO_UNIFIED_OVERRIDES: Readonly<Record<string, string>> = {
   working_on_it: "1F6E0",
   thumbs_up: "1F44D",
+  ok: "1F44C",
   hand: "270B",
   stop: "1F91A",
   high_five: "1F590-FE0F",
