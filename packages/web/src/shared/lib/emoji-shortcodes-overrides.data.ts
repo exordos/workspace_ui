@@ -16,6 +16,8 @@ export const ZULIP_SHORTCODE_TO_UNIFIED_OVERRIDES: Readonly<Record<string, strin
   hand: "270B",
   stop: "1F91A",
   high_five: "1F590-FE0F",
+  heart: "2764-FE0F",
+  red_heart: "2764-FE0F",
   spock: "1F596",
   palm_down_hand: "1FAF3",
   palm_up_hand: "1FAF4",

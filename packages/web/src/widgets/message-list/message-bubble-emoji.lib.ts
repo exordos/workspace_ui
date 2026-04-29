@@ -40,6 +40,19 @@ export function emojiCodeToChar(emojiCode: string): string {
   }
 }
 
+function normalizeEmojiSemanticKey(value: string): string {
+  return Array.from(value.normalize("NFC"))
+    .map((char) => char.codePointAt(0))
+    .filter((codePoint): codePoint is number => codePoint != null && codePoint !== 0xfe0e)
+    .filter((codePoint) => codePoint !== 0xfe0f)
+    .map((codePoint) => codePoint.toString(16))
+    .join("-");
+}
+
+function hasEmojiPresentationSelector(value: string): boolean {
+  return Array.from(value.normalize("NFC")).some((char) => char.codePointAt(0) === 0xfe0f);
+}
+
 /**
  * True for a Zulip 1:1 DM (`private` with exactly two recipients). Group huddles have three or more.
  * Aligned with `messageToDmEntry` in `entities/chat-list/chat-list.lib.ts`.
@@ -85,11 +98,24 @@ export function reactionPayloadFromEmojiClickData(
 }
 
 export function getReactionDisplayChar(reaction: Reaction): string {
+  const fromShortcode = resolveEmojiShortcodeDisplayGlyph(reaction.emoji_name);
   if (reaction.reaction_type === "unicode_emoji") {
     const fromCode = emojiCodeToChar(reaction.emoji_code);
-    if (fromCode) return fromCode;
+    if (fromCode) {
+      const codeSemanticKey = normalizeEmojiSemanticKey(fromCode);
+      const shortcodeSemanticKey = normalizeEmojiSemanticKey(fromShortcode);
+      const shouldPreferShortcodeGlyph =
+        codeSemanticKey.length > 0 &&
+        codeSemanticKey === shortcodeSemanticKey &&
+        hasEmojiPresentationSelector(fromShortcode) &&
+        !hasEmojiPresentationSelector(fromCode);
+      if (shouldPreferShortcodeGlyph) {
+        return fromShortcode;
+      }
+      return fromCode;
+    }
   }
-  return resolveEmojiShortcodeDisplayGlyph(reaction.emoji_name);
+  return fromShortcode;
 }
 
 export interface GroupedReaction {
