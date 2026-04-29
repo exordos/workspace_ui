@@ -242,7 +242,6 @@ export const ChatPage: React.FC = () => {
   const loadNewerBoundaryPage = useCurrentChatMessagesStore((s) => s.loadNewerBoundaryPage);
   const boundaryLoadFailed = useCurrentChatMessagesStore((s) => s.boundaryLoadFailed);
   const clearBoundaryLoadFailed = useCurrentChatMessagesStore((s) => s.clearBoundaryLoadFailed);
-  const [sending, setSending] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<ComposerUploadProgressState | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [replyQuote, setReplyQuote] = useState<{
@@ -1152,7 +1151,6 @@ export const ChatPage: React.FC = () => {
     }
     jitsiHeaderCallInFlightRef.current = true;
     setSendError(null);
-    setSending(true);
     try {
       const result = await startCallFromHeader({
         target: callTarget,
@@ -1175,7 +1173,6 @@ export const ChatPage: React.FC = () => {
       }
     } finally {
       jitsiHeaderCallInFlightRef.current = false;
-      setSending(false);
     }
   }, [
     callTarget,
@@ -1245,7 +1242,6 @@ export const ChatPage: React.FC = () => {
     if (files && files.length > 0) {
       const uploadController = new AbortController();
       uploadAbortControllerRef.current = uploadController;
-      setSending(true);
       setUploadProgress({
         completed: 0,
         total: files.length,
@@ -1265,7 +1261,6 @@ export const ChatPage: React.FC = () => {
             ? err.message
             : t("message.sendFailed");
         setSendError(errorMessage);
-        setSending(false);
         setUploadProgress(null);
         throw new Error(errorMessage, { cause: err });
       } finally {
@@ -1290,7 +1285,6 @@ export const ChatPage: React.FC = () => {
         target: { mode: "dm", recipientIds: activeDmUserIds },
       });
       appendMessageToStore(optimisticMessage);
-      setSending(true);
       try {
         const newMsg = await sendMessage({
           to: activeDmUserIds,
@@ -1306,7 +1300,6 @@ export const ChatPage: React.FC = () => {
         setSendError(err instanceof Error ? err.message : t("message.sendFailed"));
         throw err instanceof Error ? err : new Error(t("message.sendFailed"));
       } finally {
-        setSending(false);
         setUploadProgress(null);
       }
       return;
@@ -1338,7 +1331,6 @@ export const ChatPage: React.FC = () => {
         },
       });
       appendMessageToStore(optimisticMessage);
-      setSending(true);
       try {
         const newMsg = await sendMessage({
           stream: activeStreamCanonicalName,
@@ -1356,7 +1348,6 @@ export const ChatPage: React.FC = () => {
         setSendError(err instanceof Error ? err.message : t("message.sendFailed"));
         throw err instanceof Error ? err : new Error(t("message.sendFailed"));
       } finally {
-        setSending(false);
         setUploadProgress(null);
       }
     }
@@ -1395,7 +1386,6 @@ export const ChatPage: React.FC = () => {
           target: { mode: "dm", recipientIds: activeDmUserIds },
         });
         appendMessageToStore(optimisticMessage);
-        setSending(true);
         try {
           const newMsg = await sendMessage({
             to: activeDmUserIds,
@@ -1410,7 +1400,6 @@ export const ChatPage: React.FC = () => {
           appendMessageToStore(markOutgoingMessageFailed(optimisticMessage));
           setSendError(err instanceof Error ? err.message : t("message.sendFailed"));
         } finally {
-          setSending(false);
           setUploadProgress(null);
         }
         return;
@@ -1441,7 +1430,6 @@ export const ChatPage: React.FC = () => {
           },
         });
         appendMessageToStore(optimisticMessage);
-        setSending(true);
         try {
           const newMsg = await sendMessage({
             stream: activeStreamCanonicalName,
@@ -1458,7 +1446,6 @@ export const ChatPage: React.FC = () => {
           appendMessageToStore(markOutgoingMessageFailed(optimisticMessage));
           setSendError(err instanceof Error ? err.message : t("message.sendFailed"));
         } finally {
-          setSending(false);
           setUploadProgress(null);
         }
       }
@@ -1871,7 +1858,6 @@ export const ChatPage: React.FC = () => {
           showTopicPrompt={!isDmView && !activeTopic}
           streamSlug={streamSlug}
           onExpandStreamTopics={handleExpandCurrentStreamTopics}
-          sending={sending}
           uploadProgress={uploadProgress}
           onSend={handleSend}
           onCreateCallLink={canStartCall ? buildCurrentCallLink : undefined}

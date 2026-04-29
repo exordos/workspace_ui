@@ -8,7 +8,6 @@ export interface ChatPageComposerSectionProps {
   showTopicPrompt: boolean;
   streamSlug: string | undefined;
   onExpandStreamTopics: () => void;
-  sending: boolean;
   uploadProgress: ComposerUploadProgressState | null;
   onSend: (content: string, subjectOverride?: string, files?: File[]) => void | Promise<void>;
   onCreateCallLink: (() => string | null) | undefined;

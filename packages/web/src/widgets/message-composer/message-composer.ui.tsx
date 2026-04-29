@@ -366,6 +366,18 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     setValue("");
     onValueChange?.("");
     setFiles([]);
+
+    // После оптимистичной очистки сразу возвращаем фокус и каретку,
+    // чтобы пользователь мог продолжать печатать следующий месседж без ожидания сети.
+    requestAnimationFrame(() => {
+      const textarea = textareaRef.current;
+      if (!textarea || disabled || mode !== "write") {
+        return;
+      }
+      textarea.focus();
+      textarea.setSelectionRange(0, 0);
+    });
+
     try {
       await onSend?.(bodyToSend, subject, filesToSend);
     } catch {

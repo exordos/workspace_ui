@@ -15,7 +15,6 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
   showTopicPrompt,
   streamSlug,
   onExpandStreamTopics,
-  sending,
   uploadProgress,
   onSend,
   onCreateCallLink,
@@ -60,7 +59,7 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
       onSend={onSend}
       onCreateCallLink={onCreateCallLink}
       onCancelUpload={onCancelUpload}
-      disabled={sending || (isDmView ? !activeDmUserIds?.length : !activeStream)}
+      disabled={isDmView ? !activeDmUserIds?.length : !activeStream}
       uploadProgress={uploadProgress}
       placeholder={placeholder}
       activeTopic={activeTopic ?? undefined}

@@ -155,6 +155,45 @@ describe("MessageComposer async send behavior", () => {
     resolveSend();
   });
 
+  it("keeps textarea editable while previous async send is still pending", async () => {
+    let resolveFirstSend: () => void = () => {
+      throw new Error("Expected first send resolver to be assigned");
+    };
+    const onSend = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveFirstSend = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(undefined);
+
+    renderWithProviders(<MessageComposer onSend={onSend} />);
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "First message" } });
+    fireEvent.keyDown(textbox, { key: "Enter", code: "Enter" });
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenNthCalledWith(1, "First message", "general", undefined);
+      expect(textbox).toHaveValue("");
+      expect(textbox).toHaveFocus();
+    });
+
+    fireEvent.change(textbox, { target: { value: "Second message" } });
+    fireEvent.keyDown(textbox, { key: "Enter", code: "Enter" });
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenNthCalledWith(2, "Second message", "general", undefined);
+    });
+
+    resolveFirstSend();
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledTimes(2);
+    });
+  });
+
   it("leaves the composer empty when async onSend rejects", async () => {
     const onSend = vi.fn().mockRejectedValue(new Error("send failed"));
 
