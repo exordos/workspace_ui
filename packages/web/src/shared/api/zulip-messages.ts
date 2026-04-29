@@ -365,7 +365,7 @@ export async function fetchMessageById(messageId: number): Promise<MockMessage |
   guard.messageId(messageId, "fetchMessageById");
   const res = await zulipPipelineGet(`/messages/${messageId}`, {
     allow_empty_topic_name: "true",
-    apply_markdown: "true",
+    apply_markdown: "false",
   });
   if (!res?.ok) {
     return null;

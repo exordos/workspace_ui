@@ -76,7 +76,7 @@ describe("dispatchZulipEvent", () => {
   });
 
   describe("update_message", () => {
-    it("stores rendered HTML and raw markdown when not rendering_only", () => {
+    it("stores markdown as message content when not rendering_only", () => {
       const { ctx, updateMessageContentMock } = buildCtx();
       dispatchZulipEvent(
         {
@@ -89,10 +89,10 @@ describe("dispatchZulipEvent", () => {
         } as ZulipEvent,
         ctx,
       );
-      expect(updateMessageContentMock).toHaveBeenCalledWith(42, "<p>new</p>", "*new*");
+      expect(updateMessageContentMock).toHaveBeenCalledWith(42, "*new*", "*new*");
     });
 
-    it("updates rendered HTML without overwriting markdown_source when rendering_only", () => {
+    it("does not overwrite content when rendering_only", () => {
       const { ctx, updateMessageContentMock } = buildCtx();
       dispatchZulipEvent(
         {
@@ -105,7 +105,7 @@ describe("dispatchZulipEvent", () => {
         } as ZulipEvent,
         ctx,
       );
-      expect(updateMessageContentMock).toHaveBeenCalledWith(7, "<p>preview</p>", undefined);
+      expect(updateMessageContentMock).not.toHaveBeenCalled();
     });
   });
 

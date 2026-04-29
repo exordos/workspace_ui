@@ -197,7 +197,7 @@ export async function registerQueue(
 ): Promise<RegisterQueueResult> {
   const body: Record<string, string> = {
     event_types: JSON.stringify(eventTypes),
-    apply_markdown: "true",
+    apply_markdown: "false",
   };
   if (fetchEventTypes.length > 0) {
     // Зачем: Zulip вернет в register дополнительные metadata-блоки одним запросом.

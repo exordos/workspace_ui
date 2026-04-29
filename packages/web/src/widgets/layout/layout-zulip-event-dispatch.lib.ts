@@ -271,17 +271,7 @@ function handleUpdateMessage(event: ZulipEvent, ctx: LayoutZulipEventDispatchCon
   const renderingOnly = event.rendering_only === true;
   const newMarkdown =
     !renderingOnly && typeof event.content === "string" ? event.content : undefined;
-  const newHtml = event.rendered_content as string | undefined;
   if (messageId == null) return;
-  if (newHtml != null) {
-    const trimmed = newMarkdown?.trim();
-    currentChat.updateMessageContent(
-      messageId,
-      newHtml,
-      trimmed != null && trimmed.length > 0 ? newMarkdown : undefined,
-    );
-    return;
-  }
   if (newMarkdown != null) {
     const trimmed = newMarkdown.trim();
     currentChat.updateMessageContent(

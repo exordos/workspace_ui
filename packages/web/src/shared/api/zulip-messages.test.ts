@@ -345,7 +345,7 @@ describe("fetchMessageById", () => {
     expect(result?.markdown_source).toBe("hello");
     expect(mockZulipApi.get).toHaveBeenCalledWith("/messages/100", {
       allow_empty_topic_name: "true",
-      apply_markdown: "true",
+      apply_markdown: "false",
     });
   });
 });

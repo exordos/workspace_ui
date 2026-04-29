@@ -496,7 +496,7 @@ describe("registerQueue", () => {
     expect(mockRefreshZulipApiBase).toHaveBeenCalled();
     expect(mockZulipApi.post).toHaveBeenCalledWith("/register", {
       event_types: JSON.stringify(["message", "presence"]),
-      apply_markdown: "true",
+      apply_markdown: "false",
       fetch_event_types: JSON.stringify([
         "subscription",
         "user_topic",
@@ -1578,7 +1578,7 @@ describe("fetchMessageById", () => {
     expect(result?.markdown_source).toBe("hello");
     expect(mockZulipApi.get).toHaveBeenCalledWith("/messages/100", {
       allow_empty_topic_name: "true",
-      apply_markdown: "true",
+      apply_markdown: "false",
     });
   });
 
@@ -1753,7 +1753,7 @@ describe("fetchMessages", () => {
     mockZulipClient.messages.retrieve.mockResolvedValue({ messages: [] });
     await fetchMessages();
     expect(mockZulipClient.messages.retrieve).toHaveBeenCalledWith(
-      expect.objectContaining({ narrow: undefined, apply_markdown: true }),
+      expect.objectContaining({ narrow: undefined, apply_markdown: false }),
     );
   });
 
