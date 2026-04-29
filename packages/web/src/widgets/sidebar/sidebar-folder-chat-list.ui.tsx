@@ -8,12 +8,12 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { muteTopic } from "~/features/mute-chat/mute-chat.api";
-import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import {
   SYSTEM_CHANNELS_FOLDER_ID,
   SYSTEM_PERSONAL_FOLDER_ID,
 } from "~/features/folder-sync/folder-sync-constants.lib";
+import { muteTopic } from "~/features/mute-chat/mute-chat.api";
+import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { usePinStore } from "~/features/pin-chat/pin-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
@@ -22,6 +22,7 @@ import { sidebarRowClass } from "~/shared/lib/format";
 import { Avatar } from "~/shared/ui/avatar";
 import { Badge } from "~/shared/ui/badge";
 import { Icon } from "~/shared/ui/icon";
+import type { IconName } from "~/shared/ui/icon";
 import { DmContextMenu, StreamContextMenu } from "./sidebar-chat-context-menu.ui";
 import { DmChatRow } from "./sidebar-folder-dm-row.ui";
 import { SidebarFolderNewTopicDialog } from "./sidebar-folder-new-topic-dialog.ui";
@@ -32,7 +33,6 @@ import {
   TOPIC_BAR_COLORS,
   chatToWorkspaceChatId,
 } from "./sidebar.lib";
-import type { IconName } from "~/shared/ui/icon";
 import type {
   NewTopicDialogState,
   SidebarFolderChatListProps,

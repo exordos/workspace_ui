@@ -4,7 +4,11 @@
 // - хранит custom status и метаданные его загрузки
 // - держит индекс email -> userId для быстрых обновлений presence
 import { create } from "zustand";
-import type { AvatarUrlByUserId, ZulipRawMessage } from "~/shared/api/zulip.types";
+import type {
+  AvatarUrlByUserId,
+  ZulipGroupSettingValue,
+  ZulipRawMessage,
+} from "~/shared/api/zulip.types";
 import { bumpAvatarVersion } from "~/shared/lib/avatar";
 import type { ZulipCustomProfileDataMap } from "~/shared/lib/user-profile-fields.lib";
 
@@ -62,13 +66,19 @@ export interface UserStatusFetchMeta {
   fetchedAt?: number;
 }
 
+export interface CurrentUserChannelCapabilities {
+  realmCanAddSubscribersGroup?: ZulipGroupSettingValue;
+}
+
 interface UsersState {
   users: Map<number, UserRecord>;
   emailToUserId: Map<string, number>;
+  currentUserChannelCapabilities: CurrentUserChannelCapabilities;
 
   mergeUser: (payload: Partial<UserRecord> & { user_id: number }) => void;
   mergeUsers: (list: (Partial<UserRecord> & { user_id: number })[]) => void;
   mergeFromMessage: (msg: ZulipRawMessage) => void;
+  setCurrentUserChannelCapabilities: (capabilities: CurrentUserChannelCapabilities) => void;
   setPresenceByEmail: (email: string, presence: UserPresence) => void;
   setPresence: (userId: number, presence: UserPresence) => void;
   // Сохраняет результат статуса и сбрасывает ошибку/backoff.
@@ -84,6 +94,7 @@ interface UsersState {
 
 const emptyUsers = (): Map<number, UserRecord> => new Map();
 const emptyEmailMap = (): Map<string, number> => new Map();
+const defaultCurrentUserChannelCapabilities = (): CurrentUserChannelCapabilities => ({});
 
 let _cachedAvatarMap: Map<number, string> | null = null;
 let _cachedAvatarMapUsersRef: Map<number, UserRecord> | null = null;
@@ -108,6 +119,7 @@ function normalizeUser(payload: Partial<UserRecord> & { user_id: number }): User
 export const useUsersStore = create<UsersState>((set, get) => ({
   users: emptyUsers(),
   emailToUserId: emptyEmailMap(),
+  currentUserChannelCapabilities: defaultCurrentUserChannelCapabilities(),
 
   mergeUser(payload) {
     const { user_id } = payload;
@@ -192,6 +204,10 @@ export const useUsersStore = create<UsersState>((set, get) => ({
         }
       }
     }
+  },
+
+  setCurrentUserChannelCapabilities(capabilities) {
+    set({ currentUserChannelCapabilities: capabilities });
   },
 
   setPresenceByEmail(email, presence) {
@@ -283,6 +299,10 @@ export const useUsersStore = create<UsersState>((set, get) => ({
   clear() {
     _cachedAvatarMap = null;
     _cachedAvatarMapUsersRef = null;
-    set({ users: emptyUsers(), emailToUserId: emptyEmailMap() });
+    set({
+      users: emptyUsers(),
+      emailToUserId: emptyEmailMap(),
+      currentUserChannelCapabilities: defaultCurrentUserChannelCapabilities(),
+    });
   },
 }));

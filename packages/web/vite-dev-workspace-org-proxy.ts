@@ -1,13 +1,12 @@
-/**
- * Vite dev server: multi-org proxy via X-Workspace-Dev-Target-Origin.
- *
- * Pairs with [src/shared/config/dev-workspace-org-proxy.ts](src/shared/config/dev-workspace-org-proxy.ts).
- *
- * Runs before Vite's static `server.proxy`:
- * - `/workspace...` — forwards Workspace REST when the header is set; otherwise defers to the static `/workspace` proxy.
- * - `/user_uploads...` — same header; forwards `/user_uploads/...` as-is to the realm (no gateway prefix).
- *   Otherwise defers to the static `/user_uploads` proxy (may add prefix for `VITE_WORKSPACE_API_ORIGIN`).
- */
+// Dev-proxy для Vite с поддержкой multi-org через `X-Workspace-Dev-Target-Origin`.
+//
+// Работает в паре с `src/shared/config/dev-workspace-org-proxy.ts`.
+//
+// Подключается раньше статического `server.proxy` в Vite:
+// - `/workspace...` — проксирует Workspace REST, если выставлен заголовок;
+//   иначе передает обработку статическому `/workspace` proxy.
+// - `/(user_uploads|external_content)...` — по тому же заголовку проксирует путь как есть в realm;
+//   иначе передает обработку статическому proxy для этого пути.
 import type { IncomingMessage, ServerResponse } from "node:http";
 import httpProxy from "http-proxy";
 import {
@@ -36,9 +35,7 @@ function sendText(res: ServerResponse, status: number, body: string): void {
   res.end(body);
 }
 
-/**
- * Registers Connect middleware on the Vite dev server (development only).
- */
+// Регистрирует Connect middleware в dev-сервере Vite.
 type ConnectUse = (fn: (req: IncomingMessage, res: ServerResponse, next: () => void) => void) => void;
 
 export function installDevWorkspaceOrgProxyMiddleware(
@@ -76,8 +73,16 @@ export function installDevWorkspaceOrgProxyMiddleware(
     }
     const pathname = parsed.pathname;
 
-    const onUserUploads = pathname === "/user_uploads" || pathname.startsWith("/user_uploads/");
-    if (onUserUploads) {
+    const onRealmMedia =
+      pathname === "/user_uploads" ||
+      pathname.startsWith("/user_uploads/") ||
+      pathname === "/external_content" ||
+      pathname.startsWith("/external_content/");
+    if (onRealmMedia) {
+      const mediaLabel =
+        pathname === "/external_content" || pathname.startsWith("/external_content/")
+          ? "external_content"
+          : "user_uploads";
       const targetRaw = readHeader(req);
       const trimmedTarget = targetRaw?.trim() ?? "";
 
@@ -87,7 +92,7 @@ export function installDevWorkspaceOrgProxyMiddleware(
       }
 
       if (!isAllowedDevWorkspaceProxyTargetOrigin(trimmedTarget)) {
-        sendText(res, 403, "Target origin not allowed for dev user_uploads proxy");
+        sendText(res, 403, "Target origin not allowed for dev realm media proxy");
         return;
       }
 
@@ -106,7 +111,7 @@ export function installDevWorkspaceOrgProxyMiddleware(
 
       if (options.proxyDebug) {
         const upstream = new URL(req.url ?? "/", `${targetOrigin}/`).href;
-        console.info(`[vite-proxy:user_uploads-org] ${req.method ?? "?"} ${url} → ${upstream}`);
+        console.info(`[vite-proxy:${mediaLabel}-org] ${req.method ?? "?"} ${url} → ${upstream}`);
       }
 
       proxy.web(req, res, { target: targetOrigin });

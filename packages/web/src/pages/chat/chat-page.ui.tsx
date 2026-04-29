@@ -54,9 +54,10 @@ import { normalizeDmRouteUserIds } from "~/shared/lib/dm-route.lib";
 import { getPresenceState, formatLastSeen } from "~/shared/lib/format";
 import { buildJitsiMeetingUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
 import { createLogger } from "~/shared/lib/logger";
-import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { logMessageFlow, summarizeChatContextForLog } from "~/shared/lib/message-flow-debug.lib";
+import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { useShortcut } from "~/shared/lib/shortcuts";
+import { resolveCanonicalStreamName } from "~/shared/lib/stream-name.lib";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
 import { useSidebarConfigStore } from "~/widgets/sidebar/sidebar-config.model";
 import { getDmById, parseStreamSlug, parseDmSlugToUserIds } from "~/widgets/sidebar/sidebar.lib";
@@ -141,7 +142,7 @@ export const ChatPage: React.FC = () => {
     activeTopic,
     streamRouteTopic,
     activeStream,
-    resolvedStreamName,
+    canonicalStreamName,
     resolvedStreamId,
     dmRecipientIds,
     isDmView,
@@ -152,6 +153,16 @@ export const ChatPage: React.FC = () => {
     forwardMessageId,
   } = route;
   const activeDmUserIds = isDmView ? dmRecipientIds : null;
+  const activeStreamId = resolvedStreamId;
+  const activeStreamCanonicalName = useMemo(
+    () =>
+      resolveCanonicalStreamName({
+        streamId: activeStreamId,
+        streamMapName: activeStreamId != null ? streamsMap.get(activeStreamId)?.name : null,
+        metadataName: canonicalStreamName,
+      }),
+    [activeStreamId, canonicalStreamName, streamsMap],
+  );
   const partnerUser = useUsersStore((s) =>
     partnerUserId != null ? s.getUser(partnerUserId) : undefined,
   );
@@ -459,8 +470,6 @@ export const ChatPage: React.FC = () => {
     };
   }, [draftType, draftTo, draftTopic]);
 
-  const activeStreamId = resolvedStreamId;
-
   const typingTarget = useMemo(() => {
     if (isDmView && activeDmUserIds?.length) {
       return { kind: "dm" as const, userIds: activeDmUserIds };
@@ -547,7 +556,9 @@ export const ChatPage: React.FC = () => {
           : { type: "stream", streamId: target.streamId, topic: target.topic };
 
       const request =
-        target.type === "dm" ? markDmAsRead(target.userIds) : markTopicAsRead(target.streamId, target.topic);
+        target.type === "dm"
+          ? markDmAsRead(target.userIds)
+          : markTopicAsRead(target.streamId, target.topic);
 
       request
         .then((ok) => {
@@ -653,7 +664,9 @@ export const ChatPage: React.FC = () => {
 
     const unreadIds = collectUnreadMessageIds(messages);
     const request =
-      target.type === "dm" ? markDmAsRead(target.userIds) : markTopicAsRead(target.streamId, target.topic);
+      target.type === "dm"
+        ? markDmAsRead(target.userIds)
+        : markTopicAsRead(target.streamId, target.topic);
 
     const markFallbackContext: ReadFallbackContext | undefined =
       target.type === "dm"
@@ -750,7 +763,7 @@ export const ChatPage: React.FC = () => {
       }
       return;
     }
-    if (!resolvedStreamName || resolvedStreamId == null) {
+    if (!activeStreamCanonicalName || resolvedStreamId == null) {
       logMessageFlow("ui:stream route effect → setContext(null)", {
         reason: "stream name/id not resolved",
       });
@@ -766,7 +779,7 @@ export const ChatPage: React.FC = () => {
     setContext({
       type: "stream",
       streamId: resolvedStreamId,
-      streamName: resolvedStreamName,
+      streamName: activeStreamCanonicalName,
       topic: streamRouteTopic,
       streamWideView,
     });
@@ -775,7 +788,7 @@ export const ChatPage: React.FC = () => {
     streamSlug,
     setContext,
     resolvedStreamId,
-    resolvedStreamName,
+    activeStreamCanonicalName,
     streamRouteTopic,
     topicName,
   ]);
@@ -787,7 +800,7 @@ export const ChatPage: React.FC = () => {
       setMessagesLoading(false);
       return;
     }
-    if (!resolvedStreamName) {
+    if (!activeStreamCanonicalName) {
       setHasInitialMessagesPayload(false);
       setMessagesLoading(false);
       return;
@@ -822,7 +835,7 @@ export const ChatPage: React.FC = () => {
       context: {
         type: "stream",
         streamId: resolvedStreamId,
-        streamName: resolvedStreamName,
+        streamName: activeStreamCanonicalName,
         topic: streamRouteTopic,
         streamWideView: topicName == null,
       },
@@ -874,7 +887,7 @@ export const ChatPage: React.FC = () => {
     };
   }, [
     streamSlug,
-    resolvedStreamName,
+    activeStreamCanonicalName,
     resolvedStreamId,
     streamRouteTopic,
     topicName,
@@ -1115,12 +1128,15 @@ export const ChatPage: React.FC = () => {
     return buildJitsiMeetingUrl(roomName, jitsiLinkOptions);
   }, [callTarget, currentUserId, callRoomChatLabel, jitsiLinkOptions]);
 
-  const appendMessageIfContextMatches = useCallback((msg: MockMessage) => {
-    const state = useCurrentChatMessagesStore.getState();
-    if (isMessageForContext(msg, state.context, currentUserId)) {
-      state.appendMessage(msg);
-    }
-  }, [currentUserId]);
+  const appendMessageIfContextMatches = useCallback(
+    (msg: MockMessage) => {
+      const state = useCurrentChatMessagesStore.getState();
+      if (isMessageForContext(msg, state.context, currentUserId)) {
+        state.appendMessage(msg);
+      }
+    },
+    [currentUserId],
+  );
 
   const performStartCallFromHeader = useCallback(async () => {
     if (!canStartCallFromHeader({ target: callTarget, currentUserId }) || callTarget == null)
@@ -1185,7 +1201,9 @@ export const ChatPage: React.FC = () => {
   );
 
   useEffect(() => {
-    useChatDmCallBridgeStore.getState().setInvokeDmCallFromProfileHandler(invokeDmCallFromProfileHandler);
+    useChatDmCallBridgeStore
+      .getState()
+      .setInvokeDmCallFromProfileHandler(invokeDmCallFromProfileHandler);
     return () => {
       useChatDmCallBridgeStore.getState().setInvokeDmCallFromProfileHandler(null);
     };
@@ -1288,6 +1306,16 @@ export const ChatPage: React.FC = () => {
       return;
     }
     if (activeStream) {
+      if (!activeStreamCanonicalName) {
+        log.warn("Blocked stream send without canonical stream name", {
+          streamId: activeStreamId ?? undefined,
+          displayName: activeStream,
+        });
+        const error = t("message.sendFailed");
+        setSendError(error);
+        setUploadProgress(null);
+        throw new Error(error);
+      }
       const subject = subjectOverride ?? activeTopic ?? "general";
       const optimisticMessageId = optimisticMessageIdRef.current;
       optimisticMessageIdRef.current -= 1;
@@ -1298,7 +1326,7 @@ export const ChatPage: React.FC = () => {
         content: body,
         target: {
           mode: "stream",
-          stream: activeStream,
+          stream: activeStreamCanonicalName,
           streamId: activeStreamId ?? undefined,
           subject,
         },
@@ -1307,7 +1335,7 @@ export const ChatPage: React.FC = () => {
       setSending(true);
       try {
         const newMsg = await sendMessage({
-          stream: activeStream,
+          stream: activeStreamCanonicalName,
           streamId: activeStreamId ?? undefined,
           subject,
           content: body,
@@ -1382,6 +1410,15 @@ export const ChatPage: React.FC = () => {
         return;
       }
       if (activeStream) {
+        if (!activeStreamCanonicalName) {
+          log.warn("Blocked retry for failed stream message without canonical stream name", {
+            streamId: activeStreamId ?? undefined,
+            displayName: activeStream,
+            failedMessageId: msg.id,
+          });
+          setSendError(t("message.sendFailed"));
+          return;
+        }
         const subject = (msg.subject ?? "").trim() || activeTopic || "general";
         const optimisticMessageId = optimisticMessageIdRef.current;
         optimisticMessageIdRef.current -= 1;
@@ -1392,7 +1429,7 @@ export const ChatPage: React.FC = () => {
           content: body,
           target: {
             mode: "stream",
-            stream: activeStream,
+            stream: activeStreamCanonicalName,
             streamId: activeStreamId ?? undefined,
             subject,
           },
@@ -1401,7 +1438,7 @@ export const ChatPage: React.FC = () => {
         setSending(true);
         try {
           const newMsg = await sendMessage({
-            stream: activeStream,
+            stream: activeStreamCanonicalName,
             streamId: activeStreamId ?? undefined,
             subject,
             content: body,
@@ -1423,6 +1460,7 @@ export const ChatPage: React.FC = () => {
     [
       activeDmUserIds,
       activeStream,
+      activeStreamCanonicalName,
       activeStreamId,
       activeTopic,
       appendMessageToStore,

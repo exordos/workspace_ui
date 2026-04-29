@@ -1,6 +1,6 @@
 import { fireEvent, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
 import { useLocation } from "react-router-dom";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { renderWithProviders } from "~/test/render";
 import { InstanceSwitcher } from "./instance-switch.ui";

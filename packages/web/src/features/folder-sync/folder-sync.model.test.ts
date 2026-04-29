@@ -421,10 +421,7 @@ describe("folder-sync model orchestration", () => {
     let stateAfterFoldersLoaded: ReturnType<typeof useFolderSyncStore.getState> | null = null;
 
     vi.mocked(loadFolderSyncSnapshot).mockImplementation(
-      async (
-        _instanceId: string,
-        options?: Parameters<typeof loadFolderSyncSnapshot>[1],
-      ) => {
+      async (_instanceId: string, options?: Parameters<typeof loadFolderSyncSnapshot>[1]) => {
         await options?.onFoldersLoaded?.(folders);
         stateAfterFoldersLoaded = useFolderSyncStore.getState();
         return makeFolderSnapshot({ folderId: "folder-7", selectedChatId: "dm:final" });

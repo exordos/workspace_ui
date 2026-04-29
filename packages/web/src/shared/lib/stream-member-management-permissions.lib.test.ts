@@ -1,92 +1,145 @@
-// Тесты единого helper-а прав управления участниками канала.
-// Нужны, чтобы зафиксировать базовую матрицу allow/deny для add/remove операций.
+// Тесты runtime-capabilities текущего пользователя для действий в канале.
 import { describe, expect, it } from "vitest";
 import { UserRole } from "~/shared/lib/roles";
-import { canManageMembersInStream } from "./stream-member-management-permissions.lib";
+import { resolveCurrentUserChannelCapabilities } from "./stream-member-management-permissions.lib";
 
 // Унифицированный stub membership-проверки для unit-тестов.
 const neverInGroup = () => false;
 
-describe("canManageMembersInStream", () => {
+describe("resolveCurrentUserChannelCapabilities", () => {
   it("denies when current user is unknown", () => {
     expect(
-      canManageMembersInStream({
-        operation: "add",
+      resolveCurrentUserChannelCapabilities({
         currentUserId: null,
         orgRole: UserRole.Member,
         isUserInGroupSetting: neverInGroup,
       }),
-    ).toBe(false);
+    ).toEqual({
+      canAddSubscribers: false,
+      canRemoveSubscribers: false,
+      canEditChannelMetadata: false,
+      canArchiveChannel: false,
+    });
   });
 
   it("denies guests regardless of channel groups", () => {
     expect(
-      canManageMembersInStream({
-        operation: "remove",
+      resolveCurrentUserChannelCapabilities({
         currentUserId: 10,
         orgRole: UserRole.Guest,
         canAdministerChannelGroup: 66,
-        operationGroup: 55,
+        canAddSubscribersGroup: 55,
+        canRemoveSubscribersGroup: 55,
         isUserInGroupSetting: () => true,
       }),
-    ).toBe(false);
+    ).toEqual({
+      canAddSubscribers: false,
+      canRemoveSubscribers: false,
+      canEditChannelMetadata: false,
+      canArchiveChannel: false,
+    });
   });
 
-  it("allows org owner/admin as fallback", () => {
+  it("allows org owner/admin as add-subscribers fallback when realm metadata is missing", () => {
     expect(
-      canManageMembersInStream({
-        operation: "add",
+      resolveCurrentUserChannelCapabilities({
         currentUserId: 10,
         orgRole: UserRole.Owner,
         isUserInGroupSetting: neverInGroup,
       }),
-    ).toBe(true);
+    ).toMatchObject({
+      canAddSubscribers: true,
+      canRemoveSubscribers: true,
+      canEditChannelMetadata: true,
+      canArchiveChannel: true,
+    });
+  });
+
+  it("keeps org admin add-members access without explicit realm group metadata", () => {
     expect(
-      canManageMembersInStream({
-        operation: "remove",
+      resolveCurrentUserChannelCapabilities({
         currentUserId: 10,
         orgRole: UserRole.Admin,
         isUserInGroupSetting: neverInGroup,
       }),
-    ).toBe(true);
+    ).toMatchObject({
+      canAddSubscribers: true,
+      canRemoveSubscribers: true,
+      canEditChannelMetadata: true,
+      canArchiveChannel: true,
+    });
   });
 
-  it("allows channel admin group members", () => {
+  it("allows add-members for modern realm add-subscribers group", () => {
     expect(
-      canManageMembersInStream({
-        operation: "remove",
+      resolveCurrentUserChannelCapabilities({
+        currentUserId: 10,
+        orgRole: UserRole.Member,
+        currentUserChannelCapabilities: {
+          realmCanAddSubscribersGroup: 91,
+        },
+        isUserInGroupSetting: (setting, userId) => setting === 91 && userId === 10,
+      }),
+    ).toMatchObject({
+      canAddSubscribers: true,
+    });
+  });
+
+  it("allows channel admin to add subscribers only in public channels", () => {
+    expect(
+      resolveCurrentUserChannelCapabilities({
         currentUserId: 10,
         orgRole: UserRole.Member,
         canAdministerChannelGroup: 66,
-        operationGroup: 55,
+        inviteOnly: false,
         isUserInGroupSetting: (setting, userId) => setting === 66 && userId === 10,
       }),
-    ).toBe(true);
-  });
-
-  it("allows operation-specific group members when not channel-admin", () => {
+    ).toMatchObject({
+      canAddSubscribers: true,
+      canRemoveSubscribers: true,
+      canEditChannelMetadata: true,
+      canArchiveChannel: true,
+    });
     expect(
-      canManageMembersInStream({
-        operation: "add",
+      resolveCurrentUserChannelCapabilities({
         currentUserId: 10,
         orgRole: UserRole.Member,
         canAdministerChannelGroup: 66,
-        operationGroup: 55,
+        inviteOnly: true,
+        isUserInGroupSetting: (setting, userId) => setting === 66 && userId === 10,
+      }),
+    ).toMatchObject({
+      canAddSubscribers: false,
+      canRemoveSubscribers: true,
+      canEditChannelMetadata: true,
+      canArchiveChannel: true,
+    });
+  });
+
+  it("allows add-members from can_add_subscribers_group even for private channels", () => {
+    expect(
+      resolveCurrentUserChannelCapabilities({
+        currentUserId: 10,
+        orgRole: UserRole.Member,
+        inviteOnly: true,
+        canAddSubscribersGroup: 55,
         isUserInGroupSetting: (setting, userId) => setting === 55 && userId === 10,
       }),
-    ).toBe(true);
+    ).toMatchObject({
+      canAddSubscribers: true,
+    });
   });
 
-  it("denies when neither channel-admin nor operation-group membership matches", () => {
+  it("allows remove-members from remove-group membership", () => {
     expect(
-      canManageMembersInStream({
-        operation: "remove",
+      resolveCurrentUserChannelCapabilities({
         currentUserId: 10,
         orgRole: UserRole.Member,
-        canAdministerChannelGroup: 66,
-        operationGroup: 55,
-        isUserInGroupSetting: neverInGroup,
+        canRemoveSubscribersGroup: 55,
+        isUserInGroupSetting: (setting, userId) => setting === 55 && userId === 10,
       }),
-    ).toBe(false);
+    ).toMatchObject({
+      canRemoveSubscribers: true,
+    });
   });
 });

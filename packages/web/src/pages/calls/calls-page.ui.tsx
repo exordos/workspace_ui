@@ -77,7 +77,11 @@ function resolveCallContextLabel(
 
 function collectRecentJitsiCalls(
   messages: MockMessage[],
-  options: { fallbackRoomLabel: string; dmFallbackLabel: string; jitsiLinkOptions?: JitsiLinkOptions },
+  options: {
+    fallbackRoomLabel: string;
+    dmFallbackLabel: string;
+    jitsiLinkOptions?: JitsiLinkOptions;
+  },
 ): RecentJitsiCallEntry[] {
   const entriesByUrl = new Map<string, RecentJitsiCallEntry>();
   const jitsiLinkOptions = options.jitsiLinkOptions;

@@ -3,12 +3,13 @@
 @tailwind utilities;
 
 /*
- * Theme CSS variables are set dynamically by lib/themes/engine.ts via applyTheme().
- * Palettes defined in lib/themes/orange-warm.ts, lib/themes/blue-cold.ts,
- * lib/themes/blue-mist.ts, lib/themes/emerald-chat.ts.
+ * CSS-переменные темы задаются динамически из lib/themes/engine.ts через applyTheme().
+ * Палитры определены в lib/themes/orange-warm.ts, lib/themes/blue-cold.ts,
+ * lib/themes/blue-mist.ts и lib/themes/emerald-chat.ts.
  *
- * Fallback values below ensure the app renders before JS initializes the theme.
- * They match the product default: Blue Cold light.
+ * Значения ниже нужны как fallback, чтобы приложение корректно отрисовалось
+ * до инициализации темы из JS.
+ * Они соответствуют дефолтной продуктовой теме: Blue Cold light.
  */
 :root {
   --color-bg: #e0ecf0;
@@ -81,7 +82,7 @@ body {
   height: 100%;
 }
 
-/* ── Zulip spoiler blocks ─────────────────────────────── */
+/* ── Спойлер-блоки Zulip ─────────────────────────────── */
 
 .message-body .spoiler-block {
   border: 1px solid var(--color-border-subtle);
@@ -117,7 +118,7 @@ body {
   display: block;
 }
 
-/* ── Video in messages ────────────────────────────────── */
+/* ── Видео в сообщениях ───────────────────────────────── */
 
 .message-body video {
   max-width: 100%;
@@ -125,7 +126,75 @@ body {
   margin: 4px 0;
 }
 
-/* ── Composer preview code highlighting ──────────────── */
+.message-body img.message-inline-emoji {
+  display: inline-block;
+  width: 1.1em;
+  height: 1.1em;
+  max-width: none;
+  max-height: none;
+  margin: 0 0.08em;
+  border-radius: 0;
+  vertical-align: -0.15em;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+/* ── Превью ссылок Zulip ──────────────────────────────── */
+
+.message-body .message_embed {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin: 8px 0;
+  padding: 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-bg-elevated) 84%, transparent);
+  box-sizing: border-box;
+}
+
+.message-body .message_embed_image {
+  display: block;
+  flex: 0 0 112px;
+  width: 112px;
+  min-width: 112px;
+  height: 84px;
+  border-radius: 10px;
+  background-color: color-mix(in srgb, var(--color-border-subtle) 55%, transparent);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  overflow: hidden;
+  text-decoration: none;
+}
+
+.message-body .message_embed .data-container {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.message-body .message_embed_title {
+  margin-bottom: 4px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.25rem;
+}
+
+.message-body .message_embed_title a {
+  color: var(--color-text-primary);
+  text-decoration: none;
+}
+
+.message-body .message_embed_description {
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
+  line-height: 1.15rem;
+}
+
+/* ── Подсветка кода в preview composer ───────────────── */
 
 .message-body pre code {
   max-width: 100%;
@@ -178,9 +247,9 @@ body {
   color: var(--color-indicator-pink);
 }
 
-/* ── Native app feel ──────────────────────────────────── */
+/* ── Поведение как у нативного приложения ────────────── */
 
-/* Prevent text selection on UI chrome (buttons, labels, nav) */
+/* Запрещаем выделение текста на UI-обвязке: кнопках, лейблах, навигации */
 button,
 [role="button"],
 nav,
@@ -190,7 +259,7 @@ aside {
   -webkit-user-select: none;
 }
 
-/* Allow text selection only in content areas */
+/* Разрешаем выделение текста только в контентных областях */
 [role="feed"],
 [role="main"],
 article,
@@ -199,7 +268,7 @@ article,
   -webkit-user-select: text;
 }
 
-/* macOS: draggable title bar region */
+/* macOS: область перетаскивания title bar */
 .electron-drag {
   -webkit-app-region: drag;
   app-region: drag;
@@ -210,7 +279,7 @@ article,
   app-region: no-drag;
 }
 
-/* Remove focus outline on mouse click, keep for keyboard */
+/* Убираем focus outline при клике мышью, но сохраняем для клавиатуры */
 :focus-visible {
   @apply outline-2 outline-offset-2 outline-accent;
 }
@@ -220,8 +289,8 @@ article,
 }
 
 /*
- * Unified hover/focus contract for icon-only action buttons.
- * Keeps icon interactions consistent across the interface.
+ * Единый hover/focus-контракт для action-кнопок только с иконками.
+ * Делает поведение иконок одинаковым по всему интерфейсу.
  */
 @media (hover: hover) {
   button:not(:disabled):not([data-icon-hover="custom"]):has(> svg):not(:has(> *:not(svg))):hover {
@@ -234,7 +303,7 @@ button:not(:disabled):not([data-icon-hover="custom"]):has(> svg):not(:has(> *:no
   @apply rounded-lg text-icon-base transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft;
 }
 
-/* Skip-to-content link — visible only on keyboard focus */
+/* Ссылка skip-to-content — видна только при фокусе с клавиатуры */
 .skip-link {
   position: absolute;
   top: -100px;
@@ -253,27 +322,22 @@ button:not(:disabled):not([data-icon-hover="custom"]):has(> svg):not(:has(> *:no
   @apply bg-accent text-on-accent;
 }
 
-/* Smooth scrolling */
-* {
-  scroll-behavior: smooth;
-}
-
-/* Prevent image dragging (native apps don't drag images) */
+/* Запрещаем перетаскивание картинок */
 img {
   -webkit-user-drag: none;
   user-select: none;
 }
 
-/* Remove tap highlight on mobile/PWA */
+/* Убираем tap highlight на mobile/PWA */
 * {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* ── Touch-friendly overrides ──────────────────────────── */
+/* ── Переопределения для touch-устройств ──────────────── */
 
 /*
- * Minimum 44×44 px touch targets (WCAG 2.2 / Apple HIG).
- * Applied only when the primary pointer is coarse (finger).
+ * Минимальные touch-target 44×44 px по WCAG 2.2 / Apple HIG.
+ * Применяется только когда основной указатель coarse, то есть палец.
  */
 @media (pointer: coarse) {
   button,
@@ -286,7 +350,7 @@ img {
     min-width: 44px;
   }
 
-  /* Sidebar items, chat rows — comfortable touch */
+  /* Элементы сайдбара и строки чата — комфортный размер для касания */
   [role="listitem"],
   [role="option"],
   [role="treeitem"],
@@ -296,9 +360,9 @@ img {
 }
 
 /*
- * Hover effects only when the device actually supports fine pointer.
- * On touch-only devices, :hover sticks after tap — this avoids it.
- * Usage: `.hover-effect { ... }` → `@media (hover: hover) { ... }`
+ * Hover-эффекты включаем только там, где устройство реально поддерживает fine pointer.
+ * На touch-only устройствах `:hover` залипает после тапа, этот блок это устраняет.
+ * Использование: `.hover-effect { ... }` → `@media (hover: hover) { ... }`
  */
 @media (hover: none) {
   .hover\:bg-sidebar-hover:hover,
@@ -310,7 +374,7 @@ img {
   }
 }
 
-/* Touch-active state (applied via JS by lib/touch.ts) */
+/* Состояние touch-active, которое выставляется через JS из lib/touch.ts */
 html.touch-active .touch-hide {
   display: none !important;
 }
@@ -319,11 +383,11 @@ html.pointer-active .pointer-hide {
   display: none !important;
 }
 
-/* ── Virtual keyboard ──────────────────────────────────── */
+/* ── Виртуальная клавиатура ───────────────────────────── */
 
 /*
- * When virtual keyboard is open, the composer should stay above it.
- * --keyboard-height is set dynamically by lib/touch.ts.
+ * Когда открыта виртуальная клавиатура, composer должен оставаться над ней.
+ * `--keyboard-height` задается динамически из lib/touch.ts.
  */
 :root {
   --keyboard-height: 0px;
@@ -340,7 +404,7 @@ html.keyboard-open .keyboard-sticky {
   right: 0;
 }
 
-/* ── Safe-area insets (notch / rounded corners) ────────── */
+/* ── Отступы safe-area: вырезы и скругленные углы ─────── */
 
 @supports (padding: env(safe-area-inset-top)) {
   .safe-area-top {
@@ -369,17 +433,17 @@ html.keyboard-open .keyboard-sticky {
   }
 }
 
-/* ── Scrolling ─────────────────────────────────────────── */
+/* ── Прокрутка ─────────────────────────────────────────── */
 
-/* Smooth momentum scrolling on iOS */
+/* Плавная инерционная прокрутка на iOS */
 .touch-scroll {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
 }
 
 /*
- * Unified custom scrollbar across menus, dialogs, and panels.
- * Applies to all overflow utility containers except explicit scrollbar-none.
+ * Единый кастомный scrollbar для меню, диалогов и панелей.
+ * Применяется ко всем overflow-контейнерам, кроме явного `scrollbar-none`.
  */
 .overflow-auto:not(.scrollbar-none),
 .overflow-x-auto:not(.scrollbar-none),
@@ -432,8 +496,8 @@ html.keyboard-open .keyboard-sticky {
 }
 
 /*
- * emoji-picker-react uses internal scroll areas without our overflow utility classes.
- * Keep scrollbar styling consistent with the rest of the app.
+ * emoji-picker-react использует внутренние scroll-области без наших overflow utility-классов.
+ * Держим scrollbar в одном стиле с остальным приложением.
  */
 .composer-emoji-picker .epr-body,
 .composer-emoji-picker .epr-emoji-category-content {
@@ -464,15 +528,15 @@ html.keyboard-open .keyboard-sticky {
   background-color: color-mix(in srgb, var(--color-border-subtle) 70%, var(--color-icon-base) 30%);
 }
 
-/* Prevent pull-to-refresh on main shell (PWA / mobile browser) */
+/* Отключаем pull-to-refresh на основном shell в PWA / мобильном браузере */
 html,
 body {
   overscroll-behavior-y: none;
 }
 
-/* ── Text sizing ───────────────────────────────────────── */
+/* ── Размер текста ─────────────────────────────────────── */
 
-/* Prevent iOS auto-zoom on input focus */
+/* Запрещаем iOS auto-zoom при фокусе на input */
 input,
 textarea,
 select {

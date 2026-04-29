@@ -83,7 +83,7 @@ export const FolderQuickList: React.FC<FolderQuickListProps> = React.memo(functi
     if (resolvedActiveIndex < 0) return;
     const activeItem = activeItemRef.current;
     if (!activeItem || typeof activeItem.scrollIntoView !== "function") return;
-    activeItem.scrollIntoView({ block: "nearest" });
+    activeItem.scrollIntoView({ block: "nearest", behavior: "instant" });
   }, [resolvedActiveIndex]);
 
   const handleSearchKeyDown = useCallback(

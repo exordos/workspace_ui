@@ -1,6 +1,6 @@
 import type { FolderItemForClient, WorkspaceFolderForRail } from "~/shared/api/workspace-client";
-import { sidebarFolderItemsMembershipPending } from "./folder-sync.lib";
 import { resolveSelectedFolderSidebarLoading } from "./folder-sync-sidebar-chats.lib";
+import { sidebarFolderItemsMembershipPending } from "./folder-sync.lib";
 
 interface FolderSyncSidebarLoadingState {
   selectedFolderId: string;

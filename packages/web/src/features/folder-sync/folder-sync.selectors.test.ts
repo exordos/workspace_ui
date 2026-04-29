@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FolderItemForClient } from "~/shared/api/workspace-client";
-import {
-  SYSTEM_CHANNELS_FOLDER_ID,
-  SYSTEM_PERSONAL_FOLDER_ID,
-} from "./folder-sync-constants.lib";
+import { SYSTEM_CHANNELS_FOLDER_ID, SYSTEM_PERSONAL_FOLDER_ID } from "./folder-sync-constants.lib";
 import { selectSidebarChatsLoading } from "./folder-sync.selectors";
 
 const CREATED_FOLDER = {

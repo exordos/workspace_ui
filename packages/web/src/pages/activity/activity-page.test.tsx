@@ -60,6 +60,28 @@ vi.mock("~/shared/api/zulip-messages", async () => {
   };
 });
 
+const scrollHeightDescriptor = Object.getOwnPropertyDescriptor(
+  HTMLElement.prototype,
+  "scrollHeight",
+);
+
+function mockElementScrollHeight(value: number): () => void {
+  Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+    configurable: true,
+    get() {
+      return value;
+    },
+  });
+
+  return () => {
+    if (scrollHeightDescriptor) {
+      Object.defineProperty(HTMLElement.prototype, "scrollHeight", scrollHeightDescriptor);
+      return;
+    }
+    Reflect.deleteProperty(HTMLElement.prototype, "scrollHeight");
+  };
+}
+
 describe("ActivityPage drafts routing", () => {
   beforeEach(() => {
     useActivityStore.getState().clear();
@@ -401,109 +423,102 @@ describe("ActivityPage drafts routing", () => {
     expect(screen.getByText("Starred message persists")).toBeInTheDocument();
   });
 
-  it("renders load-more control for starred when older history exists", async () => {
-    const page = Array.from({ length: 5 }, (_, index) =>
-      createMessage({
-        id: index + 100,
-        sender_id: 42,
-        sender_full_name: "Alice",
-        stream_id: 10,
-        subject: "bugs",
-        content: `Starred ${index + 1}`,
-        timestamp: index + 1,
-        type: "stream",
-        display_recipient: "engineering",
-      }),
-    );
+  it.each(["mentions", "reactions", "starred"] as const)(
+    "initializes %s list at the latest messages",
+    async (filter) => {
+      const restoreScrollHeight = mockElementScrollHeight(1200);
+      try {
+        const page = [
+          createMessage({
+            id: 10,
+            sender_id: 42,
+            sender_full_name: "Alice",
+            stream_id: 10,
+            subject: "bugs",
+            content: `${filter} first`,
+            timestamp: 1,
+            type: "stream",
+            display_recipient: "engineering",
+          }),
+          createMessage({
+            id: 20,
+            sender_id: 42,
+            sender_full_name: "Alice",
+            stream_id: 10,
+            subject: "bugs",
+            content: `${filter} latest`,
+            timestamp: 2,
+            type: "stream",
+            display_recipient: "engineering",
+          }),
+        ];
 
-    fetchActivityMessagesPageWithPersist.mockResolvedValue({
-      messages: page,
-      foundOldest: false,
-    });
+        fetchActivityMessagesPageWithPersist.mockResolvedValue({
+          messages: page,
+          foundOldest: true,
+        });
 
-    render(
-      <MemoryRouter initialEntries={["/activity/starred"]}>
-        <Routes>
-          <Route path="/activity/:filter" element={<ActivityPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
+        const { container } = render(
+          <MemoryRouter initialEntries={[`/activity/${filter}`]}>
+            <Routes>
+              <Route path="/activity/:filter" element={<ActivityPage />} />
+            </Routes>
+          </MemoryRouter>,
+        );
 
-    await waitFor(() => {
-      expect(screen.getByText("Starred 1")).toBeInTheDocument();
-    });
+        await waitFor(() => {
+          expect(screen.getByText(`${filter} latest`)).toBeInTheDocument();
+        });
 
-    expect(screen.getByRole("button", { name: /load more/i })).toBeInTheDocument();
-  });
+        const list = container.querySelector("ul");
+        expect(list).not.toBeNull();
+        expect((list as HTMLUListElement).scrollTop).toBe(1200);
+      } finally {
+        restoreScrollHeight();
+      }
+    },
+  );
 
-  it("hides the load-more control when the server reports foundOldest for activity messages", async () => {
-    const page = Array.from({ length: 5 }, (_, index) =>
-      createMessage({
-        id: index + 1,
-        sender_id: 42,
-        sender_full_name: "Alice",
-        stream_id: 10,
-        subject: "bugs",
-        content: `Message ${index + 1}`,
-        timestamp: index + 1,
-        type: "stream",
-        display_recipient: "engineering",
-      }),
-    );
+  it("initializes drafts list at the latest items", async () => {
+    const restoreScrollHeight = mockElementScrollHeight(1200);
+    try {
+      useDraftStore.getState().setDrafts([
+        {
+          id: 1,
+          type: "stream",
+          to: [10],
+          topic: "general",
+          content: "Older draft",
+          timestamp: 1710000000,
+        },
+        {
+          id: 2,
+          type: "stream",
+          to: [10],
+          topic: "general",
+          content: "Latest draft",
+          timestamp: 1710000100,
+        },
+      ]);
 
-    fetchActivityMessagesPageWithPersist.mockResolvedValue({
-      messages: page,
-      foundOldest: true,
-    });
+      const { container } = render(
+        <MemoryRouter initialEntries={["/activity/drafts"]}>
+          <Routes>
+            <Route path="/activity/:filter" element={<ActivityPage />} />
+          </Routes>
+        </MemoryRouter>,
+      );
 
-    render(
-      <MemoryRouter initialEntries={["/activity/mentions"]}>
-        <Routes>
-          <Route path="/activity/:filter" element={<ActivityPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
+      await waitFor(() => {
+        expect(screen.getByText("Latest draft")).toBeInTheDocument();
+      });
 
-    await waitFor(() => {
-      expect(screen.getByText("Message 1")).toBeInTheDocument();
-    });
-
-    expect(screen.queryByRole("button", { name: /load more/i })).not.toBeInTheDocument();
-  });
-
-  it("renders localized load-more control when more activity history exists", async () => {
-    const page = Array.from({ length: 5 }, (_, index) =>
-      createMessage({
-        id: index + 1,
-        sender_id: 42,
-        sender_full_name: "Alice",
-        stream_id: 10,
-        subject: "bugs",
-        content: `Message ${index + 1}`,
-        timestamp: index + 1,
-        type: "stream",
-        display_recipient: "engineering",
-      }),
-    );
-
-    fetchActivityMessagesPageWithPersist.mockResolvedValue({
-      messages: page,
-      foundOldest: false,
-    });
-
-    render(
-      <MemoryRouter initialEntries={["/activity/mentions"]}>
-        <Routes>
-          <Route path="/activity/:filter" element={<ActivityPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText("Message 1")).toBeInTheDocument();
-    });
-
-    expect(screen.getByRole("button", { name: /load more/i })).toBeInTheDocument();
+      const list = container.querySelector("ul");
+      expect(list).not.toBeNull();
+      expect((list as HTMLUListElement).scrollTop).toBe(1200);
+    } finally {
+      restoreScrollHeight();
+    }
   });
 
   it("keeps a draft row visible while server deletion is pending", async () => {

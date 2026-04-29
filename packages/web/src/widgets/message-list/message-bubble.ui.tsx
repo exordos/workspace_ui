@@ -1,16 +1,17 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDownloadStore } from "~/entities/download/download.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
 import { t } from "~/i18n/i18n";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MessageReactionPayload, MockMessage } from "~/shared/api/zulip.types";
 import { buildAuthHeader } from "~/shared/lib/auth-guard";
 import { formatMessageTime, getPresenceState } from "~/shared/lib/format";
-import { sanitizeHtml } from "~/shared/lib/html";
 import { getJitsiMeetingUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
 import { messageBodyToUnsanitizedDisplayHtml } from "~/shared/lib/message-markdown-display.lib";
+import { prepareProtectedMessageHtml } from "~/shared/lib/protected-message-media";
+import { useProtectedMessageHtml } from "~/shared/lib/protected-message-media.hook";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
@@ -32,21 +33,11 @@ import {
   type ContextItemLabel,
 } from "./message-bubble-context.lib";
 import { resolveOwnMessageDeliveryStatus } from "./message-bubble-delivery.lib";
-import { groupReactions } from "./message-bubble-emoji.lib";
+import { groupReactions, reactionPayloadFromEmojiClickData } from "./message-bubble-emoji.lib";
 import { MessageBubbleJitsiCard } from "./message-bubble-jitsi-card.ui";
 import { MessageBubbleOwnDeliveryIndicator } from "./message-bubble-own-delivery-indicator.ui";
-import {
-  AUTH_MEDIA_POSTER_DATA_ATTR,
-  AUTH_MEDIA_SRC_DATA_ATTR,
-  collapseDuplicateWorkspaceV1InUrl,
-  createDisplayableBlobUrl,
-  fetchProtectedUploadBlob,
-  isAuthMediaPlaceholderAttr,
-  protectUserUploadMediaSources,
-} from "./message-bubble-protected-media.lib";
 import { MessageBubbleReactionsRow } from "./message-bubble-reactions-row.ui";
 import { getMessageImagesBaseUrl } from "./message-bubble-realm-html.lib";
-import { expandUserUploadImageLinks } from "./message-bubble-user-upload-links.lib";
 import { resolveJitsiLocationName } from "./message-jitsi-location.lib";
 import { normalizeMediaUrl } from "./message-list-media.lib";
 import { MessageMentionPopover } from "./message-mention-popover.ui";
@@ -55,9 +46,6 @@ import type {
   MessageBubbleProps,
 } from "./message-bubble.types";
 import type { EmojiClickData } from "emoji-picker-react";
-
-/** Prefetch protected media slightly before it scrolls into the chat viewport. */
-const PROTECTED_MEDIA_IO_ROOT_MARGIN = "200px 0px";
 
 export type { MessageBubbleCallbacks, MessageBubbleProps } from "./message-bubble.types";
 
@@ -73,6 +61,10 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     isSelected = false,
     isFocused = false,
     mediaGallery,
+    customEmojis,
+    onEmojiPickerOpen,
+    resolveCustomEmojiImageUrl,
+    resolveCustomEmojiShortcodeImageUrl,
     callbacks,
   }) => {
     const [open, setOpen] = useState(false);
@@ -121,8 +113,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     }, []);
     const time = formatMessageTime(message.timestamp);
     const reactionGroups = useMemo(
-      () => (message.reactions?.length ? groupReactions(message.reactions) : []),
-      [message.reactions],
+      () =>
+        message.reactions?.length
+          ? groupReactions(message.reactions, resolveCustomEmojiImageUrl)
+          : [],
+      [message.reactions, resolveCustomEmojiImageUrl],
     );
     const resolveReactionAuthorLabel = useCallback(
       (userId: number): string => {
@@ -136,18 +131,15 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     const { safeMessageHtml, displayHtmlForJitsi } = useMemo(() => {
       const rawHtml = messageBodyToUnsanitizedDisplayHtml(message.content, {
         resolveUserMention,
+        resolveCustomEmojiShortcodeImageUrl,
       });
-      const sanitized = sanitizeHtml(rawHtml, imagesBase);
       return {
-        safeMessageHtml: protectUserUploadMediaSources(
-          expandUserUploadImageLinks(sanitized, imagesBase),
-        ),
+        safeMessageHtml: prepareProtectedMessageHtml(rawHtml, imagesBase),
         displayHtmlForJitsi: rawHtml,
       };
-    }, [message.content, imagesBase, resolveUserMention]);
+    }, [message.content, imagesBase, resolveUserMention, resolveCustomEmojiShortcodeImageUrl]);
 
     const messageBodyRef = useRef<HTMLDivElement>(null);
-    const lastInjectedMessageHtmlRef = useRef<string | null>(null);
     const groupedContainerRef = useRef<HTMLDivElement>(null);
     const regularContainerRef = useRef<HTMLDivElement>(null);
     const attachmentStatusRef = useRef<Map<string, MessageBubbleAttachmentDownloadStatus>>(
@@ -193,171 +185,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       };
     }, []);
 
-    // Keep message HTML out of React's dangerouslySetInnerHTML on every render: parent re-renders
-    // (e.g. presence from useUsersStore) would reapply __html and wipe blob: URLs before effects re-run.
-    useLayoutEffect(() => {
-      const el = messageBodyRef.current;
-      if (!el) return;
-      if (lastInjectedMessageHtmlRef.current === safeMessageHtml) {
-        return;
-      }
-      el.innerHTML = safeMessageHtml;
-      lastInjectedMessageHtmlRef.current = safeMessageHtml;
-      return () => {
-        lastInjectedMessageHtmlRef.current = null;
-      };
-    }, [safeMessageHtml]);
-
-    // Load protected uploads with authenticated fetch to avoid browser auth popups.
-    // Defer fetch until media intersects the chat scroll container (`role="feed"`), when available.
-    useEffect(() => {
-      const div = messageBodyRef.current;
-      if (!div) return;
-
-      const protectedMediaElements = Array.from(
-        div.querySelectorAll<HTMLElement>(
-          `[${AUTH_MEDIA_SRC_DATA_ATTR}], [${AUTH_MEDIA_POSTER_DATA_ATTR}]`,
-        ),
-      );
-      if (protectedMediaElements.length === 0) return;
-
-      const headers = buildAuthHeader();
-      const scrollRoot = div.closest<HTMLElement>('[role="feed"]');
-
-      const blobUrls: string[] = [];
-      let cancelled = false;
-
-      const fetchIntoAttribute = (
-        element: HTMLElement,
-        sourceAttr: typeof AUTH_MEDIA_SRC_DATA_ATTR | typeof AUTH_MEDIA_POSTER_DATA_ATTR,
-        targetAttr: "src" | "poster",
-      ) => {
-        const rawValue = element.getAttribute(sourceAttr);
-        if (!rawValue) return;
-        if (!isAuthMediaPlaceholderAttr(element.getAttribute(targetAttr))) {
-          return;
-        }
-
-        const fullResolutionUrl =
-          element instanceof HTMLImageElement && element.dataset.originalSrc?.trim()
-            ? element.dataset.originalSrc.trim()
-            : undefined;
-        const fetchFallbackFull =
-          fullResolutionUrl != null &&
-          collapseDuplicateWorkspaceV1InUrl(fullResolutionUrl) !==
-            collapseDuplicateWorkspaceV1InUrl(rawValue)
-            ? fullResolutionUrl
-            : undefined;
-
-        const restoreOriginalSource = () => {
-          if (cancelled) return;
-          const restoreUrl =
-            targetAttr === "src" && fullResolutionUrl != null ? fullResolutionUrl : rawValue;
-          element.setAttribute(targetAttr, restoreUrl);
-          if (targetAttr === "src") {
-            if (element instanceof HTMLImageElement) {
-              element.dataset.originalSrc = fullResolutionUrl ?? rawValue;
-            }
-            if (element instanceof HTMLSourceElement || element instanceof HTMLVideoElement) {
-              element.closest("video")?.load();
-            }
-          }
-        };
-
-        void fetchProtectedUploadBlob(rawValue, headers, fetchFallbackFull)
-          .then(async (blob) => {
-            if (cancelled) return;
-            if (!blob) {
-              restoreOriginalSource();
-              return;
-            }
-            let displayUrl: string;
-            try {
-              displayUrl = await createDisplayableBlobUrl(blob, blobUrls);
-            } catch {
-              restoreOriginalSource();
-              return;
-            }
-            if (cancelled) {
-              if (displayUrl.startsWith("blob:")) {
-                URL.revokeObjectURL(displayUrl);
-                const idx = blobUrls.indexOf(displayUrl);
-                if (idx >= 0) {
-                  blobUrls.splice(idx, 1);
-                }
-              }
-              return;
-            }
-            element.setAttribute(targetAttr, displayUrl);
-            if (targetAttr === "src") {
-              if (element instanceof HTMLImageElement) {
-                element.dataset.originalSrc = fullResolutionUrl ?? rawValue;
-              }
-              if (element instanceof HTMLSourceElement || element instanceof HTMLVideoElement) {
-                element.closest("video")?.load();
-              }
-            }
-          })
-          .catch(() => {
-            restoreOriginalSource();
-          });
-      };
-
-      const startFetchForElement = (element: HTMLElement) => {
-        if (element.hasAttribute(AUTH_MEDIA_SRC_DATA_ATTR)) {
-          fetchIntoAttribute(element, AUTH_MEDIA_SRC_DATA_ATTR, "src");
-        }
-        if (element.hasAttribute(AUTH_MEDIA_POSTER_DATA_ATTR)) {
-          fetchIntoAttribute(element, AUTH_MEDIA_POSTER_DATA_ATTR, "poster");
-        }
-      };
-
-      const useImmediateFetch =
-        scrollRoot == null ||
-        typeof IntersectionObserver === "undefined" ||
-        typeof IntersectionObserver !== "function";
-
-      if (useImmediateFetch) {
-        for (const element of protectedMediaElements) {
-          startFetchForElement(element);
-        }
-        return () => {
-          cancelled = true;
-          for (const url of blobUrls) {
-            URL.revokeObjectURL(url);
-          }
-        };
-      }
-
-      const observer = new IntersectionObserver(
-        (entries) => {
-          for (const entry of entries) {
-            if (!entry.isIntersecting) continue;
-            const target = entry.target;
-            if (!(target instanceof HTMLElement)) continue;
-            observer.unobserve(target);
-            startFetchForElement(target);
-          }
-        },
-        {
-          root: scrollRoot,
-          rootMargin: PROTECTED_MEDIA_IO_ROOT_MARGIN,
-          threshold: 0,
-        },
-      );
-
-      for (const element of protectedMediaElements) {
-        observer.observe(element);
-      }
-
-      return () => {
-        cancelled = true;
-        observer.disconnect();
-        for (const url of blobUrls) {
-          URL.revokeObjectURL(url);
-        }
-      };
-    }, [safeMessageHtml]);
+    useProtectedMessageHtml(messageBodyRef, safeMessageHtml, {
+      deferRootSelector: '[role="feed"]',
+    });
 
     useEffect(() => {
       const div = messageBodyRef.current;
@@ -526,16 +356,42 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       setOpen(nextOpen);
     }, []);
 
-    const handleReaction = (emojiName: string) => {
-      callbacks?.onAddReaction?.(message.id, emojiName);
-      setEmojiPickerOpen(false);
-      setOpen(false);
-    };
+    const handleReaction = useCallback(
+      (payload: MessageReactionPayload) => {
+        callbacks?.onAddReaction?.(message.id, payload);
+        setEmojiPickerOpen(false);
+        setOpen(false);
+      },
+      [callbacks, message.id],
+    );
+
+    const handleQuickReaction = useCallback(
+      (emojiName: string) => {
+        handleReaction({
+          emojiName,
+          reactionType: "unicode_emoji",
+        });
+      },
+      [handleReaction],
+    );
 
     const handleEmojiPick = (data: EmojiClickData) => {
-      const name = data.names?.[0] ?? data.emoji ?? "smile";
-      handleReaction(name);
+      const payload = reactionPayloadFromEmojiClickData(data);
+      if (payload == null) {
+        return;
+      }
+      handleReaction(payload);
     };
+
+    const handleEmojiPickerOpenChange = useCallback(
+      (nextOpen: boolean) => {
+        if (nextOpen) {
+          onEmojiPickerOpen?.();
+        }
+        setEmojiPickerOpen(nextOpen);
+      },
+      [onEmojiPickerOpen],
+    );
 
     const handleMessageBodyClick = useCallback(
       (event: MouseEvent) => {
@@ -548,9 +404,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
               : null;
         if (hit == null) return;
         if (hit.tagName === "IMG") {
+          const image = hit as HTMLImageElement;
+          if (image.classList.contains("message-inline-emoji")) {
+            return;
+          }
           event.preventDefault();
           event.stopPropagation();
-          const image = hit as HTMLImageElement;
           const src = image.currentSrc || image.src;
           if (src) {
             if (src.startsWith("blob:")) {
@@ -717,11 +576,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
         onOpenChange={handleContextMenuOpenChange}
         isOwn={isOwn}
         emojiPickerOpen={emojiPickerOpen}
-        onEmojiPickerOpenChange={setEmojiPickerOpen}
+        onEmojiPickerOpenChange={handleEmojiPickerOpenChange}
         visibleContextSections={visibleContextSections}
         onMenuItem={handleMenuAction}
-        onQuickReaction={handleReaction}
+        onQuickReaction={handleQuickReaction}
         onEmojiPick={handleEmojiPick}
+        customEmojis={customEmojis}
       />
     );
 
@@ -756,9 +616,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     ) : (
       <>
         <div
-          className={`relative overflow-hidden px-3 pr-14 ${
-            hasReactions ? "pb-2 pt-2" : "py-2 pb-5"
-          } ${bubbleSurfaceClass} transition-colors duration-700 ${
+          className={`relative overflow-hidden px-3 py-2 pb-5 pr-14 ${bubbleSurfaceClass} transition-colors duration-700 ${
             isOwn
               ? `${ownBubbleTailClass} ${ownBubbleBackgroundClass} text-text-primary`
               : `${peerBubbleTailClass} ${peerBubbleBackgroundClass} text-text-primary`
@@ -769,7 +627,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
             className="message-body min-w-0 max-w-full select-text break-words [&_a]:text-accent [&_a]:underline hover:[&_a]:opacity-90 [&_blockquote]:border-l-2 [&_blockquote]:border-border-subtle [&_blockquote]:pl-2 [&_blockquote]:italic [&_blockquote]:text-text-muted [&_img]:my-1 [&_img]:h-auto [&_img]:max-h-[160px] [&_img]:w-auto [&_img]:max-w-full [&_img]:cursor-pointer [&_img]:rounded [&_img]:object-contain [&_p:last-child]:mb-0 [&_p]:mb-1 [&_pre]:my-1 [&_pre]:min-w-0 [&_pre]:max-w-full [&_pre]:whitespace-pre-wrap [&_pre]:border-l-2 [&_pre]:border-border-subtle [&_pre]:py-2 [&_pre]:pl-2 [&_pre]:pr-2 [&_pre]:font-mono [&_pre]:text-sm [&_pre]:italic [&_pre]:text-text-muted [&_pre]:[overflow-wrap:anywhere] [&_pre_code]:min-w-0 [&_pre_code]:max-w-full [&_pre_code]:whitespace-pre-wrap [&_pre_code]:[overflow-wrap:anywhere] [&_span.user-mention]:cursor-pointer [&_span.user-mention]:text-accent hover:[&_span.user-mention]:opacity-90 [&_table]:my-2 [&_table]:w-full [&_table]:border-collapse [&_table]:text-sm [&_td]:border [&_td]:border-border-subtle [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-border-subtle [&_th]:px-2 [&_th]:py-1 [&_th]:text-left"
           />
           {hasReactions ? (
-            <div className="mt-1 flex min-w-0 items-end gap-2">
+            <div className="mt-1 min-w-0">
               <MessageBubbleReactionsRow
                 message={message}
                 isOwn={isOwn}
@@ -778,17 +636,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
                 resolveReactionAuthorLabel={resolveReactionAuthorLabel}
                 callbacks={callbacks}
               />
-              <div className="flex shrink-0 items-center gap-1 text-[11px] text-text-muted">
-                <span>{time}</span>
-                {ownDeliveryIndicator}
-              </div>
             </div>
-          ) : (
-            <div className="absolute bottom-2 right-2 flex items-center gap-1 text-[11px] text-text-muted">
-              <span>{time}</span>
-              {ownDeliveryIndicator}
-            </div>
-          )}
+          ) : null}
+          <div className="absolute bottom-2 right-2 flex items-center gap-1 text-[11px] text-text-muted">
+            <span>{time}</span>
+            {ownDeliveryIndicator}
+          </div>
         </div>
         {contextMenu}
       </>

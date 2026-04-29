@@ -88,18 +88,18 @@ describe("message-cache-db", () => {
     expect(b.newestId).toBe(50);
   });
 
-  it("getInstanceMessagesAscending returns all instance rows sorted by message id", async () => {
+  it("getInstanceMessagesAscending returns all instance rows sorted by numeric message id", async () => {
     await openMessageCacheDb();
     await upsertChatMessages({
       instanceId: "inst-a",
       chatKey: "stream:1:general",
-      messages: [msg(30), msg(10)],
+      messages: [msg(100), msg(2)],
       windowSizeN: 200,
     });
     await upsertChatMessages({
       instanceId: "inst-a",
       chatKey: "dm:42",
-      messages: [msg(20)],
+      messages: [msg(11)],
       windowSizeN: 200,
     });
     await upsertChatMessages({
@@ -110,7 +110,7 @@ describe("message-cache-db", () => {
     });
 
     const rows = await getInstanceMessagesAscending("inst-a");
-    expect(rows.map((m) => m.id)).toEqual([10, 20, 30]);
+    expect(rows.map((m) => m.id)).toEqual([2, 11, 100]);
   });
 
   it("getStreamMessagesAscending merges all topic partitions for a stream", async () => {

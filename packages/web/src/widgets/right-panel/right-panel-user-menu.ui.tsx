@@ -23,11 +23,13 @@ import {
 import { useTranslation } from "~/i18n/i18n";
 import { IS_CONNECTION_DIAGNOSTICS_ENABLED } from "~/shared/config/constants";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
+import { resolveUnicodeToCanonicalShortcode } from "~/shared/lib/emoji-shortcodes.lib";
 import { clearLocalStatePreservingCriticalKeys } from "~/shared/lib/local-reset";
 import { createLogger } from "~/shared/lib/logger";
 import { playNotificationSound } from "~/shared/lib/notification-sound";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { resolveOrganizationLogoUrl } from "~/shared/lib/organization-branding";
+import { ensureRealmEmojisLoaded, getCachedRealmEmojis } from "~/shared/lib/realm-emojis-cache";
 import { Icon } from "~/shared/ui/icon";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import {
@@ -97,6 +99,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   const [statusEmojiCodeDraft, setStatusEmojiCodeDraft] = useState<string>("");
   const [statusEmojiPickerOpen, setStatusEmojiPickerOpen] = useState(false);
   const [statusSubmitting, setStatusSubmitting] = useState(false);
+  const [customEmojis, setCustomEmojis] = useState(() => getCachedRealmEmojis());
   const panelHeading = heading?.trim() ?? "";
   const currentLocaleName =
     locales.find((supportedLocale) => supportedLocale.id === currentLocale)?.nativeLabel ??
@@ -133,6 +136,16 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
     [currentThemeMode],
   );
 
+  const ensureCustomEmojisLoaded = useCallback(() => {
+    void ensureRealmEmojisLoaded()
+      .then((list) => {
+        setCustomEmojis(list);
+      })
+      .catch(() => {
+        log.warn("Failed to load realm custom emojis for status picker");
+      });
+  }, []);
+
   const closeDrawer = useCallback(() => {
     rightDrawer?.setOpen(false);
   }, [rightDrawer]);
@@ -162,6 +175,16 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
     setStatusEmojiCodeDraft("");
     setStatusEmojiPickerOpen(false);
   }, []);
+
+  const toggleStatusEmojiPicker = useCallback(() => {
+    setStatusEmojiPickerOpen((prevOpen) => {
+      const nextOpen = !prevOpen;
+      if (nextOpen) {
+        ensureCustomEmojisLoaded();
+      }
+      return nextOpen;
+    });
+  }, [ensureCustomEmojisLoaded]);
 
   const handleSaveStatus = useCallback(async () => {
     if (currentUserId == null) {
@@ -286,9 +309,28 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   }, [closeDrawer, currentInstance, currentServerLabel, removeInstance, t]);
 
   const handleStatusEmojiPick = useCallback((data: EmojiClickData) => {
-    const emojiName = normalizeStatusEmojiName(data.names?.[0] ?? "");
-    const emojiCode = encodeEmojiToCode(data.emoji ?? "");
-    if (!emojiName || !emojiCode) {
+    const normalizedPickerName = normalizeStatusEmojiName(data.names?.[0] ?? "");
+    if (data.isCustom) {
+      if (!normalizedPickerName) {
+        return;
+      }
+      setStatusEmojiNameDraft(normalizedPickerName);
+      setStatusEmojiCodeDraft("");
+      setStatusEmojiPickerOpen(false);
+      return;
+    }
+    const emojiCode = (
+      data.unifiedWithoutSkinTone ||
+      data.unified ||
+      encodeEmojiToCode(data.emoji ?? "")
+    )
+      .trim()
+      .toLowerCase();
+    if (!emojiCode) {
+      return;
+    }
+    const emojiName = resolveUnicodeToCanonicalShortcode(emojiCode) ?? normalizedPickerName;
+    if (!emojiName) {
       return;
     }
     setStatusEmojiNameDraft(emojiName);
@@ -614,6 +656,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
         }}
         closeStatusDialog={closeStatusDialog}
         statusEmojiPickerOpen={statusEmojiPickerOpen}
+        onStatusEmojiPickerToggle={toggleStatusEmojiPicker}
         setStatusEmojiPickerOpen={setStatusEmojiPickerOpen}
         statusEmojiNameDraft={statusEmojiNameDraft}
         setStatusEmojiNameDraft={setStatusEmojiNameDraft}
@@ -626,6 +669,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
         statusSubmitting={statusSubmitting}
         selectedStatusEmoji={selectedStatusEmoji}
         statusEmojiPickerTheme={statusEmojiPickerTheme}
+        customEmojis={customEmojis}
         t={t}
         handleStatusEmojiPick={handleStatusEmojiPick}
         clearStatusDraft={clearStatusDraft}

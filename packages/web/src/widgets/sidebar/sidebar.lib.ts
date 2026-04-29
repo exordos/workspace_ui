@@ -1,5 +1,6 @@
-import type { SidebarChat, StreamWithLast } from "~/shared/types/sidebar-chat";
 import { isSystemRailFolderId } from "~/features/folder-sync/folder-sync-constants.lib";
+import { resolveCanonicalStreamName } from "~/shared/lib/stream-name.lib";
+import type { SidebarChat, StreamWithLast } from "~/shared/types/sidebar-chat";
 
 export { dmConversationKey } from "~/shared/lib/dm-key";
 export {
@@ -187,24 +188,42 @@ export function parseStreamSlug(streamSlug: string): { stream_id?: number; strea
 export function resolveStreamRouteFromSlug(
   parsedStream: { stream_id?: number; stream_name: string } | null,
   streamsMap: Map<number, { name: string }>,
-): { resolvedStreamName: string; resolvedStreamId: number | null } {
+): {
+  resolvedStreamName: string;
+  resolvedCanonicalStreamName: string | null;
+  resolvedStreamId: number | null;
+} {
   if (!parsedStream) {
-    return { resolvedStreamName: "", resolvedStreamId: null };
+    return { resolvedStreamName: "", resolvedCanonicalStreamName: null, resolvedStreamId: null };
   }
   if (parsedStream.stream_id != null) {
-    const resolvedStreamName =
-      streamsMap.get(parsedStream.stream_id)?.name ?? parsedStream.stream_name;
-    return { resolvedStreamName, resolvedStreamId: parsedStream.stream_id };
+    const streamMapName = streamsMap.get(parsedStream.stream_id)?.name ?? null;
+    const resolvedStreamName = streamMapName ?? parsedStream.stream_name;
+    return {
+      resolvedStreamName,
+      resolvedCanonicalStreamName: resolveCanonicalStreamName({
+        streamId: parsedStream.stream_id,
+        streamMapName,
+      }),
+      resolvedStreamId: parsedStream.stream_id,
+    };
   }
   const resolvedStreamName = parsedStream.stream_name;
   if (!resolvedStreamName) {
-    return { resolvedStreamName: "", resolvedStreamId: null };
+    return { resolvedStreamName: "", resolvedCanonicalStreamName: null, resolvedStreamId: null };
   }
   const resolvedStreamId =
     Array.from(streamsMap.entries()).find(
       ([, stream]) => stream.name === resolvedStreamName,
     )?.[0] ?? null;
-  return { resolvedStreamName, resolvedStreamId };
+  return {
+    resolvedStreamName,
+    resolvedCanonicalStreamName: resolveCanonicalStreamName({
+      streamId: null,
+      legacyRouteName: resolvedStreamName,
+    }),
+    resolvedStreamId,
+  };
 }
 
 /** Parse DM slug from URL to user_id array for API: "422-vasya" -> [422], "422-vasya,507-petya" -> [422, 507]. */

@@ -1,10 +1,5 @@
 import type { MockMessage } from "~/shared/api/zulip.types";
 
-export function scrollToBottom(el: HTMLElement | null): void {
-  if (!el) return;
-  el.scrollTo({ top: el.scrollHeight, behavior: "instant" });
-}
-
 /** Splits the message array into groups of consecutive messages from the same sender. */
 export function getSenderGroups(items: MockMessage[]): MockMessage[][] {
   const result: MockMessage[][] = [];
@@ -15,4 +10,3 @@ export function getSenderGroups(items: MockMessage[]): MockMessage[][] {
   }
   return result;
 }
-

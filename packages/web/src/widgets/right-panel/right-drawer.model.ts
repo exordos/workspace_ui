@@ -27,7 +27,9 @@ export const useRightDrawerStore = create<RightDrawerState>((set) => ({
 
   setOpen(open) {
     logStoreAction("rightDrawer", "setOpen", { open });
-    set((state) => (open ? { ...state, open } : { ...state, open: false, mode: "info", userIdOverride: null }));
+    set((state) =>
+      open ? { ...state, open } : { ...state, open: false, mode: "info", userIdOverride: null },
+    );
   },
   close() {
     logStoreAction("rightDrawer", "close", {});
@@ -62,4 +64,3 @@ export const useRightDrawerStore = create<RightDrawerState>((set) => ({
     set({ userIdOverride: null });
   },
 }));
-

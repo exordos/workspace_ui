@@ -11,13 +11,13 @@ import { Avatar } from "~/shared/ui/avatar";
 import { Copyable } from "~/shared/ui/copyable";
 import { Icon } from "~/shared/ui/icon";
 import { ScrollArea } from "~/shared/ui/scroll-area";
+import { useRightDrawerStore } from "./right-drawer.model";
 import {
   buildMailtoHref,
   buildTelHref,
   formatDateJoined,
   resolveAvatarSrc,
 } from "./right-panel.lib";
-import { useRightDrawerStore } from "./right-drawer.model";
 import type { RightPanelUserProps } from "./right-panel-user.types";
 
 export const RightPanelUser = React.memo(function RightPanelUser({
@@ -174,7 +174,9 @@ export const RightPanelUser = React.memo(function RightPanelUser({
               </h2>
             </div>
           ) : (
-            <h2 className="mb-3 text-sm font-semibold text-text-primary">{t("info.information")}</h2>
+            <h2 className="mb-3 text-sm font-semibold text-text-primary">
+              {t("info.information")}
+            </h2>
           )}
           <div className="flex items-center gap-3">
             {avatarSrc != null ? (

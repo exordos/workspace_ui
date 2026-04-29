@@ -4,11 +4,7 @@ import { Avatar } from "./avatar";
 import { Icon } from "./icon";
 import type { CallBubbleProps } from "./call-bubble.types";
 
-export const CallBubble: React.FC<CallBubbleProps> = ({
-  callName = "",
-  topic = "",
-  duration,
-}) => {
+export const CallBubble: React.FC<CallBubbleProps> = ({ callName = "", topic = "", duration }) => {
   const durationTrimmed = duration?.trim() ?? "";
   const showDuration = durationTrimmed.length > 0;
 
@@ -22,9 +18,7 @@ export const CallBubble: React.FC<CallBubbleProps> = ({
           <p className="truncate text-sm text-text-primary">
             {t("call.call")} {callName} | #{topic}
           </p>
-          {showDuration && (
-            <p className="mt-0.5 text-[11px] text-text-muted">{durationTrimmed}</p>
-          )}
+          {showDuration && <p className="mt-0.5 text-[11px] text-text-muted">{durationTrimmed}</p>}
         </div>
         <div className="flex flex-shrink-0 -space-x-1.5">
           {[1, 2, 3].map((i) => (

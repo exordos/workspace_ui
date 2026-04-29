@@ -1,9 +1,9 @@
 import type { MediaItem } from "~/features/media-viewer/media-viewer.types";
 import type { MockMessage } from "~/shared/api/zulip.types";
-import { isUserUploadImageHref } from "./message-bubble-user-upload-links.lib";
 
 const IMG_SRC_REGEX = /<img\b[^>]*\bsrc\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/gi;
 const A_HREF_REGEX = /<a\b[^>]*\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
+const USER_UPLOAD_IMAGE_EXT = /\.(apng|avif|bmp|gif|jpe?g|png|svg|webp)(\?|#|$)/i;
 
 export interface MessageMediaGallery {
   items: MediaItem[];
@@ -20,6 +20,13 @@ export function normalizeMediaUrl(url: string): string {
   } catch {
     return trimmed;
   }
+}
+
+function isUserUploadImageHref(href: string): boolean {
+  const value = href.trim();
+  if (!value.includes("/user_uploads/")) return false;
+  const pathOnly = value.split("?")[0]?.split("#")[0] ?? "";
+  return USER_UPLOAD_IMAGE_EXT.test(pathOnly);
 }
 
 function extractImageUrls(content: string): string[] {

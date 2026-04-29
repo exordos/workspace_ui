@@ -202,8 +202,12 @@ export async function getInstanceMessagesAscending(instanceId: string): Promise<
       req.onsuccess = () => {
         const cursor = req.result;
 
-        // Если записи закончились — возвращаем собранный результат
+        // Если записи закончились — нормализуем порядок по numeric message.id.
+        // Первичный ключ вида `${instanceId}:${messageId}` читается как строка,
+        // поэтому без явной сортировки курсор может вернуть лексикографический порядок
+        // (`1, 10, 100, 2`), что ломает cache-first bootstrap вне текущего чата.
         if (!cursor) {
+          messages.sort((a, b) => a.id - b.id);
           resolve(messages);
           return;
         }

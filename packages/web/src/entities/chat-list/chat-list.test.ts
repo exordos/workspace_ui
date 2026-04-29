@@ -12,8 +12,8 @@ import { setLocale } from "~/i18n/i18n";
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import type { ChatListSnapshotSerialized } from "~/shared/lib/chat-list-snapshot-serialize.lib";
 import { sortChatsByLastMessage } from "~/shared/lib/chat-sorting";
-import { buildChatListSnapshotSerialized } from "./chat-list-snapshot.lib";
 import { useUsersStore } from "../user/user.model";
+import { buildChatListSnapshotSerialized } from "./chat-list-snapshot.lib";
 import { useChatListStore } from "./chat-list.model";
 
 function resetStores() {

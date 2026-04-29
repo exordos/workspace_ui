@@ -72,6 +72,7 @@ const REGISTER_FETCH_EVENT_TYPES = [
   "subscription",
   "user_topic",
   "recent_private_conversations",
+  "realm",
   "realm_user_groups",
 ] as const;
 const log = createLogger("layout-zulip-event-loop");
@@ -241,9 +242,11 @@ export function useLayoutZulipEventLoop(options: {
   useEffect(() => {
     if (!currentInstanceId) {
       prevInstanceForBootstrapRef.current = null;
+      useUsersStore.getState().setCurrentUserChannelCapabilities({});
       useUserGroupsStore.getState().clear();
       return;
     }
+    useUsersStore.getState().setCurrentUserChannelCapabilities({});
     let cancelled = false;
     const bootstrapAbort = new AbortController();
     const bootstrapEpoch = ++chatListBootstrapEffectEpoch;
@@ -517,10 +520,19 @@ export function useLayoutZulipEventLoop(options: {
           onQueueRegistered: (id, registration) => {
             queueIdRef.current = id;
             if (registration?.jitsi_server_url_effective != null) {
-              useInstancesStore.getState().setJitsiMeetBaseUrl(registration.jitsi_server_url_effective);
+              useInstancesStore
+                .getState()
+                .setJitsiMeetBaseUrl(registration.jitsi_server_url_effective);
             } else {
               useInstancesStore.getState().setJitsiMeetBaseUrl(null);
             }
+            useUsersStore.getState().setCurrentUserChannelCapabilities({
+              ...(registration?.realm_can_add_subscribers_group != null
+                ? {
+                    realmCanAddSubscribersGroup: registration.realm_can_add_subscribers_group,
+                  }
+                : {}),
+            });
             useUserGroupsStore.getState().setGroups(registration?.realm_user_groups ?? []);
             const streamRows = toStreamMetadataRows(registration?.subscriptions ?? []);
             if (streamRows.length > 0) {

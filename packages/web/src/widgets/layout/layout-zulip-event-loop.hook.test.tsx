@@ -1,4 +1,4 @@
-import { render, waitFor } from "@testing-library/react";
+import { act, render, waitFor } from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
@@ -147,6 +147,7 @@ describe("useLayoutZulipEventLoop", () => {
       "subscription",
       "user_topic",
       "recent_private_conversations",
+      "realm",
       "realm_user_groups",
     ]);
   });
@@ -161,5 +162,34 @@ describe("useLayoutZulipEventLoop", () => {
       expect(startZulipEventLoopMock).toHaveBeenCalledTimes(1);
     });
     expect(props.setCurrentUserStatus).not.toHaveBeenCalledWith("error");
+  });
+
+  it("stores modern realm add-subscribers group from register metadata", async () => {
+    render(<Harness currentInstanceId="inst-1" />);
+
+    await waitFor(() => {
+      expect(startZulipEventLoopMock).toHaveBeenCalledTimes(1);
+    });
+
+    const firstCallArg = startZulipEventLoopMock.mock.calls[0]?.[0] as
+      | {
+          onQueueRegistered?: (
+            id: string,
+            registration?: {
+              realm_can_add_subscribers_group?: number;
+            },
+          ) => void;
+        }
+      | undefined;
+
+    act(() => {
+      firstCallArg?.onQueueRegistered?.("q-1", {
+        realm_can_add_subscribers_group: 14,
+      });
+    });
+
+    expect(useUsersStore.getState().currentUserChannelCapabilities).toEqual({
+      realmCanAddSubscribersGroup: 14,
+    });
   });
 });

@@ -105,10 +105,6 @@ export type Permission =
   | "message:delete:any"
   | "message:move"
   | "message:pin"
-  | "channel:create"
-  | "channel:delete"
-  | "channel:edit"
-  | "channel:subscribe:others"
   | "topic:create"
   | "topic:mute"
   | "topic:resolve"
@@ -127,10 +123,6 @@ const PERMISSION_MAP: Record<Permission, UserRole> = {
   "message:delete:any": UserRole.Admin,
   "message:move": UserRole.Moderator,
   "message:pin": UserRole.Moderator,
-  "channel:create": UserRole.Member,
-  "channel:delete": UserRole.Admin,
-  "channel:edit": UserRole.Admin,
-  "channel:subscribe:others": UserRole.Admin,
   "topic:create": UserRole.Member,
   "topic:mute": UserRole.Guest,
   "topic:resolve": UserRole.Moderator,

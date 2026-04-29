@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
-import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
 import { ensureUserStatusLoaded } from "~/entities/user/api/user.api";
 import { ProfileCustomFieldsBlock } from "~/entities/user/profile-custom-fields-block.ui";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore } from "~/entities/user/user.model";
+import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
 import { t } from "~/i18n/i18n";
 import { fetchUser } from "~/shared/api/zulip";
 import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";

@@ -56,7 +56,7 @@ describe("chat-info model orchestration", () => {
     ]);
 
     const slowMembers = deferred<number[]>();
-    const slowMetadata = deferred<{ description: string | null }>();
+    const slowMetadata = deferred<{ name: string | null; description: string | null }>();
     vi.mocked(loadStreamMembers).mockImplementation(async (_instanceId, streamId) => {
       if (streamId === 1) {
         return slowMembers.promise;
@@ -67,7 +67,7 @@ describe("chat-info model orchestration", () => {
       if (streamId === 1) {
         return slowMetadata.promise;
       }
-      return { description: "Second stream" };
+      return { name: "second", description: "Second stream" };
     });
 
     const firstContext = streamContext(1, "first");
@@ -78,7 +78,7 @@ describe("chat-info model orchestration", () => {
     await useChatInfoStore.getState().hydrate(secondContext);
 
     slowMembers.resolve([1]);
-    slowMetadata.resolve({ description: "First stream" });
+    slowMetadata.resolve({ name: "first", description: "First stream" });
     await firstHydrate;
 
     const state = useChatInfoStore.getState();
@@ -94,7 +94,10 @@ describe("chat-info model orchestration", () => {
       { user_id: 2, full_name: "Bob", presence: { status: "idle", timestamp: 2 } },
     ]);
     vi.mocked(loadStreamMembers).mockResolvedValue([1, 2]);
-    vi.mocked(loadStreamMetadata).mockResolvedValue({ description: "Initial description" });
+    vi.mocked(loadStreamMetadata).mockResolvedValue({
+      name: "engineering",
+      description: "Initial description",
+    });
 
     const context = streamContext(10, "engineering");
     await useChatInfoStore.getState().hydrate(context);
@@ -116,7 +119,10 @@ describe("chat-info model orchestration", () => {
   it("invalidates active stream cache and forces re-hydration", async () => {
     useUsersStore.getState().mergeUser({ user_id: 1, full_name: "Alice" });
     vi.mocked(loadStreamMembers).mockResolvedValue([1]);
-    vi.mocked(loadStreamMetadata).mockResolvedValue({ description: "Engineering" });
+    vi.mocked(loadStreamMetadata).mockResolvedValue({
+      name: "engineering",
+      description: "Engineering",
+    });
 
     const context = streamContext(42, "engineering");
     await useChatInfoStore.getState().hydrate(context);

@@ -3,7 +3,7 @@
 // локальный hydrate -> фоновый refresh -> authoritative replace на newest.
 // Для drafts берём уже гидрейтнутый global store без дополнительного initial fetch.
 import * as Dialog from "@radix-ui/react-dialog";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   hydrateActivityMessagesFromCache,
@@ -31,6 +31,7 @@ import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-d
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { buildNavigableRouteFromMessage } from "~/shared/lib/push-click";
 import { runInFlightDeduped } from "~/shared/lib/request-lifecycle.lib";
+import { scrollToBottom } from "~/shared/lib/scroll-position.lib";
 import { FloatingLoadingOverlay } from "~/shared/ui/floating-loading-overlay";
 import { Icon } from "~/shared/ui/icon";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
@@ -91,12 +92,12 @@ export const ActivityPage: React.FC = () => {
   const currentUserId = useChatListStore((s) => s.currentUserId ?? null);
   const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
   const streamsMap = useChatListStore((s) => s.streamsMap);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [pendingDraftId, setPendingDraftId] = useState<number | null>(null);
   const [pendingUnstarIds, setPendingUnstarIds] = useState<Set<number>>(() => new Set());
   const [editingDraft, setEditingDraft] = useState<Draft | null>(null);
   const [editingContent, setEditingContent] = useState("");
   const listScrollRef = useRef<HTMLUListElement>(null);
+  const initialScrollPositionKeyRef = useRef<string | null>(null);
   const editDraftTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const drafts = useDraftStore((s) => s.drafts);
@@ -106,7 +107,6 @@ export const ActivityPage: React.FC = () => {
   const setFilterCache = useActivityStore((s) => s.setFilterCache);
   const startFilterRequest = useActivityStore((s) => s.startFilterRequest);
   const setFilterPageIfActual = useActivityStore((s) => s.setFilterPageIfActual);
-  const appendOlderIfActual = useActivityStore((s) => s.appendOlderIfActual);
   const setFilterErrorIfActual = useActivityStore((s) => s.setFilterErrorIfActual);
   const removeMessageFromFilter = useActivityStore((s) => s.removeMessageFromFilter);
 
@@ -120,9 +120,11 @@ export const ActivityPage: React.FC = () => {
   const activityFilterState =
     validFilter != null && !isDrafts ? activityFilters[validFilter] : null;
   const messages = activityFilterState?.messages ?? EMPTY_ACTIVITY_MESSAGES;
-  const hasMore = activityFilterState?.hasMore ?? true;
   const loading = isDrafts ? draftsLoading : (activityFilterState?.isInitialLoading ?? false);
   const isRefreshing = isDrafts ? false : (activityFilterState?.isRefreshing ?? false);
+  const initialScrollPositionKey =
+    validFilter != null ? `${currentInstanceId ?? "none"}:${validFilter}` : null;
+  const listLength = isDrafts ? drafts.length : messages.length;
 
   useEffect(() => {
     if (!validFilter) {
@@ -209,47 +211,18 @@ export const ActivityPage: React.FC = () => {
     validFilter,
   ]);
 
-  useEffect(() => {
-    if (loading || isDrafts || messages.length === 0) return;
+  useLayoutEffect(() => {
+    if (initialScrollPositionKey == null) {
+      initialScrollPositionKeyRef.current = null;
+      return;
+    }
+    if (loading || listLength === 0) return;
+    if (initialScrollPositionKeyRef.current === initialScrollPositionKey) return;
     const el = listScrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [loading, messages.length, isDrafts]);
-
-  const handleLoadMore = useCallback(() => {
-    if (loadingMore || !hasMore || messages.length === 0 || isDrafts || !validFilter) return;
-    const oldest = messages[0];
-    if (!oldest) return;
-    const activityFilter = validFilter as ActivityFilter;
-    const requestVersion = useActivityStore.getState().filters[activityFilter].requestVersion;
-    setLoadingMore(true);
-    const requestKey = `${currentInstanceId ?? "none"}:activity:${activityFilter}:${oldest.id}:${ACTIVITY_PAGE_SIZE}`;
-    runInFlightDeduped(requestKey, () =>
-      // Пагинацию тоже пропускаем через persist-обертку, чтобы кэш пополнялся старыми страницами.
-      fetchActivityMessagesPageWithPersist(
-        activityFilter,
-        currentUserId,
-        oldest.id,
-        ACTIVITY_PAGE_SIZE,
-      ),
-    )
-      .then((page) => {
-        // Для пагинации удаляем anchor и добавляем только уникальные старые элементы.
-        const withoutAnchor = page.messages.filter((m) => m.id !== oldest.id);
-        for (const m of withoutAnchor) useUsersStore.getState().mergeFromMessage(m);
-        appendOlderIfActual(activityFilter, requestVersion, withoutAnchor, !page.foundOldest);
-      })
-      .catch(() => {})
-      .finally(() => setLoadingMore(false));
-  }, [
-    appendOlderIfActual,
-    currentInstanceId,
-    currentUserId,
-    hasMore,
-    isDrafts,
-    loadingMore,
-    messages,
-    validFilter,
-  ]);
+    if (!el) return;
+    scrollToBottom(el);
+    initialScrollPositionKeyRef.current = initialScrollPositionKey;
+  }, [initialScrollPositionKey, listLength, loading]);
 
   const handleMessageClick = useCallback(
     (m: ZulipRawMessage, mode: "open" | "forward" = "open") => {
@@ -432,7 +405,10 @@ export const ActivityPage: React.FC = () => {
           drafts.length === 0 ? (
             <div className="p-4 text-sm text-text-muted">{t("draft.noDrafts")}</div>
           ) : (
-            <ul className="flex flex-col space-y-1 overflow-auto p-2">
+            <ul
+              ref={listScrollRef}
+              className="flex flex-col space-y-1 overflow-auto scroll-auto p-2"
+            >
               {drafts.map((d) => {
                 const isPendingDelete = d.id != null && pendingDraftId === d.id;
                 return (
@@ -496,7 +472,7 @@ export const ActivityPage: React.FC = () => {
           <div className="relative flex min-h-0 flex-1 flex-col">
             <ul
               ref={listScrollRef}
-              className="flex min-h-0 flex-1 flex-col space-y-1 overflow-auto p-2"
+              className="flex min-h-0 flex-1 flex-col space-y-1 overflow-auto scroll-auto p-2"
             >
               {messages.map((m) => {
                 const isStream = m.type === "stream" && m.stream_id != null;
@@ -577,19 +553,8 @@ export const ActivityPage: React.FC = () => {
                   </li>
                 );
               })}
-              {hasMore && !loadingMore && (
-                <li className="py-2 text-center">
-                  <button
-                    type="button"
-                    onClick={handleLoadMore}
-                    className="rounded-lg px-4 py-2 text-sm text-accent hover:bg-card-bg"
-                  >
-                    {t("common.loadMore")}
-                  </button>
-                </li>
-              )}
             </ul>
-            <FloatingLoadingOverlay visible={isRefreshing || loadingMore} />
+            <FloatingLoadingOverlay visible={isRefreshing} />
           </div>
         )}
       </section>

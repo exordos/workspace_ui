@@ -10,8 +10,8 @@ import { t } from "~/i18n/i18n";
 import type { FolderItemForClient } from "~/shared/api/workspace-client";
 import { createLogger } from "~/shared/lib/logger";
 import type { SidebarChat, StreamEntryInternal } from "~/shared/types/sidebar-chat";
-import { shouldBootstrapFolderSyncForLayout } from "./layout-folder-sync-bootstrap.lib";
 import { startFolderPolling } from "./layout-folder-polling.lib";
+import { shouldBootstrapFolderSyncForLayout } from "./layout-folder-sync-bootstrap.lib";
 import { useLayoutPinFolderItemsSync } from "./layout-pin-folder-items-sync.hook";
 
 const layoutFolderSyncLog = createLogger("layout:folderSync");

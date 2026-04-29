@@ -1,5 +1,5 @@
 // Тесты доменной проверки прав add-members.
-// Проверяют org-level guard и channel-level group membership ветки.
+// Проверяют ветки org runtime capability и channel-level membership.
 import { describe, expect, it } from "vitest";
 import { UserRole } from "~/shared/lib/roles";
 import { canAddMembersToStream } from "./add-stream-members.permissions";
@@ -16,7 +16,7 @@ describe("canAddMembersToStream", () => {
     ).toBe(false);
   });
 
-  it("allows owner/admin as realm-level fallback", () => {
+  it("allows owner/admin even without explicit channel or realm groups", () => {
     expect(
       canAddMembersToStream({
         currentUserId: 10,
@@ -33,6 +33,19 @@ describe("canAddMembersToStream", () => {
     ).toBe(true);
   });
 
+  it("allows member from modern org add-subscribers group", () => {
+    expect(
+      canAddMembersToStream({
+        currentUserId: 10,
+        orgRole: UserRole.Member,
+        currentUserChannelCapabilities: {
+          realmCanAddSubscribersGroup: 71,
+        },
+        isUserInGroupSetting: (setting, userId) => setting === 71 && userId === 10,
+      }),
+    ).toBe(true);
+  });
+
   it("allows member when they are in channel add-subscribers group", () => {
     expect(
       canAddMembersToStream({
@@ -44,14 +57,24 @@ describe("canAddMembersToStream", () => {
     ).toBe(true);
   });
 
-  it("allows member when they are in channel admins group", () => {
+  it("allows channel admins only for public channels", () => {
     expect(
       canAddMembersToStream({
         currentUserId: 10,
         orgRole: UserRole.Member,
         canAdministerChannelGroup: 66,
+        inviteOnly: false,
         isUserInGroupSetting: (setting, userId) => setting === 66 && userId === 10,
       }),
     ).toBe(true);
+    expect(
+      canAddMembersToStream({
+        currentUserId: 10,
+        orgRole: UserRole.Member,
+        canAdministerChannelGroup: 66,
+        inviteOnly: true,
+        isUserInGroupSetting: (setting, userId) => setting === 66 && userId === 10,
+      }),
+    ).toBe(false);
   });
 });

@@ -22,9 +22,8 @@ import { UserRole, parseRole, hasPermission, canEditMessage, canDeleteMessage, g
 // Parse from Zulip API response
 const role = parseRole(user.role); // 200 → UserRole.Admin
 
-// Check permission
+// Check static org-level permission
 if (hasPermission(role, "message:delete:any")) { /* admin+ */ }
-if (hasPermission(role, "channel:create")) { /* member+ */ }
 
 // Check for message UI
 const showEdit = canEditMessage(role, isOwnMessage);
@@ -46,10 +45,6 @@ getRoleColor(role);  // "text-indicator-pink" (Tailwind class)
 | `message:delete:any` | Admin | Delete others' messages |
 | `message:move` | Moderator | Move messages |
 | `message:pin` | Moderator | Pin messages |
-| `channel:create` | Member | Create channels |
-| `channel:delete` | Admin | Delete channels |
-| `channel:edit` | Admin | Edit channels |
-| `channel:subscribe:others` | Admin | Subscribe others |
 | `topic:create` | Member | Create topics |
 | `topic:mute` | Guest | Mute topics |
 | `topic:resolve` | Moderator | Mark topics resolved |
@@ -65,6 +60,10 @@ getRoleColor(role);  // "text-indicator-pink" (Tailwind class)
 - Action buttons (edit, delete, pin) → check `canEditMessage()` / `hasPermission()` before rendering
 - Context menu → filter actions by `hasPermission(userRole, permission)`
 - Admin panels → wrap in `if (hasRole(userRole, UserRole.Admin))`
+- Channel actions (`edit`, `archive`, `subscribe others`, `unsubscribe others`) are runtime capabilities.
+- For channel actions, prefer server-derived capability helpers over static role maps.
+- For modern Zulip add-members UI, derive from `realm_can_add_subscribers_group`,
+  `can_add_subscribers_group`, `can_administer_channel_group`, and channel privacy.
 
 ### When fetching data from the API
 
@@ -78,5 +77,5 @@ const role = parseRole(user.role);  // number → UserRole enum
 
 - Can see and write ONLY to channels they are subscribed to
 - Cannot see the full list of channels and users
-- Cannot create channels or delete messages
+- Cannot delete messages
 - UI: hide creation buttons, show a limited menu

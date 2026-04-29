@@ -345,7 +345,7 @@ describe("fetchMessageById", () => {
     expect(result?.markdown_source).toBe("hello");
     expect(mockZulipApi.get).toHaveBeenCalledWith("/messages/100", {
       allow_empty_topic_name: "true",
-      apply_markdown: "false",
+      apply_markdown: "true",
     });
   });
 });
@@ -397,7 +397,7 @@ describe("fetchMessages", () => {
     mockZulipClient.messages.retrieve.mockResolvedValue({ messages: [] });
     await fetchMessages();
     expect(mockZulipClient.messages.retrieve).toHaveBeenCalledWith(
-      expect.objectContaining({ narrow: undefined, apply_markdown: false }),
+      expect.objectContaining({ narrow: undefined, apply_markdown: true }),
     );
   });
 
@@ -438,6 +438,19 @@ describe("fetchMessagesWithNarrow", () => {
   it("returns empty on error result", async () => {
     mockZulipClient.messages.retrieve.mockResolvedValue({ result: "error" });
     expect(await fetchMessagesWithNarrow([])).toEqual([]);
+  });
+
+  it("allows callers to explicitly request rendered HTML", async () => {
+    mockZulipClient.messages.retrieve.mockResolvedValue({ messages: [] });
+    await fetchMessagesWithNarrow([{ operator: "stream", operand: "general" }], "newest", 200, 0, {
+      applyMarkdown: true,
+    });
+    expect(mockZulipClient.messages.retrieve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        narrow: [{ operator: "stream", operand: "general" }],
+        apply_markdown: true,
+      }),
+    );
   });
 
   it("throws for unsupported anchor string", async () => {
@@ -489,6 +502,32 @@ describe("fetchMessagesWithNarrow", () => {
 // ---------------------------------------------------------------------------
 
 describe("fetchAllMessagesPage", () => {
+  it("defaults to raw markdown for metadata-only callers", async () => {
+    mockZulipApi.get.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        messages: [],
+        found_oldest: false,
+        found_newest: false,
+      },
+      raw: { statusText: "OK" },
+    });
+
+    await fetchAllMessagesPage("newest", 25);
+
+    expect(mockZulipApi.get).toHaveBeenCalledWith("/messages", {
+      anchor: "newest",
+      num_before: "25",
+      num_after: "0",
+      narrow: "[]",
+      allow_empty_topic_name: "true",
+      client_gravatar: "true",
+      apply_markdown: "false",
+    });
+  });
+
   it("throws for unsupported anchor string", async () => {
     await expect(fetchAllMessagesPage("invalid_anchor")).rejects.toThrow(/anchor must be one of/i);
     expect(mockZulipApi.get).not.toHaveBeenCalled();
@@ -839,6 +878,21 @@ describe("addReaction", () => {
       raw: { statusText: "Server Error" },
     });
     await expect(addReaction(42, "thumbs_up")).rejects.toThrow("Server error");
+  });
+
+  it("passes optional emojiCode and reactionType", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { result: "success" },
+      raw: { statusText: "OK" },
+    });
+    await addReaction(42, "party_node", { emojiCode: "43", reactionType: "realm_emoji" });
+    expect(mockZulipApi.post).toHaveBeenCalledWith("/messages/42/reactions", {
+      emoji_name: "party_node",
+      emoji_code: "43",
+      reaction_type: "realm_emoji",
+    });
   });
 });
 

@@ -1,11 +1,9 @@
-/**
- * Tests for the Zulip API client — HTTP functions, data transformations, and guards.
- *
- * Covers: auth (fetchApiKey, fetchServerSettings), user/presence fetches,
- * message CRUD, reactions, flags, queue management, file upload, and pure mappers.
- * Functions using zulip-js client are tested via mock client; functions using
- * direct fetch are tested via stubbed global fetch.
- */
+// Тесты для клиента Zulip API: HTTP-функций, преобразований данных и guard-проверок.
+//
+// Покрывает auth-потоки, загрузку пользователей и presence,
+// CRUD сообщений, реакции, флаги, управление очередью, upload файлов и чистые mapper-функции.
+// Функции на `zulip-js` тестируются через mock client,
+// а прямые fetch-вызовы — через stubbed global fetch.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getCurrentInstance } from "./client";
 import {
@@ -25,6 +23,7 @@ import {
   fetchUsers,
   fetchUser,
   fetchRealmPresence,
+  fetchRealmEmojis,
   fetchRecentMessages,
   fetchMessagesBeforeAnchor,
   fetchMessagesAfterAnchor,
@@ -118,7 +117,7 @@ vi.mock("zulip-js", () => ({
 }));
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Вспомогательные функции
 // ---------------------------------------------------------------------------
 
 const TEST_INSTANCE = {
@@ -161,7 +160,7 @@ afterEach(() => {
 });
 
 // ---------------------------------------------------------------------------
-// rawMessageToMockMessage — pure mapper, no mocking needed
+// `rawMessageToMockMessage` — чистый mapper, mock не нужен
 // ---------------------------------------------------------------------------
 
 describe("rawMessageToMockMessage", () => {
@@ -243,7 +242,7 @@ describe("rawMessageToMockMessage", () => {
 });
 
 // ---------------------------------------------------------------------------
-// getRealmBaseUrl
+// `getRealmBaseUrl`
 // ---------------------------------------------------------------------------
 
 describe("getRealmBaseUrl", () => {
@@ -282,7 +281,7 @@ describe("getRealmBaseUrl", () => {
 });
 
 // ---------------------------------------------------------------------------
-// fetchServerSettings — unauthenticated, uses raw fetch
+// `fetchServerSettings` — без авторизации, использует raw fetch
 // ---------------------------------------------------------------------------
 
 describe("fetchServerSettings", () => {
@@ -349,7 +348,7 @@ describe("fetchServerSettings", () => {
 });
 
 // ---------------------------------------------------------------------------
-// fetchApiKey — unauthenticated POST
+// `fetchApiKey` — POST без авторизации
 // ---------------------------------------------------------------------------
 
 describe("fetchApiKey", () => {
@@ -399,7 +398,7 @@ describe("fetchApiKey", () => {
 });
 
 // ---------------------------------------------------------------------------
-// exchangeDesktopFlowToken — token-based external auth continuation
+// `exchangeDesktopFlowToken` — продолжение внешней auth-схемы по токену
 // ---------------------------------------------------------------------------
 
 describe("exchangeDesktopFlowToken", () => {
@@ -471,7 +470,7 @@ describe("exchangeDesktopFlowToken", () => {
 });
 
 // ---------------------------------------------------------------------------
-// registerQueue — authenticated POST via shared client
+// `registerQueue` — авторизованный POST через shared client
 // ---------------------------------------------------------------------------
 
 describe("registerQueue", () => {
@@ -497,6 +496,7 @@ describe("registerQueue", () => {
     expect(mockRefreshZulipApiBase).toHaveBeenCalled();
     expect(mockZulipApi.post).toHaveBeenCalledWith("/register", {
       event_types: JSON.stringify(["message", "presence"]),
+      apply_markdown: "true",
       fetch_event_types: JSON.stringify([
         "subscription",
         "user_topic",
@@ -607,6 +607,29 @@ describe("registerQueue", () => {
     const result = await registerQueue(["message"]);
     expect(result.jitsi_server_url_effective).toBe("https://realm-jitsi.example.com");
   });
+
+  it("parses modern realm add-subscribers group from register payload", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        queue_id: "q-123",
+        last_event_id: -1,
+        realm_can_add_subscribers_group: {
+          direct_members: [10],
+          direct_subgroups: [14],
+        },
+      },
+      raw: { statusText: "OK" },
+    });
+
+    const result = await registerQueue(["message"]);
+    expect(result.realm_can_add_subscribers_group).toEqual({
+      direct_members: [10],
+      direct_subgroups: [14],
+    });
+  });
 });
 
 describe("registerQueueForCredentials", () => {
@@ -665,7 +688,7 @@ describe("registerQueueForCredentials", () => {
 });
 
 // ---------------------------------------------------------------------------
-// deleteQueue — best-effort, swallows errors
+// `deleteQueue` — best-effort cleanup, ошибки проглатываются
 // ---------------------------------------------------------------------------
 
 describe("deleteQueue", () => {
@@ -737,7 +760,7 @@ describe("deleteQueue", () => {
 });
 
 // ---------------------------------------------------------------------------
-// fetchUnreadMessagesCountForCredentials
+// `fetchUnreadMessagesCountForCredentials`
 // ---------------------------------------------------------------------------
 
 describe("fetchUnreadMessagesCountForCredentials", () => {
@@ -800,7 +823,7 @@ describe("fetchUnreadMessagesCountForCredentials", () => {
 });
 
 // ---------------------------------------------------------------------------
-// getEvents — long-polling
+// `getEvents` — long-polling
 // ---------------------------------------------------------------------------
 
 describe("getEvents", () => {
@@ -983,7 +1006,7 @@ describe("getEventsForCredentials", () => {
 });
 
 // ---------------------------------------------------------------------------
-// getCurrentUser — authenticated GET
+// `getCurrentUser` — авторизованный GET
 // ---------------------------------------------------------------------------
 
 describe("getCurrentUser", () => {
@@ -1051,7 +1074,7 @@ describe("getCurrentUser", () => {
 });
 
 // ---------------------------------------------------------------------------
-// fetchUsers — authenticated GET
+// `fetchUsers` — авторизованный GET
 // ---------------------------------------------------------------------------
 
 describe("fetchUsers", () => {
@@ -1110,7 +1133,7 @@ describe("fetchUsers", () => {
 });
 
 // ---------------------------------------------------------------------------
-// fetchUser — authenticated GET with guard
+// `fetchUser` — авторизованный GET с guard-проверкой
 // ---------------------------------------------------------------------------
 
 describe("fetchUser", () => {
@@ -1159,7 +1182,7 @@ describe("fetchUser", () => {
 });
 
 // ---------------------------------------------------------------------------
-// fetchRealmPresence
+// `fetchRealmPresence`
 // ---------------------------------------------------------------------------
 
 describe("fetchRealmPresence", () => {
@@ -1191,8 +1214,77 @@ describe("fetchRealmPresence", () => {
   });
 });
 
+describe("fetchRealmEmojis", () => {
+  it("returns normalized custom emojis and filters invalid/deactivated rows", async () => {
+    mockZulipApi.get.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        emoji: {
+          "42": {
+            id: "42",
+            name: "green_tick",
+            source_url: "/user_uploads/1/aa/green_tick.png",
+          },
+          "43": {
+            id: 43,
+            name: "party_node",
+            source_url: "https://cdn.example.com/party_node.png",
+          },
+          "44": {
+            id: "44",
+            name: "disabled",
+            source_url: "/user_uploads/1/aa/disabled.png",
+            deactivated: true,
+          },
+          "45": {
+            id: "45",
+            name: "",
+            source_url: "/user_uploads/1/aa/invalid.png",
+          },
+        },
+      },
+      raw: { statusText: "OK" },
+    });
+
+    await expect(fetchRealmEmojis()).resolves.toEqual([
+      {
+        id: "42",
+        names: ["green_tick"],
+        imgUrl: "https://zulip.example.com/user_uploads/1/aa/green_tick.png",
+      },
+      {
+        id: "43",
+        names: ["party_node"],
+        imgUrl: "https://cdn.example.com/party_node.png",
+      },
+    ]);
+  });
+
+  it("returns empty list on non-ok response", async () => {
+    mockZulipApi.get.mockResolvedValue({
+      ok: false,
+      status: 500,
+      data: {},
+      raw: { statusText: "Server Error" },
+    });
+    await expect(fetchRealmEmojis()).resolves.toEqual([]);
+  });
+
+  it("returns empty list when payload contains error result", async () => {
+    mockZulipApi.get.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { result: "error", msg: "forbidden" },
+      raw: { statusText: "OK" },
+    });
+    await expect(fetchRealmEmojis()).resolves.toEqual([]);
+  });
+});
+
 // ---------------------------------------------------------------------------
-// fetchRecentMessages — authenticated GET
+// `fetchRecentMessages` — авторизованный GET
 // ---------------------------------------------------------------------------
 
 describe("fetchRecentMessages", () => {
@@ -1328,7 +1420,7 @@ describe("fetchMessagesAfterAnchor", () => {
 });
 
 // ---------------------------------------------------------------------------
-// fetchActivityMessages
+// `fetchActivityMessages`
 // ---------------------------------------------------------------------------
 
 describe("fetchActivityMessages", () => {
@@ -1401,7 +1493,7 @@ describe("fetchActivityMessagesPage", () => {
 });
 
 // ---------------------------------------------------------------------------
-// fetchSubscriptions / fetchUserTopics / fetchMessageById / fetchStreamMembers
+// `fetchSubscriptions` / `fetchUserTopics` / `fetchMessageById` / `fetchStreamMembers`
 // ---------------------------------------------------------------------------
 
 describe("fetchSubscriptions", () => {
@@ -1482,10 +1574,11 @@ describe("fetchMessageById", () => {
 
     expect(result?.id).toBe(100);
     expect(result?.channel).toBe("general");
+    expect(result?.content).toBe("<p>hello</p>");
     expect(result?.markdown_source).toBe("hello");
     expect(mockZulipApi.get).toHaveBeenCalledWith("/messages/100", {
       allow_empty_topic_name: "true",
-      apply_markdown: "false",
+      apply_markdown: "true",
     });
   });
 
@@ -1564,7 +1657,7 @@ describe("fetchTopics", () => {
 });
 
 // ---------------------------------------------------------------------------
-// fetchStreams — uses zulip-js client
+// `fetchStreams` — использует `zulip-js` client
 // ---------------------------------------------------------------------------
 
 describe("fetchStreams", () => {
@@ -1589,7 +1682,7 @@ describe("fetchStreams", () => {
 });
 
 // ---------------------------------------------------------------------------
-// fetchMessages — uses zulip-js client
+// `fetchMessages` — использует `zulip-js` client
 // ---------------------------------------------------------------------------
 
 describe("fetchMessages", () => {
@@ -1660,7 +1753,7 @@ describe("fetchMessages", () => {
     mockZulipClient.messages.retrieve.mockResolvedValue({ messages: [] });
     await fetchMessages();
     expect(mockZulipClient.messages.retrieve).toHaveBeenCalledWith(
-      expect.objectContaining({ narrow: undefined, apply_markdown: false }),
+      expect.objectContaining({ narrow: undefined, apply_markdown: true }),
     );
   });
 
@@ -1714,7 +1807,7 @@ describe("fetchMessages", () => {
 });
 
 // ---------------------------------------------------------------------------
-// fetchMessagesWithNarrow — generic narrow-based fetch
+// `fetchMessagesWithNarrow` — универсальная загрузка по narrow
 // ---------------------------------------------------------------------------
 
 describe("fetchMessagesWithNarrow", () => {
@@ -1728,6 +1821,19 @@ describe("fetchMessagesWithNarrow", () => {
         num_before: 200,
         num_after: 0,
         apply_markdown: false,
+      }),
+    );
+  });
+
+  it("allows chat paths to explicitly request rendered HTML", async () => {
+    mockZulipClient.messages.retrieve.mockResolvedValue({ messages: [] });
+    await fetchMessagesWithNarrow([{ operator: "stream", operand: "general" }], "newest", 200, 0, {
+      applyMarkdown: true,
+    });
+    expect(mockZulipClient.messages.retrieve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        narrow: [{ operator: "stream", operand: "general" }],
+        apply_markdown: true,
       }),
     );
   });
@@ -1867,10 +1973,36 @@ describe("fetchMessagesWithNarrow", () => {
 });
 
 // ---------------------------------------------------------------------------
-// fetchAllMessagesPage — all-messages pagination via API pipeline
+// `fetchAllMessagesPage` — пагинация по всем сообщениям через API pipeline
 // ---------------------------------------------------------------------------
 
 describe("fetchAllMessagesPage", () => {
+  it("defaults to raw markdown for metadata-only callers", async () => {
+    mockZulipApi.get.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        messages: [],
+        found_oldest: false,
+        found_newest: false,
+      },
+      raw: { statusText: "OK" },
+    });
+
+    await fetchAllMessagesPage("newest", 25);
+
+    expect(mockZulipApi.get).toHaveBeenCalledWith("/messages", {
+      anchor: "newest",
+      num_before: "25",
+      num_after: "0",
+      narrow: "[]",
+      allow_empty_topic_name: "true",
+      client_gravatar: "true",
+      apply_markdown: "false",
+    });
+  });
+
   it("throws for unsupported anchor string", async () => {
     await expect(fetchAllMessagesPage("invalid_anchor")).rejects.toThrow(/anchor must be one of/i);
     expect(mockZulipApi.get).not.toHaveBeenCalled();
@@ -1930,7 +2062,9 @@ describe("fetchDmMessages", () => {
       raw: {},
     });
     const controller = new AbortController();
-    await expect(fetchDmMessages(42, { signal: controller.signal })).rejects.toThrow(/app\.errorStatus/);
+    await expect(fetchDmMessages(42, { signal: controller.signal })).rejects.toThrow(
+      /app\.errorStatus/,
+    );
   });
 
   it("throws when pipeline returns null on network error (signal path, not aborted)", async () => {
@@ -2139,7 +2273,7 @@ describe("sendMessage", () => {
 });
 
 // ---------------------------------------------------------------------------
-// renderMessageContent — authenticated markdown preview rendering
+// `renderMessageContent` — авторизованный рендер markdown для preview
 // ---------------------------------------------------------------------------
 
 describe("renderMessageContent", () => {
@@ -2176,7 +2310,7 @@ describe("renderMessageContent", () => {
 });
 
 // ---------------------------------------------------------------------------
-// updateMessage — authenticated PATCH with guard
+// `updateMessage` — авторизованный PATCH с guard-проверкой
 // ---------------------------------------------------------------------------
 
 describe("updateMessage", () => {
@@ -2215,7 +2349,7 @@ describe("updateMessage", () => {
 });
 
 // ---------------------------------------------------------------------------
-// deleteMessage — authenticated DELETE with guard
+// `deleteMessage` — авторизованный DELETE с guard-проверкой
 // ---------------------------------------------------------------------------
 
 describe("deleteMessage", () => {
@@ -2302,7 +2436,7 @@ describe("deleteStream", () => {
 });
 
 // ---------------------------------------------------------------------------
-// addReaction — authenticated POST with guard
+// `addReaction` — авторизованный POST с guard-проверкой
 // ---------------------------------------------------------------------------
 
 describe("addReaction", () => {
@@ -2351,10 +2485,25 @@ describe("addReaction", () => {
     });
     await expect(addReaction(42, "thumbs_up")).rejects.toThrow("Server error");
   });
+
+  it("passes optional emojiCode and reactionType", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { result: "success" },
+      raw: { statusText: "OK" },
+    });
+    await addReaction(42, "party_node", { emojiCode: "43", reactionType: "realm_emoji" });
+    expect(mockZulipApi.post).toHaveBeenCalledWith("/messages/42/reactions", {
+      emoji_name: "party_node",
+      emoji_code: "43",
+      reaction_type: "realm_emoji",
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
-// removeReaction — authenticated DELETE with guard
+// `removeReaction` — авторизованный DELETE с guard-проверкой
 // ---------------------------------------------------------------------------
 
 describe("removeReaction", () => {
@@ -2405,7 +2554,7 @@ describe("removeReaction", () => {
 });
 
 // ---------------------------------------------------------------------------
-// markMessagesAsRead
+// `markMessagesAsRead`
 // ---------------------------------------------------------------------------
 
 describe("markMessagesAsRead", () => {
@@ -2436,7 +2585,7 @@ describe("markMessagesAsRead", () => {
 });
 
 // ---------------------------------------------------------------------------
-// markDmAsRead
+// `markDmAsRead`
 // ---------------------------------------------------------------------------
 
 describe("markDmAsRead", () => {
@@ -2481,7 +2630,7 @@ describe("markDmAsRead", () => {
 });
 
 // ---------------------------------------------------------------------------
-// markStreamAsRead
+// `markStreamAsRead`
 // ---------------------------------------------------------------------------
 
 describe("markStreamAsRead", () => {
@@ -2522,7 +2671,7 @@ describe("markStreamAsRead", () => {
 });
 
 // ---------------------------------------------------------------------------
-// markTopicAsRead
+// `markTopicAsRead`
 // ---------------------------------------------------------------------------
 
 describe("markTopicAsRead", () => {
@@ -2578,7 +2727,7 @@ describe("markTopicAsRead", () => {
 });
 
 // ---------------------------------------------------------------------------
-// setTopicResolvedState
+// `setTopicResolvedState`
 // ---------------------------------------------------------------------------
 
 describe("setTopicResolvedState", () => {
@@ -2663,7 +2812,7 @@ describe("setTopicResolvedState", () => {
 });
 
 // ---------------------------------------------------------------------------
-// updateMessageFlags
+// `updateMessageFlags`
 // ---------------------------------------------------------------------------
 
 describe("updateMessageFlags", () => {
@@ -2701,7 +2850,7 @@ describe("updateMessageFlags", () => {
 });
 
 // ---------------------------------------------------------------------------
-// uploadFile — authenticated POST with FormData
+// `uploadFile` — авторизованный POST с FormData
 // ---------------------------------------------------------------------------
 
 describe("uploadFile", () => {
@@ -2882,7 +3031,7 @@ describe("uploadFile", () => {
 });
 
 // ---------------------------------------------------------------------------
-// fetchUsersAvatarMap
+// `fetchUsersAvatarMap`
 // ---------------------------------------------------------------------------
 
 describe("fetchUsersAvatarMap", () => {

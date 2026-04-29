@@ -100,6 +100,8 @@ export interface RegisterQueueResult {
   // Все группы организации из register metadata.
   // Используется для расчета channel-level прав через group-setting поля канала.
   realm_user_groups?: ZulipRealmUserGroup[];
+  /** Present when `realm` is included in `fetch_event_types` (modern Zulip 10+). */
+  realm_can_add_subscribers_group?: ZulipGroupSettingValue;
   /** Present when `realm` is included in `fetch_event_types` (Zulip 9.0+). */
   server_thumbnail_formats?: ZulipServerThumbnailFormat[];
   /**
@@ -163,12 +165,29 @@ export interface RealmPresenceResponse {
   server_timestamp?: number;
 }
 
+/** Normalized custom emoji entry from GET /realm/emoji for emoji-picker-react. */
+export interface RealmEmoji {
+  id: string;
+  names: string[];
+  imgUrl: string;
+}
+
 /** A single reaction on a message (Zulip API shape). */
 export interface Reaction {
   emoji_name: string;
   emoji_code: string;
   reaction_type: "unicode_emoji" | "realm_emoji" | "zulip_extra_emoji";
   user_id: number;
+}
+
+export type ReactionType = Reaction["reaction_type"];
+
+/** Reaction payload used by message-list UI callbacks. */
+export interface MessageReactionPayload {
+  emojiName: string;
+  reactionType: ReactionType;
+  emojiCode?: string;
+  imageUrl?: string;
 }
 
 /** Raw message from GET /messages. Absence of 'read' in flags means unread. */

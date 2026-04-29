@@ -349,6 +349,102 @@ describe("MessageBubble edit/delete actions parity", () => {
     expect(image?.getAttribute("data-auth-src")).toContain("/user_uploads/thumbnail/");
   });
 
+  it("keeps markdown user_upload image links as links instead of expanding them into inline images", () => {
+    render(
+      <MessageBubble
+        message={createMessage({
+          content: "[image.png](/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png)",
+        })}
+        isOwn={false}
+      />,
+    );
+
+    const link = screen.getByRole("link", { name: "image.png" });
+    expect(link).toBeInTheDocument();
+    expect(link.getAttribute("href")).toMatch(
+      /\/user_uploads\/2\/ff\/aP3oHiNs40xdmpUNVol7Z5ga\/image\.png$/,
+    );
+    expect(link.querySelector("img")).toBeNull();
+  });
+
+  it("does not leave external_content preview URL in rendered img src", () => {
+    const { container } = render(
+      <MessageBubble
+        message={createMessage({
+          content:
+            '<p>preview</p><img src="/external_content/preview.png?url=https%3A%2F%2Fexample.com" alt="link preview" />',
+        })}
+        isOwn={false}
+      />,
+    );
+
+    const image = container.querySelector("img");
+    expect(image).not.toBeNull();
+    expect(image?.getAttribute("src")).not.toContain("/external_content/");
+    expect(image?.getAttribute("data-auth-src")).toContain("/external_content/preview.png");
+  });
+
+  it("strips protected srcset, sizes, poster, and style attrs from rendered message media", () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise(() => {})),
+    );
+
+    const { container } = render(
+      <MessageBubble
+        message={createMessage({
+          content:
+            '<p style="color:red">preview</p><picture><source srcset="/external_content/a.webp 1x, /external_content/b.webp 2x" sizes="100vw"><img srcset="/external_content/c.png 1x, /external_content/d.png 2x" sizes="50vw" style="background-image:url(/external_content/bg.png)" alt="link preview"></picture><video poster="/external_content/poster.png"><source src="/user_uploads/1/private.mp4" type="video/mp4" /></video>',
+        })}
+        isOwn={false}
+      />,
+    );
+
+    const image = container.querySelector("img");
+    const pictureSource = container.querySelector("picture source");
+    const video = container.querySelector("video");
+    const videoSource = container.querySelector("video source");
+    const styledParagraph = container.querySelector("p");
+
+    expect(styledParagraph?.getAttribute("style")).toContain("color:red");
+    expect(image?.hasAttribute("srcset")).toBe(false);
+    expect(image?.hasAttribute("sizes")).toBe(false);
+    expect(image?.hasAttribute("style")).toBe(false);
+    expect(image?.getAttribute("data-auth-src")).toContain("/external_content/d.png");
+    expect(image?.getAttribute("src")).not.toContain("/external_content/");
+    expect(pictureSource).not.toBeNull();
+    expect(pictureSource?.hasAttribute("srcset")).toBe(false);
+    expect(pictureSource?.hasAttribute("sizes")).toBe(false);
+    expect(video?.getAttribute("poster")).toBeNull();
+    expect(video?.getAttribute("data-auth-poster")).toContain("/external_content/poster.png");
+    expect(videoSource?.getAttribute("src")).toBeNull();
+    expect(videoSource?.getAttribute("data-auth-src")).toContain("/user_uploads/1/private.mp4");
+  });
+
+  it("keeps Zulip embed background image off the live DOM until authenticated fetch resolves", () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise(() => {})),
+    );
+
+    const { container } = render(
+      <MessageBubble
+        message={createMessage({
+          content:
+            '<div class="message_embed"><a class="message_embed_image" href="https://habr.com/ru/articles/1024154/" style="background-image:url(&quot;/external_content/hash/preview.jpeg&quot;)"></a></div>',
+        })}
+        isOwn={false}
+      />,
+    );
+
+    const embedImage = container.querySelector<HTMLElement>(".message_embed_image");
+    expect(embedImage).not.toBeNull();
+    expect(embedImage?.getAttribute("style")).toBeNull();
+    expect(embedImage?.getAttribute("data-auth-background-image")).toBe(
+      "/external_content/hash/preview.jpeg",
+    );
+  });
+
   it("loads protected image preview through normalized user_uploads path", async () => {
     const fetchMock = vi.fn((input: string | URL) => {
       const s = String(input);
@@ -394,14 +490,105 @@ describe("MessageBubble edit/delete actions parity", () => {
     );
   });
 
-  it("prefers relative user_uploads thumbnail path before cross-origin candidate", async () => {
-    const relativeThumbnailPath =
-      "/user_uploads/thumbnail/2/ee/H37di7GmS3N2EkehVcH83MaM/image.png/840x560.webp";
-    const absoluteThumbnailUrl = `https://zulip.genesis-core.tech${relativeThumbnailPath}`;
-    const canonicalThumbnailUrl = `https://uploads.example.com${relativeThumbnailPath}`;
+  it("loads external_content preview through authenticated fetch without thumbnail rewrite", async () => {
     const fetchMock = vi.fn((input: string | URL) => {
       const s = String(input);
-      if (s === relativeThumbnailPath || s === canonicalThumbnailUrl) {
+      if (
+        s === "/external_content/preview.png?url=https%3A%2F%2Fexample.com" ||
+        s ===
+          "https://uploads.example.com/external_content/preview.png?url=https%3A%2F%2Fexample.com"
+      ) {
+        return Promise.resolve({
+          ok: true,
+          blob: () => Promise.resolve(new Blob(["ok"])),
+        });
+      }
+      return Promise.resolve({
+        ok: false,
+        blob: () => Promise.resolve(new Blob([])),
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test-preview");
+    buildAuthHeaderMock.mockReturnValue({ Authorization: "Basic test" });
+
+    const { container } = render(
+      <MessageBubble
+        message={createMessage({
+          content:
+            '<p>preview</p><img src="/external_content/preview.png?url=https%3A%2F%2Fexample.com" alt="link preview" />',
+        })}
+        isOwn={false}
+      />,
+    );
+
+    const image = container.querySelector("img");
+    expect(image).not.toBeNull();
+
+    await waitFor(() => {
+      expect(image?.getAttribute("src")).toBe("blob:test-preview");
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(/\/external_content\/preview\.png\?url=https%3A%2F%2Fexample\.com$/),
+      expect.objectContaining({
+        headers: { Authorization: "Basic test" },
+      }),
+    );
+  });
+
+  it("loads Zulip embed background preview through authenticated fetch and applies only blob style", async () => {
+    const fetchMock = vi.fn((input: string | URL) => {
+      const s = String(input);
+      if (
+        s === "/external_content/hash/preview.jpeg" ||
+        s === "https://uploads.example.com/external_content/hash/preview.jpeg"
+      ) {
+        return Promise.resolve({
+          ok: true,
+          blob: () => Promise.resolve(new Blob(["ok"])),
+        });
+      }
+      return Promise.resolve({
+        ok: false,
+        blob: () => Promise.resolve(new Blob([])),
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test-embed-preview");
+    buildAuthHeaderMock.mockReturnValue({ Authorization: "Basic test" });
+
+    const { container } = render(
+      <MessageBubble
+        message={createMessage({
+          content:
+            '<div class="message_embed"><a class="message_embed_image" href="https://habr.com/ru/articles/1024154/" style="background-image:url(&quot;/external_content/hash/preview.jpeg&quot;)"></a></div>',
+        })}
+        isOwn={false}
+      />,
+    );
+
+    const embedImage = container.querySelector<HTMLElement>(".message_embed_image");
+    expect(embedImage).not.toBeNull();
+    expect(embedImage?.getAttribute("style")).toBeNull();
+
+    await waitFor(() => {
+      expect(embedImage?.style.backgroundImage).toContain("blob:test-embed-preview");
+    });
+    expect(embedImage?.style.backgroundImage).not.toContain("/external_content/");
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(/\/external_content\/hash\/preview\.jpeg$/),
+      expect.objectContaining({
+        headers: { Authorization: "Basic test" },
+      }),
+    );
+  });
+
+  it("loads user_uploads previews through a single canonical fetch URL", async () => {
+    const canonicalThumbnailPath =
+      "https://uploads.example.com/user_uploads/thumbnail/2/ee/H37di7GmS3N2EkehVcH83MaM/image.png/840x560.webp";
+    const fetchMock = vi.fn((input: string | URL) => {
+      const s = String(input);
+      if (s === canonicalThumbnailPath) {
         return Promise.resolve({
           ok: true,
           blob: () => Promise.resolve(new Blob(["ok"])),
@@ -419,7 +606,7 @@ describe("MessageBubble edit/delete actions parity", () => {
     const { container } = render(
       <MessageBubble
         message={createMessage({
-          content: `<p>image</p><img src="${absoluteThumbnailUrl}" alt="private image" />`,
+          content: `<p>image</p><img src="https://zulip.genesis-core.tech/user_uploads/thumbnail/2/ee/H37di7GmS3N2EkehVcH83MaM/image.png/840x560.webp" alt="private image" />`,
         })}
         isOwn={false}
       />,
@@ -434,14 +621,14 @@ describe("MessageBubble edit/delete actions parity", () => {
 
     expect(fetchMock).toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledWith(
-      canonicalThumbnailUrl,
+      canonicalThumbnailPath,
       expect.objectContaining({
         headers: { Authorization: "Basic test" },
       }),
     );
   });
 
-  it("falls back to original image URL when protected preview fetch fails", async () => {
+  it("keeps the placeholder image when protected preview fetch fails", async () => {
     const fetchMock = vi.fn(() =>
       Promise.resolve({
         ok: false,
@@ -466,11 +653,13 @@ describe("MessageBubble edit/delete actions parity", () => {
     expect(image).not.toBeNull();
 
     await waitFor(() => {
-      expect(image?.getAttribute("src")).toBe(originalImageUrl);
+      expect(fetchMock).toHaveBeenCalled();
     });
+    expect(image?.getAttribute("src")).not.toBe(originalImageUrl);
+    expect(image?.getAttribute("src")).toContain("data:image/svg+xml,");
   });
 
-  it("falls back to original video source URL when protected fetch fails", async () => {
+  it("keeps video source unset when protected fetch fails", async () => {
     const fetchMock = vi.fn(() =>
       Promise.resolve({
         ok: false,
@@ -494,8 +683,41 @@ describe("MessageBubble edit/delete actions parity", () => {
     expect(source).not.toBeNull();
 
     await waitFor(() => {
-      expect(source?.getAttribute("src")).toBe(originalVideoUrl);
+      expect(fetchMock).toHaveBeenCalled();
     });
+    expect(source?.getAttribute("src")).toBeNull();
+    expect(source?.getAttribute("data-auth-src")).toContain("/user_uploads/1/private.mp4");
+  });
+
+  it("keeps Zulip embed background image empty when protected fetch fails", async () => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve({
+        ok: false,
+        blob: () => Promise.resolve(new Blob([])),
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    buildAuthHeaderMock.mockReturnValue({ Authorization: "Basic test" });
+
+    const { container } = render(
+      <MessageBubble
+        message={createMessage({
+          content:
+            '<div class="message_embed"><a class="message_embed_image" href="https://habr.com/ru/articles/1024154/" style="background-image:url(&quot;/external_content/hash/preview.jpeg&quot;)"></a></div>',
+        })}
+        isOwn={false}
+      />,
+    );
+
+    const embedImage = container.querySelector<HTMLElement>(".message_embed_image");
+    expect(embedImage).not.toBeNull();
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalled();
+    });
+    expect(embedImage?.getAttribute("style")).toBeNull();
+    expect(embedImage?.style.backgroundImage).toBe("");
+    expect(embedImage?.style.backgroundImage).not.toContain("/external_content/");
   });
 
   it("renders redesigned jitsi call bubble metadata and participant stack", () => {

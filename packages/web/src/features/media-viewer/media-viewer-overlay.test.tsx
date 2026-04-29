@@ -1,14 +1,34 @@
-/**
- * Regression: overlay must call the same hooks when closed vs open (Rules of Hooks).
- */
-import { render } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+// Регрессия: overlay должен вызывать один и тот же набор хуков
+// и в закрытом, и в открытом состоянии, чтобы не нарушать Rules of Hooks.
+import { render, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MediaViewerOverlay } from "./media-viewer-overlay.ui";
 import { useMediaViewerStore } from "./media-viewer.model";
+
+vi.mock("~/shared/api/zulip-client.internal", () => ({
+  getRealmBaseUrl: () => "https://zulip.example.com",
+}));
+
+vi.mock("~/shared/lib/env", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("~/shared/lib/env")>();
+  return {
+    ...actual,
+    env: {
+      ...actual.env,
+      USER_UPLOADS_PATH_PREFIX: "",
+    },
+  };
+});
+
+vi.mock("~/shared/lib/auth-guard", () => ({
+  buildAuthHeader: () => ({ Authorization: "Basic test" }),
+}));
 
 describe("MediaViewerOverlay", () => {
   afterEach(() => {
     useMediaViewerStore.getState().close();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it("does not change hook count when opening from closed (no Rules of Hooks violation)", () => {
@@ -18,5 +38,68 @@ describe("MediaViewerOverlay", () => {
     rerender(<MediaViewerOverlay />);
 
     expect(useMediaViewerStore.getState().isOpen).toBe(true);
+  });
+
+  it("loads protected image items through authenticated fetch without mounting the raw protected src", async () => {
+    const fetchMock = vi.fn((input: string | URL) => {
+      const value = String(input);
+      if (value === "https://zulip.example.com/external_content/preview.png") {
+        return Promise.resolve({
+          ok: true,
+          blob: () => Promise.resolve(new Blob(["ok"])),
+        });
+      }
+      return Promise.resolve({
+        ok: false,
+        blob: () => Promise.resolve(new Blob([])),
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test-viewer-image");
+
+    useMediaViewerStore
+      .getState()
+      .open([{ url: "https://zulip.example.com/external_content/preview.png", type: "image" }], 0);
+
+    const { container } = render(<MediaViewerOverlay />);
+    const image = container.querySelector("img");
+
+    expect(image).not.toBeNull();
+    expect(image?.getAttribute("src")).not.toContain("/external_content/");
+
+    await waitFor(() => {
+      expect(image?.getAttribute("src")).toBe("blob:test-viewer-image");
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://zulip.example.com/external_content/preview.png",
+      expect.objectContaining({
+        headers: { Authorization: "Basic test" },
+      }),
+    );
+  });
+
+  it("keeps protected video src unset when authenticated fetch fails", async () => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve({
+        ok: false,
+        blob: () => Promise.resolve(new Blob([])),
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    useMediaViewerStore
+      .getState()
+      .open([{ url: "https://zulip.example.com/user_uploads/1/private.mp4", type: "video" }], 0);
+
+    const { container } = render(<MediaViewerOverlay />);
+    const video = container.querySelector("video");
+
+    expect(video).not.toBeNull();
+    expect(video?.getAttribute("src")).toBeNull();
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalled();
+    });
+    expect(video?.getAttribute("src")).toBeNull();
   });
 });

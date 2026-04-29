@@ -17,11 +17,16 @@ vi.mock("~/shared/api/client", () => {
   return {
     workspaceApi: {
       ...api,
-      getWithBase: vi.fn((base: string, path: string, params?: Record<string, string>, signal?: AbortSignal) =>
-        api.get(path, params, signal),
+      getWithBase: vi.fn(
+        (base: string, path: string, params?: Record<string, string>, signal?: AbortSignal) =>
+          api.get(path, params, signal),
       ),
-      postJsonWithBase: vi.fn((base: string, path: string, body: unknown) => api.postJson(path, body)),
-      putJsonWithBase: vi.fn((base: string, path: string, body: unknown) => api.putJson(path, body)),
+      postJsonWithBase: vi.fn((base: string, path: string, body: unknown) =>
+        api.postJson(path, body),
+      ),
+      putJsonWithBase: vi.fn((base: string, path: string, body: unknown) =>
+        api.putJson(path, body),
+      ),
       deleteWithBase: vi.fn((base: string, path: string, body?: Record<string, string>) =>
         api.delete(path, body),
       ),

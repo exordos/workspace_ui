@@ -9,7 +9,7 @@ import { customInstance } from '../workspace-api-mutator';
 /**
  * Detail error map
  */
-export type ErrorJson = {
+export interface ErrorJson {
   /**
      * The HTTP status code
      * @minimum 400
@@ -19,7 +19,7 @@ export type ErrorJson = {
   type: string;
   /** Error message */
   message: string;
-};
+}
 
 /**
  * Error occurred while processing request
@@ -396,9 +396,9 @@ export type ServiceUrlParameter = string;
 
 export type IconParameter = string | null;
 
-export type GetOpenApiSpecification200 = { [key: string]: unknown };
+export type GetOpenApiSpecification200 = Record<string, unknown>;
 
-export type FilterV1Params = {
+export interface FilterV1Params {
 /**
  * the filters to apply when filtering the routes (Is not
 implemented now)
@@ -411,9 +411,9 @@ now)
 
  */
 order_by?: string;
-};
+}
 
-export type FilterV1FolderItemsParams = {
+export interface FilterV1FolderItemsParams {
 created_at?: string;
 updated_at?: string;
 folder?: string;
@@ -438,9 +438,9 @@ order_index?: number | null;
  */
 pinned_at?: string | null;
 folder_uuid?: string;
-};
+}
 
-export type FilterV1FoldersParams = {
+export interface FilterV1FoldersParams {
 created_at?: string;
 updated_at?: string;
 /**
@@ -463,7 +463,7 @@ background_color_value?: number | null;
  * @nullable
  */
 system_type?: FilterV1FoldersSystemType;
-};
+}
 
 export type FilterV1FoldersSystemType = typeof FilterV1FoldersSystemType[keyof typeof FilterV1FoldersSystemType] | null;
 
@@ -473,7 +473,7 @@ export const FilterV1FoldersSystemType = {
   created: 'created',
 } as const;
 
-export type FilterV1ServicesParams = {
+export interface FilterV1ServicesParams {
 /**
  * @minLength 0
  * @maxLength 255
@@ -495,7 +495,7 @@ service_url?: string;
  * @pattern ^(?:http|ftp)s?://(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|localhost|\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?::\d+)?(?:/?|[/?]\S+)$
  */
 icon?: string | null;
-};
+}
 
 /**
  * @summary Base application url

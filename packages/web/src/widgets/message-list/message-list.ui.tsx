@@ -1,15 +1,20 @@
 import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback } from "react";
 import { t } from "~/i18n/i18n";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage, Reaction, RealmEmoji } from "~/shared/api/zulip.types";
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
+import { normalizeEmojiShortcodeName } from "~/shared/lib/emoji-shortcodes.lib";
 import { createLogger } from "~/shared/lib/logger";
 import { normalizeStreamTopicForMessageCache } from "~/shared/lib/message-cache-keys.lib";
+import { containsEmojiShortcode } from "~/shared/lib/message-emoji-shortcodes.lib";
 import { logMessageFlow } from "~/shared/lib/message-flow-debug.lib";
+import { isLikelyRenderedMessageHtml } from "~/shared/lib/message-markdown-display.lib";
+import { ensureRealmEmojisLoaded, getCachedRealmEmojis } from "~/shared/lib/realm-emojis-cache";
+import { scrollToBottom } from "~/shared/lib/scroll-position.lib";
 import { computeScrollTopAfterPrepend } from "~/shared/lib/scroll-prepend-anchor.lib";
 import { FloatingLoadingOverlay } from "~/shared/ui/floating-loading-overlay";
-import { Icon } from "~/shared/ui/icon";
+import { FloatingScrollToBottomButton } from "~/shared/ui/floating-scroll-to-bottom-button";
 import { MessageBubble, type MessageBubbleCallbacks } from "./message-bubble.ui";
-import { getSenderGroups, scrollToBottom } from "./message-list-grouping.lib";
+import { getSenderGroups } from "./message-list-grouping.lib";
 import { buildMessageMediaGallery } from "./message-list-media.lib";
 import { MessageListSenderGroup } from "./message-list-sender-group.ui";
 import type { MessageListProps } from "./message-list.types";
@@ -104,6 +109,91 @@ export const MessageList: React.FC<MessageListProps> = ({
     focusedMessageId,
   );
   const [isAtBottom, setIsAtBottom] = useState(true);
+  const [customEmojis, setCustomEmojis] = useState<RealmEmoji[]>(() => getCachedRealmEmojis());
+
+  const ensureCustomEmojisLoaded = useCallback(() => {
+    void ensureRealmEmojisLoaded()
+      .then((list) => {
+        setCustomEmojis(list);
+      })
+      .catch(() => {
+        messageListLog.warn("Failed to load realm custom emojis for reaction picker");
+      });
+  }, []);
+
+  const customEmojiById = useMemo(() => {
+    const map = new Map<string, RealmEmoji>();
+    for (const emoji of customEmojis) {
+      const id = emoji.id.trim();
+      if (id.length > 0) {
+        map.set(id, emoji);
+      }
+    }
+    return map;
+  }, [customEmojis]);
+
+  const customEmojiByName = useMemo(() => {
+    const map = new Map<string, RealmEmoji>();
+    for (const emoji of customEmojis) {
+      for (const name of emoji.names) {
+        const normalized = normalizeEmojiShortcodeName(name);
+        if (normalized.length > 0) {
+          map.set(normalized, emoji);
+        }
+      }
+    }
+    return map;
+  }, [customEmojis]);
+
+  const hasMarkdownEmojiShortcodes = useMemo(
+    () =>
+      messages.some((message) => {
+        const content = message.content.trim();
+        if (content.length === 0) return false;
+        if (isLikelyRenderedMessageHtml(content)) return false;
+        return containsEmojiShortcode(content);
+      }),
+    [messages],
+  );
+
+  const hasRealmEmojiReactions = useMemo(
+    () =>
+      messages.some((message) =>
+        message.reactions?.some((reaction) => reaction.reaction_type === "realm_emoji"),
+      ),
+    [messages],
+  );
+
+  useEffect(() => {
+    if (!hasMarkdownEmojiShortcodes && !hasRealmEmojiReactions) {
+      return;
+    }
+    ensureCustomEmojisLoaded();
+  }, [ensureCustomEmojisLoaded, hasMarkdownEmojiShortcodes, hasRealmEmojiReactions]);
+
+  const resolveCustomEmojiImageUrl = useCallback(
+    (reaction: Reaction): string | undefined => {
+      if (reaction.reaction_type !== "realm_emoji") {
+        return undefined;
+      }
+      const byCode = customEmojiById.get(reaction.emoji_code.trim());
+      if (byCode != null) {
+        return byCode.imgUrl;
+      }
+      const byName = customEmojiByName.get(normalizeEmojiShortcodeName(reaction.emoji_name));
+      return byName?.imgUrl;
+    },
+    [customEmojiById, customEmojiByName],
+  );
+
+  const resolveCustomEmojiShortcodeImageUrl = useCallback(
+    (shortcode: string): string | undefined => {
+      const normalized = normalizeEmojiShortcodeName(shortcode);
+      if (normalized.length === 0) return undefined;
+      return customEmojiByName.get(normalized)?.imgUrl;
+    },
+    [customEmojiByName],
+  );
 
   const scheduleFlashFocusedMessageId = useCallback((nextFocusedMessageId: number | null) => {
     if (focusedHighlightFrameRef.current != null) {
@@ -391,9 +481,11 @@ export const MessageList: React.FC<MessageListProps> = ({
     unreadScrollKeyRef.current = unreadScrollKey;
   }, [focusedMessageId, firstUnreadId, scrollToBottomKey, messages.length]);
 
-  const scrollToBottomClick = () => {
-    scrollToBottom(scrollRef.current);
-  };
+  // По клику пользователя используем плавную прокрутку.
+  // Это единственный сценарий в message-list, где анимация нужна намеренно.
+  const handleScrollToBottomClick = useCallback(() => {
+    scrollToBottom(scrollRef.current, "smooth");
+  }, []);
 
   const groups = useMemo(() => {
     const result: { dateKey: string; items: MockMessage[] }[] = [];
@@ -474,6 +566,10 @@ export const MessageList: React.FC<MessageListProps> = ({
                           isSelected={selectedMessageIds?.has(m.id)}
                           isFocused={flashFocusedMessageId === m.id}
                           mediaGallery={mediaGallery}
+                          customEmojis={customEmojis}
+                          onEmojiPickerOpen={ensureCustomEmojisLoaded}
+                          resolveCustomEmojiImageUrl={resolveCustomEmojiImageUrl}
+                          resolveCustomEmojiShortcodeImageUrl={resolveCustomEmojiShortcodeImageUrl}
                         />
                       ))}
                     </React.Fragment>
@@ -502,6 +598,10 @@ export const MessageList: React.FC<MessageListProps> = ({
                       selectedMessageIds={selectedMessageIds}
                       focusedMessageId={flashFocusedMessageId}
                       mediaGallery={mediaGallery}
+                      customEmojis={customEmojis}
+                      onEmojiPickerOpen={ensureCustomEmojisLoaded}
+                      resolveCustomEmojiImageUrl={resolveCustomEmojiImageUrl}
+                      resolveCustomEmojiShortcodeImageUrl={resolveCustomEmojiShortcodeImageUrl}
                     />
                   </React.Fragment>
                 );
@@ -522,18 +622,7 @@ export const MessageList: React.FC<MessageListProps> = ({
         )}
         <div className="h-2 shrink-0" aria-hidden />
       </div>
-      {!isAtBottom && (
-        <div className="absolute bottom-4 right-4 z-float">
-          <button
-            type="button"
-            onClick={scrollToBottomClick}
-            className="hover:bg-bg-elevated/90 flex h-10 w-10 items-center justify-center rounded-full border border-border-subtle bg-bg-elevated text-text-primary shadow-lg focus:outline-none focus:ring-2 focus:ring-accent-soft"
-            aria-label={t("a11y.scrollToBottom")}
-          >
-            <Icon name="chevron-down" className="h-5 w-5" />
-          </button>
-        </div>
-      )}
+      {!isAtBottom && <FloatingScrollToBottomButton onClick={handleScrollToBottomClick} />}
       <FloatingLoadingOverlay
         visible={showLoadingOverlay}
         label={t("chat.loadingMessages")}

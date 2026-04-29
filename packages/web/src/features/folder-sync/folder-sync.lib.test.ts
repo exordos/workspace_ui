@@ -71,18 +71,12 @@ describe("sidebarFolderItemsMembershipPending", () => {
   });
 
   it("returns true when created folder has no items row in the cache map yet", () => {
-    expect(
-      sidebarFolderItemsMembershipPending([createdFolder], "folder-1", new Map()),
-    ).toBe(true);
+    expect(sidebarFolderItemsMembershipPending([createdFolder], "folder-1", new Map())).toBe(true);
   });
 
   it("returns false once the cache map contains the folder key (even with zero items)", () => {
     expect(
-      sidebarFolderItemsMembershipPending(
-        [createdFolder],
-        "folder-1",
-        new Map([["folder-1", []]]),
-      ),
+      sidebarFolderItemsMembershipPending([createdFolder], "folder-1", new Map([["folder-1", []]])),
     ).toBe(false);
   });
 });

@@ -13,12 +13,12 @@ const workspaceApi = {
       workspaceApi.get(path, params, signal),
   ),
   postJson: vi.fn(),
-  postJsonWithBase: vi.fn(
-    (_base: string, path: string, body: unknown) => workspaceApi.postJson(path, body),
+  postJsonWithBase: vi.fn((_base: string, path: string, body: unknown) =>
+    workspaceApi.postJson(path, body),
   ),
   putJson: vi.fn(),
-  putJsonWithBase: vi.fn(
-    (_base: string, path: string, body: unknown) => workspaceApi.putJson(path, body),
+  putJsonWithBase: vi.fn((_base: string, path: string, body: unknown) =>
+    workspaceApi.putJson(path, body),
   ),
   delete: vi.fn(),
   deleteWithBase: vi.fn((_base: string, path: string, body?: Record<string, string>) =>
@@ -418,7 +418,10 @@ describe("workspace-client", () => {
     const { removeChatFromFolder } = await import("./workspace-client");
     await expect(removeChatFromFolder("folder-1", "item-1")).resolves.toBe(true);
 
-    expect(workspaceApi.delete).toHaveBeenCalledWith("/v1/folders/folder-1/items/item-1", undefined);
+    expect(workspaceApi.delete).toHaveBeenCalledWith(
+      "/v1/folders/folder-1/items/item-1",
+      undefined,
+    );
     expect(workspaceApi.setBaseUrl).not.toHaveBeenCalled();
   });
 

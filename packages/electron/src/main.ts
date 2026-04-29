@@ -1,3 +1,4 @@
+import path from "node:path";
 import {
   app,
   BrowserWindow,
@@ -10,7 +11,6 @@ import {
   ipcMain,
 } from "electron";
 import { autoUpdater } from "electron-updater";
-import path from "node:path";
 
 /** Set at compile time via `ELECTRON_DISABLE_AUTO_UPDATE` in esbuild (`get-main-esbuild-define.mjs`). */
 declare const __ELECTRON_DISABLE_AUTO_UPDATE__: boolean;

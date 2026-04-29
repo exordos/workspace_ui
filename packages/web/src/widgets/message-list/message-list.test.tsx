@@ -4,8 +4,19 @@ import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
 import type { MockMessage } from "~/shared/api/zulip.types";
+import { resetRealmEmojisCacheForTests } from "~/shared/lib/realm-emojis-cache";
 import { createUser } from "~/test/factories";
 import { MessageList } from "./message-list.ui";
+
+const fetchRealmEmojisMock = vi.hoisted(() => vi.fn());
+
+vi.mock("~/shared/api/zulip", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("~/shared/api/zulip")>();
+  return {
+    ...actual,
+    fetchRealmEmojis: (...args: unknown[]) => fetchRealmEmojisMock(...args),
+  };
+});
 
 function msg(id: number, overrides: Partial<MockMessage> = {}): MockMessage {
   return {
@@ -49,9 +60,12 @@ describe("MessageList focused message behavior", () => {
   }
 
   beforeEach(() => {
+    resetRealmEmojisCacheForTests();
     scrollTargets.length = 0;
     scrollIntoView.mockReset();
     intersectionCallback = null;
+    fetchRealmEmojisMock.mockReset();
+    fetchRealmEmojisMock.mockResolvedValue([]);
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
       value: scrollIntoView,
@@ -264,6 +278,111 @@ describe("MessageList focused message behavior", () => {
     expect(onOpenDirectMessage).not.toHaveBeenCalled();
   });
 
+  it("loads realm custom emojis once when markdown shortcode is present", async () => {
+    const { rerender } = render(
+      <MessageList
+        messages={[
+          msg(1, {
+            content: "Hi :party_parrot:",
+          }),
+        ]}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(fetchRealmEmojisMock).toHaveBeenCalledTimes(1);
+    });
+
+    rerender(
+      <MessageList
+        messages={[
+          msg(1, {
+            content: "Hi :party_parrot:",
+          }),
+          msg(2, {
+            content: "Still :party_parrot:",
+          }),
+        ]}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(fetchRealmEmojisMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("loads realm custom emojis and renders reaction image when message has realm_emoji reaction", async () => {
+    const realmEmoji = {
+      id: "9001",
+      names: ["party_parrot"],
+      imgUrl: "https://chat.example.test/user_avatars/realm/9001.png",
+    };
+    fetchRealmEmojisMock.mockResolvedValue([realmEmoji]);
+    const { rerender } = render(
+      <MessageList
+        messages={[
+          msg(1, {
+            content: "Hi there without emoji shortcodes",
+            reactions: [
+              {
+                emoji_name: "party_parrot",
+                emoji_code: "9001",
+                reaction_type: "realm_emoji",
+                user_id: 42,
+              },
+            ],
+          }),
+        ]}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(fetchRealmEmojisMock).toHaveBeenCalledTimes(1);
+    });
+    expect(await screen.findByAltText(":party_parrot:")).toBeInTheDocument();
+
+    rerender(
+      <MessageList
+        messages={[
+          msg(1, {
+            content: "Still no shortcodes",
+            reactions: [
+              {
+                emoji_name: "party_parrot",
+                emoji_code: "9001",
+                reaction_type: "realm_emoji",
+                user_id: 42,
+              },
+            ],
+          }),
+          msg(2, {
+            content: "No shortcode as well",
+          }),
+        ]}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(fetchRealmEmojisMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("does not load realm custom emojis when no shortcode is present", async () => {
+    render(
+      <MessageList
+        messages={[
+          msg(1, {
+            content: "Hi there without emoji codes",
+          }),
+        ]}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(fetchRealmEmojisMock).not.toHaveBeenCalled();
+    });
+  });
+
   it("uses large avatar size for grouped sender blocks", () => {
     render(<MessageList messages={[msg(1), msg(2)]} currentUserId={7} />);
 
@@ -400,6 +519,25 @@ describe("MessageList focused message behavior", () => {
     await waitFor(() => {
       expect(onUnreadMessagesVisible).toHaveBeenCalledWith([2]);
     });
+  });
+
+  it("uses smooth scrolling when the scroll-to-bottom button is clicked", () => {
+    render(<MessageList messages={[msg(1), msg(2), msg(3)]} currentUserId={7} />);
+
+    const feed = screen.getByRole("feed", { name: /conversation/i });
+    const scrollTo = vi.fn();
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 1200 });
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 400 });
+    Object.defineProperty(feed, "scrollTop", { configurable: true, writable: true, value: 120 });
+    Object.defineProperty(feed, "scrollTo", {
+      configurable: true,
+      value: scrollTo,
+    });
+
+    fireEvent.scroll(feed);
+    fireEvent.click(screen.getByRole("button", { name: /scroll to bottom/i }));
+
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 1200, behavior: "smooth" });
   });
 });
 

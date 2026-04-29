@@ -1,4 +1,9 @@
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type {
+  MessageReactionPayload,
+  MockMessage,
+  Reaction,
+  RealmEmoji,
+} from "~/shared/api/zulip.types";
 import type { MessageBubbleCallbacks } from "./message-bubble.types";
 import type { MessageMediaGallery } from "./message-list-media.lib";
 
@@ -10,8 +15,8 @@ export interface MessageListCallbacks {
   onMessageForward?: (message: MockMessage, selectedText?: string) => void;
   onMessageStar?: (message: MockMessage) => void;
   onMessageSelect?: (message: MockMessage) => void;
-  onMessageAddReaction?: (messageId: number, emojiName: string) => void;
-  onMessageRemoveReaction?: (messageId: number, emojiName: string) => void;
+  onMessageAddReaction?: (messageId: number, payload: MessageReactionPayload) => void;
+  onMessageRemoveReaction?: (messageId: number, payload: MessageReactionPayload) => void;
   onOpenJitsiCall?: (url: string, locationName?: string) => void;
   onMessageViews?: (message: MockMessage) => void;
   onMessageOpenInChat?: (message: MockMessage) => void;
@@ -32,6 +37,10 @@ export interface MessageListSenderGroupProps {
   selectedMessageIds?: Set<number>;
   focusedMessageId?: number | null;
   mediaGallery: MessageMediaGallery;
+  customEmojis?: RealmEmoji[];
+  onEmojiPickerOpen?: () => void;
+  resolveCustomEmojiImageUrl?: (reaction: Reaction) => string | undefined;
+  resolveCustomEmojiShortcodeImageUrl?: (shortcode: string) => string | undefined;
 }
 
 export interface MessageListProps {
