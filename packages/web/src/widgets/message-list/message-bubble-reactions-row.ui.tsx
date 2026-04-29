@@ -5,6 +5,32 @@ import type { MessageBubbleReactionsRowProps } from "./message-bubble-reactions-
 /** Up to this many reactors — chip shows comma-separated names; above — numeric count only. */
 const REACTION_CHIP_NAMES_INSTEAD_OF_COUNT_MAX = 3;
 
+/**
+ * Выбирает мета-текст рядом с эмодзи реакции:
+ * - для небольшого числа реакций показывает имена реакторов;
+ * - для большого числа показывает только счётчик;
+ * - в режимах со скрытой мета-информацией не показывает ничего.
+ */
+function getReactionChipMetaText(
+  hideReactionChipMeta: boolean,
+  reactionAuthors: string,
+  count: number,
+): string | null {
+  if (hideReactionChipMeta) {
+    return null;
+  }
+
+  // Для 1..3 реакций показываем имена, если они известны: это полезнее, чем просто цифра.
+  const shouldShowAuthors =
+    count >= 1 && count <= REACTION_CHIP_NAMES_INSTEAD_OF_COUNT_MAX && reactionAuthors.length > 0;
+  if (shouldShowAuthors) {
+    return reactionAuthors;
+  }
+
+  // После этого в старой логике обе ветки (`count >= 4` и `count > 1`) давали одно и то же.
+  return count > 1 ? String(count) : null;
+}
+
 /** Grouped reaction chips shown at the bottom of the message bubble. */
 export const MessageBubbleReactionsRow = React.memo(function MessageBubbleReactionsRow({
   message,
@@ -35,19 +61,11 @@ export const MessageBubbleReactionsRow = React.memo(function MessageBubbleReacti
               : count > 0
                 ? `${reactionPrefix} ${count}`
                 : undefined;
-          const showAuthorNamesOnChip =
-            count >= 1 &&
-            count <= REACTION_CHIP_NAMES_INSTEAD_OF_COUNT_MAX &&
-            reactionAuthors.length > 0;
-          const chipMetaText = hideReactionChipMeta
-            ? null
-            : showAuthorNamesOnChip
-              ? reactionAuthors
-              : count >= 4
-                ? String(count)
-                : count > 1
-                  ? String(count)
-                  : null;
+          const chipMetaText = getReactionChipMetaText(
+            hideReactionChipMeta,
+            reactionAuthors,
+            count,
+          );
           return (
             <button
               type="button"
