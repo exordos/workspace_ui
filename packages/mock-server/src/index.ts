@@ -1,6 +1,6 @@
-import express from "express";
-import cors from "cors";
 import { json, urlencoded } from "body-parser";
+import cors from "cors";
+import express from "express";
 import { registerApiRoutes } from "./routes";
 
 const PORT = process.env.MOCK_SERVER_PORT

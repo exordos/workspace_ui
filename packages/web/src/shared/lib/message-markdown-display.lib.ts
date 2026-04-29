@@ -16,6 +16,7 @@
 import hljs from "highlight.js/lib/common";
 import { marked } from "marked";
 import { stripHtml } from "~/shared/lib/html";
+import { renderEmojiShortcodesInHtml } from "~/shared/lib/message-emoji-shortcodes.lib";
 import {
   injectZulipMentionPlaceholders,
   restoreZulipMentionPlaceholders,
@@ -100,6 +101,8 @@ export function applySyntaxHighlighting(html: string): string {
 export interface MessageBodyDisplayOptions {
   /** Resolves `@**DisplayName**` to a user id for client-side mention spans. Wildcards (`@**all**`, …) do not use this. */
   resolveUserMention?: (displayName: string) => number | null;
+  /** Resolves custom realm emoji shortcode (`:name:`) to image URL. */
+  resolveCustomEmojiShortcodeImageUrl?: (shortcode: string) => string | undefined;
 }
 
 /** Markdown → HTML (marked + GFM + highlight). Caller must `sanitizeHtml` before DOM insertion. */
@@ -126,6 +129,9 @@ export function messageBodyToUnsanitizedDisplayHtml(
   if (mentionTokens != null && mentionTokens.length > 0) {
     html = restoreZulipMentionPlaceholders(html, mentionTokens);
   }
+  html = renderEmojiShortcodesInHtml(html, {
+    resolveCustomEmojiShortcodeImageUrl: options?.resolveCustomEmojiShortcodeImageUrl,
+  });
   return html;
 }
 

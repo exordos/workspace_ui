@@ -40,7 +40,12 @@ import { mockMessageFromGetMessageApiData, rawMessageToMockMessage } from "./zul
 import { parseRegisterResponseJitsiServerUrl } from "./zulip-register-jitsi.lib";
 import { parseServerThumbnailFormats } from "./zulip-register-metadata.lib";
 import { parseUnreadMessagesCount } from "./zulip-unread.lib";
-import type { RegisterQueueResult, ZulipRealmUserGroup } from "./zulip.types";
+import type {
+  ReactionType,
+  RealmEmoji,
+  RegisterQueueResult,
+  ZulipRealmUserGroup,
+} from "./zulip.types";
 
 if (typeof (globalThis as unknown as { Buffer?: unknown }).Buffer === "undefined") {
   (globalThis as unknown as { Buffer: typeof Buffer }).Buffer = Buffer;
@@ -311,6 +316,21 @@ function normalizeRealm(realm: string): string {
     r = r.slice(0, -"/api".length);
   }
   return r.replace(/\/+$/, "");
+}
+
+function resolveRealmRelativeUrl(path: string): string {
+  const normalizedPath = path.trim();
+  if (!normalizedPath) {
+    return "";
+  }
+  if (normalizedPath.startsWith("http://") || normalizedPath.startsWith("https://")) {
+    return normalizedPath;
+  }
+  const base = getRealmBaseUrl();
+  if (!base) {
+    return "";
+  }
+  return `${base}${normalizedPath.startsWith("/") ? normalizedPath : `/${normalizedPath}`}`;
 }
 
 const userTopicsByInstance = new Map<string, ZulipUserTopic[]>();
@@ -1431,6 +1451,63 @@ export async function fetchRealmPresence(): Promise<RealmPresenceResponse> {
   return res.data as RealmPresenceResponse;
 }
 
+// Загружает кастомные emoji организации в формате, совместимом с emoji-picker-react.
+export async function fetchRealmEmojis(): Promise<RealmEmoji[]> {
+  const res = await zulipPipelineGet("/realm/emoji");
+  if (!res?.ok) {
+    return [];
+  }
+  const data = res.data as {
+    result?: string;
+    emoji?: Record<
+      string,
+      {
+        id?: string | number;
+        name?: string;
+        source_url?: string;
+        deactivated?: boolean;
+      }
+    >;
+  };
+  if (data.result === "error") {
+    return [];
+  }
+  if (data.emoji == null || typeof data.emoji !== "object" || Array.isArray(data.emoji)) {
+    return [];
+  }
+
+  const normalized: RealmEmoji[] = [];
+  for (const value of Object.values(data.emoji)) {
+    if (typeof value !== "object" || value == null) {
+      continue;
+    }
+    if (value.deactivated === true) {
+      continue;
+    }
+    const id =
+      typeof value.id === "string"
+        ? value.id.trim()
+        : typeof value.id === "number"
+          ? String(value.id)
+          : "";
+    const name = typeof value.name === "string" ? value.name.trim() : "";
+    const sourceUrl = typeof value.source_url === "string" ? value.source_url.trim() : "";
+    if (!id || !name || !sourceUrl) {
+      continue;
+    }
+    const imgUrl = resolveRealmRelativeUrl(sourceUrl);
+    if (!imgUrl) {
+      continue;
+    }
+    normalized.push({
+      id,
+      names: [name],
+      imgUrl,
+    });
+  }
+  return normalized;
+}
+
 // Загружает пользователей и возвращает карту `user_id -> avatar_url`.
 // Для кэширования предпочтительнее использовать `fetchUsers()` вместе с `usersStore`;
 // это просто удобный shortcut.
@@ -1906,7 +1983,7 @@ export async function fetchMessages(
     "newest",
     ZULIP_STREAM_CHAT_NUM_BEFORE,
     ZULIP_STREAM_CHAT_NUM_AFTER,
-    { ...options, applyMarkdown: true },
+    { ...options, applyMarkdown: false },
   );
   return page.messages;
 }
@@ -2516,14 +2593,20 @@ export async function deleteMessage(messageId: number): Promise<void> {
 export async function addReaction(
   messageId: number,
   emojiName: string,
-  reactionType: "unicode_emoji" | "realm_emoji" | "zulip_extra_emoji" = "unicode_emoji",
+  options?: ReactionType | { emojiCode?: string; reactionType?: ReactionType },
 ): Promise<void> {
   guard.messageId(messageId, "addReaction");
   const normalizedEmojiName = guard.nonEmpty(emojiName, "addReaction.emojiName");
+  const normalizedOptions =
+    typeof options === "string" ? { reactionType: options } : (options ?? undefined);
+  const reactionType = normalizedOptions?.reactionType ?? "unicode_emoji";
   const body: Record<string, string> = {
     emoji_name: normalizedEmojiName,
     reaction_type: reactionType,
   };
+  if (normalizedOptions?.emojiCode) {
+    body.emoji_code = normalizedOptions.emojiCode;
+  }
   const res = await zulipPipelinePost(`messages/${messageId}/reactions`, body);
   if (!res.ok) {
     const data = res.data as { msg?: string; code?: string };
@@ -2536,7 +2619,7 @@ export async function addReaction(
 export async function removeReaction(
   messageId: number,
   emojiName: string,
-  options?: { emojiCode?: string; reactionType?: string },
+  options?: { emojiCode?: string; reactionType?: ReactionType },
 ): Promise<void> {
   guard.messageId(messageId, "removeReaction");
   const normalizedEmojiName = guard.nonEmpty(emojiName, "removeReaction.emojiName");

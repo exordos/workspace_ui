@@ -51,7 +51,55 @@ describe("MessageBubble quick reactions", () => {
     fireEvent.click(await screen.findByRole("button", { name: /clap/i }));
 
     await waitFor(() => {
-      expect(onAddReaction).toHaveBeenCalledWith(1, "clap");
+      expect(onAddReaction).toHaveBeenCalledWith(1, {
+        emojiName: "clap",
+        reactionType: "unicode_emoji",
+      });
+    });
+  });
+
+  it("renders custom realm emoji image and removes with typed payload", async () => {
+    const onRemoveReaction = vi.fn();
+    render(
+      <MessageBubble
+        currentUserId={77}
+        message={createMessage({
+          reactions: [
+            {
+              emoji_name: "party_node",
+              emoji_code: "43",
+              reaction_type: "realm_emoji",
+              user_id: 77,
+            },
+          ],
+        })}
+        resolveCustomEmojiImageUrl={(reaction) =>
+          reaction.reaction_type === "realm_emoji"
+            ? "https://cdn.example.com/party_node.png"
+            : undefined
+        }
+        callbacks={{
+          onRemoveReaction,
+        }}
+      />,
+    );
+
+    const customEmojiImage = await screen.findByAltText(":party_node:");
+    expect(customEmojiImage).toBeInTheDocument();
+    const reactionButton = customEmojiImage.closest("button");
+    expect(reactionButton).not.toBeNull();
+    if (reactionButton == null) {
+      throw new Error("Expected reaction button for custom emoji");
+    }
+
+    fireEvent.click(reactionButton);
+    await waitFor(() => {
+      expect(onRemoveReaction).toHaveBeenCalledWith(1, {
+        emojiName: "party_node",
+        emojiCode: "43",
+        reactionType: "realm_emoji",
+        imageUrl: "https://cdn.example.com/party_node.png",
+      });
     });
   });
 

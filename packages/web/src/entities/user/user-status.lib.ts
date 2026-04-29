@@ -1,3 +1,4 @@
+import { normalizeEmojiShortcodeName } from "~/shared/lib/emoji-shortcodes.lib";
 import type { UserStatus } from "./user.model";
 
 const EMOJI_NAME_FALLBACKS: Record<string, string> = {
@@ -42,15 +43,7 @@ export function encodeEmojiToCode(emoji: string): string {
 }
 
 export function normalizeStatusEmojiName(name: string): string {
-  const normalized = name
-    .trim()
-    .replace(/^:+|:+$/g, "")
-    .toLowerCase()
-    .replace(/[\s-]+/g, "_")
-    .replace(/[^a-z0-9_]+/g, "")
-    .replace(/_+/g, "_")
-    .replace(/^_+|_+$/g, "");
-  return normalized;
+  return normalizeEmojiShortcodeName(name);
 }
 
 export function getUserStatusEmoji(status: UserStatus | null | undefined): string | null {

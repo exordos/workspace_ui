@@ -879,6 +879,21 @@ describe("addReaction", () => {
     });
     await expect(addReaction(42, "thumbs_up")).rejects.toThrow("Server error");
   });
+
+  it("passes optional emojiCode and reactionType", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { result: "success" },
+      raw: { statusText: "OK" },
+    });
+    await addReaction(42, "party_node", { emojiCode: "43", reactionType: "realm_emoji" });
+    expect(mockZulipApi.post).toHaveBeenCalledWith("/messages/42/reactions", {
+      emoji_name: "party_node",
+      emoji_code: "43",
+      reaction_type: "realm_emoji",
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

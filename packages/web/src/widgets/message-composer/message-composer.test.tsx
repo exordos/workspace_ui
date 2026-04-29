@@ -1,8 +1,10 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { useCallback, useState } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useMentionSuggestStore } from "~/features/mention-suggest/mention-suggest.model";
+import type * as ZulipMessagesApi from "~/shared/api/zulip-messages";
+import { resetRealmEmojisCacheForTests } from "~/shared/lib/realm-emojis-cache";
 import { createUser } from "~/test/factories";
 import { renderWithProviders } from "~/test/render";
 import { computeFloatingPickerPosition } from "./message-composer-picker-position.lib";
@@ -14,6 +16,7 @@ const renderMessageContentMock = vi.hoisted(() => vi.fn());
 const fetchSavedSnippetsMock = vi.hoisted(() => vi.fn());
 const createSavedSnippetMock = vi.hoisted(() => vi.fn());
 const emojiPickerMock = vi.hoisted(() => vi.fn());
+const fetchRealmEmojisMock = vi.hoisted(() => vi.fn());
 
 vi.mock("~/shared/lib/webview", async () => {
   const actual = await vi.importActual("~/shared/lib/webview");
@@ -32,9 +35,7 @@ vi.mock("~/shared/lib/touch", async () => {
 });
 
 vi.mock("~/shared/api/zulip-messages", async () => {
-  const actual = await vi.importActual<typeof import("~/shared/api/zulip-messages")>(
-    "~/shared/api/zulip-messages",
-  );
+  const actual = await vi.importActual<typeof ZulipMessagesApi>("~/shared/api/zulip-messages");
   return {
     ...actual,
     renderMessageContent: (...args: unknown[]) => renderMessageContentMock(...args),
@@ -43,8 +44,20 @@ vi.mock("~/shared/api/zulip-messages", async () => {
   };
 });
 
+vi.mock("~/shared/api/zulip", async () => {
+  const actual = await vi.importActual("~/shared/api/zulip");
+  return {
+    ...actual,
+    fetchRealmEmojis: (...args: unknown[]) => fetchRealmEmojisMock(...args),
+  };
+});
+
 vi.mock("emoji-picker-react", () => ({
-  default: (props: { onEmojiClick?: (data: { emoji: string }) => void; className?: string }) => {
+  default: (props: {
+    onEmojiClick?: (data: { emoji: string }) => void;
+    className?: string;
+    emojiStyle?: string;
+  }) => {
     emojiPickerMock(props);
     return (
       <button
@@ -59,6 +72,9 @@ vi.mock("emoji-picker-react", () => ({
   Theme: {
     LIGHT: "light",
     DARK: "dark",
+  },
+  EmojiStyle: {
+    NATIVE: "native",
   },
 }));
 
@@ -100,7 +116,19 @@ afterEach(() => {
   createSavedSnippetMock.mockReset();
   createSavedSnippetMock.mockResolvedValue(1);
   emojiPickerMock.mockReset();
+  fetchRealmEmojisMock.mockReset();
+  fetchRealmEmojisMock.mockResolvedValue([]);
 });
+
+beforeEach(() => {
+  resetRealmEmojisCacheForTests();
+});
+
+const focusComposerInput = () => {
+  const textbox = screen.getByRole("textbox");
+  fireEvent.focus(textbox);
+  return textbox;
+};
 
 describe("MessageComposer async send behavior", () => {
   it("clears the composer as soon as send starts, before onSend resolves", async () => {
@@ -438,7 +466,7 @@ describe("MessageComposer mention suggestions", () => {
     const textbox = screen.getByRole("textbox");
     fireEvent.change(textbox, { target: { value: "@zzz", selectionStart: 4 } });
 
-    await screen.findByText("No results found");
+    expect(await screen.findByText("No results found")).toBeInTheDocument();
   });
 
   it("updates mention suggestions as the query changes", async () => {
@@ -724,12 +752,6 @@ describe("MessageComposer preview mode", () => {
 });
 
 describe("MessageComposer mode tabs", () => {
-  const focusComposerInput = () => {
-    const textbox = screen.getByRole("textbox");
-    fireEvent.focus(textbox);
-    return textbox;
-  };
-
   it("animates toolbar row visibility with a subtle transition", () => {
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
@@ -1063,8 +1085,35 @@ describe("MessageComposer emoji picker behavior", () => {
     fireEvent.click(screen.getByRole("button", { name: /emoji/i }));
     await screen.findByRole("button", { name: /pick emoji/i });
 
-    const props = emojiPickerMock.mock.calls.at(-1)?.[0] as { className?: string } | undefined;
+    const props = emojiPickerMock.mock.calls.at(-1)?.[0] as
+      | { className?: string; emojiStyle?: string }
+      | undefined;
     expect(props?.className).toContain("composer-emoji-picker");
+    expect(props?.emojiStyle).toBe("native");
+  });
+
+  it("loads and passes realm custom emojis to composer emoji picker", async () => {
+    const realmEmoji = {
+      id: "9001",
+      names: ["party_parrot"],
+      imgUrl: "https://chat.example.test/user_avatars/realm/9001.png",
+    };
+    fetchRealmEmojisMock.mockResolvedValue([realmEmoji]);
+
+    renderWithProviders(<MessageComposer onSend={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /emoji/i }));
+
+    await waitFor(() => {
+      expect(fetchRealmEmojisMock).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      const props = emojiPickerMock.mock.calls.at(-1)?.[0] as
+        | { customEmojis?: unknown[]; emojiStyle?: string }
+        | undefined;
+      expect(props?.customEmojis).toEqual([realmEmoji]);
+      expect(props?.emojiStyle).toBe("native");
+    });
   });
 });
 
@@ -1120,12 +1169,6 @@ describe("computeFloatingPickerPosition", () => {
 });
 
 describe("MessageComposer AI context wiring", () => {
-  const focusComposerInput = () => {
-    const textbox = screen.getByRole("textbox");
-    fireEvent.focus(textbox);
-    return textbox;
-  };
-
   it("renders attach trigger inside formatting toolbar", () => {
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
     focusComposerInput();
@@ -1222,12 +1265,13 @@ describe("MessageComposer AI context wiring", () => {
     const tabs = within(picker).getAllByRole("tab");
     const emojiTab = tabs.find((tab) => /emoji/i.test(tab.getAttribute("aria-label") ?? ""));
     const stickersTab = tabs.find((tab) => /stickers/i.test(tab.getAttribute("aria-label") ?? ""));
+    if (emojiTab == null || stickersTab == null) {
+      throw new Error("Expected emoji and stickers tabs in composer media picker");
+    }
 
-    expect(emojiTab).toBeDefined();
-    expect(stickersTab).toBeDefined();
     expect(emojiTab).toHaveAttribute("aria-selected", "true");
 
-    fireEvent.click(stickersTab!);
+    fireEvent.click(stickersTab);
 
     expect(stickersTab).toHaveAttribute("aria-selected", "true");
     expect(within(picker).getByTestId("sticker-picker-mock")).toBeInTheDocument();

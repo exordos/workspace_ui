@@ -5,8 +5,9 @@ import { filterUsers } from "~/features/mention-suggest/mention-suggest.lib";
 import { useMentionSuggestStore } from "~/features/mention-suggest/mention-suggest.model";
 import type { MentionSuggestion } from "~/features/mention-suggest/mention-suggest.types";
 import { t } from "~/i18n/i18n";
-import { type SavedSnippet } from "~/shared/api/zulip";
+import type { SavedSnippet } from "~/shared/api/zulip";
 import { createSavedSnippet, fetchSavedSnippets } from "~/shared/api/zulip-messages";
+import { ensureRealmEmojisLoaded, getCachedRealmEmojis } from "~/shared/lib/realm-emojis-cache";
 import { useViewportKeyboard } from "~/shared/lib/touch";
 import { isWebView } from "~/shared/lib/webview";
 import { Icon } from "~/shared/ui/icon";
@@ -92,6 +93,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   const [savedSnippetsReloadToken, setSavedSnippetsReloadToken] = useState(0);
   const [scheduledMessages, setScheduledMessages] = useState<ScheduledComposerMessage[]>([]);
   const [aiMenuOpen, setAiMenuOpen] = useState(false);
+  const [customEmojis, setCustomEmojis] = useState(() => getCachedRealmEmojis());
   const mentionQuery = useMentionSuggestStore((s) => s.query);
   const mentionSuggestions = useMentionSuggestStore((s) => s.results);
   const showMentions = useMentionSuggestStore((s) => s.visible);
@@ -197,6 +199,15 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
       savedSnippetContent.trim().length > 0,
     [savedSnippetContent, savedSnippetSaving, savedSnippetTitle],
   );
+  const ensureCustomEmojisLoaded = useCallback(() => {
+    void ensureRealmEmojisLoaded()
+      .then((list) => {
+        setCustomEmojis(list);
+      })
+      .catch(() => {
+        // Игнорируем ошибку загрузки: picker продолжает работать с Unicode emoji.
+      });
+  }, []);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const applyFormattingShortcut = useCallback(
     (marker: string) => {
@@ -370,7 +381,11 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   };
 
   const handleEmojiClick = (data: EmojiClickData) => {
-    const emoji = data.emoji ?? "";
+    const customEmojiName = data.names?.[0]?.trim() ?? "";
+    let emoji = data.emoji ?? "";
+    if (data.isCustom) {
+      emoji = customEmojiName ? `:${customEmojiName}:` : "";
+    }
     if (emoji.length === 0) return;
     setValue((prev) => {
       const next = prev + emoji;
@@ -480,9 +495,12 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
       setScheduleMenuOpen(false);
       setSavedSnippetsMenuOpen(false);
       setMediaPickerOpen(true);
+      if (tab === "emoji") {
+        ensureCustomEmojisLoaded();
+      }
       updateMediaPickerPosition(tab);
     },
-    [mediaPickerOpen, mediaPickerTab, updateMediaPickerPosition],
+    [ensureCustomEmojisLoaded, mediaPickerOpen, mediaPickerTab, updateMediaPickerPosition],
   );
 
   const updateScheduleMenuPosition = useCallback(() => {
@@ -874,9 +892,13 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
               onClose={() => setMediaPickerOpen(false)}
               onTabChange={(tab) => {
                 setMediaPickerTab(tab);
+                if (tab === "emoji") {
+                  ensureCustomEmojisLoaded();
+                }
                 updateMediaPickerPosition(tab);
               }}
               onEmojiClick={handleEmojiClick}
+              customEmojis={customEmojis}
               onStickerSelect={(markdown) => {
                 setValue((prev) => {
                   const next = prev + markdown;

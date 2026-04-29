@@ -1,13 +1,10 @@
-import EmojiPicker, { Theme, type EmojiClickData } from "emoji-picker-react";
+import EmojiPicker, { EmojiStyle, Theme } from "emoji-picker-react";
 import React from "react";
 import { buildStickerMarkdown } from "~/entities/sticker/sticker.api";
 import { StickerPicker } from "~/features/sticker-picker/sticker-picker.ui";
 import { t } from "~/i18n/i18n";
 import { Icon } from "~/shared/ui/icon";
-import {
-  EMOJI_PICKER_WIDTH,
-  MEDIA_PICKER_CONTENT_HEIGHT,
-} from "./message-composer-constants.lib";
+import { EMOJI_PICKER_WIDTH, MEDIA_PICKER_CONTENT_HEIGHT } from "./message-composer-constants.lib";
 import type { MessageComposerMediaPickerPopoverProps } from "./message-composer-media-picker-popover.types";
 
 export const MessageComposerMediaPickerPopover = React.memo(
@@ -18,6 +15,7 @@ export const MessageComposerMediaPickerPopover = React.memo(
     onTabChange,
     onEmojiClick,
     onStickerSelect,
+    customEmojis,
   }: MessageComposerMediaPickerPopoverProps) {
     return (
       <>
@@ -69,7 +67,9 @@ export const MessageComposerMediaPickerPopover = React.memo(
           {mediaPickerTab === "emoji" ? (
             <EmojiPicker
               onEmojiClick={onEmojiClick}
+              customEmojis={customEmojis}
               className="composer-emoji-picker"
+              emojiStyle={EmojiStyle.NATIVE}
               theme={document.documentElement.dataset.theme === "light" ? Theme.LIGHT : Theme.DARK}
               width={Number(mediaPickerStyle.width ?? EMOJI_PICKER_WIDTH)}
               height={MEDIA_PICKER_CONTENT_HEIGHT}

@@ -1,9 +1,8 @@
-import type { Express } from "express";
-import { registerUsersRoutes } from "./users";
-import { registerStreamsRoutes } from "./streams";
-import { registerMessagesRoutes } from "./messages";
-import { getTopicsByStream } from "./messages";
 import { registerFoldersRoutes } from "./folders";
+import { registerMessagesRoutes, getTopicsByStream  } from "./messages";
+import { registerStreamsRoutes } from "./streams";
+import { registerUsersRoutes } from "./users";
+import type { Express } from "express";
 
 export function registerApiRoutes(app: Express) {
   const apiBase = "/api/v1";
