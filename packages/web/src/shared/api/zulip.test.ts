@@ -23,6 +23,7 @@ import {
   fetchUsers,
   fetchUser,
   fetchRealmPresence,
+  fetchRealmEmojis,
   fetchRecentMessages,
   fetchMessagesBeforeAnchor,
   fetchMessagesAfterAnchor,
@@ -1210,6 +1211,75 @@ describe("fetchRealmPresence", () => {
   it("returns error result on network failure", async () => {
     mockZulipApi.get.mockRejectedValue(new Error("Offline"));
     expect(await fetchRealmPresence()).toEqual({ result: "error" });
+  });
+});
+
+describe("fetchRealmEmojis", () => {
+  it("returns normalized custom emojis and filters invalid/deactivated rows", async () => {
+    mockZulipApi.get.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        emoji: {
+          "42": {
+            id: "42",
+            name: "green_tick",
+            source_url: "/user_uploads/1/aa/green_tick.png",
+          },
+          "43": {
+            id: 43,
+            name: "party_node",
+            source_url: "https://cdn.example.com/party_node.png",
+          },
+          "44": {
+            id: "44",
+            name: "disabled",
+            source_url: "/user_uploads/1/aa/disabled.png",
+            deactivated: true,
+          },
+          "45": {
+            id: "45",
+            name: "",
+            source_url: "/user_uploads/1/aa/invalid.png",
+          },
+        },
+      },
+      raw: { statusText: "OK" },
+    });
+
+    await expect(fetchRealmEmojis()).resolves.toEqual([
+      {
+        id: "42",
+        names: ["green_tick"],
+        imgUrl: "https://zulip.example.com/user_uploads/1/aa/green_tick.png",
+      },
+      {
+        id: "43",
+        names: ["party_node"],
+        imgUrl: "https://cdn.example.com/party_node.png",
+      },
+    ]);
+  });
+
+  it("returns empty list on non-ok response", async () => {
+    mockZulipApi.get.mockResolvedValue({
+      ok: false,
+      status: 500,
+      data: {},
+      raw: { statusText: "Server Error" },
+    });
+    await expect(fetchRealmEmojis()).resolves.toEqual([]);
+  });
+
+  it("returns empty list when payload contains error result", async () => {
+    mockZulipApi.get.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { result: "error", msg: "forbidden" },
+      raw: { statusText: "OK" },
+    });
+    await expect(fetchRealmEmojis()).resolves.toEqual([]);
   });
 });
 
@@ -2414,6 +2484,21 @@ describe("addReaction", () => {
       raw: { statusText: "Server Error" },
     });
     await expect(addReaction(42, "thumbs_up")).rejects.toThrow("Server error");
+  });
+
+  it("passes optional emojiCode and reactionType", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { result: "success" },
+      raw: { statusText: "OK" },
+    });
+    await addReaction(42, "party_node", { emojiCode: "43", reactionType: "realm_emoji" });
+    expect(mockZulipApi.post).toHaveBeenCalledWith("/messages/42/reactions", {
+      emoji_name: "party_node",
+      emoji_code: "43",
+      reaction_type: "realm_emoji",
+    });
   });
 });
 

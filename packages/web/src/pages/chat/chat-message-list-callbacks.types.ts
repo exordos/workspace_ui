@@ -1,4 +1,4 @@
-import type { MockMessage, Reaction } from "~/shared/api/zulip";
+import type { MockMessage, Reaction } from "~/shared/api/zulip.types";
 import type { Dispatch, SetStateAction } from "react";
 import type { NavigateFunction } from "react-router-dom";
 

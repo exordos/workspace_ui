@@ -1,6 +1,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import EmojiPicker, { type EmojiClickData } from "emoji-picker-react";
+import EmojiPicker, { EmojiStyle, type EmojiClickData } from "emoji-picker-react";
 import React from "react";
+import type { RealmEmoji } from "~/shared/api/zulip.types";
 import { STATUS_EMOJI_PRESETS } from "./right-panel-user-menu-constants.lib";
 import type { ComponentProps } from "react";
 
@@ -9,6 +10,7 @@ export interface RightPanelUserMenuStatusDialogProps {
   onOpenChange: (nextOpen: boolean) => void;
   closeStatusDialog: () => void;
   statusEmojiPickerOpen: boolean;
+  onStatusEmojiPickerToggle: () => void;
   setStatusEmojiPickerOpen: (value: boolean | ((prev: boolean) => boolean)) => void;
   statusEmojiNameDraft: string;
   setStatusEmojiNameDraft: (value: string) => void;
@@ -21,6 +23,7 @@ export interface RightPanelUserMenuStatusDialogProps {
   statusSubmitting: boolean;
   selectedStatusEmoji: string | null;
   statusEmojiPickerTheme: NonNullable<ComponentProps<typeof EmojiPicker>["theme"]>;
+  customEmojis?: RealmEmoji[];
   t: (key: string, options?: Record<string, string | number>) => string;
   handleStatusEmojiPick: (data: EmojiClickData) => void;
   clearStatusDraft: () => void;
@@ -32,6 +35,7 @@ export const RightPanelUserMenuStatusDialog: React.FC<RightPanelUserMenuStatusDi
   onOpenChange,
   closeStatusDialog,
   statusEmojiPickerOpen,
+  onStatusEmojiPickerToggle,
   setStatusEmojiPickerOpen,
   statusEmojiNameDraft,
   setStatusEmojiNameDraft,
@@ -44,6 +48,7 @@ export const RightPanelUserMenuStatusDialog: React.FC<RightPanelUserMenuStatusDi
   statusSubmitting,
   selectedStatusEmoji,
   statusEmojiPickerTheme,
+  customEmojis,
   t,
   handleStatusEmojiPick,
   clearStatusDraft,
@@ -86,7 +91,7 @@ export const RightPanelUserMenuStatusDialog: React.FC<RightPanelUserMenuStatusDi
               ))}
               <button
                 type="button"
-                onClick={() => setStatusEmojiPickerOpen((o) => !o)}
+                onClick={onStatusEmojiPickerToggle}
                 className={`inline-flex h-9 items-center rounded-md border px-2.5 text-xs font-medium transition-colors ${
                   statusEmojiPickerOpen
                     ? "bg-accent/15 border-accent text-text-primary"
@@ -102,6 +107,8 @@ export const RightPanelUserMenuStatusDialog: React.FC<RightPanelUserMenuStatusDi
               <div className="overflow-hidden rounded-lg border border-border-subtle">
                 <EmojiPicker
                   onEmojiClick={handleStatusEmojiPick}
+                  customEmojis={customEmojis}
+                  emojiStyle={EmojiStyle.NATIVE}
                   searchDisabled={false}
                   skinTonesDisabled
                   width="100%"

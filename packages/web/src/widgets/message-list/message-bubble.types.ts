@@ -1,4 +1,10 @@
-import type { MockMessage, MockMessageDeliveryStatus } from "~/shared/api/zulip.types";
+import type {
+  MessageReactionPayload,
+  MockMessage,
+  MockMessageDeliveryStatus,
+  Reaction,
+  RealmEmoji,
+} from "~/shared/api/zulip.types";
 import type { MessageMediaGallery } from "./message-list-media.lib";
 
 /** Download chip state for user-upload attachment links in the bubble. */
@@ -15,8 +21,8 @@ export interface MessageBubbleCallbacks {
   onStar?: (message: MockMessage) => void;
   onSelect?: (message: MockMessage) => void;
   onToggleSelect?: (message: MockMessage) => void;
-  onAddReaction?: (messageId: number, emojiName: string) => void;
-  onRemoveReaction?: (messageId: number, emojiName: string) => void;
+  onAddReaction?: (messageId: number, payload: MessageReactionPayload) => void;
+  onRemoveReaction?: (messageId: number, payload: MessageReactionPayload) => void;
   onOpenJitsiCall?: (url: string, locationName?: string) => void;
   onViews?: (message: MockMessage) => void;
   onOpenInChat?: (message: MockMessage) => void;
@@ -44,5 +50,9 @@ export interface MessageBubbleProps {
   isSelected?: boolean;
   isFocused?: boolean;
   mediaGallery?: MessageMediaGallery;
+  customEmojis?: RealmEmoji[];
+  onEmojiPickerOpen?: () => void;
+  resolveCustomEmojiImageUrl?: (reaction: Reaction) => string | undefined;
+  resolveCustomEmojiShortcodeImageUrl?: (shortcode: string) => string | undefined;
   callbacks?: MessageBubbleCallbacks;
 }

@@ -101,16 +101,19 @@ export function useChatMessageListCallbacks(
         });
         if (!selectionMode) setSelectionMode(true);
       },
-      onMessageAddReaction(messageId, emojiName) {
+      onMessageAddReaction(messageId, payload) {
         setActionError(null);
-        addReaction(messageId, emojiName)
+        addReaction(messageId, payload.emojiName, {
+          reactionType: payload.reactionType,
+          emojiCode: payload.emojiCode,
+        })
           .then(() => {
             updateMessageReactionInStore(
               messageId,
               {
-                emoji_name: emojiName,
-                emoji_code: "",
-                reaction_type: "unicode_emoji" as const,
+                emoji_name: payload.emojiName,
+                emoji_code: payload.emojiCode ?? "",
+                reaction_type: payload.reactionType,
                 user_id: currentUserId ?? 0,
               },
               "add",
@@ -120,16 +123,19 @@ export function useChatMessageListCallbacks(
             setActionError(err instanceof Error ? err.message : t("message.reactionError")),
           );
       },
-      onMessageRemoveReaction(messageId, emojiName) {
+      onMessageRemoveReaction(messageId, payload) {
         setActionError(null);
-        removeReaction(messageId, emojiName)
+        removeReaction(messageId, payload.emojiName, {
+          reactionType: payload.reactionType,
+          emojiCode: payload.emojiCode,
+        })
           .then(() => {
             updateMessageReactionInStore(
               messageId,
               {
-                emoji_name: emojiName,
-                emoji_code: "",
-                reaction_type: "unicode_emoji" as const,
+                emoji_name: payload.emojiName,
+                emoji_code: payload.emojiCode ?? "",
+                reaction_type: payload.reactionType,
                 user_id: currentUserId ?? 0,
               },
               "remove",
