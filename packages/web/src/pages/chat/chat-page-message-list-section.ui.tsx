@@ -20,6 +20,7 @@ export const ChatPageMessageListSection = React.memo(function ChatPageMessageLis
   selectedMessageIds,
   onLoadMore,
   isLoadingMore,
+  isLoadingNewer,
   onLoadNewer,
   hasNewerMessages,
   firstUnreadId,
@@ -119,6 +120,7 @@ export const ChatPageMessageListSection = React.memo(function ChatPageMessageLis
         selectedMessageIds={selectedMessageIds}
         onLoadMore={onLoadMore}
         isLoadingMore={isLoadingMore}
+        isLoadingNewer={isLoadingNewer}
         onLoadNewer={onLoadNewer}
         hasNewerMessages={hasNewerMessages}
         firstUnreadId={firstUnreadId}

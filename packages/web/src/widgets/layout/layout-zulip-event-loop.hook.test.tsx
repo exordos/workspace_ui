@@ -5,6 +5,7 @@ import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
+import { DEFAULT_REGISTER_FETCH_EVENT_TYPES } from "~/shared/api/zulip-queue";
 import { loadUsersDirectoryRow } from "~/shared/lib/users-directory-snapshot-db";
 import { useLayoutZulipEventLoop } from "./layout-zulip-event-loop.hook";
 
@@ -143,13 +144,7 @@ describe("useLayoutZulipEventLoop", () => {
     const firstCallArg = startZulipEventLoopMock.mock.calls[0]?.[0] as
       | { fetchEventTypes?: string[] }
       | undefined;
-    expect(firstCallArg?.fetchEventTypes).toEqual([
-      "subscription",
-      "user_topic",
-      "recent_private_conversations",
-      "realm",
-      "realm_user_groups",
-    ]);
+    expect(firstCallArg?.fetchEventTypes).toEqual([...DEFAULT_REGISTER_FETCH_EVENT_TYPES]);
   });
 
   it("still starts the event loop when users directory IndexedDB read fails", async () => {

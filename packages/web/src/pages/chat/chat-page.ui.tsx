@@ -58,6 +58,7 @@ import { logMessageFlow, summarizeChatContextForLog } from "~/shared/lib/message
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { useShortcut } from "~/shared/lib/shortcuts";
 import { resolveCanonicalStreamName } from "~/shared/lib/stream-name.lib";
+import { isTabVisible } from "~/shared/lib/visibility";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
 import { useSidebarConfigStore } from "~/widgets/sidebar/sidebar-config.model";
 import { getDmById, parseStreamSlug, parseDmSlugToUserIds } from "~/widgets/sidebar/sidebar.lib";
@@ -229,6 +230,7 @@ export const ChatPage: React.FC = () => {
   const updateMessageReactionInStore = useCurrentChatMessagesStore((s) => s.updateMessageReaction);
   const updateMessageContentInStore = useCurrentChatMessagesStore((s) => s.updateMessageContent);
   const isLoadingMore = useCurrentChatMessagesStore((s) => s.isLoadingMore);
+  const isLoadingNewer = useCurrentChatMessagesStore((s) => s.isLoadingNewer);
   const hasNewerMessages = useCurrentChatMessagesStore((s) => s.hasNewerMessages);
   const setIsLoadingMore = useCurrentChatMessagesStore((s) => s.setIsLoadingMore);
   const setHasOlderMessages = useCurrentChatMessagesStore((s) => s.setHasOlderMessages);
@@ -542,6 +544,9 @@ export const ChatPage: React.FC = () => {
 
   const handleUnreadMessagesAtBottom = useCallback(
     (messageIds: number[]) => {
+      if (!isTabVisible()) return;
+      if (hasNewerMessages || isLoadingNewer) return;
+
       const target = resolveMarkAllAsReadTarget({
         isDmView,
         activeDmUserIds,
@@ -574,6 +579,8 @@ export const ChatPage: React.FC = () => {
       activeTopic,
       currentUserId,
       applyReadMessagesOptimistically,
+      hasNewerMessages,
+      isLoadingNewer,
     ],
   );
 
@@ -603,7 +610,6 @@ export const ChatPage: React.FC = () => {
     });
     markAsReadBatcherRef.current = batcher;
     return () => {
-      void batcher.flush();
       batcher.cancel();
       if (markAsReadBatcherRef.current === batcher) {
         markAsReadBatcherRef.current = null;
@@ -1821,6 +1827,7 @@ export const ChatPage: React.FC = () => {
           selectedMessageIds={selectedMessageIds}
           onLoadMore={loadOlderMessages}
           isLoadingMore={isLoadingMore}
+          isLoadingNewer={isLoadingNewer}
           onLoadNewer={loadNewerMessages}
           hasNewerMessages={hasNewerMessages}
           firstUnreadId={firstUnreadId}

@@ -21,6 +21,7 @@ const baseProps = {
   selectedMessageIds: new Set<number>(),
   onLoadMore: noop,
   isLoadingMore: false,
+  isLoadingNewer: false,
   onLoadNewer: noop,
   hasNewerMessages: false,
   firstUnreadId: undefined as number | undefined,

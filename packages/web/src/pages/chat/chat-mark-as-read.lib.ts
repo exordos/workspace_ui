@@ -1,15 +1,23 @@
 /**
- * Visibility-driven read batching for chat messages.
+ * Debounced batching for mark-as-read API calls.
  *
- * Collects unread message ids from viewport events and sends a debounced
- * mark-as-read request with deduplicated ids.
+ * Merges scheduled message ids, then POSTs after a short delay. When the browser
+ * tab is hidden, flush is deferred until `visible` again so read receipts are not
+ * sent for content the user did not actually see.
  */
+
+import { isTabVisible, onVisibilityChange } from "~/shared/lib/visibility";
 
 export interface MarkAsReadBatcherOptions {
   markAsRead: (messageIds: number[]) => Promise<unknown>;
   onMarked?: (messageIds: number[]) => void;
   onError?: (error: unknown, messageIds: number[]) => void;
   debounceMs?: number;
+  /**
+   * When true (default), skips network flush while the document is hidden and
+   * retries after visibility becomes visible again.
+   */
+  respectTabVisibility?: boolean;
 }
 
 export interface MarkAsReadBatcher {
@@ -25,10 +33,33 @@ function normalizeMessageIds(messageIds: number[]): number[] {
 }
 
 export function createMarkAsReadBatcher(options: MarkAsReadBatcherOptions): MarkAsReadBatcher {
-  const { markAsRead, onMarked, onError, debounceMs = DEFAULT_DEBOUNCE_MS } = options;
+  const {
+    markAsRead,
+    onMarked,
+    onError,
+    debounceMs = DEFAULT_DEBOUNCE_MS,
+    respectTabVisibility = true,
+  } = options;
   const queued = new Set<number>();
   let timer: ReturnType<typeof setTimeout> | null = null;
   let inFlight = false;
+  let visibilityUnsub: (() => void) | null = null;
+
+  const clearVisibilityWait = () => {
+    if (visibilityUnsub != null) {
+      visibilityUnsub();
+      visibilityUnsub = null;
+    }
+  };
+
+  const ensureVisibilityWait = () => {
+    if (!respectTabVisibility || visibilityUnsub != null) return;
+    visibilityUnsub = onVisibilityChange((visible) => {
+      if (visible) {
+        void flushInternal();
+      }
+    });
+  };
 
   const scheduleFlush = () => {
     if (timer != null) return;
@@ -40,6 +71,10 @@ export function createMarkAsReadBatcher(options: MarkAsReadBatcherOptions): Mark
 
   const flushInternal = async () => {
     if (inFlight || queued.size === 0) return;
+    if (respectTabVisibility && !isTabVisible()) {
+      ensureVisibilityWait();
+      return;
+    }
     const batch = Array.from(queued);
     queued.clear();
     inFlight = true;
@@ -50,6 +85,9 @@ export function createMarkAsReadBatcher(options: MarkAsReadBatcherOptions): Mark
       onError?.(error, batch);
     } finally {
       inFlight = false;
+      if (queued.size === 0) {
+        clearVisibilityWait();
+      }
       if (queued.size > 0) {
         scheduleFlush();
       }
@@ -77,6 +115,7 @@ export function createMarkAsReadBatcher(options: MarkAsReadBatcherOptions): Mark
         clearTimeout(timer);
         timer = null;
       }
+      clearVisibilityWait();
       queued.clear();
     },
   };

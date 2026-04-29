@@ -7,10 +7,12 @@ import { createLogger } from "~/shared/lib/logger";
 import { normalizeStreamTopicForMessageCache } from "~/shared/lib/message-cache-keys.lib";
 import { containsEmojiShortcode } from "~/shared/lib/message-emoji-shortcodes.lib";
 import { logMessageFlow } from "~/shared/lib/message-flow-debug.lib";
+import { computeReadTailReady } from "~/shared/lib/read-receipts-policy.lib";
 import { isLikelyRenderedMessageHtml } from "~/shared/lib/message-markdown-display.lib";
 import { ensureRealmEmojisLoaded, getCachedRealmEmojis } from "~/shared/lib/realm-emojis-cache";
 import { scrollToBottom } from "~/shared/lib/scroll-position.lib";
 import { computeScrollTopAfterPrepend } from "~/shared/lib/scroll-prepend-anchor.lib";
+import { isTabVisible, onVisibilityChange } from "~/shared/lib/visibility";
 import { FloatingLoadingOverlay } from "~/shared/ui/floating-loading-overlay";
 import { FloatingScrollToBottomButton } from "~/shared/ui/floating-scroll-to-bottom-button";
 import { MessageBubble, type MessageBubbleCallbacks } from "./message-bubble.ui";
@@ -45,6 +47,7 @@ const UnreadMarker: React.FC<{ unreadCount: number }> = ({ unreadCount }) => (
 );
 
 const LOAD_MORE_THRESHOLD = 100;
+const VISIBILITY_READ_RECHECK_MS = 200;
 
 const messageListLog = createLogger("ui:message-list");
 
@@ -57,6 +60,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   selectedMessageIds,
   onLoadMore,
   isLoadingMore = false,
+  isLoadingNewer = false,
   onLoadNewer,
   hasNewerMessages = false,
   firstUnreadId,
@@ -102,6 +106,9 @@ export const MessageList: React.FC<MessageListProps> = ({
   const pendingScrollToBottomKeyRef = useRef<string | null>(null);
   const unreadScrollKeyRef = useRef<string | null>(null);
   const bottomReadDispatchKeyRef = useRef<string | null>(null);
+  const intersectionObserverRef = useRef<IntersectionObserver | null>(null);
+  const viewportUnreadIdsRef = useRef<Set<number>>(new Set());
+  const unreadCandidatesRef = useRef<Set<number>>(new Set());
   const focusedHighlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const focusedHighlightFrameRef = useRef<number | null>(null);
   const highlightedFocusedMessageRef = useRef<number | null>(null);
@@ -218,29 +225,95 @@ export const MessageList: React.FC<MessageListProps> = ({
     });
   }, [messageTailLen, messageFirstId, messageLastId, isLoadingMore, scrollToBottomKey]);
 
+  useEffect(() => {
+    const next = new Set(
+      messages
+        .filter(
+          (m) =>
+            !m.flags?.includes("read") &&
+            (currentUserId == null || m.sender_id !== currentUserId),
+        )
+        .map((m) => m.id),
+    );
+    unreadCandidatesRef.current = next;
+    if (next.size === 0) {
+      viewportUnreadIdsRef.current.clear();
+    }
+  }, [messages, currentUserId]);
+
+  useEffect(() => {
+    viewportUnreadIdsRef.current.clear();
+    bottomReadDispatchKeyRef.current = null;
+  }, [scrollToBottomKey]);
+
+  const processIntersectionEntries = useCallback(
+    (entries: readonly IntersectionObserverEntry[]) => {
+      const candidates = unreadCandidatesRef.current;
+      const visibleThisFrame: number[] = [];
+      for (const entry of entries) {
+        const element = entry.target as HTMLElement;
+        const rawId = element.getAttribute("data-message-id");
+        if (!rawId) continue;
+        const messageId = Number(rawId);
+        if (!Number.isInteger(messageId) || !candidates.has(messageId)) continue;
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
+          viewportUnreadIdsRef.current.add(messageId);
+          visibleThisFrame.push(messageId);
+        } else {
+          viewportUnreadIdsRef.current.delete(messageId);
+        }
+      }
+      if (visibleThisFrame.length > 0 && isTabVisible()) {
+        onUnreadMessagesVisible?.(visibleThisFrame);
+      }
+    },
+    [onUnreadMessagesVisible],
+  );
+
   const dispatchUnreadAtBottom = useCallback(() => {
     if (!onUnreadMessagesVisible && !onUnreadMessagesAtBottom) return;
-    const unreadMessageIds = messages
-      .filter(
-        (message) =>
-          !message.flags?.includes("read") &&
-          (currentUserId == null || message.sender_id !== currentUserId),
-      )
-      .map((message) => message.id);
+    if (!isTabVisible()) return;
 
-    if (unreadMessageIds.length === 0) return;
+    const candidateUnread = unreadCandidatesRef.current;
+    for (const id of [...viewportUnreadIdsRef.current]) {
+      if (!candidateUnread.has(id)) {
+        viewportUnreadIdsRef.current.delete(id);
+      }
+    }
 
-    const dispatchKey = `${scrollToBottomKey ?? "__default__"}:${unreadMessageIds.join(",")}`;
+    const tailReady = computeReadTailReady({
+      isAtBottom: true,
+      hasNewerMessages,
+      loadingNewer: isLoadingNewer,
+    });
+
+    const ids = [...viewportUnreadIdsRef.current].filter((id) => {
+      const msg = messages.find((m) => m.id === id);
+      return (
+        msg != null &&
+        !msg.flags?.includes("read") &&
+        (currentUserId == null || msg.sender_id !== currentUserId)
+      );
+    });
+    if (ids.length === 0) return;
+
+    const sorted = [...ids].sort((a, b) => a - b);
+    const dispatchKey = `${scrollToBottomKey ?? "__default__"}:${sorted.join(",")}`;
     if (bottomReadDispatchKeyRef.current === dispatchKey) return;
     bottomReadDispatchKeyRef.current = dispatchKey;
-    onUnreadMessagesVisible?.(unreadMessageIds);
-    onUnreadMessagesAtBottom?.(unreadMessageIds);
+
+    onUnreadMessagesVisible?.(ids);
+    if (tailReady) {
+      onUnreadMessagesAtBottom?.(ids);
+    }
   }, [
     onUnreadMessagesVisible,
     onUnreadMessagesAtBottom,
     messages,
     currentUserId,
     scrollToBottomKey,
+    hasNewerMessages,
+    isLoadingNewer,
   ]);
 
   // On chat/topic switch, remember to scroll down after messages load
@@ -368,53 +441,78 @@ export const MessageList: React.FC<MessageListProps> = ({
   }, [messages.length]);
 
   useEffect(() => {
-    if (onUnreadMessagesVisible == null) return;
     if (typeof IntersectionObserver === "undefined") return;
     const root = scrollRef.current;
     if (!root) return;
 
-    const unreadCandidates = new Set(
-      messages
-        .filter(
-          (message) =>
-            !message.flags?.includes("read") &&
-            (currentUserId == null || message.sender_id !== currentUserId),
-        )
-        .map((message) => message.id),
-    );
-    if (unreadCandidates.size === 0) return;
+    if (unreadCandidatesRef.current.size === 0) {
+      intersectionObserverRef.current = null;
+      return;
+    }
 
     const observer = new IntersectionObserver(
       (entries) => {
-        const visible = new Set<number>();
-        for (const entry of entries) {
-          if (!entry.isIntersecting || entry.intersectionRatio < 0.5) continue;
-          const element = entry.target as HTMLElement;
-          const rawId = element.getAttribute("data-message-id");
-          if (!rawId) continue;
-          const messageId = Number(rawId);
-          if (!Number.isInteger(messageId) || !unreadCandidates.has(messageId)) continue;
-          visible.add(messageId);
-        }
-        if (visible.size > 0) {
-          onUnreadMessagesVisible(Array.from(visible));
-        }
+        processIntersectionEntries(entries);
       },
       {
         root,
         threshold: [0.5],
       },
     );
+    intersectionObserverRef.current = observer;
 
     const nodes = root.querySelectorAll<HTMLElement>("[data-message-id]");
     for (const node of nodes) {
       observer.observe(node);
     }
 
+    const rafId = requestAnimationFrame(() => {
+      const pending = observer.takeRecords();
+      if (pending.length > 0) {
+        processIntersectionEntries(pending);
+      }
+      if (wasAtBottomRef.current) {
+        dispatchUnreadAtBottom();
+      }
+    });
+
     return () => {
+      cancelAnimationFrame(rafId);
       observer.disconnect();
+      if (intersectionObserverRef.current === observer) {
+        intersectionObserverRef.current = null;
+      }
     };
-  }, [messages, currentUserId, onUnreadMessagesVisible]);
+  }, [messages, currentUserId, processIntersectionEntries, dispatchUnreadAtBottom]);
+
+  useEffect(() => {
+    let throttleId: ReturnType<typeof setTimeout> | null = null;
+    const unsub = onVisibilityChange((visible) => {
+      if (!visible) return;
+      if (throttleId != null) {
+        clearTimeout(throttleId);
+      }
+      throttleId = setTimeout(() => {
+        throttleId = null;
+        const obs = intersectionObserverRef.current;
+        if (obs != null) {
+          const pending = obs.takeRecords();
+          if (pending.length > 0) {
+            processIntersectionEntries(pending);
+          }
+        }
+        if (wasAtBottomRef.current) {
+          dispatchUnreadAtBottom();
+        }
+      }, VISIBILITY_READ_RECHECK_MS);
+    });
+    return () => {
+      unsub();
+      if (throttleId != null) {
+        clearTimeout(throttleId);
+      }
+    };
+  }, [processIntersectionEntries, dispatchUnreadAtBottom]);
 
   useEffect(() => {
     if (focusedMessageId == null) return;

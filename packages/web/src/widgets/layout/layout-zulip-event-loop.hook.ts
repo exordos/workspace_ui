@@ -17,6 +17,7 @@ import { useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indicator.model";
+import { DEFAULT_REGISTER_FETCH_EVENT_TYPES } from "~/shared/api/zulip-queue";
 import {
   deleteQueue,
   fetchDirectMessagesPage,
@@ -67,14 +68,6 @@ const METADATA_DM_BACKFILL_PAGE_SIZE = 5000;
 const METADATA_DM_BACKFILL_MAX_BATCHES = 3;
 // Что делает: останавливает backfill, если несколько батчей подряд не добавляют новые DM.
 const METADATA_DM_BACKFILL_STAGNATION_LIMIT = 2;
-// Что делает: всегда подтягивает register-снимок для subscription/topic mute, DM metadata и групп пользователей.
-const REGISTER_FETCH_EVENT_TYPES = [
-  "subscription",
-  "user_topic",
-  "recent_private_conversations",
-  "realm",
-  "realm_user_groups",
-] as const;
 const log = createLogger("layout-zulip-event-loop");
 
 // Что делает: превращает register subscriptions metadata в строки для chat-list store.
@@ -516,7 +509,7 @@ export function useLayoutZulipEventLoop(options: {
           signal: eventLoopAbortRef.current.signal,
           onReconnect: refreshStaleData,
           onBadQueue: refreshStaleData,
-          fetchEventTypes: [...REGISTER_FETCH_EVENT_TYPES],
+          fetchEventTypes: [...DEFAULT_REGISTER_FETCH_EVENT_TYPES],
           onQueueRegistered: (id, registration) => {
             queueIdRef.current = id;
             if (registration?.jitsi_server_url_effective != null) {

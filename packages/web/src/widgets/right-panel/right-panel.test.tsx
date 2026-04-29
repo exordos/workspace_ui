@@ -87,6 +87,7 @@ describe("RightPanel truthfulness", () => {
       context: null,
       messages: [],
       isLoadingMore: false,
+      isLoadingNewer: false,
       hasOlderMessages: true,
       hasNewerMessages: false,
     });

@@ -20,6 +20,8 @@ export interface CurrentChatMessagesState {
    */
   pendingOutgoingEchoKeys: number[];
   isLoadingMore: boolean;
+  /** True only while load-newer pagination is in flight (excludes load-older). */
+  isLoadingNewer: boolean;
   hasOlderMessages: boolean;
   hasNewerMessages: boolean;
   /** True after loadOlder/loadNewer network failure until cleared from UI. */

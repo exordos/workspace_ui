@@ -21,6 +21,7 @@ function resetStore() {
     context: null,
     messages: [],
     pendingOutgoingEchoKeys: [],
+    isLoadingNewer: false,
   });
 }
 

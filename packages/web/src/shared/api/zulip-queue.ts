@@ -37,7 +37,7 @@ import type {
 
 // Зачем: просим у Zulip только те metadata-секции, которые нужны для sidebar без загрузки больших пачек сообщений.
 // `realm` — в т.ч. `server_thumbnail_formats` (размеры превью user_uploads), а `realm_user_groups` нужен для channel-level permission checks.
-const DEFAULT_REGISTER_FETCH_EVENT_TYPES = [
+export const DEFAULT_REGISTER_FETCH_EVENT_TYPES = [
   "subscription",
   "user_topic",
   "recent_private_conversations",

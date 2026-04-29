@@ -91,6 +91,7 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
       context: null,
       messages: [],
       pendingOutgoingEchoKeys: [],
+      isLoadingNewer: false,
       hasOlderMessages: true,
       hasNewerMessages: false,
     });
@@ -107,6 +108,7 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
       context: null,
       messages: [],
       pendingOutgoingEchoKeys: [],
+      isLoadingNewer: false,
       hasOlderMessages: true,
       hasNewerMessages: false,
     });

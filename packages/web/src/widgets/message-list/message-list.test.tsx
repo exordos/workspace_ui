@@ -444,7 +444,7 @@ describe("MessageList focused message behavior", () => {
     expect(onUnreadMessagesVisible).toHaveBeenCalledWith([1]);
   });
 
-  it("reports all loaded unread messages when user scrolls to chat bottom", () => {
+  it("reports viewport unread messages when user scrolls to chat bottom", () => {
     const onUnreadMessagesVisible = vi.fn();
     render(
       <MessageList
@@ -458,12 +458,22 @@ describe("MessageList focused message behavior", () => {
       />,
     );
 
+    const targetUnread1 = screen.getByTestId("message-1");
+    const targetUnread2 = screen.getByTestId("message-2");
+    intersectionCallback?.(
+      [
+        { target: targetUnread1, isIntersecting: true, intersectionRatio: 1 },
+        { target: targetUnread2, isIntersecting: true, intersectionRatio: 1 },
+      ] as unknown as IntersectionObserverEntry[],
+      {} as IntersectionObserver,
+    );
+    onUnreadMessagesVisible.mockClear();
+
     const feed = screen.getByRole("feed", { name: /conversation/i });
     Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 1200 });
     Object.defineProperty(feed, "clientHeight", { configurable: true, value: 400 });
     Object.defineProperty(feed, "scrollTop", { configurable: true, value: 820 });
 
-    // Regression: fast scroll-to-bottom may skip 50%-visibility callbacks for some unread rows.
     fireEvent.scroll(feed);
 
     expect(onUnreadMessagesVisible).toHaveBeenCalledWith([1, 2]);
@@ -483,6 +493,16 @@ describe("MessageList focused message behavior", () => {
       />,
     );
 
+    const targetUnread1 = screen.getByTestId("message-1");
+    const targetUnread2 = screen.getByTestId("message-2");
+    intersectionCallback?.(
+      [
+        { target: targetUnread1, isIntersecting: true, intersectionRatio: 1 },
+        { target: targetUnread2, isIntersecting: true, intersectionRatio: 1 },
+      ] as unknown as IntersectionObserverEntry[],
+      {} as IntersectionObserver,
+    );
+
     const feed = screen.getByRole("feed", { name: /conversation/i });
     Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 1200 });
     Object.defineProperty(feed, "clientHeight", { configurable: true, value: 400 });
@@ -491,6 +511,77 @@ describe("MessageList focused message behavior", () => {
     fireEvent.scroll(feed);
 
     expect(onUnreadMessagesAtBottom).toHaveBeenCalledWith([1, 2]);
+  });
+
+  it("does not call onUnreadMessagesAtBottom while hasNewerMessages even at bottom", () => {
+    const onUnreadMessagesAtBottom = vi.fn();
+    const onUnreadMessagesVisible = vi.fn();
+    render(
+      <MessageList
+        messages={[
+          msg(1, { sender_id: 42, flags: [] }),
+          msg(2, { sender_id: 43, flags: [] }),
+          msg(3, { sender_id: 7, flags: [] }),
+        ]}
+        currentUserId={7}
+        hasNewerMessages
+        onUnreadMessagesVisible={onUnreadMessagesVisible}
+        onUnreadMessagesAtBottom={onUnreadMessagesAtBottom}
+      />,
+    );
+
+    const targetUnread1 = screen.getByTestId("message-1");
+    const targetUnread2 = screen.getByTestId("message-2");
+    intersectionCallback?.(
+      [
+        { target: targetUnread1, isIntersecting: true, intersectionRatio: 1 },
+        { target: targetUnread2, isIntersecting: true, intersectionRatio: 1 },
+      ] as unknown as IntersectionObserverEntry[],
+      {} as IntersectionObserver,
+    );
+    onUnreadMessagesAtBottom.mockClear();
+    onUnreadMessagesVisible.mockClear();
+
+    const feed = screen.getByRole("feed", { name: /conversation/i });
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 1200 });
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 400 });
+    Object.defineProperty(feed, "scrollTop", { configurable: true, value: 820 });
+
+    fireEvent.scroll(feed);
+
+    expect(onUnreadMessagesAtBottom).not.toHaveBeenCalled();
+    expect(onUnreadMessagesVisible).toHaveBeenCalledWith([1, 2]);
+  });
+
+  it("bottom read path only includes viewport unread ids", () => {
+    const onUnreadMessagesVisible = vi.fn();
+    render(
+      <MessageList
+        messages={[
+          msg(1, { sender_id: 42, flags: [] }),
+          msg(2, { sender_id: 43, flags: [] }),
+          msg(3, { sender_id: 7, flags: [] }),
+        ]}
+        currentUserId={7}
+        onUnreadMessagesVisible={onUnreadMessagesVisible}
+      />,
+    );
+
+    const targetUnread2 = screen.getByTestId("message-2");
+    intersectionCallback?.(
+      [{ target: targetUnread2, isIntersecting: true, intersectionRatio: 1 }] as unknown as IntersectionObserverEntry[],
+      {} as IntersectionObserver,
+    );
+    onUnreadMessagesVisible.mockClear();
+
+    const feed = screen.getByRole("feed", { name: /conversation/i });
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 1200 });
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 400 });
+    Object.defineProperty(feed, "scrollTop", { configurable: true, value: 820 });
+
+    fireEvent.scroll(feed);
+
+    expect(onUnreadMessagesVisible).toHaveBeenCalledWith([2]);
   });
 
   it("reports unread messages when list stays at bottom after rerender", async () => {
@@ -514,6 +605,12 @@ describe("MessageList focused message behavior", () => {
         currentUserId={7}
         onUnreadMessagesVisible={onUnreadMessagesVisible}
       />,
+    );
+
+    const targetUnread2 = screen.getByTestId("message-2");
+    intersectionCallback?.(
+      [{ target: targetUnread2, isIntersecting: true, intersectionRatio: 1 }] as unknown as IntersectionObserverEntry[],
+      {} as IntersectionObserver,
     );
 
     await waitFor(() => {

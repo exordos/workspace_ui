@@ -165,6 +165,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
   messages: [],
   pendingOutgoingEchoKeys: [],
   isLoadingMore: false,
+  isLoadingNewer: false,
   hasOlderMessages: true,
   hasNewerMessages: false,
   boundaryLoadFailed: false,
@@ -200,6 +201,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       messages: cachedMessages,
       pendingOutgoingEchoKeys: [],
       isLoadingMore: false,
+      isLoadingNewer: false,
       hasOlderMessages: true,
       hasNewerMessages: false,
       boundaryLoadFailed: false,
@@ -824,7 +826,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       anchorNewestId: newest.id,
       pageSize,
     });
-    set({ isLoadingMore: true });
+    set({ isLoadingMore: true, isLoadingNewer: true });
     try {
       const narrow =
         ctx.type === "stream"
@@ -896,7 +898,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       logMessageFlow("store:loadNewer failed", { error: String(e) });
       set({ boundaryLoadFailed: true });
     } finally {
-      set({ isLoadingMore: false });
+      set({ isLoadingMore: false, isLoadingNewer: false });
     }
   },
 }));

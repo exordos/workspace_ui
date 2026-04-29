@@ -53,6 +53,8 @@ export interface MessageListProps {
   selectedMessageIds?: Set<number>;
   onLoadMore?: () => void;
   isLoadingMore?: boolean;
+  /** True only while load-newer is in flight (excludes load-older). */
+  isLoadingNewer?: boolean;
   onLoadNewer?: () => void;
   hasNewerMessages?: boolean;
   /** ID of the first unread message — an "unread" separator is shown above it */

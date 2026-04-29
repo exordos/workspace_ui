@@ -19,6 +19,7 @@ export interface ChatPageMessageListSectionProps {
   selectedMessageIds: Set<number>;
   onLoadMore: () => void;
   isLoadingMore: boolean;
+  isLoadingNewer: boolean;
   onLoadNewer: () => void;
   hasNewerMessages: boolean;
   firstUnreadId: number | undefined;
