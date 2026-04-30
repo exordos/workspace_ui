@@ -160,14 +160,15 @@ describe("SearchModal open-in-chat action", () => {
     expect(queryInputFrame).not.toBeNull();
     expect(queryInputFrame).toHaveClass("focus-within:outline-none");
     expect(queryInputFrame).toHaveClass("focus-within:bg-bg-elevated");
-    expect(queryInput).toHaveClass("focus-visible:outline-none");
+    expect(queryInputFrame).toHaveClass("focus-within:border-accent-soft");
+    expect(queryInput).toHaveClass("focus-visible:!outline-none");
 
     const streamInput = screen.getByPlaceholderText("Stream");
-    expect(streamInput).toHaveClass("focus-visible:outline-none");
+    expect(streamInput).toHaveClass("outline-none");
     expect(streamInput).toHaveClass("focus-visible:bg-bg-elevated");
 
     const dateInput = screen.getByLabelText("Date");
-    expect(dateInput).toHaveClass("focus-visible:outline-none");
+    expect(dateInput).toHaveClass("outline-none");
     expect(dateInput).toHaveClass("focus-visible:bg-bg-elevated");
   });
 

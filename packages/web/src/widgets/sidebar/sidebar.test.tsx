@@ -276,6 +276,8 @@ describe("Sidebar", () => {
 
     expect(searchContainer).toHaveClass("bg-text-field-bg");
     expect(searchContainer).toHaveClass("border-border-subtle");
+    expect(searchContainer).toHaveClass("focus-within:border-accent");
+    expect(searchInput).toHaveClass("focus-visible:!outline-none");
     expect(separator).toHaveClass("bg-border-subtle/70");
   });
 
