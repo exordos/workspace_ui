@@ -699,7 +699,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
 
   return (
     <div
-      className={`flex-shrink-0 border-t border-border-subtle bg-composer-outer ${isDragOver ? "ring-2 ring-inset ring-accent" : ""}`}
+      className={`flex-shrink-0 rounded-xl border-t border-border-subtle bg-composer-outer ${isDragOver ? "ring-2 ring-inset ring-accent" : ""}`}
       data-focus-zone="composer"
       role="form"
       aria-label={t("a11y.messageComposer")}
