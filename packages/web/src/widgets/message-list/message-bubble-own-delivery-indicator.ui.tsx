@@ -44,12 +44,10 @@ export const MessageBubbleOwnDeliveryIndicator = React.memo(
           data-testid={`message-delivery-${message.id}`}
           className="inline-flex size-3.5 items-center justify-center text-text-muted"
           title={t("message.sending")}
+          aria-label={t("message.sending")}
         >
           <span className="sr-only">{t("message.sending")}</span>
-          <span
-            className="bg-text-muted/60 size-2 shrink-0 animate-pulse rounded-full"
-            aria-hidden
-          />
+          <Icon name="more" size={12} className="shrink-0 text-current" />
         </span>
       );
     }

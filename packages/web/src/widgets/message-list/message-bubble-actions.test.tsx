@@ -264,7 +264,7 @@ describe("MessageBubble edit/delete actions parity", () => {
     expect(onViews).toHaveBeenCalledWith(expect.objectContaining({ id: 101 }));
   });
 
-  it("shows sending state for optimistic own messages without visible label text", () => {
+  it("shows static pending icon for optimistic own messages without sent check", () => {
     render(
       <MessageBubble
         message={createMessage({
@@ -274,8 +274,11 @@ describe("MessageBubble edit/delete actions parity", () => {
       />,
     );
 
-    expect(screen.getByTestId("message-delivery-101")).toBeInTheDocument();
+    const deliveryIndicator = screen.getByTestId("message-delivery-101");
+    expect(deliveryIndicator).toBeInTheDocument();
     expect(screen.getByText(/sending/i)).toHaveClass("sr-only");
+    expect(deliveryIndicator.querySelector("svg")).toBeInTheDocument();
+    expect(deliveryIndicator.querySelector(".animate-pulse")).toBeNull();
     expect(screen.queryByTitle(/sent to server/i)).not.toBeInTheDocument();
   });
 
