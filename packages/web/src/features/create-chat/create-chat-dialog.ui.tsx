@@ -6,6 +6,10 @@ import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { useCreateChatDialog } from "./create-chat-dialog.hook";
 import type { CreateChatDialogProps } from "./create-chat-dialog.types";
 
+// Единый стиль полей в диалоге: убираем глобальный focus-outline и подсвечиваем рамку аккуратно.
+const CREATE_CHAT_TEXT_INPUT_CLASS =
+  "w-full rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted transition-colors focus:border-accent focus-visible:outline-none focus-visible:ring-0";
+
 export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
   open,
   onOpenChange,
@@ -111,7 +115,7 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                   type="text"
                   value={vm.userSearch}
                   onChange={(e) => vm.setUserSearch(e.target.value)}
-                  className="w-full rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted"
+                  className={CREATE_CHAT_TEXT_INPUT_CLASS}
                   placeholder={t("message.searchUsers")}
                 />
                 <div className="max-h-60 overflow-y-auto rounded-lg border border-border-subtle">
@@ -156,7 +160,7 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                   type="text"
                   value={vm.userSearch}
                   onChange={(e) => vm.setUserSearch(e.target.value)}
-                  className="w-full rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted"
+                  className={CREATE_CHAT_TEXT_INPUT_CLASS}
                   placeholder={t("message.searchUsers")}
                 />
                 <div className="max-h-60 overflow-y-auto rounded-lg border border-border-subtle">
@@ -224,7 +228,7 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                   type="text"
                   value={vm.channelName}
                   onChange={(e) => vm.setChannelName(e.target.value)}
-                  className="w-full rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted"
+                  className={CREATE_CHAT_TEXT_INPUT_CLASS}
                   placeholder={t("channel.channelName")}
                 />
                 <label className="text-sm text-text-muted">{t("channel.description")}</label>
@@ -232,7 +236,7 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                   type="text"
                   value={vm.channelDesc}
                   onChange={(e) => vm.setChannelDesc(e.target.value)}
-                  className="w-full rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted"
+                  className={CREATE_CHAT_TEXT_INPUT_CLASS}
                   placeholder={t("channel.description")}
                 />
                 <div className="grid gap-2 rounded-lg border border-border-subtle bg-bg px-3 py-2">
@@ -260,7 +264,7 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                   type="text"
                   value={vm.userSearch}
                   onChange={(e) => vm.setUserSearch(e.target.value)}
-                  className="w-full rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted"
+                  className={CREATE_CHAT_TEXT_INPUT_CLASS}
                   placeholder={t("message.searchUsers")}
                 />
                 <div className="max-h-40 overflow-y-auto rounded-lg border border-border-subtle">
