@@ -1032,26 +1032,16 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
           if (topic?.lastMessageId !== mid) continue;
           nextStreams = new Map(nextStreams);
           const nextTopics = new Map(stream.topics);
-          nextTopics.delete(loc.topic);
-          if (nextTopics.size === 0) {
-            nextStreams.delete(loc.stream_id);
-          } else {
-            const remaining = Array.from(nextTopics.values()).sort((a, b) => b.ts - a.ts);
-            const newLast = remaining[0]!;
-            nextStreams.set(loc.stream_id, {
-              ...stream,
-              topics: nextTopics,
-              lastMessage: newLast.lastMessage,
-              lastMessageSenderName: newLast.lastMessageSenderName,
-              time: newLast.time,
-              ts: newLast.ts,
-            });
-          }
+          nextTopics.set(loc.topic, { ...topic, lastMessageId: undefined });
+          nextStreams.set(loc.stream_id, {
+            ...stream,
+            topics: nextTopics,
+          });
         } else {
           const dm = nextDms.get(loc.dmKey);
           if (dm?.lastMessageId !== mid) continue;
           nextDms = new Map(nextDms);
-          nextDms.delete(loc.dmKey);
+          nextDms.set(loc.dmKey, { ...dm, lastMessageId: undefined });
         }
       }
       return { streamsMap: nextStreams, dmsMap: nextDms, messageIdToLocation: nextLoc };

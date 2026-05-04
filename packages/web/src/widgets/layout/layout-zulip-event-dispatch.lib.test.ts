@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import * as client from "~/shared/api/client";
 import type { ZulipEvent } from "~/shared/api/zulip.types";
 import { dispatchZulipEvent } from "./layout-zulip-event-dispatch.lib";
@@ -82,6 +83,7 @@ describe("dispatchZulipEvent", () => {
 
   afterEach(() => {
     getInstanceSpy.mockRestore();
+    useChatListStore.getState().clear();
   });
 
   describe("update_message", () => {
@@ -162,6 +164,63 @@ describe("dispatchZulipEvent", () => {
       );
       expect(moveStreamTopicMock).not.toHaveBeenCalled();
       expect(moveStreamTopicMessagesMock).not.toHaveBeenCalled();
+    });
+
+    it("keeps topic row after rename followed by delete_message of moved last id", () => {
+      useChatListStore.getState().setFromMessages(
+        [
+          {
+            id: 1,
+            sender_id: 10,
+            sender_full_name: "Alice",
+            content: "first",
+            timestamp: 1000,
+            type: "stream",
+            stream_id: 42,
+            display_recipient: "engineering",
+            subject: "incident",
+            flags: [],
+          },
+        ],
+        1,
+      );
+      const { ctx } = buildCtx();
+      const realChatListState = useChatListStore.getState();
+      const realStreamsMap = useChatListStore.getState().streamsMap;
+      const integrationCtx: LayoutZulipEventDispatchContext = {
+        ...ctx,
+        chatList: {
+          ...ctx.chatList,
+          streamsMap: realStreamsMap,
+          moveStreamTopic: realChatListState.moveStreamTopic,
+          handleDeleteMessages: realChatListState.handleDeleteMessages,
+        },
+      };
+
+      dispatchZulipEvent(
+        {
+          id: 10,
+          type: "update_message",
+          message_id: 1,
+          stream_id: 42,
+          orig_subject: "incident",
+          subject: "\u2714 incident",
+          message_ids: [1],
+        } as ZulipEvent,
+        integrationCtx,
+      );
+      dispatchZulipEvent(
+        {
+          id: 11,
+          type: "delete_message",
+          message_ids: [1],
+        } as ZulipEvent,
+        integrationCtx,
+      );
+
+      const stream = useChatListStore.getState().streamsMap.get(42);
+      expect(stream?.topics.has("\u2714 incident")).toBe(true);
+      expect(stream?.topics.get("\u2714 incident")?.lastMessageId).toBe(undefined);
     });
   });
 
