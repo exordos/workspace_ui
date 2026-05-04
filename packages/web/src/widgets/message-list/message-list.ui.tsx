@@ -270,6 +270,32 @@ export const MessageList: React.FC<MessageListProps> = ({
     [onUnreadMessagesVisible],
   );
 
+  const collectViewportUnreadIdsFromDom = useCallback((): number[] => {
+    const root = scrollRef.current;
+    if (!root) return [];
+    const rootRect = root.getBoundingClientRect();
+    const nodes = root.querySelectorAll<HTMLElement>("[data-message-id]");
+    const out: number[] = [];
+    const candidates = unreadCandidatesRef.current;
+    for (const node of nodes) {
+      const rawId = node.getAttribute("data-message-id");
+      if (!rawId) continue;
+      const messageId = Number(rawId);
+      if (!Number.isInteger(messageId) || !candidates.has(messageId)) continue;
+
+      const rect = node.getBoundingClientRect();
+      const overlapTop = Math.max(rect.top, rootRect.top);
+      const overlapBottom = Math.min(rect.bottom, rootRect.bottom);
+      const overlap = overlapBottom - overlapTop;
+      if (overlap <= 0) continue;
+      const ratio = overlap / Math.max(rect.height, 1);
+      if (ratio >= 0.5) {
+        out.push(messageId);
+      }
+    }
+    return out;
+  }, []);
+
   const dispatchUnreadAtBottom = useCallback(() => {
     if (!onUnreadMessagesVisible && !onUnreadMessagesAtBottom) return;
     if (!isTabVisible()) return;
@@ -286,6 +312,12 @@ export const MessageList: React.FC<MessageListProps> = ({
       hasNewerMessages,
       loadingNewer: isLoadingNewer,
     });
+
+    if (viewportUnreadIdsRef.current.size === 0) {
+      for (const id of collectViewportUnreadIdsFromDom()) {
+        viewportUnreadIdsRef.current.add(id);
+      }
+    }
 
     const ids = [...viewportUnreadIdsRef.current].filter((id) => {
       const msg = messages.find((m) => m.id === id);
@@ -314,6 +346,7 @@ export const MessageList: React.FC<MessageListProps> = ({
     scrollToBottomKey,
     hasNewerMessages,
     isLoadingNewer,
+    collectViewportUnreadIdsFromDom,
   ]);
 
   // On chat/topic switch, remember to scroll down after messages load
@@ -470,6 +503,10 @@ export const MessageList: React.FC<MessageListProps> = ({
       const pending = observer.takeRecords();
       if (pending.length > 0) {
         processIntersectionEntries(pending);
+      } else {
+        for (const id of collectViewportUnreadIdsFromDom()) {
+          viewportUnreadIdsRef.current.add(id);
+        }
       }
       if (wasAtBottomRef.current) {
         dispatchUnreadAtBottom();
@@ -483,7 +520,13 @@ export const MessageList: React.FC<MessageListProps> = ({
         intersectionObserverRef.current = null;
       }
     };
-  }, [messages, currentUserId, processIntersectionEntries, dispatchUnreadAtBottom]);
+  }, [
+    messages,
+    currentUserId,
+    processIntersectionEntries,
+    dispatchUnreadAtBottom,
+    collectViewportUnreadIdsFromDom,
+  ]);
 
   useEffect(() => {
     let throttleId: ReturnType<typeof setTimeout> | null = null;
