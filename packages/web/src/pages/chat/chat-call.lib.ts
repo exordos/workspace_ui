@@ -30,7 +30,7 @@ export interface CanStartCallFromHeaderInput {
   currentUserId: number | null;
 }
 
-const GENERAL_TOPIC = "general";
+const DEFAULT_TOPIC = "";
 const NON_ROOM_SYMBOLS = /[^\p{L}\p{N}-]+/gu;
 
 function normalizeDmUserIds(userIds: number[] | null): number[] {
@@ -79,7 +79,7 @@ export function resolveCallMessageTargetParams(
     mode: "stream",
     stream: streamName,
     streamId: input.activeStreamId ?? undefined,
-    subject: topic != null && topic.length > 0 ? topic : GENERAL_TOPIC,
+    subject: topic != null && topic.length > 0 ? topic : DEFAULT_TOPIC,
   };
 }
 

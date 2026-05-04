@@ -39,6 +39,14 @@ describe("deeplink builders", () => {
     expect(result).toContain("/topic/my%20topic");
   });
 
+  it("toTopic encodes empty topic with reserved token", () => {
+    expect(deeplink.toTopic(5, "general", "")).toBe("/stream/5-general/topic/__empty__");
+  });
+
+  it("toTopic escapes literal empty-topic token", () => {
+    expect(deeplink.toTopic(5, "general", "__empty__")).toBe("/stream/5-general/topic/~__empty__");
+  });
+
   // Message URLs include a ?msg= query param for scroll-to-message navigation
   it("toMessage", () => {
     const result = deeplink.toMessage(5, "general", "bugs", 12345);
@@ -86,6 +94,18 @@ describe("deeplink parser", () => {
     expect(result.type).toBe("topic");
     expect(result.streamSlug).toBe("5-general");
     expect(result.topicName).toBe("bugs");
+  });
+
+  it("parses reserved token as empty topic name", () => {
+    const result = deeplink.parse("/stream/5-general/topic/__empty__");
+    expect(result.type).toBe("topic");
+    expect(result.topicName).toBe("");
+  });
+
+  it("parses escaped token as literal topic value", () => {
+    const result = deeplink.parse("/stream/5-general/topic/~__empty__");
+    expect(result.type).toBe("topic");
+    expect(result.topicName).toBe("__empty__");
   });
 
   it("does not throw on malformed encoded topic segments", () => {

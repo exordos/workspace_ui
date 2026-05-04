@@ -19,6 +19,7 @@ import {
   summarizeZulipMessagesForFlowDebug,
 } from "~/shared/lib/message-flow-debug.lib";
 import { saveRecentDmPartners } from "~/shared/lib/recent-dms";
+import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { areGroupSettingValuesEqual } from "~/shared/lib/zulip-group-setting.lib";
 import type {
   SidebarChat,
@@ -362,7 +363,7 @@ function buildMessageIdToLocation(
   const map = new Map<number, MessageLocation>();
   for (const m of messages) {
     if (m.type === "stream" && m.stream_id != null) {
-      const topic = (m.subject ?? "").trim() || "general";
+      const topic = normalizeTopicForIdentity(m.subject ?? "");
       map.set(m.id, { type: "stream", stream_id: m.stream_id, topic });
     } else if (m.type === "private" && Array.isArray(m.display_recipient)) {
       const dmKey = dmConversationKey(m.display_recipient, currentUserId);
@@ -553,7 +554,7 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
 
       for (const m of streamByKey.values()) {
         if (m.stream_id != null) {
-          const topic = (m.subject ?? "").trim() || "general";
+          const topic = normalizeTopicForIdentity(m.subject ?? "");
           nextLoc.set(m.id, { type: "stream", stream_id: m.stream_id, topic });
         }
       }
@@ -837,7 +838,7 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
 
   decrementUnreadForTopic(streamId, topic, count) {
     if (!Number.isFinite(count) || count <= 0) return;
-    const topicKey = topic.trim() || "general";
+    const topicKey = normalizeTopicForIdentity(topic);
     set((state) => {
       const stream = state.streamsMap.get(streamId);
       const streamTopic = stream?.topics.get(topicKey);

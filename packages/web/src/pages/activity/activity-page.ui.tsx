@@ -32,6 +32,7 @@ import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { buildNavigableRouteFromMessage } from "~/shared/lib/push-click";
 import { runInFlightDeduped } from "~/shared/lib/request-lifecycle.lib";
 import { scrollToBottom } from "~/shared/lib/scroll-position.lib";
+import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
 import { FloatingLoadingOverlay } from "~/shared/ui/floating-loading-overlay";
 import { Icon } from "~/shared/ui/icon";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
@@ -277,8 +278,12 @@ export const ActivityPage: React.FC = () => {
         const streamId = draft.to[0]!;
         const streamName = streamsMap.get(streamId)?.name ?? String(streamId);
         const slug = slugForStream({ stream_id: streamId, name: streamName });
-        const topic = draft.topic || "general";
-        void navigate(withCurrentOrgRoute(`/stream/${slug}/topic/${encodeURIComponent(topic)}`));
+        const topic = draft.topic ?? "";
+        void navigate(
+          withCurrentOrgRoute(
+            `/stream/${slug}/topic/${encodeURIComponent(encodeTopicForRoute(topic))}`,
+          ),
+        );
       } else if (draft.type === "private" && draft.to.length > 0) {
         void navigate(withCurrentOrgRoute(`/dm/${draft.to.join(",")}`));
       }
@@ -478,14 +483,14 @@ export const ActivityPage: React.FC = () => {
                 const isStream = m.type === "stream" && m.stream_id != null;
                 const streamName =
                   isStream && typeof m.display_recipient === "string" ? m.display_recipient : null;
-                const topic = isStream ? (m.subject ?? "").trim() || "general" : null;
+                const topic = isStream ? (m.subject ?? "").trim() : null;
                 let dmName: string | null = null;
                 if (m.type === "private" && Array.isArray(m.display_recipient)) {
                   const entry = messageToDmEntry(m, currentUserId);
                   dmName = entry?.name ?? null;
                 }
                 const context = isStream
-                  ? `#${streamName} · ${topic}`
+                  ? `#${streamName} · ${(topic?.length ?? 0) > 0 ? topic : t("chat.generalChat")}`
                   : dmName
                     ? `${t("dm.private")} · ${dmName}`
                     : t("dm.private");

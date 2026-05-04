@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { dmRouteKey } from "~/shared/lib/dm-key";
 import { computeIsGroupDmView, normalizeDmRouteUserIds } from "~/shared/lib/dm-route.lib";
+import { decodeTopicFromRoute } from "~/shared/lib/topic-identity.lib";
 import {
   getDmById,
   parseDmSlugToUserIds,
@@ -43,7 +44,7 @@ export function useChatRouteContext(options: {
   const { streamSlug, topicName, dmIdParam, location, streamsMap, dmsFromStore, currentUserId } =
     options;
 
-  const activeTopic = topicName ?? undefined;
+  const activeTopic = topicName != null ? decodeTopicFromRoute(topicName) : undefined;
   const parsedStream = useMemo(
     () => (streamSlug ? parseStreamSlug(streamSlug) : null),
     [streamSlug],
@@ -54,7 +55,7 @@ export function useChatRouteContext(options: {
     [parsedStream, streamsMap],
   );
 
-  const streamRouteTopic = topicName ?? "general";
+  const streamRouteTopic = topicName != null ? decodeTopicFromRoute(topicName) : "";
   const activeStream = parsedStream ? resolvedStreamName : undefined;
 
   const rawDmUserIds = useMemo(() => {

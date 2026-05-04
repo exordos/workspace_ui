@@ -70,7 +70,7 @@ describe("parseUnreadMessagesSnapshot", () => {
     });
   });
 
-  it("filters invalid ids and normalizes empty stream topic to general", () => {
+  it("filters invalid ids and keeps empty stream topic as empty", () => {
     const result = parseUnreadMessagesSnapshot({
       unread_msgs: {
         streams: [
@@ -85,7 +85,7 @@ describe("parseUnreadMessagesSnapshot", () => {
 
     expect(result).toEqual({
       totalCount: 5,
-      streams: [{ streamId: 10, topic: "general", unreadMessageIds: [1] }],
+      streams: [{ streamId: 10, topic: "", unreadMessageIds: [1] }],
       dms: [
         { userIds: [20], unreadMessageIds: [3] },
         { userIds: [20, 30], unreadMessageIds: [4, 5] },
@@ -156,7 +156,7 @@ describe("parseUnreadMessagesSnapshot", () => {
 
     expect(result).toEqual({
       totalCount: 3,
-      streams: [{ streamId: 10, topic: "general", unreadMessageIds: [3] }],
+      streams: [{ streamId: 10, topic: "", unreadMessageIds: [3] }],
       dms: [{ userIds: [77], unreadMessageIds: [5] }],
     });
   });

@@ -123,14 +123,14 @@ describe("typing chat keys", () => {
     expect(buildDmTypingChatKey([42], null)).toBeNull();
   });
 
-  it("builds a stream typing key with normalized topic fallback", () => {
-    expect(buildStreamTypingChatKey(15, "")).toBe("stream:15:general");
+  it("builds a stream typing key with empty-topic identity", () => {
+    expect(buildStreamTypingChatKey(15, "")).toBe("stream:15:");
     expect(buildStreamTypingChatKey(15, "bugs")).toBe("stream:15:bugs");
   });
 });
 
 describe("typing event routing", () => {
-  it("routes stream typing events with empty topic to general key", () => {
+  it("routes stream typing events with empty topic to empty-topic key", () => {
     expect(
       resolveTypingEventRoute({
         op: "start",
@@ -141,13 +141,13 @@ describe("typing event routing", () => {
         currentUserId: 7,
       }),
     ).toEqual({
-      chatKey: "stream:15:general",
+      chatKey: "stream:15:",
       userId: 42,
       isTyping: true,
     });
   });
 
-  it("routes stream typing events with missing topic to general key", () => {
+  it("routes stream typing events with missing topic to empty-topic key", () => {
     expect(
       resolveTypingEventRoute({
         op: "stop",
@@ -157,7 +157,7 @@ describe("typing event routing", () => {
         currentUserId: 7,
       }),
     ).toEqual({
-      chatKey: "stream:15:general",
+      chatKey: "stream:15:",
       userId: 42,
       isTyping: false,
     });

@@ -5,6 +5,7 @@
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
 import { normalizeStreamTopicForMessageCache } from "~/shared/lib/message-cache-keys.lib";
+import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import type { CurrentChatContext } from "./message.model.types";
 
 /** True when route points to the same stream/topic or DM as the current store context (re-sync without navigation). */
@@ -43,7 +44,7 @@ export function isMessageForContext(
     if (msg.type !== "stream" || msg.stream_id !== context.streamId) return false;
     if (context.streamWideView) return true;
     return (
-      normalizeStreamTopicForMessageCache((msg.subject ?? "").trim() || "general") ===
+      normalizeStreamTopicForMessageCache(normalizeTopicForIdentity(msg.subject ?? "")) ===
       normalizeStreamTopicForMessageCache(context.topic)
     );
   }
@@ -62,7 +63,7 @@ export function contextFromMessage(
   if (msg.type === "stream" && msg.stream_id != null) {
     const name =
       typeof msg.display_recipient === "string" ? msg.display_recipient : String(msg.stream_id);
-    const topic = (msg.subject ?? "").trim() || "general";
+    const topic = normalizeTopicForIdentity(msg.subject ?? "");
     return { type: "stream", streamId: msg.stream_id, streamName: name, topic };
   }
   if (msg.type === "private" && Array.isArray(msg.display_recipient)) {

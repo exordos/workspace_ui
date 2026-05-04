@@ -92,7 +92,35 @@ describe("parseChatContextFromPathname", () => {
     expect(parsed.context?.type).toBe("stream");
     if (parsed.context?.type === "stream") {
       expect(parsed.context.streamWideView).toBe(true);
-      expect(parsed.context.topic).toBe("general");
+      expect(parsed.context.topic).toBe("");
+    }
+  });
+
+  it("decodes __empty__ token to empty topic for explicit topic route", () => {
+    const streamsMap = new Map<number, { name: string }>([[5, { name: "engineering" }]]);
+    const parsed = parseChatContextFromPathname({
+      pathname: "/stream/5-engineering/topic/__empty__",
+      streamsMap,
+      currentUserId: 1,
+    });
+    expect(parsed.streamTopicExplicitInUrl).toBe(true);
+    expect(parsed.context?.type).toBe("stream");
+    if (parsed.context?.type === "stream") {
+      expect(parsed.context.topic).toBe("");
+      expect(parsed.context.streamWideView).toBe(false);
+    }
+  });
+
+  it("decodes escaped token as literal topic value", () => {
+    const streamsMap = new Map<number, { name: string }>([[5, { name: "engineering" }]]);
+    const parsed = parseChatContextFromPathname({
+      pathname: "/stream/5-engineering/topic/~__empty__",
+      streamsMap,
+      currentUserId: 1,
+    });
+    expect(parsed.context?.type).toBe("stream");
+    if (parsed.context?.type === "stream") {
+      expect(parsed.context.topic).toBe("__empty__");
     }
   });
 });

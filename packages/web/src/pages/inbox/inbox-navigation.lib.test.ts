@@ -49,7 +49,7 @@ describe("buildInboxEntryRoute", () => {
     ).toBe("/stream/10-engineering/topic/general?msg=111");
   });
 
-  it("builds stream root route for empty topic", () => {
+  it("builds explicit empty-topic route for empty topic", () => {
     expect(
       buildInboxEntryRoute(
         baseEntry({
@@ -63,7 +63,7 @@ describe("buildInboxEntryRoute", () => {
           messageIds: [101, 90, 111],
         }),
       ),
-    ).toBe("/stream/10-engineering?msg=111");
+    ).toBe("/stream/10-engineering/topic/__empty__?msg=111");
   });
 
   it("builds dm route with message focus", () => {

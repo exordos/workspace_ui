@@ -229,6 +229,36 @@ describe("mute-chat API", () => {
       });
     });
 
+    it("preserves literal general topic in user_topics payload", async () => {
+      const { zulipApi } = await import("~/shared/api/client");
+      vi.mocked(zulipApi.post).mockResolvedValue(mockOk);
+
+      const { setTopicVisibility } = await import("./mute-chat.api");
+      const result = await setTopicVisibility(10, "general", 1);
+
+      expect(result).toBe(true);
+      expect(zulipApi.post).toHaveBeenCalledWith("/user_topics", {
+        stream_id: "10",
+        topic: "general",
+        visibility_policy: "1",
+      });
+    });
+
+    it("supports explicit empty topic in user_topics payload", async () => {
+      const { zulipApi } = await import("~/shared/api/client");
+      vi.mocked(zulipApi.post).mockResolvedValue(mockOk);
+
+      const { setTopicVisibility } = await import("./mute-chat.api");
+      const result = await setTopicVisibility(10, "", 1);
+
+      expect(result).toBe(true);
+      expect(zulipApi.post).toHaveBeenCalledWith("/user_topics", {
+        stream_id: "10",
+        topic: "",
+        visibility_policy: "1",
+      });
+    });
+
     it("returns false on API failure", async () => {
       const { zulipApi } = await import("~/shared/api/client");
       vi.mocked(zulipApi.post).mockResolvedValue(mockFail);

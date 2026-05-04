@@ -171,12 +171,12 @@ describe("resolveForwardTargetRoute", () => {
     ).toBe("/stream/10-engineering/topic/bugs");
   });
 
-  it("uses general topic fallback when topic is empty", () => {
+  it("uses explicit empty-topic token when topic is empty", () => {
     expect(
       resolveForwardTargetRoute("engineering", "   ", undefined, [
         { stream_id: 10, name: "engineering" },
       ]),
-    ).toBe("/stream/10-engineering/topic/general");
+    ).toBe("/stream/10-engineering/topic/__empty__");
   });
 
   it("returns null when stream cannot be resolved", () => {
@@ -204,7 +204,7 @@ describe("resolveForwardDraftTarget", () => {
       route: "/dm/7,42",
       draftType: "private",
       draftTo: [7, 42],
-      draftTopic: "general",
+      draftTopic: "",
     });
   });
 

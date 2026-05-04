@@ -51,7 +51,7 @@ describe("buildPushClickUrl", () => {
     expect(url).toBe("/stream/eng%2Fops%3Ftab%3Dall/topic/bugs");
   });
 
-  it("omits topic segment when topic is whitespace-only", () => {
+  it("uses explicit empty-topic route token when topic is whitespace-only", () => {
     const url = buildPushClickUrl({
       type: "stream",
       streamName: "general",
@@ -59,7 +59,7 @@ describe("buildPushClickUrl", () => {
       messageId: 42,
     });
 
-    expect(url).toBe("/stream/general?msg=42");
+    expect(url).toBe("/stream/general/topic/__empty__?msg=42");
   });
 
   it("builds a private DM URL from sender id", () => {
@@ -116,7 +116,7 @@ describe("buildRouteFromMessage", () => {
     expect(route).toBe("/stream/10-general-discussion/topic/Bugs?msg=55");
   });
 
-  it("builds stream root route when topic is empty", () => {
+  it("builds explicit empty-topic route when topic is empty", () => {
     const route = buildRouteFromMessage(
       {
         id: 56,
@@ -127,7 +127,7 @@ describe("buildRouteFromMessage", () => {
       7,
     );
 
-    expect(route).toBe("/stream/10-general-discussion?msg=56");
+    expect(route).toBe("/stream/10-general-discussion/topic/__empty__?msg=56");
   });
 
   it("builds a DM route using recipients other than current user", () => {
@@ -219,7 +219,7 @@ describe("buildNavigableRouteFromMessage", () => {
     ).toBe("/stream/10-engineering/topic/Bugs?msg=15");
   });
 
-  it("builds stream root route for empty stream topic", async () => {
+  it("builds explicit empty-topic route for empty stream topic", async () => {
     const { buildNavigableRouteFromMessage } = await import("./push-click");
     expect(
       buildNavigableRouteFromMessage(
@@ -232,7 +232,7 @@ describe("buildNavigableRouteFromMessage", () => {
         },
         7,
       ),
-    ).toBe("/stream/10-engineering?msg=16");
+    ).toBe("/stream/10-engineering/topic/__empty__?msg=16");
   });
 
   it("falls back to sender-based DM routing when recipients are unavailable", async () => {

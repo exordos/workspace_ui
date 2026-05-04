@@ -58,6 +58,7 @@ import { logMessageFlow, summarizeChatContextForLog } from "~/shared/lib/message
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { useShortcut } from "~/shared/lib/shortcuts";
 import { resolveCanonicalStreamName } from "~/shared/lib/stream-name.lib";
+import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { isTabVisible } from "~/shared/lib/visibility";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
 import { useSidebarConfigStore } from "~/widgets/sidebar/sidebar-config.model";
@@ -329,7 +330,7 @@ export const ChatPage: React.FC = () => {
       return {
         type: "stream",
         streamName: activeStream,
-        topic: activeTopic ?? "general",
+        topic: activeTopic ?? "",
       };
     }
 
@@ -352,7 +353,7 @@ export const ChatPage: React.FC = () => {
       fallbackStreamId: ctx?.type === "stream" ? ctx.streamId : null,
     });
   }, [isDmView, activeDmUserIds, resolvedStreamId]);
-  const draftTopic = activeTopic ?? "general";
+  const draftTopic = activeTopic ?? "";
 
   useEffect(() => {
     if (!draftType || draftTo.length === 0) return;
@@ -597,7 +598,7 @@ export const ChatPage: React.FC = () => {
         ? { type: "dm", dmKey: dmRouteKey(activeDmUserIds, currentUserId) }
         : undefined
       : activeStreamId != null
-        ? { type: "stream", streamId: activeStreamId, topic: activeTopic ?? "general" }
+        ? { type: "stream", streamId: activeStreamId, topic: activeTopic ?? "" }
         : undefined;
 
     const batcher = createMarkAsReadBatcher({
@@ -1315,7 +1316,7 @@ export const ChatPage: React.FC = () => {
         setUploadProgress(null);
         throw new Error(error);
       }
-      const subject = subjectOverride ?? activeTopic ?? "general";
+      const subject = normalizeTopicForIdentity(subjectOverride ?? activeTopic ?? "");
       const optimisticMessageId = optimisticMessageIdRef.current;
       optimisticMessageIdRef.current -= 1;
       const optimisticMessage = buildOptimisticOutgoingMessage({
@@ -1414,7 +1415,7 @@ export const ChatPage: React.FC = () => {
           setSendError(t("message.sendFailed"));
           return;
         }
-        const subject = (msg.subject ?? "").trim() || activeTopic || "general";
+        const subject = normalizeTopicForIdentity(msg.subject ?? activeTopic ?? "");
         const optimisticMessageId = optimisticMessageIdRef.current;
         optimisticMessageIdRef.current -= 1;
         const optimisticMessage = buildOptimisticOutgoingMessage({

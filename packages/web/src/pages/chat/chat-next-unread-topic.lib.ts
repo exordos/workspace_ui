@@ -1,4 +1,5 @@
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
+import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
 import type { TopicWithLast } from "~/shared/types/sidebar-chat";
 import { slugForStream } from "~/widgets/sidebar/sidebar.lib";
 
@@ -29,6 +30,6 @@ export function resolveNextUnreadTopicRoute({
 
   const streamSlug = slugForStream({ stream_id: streamId, name: streamName });
   return withCurrentOrgRoute(
-    `/stream/${streamSlug}/topic/${encodeURIComponent(nextTopic.subject)}`,
+    `/stream/${streamSlug}/topic/${encodeURIComponent(encodeTopicForRoute(nextTopic.subject))}`,
   );
 }

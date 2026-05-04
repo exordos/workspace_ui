@@ -15,6 +15,7 @@ import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
+import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import type {
   SidebarChat,
   StreamWithLast,
@@ -58,7 +59,7 @@ export function messageToStreamEntry(m: ZulipRawMessage): {
   const lastMessageSenderName = m.sender_full_name?.trim() || undefined;
   const time = formatMessageTime(m.timestamp);
   const name = typeof m.display_recipient === "string" ? m.display_recipient : String(m.stream_id);
-  const subject = (m.subject ?? "").trim() || "general";
+  const subject = normalizeTopicForIdentity(m.subject ?? "");
   const topicEntry: StreamTopicEntry = {
     subject,
     lastMessage: lastMsg,
@@ -190,7 +191,7 @@ export function buildSidebarFromMessages(
   for (const m of messages) {
     const unread = isUnreadFromOthers(m, currentUserId);
     if (m.type === "stream" && m.stream_id != null) {
-      const subject = (m.subject ?? "").trim() || "general";
+      const subject = normalizeTopicForIdentity(m.subject ?? "");
       const key = `${m.stream_id}\t${subject}`;
       streamUnread.set(key, (streamUnread.get(key) ?? 0) + (unread ? 1 : 0));
     } else if (m.type === "private" && Array.isArray(m.display_recipient)) {
@@ -215,7 +216,9 @@ export function buildSidebarFromMessages(
       };
       const existing = streamsByKey.get(stream_id);
       if (!existing) {
-        const topics = new Map<string, StreamTopicEntry>([[topicWithUnread.subject, topicWithUnread]]);
+        const topics = new Map<string, StreamTopicEntry>([
+          [topicWithUnread.subject, topicWithUnread],
+        ]);
         streamsByKey.set(stream_id, {
           stream_id,
           name,

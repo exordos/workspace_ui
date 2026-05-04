@@ -9,6 +9,7 @@ import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { t } from "~/i18n/i18n";
 import { setTopicResolvedState } from "~/shared/api/zulip";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
+import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
 import {
   isTopicResolved,
   toResolvedTopicName,
@@ -147,7 +148,9 @@ export const TopicResolvedButton = React.memo<{
           if (!isActiveTopic) return;
           if (nextTopicName === topic) return;
           void navigate(
-            withCurrentOrgRoute(`/stream/${streamSlug}/topic/${encodeURIComponent(nextTopicName)}`),
+            withCurrentOrgRoute(
+              `/stream/${streamSlug}/topic/${encodeURIComponent(encodeTopicForRoute(nextTopicName))}`,
+            ),
             { replace: true },
           );
         })

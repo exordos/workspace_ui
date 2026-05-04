@@ -3,6 +3,7 @@
  */
 import { t } from "~/i18n/i18n";
 import { guard } from "~/shared/lib/guards";
+import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { toResolvedTopicName, toUnresolvedTopicName } from "~/shared/lib/topic-resolve";
 import { zulipTopicNarrowOperandForApi } from "~/shared/lib/zulip-topic-narrow.lib";
 import { zulipPipelineGet, zulipPipelinePatch, zulipPipelinePost } from "./zulip-pipeline.internal";
@@ -54,7 +55,7 @@ export async function markStreamAsRead(streamId: number): Promise<boolean> {
 /** Bulk-marks all messages in a stream topic as read (POST /api/v1/messages/flags/narrow). */
 export async function markTopicAsRead(streamId: number, topic: string): Promise<boolean> {
   guard.streamId(streamId, "markTopicAsRead");
-  guard.nonEmpty(topic, "markTopicAsRead.topic");
+  const normalizedTopic = normalizeTopicForIdentity(topic);
   const res = await zulipPipelinePost("messages/flags/narrow", {
     anchor: "newest",
     include_anchor: "false",
@@ -62,7 +63,7 @@ export async function markTopicAsRead(streamId: number, topic: string): Promise<
     num_after: "0",
     narrow: JSON.stringify([
       { operator: "stream", operand: streamId },
-      { operator: "topic", operand: zulipTopicNarrowOperandForApi(topic) },
+      { operator: "topic", operand: zulipTopicNarrowOperandForApi(normalizedTopic) },
     ]),
     op: "add",
     flag: "read",
@@ -82,7 +83,7 @@ export async function setTopicResolvedState(
   resolved: boolean,
 ): Promise<boolean> {
   guard.streamId(streamId, "setTopicResolvedState.streamId");
-  const normalizedTopic = guard.nonEmpty(topic.trim(), "setTopicResolvedState.topic");
+  const normalizedTopic = normalizeTopicForIdentity(topic);
   const targetTopic = resolved
     ? toResolvedTopicName(normalizedTopic)
     : toUnresolvedTopicName(normalizedTopic);

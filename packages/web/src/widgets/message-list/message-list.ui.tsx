@@ -7,8 +7,8 @@ import { createLogger } from "~/shared/lib/logger";
 import { normalizeStreamTopicForMessageCache } from "~/shared/lib/message-cache-keys.lib";
 import { containsEmojiShortcode } from "~/shared/lib/message-emoji-shortcodes.lib";
 import { logMessageFlow } from "~/shared/lib/message-flow-debug.lib";
-import { computeReadTailReady } from "~/shared/lib/read-receipts-policy.lib";
 import { isLikelyRenderedMessageHtml } from "~/shared/lib/message-markdown-display.lib";
+import { computeReadTailReady } from "~/shared/lib/read-receipts-policy.lib";
 import { ensureRealmEmojisLoaded, getCachedRealmEmojis } from "~/shared/lib/realm-emojis-cache";
 import { scrollToBottom } from "~/shared/lib/scroll-position.lib";
 import { computeScrollTopAfterPrepend } from "~/shared/lib/scroll-prepend-anchor.lib";
@@ -230,8 +230,7 @@ export const MessageList: React.FC<MessageListProps> = ({
       messages
         .filter(
           (m) =>
-            !m.flags?.includes("read") &&
-            (currentUserId == null || m.sender_id !== currentUserId),
+            !m.flags?.includes("read") && (currentUserId == null || m.sender_id !== currentUserId),
         )
         .map((m) => m.id),
     );
@@ -275,7 +274,7 @@ export const MessageList: React.FC<MessageListProps> = ({
     if (!isTabVisible()) return;
 
     const candidateUnread = unreadCandidatesRef.current;
-    for (const id of [...viewportUnreadIdsRef.current]) {
+    for (const id of viewportUnreadIdsRef.current) {
       if (!candidateUnread.has(id)) {
         viewportUnreadIdsRef.current.delete(id);
       }
@@ -628,7 +627,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                 const first = senderMessages[0]!;
                 const isStream = first.stream_id != null;
                 const topicKey = normalizeStreamTopicForMessageCache(first.subject ?? "");
-                const topicLabel = topicKey;
+                const topicLabel = topicKey.length > 0 ? topicKey : t("chat.generalChat");
                 const showTopicSeparator =
                   isStream && lastStreamTopicKey !== undefined && lastStreamTopicKey !== topicKey;
                 if (isStream) {

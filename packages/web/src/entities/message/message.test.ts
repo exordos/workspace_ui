@@ -680,8 +680,8 @@ describe("isMessageForContext", () => {
     ).toBe(false);
   });
 
-  // Zulip uses empty string for the default topic — we normalize to "general".
-  it("uses 'general' as default topic when subject is empty", () => {
+  // Empty subject must stay empty to avoid colliding with literal "general" topic.
+  it("does not match literal 'general' context when subject is empty", () => {
     const ctx: CurrentChatContext = {
       type: "stream",
       streamId: 5,
@@ -689,7 +689,7 @@ describe("isMessageForContext", () => {
       topic: "general",
     };
     expect(isMessageForContext({ type: "stream", stream_id: 5, subject: "" }, ctx, null)).toBe(
-      true,
+      false,
     );
   });
 
@@ -768,8 +768,8 @@ describe("contextFromMessage", () => {
     });
   });
 
-  // Empty subject must be normalized to "general" to match context comparison logic.
-  it("uses 'general' as default topic for stream messages with empty subject", () => {
+  // Empty subject must remain empty in route context identity.
+  it("keeps empty topic for stream messages with empty subject", () => {
     const msg: ZulipRawMessage = {
       id: 1,
       sender_id: 10,
@@ -784,7 +784,7 @@ describe("contextFromMessage", () => {
     const ctx = contextFromMessage(msg, null);
     expect(ctx).not.toBeNull();
     if (ctx?.type === "stream") {
-      expect(ctx.topic).toBe("general");
+      expect(ctx.topic).toBe("");
     }
   });
 

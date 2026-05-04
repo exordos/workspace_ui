@@ -17,6 +17,7 @@ import {
   logChatListFlow,
   summarizeZulipMessagesForFlowDebug,
 } from "~/shared/lib/message-flow-debug.lib";
+import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { toResolvedTopicName, toUnresolvedTopicName } from "~/shared/lib/topic-resolve";
 import { isValidEmail, isValidRealmUrl, validateFileUpload } from "~/shared/lib/validation";
 import { normalizeGroupSettingValue } from "~/shared/lib/zulip-group-setting.lib";
@@ -1276,7 +1277,7 @@ export async function markStreamAsRead(streamId: number): Promise<boolean> {
 // Массово помечает все сообщения в теме стрима как прочитанные.
 export async function markTopicAsRead(streamId: number, topic: string): Promise<boolean> {
   guard.streamId(streamId, "markTopicAsRead");
-  guard.nonEmpty(topic, "markTopicAsRead.topic");
+  const normalizedTopic = normalizeTopicForIdentity(topic);
   const res = await zulipPipelinePost("messages/flags/narrow", {
     anchor: "newest",
     include_anchor: "false",
@@ -1284,7 +1285,7 @@ export async function markTopicAsRead(streamId: number, topic: string): Promise<
     num_after: "0",
     narrow: JSON.stringify([
       { operator: "stream", operand: streamId },
-      { operator: "topic", operand: zulipTopicNarrowOperandForApi(topic) },
+      { operator: "topic", operand: zulipTopicNarrowOperandForApi(normalizedTopic) },
     ]),
     op: "add",
     flag: "read",
@@ -1304,7 +1305,7 @@ export async function setTopicResolvedState(
   resolved: boolean,
 ): Promise<boolean> {
   guard.streamId(streamId, "setTopicResolvedState.streamId");
-  const normalizedTopic = guard.nonEmpty(topic.trim(), "setTopicResolvedState.topic");
+  const normalizedTopic = normalizeTopicForIdentity(topic);
   const targetTopic = resolved
     ? toResolvedTopicName(normalizedTopic)
     : toUnresolvedTopicName(normalizedTopic);
@@ -1965,10 +1966,7 @@ export async function fetchMessages(
 ): Promise<MockMessage[]> {
   const normalizedStream =
     stream == null ? undefined : guard.nonEmpty(stream, "fetchMessages.stream");
-  const normalizedTopic =
-    topic == null || topic.trim() === ""
-      ? undefined
-      : guard.nonEmpty(topic.trim(), "fetchMessages.topic");
+  const normalizedTopic = topic == null ? undefined : normalizeTopicForIdentity(topic);
   if (normalizedTopic !== undefined && normalizedStream === undefined) {
     throw new Error("fetchMessages.stream is required when topic is provided");
   }
@@ -2488,7 +2486,7 @@ export async function sendMessage(params: SendMessageParams): Promise<MockMessag
   if (params.streamId != null) {
     guard.streamId(params.streamId, "sendMessage.streamId");
   }
-  const subject = params.subject ?? "general";
+  const subject = params.subject ?? "";
   const result = await client.messages.send({
     type: "stream",
     to: stream,

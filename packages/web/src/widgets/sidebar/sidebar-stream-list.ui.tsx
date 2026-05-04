@@ -4,6 +4,7 @@ import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
 import { sidebarRowClass } from "~/shared/lib/format";
+import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
 import { Avatar } from "~/shared/ui/avatar";
 import { Badge } from "~/shared/ui/badge";
 import { Icon } from "~/shared/ui/icon";
@@ -209,7 +210,9 @@ export const SidebarStreamList: React.FC<SidebarStreamListProps> = ({
                           style={{ borderLeftColor: topicColor }}
                         >
                           <Link
-                            to={`/stream/${streamSlug}/topic/${encodeURIComponent(topic.subject)}`}
+                            to={`/stream/${streamSlug}/topic/${encodeURIComponent(
+                              encodeTopicForRoute(topic.subject),
+                            )}`}
                             className="flex min-w-0 flex-1 items-start gap-3 py-2 pl-3 pr-2"
                           >
                             <div className="min-w-0 flex-1">

@@ -160,11 +160,26 @@ describe("markTopicAsRead", () => {
     await expect(markTopicAsRead(0, "bugs")).rejects.toThrow(/Invalid streamId/);
   });
 
-  it("throws for empty topic", async () => {
-    await expect(markTopicAsRead(10, "")).rejects.toThrow(/non-empty string/);
+  it("supports explicit empty topic", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { result: "success" },
+      raw: { statusText: "OK" },
+    });
+    await markTopicAsRead(10, "");
+    expect(mockZulipApi.post).toHaveBeenCalledWith(
+      "/messages/flags/narrow",
+      expect.objectContaining({
+        narrow: JSON.stringify([
+          { operator: "stream", operand: 10 },
+          { operator: "topic", operand: "" },
+        ]),
+      }),
+    );
   });
 
-  it("uses empty topic operand for default topic general", async () => {
+  it("preserves literal general topic operand", async () => {
     mockZulipApi.post.mockResolvedValue({
       ok: true,
       status: 200,
@@ -177,7 +192,7 @@ describe("markTopicAsRead", () => {
       expect.objectContaining({
         narrow: JSON.stringify([
           { operator: "stream", operand: 10 },
-          { operator: "topic", operand: "" },
+          { operator: "topic", operand: "general" },
         ]),
       }),
     );

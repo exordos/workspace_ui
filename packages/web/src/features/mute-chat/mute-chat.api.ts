@@ -8,6 +8,7 @@
 import { zulipApi } from "~/shared/api/client";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
+import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { VISIBILITY_POLICY, type VisibilityPolicy } from "./mute-chat.types";
 
 const log = createLogger("mute:api");
@@ -54,24 +55,24 @@ export async function setTopicVisibility(
   policy: VisibilityPolicy,
 ): Promise<boolean> {
   guard.streamId(streamId, "setTopicVisibility");
-  guard.nonEmpty(topic, "topic");
+  const normalizedTopic = normalizeTopicForIdentity(topic);
 
   try {
     const res = await zulipApi.post("/user_topics", {
       stream_id: String(streamId),
-      topic,
+      topic: normalizedTopic,
       visibility_policy: String(policy),
     });
 
     if (res.ok) {
-      log.info("Topic visibility set", { streamId, topic, policy });
+      log.info("Topic visibility set", { streamId, topic: normalizedTopic, policy });
       return true;
     }
 
-    log.warn("Topic visibility failed", { streamId, topic, status: res.status });
+    log.warn("Topic visibility failed", { streamId, topic: normalizedTopic, status: res.status });
     return false;
   } catch (err) {
-    log.error("Topic visibility error", { streamId, topic, error: String(err) });
+    log.error("Topic visibility error", { streamId, topic: normalizedTopic, error: String(err) });
     return false;
   }
 }

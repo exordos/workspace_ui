@@ -25,6 +25,7 @@ import {
   computeHasNewerAfterLoadNewerIdbPage,
   computeHasOlderAfterLoadOlderIdbPage,
 } from "~/shared/lib/message-pagination-boundary.lib";
+import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { zulipMessageCacheWindowN } from "~/shared/lib/zulip-message-window.lib";
 import {
   patchPartitionMetaByMessages,
@@ -126,7 +127,7 @@ function schedulePersistFullChatMessages(get: () => CurrentChatMessagesState): v
   const msgs = get().messages;
   if (!inst || !ctx || msgs.length === 0) return;
   // Что делает: в wide-контексте пишет сообщения по topic-partitions,
-  // чтобы не складывать всю stream-ленту в один general-ключ.
+  // чтобы не складывать всю stream-ленту в один topic-key.
   if (ctx.type === "stream" && ctx.streamWideView) {
     void upsertMessagesByChatPartitions({
       instanceId: inst,
@@ -154,7 +155,7 @@ function resolvePersistChatKeyForMessage(
     return chatKeyFromContext({
       type: "stream",
       streamId: context.streamId,
-      topic: (message.subject ?? "").trim() || "general",
+      topic: normalizeTopicForIdentity(message.subject ?? ""),
     });
   }
   return chatKeyFromContext(context);

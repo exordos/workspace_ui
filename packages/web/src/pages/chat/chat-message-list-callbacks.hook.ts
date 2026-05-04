@@ -8,6 +8,7 @@ import { addMessageFlag, addReaction, removeMessageFlag, removeReaction } from "
 import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { buildMessageRedirectRouteFromZulipPermalink } from "~/shared/lib/push-click";
+import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
 import { buildZulipMessageWebPermalink } from "~/shared/lib/zulip-web-permalink.lib";
 import type { MessageListCallbacks } from "~/widgets/message-list/message-list.types";
 import { slugForStream } from "~/widgets/sidebar/sidebar.lib";
@@ -166,7 +167,9 @@ export function useChatMessageListCallbacks(
           streams.find((stream) => stream.stream_id === msg.stream_id)?.name ??
           (typeof msg.display_recipient === "string" ? msg.display_recipient : undefined);
         if (!streamName) return;
-        const route = `/stream/${slugForStream({ stream_id: msg.stream_id, name: streamName })}/topic/${encodeURIComponent(topic)}`;
+        const route = `/stream/${slugForStream({ stream_id: msg.stream_id, name: streamName })}/topic/${encodeURIComponent(
+          encodeTopicForRoute(topic),
+        )}`;
         if (route === locationPathname) return;
         void navigate(route);
       },

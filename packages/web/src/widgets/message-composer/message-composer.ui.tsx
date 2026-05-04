@@ -305,7 +305,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
       const hasFiles = files.length > 0;
       if ((!hasText && !hasFiles) || disabled || onSend == null) return;
 
-      const subject = activeTopic ?? "general";
+      const subject = activeTopic ?? "";
       const scheduledMessage: ScheduledComposerMessage = {
         id: crypto.randomUUID(),
         content: outgoingBody,
@@ -360,7 +360,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     const hasText = value.trim().length > 0;
     const hasFiles = files.length > 0;
     if ((!hasText && !hasFiles) || disabled) return;
-    const subject = activeTopic ?? "general";
+    const subject = activeTopic ?? "";
     const bodyToSend = outgoingBody;
     const filesToSend = hasFiles ? [...files] : undefined;
     setValue("");

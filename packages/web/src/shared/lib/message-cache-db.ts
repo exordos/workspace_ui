@@ -12,7 +12,7 @@ function idbError(reason: unknown): Error {
 }
 
 const DB_NAME = "workspace-message-cache-v1";
-const DB_VERSION = 6;
+const DB_VERSION = 7;
 
 // Размер retention по умолчанию, если caller явно не передал windowSizeN.
 export const MESSAGE_CACHE_DEFAULT_WINDOW_SIZE = ZULIP_CHAT_MESSAGE_CACHE_MAX_WINDOW;
@@ -96,6 +96,22 @@ export function openMessageCacheDb(): Promise<IDBDatabase> {
       // Миграция v6: добавляет хранилище mute snapshot по ключу instanceId.
       if (oldVersion < 6 && !db.objectStoreNames.contains(STORE_MUTE_SNAPSHOT)) {
         db.createObjectStore(STORE_MUTE_SNAPSHOT, { keyPath: "instanceId" });
+      }
+      // Миграция v7: сбрасывает legacy message/chat snapshot stores, где могли смешаться
+      // empty-topic и literal "general" в одном cache key.
+      if (oldVersion < 7) {
+        const tx = req.transaction;
+        if (tx != null) {
+          if (db.objectStoreNames.contains(STORE_MESSAGES)) {
+            tx.objectStore(STORE_MESSAGES).clear();
+          }
+          if (db.objectStoreNames.contains(STORE_CHAT_META)) {
+            tx.objectStore(STORE_CHAT_META).clear();
+          }
+          if (db.objectStoreNames.contains(STORE_CHAT_LIST_SNAPSHOT)) {
+            tx.objectStore(STORE_CHAT_LIST_SNAPSHOT).clear();
+          }
+        }
       }
     };
   });

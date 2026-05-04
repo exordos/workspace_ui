@@ -56,7 +56,7 @@ export async function patchPartitionMetaByMessages(options: {
 }
 
 // Зачем: единая запись набора сообщений по корректным topic-partitions.
-// Это предотвращает смешивание wide-ленты в один ключ `stream:{id}:general`.
+// Это предотвращает смешивание wide-ленты в один ключ default-topic partition.
 export async function upsertMessagesByChatPartitions(options: {
   instanceId: string;
   currentUserId: number | null;

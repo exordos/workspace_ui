@@ -25,6 +25,7 @@
 import { isElectron } from "./electron";
 import { createLogger } from "./logger";
 import { extractOrgRouteFromPathname, withCurrentOrgRoute } from "./org-route";
+import { decodeTopicFromRoute, encodeTopicForRoute } from "./topic-identity.lib";
 
 const log = createLogger("deeplinks");
 
@@ -45,8 +46,9 @@ export function toStream(streamId: number, streamName: string): string {
 }
 
 export function toTopic(streamId: number, streamName: string, topic: string): string {
+  const topicSegment = encodeTopicForRoute(topic);
   return withCurrentOrgRoute(
-    `/stream/${slugForStream(streamId, streamName)}/topic/${encodeURIComponent(topic)}`,
+    `/stream/${slugForStream(streamId, streamName)}/topic/${encodeURIComponent(topicSegment)}`,
   );
 }
 
@@ -169,14 +171,16 @@ export function parse(url: string): ParsedDeepLink {
 
   if (scopedPathname.startsWith("/stream/")) {
     const parts = scopedPathname.replace("/stream/", "").split("/topic/");
+    const hasTopicSegment = parts.length > 1;
     const streamSlug = parts[0];
-    const topicName = parts[1] ? decodeUriComponentSafe(parts[1]) : undefined;
+    const topicNameRaw = parts[1] ? decodeUriComponentSafe(parts[1]) : undefined;
+    const topicName = topicNameRaw != null ? decodeTopicFromRoute(topicNameRaw) : undefined;
     const messageId = parseMessageId(searchParams);
 
     if (messageId) {
       return { type: "message", path, orgId: orgId ?? undefined, streamSlug, topicName, messageId };
     }
-    if (topicName) {
+    if (hasTopicSegment) {
       return { type: "topic", path, orgId: orgId ?? undefined, streamSlug, topicName };
     }
     return { type: "stream", path, orgId: orgId ?? undefined, streamSlug };

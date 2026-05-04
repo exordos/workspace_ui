@@ -13,6 +13,7 @@ import {
 } from "~/shared/lib/message-idb-from-zulip.lib";
 import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
 import { shouldNotify } from "~/shared/lib/notifications-policy";
+import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { normalizeGroupSettingValue } from "~/shared/lib/zulip-group-setting.lib";
 import { closeReadMessageNotifications } from "./layout-notification-tags.lib";
 import type {
@@ -156,7 +157,7 @@ function maybeNotifyNewMessage(
   const { mute, notifications } = ctx;
   let isMuted = false;
   if (raw.type === "stream" && raw.stream_id != null) {
-    const topic = (raw.subject ?? "").trim() || "general";
+    const topic = normalizeTopicForIdentity(raw.subject ?? "");
     isMuted = mute.isEffectivelyMuted(raw.stream_id, topic);
   }
 
