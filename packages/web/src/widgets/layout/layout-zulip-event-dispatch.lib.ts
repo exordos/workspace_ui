@@ -30,6 +30,16 @@ function isPositiveInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value > 0;
 }
 
+function parsePositiveInteger(value: unknown): number | null {
+  return isPositiveInteger(value) ? value : null;
+}
+
+function parsePositiveIntegerArray(value: unknown): number[] | null {
+  if (!Array.isArray(value)) return null;
+  const ids = value.filter((item): item is number => isPositiveInteger(item));
+  return ids.length > 0 ? ids : null;
+}
+
 function parseSubscriptionRows(value: unknown): {
   streamId: number;
   name: string;
@@ -265,7 +275,7 @@ function handleTyping(event: ZulipEvent, ctx: LayoutZulipEventDispatchContext): 
 
 function handleUpdateMessage(event: ZulipEvent, ctx: LayoutZulipEventDispatchContext): void {
   if (event.type !== "update_message") return;
-  const { currentChat, activity } = ctx;
+  const { currentChat, chatList, activity } = ctx;
   activity.markStale();
   activity.markStarredSummaryStale();
   const messageId = event.message_id as number | undefined;
@@ -281,6 +291,34 @@ function handleUpdateMessage(event: ZulipEvent, ctx: LayoutZulipEventDispatchCon
       trimmed.length > 0 ? newMarkdown : undefined,
     );
   }
+
+  const streamId = parsePositiveInteger(event.stream_id);
+  const oldTopicRaw = typeof event.orig_subject === "string" ? event.orig_subject : null;
+  const nextTopicRaw = typeof event.subject === "string" ? event.subject : null;
+  if (streamId == null || oldTopicRaw == null || nextTopicRaw == null) {
+    return;
+  }
+  const oldTopic = normalizeTopicForIdentity(oldTopicRaw);
+  const nextTopic = normalizeTopicForIdentity(nextTopicRaw);
+  if (oldTopic === nextTopic) {
+    return;
+  }
+  const anchorMessageId = parsePositiveInteger(messageId) ?? undefined;
+  const messageIds = parsePositiveIntegerArray(event.message_ids) ?? undefined;
+  chatList.moveStreamTopic({
+    streamId,
+    oldTopic,
+    newTopic: nextTopic,
+    messageIds,
+    anchorMessageId,
+  });
+  currentChat.moveStreamTopicMessages({
+    streamId,
+    oldTopic,
+    newTopic: nextTopic,
+    messageIds,
+    anchorMessageId,
+  });
 }
 
 function handlePresence(event: ZulipEvent, ctx: LayoutZulipEventDispatchContext): void {

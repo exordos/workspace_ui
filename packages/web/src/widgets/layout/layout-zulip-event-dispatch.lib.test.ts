@@ -10,10 +10,14 @@ import type {
 function buildCtx(
   overrides: {
     updateMessageContentMock?: ReturnType<typeof vi.fn>;
+    moveStreamTopicMock?: ReturnType<typeof vi.fn>;
+    moveStreamTopicMessagesMock?: ReturnType<typeof vi.fn>;
   } = {},
 ) {
   const noop = vi.fn();
   const updateMessageContentMock = overrides.updateMessageContentMock ?? vi.fn();
+  const moveStreamTopicMock = overrides.moveStreamTopicMock ?? vi.fn();
+  const moveStreamTopicMessagesMock = overrides.moveStreamTopicMessagesMock ?? vi.fn();
   const ctx: LayoutZulipEventDispatchContext = {
     chatList: {
       currentUserId: 1,
@@ -21,6 +25,8 @@ function buildCtx(
       addMessage: noop,
       upsertStreamMetadataRows: noop,
       renameStream: noop,
+      moveStreamTopic:
+        moveStreamTopicMock as LayoutZulipEventDispatchContext["chatList"]["moveStreamTopic"],
       removeStream: noop,
       decrementUnreadForMessages: noop,
       incrementUnreadForMessages: noop,
@@ -34,6 +40,8 @@ function buildCtx(
       removeMessages: noop,
       updateMessageContent:
         updateMessageContentMock as LayoutCurrentChatActions["updateMessageContent"],
+      moveStreamTopicMessages:
+        moveStreamTopicMessagesMock as LayoutCurrentChatActions["moveStreamTopicMessages"],
     },
     users: {
       mergeFromMessage: noop,
@@ -62,7 +70,7 @@ function buildCtx(
     jitsiCall: { ingestIncomingInvite: noop },
     updateLatestMessageId: noop,
   };
-  return { ctx, updateMessageContentMock };
+  return { ctx, updateMessageContentMock, moveStreamTopicMock, moveStreamTopicMessagesMock };
 }
 
 describe("dispatchZulipEvent", () => {
@@ -94,7 +102,7 @@ describe("dispatchZulipEvent", () => {
     });
 
     it("does not overwrite content when rendering_only", () => {
-      const { ctx, updateMessageContentMock } = buildCtx();
+      const { ctx, updateMessageContentMock, moveStreamTopicMock } = buildCtx();
       dispatchZulipEvent(
         {
           id: 2,
@@ -107,6 +115,53 @@ describe("dispatchZulipEvent", () => {
         ctx,
       );
       expect(updateMessageContentMock).not.toHaveBeenCalled();
+      expect(moveStreamTopicMock).not.toHaveBeenCalled();
+    });
+
+    it("moves stream topic in chat list when topic is renamed", () => {
+      const { ctx, moveStreamTopicMock, moveStreamTopicMessagesMock } = buildCtx();
+      dispatchZulipEvent(
+        {
+          id: 3,
+          type: "update_message",
+          message_id: 99,
+          stream_id: 42,
+          orig_subject: "incident",
+          subject: "\u2714 incident",
+          message_ids: [1, 2, 3],
+        } as ZulipEvent,
+        ctx,
+      );
+      expect(moveStreamTopicMock).toHaveBeenCalledWith({
+        streamId: 42,
+        oldTopic: "incident",
+        newTopic: "\u2714 incident",
+        messageIds: [1, 2, 3],
+        anchorMessageId: 99,
+      });
+      expect(moveStreamTopicMessagesMock).toHaveBeenCalledWith({
+        streamId: 42,
+        oldTopic: "incident",
+        newTopic: "\u2714 incident",
+        messageIds: [1, 2, 3],
+        anchorMessageId: 99,
+      });
+    });
+
+    it("does not move topic when update_message lacks topic rename payload", () => {
+      const { ctx, moveStreamTopicMock, moveStreamTopicMessagesMock } = buildCtx();
+      dispatchZulipEvent(
+        {
+          id: 4,
+          type: "update_message",
+          message_id: 7,
+          stream_id: 42,
+          subject: "incident",
+        } as ZulipEvent,
+        ctx,
+      );
+      expect(moveStreamTopicMock).not.toHaveBeenCalled();
+      expect(moveStreamTopicMessagesMock).not.toHaveBeenCalled();
     });
   });
 

@@ -543,6 +543,68 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     }
   },
 
+  moveStreamTopicMessages({ streamId, oldTopic, newTopic, messageIds, anchorMessageId }) {
+    if (!Number.isInteger(streamId) || streamId <= 0) return;
+    const oldTopicKey = normalizeTopicForIdentity(oldTopic);
+    const newTopicKey = normalizeTopicForIdentity(newTopic);
+    if (oldTopicKey === newTopicKey) return;
+
+    const targetedIds = new Set<number>();
+    if (Array.isArray(messageIds)) {
+      for (const messageId of messageIds) {
+        if (Number.isInteger(messageId) && messageId > 0) targetedIds.add(messageId);
+      }
+    }
+    if (
+      typeof anchorMessageId === "number" &&
+      Number.isInteger(anchorMessageId) &&
+      anchorMessageId > 0
+    ) {
+      targetedIds.add(anchorMessageId);
+    }
+
+    set((state) => {
+      const replaceByTopic = (
+        restrictToIds: boolean,
+      ): { messages: MockMessage[]; changed: boolean } => {
+        let changed = false;
+        const next = state.messages.map((message) => {
+          if (message.stream_id !== streamId) return message;
+          const topic = normalizeTopicForIdentity(message.subject ?? "");
+          if (topic !== oldTopicKey) return message;
+          if (restrictToIds && !targetedIds.has(message.id)) return message;
+          changed = true;
+          return message.subject === newTopicKey ? message : { ...message, subject: newTopicKey };
+        });
+        return { messages: next, changed };
+      };
+
+      const hasIdFilter = targetedIds.size > 0;
+      const partial = replaceByTopic(hasIdFilter);
+      const replaced = hasIdFilter && !partial.changed ? replaceByTopic(false) : partial;
+
+      let nextContext = state.context;
+      let contextChanged = false;
+      if (
+        state.context?.type === "stream" &&
+        state.context.streamId === streamId &&
+        state.context.streamWideView !== true
+      ) {
+        const activeTopic = normalizeTopicForIdentity(state.context.topic);
+        if (activeTopic === oldTopicKey) {
+          nextContext = { ...state.context, topic: newTopicKey };
+          contextChanged = true;
+        }
+      }
+
+      if (!replaced.changed && !contextChanged) return state;
+      return {
+        ...(replaced.changed ? { messages: replaced.messages } : {}),
+        ...(contextChanged ? { context: nextContext } : {}),
+      };
+    });
+  },
+
   setIsLoadingMore(loading) {
     set({ isLoadingMore: loading });
   },

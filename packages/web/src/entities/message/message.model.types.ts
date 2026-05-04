@@ -39,6 +39,13 @@ export interface CurrentChatMessagesState {
   updateMessageReaction: (messageId: number, reaction: Reaction, op: "add" | "remove") => void;
   updateMessageFlags: (messageIds: number[], flag: string, op: "add" | "remove") => void;
   updateMessageContent: (messageId: number, content: string, markdownSource?: string) => void;
+  moveStreamTopicMessages: (params: {
+    streamId: number;
+    oldTopic: string;
+    newTopic: string;
+    messageIds?: number[];
+    anchorMessageId?: number;
+  }) => void;
   setIsLoadingMore: (loading: boolean) => void;
   setHasOlderMessages: (has: boolean) => void;
   setHasNewerMessages: (has: boolean) => void;

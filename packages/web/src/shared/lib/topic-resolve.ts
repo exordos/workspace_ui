@@ -9,6 +9,7 @@
  */
 
 export const TOPIC_RESOLVED_MARKER = "\u2714";
+const VARIATION_SELECTORS = /[\uFE0E\uFE0F]+/u;
 
 function normalizeTopicName(topic: string): string {
   return topic.trim();
@@ -21,7 +22,8 @@ export function isTopicResolved(topic: string): boolean {
 export function toUnresolvedTopicName(topic: string): string {
   let normalized = normalizeTopicName(topic);
   while (normalized.startsWith(TOPIC_RESOLVED_MARKER)) {
-    normalized = normalized.slice(TOPIC_RESOLVED_MARKER.length).trimStart();
+    normalized = normalized.slice(TOPIC_RESOLVED_MARKER.length);
+    normalized = normalized.replace(VARIATION_SELECTORS, "").trimStart();
   }
   return normalized;
 }

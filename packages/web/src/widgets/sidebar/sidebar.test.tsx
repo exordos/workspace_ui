@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import type * as MuteChatApiModule from "~/features/mute-chat/mute-chat.api";
@@ -1667,6 +1668,11 @@ describe("Sidebar", () => {
 
   it("marks resolved topic as not done from topic row action", async () => {
     setTopicResolvedStateMock.mockResolvedValue(true);
+    const moveStreamTopicSpy = vi.spyOn(useChatListStore.getState(), "moveStreamTopic");
+    const moveCurrentTopicSpy = vi.spyOn(
+      useCurrentChatMessagesStore.getState(),
+      "moveStreamTopicMessages",
+    );
     const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
       ...STREAM_CHAT,
       topics: [{ subject: "\u2714 incident", badge: 0, lastMessage: "Topic update" }],
@@ -1689,5 +1695,17 @@ describe("Sidebar", () => {
     await waitFor(() => {
       expect(setTopicResolvedStateMock).toHaveBeenCalledWith(11, "\u2714 incident", false);
     });
+    expect(moveStreamTopicSpy).toHaveBeenCalledWith({
+      streamId: 11,
+      oldTopic: "\u2714 incident",
+      newTopic: "incident",
+    });
+    expect(moveCurrentTopicSpy).toHaveBeenCalledWith({
+      streamId: 11,
+      oldTopic: "\u2714 incident",
+      newTopic: "incident",
+    });
+    moveStreamTopicSpy.mockRestore();
+    moveCurrentTopicSpy.mockRestore();
   });
 });

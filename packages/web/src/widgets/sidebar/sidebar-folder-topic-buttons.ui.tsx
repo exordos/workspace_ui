@@ -1,5 +1,7 @@
 import React, { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import {
   muteTopic,
   unmuteTopic,
@@ -7,7 +9,10 @@ import {
 } from "~/features/mute-chat/mute-chat.api";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { t } from "~/i18n/i18n";
+import { getCurrentInstance } from "~/shared/api/client";
 import { setTopicResolvedState } from "~/shared/api/zulip";
+import { deleteChatListSnapshotRow } from "~/shared/lib/chat-list-snapshot-db";
+import { moveTopicMessagesInCache } from "~/shared/lib/message-cache-db";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
 import {
@@ -152,6 +157,26 @@ export const TopicResolvedButton = React.memo<{
       void setTopicResolvedState(streamId, topic, shouldResolve)
         .then((ok) => {
           if (!ok) return;
+          useChatListStore.getState().moveStreamTopic({
+            streamId,
+            oldTopic: topic,
+            newTopic: nextTopicName,
+          });
+          useCurrentChatMessagesStore.getState().moveStreamTopicMessages({
+            streamId,
+            oldTopic: topic,
+            newTopic: nextTopicName,
+          });
+          const instanceId = getCurrentInstance()?.id;
+          if (instanceId != null && instanceId.length > 0) {
+            void moveTopicMessagesInCache({
+              instanceId,
+              streamId,
+              oldTopic: topic,
+              newTopic: nextTopicName,
+            }).catch(() => {});
+            void deleteChatListSnapshotRow(instanceId).catch(() => {});
+          }
           if (!isActiveTopic) return;
           if (nextTopicName === topic) return;
           void navigate(

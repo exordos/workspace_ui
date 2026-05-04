@@ -642,6 +642,102 @@ describe("currentChatMessagesStore", () => {
       expect(useCurrentChatMessagesStore.getState().messages[0]!.markdown_source).toBe("keep");
     });
   });
+
+  describe("moveStreamTopicMessages", () => {
+    it("moves message subjects from old topic to new topic", () => {
+      useCurrentChatMessagesStore
+        .getState()
+        .setMessages([
+          mockMsg({ id: 1, stream_id: 5, subject: "incident" }),
+          mockMsg({ id: 2, stream_id: 5, subject: "incident" }),
+          mockMsg({ id: 3, stream_id: 5, subject: "other" }),
+        ]);
+
+      useCurrentChatMessagesStore.getState().moveStreamTopicMessages({
+        streamId: 5,
+        oldTopic: "incident",
+        newTopic: "\u2714 incident",
+        messageIds: [1, 2],
+      });
+
+      const messages = useCurrentChatMessagesStore.getState().messages;
+      expect(messages[0]!.subject).toBe("\u2714 incident");
+      expect(messages[1]!.subject).toBe("\u2714 incident");
+      expect(messages[2]!.subject).toBe("other");
+    });
+
+    it("atomically switches active narrow stream topic context", () => {
+      useCurrentChatMessagesStore.getState().setContext({
+        type: "stream",
+        streamId: 5,
+        streamName: "engineering",
+        topic: "incident",
+      });
+      useCurrentChatMessagesStore
+        .getState()
+        .setMessages([mockMsg({ id: 1, stream_id: 5, subject: "incident" })]);
+
+      useCurrentChatMessagesStore.getState().moveStreamTopicMessages({
+        streamId: 5,
+        oldTopic: "incident",
+        newTopic: "\u2714 incident",
+      });
+
+      const state = useCurrentChatMessagesStore.getState();
+      expect(state.context?.type).toBe("stream");
+      if (state.context?.type !== "stream") return;
+      expect(state.context.topic).toBe("\u2714 incident");
+      expect(state.messages[0]!.subject).toBe("\u2714 incident");
+    });
+
+    it("does not switch context for stream-wide mode", () => {
+      useCurrentChatMessagesStore.getState().setContext({
+        type: "stream",
+        streamId: 5,
+        streamName: "engineering",
+        topic: "incident",
+        streamWideView: true,
+      });
+      useCurrentChatMessagesStore
+        .getState()
+        .setMessages([mockMsg({ id: 1, stream_id: 5, subject: "incident" })]);
+
+      useCurrentChatMessagesStore.getState().moveStreamTopicMessages({
+        streamId: 5,
+        oldTopic: "incident",
+        newTopic: "\u2714 incident",
+      });
+
+      const state = useCurrentChatMessagesStore.getState();
+      expect(state.context?.type).toBe("stream");
+      if (state.context?.type !== "stream") return;
+      expect(state.context.streamWideView).toBe(true);
+      expect(state.context.topic).toBe("incident");
+      expect(state.messages[0]!.subject).toBe("\u2714 incident");
+    });
+
+    it("falls back to stream/topic match when messageIds are not present in loaded slice", () => {
+      useCurrentChatMessagesStore
+        .getState()
+        .setMessages([
+          mockMsg({ id: 101, stream_id: 5, subject: "incident" }),
+          mockMsg({ id: 102, stream_id: 5, subject: "incident" }),
+        ]);
+
+      useCurrentChatMessagesStore.getState().moveStreamTopicMessages({
+        streamId: 5,
+        oldTopic: "incident",
+        newTopic: "\u2714 incident",
+        messageIds: [999999],
+      });
+
+      const messages = useCurrentChatMessagesStore.getState().messages;
+      expect(messages.map((message) => message.subject)).toEqual([
+        "\u2714 incident",
+        "\u2714 incident",
+      ]);
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

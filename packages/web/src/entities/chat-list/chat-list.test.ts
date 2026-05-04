@@ -909,5 +909,148 @@ describe("chatListStore", () => {
       expect(state.messageIdToLocation.get(2)).toBeUndefined();
       expect(state.messageIdToLocation.get(50)?.type).toBe("dm");
     });
+
+    it("moves stream topic and removes old topic key", () => {
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: 1,
+            stream_id: 10,
+            display_recipient: "engineering",
+            subject: "incident",
+            timestamp: 1000,
+            sender_full_name: "Alice",
+          }),
+          streamMsg({
+            id: 2,
+            stream_id: 10,
+            display_recipient: "engineering",
+            subject: "release",
+            timestamp: 2000,
+            sender_full_name: "Bob",
+          }),
+        ],
+        10,
+      );
+
+      useChatListStore.getState().moveStreamTopic({
+        streamId: 10,
+        oldTopic: "incident",
+        newTopic: "\u2714 incident",
+        messageIds: [1],
+        anchorMessageId: 1,
+      });
+
+      const stream = useChatListStore.getState().streamsMap.get(10);
+      expect(stream?.topics.has("incident")).toBe(false);
+      expect(stream?.topics.has("\u2714 incident")).toBe(true);
+    });
+
+    it("merges topic metadata when move target already exists", () => {
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: 1,
+            stream_id: 10,
+            display_recipient: "engineering",
+            subject: "incident",
+            timestamp: 1000,
+            sender_full_name: "Alice",
+            flags: [],
+            sender_id: OTHER_SENDER_ID,
+          }),
+          streamMsg({
+            id: 2,
+            stream_id: 10,
+            display_recipient: "engineering",
+            subject: "\u2714 incident",
+            timestamp: 2000,
+            sender_full_name: "Bob",
+            flags: ["read"],
+            sender_id: OTHER_SENDER_ID,
+          }),
+        ],
+        10,
+      );
+
+      useChatListStore.getState().moveStreamTopic({
+        streamId: 10,
+        oldTopic: "incident",
+        newTopic: "\u2714 incident",
+      });
+
+      const stream = useChatListStore.getState().streamsMap.get(10);
+      const mergedTopic = stream?.topics.get("\u2714 incident");
+      expect(mergedTopic).toBeDefined();
+      expect(stream?.topics.size).toBe(1);
+      expect(mergedTopic?.unreadCount).toBe(1);
+      expect(mergedTopic?.lastMessageSenderName).toBe("Bob");
+      expect(stream?.lastMessageSenderName).toBe("Bob");
+    });
+
+    it("updates message location index to moved topic", () => {
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: 1,
+            stream_id: 10,
+            display_recipient: "engineering",
+            subject: "incident",
+          }),
+        ],
+        10,
+      );
+
+      useChatListStore.getState().moveStreamTopic({
+        streamId: 10,
+        oldTopic: "incident",
+        newTopic: "\u2714 incident",
+        messageIds: [1],
+      });
+
+      const location = useChatListStore.getState().messageIdToLocation.get(1);
+      expect(location?.type).toBe("stream");
+      if (location?.type !== "stream") return;
+      expect(location.topic).toBe("\u2714 incident");
+    });
+
+    it("keeps single topic after hydrate + topic move + delta merge", () => {
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: 1,
+            stream_id: 10,
+            display_recipient: "engineering",
+            subject: "incident",
+            timestamp: 1000,
+          }),
+        ],
+        10,
+      );
+      const snapshot = buildChatListSnapshotSerialized(useChatListStore.getState());
+      useChatListStore.getState().clear();
+      useChatListStore.getState().hydrateFromIndexedDbSnapshot(snapshot);
+
+      useChatListStore.getState().moveStreamTopic({
+        streamId: 10,
+        oldTopic: "incident",
+        newTopic: "\u2714 incident",
+        messageIds: [1],
+      });
+      useChatListStore.getState().addMessages([
+        streamMsg({
+          id: 2,
+          stream_id: 10,
+          display_recipient: "engineering",
+          subject: "\u2714 incident",
+          timestamp: 2000,
+        }),
+      ]);
+
+      const stream = useChatListStore.getState().streamsMap.get(10);
+      expect(stream?.topics.has("incident")).toBe(false);
+      expect(stream?.topics.has("\u2714 incident")).toBe(true);
+      expect(stream?.topics.size).toBe(1);
+    });
   });
 });
