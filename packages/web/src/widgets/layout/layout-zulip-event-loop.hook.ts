@@ -17,7 +17,6 @@ import { useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indicator.model";
-import { DEFAULT_REGISTER_FETCH_EVENT_TYPES } from "~/shared/api/zulip-queue";
 import {
   deleteQueue,
   fetchDirectMessagesPage,
@@ -26,6 +25,7 @@ import {
   getCurrentUser,
   type ZulipEvent,
 } from "~/shared/api/zulip";
+import { DEFAULT_REGISTER_FETCH_EVENT_TYPES } from "~/shared/api/zulip-queue";
 import type {
   ZulipRawMessage,
   ZulipRecentPrivateConversation,
@@ -166,15 +166,18 @@ function toLayoutMuteSnapshotFromRow(row: {
   mutedStreamIds: number[];
   mutedTopics: { streamId: number; topic: string }[];
   unmutedTopics: { streamId: number; topic: string }[];
+  followedTopics?: { streamId: number; topic: string }[];
 }): {
   mutedStreamIds: number[];
   mutedTopics: { streamId: number; topic: string }[];
   unmutedTopics: { streamId: number; topic: string }[];
+  followedTopics: { streamId: number; topic: string }[];
 } {
   return {
     mutedStreamIds: row.mutedStreamIds,
     mutedTopics: row.mutedTopics,
     unmutedTopics: row.unmutedTopics,
+    followedTopics: row.followedTopics ?? [],
   };
 }
 
@@ -188,6 +191,7 @@ export function useLayoutZulipEventLoop(options: {
     mutedStreamIds: number[];
     mutedTopics: { streamId: number; topic: string }[];
     unmutedTopics: { streamId: number; topic: string }[];
+    followedTopics: { streamId: number; topic: string }[];
   }>;
   setFromMessages: (messages: ZulipRawMessage[], currentUserId: number | null) => void;
   setCurrentUserId: (id: number) => void;
@@ -568,6 +572,7 @@ export function useLayoutZulipEventLoop(options: {
                       mutedStreamIds: snapshot.mutedStreamIds,
                       mutedTopics: snapshot.mutedTopics,
                       unmutedTopics: snapshot.unmutedTopics,
+                      followedTopics: snapshot.followedTopics,
                     });
                   }
                 }

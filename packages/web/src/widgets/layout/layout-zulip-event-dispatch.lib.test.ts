@@ -47,6 +47,7 @@ function buildCtx(
       unmuteStream: noop,
       muteTopic: noop,
       unmuteTopic: noop,
+      followTopic: noop,
       clearTopicVisibilityOverride: noop,
     },
     activity: { markStale: noop, markStarredSummaryStale: noop },
@@ -128,9 +129,9 @@ describe("dispatchZulipEvent", () => {
       expect(clearSpy).toHaveBeenCalledWith(42, "incidents");
     });
 
-    it("maps policy=3 (followed) to topic unmuted state for mute logic", () => {
+    it("maps policy=3 (followed) to separate followed topic state", () => {
       const { ctx } = buildCtx();
-      const unmuteSpy = vi.spyOn(ctx.mute, "unmuteTopic");
+      const followSpy = vi.spyOn(ctx.mute, "followTopic");
 
       dispatchZulipEvent(
         {
@@ -143,7 +144,25 @@ describe("dispatchZulipEvent", () => {
         ctx,
       );
 
-      expect(unmuteSpy).toHaveBeenCalledWith(42, "incidents");
+      expect(followSpy).toHaveBeenCalledWith(42, "incidents");
+    });
+
+    it("normalizes user_topic names before updating mute store", () => {
+      const { ctx } = buildCtx();
+      const followSpy = vi.spyOn(ctx.mute, "followTopic");
+
+      dispatchZulipEvent(
+        {
+          id: 5,
+          type: "user_topic",
+          stream_id: 42,
+          topic_name: "  incidents  ",
+          visibility_policy: 3,
+        } as ZulipEvent,
+        ctx,
+      );
+
+      expect(followSpy).toHaveBeenCalledWith(42, "incidents");
     });
   });
 

@@ -41,6 +41,7 @@ import type {
 import type { SidebarChat } from "./sidebar.types";
 
 const EMPTY_PINNED_IDS: string[] = [];
+type TopicVisibilityOverrideState = "muted" | "unmuted" | "followed" | "none";
 
 function SortablePinnedItem({ id, children }: { id: string; children: React.ReactNode }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
@@ -76,6 +77,9 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
     id: number;
     retry: (() => void) | null;
   } | null>(null);
+  const handleMuteError = useCallback((retry: () => void) => {
+    setMuteErrorState({ id: Date.now(), retry });
+  }, []);
   const isCompactDensity = useSettingsStore((s) => s.chatListDensity === "compact");
   const isStreamMuted = useMuteStore((s) => s.isStreamMuted);
   // Защита для совместимости: если управление раскрытиями не передано, рендерим без topic-expand логики.
@@ -176,6 +180,60 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
     [expandedStreamSlugs, onToggleStream],
   );
 
+  const getTopicVisibilityOverrideState = useCallback(
+    (streamId: number, topicName: string): TopicVisibilityOverrideState => {
+      const muteStore = useMuteStore.getState();
+      if (muteStore.isTopicMuted(streamId, topicName)) return "muted";
+      if (muteStore.isTopicUnmuted(streamId, topicName)) return "unmuted";
+      if (muteStore.isTopicFollowed(streamId, topicName)) return "followed";
+      return "none";
+    },
+    [],
+  );
+
+  const restoreTopicVisibilityOverride = useCallback(
+    (streamId: number, topicName: string, previousState: TopicVisibilityOverrideState) => {
+      const muteStore = useMuteStore.getState();
+      if (previousState === "muted") {
+        muteStore.muteTopic(streamId, topicName);
+        return;
+      }
+      if (previousState === "unmuted") {
+        muteStore.unmuteTopic(streamId, topicName);
+        return;
+      }
+      if (previousState === "followed") {
+        muteStore.followTopic(streamId, topicName);
+        return;
+      }
+      muteStore.clearTopicVisibilityOverride(streamId, topicName);
+    },
+    [],
+  );
+
+  const runMuteTopicOnCreate = useCallback(
+    async (streamId: number, topicName: string) => {
+      async function attemptMuteTopicOnCreate(): Promise<void> {
+        const previousState = getTopicVisibilityOverrideState(streamId, topicName);
+        useMuteStore.getState().muteTopic(streamId, topicName);
+        try {
+          const ok = await muteTopic(streamId, topicName);
+          if (ok) return;
+        } catch {
+          // handled by shared rollback path below
+        }
+
+        restoreTopicVisibilityOverride(streamId, topicName, previousState);
+        handleMuteError(() => {
+          void attemptMuteTopicOnCreate();
+        });
+      }
+
+      await attemptMuteTopicOnCreate();
+    },
+    [getTopicVisibilityOverrideState, handleMuteError, restoreTopicVisibilityOverride],
+  );
+
   const handleCreateTopicFromDialog = useCallback(() => {
     const topicName = newTopicName.trim();
     if (topicDialogState == null || onNewTopic == null || topicName.length === 0) {
@@ -185,12 +243,18 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
     onNewTopic(topicDialogState.streamSlug, topicName);
 
     if (muteTopicOnCreate) {
-      useMuteStore.getState().muteTopic(topicDialogState.streamId, topicName);
-      void muteTopic(topicDialogState.streamId, topicName);
+      void runMuteTopicOnCreate(topicDialogState.streamId, topicName);
     }
 
     closeTopicDialog();
-  }, [closeTopicDialog, muteTopicOnCreate, newTopicName, onNewTopic, topicDialogState]);
+  }, [
+    closeTopicDialog,
+    muteTopicOnCreate,
+    newTopicName,
+    onNewTopic,
+    runMuteTopicOnCreate,
+    topicDialogState,
+  ]);
 
   useEffect(() => {
     if (muteErrorState == null) return;
@@ -201,10 +265,6 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
       window.clearTimeout(timerId);
     };
   }, [muteErrorState]);
-
-  const handleMuteError = useCallback((retry: () => void) => {
-    setMuteErrorState({ id: Date.now(), retry });
-  }, []);
 
   const emptyStatePresentation = useMemo(() => {
     if (reorderPinnedOnly) {

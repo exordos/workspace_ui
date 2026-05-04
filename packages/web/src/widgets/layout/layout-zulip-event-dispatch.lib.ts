@@ -496,12 +496,15 @@ function handleUserTopic(event: ZulipEvent, ctx: LayoutZulipEventDispatchContext
   const topicName = event.topic_name as string | undefined;
   const visibilityPolicy = event.visibility_policy as number | undefined;
   if (streamId == null || topicName == null || visibilityPolicy == null) return;
+  const normalizedTopic = normalizeTopicForIdentity(topicName);
   if (visibilityPolicy === 1) {
-    mute.muteTopic(streamId, topicName);
-  } else if (visibilityPolicy === 2 || visibilityPolicy === 3) {
-    mute.unmuteTopic(streamId, topicName);
+    mute.muteTopic(streamId, normalizedTopic);
+  } else if (visibilityPolicy === 2) {
+    mute.unmuteTopic(streamId, normalizedTopic);
+  } else if (visibilityPolicy === 3) {
+    mute.followTopic(streamId, normalizedTopic);
   } else {
-    mute.clearTopicVisibilityOverride(streamId, topicName);
+    mute.clearTopicVisibilityOverride(streamId, normalizedTopic);
   }
 }
 

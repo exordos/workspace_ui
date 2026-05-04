@@ -28,11 +28,12 @@ export const TopicMuteButton = React.memo<TopicMuteButtonProps>(
     const isStreamMuted = useMuteStore((s) => s.isStreamMuted(streamId));
     const isTopicMuted = useMuteStore((s) => s.isTopicMuted(streamId, topic));
     const isTopicUnmuted = useMuteStore((s) => s.isTopicUnmuted(streamId, topic));
+    const isTopicFollowed = useMuteStore((s) => s.isTopicFollowed(streamId, topic));
     const isEffectivelyMuted = useMuteStore((s) => s.isEffectivelyMuted(streamId, topic));
     const [pending, setPending] = useState(false);
 
     const restoreTopicOverride = useCallback(
-      (wasTopicMuted: boolean, wasTopicUnmuted: boolean) => {
+      (wasTopicMuted: boolean, wasTopicUnmuted: boolean, wasTopicFollowed: boolean) => {
         const muteStore = useMuteStore.getState();
         if (wasTopicMuted) {
           muteStore.muteTopic(streamId, topic);
@@ -40,6 +41,10 @@ export const TopicMuteButton = React.memo<TopicMuteButtonProps>(
         }
         if (wasTopicUnmuted) {
           muteStore.unmuteTopic(streamId, topic);
+          return;
+        }
+        if (wasTopicFollowed) {
+          muteStore.followTopic(streamId, topic);
           return;
         }
         muteStore.clearTopicVisibilityOverride(streamId, topic);
@@ -52,6 +57,7 @@ export const TopicMuteButton = React.memo<TopicMuteButtonProps>(
 
       const wasTopicMuted = isTopicMuted;
       const wasTopicUnmuted = isTopicUnmuted;
+      const wasTopicFollowed = isTopicFollowed;
       const muteStore = useMuteStore.getState();
 
       let request: Promise<boolean>;
@@ -72,7 +78,7 @@ export const TopicMuteButton = React.memo<TopicMuteButtonProps>(
       try {
         const ok = await request;
         if (ok) return;
-        restoreTopicOverride(wasTopicMuted, wasTopicUnmuted);
+        restoreTopicOverride(wasTopicMuted, wasTopicUnmuted, wasTopicFollowed);
         onMuteError?.(() => {
           void runToggle();
         });
@@ -83,6 +89,7 @@ export const TopicMuteButton = React.memo<TopicMuteButtonProps>(
       isEffectivelyMuted,
       isStreamMuted,
       isTopicMuted,
+      isTopicFollowed,
       isTopicUnmuted,
       onMuteError,
       pending,
@@ -113,7 +120,7 @@ export const TopicMuteButton = React.memo<TopicMuteButtonProps>(
         aria-label={isEffectivelyMuted ? t("channel.unmuteTopic") : t("channel.muteTopic")}
         title={isEffectivelyMuted ? t("channel.unmuteTopic") : t("channel.muteTopic")}
       >
-        <Icon name="bell" size={14} className={isEffectivelyMuted ? "opacity-90" : ""} />
+        <Icon name={isEffectivelyMuted ? "bell_off" : "bell"} size={14} />
       </button>
     );
   },

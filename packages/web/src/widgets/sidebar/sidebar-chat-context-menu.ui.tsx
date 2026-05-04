@@ -329,7 +329,7 @@ export const StreamContextMenu = React.memo(function StreamContextMenu({
           align="start"
         >
           <DropdownMenu.Item className={MENU_ITEM_CLASS} onSelect={handleToggleMute}>
-            <Icon name="bell" size={14} className={isMuted ? "opacity-40" : ""} />
+            <Icon name={isMuted ? "bell_off" : "bell"} size={14} />
             {isMuted ? t("channel.unmuteChannel") : t("channel.muteChannel")}
           </DropdownMenu.Item>
           <DropdownMenu.Item className={MENU_ITEM_CLASS} onSelect={handleMarkAsRead}>

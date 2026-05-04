@@ -71,6 +71,7 @@ export interface LayoutMuteActions {
   unmuteStream: (streamId: number) => void;
   muteTopic: (streamId: number, topic: string) => void;
   unmuteTopic: (streamId: number, topic: string) => void;
+  followTopic: (streamId: number, topic: string) => void;
   clearTopicVisibilityOverride: (streamId: number, topic: string) => void;
 }
 

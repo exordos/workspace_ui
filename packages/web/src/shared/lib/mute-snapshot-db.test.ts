@@ -44,6 +44,7 @@ describe("mute-snapshot-db", () => {
       mutedStreamIds: [10, 20],
       mutedTopics: [{ streamId: 10, topic: "news" }],
       unmutedTopics: [{ streamId: 20, topic: "important" }],
+      followedTopics: [{ streamId: 20, topic: "incidents" }],
     });
 
     const row = await loadMuteSnapshotRow(INSTANCE);
@@ -55,6 +56,7 @@ describe("mute-snapshot-db", () => {
       mutedStreamIds: [10, 20],
       mutedTopics: [{ streamId: 10, topic: "news" }],
       unmutedTopics: [{ streamId: 20, topic: "important" }],
+      followedTopics: [{ streamId: 20, topic: "incidents" }],
     });
   });
 
@@ -68,9 +70,31 @@ describe("mute-snapshot-db", () => {
       mutedStreamIds: [1],
       mutedTopics: [],
       unmutedTopics: [],
+      followedTopics: [],
     });
 
     await deleteMuteSnapshotRow(INSTANCE);
     expect(await loadMuteSnapshotRow(INSTANCE)).toBeNull();
+  });
+
+  it("treats legacy rows without followedTopics as empty followed list", async () => {
+    await openMessageCacheDb();
+    const db = await openMessageCacheDb();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction("muteSnapshot", "readwrite");
+      tx.onerror = () => reject(tx.error ?? new Error("transaction failed"));
+      tx.oncomplete = () => resolve();
+      tx.objectStore("muteSnapshot").put({
+        instanceId: INSTANCE,
+        version: 1,
+        savedAt: 2,
+        mutedStreamIds: [],
+        mutedTopics: [],
+        unmutedTopics: [],
+      });
+    });
+
+    const row = await loadMuteSnapshotRow(INSTANCE);
+    expect(row?.followedTopics).toEqual([]);
   });
 });

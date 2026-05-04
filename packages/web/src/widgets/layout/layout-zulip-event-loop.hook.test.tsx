@@ -62,12 +62,14 @@ function createHarnessProps() {
         mutedStreamIds: number[];
         mutedTopics: { streamId: number; topic: string }[];
         unmutedTopics: { streamId: number; topic: string }[];
+        followedTopics: { streamId: number; topic: string }[];
       }>
     >(() =>
       Promise.resolve({
         mutedStreamIds: [],
         mutedTopics: [],
         unmutedTopics: [],
+        followedTopics: [],
       }),
     ),
     setFromMessages: vi.fn(),

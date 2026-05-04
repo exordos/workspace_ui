@@ -956,6 +956,32 @@ describe("Sidebar", () => {
     expect(createButton).toBeEnabled();
   });
 
+  it("rolls back optimistic mute when creating topic with mute enabled fails", async () => {
+    muteTopicMock.mockResolvedValue(false);
+
+    renderWithProviders(
+      <Sidebar streams={[]} selectedFolderId="all" sidebarChats={[STREAM_CHAT]} sidebarDms={[]} />,
+    );
+
+    fireEvent.contextMenu(screen.getByText("#Engineering"));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /new topic/i }));
+
+    const topicDialog = await screen.findByRole("dialog", { name: /create topic/i });
+    const topicNameInput = within(topicDialog).getByRole("textbox", { name: /topic name/i });
+    const muteTopicToggle = within(topicDialog).getByRole("checkbox", { name: /mute topic/i });
+    const createButton = within(topicDialog).getByRole("button", { name: /create/i });
+
+    fireEvent.change(topicNameInput, { target: { value: "release" } });
+    fireEvent.click(muteTopicToggle);
+    fireEvent.click(createButton);
+
+    await waitFor(() => {
+      expect(muteTopicMock).toHaveBeenCalledWith(11, "release");
+      expect(useMuteStore.getState().isTopicMuted(11, "release")).toBe(false);
+      expect(screen.getByText(t("app.error"))).toBeInTheDocument();
+    });
+  });
+
   it("opens stream context menu from keyboard on focused stream row", async () => {
     renderWithProviders(
       <Sidebar streams={[]} selectedFolderId="all" sidebarChats={[STREAM_CHAT]} sidebarDms={[]} />,

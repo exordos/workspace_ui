@@ -22,7 +22,7 @@ done
 STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(ts|tsx|js|json|yml|yaml|env)$' || true)
 if [ -n "$STAGED_FILES" ]; then
   for file in $STAGED_FILES; do
-    if git show ":$file" 2>/dev/null | grep -qiE '(api[_-]?key|password|secret|token)\s*[:=]\s*["\x27][^"\x27]{8,}'; then
+    if git show ":$file" 2>/dev/null | grep -qiE '\b(api[_-]?key|password|secret|token)\b\s*[:=]\s*["\x27][^"\x27]{8,}'; then
       echo "❌ BLOCKED: Possible secret detected in $file"
       echo "   Review the file and remove credentials before committing"
       exit 1
