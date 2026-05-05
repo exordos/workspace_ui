@@ -6,6 +6,7 @@
 import type { MockMessage, Reaction } from "~/shared/api/zulip.types";
 import { instanceChatKey } from "~/shared/lib/message-cache-keys.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import { resolveTopicMoveTargetMessageIds } from "~/shared/lib/update-message-topic-move.lib";
 import { ZULIP_CHAT_MESSAGE_CACHE_MAX_WINDOW } from "~/shared/lib/zulip-message-window.lib";
 
 function idbError(reason: unknown): Error {
@@ -700,19 +701,13 @@ export async function moveTopicMessagesInCache(options: {
   const normalizedTopicFromMessage = (message: MockMessage): string =>
     normalizeTopicForIdentity(message.subject ?? "");
 
-  const targetMessageIds = new Set<number>();
-  if (Array.isArray(messageIds)) {
-    for (const messageId of messageIds) {
-      if (Number.isInteger(messageId) && messageId > 0) targetMessageIds.add(messageId);
-    }
-  }
-  if (
-    typeof anchorMessageId === "number" &&
-    Number.isInteger(anchorMessageId) &&
-    anchorMessageId > 0
-  ) {
-    targetMessageIds.add(anchorMessageId);
-  }
+  const targetMessageIds = new Set(
+    resolveTopicMoveTargetMessageIds({
+      messageIds,
+      anchorMessageId,
+    }),
+  );
+  if (targetMessageIds.size === 0) return;
 
   const db = await openMessageCacheDb();
   const oldMetaBefore = await getChatMeta(instanceId, oldChatKey).catch(() => null);
@@ -720,29 +715,21 @@ export async function moveTopicMessagesInCache(options: {
   const rowsInOldPartition = await readAllMessagesInChat(db, oldInstanceChatKey);
 
   const byIdCandidates = new Map<number, MessageCacheRow>();
-  for (const row of rowsInOldPartition) {
-    byIdCandidates.set(row.messageId, row);
-  }
-  if (targetMessageIds.size > 0) {
-    for (const messageId of targetMessageIds) {
-      const row = await getMessageRow(db, instanceId, messageId);
-      if (!row) continue;
-      if (row.message.stream_id !== streamId) continue;
-      if (normalizedTopicFromMessage(row.message) !== oldTopicKey) continue;
-      byIdCandidates.set(messageId, row);
-    }
+  for (const messageId of targetMessageIds) {
+    const row = await getMessageRow(db, instanceId, messageId);
+    if (!row) continue;
+    if (row.message.stream_id !== streamId) continue;
+    if (normalizedTopicFromMessage(row.message) !== oldTopicKey) continue;
+    byIdCandidates.set(messageId, row);
   }
 
   const effectiveRowsToMoveMap = new Map<number, MessageCacheRow>();
   for (const row of rowsInOldPartition) {
+    if (!targetMessageIds.has(row.messageId)) continue;
     effectiveRowsToMoveMap.set(row.messageId, row);
   }
-  if (targetMessageIds.size > 0) {
-    for (const row of byIdCandidates.values()) {
-      if (targetMessageIds.has(row.messageId)) {
-        effectiveRowsToMoveMap.set(row.messageId, row);
-      }
-    }
+  for (const row of byIdCandidates.values()) {
+    effectiveRowsToMoveMap.set(row.messageId, row);
   }
   const effectiveRowsToMove = Array.from(effectiveRowsToMoveMap.values());
   if (effectiveRowsToMove.length === 0) return;

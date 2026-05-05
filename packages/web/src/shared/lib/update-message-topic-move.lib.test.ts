@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { ZulipEvent } from "~/shared/api/zulip.types";
-import { extractTopicMoveFromUpdateEvent } from "./update-message-topic-move.lib";
+import {
+  extractTopicMoveFromUpdateEvent,
+  resolveTopicMoveTargetMessageIds,
+} from "./update-message-topic-move.lib";
 
 describe("update-message-topic-move.lib", () => {
   it("extracts normalized topic move payload for valid update_message", () => {
@@ -76,12 +79,15 @@ describe("update-message-topic-move.lib", () => {
       message_id: -7,
     };
 
-    expect(extractTopicMoveFromUpdateEvent(event)).toEqual({
-      streamId: 42,
-      oldTopic: "incident",
-      newTopic: "resolved incident",
-      messageIds: undefined,
-      anchorMessageId: undefined,
-    });
+    expect(extractTopicMoveFromUpdateEvent(event)).toBeNull();
+  });
+
+  it("deduplicates and merges message_ids with anchor", () => {
+    expect(
+      resolveTopicMoveTargetMessageIds({
+        messageIds: [10, 11, 10, -1, 0],
+        anchorMessageId: 11,
+      }),
+    ).toEqual([10, 11]);
   });
 });

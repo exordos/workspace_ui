@@ -539,8 +539,7 @@ function handleStreamPropertyUpdate(
     return;
   }
 
-  // Что делает: для permission-полей и invite_only собирает metadata-ряд и переиспользует общий апдейтер.
-  // Зачем: не дублировать логику обновления access-полей между subscription и stream событиями.
+  // Переиспользуем общий metadata-applier, чтобы не дублировать update-логику.
   const existing = chatList.streamsMap.get(streamId);
   const row = buildStreamMetadataRowFromExisting(streamId, existing);
   if (row == null) return;

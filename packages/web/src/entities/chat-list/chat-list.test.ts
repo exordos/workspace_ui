@@ -706,7 +706,7 @@ describe("chatListStore", () => {
         .streams()
         .find((item) => item.stream_id === 5);
       expect(stream).toBeDefined();
-      expect(stream?.topics.map((topic) => topic.subject)).toEqual(["only"]);
+      expect(stream?.topics?.map((topic) => topic.subject)).toEqual(["only"]);
       expect(useChatListStore.getState().streamsMap.get(5)?.topics.get("only")?.lastMessageId).toBe(
         undefined,
       );
@@ -1012,6 +1012,8 @@ describe("chatListStore", () => {
         streamId: 10,
         oldTopic: "incident",
         newTopic: "\u2714 incident",
+        messageIds: [1],
+        anchorMessageId: 1,
       });
 
       const stream = useChatListStore.getState().streamsMap.get(10);
@@ -1047,6 +1049,48 @@ describe("chatListStore", () => {
       expect(location?.type).toBe("stream");
       if (location?.type !== "stream") return;
       expect(location.topic).toBe("\u2714 incident");
+    });
+
+    it("keeps old topic row when only subset of known old-topic ids moved", () => {
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: 1,
+            stream_id: 10,
+            display_recipient: "engineering",
+            subject: "incident",
+            timestamp: 1000,
+          }),
+          streamMsg({
+            id: 2,
+            stream_id: 10,
+            display_recipient: "engineering",
+            subject: "incident",
+            timestamp: 1001,
+          }),
+        ],
+        10,
+      );
+
+      useChatListStore.getState().moveStreamTopic({
+        streamId: 10,
+        oldTopic: "incident",
+        newTopic: "\u2714 incident",
+        messageIds: [1],
+        anchorMessageId: 1,
+      });
+
+      const stream = useChatListStore.getState().streamsMap.get(10);
+      expect(stream?.topics.has("incident")).toBe(true);
+      expect(stream?.topics.has("\u2714 incident")).toBe(false);
+      const movedLocation = useChatListStore.getState().messageIdToLocation.get(1);
+      const untouchedLocation = useChatListStore.getState().messageIdToLocation.get(2);
+      expect(movedLocation?.type).toBe("stream");
+      if (movedLocation?.type !== "stream") return;
+      expect(movedLocation.topic).toBe("\u2714 incident");
+      expect(untouchedLocation?.type).toBe("stream");
+      if (untouchedLocation?.type !== "stream") return;
+      expect(untouchedLocation.topic).toBe("incident");
     });
 
     it("keeps single topic after hydrate + topic move + delta merge", () => {

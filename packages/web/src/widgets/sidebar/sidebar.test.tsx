@@ -964,7 +964,7 @@ describe("Sidebar", () => {
     expect(createButton).toBeEnabled();
   });
 
-  it("rolls back optimistic mute when creating topic with mute enabled fails", async () => {
+  it("rolls back optimistic mute when creating topic with mute enabled fails and retries", async () => {
     muteTopicMock.mockResolvedValue(false);
 
     renderWithProviders(
@@ -987,6 +987,12 @@ describe("Sidebar", () => {
       expect(muteTopicMock).toHaveBeenCalledWith(11, "release");
       expect(useMuteStore.getState().isTopicMuted(11, "release")).toBe(false);
       expect(screen.getByText(t("app.error"))).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+
+    await waitFor(() => {
+      expect(muteTopicMock).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -1560,7 +1566,7 @@ describe("Sidebar", () => {
     });
   });
 
-  it("rolls back topic mute and shows retry feedback when topic API fails", async () => {
+  it("rolls back topic mute and retries from inline error feedback when topic API fails", async () => {
     muteTopicMock.mockResolvedValue(false);
     const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
       ...STREAM_CHAT,
@@ -1584,6 +1590,11 @@ describe("Sidebar", () => {
       expect(muteTopicMock).toHaveBeenCalledWith(11, "incident");
       expect(useMuteStore.getState().isTopicMuted(11, "incident")).toBe(false);
       expect(screen.getByText(t("app.error"))).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+    await waitFor(() => {
+      expect(muteTopicMock).toHaveBeenCalledTimes(2);
     });
   });
 

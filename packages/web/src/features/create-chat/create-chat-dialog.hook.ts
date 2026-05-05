@@ -3,14 +3,9 @@ import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
-import type { ZulipGroupSettingValue } from "~/shared/api/zulip.types";
+import { buildAnnouncementOnlyCanSendGroup } from "~/shared/lib/user-group-policy";
 import { buildUserPickerOptions, type UserPickerOption } from "~/shared/lib/user-picker";
-import {
-  buildDmSlug,
-  getCreateChatTabs,
-  resolveNextTabFromKey,
-  type CreateChatTab,
-} from "./create-chat-dialog.lib";
+import { buildDmSlug, resolveNextTabFromKey, type CreateChatTab } from "./create-chat-dialog.lib";
 import { createChannel } from "./create-chat.api";
 
 export interface UseCreateChatDialogResult {
@@ -70,7 +65,6 @@ export function useCreateChatDialog(options: {
     channel: null,
   });
 
-  getCreateChatTabs();
   const tabIds: Record<CreateChatTab, string> = useMemo(
     () => ({
       dm: `${tabBaseId}-tab-dm`,
@@ -101,41 +95,17 @@ export function useCreateChatDialog(options: {
   const allUsers = useUsersStore((s) => s.users);
   const userGroups = useUserGroupsStore((s) => s.groups);
   const currentUserId = useChatListStore((s) => s.currentUserId ?? null);
-  // Что делает: до загрузки собственного профиля не даем создать канал,
-  // иначе нельзя гарантировать автоподписку автора.
+  // Инвариант: пока профиль автора не загружен, создание канала недоступно.
   const channelCreateBlocked = currentUserId == null || currentUserId <= 0;
   const channelCreateBlockedReasonKey = channelCreateBlocked
     ? "channel.creatorProfileLoading"
     : null;
-  // Что делает: собирает дефолтный group-setting для режима "Канал объявлений":
-  // публикация разрешена системным группам модераторов и администраторов.
-  // Это значение затем отправляется как `can_send_message_group`.
-  const announcementOnlyCanSendMessageGroup = useMemo<ZulipGroupSettingValue | null>(() => {
-    const targetGroupNames = new Set(["role:moderators", "role:administrators"]);
-    const subgroupIds = Array.from(userGroups.values())
-      .filter(
-        (group) => group.isSystemGroup && targetGroupNames.has(group.name.trim().toLowerCase()),
-      )
-      .map((group) => group.id)
-      .filter((id) => Number.isInteger(id) && id > 0)
-      .sort((left, right) => left - right);
-    // Что делает: всегда добавляет автора канала в тех, кто может писать.
-    // Это устраняет ситуацию, когда пользователь создал announcement-only канал,
-    // но сам не входит в системные группы модераторов/админов и не может отправить сообщение.
-    const directMembers =
-      currentUserId != null && Number.isInteger(currentUserId) && currentUserId > 0
-        ? [currentUserId]
-        : [];
-    if (subgroupIds.length === 0) {
-      return null;
-    }
-    return {
-      direct_members: directMembers,
-      direct_subgroups: subgroupIds,
-    };
-  }, [userGroups, currentUserId]);
-  // Что делает: если нужные системные группы не найдены, блокируем чекбокс.
-  // Это защищает от отправки некорректной политики прав на сервер.
+  // Дефолтная policy для announcement-only канала.
+  const announcementOnlyCanSendMessageGroup = useMemo(
+    () => buildAnnouncementOnlyCanSendGroup({ userGroups, currentUserId }),
+    [userGroups, currentUserId],
+  );
+  // Без валидной policy блокируем переключатель announcement-only.
   const channelAnnouncementOnlyBlocked = announcementOnlyCanSendMessageGroup == null;
   const channelAnnouncementOnlyBlockedReasonKey = channelAnnouncementOnlyBlocked
     ? "channel.announcementOnlyUnsupported"
@@ -271,8 +241,7 @@ export function useCreateChatDialog(options: {
           subscribers,
           inviteOnly: channelInviteOnly,
           announce: channelAnnounce,
-          // Что делает: включаем политику announcement-only только когда пользователь явно
-          // поставил галку и когда у нас получилось построить валидный group-setting.
+          // Передаем policy только при явном включении и валидном group-setting.
           ...(effectiveChannelAnnouncementOnly && announcementOnlyCanSendMessageGroup != null
             ? { canSendMessageGroup: announcementOnlyCanSendMessageGroup }
             : {}),
@@ -286,13 +255,12 @@ export function useCreateChatDialog(options: {
         setChannelAnnouncementOnly(false);
         onChannelCreated();
       } catch {
-        // Что делает: ошибка уже логируется в API-слое; здесь глушим исключение,
-        // чтобы не ронять UI-обработчик кнопки создания канала.
+        // Ошибка уже логируется в API-слое; здесь не даем упасть UI-обработчику.
       } finally {
         setCreating(false);
       }
     };
-    runCreateChannel().catch(() => {});
+    void runCreateChannel();
   }, [
     channelName,
     channelDesc,

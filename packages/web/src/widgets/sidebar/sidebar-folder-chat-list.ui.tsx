@@ -14,6 +14,7 @@ import {
 } from "~/features/folder-sync/folder-sync-constants.lib";
 import { muteTopic } from "~/features/mute-chat/mute-chat.api";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
+import { runOptimisticTopicVisibilityUpdate } from "~/features/mute-chat/mute-chat.optimistic.lib";
 import { usePinStore } from "~/features/pin-chat/pin-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
@@ -41,7 +42,6 @@ import type {
 import type { SidebarChat } from "./sidebar.types";
 
 const EMPTY_PINNED_IDS: string[] = [];
-type TopicVisibilityOverrideState = "muted" | "unmuted" | "followed" | "none";
 
 function SortablePinnedItem({ id, children }: { id: string; children: React.ReactNode }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
@@ -180,50 +180,18 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
     [expandedStreamSlugs, onToggleStream],
   );
 
-  const getTopicVisibilityOverrideState = useCallback(
-    (streamId: number, topicName: string): TopicVisibilityOverrideState => {
-      const muteStore = useMuteStore.getState();
-      if (muteStore.isTopicMuted(streamId, topicName)) return "muted";
-      if (muteStore.isTopicUnmuted(streamId, topicName)) return "unmuted";
-      if (muteStore.isTopicFollowed(streamId, topicName)) return "followed";
-      return "none";
-    },
-    [],
-  );
-
-  const restoreTopicVisibilityOverride = useCallback(
-    (streamId: number, topicName: string, previousState: TopicVisibilityOverrideState) => {
-      const muteStore = useMuteStore.getState();
-      if (previousState === "muted") {
-        muteStore.muteTopic(streamId, topicName);
-        return;
-      }
-      if (previousState === "unmuted") {
-        muteStore.unmuteTopic(streamId, topicName);
-        return;
-      }
-      if (previousState === "followed") {
-        muteStore.followTopic(streamId, topicName);
-        return;
-      }
-      muteStore.clearTopicVisibilityOverride(streamId, topicName);
-    },
-    [],
-  );
-
   const runMuteTopicOnCreate = useCallback(
     async (streamId: number, topicName: string) => {
       async function attemptMuteTopicOnCreate(): Promise<void> {
-        const previousState = getTopicVisibilityOverrideState(streamId, topicName);
-        useMuteStore.getState().muteTopic(streamId, topicName);
-        try {
-          const ok = await muteTopic(streamId, topicName);
-          if (ok) return;
-        } catch {
-          // handled by shared rollback path below
-        }
-
-        restoreTopicVisibilityOverride(streamId, topicName, previousState);
+        const ok = await runOptimisticTopicVisibilityUpdate({
+          streamId,
+          topic: topicName,
+          applyOptimistic: () => {
+            useMuteStore.getState().muteTopic(streamId, topicName);
+          },
+          request: () => muteTopic(streamId, topicName),
+        });
+        if (ok) return;
         handleMuteError(() => {
           void attemptMuteTopicOnCreate();
         });
@@ -231,7 +199,7 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
 
       await attemptMuteTopicOnCreate();
     },
-    [getTopicVisibilityOverrideState, handleMuteError, restoreTopicVisibilityOverride],
+    [handleMuteError],
   );
 
   const handleCreateTopicFromDialog = useCallback(() => {

@@ -155,6 +155,8 @@ describe("message-cache-db", () => {
       streamId: 1,
       oldTopic: "incident",
       newTopic: "\u2714 incident",
+      messageIds: [1, 2],
+      anchorMessageId: 1,
     });
 
     const oldRows = await getChatMessagesAscending(INSTANCE, "stream:1:incident");
@@ -169,7 +171,7 @@ describe("message-cache-db", () => {
     expect(newMeta?.newestMessageId).toBe(2);
   });
 
-  it("moveTopicMessagesInCache keeps unified stream-wide history after rename", async () => {
+  it("moveTopicMessagesInCache moves only target ids and keeps old partition remainder", async () => {
     await openMessageCacheDb();
     await upsertChatMessages({
       instanceId: INSTANCE,
@@ -195,9 +197,10 @@ describe("message-cache-db", () => {
 
     const oldRows = await getChatMessagesAscending(INSTANCE, "stream:1:incident");
     const newRows = await getChatMessagesAscending(INSTANCE, "stream:1:\u2714 incident");
-    expect(oldRows).toHaveLength(0);
-    expect(newRows.map((row) => row.id)).toEqual([10, 20, 30]);
+    expect(oldRows.map((row) => row.id)).toEqual([30]);
+    expect(newRows.map((row) => row.id)).toEqual([10, 20]);
     expect(newRows.every((row) => row.subject === "\u2714 incident")).toBe(true);
+    expect(oldRows.every((row) => row.subject === "incident")).toBe(true);
     const streamWideRows = await getStreamMessagesAscending(INSTANCE, 1);
     expect(streamWideRows.map((row) => row.id)).toEqual([10, 20, 30]);
   });

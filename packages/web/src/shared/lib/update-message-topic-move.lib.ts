@@ -18,7 +18,26 @@ function parsePositiveIntegerArray(value: unknown): number[] | null {
   const ids = value.filter(
     (item): item is number => typeof item === "number" && Number.isInteger(item) && item > 0,
   );
-  return ids.length > 0 ? ids : null;
+  return ids.length > 0 ? Array.from(new Set(ids)) : null;
+}
+
+export function resolveTopicMoveTargetMessageIds(options: {
+  messageIds?: readonly number[];
+  anchorMessageId?: number;
+}): number[] {
+  // Для rename переносим только явно целевые id (message_ids + anchor), без массового fallback по topic.
+  const targetIds = new Set<number>();
+  const ids = parsePositiveIntegerArray(options.messageIds);
+  if (ids != null) {
+    for (const messageId of ids) {
+      targetIds.add(messageId);
+    }
+  }
+  const anchorMessageId = parsePositiveInteger(options.anchorMessageId);
+  if (anchorMessageId != null) {
+    targetIds.add(anchorMessageId);
+  }
+  return Array.from(targetIds);
 }
 
 export function extractTopicMoveFromUpdateEvent(
@@ -34,12 +53,16 @@ export function extractTopicMoveFromUpdateEvent(
   const oldTopic = normalizeTopicForIdentity(oldTopicRaw);
   const newTopic = normalizeTopicForIdentity(newTopicRaw);
   if (oldTopic === newTopic) return null;
+  const messageIds = parsePositiveIntegerArray(event.message_ids) ?? undefined;
+  const anchorMessageId = parsePositiveInteger(event.message_id) ?? undefined;
+  const targetMessageIds = resolveTopicMoveTargetMessageIds({ messageIds, anchorMessageId });
+  if (targetMessageIds.length === 0) return null;
 
   return {
     streamId,
     oldTopic,
     newTopic,
-    messageIds: parsePositiveIntegerArray(event.message_ids) ?? undefined,
-    anchorMessageId: parsePositiveInteger(event.message_id) ?? undefined,
+    messageIds,
+    anchorMessageId,
   };
 }

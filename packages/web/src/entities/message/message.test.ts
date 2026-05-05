@@ -681,6 +681,8 @@ describe("currentChatMessagesStore", () => {
         streamId: 5,
         oldTopic: "incident",
         newTopic: "\u2714 incident",
+        messageIds: [1],
+        anchorMessageId: 1,
       });
 
       const state = useCurrentChatMessagesStore.getState();
@@ -706,6 +708,8 @@ describe("currentChatMessagesStore", () => {
         streamId: 5,
         oldTopic: "incident",
         newTopic: "\u2714 incident",
+        messageIds: [1],
+        anchorMessageId: 1,
       });
 
       const state = useCurrentChatMessagesStore.getState();
@@ -716,7 +720,7 @@ describe("currentChatMessagesStore", () => {
       expect(state.messages[0]!.subject).toBe("\u2714 incident");
     });
 
-    it("falls back to stream/topic match when messageIds are not present in loaded slice", () => {
+    it("does not bulk-move by stream/topic when messageIds miss loaded slice", () => {
       useCurrentChatMessagesStore
         .getState()
         .setMessages([
@@ -732,9 +736,31 @@ describe("currentChatMessagesStore", () => {
       });
 
       const messages = useCurrentChatMessagesStore.getState().messages;
+      expect(messages.map((message) => message.subject)).toEqual(["incident", "incident"]);
+    });
+
+    it("deduplicates messageIds with anchor and moves only targeted ids", () => {
+      useCurrentChatMessagesStore
+        .getState()
+        .setMessages([
+          mockMsg({ id: 1, stream_id: 5, subject: "incident" }),
+          mockMsg({ id: 2, stream_id: 5, subject: "incident" }),
+          mockMsg({ id: 3, stream_id: 5, subject: "incident" }),
+        ]);
+
+      useCurrentChatMessagesStore.getState().moveStreamTopicMessages({
+        streamId: 5,
+        oldTopic: "incident",
+        newTopic: "\u2714 incident",
+        messageIds: [1, 2, 1],
+        anchorMessageId: 2,
+      });
+
+      const messages = useCurrentChatMessagesStore.getState().messages;
       expect(messages.map((message) => message.subject)).toEqual([
         "\u2714 incident",
         "\u2714 incident",
+        "incident",
       ]);
     });
   });

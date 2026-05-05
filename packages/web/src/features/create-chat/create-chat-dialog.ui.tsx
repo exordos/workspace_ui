@@ -277,45 +277,47 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                     </p>
                   )}
                 </div>
-                <label className="text-sm text-text-muted">{t("channel.addMembers")}</label>
-                <input
-                  type="text"
-                  value={vm.userSearch}
-                  onChange={(e) => vm.setUserSearch(e.target.value)}
-                  className={CREATE_CHAT_TEXT_INPUT_CLASS}
-                  placeholder={t("message.searchUsers")}
-                />
-                <div className="max-h-40 overflow-y-auto rounded-lg border border-border-subtle">
-                  {vm.channelUsers.length === 0 ? (
-                    <p className="px-3 py-4 text-center text-sm text-text-muted">
-                      {t("search.noResults")}
-                    </p>
-                  ) : (
-                    vm.channelUsers.map((u) => {
-                      return (
-                        <label
-                          key={u.userId}
-                          className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-text-primary transition-colors hover:bg-bg-elevated"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={vm.channelSelectedUserIds.has(u.userId)}
-                            onChange={() => vm.toggleChannelUser(u.userId)}
-                            className="h-4 w-4 rounded border-border-subtle"
-                          />
-                          <PresenceIndicator status={u.presence} size="sm" />
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate font-medium">{u.fullName}</span>
-                            {(u.statusLabel ?? u.email) && (
-                              <span className="block truncate text-[11px] text-text-secondary">
-                                {u.statusLabel ?? u.email}
-                              </span>
-                            )}
-                          </span>
-                        </label>
-                      );
-                    })
-                  )}
+                <div className="flex min-h-0 flex-col gap-3 overflow-x-auto">
+                  <label className="text-sm text-text-muted">{t("channel.addMembers")}</label>
+                  <input
+                    type="text"
+                    value={vm.userSearch}
+                    onChange={(e) => vm.setUserSearch(e.target.value)}
+                    className={CREATE_CHAT_TEXT_INPUT_CLASS}
+                    placeholder={t("message.searchUsers")}
+                  />
+                  <div className="max-h-40 min-w-80 overflow-y-auto rounded-lg border border-border-subtle">
+                    {vm.channelUsers.length === 0 ? (
+                      <p className="px-3 py-4 text-center text-sm text-text-muted">
+                        {t("search.noResults")}
+                      </p>
+                    ) : (
+                      vm.channelUsers.map((u) => {
+                        return (
+                          <label
+                            key={u.userId}
+                            className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-text-primary transition-colors hover:bg-bg-elevated"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={vm.channelSelectedUserIds.has(u.userId)}
+                              onChange={() => vm.toggleChannelUser(u.userId)}
+                              className="h-4 w-4 rounded border-border-subtle"
+                            />
+                            <PresenceIndicator status={u.presence} size="sm" />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate font-medium">{u.fullName}</span>
+                              {(u.statusLabel ?? u.email) && (
+                                <span className="block truncate text-[11px] text-text-secondary">
+                                  {u.statusLabel ?? u.email}
+                                </span>
+                              )}
+                            </span>
+                          </label>
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
                 {vm.channelCreateBlockedReasonKey != null && (
                   <p className="text-xs text-text-muted">{t(vm.channelCreateBlockedReasonKey)}</p>
