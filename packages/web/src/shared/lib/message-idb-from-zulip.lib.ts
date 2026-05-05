@@ -18,23 +18,11 @@ import {
   putSingleMessage,
 } from "~/shared/lib/message-cache-db";
 import { chatKeyFromRawMessage } from "~/shared/lib/message-cache-keys.lib";
-import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import { extractTopicMoveFromUpdateEvent } from "~/shared/lib/update-message-topic-move.lib";
 import { zulipMessageCacheWindowNForChatKey } from "~/shared/lib/zulip-message-window.lib";
 
 export function isChatMessagesPersistToIndexedDbEnabled(): boolean {
   return env.CHAT_MESSAGES_PERSIST_INDEXEDDB;
-}
-
-function parsePositiveInteger(value: unknown): number | null {
-  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
-}
-
-function parsePositiveIntegerArray(value: unknown): number[] | null {
-  if (!Array.isArray(value)) return null;
-  const ids = value.filter(
-    (item): item is number => typeof item === "number" && Number.isInteger(item) && item > 0,
-  );
-  return ids.length > 0 ? ids : null;
 }
 
 export async function applyZulipEventToMessageIndexedDb(options: {
@@ -114,20 +102,11 @@ export async function applyZulipEventToMessageIndexedDb(options: {
       });
     }
 
-    const streamId = parsePositiveInteger(event.stream_id);
-    const oldTopicRaw = typeof event.orig_subject === "string" ? event.orig_subject : null;
-    const newTopicRaw = typeof event.subject === "string" ? event.subject : null;
-    if (streamId == null || oldTopicRaw == null || newTopicRaw == null) return;
-    const oldTopic = normalizeTopicForIdentity(oldTopicRaw);
-    const newTopic = normalizeTopicForIdentity(newTopicRaw);
-    if (oldTopic === newTopic) return;
+    const topicMovePayload = extractTopicMoveFromUpdateEvent(event);
+    if (topicMovePayload == null) return;
     await moveTopicMessagesInCache({
       instanceId,
-      streamId,
-      oldTopic,
-      newTopic,
-      messageIds: parsePositiveIntegerArray(event.message_ids) ?? undefined,
-      anchorMessageId: parsePositiveInteger(messageId) ?? undefined,
+      ...topicMovePayload,
     });
   }
 }

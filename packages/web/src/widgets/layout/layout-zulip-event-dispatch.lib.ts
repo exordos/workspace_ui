@@ -14,6 +14,7 @@ import {
 import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
 import { shouldNotify } from "~/shared/lib/notifications-policy";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import { extractTopicMoveFromUpdateEvent } from "~/shared/lib/update-message-topic-move.lib";
 import { normalizeGroupSettingValue } from "~/shared/lib/zulip-group-setting.lib";
 import { closeReadMessageNotifications } from "./layout-notification-tags.lib";
 import type {
@@ -32,12 +33,6 @@ function isPositiveInteger(value: unknown): value is number {
 
 function parsePositiveInteger(value: unknown): number | null {
   return isPositiveInteger(value) ? value : null;
-}
-
-function parsePositiveIntegerArray(value: unknown): number[] | null {
-  if (!Array.isArray(value)) return null;
-  const ids = value.filter((item): item is number => isPositiveInteger(item));
-  return ids.length > 0 ? ids : null;
 }
 
 function parseSubscriptionRows(value: unknown): {
@@ -303,33 +298,10 @@ function handleUpdateMessage(event: ZulipEvent, ctx: LayoutZulipEventDispatchCon
     );
   }
 
-  const streamId = parsePositiveInteger(event.stream_id);
-  const oldTopicRaw = typeof event.orig_subject === "string" ? event.orig_subject : null;
-  const nextTopicRaw = typeof event.subject === "string" ? event.subject : null;
-  if (streamId == null || oldTopicRaw == null || nextTopicRaw == null) {
-    return;
-  }
-  const oldTopic = normalizeTopicForIdentity(oldTopicRaw);
-  const nextTopic = normalizeTopicForIdentity(nextTopicRaw);
-  if (oldTopic === nextTopic) {
-    return;
-  }
-  const anchorMessageId = parsePositiveInteger(messageId) ?? undefined;
-  const messageIds = parsePositiveIntegerArray(event.message_ids) ?? undefined;
-  chatList.moveStreamTopic({
-    streamId,
-    oldTopic,
-    newTopic: nextTopic,
-    messageIds,
-    anchorMessageId,
-  });
-  currentChat.moveStreamTopicMessages({
-    streamId,
-    oldTopic,
-    newTopic: nextTopic,
-    messageIds,
-    anchorMessageId,
-  });
+  const topicMovePayload = extractTopicMoveFromUpdateEvent(event);
+  if (topicMovePayload == null) return;
+  chatList.moveStreamTopic(topicMovePayload);
+  currentChat.moveStreamTopicMessages(topicMovePayload);
 }
 
 function handlePresence(event: ZulipEvent, ctx: LayoutZulipEventDispatchContext): void {
