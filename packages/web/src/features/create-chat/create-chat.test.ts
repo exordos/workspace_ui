@@ -124,24 +124,21 @@ describe("Channel API", () => {
     vi.restoreAllMocks();
   });
 
-  // createChannel — POST /users/me/subscriptions
+  // createChannel — POST /channels/create
   describe("createChannel", () => {
     it("creates channel and returns streamId on success", async () => {
       const { zulipApi } = await import("~/shared/api/client");
       vi.mocked(zulipApi.post).mockResolvedValue({
         ok: true,
         status: 200,
-        data: {
-          subscribed: {
-            "user@example.com": [{ name: "engineering", id: 42 }],
-          },
-        },
+        data: { id: 42 },
         headers: new Headers(),
         raw: new Response(),
         durationMs: 50,
       });
 
       const { createChannel } = await import("./create-chat.api");
+      // Что проверяет: для нового endpoint `/channels/create` корректно читаем id из ответа.
       const result = await createChannel({
         name: "engineering",
         description: "Engineering team",
@@ -150,20 +147,21 @@ describe("Channel API", () => {
 
       expect(result).toEqual({ streamId: 42 });
       expect(zulipApi.post).toHaveBeenCalledWith(
-        "/users/me/subscriptions",
+        "/channels/create",
         expect.objectContaining({
-          subscriptions: JSON.stringify([{ name: "engineering", description: "Engineering team" }]),
-          principals: JSON.stringify([1, 2]),
+          name: "engineering",
+          description: "Engineering team",
+          subscribers: JSON.stringify([1, 2]),
         }),
       );
     });
 
-    it("returns streamId 0 when subscribed data is empty", async () => {
+    it("returns streamId 0 when response does not include channel id", async () => {
       const { zulipApi } = await import("~/shared/api/client");
       vi.mocked(zulipApi.post).mockResolvedValue({
         ok: true,
         status: 200,
-        data: { subscribed: {} },
+        data: {},
         headers: new Headers(),
         raw: new Response(),
         durationMs: 30,
@@ -187,6 +185,7 @@ describe("Channel API", () => {
       });
 
       const { createChannel } = await import("./create-chat.api");
+      // Что проверяет: `invite_only` и `announce` попадают в payload независимо от других полей.
       await createChannel({
         name: "secret",
         subscribers: [],
@@ -195,7 +194,7 @@ describe("Channel API", () => {
       });
 
       expect(zulipApi.post).toHaveBeenCalledWith(
-        "/users/me/subscriptions",
+        "/channels/create",
         expect.objectContaining({
           invite_only: "true",
           announce: "false",
@@ -203,23 +202,57 @@ describe("Channel API", () => {
       );
     });
 
-    it("omits principals when subscribers is empty", async () => {
+    it("passes can_send_message_group when announcement-only policy is set", async () => {
       const { zulipApi } = await import("~/shared/api/client");
-      vi.mocked(zulipApi.post).mockClear();
       vi.mocked(zulipApi.post).mockResolvedValue({
         ok: true,
         status: 200,
-        data: { subscribed: {} },
+        data: { id: 55 },
         headers: new Headers(),
         raw: new Response(),
         durationMs: 30,
       });
 
       const { createChannel } = await import("./create-chat.api");
+      // Что проверяет: режим "Канал объявлений" сериализуется в `can_send_message_group`.
+      await createChannel({
+        name: "announcements",
+        subscribers: [],
+        canSendMessageGroup: {
+          direct_members: [],
+          direct_subgroups: [4, 6],
+        },
+      });
+
+      expect(zulipApi.post).toHaveBeenCalledWith(
+        "/channels/create",
+        expect.objectContaining({
+          can_send_message_group: JSON.stringify({
+            direct_members: [],
+            direct_subgroups: [4, 6],
+          }),
+        }),
+      );
+    });
+
+    it("omits subscribers when subscribers list is empty", async () => {
+      const { zulipApi } = await import("~/shared/api/client");
+      vi.mocked(zulipApi.post).mockClear();
+      vi.mocked(zulipApi.post).mockResolvedValue({
+        ok: true,
+        status: 200,
+        data: { id: 5 },
+        headers: new Headers(),
+        raw: new Response(),
+        durationMs: 30,
+      });
+
+      const { createChannel } = await import("./create-chat.api");
+      // Что проверяет: не отправляем пустой список подписчиков как `[]`, чтобы не шуметь payload.
       await createChannel({ name: "test", subscribers: [] });
 
       const callBody = vi.mocked(zulipApi.post).mock.calls[0]![1];
-      expect(callBody.principals).toBeUndefined();
+      expect(callBody.subscribers).toBeUndefined();
     });
 
     it("returns null on API failure", async () => {
@@ -258,7 +291,7 @@ describe("Channel API", () => {
       vi.mocked(zulipApi.post).mockResolvedValue({
         ok: true,
         status: 200,
-        data: { subscribed: {} },
+        data: { id: 10 },
         headers: new Headers(),
         raw: new Response(),
         durationMs: 30,
@@ -268,8 +301,7 @@ describe("Channel API", () => {
       await createChannel({ name: "test", subscribers: [] });
 
       const callBody = vi.mocked(zulipApi.post).mock.calls[0]![1];
-      const subs = JSON.parse(callBody.subscriptions!) as { description: string }[];
-      expect(subs[0]!.description).toBe("");
+      expect(callBody.description).toBe("");
     });
   });
 

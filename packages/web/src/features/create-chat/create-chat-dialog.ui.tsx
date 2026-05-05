@@ -17,6 +17,9 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
   onChannelCreated,
 }) => {
   const vm = useCreateChatDialog({ open, onNavigateDm, onChannelCreated });
+  // Что делает: в разделе создания канала рендерим три независимых чекбокса:
+  // `inviteOnly` (приватность), `channelAnnounce` (только анонс ботом),
+  // `channelAnnouncementOnly` (реальное ограничение прав публикации).
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -258,6 +261,21 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                     />
                     <span>{t("channel.announceChannel")}</span>
                   </label>
+                  <label className="flex cursor-pointer items-center gap-2 text-sm text-text-primary">
+                    <input
+                      type="checkbox"
+                      checked={vm.channelAnnouncementOnly}
+                      onChange={(e) => vm.setChannelAnnouncementOnly(e.target.checked)}
+                      disabled={vm.channelAnnouncementOnlyBlocked}
+                      className="h-4 w-4 rounded border-border-subtle disabled:cursor-not-allowed disabled:opacity-60"
+                    />
+                    <span>{t("channel.announcementOnly")}</span>
+                  </label>
+                  {vm.channelAnnouncementOnlyBlockedReasonKey != null && (
+                    <p className="text-xs text-text-muted">
+                      {t(vm.channelAnnouncementOnlyBlockedReasonKey)}
+                    </p>
+                  )}
                 </div>
                 <label className="text-sm text-text-muted">{t("channel.addMembers")}</label>
                 <input

@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { useUsersStore } from "~/entities/user/user.model";
+import type * as CreateChatApiModule from "~/features/create-chat/create-chat.api";
 import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import type * as MuteChatApiModule from "~/features/mute-chat/mute-chat.api";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
@@ -14,6 +15,7 @@ import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indi
 import { buildDmTypingChatKey } from "~/features/typing-indicator/typing-key";
 import { t } from "~/i18n/i18n";
 import type * as WorkspaceApiModule from "~/shared/api/workspace-client";
+import type * as ZulipApiModule from "~/shared/api/zulip";
 import type { SidebarChat } from "~/shared/types/sidebar-chat";
 import { createUser } from "~/test/factories";
 import { renderWithProviders } from "~/test/render";
@@ -36,7 +38,7 @@ const addChatToFolderMock = vi.fn();
 const removeChatFromFolderMock = vi.fn();
 
 vi.mock("~/features/create-chat/create-chat.api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/features/create-chat/create-chat.api")>();
+  const actual = await importOriginal<typeof CreateChatApiModule>();
   return {
     ...actual,
     createChannel: (...args: unknown[]) => createChannelMock(...args),
@@ -44,7 +46,7 @@ vi.mock("~/features/create-chat/create-chat.api", async (importOriginal) => {
 });
 
 vi.mock("~/shared/api/zulip", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/shared/api/zulip")>();
+  const actual = await importOriginal<typeof ZulipApiModule>();
   return {
     ...actual,
     markDmAsRead: (...args: unknown[]) => markDmAsReadMock(...args),
@@ -137,7 +139,12 @@ function RoutePathProbe() {
   return <output data-testid="route-path">{location.pathname}</output>;
 }
 
-function RouteNavigateButton({ to, label }: { to: string; label: string }) {
+interface RouteNavigateButtonProps {
+  to: string;
+  label: string;
+}
+
+function RouteNavigateButton({ to, label }: Readonly<RouteNavigateButtonProps>) {
   const navigate = useNavigate();
   return (
     <button type="button" onClick={() => void navigate(to)}>
@@ -649,7 +656,7 @@ describe("Sidebar", () => {
       target: { value: "Engineering" },
     });
     fireEvent.click(screen.getByLabelText(/invite only/i));
-    fireEvent.click(screen.getByLabelText(/announce channel/i));
+    fireEvent.click(screen.getByLabelText(/announce channel creation/i));
     fireEvent.click(screen.getByRole("checkbox", { name: /bob teammate/i }));
     fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
 
