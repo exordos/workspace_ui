@@ -121,9 +121,11 @@ describe("startZulipEventLoop", () => {
 
     await Promise.resolve();
 
+    // Что проверяет: credential-loop подписывается и на stream-события.
+    // Зачем: инстансы в фоне и активный инстанс должны одинаково получать rename/create/delete каналов.
     expect(registerQueueForCredentialsMock).toHaveBeenCalledWith(
       credentials,
-      expect.any(Array),
+      expect.arrayContaining(["stream", "subscription", "user_topic"]),
       undefined,
     );
     expect(getEventsForCredentialsMock).toHaveBeenCalledWith(

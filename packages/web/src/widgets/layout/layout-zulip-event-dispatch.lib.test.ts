@@ -280,6 +280,103 @@ describe("dispatchZulipEvent", () => {
     });
   });
 
+  describe("stream", () => {
+    // Что проверяет: stream:create должен добавлять metadata канала в sidebar store.
+    // Зачем: новый канал должен появляться сразу, даже если в нем еще нет новых сообщений.
+    it("upserts stream metadata on stream create", () => {
+      const { ctx } = buildCtx();
+      const upsertSpy = vi.spyOn(ctx.chatList, "upsertStreamMetadataRows");
+
+      dispatchZulipEvent(
+        {
+          id: 18,
+          type: "stream",
+          op: "create",
+          streams: [{ stream_id: 42, name: "engineering", creator_id: 77 }],
+        } as ZulipEvent,
+        ctx,
+      );
+
+      expect(upsertSpy).toHaveBeenCalledWith([
+        {
+          streamId: 42,
+          name: "engineering",
+          creatorId: 77,
+        },
+      ]);
+    });
+
+    // Что проверяет: stream:update с property=name переименовывает канал.
+    // Зачем: регрессия для кейса, когда rename приходит stream-событием.
+    it("renames stream on stream update(name)", () => {
+      const { ctx } = buildCtx();
+      const renameSpy = vi.spyOn(ctx.chatList, "renameStream");
+
+      dispatchZulipEvent(
+        {
+          id: 19,
+          type: "stream",
+          op: "update",
+          stream_id: 42,
+          property: "name",
+          value: "engineering v2",
+        } as ZulipEvent,
+        ctx,
+      );
+
+      expect(renameSpy).toHaveBeenCalledWith(42, "engineering v2");
+    });
+
+    // Что проверяет: stream:delete удаляет канал из chat-list.
+    // Зачем: после удаления канала UI не должен показывать устаревшую запись.
+    it("removes stream on stream delete", () => {
+      const { ctx } = buildCtx();
+      const removeSpy = vi.spyOn(ctx.chatList, "removeStream");
+
+      dispatchZulipEvent(
+        {
+          id: 20,
+          type: "stream",
+          op: "delete",
+          stream_id: 42,
+        } as ZulipEvent,
+        ctx,
+      );
+
+      expect(removeSpy).toHaveBeenCalledWith(42);
+    });
+  });
+
+  describe("message stream rename fallback", () => {
+    // Что проверяет: fallback-ветка переименовывает канал по message.display_recipient.
+    // Зачем: закрывает сценарий, где сервер не прислал stream:update, но в message уже новое имя канала.
+    it("renames stream from message display_recipient when stream event is absent", () => {
+      const { ctx } = buildCtx();
+      const renameSpy = vi.spyOn(ctx.chatList, "renameStream");
+
+      dispatchZulipEvent(
+        {
+          id: 21,
+          type: "message",
+          flags: [],
+          message: {
+            id: 1988,
+            sender_id: 6,
+            content: "rename notice",
+            timestamp: 1777960620,
+            type: "stream",
+            stream_id: 16,
+            display_recipient: "##КокоБомбони V2",
+            subject: "события канала",
+          },
+        } as ZulipEvent,
+        ctx,
+      );
+
+      expect(renameSpy).toHaveBeenCalledWith(16, "##КокоБомбони V2");
+    });
+  });
+
   describe("subscription peer events", () => {
     it("notifies peer_add stream ids from stream_ids payload", () => {
       const { ctx } = buildCtx();

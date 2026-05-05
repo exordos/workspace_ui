@@ -32,6 +32,9 @@ const DEFAULT_EVENT_TYPES = [
   "presence",
   "user_status",
   "subscription",
+  // Что делает: подписывает очередь на lifecycle-ивенты каналов (create/update/delete).
+  // Зачем: чтобы rename канала и другие stream-изменения отражались в UI без перезагрузки.
+  "stream",
   "user_topic",
 ] as const;
 

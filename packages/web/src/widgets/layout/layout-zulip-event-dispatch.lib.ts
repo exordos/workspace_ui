@@ -130,6 +130,17 @@ function handleIncomingMessage(event: ZulipEvent, ctx: LayoutZulipEventDispatchC
   ctx.onMessage?.(raw);
   users.mergeFromMessage(raw);
   chatList.addMessage(raw);
+  // Что делает: fallback для серверов/сценариев, где rename канала приходит не отдельным stream-event,
+  // а заметен только через новое display_recipient в message-событии.
+  if (
+    raw.type === "stream" &&
+    Number.isInteger(raw.stream_id) &&
+    raw.stream_id != null &&
+    typeof raw.display_recipient === "string" &&
+    raw.display_recipient.trim().length > 0
+  ) {
+    chatList.renameStream(raw.stream_id, raw.display_recipient);
+  }
   ctx.updateLatestMessageId(raw.id);
   activity.markStale();
 
@@ -527,6 +538,90 @@ function handleSubscription(event: ZulipEvent, ctx: LayoutZulipEventDispatchCont
   handleSubscriptionPropertyUpdate(event, ctx, streamId, property);
 }
 
+function handleStreamPropertyUpdate(
+  event: ZulipEvent,
+  ctx: LayoutZulipEventDispatchContext,
+  streamId: number,
+  property: string,
+): void {
+  // Что делает: применяет точечный update полей канала из stream:update.
+  // Зачем: часть серверов шлет rename/ACL изменения именно stream-событием, не subscription.
+  const { chatList } = ctx;
+  if (property === "name") {
+    // Что делает: поддерживает оба формата payload (name может прийти в value или в name).
+    // Зачем: разные версии/инсталляции Zulip могут отличаться по форме update payload.
+    const nameFromValue = typeof event.value === "string" ? event.value : null;
+    const nameFromField = typeof event.name === "string" ? event.name : null;
+    const nextName = nameFromValue ?? nameFromField;
+    if (nextName != null && nextName.trim().length > 0) {
+      chatList.renameStream(streamId, nextName);
+    }
+    return;
+  }
+  if (
+    property !== "can_add_subscribers_group" &&
+    property !== "can_remove_subscribers_group" &&
+    property !== "can_administer_channel_group" &&
+    property !== "invite_only"
+  ) {
+    return;
+  }
+
+  // Что делает: для permission-полей и invite_only собирает metadata-ряд и переиспользует общий апдейтер.
+  // Зачем: не дублировать логику обновления access-полей между subscription и stream событиями.
+  const existing = chatList.streamsMap.get(streamId);
+  const row = buildStreamMetadataRowFromExisting(streamId, existing);
+  if (row == null) return;
+  applySubscriptionMetadataField(row, property, event);
+  chatList.upsertStreamMetadataRows([row]);
+}
+
+function handleStream(event: ZulipEvent, ctx: LayoutZulipEventDispatchContext): void {
+  if (event.type !== "stream") return;
+  // Что делает: централизованно обрабатывает stream create/update/delete.
+  // Зачем: без этого rename/create/delete канала может дойти до сети, но не попасть в sidebar state.
+  const op = event.op as "create" | "delete" | "update" | undefined;
+  if (op === "create") {
+    // Что делает: добавляет каналы из stream:create payload.
+    // Зачем: канал должен появиться в sidebar даже без новых сообщений в message-window.
+    const rows = parseSubscriptionRows(event.streams);
+    if (rows.length > 0) {
+      ctx.chatList.upsertStreamMetadataRows(rows);
+    }
+    return;
+  }
+  if (op === "delete") {
+    // Что делает: удаляет канал по всем возможным полям (streams, stream_ids, stream_id).
+    // Зачем: payload удаления канала может приходить в разных форматах, нужно покрыть все.
+    const fromRows = parseSubscriptionRows(event.streams).map((row) => row.streamId);
+    const fromIds = parseSubscriptionStreamIds(event.stream_ids);
+    const fromSingle = parsePositiveInteger(event.stream_id);
+    const ids = Array.from(
+      new Set([...fromRows, ...fromIds, ...(fromSingle != null ? [fromSingle] : [])]),
+    );
+    for (const streamId of ids) {
+      ctx.chatList.removeStream(streamId);
+    }
+    return;
+  }
+  if (op !== "update") return;
+  const streamId = parsePositiveInteger(event.stream_id);
+  if (streamId == null) return;
+  const property = typeof event.property === "string" ? event.property : null;
+  if (property != null) {
+    // Что делает: route для property-based update (name, invite_only, can_*_group).
+    // Зачем: держим ветвление в одном месте и упрощаем поддержку форматов событий.
+    handleStreamPropertyUpdate(event, ctx, streamId, property);
+    return;
+  }
+  // Что делает: fallback для update без property, но с новым name.
+  // Зачем: часть серверов присылает rename в "плоском" формате.
+  const nextName = typeof event.name === "string" ? event.name : null;
+  if (nextName != null && nextName.trim().length > 0) {
+    ctx.chatList.renameStream(streamId, nextName);
+  }
+}
+
 function handleUserTopic(event: ZulipEvent, ctx: LayoutZulipEventDispatchContext): void {
   if (event.type !== "user_topic") return;
   const { mute } = ctx;
@@ -591,6 +686,13 @@ export function dispatchZulipEvent(event: ZulipEvent, ctx: LayoutZulipEventDispa
 
   if (event.type === "subscription") {
     handleSubscription(event, ctx);
+    return;
+  }
+
+  if (event.type === "stream") {
+    // Что делает: применяет lifecycle-события канала (create/update/delete) в chat-list.
+    // Зачем: без этой ветки UI не отражает rename/create/delete канала в реальном времени.
+    handleStream(event, ctx);
     return;
   }
 
