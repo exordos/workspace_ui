@@ -64,7 +64,7 @@ export const DmChatRow = React.memo<DmChatRowProps>(function DmChatRow({
   const presenceState =
     user?.presence != null ? getPresenceState(user.presence.timestamp, user.presence.status) : null;
   const avatarSrc = !isGroupDm
-    ? (getAvatarUrl(chat.avatar_url) ?? getAvatarUrl(user?.avatar_url ?? undefined))
+    ? (getAvatarUrl(user?.avatar_url ?? undefined) ?? getAvatarUrl(chat.avatar_url))
     : null;
   const rowClass = compact
     ? "flex items-start gap-2 rounded-md px-2 py-1.5 transition-colors"

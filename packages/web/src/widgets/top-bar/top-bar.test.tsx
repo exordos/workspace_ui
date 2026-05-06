@@ -195,6 +195,31 @@ describe("TopBar", () => {
     expect(screen.getByLabelText(/away/i)).toHaveClass("bg-indicator-orange");
   });
 
+  it("updates profile trigger avatar src when users store avatar changes", () => {
+    useChatListStore.setState({ currentUserId: 7 });
+    useUsersStore.getState().mergeUser({
+      user_id: 7,
+      full_name: "Alice",
+      email: "alice@example.com",
+      avatar_url: "https://cdn.example.com/avatar/old.png",
+    });
+
+    renderWithProviders(<TopBar />);
+    const profileButton = screen.getByRole("button", { name: /profile/i });
+    const profileAvatarBefore = profileButton.querySelector("img");
+    expect(profileAvatarBefore?.getAttribute("src")).toContain("cdn.example.com/avatar/old.png");
+
+    act(() => {
+      useUsersStore.getState().mergeUser({
+        user_id: 7,
+        avatar_url: "https://cdn.example.com/avatar/new.png",
+      });
+    });
+
+    const profileAvatarAfter = profileButton.querySelector("img");
+    expect(profileAvatarAfter?.getAttribute("src")).toContain("cdn.example.com/avatar/new.png");
+  });
+
   it("shows current user email under display name in profile trigger", () => {
     useChatListStore.setState({ currentUserId: 11 });
     useUsersStore.getState().mergeUser({

@@ -34,7 +34,7 @@ function resolvePersonalDmListAvatarSrc(
 ): string | undefined {
   const base = getRealmBaseUrl();
   return (
-    resolveAvatarUrl(chatAvatarUrl, base) ?? resolveAvatarUrl(userAvatarUrl ?? undefined, base)
+    resolveAvatarUrl(userAvatarUrl ?? undefined, base) ?? resolveAvatarUrl(chatAvatarUrl, base)
   );
 }
 

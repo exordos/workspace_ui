@@ -50,6 +50,16 @@ describe("resolveAvatarUrl", () => {
     expect(url).toContain("_av=");
   });
 
+  it("passes through blob URLs as-is for local previews", () => {
+    expect(resolveAvatarUrl("blob:preview-123", REALM)).toBe("blob:preview-123");
+  });
+
+  it("passes through data URLs as-is for local previews", () => {
+    expect(resolveAvatarUrl("data:image/png;base64,AAAA", REALM)).toBe(
+      "data:image/png;base64,AAAA",
+    );
+  });
+
   it("returns undefined for relative path when no realmBaseUrl", () => {
     expect(resolveAvatarUrl("/avatar/42.png")).toBeUndefined();
   });

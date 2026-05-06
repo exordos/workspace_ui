@@ -12,7 +12,6 @@ import {
   updateOwnProfile,
   updateOwnStatus,
 } from "~/features/user-profile/user-profile.api";
-import { useUserProfileStore } from "~/features/user-profile/user-profile.model";
 import {
   type OwnStatusData,
   type UserProfileData,
@@ -51,6 +50,13 @@ function normalizeImageMime(mime: string): string {
   return normalized === "image/jpg" ? "image/jpeg" : normalized;
 }
 
+type PendingAvatarAction =
+  | { kind: "none" }
+  | { kind: "upload"; file: File; previewUrl: string }
+  | { kind: "remove" };
+
+const EMPTY_PENDING_AVATAR_ACTION: PendingAvatarAction = { kind: "none" };
+
 export const SettingsPersonalInfoPage: React.FC = () => {
   const navigate = useNavigate();
   const [profile, setProfile] = useState<UserProfileData | null>(null);
@@ -62,9 +68,10 @@ export const SettingsPersonalInfoPage: React.FC = () => {
   const [editableStatusAway, setEditableStatusAway] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [profileSaveError, setProfileSaveError] = useState<string | null>(null);
-  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
-  const [isRemovingAvatar, setIsRemovingAvatar] = useState(false);
-  const [avatarActionError, setAvatarActionError] = useState<string | null>(null);
+  const [pendingAvatarAction, setPendingAvatarAction] = useState<PendingAvatarAction>(
+    EMPTY_PENDING_AVATAR_ACTION,
+  );
+  const [avatarDraftError, setAvatarDraftError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const currentUserId = useChatListStore((s) => s.currentUserId);
   const user = useUsersStore((s) => (currentUserId != null ? s.getUser(currentUserId) : undefined));
@@ -195,6 +202,8 @@ export const SettingsPersonalInfoPage: React.FC = () => {
     setEditableFullName(fullName === "-" ? "" : fullName);
     setEditableStatusText(ownStatus?.statusText ?? "");
     setEditableStatusAway(ownStatus?.away ?? false);
+    setPendingAvatarAction(EMPTY_PENDING_AVATAR_ACTION);
+    setAvatarDraftError(null);
     setProfileSaveError(null);
     setIsEditing(true);
   }, [fullName, ownStatus?.away, ownStatus?.statusText]);
@@ -203,6 +212,8 @@ export const SettingsPersonalInfoPage: React.FC = () => {
     setEditableFullName(fullName === "-" ? "" : fullName);
     setEditableStatusText(ownStatus?.statusText ?? "");
     setEditableStatusAway(ownStatus?.away ?? false);
+    setPendingAvatarAction(EMPTY_PENDING_AVATAR_ACTION);
+    setAvatarDraftError(null);
     setProfileSaveError(null);
     setIsEditing(false);
   }, [fullName, ownStatus?.away, ownStatus?.statusText]);
@@ -215,6 +226,16 @@ export const SettingsPersonalInfoPage: React.FC = () => {
     return ownStatus?.away ? `${trimmedStatus} • ${t("presence.away")}` : trimmedStatus;
   }, [ownStatus?.away, ownStatus?.statusText]);
 
+  const mapAvatarErrorMessage = useCallback(
+    (kind: "forbidden" | "invalid" | "unsupported" | "transient", fallbackMessage?: string) => {
+      if (kind === "forbidden") return t("settings.avatarChangesDisabled");
+      if (kind === "unsupported") return t("settings.avatarUnsupported");
+      if (kind === "invalid") return fallbackMessage ?? t("settings.avatarInvalidFile");
+      return t("settings.avatarUpdateError");
+    },
+    [],
+  );
+
   const handleSaveProfile = useCallback(() => {
     if (currentUserId == null || isSavingProfile) return;
     const trimmedFullName = editableFullName.trim();
@@ -223,21 +244,102 @@ export const SettingsPersonalInfoPage: React.FC = () => {
       setProfileSaveError(t("settings.fullNameRequired"));
       return;
     }
+
     setIsSavingProfile(true);
     setProfileSaveError(null);
-    void Promise.all([
-      updateOwnProfile({ fullName: trimmedFullName }),
-      updateOwnStatus({ statusText: trimmedStatusText, away: editableStatusAway }),
-    ])
-      .then(([profileUpdated, statusUpdated]) => {
-        if (!profileUpdated || !statusUpdated) {
-          setProfileSaveError(t("settings.profileSaveError"));
+    setAvatarDraftError(null);
+
+    void (async () => {
+      const avatarSnapshot = useUsersStore.getState().getAvatarUrl(currentUserId) ?? "";
+      let avatarMutationCommitted = false;
+      let committedAvatarUrl = avatarSnapshot;
+
+      if (pendingAvatarAction.kind === "upload") {
+        // Optimistic preview for global UI surfaces while save is in-flight.
+        mergeUser({
+          user_id: currentUserId,
+          avatar_url: pendingAvatarAction.previewUrl,
+        });
+
+        const result = await uploadOwnAvatar(pendingAvatarAction.file);
+        if (!result.ok) {
+          mergeUser({
+            user_id: currentUserId,
+            avatar_url: avatarSnapshot,
+          });
+          setAvatarDraftError(mapAvatarErrorMessage(result.kind, result.message));
           return;
         }
-        setProfile((prev) => (prev ? { ...prev, fullName: trimmedFullName } : prev));
-        setOwnStatus({ statusText: trimmedStatusText, away: editableStatusAway });
-        mergeUser({ user_id: currentUserId, full_name: trimmedFullName });
-        setIsEditing(false);
+
+        avatarMutationCommitted = true;
+        committedAvatarUrl = result.avatarUrl ?? avatarSnapshot;
+        setProfile((prev) => (prev ? { ...prev, avatarUrl: committedAvatarUrl } : prev));
+        mergeUser({
+          user_id: currentUserId,
+          avatar_url: committedAvatarUrl,
+        });
+        bumpAvatarVersion();
+        setPendingAvatarAction(EMPTY_PENDING_AVATAR_ACTION);
+      }
+
+      if (pendingAvatarAction.kind === "remove") {
+        // Optimistic removal so all widgets fallback to initials/avatar placeholder.
+        mergeUser({
+          user_id: currentUserId,
+          avatar_url: "",
+        });
+
+        const result = await removeOwnAvatar();
+        if (!result.ok) {
+          mergeUser({
+            user_id: currentUserId,
+            avatar_url: avatarSnapshot,
+          });
+          const message =
+            result.kind === "invalid"
+              ? t("settings.avatarRemoveError")
+              : mapAvatarErrorMessage(result.kind, result.message);
+          setAvatarDraftError(message);
+          return;
+        }
+
+        avatarMutationCommitted = true;
+        committedAvatarUrl = result.avatarUrl ?? "";
+        setProfile((prev) => (prev ? { ...prev, avatarUrl: committedAvatarUrl } : prev));
+        mergeUser({
+          user_id: currentUserId,
+          avatar_url: committedAvatarUrl,
+        });
+        bumpAvatarVersion();
+        setPendingAvatarAction(EMPTY_PENDING_AVATAR_ACTION);
+      }
+
+      const [profileUpdated, statusUpdated] = await Promise.all([
+        updateOwnProfile({ fullName: trimmedFullName }),
+        updateOwnStatus({ statusText: trimmedStatusText, away: editableStatusAway }),
+      ]);
+
+      if (!profileUpdated || !statusUpdated) {
+        // Avatar mutation has already been committed by server, keep it as-is.
+        if (avatarMutationCommitted) {
+          mergeUser({
+            user_id: currentUserId,
+            avatar_url: committedAvatarUrl,
+          });
+        }
+        setProfileSaveError(t("settings.profileSaveError"));
+        return;
+      }
+
+      setProfile((prev) => (prev ? { ...prev, fullName: trimmedFullName } : prev));
+      setOwnStatus({ statusText: trimmedStatusText, away: editableStatusAway });
+      mergeUser({ user_id: currentUserId, full_name: trimmedFullName });
+      setIsEditing(false);
+      setPendingAvatarAction(EMPTY_PENDING_AVATAR_ACTION);
+      setAvatarDraftError(null);
+    })()
+      .catch(() => {
+        setProfileSaveError(t("settings.profileSaveError"));
       })
       .finally(() => {
         setIsSavingProfile(false);
@@ -248,18 +350,10 @@ export const SettingsPersonalInfoPage: React.FC = () => {
     editableStatusAway,
     editableStatusText,
     isSavingProfile,
+    mapAvatarErrorMessage,
     mergeUser,
+    pendingAvatarAction,
   ]);
-
-  const mapAvatarErrorMessage = useCallback(
-    (kind: "forbidden" | "invalid" | "unsupported" | "transient", fallbackMessage?: string) => {
-      if (kind === "forbidden") return t("settings.avatarChangesDisabled");
-      if (kind === "unsupported") return t("settings.avatarUnsupported");
-      if (kind === "invalid") return fallbackMessage ?? t("settings.avatarInvalidFile");
-      return t("settings.avatarUpdateError");
-    },
-    [],
-  );
 
   const validateAvatarFile = useCallback(
     async (file: File): Promise<string | null> => {
@@ -297,92 +391,50 @@ export const SettingsPersonalInfoPage: React.FC = () => {
     (event: React.ChangeEvent<HTMLInputElement>) => {
       const [file] = Array.from(event.target.files ?? []);
       event.currentTarget.value = "";
-      if (!file || currentUserId == null || isUploadingAvatar || isRemovingAvatar) {
+      if (!file || currentUserId == null || !isEditing || isSavingProfile) {
         return;
       }
       if (avatarCapabilities.avatarChangesDisabled) {
-        setAvatarActionError(t("settings.avatarChangesDisabled"));
+        setAvatarDraftError(t("settings.avatarChangesDisabled"));
         return;
       }
-      setAvatarActionError(null);
+      setAvatarDraftError(null);
 
       void validateAvatarFile(file).then((validationError) => {
         if (validationError) {
-          setAvatarActionError(validationError);
+          setAvatarDraftError(validationError);
           return;
         }
 
-        setIsUploadingAvatar(true);
-        void uploadOwnAvatar(file)
-          .then((result) => {
-            if (!result.ok) {
-              setAvatarActionError(mapAvatarErrorMessage(result.kind, result.message));
-              return;
-            }
-
-            const nextAvatarUrl = result.avatarUrl;
-            setProfile((prev) => (prev ? { ...prev, avatarUrl: nextAvatarUrl ?? "" } : prev));
-            mergeUser({
-              user_id: currentUserId,
-              avatar_url: nextAvatarUrl,
-            });
-            bumpAvatarVersion();
-          })
-          .finally(() => {
-            setIsUploadingAvatar(false);
-          });
+        const previewUrl = URL.createObjectURL(file);
+        setPendingAvatarAction({ kind: "upload", file, previewUrl });
       });
     },
     [
       avatarCapabilities.avatarChangesDisabled,
       currentUserId,
-      isRemovingAvatar,
-      isUploadingAvatar,
-      mapAvatarErrorMessage,
-      mergeUser,
+      isEditing,
+      isSavingProfile,
       validateAvatarFile,
     ],
   );
 
   const handleAvatarRemove = useCallback(() => {
-    if (currentUserId == null || isUploadingAvatar || isRemovingAvatar) return;
+    if (currentUserId == null || !isEditing || isSavingProfile) return;
     if (avatarCapabilities.avatarChangesDisabled) {
-      setAvatarActionError(t("settings.avatarChangesDisabled"));
+      setAvatarDraftError(t("settings.avatarChangesDisabled"));
       return;
     }
+    setAvatarDraftError(null);
+    setPendingAvatarAction({ kind: "remove" });
+  }, [avatarCapabilities.avatarChangesDisabled, currentUserId, isEditing, isSavingProfile]);
 
-    setAvatarActionError(null);
-    setIsRemovingAvatar(true);
-    void removeOwnAvatar()
-      .then((result) => {
-        if (!result.ok) {
-          const message =
-            result.kind === "invalid"
-              ? t("settings.avatarRemoveError")
-              : mapAvatarErrorMessage(result.kind, result.message);
-          setAvatarActionError(message);
-          return;
-        }
-
-        const nextAvatarUrl = result.avatarUrl;
-        setProfile((prev) => (prev ? { ...prev, avatarUrl: nextAvatarUrl ?? "" } : prev));
-        mergeUser({
-          user_id: currentUserId,
-          avatar_url: nextAvatarUrl,
-        });
-        bumpAvatarVersion();
-      })
-      .finally(() => {
-        setIsRemovingAvatar(false);
-      });
-  }, [
-    avatarCapabilities.avatarChangesDisabled,
-    currentUserId,
-    isRemovingAvatar,
-    isUploadingAvatar,
-    mapAvatarErrorMessage,
-    mergeUser,
-  ]);
+  useEffect(() => {
+    if (pendingAvatarAction.kind !== "upload") return;
+    return () => {
+      URL.revokeObjectURL(pendingAvatarAction.previewUrl);
+    };
+  }, [pendingAvatarAction]);
 
   useEffect(() => {
     if (!copied) return;
@@ -400,6 +452,12 @@ export const SettingsPersonalInfoPage: React.FC = () => {
   }, [fullName]);
 
   const avatarSrc = useMemo(() => {
+    if (pendingAvatarAction.kind === "upload") {
+      return pendingAvatarAction.previewUrl;
+    }
+    if (pendingAvatarAction.kind === "remove") {
+      return null;
+    }
     const profileAvatar = profile?.avatarUrl;
     if (profileAvatar != null && profileAvatar.length > 0) {
       return resolveAvatarUrl(profileAvatar, getRealmBaseUrl()) ?? null;
@@ -407,7 +465,7 @@ export const SettingsPersonalInfoPage: React.FC = () => {
     const userAvatar = user?.avatar_url;
     if (userAvatar == null || userAvatar.length === 0) return null;
     return resolveAvatarUrl(userAvatar, getRealmBaseUrl()) ?? null;
-  }, [profile?.avatarUrl, user?.avatar_url]);
+  }, [pendingAvatarAction, profile?.avatarUrl, user?.avatar_url]);
 
   return (
     <div className="flex max-h-full min-h-0 min-w-0 max-w-narrow-page flex-1 flex-col overflow-hidden">
@@ -432,34 +490,28 @@ export const SettingsPersonalInfoPage: React.FC = () => {
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-text-primary">{fullName}</p>
                 <p className="text-[11px] text-text-secondary">{profileStatus}</p>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      fileInputRef.current?.click();
-                    }}
-                    disabled={
-                      avatarCapabilities.avatarChangesDisabled ||
-                      isUploadingAvatar ||
-                      isRemovingAvatar
-                    }
-                    className="rounded-md border border-border-subtle bg-bg-elevated px-2 py-1 text-xs text-text-primary transition-colors hover:bg-bg disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {isUploadingAvatar ? t("settings.avatarUploading") : t("settings.changeAvatar")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleAvatarRemove}
-                    disabled={
-                      avatarCapabilities.avatarChangesDisabled ||
-                      isUploadingAvatar ||
-                      isRemovingAvatar
-                    }
-                    className="rounded-md border border-border-subtle bg-bg-elevated px-2 py-1 text-xs text-text-primary transition-colors hover:bg-bg disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {isRemovingAvatar ? t("settings.avatarRemoving") : t("settings.removeAvatar")}
-                  </button>
-                </div>
+                {isEditing && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        fileInputRef.current?.click();
+                      }}
+                      disabled={avatarCapabilities.avatarChangesDisabled || isSavingProfile}
+                      className="rounded-md border border-border-subtle bg-bg-elevated px-2 py-1 text-xs text-text-primary transition-colors hover:bg-bg disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {t("settings.changeAvatar")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleAvatarRemove}
+                      disabled={avatarCapabilities.avatarChangesDisabled || isSavingProfile}
+                      className="rounded-md border border-border-subtle bg-bg-elevated px-2 py-1 text-xs text-text-primary transition-colors hover:bg-bg disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {t("settings.removeAvatar")}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </header>
@@ -701,7 +753,7 @@ export const SettingsPersonalInfoPage: React.FC = () => {
         </div>
         {copied && <p className="text-sm text-accent">{t("settings.profileLinkCopied")}</p>}
         {profileSaveError && <p className="text-sm text-notice-base">{profileSaveError}</p>}
-        {avatarActionError && <p className="text-sm text-notice-base">{avatarActionError}</p>}
+        {avatarDraftError && <p className="text-sm text-notice-base">{avatarDraftError}</p>}
       </section>
     </div>
   );
