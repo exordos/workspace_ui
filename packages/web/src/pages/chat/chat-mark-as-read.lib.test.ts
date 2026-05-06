@@ -102,8 +102,8 @@ describe("createMarkAsReadBatcher", () => {
 
     isTabVisible.mockReturnValue(true);
     emitVisibility(true);
-    await new Promise((r) => queueMicrotask(r));
-    await new Promise((r) => queueMicrotask(r));
+    await Promise.resolve();
+    await Promise.resolve();
 
     expect(markAsRead).toHaveBeenCalledTimes(1);
     expect(markAsRead).toHaveBeenCalledWith([5, 6]);

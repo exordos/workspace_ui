@@ -27,7 +27,6 @@ export const ChatPageMessageListSection = React.memo(function ChatPageMessageLis
   unreadCount,
   focusedMessageId,
   onUnreadMessagesVisible,
-  onUnreadMessagesAtBottom,
   messagesLoadError,
   onRetryMessagesLoad,
   boundaryLoadFailed,
@@ -127,7 +126,6 @@ export const ChatPageMessageListSection = React.memo(function ChatPageMessageLis
         unreadCount={unreadCount}
         focusedMessageId={focusedMessageId}
         onUnreadMessagesVisible={onUnreadMessagesVisible}
-        onUnreadMessagesAtBottom={onUnreadMessagesAtBottom}
         showLoadingOverlay={showLoadingOverlay}
       />
     </div>

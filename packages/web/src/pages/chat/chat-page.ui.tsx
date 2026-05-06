@@ -58,7 +58,6 @@ import { logMessageFlow, summarizeChatContextForLog } from "~/shared/lib/message
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { useShortcut } from "~/shared/lib/shortcuts";
 import { resolveCanonicalStreamName } from "~/shared/lib/stream-name.lib";
-import { isTabVisible } from "~/shared/lib/visibility";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
 import { useSidebarConfigStore } from "~/widgets/sidebar/sidebar-config.model";
 import { getDmById, parseStreamSlug, parseDmSlugToUserIds } from "~/widgets/sidebar/sidebar.lib";
@@ -540,48 +539,6 @@ export const ChatPage: React.FC = () => {
       }
     },
     [updateMessageFlagsInStore],
-  );
-
-  const handleUnreadMessagesAtBottom = useCallback(
-    (messageIds: number[]) => {
-      if (!isTabVisible()) return;
-      if (hasNewerMessages || isLoadingNewer) return;
-
-      const target = resolveMarkAllAsReadTarget({
-        isDmView,
-        activeDmUserIds,
-        activeStreamId,
-        activeTopic,
-      });
-      if (!target) return;
-
-      const bottomFallbackContext: ReadFallbackContext =
-        target.type === "dm"
-          ? { type: "dm", dmKey: dmRouteKey(target.userIds, currentUserId) }
-          : { type: "stream", streamId: target.streamId, topic: target.topic };
-
-      const request =
-        target.type === "dm"
-          ? markDmAsRead(target.userIds)
-          : markTopicAsRead(target.streamId, target.topic);
-
-      request
-        .then((ok) => {
-          if (!ok) return;
-          applyReadMessagesOptimistically(messageIds, bottomFallbackContext);
-        })
-        .catch(() => {});
-    },
-    [
-      isDmView,
-      activeDmUserIds,
-      activeStreamId,
-      activeTopic,
-      currentUserId,
-      applyReadMessagesOptimistically,
-      hasNewerMessages,
-      isLoadingNewer,
-    ],
   );
 
   const handleUnreadMessagesVisible = useCallback(
@@ -1834,7 +1791,6 @@ export const ChatPage: React.FC = () => {
           unreadCount={unreadCount}
           focusedMessageId={focusedMessageId}
           onUnreadMessagesVisible={handleUnreadMessagesVisible}
-          onUnreadMessagesAtBottom={handleUnreadMessagesAtBottom}
           messagesLoadError={messagesLoadError}
           onRetryMessagesLoad={handleRetryMessagesLoad}
           boundaryLoadFailed={boundaryLoadFailed}
