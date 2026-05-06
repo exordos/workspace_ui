@@ -89,6 +89,13 @@ export interface ZulipServerThumbnailFormat {
   animated: boolean;
 }
 
+/** Avatar-related capabilities from register `realm` metadata. */
+export interface ZulipOwnAvatarCapabilities {
+  max_avatar_file_size_mib?: number;
+  realm_avatar_changes_disabled?: boolean;
+  server_avatar_changes_disabled?: boolean;
+}
+
 export interface RegisterQueueResult {
   queue_id: string;
   last_event_id: number;
@@ -104,6 +111,12 @@ export interface RegisterQueueResult {
   realm_can_add_subscribers_group?: ZulipGroupSettingValue;
   /** Present when `realm` is included in `fetch_event_types` (Zulip 9.0+). */
   server_thumbnail_formats?: ZulipServerThumbnailFormat[];
+  /** Present when `realm` is included in `fetch_event_types`. */
+  max_avatar_file_size_mib?: number;
+  /** Present when `realm` is included in `fetch_event_types`. */
+  realm_avatar_changes_disabled?: boolean;
+  /** Present when `realm` is included in `fetch_event_types`. */
+  server_avatar_changes_disabled?: boolean;
   /**
    * Effective Jitsi Meet base URL from register (`jitsi_server_url` or realm/server fields).
    * Canonical origin without trailing slash.

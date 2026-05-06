@@ -5,11 +5,21 @@
  */
 
 import { zulipApi } from "~/shared/api/client";
+import {
+  getOwnAvatarCapabilities as getOwnAvatarCapabilitiesFromApi,
+  removeOwnAvatar as removeOwnAvatarFromApi,
+  uploadOwnAvatar as uploadOwnAvatarFromApi,
+} from "~/shared/api/zulip-avatar-settings";
 import { fetchRealmProfileFieldDefinitions } from "~/shared/api/zulip-realm-profile-fields";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
 import { mapZulipProfileDataToSemanticFields } from "~/shared/lib/zulip-profile-fields-map.lib";
-import type { OwnStatusData, UserProfileData } from "./user-profile.types";
+import type {
+  OwnAvatarCapabilities,
+  OwnAvatarMutationResult,
+  OwnStatusData,
+  UserProfileData,
+} from "./user-profile.types";
 
 const log = createLogger("user-profile:api");
 
@@ -161,4 +171,36 @@ export async function updateOwnStatus(params: UpdateOwnStatusParams): Promise<bo
     log.error("Error updating own status", { error: String(err) });
     return false;
   }
+}
+
+export function getOwnAvatarCapabilities(): OwnAvatarCapabilities {
+  const capabilities = getOwnAvatarCapabilitiesFromApi();
+  return {
+    maxAvatarFileSizeMib: capabilities.maxAvatarFileSizeMib,
+    avatarChangesDisabled: capabilities.avatarChangesDisabled,
+  };
+}
+
+export async function uploadOwnAvatar(file: File): Promise<OwnAvatarMutationResult> {
+  const result = await uploadOwnAvatarFromApi(file);
+  if (result.ok) {
+    return result;
+  }
+  return {
+    ok: false,
+    kind: result.kind,
+    message: result.message,
+  };
+}
+
+export async function removeOwnAvatar(): Promise<OwnAvatarMutationResult> {
+  const result = await removeOwnAvatarFromApi();
+  if (result.ok) {
+    return result;
+  }
+  return {
+    ok: false,
+    kind: result.kind,
+    message: result.message,
+  };
 }

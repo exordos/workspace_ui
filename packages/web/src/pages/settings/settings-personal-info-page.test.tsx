@@ -11,13 +11,29 @@ const fetchUserProfileMock = vi.hoisted(() => vi.fn());
 const updateOwnProfileMock = vi.hoisted(() => vi.fn());
 const fetchOwnStatusMock = vi.hoisted(() => vi.fn());
 const updateOwnStatusMock = vi.hoisted(() => vi.fn());
+const getOwnAvatarCapabilitiesMock = vi.hoisted(() => vi.fn());
+const uploadOwnAvatarMock = vi.hoisted(() => vi.fn());
+const removeOwnAvatarMock = vi.hoisted(() => vi.fn());
+const getRealmBaseUrlMock = vi.hoisted(() => vi.fn());
 
 vi.mock("~/features/user-profile/user-profile.api", () => ({
   fetchUserProfile: fetchUserProfileMock,
   updateOwnProfile: updateOwnProfileMock,
   fetchOwnStatus: fetchOwnStatusMock,
   updateOwnStatus: updateOwnStatusMock,
+  getOwnAvatarCapabilities: getOwnAvatarCapabilitiesMock,
+  uploadOwnAvatar: uploadOwnAvatarMock,
+  removeOwnAvatar: removeOwnAvatarMock,
 }));
+
+vi.mock("~/shared/api/zulip-client.internal", () => ({
+  getRealmBaseUrl: getRealmBaseUrlMock,
+}));
+
+function createPngFile(name = "avatar.png"): File {
+  const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0, 0, 0, 0, 0]);
+  return new File([bytes], name, { type: "image/png" });
+}
 
 describe("SettingsPersonalInfoPage", () => {
   beforeEach(() => {
@@ -29,6 +45,23 @@ describe("SettingsPersonalInfoPage", () => {
     fetchOwnStatusMock.mockResolvedValue(null);
     updateOwnStatusMock.mockReset();
     updateOwnStatusMock.mockResolvedValue(true);
+    getOwnAvatarCapabilitiesMock.mockReset();
+    getOwnAvatarCapabilitiesMock.mockReturnValue({
+      maxAvatarFileSizeMib: 25,
+      avatarChangesDisabled: false,
+    });
+    uploadOwnAvatarMock.mockReset();
+    uploadOwnAvatarMock.mockResolvedValue({
+      ok: true,
+      avatarUrl: "/avatar/new.png",
+    });
+    removeOwnAvatarMock.mockReset();
+    removeOwnAvatarMock.mockResolvedValue({
+      ok: true,
+      avatarUrl: "/avatar/default.png",
+    });
+    getRealmBaseUrlMock.mockReset();
+    getRealmBaseUrlMock.mockReturnValue("https://zulip.example.com");
   });
 
   afterEach(() => {
@@ -280,5 +313,156 @@ describe("SettingsPersonalInfoPage", () => {
       });
     });
     expect(screen.getAllByText(/Reviewing PRs/).length).toBeGreaterThan(0);
+  });
+
+  it("uploads avatar from personal info page and updates user store", async () => {
+    useChatListStore.setState({ currentUserId: 42 });
+    useUsersStore.getState().mergeUser({
+      user_id: 42,
+      full_name: "Alice Doe",
+      email: "alice@example.com",
+      avatar_url: "/avatar/old.png",
+    });
+    fetchUserProfileMock.mockResolvedValue({
+      userId: 42,
+      fullName: "Alice Doe",
+      email: "alice@example.com",
+      avatarUrl: "/avatar/old.png",
+      role: 400,
+    });
+    uploadOwnAvatarMock.mockResolvedValue({
+      ok: true,
+      avatarUrl: "/avatar/new.png",
+    });
+
+    renderWithProviders(<SettingsPersonalInfoPage />);
+    await waitFor(() => expect(fetchUserProfileMock).toHaveBeenCalledWith(42));
+
+    const fileInput = document.querySelector('input[type="file"]');
+    expect(fileInput).not.toBeNull();
+    const file = createPngFile();
+    fireEvent.change(fileInput!, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(uploadOwnAvatarMock).toHaveBeenCalledWith(file);
+    });
+    expect(useUsersStore.getState().getUser(42)?.avatar_url).toBe("/avatar/new.png");
+  });
+
+  it("resolves relative avatar URL using realm base", async () => {
+    useChatListStore.setState({ currentUserId: 42 });
+    useUsersStore.getState().mergeUser({
+      user_id: 42,
+      full_name: "Alice Doe",
+      email: "alice@example.com",
+      avatar_url: "/avatar/fallback.png",
+    });
+    fetchUserProfileMock.mockResolvedValue({
+      userId: 42,
+      fullName: "Alice Doe",
+      email: "alice@example.com",
+      avatarUrl: "/avatar/old.png",
+      role: 400,
+    });
+
+    renderWithProviders(<SettingsPersonalInfoPage />);
+    await waitFor(() => expect(fetchUserProfileMock).toHaveBeenCalledWith(42));
+
+    const avatarImage = document.querySelector("img");
+    expect(avatarImage).not.toBeNull();
+    expect(avatarImage?.getAttribute("src")).toContain("https://zulip.example.com/avatar/old.png");
+    expect(avatarImage?.getAttribute("src")).toContain("_av=");
+  });
+
+  it("removes avatar from personal info page", async () => {
+    useChatListStore.setState({ currentUserId: 42 });
+    useUsersStore.getState().mergeUser({
+      user_id: 42,
+      full_name: "Alice Doe",
+      email: "alice@example.com",
+      avatar_url: "/avatar/old.png",
+    });
+    fetchUserProfileMock.mockResolvedValue({
+      userId: 42,
+      fullName: "Alice Doe",
+      email: "alice@example.com",
+      avatarUrl: "/avatar/old.png",
+      role: 400,
+    });
+    removeOwnAvatarMock.mockResolvedValue({
+      ok: true,
+      avatarUrl: "/avatar/default.png",
+    });
+
+    renderWithProviders(<SettingsPersonalInfoPage />);
+    await waitFor(() => expect(fetchUserProfileMock).toHaveBeenCalledWith(42));
+
+    fireEvent.click(screen.getByRole("button", { name: /remove avatar/i }));
+
+    await waitFor(() => {
+      expect(removeOwnAvatarMock).toHaveBeenCalled();
+    });
+    expect(useUsersStore.getState().getUser(42)?.avatar_url).toBe("/avatar/default.png");
+  });
+
+  it("disables avatar controls when avatar changes are forbidden by capabilities", async () => {
+    getOwnAvatarCapabilitiesMock.mockReturnValue({
+      maxAvatarFileSizeMib: 25,
+      avatarChangesDisabled: true,
+    });
+    useChatListStore.setState({ currentUserId: 42 });
+    useUsersStore.getState().mergeUser({
+      user_id: 42,
+      full_name: "Alice Doe",
+      email: "alice@example.com",
+    });
+    fetchUserProfileMock.mockResolvedValue({
+      userId: 42,
+      fullName: "Alice Doe",
+      email: "alice@example.com",
+      avatarUrl: "",
+      role: 400,
+    });
+
+    renderWithProviders(<SettingsPersonalInfoPage />);
+    await waitFor(() => expect(fetchUserProfileMock).toHaveBeenCalledWith(42));
+
+    expect(screen.getByRole("button", { name: /change avatar/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /remove avatar/i })).toBeDisabled();
+  });
+
+  it("shows readable error when avatar upload is unsupported", async () => {
+    useChatListStore.setState({ currentUserId: 42 });
+    useUsersStore.getState().mergeUser({
+      user_id: 42,
+      full_name: "Alice Doe",
+      email: "alice@example.com",
+      avatar_url: "/avatar/old.png",
+    });
+    fetchUserProfileMock.mockResolvedValue({
+      userId: 42,
+      fullName: "Alice Doe",
+      email: "alice@example.com",
+      avatarUrl: "/avatar/old.png",
+      role: 400,
+    });
+    uploadOwnAvatarMock.mockResolvedValue({
+      ok: false,
+      kind: "unsupported",
+      message: "Not found",
+    });
+
+    renderWithProviders(<SettingsPersonalInfoPage />);
+    await waitFor(() => expect(fetchUserProfileMock).toHaveBeenCalledWith(42));
+
+    const fileInput = document.querySelector('input[type="file"]');
+    expect(fileInput).not.toBeNull();
+    const file = createPngFile();
+    fireEvent.change(fileInput!, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(uploadOwnAvatarMock).toHaveBeenCalledWith(file);
+    });
+    expect(screen.getByText(/avatar update is not supported by this server/i)).toBeInTheDocument();
   });
 });

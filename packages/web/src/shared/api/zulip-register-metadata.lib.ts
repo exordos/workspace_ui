@@ -27,3 +27,19 @@ export function parseServerThumbnailFormats(
   }
   return out.length > 0 ? out : undefined;
 }
+
+/** Validates boolean avatar-changes flags from register `realm` metadata. */
+export function parseAvatarChangesDisabledFlag(data: unknown): boolean | undefined {
+  return typeof data === "boolean" ? data : undefined;
+}
+
+/** Validates `max_avatar_file_size_mib` from register `realm` metadata. */
+export function parseMaxAvatarFileSizeMib(data: unknown): number | undefined {
+  if (typeof data !== "number" || !Number.isFinite(data)) {
+    return undefined;
+  }
+  if (!Number.isInteger(data) || data <= 0) {
+    return undefined;
+  }
+  return data;
+}

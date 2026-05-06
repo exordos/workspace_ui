@@ -16,6 +16,10 @@ vi.mock("~/pages/licenses/licenses-page.ui", () => ({
   LicensesPage: () => <div>licenses-page</div>,
 }));
 
+vi.mock("~/pages/settings/settings-personal-info-page.ui", () => ({
+  SettingsPersonalInfoPage: () => <div>settings-personal-info-page</div>,
+}));
+
 vi.mock("~/widgets/layout/layout.ui", async () => {
   const actual = await vi.importActual<typeof import("react-router-dom")>("react-router-dom");
   return {
@@ -119,5 +123,27 @@ describe("App default routing", () => {
 
     expect(await screen.findByText("licenses-page")).toBeInTheDocument();
     expect(screen.queryByTestId("layout-shell")).not.toBeInTheDocument();
+  });
+
+  it("opens personal info settings route instead of redirecting to inbox", async () => {
+    useInstancesStore.setState({
+      instances: [
+        {
+          id: "inst-1",
+          realm: "https://zulip.example.com",
+          email: "user@example.com",
+          apiKey: "api-key",
+        },
+      ],
+      currentInstanceId: "inst-1",
+      unreadCountsByInstance: {},
+    });
+
+    renderWithProviders(<App />, {
+      route: "/org/zulip.example.com/settings/personal-info",
+    });
+
+    expect(await screen.findByText("settings-personal-info-page")).toBeInTheDocument();
+    expect(screen.queryByText("inbox-page")).not.toBeInTheDocument();
   });
 });

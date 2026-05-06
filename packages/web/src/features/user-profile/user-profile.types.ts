@@ -26,3 +26,21 @@ export interface OwnStatusData {
   statusText: string;
   away: boolean;
 }
+
+export interface OwnAvatarCapabilities {
+  maxAvatarFileSizeMib: number;
+  avatarChangesDisabled: boolean;
+}
+
+export type OwnAvatarMutationErrorKind = "forbidden" | "invalid" | "unsupported" | "transient";
+
+export type OwnAvatarMutationResult =
+  | {
+      ok: true;
+      avatarUrl: string | null;
+    }
+  | {
+      ok: false;
+      kind: OwnAvatarMutationErrorKind;
+      message: string;
+    };
