@@ -51,7 +51,7 @@ describe("SettingsPersonalInfoPage", () => {
     fetchUserProfileMock.mockReset();
     fetchUserProfileMock.mockResolvedValue(null);
     updateOwnProfileMock.mockReset();
-    updateOwnProfileMock.mockResolvedValue(false);
+    updateOwnProfileMock.mockResolvedValue({ ok: false, kind: "transient", message: "error" });
     fetchOwnStatusMock.mockReset();
     fetchOwnStatusMock.mockResolvedValue(null);
     updateOwnStatusMock.mockReset();
@@ -271,7 +271,7 @@ describe("SettingsPersonalInfoPage", () => {
       jobTitle: undefined,
       manager: undefined,
     });
-    updateOwnProfileMock.mockResolvedValue(true);
+    updateOwnProfileMock.mockResolvedValue({ ok: true });
 
     renderWithProviders(<SettingsPersonalInfoPage />);
     await waitFor(() => expect(fetchUserProfileMock).toHaveBeenCalledWith(42));
@@ -282,7 +282,10 @@ describe("SettingsPersonalInfoPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => {
-      expect(updateOwnProfileMock).toHaveBeenCalledWith({ fullName: "Alice Updated" });
+      expect(updateOwnProfileMock).toHaveBeenCalledWith({
+        fullName: "Alice Updated",
+        timezone: "Europe/Moscow",
+      });
     });
     expect(updateOwnStatusMock).toHaveBeenCalledWith({
       statusText: "",
@@ -317,7 +320,7 @@ describe("SettingsPersonalInfoPage", () => {
       statusText: "Heads down",
       away: false,
     });
-    updateOwnProfileMock.mockResolvedValue(true);
+    updateOwnProfileMock.mockResolvedValue({ ok: true });
     updateOwnStatusMock.mockResolvedValue(true);
 
     renderWithProviders(<SettingsPersonalInfoPage />);
@@ -338,6 +341,158 @@ describe("SettingsPersonalInfoPage", () => {
     expect(screen.getAllByText(/Reviewing PRs/).length).toBeGreaterThan(0);
   });
 
+  it("shows timezone input only in edit mode", async () => {
+    useChatListStore.setState({ currentUserId: 42 });
+    useUsersStore.getState().mergeUser({
+      user_id: 42,
+      full_name: "Alice Doe",
+      email: "alice@example.com",
+    });
+    fetchUserProfileMock.mockResolvedValue({
+      userId: 42,
+      fullName: "Alice Doe",
+      email: "alice@example.com",
+      avatarUrl: "",
+      role: 400,
+      timezone: "Europe/Moscow",
+    });
+
+    renderWithProviders(<SettingsPersonalInfoPage />);
+    await waitFor(() => expect(fetchUserProfileMock).toHaveBeenCalledWith(42));
+    expect(screen.queryByRole("combobox", { name: /^timezone$/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /edit profile/i }));
+    expect(screen.getByRole("combobox", { name: /^timezone$/i })).toBeInTheDocument();
+  });
+
+  it("keeps timezone draft local until save and applies it on save", async () => {
+    useChatListStore.setState({ currentUserId: 42 });
+    useUsersStore.getState().mergeUser({
+      user_id: 42,
+      full_name: "Alice Doe",
+      email: "alice@example.com",
+    });
+    fetchUserProfileMock.mockResolvedValue({
+      userId: 42,
+      fullName: "Alice Doe",
+      email: "alice@example.com",
+      avatarUrl: "",
+      role: 400,
+      timezone: "Europe/Moscow",
+    });
+    updateOwnProfileMock.mockResolvedValue({ ok: true });
+    updateOwnStatusMock.mockResolvedValue(true);
+
+    renderWithProviders(<SettingsPersonalInfoPage />);
+    await waitFor(() => expect(fetchUserProfileMock).toHaveBeenCalledWith(42));
+    fireEvent.click(screen.getByRole("button", { name: /edit profile/i }));
+
+    const timezoneInput = screen.getByRole("combobox", { name: /^timezone$/i });
+    fireEvent.change(timezoneInput, { target: { value: "Europe/Berlin" } });
+    expect(updateOwnProfileMock).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() => {
+      expect(updateOwnProfileMock).toHaveBeenCalledWith({
+        fullName: "Alice Doe",
+        timezone: "Europe/Berlin",
+      });
+    });
+    expect(screen.getByText("Europe/Berlin")).toBeInTheDocument();
+  });
+
+  it("cancels timezone draft without API calls", async () => {
+    useChatListStore.setState({ currentUserId: 42 });
+    useUsersStore.getState().mergeUser({
+      user_id: 42,
+      full_name: "Alice Doe",
+      email: "alice@example.com",
+    });
+    fetchUserProfileMock.mockResolvedValue({
+      userId: 42,
+      fullName: "Alice Doe",
+      email: "alice@example.com",
+      avatarUrl: "",
+      role: 400,
+      timezone: "Europe/Moscow",
+    });
+
+    renderWithProviders(<SettingsPersonalInfoPage />);
+    await waitFor(() => expect(fetchUserProfileMock).toHaveBeenCalledWith(42));
+    fireEvent.click(screen.getByRole("button", { name: /edit profile/i }));
+
+    const timezoneInput = screen.getByRole("combobox", { name: /^timezone$/i });
+    fireEvent.change(timezoneInput, { target: { value: "Europe/Berlin" } });
+    fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
+
+    expect(updateOwnProfileMock).not.toHaveBeenCalled();
+    expect(updateOwnStatusMock).not.toHaveBeenCalled();
+    expect(screen.getByText("Europe/Moscow")).toBeInTheDocument();
+  });
+
+  it("shows timezone validation error for invalid value and does not save", async () => {
+    useChatListStore.setState({ currentUserId: 42 });
+    useUsersStore.getState().mergeUser({
+      user_id: 42,
+      full_name: "Alice Doe",
+      email: "alice@example.com",
+    });
+    fetchUserProfileMock.mockResolvedValue({
+      userId: 42,
+      fullName: "Alice Doe",
+      email: "alice@example.com",
+      avatarUrl: "",
+      role: 400,
+      timezone: "Europe/Moscow",
+    });
+
+    renderWithProviders(<SettingsPersonalInfoPage />);
+    await waitFor(() => expect(fetchUserProfileMock).toHaveBeenCalledWith(42));
+    fireEvent.click(screen.getByRole("button", { name: /edit profile/i }));
+
+    const timezoneInput = screen.getByRole("combobox", { name: /^timezone$/i });
+    fireEvent.change(timezoneInput, { target: { value: "Mars/Olympus_Mons" } });
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    expect(updateOwnProfileMock).not.toHaveBeenCalled();
+    expect(screen.getByText(/valid iana timezone/i)).toBeInTheDocument();
+  });
+
+  it("shows timezone unsupported error from profile save", async () => {
+    useChatListStore.setState({ currentUserId: 42 });
+    useUsersStore.getState().mergeUser({
+      user_id: 42,
+      full_name: "Alice Doe",
+      email: "alice@example.com",
+    });
+    fetchUserProfileMock.mockResolvedValue({
+      userId: 42,
+      fullName: "Alice Doe",
+      email: "alice@example.com",
+      avatarUrl: "",
+      role: 400,
+      timezone: "Europe/Moscow",
+    });
+    updateOwnProfileMock.mockResolvedValue({
+      ok: false,
+      kind: "unsupported",
+      message: "Timezone is unsupported",
+    });
+
+    renderWithProviders(<SettingsPersonalInfoPage />);
+    await waitFor(() => expect(fetchUserProfileMock).toHaveBeenCalledWith(42));
+    fireEvent.click(screen.getByRole("button", { name: /edit profile/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(updateOwnProfileMock).toHaveBeenCalled();
+    });
+    expect(
+      screen.getByText(/timezone update is not supported by this server/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^save$/i })).toBeInTheDocument();
+  });
+
   it("hides avatar actions outside edit mode", async () => {
     useChatListStore.setState({ currentUserId: 42 });
     useUsersStore.getState().mergeUser({
@@ -352,6 +507,7 @@ describe("SettingsPersonalInfoPage", () => {
       email: "alice@example.com",
       avatarUrl: "/avatar/old.png",
       role: 400,
+      timezone: "Europe/Moscow",
     });
 
     renderWithProviders(<SettingsPersonalInfoPage />);
@@ -375,6 +531,7 @@ describe("SettingsPersonalInfoPage", () => {
       email: "alice@example.com",
       avatarUrl: "/avatar/old.png",
       role: 400,
+      timezone: "Europe/Moscow",
     });
 
     renderWithProviders(<SettingsPersonalInfoPage />);
@@ -399,6 +556,7 @@ describe("SettingsPersonalInfoPage", () => {
       email: "alice@example.com",
       avatarUrl: "/avatar/old.png",
       role: 400,
+      timezone: "Europe/Moscow",
     });
     uploadOwnAvatarMock.mockResolvedValue({
       ok: true,
@@ -436,6 +594,7 @@ describe("SettingsPersonalInfoPage", () => {
       email: "alice@example.com",
       avatarUrl: "/avatar/old.png",
       role: 400,
+      timezone: "Europe/Moscow",
     });
 
     renderWithProviders(<SettingsPersonalInfoPage />);
@@ -461,6 +620,7 @@ describe("SettingsPersonalInfoPage", () => {
       email: "alice@example.com",
       avatarUrl: "/avatar/old.png",
       role: 400,
+      timezone: "Europe/Moscow",
     });
     removeOwnAvatarMock.mockResolvedValue({
       ok: true,
@@ -490,6 +650,7 @@ describe("SettingsPersonalInfoPage", () => {
       email: "alice@example.com",
       avatarUrl: "/avatar/old.png",
       role: 400,
+      timezone: "Europe/Moscow",
     });
 
     renderWithProviders(<SettingsPersonalInfoPage />);
@@ -525,6 +686,7 @@ describe("SettingsPersonalInfoPage", () => {
       email: "alice@example.com",
       avatarUrl: "/avatar/old.png",
       role: 400,
+      timezone: "Europe/Moscow",
     });
     let resolveUpload: ((value: { ok: true; avatarUrl: string }) => void) | undefined;
     uploadOwnAvatarMock.mockImplementation(
@@ -533,7 +695,7 @@ describe("SettingsPersonalInfoPage", () => {
           resolveUpload = resolve;
         }),
     );
-    updateOwnProfileMock.mockResolvedValue(true);
+    updateOwnProfileMock.mockResolvedValue({ ok: true });
     updateOwnStatusMock.mockResolvedValue(true);
 
     renderWithProviders(<SettingsPersonalInfoPage />);
@@ -563,7 +725,10 @@ describe("SettingsPersonalInfoPage", () => {
       expect(uploadOwnAvatarMock).toHaveBeenCalledWith(file);
     });
     await waitFor(() => {
-      expect(updateOwnProfileMock).toHaveBeenCalledWith({ fullName: "Alice Doe" });
+      expect(updateOwnProfileMock).toHaveBeenCalledWith({
+        fullName: "Alice Doe",
+        timezone: "Europe/Moscow",
+      });
       expect(updateOwnStatusMock).toHaveBeenCalledWith({
         statusText: "",
         away: false,
@@ -592,8 +757,9 @@ describe("SettingsPersonalInfoPage", () => {
       email: "alice@example.com",
       avatarUrl: "/avatar/old.png",
       role: 400,
+      timezone: "Europe/Moscow",
     });
-    updateOwnProfileMock.mockResolvedValue(true);
+    updateOwnProfileMock.mockResolvedValue({ ok: true });
     updateOwnStatusMock.mockResolvedValue(true);
 
     renderWithProviders(<SettingsPersonalInfoPage />);
@@ -623,6 +789,7 @@ describe("SettingsPersonalInfoPage", () => {
       email: "alice@example.com",
       avatarUrl: "/avatar/old.png",
       role: 400,
+      timezone: "Europe/Moscow",
     });
     uploadOwnAvatarMock.mockResolvedValue({
       ok: false,
@@ -667,12 +834,17 @@ describe("SettingsPersonalInfoPage", () => {
       email: "alice@example.com",
       avatarUrl: "/avatar/old.png",
       role: 400,
+      timezone: "Europe/Moscow",
     });
     uploadOwnAvatarMock.mockResolvedValue({
       ok: true,
       avatarUrl: "/avatar/new.png",
     });
-    updateOwnProfileMock.mockResolvedValue(false);
+    updateOwnProfileMock.mockResolvedValue({
+      ok: false,
+      kind: "transient",
+      message: "Failed to update profile",
+    });
     updateOwnStatusMock.mockResolvedValue(true);
 
     renderWithProviders(<SettingsPersonalInfoPage />);
@@ -713,6 +885,7 @@ describe("SettingsPersonalInfoPage", () => {
       email: "alice@example.com",
       avatarUrl: "",
       role: 400,
+      timezone: "Europe/Moscow",
     });
 
     renderWithProviders(<SettingsPersonalInfoPage />);

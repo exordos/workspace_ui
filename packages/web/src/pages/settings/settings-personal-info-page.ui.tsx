@@ -50,6 +50,25 @@ function normalizeImageMime(mime: string): string {
   return normalized === "image/jpg" ? "image/jpeg" : normalized;
 }
 
+function getRuntimeSupportedTimezones(): string[] {
+  if (typeof Intl.supportedValuesOf !== "function") return [];
+  try {
+    return Intl.supportedValuesOf("timeZone");
+  } catch {
+    return [];
+  }
+}
+
+function canonicalizeTimezone(value: string): string | null {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return null;
+  try {
+    return new Intl.DateTimeFormat("en-US", { timeZone: trimmed }).resolvedOptions().timeZone;
+  } catch {
+    return null;
+  }
+}
+
 type PendingAvatarAction =
   | { kind: "none" }
   | { kind: "upload"; file: File; previewUrl: string }
@@ -63,11 +82,13 @@ export const SettingsPersonalInfoPage: React.FC = () => {
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editableFullName, setEditableFullName] = useState("");
+  const [editableTimezone, setEditableTimezone] = useState("");
   const [ownStatus, setOwnStatus] = useState<OwnStatusData | null>(null);
   const [editableStatusText, setEditableStatusText] = useState("");
   const [editableStatusAway, setEditableStatusAway] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [profileSaveError, setProfileSaveError] = useState<string | null>(null);
+  const [timezoneDraftError, setTimezoneDraftError] = useState<string | null>(null);
   const [pendingAvatarAction, setPendingAvatarAction] = useState<PendingAvatarAction>(
     EMPTY_PENDING_AVATAR_ACTION,
   );
@@ -78,6 +99,8 @@ export const SettingsPersonalInfoPage: React.FC = () => {
   const mergeUser = useUsersStore((s) => s.mergeUser);
   const currentInstance = useInstancesStore((s) => s.getCurrentInstance());
   const avatarCapabilities = getOwnAvatarCapabilities();
+  const supportedTimezones = useMemo(() => getRuntimeSupportedTimezones(), []);
+  const supportedTimezoneSet = useMemo(() => new Set(supportedTimezones), [supportedTimezones]);
 
   useEffect(() => {
     let cancelled = false;
@@ -120,9 +143,10 @@ export const SettingsPersonalInfoPage: React.FC = () => {
   useEffect(() => {
     if (isEditing) return;
     setEditableFullName(fullName === "-" ? "" : fullName);
+    setEditableTimezone(profile?.timezone?.trim() ?? "");
     setEditableStatusText(ownStatus?.statusText ?? "");
     setEditableStatusAway(ownStatus?.away ?? false);
-  }, [fullName, isEditing, ownStatus?.away, ownStatus?.statusText]);
+  }, [fullName, isEditing, ownStatus?.away, ownStatus?.statusText, profile?.timezone]);
 
   const email = useMemo(() => {
     const profileEmail = profile?.email?.trim();
@@ -200,23 +224,27 @@ export const SettingsPersonalInfoPage: React.FC = () => {
 
   const handleStartProfileEdit = useCallback(() => {
     setEditableFullName(fullName === "-" ? "" : fullName);
+    setEditableTimezone(profile?.timezone?.trim() ?? "");
     setEditableStatusText(ownStatus?.statusText ?? "");
     setEditableStatusAway(ownStatus?.away ?? false);
     setPendingAvatarAction(EMPTY_PENDING_AVATAR_ACTION);
     setAvatarDraftError(null);
+    setTimezoneDraftError(null);
     setProfileSaveError(null);
     setIsEditing(true);
-  }, [fullName, ownStatus?.away, ownStatus?.statusText]);
+  }, [fullName, ownStatus?.away, ownStatus?.statusText, profile?.timezone]);
 
   const handleCancelProfileEdit = useCallback(() => {
     setEditableFullName(fullName === "-" ? "" : fullName);
+    setEditableTimezone(profile?.timezone?.trim() ?? "");
     setEditableStatusText(ownStatus?.statusText ?? "");
     setEditableStatusAway(ownStatus?.away ?? false);
     setPendingAvatarAction(EMPTY_PENDING_AVATAR_ACTION);
     setAvatarDraftError(null);
+    setTimezoneDraftError(null);
     setProfileSaveError(null);
     setIsEditing(false);
-  }, [fullName, ownStatus?.away, ownStatus?.statusText]);
+  }, [fullName, ownStatus?.away, ownStatus?.statusText, profile?.timezone]);
 
   const profileStatus = useMemo(() => {
     const trimmedStatus = ownStatus?.statusText?.trim() ?? "";
@@ -240,14 +268,33 @@ export const SettingsPersonalInfoPage: React.FC = () => {
     if (currentUserId == null || isSavingProfile) return;
     const trimmedFullName = editableFullName.trim();
     const trimmedStatusText = editableStatusText.trim();
+    const trimmedTimezone = editableTimezone.trim();
     if (trimmedFullName.length === 0) {
       setProfileSaveError(t("settings.fullNameRequired"));
+      return;
+    }
+    const canonicalTimezone = canonicalizeTimezone(trimmedTimezone);
+    if (trimmedTimezone.length === 0) {
+      setTimezoneDraftError(t("settings.timezoneRequired"));
+      return;
+    }
+    if (canonicalTimezone == null) {
+      setTimezoneDraftError(t("settings.timezoneInvalid"));
+      return;
+    }
+    if (
+      supportedTimezoneSet.size > 0 &&
+      !supportedTimezoneSet.has(canonicalTimezone) &&
+      !supportedTimezoneSet.has(trimmedTimezone)
+    ) {
+      setTimezoneDraftError(t("settings.timezoneInvalid"));
       return;
     }
 
     setIsSavingProfile(true);
     setProfileSaveError(null);
     setAvatarDraftError(null);
+    setTimezoneDraftError(null);
 
     void (async () => {
       const avatarSnapshot = useUsersStore.getState().getAvatarUrl(currentUserId) ?? "";
@@ -315,11 +362,22 @@ export const SettingsPersonalInfoPage: React.FC = () => {
       }
 
       const [profileUpdated, statusUpdated] = await Promise.all([
-        updateOwnProfile({ fullName: trimmedFullName }),
+        updateOwnProfile({ fullName: trimmedFullName, timezone: canonicalTimezone }),
         updateOwnStatus({ statusText: trimmedStatusText, away: editableStatusAway }),
       ]);
 
-      if (!profileUpdated || !statusUpdated) {
+      if (!profileUpdated.ok) {
+        if (profileUpdated.kind === "unsupported") {
+          setTimezoneDraftError(t("settings.timezoneUnsupported"));
+        } else if (profileUpdated.kind === "invalid") {
+          setTimezoneDraftError(t("settings.timezoneInvalid"));
+        } else {
+          setProfileSaveError(t("settings.profileSaveError"));
+        }
+        return;
+      }
+
+      if (!statusUpdated) {
         // Avatar mutation has already been committed by server, keep it as-is.
         if (avatarMutationCommitted) {
           mergeUser({
@@ -331,12 +389,15 @@ export const SettingsPersonalInfoPage: React.FC = () => {
         return;
       }
 
-      setProfile((prev) => (prev ? { ...prev, fullName: trimmedFullName } : prev));
+      setProfile((prev) =>
+        prev ? { ...prev, fullName: trimmedFullName, timezone: canonicalTimezone } : prev,
+      );
       setOwnStatus({ statusText: trimmedStatusText, away: editableStatusAway });
       mergeUser({ user_id: currentUserId, full_name: trimmedFullName });
       setIsEditing(false);
       setPendingAvatarAction(EMPTY_PENDING_AVATAR_ACTION);
       setAvatarDraftError(null);
+      setTimezoneDraftError(null);
     })()
       .catch(() => {
         setProfileSaveError(t("settings.profileSaveError"));
@@ -349,10 +410,13 @@ export const SettingsPersonalInfoPage: React.FC = () => {
     editableFullName,
     editableStatusAway,
     editableStatusText,
+    editableTimezone,
     isSavingProfile,
     mapAvatarErrorMessage,
     mergeUser,
     pendingAvatarAction,
+    profile?.timezone,
+    supportedTimezoneSet,
   ]);
 
   const validateAvatarFile = useCallback(
@@ -547,6 +611,39 @@ export const SettingsPersonalInfoPage: React.FC = () => {
               </div>
             </li>
             <li className="flex items-start gap-3 rounded-lg px-1 py-1.5 text-sm">
+              <Icon name="calendar" size={20} className="mt-0.5 shrink-0 text-icon-base" />
+              <div className="min-w-0 flex-1">
+                <p className="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-text-secondary">
+                  {t("info.timezone")}
+                </p>
+                {isEditing ? (
+                  <>
+                    <input
+                      type="text"
+                      value={editableTimezone}
+                      onChange={(e) => {
+                        setEditableTimezone(e.target.value);
+                        setTimezoneDraftError(null);
+                      }}
+                      list="settings-timezone-options"
+                      className="w-72 max-w-full rounded-md border border-border-subtle bg-bg px-2 py-1 text-sm text-text-primary outline-none focus:border-accent"
+                      placeholder={t("settings.timezonePlaceholder")}
+                      aria-label={t("info.timezone")}
+                    />
+                    <datalist id="settings-timezone-options">
+                      {supportedTimezones.map((timezoneOption) => (
+                        <option key={timezoneOption} value={timezoneOption} />
+                      ))}
+                    </datalist>
+                  </>
+                ) : (
+                  <span className="block truncate whitespace-nowrap text-text-primary">
+                    {timezone}
+                  </span>
+                )}
+              </div>
+            </li>
+            <li className="flex items-start gap-3 rounded-lg px-1 py-1.5 text-sm">
               <Icon name="info" size={20} className="mt-0.5 shrink-0 text-icon-base" />
               <div className="min-w-0 flex-1">
                 <p className="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-text-secondary">
@@ -663,17 +760,6 @@ export const SettingsPersonalInfoPage: React.FC = () => {
               <Icon name="calendar" size={20} className="mt-0.5 shrink-0 text-icon-base" />
               <div className="min-w-0 flex-1">
                 <p className="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-text-secondary">
-                  {t("info.timezone")}
-                </p>
-                <span className="block truncate whitespace-nowrap text-text-primary">
-                  {timezone}
-                </span>
-              </div>
-            </li>
-            <li className="flex items-start gap-3 rounded-lg px-1 py-1.5 text-sm">
-              <Icon name="calendar" size={20} className="mt-0.5 shrink-0 text-icon-base" />
-              <div className="min-w-0 flex-1">
-                <p className="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-text-secondary">
                   {t("info.localTime")}
                 </p>
                 <span className="block truncate whitespace-nowrap text-text-primary">
@@ -754,6 +840,7 @@ export const SettingsPersonalInfoPage: React.FC = () => {
         {copied && <p className="text-sm text-accent">{t("settings.profileLinkCopied")}</p>}
         {profileSaveError && <p className="text-sm text-notice-base">{profileSaveError}</p>}
         {avatarDraftError && <p className="text-sm text-notice-base">{avatarDraftError}</p>}
+        {timezoneDraftError && <p className="text-sm text-notice-base">{timezoneDraftError}</p>}
       </section>
     </div>
   );

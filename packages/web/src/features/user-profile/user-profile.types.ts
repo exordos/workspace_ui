@@ -27,6 +27,16 @@ export interface OwnStatusData {
   away: boolean;
 }
 
+export type OwnProfileUpdateErrorKind = "forbidden" | "invalid" | "unsupported" | "transient";
+
+export type OwnProfileUpdateResult =
+  | { ok: true }
+  | {
+      ok: false;
+      kind: OwnProfileUpdateErrorKind;
+      message: string;
+    };
+
 export interface OwnAvatarCapabilities {
   maxAvatarFileSizeMib: number;
   avatarChangesDisabled: boolean;
