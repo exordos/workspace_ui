@@ -94,16 +94,22 @@ describe("createMarkAsReadBatcher", () => {
     vi.useRealTimers();
     isTabVisible.mockReturnValue(false);
     const markAsRead = vi.fn().mockResolvedValue(true);
-    const batcher = createMarkAsReadBatcher({ markAsRead, debounceMs: 100, respectTabVisibility: true });
+    const batcher = createMarkAsReadBatcher({
+      markAsRead,
+      debounceMs: 100,
+      respectTabVisibility: true,
+    });
 
     batcher.schedule([5, 6]);
-    await new Promise((r) => setTimeout(r, 110));
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 110);
+    });
     expect(markAsRead).not.toHaveBeenCalled();
 
     isTabVisible.mockReturnValue(true);
     emitVisibility(true);
-    await new Promise((r) => queueMicrotask(r));
-    await new Promise((r) => queueMicrotask(r));
+    await Promise.resolve();
+    await Promise.resolve();
 
     expect(markAsRead).toHaveBeenCalledTimes(1);
     expect(markAsRead).toHaveBeenCalledWith([5, 6]);

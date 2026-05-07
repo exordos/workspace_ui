@@ -32,11 +32,7 @@ import {
 } from "~/features/typing-indicator/typing-key";
 import { t } from "~/i18n/i18n";
 import {
-  fetchMessages,
-  fetchMessagesWithNarrow,
-  fetchDmMessages,
   fetchMessageById,
-  fetchUser,
   getRealmBaseUrl,
   sendMessage,
   markMessagesAsRead,
@@ -59,11 +55,9 @@ import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { useShortcut } from "~/shared/lib/shortcuts";
 import { resolveCanonicalStreamName } from "~/shared/lib/stream-name.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
-import { isTabVisible } from "~/shared/lib/visibility";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
 import { useSidebarConfigStore } from "~/widgets/sidebar/sidebar-config.model";
-import { getDmById, parseStreamSlug, parseDmSlugToUserIds } from "~/widgets/sidebar/sidebar.lib";
-import type { StreamWithLast } from "~/widgets/sidebar/sidebar.types";
+import { parseDmSlugToUserIds } from "~/widgets/sidebar/sidebar.lib";
 import { isFocusedMessageLoadedInRoute } from "./chat-anchor-load.lib";
 import { startCallFromHeader } from "./chat-call-start.lib";
 import {
@@ -79,7 +73,6 @@ import {
   mergeForwardDraftContent,
   resolveForwardDraftTarget,
   setPendingForwardPrefill,
-  toggleForwardRecipient,
 } from "./chat-forward.lib";
 import {
   collectUnreadMessageIds,
@@ -233,9 +226,6 @@ export const ChatPage: React.FC = () => {
   const isLoadingMore = useCurrentChatMessagesStore((s) => s.isLoadingMore);
   const isLoadingNewer = useCurrentChatMessagesStore((s) => s.isLoadingNewer);
   const hasNewerMessages = useCurrentChatMessagesStore((s) => s.hasNewerMessages);
-  const setIsLoadingMore = useCurrentChatMessagesStore((s) => s.setIsLoadingMore);
-  const setHasOlderMessages = useCurrentChatMessagesStore((s) => s.setHasOlderMessages);
-  const setHasNewerMessages = useCurrentChatMessagesStore((s) => s.setHasNewerMessages);
   const loadInitialMessagesForContext = useCurrentChatMessagesStore(
     (s) => s.loadInitialMessagesForContext,
   );
@@ -540,48 +530,6 @@ export const ChatPage: React.FC = () => {
       }
     },
     [updateMessageFlagsInStore],
-  );
-
-  const handleUnreadMessagesAtBottom = useCallback(
-    (messageIds: number[]) => {
-      if (!isTabVisible()) return;
-      if (hasNewerMessages || isLoadingNewer) return;
-
-      const target = resolveMarkAllAsReadTarget({
-        isDmView,
-        activeDmUserIds,
-        activeStreamId,
-        activeTopic,
-      });
-      if (!target) return;
-
-      const bottomFallbackContext: ReadFallbackContext =
-        target.type === "dm"
-          ? { type: "dm", dmKey: dmRouteKey(target.userIds, currentUserId) }
-          : { type: "stream", streamId: target.streamId, topic: target.topic };
-
-      const request =
-        target.type === "dm"
-          ? markDmAsRead(target.userIds)
-          : markTopicAsRead(target.streamId, target.topic);
-
-      request
-        .then((ok) => {
-          if (!ok) return;
-          applyReadMessagesOptimistically(messageIds, bottomFallbackContext);
-        })
-        .catch(() => {});
-    },
-    [
-      isDmView,
-      activeDmUserIds,
-      activeStreamId,
-      activeTopic,
-      currentUserId,
-      applyReadMessagesOptimistically,
-      hasNewerMessages,
-      isLoadingNewer,
-    ],
   );
 
   const handleUnreadMessagesVisible = useCallback(
@@ -1822,7 +1770,6 @@ export const ChatPage: React.FC = () => {
           unreadCount={unreadCount}
           focusedMessageId={focusedMessageId}
           onUnreadMessagesVisible={handleUnreadMessagesVisible}
-          onUnreadMessagesAtBottom={handleUnreadMessagesAtBottom}
           messagesLoadError={messagesLoadError}
           onRetryMessagesLoad={handleRetryMessagesLoad}
           boundaryLoadFailed={boundaryLoadFailed}
