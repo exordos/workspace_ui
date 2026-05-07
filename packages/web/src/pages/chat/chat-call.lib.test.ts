@@ -45,7 +45,7 @@ describe("resolveCallMessageTargetParams", () => {
     ).toBeNull();
   });
 
-  it("returns stream target and falls back to general topic when topic is empty", () => {
+  it("returns stream target and falls back to empty topic when topic is empty", () => {
     expect(
       resolveCallMessageTargetParams({
         isDmView: false,
@@ -58,7 +58,7 @@ describe("resolveCallMessageTargetParams", () => {
       mode: "stream",
       stream: "engineering",
       streamId: 10,
-      subject: "general",
+      subject: "",
     });
   });
 
@@ -138,7 +138,7 @@ describe("canStartCallFromHeader", () => {
     ).toBe(false);
     expect(
       canStartCallFromHeader({
-        target: { mode: "stream", stream: "engineering", streamId: 10, subject: "general" },
+        target: { mode: "stream", stream: "engineering", streamId: 10, subject: "" },
         currentUserId: 0,
       }),
     ).toBe(false);

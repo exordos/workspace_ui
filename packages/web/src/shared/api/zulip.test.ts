@@ -496,7 +496,7 @@ describe("registerQueue", () => {
     expect(mockRefreshZulipApiBase).toHaveBeenCalled();
     expect(mockZulipApi.post).toHaveBeenCalledWith("/register", {
       event_types: JSON.stringify(["message", "presence"]),
-      apply_markdown: "true",
+      apply_markdown: "false",
       fetch_event_types: JSON.stringify([
         "subscription",
         "user_topic",
@@ -1578,7 +1578,7 @@ describe("fetchMessageById", () => {
     expect(result?.markdown_source).toBe("hello");
     expect(mockZulipApi.get).toHaveBeenCalledWith("/messages/100", {
       allow_empty_topic_name: "true",
-      apply_markdown: "true",
+      apply_markdown: "false",
     });
   });
 
@@ -1705,9 +1705,22 @@ describe("fetchMessages", () => {
     expect(result[0]!.id).toBe(10);
   });
 
-  it("uses empty topic narrow operand for default topic route name general", async () => {
+  it("uses literal general topic narrow operand for literal general topic route", async () => {
     mockZulipClient.messages.retrieve.mockResolvedValue({ messages: [] });
     await fetchMessages("engineering", "general");
+    expect(mockZulipClient.messages.retrieve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        narrow: [
+          { operator: "stream", operand: "engineering" },
+          { operator: "topic", operand: "general" },
+        ],
+      }),
+    );
+  });
+
+  it("uses empty topic narrow operand for explicit empty topic route", async () => {
+    mockZulipClient.messages.retrieve.mockResolvedValue({ messages: [] });
+    await fetchMessages("engineering", "");
     expect(mockZulipClient.messages.retrieve).toHaveBeenCalledWith(
       expect.objectContaining({
         narrow: [
@@ -1753,7 +1766,7 @@ describe("fetchMessages", () => {
     mockZulipClient.messages.retrieve.mockResolvedValue({ messages: [] });
     await fetchMessages();
     expect(mockZulipClient.messages.retrieve).toHaveBeenCalledWith(
-      expect.objectContaining({ narrow: undefined, apply_markdown: true }),
+      expect.objectContaining({ narrow: undefined, apply_markdown: false }),
     );
   });
 
@@ -1838,7 +1851,7 @@ describe("fetchMessagesWithNarrow", () => {
     );
   });
 
-  it("normalizes topic operand general to empty string", async () => {
+  it("preserves literal general topic operand in narrow fetch", async () => {
     mockZulipClient.messages.retrieve.mockResolvedValue({ messages: [] });
     await fetchMessagesWithNarrow(
       [
@@ -1853,7 +1866,7 @@ describe("fetchMessagesWithNarrow", () => {
       expect.objectContaining({
         narrow: [
           { operator: "stream", operand: "dev" },
-          { operator: "topic", operand: "" },
+          { operator: "topic", operand: "general" },
         ],
       }),
     );
@@ -2261,10 +2274,10 @@ describe("sendMessage", () => {
     expect(mockZulipClient.messages.send).not.toHaveBeenCalled();
   });
 
-  it("defaults subject to 'general' for stream message", async () => {
+  it("defaults subject to empty topic for stream message", async () => {
     mockZulipClient.messages.send.mockResolvedValue({ id: 102 });
     const result = await sendMessage({ stream: "engineering", content: "test" });
-    expect(result.subject).toBe("general");
+    expect(result.subject).toBe("");
   });
 
   it("throws when neither stream nor to is provided", async () => {
@@ -2702,11 +2715,26 @@ describe("markTopicAsRead", () => {
     await expect(markTopicAsRead(0, "bugs")).rejects.toThrow(/Invalid streamId/);
   });
 
-  it("throws for empty topic", async () => {
-    await expect(markTopicAsRead(10, "")).rejects.toThrow(/non-empty string/);
+  it("supports explicit empty topic", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { result: "success" },
+      raw: { statusText: "OK" },
+    });
+    await markTopicAsRead(10, "");
+    expect(mockZulipApi.post).toHaveBeenCalledWith(
+      "/messages/flags/narrow",
+      expect.objectContaining({
+        narrow: JSON.stringify([
+          { operator: "stream", operand: 10 },
+          { operator: "topic", operand: "" },
+        ]),
+      }),
+    );
   });
 
-  it("uses empty topic operand for default topic general", async () => {
+  it("preserves literal general topic operand", async () => {
     mockZulipApi.post.mockResolvedValue({
       ok: true,
       status: 200,
@@ -2719,7 +2747,7 @@ describe("markTopicAsRead", () => {
       expect.objectContaining({
         narrow: JSON.stringify([
           { operator: "stream", operand: 10 },
-          { operator: "topic", operand: "" },
+          { operator: "topic", operand: "general" },
         ]),
       }),
     );

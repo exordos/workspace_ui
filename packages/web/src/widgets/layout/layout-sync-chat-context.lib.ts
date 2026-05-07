@@ -6,7 +6,7 @@
  */
 import type { CurrentChatContext } from "~/entities/message/message.model.types";
 import { dmRouteKey } from "~/shared/lib/dm-key";
-import { normalizeStreamTopicForMessageCache } from "~/shared/lib/message-cache-keys.lib";
+import { decodeTopicFromRoute, normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { parseDmSlugToUserIds, parseStreamSlug } from "~/widgets/sidebar/sidebar.lib";
 
 const ORG_PREFIX_PATH = /^\/org\/[^/]+(\/.*)?$/;
@@ -51,9 +51,7 @@ export function isStoreContextAlignedWithParsedRoute(
   const uu = urlCtx;
   if (su.streamId !== uu.streamId) return false;
   if (parsed.streamTopicExplicitInUrl) {
-    return (
-      normalizeStreamTopicForMessageCache(su.topic) === normalizeStreamTopicForMessageCache(uu.topic)
-    );
+    return normalizeTopicForIdentity(su.topic) === normalizeTopicForIdentity(uu.topic);
   }
   return true;
 }
@@ -78,13 +76,13 @@ export function parseChatContextFromPathname(options: {
   if (streamMatch) {
     const streamSlug = decodeURIComponent(streamMatch[1] ?? "");
     const topicExplicit = streamMatch[2] != null && streamMatch[2].length > 0;
-    const topicRaw = topicExplicit ? decodeURIComponent(streamMatch[2] ?? "") : "general";
-    const topic = (topicRaw ?? "").trim() || "general";
+    const topicRaw = topicExplicit ? decodeURIComponent(streamMatch[2] ?? "") : "";
+    const topic = topicExplicit ? decodeTopicFromRoute(topicRaw) : "";
     const parsed = parseStreamSlug(streamSlug);
     if (!parsed) return { context: null, streamTopicExplicitInUrl: false };
     const streamName =
       parsed.stream_id != null
-        ? streamsMap.get(parsed.stream_id)?.name ?? parsed.stream_name
+        ? (streamsMap.get(parsed.stream_id)?.name ?? parsed.stream_name)
         : parsed.stream_name;
     const streamId =
       parsed.stream_id ??

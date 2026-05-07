@@ -10,11 +10,7 @@ import { getPresenceState } from "~/shared/lib/format";
 import { Icon } from "~/shared/ui/icon";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import { filterSearchMessages } from "./search-modal-filters.lib";
-import {
-  MAX_USER_RESULTS,
-  SearchResultItem,
-  UserResultItem,
-} from "./search-modal-result-items.ui";
+import { MAX_USER_RESULTS, SearchResultItem, UserResultItem } from "./search-modal-result-items.ui";
 import { useSearchModalStore } from "./search-modal.model";
 import type { SearchModalProps } from "./search-modal.types";
 
@@ -40,25 +36,28 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const users = useUsersStore((s) => s.users);
 
-  const runSearch = useCallback(async (q: string) => {
-    if (!q.trim()) {
-      setResults([]);
-      return;
-    }
-    setLoading(true);
-    try {
-      const list = await fetchMessages(undefined, undefined, q);
-      for (const msg of list) {
-        useUsersStore.getState().mergeUser({
-          user_id: msg.sender_id,
-          full_name: msg.sender_full_name ?? "",
-        });
+  const runSearch = useCallback(
+    async (q: string) => {
+      if (!q.trim()) {
+        setResults([]);
+        return;
       }
-      setResults(list);
-    } finally {
-      setLoading(false);
-    }
-  }, [setLoading, setResults]);
+      setLoading(true);
+      try {
+        const list = await fetchMessages(undefined, undefined, q);
+        for (const msg of list) {
+          useUsersStore.getState().mergeUser({
+            user_id: msg.sender_id,
+            full_name: msg.sender_full_name ?? "",
+          });
+        }
+        setResults(list);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [setLoading, setResults],
+  );
 
   const userResults = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -138,7 +137,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
           onCloseAutoFocus={(e) => e.preventDefault()}
         >
           <div className="border-b border-border-subtle px-5 py-4">
-            <div className="flex items-center gap-2 rounded-lg border border-border-subtle bg-bg px-3 py-2 transition-colors focus-within:bg-bg-elevated focus-within:outline-none">
+            <div className="flex items-center gap-2 rounded-lg border border-border-subtle bg-bg px-3 py-2 transition-colors focus-within:border-accent-soft focus-within:bg-bg-elevated focus-within:outline-none">
               <Icon name="search" size={20} className="shrink-0 text-text-muted" />
               <input
                 ref={inputRef}
@@ -146,7 +145,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={t("search.search")}
-                className="flex-1 bg-transparent text-base text-text-primary placeholder:text-text-muted focus-visible:outline-none"
+                className="flex-1 bg-transparent text-base text-text-primary placeholder:text-text-muted focus-visible:!outline-none"
               />
             </div>
           </div>
@@ -156,21 +155,21 @@ export const SearchModal: React.FC<SearchModalProps> = ({
               value={streamFilter}
               onChange={(event) => setStreamFilter(event.target.value)}
               placeholder={t("search.filterStream")}
-              className="rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none transition-colors placeholder:text-text-muted focus-visible:bg-bg-elevated focus-visible:outline-none"
+              className="rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none transition-colors placeholder:text-text-muted focus-visible:bg-bg-elevated"
             />
             <input
               type="text"
               value={senderFilter}
               onChange={(event) => setSenderFilter(event.target.value)}
               placeholder={t("search.filterSender")}
-              className="rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none transition-colors placeholder:text-text-muted focus-visible:bg-bg-elevated focus-visible:outline-none"
+              className="rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none transition-colors placeholder:text-text-muted focus-visible:bg-bg-elevated"
             />
             <input
               aria-label={t("search.filterDate")}
               type="date"
               value={dateFilter}
               onChange={(event) => setDateFilter(event.target.value)}
-              className="rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none transition-colors placeholder:text-text-muted focus-visible:bg-bg-elevated focus-visible:outline-none"
+              className="rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none transition-colors placeholder:text-text-muted focus-visible:bg-bg-elevated"
             />
           </div>
           <ScrollArea className="flex-1 px-3 py-2">

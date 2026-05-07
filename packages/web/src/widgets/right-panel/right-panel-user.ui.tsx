@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { ensureUserStatusLoaded } from "~/entities/user/api/user.api";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
@@ -6,6 +7,7 @@ import { useUsersStore } from "~/entities/user/user.model";
 import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
 import { t } from "~/i18n/i18n";
+import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { isValidEmail, isValidUrl } from "~/shared/lib/validation";
 import { Avatar } from "~/shared/ui/avatar";
 import { Copyable } from "~/shared/ui/copyable";
@@ -25,6 +27,7 @@ export const RightPanelUser = React.memo(function RightPanelUser({
   onSelectCommonGroup,
   onOpenDirectMessage,
 }: RightPanelUserProps) {
+  const navigate = useNavigate();
   const media = user.media ?? {};
   const photos = media.photos ?? 0;
   const videos = media.videos ?? 0;
@@ -129,6 +132,7 @@ export const RightPanelUser = React.memo(function RightPanelUser({
   }, [avatarSrc, openMediaViewer, user.name]);
 
   const currentUserId = useChatListStore((s) => s.currentUserId);
+  const isOwnProfile = currentUserId != null && directMessageUserId === currentUserId;
   const profileDmCallHandlerReady = useChatDmCallBridgeStore(
     (s) => s.invokeDmCallFromProfileHandler != null,
   );
@@ -136,6 +140,16 @@ export const RightPanelUser = React.memo(function RightPanelUser({
     if (directMessageUserId == null) return;
     useChatDmCallBridgeStore.getState().invokeDmCallFromProfile(directMessageUserId);
   }, [directMessageUserId]);
+  const handleOpenOwnPersonalInfoSettings = useCallback(() => {
+    void navigate(withCurrentOrgRoute("/settings/personal-info"));
+  }, [navigate]);
+  const handleAvatarAction = useCallback(() => {
+    if (isOwnProfile) {
+      handleOpenOwnPersonalInfoSettings();
+      return;
+    }
+    handleOpenAvatarPreview();
+  }, [handleOpenAvatarPreview, handleOpenOwnPersonalInfoSettings, isOwnProfile]);
 
   useEffect(() => {
     if (user.userId == null) {
@@ -179,12 +193,12 @@ export const RightPanelUser = React.memo(function RightPanelUser({
             </h2>
           )}
           <div className="flex items-center gap-3">
-            {avatarSrc != null ? (
+            {isOwnProfile || avatarSrc != null ? (
               <button
                 type="button"
-                onClick={handleOpenAvatarPreview}
+                onClick={handleAvatarAction}
                 className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
-                aria-label={t("info.openAvatarPreview")}
+                aria-label={isOwnProfile ? t("settings.changeAvatar") : t("info.openAvatarPreview")}
               >
                 <Avatar size="lg" className="bg-bg-elevated text-text-secondary" src={avatarSrc}>
                   {user.name.slice(0, 1)}

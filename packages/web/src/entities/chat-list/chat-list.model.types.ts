@@ -63,6 +63,13 @@ export interface ChatListState {
   upsertDmMetadataRows: (rows: ChatListDmMetadataRow[]) => void;
   setCurrentUserId: (id: number | null) => void;
   renameStream: (streamId: number, nextName: string) => void;
+  moveStreamTopic: (params: {
+    streamId: number;
+    oldTopic: string;
+    newTopic: string;
+    messageIds?: number[];
+    anchorMessageId?: number;
+  }) => void;
   removeStream: (streamId: number) => void;
   /** After a user profile is fetched, refresh personal DM row titles that still use placeholders. */
   patchPersonalDmRowLabelsForUser: (userId: number) => void;

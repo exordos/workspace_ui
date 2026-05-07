@@ -15,6 +15,8 @@ describe("topic-resolve", () => {
 
   it("removes resolved marker from topic names", () => {
     expect(toUnresolvedTopicName("\u2714 incident")).toBe("incident");
+    expect(toUnresolvedTopicName("\u2714\uFE0F incident")).toBe("incident");
+    expect(toUnresolvedTopicName("\u2714\uFE0E incident")).toBe("incident");
     expect(toUnresolvedTopicName("incident")).toBe("incident");
   });
 });

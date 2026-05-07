@@ -305,7 +305,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
       const hasFiles = files.length > 0;
       if ((!hasText && !hasFiles) || disabled || onSend == null) return;
 
-      const subject = activeTopic ?? "general";
+      const subject = activeTopic ?? "";
       const scheduledMessage: ScheduledComposerMessage = {
         id: crypto.randomUUID(),
         content: outgoingBody,
@@ -360,12 +360,24 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     const hasText = value.trim().length > 0;
     const hasFiles = files.length > 0;
     if ((!hasText && !hasFiles) || disabled) return;
-    const subject = activeTopic ?? "general";
+    const subject = activeTopic ?? "";
     const bodyToSend = outgoingBody;
     const filesToSend = hasFiles ? [...files] : undefined;
     setValue("");
     onValueChange?.("");
     setFiles([]);
+
+    // После оптимистичной очистки сразу возвращаем фокус и каретку,
+    // чтобы пользователь мог продолжать печатать следующий месседж без ожидания сети.
+    requestAnimationFrame(() => {
+      const textarea = textareaRef.current;
+      if (!textarea || disabled || mode !== "write") {
+        return;
+      }
+      textarea.focus();
+      textarea.setSelectionRange(0, 0);
+    });
+
     try {
       await onSend?.(bodyToSend, subject, filesToSend);
     } catch {
@@ -687,7 +699,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
 
   return (
     <div
-      className={`flex-shrink-0 border-t border-border-subtle bg-composer-outer ${isDragOver ? "ring-2 ring-inset ring-accent" : ""}`}
+      className={`flex-shrink-0 rounded-xl border-t border-border-subtle bg-composer-outer ${isDragOver ? "ring-2 ring-inset ring-accent" : ""}`}
       data-focus-zone="composer"
       role="form"
       aria-label={t("a11y.messageComposer")}
@@ -858,89 +870,91 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
             onStartCreate={startCreateSavedSnippet}
           />
         )}
-        <div className="flex min-h-10 items-stretch overflow-visible rounded-2xl bg-bg px-1.5">
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            className="hidden"
-            onChange={handleFileChange}
-            accept="*/*"
-          />
-
-          <div className="relative flex h-9 w-9 flex-shrink-0 items-center justify-center self-center">
-            <button
-              ref={emojiButtonRef}
-              type="button"
-              onClick={() => toggleMediaPicker("emoji")}
-              disabled={disabled}
-              className={`hover:bg-bg-elevated/50 absolute inset-0 flex items-center justify-center rounded-l-xl transition-colors hover:text-text-primary disabled:opacity-50 ${
-                mediaPickerOpen && mediaPickerTab === "emoji"
-                  ? "text-text-primary"
-                  : "text-composer-icon"
-              }`}
-              aria-label={t("a11y.emoji")}
-            >
-              <Icon name="mood" size={20} />
-            </button>
-          </div>
-
-          {mediaPickerOpen && (
-            <MessageComposerMediaPickerPopover
-              mediaPickerStyle={mediaPickerStyle}
-              mediaPickerTab={mediaPickerTab}
-              onClose={() => setMediaPickerOpen(false)}
-              onTabChange={(tab) => {
-                setMediaPickerTab(tab);
-                if (tab === "emoji") {
-                  ensureCustomEmojisLoaded();
-                }
-                updateMediaPickerPosition(tab);
-              }}
-              onEmojiClick={handleEmojiClick}
-              customEmojis={customEmojis}
-              onStickerSelect={(markdown) => {
-                setValue((prev) => {
-                  const next = prev + markdown;
-                  onValueChange?.(next);
-                  return next;
-                });
-                setMediaPickerOpen(false);
-              }}
+        <div className="flex items-center gap-1">
+          <div className="flex min-h-10 min-w-0 flex-1 items-stretch overflow-visible rounded-2xl bg-bg px-1.5 outline-none transition-[outline-color] focus-within:outline-1 focus-within:outline-offset-0 focus-within:outline-accent-soft">
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={handleFileChange}
+              accept="*/*"
             />
-          )}
 
-          <div className="relative min-w-0 flex-1">
-            {mode === "write" ? (
-              <MessageComposerWriteBody
-                value={value}
-                placeholder={placeholder}
+            <div className="relative flex h-9 w-9 flex-shrink-0 items-center justify-center self-center">
+              <button
+                ref={emojiButtonRef}
+                type="button"
+                onClick={() => toggleMediaPicker("emoji")}
                 disabled={disabled}
-                textareaRef={textareaRef}
-                showMentions={showMentions}
-                mentionSuggestions={mentionSuggestions}
-                activeMentionIndex={activeMentionIndex}
-                onActiveMentionIndexChange={setActiveMentionIndex}
-                onMentionSelect={handleMentionSelect}
-                onHideMentionDropdown={hideMentionDropdown}
-                onValueChange={(next) => {
-                  setValue(next);
-                  onValueChange?.(next);
+                className={`hover:bg-bg-elevated/50 absolute inset-0 flex items-center justify-center rounded-l-xl transition-colors hover:text-text-primary disabled:opacity-50 ${
+                  mediaPickerOpen && mediaPickerTab === "emoji"
+                    ? "text-text-primary"
+                    : "text-composer-icon"
+                }`}
+                aria-label={t("a11y.emoji")}
+              >
+                <Icon name="mood" size={20} />
+              </button>
+            </div>
+
+            {mediaPickerOpen && (
+              <MessageComposerMediaPickerPopover
+                mediaPickerStyle={mediaPickerStyle}
+                mediaPickerTab={mediaPickerTab}
+                onClose={() => setMediaPickerOpen(false)}
+                onTabChange={(tab) => {
+                  setMediaPickerTab(tab);
+                  if (tab === "emoji") {
+                    ensureCustomEmojisLoaded();
+                  }
+                  updateMediaPickerPosition(tab);
                 }}
-                onDetectMention={detectMention}
-                applyFormattingShortcut={applyFormattingShortcut}
-                onPaste={handlePaste}
-                onSend={handleSend}
-                onEditLastMessage={onEditLastMessage}
-              />
-            ) : (
-              <MessageComposerPreviewBody
-                outgoingBodyTrim={outgoingBody.trim()}
-                previewLoading={previewLoading}
-                previewError={previewError}
-                previewHtml={previewHtml}
+                onEmojiClick={handleEmojiClick}
+                customEmojis={customEmojis}
+                onStickerSelect={(markdown) => {
+                  setValue((prev) => {
+                    const next = prev + markdown;
+                    onValueChange?.(next);
+                    return next;
+                  });
+                  setMediaPickerOpen(false);
+                }}
               />
             )}
+
+            <div className="relative min-w-0 flex-1">
+              {mode === "write" ? (
+                <MessageComposerWriteBody
+                  value={value}
+                  placeholder={placeholder}
+                  disabled={disabled}
+                  textareaRef={textareaRef}
+                  showMentions={showMentions}
+                  mentionSuggestions={mentionSuggestions}
+                  activeMentionIndex={activeMentionIndex}
+                  onActiveMentionIndexChange={setActiveMentionIndex}
+                  onMentionSelect={handleMentionSelect}
+                  onHideMentionDropdown={hideMentionDropdown}
+                  onValueChange={(next) => {
+                    setValue(next);
+                    onValueChange?.(next);
+                  }}
+                  onDetectMention={detectMention}
+                  applyFormattingShortcut={applyFormattingShortcut}
+                  onPaste={handlePaste}
+                  onSend={handleSend}
+                  onEditLastMessage={onEditLastMessage}
+                />
+              ) : (
+                <MessageComposerPreviewBody
+                  outgoingBodyTrim={outgoingBody.trim()}
+                  previewLoading={previewLoading}
+                  previewError={previewError}
+                  previewHtml={previewHtml}
+                />
+              )}
+            </div>
           </div>
 
           <button

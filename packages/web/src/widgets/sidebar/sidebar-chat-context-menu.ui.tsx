@@ -7,6 +7,7 @@ import {
 import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { muteStream, unmuteStream } from "~/features/mute-chat/mute-chat.api";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
+import { runOptimisticStreamMuteUpdate } from "~/features/mute-chat/mute-chat.optimistic.lib";
 import { pinChatInFolder, unpinChatInFolder } from "~/features/pin-chat/pin-chat.api";
 import { usePinStore } from "~/features/pin-chat/pin-chat.model";
 import { t } from "~/i18n/i18n";
@@ -202,36 +203,36 @@ export const StreamContextMenu = React.memo(function StreamContextMenu({
     setMenuOpen(true);
   }, []);
 
-  function handleToggleMute(): void {
+  const handleToggleMute = useCallback((): void => {
     if (mutePending) return;
     setMenuOpen(false);
 
-    const muteStore = useMuteStore.getState();
-    const wasMuted = isMuted;
-    if (wasMuted) {
-      muteStore.unmuteStream(streamId);
-    } else {
-      muteStore.muteStream(streamId);
+    async function attemptToggleMute(): Promise<void> {
+      setMutePending(true);
+      try {
+        const ok = await runOptimisticStreamMuteUpdate({
+          streamId,
+          applyOptimistic: (wasMuted) => {
+            const muteStore = useMuteStore.getState();
+            if (wasMuted) {
+              muteStore.unmuteStream(streamId);
+              return;
+            }
+            muteStore.muteStream(streamId);
+          },
+          request: (wasMuted) => (wasMuted ? unmuteStream(streamId) : muteStream(streamId)),
+        });
+        if (ok) return;
+        onMuteError?.(() => {
+          void attemptToggleMute();
+        });
+      } finally {
+        setMutePending(false);
+      }
     }
 
-    setMutePending(true);
-    const request = wasMuted ? unmuteStream(streamId) : muteStream(streamId);
-    void request
-      .then((ok) => {
-        if (ok) return;
-        if (wasMuted) {
-          muteStore.muteStream(streamId);
-        } else {
-          muteStore.unmuteStream(streamId);
-        }
-        onMuteError?.(() => {
-          handleToggleMute();
-        });
-      })
-      .finally(() => {
-        setMutePending(false);
-      });
-  }
+    void attemptToggleMute();
+  }, [mutePending, onMuteError, streamId]);
 
   const handleMarkAsRead = useCallback(() => {
     void markStreamAsRead(streamId);
@@ -329,7 +330,7 @@ export const StreamContextMenu = React.memo(function StreamContextMenu({
           align="start"
         >
           <DropdownMenu.Item className={MENU_ITEM_CLASS} onSelect={handleToggleMute}>
-            <Icon name="bell" size={14} className={isMuted ? "opacity-40" : ""} />
+            <Icon name={isMuted ? "bell_off" : "bell"} size={14} />
             {isMuted ? t("channel.unmuteChannel") : t("channel.muteChannel")}
           </DropdownMenu.Item>
           <DropdownMenu.Item className={MENU_ITEM_CLASS} onSelect={handleMarkAsRead}>

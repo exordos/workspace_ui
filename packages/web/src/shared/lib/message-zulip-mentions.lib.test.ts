@@ -16,8 +16,8 @@ describe("injectZulipMentionPlaceholders", () => {
   });
 
   it("resolves user id via resolver", () => {
-    const { markdown, tokens } = injectZulipMentionPlaceholders("Ping @**Octane**", (name) =>
-      name === "Octane" ? 42 : null,
+    const { markdown, tokens } = injectZulipMentionPlaceholders("Ping @**John**", (name) =>
+      name === "John" ? 42 : null,
     );
     expect(tokens).toHaveLength(1);
     expect(tokens[0]?.kind).toBe("user");
@@ -72,14 +72,14 @@ describe("restoreZulipMentionPlaceholders", () => {
   });
 
   it("replaces markers with span markup matching sanitizeHtml expectations", () => {
-    const { markdown, tokens } = injectZulipMentionPlaceholders("@**Octane** hi", (n) =>
-      n === "Octane" ? 7 : null,
+    const { markdown, tokens } = injectZulipMentionPlaceholders("@**John** hi", (n) =>
+      n === "John" ? 7 : null,
     );
     const markedLike = `<p>${markdown}</p>`;
     const html = restoreZulipMentionPlaceholders(markedLike, tokens);
     expect(html).toContain('class="user-mention"');
     expect(html).toContain('data-user-id="7"');
-    expect(html).toContain(">@Octane<");
+    expect(html).toContain(">@John<");
     expect(html).not.toContain("**");
   });
 });

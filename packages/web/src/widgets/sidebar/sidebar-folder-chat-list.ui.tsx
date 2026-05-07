@@ -14,11 +14,13 @@ import {
 } from "~/features/folder-sync/folder-sync-constants.lib";
 import { muteTopic } from "~/features/mute-chat/mute-chat.api";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
+import { runOptimisticTopicVisibilityUpdate } from "~/features/mute-chat/mute-chat.optimistic.lib";
 import { usePinStore } from "~/features/pin-chat/pin-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
 import { updateFolderItemOrder } from "~/shared/api/workspace-client";
 import { sidebarRowClass } from "~/shared/lib/format";
+import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
 import { Avatar } from "~/shared/ui/avatar";
 import { Badge } from "~/shared/ui/badge";
 import { Icon } from "~/shared/ui/icon";
@@ -75,6 +77,9 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
     id: number;
     retry: (() => void) | null;
   } | null>(null);
+  const handleMuteError = useCallback((retry: () => void) => {
+    setMuteErrorState({ id: Date.now(), retry });
+  }, []);
   const isCompactDensity = useSettingsStore((s) => s.chatListDensity === "compact");
   const isStreamMuted = useMuteStore((s) => s.isStreamMuted);
   // Защита для совместимости: если управление раскрытиями не передано, рендерим без topic-expand логики.
@@ -175,6 +180,28 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
     [expandedStreamSlugs, onToggleStream],
   );
 
+  const runMuteTopicOnCreate = useCallback(
+    async (streamId: number, topicName: string) => {
+      async function attemptMuteTopicOnCreate(): Promise<void> {
+        const ok = await runOptimisticTopicVisibilityUpdate({
+          streamId,
+          topic: topicName,
+          applyOptimistic: () => {
+            useMuteStore.getState().muteTopic(streamId, topicName);
+          },
+          request: () => muteTopic(streamId, topicName),
+        });
+        if (ok) return;
+        handleMuteError(() => {
+          void attemptMuteTopicOnCreate();
+        });
+      }
+
+      await attemptMuteTopicOnCreate();
+    },
+    [handleMuteError],
+  );
+
   const handleCreateTopicFromDialog = useCallback(() => {
     const topicName = newTopicName.trim();
     if (topicDialogState == null || onNewTopic == null || topicName.length === 0) {
@@ -184,12 +211,18 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
     onNewTopic(topicDialogState.streamSlug, topicName);
 
     if (muteTopicOnCreate) {
-      useMuteStore.getState().muteTopic(topicDialogState.streamId, topicName);
-      void muteTopic(topicDialogState.streamId, topicName);
+      void runMuteTopicOnCreate(topicDialogState.streamId, topicName);
     }
 
     closeTopicDialog();
-  }, [closeTopicDialog, muteTopicOnCreate, newTopicName, onNewTopic, topicDialogState]);
+  }, [
+    closeTopicDialog,
+    muteTopicOnCreate,
+    newTopicName,
+    onNewTopic,
+    runMuteTopicOnCreate,
+    topicDialogState,
+  ]);
 
   useEffect(() => {
     if (muteErrorState == null) return;
@@ -200,10 +233,6 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
       window.clearTimeout(timerId);
     };
   }, [muteErrorState]);
-
-  const handleMuteError = useCallback((retry: () => void) => {
-    setMuteErrorState({ id: Date.now(), retry });
-  }, []);
 
   const emptyStatePresentation = useMemo(() => {
     if (reorderPinnedOnly) {
@@ -444,7 +473,9 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
                                   style={{ borderLeftColor: topicColor }}
                                 >
                                   <Link
-                                    to={`/stream/${streamSlug}/topic/${encodeURIComponent(topic.subject)}`}
+                                    to={`/stream/${streamSlug}/topic/${encodeURIComponent(
+                                      encodeTopicForRoute(topic.subject),
+                                    )}`}
                                     className="flex min-w-0 flex-1 items-start gap-3 py-2 pl-3 pr-2"
                                   >
                                     <div className="min-w-0 flex-1">

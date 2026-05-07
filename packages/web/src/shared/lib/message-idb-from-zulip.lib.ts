@@ -11,12 +11,14 @@ import type { ZulipEvent, ZulipRawMessage } from "~/shared/api/zulip.types";
 import { env } from "~/shared/lib/env";
 import {
   deleteMessagesByIds,
+  moveTopicMessagesInCache,
   patchMessageContentInCache,
   patchMessageFlagsInCache,
   patchMessageReactionInCache,
   putSingleMessage,
 } from "~/shared/lib/message-cache-db";
 import { chatKeyFromRawMessage } from "~/shared/lib/message-cache-keys.lib";
+import { extractTopicMoveFromUpdateEvent } from "~/shared/lib/update-message-topic-move.lib";
 import { zulipMessageCacheWindowNForChatKey } from "~/shared/lib/zulip-message-window.lib";
 
 export function isChatMessagesPersistToIndexedDbEnabled(): boolean {
@@ -87,17 +89,24 @@ export async function applyZulipEventToMessageIndexedDb(options: {
 
   if (event.type === "update_message") {
     const messageId = event.message_id as number | undefined;
-    const newHtml = event.rendered_content as string | undefined;
     const renderingOnly = event.rendering_only === true;
     const newMarkdown =
       !renderingOnly && typeof event.content === "string" ? event.content : undefined;
-    if (messageId != null && newHtml != null) {
+    if (messageId != null && newMarkdown != null) {
+      const trimmed = newMarkdown.trim();
       await patchMessageContentInCache({
         instanceId,
         messageId,
-        content: newHtml,
-        ...(newMarkdown !== undefined ? { markdown_source: newMarkdown } : {}),
+        content: newMarkdown,
+        ...(trimmed.length > 0 ? { markdown_source: newMarkdown } : {}),
       });
     }
+
+    const topicMovePayload = extractTopicMoveFromUpdateEvent(event);
+    if (topicMovePayload == null) return;
+    await moveTopicMessagesInCache({
+      instanceId,
+      ...topicMovePayload,
+    });
   }
 }

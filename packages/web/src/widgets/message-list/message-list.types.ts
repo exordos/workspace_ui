@@ -65,6 +65,8 @@ export interface MessageListProps {
   focusedMessageId?: number | null;
   /** Called when unread messages become at least 50% visible in viewport. */
   onUnreadMessagesVisible?: (messageIds: number[]) => void;
+  /** Called when user reaches chat bottom with unread messages in the loaded list. */
+  onUnreadMessagesAtBottom?: (messageIds: number[]) => void;
   /** Shows non-blocking floating loading indicator above the list. */
   showLoadingOverlay?: boolean;
 }

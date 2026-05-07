@@ -32,6 +32,11 @@ export function resolveAvatarUrl(
   if (!relativeUrl?.trim()) return undefined;
   const s = relativeUrl.trim();
 
+  // Local preview URLs should be passed through as-is.
+  if (s.startsWith("blob:") || s.startsWith("data:")) {
+    return s;
+  }
+
   let absolute: string;
   if (s.startsWith("http://") || s.startsWith("https://")) {
     absolute = s;

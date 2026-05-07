@@ -30,12 +30,12 @@ describe("renderMarkdownFallbackHtml", () => {
 
 describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
   it("injects user-mention span for @**Name** when resolver matches", () => {
-    const html = messageBodyToUnsanitizedDisplayHtml("Hello @**Octane**", {
-      resolveUserMention: (name) => (name === "Octane" ? 99 : null),
+    const html = messageBodyToUnsanitizedDisplayHtml("Hello @**John**", {
+      resolveUserMention: (name) => (name === "John" ? 99 : null),
     });
     expect(html).toContain('class="user-mention"');
     expect(html).toContain('data-user-id="99"');
-    expect(html).toContain(">@Octane<");
+    expect(html).toContain(">@John<");
     expect(html).not.toContain("**");
     expect(html).not.toContain("@<strong>");
   });
@@ -114,8 +114,8 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
   });
 
   it("renders mentions and emoji shortcodes together", () => {
-    const html = messageBodyToUnsanitizedDisplayHtml("Hello @**Octane** :smile:", {
-      resolveUserMention: (name) => (name === "Octane" ? 99 : null),
+    const html = messageBodyToUnsanitizedDisplayHtml("Hello @**John** :smile:", {
+      resolveUserMention: (name) => (name === "John" ? 99 : null),
     });
     expect(html).toContain('class="user-mention"');
     expect(html).toContain('data-user-id="99"');

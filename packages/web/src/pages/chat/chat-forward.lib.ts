@@ -1,6 +1,7 @@
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
+import { encodeTopicForRoute, normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { buildZulipQuoteHeader } from "~/shared/lib/zulip-quote-header.lib";
 import { buildZulipMessageWebPermalink } from "~/shared/lib/zulip-web-permalink.lib";
 import { slugForStream } from "~/widgets/sidebar/sidebar.lib";
@@ -103,7 +104,7 @@ export function resolveForwardDraftTarget(
       route: withCurrentOrgRoute(`/dm/${sortedRecipientIds.join(",")}`),
       draftType: "private",
       draftTo: sortedRecipientIds,
-      draftTopic: "general",
+      draftTopic: "",
     };
   }
 
@@ -112,10 +113,12 @@ export function resolveForwardDraftTarget(
     return null;
   }
 
-  const normalizedTopic = topic.trim().length > 0 ? topic.trim() : "general";
+  const normalizedTopic = normalizeTopicForIdentity(topic);
   return {
     route: withCurrentOrgRoute(
-      `/stream/${slugForStream(matchedStream)}/topic/${encodeURIComponent(normalizedTopic)}`,
+      `/stream/${slugForStream(matchedStream)}/topic/${encodeURIComponent(
+        encodeTopicForRoute(normalizedTopic),
+      )}`,
     ),
     draftType: "stream",
     draftTo: [matchedStream.stream_id],

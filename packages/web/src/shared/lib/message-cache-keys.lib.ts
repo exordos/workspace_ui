@@ -8,16 +8,16 @@
  */
 import type { MockMessage, ZulipRawMessage } from "~/shared/api/zulip.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
+import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 
 /** Narrow context shape for cache keys (compatible with `CurrentChatContext`). */
 export type MessageCacheChatContext =
   | { type: "stream"; streamId: number; topic: string }
   | { type: "dm"; dmKey: string };
 
-/** Align with `chatKeyFromRawMessage` / Zulip: empty subject is stored as "general". */
+/** Align with `chatKeyFromRawMessage` / Zulip topic identity normalization. */
 export function normalizeStreamTopicForMessageCache(topic: string): string {
-  const trimmed = topic.trim();
-  return trimmed.length === 0 ? "general" : trimmed;
+  return normalizeTopicForIdentity(topic);
 }
 
 export function chatKeyFromContext(context: MessageCacheChatContext): string {
@@ -33,7 +33,7 @@ export function chatKeyFromRawMessage(
   currentUserId: number | null,
 ): string | null {
   if (raw.type === "stream" && raw.stream_id != null) {
-    const topic = (raw.subject ?? "").trim() || "general";
+    const topic = normalizeTopicForIdentity(raw.subject ?? "");
     return `stream:${raw.stream_id}:${topic}`;
   }
   if (raw.type === "private" && Array.isArray(raw.display_recipient)) {
@@ -47,7 +47,7 @@ export function chatKeyFromMockMessage(
   currentUserId: number | null,
 ): string | null {
   if (msg.stream_id != null) {
-    const topic = (msg.subject ?? "").trim() || "general";
+    const topic = normalizeTopicForIdentity(msg.subject ?? "");
     return `stream:${msg.stream_id}:${topic}`;
   }
   if (Array.isArray(msg.display_recipient)) {

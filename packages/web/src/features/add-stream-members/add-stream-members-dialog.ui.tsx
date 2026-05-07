@@ -8,6 +8,10 @@ import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { useAddStreamMembersStore } from "./add-stream-members.model";
 
+// Единый стиль текстового поля: аккуратный фокус через border без двойной обводки.
+const ADD_STREAM_MEMBERS_INPUT_CLASS =
+  "w-full rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted transition-colors focus:border-accent focus-visible:outline-none focus-visible:ring-0";
+
 export interface AddStreamMembersDialogProps {
   onSuccess: (streamId: number) => void;
 }
@@ -100,7 +104,7 @@ export const AddStreamMembersDialog: React.FC<AddStreamMembersDialogProps> = ({ 
               type="text"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              className="w-full rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted"
+              className={ADD_STREAM_MEMBERS_INPUT_CLASS}
               placeholder={t("message.searchUsers")}
             />
 

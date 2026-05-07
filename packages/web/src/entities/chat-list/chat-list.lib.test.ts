@@ -111,4 +111,34 @@ describe("messageToStreamEntry", () => {
     expect(entry?.stream.lastMessageSenderName).toBeUndefined();
     expect(entry?.topic.lastMessageSenderName).toBeUndefined();
   });
+
+  it("keeps empty subject distinct from literal general", () => {
+    const emptyTopic = messageToStreamEntry({
+      id: 11,
+      sender_id: 20,
+      sender_full_name: "Bob",
+      content: "empty topic",
+      timestamp: 1_700_000_002,
+      type: "stream",
+      stream_id: 10,
+      display_recipient: "engineering",
+      subject: "",
+      flags: [],
+    });
+    const generalTopic = messageToStreamEntry({
+      id: 12,
+      sender_id: 20,
+      sender_full_name: "Bob",
+      content: "literal general",
+      timestamp: 1_700_000_003,
+      type: "stream",
+      stream_id: 10,
+      display_recipient: "engineering",
+      subject: "general",
+      flags: [],
+    });
+
+    expect(emptyTopic?.topic.subject).toBe("");
+    expect(generalTopic?.topic.subject).toBe("general");
+  });
 });

@@ -8,6 +8,7 @@ import { normalizeStreamTopicForMessageCache } from "~/shared/lib/message-cache-
 import { containsEmojiShortcode } from "~/shared/lib/message-emoji-shortcodes.lib";
 import { logMessageFlow } from "~/shared/lib/message-flow-debug.lib";
 import { isLikelyRenderedMessageHtml } from "~/shared/lib/message-markdown-display.lib";
+import { computeReadTailReady } from "~/shared/lib/read-receipts-policy.lib";
 import { ensureRealmEmojisLoaded, getCachedRealmEmojis } from "~/shared/lib/realm-emojis-cache";
 import { scrollToBottom } from "~/shared/lib/scroll-position.lib";
 import { computeScrollTopAfterPrepend } from "~/shared/lib/scroll-prepend-anchor.lib";
@@ -66,6 +67,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   unreadCount = 0,
   focusedMessageId = null,
   onUnreadMessagesVisible,
+  onUnreadMessagesAtBottom,
   showLoadingOverlay = false,
 }) => {
   const bubbleCallbacks: MessageBubbleCallbacks | undefined = useMemo(
@@ -228,8 +230,7 @@ export const MessageList: React.FC<MessageListProps> = ({
       messages
         .filter(
           (m) =>
-            !m.flags?.includes("read") &&
-            (currentUserId == null || m.sender_id !== currentUserId),
+            !m.flags?.includes("read") && (currentUserId == null || m.sender_id !== currentUserId),
         )
         .map((m) => m.id),
     );
@@ -248,9 +249,6 @@ export const MessageList: React.FC<MessageListProps> = ({
     (entries: readonly IntersectionObserverEntry[]) => {
       const candidates = unreadCandidatesRef.current;
       const visibleThisFrame: number[] = [];
-      // While the user is pinned to the bottom and we still have not-yet-loaded *newer* pages,
-      // `onLoadNewer` keeps appending rows under the viewport — IO would mark every chunk as read.
-      const suppressReadsWhilePagingAtBottom = hasNewerMessages && wasAtBottomRef.current;
       for (const entry of entries) {
         const element = entry.target as HTMLElement;
         const rawId = element.getAttribute("data-message-id");
@@ -258,68 +256,35 @@ export const MessageList: React.FC<MessageListProps> = ({
         const messageId = Number(rawId);
         if (!Number.isInteger(messageId) || !candidates.has(messageId)) continue;
         if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
-          if (!suppressReadsWhilePagingAtBottom) {
-            viewportUnreadIdsRef.current.add(messageId);
-            visibleThisFrame.push(messageId);
-          }
+          viewportUnreadIdsRef.current.add(messageId);
+          visibleThisFrame.push(messageId);
         } else {
           viewportUnreadIdsRef.current.delete(messageId);
         }
       }
-      if (
-        !suppressReadsWhilePagingAtBottom &&
-        visibleThisFrame.length > 0 &&
-        isTabVisible()
-      ) {
+      if (visibleThisFrame.length > 0 && isTabVisible()) {
         onUnreadMessagesVisible?.(visibleThisFrame);
       }
     },
-    [hasNewerMessages, onUnreadMessagesVisible],
+    [onUnreadMessagesVisible],
   );
 
-  const collectViewportUnreadIdsFromDom = useCallback((): number[] => {
-    const root = scrollRef.current;
-    if (!root) return [];
-    const rootRect = root.getBoundingClientRect();
-    const nodes = root.querySelectorAll<HTMLElement>("[data-message-id]");
-    const out: number[] = [];
-    const candidates = unreadCandidatesRef.current;
-    for (const node of nodes) {
-      const rawId = node.getAttribute("data-message-id");
-      if (!rawId) continue;
-      const messageId = Number(rawId);
-      if (!Number.isInteger(messageId) || !candidates.has(messageId)) continue;
-
-      const rect = node.getBoundingClientRect();
-      const overlapTop = Math.max(rect.top, rootRect.top);
-      const overlapBottom = Math.min(rect.bottom, rootRect.bottom);
-      const overlap = overlapBottom - overlapTop;
-      if (overlap <= 0) continue;
-      const ratio = overlap / Math.max(rect.height, 1);
-      if (ratio >= 0.5) {
-        out.push(messageId);
-      }
-    }
-    return out;
-  }, []);
-
   const dispatchUnreadAtBottom = useCallback(() => {
-    if (!onUnreadMessagesVisible) return;
+    if (!onUnreadMessagesVisible && !onUnreadMessagesAtBottom) return;
     if (!isTabVisible()) return;
-    if (hasNewerMessages && wasAtBottomRef.current) return;
 
     const candidateUnread = unreadCandidatesRef.current;
-    for (const id of [...viewportUnreadIdsRef.current]) {
+    for (const id of viewportUnreadIdsRef.current) {
       if (!candidateUnread.has(id)) {
         viewportUnreadIdsRef.current.delete(id);
       }
     }
 
-    if (viewportUnreadIdsRef.current.size === 0) {
-      for (const id of collectViewportUnreadIdsFromDom()) {
-        viewportUnreadIdsRef.current.add(id);
-      }
-    }
+    const tailReady = computeReadTailReady({
+      isAtBottom: true,
+      hasNewerMessages,
+      loadingNewer: isLoadingNewer,
+    });
 
     const ids = [...viewportUnreadIdsRef.current].filter((id) => {
       const msg = messages.find((m) => m.id === id);
@@ -336,14 +301,18 @@ export const MessageList: React.FC<MessageListProps> = ({
     if (bottomReadDispatchKeyRef.current === dispatchKey) return;
     bottomReadDispatchKeyRef.current = dispatchKey;
 
-    onUnreadMessagesVisible(ids);
+    onUnreadMessagesVisible?.(ids);
+    if (tailReady) {
+      onUnreadMessagesAtBottom?.(ids);
+    }
   }, [
-    hasNewerMessages,
     onUnreadMessagesVisible,
+    onUnreadMessagesAtBottom,
     messages,
     currentUserId,
     scrollToBottomKey,
-    collectViewportUnreadIdsFromDom,
+    hasNewerMessages,
+    isLoadingNewer,
   ]);
 
   // On chat/topic switch, remember to scroll down after messages load
@@ -458,11 +427,10 @@ export const MessageList: React.FC<MessageListProps> = ({
       bottomReadDispatchKeyRef.current = null;
       return;
     }
-    if (hasNewerMessages) return;
     // Safety net: when list is already pinned to bottom, unread rows can appear
     // without a new user scroll event (e.g. rerender/new message). Ensure they are reported.
     dispatchUnreadAtBottom();
-  }, [hasNewerMessages, isAtBottom, dispatchUnreadAtBottom]);
+  }, [isAtBottom, dispatchUnreadAtBottom]);
 
   // Sync isAtBottom after render (short chat without scrollbar)
   useLayoutEffect(() => {
@@ -501,10 +469,6 @@ export const MessageList: React.FC<MessageListProps> = ({
       const pending = observer.takeRecords();
       if (pending.length > 0) {
         processIntersectionEntries(pending);
-      } else {
-        for (const id of collectViewportUnreadIdsFromDom()) {
-          viewportUnreadIdsRef.current.add(id);
-        }
       }
       if (wasAtBottomRef.current) {
         dispatchUnreadAtBottom();
@@ -518,13 +482,7 @@ export const MessageList: React.FC<MessageListProps> = ({
         intersectionObserverRef.current = null;
       }
     };
-  }, [
-    messages,
-    currentUserId,
-    processIntersectionEntries,
-    dispatchUnreadAtBottom,
-    collectViewportUnreadIdsFromDom,
-  ]);
+  }, [messages, currentUserId, processIntersectionEntries, dispatchUnreadAtBottom]);
 
   useEffect(() => {
     let throttleId: ReturnType<typeof setTimeout> | null = null;
@@ -669,7 +627,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                 const first = senderMessages[0]!;
                 const isStream = first.stream_id != null;
                 const topicKey = normalizeStreamTopicForMessageCache(first.subject ?? "");
-                const topicLabel = topicKey;
+                const topicLabel = topicKey.length > 0 ? topicKey : t("chat.generalChat");
                 const showTopicSeparator =
                   isStream && lastStreamTopicKey !== undefined && lastStreamTopicKey !== topicKey;
                 if (isStream) {

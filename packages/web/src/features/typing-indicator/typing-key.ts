@@ -1,3 +1,5 @@
+import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+
 export function buildDmTypingChatKey(
   userIds: number[],
   currentUserId: number | null,
@@ -10,5 +12,5 @@ export function buildDmTypingChatKey(
 }
 
 export function buildStreamTypingChatKey(streamId: number, topic: string): string {
-  return `stream:${streamId}:${topic.trim() || "general"}`;
+  return `stream:${streamId}:${normalizeTopicForIdentity(topic)}`;
 }

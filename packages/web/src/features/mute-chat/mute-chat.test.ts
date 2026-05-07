@@ -7,6 +7,11 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useMuteStore, topicKey } from "./mute-chat.model";
+import {
+  captureTopicVisibilityOverrideSnapshot,
+  runOptimisticStreamMuteUpdate,
+  runOptimisticTopicVisibilityUpdate,
+} from "./mute-chat.optimistic.lib";
 
 vi.mock("~/shared/api/client", () => ({
   zulipApi: {
@@ -62,11 +67,19 @@ describe("useMuteStore", () => {
       expect(useMuteStore.getState().isTopicUnmuted(10, "announcements")).toBe(true);
     });
 
+    it("followTopic stores topic as explicitly followed", () => {
+      useMuteStore.getState().followTopic(10, "announcements");
+      expect(useMuteStore.getState().isTopicFollowed(10, "announcements")).toBe(true);
+      expect(useMuteStore.getState().isTopicMuted(10, "announcements")).toBe(false);
+      expect(useMuteStore.getState().isTopicUnmuted(10, "announcements")).toBe(false);
+    });
+
     it("clearTopicVisibilityOverride removes explicit topic overrides", () => {
       useMuteStore.getState().muteTopic(10, "announcements");
       useMuteStore.getState().clearTopicVisibilityOverride(10, "announcements");
       expect(useMuteStore.getState().isTopicMuted(10, "announcements")).toBe(false);
       expect(useMuteStore.getState().isTopicUnmuted(10, "announcements")).toBe(false);
+      expect(useMuteStore.getState().isTopicFollowed(10, "announcements")).toBe(false);
     });
 
     // Topic muting is independent of stream muting
@@ -92,6 +105,12 @@ describe("useMuteStore", () => {
       expect(useMuteStore.getState().isEffectivelyMuted(10, "important")).toBe(false);
     });
 
+    it("returns false when stream is muted but topic is explicitly followed", () => {
+      useMuteStore.getState().muteStream(10);
+      useMuteStore.getState().followTopic(10, "important");
+      expect(useMuteStore.getState().isEffectivelyMuted(10, "important")).toBe(false);
+    });
+
     // If the topic itself is muted (not the stream), it should be effectively muted
     it("returns true when topic is muted even if stream is not", () => {
       useMuteStore.getState().muteTopic(10, "spam");
@@ -111,12 +130,14 @@ describe("useMuteStore", () => {
         mutedStreamIds: [10, 20],
         mutedTopics: [{ streamId: 10, topic: "spam" }],
         unmutedTopics: [{ streamId: 20, topic: "important" }],
+        followedTopics: [{ streamId: 20, topic: "incidents" }],
       });
 
       expect(useMuteStore.getState().isStreamMuted(10)).toBe(true);
       expect(useMuteStore.getState().isStreamMuted(20)).toBe(true);
       expect(useMuteStore.getState().isTopicMuted(10, "spam")).toBe(true);
       expect(useMuteStore.getState().isEffectivelyMuted(20, "important")).toBe(false);
+      expect(useMuteStore.getState().isTopicFollowed(20, "incidents")).toBe(true);
     });
   });
 
@@ -126,10 +147,12 @@ describe("useMuteStore", () => {
       useMuteStore.getState().muteStream(10);
       useMuteStore.getState().muteTopic(10, "x");
       useMuteStore.getState().unmuteTopic(10, "y");
+      useMuteStore.getState().followTopic(10, "z");
       useMuteStore.getState().clear();
       expect(useMuteStore.getState().isStreamMuted(10)).toBe(false);
       expect(useMuteStore.getState().isTopicMuted(10, "x")).toBe(false);
       expect(useMuteStore.getState().isTopicUnmuted(10, "y")).toBe(false);
+      expect(useMuteStore.getState().isTopicFollowed(10, "z")).toBe(false);
     });
   });
 });
@@ -137,7 +160,116 @@ describe("useMuteStore", () => {
 describe("topicKey", () => {
   // The composite key format should be stable for Map/Set lookups
   it("creates a stable composite key", () => {
-    expect(topicKey(42, "hello")).toBe("42:hello");
+    expect(topicKey(42, "  HeLLo  ")).toBe("42:hello");
+  });
+});
+
+describe("mute-chat optimistic helpers", () => {
+  afterEach(() => {
+    useMuteStore.getState().clear();
+  });
+
+  it("captures topic visibility snapshot from store", () => {
+    useMuteStore.getState().followTopic(10, "incidents");
+    expect(captureTopicVisibilityOverrideSnapshot(10, "incidents")).toBe("followed");
+  });
+
+  it("keeps optimistic topic state on successful request", async () => {
+    const ok = await runOptimisticTopicVisibilityUpdate({
+      streamId: 10,
+      topic: "announcements",
+      applyOptimistic: () => {
+        useMuteStore.getState().muteTopic(10, "announcements");
+      },
+      request: () => Promise.resolve(true),
+    });
+
+    expect(ok).toBe(true);
+    expect(useMuteStore.getState().isTopicMuted(10, "announcements")).toBe(true);
+  });
+
+  it("rolls back topic visibility when request returns false", async () => {
+    useMuteStore.getState().followTopic(10, "announcements");
+
+    const ok = await runOptimisticTopicVisibilityUpdate({
+      streamId: 10,
+      topic: "announcements",
+      applyOptimistic: () => {
+        useMuteStore.getState().muteTopic(10, "announcements");
+      },
+      request: () => Promise.resolve(false),
+    });
+
+    expect(ok).toBe(false);
+    expect(useMuteStore.getState().isTopicFollowed(10, "announcements")).toBe(true);
+    expect(useMuteStore.getState().isTopicMuted(10, "announcements")).toBe(false);
+  });
+
+  it("rolls back topic visibility when request throws", async () => {
+    useMuteStore.getState().unmuteTopic(10, "announcements");
+
+    const ok = await runOptimisticTopicVisibilityUpdate({
+      streamId: 10,
+      topic: "announcements",
+      applyOptimistic: () => {
+        useMuteStore.getState().muteTopic(10, "announcements");
+      },
+      request: () => Promise.reject(new Error("offline")),
+    });
+
+    expect(ok).toBe(false);
+    expect(useMuteStore.getState().isTopicUnmuted(10, "announcements")).toBe(true);
+    expect(useMuteStore.getState().isTopicMuted(10, "announcements")).toBe(false);
+  });
+
+  it("re-captures snapshot on each retry attempt", async () => {
+    const streamId = 10;
+    const topic = "release";
+
+    const first = await runOptimisticTopicVisibilityUpdate({
+      streamId,
+      topic,
+      applyOptimistic: () => {
+        useMuteStore.getState().muteTopic(streamId, topic);
+      },
+      request: () => Promise.resolve(false),
+    });
+
+    expect(first).toBe(false);
+    expect(useMuteStore.getState().isTopicMuted(streamId, topic)).toBe(false);
+
+    useMuteStore.getState().followTopic(streamId, topic);
+
+    const second = await runOptimisticTopicVisibilityUpdate({
+      streamId,
+      topic,
+      applyOptimistic: () => {
+        useMuteStore.getState().muteTopic(streamId, topic);
+      },
+      request: () => Promise.resolve(false),
+    });
+
+    expect(second).toBe(false);
+    expect(useMuteStore.getState().isTopicFollowed(streamId, topic)).toBe(true);
+    expect(useMuteStore.getState().isTopicMuted(streamId, topic)).toBe(false);
+  });
+
+  it("rolls back stream mute on failed request", async () => {
+    const ok = await runOptimisticStreamMuteUpdate({
+      streamId: 10,
+      applyOptimistic: (wasMuted) => {
+        const muteStore = useMuteStore.getState();
+        if (wasMuted) {
+          muteStore.unmuteStream(10);
+          return;
+        }
+        muteStore.muteStream(10);
+      },
+      request: () => Promise.resolve(false),
+    });
+
+    expect(ok).toBe(false);
+    expect(useMuteStore.getState().isStreamMuted(10)).toBe(false);
   });
 });
 
@@ -225,6 +357,36 @@ describe("mute-chat API", () => {
       expect(zulipApi.post).toHaveBeenCalledWith("/user_topics", {
         stream_id: "10",
         topic: "announcements",
+        visibility_policy: "1",
+      });
+    });
+
+    it("preserves literal general topic in user_topics payload", async () => {
+      const { zulipApi } = await import("~/shared/api/client");
+      vi.mocked(zulipApi.post).mockResolvedValue(mockOk);
+
+      const { setTopicVisibility } = await import("./mute-chat.api");
+      const result = await setTopicVisibility(10, "general", 1);
+
+      expect(result).toBe(true);
+      expect(zulipApi.post).toHaveBeenCalledWith("/user_topics", {
+        stream_id: "10",
+        topic: "general",
+        visibility_policy: "1",
+      });
+    });
+
+    it("supports explicit empty topic in user_topics payload", async () => {
+      const { zulipApi } = await import("~/shared/api/client");
+      vi.mocked(zulipApi.post).mockResolvedValue(mockOk);
+
+      const { setTopicVisibility } = await import("./mute-chat.api");
+      const result = await setTopicVisibility(10, "", 1);
+
+      expect(result).toBe(true);
+      expect(zulipApi.post).toHaveBeenCalledWith("/user_topics", {
+        stream_id: "10",
+        topic: "",
         visibility_policy: "1",
       });
     });

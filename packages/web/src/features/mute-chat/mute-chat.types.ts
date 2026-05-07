@@ -33,4 +33,6 @@ export interface MuteState {
   mutedTopicKeys: Set<string>;
   /** Topic keys that are explicitly unmuted (override stream-level mute). */
   unmutedTopicKeys: Set<string>;
+  /** Topic keys that are explicitly followed. */
+  followedTopicKeys: Set<string>;
 }

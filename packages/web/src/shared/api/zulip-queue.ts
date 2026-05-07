@@ -15,7 +15,11 @@ import {
   ensureZulipApiReady,
 } from "./zulip-pipeline.internal";
 import { parseRegisterResponseJitsiServerUrl } from "./zulip-register-jitsi.lib";
-import { parseServerThumbnailFormats } from "./zulip-register-metadata.lib";
+import {
+  parseAvatarChangesDisabledFlag,
+  parseMaxAvatarFileSizeMib,
+  parseServerThumbnailFormats,
+} from "./zulip-register-metadata.lib";
 import { parseUnreadMessagesCount } from "./zulip-unread.lib";
 import {
   buildUserTopicsCacheKey,
@@ -29,6 +33,7 @@ import type {
   GetEventsResult,
   RegisterQueueResult,
   ZulipCredentials,
+  ZulipOwnAvatarCapabilities,
   ZulipRecentPrivateConversation,
   ZulipRealmUserGroup,
   ZulipSubscription,
@@ -44,6 +49,16 @@ export const DEFAULT_REGISTER_FETCH_EVENT_TYPES = [
   "realm",
   "realm_user_groups",
 ] as const;
+
+let cachedOwnAvatarCapabilities: ZulipOwnAvatarCapabilities = {};
+
+function setCachedOwnAvatarCapabilities(capabilities: ZulipOwnAvatarCapabilities): void {
+  cachedOwnAvatarCapabilities = capabilities;
+}
+
+export function getCachedOwnAvatarCapabilities(): ZulipOwnAvatarCapabilities {
+  return cachedOwnAvatarCapabilities;
+}
 
 // Что делает: проверяет, что значение является положительным целым id.
 function isPositiveInteger(value: unknown): value is number {
@@ -197,7 +212,7 @@ export async function registerQueue(
 ): Promise<RegisterQueueResult> {
   const body: Record<string, string> = {
     event_types: JSON.stringify(eventTypes),
-    apply_markdown: "true",
+    apply_markdown: "false",
   };
   if (fetchEventTypes.length > 0) {
     // Зачем: Zulip вернет в register дополнительные metadata-блоки одним запросом.
@@ -217,6 +232,9 @@ export async function registerQueue(
     realm_can_add_subscribers_group?: unknown;
     realm_user_groups?: unknown;
     server_thumbnail_formats?: unknown;
+    max_avatar_file_size_mib?: unknown;
+    realm_avatar_changes_disabled?: unknown;
+    server_avatar_changes_disabled?: unknown;
   } | null;
   if (data == null || typeof data !== "object") {
     throw new Error(t("app.invalidResponse"));
@@ -239,6 +257,22 @@ export async function registerQueue(
   // Что делает: собирает группы организации для последующей проверки channel permissions в UI/store.
   const realmUserGroups = parseRealmUserGroups(data.realm_user_groups);
   const serverThumbnailFormats = parseServerThumbnailFormats(data.server_thumbnail_formats);
+  const maxAvatarFileSizeMib = parseMaxAvatarFileSizeMib(data.max_avatar_file_size_mib);
+  const realmAvatarChangesDisabled = parseAvatarChangesDisabledFlag(
+    data.realm_avatar_changes_disabled,
+  );
+  const serverAvatarChangesDisabled = parseAvatarChangesDisabledFlag(
+    data.server_avatar_changes_disabled,
+  );
+  setCachedOwnAvatarCapabilities({
+    ...(maxAvatarFileSizeMib != null ? { max_avatar_file_size_mib: maxAvatarFileSizeMib } : {}),
+    ...(realmAvatarChangesDisabled != null
+      ? { realm_avatar_changes_disabled: realmAvatarChangesDisabled }
+      : {}),
+    ...(serverAvatarChangesDisabled != null
+      ? { server_avatar_changes_disabled: serverAvatarChangesDisabled }
+      : {}),
+  });
   const jitsiServerUrlEffective = parseRegisterResponseJitsiServerUrl(data);
   const cacheKey = getCurrentUserTopicsCacheKey();
   if (cacheKey && userTopics) {
@@ -259,6 +293,13 @@ export async function registerQueue(
       : {}),
     ...(realmUserGroups ? { realm_user_groups: realmUserGroups } : {}),
     ...(serverThumbnailFormats ? { server_thumbnail_formats: serverThumbnailFormats } : {}),
+    ...(maxAvatarFileSizeMib != null ? { max_avatar_file_size_mib: maxAvatarFileSizeMib } : {}),
+    ...(realmAvatarChangesDisabled != null
+      ? { realm_avatar_changes_disabled: realmAvatarChangesDisabled }
+      : {}),
+    ...(serverAvatarChangesDisabled != null
+      ? { server_avatar_changes_disabled: serverAvatarChangesDisabled }
+      : {}),
     ...(jitsiServerUrlEffective ? { jitsi_server_url_effective: jitsiServerUrlEffective } : {}),
   };
 }
@@ -309,6 +350,9 @@ export async function registerQueueForCredentials(
     realm_can_add_subscribers_group?: unknown;
     realm_user_groups?: unknown;
     server_thumbnail_formats?: unknown;
+    max_avatar_file_size_mib?: unknown;
+    realm_avatar_changes_disabled?: unknown;
+    server_avatar_changes_disabled?: unknown;
   };
   try {
     data = (await response.json()) as typeof data;
@@ -334,6 +378,22 @@ export async function registerQueueForCredentials(
   // Что делает: сохраняет группы и для background-loop сценариев.
   const realmUserGroups = parseRealmUserGroups(data.realm_user_groups);
   const serverThumbnailFormats = parseServerThumbnailFormats(data.server_thumbnail_formats);
+  const maxAvatarFileSizeMib = parseMaxAvatarFileSizeMib(data.max_avatar_file_size_mib);
+  const realmAvatarChangesDisabled = parseAvatarChangesDisabledFlag(
+    data.realm_avatar_changes_disabled,
+  );
+  const serverAvatarChangesDisabled = parseAvatarChangesDisabledFlag(
+    data.server_avatar_changes_disabled,
+  );
+  setCachedOwnAvatarCapabilities({
+    ...(maxAvatarFileSizeMib != null ? { max_avatar_file_size_mib: maxAvatarFileSizeMib } : {}),
+    ...(realmAvatarChangesDisabled != null
+      ? { realm_avatar_changes_disabled: realmAvatarChangesDisabled }
+      : {}),
+    ...(serverAvatarChangesDisabled != null
+      ? { server_avatar_changes_disabled: serverAvatarChangesDisabled }
+      : {}),
+  });
   const jitsiServerUrlEffective = parseRegisterResponseJitsiServerUrl(data);
   setCachedUserTopicsForKey(
     buildUserTopicsCacheKey(credentials.realm, credentials.email),
@@ -354,6 +414,13 @@ export async function registerQueueForCredentials(
       : {}),
     ...(realmUserGroups ? { realm_user_groups: realmUserGroups } : {}),
     ...(serverThumbnailFormats ? { server_thumbnail_formats: serverThumbnailFormats } : {}),
+    ...(maxAvatarFileSizeMib != null ? { max_avatar_file_size_mib: maxAvatarFileSizeMib } : {}),
+    ...(realmAvatarChangesDisabled != null
+      ? { realm_avatar_changes_disabled: realmAvatarChangesDisabled }
+      : {}),
+    ...(serverAvatarChangesDisabled != null
+      ? { server_avatar_changes_disabled: serverAvatarChangesDisabled }
+      : {}),
     ...(jitsiServerUrlEffective ? { jitsi_server_url_effective: jitsiServerUrlEffective } : {}),
   };
 }

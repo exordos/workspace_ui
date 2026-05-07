@@ -2,7 +2,9 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { useUsersStore } from "~/entities/user/user.model";
+import type * as CreateChatApiModule from "~/features/create-chat/create-chat.api";
 import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import type * as MuteChatApiModule from "~/features/mute-chat/mute-chat.api";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
@@ -13,6 +15,7 @@ import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indi
 import { buildDmTypingChatKey } from "~/features/typing-indicator/typing-key";
 import { t } from "~/i18n/i18n";
 import type * as WorkspaceApiModule from "~/shared/api/workspace-client";
+import type * as ZulipApiModule from "~/shared/api/zulip";
 import type { SidebarChat } from "~/shared/types/sidebar-chat";
 import { createUser } from "~/test/factories";
 import { renderWithProviders } from "~/test/render";
@@ -35,7 +38,7 @@ const addChatToFolderMock = vi.fn();
 const removeChatFromFolderMock = vi.fn();
 
 vi.mock("~/features/create-chat/create-chat.api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/features/create-chat/create-chat.api")>();
+  const actual = await importOriginal<typeof CreateChatApiModule>();
   return {
     ...actual,
     createChannel: (...args: unknown[]) => createChannelMock(...args),
@@ -43,7 +46,7 @@ vi.mock("~/features/create-chat/create-chat.api", async (importOriginal) => {
 });
 
 vi.mock("~/shared/api/zulip", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/shared/api/zulip")>();
+  const actual = await importOriginal<typeof ZulipApiModule>();
   return {
     ...actual,
     markDmAsRead: (...args: unknown[]) => markDmAsReadMock(...args),
@@ -136,7 +139,12 @@ function RoutePathProbe() {
   return <output data-testid="route-path">{location.pathname}</output>;
 }
 
-function RouteNavigateButton({ to, label }: { to: string; label: string }) {
+interface RouteNavigateButtonProps {
+  to: string;
+  label: string;
+}
+
+function RouteNavigateButton({ to, label }: Readonly<RouteNavigateButtonProps>) {
   const navigate = useNavigate();
   return (
     <button type="button" onClick={() => void navigate(to)}>
@@ -276,6 +284,8 @@ describe("Sidebar", () => {
 
     expect(searchContainer).toHaveClass("bg-text-field-bg");
     expect(searchContainer).toHaveClass("border-border-subtle");
+    expect(searchContainer).toHaveClass("focus-within:border-accent");
+    expect(searchInput).toHaveClass("focus-visible:!outline-none");
     expect(separator).toHaveClass("bg-border-subtle/70");
   });
 
@@ -646,7 +656,7 @@ describe("Sidebar", () => {
       target: { value: "Engineering" },
     });
     fireEvent.click(screen.getByLabelText(/invite only/i));
-    fireEvent.click(screen.getByLabelText(/announce channel/i));
+    fireEvent.click(screen.getByLabelText(/announce channel creation/i));
     fireEvent.click(screen.getByRole("checkbox", { name: /bob teammate/i }));
     fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
 
@@ -952,6 +962,38 @@ describe("Sidebar", () => {
     fireEvent.click(muteTopicToggle);
     expect(muteTopicToggle).toBeChecked();
     expect(createButton).toBeEnabled();
+  });
+
+  it("rolls back optimistic mute when creating topic with mute enabled fails and retries", async () => {
+    muteTopicMock.mockResolvedValue(false);
+
+    renderWithProviders(
+      <Sidebar streams={[]} selectedFolderId="all" sidebarChats={[STREAM_CHAT]} sidebarDms={[]} />,
+    );
+
+    fireEvent.contextMenu(screen.getByText("#Engineering"));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /new topic/i }));
+
+    const topicDialog = await screen.findByRole("dialog", { name: /create topic/i });
+    const topicNameInput = within(topicDialog).getByRole("textbox", { name: /topic name/i });
+    const muteTopicToggle = within(topicDialog).getByRole("checkbox", { name: /mute topic/i });
+    const createButton = within(topicDialog).getByRole("button", { name: /create/i });
+
+    fireEvent.change(topicNameInput, { target: { value: "release" } });
+    fireEvent.click(muteTopicToggle);
+    fireEvent.click(createButton);
+
+    await waitFor(() => {
+      expect(muteTopicMock).toHaveBeenCalledWith(11, "release");
+      expect(useMuteStore.getState().isTopicMuted(11, "release")).toBe(false);
+      expect(screen.getByText(t("app.error"))).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+
+    await waitFor(() => {
+      expect(muteTopicMock).toHaveBeenCalledTimes(2);
+    });
   });
 
   it("opens stream context menu from keyboard on focused stream row", async () => {
@@ -1524,7 +1566,7 @@ describe("Sidebar", () => {
     });
   });
 
-  it("rolls back topic mute and shows retry feedback when topic API fails", async () => {
+  it("rolls back topic mute and retries from inline error feedback when topic API fails", async () => {
     muteTopicMock.mockResolvedValue(false);
     const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
       ...STREAM_CHAT,
@@ -1548,6 +1590,11 @@ describe("Sidebar", () => {
       expect(muteTopicMock).toHaveBeenCalledWith(11, "incident");
       expect(useMuteStore.getState().isTopicMuted(11, "incident")).toBe(false);
       expect(screen.getByText(t("app.error"))).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+    await waitFor(() => {
+      expect(muteTopicMock).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -1639,6 +1686,11 @@ describe("Sidebar", () => {
 
   it("marks resolved topic as not done from topic row action", async () => {
     setTopicResolvedStateMock.mockResolvedValue(true);
+    const moveStreamTopicSpy = vi.spyOn(useChatListStore.getState(), "moveStreamTopic");
+    const moveCurrentTopicSpy = vi.spyOn(
+      useCurrentChatMessagesStore.getState(),
+      "moveStreamTopicMessages",
+    );
     const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
       ...STREAM_CHAT,
       topics: [{ subject: "\u2714 incident", badge: 0, lastMessage: "Topic update" }],
@@ -1661,5 +1713,17 @@ describe("Sidebar", () => {
     await waitFor(() => {
       expect(setTopicResolvedStateMock).toHaveBeenCalledWith(11, "\u2714 incident", false);
     });
+    expect(moveStreamTopicSpy).toHaveBeenCalledWith({
+      streamId: 11,
+      oldTopic: "\u2714 incident",
+      newTopic: "incident",
+    });
+    expect(moveCurrentTopicSpy).toHaveBeenCalledWith({
+      streamId: 11,
+      oldTopic: "\u2714 incident",
+      newTopic: "incident",
+    });
+    moveStreamTopicSpy.mockRestore();
+    moveCurrentTopicSpy.mockRestore();
   });
 });

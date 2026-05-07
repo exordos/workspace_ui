@@ -1,5 +1,6 @@
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
+import { encodeTopicForRoute, normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import type { PushClickTargetInput, PushNotificationClickPayload } from "./push-click.types";
 
 export type { PushClickTargetInput, PushNotificationClickPayload };
@@ -68,7 +69,8 @@ export function buildPushClickUrl(input: PushClickTargetInput): string {
   const withMessageId = (base: string): string =>
     input.messageId != null ? `${base}?msg=${input.messageId}` : base;
   const streamName = normalizeNonEmpty(input.streamName);
-  const topic = normalizeNonEmpty(input.topic);
+  const hasTopic = input.topic != null;
+  const topic = hasTopic ? normalizeTopicForIdentity(input.topic ?? "") : undefined;
 
   if (input.type === "stream" && streamName) {
     const base =
@@ -77,8 +79,8 @@ export function buildPushClickUrl(input: PushClickTargetInput): string {
             `/stream/${input.streamId}-${slugifyStreamName(streamName) || "channel"}`,
           )
         : withCurrentOrgRoute(`/stream/${encodeURIComponent(streamName)}`);
-    return topic
-      ? withMessageId(`${base}/topic/${encodeURIComponent(topic)}`)
+    return hasTopic
+      ? withMessageId(`${base}/topic/${encodeURIComponent(encodeTopicForRoute(topic ?? ""))}`)
       : withMessageId(base);
   }
 

@@ -3,12 +3,13 @@
  *
  * DM: just navigate to /dm/<userId> — no explicit "create" API needed.
  * Group: same — navigate to /dm/<id1>,<id2>,... with first message.
- * Channel: POST /users/me/subscriptions to create and subscribe.
+ * Channel: POST /channels/create to create and subscribe.
  *
  * Also provides channel listing and unsubscription for management flows.
  */
 
 import { zulipApi } from "~/shared/api/client";
+import type { ZulipGroupSettingValue } from "~/shared/api/zulip.types";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
 
@@ -17,7 +18,7 @@ const log = createLogger("create-chat:api");
 /**
  * Create a new channel (stream) and subscribe the current user + selected subscribers.
  *
- * Zulip API: POST /users/me/subscriptions
+ * Zulip API: POST /channels/create
  */
 export async function createChannel(params: {
   name: string;
@@ -25,6 +26,7 @@ export async function createChannel(params: {
   subscribers: number[];
   inviteOnly?: boolean;
   announce?: boolean;
+  canSendMessageGroup?: ZulipGroupSettingValue;
 }): Promise<{ streamId: number } | null> {
   guard.nonEmpty(params.name, "channel name");
   for (const uid of params.subscribers) {
@@ -32,44 +34,48 @@ export async function createChannel(params: {
   }
 
   try {
-    const subscriptions = [
-      {
-        name: params.name,
-        description: params.description ?? "",
-      },
-    ];
-
+    // Что делает: формирует payload строго под новый Zulip endpoint `/channels/create`.
+    // В отличие от старого `/users/me/subscriptions` тут передаются `name` и `description`
+    // на верхнем уровне, а не внутри массива `subscriptions`.
     const body: Record<string, string> = {
-      subscriptions: JSON.stringify(subscriptions),
+      name: params.name.trim(),
+      description: params.description ?? "",
     };
 
     if (params.inviteOnly) {
+      // Что делает: включает private channel режим (invite-only).
       body.invite_only = "true";
     }
 
     if (params.announce != null) {
+      // Что делает: управляет только уведомлением от notification bot о создании канала.
+      // Это НЕ настройка прав публикации.
       body.announce = String(params.announce);
     }
 
     if (params.subscribers.length > 0) {
-      body.principals = JSON.stringify(params.subscribers);
+      // Что делает: передает initial список пользователей, которых подписываем при создании.
+      body.subscribers = JSON.stringify(params.subscribers);
     }
 
-    const res = await zulipApi.post("/users/me/subscriptions", body);
+    if (params.canSendMessageGroup != null) {
+      // Что делает: задает политику "кто может писать" через `can_send_message_group`.
+      // Zulip принимает либо id группы (integer), либо объект `{ direct_members, direct_subgroups }`.
+      body.can_send_message_group =
+        typeof params.canSendMessageGroup === "number"
+          ? String(params.canSendMessageGroup)
+          : JSON.stringify(params.canSendMessageGroup);
+    }
+
+    const res = await zulipApi.post("/channels/create", body);
 
     if (res.ok) {
       log.info("Channel created", { name: params.name });
-      const data = res.data as {
-        subscribed?: Record<string, string[] | { name: string; id: number }[]>;
-      };
-      const subscribed = data.subscribed ?? {};
-      const firstEntry = Object.values(subscribed)[0];
-      if (Array.isArray(firstEntry) && firstEntry.length > 0) {
-        const first = firstEntry[0];
-        const streamId = typeof first === "object" && first != null && "id" in first ? first.id : 0;
-        return { streamId };
-      }
-      return { streamId: 0 };
+      // Что делает: для `/channels/create` stream id приходит в поле `id`.
+      // Если сервер не вернул id, оставляем безопасный fallback `0`.
+      const data = res.data as { id?: unknown };
+      const streamId = typeof data.id === "number" && Number.isInteger(data.id) ? data.id : 0;
+      return { streamId };
     }
 
     log.warn("Channel creation failed", { status: res.status });

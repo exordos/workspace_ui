@@ -632,8 +632,8 @@ describe("chatListStore", () => {
 
   // handleDeleteMessages responds to server-side message deletion events.
   describe("handleDeleteMessages", () => {
-    // Deleting the only message in a topic must remove that topic from the stream.
-    it("removes a topic when its last message is deleted", () => {
+    // Deleting a known lastMessageId should keep topic row to avoid transient disappear after topic move notices.
+    it("keeps topic row and clears lastMessageId when deleting topic last message", () => {
       useChatListStore
         .getState()
         .setFromMessages(
@@ -652,11 +652,14 @@ describe("chatListStore", () => {
         .find((s) => s.stream_id === 5);
       expect(stream).toBeDefined();
       const topicNames = stream!.topics!.map((t) => t.subject);
-      expect(topicNames).not.toContain("topicA");
+      expect(topicNames).toContain("topicA");
       expect(topicNames).toContain("topicB");
+      expect(
+        useChatListStore.getState().streamsMap.get(5)?.topics.get("topicA")?.lastMessageId,
+      ).toBe(undefined);
     });
 
-    it("recalculates stream last sender from remaining newest topic", () => {
+    it("keeps stream last sender when deleting tracked topic last message id", () => {
       useChatListStore.getState().setFromMessages(
         [
           streamMsg({
@@ -684,11 +687,11 @@ describe("chatListStore", () => {
         .streams()
         .find((item) => item.stream_id === 5);
       expect(stream).toBeDefined();
-      expect(stream?.lastMessageSenderName).toBe("Alice");
+      expect(stream?.lastMessageSenderName).toBe("Bob");
     });
 
-    // A stream with zero topics must be removed entirely from the sidebar.
-    it("removes the entire stream when its only topic is deleted", () => {
+    // Single-topic stream should remain visible after deleting currently tracked lastMessageId.
+    it("keeps stream and topic row when its only topic last message is deleted", () => {
       useChatListStore
         .getState()
         .setFromMessages(
@@ -698,16 +701,48 @@ describe("chatListStore", () => {
 
       useChatListStore.getState().handleDeleteMessages([1]);
 
-      expect(useChatListStore.getState().streams()).toHaveLength(0);
+      const stream = useChatListStore
+        .getState()
+        .streams()
+        .find((item) => item.stream_id === 5);
+      expect(stream).toBeDefined();
+      expect(stream?.topics?.map((topic) => topic.subject)).toEqual(["only"]);
+      expect(useChatListStore.getState().streamsMap.get(5)?.topics.get("only")?.lastMessageId).toBe(
+        undefined,
+      );
     });
 
-    // DM entries must also disappear when their only message is deleted.
-    it("removes DM entry when its last message is deleted", () => {
+    // DM rows follow the same conservative policy: keep row, clear tracked lastMessageId.
+    it("keeps DM row and clears lastMessageId when its last message is deleted", () => {
       useChatListStore.getState().setFromMessages([dmMsg({ id: 50 })], 10);
 
       useChatListStore.getState().handleDeleteMessages([50]);
 
-      expect(useChatListStore.getState().dms()).toHaveLength(0);
+      const dms = useChatListStore.getState().dms();
+      expect(dms).toHaveLength(1);
+      expect(useChatListStore.getState().dmsMap.get("10,20")?.lastMessageId).toBe(undefined);
+    });
+
+    it("keeps moved topic row after deleting moved topic lastMessageId", () => {
+      useChatListStore
+        .getState()
+        .setFromMessages(
+          [streamMsg({ id: 1, stream_id: 5, subject: "incident", timestamp: 1000 })],
+          10,
+        );
+      useChatListStore.getState().moveStreamTopic({
+        streamId: 5,
+        oldTopic: "incident",
+        newTopic: "\u2714 incident",
+        messageIds: [1],
+        anchorMessageId: 1,
+      });
+
+      useChatListStore.getState().handleDeleteMessages([1]);
+
+      const stream = useChatListStore.getState().streamsMap.get(5);
+      expect(stream?.topics.has("\u2714 incident")).toBe(true);
+      expect(stream?.topics.get("\u2714 incident")?.lastMessageId).toBe(undefined);
     });
 
     // Deleted messages must be purged from the location index to avoid stale lookups.
@@ -908,6 +943,193 @@ describe("chatListStore", () => {
       expect(state.messageIdToLocation.get(1)).toBeUndefined();
       expect(state.messageIdToLocation.get(2)).toBeUndefined();
       expect(state.messageIdToLocation.get(50)?.type).toBe("dm");
+    });
+
+    it("moves stream topic and removes old topic key", () => {
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: 1,
+            stream_id: 10,
+            display_recipient: "engineering",
+            subject: "incident",
+            timestamp: 1000,
+            sender_full_name: "Alice",
+          }),
+          streamMsg({
+            id: 2,
+            stream_id: 10,
+            display_recipient: "engineering",
+            subject: "release",
+            timestamp: 2000,
+            sender_full_name: "Bob",
+          }),
+        ],
+        10,
+      );
+
+      useChatListStore.getState().moveStreamTopic({
+        streamId: 10,
+        oldTopic: "incident",
+        newTopic: "\u2714 incident",
+        messageIds: [1],
+        anchorMessageId: 1,
+      });
+
+      const stream = useChatListStore.getState().streamsMap.get(10);
+      expect(stream?.topics.has("incident")).toBe(false);
+      expect(stream?.topics.has("\u2714 incident")).toBe(true);
+    });
+
+    it("merges topic metadata when move target already exists", () => {
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: 1,
+            stream_id: 10,
+            display_recipient: "engineering",
+            subject: "incident",
+            timestamp: 1000,
+            sender_full_name: "Alice",
+            flags: [],
+            sender_id: OTHER_SENDER_ID,
+          }),
+          streamMsg({
+            id: 2,
+            stream_id: 10,
+            display_recipient: "engineering",
+            subject: "\u2714 incident",
+            timestamp: 2000,
+            sender_full_name: "Bob",
+            flags: ["read"],
+            sender_id: OTHER_SENDER_ID,
+          }),
+        ],
+        10,
+      );
+
+      useChatListStore.getState().moveStreamTopic({
+        streamId: 10,
+        oldTopic: "incident",
+        newTopic: "\u2714 incident",
+        messageIds: [1],
+        anchorMessageId: 1,
+      });
+
+      const stream = useChatListStore.getState().streamsMap.get(10);
+      const mergedTopic = stream?.topics.get("\u2714 incident");
+      expect(mergedTopic).toBeDefined();
+      expect(stream?.topics.size).toBe(1);
+      expect(mergedTopic?.unreadCount).toBe(1);
+      expect(mergedTopic?.lastMessageSenderName).toBe("Bob");
+      expect(stream?.lastMessageSenderName).toBe("Bob");
+    });
+
+    it("updates message location index to moved topic", () => {
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: 1,
+            stream_id: 10,
+            display_recipient: "engineering",
+            subject: "incident",
+          }),
+        ],
+        10,
+      );
+
+      useChatListStore.getState().moveStreamTopic({
+        streamId: 10,
+        oldTopic: "incident",
+        newTopic: "\u2714 incident",
+        messageIds: [1],
+      });
+
+      const location = useChatListStore.getState().messageIdToLocation.get(1);
+      expect(location?.type).toBe("stream");
+      if (location?.type !== "stream") return;
+      expect(location.topic).toBe("\u2714 incident");
+    });
+
+    it("keeps old topic row when only subset of known old-topic ids moved", () => {
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: 1,
+            stream_id: 10,
+            display_recipient: "engineering",
+            subject: "incident",
+            timestamp: 1000,
+          }),
+          streamMsg({
+            id: 2,
+            stream_id: 10,
+            display_recipient: "engineering",
+            subject: "incident",
+            timestamp: 1001,
+          }),
+        ],
+        10,
+      );
+
+      useChatListStore.getState().moveStreamTopic({
+        streamId: 10,
+        oldTopic: "incident",
+        newTopic: "\u2714 incident",
+        messageIds: [1],
+        anchorMessageId: 1,
+      });
+
+      const stream = useChatListStore.getState().streamsMap.get(10);
+      expect(stream?.topics.has("incident")).toBe(true);
+      expect(stream?.topics.has("\u2714 incident")).toBe(false);
+      const movedLocation = useChatListStore.getState().messageIdToLocation.get(1);
+      const untouchedLocation = useChatListStore.getState().messageIdToLocation.get(2);
+      expect(movedLocation?.type).toBe("stream");
+      if (movedLocation?.type !== "stream") return;
+      expect(movedLocation.topic).toBe("\u2714 incident");
+      expect(untouchedLocation?.type).toBe("stream");
+      if (untouchedLocation?.type !== "stream") return;
+      expect(untouchedLocation.topic).toBe("incident");
+    });
+
+    it("keeps single topic after hydrate + topic move + delta merge", () => {
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: 1,
+            stream_id: 10,
+            display_recipient: "engineering",
+            subject: "incident",
+            timestamp: 1000,
+          }),
+        ],
+        10,
+      );
+      const snapshot = buildChatListSnapshotSerialized(useChatListStore.getState());
+      useChatListStore.getState().clear();
+      useChatListStore.getState().hydrateFromIndexedDbSnapshot(snapshot);
+
+      useChatListStore.getState().moveStreamTopic({
+        streamId: 10,
+        oldTopic: "incident",
+        newTopic: "\u2714 incident",
+        messageIds: [1],
+      });
+      useChatListStore.getState().addMessages([
+        streamMsg({
+          id: 2,
+          stream_id: 10,
+          display_recipient: "engineering",
+          subject: "\u2714 incident",
+          timestamp: 2000,
+        }),
+      ]);
+
+      const stream = useChatListStore.getState().streamsMap.get(10);
+      expect(stream?.topics.has("incident")).toBe(false);
+      expect(stream?.topics.has("\u2714 incident")).toBe(true);
+      expect(stream?.topics.size).toBe(1);
     });
   });
 });

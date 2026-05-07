@@ -297,6 +297,86 @@ describe("currentChatMessagesStore", () => {
       expect(state.messages[0]!.local_echo_key).toBe(-1);
     });
 
+    it("commitOutgoingMessage collapses optimistic+server duplicates when content match fails", () => {
+      const me = 42;
+      useCurrentChatMessagesStore.getState().appendMessage({
+        ...mockMsg({
+          id: -1,
+          sender_id: me,
+          content: "emoji :party_parrot: /user_uploads/1/private.png",
+          stream_id: 5,
+        }),
+        delivery_status: "sending",
+        local_echo_key: -1,
+      });
+      useCurrentChatMessagesStore.getState().appendMessage({
+        ...mockMsg({
+          id: 777,
+          sender_id: me,
+          content:
+            '<p>emoji <img class="emoji" alt=":party_parrot:" src="/static/generated/emoji/parrot.png"></p><div class="message_inline_image"><img src="/spinner.png"></div>',
+          stream_id: 5,
+        }),
+      });
+
+      expect(useCurrentChatMessagesStore.getState().messages).toHaveLength(2);
+      expect(useCurrentChatMessagesStore.getState().pendingOutgoingEchoKeys).toEqual([-1]);
+
+      useCurrentChatMessagesStore.getState().commitOutgoingMessage(-1, {
+        ...mockMsg({
+          id: 777,
+          sender_id: me,
+          content: "<p>emoji delivered</p>",
+          stream_id: 5,
+        }),
+      });
+
+      const state = useCurrentChatMessagesStore.getState();
+      expect(state.messages).toHaveLength(1);
+      expect(state.messages[0]!.id).toBe(777);
+      expect(state.messages[0]!.delivery_status).toBe("sent");
+      expect(state.messages[0]!.local_echo_key).toBe(-1);
+      expect(state.pendingOutgoingEchoKeys).toEqual([]);
+    });
+
+    it("commitOutgoingMessage keeps a single row on repeated updates after duplicate collapse", () => {
+      const me = 42;
+      useCurrentChatMessagesStore.getState().appendMessage({
+        ...mockMsg({ id: -1, sender_id: me, content: "emoji :party_parrot:", stream_id: 5 }),
+        delivery_status: "sending",
+        local_echo_key: -1,
+      });
+      useCurrentChatMessagesStore.getState().appendMessage({
+        ...mockMsg({
+          id: 778,
+          sender_id: me,
+          content: '<p>emoji <img class="emoji" alt=":party_parrot:" src="/emoji.png"></p>',
+          stream_id: 5,
+        }),
+      });
+
+      useCurrentChatMessagesStore.getState().commitOutgoingMessage(-1, {
+        ...mockMsg({ id: 778, sender_id: me, content: "<p>first canonical</p>", stream_id: 5 }),
+      });
+      useCurrentChatMessagesStore.getState().commitOutgoingMessage(-1, {
+        ...mockMsg({
+          id: 778,
+          sender_id: me,
+          content: "<p>second canonical update</p>",
+          stream_id: 5,
+          flags: ["read"],
+        }),
+      });
+
+      const state = useCurrentChatMessagesStore.getState();
+      expect(state.messages).toHaveLength(1);
+      expect(state.messages[0]!.id).toBe(778);
+      expect(state.messages[0]!.content).toBe("<p>second canonical update</p>");
+      expect(state.messages[0]!.local_echo_key).toBe(-1);
+      expect(state.messages[0]!.flags).toEqual(["read"]);
+      expect(state.pendingOutgoingEchoKeys).toEqual([]);
+    });
+
     it("appendMessage merges distinct pendings using queue order and content", () => {
       const me = 99;
       useCurrentChatMessagesStore.getState().appendMessage({
@@ -562,6 +642,128 @@ describe("currentChatMessagesStore", () => {
       expect(useCurrentChatMessagesStore.getState().messages[0]!.markdown_source).toBe("keep");
     });
   });
+
+  describe("moveStreamTopicMessages", () => {
+    it("moves message subjects from old topic to new topic", () => {
+      useCurrentChatMessagesStore
+        .getState()
+        .setMessages([
+          mockMsg({ id: 1, stream_id: 5, subject: "incident" }),
+          mockMsg({ id: 2, stream_id: 5, subject: "incident" }),
+          mockMsg({ id: 3, stream_id: 5, subject: "other" }),
+        ]);
+
+      useCurrentChatMessagesStore.getState().moveStreamTopicMessages({
+        streamId: 5,
+        oldTopic: "incident",
+        newTopic: "\u2714 incident",
+        messageIds: [1, 2],
+      });
+
+      const messages = useCurrentChatMessagesStore.getState().messages;
+      expect(messages[0]!.subject).toBe("\u2714 incident");
+      expect(messages[1]!.subject).toBe("\u2714 incident");
+      expect(messages[2]!.subject).toBe("other");
+    });
+
+    it("atomically switches active narrow stream topic context", () => {
+      useCurrentChatMessagesStore.getState().setContext({
+        type: "stream",
+        streamId: 5,
+        streamName: "engineering",
+        topic: "incident",
+      });
+      useCurrentChatMessagesStore
+        .getState()
+        .setMessages([mockMsg({ id: 1, stream_id: 5, subject: "incident" })]);
+
+      useCurrentChatMessagesStore.getState().moveStreamTopicMessages({
+        streamId: 5,
+        oldTopic: "incident",
+        newTopic: "\u2714 incident",
+        messageIds: [1],
+        anchorMessageId: 1,
+      });
+
+      const state = useCurrentChatMessagesStore.getState();
+      expect(state.context?.type).toBe("stream");
+      if (state.context?.type !== "stream") return;
+      expect(state.context.topic).toBe("\u2714 incident");
+      expect(state.messages[0]!.subject).toBe("\u2714 incident");
+    });
+
+    it("does not switch context for stream-wide mode", () => {
+      useCurrentChatMessagesStore.getState().setContext({
+        type: "stream",
+        streamId: 5,
+        streamName: "engineering",
+        topic: "incident",
+        streamWideView: true,
+      });
+      useCurrentChatMessagesStore
+        .getState()
+        .setMessages([mockMsg({ id: 1, stream_id: 5, subject: "incident" })]);
+
+      useCurrentChatMessagesStore.getState().moveStreamTopicMessages({
+        streamId: 5,
+        oldTopic: "incident",
+        newTopic: "\u2714 incident",
+        messageIds: [1],
+        anchorMessageId: 1,
+      });
+
+      const state = useCurrentChatMessagesStore.getState();
+      expect(state.context?.type).toBe("stream");
+      if (state.context?.type !== "stream") return;
+      expect(state.context.streamWideView).toBe(true);
+      expect(state.context.topic).toBe("incident");
+      expect(state.messages[0]!.subject).toBe("\u2714 incident");
+    });
+
+    it("does not bulk-move by stream/topic when messageIds miss loaded slice", () => {
+      useCurrentChatMessagesStore
+        .getState()
+        .setMessages([
+          mockMsg({ id: 101, stream_id: 5, subject: "incident" }),
+          mockMsg({ id: 102, stream_id: 5, subject: "incident" }),
+        ]);
+
+      useCurrentChatMessagesStore.getState().moveStreamTopicMessages({
+        streamId: 5,
+        oldTopic: "incident",
+        newTopic: "\u2714 incident",
+        messageIds: [999999],
+      });
+
+      const messages = useCurrentChatMessagesStore.getState().messages;
+      expect(messages.map((message) => message.subject)).toEqual(["incident", "incident"]);
+    });
+
+    it("deduplicates messageIds with anchor and moves only targeted ids", () => {
+      useCurrentChatMessagesStore
+        .getState()
+        .setMessages([
+          mockMsg({ id: 1, stream_id: 5, subject: "incident" }),
+          mockMsg({ id: 2, stream_id: 5, subject: "incident" }),
+          mockMsg({ id: 3, stream_id: 5, subject: "incident" }),
+        ]);
+
+      useCurrentChatMessagesStore.getState().moveStreamTopicMessages({
+        streamId: 5,
+        oldTopic: "incident",
+        newTopic: "\u2714 incident",
+        messageIds: [1, 2, 1],
+        anchorMessageId: 2,
+      });
+
+      const messages = useCurrentChatMessagesStore.getState().messages;
+      expect(messages.map((message) => message.subject)).toEqual([
+        "\u2714 incident",
+        "\u2714 incident",
+        "incident",
+      ]);
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -600,8 +802,8 @@ describe("isMessageForContext", () => {
     ).toBe(false);
   });
 
-  // Zulip uses empty string for the default topic — we normalize to "general".
-  it("uses 'general' as default topic when subject is empty", () => {
+  // Empty subject must stay empty to avoid colliding with literal "general" topic.
+  it("does not match literal 'general' context when subject is empty", () => {
     const ctx: CurrentChatContext = {
       type: "stream",
       streamId: 5,
@@ -609,7 +811,7 @@ describe("isMessageForContext", () => {
       topic: "general",
     };
     expect(isMessageForContext({ type: "stream", stream_id: 5, subject: "" }, ctx, null)).toBe(
-      true,
+      false,
     );
   });
 
@@ -688,8 +890,8 @@ describe("contextFromMessage", () => {
     });
   });
 
-  // Empty subject must be normalized to "general" to match context comparison logic.
-  it("uses 'general' as default topic for stream messages with empty subject", () => {
+  // Empty subject must remain empty in route context identity.
+  it("keeps empty topic for stream messages with empty subject", () => {
     const msg: ZulipRawMessage = {
       id: 1,
       sender_id: 10,
@@ -704,7 +906,7 @@ describe("contextFromMessage", () => {
     const ctx = contextFromMessage(msg, null);
     expect(ctx).not.toBeNull();
     if (ctx?.type === "stream") {
-      expect(ctx.topic).toBe("general");
+      expect(ctx.topic).toBe("");
     }
   });
 

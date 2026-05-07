@@ -97,6 +97,40 @@ describe("SidebarDmList", () => {
     expect(aliceSrc).toContain("_av=");
   });
 
+  it("prefers user avatar over chat avatar snapshot in recent DMs", () => {
+    useChatListStore.setState({ currentUserId: 999 });
+    useUsersStore.getState().mergeUsers([
+      createUser({ user_id: 999, full_name: "Self User", email: "self@example.com" }),
+      createUser({
+        user_id: 42,
+        full_name: "Alice",
+        email: "alice@example.com",
+        avatar_url: "https://live.example.com/u42.png",
+      }),
+    ]);
+
+    const dmsWithStaleAvatar: Extract<SidebarChat, { type: "dm" }>[] = [
+      {
+        type: "dm",
+        id: 42,
+        name: "Alice",
+        slug: "42-alice",
+        lastMessage: "Hello",
+        badge: 3,
+        time: "10:13",
+        avatar_url: "https://stale.example.com/chat-avatar.png",
+      },
+    ];
+
+    const { container } = renderWithProviders(
+      <SidebarDmList activeDmId={null} dms={dmsWithStaleAvatar} />,
+    );
+
+    const avatarSrc = container.querySelector("img")?.getAttribute("src");
+    expect(avatarSrc).toContain("live.example.com/u42.png");
+    expect(avatarSrc).not.toContain("stale.example.com/chat-avatar.png");
+  });
+
   it("uses tokenized compact typography classes in recent dm rows", () => {
     renderWithProviders(<SidebarDmList activeDmId={42} dms={RECENT_DMS} />);
 

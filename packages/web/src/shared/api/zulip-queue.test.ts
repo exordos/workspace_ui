@@ -1,11 +1,13 @@
 /**
  * Tests for Zulip API (zulip-queue module).
  */
+import "./zulip.test.setup";
 import { describe, expect, it, vi } from "vitest";
 import { getCurrentInstance } from "./client";
 import {
   deleteQueue,
   fetchUnreadMessagesCountForCredentials,
+  getCachedOwnAvatarCapabilities,
   getEvents,
   getEventsForCredentials,
   registerQueue,
@@ -44,7 +46,7 @@ describe("registerQueue", () => {
     expect(mockRefreshZulipApiBase).toHaveBeenCalled();
     expect(mockZulipApi.post).toHaveBeenCalledWith("/register", {
       event_types: JSON.stringify(["message", "presence"]),
-      apply_markdown: "true",
+      apply_markdown: "false",
       fetch_event_types: JSON.stringify([
         "subscription",
         "user_topic",
@@ -168,6 +170,32 @@ describe("registerQueue", () => {
         animated: false,
       },
     ]);
+  });
+
+  it("parses avatar capabilities from register payload and caches them", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        queue_id: "q-123",
+        last_event_id: -1,
+        max_avatar_file_size_mib: 15,
+        realm_avatar_changes_disabled: false,
+        server_avatar_changes_disabled: true,
+      },
+      raw: { statusText: "OK" },
+    });
+
+    const result = await registerQueue(["message"]);
+    expect(result.max_avatar_file_size_mib).toBe(15);
+    expect(result.realm_avatar_changes_disabled).toBe(false);
+    expect(result.server_avatar_changes_disabled).toBe(true);
+    expect(getCachedOwnAvatarCapabilities()).toEqual({
+      max_avatar_file_size_mib: 15,
+      realm_avatar_changes_disabled: false,
+      server_avatar_changes_disabled: true,
+    });
   });
 
   it("includes jitsi_server_url_effective from register payload", async () => {

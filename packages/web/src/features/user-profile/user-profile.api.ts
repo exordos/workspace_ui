@@ -5,11 +5,23 @@
  */
 
 import { zulipApi } from "~/shared/api/client";
+import {
+  getOwnAvatarCapabilities as getOwnAvatarCapabilitiesFromApi,
+  removeOwnAvatar as removeOwnAvatarFromApi,
+  uploadOwnAvatar as uploadOwnAvatarFromApi,
+} from "~/shared/api/zulip-avatar-settings";
+import { updateOwnProfileSettings } from "~/shared/api/zulip-profile-settings";
 import { fetchRealmProfileFieldDefinitions } from "~/shared/api/zulip-realm-profile-fields";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
 import { mapZulipProfileDataToSemanticFields } from "~/shared/lib/zulip-profile-fields-map.lib";
-import type { OwnStatusData, UserProfileData } from "./user-profile.types";
+import type {
+  OwnAvatarCapabilities,
+  OwnAvatarMutationResult,
+  OwnProfileUpdateResult,
+  OwnStatusData,
+  UserProfileData,
+} from "./user-profile.types";
 
 const log = createLogger("user-profile:api");
 
@@ -119,25 +131,29 @@ export async function fetchOwnStatus(): Promise<OwnStatusData | null> {
 
 export interface UpdateOwnProfileParams {
   fullName: string;
+  timezone: string;
 }
 
-export async function updateOwnProfile(params: UpdateOwnProfileParams): Promise<boolean> {
+export async function updateOwnProfile(
+  params: UpdateOwnProfileParams,
+): Promise<OwnProfileUpdateResult> {
   const fullName = params.fullName.trim();
+  const timezone = params.timezone.trim();
   guard.nonEmpty(fullName, "updateOwnProfile.fullName");
+  guard.nonEmpty(timezone, "updateOwnProfile.timezone");
 
-  try {
-    const res = await zulipApi.patch("/settings", {
-      full_name: fullName,
-    });
-    if (!res.ok) {
-      log.warn("Failed to update own profile", { status: res.status });
-      return false;
-    }
-    return true;
-  } catch (err) {
-    log.error("Error updating own profile", { error: String(err) });
-    return false;
+  const result = await updateOwnProfileSettings({
+    fullName,
+    timezone,
+  });
+  if (result.ok) {
+    return { ok: true };
   }
+  return {
+    ok: false,
+    kind: result.kind,
+    message: result.message,
+  };
 }
 
 export interface UpdateOwnStatusParams {
@@ -161,4 +177,36 @@ export async function updateOwnStatus(params: UpdateOwnStatusParams): Promise<bo
     log.error("Error updating own status", { error: String(err) });
     return false;
   }
+}
+
+export function getOwnAvatarCapabilities(): OwnAvatarCapabilities {
+  const capabilities = getOwnAvatarCapabilitiesFromApi();
+  return {
+    maxAvatarFileSizeMib: capabilities.maxAvatarFileSizeMib,
+    avatarChangesDisabled: capabilities.avatarChangesDisabled,
+  };
+}
+
+export async function uploadOwnAvatar(file: File): Promise<OwnAvatarMutationResult> {
+  const result = await uploadOwnAvatarFromApi(file);
+  if (result.ok) {
+    return result;
+  }
+  return {
+    ok: false,
+    kind: result.kind,
+    message: result.message,
+  };
+}
+
+export async function removeOwnAvatar(): Promise<OwnAvatarMutationResult> {
+  const result = await removeOwnAvatarFromApi();
+  if (result.ok) {
+    return result;
+  }
+  return {
+    ok: false,
+    kind: result.kind,
+    message: result.message,
+  };
 }

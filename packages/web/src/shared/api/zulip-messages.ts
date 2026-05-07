@@ -1,6 +1,7 @@
 // Сообщения Zulip: загрузка, отправка, редактирование, реакции, флаги, snippets и activity narrow.
 import { t } from "~/i18n/i18n";
 import { guard } from "~/shared/lib/guards";
+import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import {
   ZULIP_DM_CHAT_NUM_AFTER,
   ZULIP_DM_CHAT_NUM_BEFORE,
@@ -191,10 +192,7 @@ export async function fetchMessages(
 ): Promise<MockMessage[]> {
   const normalizedStream =
     stream == null ? undefined : guard.nonEmpty(stream, "fetchMessages.stream");
-  const normalizedTopic =
-    topic == null || topic.trim() === ""
-      ? undefined
-      : guard.nonEmpty(topic.trim(), "fetchMessages.topic");
+  const normalizedTopic = topic == null ? undefined : normalizeTopicForIdentity(topic);
   if (normalizedTopic !== undefined && normalizedStream === undefined) {
     throw new Error("fetchMessages.stream is required when topic is provided");
   }
@@ -365,7 +363,7 @@ export async function fetchMessageById(messageId: number): Promise<MockMessage |
   guard.messageId(messageId, "fetchMessageById");
   const res = await zulipPipelineGet(`/messages/${messageId}`, {
     allow_empty_topic_name: "true",
-    apply_markdown: "true",
+    apply_markdown: "false",
   });
   if (!res?.ok) {
     return null;
@@ -460,7 +458,7 @@ export async function sendMessage(params: SendMessageParams): Promise<MockMessag
   if (params.streamId != null) {
     guard.streamId(params.streamId, "sendMessage.streamId");
   }
-  const subject = params.subject ?? "general";
+  const subject = params.subject ?? "";
   const result = await client.messages.send({
     type: "stream",
     to: stream,

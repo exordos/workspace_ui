@@ -23,7 +23,7 @@ export const SidebarSearchHeader: React.FC<SidebarSearchHeaderProps> = ({
           placeholder={t("search.find")}
           value={searchQuery}
           onChange={handleChange}
-          className="h-full min-w-0 flex-1 bg-transparent text-sm text-text-primary outline-none placeholder:text-text-muted"
+          className="h-full min-w-0 flex-1 bg-transparent text-sm text-text-primary outline-none placeholder:text-text-muted focus-visible:!outline-none"
           aria-label={t("search.search")}
         />
         <Icon name="search" size={20} className="shrink-0" />
@@ -39,4 +39,3 @@ export const SidebarSearchHeader: React.FC<SidebarSearchHeaderProps> = ({
     </div>
   );
 };
-

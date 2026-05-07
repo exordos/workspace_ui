@@ -19,6 +19,8 @@ import {
   summarizeZulipMessagesForFlowDebug,
 } from "~/shared/lib/message-flow-debug.lib";
 import { saveRecentDmPartners } from "~/shared/lib/recent-dms";
+import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import { resolveTopicMoveTargetMessageIds } from "~/shared/lib/update-message-topic-move.lib";
 import { areGroupSettingValuesEqual } from "~/shared/lib/zulip-group-setting.lib";
 import type {
   SidebarChat,
@@ -46,6 +48,9 @@ import type {
   ChatListStreamMetadataRow,
   MessageLocation,
 } from "./chat-list.model.types";
+
+type StreamTopicEntryInternal =
+  StreamEntryInternal["topics"] extends Map<string, infer TopicEntry> ? TopicEntry : never;
 
 function streamsMapToSortedStreams(streamsMap: Map<number, StreamEntryInternal>): StreamWithLast[] {
   return Array.from(streamsMap.values())
@@ -157,6 +162,36 @@ function mergeStreamEntry(
     canRemoveSubscribersGroup: existing.canRemoveSubscribersGroup,
     canAdministerChannelGroup: existing.canAdministerChannelGroup,
     topics: nextTopics,
+  };
+}
+
+function getNewestTopicEntry(
+  topics: Map<string, StreamTopicEntryInternal>,
+): StreamTopicEntryInternal | null {
+  let newest: StreamTopicEntryInternal | null = null;
+  for (const topic of topics.values()) {
+    if (newest == null || topic.ts > newest.ts) {
+      newest = topic;
+    }
+  }
+  return newest;
+}
+
+function mergeTopicsForMove(
+  oldTopic: StreamTopicEntryInternal,
+  nextTopicName: string,
+  targetTopic: StreamTopicEntryInternal | undefined,
+): StreamTopicEntryInternal {
+  if (targetTopic == null) {
+    return { ...oldTopic, subject: nextTopicName };
+  }
+  const newest = oldTopic.ts >= targetTopic.ts ? oldTopic : targetTopic;
+  const alternate = newest === oldTopic ? targetTopic : oldTopic;
+  return {
+    ...newest,
+    subject: nextTopicName,
+    unreadCount: oldTopic.unreadCount + targetTopic.unreadCount,
+    lastMessageId: newest.lastMessageId ?? alternate.lastMessageId,
   };
 }
 
@@ -362,7 +397,7 @@ function buildMessageIdToLocation(
   const map = new Map<number, MessageLocation>();
   for (const m of messages) {
     if (m.type === "stream" && m.stream_id != null) {
-      const topic = (m.subject ?? "").trim() || "general";
+      const topic = normalizeTopicForIdentity(m.subject ?? "");
       map.set(m.id, { type: "stream", stream_id: m.stream_id, topic });
     } else if (m.type === "private" && Array.isArray(m.display_recipient)) {
       const dmKey = dmConversationKey(m.display_recipient, currentUserId);
@@ -553,7 +588,7 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
 
       for (const m of streamByKey.values()) {
         if (m.stream_id != null) {
-          const topic = (m.subject ?? "").trim() || "general";
+          const topic = normalizeTopicForIdentity(m.subject ?? "");
           nextLoc.set(m.id, { type: "stream", stream_id: m.stream_id, topic });
         }
       }
@@ -736,6 +771,92 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
     });
   },
 
+  moveStreamTopic({ streamId, oldTopic, newTopic, messageIds, anchorMessageId }) {
+    if (!Number.isInteger(streamId) || streamId <= 0) return;
+    const oldTopicKey = normalizeTopicForIdentity(oldTopic);
+    const nextTopicKey = normalizeTopicForIdentity(newTopic);
+    if (oldTopicKey === nextTopicKey) {
+      return;
+    }
+    const targetMessageIds = resolveTopicMoveTargetMessageIds({ messageIds, anchorMessageId });
+    if (targetMessageIds.length === 0) return;
+    const affectedMessageIds = new Set(targetMessageIds);
+
+    set((state) => {
+      const stream = state.streamsMap.get(streamId);
+      if (!stream) return state;
+      let nextLocations = state.messageIdToLocation;
+      let locationsChanged = false;
+      const ensureMutableLocations = () => {
+        if (!locationsChanged) {
+          nextLocations = new Map(nextLocations);
+          locationsChanged = true;
+        }
+      };
+      const assignTopicForLocation = (messageId: number) => {
+        const location = nextLocations.get(messageId);
+        if (location?.type !== "stream" || location.stream_id !== streamId) return;
+        if (location.topic === nextTopicKey) return;
+        ensureMutableLocations();
+        nextLocations.set(messageId, { ...location, topic: nextTopicKey });
+      };
+
+      for (const messageId of affectedMessageIds) {
+        assignTopicForLocation(messageId);
+      }
+
+      const knownOldTopicMessageIds: number[] = [];
+      for (const [messageId, location] of state.messageIdToLocation.entries()) {
+        if (
+          location.type === "stream" &&
+          location.stream_id === streamId &&
+          location.topic === oldTopicKey
+        ) {
+          knownOldTopicMessageIds.push(messageId);
+        }
+      }
+      const canMoveTopicEntry =
+        knownOldTopicMessageIds.length > 0 &&
+        knownOldTopicMessageIds.every((messageId) => affectedMessageIds.has(messageId));
+
+      let streamsChanged = false;
+      let nextStreams = state.streamsMap;
+      if (canMoveTopicEntry) {
+        const oldTopicEntry = stream.topics.get(oldTopicKey);
+        if (oldTopicEntry) {
+          const nextTopics = new Map(stream.topics);
+          const targetTopicEntry = nextTopics.get(nextTopicKey);
+          const mergedTopic = mergeTopicsForMove(oldTopicEntry, nextTopicKey, targetTopicEntry);
+          nextTopics.set(nextTopicKey, mergedTopic);
+          nextTopics.delete(oldTopicKey);
+
+          const newestTopic = getNewestTopicEntry(nextTopics);
+          nextStreams = new Map(state.streamsMap);
+          nextStreams.set(streamId, {
+            ...stream,
+            topics: nextTopics,
+            ...(newestTopic != null
+              ? {
+                  lastMessage: newestTopic.lastMessage,
+                  lastMessageSenderName: newestTopic.lastMessageSenderName,
+                  time: newestTopic.time,
+                  ts: newestTopic.ts,
+                }
+              : {}),
+          });
+          streamsChanged = true;
+        }
+      }
+
+      if (!locationsChanged && !streamsChanged) return state;
+
+      return {
+        ...(streamsChanged ? { streamsMap: nextStreams } : {}),
+        ...(locationsChanged ? { messageIdToLocation: nextLocations } : {}),
+      };
+    });
+  },
+
   patchPersonalDmRowLabelsForUser(userId) {
     if (!Number.isFinite(userId) || userId <= 0) return;
     const users = useUsersStore.getState();
@@ -837,7 +958,7 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
 
   decrementUnreadForTopic(streamId, topic, count) {
     if (!Number.isFinite(count) || count <= 0) return;
-    const topicKey = topic.trim() || "general";
+    const topicKey = normalizeTopicForIdentity(topic);
     set((state) => {
       const stream = state.streamsMap.get(streamId);
       const streamTopic = stream?.topics.get(topicKey);
@@ -913,26 +1034,16 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
           if (topic?.lastMessageId !== mid) continue;
           nextStreams = new Map(nextStreams);
           const nextTopics = new Map(stream.topics);
-          nextTopics.delete(loc.topic);
-          if (nextTopics.size === 0) {
-            nextStreams.delete(loc.stream_id);
-          } else {
-            const remaining = Array.from(nextTopics.values()).sort((a, b) => b.ts - a.ts);
-            const newLast = remaining[0]!;
-            nextStreams.set(loc.stream_id, {
-              ...stream,
-              topics: nextTopics,
-              lastMessage: newLast.lastMessage,
-              lastMessageSenderName: newLast.lastMessageSenderName,
-              time: newLast.time,
-              ts: newLast.ts,
-            });
-          }
+          nextTopics.set(loc.topic, { ...topic, lastMessageId: undefined });
+          nextStreams.set(loc.stream_id, {
+            ...stream,
+            topics: nextTopics,
+          });
         } else {
           const dm = nextDms.get(loc.dmKey);
           if (dm?.lastMessageId !== mid) continue;
           nextDms = new Map(nextDms);
-          nextDms.delete(loc.dmKey);
+          nextDms.set(loc.dmKey, { ...dm, lastMessageId: undefined });
         }
       }
       return { streamsMap: nextStreams, dmsMap: nextDms, messageIdToLocation: nextLoc };

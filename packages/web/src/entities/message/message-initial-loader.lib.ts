@@ -8,6 +8,7 @@ import {
   upsertChatMessages,
 } from "~/shared/lib/message-cache-db";
 import { chatKeyFromContext, chatKeyFromMockMessage } from "~/shared/lib/message-cache-keys.lib";
+import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import {
   ZULIP_DM_ANCHOR_NUM_AFTER,
   ZULIP_DM_ANCHOR_NUM_BEFORE,
@@ -146,7 +147,7 @@ async function fetchNetworkMessagesByMode(options: {
     // Что делает: wide-mode всегда грузит stream-narrow без topic.
     return fetchMessages(context.streamName, undefined, undefined, { signal });
   }
-  // Что делает: explicit topic-route всегда грузит topic-narrow; "general" мапится в пустой operand в API.
+  // Что делает: explicit topic-route всегда грузит topic-narrow; empty topic мапится в пустой operand в API.
   return fetchMessages(context.streamName, context.topic, undefined, { signal });
 }
 
@@ -168,7 +169,7 @@ function resolveNextContextFromApi(options: {
       return context;
     }
     const first = messages[0]!;
-    const topic = (first.subject ?? "").trim() || "general";
+    const topic = normalizeTopicForIdentity(first.subject ?? "");
     return { ...context, topic, streamWideView: false };
   }
 

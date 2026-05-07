@@ -8,6 +8,7 @@ export interface LayoutMuteSnapshot {
   mutedStreamIds: number[];
   mutedTopics: { streamId: number; topic: string }[];
   unmutedTopics: { streamId: number; topic: string }[];
+  followedTopics: { streamId: number; topic: string }[];
 }
 
 export interface LayoutMuteBootstrapData {
@@ -33,14 +34,17 @@ export function useLayoutInstanceBootstrap(options: {
       const mutedStreamIds = subscriptions.filter((s) => s.is_muted).map((s) => s.stream_id);
       const mutedTopics: { streamId: number; topic: string }[] = [];
       const unmutedTopics: { streamId: number; topic: string }[] = [];
+      const followedTopics: { streamId: number; topic: string }[] = [];
       for (const ut of userTopics) {
         if (ut.visibility_policy === 1) {
           mutedTopics.push({ streamId: ut.stream_id, topic: ut.topic_name });
-        } else if (ut.visibility_policy === 2 || ut.visibility_policy === 3) {
+        } else if (ut.visibility_policy === 2) {
           unmutedTopics.push({ streamId: ut.stream_id, topic: ut.topic_name });
+        } else if (ut.visibility_policy === 3) {
+          followedTopics.push({ streamId: ut.stream_id, topic: ut.topic_name });
         }
       }
-      return Promise.resolve({ mutedStreamIds, mutedTopics, unmutedTopics });
+      return Promise.resolve({ mutedStreamIds, mutedTopics, unmutedTopics, followedTopics });
     },
     [],
   );

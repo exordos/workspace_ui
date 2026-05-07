@@ -32,11 +32,7 @@ import {
 } from "~/features/typing-indicator/typing-key";
 import { t } from "~/i18n/i18n";
 import {
-  fetchMessages,
-  fetchMessagesWithNarrow,
-  fetchDmMessages,
   fetchMessageById,
-  fetchUser,
   getRealmBaseUrl,
   sendMessage,
   markMessagesAsRead,
@@ -58,10 +54,10 @@ import { logMessageFlow, summarizeChatContextForLog } from "~/shared/lib/message
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { useShortcut } from "~/shared/lib/shortcuts";
 import { resolveCanonicalStreamName } from "~/shared/lib/stream-name.lib";
+import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
 import { useSidebarConfigStore } from "~/widgets/sidebar/sidebar-config.model";
-import { getDmById, parseStreamSlug, parseDmSlugToUserIds } from "~/widgets/sidebar/sidebar.lib";
-import type { StreamWithLast } from "~/widgets/sidebar/sidebar.types";
+import { parseDmSlugToUserIds } from "~/widgets/sidebar/sidebar.lib";
 import { isFocusedMessageLoadedInRoute } from "./chat-anchor-load.lib";
 import { startCallFromHeader } from "./chat-call-start.lib";
 import {
@@ -77,7 +73,6 @@ import {
   mergeForwardDraftContent,
   resolveForwardDraftTarget,
   setPendingForwardPrefill,
-  toggleForwardRecipient,
 } from "./chat-forward.lib";
 import {
   collectUnreadMessageIds,
@@ -231,9 +226,6 @@ export const ChatPage: React.FC = () => {
   const isLoadingMore = useCurrentChatMessagesStore((s) => s.isLoadingMore);
   const isLoadingNewer = useCurrentChatMessagesStore((s) => s.isLoadingNewer);
   const hasNewerMessages = useCurrentChatMessagesStore((s) => s.hasNewerMessages);
-  const setIsLoadingMore = useCurrentChatMessagesStore((s) => s.setIsLoadingMore);
-  const setHasOlderMessages = useCurrentChatMessagesStore((s) => s.setHasOlderMessages);
-  const setHasNewerMessages = useCurrentChatMessagesStore((s) => s.setHasNewerMessages);
   const loadInitialMessagesForContext = useCurrentChatMessagesStore(
     (s) => s.loadInitialMessagesForContext,
   );
@@ -241,7 +233,6 @@ export const ChatPage: React.FC = () => {
   const loadNewerBoundaryPage = useCurrentChatMessagesStore((s) => s.loadNewerBoundaryPage);
   const boundaryLoadFailed = useCurrentChatMessagesStore((s) => s.boundaryLoadFailed);
   const clearBoundaryLoadFailed = useCurrentChatMessagesStore((s) => s.clearBoundaryLoadFailed);
-  const [sending, setSending] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<ComposerUploadProgressState | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [replyQuote, setReplyQuote] = useState<{
@@ -329,7 +320,7 @@ export const ChatPage: React.FC = () => {
       return {
         type: "stream",
         streamName: activeStream,
-        topic: activeTopic ?? "general",
+        topic: activeTopic ?? "",
       };
     }
 
@@ -352,7 +343,7 @@ export const ChatPage: React.FC = () => {
       fallbackStreamId: ctx?.type === "stream" ? ctx.streamId : null,
     });
   }, [isDmView, activeDmUserIds, resolvedStreamId]);
-  const draftTopic = activeTopic ?? "general";
+  const draftTopic = activeTopic ?? "";
 
   useEffect(() => {
     if (!draftType || draftTo.length === 0) return;
@@ -555,7 +546,7 @@ export const ChatPage: React.FC = () => {
         ? { type: "dm", dmKey: dmRouteKey(activeDmUserIds, currentUserId) }
         : undefined
       : activeStreamId != null
-        ? { type: "stream", streamId: activeStreamId, topic: activeTopic ?? "general" }
+        ? { type: "stream", streamId: activeStreamId, topic: activeTopic ?? "" }
         : undefined;
 
     const batcher = createMarkAsReadBatcher({
@@ -1109,7 +1100,6 @@ export const ChatPage: React.FC = () => {
     }
     jitsiHeaderCallInFlightRef.current = true;
     setSendError(null);
-    setSending(true);
     try {
       const result = await startCallFromHeader({
         target: callTarget,
@@ -1132,7 +1122,6 @@ export const ChatPage: React.FC = () => {
       }
     } finally {
       jitsiHeaderCallInFlightRef.current = false;
-      setSending(false);
     }
   }, [
     callTarget,
@@ -1202,7 +1191,6 @@ export const ChatPage: React.FC = () => {
     if (files && files.length > 0) {
       const uploadController = new AbortController();
       uploadAbortControllerRef.current = uploadController;
-      setSending(true);
       setUploadProgress({
         completed: 0,
         total: files.length,
@@ -1222,7 +1210,6 @@ export const ChatPage: React.FC = () => {
             ? err.message
             : t("message.sendFailed");
         setSendError(errorMessage);
-        setSending(false);
         setUploadProgress(null);
         throw new Error(errorMessage, { cause: err });
       } finally {
@@ -1247,7 +1234,6 @@ export const ChatPage: React.FC = () => {
         target: { mode: "dm", recipientIds: activeDmUserIds },
       });
       appendMessageToStore(optimisticMessage);
-      setSending(true);
       try {
         const newMsg = await sendMessage({
           to: activeDmUserIds,
@@ -1263,7 +1249,6 @@ export const ChatPage: React.FC = () => {
         setSendError(err instanceof Error ? err.message : t("message.sendFailed"));
         throw err instanceof Error ? err : new Error(t("message.sendFailed"));
       } finally {
-        setSending(false);
         setUploadProgress(null);
       }
       return;
@@ -1279,7 +1264,7 @@ export const ChatPage: React.FC = () => {
         setUploadProgress(null);
         throw new Error(error);
       }
-      const subject = subjectOverride ?? activeTopic ?? "general";
+      const subject = normalizeTopicForIdentity(subjectOverride ?? activeTopic ?? "");
       const optimisticMessageId = optimisticMessageIdRef.current;
       optimisticMessageIdRef.current -= 1;
       const optimisticMessage = buildOptimisticOutgoingMessage({
@@ -1295,7 +1280,6 @@ export const ChatPage: React.FC = () => {
         },
       });
       appendMessageToStore(optimisticMessage);
-      setSending(true);
       try {
         const newMsg = await sendMessage({
           stream: activeStreamCanonicalName,
@@ -1313,7 +1297,6 @@ export const ChatPage: React.FC = () => {
         setSendError(err instanceof Error ? err.message : t("message.sendFailed"));
         throw err instanceof Error ? err : new Error(t("message.sendFailed"));
       } finally {
-        setSending(false);
         setUploadProgress(null);
       }
     }
@@ -1352,7 +1335,6 @@ export const ChatPage: React.FC = () => {
           target: { mode: "dm", recipientIds: activeDmUserIds },
         });
         appendMessageToStore(optimisticMessage);
-        setSending(true);
         try {
           const newMsg = await sendMessage({
             to: activeDmUserIds,
@@ -1367,7 +1349,6 @@ export const ChatPage: React.FC = () => {
           appendMessageToStore(markOutgoingMessageFailed(optimisticMessage));
           setSendError(err instanceof Error ? err.message : t("message.sendFailed"));
         } finally {
-          setSending(false);
           setUploadProgress(null);
         }
         return;
@@ -1382,7 +1363,7 @@ export const ChatPage: React.FC = () => {
           setSendError(t("message.sendFailed"));
           return;
         }
-        const subject = (msg.subject ?? "").trim() || activeTopic || "general";
+        const subject = normalizeTopicForIdentity(msg.subject ?? activeTopic ?? "");
         const optimisticMessageId = optimisticMessageIdRef.current;
         optimisticMessageIdRef.current -= 1;
         const optimisticMessage = buildOptimisticOutgoingMessage({
@@ -1398,7 +1379,6 @@ export const ChatPage: React.FC = () => {
           },
         });
         appendMessageToStore(optimisticMessage);
-        setSending(true);
         try {
           const newMsg = await sendMessage({
             stream: activeStreamCanonicalName,
@@ -1415,7 +1395,6 @@ export const ChatPage: React.FC = () => {
           appendMessageToStore(markOutgoingMessageFailed(optimisticMessage));
           setSendError(err instanceof Error ? err.message : t("message.sendFailed"));
         } finally {
-          setSending(false);
           setUploadProgress(null);
         }
       }
@@ -1827,7 +1806,6 @@ export const ChatPage: React.FC = () => {
           showTopicPrompt={!isDmView && !activeTopic}
           streamSlug={streamSlug}
           onExpandStreamTopics={handleExpandCurrentStreamTopics}
-          sending={sending}
           uploadProgress={uploadProgress}
           onSend={handleSend}
           onCreateCallLink={canStartCall ? buildCurrentCallLink : undefined}

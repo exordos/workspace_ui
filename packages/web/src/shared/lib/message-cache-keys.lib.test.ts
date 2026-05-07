@@ -3,9 +3,9 @@ import { chatKeyFromContext, normalizeStreamTopicForMessageCache } from "./messa
 
 describe("message-cache-keys.lib", () => {
   describe("normalizeStreamTopicForMessageCache", () => {
-    it("maps empty and whitespace to general", () => {
-      expect(normalizeStreamTopicForMessageCache("")).toBe("general");
-      expect(normalizeStreamTopicForMessageCache("   ")).toBe("general");
+    it("keeps empty and whitespace as empty identity topic", () => {
+      expect(normalizeStreamTopicForMessageCache("")).toBe("");
+      expect(normalizeStreamTopicForMessageCache("   ")).toBe("");
     });
 
     it("preserves non-empty topics", () => {
@@ -15,12 +15,19 @@ describe("message-cache-keys.lib", () => {
   });
 
   describe("chatKeyFromContext", () => {
-    it("uses general for empty topic so keys match chatKeyFromRawMessage", () => {
+    it("keeps empty topic distinct from literal general", () => {
       expect(
         chatKeyFromContext({
           type: "stream",
           streamId: 42,
           topic: "",
+        }),
+      ).toBe("stream:42:");
+      expect(
+        chatKeyFromContext({
+          type: "stream",
+          streamId: 42,
+          topic: "general",
         }),
       ).toBe("stream:42:general");
     });

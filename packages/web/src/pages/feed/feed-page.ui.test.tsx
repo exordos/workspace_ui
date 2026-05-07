@@ -130,7 +130,7 @@ describe("FeedPage forward action", () => {
     expect(navigateSpy).toHaveBeenCalledWith("/stream/10-engineering/topic/bugs?msg=55&forward=55");
   });
 
-  it("opens stream root forward flow when feed message topic is empty", async () => {
+  it("opens explicit empty-topic forward flow when feed message topic is empty", async () => {
     useInstancesStore.setState({
       instances: [
         {
@@ -176,7 +176,9 @@ describe("FeedPage forward action", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Forward" }));
 
-    expect(navigateSpy).toHaveBeenCalledWith("/stream/10-engineering?msg=57&forward=57");
+    expect(navigateSpy).toHaveBeenCalledWith(
+      "/stream/10-engineering/topic/__empty__?msg=57&forward=57",
+    );
   });
 
   it("loads feed after active instance becomes available", async () => {

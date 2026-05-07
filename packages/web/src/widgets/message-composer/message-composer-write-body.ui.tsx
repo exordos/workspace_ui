@@ -119,7 +119,7 @@ export const MessageComposerWriteBody = React.memo(function MessageComposerWrite
         placeholder={placeholder}
         disabled={disabled}
         rows={1}
-        className={`max-h-32 min-h-10 w-full min-w-0 resize-none border-0 bg-transparent px-3 py-2 text-sm text-text-primary outline-none placeholder:text-composer-icon ${SCROLL_AREA_CLASS}`}
+        className={`max-h-32 min-h-10 w-full min-w-0 resize-none border-0 bg-transparent px-3 py-2 text-sm text-text-primary outline-none placeholder:text-composer-icon focus-visible:outline-none focus-visible:ring-0 ${SCROLL_AREA_CLASS}`}
         style={{ display: "block" }}
       />
     </>

@@ -6,6 +6,10 @@ import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { useCreateChatDialog } from "./create-chat-dialog.hook";
 import type { CreateChatDialogProps } from "./create-chat-dialog.types";
 
+// Единый стиль полей в диалоге: убираем глобальный focus-outline и подсвечиваем рамку аккуратно.
+const CREATE_CHAT_TEXT_INPUT_CLASS =
+  "w-full rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted transition-colors focus:border-accent focus-visible:outline-none focus-visible:ring-0";
+
 export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
   open,
   onOpenChange,
@@ -13,6 +17,9 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
   onChannelCreated,
 }) => {
   const vm = useCreateChatDialog({ open, onNavigateDm, onChannelCreated });
+  // Что делает: в разделе создания канала рендерим три независимых чекбокса:
+  // `inviteOnly` (приватность), `channelAnnounce` (только анонс ботом),
+  // `channelAnnouncementOnly` (реальное ограничение прав публикации).
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -111,7 +118,7 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                   type="text"
                   value={vm.userSearch}
                   onChange={(e) => vm.setUserSearch(e.target.value)}
-                  className="w-full rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted"
+                  className={CREATE_CHAT_TEXT_INPUT_CLASS}
                   placeholder={t("message.searchUsers")}
                 />
                 <div className="max-h-60 overflow-y-auto rounded-lg border border-border-subtle">
@@ -156,7 +163,7 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                   type="text"
                   value={vm.userSearch}
                   onChange={(e) => vm.setUserSearch(e.target.value)}
-                  className="w-full rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted"
+                  className={CREATE_CHAT_TEXT_INPUT_CLASS}
                   placeholder={t("message.searchUsers")}
                 />
                 <div className="max-h-60 overflow-y-auto rounded-lg border border-border-subtle">
@@ -224,7 +231,7 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                   type="text"
                   value={vm.channelName}
                   onChange={(e) => vm.setChannelName(e.target.value)}
-                  className="w-full rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted"
+                  className={CREATE_CHAT_TEXT_INPUT_CLASS}
                   placeholder={t("channel.channelName")}
                 />
                 <label className="text-sm text-text-muted">{t("channel.description")}</label>
@@ -232,7 +239,7 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                   type="text"
                   value={vm.channelDesc}
                   onChange={(e) => vm.setChannelDesc(e.target.value)}
-                  className="w-full rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted"
+                  className={CREATE_CHAT_TEXT_INPUT_CLASS}
                   placeholder={t("channel.description")}
                 />
                 <div className="grid gap-2 rounded-lg border border-border-subtle bg-bg px-3 py-2">
@@ -254,46 +261,63 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                     />
                     <span>{t("channel.announceChannel")}</span>
                   </label>
-                </div>
-                <label className="text-sm text-text-muted">{t("channel.addMembers")}</label>
-                <input
-                  type="text"
-                  value={vm.userSearch}
-                  onChange={(e) => vm.setUserSearch(e.target.value)}
-                  className="w-full rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted"
-                  placeholder={t("message.searchUsers")}
-                />
-                <div className="max-h-40 overflow-y-auto rounded-lg border border-border-subtle">
-                  {vm.channelUsers.length === 0 ? (
-                    <p className="px-3 py-4 text-center text-sm text-text-muted">
-                      {t("search.noResults")}
+                  <label className="flex cursor-pointer items-center gap-2 text-sm text-text-primary">
+                    <input
+                      type="checkbox"
+                      checked={vm.channelAnnouncementOnly}
+                      onChange={(e) => vm.setChannelAnnouncementOnly(e.target.checked)}
+                      disabled={vm.channelAnnouncementOnlyBlocked}
+                      className="h-4 w-4 rounded border-border-subtle disabled:cursor-not-allowed disabled:opacity-60"
+                    />
+                    <span>{t("channel.announcementOnly")}</span>
+                  </label>
+                  {vm.channelAnnouncementOnlyBlockedReasonKey != null && (
+                    <p className="text-xs text-text-muted">
+                      {t(vm.channelAnnouncementOnlyBlockedReasonKey)}
                     </p>
-                  ) : (
-                    vm.channelUsers.map((u) => {
-                      return (
-                        <label
-                          key={u.userId}
-                          className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-text-primary transition-colors hover:bg-bg-elevated"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={vm.channelSelectedUserIds.has(u.userId)}
-                            onChange={() => vm.toggleChannelUser(u.userId)}
-                            className="h-4 w-4 rounded border-border-subtle"
-                          />
-                          <PresenceIndicator status={u.presence} size="sm" />
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate font-medium">{u.fullName}</span>
-                            {(u.statusLabel ?? u.email) && (
-                              <span className="block truncate text-[11px] text-text-secondary">
-                                {u.statusLabel ?? u.email}
-                              </span>
-                            )}
-                          </span>
-                        </label>
-                      );
-                    })
                   )}
+                </div>
+                <div className="flex min-h-0 flex-col gap-3 overflow-x-auto">
+                  <label className="text-sm text-text-muted">{t("channel.addMembers")}</label>
+                  <input
+                    type="text"
+                    value={vm.userSearch}
+                    onChange={(e) => vm.setUserSearch(e.target.value)}
+                    className={CREATE_CHAT_TEXT_INPUT_CLASS}
+                    placeholder={t("message.searchUsers")}
+                  />
+                  <div className="max-h-40 min-w-80 overflow-y-auto rounded-lg border border-border-subtle">
+                    {vm.channelUsers.length === 0 ? (
+                      <p className="px-3 py-4 text-center text-sm text-text-muted">
+                        {t("search.noResults")}
+                      </p>
+                    ) : (
+                      vm.channelUsers.map((u) => {
+                        return (
+                          <label
+                            key={u.userId}
+                            className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-text-primary transition-colors hover:bg-bg-elevated"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={vm.channelSelectedUserIds.has(u.userId)}
+                              onChange={() => vm.toggleChannelUser(u.userId)}
+                              className="h-4 w-4 rounded border-border-subtle"
+                            />
+                            <PresenceIndicator status={u.presence} size="sm" />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate font-medium">{u.fullName}</span>
+                              {(u.statusLabel ?? u.email) && (
+                                <span className="block truncate text-[11px] text-text-secondary">
+                                  {u.statusLabel ?? u.email}
+                                </span>
+                              )}
+                            </span>
+                          </label>
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
                 {vm.channelCreateBlockedReasonKey != null && (
                   <p className="text-xs text-text-muted">{t(vm.channelCreateBlockedReasonKey)}</p>

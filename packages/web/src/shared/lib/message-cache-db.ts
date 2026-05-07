@@ -5,6 +5,8 @@
 // - поддерживать retention по чатам, чтобы кэш не рос бесконечно.
 import type { MockMessage, Reaction } from "~/shared/api/zulip.types";
 import { instanceChatKey } from "~/shared/lib/message-cache-keys.lib";
+import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import { resolveTopicMoveTargetMessageIds } from "~/shared/lib/update-message-topic-move.lib";
 import { ZULIP_CHAT_MESSAGE_CACHE_MAX_WINDOW } from "~/shared/lib/zulip-message-window.lib";
 
 function idbError(reason: unknown): Error {
@@ -12,7 +14,7 @@ function idbError(reason: unknown): Error {
 }
 
 const DB_NAME = "workspace-message-cache-v1";
-const DB_VERSION = 6;
+const DB_VERSION = 7;
 
 // Размер retention по умолчанию, если caller явно не передал windowSizeN.
 export const MESSAGE_CACHE_DEFAULT_WINDOW_SIZE = ZULIP_CHAT_MESSAGE_CACHE_MAX_WINDOW;
@@ -96,6 +98,22 @@ export function openMessageCacheDb(): Promise<IDBDatabase> {
       // Миграция v6: добавляет хранилище mute snapshot по ключу instanceId.
       if (oldVersion < 6 && !db.objectStoreNames.contains(STORE_MUTE_SNAPSHOT)) {
         db.createObjectStore(STORE_MUTE_SNAPSHOT, { keyPath: "instanceId" });
+      }
+      // Миграция v7: сбрасывает legacy message/chat snapshot stores, где могли смешаться
+      // empty-topic и literal "general" в одном cache key.
+      if (oldVersion < 7) {
+        const tx = req.transaction;
+        if (tx != null) {
+          if (db.objectStoreNames.contains(STORE_MESSAGES)) {
+            tx.objectStore(STORE_MESSAGES).clear();
+          }
+          if (db.objectStoreNames.contains(STORE_CHAT_META)) {
+            tx.objectStore(STORE_CHAT_META).clear();
+          }
+          if (db.objectStoreNames.contains(STORE_CHAT_LIST_SNAPSHOT)) {
+            tx.objectStore(STORE_CHAT_LIST_SNAPSHOT).clear();
+          }
+        }
       }
     };
   });
@@ -603,6 +621,169 @@ export async function patchMessageContentInCache(options: {
     tx.onerror = () => reject(idbError(tx.error));
     tx.oncomplete = () => resolve();
     tx.objectStore(STORE_MESSAGES).put(nextRow);
+  });
+}
+
+interface ChatMetaSeed {
+  hasGaps: boolean;
+  windowSizeN: number;
+  lastEventIdApplied: number | null;
+  reachedOldest: boolean;
+  reachedNewest: boolean;
+}
+
+function deriveChatMetaSeed(previous: ChatMetaRow | null | undefined): ChatMetaSeed {
+  return {
+    hasGaps: previous?.hasGaps ?? false,
+    windowSizeN: previous?.windowSizeN ?? MESSAGE_CACHE_DEFAULT_WINDOW_SIZE,
+    lastEventIdApplied: previous?.lastEventIdApplied ?? null,
+    reachedOldest: previous?.reachedOldest ?? false,
+    reachedNewest: previous?.reachedNewest ?? false,
+  };
+}
+
+function mergeChatMetaSeeds(left: ChatMetaSeed, right: ChatMetaSeed): ChatMetaSeed {
+  return {
+    hasGaps: left.hasGaps || right.hasGaps,
+    windowSizeN: left.windowSizeN ?? right.windowSizeN ?? MESSAGE_CACHE_DEFAULT_WINDOW_SIZE,
+    lastEventIdApplied: left.lastEventIdApplied ?? right.lastEventIdApplied ?? null,
+    reachedOldest: left.reachedOldest || right.reachedOldest,
+    reachedNewest: left.reachedNewest || right.reachedNewest,
+  };
+}
+
+function buildChatMetaRowFromRows(options: {
+  instanceChatKeyValue: string;
+  rows: readonly MessageCacheRow[];
+  seed: ChatMetaSeed;
+}): ChatMetaRow | null {
+  const { rows, seed, instanceChatKeyValue } = options;
+  if (rows.length === 0) return null;
+  let oldest = rows[0]!.messageId;
+  let newest = rows[0]!.messageId;
+  for (const row of rows) {
+    if (row.messageId < oldest) oldest = row.messageId;
+    if (row.messageId > newest) newest = row.messageId;
+  }
+  return {
+    instanceChatKey: instanceChatKeyValue,
+    oldestMessageId: oldest,
+    newestMessageId: newest,
+    hasGaps: seed.hasGaps,
+    windowSizeN: seed.windowSizeN,
+    lastEventIdApplied: seed.lastEventIdApplied,
+    lastSyncedAt: Date.now(),
+    reachedOldest: seed.reachedOldest,
+    reachedNewest: seed.reachedNewest,
+  };
+}
+
+export async function moveTopicMessagesInCache(options: {
+  instanceId: string;
+  streamId: number;
+  oldTopic: string;
+  newTopic: string;
+  messageIds?: readonly number[];
+  anchorMessageId?: number;
+}): Promise<void> {
+  const { instanceId, streamId, oldTopic, newTopic, messageIds, anchorMessageId } = options;
+  if (!isIndexedDBAvailable()) return;
+  if (!Number.isInteger(streamId) || streamId <= 0) return;
+  const oldTopicKey = normalizeTopicForIdentity(oldTopic);
+  const newTopicKey = normalizeTopicForIdentity(newTopic);
+  if (oldTopicKey === newTopicKey) return;
+
+  const oldChatKey = `stream:${streamId}:${oldTopicKey}`;
+  const newChatKey = `stream:${streamId}:${newTopicKey}`;
+  const oldInstanceChatKey = instanceChatKey(instanceId, oldChatKey);
+  const newInstanceChatKey = instanceChatKey(instanceId, newChatKey);
+
+  const normalizedTopicFromMessage = (message: MockMessage): string =>
+    normalizeTopicForIdentity(message.subject ?? "");
+
+  const targetMessageIds = new Set(
+    resolveTopicMoveTargetMessageIds({
+      messageIds,
+      anchorMessageId,
+    }),
+  );
+  if (targetMessageIds.size === 0) return;
+
+  const db = await openMessageCacheDb();
+  const oldMetaBefore = await getChatMeta(instanceId, oldChatKey).catch(() => null);
+  const newMetaBefore = await getChatMeta(instanceId, newChatKey).catch(() => null);
+  const rowsInOldPartition = await readAllMessagesInChat(db, oldInstanceChatKey);
+
+  const byIdCandidates = new Map<number, MessageCacheRow>();
+  for (const messageId of targetMessageIds) {
+    const row = await getMessageRow(db, instanceId, messageId);
+    if (!row) continue;
+    if (row.message.stream_id !== streamId) continue;
+    if (normalizedTopicFromMessage(row.message) !== oldTopicKey) continue;
+    byIdCandidates.set(messageId, row);
+  }
+
+  const effectiveRowsToMoveMap = new Map<number, MessageCacheRow>();
+  for (const row of rowsInOldPartition) {
+    if (!targetMessageIds.has(row.messageId)) continue;
+    effectiveRowsToMoveMap.set(row.messageId, row);
+  }
+  for (const row of byIdCandidates.values()) {
+    effectiveRowsToMoveMap.set(row.messageId, row);
+  }
+  const effectiveRowsToMove = Array.from(effectiveRowsToMoveMap.values());
+  if (effectiveRowsToMove.length === 0) return;
+
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE_MESSAGES, "readwrite");
+    tx.onerror = () => reject(idbError(tx.error));
+    tx.oncomplete = () => resolve();
+    const store = tx.objectStore(STORE_MESSAGES);
+    for (const row of effectiveRowsToMove) {
+      const nextMessage = { ...row.message, subject: newTopicKey };
+      store.put({
+        ...row,
+        chatKey: newChatKey,
+        instanceChatKey: newInstanceChatKey,
+        message: nextMessage,
+        version: row.version + 1,
+      } satisfies MessageCacheRow);
+    }
+  });
+
+  const rowsInOldAfter = await readAllMessagesInChat(db, oldInstanceChatKey);
+  const rowsInNewAfter = await readAllMessagesInChat(db, newInstanceChatKey);
+  const oldMetaSeed = deriveChatMetaSeed(oldMetaBefore);
+  const newMetaSeed = mergeChatMetaSeeds(
+    deriveChatMetaSeed(newMetaBefore),
+    deriveChatMetaSeed(oldMetaBefore),
+  );
+  const oldMetaAfter = buildChatMetaRowFromRows({
+    instanceChatKeyValue: oldInstanceChatKey,
+    rows: rowsInOldAfter,
+    seed: oldMetaSeed,
+  });
+  const newMetaAfter = buildChatMetaRowFromRows({
+    instanceChatKeyValue: newInstanceChatKey,
+    rows: rowsInNewAfter,
+    seed: newMetaSeed,
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE_CHAT_META, "readwrite");
+    tx.onerror = () => reject(idbError(tx.error));
+    tx.oncomplete = () => resolve();
+    const store = tx.objectStore(STORE_CHAT_META);
+    if (oldMetaAfter == null) {
+      store.delete(oldInstanceChatKey);
+    } else {
+      store.put(oldMetaAfter);
+    }
+    if (newMetaAfter == null) {
+      store.delete(newInstanceChatKey);
+    } else {
+      store.put(newMetaAfter);
+    }
   });
 }
 

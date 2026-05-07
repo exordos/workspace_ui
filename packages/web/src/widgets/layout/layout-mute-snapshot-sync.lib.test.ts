@@ -31,6 +31,7 @@ describe("startMuteSnapshotSync", () => {
     useMuteStore.getState().muteStream(10);
     useMuteStore.getState().muteTopic(10, "news");
     useMuteStore.getState().unmuteTopic(20, "important");
+    useMuteStore.getState().followTopic(20, "incidents");
 
     await vi.advanceTimersByTimeAsync(749);
     expect(persistSnapshotRow).toHaveBeenCalledTimes(0);
@@ -44,6 +45,7 @@ describe("startMuteSnapshotSync", () => {
         mutedStreamIds: [10],
         mutedTopics: [{ streamId: 10, topic: "news" }],
         unmutedTopics: [{ streamId: 20, topic: "important" }],
+        followedTopics: [{ streamId: 20, topic: "incidents" }],
       }),
     );
 
@@ -77,6 +79,7 @@ describe("startMuteSnapshotSync", () => {
     useMuteStore.setState((state) => ({ mutedStreamIds: state.mutedStreamIds }));
     useMuteStore.setState((state) => ({ mutedTopicKeys: state.mutedTopicKeys }));
     useMuteStore.setState((state) => ({ unmutedTopicKeys: state.unmutedTopicKeys }));
+    useMuteStore.setState((state) => ({ followedTopicKeys: state.followedTopicKeys }));
 
     await vi.advanceTimersByTimeAsync(1000);
     expect(persistSnapshotRow).toHaveBeenCalledTimes(0);

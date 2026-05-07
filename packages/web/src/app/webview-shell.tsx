@@ -65,6 +65,11 @@ const LoginPage = React.lazy(() =>
 const PasteTokenPage = React.lazy(() =>
   import("~/pages/login/paste-token-page.ui").then((m) => ({ default: m.PasteTokenPage })),
 );
+const SettingsPersonalInfoPage = React.lazy(() =>
+  import("~/pages/settings/settings-personal-info-page.ui").then((m) => ({
+    default: m.SettingsPersonalInfoPage,
+  })),
+);
 
 const WebviewOrgInboxRedirect: React.FC = () => {
   const { orgId } = useParams<{ orgId?: string }>();
@@ -141,9 +146,7 @@ export const WebViewShell: React.FC = () => {
 
   return (
     <div className="safe-area-all flex h-screen flex-col bg-bg text-text-primary">
-      <ErrorBoundary
-        fallback={(api) => <PageErrorFallback onRetry={api.resetErrorBoundary} />}
-      >
+      <ErrorBoundary fallback={(api) => <PageErrorFallback onRetry={api.resetErrorBoundary} />}>
         <Suspense fallback={<PageLoader />}>
           <main className="touch-scroll flex-1 overflow-auto">
             <Routes>
@@ -159,10 +162,7 @@ export const WebViewShell: React.FC = () => {
               <Route path="/mail" element={<MailPage />} />
               <Route path="/call" element={<CallsPage />} />
               <Route path="/calls" element={<CallsPage />} />
-              <Route
-                path="/settings/personal-info"
-                element={<Navigate to={withCurrentOrgRoute("/inbox")} replace />}
-              />
+              <Route path="/settings/personal-info" element={<SettingsPersonalInfoPage />} />
               <Route path="/settings/logs" element={diagnosticsRouteElement} />
               <Route path="/settings/build" element={<UpdatePage />} />
               <Route
@@ -189,7 +189,7 @@ export const WebViewShell: React.FC = () => {
               <Route path="/org/:orgId/calls" element={<CallsPage />} />
               <Route
                 path="/org/:orgId/settings/personal-info"
-                element={<Navigate to={withCurrentOrgRoute("/inbox")} replace />}
+                element={<SettingsPersonalInfoPage />}
               />
               <Route path="/org/:orgId/settings/logs" element={diagnosticsRouteElement} />
               <Route path="/org/:orgId/settings/build" element={<UpdatePage />} />

@@ -7,6 +7,8 @@
  * 3. New channel — create a stream with name, description, subscribers
  */
 
+import type { ZulipGroupSettingValue } from "~/shared/api/zulip.types";
+
 export type NewChatType = "dm" | "group" | "channel";
 
 export interface CreateDmParams {
@@ -26,6 +28,9 @@ export interface CreateChannelParams {
   subscribers: number[];
   inviteOnly?: boolean;
   announce?: boolean;
+  // Что делает: задает channel-level право публикации (`can_send_message_group`) на этапе создания.
+  // Используем для режима "Канал объявлений", где писать могут только заданные группы.
+  canSendMessageGroup?: ZulipGroupSettingValue;
 }
 
 export type CreateChatParams = CreateDmParams | CreateGroupParams | CreateChannelParams;

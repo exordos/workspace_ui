@@ -20,6 +20,7 @@ import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { parseRole } from "~/shared/lib/roles";
 import { resolveCurrentUserChannelCapabilities } from "~/shared/lib/stream-member-management-permissions.lib";
 import { resolveCanonicalStreamName } from "~/shared/lib/stream-name.lib";
+import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
 import { useInputMode } from "~/shared/lib/touch";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
@@ -187,7 +188,9 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
       }
       void navigate(
         withCurrentOrgRoute(
-          `/stream/${buildStreamSlug(streamId, canonicalStreamName ?? displayStreamName)}/topic/${encodeURIComponent(topicName)}`,
+          `/stream/${buildStreamSlug(streamId, canonicalStreamName ?? displayStreamName)}/topic/${encodeURIComponent(
+            encodeTopicForRoute(topicName),
+          )}`,
         ),
       );
     },

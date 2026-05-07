@@ -25,6 +25,7 @@ interface MuteRefs {
   mutedStreamIds: ReturnType<typeof useMuteStore.getState>["mutedStreamIds"];
   mutedTopicKeys: ReturnType<typeof useMuteStore.getState>["mutedTopicKeys"];
   unmutedTopicKeys: ReturnType<typeof useMuteStore.getState>["unmutedTopicKeys"];
+  followedTopicKeys: ReturnType<typeof useMuteStore.getState>["followedTopicKeys"];
 }
 
 // Определяет, изменились ли tracked-ссылки (дешевое сравнение по reference equality).
@@ -32,7 +33,8 @@ function hasTrackedMuteRefsChanged(prev: MuteRefs, next: MuteRefs): boolean {
   return (
     prev.mutedStreamIds !== next.mutedStreamIds ||
     prev.mutedTopicKeys !== next.mutedTopicKeys ||
-    prev.unmutedTopicKeys !== next.unmutedTopicKeys
+    prev.unmutedTopicKeys !== next.unmutedTopicKeys ||
+    prev.followedTopicKeys !== next.followedTopicKeys
   );
 }
 
@@ -64,6 +66,7 @@ function buildMuteSnapshotRow(instanceId: string): MuteSnapshotRow {
     mutedStreamIds,
     mutedTopics: toSnapshotTopicRows(state.mutedTopicKeys),
     unmutedTopics: toSnapshotTopicRows(state.unmutedTopicKeys),
+    followedTopics: toSnapshotTopicRows(state.followedTopicKeys),
   };
 }
 
@@ -88,6 +91,7 @@ export function startMuteSnapshotSync(options: StartMuteSnapshotSyncOptions): ()
       mutedStreamIds: state.mutedStreamIds,
       mutedTopicKeys: state.mutedTopicKeys,
       unmutedTopicKeys: state.unmutedTopicKeys,
+      followedTopicKeys: state.followedTopicKeys,
     };
   })();
 
@@ -128,6 +132,7 @@ export function startMuteSnapshotSync(options: StartMuteSnapshotSyncOptions): ()
       mutedStreamIds: nextState.mutedStreamIds,
       mutedTopicKeys: nextState.mutedTopicKeys,
       unmutedTopicKeys: nextState.unmutedTopicKeys,
+      followedTopicKeys: nextState.followedTopicKeys,
     };
     if (!hasTrackedMuteRefsChanged(trackedRefs, nextRefs)) {
       return;

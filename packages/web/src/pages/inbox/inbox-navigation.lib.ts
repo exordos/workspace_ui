@@ -1,5 +1,6 @@
 import type { InboxEntry } from "~/entities/inbox/inbox.types";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
+import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
 import { slugForStream } from "~/widgets/sidebar/sidebar.lib";
 
 function resolveInboxFocusMessageId(messageIds: number[]): number | null {
@@ -26,10 +27,9 @@ export function buildInboxEntryRoute(entry: InboxEntry): string | null {
       name: entry.streamName ?? String(entry.streamId),
     });
     const normalizedTopic = entry.topic?.trim() ?? "";
-    const streamRoute =
-      normalizedTopic.length > 0
-        ? withCurrentOrgRoute(`/stream/${slug}/topic/${encodeURIComponent(normalizedTopic)}`)
-        : withCurrentOrgRoute(`/stream/${slug}`);
+    const streamRoute = withCurrentOrgRoute(
+      `/stream/${slug}/topic/${encodeURIComponent(encodeTopicForRoute(normalizedTopic))}`,
+    );
     return withMessageFocus(streamRoute, focusMessageId);
   }
 

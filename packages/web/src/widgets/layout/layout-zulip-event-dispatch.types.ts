@@ -15,6 +15,14 @@ export interface LayoutChatListActions {
   upsertStreamMetadataRows: (rows: ChatListStreamMetadataRow[]) => void;
   // Что делает: переименовывает канал при subscription update(name).
   renameStream: (streamId: number, nextName: string) => void;
+  // Что делает: переносит тему в пределах канала при update_message rename (resolved/unresolved).
+  moveStreamTopic: (params: {
+    streamId: number;
+    oldTopic: string;
+    newTopic: string;
+    messageIds?: number[];
+    anchorMessageId?: number;
+  }) => void;
   // Что делает: удаляет канал из sidebar при unsubscribe/remove.
   removeStream: (streamId: number) => void;
   decrementUnreadForMessages: (messageIds: number[]) => void;
@@ -40,6 +48,13 @@ export interface LayoutCurrentChatActions {
   ) => void;
   removeMessages: (messageIds: number[]) => void;
   updateMessageContent: (messageId: number, content: string, markdownSource?: string) => void;
+  moveStreamTopicMessages: (params: {
+    streamId: number;
+    oldTopic: string;
+    newTopic: string;
+    messageIds?: number[];
+    anchorMessageId?: number;
+  }) => void;
 }
 
 export interface LayoutUsersActions {
@@ -71,6 +86,7 @@ export interface LayoutMuteActions {
   unmuteStream: (streamId: number) => void;
   muteTopic: (streamId: number, topic: string) => void;
   unmuteTopic: (streamId: number, topic: string) => void;
+  followTopic: (streamId: number, topic: string) => void;
   clearTopicVisibilityOverride: (streamId: number, topic: string) => void;
 }
 

@@ -25,6 +25,8 @@ import {
   computeHasNewerAfterLoadNewerIdbPage,
   computeHasOlderAfterLoadOlderIdbPage,
 } from "~/shared/lib/message-pagination-boundary.lib";
+import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import { resolveTopicMoveTargetMessageIds } from "~/shared/lib/update-message-topic-move.lib";
 import { zulipMessageCacheWindowN } from "~/shared/lib/zulip-message-window.lib";
 import {
   patchPartitionMetaByMessages,
@@ -126,7 +128,7 @@ function schedulePersistFullChatMessages(get: () => CurrentChatMessagesState): v
   const msgs = get().messages;
   if (!inst || !ctx || msgs.length === 0) return;
   // Что делает: в wide-контексте пишет сообщения по topic-partitions,
-  // чтобы не складывать всю stream-ленту в один general-ключ.
+  // чтобы не складывать всю stream-ленту в один topic-key.
   if (ctx.type === "stream" && ctx.streamWideView) {
     void upsertMessagesByChatPartitions({
       instanceId: inst,
@@ -154,7 +156,7 @@ function resolvePersistChatKeyForMessage(
     return chatKeyFromContext({
       type: "stream",
       streamId: context.streamId,
-      topic: (message.subject ?? "").trim() || "general",
+      topic: normalizeTopicForIdentity(message.subject ?? ""),
     });
   }
   return chatKeyFromContext(context);
@@ -353,10 +355,27 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     set((state) => {
       const nextQueue = state.pendingOutgoingEchoKeys.filter((k) => k !== optimisticId);
       const delivered = withOutgoingDeliveryStatus(finalMessage);
-
       const optIdx = state.messages.findIndex(
         (m) => m.id === optimisticId || m.local_echo_key === optimisticId,
       );
+      const realIdx = state.messages.findIndex((m) => m.id === finalMessage.id);
+
+      if (optIdx >= 0 && realIdx >= 0 && optIdx !== realIdx) {
+        const optimistic = state.messages[optIdx]!;
+        const echoKey = optimistic.local_echo_key ?? optimistic.id;
+        const merged = { ...delivered, local_echo_key: echoKey };
+        const updated = [...state.messages];
+        updated.splice(optIdx, 1);
+        const targetIdx = realIdx > optIdx ? realIdx - 1 : realIdx;
+        updated[targetIdx] = merged;
+        idbRef.current = {
+          kind: "sync",
+          deleteNegativeId: optimistic.id < 0 ? optimistic.id : null,
+          message: merged,
+        };
+        return { messages: updated, pendingOutgoingEchoKeys: nextQueue };
+      }
+
       if (optIdx >= 0) {
         const prev = state.messages[optIdx]!;
         const echoKey = prev.local_echo_key ?? prev.id;
@@ -371,7 +390,6 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         return { messages: updated, pendingOutgoingEchoKeys: nextQueue };
       }
 
-      const realIdx = state.messages.findIndex((m) => m.id === finalMessage.id);
       if (realIdx >= 0) {
         const prev = state.messages[realIdx]!;
         const echoKey = prev.local_echo_key ?? optimisticId;
@@ -524,6 +542,48 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
           ...(markdownSource !== undefined ? { markdown_source: markdownSource } : {}),
         });
     }
+  },
+
+  moveStreamTopicMessages({ streamId, oldTopic, newTopic, messageIds, anchorMessageId }) {
+    if (!Number.isInteger(streamId) || streamId <= 0) return;
+    const oldTopicKey = normalizeTopicForIdentity(oldTopic);
+    const newTopicKey = normalizeTopicForIdentity(newTopic);
+    if (oldTopicKey === newTopicKey) return;
+    const targetMessageIds = resolveTopicMoveTargetMessageIds({ messageIds, anchorMessageId });
+    if (targetMessageIds.length === 0) return;
+    const targetedIds = new Set(targetMessageIds);
+
+    set((state) => {
+      let changed = false;
+      const nextMessages = state.messages.map((message) => {
+        if (!targetedIds.has(message.id)) return message;
+        if (message.stream_id !== streamId) return message;
+        const topic = normalizeTopicForIdentity(message.subject ?? "");
+        if (topic !== oldTopicKey) return message;
+        changed = true;
+        return message.subject === newTopicKey ? message : { ...message, subject: newTopicKey };
+      });
+
+      let nextContext = state.context;
+      let contextChanged = false;
+      if (
+        state.context?.type === "stream" &&
+        state.context.streamId === streamId &&
+        state.context.streamWideView !== true
+      ) {
+        const activeTopic = normalizeTopicForIdentity(state.context.topic);
+        if (activeTopic === oldTopicKey) {
+          nextContext = { ...state.context, topic: newTopicKey };
+          contextChanged = true;
+        }
+      }
+
+      if (!changed && !contextChanged) return state;
+      return {
+        ...(changed ? { messages: nextMessages } : {}),
+        ...(contextChanged ? { context: nextContext } : {}),
+      };
+    });
   },
 
   setIsLoadingMore(loading) {

@@ -7,6 +7,7 @@ import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { usePinStore } from "~/features/pin-chat/pin-chat.model";
 import { t } from "~/i18n/i18n";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
+import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import { SidebarActivity } from "./sidebar-activity.ui";
 import { useSidebarConfigStore } from "./sidebar-config.model";
@@ -177,7 +178,9 @@ export const Sidebar: React.FC<SidebarUiProps> = ({
   const handleNewTopic = useCallback(
     (streamSlug: string, topicName: string) => {
       void navigate(
-        withCurrentOrgRoute(`/stream/${streamSlug}/topic/${encodeURIComponent(topicName)}`),
+        withCurrentOrgRoute(
+          `/stream/${streamSlug}/topic/${encodeURIComponent(encodeTopicForRoute(topicName))}`,
+        ),
       );
     },
     [navigate],

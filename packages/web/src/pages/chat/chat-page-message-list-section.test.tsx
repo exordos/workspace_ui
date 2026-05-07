@@ -28,6 +28,7 @@ const baseProps = {
   unreadCount: 0,
   focusedMessageId: null as number | null | undefined,
   onUnreadMessagesVisible: noop as (ids: number[]) => void,
+  onUnreadMessagesAtBottom: noop as (ids: number[]) => void,
   messagesLoadError: null as "initial" | "refresh" | null,
   onRetryMessagesLoad: noop,
   boundaryLoadFailed: false,

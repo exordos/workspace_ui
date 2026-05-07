@@ -2,13 +2,10 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore } from "~/entities/user/user.model";
+import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
+import { buildAnnouncementOnlyCanSendGroup } from "~/shared/lib/user-group-policy";
 import { buildUserPickerOptions, type UserPickerOption } from "~/shared/lib/user-picker";
-import {
-  buildDmSlug,
-  getCreateChatTabs,
-  resolveNextTabFromKey,
-  type CreateChatTab,
-} from "./create-chat-dialog.lib";
+import { buildDmSlug, resolveNextTabFromKey, type CreateChatTab } from "./create-chat-dialog.lib";
 import { createChannel } from "./create-chat.api";
 
 export interface UseCreateChatDialogResult {
@@ -41,6 +38,10 @@ export interface UseCreateChatDialogResult {
   setChannelInviteOnly: (v: boolean) => void;
   channelAnnounce: boolean;
   setChannelAnnounce: (v: boolean) => void;
+  channelAnnouncementOnly: boolean;
+  setChannelAnnouncementOnly: (v: boolean) => void;
+  channelAnnouncementOnlyBlocked: boolean;
+  channelAnnouncementOnlyBlockedReasonKey: string | null;
   creating: boolean;
   channelCreateBlocked: boolean;
   channelCreateBlockedReasonKey: string | null;
@@ -64,7 +65,6 @@ export function useCreateChatDialog(options: {
     channel: null,
   });
 
-  const tabs = getCreateChatTabs();
   const tabIds: Record<CreateChatTab, string> = useMemo(
     () => ({
       dm: `${tabBaseId}-tab-dm`,
@@ -89,16 +89,29 @@ export function useCreateChatDialog(options: {
   const [channelDesc, setChannelDesc] = useState("");
   const [channelInviteOnly, setChannelInviteOnly] = useState(false);
   const [channelAnnounce, setChannelAnnounce] = useState(false);
+  const [channelAnnouncementOnly, setChannelAnnouncementOnly] = useState(false);
   const [creating, setCreating] = useState(false);
 
   const allUsers = useUsersStore((s) => s.users);
+  const userGroups = useUserGroupsStore((s) => s.groups);
   const currentUserId = useChatListStore((s) => s.currentUserId ?? null);
-  // Что делает: до загрузки собственного профиля не даем создать канал,
-  // иначе нельзя гарантировать автоподписку автора.
+  // Инвариант: пока профиль автора не загружен, создание канала недоступно.
   const channelCreateBlocked = currentUserId == null || currentUserId <= 0;
   const channelCreateBlockedReasonKey = channelCreateBlocked
     ? "channel.creatorProfileLoading"
     : null;
+  // Дефолтная policy для announcement-only канала.
+  const announcementOnlyCanSendMessageGroup = useMemo(
+    () => buildAnnouncementOnlyCanSendGroup({ userGroups, currentUserId }),
+    [userGroups, currentUserId],
+  );
+  // Без валидной policy блокируем переключатель announcement-only.
+  const channelAnnouncementOnlyBlocked = announcementOnlyCanSendMessageGroup == null;
+  const channelAnnouncementOnlyBlockedReasonKey = channelAnnouncementOnlyBlocked
+    ? "channel.announcementOnlyUnsupported"
+    : null;
+  const effectiveChannelAnnouncementOnly =
+    channelAnnouncementOnly && !channelAnnouncementOnlyBlocked;
 
   const pickerCandidates = useMemo(
     () =>
@@ -162,6 +175,7 @@ export function useCreateChatDialog(options: {
       setChannelDesc("");
       setChannelInviteOnly(false);
       setChannelAnnounce(false);
+      setChannelAnnouncementOnly(false);
       setCreating(false);
     });
   }, [open]);
@@ -219,30 +233,42 @@ export function useCreateChatDialog(options: {
       (a, b) => a - b,
     );
     setCreating(true);
-    createChannel({
-      name: channelName.trim(),
-      description: channelDesc.trim(),
-      subscribers,
-      inviteOnly: channelInviteOnly,
-      announce: channelAnnounce,
-    })
-      .then((result) => {
+    const runCreateChannel = async (): Promise<void> => {
+      try {
+        const result = await createChannel({
+          name: channelName.trim(),
+          description: channelDesc.trim(),
+          subscribers,
+          inviteOnly: channelInviteOnly,
+          announce: channelAnnounce,
+          // Передаем policy только при явном включении и валидном group-setting.
+          ...(effectiveChannelAnnouncementOnly && announcementOnlyCanSendMessageGroup != null
+            ? { canSendMessageGroup: announcementOnlyCanSendMessageGroup }
+            : {}),
+        });
         if (!result) return;
         setChannelName("");
         setChannelDesc("");
         setChannelSelectedUserIds(new Set());
         setChannelInviteOnly(false);
         setChannelAnnounce(false);
+        setChannelAnnouncementOnly(false);
         onChannelCreated();
-      })
-      .catch(() => {})
-      .finally(() => setCreating(false));
+      } catch {
+        // Ошибка уже логируется в API-слое; здесь не даем упасть UI-обработчику.
+      } finally {
+        setCreating(false);
+      }
+    };
+    void runCreateChannel();
   }, [
     channelName,
     channelDesc,
     channelSelectedUserIds,
     channelInviteOnly,
     channelAnnounce,
+    effectiveChannelAnnouncementOnly,
+    announcementOnlyCanSendMessageGroup,
     creating,
     currentUserId,
     onChannelCreated,
@@ -251,9 +277,6 @@ export function useCreateChatDialog(options: {
   const buildDmSlugFn = useCallback((userId: number, fullName: string) => {
     return buildDmSlug(userId, fullName);
   }, []);
-
-  // Ensure we don't capture stale tab value if we later use tabs
-  void tabs;
 
   return {
     tab,
@@ -280,6 +303,10 @@ export function useCreateChatDialog(options: {
     setChannelInviteOnly,
     channelAnnounce,
     setChannelAnnounce,
+    channelAnnouncementOnly: effectiveChannelAnnouncementOnly,
+    setChannelAnnouncementOnly,
+    channelAnnouncementOnlyBlocked,
+    channelAnnouncementOnlyBlockedReasonKey,
     creating,
     channelCreateBlocked,
     channelCreateBlockedReasonKey,

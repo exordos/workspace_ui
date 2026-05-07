@@ -25,6 +25,7 @@ export interface MuteSnapshotRow {
   mutedStreamIds: number[];
   mutedTopics: MuteSnapshotTopicRow[];
   unmutedTopics: MuteSnapshotTopicRow[];
+  followedTopics: MuteSnapshotTopicRow[];
 }
 
 // Приводит любую причину ошибки IndexedDB к объекту Error.
@@ -60,7 +61,19 @@ export async function loadMuteSnapshotRow(instanceId: string): Promise<MuteSnaps
       const tx = db.transaction(STORE_MUTE_SNAPSHOT, "readonly");
       const req = tx.objectStore(STORE_MUTE_SNAPSHOT).get(instanceId);
       req.onerror = () => reject(idbError(req.error));
-      req.onsuccess = () => resolve((req.result as MuteSnapshotRow | undefined) ?? null);
+      req.onsuccess = () => {
+        const row = req.result as
+          | (MuteSnapshotRow & { followedTopics?: MuteSnapshotTopicRow[] })
+          | undefined;
+        if (row == null) {
+          resolve(null);
+          return;
+        }
+        resolve({
+          ...row,
+          followedTopics: row.followedTopics ?? [],
+        });
+      };
     });
   } catch {
     return null;

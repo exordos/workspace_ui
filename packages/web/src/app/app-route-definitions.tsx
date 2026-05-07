@@ -49,6 +49,11 @@ const MessageRedirectPage = React.lazy(() =>
     default: m.MessageRedirectPage,
   })),
 );
+const SettingsPersonalInfoPage = React.lazy(() =>
+  import("~/pages/settings/settings-personal-info-page.ui").then((m) => ({
+    default: m.SettingsPersonalInfoPage,
+  })),
+);
 
 export const OrgInboxRedirect: React.FC = () => {
   const { orgId } = useParams<{ orgId?: string }>();
@@ -109,10 +114,7 @@ export const AuthenticatedAppRoutes: React.FC<AuthenticatedAppRoutesProps> = ({
         <Route path="/mail" element={<MailPage />} />
         <Route path="/call" element={<CallsPage />} />
         <Route path="/calls" element={<CallsPage />} />
-        <Route
-          path="/settings/personal-info"
-          element={<Navigate to={withCurrentOrgRoute("/inbox")} replace />}
-        />
+        <Route path="/settings/personal-info" element={<SettingsPersonalInfoPage />} />
         <Route path="/settings/logs" element={diagnosticsRouteElement} />
         <Route path="/settings/build" element={<UpdatePage />} />
         <Route
@@ -139,10 +141,7 @@ export const AuthenticatedAppRoutes: React.FC<AuthenticatedAppRoutesProps> = ({
         <Route path="mail" element={<MailPage />} />
         <Route path="call" element={<CallsPage />} />
         <Route path="calls" element={<CallsPage />} />
-        <Route
-          path="settings/personal-info"
-          element={<Navigate to={withCurrentOrgRoute("/inbox")} replace />}
-        />
+        <Route path="settings/personal-info" element={<SettingsPersonalInfoPage />} />
         <Route path="settings/logs" element={diagnosticsRouteElement} />
         <Route path="settings/build" element={<UpdatePage />} />
         <Route

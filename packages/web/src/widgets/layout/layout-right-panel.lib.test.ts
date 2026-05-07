@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import {
   buildRightPanelCommonGroups,
+  buildRightPanelUserInfo,
   formatRightPanelLastSeen,
   formatRightPanelLocalTime,
 } from "./layout-right-panel.lib";
@@ -126,5 +127,53 @@ describe("formatRightPanelLastSeen", () => {
 
   it("returns undefined for missing presence", () => {
     expect(formatRightPanelLastSeen(undefined)).toBeUndefined();
+  });
+});
+
+describe("buildRightPanelUserInfo", () => {
+  it("prefers live users store avatar over detailed profile avatar", () => {
+    const userInfo = buildRightPanelUserInfo({
+      userFromStore: {
+        user_id: 42,
+        full_name: "Alice Doe",
+        avatar_url: "/avatar/live.png",
+      },
+      detailedProfile: {
+        userId: 42,
+        fullName: "Alice Doe",
+        avatarUrl: "/avatar/stale.png",
+      },
+      dmChat: undefined,
+      rightDrawerTargetUserId: 42,
+      userStatusLabel: undefined,
+      currentInstanceRealm: "https://zulip.example.com",
+      media: undefined,
+      commonGroups: undefined,
+    });
+
+    expect(userInfo?.avatarUrl).toBe("/avatar/live.png");
+  });
+
+  it("falls back to detailed profile avatar when users store avatar is empty", () => {
+    const userInfo = buildRightPanelUserInfo({
+      userFromStore: {
+        user_id: 42,
+        full_name: "Alice Doe",
+        avatar_url: null,
+      },
+      detailedProfile: {
+        userId: 42,
+        fullName: "Alice Doe",
+        avatarUrl: "/avatar/profile.png",
+      },
+      dmChat: undefined,
+      rightDrawerTargetUserId: 42,
+      userStatusLabel: undefined,
+      currentInstanceRealm: "https://zulip.example.com",
+      media: undefined,
+      commonGroups: undefined,
+    });
+
+    expect(userInfo?.avatarUrl).toBe("/avatar/profile.png");
   });
 });

@@ -5,6 +5,8 @@
 // Нужен для двух сценариев:
 // 1) получить общий unread count;
 // 2) получить подробный snapshot для reconcile chat-list unread.
+import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value != null && typeof value === "object" && !Array.isArray(value);
 }
@@ -110,7 +112,7 @@ function parseUnreadMessagesSnapshotFromUnreadMsgs(
     const streamId = entry.stream_id;
     if (!isPositiveInteger(streamId)) continue;
     const topicRaw = typeof entry.topic === "string" ? entry.topic : "";
-    const topic = topicRaw.trim() || "general";
+    const topic = normalizeTopicForIdentity(topicRaw);
     const unreadMessageIds = parseUnreadMessageIds(entry.unread_message_ids);
     if (unreadMessageIds.length === 0) continue;
     streams.push({ streamId, topic, unreadMessageIds });
@@ -193,7 +195,7 @@ function parseUnreadMessagesSnapshotFromMessages(
       const streamId = rawMessage.stream_id;
       if (!isPositiveInteger(streamId)) continue;
       const topicRaw = typeof rawMessage.subject === "string" ? rawMessage.subject : "";
-      const topic = topicRaw.trim() || "general";
+      const topic = normalizeTopicForIdentity(topicRaw);
       const key = `${streamId}\t${topic}`;
       const existing = streamBuckets.get(key);
       if (existing) {

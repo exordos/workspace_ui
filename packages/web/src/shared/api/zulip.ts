@@ -17,6 +17,7 @@ import {
   logChatListFlow,
   summarizeZulipMessagesForFlowDebug,
 } from "~/shared/lib/message-flow-debug.lib";
+import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { toResolvedTopicName, toUnresolvedTopicName } from "~/shared/lib/topic-resolve";
 import { isValidEmail, isValidRealmUrl, validateFileUpload } from "~/shared/lib/validation";
 import { normalizeGroupSettingValue } from "~/shared/lib/zulip-group-setting.lib";
@@ -38,7 +39,11 @@ import {
 } from "./client";
 import { mockMessageFromGetMessageApiData, rawMessageToMockMessage } from "./zulip-message-map.lib";
 import { parseRegisterResponseJitsiServerUrl } from "./zulip-register-jitsi.lib";
-import { parseServerThumbnailFormats } from "./zulip-register-metadata.lib";
+import {
+  parseAvatarChangesDisabledFlag,
+  parseMaxAvatarFileSizeMib,
+  parseServerThumbnailFormats,
+} from "./zulip-register-metadata.lib";
 import { parseUnreadMessagesCount } from "./zulip-unread.lib";
 import type {
   ReactionType,
@@ -849,7 +854,7 @@ export async function registerQueue(
 ): Promise<RegisterQueueResult> {
   const body: Record<string, string> = {
     event_types: JSON.stringify(eventTypes),
-    apply_markdown: "true",
+    apply_markdown: "false",
   };
   if (fetchEventTypes.length > 0) {
     // Что делает: просит Zulip добавить в register нужные metadata-поля.
@@ -869,6 +874,9 @@ export async function registerQueue(
     realm_can_add_subscribers_group?: unknown;
     realm_user_groups?: unknown;
     server_thumbnail_formats?: unknown;
+    max_avatar_file_size_mib?: unknown;
+    realm_avatar_changes_disabled?: unknown;
+    server_avatar_changes_disabled?: unknown;
   } | null;
   if (data == null || typeof data !== "object") {
     throw new Error(t("app.invalidResponse"));
@@ -891,6 +899,13 @@ export async function registerQueue(
   // Что делает: подхватывает группы организации, чтобы UI мог корректно решать channel-level права.
   const realmUserGroups = parseRealmUserGroups(data.realm_user_groups);
   const serverThumbnailFormats = parseServerThumbnailFormats(data.server_thumbnail_formats);
+  const maxAvatarFileSizeMib = parseMaxAvatarFileSizeMib(data.max_avatar_file_size_mib);
+  const realmAvatarChangesDisabled = parseAvatarChangesDisabledFlag(
+    data.realm_avatar_changes_disabled,
+  );
+  const serverAvatarChangesDisabled = parseAvatarChangesDisabledFlag(
+    data.server_avatar_changes_disabled,
+  );
   const jitsiServerUrlEffective = parseRegisterResponseJitsiServerUrl(data);
   const cacheKey = getCurrentUserTopicsCacheKey();
   if (cacheKey && userTopics) {
@@ -911,6 +926,13 @@ export async function registerQueue(
       : {}),
     ...(realmUserGroups ? { realm_user_groups: realmUserGroups } : {}),
     ...(serverThumbnailFormats ? { server_thumbnail_formats: serverThumbnailFormats } : {}),
+    ...(maxAvatarFileSizeMib != null ? { max_avatar_file_size_mib: maxAvatarFileSizeMib } : {}),
+    ...(realmAvatarChangesDisabled != null
+      ? { realm_avatar_changes_disabled: realmAvatarChangesDisabled }
+      : {}),
+    ...(serverAvatarChangesDisabled != null
+      ? { server_avatar_changes_disabled: serverAvatarChangesDisabled }
+      : {}),
     ...(jitsiServerUrlEffective ? { jitsi_server_url_effective: jitsiServerUrlEffective } : {}),
   };
 }
@@ -959,6 +981,9 @@ export async function registerQueueForCredentials(
     realm_can_add_subscribers_group?: unknown;
     realm_user_groups?: unknown;
     server_thumbnail_formats?: unknown;
+    max_avatar_file_size_mib?: unknown;
+    realm_avatar_changes_disabled?: unknown;
+    server_avatar_changes_disabled?: unknown;
   };
   try {
     data = (await response.json()) as typeof data;
@@ -984,6 +1009,13 @@ export async function registerQueueForCredentials(
   // Что делает: подхватывает группы и для explicit-credentials/background режима.
   const realmUserGroups = parseRealmUserGroups(data.realm_user_groups);
   const serverThumbnailFormats = parseServerThumbnailFormats(data.server_thumbnail_formats);
+  const maxAvatarFileSizeMib = parseMaxAvatarFileSizeMib(data.max_avatar_file_size_mib);
+  const realmAvatarChangesDisabled = parseAvatarChangesDisabledFlag(
+    data.realm_avatar_changes_disabled,
+  );
+  const serverAvatarChangesDisabled = parseAvatarChangesDisabledFlag(
+    data.server_avatar_changes_disabled,
+  );
   const jitsiServerUrlEffective = parseRegisterResponseJitsiServerUrl(data);
   setCachedUserTopicsForKey(
     buildUserTopicsCacheKey(credentials.realm, credentials.email),
@@ -1004,6 +1036,13 @@ export async function registerQueueForCredentials(
       : {}),
     ...(realmUserGroups ? { realm_user_groups: realmUserGroups } : {}),
     ...(serverThumbnailFormats ? { server_thumbnail_formats: serverThumbnailFormats } : {}),
+    ...(maxAvatarFileSizeMib != null ? { max_avatar_file_size_mib: maxAvatarFileSizeMib } : {}),
+    ...(realmAvatarChangesDisabled != null
+      ? { realm_avatar_changes_disabled: realmAvatarChangesDisabled }
+      : {}),
+    ...(serverAvatarChangesDisabled != null
+      ? { server_avatar_changes_disabled: serverAvatarChangesDisabled }
+      : {}),
     ...(jitsiServerUrlEffective ? { jitsi_server_url_effective: jitsiServerUrlEffective } : {}),
   };
 }
@@ -1276,7 +1315,7 @@ export async function markStreamAsRead(streamId: number): Promise<boolean> {
 // Массово помечает все сообщения в теме стрима как прочитанные.
 export async function markTopicAsRead(streamId: number, topic: string): Promise<boolean> {
   guard.streamId(streamId, "markTopicAsRead");
-  guard.nonEmpty(topic, "markTopicAsRead.topic");
+  const normalizedTopic = normalizeTopicForIdentity(topic);
   const res = await zulipPipelinePost("messages/flags/narrow", {
     anchor: "newest",
     include_anchor: "false",
@@ -1284,7 +1323,7 @@ export async function markTopicAsRead(streamId: number, topic: string): Promise<
     num_after: "0",
     narrow: JSON.stringify([
       { operator: "stream", operand: streamId },
-      { operator: "topic", operand: zulipTopicNarrowOperandForApi(topic) },
+      { operator: "topic", operand: zulipTopicNarrowOperandForApi(normalizedTopic) },
     ]),
     op: "add",
     flag: "read",
@@ -1304,7 +1343,7 @@ export async function setTopicResolvedState(
   resolved: boolean,
 ): Promise<boolean> {
   guard.streamId(streamId, "setTopicResolvedState.streamId");
-  const normalizedTopic = guard.nonEmpty(topic.trim(), "setTopicResolvedState.topic");
+  const normalizedTopic = normalizeTopicForIdentity(topic);
   const targetTopic = resolved
     ? toResolvedTopicName(normalizedTopic)
     : toUnresolvedTopicName(normalizedTopic);
@@ -1965,10 +2004,7 @@ export async function fetchMessages(
 ): Promise<MockMessage[]> {
   const normalizedStream =
     stream == null ? undefined : guard.nonEmpty(stream, "fetchMessages.stream");
-  const normalizedTopic =
-    topic == null || topic.trim() === ""
-      ? undefined
-      : guard.nonEmpty(topic.trim(), "fetchMessages.topic");
+  const normalizedTopic = topic == null ? undefined : normalizeTopicForIdentity(topic);
   if (normalizedTopic !== undefined && normalizedStream === undefined) {
     throw new Error("fetchMessages.stream is required when topic is provided");
   }
@@ -2355,7 +2391,7 @@ export async function fetchMessageById(messageId: number): Promise<MockMessage |
   guard.messageId(messageId, "fetchMessageById");
   const res = await zulipPipelineGet(`/messages/${messageId}`, {
     allow_empty_topic_name: "true",
-    apply_markdown: "true",
+    apply_markdown: "false",
   });
   if (!res?.ok) {
     return null;
@@ -2488,7 +2524,7 @@ export async function sendMessage(params: SendMessageParams): Promise<MockMessag
   if (params.streamId != null) {
     guard.streamId(params.streamId, "sendMessage.streamId");
   }
-  const subject = params.subject ?? "general";
+  const subject = params.subject ?? "";
   const result = await client.messages.send({
     type: "stream",
     to: stream,

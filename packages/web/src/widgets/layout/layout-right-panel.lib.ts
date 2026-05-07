@@ -53,7 +53,9 @@ export function formatRightPanelLastSeen(
   return formatLastSeen(presence.timestamp, presence.status);
 }
 
-export function buildRightPanelUserInfo(options: BuildRightPanelUserInfoOptions): RightPanelUserInfo | undefined {
+export function buildRightPanelUserInfo(
+  options: BuildRightPanelUserInfoOptions,
+): RightPanelUserInfo | undefined {
   const {
     userFromStore,
     detailedProfile,
@@ -72,7 +74,11 @@ export function buildRightPanelUserInfo(options: BuildRightPanelUserInfoOptions)
       ? detailedProfile
       : undefined;
 
-  if (profileForRightPanelUser != null || userFromStore != null || rightDrawerTargetUserId != null) {
+  if (
+    profileForRightPanelUser != null ||
+    userFromStore != null ||
+    rightDrawerTargetUserId != null
+  ) {
     const profileName = profileForRightPanelUser?.fullName?.trim();
     const userName = userFromStore?.full_name?.trim();
     const dmName = dmChat?.name?.trim();
@@ -89,9 +95,8 @@ export function buildRightPanelUserInfo(options: BuildRightPanelUserInfoOptions)
 
     const profileAvatarUrl = profileForRightPanelUser?.avatarUrl;
     const resolvedAvatarUrl =
-      profileAvatarUrl != null && profileAvatarUrl.length > 0
-        ? profileAvatarUrl
-        : (userFromStore?.avatar_url ?? undefined);
+      userFromStore?.avatar_url ??
+      (profileAvatarUrl != null && profileAvatarUrl.length > 0 ? profileAvatarUrl : undefined);
 
     const profileEmail = profileForRightPanelUser?.email?.trim();
     const userEmail = userFromStore?.email?.trim();

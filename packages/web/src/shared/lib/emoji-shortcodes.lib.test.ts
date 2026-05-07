@@ -33,6 +33,7 @@ describe("emoji-shortcodes.lib", () => {
       resolveShortcodeToUnicode("hammer_and_wrench"),
     );
     expect(resolveShortcodeToUnicode(":working_on_it:")).not.toBeNull();
+    expectEmojiSemanticEqual(resolveShortcodeToUnicode(":ok:"), "👌");
   });
 
   it("resolves canonical shortcode from unicode with zulip-first override", () => {

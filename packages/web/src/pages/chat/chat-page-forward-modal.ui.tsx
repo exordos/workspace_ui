@@ -12,7 +12,7 @@ export const ForwardMessageModalBody = React.memo<ForwardMessageModalBodyProps>(
   function ForwardMessageModalBody({ streams, onForward, onClose }) {
     const [tab, setTab] = useState<"channel" | "dm">("channel");
     const [selectedStream, setSelectedStream] = useState<string>("");
-    const [topic, setTopic] = useState("general");
+    const [topic, setTopic] = useState("");
     const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
     const [dmSearch, setDmSearch] = useState("");
     const stream = streams.find((s) => s.name === selectedStream);
@@ -86,7 +86,7 @@ export const ForwardMessageModalBody = React.memo<ForwardMessageModalBodyProps>(
                 value={selectedStream}
                 onChange={(e) => {
                   setSelectedStream(e.target.value);
-                  setTopic("general");
+                  setTopic("");
                 }}
                 className="w-full rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none"
               >
@@ -179,7 +179,7 @@ export const ForwardMessageModalBody = React.memo<ForwardMessageModalBodyProps>(
                 if (tab === "dm" && selectedUserIds.length > 0) {
                   onForward("", "", selectedUserIds);
                 } else {
-                  onForward(selectedStream, topic || "general");
+                  onForward(selectedStream, topic);
                 }
               }}
               className="rounded-lg bg-accent px-3 py-1.5 text-sm text-bg hover:opacity-90 disabled:opacity-50"

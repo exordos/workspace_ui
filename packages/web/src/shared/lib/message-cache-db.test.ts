@@ -3,10 +3,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import {
   applyRetentionForChat,
+  getChatMeta,
   getChatMessageBounds,
   getChatMessagesAscending,
   getInstanceMessagesAscending,
   getStreamMessagesAscending,
+  moveTopicMessagesInCache,
   openMessageCacheDb,
   resetMessageCacheDbSingletonForTests,
   upsertChatMessages,
@@ -15,7 +17,7 @@ import {
 const INSTANCE = "inst-a";
 const CHAT = "stream:1:general";
 
-function msg(id: number): MockMessage {
+function msg(id: number, overrides: Partial<MockMessage> = {}): MockMessage {
   return {
     id,
     sender_id: 10,
@@ -24,6 +26,7 @@ function msg(id: number): MockMessage {
     subject: "general",
     content: `<p>${id}</p>`,
     timestamp: 1000 + id,
+    ...overrides,
   };
 }
 
@@ -136,5 +139,69 @@ describe("message-cache-db", () => {
 
     const rows = await getStreamMessagesAscending("inst-a", 1);
     expect(rows.map((m) => m.id)).toEqual([10, 25, 30]);
+  });
+
+  it("moveTopicMessagesInCache moves rows from old topic partition to new topic partition", async () => {
+    await openMessageCacheDb();
+    await upsertChatMessages({
+      instanceId: INSTANCE,
+      chatKey: "stream:1:incident",
+      messages: [msg(1, { subject: "incident" }), msg(2, { subject: "incident" })],
+      windowSizeN: 200,
+    });
+
+    await moveTopicMessagesInCache({
+      instanceId: INSTANCE,
+      streamId: 1,
+      oldTopic: "incident",
+      newTopic: "\u2714 incident",
+      messageIds: [1, 2],
+      anchorMessageId: 1,
+    });
+
+    const oldRows = await getChatMessagesAscending(INSTANCE, "stream:1:incident");
+    const newRows = await getChatMessagesAscending(INSTANCE, "stream:1:\u2714 incident");
+    expect(oldRows).toHaveLength(0);
+    expect(newRows.map((row) => row.id)).toEqual([1, 2]);
+    expect(newRows.every((row) => row.subject === "\u2714 incident")).toBe(true);
+    const oldMeta = await getChatMeta(INSTANCE, "stream:1:incident");
+    const newMeta = await getChatMeta(INSTANCE, "stream:1:\u2714 incident");
+    expect(oldMeta).toBeNull();
+    expect(newMeta?.oldestMessageId).toBe(1);
+    expect(newMeta?.newestMessageId).toBe(2);
+  });
+
+  it("moveTopicMessagesInCache moves only target ids and keeps old partition remainder", async () => {
+    await openMessageCacheDb();
+    await upsertChatMessages({
+      instanceId: INSTANCE,
+      chatKey: "stream:1:incident",
+      messages: [msg(10, { subject: "incident" }), msg(30, { subject: "incident" })],
+      windowSizeN: 200,
+    });
+    await upsertChatMessages({
+      instanceId: INSTANCE,
+      chatKey: "stream:1:\u2714 incident",
+      messages: [msg(20, { subject: "\u2714 incident" })],
+      windowSizeN: 200,
+    });
+
+    await moveTopicMessagesInCache({
+      instanceId: INSTANCE,
+      streamId: 1,
+      oldTopic: "incident",
+      newTopic: "\u2714 incident",
+      messageIds: [10],
+      anchorMessageId: 10,
+    });
+
+    const oldRows = await getChatMessagesAscending(INSTANCE, "stream:1:incident");
+    const newRows = await getChatMessagesAscending(INSTANCE, "stream:1:\u2714 incident");
+    expect(oldRows.map((row) => row.id)).toEqual([30]);
+    expect(newRows.map((row) => row.id)).toEqual([10, 20]);
+    expect(newRows.every((row) => row.subject === "\u2714 incident")).toBe(true);
+    expect(oldRows.every((row) => row.subject === "incident")).toBe(true);
+    const streamWideRows = await getStreamMessagesAscending(INSTANCE, 1);
+    expect(streamWideRows.map((row) => row.id)).toEqual([10, 20, 30]);
   });
 });
