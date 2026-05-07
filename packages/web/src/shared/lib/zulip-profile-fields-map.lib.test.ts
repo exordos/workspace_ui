@@ -40,12 +40,12 @@ describe("mapZulipProfileDataToSemanticFields", () => {
       { id: 3, name: "Телефон", type: 1, order: 3 },
     ]);
     const profile = {
-      "1": { value: "TokenTech > AQA Lead" },
+      "1": { value: "E-com > AQA Lead" },
       "2": { value: "Руководитель: vys" },
       "3": { value: "+7 999 000-00-00" },
     };
     expect(mapZulipProfileDataToSemanticFields(profile, fields)).toEqual({
-      jobTitle: "TokenTech > AQA Lead",
+      jobTitle: "E-com > AQA Lead",
       manager: "Руководитель: vys",
       phone: "+7 999 000-00-00",
     });
