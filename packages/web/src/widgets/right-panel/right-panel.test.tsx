@@ -1684,6 +1684,78 @@ describe("RightPanel truthfulness", () => {
     });
   });
 
+  it("strips one UI hash prefix from title fallback in edit channel form", async () => {
+    const updateStreamSpy = vi.spyOn(zulipStreams, "updateStream").mockResolvedValue(true);
+
+    act(() => {
+      useCurrentChatMessagesStore.setState({
+        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        messages: [],
+        isLoadingMore: false,
+        hasOlderMessages: true,
+        hasNewerMessages: false,
+      });
+      useChatInfoStore.getState().setData({
+        type: "stream",
+        name: "",
+        memberCount: 3,
+        onlineCount: 1,
+        members: [],
+        description: null,
+        isMuted: false,
+        topics: [],
+      });
+      useChatListStore.getState().setCurrentUserId(42);
+      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Admin", role: 200 });
+    });
+
+    renderWithProviders(<RightPanel title="#engineering" participantsCount={3} onlineCount={1} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /edit channel/i }));
+
+    const channelNameInput = screen.getByLabelText(/channel name/i);
+    expect(channelNameInput).toHaveValue("engineering");
+
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(updateStreamSpy).toHaveBeenCalledWith(10, {
+        name: "engineering",
+        description: "",
+      });
+    });
+  });
+
+  it("strips only one UI hash prefix from title fallback in edit channel form", () => {
+    act(() => {
+      useCurrentChatMessagesStore.setState({
+        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        messages: [],
+        isLoadingMore: false,
+        hasOlderMessages: true,
+        hasNewerMessages: false,
+      });
+      useChatInfoStore.getState().setData({
+        type: "stream",
+        name: "",
+        memberCount: 3,
+        onlineCount: 1,
+        members: [],
+        description: null,
+        isMuted: false,
+        topics: [],
+      });
+      useChatListStore.getState().setCurrentUserId(42);
+      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Admin", role: 200 });
+    });
+
+    renderWithProviders(<RightPanel title="##engineering" participantsCount={3} onlineCount={1} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /edit channel/i }));
+
+    expect(screen.getByLabelText(/channel name/i)).toHaveValue("#engineering");
+  });
+
   it("shows channel edit/delete actions for channel admin", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({

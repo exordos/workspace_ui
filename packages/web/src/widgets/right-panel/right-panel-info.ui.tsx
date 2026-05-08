@@ -33,6 +33,13 @@ import type { RightPanelInfoProps } from "./right-panel.types";
 
 const log = createLogger("right-panel");
 
+// TODO: разобраться почему тут.
+function stripSingleUiHashPrefix(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("#")) return trimmed;
+  return trimmed.slice(1).trimStart();
+}
+
 export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
   title,
   participantsCount = 0,
@@ -309,10 +316,15 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
     rawChannelDescription != null && rawChannelDescription.length > 0
       ? rawChannelDescription
       : null;
+  const canonicalEditChannelName = streamInfoData?.name?.trim();
+  const editChannelNameSeed =
+    canonicalEditChannelName != null && canonicalEditChannelName.length > 0
+      ? canonicalEditChannelName
+      : stripSingleUiHashPrefix(title);
   const channelTopics = streamInfoData?.topics ?? [];
   const handleOpenEdit = () => {
     setChannelActionError(null);
-    setEditName(title);
+    setEditName(editChannelNameSeed);
     setEditDescription(channelDescription ?? "");
     setEditOpen(true);
   };
