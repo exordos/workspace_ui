@@ -5,6 +5,7 @@ import { t } from "~/i18n/i18n";
 import { useShortcut } from "~/shared/lib/shortcuts";
 import { Badge } from "~/shared/ui/badge";
 import { Icon } from "~/shared/ui/icon";
+import { SearchInput } from "~/shared/ui/search-input";
 import {
   FOLDER_QUICK_LIST_SHORTCUT,
   resolveFolderSystemType,
@@ -128,6 +129,15 @@ export const FolderQuickList: React.FC<FolderQuickListProps> = React.memo(functi
     [closeAndReset, filteredFolders, handleFolderSelect, resolvedActiveIndex],
   );
 
+  const handleSearchChange = useCallback(
+    (value: string) => {
+      setQuery(value);
+      // При изменении запроса пересчитываем активный элемент заново из выбранной папки.
+      setActiveIndex(null);
+    },
+    [setActiveIndex, setQuery],
+  );
+
   return (
     <DropdownMenu.Root
       open={menuOpen}
@@ -159,23 +169,17 @@ export const FolderQuickList: React.FC<FolderQuickListProps> = React.memo(functi
           <p className="px-1 pb-2 text-xs font-medium text-text-muted">
             {t("folder.quickListTitle")}
           </p>
-          <label className="flex items-center gap-1.5 rounded-md border border-border-subtle bg-bg px-2 py-1.5">
-            <Icon name="search" size={16} className="text-text-muted" />
-            <input
-              ref={searchInputRef}
-              type="search"
-              value={query}
-              onChange={(e) => {
-                setQuery(e.target.value);
-                // При изменении запроса пересчитываем активный элемент заново из выбранной папки.
-                setActiveIndex(null);
-              }}
-              onKeyDown={handleSearchKeyDown}
-              placeholder={t("folder.searchFolders")}
-              className="w-full bg-transparent text-sm text-text-primary outline-none placeholder:text-text-muted"
-              aria-label={t("folder.searchFolders")}
-            />
-          </label>
+          <SearchInput
+            ref={searchInputRef}
+            value={query}
+            onChange={handleSearchChange}
+            onKeyDown={handleSearchKeyDown}
+            placeholder={t("folder.searchFolders")}
+            ariaLabel={t("folder.searchFolders")}
+            size="sm"
+            className="rounded-md bg-bg px-2 py-1.5"
+            inputClassName="w-full"
+          />
           <div
             data-testid="folder-quick-list"
             className="mt-2 max-h-64 space-y-0.5 overflow-y-auto"

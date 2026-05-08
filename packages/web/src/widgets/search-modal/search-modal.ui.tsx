@@ -7,8 +7,8 @@ import { fetchMessages } from "~/shared/api/zulip-messages";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { SEARCH_INPUT_DEBOUNCE_MS } from "~/shared/config/constants";
 import { getPresenceState } from "~/shared/lib/format";
-import { Icon } from "~/shared/ui/icon";
 import { ScrollArea } from "~/shared/ui/scroll-area";
+import { SearchInput } from "~/shared/ui/search-input";
 import { filterSearchMessages } from "./search-modal-filters.lib";
 import { MAX_USER_RESULTS, SearchResultItem, UserResultItem } from "./search-modal-result-items.ui";
 import { useSearchModalStore } from "./search-modal.model";
@@ -137,17 +137,16 @@ export const SearchModal: React.FC<SearchModalProps> = ({
           onCloseAutoFocus={(e) => e.preventDefault()}
         >
           <div className="border-b border-border-subtle px-5 py-4">
-            <div className="flex items-center gap-2 rounded-lg border border-border-subtle bg-bg px-3 py-2 transition-colors focus-within:border-accent-soft focus-within:bg-bg-elevated focus-within:outline-none">
-              <Icon name="search" size={20} className="shrink-0 text-text-muted" />
-              <input
-                ref={inputRef}
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={t("search.search")}
-                className="flex-1 bg-transparent text-base text-text-primary placeholder:text-text-muted focus-visible:!outline-none"
-              />
-            </div>
+            <SearchInput
+              ref={inputRef}
+              type="text"
+              size="md"
+              value={query}
+              onChange={setQuery}
+              placeholder={t("search.search")}
+              ariaLabel={t("search.search")}
+              className="border-border-subtle bg-bg transition-colors focus-within:border-accent-soft focus-within:bg-bg-elevated focus-within:outline-none"
+            />
           </div>
           <div className="grid grid-cols-1 gap-2 border-b border-border-subtle px-5 py-3 sm:grid-cols-3">
             <input

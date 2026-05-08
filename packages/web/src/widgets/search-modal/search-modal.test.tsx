@@ -156,7 +156,7 @@ describe("SearchModal open-in-chat action", () => {
     render(<SearchModal open onOpenChange={() => {}} onSelectMessage={() => {}} />);
 
     const queryInput = screen.getByPlaceholderText("Search");
-    const queryInputFrame = queryInput.closest("div");
+    const queryInputFrame = queryInput.closest("label");
     expect(queryInputFrame).not.toBeNull();
     expect(queryInputFrame).toHaveClass("focus-within:outline-none");
     expect(queryInputFrame).toHaveClass("focus-within:bg-bg-elevated");

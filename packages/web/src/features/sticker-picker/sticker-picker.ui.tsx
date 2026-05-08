@@ -15,6 +15,7 @@ import { useStickerStore } from "~/entities/sticker/sticker.model";
 import type { Sticker } from "~/entities/sticker/sticker.types";
 import { t } from "~/i18n/i18n";
 import { Icon } from "~/shared/ui/icon";
+import { SearchInput } from "~/shared/ui/search-input";
 import type { PackTabProps, StickerItemProps, StickerPickerProps } from "./sticker-picker.types";
 
 // ---------------------------------------------------------------------------
@@ -141,9 +142,9 @@ export const StickerPicker: React.FC<StickerPickerProps> = ({
     onSelect(sticker);
   };
 
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value);
-    if (e.target.value.trim()) {
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+    if (value.trim()) {
       setActivePackId("search");
     } else {
       setActivePackId("recent");
@@ -160,15 +161,13 @@ export const StickerPicker: React.FC<StickerPickerProps> = ({
     >
       {/* Search */}
       <div className="flex items-center gap-2 border-b border-border-subtle px-3 py-2">
-        <Icon name="search" size={18} className="shrink-0 text-text-muted" />
-        <input
+        <SearchInput
           ref={searchRef}
-          type="search"
           value={searchQuery}
           onChange={handleSearchChange}
           placeholder={t("sticker.searchPlaceholder")}
-          className="min-w-0 flex-1 bg-transparent text-sm text-text-primary outline-none placeholder:text-text-muted"
-          aria-label={t("sticker.searchAriaLabel")}
+          ariaLabel={t("sticker.searchAriaLabel")}
+          className="flex-1 border-0 bg-transparent px-0 py-0 focus-within:border-transparent"
         />
         {onClose && (
           <button
