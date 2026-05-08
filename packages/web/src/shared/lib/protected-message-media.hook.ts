@@ -22,19 +22,22 @@ export function useProtectedMessageHtml(
   options?: UseProtectedMessageHtmlOptions,
 ): void {
   const lastInjectedHtmlRef = useRef<string | null>(null);
+  const lastInjectedElementRef = useRef<HTMLElement | null>(null);
 
   useLayoutEffect(() => {
     const element = containerRef.current;
-    if (element == null) return;
-    if (lastInjectedHtmlRef.current === html) return;
+    if (element == null) {
+      lastInjectedElementRef.current = null;
+      return;
+    }
+    const isSameHtml = lastInjectedHtmlRef.current === html;
+    const isSameElement = lastInjectedElementRef.current === element;
+    if (isSameHtml && isSameElement) return;
 
     element.innerHTML = html;
     lastInjectedHtmlRef.current = html;
-
-    return () => {
-      lastInjectedHtmlRef.current = null;
-    };
-  }, [containerRef, html]);
+    lastInjectedElementRef.current = element;
+  });
 
   useProtectedMediaLoader(containerRef, html, options);
 }

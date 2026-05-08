@@ -742,6 +742,29 @@ describe("MessageComposer preview mode", () => {
     expect(screen.getByRole("textbox")).toHaveValue("**Hello** world");
   });
 
+  it("keeps rendering preview after switching back to write mode and opening preview again", async () => {
+    renderMessageContentMock.mockResolvedValue("<p><strong>Hello</strong> world</p>");
+    renderWithProviders(<MessageComposer onSend={vi.fn()} />);
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "**Hello** world" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    await waitFor(() => {
+      expect(screen.getByRole("region", { name: "Preview" })).toHaveTextContent("Hello world");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Write" }));
+    expect(screen.getByRole("textbox")).toHaveValue("**Hello** world");
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    await waitFor(() => {
+      expect(screen.getByRole("region", { name: "Preview" })).toHaveTextContent("Hello world");
+    });
+    expect(renderMessageContentMock).toHaveBeenCalledTimes(2);
+    expect(renderMessageContentMock).toHaveBeenNthCalledWith(2, "**Hello** world");
+  });
+
   it("does not call preview API for empty draft", async () => {
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
