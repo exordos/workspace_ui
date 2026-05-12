@@ -6,6 +6,18 @@ describe("useRightDrawerStore", () => {
     useRightDrawerStore.setState({ open: false, mode: "info", userIdOverride: null });
   });
 
+  it("close fully resets the drawer state", () => {
+    useRightDrawerStore.setState({ open: true, mode: "settings", userIdOverride: 42 });
+
+    useRightDrawerStore.getState().close();
+
+    expect(useRightDrawerStore.getState()).toMatchObject({
+      open: false,
+      mode: "info",
+      userIdOverride: null,
+    });
+  });
+
   it("clearUserProfileOverride clears only userIdOverride and keeps drawer open", () => {
     useRightDrawerStore.getState().openUserProfile(42);
     expect(useRightDrawerStore.getState()).toMatchObject({
