@@ -139,6 +139,42 @@ describe("chatListStore", () => {
     });
   });
 
+  describe("reconcileUnreadFromMessages", () => {
+    it("clears stale unread count for a cached stream topic when server unread snapshot is empty", () => {
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: 101,
+            stream_id: 12,
+            display_recipient: "engineering",
+            subject: "channel events",
+            sender_id: OTHER_SENDER_ID,
+            flags: [],
+          }),
+          streamMsg({
+            id: 102,
+            stream_id: 12,
+            display_recipient: "engineering",
+            subject: "channel events",
+            sender_id: OTHER_SENDER_ID,
+            flags: [],
+            timestamp: 2000,
+          }),
+        ],
+        10,
+      );
+
+      expect(
+        useChatListStore.getState().streamsMap.get(12)?.topics.get("channel events")?.unreadCount,
+      ).toBe(2);
+
+      useChatListStore.getState().reconcileUnreadFromMessages([], 10);
+
+      const topic = useChatListStore.getState().streamsMap.get(12)?.topics.get("channel events");
+      expect(topic?.unreadCount).toBe(0);
+    });
+  });
+
   // setFromMessages is the initial hydration path — called once after fetching message history.
   describe("setFromMessages", () => {
     // Stream messages must be grouped by stream_id with topics nested inside.

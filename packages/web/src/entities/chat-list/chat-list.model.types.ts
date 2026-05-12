@@ -37,6 +37,17 @@ export interface ChatListDmMetadataRow {
   unreadCount?: number;
 }
 
+export interface ChatListUnreadMessageRow {
+  id: number;
+  sender_id: number;
+  stream_id?: number | null;
+  display_recipient?:
+    | string
+    | { id: number; full_name: string; email?: string; avatar_url?: string }[];
+  subject?: string;
+  flags?: string[];
+}
+
 export type MessageLocation =
   | { type: "stream"; stream_id: number; topic: string }
   | { type: "dm"; dmKey: string };
@@ -55,6 +66,11 @@ export interface ChatListState {
   setFromMessages: (messages: ZulipRawMessage[], currentUserId: number | null) => void;
   /** Restore sidebar maps from IndexedDB snapshot (no raw `lastAppliedMessages`). */
   hydrateFromIndexedDbSnapshot: (snapshot: ChatListSnapshotSerialized) => void;
+  /** Authoritative unread reconcile from server snapshot (e.g. `is:unread`). */
+  reconcileUnreadFromMessages: (
+    messages: readonly ChatListUnreadMessageRow[],
+    currentUserId: number | null,
+  ) => void;
   addMessage: (message: ZulipRawMessage) => void;
   addMessages: (messages: ZulipRawMessage[]) => void;
   // Что делает: добавляет каналы в список из metadata, даже если сообщений по ним нет в памяти.

@@ -12,6 +12,7 @@ import {
   fetchMessagesAfterAnchor,
   fetchRecentMessages,
   fetchRealmPresence,
+  fetchUnreadMessagesSnapshot,
 } from "~/shared/api/zulip";
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import {
@@ -35,6 +36,15 @@ export function runLayoutReconnectRefresh(options: RunLayoutReconnectRefreshOpti
   if (cancelled) return;
 
   const uid = useChatListStore.getState().currentUserId ?? null;
+  // Что делает: при reconnect отдельно сверяет unread snapshot с сервером.
+  // Зачем: message delta добавляет только новые сообщения и не исправляет уже залипшие cached unread счетчики.
+  fetchUnreadMessagesSnapshot()
+    .then((messages) => {
+      if (cancelled || messages == null) return;
+      useChatListStore.getState().reconcileUnreadFromMessages(messages, uid);
+    })
+    .catch(() => {});
+
   const hydrateFromRecentWindow = () => {
     logChatListFlow("reconnectRefresh: no anchor → fetchRecentMessages + setFromMessages", {});
     fetchRecentMessages()

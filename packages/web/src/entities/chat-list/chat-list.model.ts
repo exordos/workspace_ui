@@ -43,6 +43,7 @@ import {
   isUnreadFromOthers,
 } from "./chat-list.lib";
 import type {
+  ChatListUnreadMessageRow,
   ChatListDmMetadataRow,
   ChatListState,
   ChatListStreamMetadataRow,
@@ -407,6 +408,81 @@ function buildMessageIdToLocation(
   return map;
 }
 
+function isUnreadMessageRowFromOthers(
+  message: ChatListUnreadMessageRow,
+  currentUserId: number | null,
+): boolean {
+  if (message.flags?.includes("read")) return false;
+  if (currentUserId != null && message.sender_id === currentUserId) return false;
+  return true;
+}
+
+function buildUnreadLocationMap(
+  messages: readonly ChatListUnreadMessageRow[],
+  currentUserId: number | null,
+): Map<number, MessageLocation> {
+  // Что делает: строит authoritative-карту unread сообщений из серверного snapshot.
+  // Зачем: дальше reconcile работает по уже нормализованным stream/topic и DM ключам.
+  const map = new Map<number, MessageLocation>();
+  for (const message of messages) {
+    if (!isUnreadMessageRowFromOthers(message, currentUserId)) continue;
+    if (message.stream_id != null) {
+      const topic = normalizeTopicForIdentity(message.subject ?? "");
+      map.set(message.id, { type: "stream", stream_id: message.stream_id, topic });
+      continue;
+    }
+    if (Array.isArray(message.display_recipient)) {
+      const dmKey = dmConversationKey(message.display_recipient, currentUserId);
+      map.set(message.id, { type: "dm", dmKey });
+    }
+  }
+  return map;
+}
+
+function unreadRowToStreamEntry(
+  message: ChatListUnreadMessageRow,
+): ReturnType<typeof messageToStreamEntry> {
+  if (message.stream_id == null) return null;
+  return messageToStreamEntry({
+    id: message.id,
+    sender_id: message.sender_id,
+    sender_full_name: "",
+    content: "",
+    timestamp: 0,
+    type: "stream",
+    stream_id: message.stream_id,
+    display_recipient:
+      typeof message.display_recipient === "string"
+        ? message.display_recipient
+        : String(message.stream_id),
+    subject: message.subject ?? "",
+    flags: message.flags,
+  });
+}
+
+function unreadRowToDmEntry(
+  message: ChatListUnreadMessageRow,
+  currentUserId: number | null,
+): DmEntryInternal | null {
+  if (!Array.isArray(message.display_recipient)) return null;
+  return messageToDmEntry(
+    {
+      id: message.id,
+      sender_id: message.sender_id,
+      sender_full_name: "",
+      content: "",
+      timestamp: 0,
+      type: "private",
+      stream_id: null,
+      display_recipient: message.display_recipient,
+      subject: "",
+      flags: message.flags,
+    },
+    currentUserId,
+    getAvatarMap(),
+  );
+}
+
 export const useChatListStore = create<ChatListState>((set, get) => ({
   streamsMap: emptyStreamsMap(),
   dmsMap: emptyDmsMap(),
@@ -468,6 +544,170 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
       currentUserId: snapshot.currentUserId ?? get().currentUserId,
     });
     persistRecentDmPartnersFromMap(dmsMap);
+  },
+
+  reconcileUnreadFromMessages(messages, currentUserId) {
+    const effectiveUserId = currentUserId ?? get().currentUserId;
+    const unreadLocationMap = buildUnreadLocationMap(messages, effectiveUserId);
+
+    set((state) => {
+      // Что делает: authoritative reconcile unread без полного rebuild sidebar.
+      // Зачем: синхронизируем только счетчики и location-индекс, сохраняя текущую структуру списка чатов.
+      const unreadStreamCounts = new Map<string, number>();
+      const unreadDmCounts = new Map<string, number>();
+
+      for (const location of unreadLocationMap.values()) {
+        if (location.type === "stream") {
+          const key = `${location.stream_id}\t${location.topic}`;
+          unreadStreamCounts.set(key, (unreadStreamCounts.get(key) ?? 0) + 1);
+        } else {
+          unreadDmCounts.set(location.dmKey, (unreadDmCounts.get(location.dmKey) ?? 0) + 1);
+        }
+      }
+
+      let nextStreams = state.streamsMap;
+      let streamsChanged = false;
+
+      for (const [streamId, stream] of state.streamsMap.entries()) {
+        let nextTopics = stream.topics;
+        let topicsChanged = false;
+
+        for (const [topicKey, topic] of stream.topics.entries()) {
+          // Что делает: обнуляет stale unread у уже известных topic, если сервер больше не считает их unread.
+          const nextUnreadCount = unreadStreamCounts.get(`${streamId}\t${topicKey}`) ?? 0;
+          if (topic.unreadCount === nextUnreadCount) continue;
+          if (!topicsChanged) {
+            nextTopics = new Map(nextTopics);
+            topicsChanged = true;
+          }
+          nextTopics.set(topicKey, { ...topic, unreadCount: nextUnreadCount });
+        }
+
+        if (!topicsChanged) continue;
+        if (!streamsChanged) {
+          nextStreams = new Map(nextStreams);
+          streamsChanged = true;
+        }
+        nextStreams.set(streamId, { ...stream, topics: nextTopics });
+      }
+
+      let nextDms = state.dmsMap;
+      let dmsChanged = false;
+
+      for (const [dmKey, dm] of state.dmsMap.entries()) {
+        // Что делает: тем же образом сбрасывает stale unread у уже известных DM-диалогов.
+        const nextUnreadCount = unreadDmCounts.get(dmKey) ?? 0;
+        if (dm.unreadCount === nextUnreadCount) continue;
+        if (!dmsChanged) {
+          nextDms = new Map(nextDms);
+          dmsChanged = true;
+        }
+        nextDms.set(dmKey, { ...dm, unreadCount: nextUnreadCount });
+      }
+
+      for (const message of messages) {
+        if (!isUnreadMessageRowFromOthers(message, effectiveUserId)) continue;
+
+        if (message.stream_id != null) {
+          const entry = unreadRowToStreamEntry(message);
+          if (!entry) continue;
+          const stream = nextStreams.get(entry.stream.stream_id);
+          const topicKey = entry.topic.subject;
+          const unreadCount = unreadStreamCounts.get(`${entry.stream.stream_id}\t${topicKey}`) ?? 0;
+          const unreadTopic = { ...entry.topic, unreadCount };
+
+          if (stream == null) {
+            // Что делает: добавляет unread topic, если сервер его знает, а локальный sidebar еще не видел.
+            if (!streamsChanged) {
+              nextStreams = new Map(nextStreams);
+              streamsChanged = true;
+            }
+            nextStreams.set(entry.stream.stream_id, {
+              ...entry.stream,
+              topics: new Map([[topicKey, unreadTopic]]),
+            });
+            continue;
+          }
+
+          const existingTopic = stream.topics.get(topicKey);
+          if (existingTopic != null) continue;
+          // Что делает: добавляет новый unread topic в уже известный stream, не трогая остальные topics.
+          if (!streamsChanged) {
+            nextStreams = new Map(nextStreams);
+            streamsChanged = true;
+          }
+          const nextTopics = new Map(stream.topics);
+          nextTopics.set(topicKey, unreadTopic);
+          const newestTopic = getNewestTopicEntry(nextTopics);
+          nextStreams.set(entry.stream.stream_id, {
+            ...stream,
+            topics: nextTopics,
+            ...(newestTopic != null
+              ? {
+                  lastMessage: newestTopic.lastMessage,
+                  lastMessageSenderName: newestTopic.lastMessageSenderName,
+                  time: newestTopic.time,
+                  ts: newestTopic.ts,
+                }
+              : {}),
+          });
+          continue;
+        }
+
+        const dmEntry = unreadRowToDmEntry(message, effectiveUserId);
+        if (dmEntry == null || !Array.isArray(message.display_recipient)) continue;
+        const dmKey = dmConversationKey(message.display_recipient, effectiveUserId);
+        const existing = nextDms.get(dmKey);
+        const unreadCount = unreadDmCounts.get(dmKey) ?? 0;
+
+        if (existing != null) continue;
+        // Что делает: поднимает unread DM из серверного snapshot, даже если локально диалог еще не был открыт/загружен.
+        if (!dmsChanged) {
+          nextDms = new Map(nextDms);
+          dmsChanged = true;
+        }
+        nextDms.set(dmKey, { ...dmEntry, unreadCount });
+      }
+
+      let nextLocations = state.messageIdToLocation;
+      let locationsChanged = false;
+      for (const [messageId, location] of unreadLocationMap.entries()) {
+        const existing = nextLocations.get(messageId);
+        const sameLocation =
+          existing?.type === location.type &&
+          (existing?.type === "stream"
+            ? location.type === "stream" &&
+              existing.stream_id === location.stream_id &&
+              existing.topic === location.topic
+            : location.type === "dm" && existing?.dmKey === location.dmKey);
+        if (sameLocation) continue;
+        // Что делает: сохраняет location каждого unread message id для будущих read/delete событий.
+        // Зачем: последующие flag/delete updates должны уметь точно уменьшить счетчик без нового full reconcile.
+        if (!locationsChanged) {
+          nextLocations = new Map(nextLocations);
+          locationsChanged = true;
+        }
+        nextLocations.set(messageId, location);
+      }
+
+      if (
+        !streamsChanged &&
+        !dmsChanged &&
+        !locationsChanged &&
+        effectiveUserId === state.currentUserId
+      ) {
+        return state;
+      }
+
+      return {
+        ...(streamsChanged ? { streamsMap: nextStreams } : {}),
+        ...(dmsChanged ? { dmsMap: nextDms } : {}),
+        ...(locationsChanged ? { messageIdToLocation: nextLocations } : {}),
+        ...(effectiveUserId !== state.currentUserId ? { currentUserId: effectiveUserId } : {}),
+      };
+    });
+
+    persistRecentDmPartnersFromMap(get().dmsMap);
   },
 
   addMessage(message) {

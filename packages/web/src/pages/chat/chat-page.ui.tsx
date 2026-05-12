@@ -540,6 +540,14 @@ export const ChatPage: React.FC = () => {
     [isDmView, activeTopic],
   );
 
+  const handleUnreadMessagesAtBottom = useCallback(
+    (messageIds: number[]) => {
+      if (!isDmView && activeTopic == null) return;
+      markAsReadBatcherRef.current?.schedule(messageIds);
+    },
+    [isDmView, activeTopic],
+  );
+
   useEffect(() => {
     const batchFallbackContext: ReadFallbackContext | undefined = isDmView
       ? activeDmUserIds != null && activeDmUserIds.length > 0
@@ -1770,6 +1778,7 @@ export const ChatPage: React.FC = () => {
           unreadCount={unreadCount}
           focusedMessageId={focusedMessageId}
           onUnreadMessagesVisible={handleUnreadMessagesVisible}
+          onUnreadMessagesAtBottom={handleUnreadMessagesAtBottom}
           messagesLoadError={messagesLoadError}
           onRetryMessagesLoad={handleRetryMessagesLoad}
           boundaryLoadFailed={boundaryLoadFailed}

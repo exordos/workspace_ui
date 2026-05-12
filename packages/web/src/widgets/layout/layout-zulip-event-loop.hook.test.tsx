@@ -12,6 +12,7 @@ import { useLayoutZulipEventLoop } from "./layout-zulip-event-loop.hook";
 const startZulipEventLoopMock = vi.hoisted(() => vi.fn());
 const fetchUsersMock = vi.hoisted(() => vi.fn(() => Promise.resolve([])));
 const fetchSubscriptionsMock = vi.hoisted(() => vi.fn(() => Promise.resolve([])));
+const fetchUnreadMessagesSnapshotMock = vi.hoisted(() => vi.fn(() => Promise.resolve([])));
 const getCurrentUserMock = vi.hoisted(() => vi.fn(() => Promise.resolve({ user_id: 7 })));
 const deleteQueueMock = vi.hoisted(() => vi.fn(() => Promise.resolve(undefined)));
 const fetchDirectMessagesPageMock = vi.hoisted(() =>
@@ -26,6 +27,7 @@ vi.mock("~/shared/api/zulip", () => ({
   deleteQueue: deleteQueueMock,
   fetchDirectMessagesPage: fetchDirectMessagesPageMock,
   fetchSubscriptions: fetchSubscriptionsMock,
+  fetchUnreadMessagesSnapshot: fetchUnreadMessagesSnapshotMock,
   fetchUsers: fetchUsersMock,
   getCurrentUser: getCurrentUserMock,
 }));
@@ -132,6 +134,42 @@ describe("useLayoutZulipEventLoop", () => {
       instances: [],
       currentInstanceId: null,
       unreadCountsByInstance: {},
+    });
+  });
+
+  it("reconciles stale sidebar unread counts from authoritative server unread snapshot", async () => {
+    const props = createHarnessProps();
+    props.loadBootstrapMessages.mockImplementation(() => {
+      useChatListStore.getState().setFromMessages(
+        [
+          {
+            id: 101,
+            sender_id: 20,
+            sender_full_name: "Notifier",
+            content: "rename",
+            timestamp: 1000,
+            type: "stream",
+            stream_id: 12,
+            display_recipient: "engineering",
+            subject: "channel events",
+            flags: [],
+          },
+        ],
+        7,
+      );
+      return Promise.resolve({ mode: "none", latestMessageIdHint: null });
+    });
+    fetchUnreadMessagesSnapshotMock.mockResolvedValueOnce([]);
+
+    render(<Harness currentInstanceId="inst-1" props={props} />);
+
+    await waitFor(() => {
+      expect(startZulipEventLoopMock).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(
+        useChatListStore.getState().streamsMap.get(12)?.topics.get("channel events")?.unreadCount,
+      ).toBe(0);
     });
   });
 

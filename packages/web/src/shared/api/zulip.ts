@@ -1723,6 +1723,36 @@ export async function fetchMessagesAfterAnchor(
   });
 }
 
+// Загружает authoritative unread snapshot для reconcile счетчиков sidebar.
+// Возвращает `null`, если запрос не удался, чтобы caller не обнулил unread по сетевой ошибке.
+export async function fetchUnreadMessagesSnapshot(
+  numBefore = 5000,
+): Promise<ZulipRawMessage[] | null> {
+  // Что делает: `null` здесь означает ошибку запроса, а не "unread на сервере нет".
+  // Зачем: caller не должен обнулять бейджи по временной сетевой ошибке или bad payload.
+  const safeNumBefore = validateNonNegativeInteger(
+    numBefore,
+    "fetchUnreadMessagesSnapshot.numBefore",
+  );
+  const res = await zulipPipelineGet("/messages", {
+    anchor: "newest",
+    num_before: String(safeNumBefore),
+    num_after: "0",
+    narrow: JSON.stringify([{ operator: "is", operand: "unread" }]),
+    client_gravatar: "true",
+    allow_empty_topic_name: "true",
+    apply_markdown: "false",
+  });
+  if (!res?.ok) {
+    return null;
+  }
+  const data = res.data as { result?: string; messages?: ZulipRawMessage[] };
+  if (!data || data.result === "error") {
+    return null;
+  }
+  return data.messages ?? [];
+}
+
 export interface DirectMessagesPageResult {
   messages: ZulipRawMessage[];
   foundOldest: boolean;

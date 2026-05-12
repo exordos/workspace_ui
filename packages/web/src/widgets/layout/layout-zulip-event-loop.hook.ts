@@ -20,6 +20,7 @@ import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indi
 import {
   deleteQueue,
   fetchDirectMessagesPage,
+  fetchUnreadMessagesSnapshot,
   fetchSubscriptions,
   fetchUsers,
   getCurrentUser,
@@ -158,6 +159,20 @@ function persistDmIndexFromStore(instanceId: string): void {
   if (rows.length > 0) {
     upsertDmIndexEntries(instanceId, rows);
   }
+}
+
+function startSidebarUnreadReconcile(options: {
+  cancelled: () => boolean;
+  currentUserId: number | null;
+}): void {
+  // Что делает: после bootstrap отдельно сверяет unread sidebar с серверным is:unread snapshot.
+  // Зачем: IDB hydrate и delta bootstrap могут сохранить stale счетчики, если read-event был когда-то пропущен.
+  void fetchUnreadMessagesSnapshot()
+    .then((messages) => {
+      if (options.cancelled() || messages == null) return;
+      useChatListStore.getState().reconcileUnreadFromMessages(messages, options.currentUserId);
+    })
+    .catch(() => {});
 }
 
 // Нормализует формат строки IDB к контракту, который ожидает mute-store.
@@ -432,6 +447,13 @@ export function useLayoutZulipEventLoop(options: {
             latestMessageIdRef: latestMessageIdRef.current,
           });
         }
+
+        // Что делает: всегда запускает authoritative unread reconcile после bootstrap.
+        // Зачем: даже в delta/none режиме обычная загрузка сообщений не обязана исправить уже застрявшие cached unread.
+        startSidebarUnreadReconcile({
+          cancelled: () => cancelled,
+          currentUserId: uid,
+        });
 
         if (metadataDmBackfillEnabled && currentInstanceId != null) {
           logChatListFlow("eventLoop: starting metadata DM backfill loop", {
