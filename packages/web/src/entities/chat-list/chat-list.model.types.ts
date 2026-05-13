@@ -51,6 +51,8 @@ export interface ChatListState {
    * metadata upserts that changed maps, or IDB hydrate with non-empty maps. False after clear.
    */
   sidebarDataHydrated: boolean;
+  /** True after authoritative subscriptions metadata is applied (bootstrap/register). */
+  streamMetadataHydrated: boolean;
   currentUserId: number | null;
   lastAppliedMessages: ZulipRawMessage[] | null;
   messageIdToLocation: Map<number, MessageLocation>;
@@ -66,6 +68,10 @@ export interface ChatListState {
   addMessages: (messages: ZulipRawMessage[]) => void;
   // Что делает: добавляет каналы в список из metadata, даже если сообщений по ним нет в памяти.
   upsertStreamMetadataRows: (rows: ChatListStreamMetadataRow[]) => void;
+  /** Marks stream metadata readiness from authoritative subscriptions sources. */
+  setStreamMetadataHydrated: (value: boolean) => void;
+  /** Optimistically toggles archived state for a stream; `undefined` clears local override. */
+  setStreamArchived: (streamId: number, isArchived: boolean | undefined) => void;
   // Что делает: добавляет/обновляет DM-строки из metadata и локального DM-индекса.
   upsertDmMetadataRows: (rows: ChatListDmMetadataRow[]) => void;
   setCurrentUserId: (id: number | null) => void;

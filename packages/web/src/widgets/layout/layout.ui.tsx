@@ -59,6 +59,7 @@ export const Layout: React.FC = () => {
   const setFromMessages = useChatListStore((s) => s.setFromMessages);
   const setCurrentUserId = useChatListStore((s) => s.setCurrentUserId);
   const currentUserId = useChatListStore((s) => s.currentUserId);
+  const streamMetadataHydrated = useChatListStore((s) => s.streamMetadataHydrated);
   const streamsFromStore = useChatListStore((s) => s.streams());
   const dmsFromStore = useChatListStore((s) => s.dms());
   const streamsMap = useChatListStore((s) => s.streamsMap);
@@ -81,6 +82,7 @@ export const Layout: React.FC = () => {
       sortChatsByLastMessage(streamsMap, dmsMap, chatSorting, mutedStreamIds, {
         prioritizePersonalUnread,
         prioritizeUnmutedUnreadChannels,
+        hideUnknownArchivedStreams: !streamMetadataHydrated,
       }),
     [
       streamsMap,
@@ -89,6 +91,7 @@ export const Layout: React.FC = () => {
       mutedStreamIds,
       prioritizePersonalUnread,
       prioritizeUnmutedUnreadChannels,
+      streamMetadataHydrated,
     ],
   );
   const {
@@ -178,6 +181,7 @@ export const Layout: React.FC = () => {
     dmsMapSize: dmsMap.size,
     usersMapForChatInfo,
     currentUserId,
+    hideUnknownArchivedStreams: !streamMetadataHydrated,
     selectedFolderId,
     selectedFolderChatIds,
     bootstrapFolderSync,

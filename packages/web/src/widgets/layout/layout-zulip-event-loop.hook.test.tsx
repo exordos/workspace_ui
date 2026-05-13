@@ -254,6 +254,29 @@ describe("useLayoutZulipEventLoop", () => {
     expect(firstCallArg?.fetchEventTypes).toEqual([...DEFAULT_REGISTER_FETCH_EVENT_TYPES]);
   });
 
+  it("marks stream metadata as hydrated after bootstrap subscriptions success, even if empty", async () => {
+    render(<Harness currentInstanceId="inst-1" />);
+
+    await waitFor(() => {
+      expect(startZulipEventLoopMock).toHaveBeenCalledTimes(1);
+    });
+
+    expect(useChatListStore.getState().streamMetadataHydrated).toBe(true);
+  });
+
+  it("does not mark stream metadata as hydrated when subscriptions bootstrap fails", async () => {
+    fetchSubscriptionsMock.mockRejectedValueOnce(new Error("subscriptions failed"));
+    const props = createHarnessProps();
+
+    render(<Harness currentInstanceId="inst-1" props={props} />);
+
+    await waitFor(() => {
+      expect(props.setCurrentUserStatus).toHaveBeenCalled();
+    });
+    expect(startZulipEventLoopMock).not.toHaveBeenCalled();
+    expect(useChatListStore.getState().streamMetadataHydrated).toBe(false);
+  });
+
   it("still starts the event loop when users directory IndexedDB read fails", async () => {
     vi.mocked(loadUsersDirectoryRow).mockRejectedValueOnce(new Error("idb failed"));
     const props = createHarnessProps();
@@ -293,5 +316,32 @@ describe("useLayoutZulipEventLoop", () => {
     expect(useUsersStore.getState().currentUserChannelCapabilities).toEqual({
       realmCanAddSubscribersGroup: 14,
     });
+  });
+
+  it("marks stream metadata as hydrated on queue register even without subscriptions payload", async () => {
+    render(<Harness currentInstanceId="inst-1" />);
+
+    await waitFor(() => {
+      expect(startZulipEventLoopMock).toHaveBeenCalledTimes(1);
+    });
+
+    useChatListStore.getState().setStreamMetadataHydrated(false);
+    const firstCallArg = startZulipEventLoopMock.mock.calls[0]?.[0] as
+      | {
+          onQueueRegistered?: (
+            id: string,
+            registration?: {
+              realm_can_add_subscribers_group?: number;
+            },
+          ) => void;
+        }
+      | undefined;
+    act(() => {
+      firstCallArg?.onQueueRegistered?.("q-1", {
+        realm_can_add_subscribers_group: 14,
+      });
+    });
+
+    expect(useChatListStore.getState().streamMetadataHydrated).toBe(true);
   });
 });

@@ -538,6 +538,7 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
   streamsMap: emptyStreamsMap(),
   dmsMap: emptyDmsMap(),
   sidebarDataHydrated: false,
+  streamMetadataHydrated: false,
   currentUserId: null,
   lastAppliedMessages: null,
   messageIdToLocation: new Map(),
@@ -592,6 +593,7 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
       streamsMap,
       dmsMap,
       sidebarDataHydrated,
+      streamMetadataHydrated: false,
       messageIdToLocation,
       currentUserId: snapshot.currentUserId ?? get().currentUserId,
       lastAppliedMessages: null,
@@ -1028,6 +1030,29 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
     });
   },
 
+  setStreamMetadataHydrated(value) {
+    set((state) => {
+      if (state.streamMetadataHydrated === value) return state;
+      return { streamMetadataHydrated: value };
+    });
+  },
+
+  setStreamArchived(streamId, isArchived) {
+    if (!Number.isInteger(streamId) || streamId <= 0) return;
+    set((state) => {
+      const existing = state.streamsMap.get(streamId);
+      if (!existing || existing.isArchived === isArchived) return state;
+      const nextStreams = new Map(state.streamsMap);
+      if (isArchived === undefined) {
+        const { isArchived: _ignored, ...rest } = existing;
+        nextStreams.set(streamId, rest);
+      } else {
+        nextStreams.set(streamId, { ...existing, isArchived });
+      }
+      return { streamsMap: nextStreams };
+    });
+  },
+
   upsertDmMetadataRows(rows) {
     if (rows.length === 0) return;
     logChatListFlow("store: upsertDmMetadataRows", { rowCount: rows.length });
@@ -1294,6 +1319,7 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
       streamsMap: emptyStreamsMap(),
       dmsMap: emptyDmsMap(),
       sidebarDataHydrated: false,
+      streamMetadataHydrated: false,
       currentUserId: null,
       lastAppliedMessages: null,
       messageIdToLocation: new Map(),

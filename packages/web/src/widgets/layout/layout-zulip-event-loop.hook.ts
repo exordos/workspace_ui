@@ -376,6 +376,7 @@ export function useLayoutZulipEventLoop(options: {
         if (streamRowsFromSubscriptions.length > 0) {
           useChatListStore.getState().upsertStreamMetadataRows(streamRowsFromSubscriptions);
         }
+        useChatListStore.getState().setStreamMetadataHydrated(true);
 
         const uid = resolvedCurrentUserId ?? useChatListStore.getState().currentUserId ?? null;
 
@@ -560,6 +561,7 @@ export function useLayoutZulipEventLoop(options: {
             if (streamRows.length > 0) {
               useChatListStore.getState().upsertStreamMetadataRows(streamRows);
             }
+            useChatListStore.getState().setStreamMetadataHydrated(true);
             if (metadataBootstrapEnabled) {
               // Что делает: подмешивает recent_private_conversations сразу после register.
               const rows = toDmMetadataRowsFromRecentConversations(

@@ -271,6 +271,7 @@ interface FolderSyncState {
     streamsMap: Map<number, StreamEntryInternal>;
     usersMapForChatInfo: Map<number, { full_name?: string; email?: string }>;
     currentUserId: number | null;
+    hideUnknownArchivedStreams: boolean;
   }) => void;
   syncDerived: (showSystemFolders: boolean, labels: FolderSyncSystemLabels) => void;
   clear: () => void;
@@ -1138,6 +1139,7 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
         streamsMap: input.streamsMap,
         usersMapForChatInfo: input.usersMapForChatInfo,
         currentUserId: input.currentUserId,
+        hideUnknownArchivedStreams: input.hideUnknownArchivedStreams,
       });
       set({
         selectedFolderSidebarChats: nextChats,

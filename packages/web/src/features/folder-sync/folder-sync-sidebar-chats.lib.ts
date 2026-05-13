@@ -20,6 +20,7 @@ export interface SelectedFolderSidebarProjectionInput {
   streamsMap: ReadonlyMap<number, StreamEntryInternal>;
   usersMapForChatInfo: ReadonlyMap<number, FolderSyncUserLike>;
   currentUserId: number | null;
+  hideUnknownArchivedStreams?: boolean;
 }
 
 // Зачем: из folder items приходит набор chat_id в разных форматах, который нужен для быстрого membership-check.
@@ -84,6 +85,7 @@ export function buildSelectedFolderSidebarChats(
     streamsMap,
     usersMapForChatInfo,
     currentUserId,
+    hideUnknownArchivedStreams = false,
   } = input;
 
   if (selectedFolderId === SYSTEM_PERSONAL_FOLDER_ID) {
@@ -263,6 +265,9 @@ export function buildSelectedFolderSidebarChats(
 
     const streamRecord = streamsMap.get(streamId);
     if (streamRecord?.isArchived === true) {
+      continue;
+    }
+    if (hideUnknownArchivedStreams && streamRecord?.isArchived == null) {
       continue;
     }
     seenFallbackStreamIds.add(streamId);

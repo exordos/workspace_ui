@@ -47,7 +47,9 @@ export interface UseLayoutFolderSyncOrchestrationParams {
     streamsMap: Map<number, StreamEntryInternal>;
     usersMapForChatInfo: Map<number, { full_name?: string; email?: string }>;
     currentUserId: number | null;
+    hideUnknownArchivedStreams: boolean;
   }) => void;
+  hideUnknownArchivedStreams: boolean;
   syncFolderSyncDerived: (showSystemFolders: boolean, labels: FolderSyncSystemLabels) => void;
   refreshFolderSync: (reason: FolderRefreshReason) => Promise<void>;
   online: boolean;
@@ -67,6 +69,7 @@ export function useLayoutFolderSyncOrchestration(
     dmsMapSize,
     usersMapForChatInfo,
     currentUserId,
+    hideUnknownArchivedStreams,
     selectedFolderId,
     selectedFolderChatIds,
     bootstrapFolderSync,
@@ -108,10 +111,12 @@ export function useLayoutFolderSyncOrchestration(
       streamsMap,
       usersMapForChatInfo,
       currentUserId,
+      hideUnknownArchivedStreams,
     });
   }, [
     chatsSortedByLastMessage,
     currentUserId,
+    hideUnknownArchivedStreams,
     folderItemsByFolderId,
     dmsMapSize,
     selectedFolderChatIds,

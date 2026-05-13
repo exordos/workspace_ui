@@ -13,7 +13,7 @@ import { muteStream, unmuteStream } from "~/features/mute-chat/mute-chat.api";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { useRemoveStreamMembersStore } from "~/features/remove-stream-members/remove-stream-members.model";
 import { t } from "~/i18n/i18n";
-import { deleteStream, deleteTopic, updateStream } from "~/shared/api/zulip-streams";
+import { deleteTopic, updateStream } from "~/shared/api/zulip-streams";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { createLogger } from "~/shared/lib/logger";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
@@ -55,6 +55,7 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
   const context = useCurrentChatMessagesStore((s) => s.context);
   const streamId = context?.type === "stream" ? context.streamId : null;
   const currentUserId = useChatListStore((s) => s.currentUserId);
+  const streamMetadataHydrated = useChatListStore((s) => s.streamMetadataHydrated);
   const streamEntry = useChatListStore((s) =>
     streamId != null ? s.streamsMap.get(streamId) : undefined,
   );
@@ -370,29 +371,43 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
 
     setChannelActionPending(true);
     setChannelActionError(null);
-    const ok = await deleteStream(streamId);
-    if (ok) {
-      const chatList = useChatListStore.getState();
-      chatList.removeStream(streamId);
-      useChatInfoStore.getState().clear();
-      useCurrentChatMessagesStore.getState().setContext(null);
-      useCurrentChatMessagesStore.getState().setMessages([]);
+    const chatList = useChatListStore.getState();
+    const previousArchivedState = chatList.streamsMap.get(streamId)?.isArchived;
+    chatList.setStreamArchived(streamId, true);
+    useChatInfoStore.getState().clear();
+    useCurrentChatMessagesStore.getState().setContext(null);
+    useCurrentChatMessagesStore.getState().setMessages([]);
 
-      const nextStream = chatList.streams()[0];
-      if (nextStream) {
-        void navigate(
-          withCurrentOrgRoute(`/stream/${buildStreamSlug(nextStream.stream_id, nextStream.name)}`),
-          {
-            replace: true,
-          },
-        );
-      } else {
-        void navigate("/", { replace: true });
-      }
+    const nextVisibleStream = chatList.streams().find((candidate) => {
+      if (candidate.stream_id === streamId) return false;
+      const metadata = chatList.streamsMap.get(candidate.stream_id);
+      if (metadata?.isArchived === true) return false;
+      if (!streamMetadataHydrated && metadata?.isArchived == null) return false;
+      return true;
+    });
+    if (nextVisibleStream) {
+      void navigate(
+        withCurrentOrgRoute(
+          `/stream/${buildStreamSlug(nextVisibleStream.stream_id, nextVisibleStream.name)}`,
+        ),
+        { replace: true },
+      );
     } else {
-      setChannelActionError(t("app.error"));
+      void navigate("/", { replace: true });
     }
-    setChannelActionPending(false);
+
+    try {
+      const ok = await updateStream(streamId, { isArchived: true });
+      if (!ok) {
+        chatList.setStreamArchived(streamId, previousArchivedState);
+        setChannelActionError(t("app.error"));
+      }
+    } catch {
+      chatList.setStreamArchived(streamId, previousArchivedState);
+      setChannelActionError(t("app.error"));
+    } finally {
+      setChannelActionPending(false);
+    }
   };
   const handleDeleteTopic = async (topicName: string) => {
     if (streamId == null || topicDeletePendingName != null) return;

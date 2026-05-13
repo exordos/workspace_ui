@@ -284,4 +284,60 @@ describe("buildSelectedFolderSidebarChats", () => {
 
     expect(result.filter((chat) => chat.type === "stream")).toHaveLength(0);
   });
+
+  it("does not add unknown-archived stream from fallback folder items in strict mode", () => {
+    const folderId = "folder-1";
+    const result = buildSelectedFolderSidebarChats({
+      selectedFolderId: folderId,
+      folderChatIds: new Set(["stream:77"]),
+      folderItemsByFolderId: new Map([[folderId, [folderItem("stream:77", 0)]]]),
+      chatsSortedByLastMessage: [],
+      streamsMap: new Map([
+        [
+          77,
+          {
+            stream_id: 77,
+            name: "engineering",
+            lastMessage: "",
+            time: "",
+            ts: 0,
+            topics: new Map(),
+          },
+        ],
+      ]),
+      usersMapForChatInfo: new Map(),
+      currentUserId: 7,
+      hideUnknownArchivedStreams: true,
+    });
+
+    expect(result.filter((chat) => chat.type === "stream")).toHaveLength(0);
+  });
+
+  it("keeps unknown-archived fallback stream when strict mode is disabled", () => {
+    const folderId = "folder-1";
+    const result = buildSelectedFolderSidebarChats({
+      selectedFolderId: folderId,
+      folderChatIds: new Set(["stream:77"]),
+      folderItemsByFolderId: new Map([[folderId, [folderItem("stream:77", 0)]]]),
+      chatsSortedByLastMessage: [],
+      streamsMap: new Map([
+        [
+          77,
+          {
+            stream_id: 77,
+            name: "engineering",
+            lastMessage: "",
+            time: "",
+            ts: 0,
+            topics: new Map(),
+          },
+        ],
+      ]),
+      usersMapForChatInfo: new Map(),
+      currentUserId: 7,
+      hideUnknownArchivedStreams: false,
+    });
+
+    expect(result.filter((chat) => chat.type === "stream")).toHaveLength(1);
+  });
 });

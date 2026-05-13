@@ -1902,4 +1902,120 @@ describe("RightPanel truthfulness", () => {
     expect(screen.getByRole("button", { name: /edit channel/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /archive channel/i })).toBeInTheDocument();
   });
+
+  it("optimistically archives channel and redirects immediately on archive action", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const updateStreamSpy = vi.spyOn(zulipStreams, "updateStream").mockResolvedValue(true);
+
+    act(() => {
+      useChatListStore.getState().setCurrentUserId(42);
+      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Admin", role: 200 });
+      useChatListStore.getState().setStreamMetadataHydrated(true);
+      useChatListStore.getState().setFromMessages(
+        [
+          {
+            id: 1,
+            sender_id: 50,
+            sender_full_name: "Sender",
+            content: "latest",
+            timestamp: 2000,
+            type: "stream",
+            stream_id: 10,
+            display_recipient: "engineering",
+            subject: "general",
+            flags: [],
+          },
+          {
+            id: 2,
+            sender_id: 50,
+            sender_full_name: "Sender",
+            content: "older",
+            timestamp: 1000,
+            type: "stream",
+            stream_id: 11,
+            display_recipient: "design",
+            subject: "general",
+            flags: [],
+          },
+        ],
+        42,
+      );
+      useChatListStore
+        .getState()
+        .upsertStreamMetadataRows([{ streamId: 10, name: "engineering", isArchived: false }]);
+      useChatListStore
+        .getState()
+        .upsertStreamMetadataRows([{ streamId: 11, name: "design", isArchived: false }]);
+      useCurrentChatMessagesStore.setState({
+        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        messages: [],
+        isLoadingMore: false,
+        hasOlderMessages: true,
+        hasNewerMessages: false,
+      });
+      useChatInfoStore.getState().setData({
+        type: "stream",
+        name: "engineering",
+        memberCount: 3,
+        onlineCount: 1,
+        members: [],
+        description: "Engineering stream",
+        isMuted: false,
+        topics: [],
+      });
+    });
+
+    renderWithProviders(<RightPanel title="engineering" participantsCount={3} onlineCount={1} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /archive channel/i }));
+
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(useChatListStore.getState().streamsMap.get(10)?.isArchived).toBe(true);
+    expect(navigateMock).toHaveBeenCalledWith(expect.stringContaining("/stream/11"), {
+      replace: true,
+    });
+
+    await waitFor(() => {
+      expect(updateStreamSpy).toHaveBeenCalledWith(10, { isArchived: true });
+    });
+  });
+
+  it("rolls back optimistic archive on request failure", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.spyOn(zulipStreams, "updateStream").mockResolvedValue(false);
+
+    act(() => {
+      useChatListStore.getState().setCurrentUserId(42);
+      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Admin", role: 200 });
+      useChatListStore.getState().setStreamMetadataHydrated(true);
+      useChatListStore
+        .getState()
+        .upsertStreamMetadataRows([{ streamId: 10, name: "engineering", isArchived: false }]);
+      useCurrentChatMessagesStore.setState({
+        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        messages: [],
+        isLoadingMore: false,
+        hasOlderMessages: true,
+        hasNewerMessages: false,
+      });
+      useChatInfoStore.getState().setData({
+        type: "stream",
+        name: "engineering",
+        memberCount: 3,
+        onlineCount: 1,
+        members: [],
+        description: "Engineering stream",
+        isMuted: false,
+        topics: [],
+      });
+    });
+
+    renderWithProviders(<RightPanel title="engineering" participantsCount={3} onlineCount={1} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /archive channel/i }));
+
+    await waitFor(() => {
+      expect(useChatListStore.getState().streamsMap.get(10)?.isArchived).toBe(false);
+    });
+  });
 });

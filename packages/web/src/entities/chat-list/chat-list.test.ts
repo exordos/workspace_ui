@@ -96,6 +96,7 @@ describe("chatListStore", () => {
       expect(state.streamsMap.size).toBe(0);
       expect(state.dmsMap.size).toBe(0);
       expect(state.sidebarDataHydrated).toBe(false);
+      expect(state.streamMetadataHydrated).toBe(false);
       expect(state.currentUserId).toBeNull();
       expect(state.lastAppliedMessages).toBeNull();
       expect(state.messageIdToLocation.size).toBe(0);
@@ -136,6 +137,25 @@ describe("chatListStore", () => {
       expect(useChatListStore.getState().sidebarDataHydrated).toBe(false);
       useChatListStore.getState().hydrateFromIndexedDbSnapshot(snapshot);
       expect(useChatListStore.getState().sidebarDataHydrated).toBe(true);
+    });
+  });
+
+  describe("streamMetadataHydrated", () => {
+    it("starts false, can be set from authoritative metadata, and resets on clear", () => {
+      expect(useChatListStore.getState().streamMetadataHydrated).toBe(false);
+      useChatListStore.getState().setStreamMetadataHydrated(true);
+      expect(useChatListStore.getState().streamMetadataHydrated).toBe(true);
+      useChatListStore.getState().clear();
+      expect(useChatListStore.getState().streamMetadataHydrated).toBe(false);
+    });
+
+    it("stays false after IndexedDB hydrate until authoritative metadata arrives", () => {
+      useChatListStore.getState().setFromMessages([streamMsg()], 10);
+      const snapshot = buildChatListSnapshotSerialized(useChatListStore.getState());
+      useChatListStore.getState().clear();
+
+      useChatListStore.getState().hydrateFromIndexedDbSnapshot(snapshot);
+      expect(useChatListStore.getState().streamMetadataHydrated).toBe(false);
     });
   });
 
@@ -1212,6 +1232,27 @@ describe("chatListStore", () => {
       expect(state.messageIdToLocation.get(1)).toBeUndefined();
       expect(state.messageIdToLocation.get(2)).toBeUndefined();
       expect(state.messageIdToLocation.get(50)?.type).toBe("dm");
+    });
+
+    it("optimistically sets and rolls back stream archived flag", () => {
+      useChatListStore
+        .getState()
+        .upsertStreamMetadataRows([{ streamId: 10, name: "engineering", isArchived: false }]);
+
+      useChatListStore.getState().setStreamArchived(10, true);
+      expect(useChatListStore.getState().streamsMap.get(10)?.isArchived).toBe(true);
+
+      useChatListStore.getState().setStreamArchived(10, false);
+      expect(useChatListStore.getState().streamsMap.get(10)?.isArchived).toBe(false);
+    });
+
+    it("can rollback archived flag to undefined", () => {
+      useChatListStore
+        .getState()
+        .upsertStreamMetadataRows([{ streamId: 10, name: "engineering", isArchived: true }]);
+
+      useChatListStore.getState().setStreamArchived(10, undefined);
+      expect(useChatListStore.getState().streamsMap.get(10)?.isArchived).toBeUndefined();
     });
 
     it("moves stream topic and removes old topic key", () => {

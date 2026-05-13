@@ -110,4 +110,84 @@ describe("sortChatsByLastMessage", () => {
     expect(sorted).toHaveLength(1);
     expect(sorted[0]).toMatchObject({ type: "stream", stream_id: 1, name: "Active" });
   });
+
+  it("hides streams with unknown archived status in strict mode", () => {
+    const streamsMap = new Map<number, StreamEntryInternal>([
+      [
+        1,
+        {
+          ...createStreamEntry(1, "Known Active", 2000, 1, false),
+          isArchived: false,
+        },
+      ],
+      [
+        2,
+        {
+          stream_id: 2,
+          name: "Unknown",
+          lastMessage: "Unknown message",
+          time: "10:00",
+          ts: 3000,
+          topics: new Map([
+            [
+              "general",
+              {
+                subject: "general",
+                lastMessage: "Unknown topic",
+                time: "10:00",
+                ts: 3000,
+                unreadCount: 1,
+              },
+            ],
+          ]),
+        },
+      ],
+    ]);
+
+    const sorted = sortChatsByLastMessage(streamsMap, new Map(), "recent", new Set(), {
+      hideUnknownArchivedStreams: true,
+    });
+    expect(sorted).toHaveLength(1);
+    expect(sorted[0]).toMatchObject({ type: "stream", stream_id: 1, name: "Known Active" });
+  });
+
+  it("keeps streams with unknown archived status when strict mode is disabled", () => {
+    const streamsMap = new Map<number, StreamEntryInternal>([
+      [
+        1,
+        {
+          ...createStreamEntry(1, "Known Active", 2000, 1, false),
+          isArchived: false,
+        },
+      ],
+      [
+        2,
+        {
+          stream_id: 2,
+          name: "Unknown",
+          lastMessage: "Unknown message",
+          time: "10:00",
+          ts: 3000,
+          topics: new Map([
+            [
+              "general",
+              {
+                subject: "general",
+                lastMessage: "Unknown topic",
+                time: "10:00",
+                ts: 3000,
+                unreadCount: 1,
+              },
+            ],
+          ]),
+        },
+      ],
+    ]);
+
+    const sorted = sortChatsByLastMessage(streamsMap, new Map(), "recent", new Set(), {
+      hideUnknownArchivedStreams: false,
+    });
+    expect(sorted).toHaveLength(2);
+    expect(sorted[0]).toMatchObject({ type: "stream", stream_id: 2, name: "Unknown" });
+  });
 });

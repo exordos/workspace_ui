@@ -14,6 +14,7 @@ import type {
 export interface ChatSortingOptions {
   prioritizePersonalUnread?: boolean;
   prioritizeUnmutedUnreadChannels?: boolean;
+  hideUnknownArchivedStreams?: boolean;
 }
 
 export function sortChatsByLastMessage(
@@ -25,9 +26,11 @@ export function sortChatsByLastMessage(
 ): SidebarChat[] {
   const prioritizePersonalUnread = options.prioritizePersonalUnread ?? false;
   const prioritizeUnmutedUnreadChannels = options.prioritizeUnmutedUnreadChannels ?? false;
+  const hideUnknownArchivedStreams = options.hideUnknownArchivedStreams ?? false;
   const withTs: { c: SidebarChat; ts: number }[] = [];
   for (const s of streamsMap.values()) {
     if (s.isArchived === true) continue;
+    if (hideUnknownArchivedStreams && s.isArchived == null) continue;
     const topics = Array.from(s.topics.values())
       .sort((a, b) => b.ts - a.ts)
       .map((t) => ({
