@@ -6,13 +6,16 @@ import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
 import { DEFAULT_REGISTER_FETCH_EVENT_TYPES } from "~/shared/api/zulip-queue";
+import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import { loadUsersDirectoryRow } from "~/shared/lib/users-directory-snapshot-db";
 import { useLayoutZulipEventLoop } from "./layout-zulip-event-loop.hook";
 
 const startZulipEventLoopMock = vi.hoisted(() => vi.fn());
 const fetchUsersMock = vi.hoisted(() => vi.fn(() => Promise.resolve([])));
 const fetchSubscriptionsMock = vi.hoisted(() => vi.fn(() => Promise.resolve([])));
-const fetchUnreadMessagesSnapshotMock = vi.hoisted(() => vi.fn(() => Promise.resolve([])));
+const fetchUnreadMessagesSnapshotMock = vi.hoisted(() =>
+  vi.fn<() => Promise<ZulipRawMessage[] | null>>(() => Promise.resolve([])),
+);
 const getCurrentUserMock = vi.hoisted(() => vi.fn(() => Promise.resolve({ user_id: 7 })));
 const deleteQueueMock = vi.hoisted(() => vi.fn(() => Promise.resolve(undefined)));
 const fetchDirectMessagesPageMock = vi.hoisted(() =>
@@ -171,6 +174,70 @@ describe("useLayoutZulipEventLoop", () => {
         useChatListStore.getState().streamsMap.get(12)?.topics.get("channel events")?.unreadCount,
       ).toBe(0);
     });
+  });
+
+  it("applies authoritative unread snapshot metadata to sidebar ordering and preview", async () => {
+    const props = createHarnessProps();
+    props.loadBootstrapMessages.mockImplementation(() => {
+      useChatListStore.getState().setFromMessages(
+        [
+          {
+            id: 201,
+            sender_id: 20,
+            sender_full_name: "Older Sender",
+            content: "older stream preview",
+            timestamp: 1000,
+            type: "stream",
+            stream_id: 12,
+            display_recipient: "engineering",
+            subject: "legacy topic",
+            flags: ["read"],
+          },
+          {
+            id: 202,
+            sender_id: 21,
+            sender_full_name: "Baseline Sender",
+            content: "baseline preview",
+            timestamp: 3000,
+            type: "stream",
+            stream_id: 20,
+            display_recipient: "design",
+            subject: "baseline topic",
+            flags: ["read"],
+          },
+        ],
+        7,
+      );
+      return Promise.resolve({ mode: "none", latestMessageIdHint: null });
+    });
+    fetchUnreadMessagesSnapshotMock.mockResolvedValueOnce([
+      {
+        id: 203,
+        sender_id: 20,
+        sender_full_name: "Fresh Sender",
+        content: "fresh unread preview",
+        timestamp: 9000,
+        type: "stream",
+        stream_id: 12,
+        display_recipient: "engineering",
+        subject: "incident response",
+        flags: [],
+      },
+    ]);
+
+    render(<Harness currentInstanceId="inst-1" props={props} />);
+
+    await waitFor(() => {
+      expect(startZulipEventLoopMock).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(useChatListStore.getState().streams()[0]!.stream_id).toBe(12);
+    });
+
+    const stream = useChatListStore.getState().streamsMap.get(12);
+    expect(stream?.lastMessage).toContain("fresh unread preview");
+    expect(stream?.topics.get("incident response")?.lastMessageId).toBe(203);
+    expect(stream?.topics.get("incident response")?.unreadCount).toBe(1);
   });
 
   it("starts Zulip event loop after bootstrap settles", async () => {

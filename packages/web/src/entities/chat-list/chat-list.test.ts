@@ -173,6 +173,188 @@ describe("chatListStore", () => {
       const topic = useChatListStore.getState().streamsMap.get(12)?.topics.get("channel events");
       expect(topic?.unreadCount).toBe(0);
     });
+
+    it("creates a missing unread DM with real timestamp and sorts it above older cached DMs", () => {
+      useChatListStore.getState().setFromMessages(
+        [
+          dmMsg({
+            id: 50,
+            timestamp: 1000,
+            display_recipient: [
+              { id: 10, full_name: "Me", email: "me@t.com" },
+              { id: 20, full_name: "Older", email: "older@t.com" },
+            ],
+            sender_id: OTHER_SENDER_ID,
+            flags: ["read"],
+          }),
+        ],
+        10,
+      );
+
+      useChatListStore.getState().reconcileUnreadFromMessages(
+        [
+          dmMsg({
+            id: 60,
+            timestamp: 5000,
+            sender_id: 30,
+            sender_full_name: "Newer Sender",
+            content: "fresh unread dm",
+            display_recipient: [
+              { id: 10, full_name: "Me", email: "me@t.com" },
+              { id: 30, full_name: "Newer", email: "newer@t.com" },
+            ],
+            flags: [],
+          }),
+        ],
+        10,
+      );
+
+      const dms = useChatListStore.getState().dms();
+      expect(dms[0]!.id).toBe(30);
+      expect(dms[0]!.ts).toBe(5000);
+      expect(dms[0]!.lastMessage).toContain("fresh unread dm");
+      expect(dms[0]!.badge).toBe(1);
+    });
+
+    it("refreshes existing DM metadata from a newer unread snapshot message", () => {
+      useChatListStore.getState().setFromMessages(
+        [
+          dmMsg({
+            id: 50,
+            timestamp: 1000,
+            sender_id: OTHER_SENDER_ID,
+            sender_full_name: "Older Sender",
+            content: "older dm preview",
+            flags: ["read"],
+          }),
+        ],
+        10,
+      );
+
+      useChatListStore.getState().reconcileUnreadFromMessages(
+        [
+          dmMsg({
+            id: 61,
+            timestamp: 7000,
+            sender_id: OTHER_SENDER_ID,
+            sender_full_name: "Fresh Sender",
+            content: "fresh unread dm preview",
+            flags: [],
+          }),
+        ],
+        10,
+      );
+
+      const dm = useChatListStore.getState().dmsMap.get("10,20");
+      expect(dm?.ts).toBe(7000);
+      expect(dm?.lastMessage).toContain("fresh unread dm preview");
+      expect(dm?.lastMessageId).toBe(61);
+      expect(dm?.unreadCount).toBe(1);
+    });
+
+    it("creates a missing unread topic with real metadata and promotes its stream", () => {
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: 101,
+            stream_id: 12,
+            display_recipient: "engineering",
+            subject: "older topic",
+            content: "older stream preview",
+            timestamp: 1000,
+            sender_id: OTHER_SENDER_ID,
+            flags: ["read"],
+          }),
+          streamMsg({
+            id: 102,
+            stream_id: 30,
+            display_recipient: "design",
+            subject: "baseline",
+            content: "baseline stream preview",
+            timestamp: 3000,
+            sender_id: OTHER_SENDER_ID,
+            flags: ["read"],
+          }),
+        ],
+        10,
+      );
+
+      useChatListStore.getState().reconcileUnreadFromMessages(
+        [
+          streamMsg({
+            id: 103,
+            stream_id: 12,
+            display_recipient: "engineering",
+            subject: "fresh topic",
+            content: "fresh unread topic preview",
+            timestamp: 9000,
+            sender_id: OTHER_SENDER_ID,
+            sender_full_name: "Fresh Stream Sender",
+            flags: [],
+          }),
+        ],
+        10,
+      );
+
+      const stream = useChatListStore.getState().streamsMap.get(12);
+      const topic = stream?.topics.get("fresh topic");
+      const streams = useChatListStore.getState().streams();
+
+      expect(topic?.ts).toBe(9000);
+      expect(topic?.lastMessage).toContain("fresh unread topic preview");
+      expect(topic?.lastMessageId).toBe(103);
+      expect(topic?.unreadCount).toBe(1);
+      expect(stream?.ts).toBe(9000);
+      expect(stream?.lastMessage).toContain("fresh unread topic preview");
+      expect(streams[0]!.stream_id).toBe(12);
+    });
+
+    it("refreshes existing topic metadata from a newer unread snapshot message", () => {
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: 104,
+            stream_id: 12,
+            display_recipient: "engineering",
+            subject: "channel events",
+            content: "old topic preview",
+            timestamp: 1000,
+            sender_id: OTHER_SENDER_ID,
+            sender_full_name: "Old Sender",
+            flags: ["read"],
+          }),
+        ],
+        10,
+      );
+
+      useChatListStore.getState().reconcileUnreadFromMessages(
+        [
+          streamMsg({
+            id: 105,
+            stream_id: 12,
+            display_recipient: "engineering",
+            subject: "channel events",
+            content: "new unread topic preview",
+            timestamp: 8000,
+            sender_id: OTHER_SENDER_ID,
+            sender_full_name: "New Sender",
+            flags: [],
+          }),
+        ],
+        10,
+      );
+
+      const stream = useChatListStore.getState().streamsMap.get(12);
+      const topic = stream?.topics.get("channel events");
+
+      expect(topic?.ts).toBe(8000);
+      expect(topic?.lastMessage).toContain("new unread topic preview");
+      expect(topic?.lastMessageSenderName).toBe("New Sender");
+      expect(topic?.lastMessageId).toBe(105);
+      expect(topic?.unreadCount).toBe(1);
+      expect(stream?.ts).toBe(8000);
+      expect(stream?.lastMessage).toContain("new unread topic preview");
+    });
   });
 
   // setFromMessages is the initial hydration path — called once after fetching message history.
