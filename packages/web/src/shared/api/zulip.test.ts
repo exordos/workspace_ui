@@ -2441,6 +2441,23 @@ describe("updateStream", () => {
     });
   });
 
+  it("serializes is_archived in PATCH body", async () => {
+    mockZulipApi.patch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { result: "success" },
+      raw: { statusText: "OK" },
+    });
+
+    await expect(updateStream(10, { isArchived: true })).resolves.toBe(true);
+    expect(mockZulipApi.patch).toHaveBeenCalledWith("/streams/10", { is_archived: "true" });
+  });
+
+  it("does not call PATCH when there is nothing to update", async () => {
+    await expect(updateStream(42, {})).resolves.toBe(true);
+    expect(mockZulipApi.patch).not.toHaveBeenCalled();
+  });
+
   it("returns false when stream update API is not ok", async () => {
     mockZulipApi.patch.mockResolvedValue({
       ok: false,

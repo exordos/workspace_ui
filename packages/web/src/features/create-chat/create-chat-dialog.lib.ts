@@ -1,4 +1,4 @@
-const CREATE_CHAT_TABS = ["dm", "group", "channel"] as const;
+const CREATE_CHAT_TABS = ["dm", "group", "channel", "archived"] as const;
 export type CreateChatTab = (typeof CREATE_CHAT_TABS)[number];
 
 export function getCreateChatTabs(): readonly CreateChatTab[] {
@@ -30,9 +30,8 @@ export function resolveNextTabFromKey(options: {
   }
   if (key === "ArrowLeft") {
     return (
-      CREATE_CHAT_TABS[
-        (currentTabIndex - 1 + CREATE_CHAT_TABS.length) % CREATE_CHAT_TABS.length
-      ] ?? null
+      CREATE_CHAT_TABS[(currentTabIndex - 1 + CREATE_CHAT_TABS.length) % CREATE_CHAT_TABS.length] ??
+      null
     );
   }
   if (key === "Home") {
@@ -43,4 +42,3 @@ export function resolveNextTabFromKey(options: {
   }
   return null;
 }
-

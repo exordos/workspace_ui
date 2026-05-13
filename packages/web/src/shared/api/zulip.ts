@@ -2615,7 +2615,7 @@ export async function renderMessageContent(content: string): Promise<string> {
 // Обновляет метаданные стрима.
 export async function updateStream(
   streamId: number,
-  params: { name?: string; description?: string },
+  params: { name?: string; description?: string; isArchived?: boolean },
 ): Promise<boolean> {
   guard.streamId(streamId, "updateStream.streamId");
   const body: Record<string, string> = {};
@@ -2625,6 +2625,9 @@ export async function updateStream(
   }
   if (params.description != null) {
     body.description = params.description.trim();
+  }
+  if (params.isArchived !== undefined) {
+    body.is_archived = params.isArchived ? "true" : "false";
   }
   if (Object.keys(body).length === 0) {
     return true;

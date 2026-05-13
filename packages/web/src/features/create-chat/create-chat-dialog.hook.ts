@@ -3,10 +3,25 @@ import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
+import { createLogger } from "~/shared/lib/logger";
 import { buildAnnouncementOnlyCanSendGroup } from "~/shared/lib/user-group-policy";
 import { buildUserPickerOptions, type UserPickerOption } from "~/shared/lib/user-picker";
 import { buildDmSlug, resolveNextTabFromKey, type CreateChatTab } from "./create-chat-dialog.lib";
-import { createChannel } from "./create-chat.api";
+import { createChannel, unarchiveChannel } from "./create-chat.api";
+
+const log = createLogger("create-chat:dialog");
+
+interface ArchivedChannelOption {
+  streamId: number;
+  name: string;
+  lastMessage: string;
+  time: string;
+}
+
+/** Состояние inline-ошибки разархивирования на вкладке «Архив». */
+export type UnarchiveInlineErrorState =
+  | { kind: "unsupported" }
+  | { kind: "failed"; message: string };
 
 export interface UseCreateChatDialogResult {
   tab: CreateChatTab;
@@ -47,6 +62,15 @@ export interface UseCreateChatDialogResult {
   channelCreateBlockedReasonKey: string | null;
   createChannel: () => void;
 
+  archivedSearch: string;
+  setArchivedSearch: (v: string) => void;
+  archivedChannels: ArchivedChannelOption[];
+  /** Асинхронное разархивирование; при успехе канал исчезает из списка после обновления store. */
+  onUnarchiveArchivedChannel: (streamId: number) => Promise<void>;
+  /** Id потоков, для которых сейчас выполняется запрос unarchive (кнопка в loading). */
+  unarchivePendingStreamIds: readonly number[];
+  unarchiveInlineError: UnarchiveInlineErrorState | null;
+
   buildDmSlug: (userId: number, fullName: string) => string;
 }
 
@@ -63,6 +87,7 @@ export function useCreateChatDialog(options: {
     dm: null,
     group: null,
     channel: null,
+    archived: null,
   });
 
   const tabIds: Record<CreateChatTab, string> = useMemo(
@@ -70,6 +95,7 @@ export function useCreateChatDialog(options: {
       dm: `${tabBaseId}-tab-dm`,
       group: `${tabBaseId}-tab-group`,
       channel: `${tabBaseId}-tab-channel`,
+      archived: `${tabBaseId}-tab-archived`,
     }),
     [tabBaseId],
   );
@@ -78,11 +104,13 @@ export function useCreateChatDialog(options: {
       dm: `${tabBaseId}-panel-dm`,
       group: `${tabBaseId}-panel-group`,
       channel: `${tabBaseId}-panel-channel`,
+      archived: `${tabBaseId}-panel-archived`,
     }),
     [tabBaseId],
   );
 
   const [userSearch, setUserSearch] = useState("");
+  const [archivedSearch, setArchivedSearch] = useState("");
   const [groupSelectedUserIds, setGroupSelectedUserIds] = useState<Set<number>>(new Set());
   const [channelSelectedUserIds, setChannelSelectedUserIds] = useState<Set<number>>(new Set());
   const [channelName, setChannelName] = useState("");
@@ -91,10 +119,14 @@ export function useCreateChatDialog(options: {
   const [channelAnnounce, setChannelAnnounce] = useState(false);
   const [channelAnnouncementOnly, setChannelAnnouncementOnly] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [unarchiveInlineError, setUnarchiveInlineError] =
+    useState<UnarchiveInlineErrorState | null>(null);
+  const [unarchivePendingStreamIds, setUnarchivePendingStreamIds] = useState<number[]>([]);
 
   const allUsers = useUsersStore((s) => s.users);
   const userGroups = useUserGroupsStore((s) => s.groups);
   const currentUserId = useChatListStore((s) => s.currentUserId ?? null);
+  const streamsMap = useChatListStore((s) => s.streamsMap);
   // Инвариант: пока профиль автора не загружен, создание канала недоступно.
   const channelCreateBlocked = currentUserId == null || currentUserId <= 0;
   const channelCreateBlockedReasonKey = channelCreateBlocked
@@ -164,11 +196,38 @@ export function useCreateChatDialog(options: {
     [pickerCandidates, channelSelectedUserIds, excludedUserIds, userSearch],
   );
 
+  const archivedChannels = useMemo<ArchivedChannelOption[]>(() => {
+    const normalizedQuery = archivedSearch.trim().toLowerCase();
+    const archived = Array.from(streamsMap.values())
+      .filter((stream) => stream.isArchived === true)
+      .map((stream) => ({
+        streamId: stream.stream_id,
+        name: stream.name,
+        lastMessage: stream.lastMessage,
+        time: stream.time,
+        ts: stream.ts,
+      }))
+      .sort((left, right) => right.ts - left.ts)
+      .filter((stream) => stream.name.toLowerCase().includes(normalizedQuery))
+      .map((stream) => ({
+        streamId: stream.streamId,
+        name: stream.name,
+        lastMessage: stream.lastMessage,
+        time: stream.time,
+      }));
+    return archived;
+  }, [archivedSearch, streamsMap]);
+
+  useEffect(() => {
+    setUnarchiveInlineError(null);
+  }, [archivedSearch]);
+
   useEffect(() => {
     if (open) return;
     void Promise.resolve().then(() => {
       setTab("dm");
       setUserSearch("");
+      setArchivedSearch("");
       setGroupSelectedUserIds(new Set());
       setChannelSelectedUserIds(new Set());
       setChannelName("");
@@ -177,6 +236,8 @@ export function useCreateChatDialog(options: {
       setChannelAnnounce(false);
       setChannelAnnouncementOnly(false);
       setCreating(false);
+      setUnarchiveInlineError(null);
+      setUnarchivePendingStreamIds([]);
     });
   }, [open]);
 
@@ -278,6 +339,33 @@ export function useCreateChatDialog(options: {
     return buildDmSlug(userId, fullName);
   }, []);
 
+  const onUnarchiveArchivedChannel = useCallback(async (streamId: number) => {
+    setUnarchiveInlineError(null);
+    setUnarchivePendingStreamIds((prev) => (prev.includes(streamId) ? prev : [...prev, streamId]));
+    try {
+      const result = await unarchiveChannel(streamId);
+      if (result.ok) {
+        return;
+      }
+      if (result.kind === "unsupported") {
+        setUnarchiveInlineError({ kind: "unsupported" });
+      } else {
+        setUnarchiveInlineError({ kind: "failed", message: result.message });
+      }
+      log.warn("unarchive channel rejected", {
+        streamId,
+        kind: result.kind,
+        status: result.status,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setUnarchiveInlineError({ kind: "failed", message });
+      log.error("unarchive channel threw", { streamId, error: message });
+    } finally {
+      setUnarchivePendingStreamIds((prev) => prev.filter((id) => id !== streamId));
+    }
+  }, []);
+
   return {
     tab,
     setTab,
@@ -311,6 +399,12 @@ export function useCreateChatDialog(options: {
     channelCreateBlocked,
     channelCreateBlockedReasonKey,
     createChannel: createChannelAction,
+    archivedSearch,
+    setArchivedSearch,
+    archivedChannels,
+    onUnarchiveArchivedChannel,
+    unarchivePendingStreamIds,
+    unarchiveInlineError,
     buildDmSlug: buildDmSlugFn,
   };
 }

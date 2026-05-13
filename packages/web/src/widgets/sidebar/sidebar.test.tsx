@@ -23,6 +23,7 @@ import { useSidebarConfigStore } from "./sidebar-config.model";
 import { Sidebar } from "./sidebar.ui";
 
 const createChannelMock = vi.fn();
+const unarchiveChannelMock = vi.fn();
 const markDmAsReadMock = vi.fn();
 const setTopicResolvedStateMock = vi.fn();
 const muteStreamMock = vi.fn();
@@ -42,6 +43,7 @@ vi.mock("~/features/create-chat/create-chat.api", async (importOriginal) => {
   return {
     ...actual,
     createChannel: (...args: unknown[]) => createChannelMock(...args),
+    unarchiveChannel: (...args: unknown[]) => unarchiveChannelMock(...args),
   };
 });
 
@@ -166,6 +168,7 @@ describe("Sidebar", () => {
     useSidebarConfigStore.getState().setCreateChatOpen(false);
     useSettingsStore.getState().resetToDefaults();
     createChannelMock.mockReset();
+    unarchiveChannelMock.mockReset();
     markDmAsReadMock.mockReset();
     setTopicResolvedStateMock.mockReset();
     muteStreamMock.mockReset();
@@ -199,6 +202,39 @@ describe("Sidebar", () => {
 
     expect(screen.queryByText(/direct messages/i)).not.toBeInTheDocument();
     expect(screen.getByText("Alice")).toBeInTheDocument();
+  });
+
+  it("закрывает модалку New chat и переходит в архивированный канал из вкладки Archived", async () => {
+    useChatListStore.getState().clear();
+    useChatListStore
+      .getState()
+      .upsertStreamMetadataRows([{ streamId: 501, name: "Legacy", isArchived: true }]);
+    useSidebarConfigStore.getState().setCreateChatOpen(true);
+
+    renderWithProviders(
+      <>
+        <RoutePathProbe />
+        <Sidebar
+          streams={[]}
+          selectedFolderId="all"
+          sidebarChats={[DM_CHAT]}
+          sidebarDms={[DM_CHAT]}
+        />
+      </>,
+      { route: "/" },
+    );
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Archived channels" }));
+    fireEvent.click(screen.getByText("#Legacy").closest("button")!);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(useSidebarConfigStore.getState().createChatOpen).toBe(false);
+    });
+
+    expect(screen.getByTestId("route-path")).toHaveTextContent("/stream/501-legacy");
   });
 
   it("renders loading state for folder chat list", () => {
@@ -583,6 +619,7 @@ describe("Sidebar", () => {
     const startChatTab = screen.getByRole("tab", { name: /start chat/i });
     const groupChatTab = screen.getByRole("tab", { name: /group chat/i });
     const createChannelTab = screen.getByRole("tab", { name: /create channel/i });
+    const archivedChannelsTab = screen.getByRole("tab", { name: /archived channels/i });
 
     expect(startChatTab).toHaveAttribute("aria-selected", "true");
     expect(groupChatTab).toHaveAttribute("aria-selected", "false");
@@ -594,12 +631,16 @@ describe("Sidebar", () => {
     expect(groupChatTab).toHaveAttribute("aria-selected", "true");
 
     fireEvent.keyDown(groupChatTab, { key: "End" });
-    expect(createChannelTab).toHaveFocus();
-    expect(createChannelTab).toHaveAttribute("aria-selected", "true");
+    expect(archivedChannelsTab).toHaveFocus();
+    expect(archivedChannelsTab).toHaveAttribute("aria-selected", "true");
 
-    fireEvent.keyDown(createChannelTab, { key: "Home" });
+    fireEvent.keyDown(archivedChannelsTab, { key: "Home" });
     expect(startChatTab).toHaveFocus();
     expect(startChatTab).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.keyDown(startChatTab, { key: "ArrowLeft" });
+    expect(archivedChannelsTab).toHaveFocus();
+    expect(createChannelTab).toHaveAttribute("aria-selected", "false");
   });
 
   it("wires create-chat tabs to tabpanels with aria relationships", () => {
@@ -613,6 +654,8 @@ describe("Sidebar", () => {
     const startChatTab = screen.getByRole("tab", { name: /start chat/i });
     const groupChatTab = screen.getByRole("tab", { name: /group chat/i });
     const createChannelTab = screen.getByRole("tab", { name: /create channel/i });
+    const archivedChannelsTab = screen.getByRole("tab", { name: /archived channels/i });
+    expect(screen.getAllByRole("tab")).toHaveLength(4);
 
     const startPanelId = startChatTab.getAttribute("aria-controls");
     expect(startPanelId).toBeTruthy();
@@ -635,6 +678,7 @@ describe("Sidebar", () => {
     expect(groupPanel).toHaveAttribute("aria-labelledby", groupChatTab.id);
 
     expect(createChannelTab).toHaveAttribute("aria-selected", "false");
+    expect(archivedChannelsTab).toHaveAttribute("aria-selected", "false");
   });
 
   it("passes channel options and selected subscribers to createChannel", async () => {

@@ -15,6 +15,7 @@ import {
   fetchSubscriptions,
   fetchTopics,
   removeMembersFromStream,
+  unarchiveStream,
   updateStream,
 } from "./zulip-streams";
 
@@ -480,6 +481,23 @@ describe("updateStream", () => {
     });
   });
 
+  it("serializes is_archived=false when updating archive flag", async () => {
+    mockZulipApi.patch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { result: "success" },
+      raw: { statusText: "OK" },
+    });
+
+    await expect(updateStream(10, { isArchived: false })).resolves.toBe(true);
+    expect(mockZulipApi.patch).toHaveBeenCalledWith("/streams/10", { is_archived: "false" });
+  });
+
+  it("short-circuits when PATCH body would be empty", async () => {
+    await expect(updateStream(10, {})).resolves.toBe(true);
+    expect(mockZulipApi.patch).not.toHaveBeenCalled();
+  });
+
   it("returns false when stream update API is not ok", async () => {
     mockZulipApi.patch.mockResolvedValue({
       ok: false,
@@ -489,6 +507,56 @@ describe("updateStream", () => {
     });
 
     await expect(updateStream(10, { name: "platform" })).resolves.toBe(false);
+  });
+});
+
+describe("unarchiveStream", () => {
+  it("PATCHes is_archived=false and succeeds on healthy response", async () => {
+    mockZulipApi.patch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { result: "success" },
+      raw: { statusText: "OK" },
+    });
+
+    await expect(unarchiveStream(10)).resolves.toEqual({ ok: true });
+    expect(mockZulipApi.patch).toHaveBeenCalledWith("/streams/10", { is_archived: "false" });
+  });
+
+  it("returns unsupported when server ignores is_archived parameter", async () => {
+    mockZulipApi.patch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        ignored_parameters_unsupported: ["is_archived"],
+      },
+      raw: { statusText: "OK" },
+    });
+
+    await expect(unarchiveStream(10)).resolves.toEqual(
+      expect.objectContaining({
+        ok: false,
+        kind: "unsupported",
+      }),
+    );
+  });
+
+  it("maps HTTP failures to transient/forbidden kinds", async () => {
+    mockZulipApi.patch.mockResolvedValue({
+      ok: false,
+      status: 403,
+      data: { result: "error", msg: "Not allowed", code: "FORBIDDEN" },
+      raw: { statusText: "Forbidden" },
+    });
+
+    await expect(unarchiveStream(88)).resolves.toEqual({
+      ok: false,
+      kind: "forbidden",
+      status: 403,
+      message: "Not allowed",
+      code: "FORBIDDEN",
+    });
   });
 });
 

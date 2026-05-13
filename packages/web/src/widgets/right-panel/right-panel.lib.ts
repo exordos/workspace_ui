@@ -64,12 +64,7 @@ export function resolveAvatarSrc(url: string | undefined | null): string | undef
   return resolveAvatarUrl(url, getRealmBaseUrl());
 }
 
-export function buildStreamSlug(streamId: number, streamName: string): string {
-  const lower = streamName.trim().toLowerCase();
-  const safe = lower.replace(/[^\p{L}\p{N}-]/gu, "-").replace(/-+/g, "-");
-  const slug = safe.replace(/^-|-$/g, "") || "chat";
-  return `${streamId}-${slug}`;
-}
+export { buildStreamSlug } from "~/shared/lib/stream-slug.lib";
 
 export function buildMailtoHref(email: string | undefined): string | undefined {
   if (!email) return undefined;

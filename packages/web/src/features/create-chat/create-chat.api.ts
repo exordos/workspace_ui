@@ -4,11 +4,14 @@
  * DM: just navigate to /dm/<userId> — no explicit "create" API needed.
  * Group: same — navigate to /dm/<id1>,<id2>,... with first message.
  * Channel: POST /channels/create to create and subscribe.
+ * Разархивирование: PATCH /streams/{stream_id} с `is_archived=false` (делегирование в shared `unarchiveStream`).
  *
- * Also provides channel listing and unsubscription for management flows.
+ * Также здесь же: списки каналов и unsubscribe для управляющих сценариев.
  */
 
 import { zulipApi } from "~/shared/api/client";
+import { unarchiveStream } from "~/shared/api/zulip-streams";
+import type { UnarchiveStreamResult } from "~/shared/api/zulip-streams";
 import type { ZulipGroupSettingValue } from "~/shared/api/zulip.types";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
@@ -84,6 +87,18 @@ export async function createChannel(params: {
     log.error("Channel creation error", { error: String(err) });
     return null;
   }
+}
+
+/** Результат операции разархивирования канала (тонкая обёртка над Zulip PATCH). */
+export type UnarchiveChannelResult = UnarchiveStreamResult;
+
+/**
+ * Снимает архив с канала: PATCH /streams/{stream_id} с is_archived=false.
+ * Ошибки совместимости (ignored_parameters_unsupported) классифицируются внутри unarchiveStream.
+ */
+export async function unarchiveChannel(streamId: number): Promise<UnarchiveChannelResult> {
+  guard.streamId(streamId, "unarchiveChannel.streamId");
+  return unarchiveStream(streamId);
 }
 
 // ---------------------------------------------------------------------------
