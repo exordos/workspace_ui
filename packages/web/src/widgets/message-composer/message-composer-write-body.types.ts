@@ -1,10 +1,5 @@
 import type { MentionSuggestion } from "~/features/mention-suggest/mention-suggest.types";
-import type {
-  ClipboardEvent,
-  Dispatch,
-  RefObject,
-  SetStateAction,
-} from "react";
+import type { ClipboardEvent, Dispatch, RefObject, SetStateAction } from "react";
 
 export interface MessageComposerWriteBodyProps {
   value: string;
@@ -23,4 +18,6 @@ export interface MessageComposerWriteBodyProps {
   onPaste: (e: ClipboardEvent<HTMLTextAreaElement>) => void;
   onSend: () => void | Promise<void>;
   onEditLastMessage?: () => void;
+  isEditing?: boolean;
+  onCancelEdit?: () => void;
 }

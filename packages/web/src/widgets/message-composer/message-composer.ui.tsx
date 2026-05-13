@@ -59,6 +59,8 @@ export type { ReplyQuote } from "./message-composer.types";
 
 export const MessageComposer: React.FC<MessageComposerProps> = ({
   onSend,
+  onSubmitEdit,
+  onCancelEdit,
   onCreateCallLink,
   onCancelUpload,
   disabled = false,
@@ -70,6 +72,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   initialValue,
   onValueChange,
   onEditLastMessage,
+  editSession,
   aiMessagesContext,
   aiChatContext,
 }) => {
@@ -104,6 +107,12 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   const clearMentionState = useMentionSuggestStore((s) => s.clear);
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const [mentionStartPos, setMentionStartPos] = useState(0);
+  // editSession приходит извне (ChatPage) и переводит composer в режим редактирования.
+  const isEditing = editSession != null;
+  // Здесь временно храним обычный черновик, чтобы восстановить его после завершения редактирования.
+  const editModeDraftSnapshotRef = useRef<string | null>(null);
+  const activeEditMessageIdRef = useRef<number | null>(null);
+  const effectiveReplyQuote = isEditing ? null : replyQuote;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const prevDisabledRef = useRef(disabled);
   useLayoutEffect(() => {
@@ -130,11 +139,36 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
 
   const initialValueRef = React.useRef(initialValue);
   React.useEffect(() => {
+    if (isEditing) return;
     if (initialValue !== initialValueRef.current) {
       initialValueRef.current = initialValue;
       setValue(initialValue ?? "");
     }
-  }, [initialValue]);
+  }, [initialValue, isEditing]);
+
+  React.useEffect(() => {
+    if (!isEditing || editSession == null) {
+      if (activeEditMessageIdRef.current == null) return;
+      // Выходим из edit-mode: возвращаем пользователю текст, который был до старта редактирования.
+      activeEditMessageIdRef.current = null;
+      if (editModeDraftSnapshotRef.current != null) {
+        setValue(editModeDraftSnapshotRef.current);
+      }
+      editModeDraftSnapshotRef.current = null;
+      return;
+    }
+
+    if (activeEditMessageIdRef.current === editSession.messageId) return;
+    // Входим в edit-mode: фиксируем текущий draft и подменяем значение текстом редактируемого сообщения.
+    editModeDraftSnapshotRef.current = value;
+    activeEditMessageIdRef.current = editSession.messageId;
+    setValue(editSession.initialMarkdown);
+    setAiMenuOpen(false);
+    setScheduleMenuOpen(false);
+    setSavedSnippetsMenuOpen(false);
+    setMediaPickerOpen(false);
+    setMode("write");
+  }, [editSession, isEditing, value]);
   const {
     files,
     setFiles,
@@ -147,11 +181,11 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     removeFileByIndex: removeFile,
     uploadProgressPercent,
     isUploadInProgress,
-  } = useMessageComposerUpload({ disabled, uploadProgress });
+  } = useMessageComposerUpload({ disabled: disabled || isEditing, uploadProgress });
   const [isComposerFocusWithin, setIsComposerFocusWithin] = useState(false);
   const outgoingBody = useMemo(
-    () => buildOutgoingMessageBody(value, replyQuote),
-    [value, replyQuote],
+    () => buildOutgoingMessageBody(value, effectiveReplyQuote),
+    [value, effectiveReplyQuote],
   );
   const preview = useMessageComposerPreview({ mode, outgoingBody });
   const scheduleOptions = useMemo<ScheduleMenuOption[]>(
@@ -213,10 +247,12 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     (marker: string) => {
       wrapSelection(textareaRef, marker, (nextValue) => {
         setValue(nextValue);
-        onValueChange?.(nextValue);
+        if (!isEditing) {
+          onValueChange?.(nextValue);
+        }
       });
     },
-    [onValueChange],
+    [isEditing, onValueChange],
   );
 
   void filePreviewUrls;
@@ -278,7 +314,9 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
       const mention = `@**${user.fullName}** `;
       const next = before + mention + after;
       setValue(next);
-      onValueChange?.(next);
+      if (!isEditing) {
+        onValueChange?.(next);
+      }
       hideMentionDropdown();
       setActiveMentionIndex(0);
       const newCursorPos = before.length + mention.length;
@@ -287,17 +325,19 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
         textareaRef.current?.setSelectionRange(newCursorPos, newCursorPos);
       });
     },
-    [value, mentionStartPos, onValueChange, hideMentionDropdown],
+    [value, mentionStartPos, onValueChange, hideMentionDropdown, isEditing],
   );
 
   const clearComposerInput = useCallback(() => {
-    if (replyQuote) {
+    if (effectiveReplyQuote) {
       onClearReply?.();
     }
     setValue("");
-    onValueChange?.("");
+    if (!isEditing) {
+      onValueChange?.("");
+    }
     setFiles([]);
-  }, [onClearReply, onValueChange, replyQuote]);
+  }, [onClearReply, onValueChange, effectiveReplyQuote, isEditing, setFiles]);
 
   const scheduleMessage = useCallback(
     (sendAt: number) => {
@@ -357,6 +397,19 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   }, [disabled, onSend, scheduledMessages]);
 
   const handleSend = async () => {
+    if (isEditing) {
+      // В edit-mode "send" работает как "save" для уже существующего сообщения.
+      if (disabled || editSession == null || onSubmitEdit == null) return;
+      const trimmed = value.trim();
+      if (trimmed.length === 0) return;
+      try {
+        await onSubmitEdit(editSession.messageId, trimmed);
+      } catch {
+        return;
+      }
+      return;
+    }
+
     const hasText = value.trim().length > 0;
     const hasFiles = files.length > 0;
     if ((!hasText && !hasFiles) || disabled) return;
@@ -383,7 +436,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     } catch {
       return;
     }
-    if (replyQuote) {
+    if (effectiveReplyQuote) {
       onClearReply?.();
     }
     setAiMenuOpen(false);
@@ -401,7 +454,9 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     if (emoji.length === 0) return;
     setValue((prev) => {
       const next = prev + emoji;
-      onValueChange?.(next);
+      if (!isEditing) {
+        onValueChange?.(next);
+      }
       return next;
     });
     const textarea = textareaRef.current;
@@ -411,31 +466,35 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     textarea.setSelectionRange(cursorPosition, cursorPosition);
   };
 
-  const handlePaste = useCallback((e: React.ClipboardEvent) => {
-    const items = e.clipboardData?.items;
-    if (!items) return;
+  const handlePaste = useCallback(
+    (e: React.ClipboardEvent) => {
+      if (isEditing) return;
+      const items = e.clipboardData?.items;
+      if (!items) return;
 
-    const imageFiles: File[] = [];
-    for (const item of Array.from(items)) {
-      if (item.type.startsWith("image/")) {
-        const file = item.getAsFile();
-        if (file) imageFiles.push(file);
+      const imageFiles: File[] = [];
+      for (const item of Array.from(items)) {
+        if (item.type.startsWith("image/")) {
+          const file = item.getAsFile();
+          if (file) imageFiles.push(file);
+        }
       }
-    }
 
-    if (imageFiles.length > 0) {
-      e.preventDefault();
-      setFiles((prev) => [...prev, ...imageFiles]);
-    }
-  }, []);
+      if (imageFiles.length > 0) {
+        e.preventDefault();
+        setFiles((prev) => [...prev, ...imageFiles]);
+      }
+    },
+    [isEditing, setFiles],
+  );
 
   const handleAttachClick = () => {
-    if (disabled) return;
+    if (disabled || isEditing) return;
     fileInputRef.current?.click();
   };
 
   const handleCreateCallLink = useCallback(() => {
-    if (disabled || onCreateCallLink == null) {
+    if (disabled || isEditing || onCreateCallLink == null) {
       return;
     }
     const callLink = onCreateCallLink()?.trim();
@@ -446,7 +505,9 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     setValue((prev) => {
       const needsLineBreak = prev.length > 0 && !prev.endsWith("\n");
       const next = needsLineBreak ? `${prev}\n${callLink}` : `${prev}${callLink}`;
-      onValueChange?.(next);
+      if (!isEditing) {
+        onValueChange?.(next);
+      }
       return next;
     });
     requestAnimationFrame(() => {
@@ -458,7 +519,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
       const cursorPosition = textarea.value.length;
       textarea.setSelectionRange(cursorPosition, cursorPosition);
     });
-  }, [disabled, onCreateCallLink, onValueChange]);
+  }, [disabled, isEditing, onCreateCallLink, onValueChange]);
 
   const resizeTextareaToContent = useCallback(() => {
     const textarea = textareaRef.current;
@@ -555,7 +616,9 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
       if (!textarea) {
         setValue((prev) => {
           const next = prev + content;
-          onValueChange?.(next);
+          if (!isEditing) {
+            onValueChange?.(next);
+          }
           return next;
         });
         setSavedSnippetsMenuOpen(false);
@@ -566,7 +629,9 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
       const selectionEnd = textarea.selectionEnd ?? value.length;
       const nextValue = value.slice(0, selectionStart) + content + value.slice(selectionEnd);
       setValue(nextValue);
-      onValueChange?.(nextValue);
+      if (!isEditing) {
+        onValueChange?.(nextValue);
+      }
       setSavedSnippetsMenuOpen(false);
       requestAnimationFrame(() => {
         textarea.focus();
@@ -574,7 +639,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
         textarea.setSelectionRange(cursor, cursor);
       });
     },
-    [onValueChange, value],
+    [isEditing, onValueChange, value],
   );
 
   const updateSavedSnippetsMenuPosition = useCallback(() => {
@@ -722,16 +787,20 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
         removeFile={removeFile}
         scheduledMessages={scheduledMessages}
         onCancelScheduled={cancelScheduledMessage}
-        replyQuote={replyQuote}
+        replyQuote={effectiveReplyQuote}
         onClearReply={onClearReply}
+        isEditing={isEditing}
+        onCancelEdit={onCancelEdit}
       />
 
-      <MessageComposerSmartReplyStrip
-        onAccept={(text) => {
-          setValue(text);
-          onValueChange?.(text);
-        }}
-      />
+      {!isEditing && (
+        <MessageComposerSmartReplyStrip
+          onAccept={(text) => {
+            setValue(text);
+            onValueChange?.(text);
+          }}
+        />
+      )}
 
       <div
         data-testid="composer-toolbar-row"
@@ -752,22 +821,26 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
                 textareaRef={textareaRef}
                 onValueChange={(v) => {
                   setValue(v);
-                  onValueChange?.(v);
+                  if (!isEditing) {
+                    onValueChange?.(v);
+                  }
                 }}
                 fileTrigger={
-                  <button
-                    type="button"
-                    className={TOOLBAR_BTN}
-                    onClick={handleAttachClick}
-                    disabled={disabled}
-                    aria-label={t("a11y.attachFile")}
-                    title={t("a11y.attachFile")}
-                  >
-                    <Icon name="attach" size={16} />
-                  </button>
+                  !isEditing ? (
+                    <button
+                      type="button"
+                      className={TOOLBAR_BTN}
+                      onClick={handleAttachClick}
+                      disabled={disabled}
+                      aria-label={t("a11y.attachFile")}
+                      title={t("a11y.attachFile")}
+                    >
+                      <Icon name="attach" size={16} />
+                    </button>
+                  ) : undefined
                 }
                 callLinkTrigger={
-                  onCreateCallLink != null ? (
+                  !isEditing && onCreateCallLink != null ? (
                     <button
                       type="button"
                       className={TOOLBAR_BTN}
@@ -781,41 +854,47 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
                   ) : undefined
                 }
                 scheduleTrigger={
-                  <button
-                    ref={scheduleButtonRef}
-                    type="button"
-                    className={TOOLBAR_BTN}
-                    onClick={toggleScheduleMenu}
-                    disabled={disabled || onSend == null}
-                    aria-label={t("a11y.messageMenu")}
-                    title={t("a11y.messageMenu")}
-                  >
-                    <Icon name="calendar" size={16} />
-                  </button>
+                  !isEditing ? (
+                    <button
+                      ref={scheduleButtonRef}
+                      type="button"
+                      className={TOOLBAR_BTN}
+                      onClick={toggleScheduleMenu}
+                      disabled={disabled || onSend == null}
+                      aria-label={t("a11y.messageMenu")}
+                      title={t("a11y.messageMenu")}
+                    >
+                      <Icon name="calendar" size={16} />
+                    </button>
+                  ) : undefined
                 }
                 snippetsTrigger={
-                  <button
-                    ref={savedSnippetsButtonRef}
-                    type="button"
-                    className={TOOLBAR_BTN}
-                    onClick={toggleSavedSnippetsMenu}
-                    disabled={disabled}
-                    aria-label={t("composer.savedSnippets")}
-                    title={t("composer.savedSnippets")}
-                  >
-                    <Icon name="chat_bubble_outline" size={16} />
-                  </button>
+                  !isEditing ? (
+                    <button
+                      ref={savedSnippetsButtonRef}
+                      type="button"
+                      className={TOOLBAR_BTN}
+                      onClick={toggleSavedSnippetsMenu}
+                      disabled={disabled}
+                      aria-label={t("composer.savedSnippets")}
+                      title={t("composer.savedSnippets")}
+                    >
+                      <Icon name="chat_bubble_outline" size={16} />
+                    </button>
+                  ) : undefined
                 }
                 aiTrigger={
-                  <AiComposerButton
-                    onClick={() => {
-                      setMediaPickerOpen(false);
-                      setScheduleMenuOpen(false);
-                      setSavedSnippetsMenuOpen(false);
-                      setAiMenuOpen((o) => !o);
-                    }}
-                    active={aiMenuOpen}
-                  />
+                  !isEditing ? (
+                    <AiComposerButton
+                      onClick={() => {
+                        setMediaPickerOpen(false);
+                        setScheduleMenuOpen(false);
+                        setSavedSnippetsMenuOpen(false);
+                        setAiMenuOpen((o) => !o);
+                      }}
+                      active={aiMenuOpen}
+                    />
+                  ) : undefined
                 }
               />
             )}
@@ -825,18 +904,20 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
 
       {/* Input row */}
       <div className="relative p-3">
-        <MessageComposerAiActionMenuLayer
-          open={aiMenuOpen}
-          draft={value}
-          onInsert={(text) => {
-            setValue(text);
-            onValueChange?.(text);
-          }}
-          onOpenChange={setAiMenuOpen}
-          messagesContext={aiMessagesContext ?? []}
-          chatContext={aiChatContext}
-        />
-        {scheduleMenuOpen && (
+        {!isEditing && (
+          <MessageComposerAiActionMenuLayer
+            open={aiMenuOpen}
+            draft={value}
+            onInsert={(text) => {
+              setValue(text);
+              onValueChange?.(text);
+            }}
+            onOpenChange={setAiMenuOpen}
+            messagesContext={aiMessagesContext ?? []}
+            chatContext={aiChatContext}
+          />
+        )}
+        {!isEditing && scheduleMenuOpen && (
           <MessageComposerSchedulePopover
             scheduleMenuStyle={scheduleMenuStyle}
             options={scheduleOptions}
@@ -846,7 +927,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
             onCloseBackdrop={() => setScheduleMenuOpen(false)}
           />
         )}
-        {savedSnippetsMenuOpen && (
+        {!isEditing && savedSnippetsMenuOpen && (
           <MessageComposerSavedSnippetsDialog
             dialogStyle={savedSnippetsMenuStyle}
             createMode={savedSnippetCreateMode}
@@ -915,7 +996,9 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
                 onStickerSelect={(markdown) => {
                   setValue((prev) => {
                     const next = prev + markdown;
-                    onValueChange?.(next);
+                    if (!isEditing) {
+                      onValueChange?.(next);
+                    }
                     return next;
                   });
                   setMediaPickerOpen(false);
@@ -938,13 +1021,17 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
                   onHideMentionDropdown={hideMentionDropdown}
                   onValueChange={(next) => {
                     setValue(next);
-                    onValueChange?.(next);
+                    if (!isEditing) {
+                      onValueChange?.(next);
+                    }
                   }}
                   onDetectMention={detectMention}
                   applyFormattingShortcut={applyFormattingShortcut}
                   onPaste={handlePaste}
                   onSend={handleSend}
                   onEditLastMessage={onEditLastMessage}
+                  isEditing={isEditing}
+                  onCancelEdit={onCancelEdit}
                 />
               ) : (
                 <MessageComposerPreviewBody
@@ -962,9 +1049,9 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
             onClick={() => {
               void handleSend();
             }}
-            disabled={disabled}
+            disabled={disabled || (isEditing && value.trim().length === 0)}
             className="flex h-9 w-9 flex-shrink-0 items-center justify-center gap-0 self-center rounded-l-xl rounded-r-xl bg-composer-send text-on-accent transition-opacity hover:opacity-90 disabled:opacity-50"
-            aria-label={t("chat.sendPlaceholder")}
+            aria-label={isEditing ? t("common.save") : t("chat.sendPlaceholder")}
           >
             <Icon name="send" size={18} className="text-on-accent" />
           </button>

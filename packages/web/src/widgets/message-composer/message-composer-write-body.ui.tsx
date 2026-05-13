@@ -1,5 +1,4 @@
 import React from "react";
-import { t } from "~/i18n/i18n";
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
 import { ComposerMentionDropdown } from "./message-composer-mention-dropdown.ui";
 import type { MessageComposerWriteBodyProps } from "./message-composer-write-body.types";
@@ -21,6 +20,8 @@ export const MessageComposerWriteBody = React.memo(function MessageComposerWrite
   onPaste,
   onSend,
   onEditLastMessage,
+  isEditing = false,
+  onCancelEdit,
 }: MessageComposerWriteBodyProps) {
   return (
     <>
@@ -74,10 +75,17 @@ export const MessageComposerWriteBody = React.memo(function MessageComposerWrite
             !e.metaKey &&
             !e.ctrlKey &&
             !e.altKey &&
+            !isEditing &&
             onEditLastMessage != null
           ) {
             e.preventDefault();
             onEditLastMessage();
+            return;
+          }
+
+          if (e.key === "Escape" && isEditing && onCancelEdit != null) {
+            e.preventDefault();
+            onCancelEdit();
             return;
           }
 

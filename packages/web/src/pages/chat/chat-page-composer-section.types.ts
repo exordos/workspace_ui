@@ -1,4 +1,5 @@
 import type { AiMessageContext, AiReplyRequest } from "~/features/ai-reply/ai-reply.types";
+import type { ComposerEditSession } from "~/widgets/message-composer/message-composer.types";
 import type { ComposerUploadProgressState } from "./chat-upload.lib";
 
 export interface ChatPageComposerSectionProps {
@@ -24,6 +25,9 @@ export interface ChatPageComposerSectionProps {
   draftInitialValue: string | undefined;
   onComposerValueChange: (v: string) => void;
   onEditLastMessage: () => void;
+  editSession: ComposerEditSession | null;
+  onSubmitEdit: (messageId: number, content: string) => void | Promise<void>;
+  onCancelEdit: () => void;
   aiMessagesContext: AiMessageContext[];
   aiChatContext: AiReplyRequest["chatContext"] | undefined;
 }

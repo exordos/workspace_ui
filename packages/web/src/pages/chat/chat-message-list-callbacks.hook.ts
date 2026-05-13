@@ -27,7 +27,7 @@ export function useChatMessageListCallbacks(
     navigate,
     rightDrawer,
     setReplyQuote,
-    setEditingMessage,
+    requestMessageEdit,
     setDeleteConfirm,
     setToastMessage,
     setForwardMessages,
@@ -63,7 +63,7 @@ export function useChatMessageListCallbacks(
         });
       },
       onMessageEdit(msg) {
-        setEditingMessage(msg);
+        requestMessageEdit(msg);
       },
       onMessageDelete(msg) {
         setDeleteConfirm({ type: "single", messageId: msg.id });
@@ -197,7 +197,7 @@ export function useChatMessageListCallbacks(
       navigate,
       rightDrawer,
       setReplyQuote,
-      setEditingMessage,
+      requestMessageEdit,
       setDeleteConfirm,
       setToastMessage,
       setForwardMessages,

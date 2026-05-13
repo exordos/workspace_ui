@@ -1051,6 +1051,84 @@ describe("MessageComposer edit-last shortcut", () => {
   });
 });
 
+describe("MessageComposer edit session", () => {
+  it("submits edited content and restores previous draft after session closes", async () => {
+    const onSubmitEdit = vi.fn().mockResolvedValue(undefined);
+    const onValueChange = vi.fn();
+    const onCancelEdit = vi.fn();
+    const { rerender } = renderWithProviders(
+      <MessageComposer
+        onSend={vi.fn()}
+        initialValue="draft before edit"
+        onValueChange={onValueChange}
+        onSubmitEdit={onSubmitEdit}
+        onCancelEdit={onCancelEdit}
+      />,
+    );
+
+    const textbox = screen.getByRole("textbox");
+    expect(textbox).toHaveValue("draft before edit");
+
+    rerender(
+      <MessageComposer
+        onSend={vi.fn()}
+        initialValue="draft before edit"
+        onValueChange={onValueChange}
+        onSubmitEdit={onSubmitEdit}
+        onCancelEdit={onCancelEdit}
+        editSession={{ messageId: 42, initialMarkdown: "message to edit" }}
+      />,
+    );
+
+    expect(textbox).toHaveValue("message to edit");
+    fireEvent.change(textbox, { target: { value: "edited message body" } });
+    fireEvent.keyDown(textbox, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(onSubmitEdit).toHaveBeenCalledWith(42, "edited message body");
+    });
+    expect(onValueChange).not.toHaveBeenCalled();
+
+    rerender(
+      <MessageComposer
+        onSend={vi.fn()}
+        initialValue="draft before edit"
+        onValueChange={onValueChange}
+        onSubmitEdit={onSubmitEdit}
+        onCancelEdit={onCancelEdit}
+      />,
+    );
+
+    expect(textbox).toHaveValue("draft before edit");
+  });
+
+  it("cancels edit session on Escape and restores previous draft", () => {
+    const onCancelEdit = vi.fn();
+    const { rerender } = renderWithProviders(
+      <MessageComposer onSend={vi.fn()} initialValue="draft text" onCancelEdit={onCancelEdit} />,
+    );
+
+    const textbox = screen.getByRole("textbox");
+    rerender(
+      <MessageComposer
+        onSend={vi.fn()}
+        initialValue="draft text"
+        onCancelEdit={onCancelEdit}
+        editSession={{ messageId: 7, initialMarkdown: "server markdown" }}
+      />,
+    );
+
+    expect(textbox).toHaveValue("server markdown");
+    fireEvent.keyDown(textbox, { key: "Escape" });
+    expect(onCancelEdit).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <MessageComposer onSend={vi.fn()} initialValue="draft text" onCancelEdit={onCancelEdit} />,
+    );
+    expect(textbox).toHaveValue("draft text");
+  });
+});
+
 describe("MessageComposer send shortcuts", () => {
   it("renders icon-only send button while preserving accessible name", () => {
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);

@@ -25,6 +25,9 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
   draftInitialValue,
   onComposerValueChange,
   onEditLastMessage,
+  editSession,
+  onSubmitEdit,
+  onCancelEdit,
   aiMessagesContext,
   aiChatContext,
 }: ChatPageComposerSectionProps) {
@@ -68,6 +71,9 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
       initialValue={draftInitialValue}
       onValueChange={onComposerValueChange}
       onEditLastMessage={onEditLastMessage}
+      editSession={editSession}
+      onSubmitEdit={onSubmitEdit}
+      onCancelEdit={onCancelEdit}
       aiMessagesContext={aiMessagesContext}
       aiChatContext={aiChatContext}
     />

@@ -51,6 +51,7 @@ import { getPresenceState, formatLastSeen } from "~/shared/lib/format";
 import { buildJitsiMeetingUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
 import { createLogger } from "~/shared/lib/logger";
 import { logMessageFlow, summarizeChatContextForLog } from "~/shared/lib/message-flow-debug.lib";
+import { isLikelyRenderedMessageHtml } from "~/shared/lib/message-markdown-display.lib";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { useShortcut } from "~/shared/lib/shortcuts";
 import { resolveCanonicalStreamName } from "~/shared/lib/stream-name.lib";
@@ -85,7 +86,6 @@ import { resolveNextUnreadTopicRoute } from "./chat-next-unread-topic.lib";
 import { isAbortLikeError, normalizeAiContextContent } from "./chat-page-ai.lib";
 import { ChatPageComposerSection } from "./chat-page-composer-section.ui";
 import { ChatPageDeleteConfirmBar } from "./chat-page-delete-confirm-bar.ui";
-import { EditMessageModalBody } from "./chat-page-edit-message-modal.ui";
 import { ChatPageFloatingToast } from "./chat-page-floating-toast.ui";
 import { useChatForwardHydration } from "./chat-page-forward-hydration.hook";
 import { ForwardMessageModalBody } from "./chat-page-forward-modal.ui";
@@ -106,6 +106,11 @@ import { uploadComposerFiles, type ComposerUploadProgressState } from "./chat-up
 
 const log = createLogger("chat-page");
 const AI_CONTEXT_MESSAGES_LIMIT = 30;
+
+interface ComposerEditSessionState {
+  messageId: number;
+  initialMarkdown: string;
+}
 
 export const ChatPage: React.FC = () => {
   const navigate = useNavigate();
@@ -244,7 +249,9 @@ export const ChatPage: React.FC = () => {
   } | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedMessageIds, setSelectedMessageIds] = useState<Set<number>>(new Set());
-  const [editingMessage, setEditingMessage] = useState<MockMessage | null>(null);
+  const [composerEditSession, setComposerEditSession] = useState<ComposerEditSessionState | null>(
+    null,
+  );
   const { forwardMessages, setForwardMessages, forwardSelectedText, setForwardSelectedText } =
     useChatForwardHydration({ forwardMessageId, messages });
   const [actionError, setActionError] = useState<string | null>(null);
@@ -261,6 +268,7 @@ export const ChatPage: React.FC = () => {
   const optimisticMessageIdRef = useRef(-1);
   const jitsiHeaderCallInFlightRef = useRef(false);
   const uploadAbortControllerRef = useRef<AbortController | null>(null);
+  const editRequestTokenRef = useRef(0);
   const [deleteConfirm, setDeleteConfirm] = useState<
     { type: "single"; messageId: number } | { type: "bulk"; messageIds: number[] } | null
   >(null);
@@ -344,6 +352,12 @@ export const ChatPage: React.FC = () => {
     });
   }, [isDmView, activeDmUserIds, resolvedStreamId]);
   const draftTopic = activeTopic ?? "";
+
+  useEffect(() => {
+    // При смене маршрута закрываем edit-сессию и инвалидируем незавершённые загрузки markdown.
+    editRequestTokenRef.current += 1;
+    setComposerEditSession(null);
+  }, [location.pathname]);
 
   useEffect(() => {
     if (!draftType || draftTo.length === 0) return;
@@ -661,6 +675,9 @@ export const ChatPage: React.FC = () => {
 
   const handleComposerValueChange = useCallback(
     (v: string) => {
+      if (composerEditSession != null) {
+        return;
+      }
       composerValueRef.current = v;
       onComposerValueChangeTyping(v);
 
@@ -691,7 +708,7 @@ export const ChatPage: React.FC = () => {
         });
       }
     },
-    [onComposerValueChangeTyping, draftType, draftTo, draftTopic],
+    [onComposerValueChangeTyping, draftType, draftTo, draftTopic, composerEditSession],
   );
 
   useEffect(() => stopTypingNow, [stopTypingNow]);
@@ -1429,6 +1446,52 @@ export const ChatPage: React.FC = () => {
     controller.abort();
   }, []);
 
+  const resolveEditableMessageMarkdown = useCallback(
+    async (message: MockMessage): Promise<string> => {
+      // 1) Берём markdown из уже загруженного сообщения.
+      const fromSource = message.markdown_source?.trim();
+      if (fromSource != null && fromSource.length > 0) {
+        return fromSource;
+      }
+
+      // 2) Если контент выглядит как markdown, используем его без дополнительного запроса.
+      const body = message.content.trim();
+      if (body.length > 0 && !isLikelyRenderedMessageHtml(body)) {
+        return body;
+      }
+
+      // 3) Fallback: догружаем сообщение с сервера, чтобы получить raw markdown.
+      const fresh = await fetchMessageById(message.id);
+      const freshSource = fresh?.markdown_source?.trim();
+      if (freshSource != null && freshSource.length > 0) {
+        return freshSource;
+      }
+
+      const freshBody = fresh?.content?.trim() ?? "";
+      if (freshBody.length > 0 && !isLikelyRenderedMessageHtml(freshBody)) {
+        return freshBody;
+      }
+
+      return "";
+    },
+    [],
+  );
+
+  const requestMessageEdit = useCallback(
+    (message: MockMessage) => {
+      if (message.id <= 0) return;
+      // Токен защищает от race: применяем результат только последнего запроса на редактирование.
+      const requestToken = editRequestTokenRef.current + 1;
+      editRequestTokenRef.current = requestToken;
+      setActionError(null);
+      void resolveEditableMessageMarkdown(message).then((initialMarkdown) => {
+        if (editRequestTokenRef.current !== requestToken) return;
+        setComposerEditSession({ messageId: message.id, initialMarkdown });
+      });
+    },
+    [resolveEditableMessageMarkdown],
+  );
+
   const messageCallbacks = useChatMessageListCallbacks({
     selectionMode,
     currentUserId,
@@ -1438,7 +1501,7 @@ export const ChatPage: React.FC = () => {
     navigate,
     rightDrawer,
     setReplyQuote,
-    setEditingMessage,
+    requestMessageEdit,
     setDeleteConfirm,
     setToastMessage,
     setForwardMessages,
@@ -1454,27 +1517,29 @@ export const ChatPage: React.FC = () => {
     onRemoveFailedOutgoing: handleRemoveFailedOutgoing,
   });
 
-  const handleSaveEdit = useCallback(
-    async (markdown: string) => {
-      if (!editingMessage) return;
+  const handleSubmitComposerEdit = useCallback(
+    async (messageId: number, markdown: string) => {
       setActionError(null);
       try {
-        await updateMessage(editingMessage.id, { content: markdown });
-        const fresh = await fetchMessageById(editingMessage.id);
+        // Сохраняем изменения на сервере и сразу синхронизируем локальный store.
+        await updateMessage(messageId, { content: markdown });
+        const fresh = await fetchMessageById(messageId);
         if (fresh) {
           updateMessageContentInStore(fresh.id, fresh.content, fresh.markdown_source);
         }
-        setEditingMessage(null);
+        setComposerEditSession(null);
       } catch (err) {
         setActionError(err instanceof Error ? err.message : t("message.saveError"));
+        throw err;
       }
     },
-    [editingMessage, updateMessageContentInStore, t],
+    [updateMessageContentInStore, t],
   );
+
   const handleEditLastMessage = useCallback(() => {
     if (lastOwnMessageForEdit == null) return;
-    setEditingMessage(lastOwnMessageForEdit);
-  }, [lastOwnMessageForEdit]);
+    requestMessageEdit(lastOwnMessageForEdit);
+  }, [lastOwnMessageForEdit, requestMessageEdit]);
 
   const handleForwardTo = useCallback(
     (stream: string, topic: string, to?: number[]) => {
@@ -1679,29 +1744,6 @@ export const ChatPage: React.FC = () => {
 
   return (
     <div className="flex max-h-full min-h-0 min-w-0 max-w-narrow-page flex-1 flex-col overflow-hidden">
-      {/* Edit message modal */}
-      <Dialog.Root
-        open={!!editingMessage}
-        onOpenChange={(open) => !open && setEditingMessage(null)}
-      >
-        <Dialog.Portal>
-          <Dialog.Overlay className="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-overlay bg-black/50" />
-          <Dialog.Content
-            className="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed left-1/2 top-1/2 z-modal flex max-h-[80vh] w-full max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl border border-border-subtle bg-bg-elevated shadow-xl"
-            onCloseAutoFocus={(e) => e.preventDefault()}
-          >
-            {editingMessage && (
-              <EditMessageModalBody
-                key={editingMessage.id}
-                message={editingMessage}
-                onSave={handleSaveEdit}
-                onClose={() => setEditingMessage(null)}
-              />
-            )}
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
-
       {/* Forward message modal */}
       <Dialog.Root
         open={forwardMessages.length > 0}
@@ -1825,6 +1867,9 @@ export const ChatPage: React.FC = () => {
           draftInitialValue={draftInitialValue}
           onComposerValueChange={handleComposerValueChange}
           onEditLastMessage={handleEditLastMessage}
+          editSession={composerEditSession}
+          onSubmitEdit={handleSubmitComposerEdit}
+          onCancelEdit={() => setComposerEditSession(null)}
           aiMessagesContext={aiMessagesContext}
           aiChatContext={aiChatContext}
         />

@@ -23,6 +23,8 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
     onCancelScheduled,
     replyQuote,
     onClearReply,
+    isEditing = false,
+    onCancelEdit,
   }) => {
     const replyQuotePreview = useMemo(() => {
       if (replyQuote == null) return "";
@@ -32,7 +34,22 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
 
     return (
       <>
-        {uploadProgress != null && uploadProgress.total > 0 && (
+        {isEditing && (
+          <div className="flex items-center justify-between border-b border-border-subtle bg-bg px-4 py-2">
+            <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
+              {t("message.edit")}
+            </p>
+            <button
+              type="button"
+              onClick={() => onCancelEdit?.()}
+              className="rounded px-2 py-1 text-xs text-text-muted hover:bg-bg-elevated hover:text-text-primary"
+            >
+              {t("common.cancel")}
+            </button>
+          </div>
+        )}
+
+        {!isEditing && uploadProgress != null && uploadProgress.total > 0 && (
           <div className="px-4 pb-1 pt-2">
             <div className="flex items-center justify-between gap-2 text-xs text-text-muted">
               <span>
@@ -64,7 +81,7 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
           </div>
         )}
 
-        {files.length > 0 && (
+        {!isEditing && files.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 px-4 py-2">
             {files.map((file, i) => {
               const previewUrl = filePreviewUrls[i] ?? null;
@@ -122,7 +139,7 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
           </div>
         )}
 
-        {scheduledMessages.length > 0 && (
+        {!isEditing && scheduledMessages.length > 0 && (
           <div className="px-4 pb-2">
             <div className="space-y-1 rounded-lg border border-border-subtle bg-bg px-2 py-2">
               {[...scheduledMessages]
@@ -151,7 +168,7 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
           </div>
         )}
 
-        {replyQuote && (
+        {!isEditing && replyQuote && (
           <div className="bg-bg/50 flex items-start gap-2 border-b border-border-subtle px-4 py-2">
             <div className="min-w-0 flex-1">
               <p className="text-[11px] text-text-muted">

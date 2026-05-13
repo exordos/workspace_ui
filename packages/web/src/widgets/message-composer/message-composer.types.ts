@@ -27,8 +27,15 @@ export interface ScheduledComposerMessage {
   sendAt: number;
 }
 
+export interface ComposerEditSession {
+  messageId: number;
+  initialMarkdown: string;
+}
+
 export interface MessageComposerProps {
   onSend?: (content: string, subject?: string, files?: File[]) => void | Promise<void>;
+  onSubmitEdit?: (messageId: number, content: string) => void | Promise<void>;
+  onCancelEdit?: () => void;
   onCreateCallLink?: () => string | null;
   onCancelUpload?: () => void;
   disabled?: boolean;
@@ -45,6 +52,8 @@ export interface MessageComposerProps {
   onValueChange?: (value: string) => void;
   /** Trigger edit mode for the latest own message when composer is empty. */
   onEditLastMessage?: () => void;
+  /** Active message edit session routed from chat page. */
+  editSession?: ComposerEditSession | null;
   /** Recent chat messages used as AI context. */
   aiMessagesContext?: AiMessageContext[];
   /** Current chat metadata used by AI provider. */
@@ -88,4 +97,6 @@ export interface MessageComposerPrefaceProps {
   onCancelScheduled: (id: string) => void;
   replyQuote: ReplyQuote | null | undefined;
   onClearReply?: () => void;
+  isEditing?: boolean;
+  onCancelEdit?: () => void;
 }

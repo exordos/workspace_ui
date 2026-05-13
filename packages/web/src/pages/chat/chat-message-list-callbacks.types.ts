@@ -20,7 +20,7 @@ export interface UseChatMessageListCallbacksParams {
       permalinkUrl: string | null;
     } | null>
   >;
-  setEditingMessage: Dispatch<SetStateAction<MockMessage | null>>;
+  requestMessageEdit: (message: MockMessage) => void;
   setDeleteConfirm: Dispatch<
     SetStateAction<
       { type: "single"; messageId: number } | { type: "bulk"; messageIds: number[] } | null
