@@ -47,6 +47,15 @@ describe("registerQueue", () => {
     expect(mockZulipApi.post).toHaveBeenCalledWith("/register", {
       event_types: JSON.stringify(["message", "presence"]),
       apply_markdown: "false",
+      client_capabilities: JSON.stringify({
+        notification_settings_null: true,
+        bulk_message_deletion: true,
+        user_avatar_url_field_optional: true,
+        stream_typing_notifications: true,
+        user_settings_object: true,
+        archived_channels: true,
+        empty_topic_name: true,
+      }),
       fetch_event_types: JSON.stringify([
         "subscription",
         "user_topic",
@@ -125,8 +134,8 @@ describe("registerQueue", () => {
         queue_id: "q-123",
         last_event_id: -1,
         subscriptions: [
-          { stream_id: 10, name: "general", is_muted: true },
-          { stream_id: 11, name: "dev", in_home_view: false },
+          { stream_id: 10, name: "general", is_muted: true, is_archived: false },
+          { stream_id: 11, name: "dev", in_home_view: false, is_archived: true },
         ],
       },
       raw: { statusText: "OK" },
@@ -134,8 +143,8 @@ describe("registerQueue", () => {
 
     const result = await registerQueue(["message"], ["subscription"]);
     expect(result.subscriptions).toEqual([
-      { stream_id: 10, name: "general", is_muted: true },
-      { stream_id: 11, name: "dev", is_muted: true },
+      { stream_id: 10, name: "general", is_muted: true, is_archived: false },
+      { stream_id: 11, name: "dev", is_muted: true, is_archived: true },
     ]);
   });
 
@@ -266,7 +275,22 @@ describe("registerQueueForCredentials", () => {
     });
     expect(mockFetch).toHaveBeenCalledWith(
       "https://other.example.com/api/v1/register",
-      expect.objectContaining({ method: "POST" }),
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining(
+          `client_capabilities=${encodeURIComponent(
+            JSON.stringify({
+              notification_settings_null: true,
+              bulk_message_deletion: true,
+              user_avatar_url_field_optional: true,
+              stream_typing_notifications: true,
+              user_settings_object: true,
+              archived_channels: true,
+              empty_topic_name: true,
+            }),
+          )}`,
+        ),
+      }),
     );
   });
 

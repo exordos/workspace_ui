@@ -306,6 +306,29 @@ describe("dispatchZulipEvent", () => {
       ]);
     });
 
+    it("maps is_archived on stream create metadata row", () => {
+      const { ctx } = buildCtx();
+      const upsertSpy = vi.spyOn(ctx.chatList, "upsertStreamMetadataRows");
+
+      dispatchZulipEvent(
+        {
+          id: 181,
+          type: "stream",
+          op: "create",
+          streams: [{ stream_id: 42, name: "engineering", is_archived: true }],
+        } as ZulipEvent,
+        ctx,
+      );
+
+      expect(upsertSpy).toHaveBeenCalledWith([
+        {
+          streamId: 42,
+          name: "engineering",
+          isArchived: true,
+        },
+      ]);
+    });
+
     // Что проверяет: stream:update с property=name переименовывает канал.
     // Зачем: регрессия для кейса, когда rename приходит stream-событием.
     it("renames stream on stream update(name)", () => {
@@ -325,6 +348,39 @@ describe("dispatchZulipEvent", () => {
       );
 
       expect(renameSpy).toHaveBeenCalledWith(42, "engineering v2");
+    });
+
+    it("updates archived flag on stream update(is_archived)", () => {
+      const { ctx } = buildCtx();
+      const upsertSpy = vi.spyOn(ctx.chatList, "upsertStreamMetadataRows");
+      ctx.chatList.streamsMap.set(42, {
+        stream_id: 42,
+        name: "engineering",
+        lastMessage: "",
+        time: "",
+        ts: 0,
+        topics: new Map(),
+      });
+
+      dispatchZulipEvent(
+        {
+          id: 191,
+          type: "stream",
+          op: "update",
+          stream_id: 42,
+          property: "is_archived",
+          value: true,
+        } as ZulipEvent,
+        ctx,
+      );
+
+      expect(upsertSpy).toHaveBeenCalledWith([
+        {
+          streamId: 42,
+          name: "engineering",
+          isArchived: true,
+        },
+      ]);
     });
 
     // Что проверяет: stream:delete удаляет канал из chat-list.
@@ -503,6 +559,39 @@ describe("dispatchZulipEvent", () => {
           streamId: 42,
           name: "engineering",
           canRemoveSubscribersGroup: { direct_members: [7], direct_subgroups: [] },
+        },
+      ]);
+    });
+
+    it("updates archived flag on subscription update event", () => {
+      const { ctx } = buildCtx();
+      const upsertSpy = vi.spyOn(ctx.chatList, "upsertStreamMetadataRows");
+      ctx.chatList.streamsMap.set(42, {
+        stream_id: 42,
+        name: "engineering",
+        lastMessage: "",
+        time: "",
+        ts: 0,
+        topics: new Map(),
+      });
+
+      dispatchZulipEvent(
+        {
+          id: 9,
+          type: "subscription",
+          op: "update",
+          stream_id: 42,
+          property: "is_archived",
+          value: true,
+        } as ZulipEvent,
+        ctx,
+      );
+
+      expect(upsertSpy).toHaveBeenCalledWith([
+        {
+          streamId: 42,
+          name: "engineering",
+          isArchived: true,
         },
       ]);
     });

@@ -72,6 +72,8 @@ export interface StreamEntryInternal {
   lastMessageSenderName?: string;
   time: string;
   ts: number;
+  // Что делает: локальный признак архивированного канала для фильтрации sidebar.
+  isArchived?: boolean;
   // Что делает: id создателя канала (metadata из подписок/streams API).
   creatorId?: number;
   // Что делает: флаг приватности канала из metadata подписок.

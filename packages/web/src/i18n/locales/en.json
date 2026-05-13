@@ -196,7 +196,7 @@
     "memberBadgeCreator": "Creator",
     "memberBadgeChannelAdmin": "Channel admin",
     "editChannel": "Edit channel",
-    "deleteChannel": "Delete channel",
+    "deleteChannel": "Archive channel",
     "muteChannel": "Mute notifications",
     "unmuteChannel": "Unmute notifications",
     "topics": "Topics",

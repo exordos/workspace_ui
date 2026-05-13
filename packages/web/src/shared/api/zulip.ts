@@ -390,6 +390,7 @@ function parseSubscriptions(data: unknown): ZulipSubscription[] | null {
       stream_id?: unknown;
       name?: unknown;
       is_muted?: unknown;
+      is_archived?: unknown;
       in_home_view?: unknown;
       invite_only?: unknown;
       can_add_subscribers_group?: unknown;
@@ -415,6 +416,9 @@ function parseSubscriptions(data: unknown): ZulipSubscription[] | null {
         typeof subscription.is_muted === "boolean"
           ? subscription.is_muted
           : subscription.in_home_view === false,
+      ...(typeof subscription.is_archived === "boolean"
+        ? { is_archived: subscription.is_archived }
+        : {}),
       ...(typeof subscription.invite_only === "boolean"
         ? { invite_only: subscription.invite_only }
         : {}),
@@ -798,6 +802,15 @@ const DEFAULT_REGISTER_FETCH_EVENT_TYPES = [
   "realm",
   "realm_user_groups",
 ] as const;
+const REGISTER_CLIENT_CAPABILITIES = {
+  notification_settings_null: true,
+  bulk_message_deletion: true,
+  user_avatar_url_field_optional: true,
+  stream_typing_notifications: true,
+  user_settings_object: true,
+  archived_channels: true,
+  empty_topic_name: true,
+} as const;
 
 export interface ZulipEvent {
   id: number;
@@ -855,6 +868,8 @@ export async function registerQueue(
   const body: Record<string, string> = {
     event_types: JSON.stringify(eventTypes),
     apply_markdown: "false",
+    // Что делает: просит сервер включать archived channels в register/events payload.
+    client_capabilities: JSON.stringify(REGISTER_CLIENT_CAPABILITIES),
   };
   if (fetchEventTypes.length > 0) {
     // Что делает: просит Zulip добавить в register нужные metadata-поля.
@@ -958,6 +973,7 @@ export async function registerQueueForCredentials(
       },
       body: new URLSearchParams({
         event_types: JSON.stringify(eventTypes),
+        client_capabilities: JSON.stringify(REGISTER_CLIENT_CAPABILITIES),
         // Зачем: background-loop для других инстансов должен получать такой же metadata-набор.
         ...(fetchEventTypes.length > 0
           ? { fetch_event_types: JSON.stringify(fetchEventTypes) }
@@ -1939,6 +1955,7 @@ export interface ZulipSubscription {
   stream_id: number;
   name: string;
   is_muted: boolean;
+  is_archived?: boolean;
   creator_id?: number;
   invite_only?: boolean;
   can_add_subscribers_group?: number | { direct_members: number[]; direct_subgroups: number[] };
@@ -1957,6 +1974,7 @@ export async function fetchSubscriptions(): Promise<ZulipSubscription[]> {
       stream_id: number;
       name: string;
       is_muted?: boolean;
+      is_archived?: boolean;
       in_home_view?: boolean;
       creator_id?: unknown;
       invite_only?: boolean;
@@ -1986,6 +2004,9 @@ export async function fetchSubscriptions(): Promise<ZulipSubscription[]> {
       stream_id: subscription.stream_id,
       name: subscription.name,
       is_muted: subscription.is_muted ?? !(subscription.in_home_view ?? true),
+      ...(typeof subscription.is_archived === "boolean"
+        ? { is_archived: subscription.is_archived }
+        : {}),
       ...(creatorId != null ? { creator_id: creatorId } : {}),
       ...(typeof subscription.invite_only === "boolean"
         ? { invite_only: subscription.invite_only }

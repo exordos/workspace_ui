@@ -38,6 +38,7 @@ function parsePositiveInteger(value: unknown): number | null {
 function parseSubscriptionRows(value: unknown): {
   streamId: number;
   name: string;
+  isArchived?: boolean;
   creatorId?: number;
   inviteOnly?: boolean;
   canAddSubscribersGroup?: ZulipGroupSettingValue;
@@ -48,6 +49,7 @@ function parseSubscriptionRows(value: unknown): {
   const rows: {
     streamId: number;
     name: string;
+    isArchived?: boolean;
     creatorId?: number;
     inviteOnly?: boolean;
     canAddSubscribersGroup?: ZulipGroupSettingValue;
@@ -65,6 +67,7 @@ function parseSubscriptionRows(value: unknown): {
 function parseOneSubscriptionRow(record: Record<string, unknown>): {
   streamId: number;
   name: string;
+  isArchived?: boolean;
   creatorId?: number;
   inviteOnly?: boolean;
   canAddSubscribersGroup?: ZulipGroupSettingValue;
@@ -81,6 +84,7 @@ function parseOneSubscriptionRow(record: Record<string, unknown>): {
   return {
     streamId: streamIdRaw,
     name: name.trim(),
+    ...(typeof record.is_archived === "boolean" ? { isArchived: record.is_archived } : {}),
     ...(creatorId != null ? { creatorId } : {}),
     ...(typeof record.invite_only === "boolean" ? { inviteOnly: record.invite_only } : {}),
     ...(canAddSubscribersGroup != null ? { canAddSubscribersGroup } : {}),
@@ -384,6 +388,7 @@ function buildStreamMetadataRowFromExisting(
 ): {
   streamId: number;
   name: string;
+  isArchived?: boolean;
   inviteOnly?: boolean;
   canAddSubscribersGroup?: ZulipGroupSettingValue;
   canRemoveSubscribersGroup?: ZulipGroupSettingValue;
@@ -394,6 +399,7 @@ function buildStreamMetadataRowFromExisting(
   return {
     streamId,
     name: streamName,
+    ...(existing?.isArchived != null ? { isArchived: existing.isArchived } : {}),
     ...(existing?.inviteOnly != null ? { inviteOnly: existing.inviteOnly } : {}),
     ...(existing?.canAddSubscribersGroup != null
       ? { canAddSubscribersGroup: existing.canAddSubscribersGroup }
@@ -411,6 +417,7 @@ function applySubscriptionMetadataField(
   row: {
     streamId: number;
     name: string;
+    isArchived?: boolean;
     inviteOnly?: boolean;
     canAddSubscribersGroup?: ZulipGroupSettingValue;
     canRemoveSubscribersGroup?: ZulipGroupSettingValue;
@@ -419,6 +426,12 @@ function applySubscriptionMetadataField(
   property: string,
   event: ZulipEvent,
 ): void {
+  if (property === "is_archived") {
+    if (typeof event.value === "boolean") {
+      row.isArchived = event.value;
+    }
+    return;
+  }
   if (property === "invite_only") {
     if (typeof event.value === "boolean") {
       row.inviteOnly = event.value;
@@ -470,6 +483,7 @@ function handleSubscriptionPropertyUpdate(
     return;
   }
   if (
+    property !== "is_archived" &&
     property !== "can_add_subscribers_group" &&
     property !== "can_remove_subscribers_group" &&
     property !== "can_administer_channel_group" &&
@@ -531,6 +545,7 @@ function handleStreamPropertyUpdate(
     return;
   }
   if (
+    property !== "is_archived" &&
     property !== "can_add_subscribers_group" &&
     property !== "can_remove_subscribers_group" &&
     property !== "can_administer_channel_group" &&

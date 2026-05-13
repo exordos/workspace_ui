@@ -497,6 +497,15 @@ describe("registerQueue", () => {
     expect(mockZulipApi.post).toHaveBeenCalledWith("/register", {
       event_types: JSON.stringify(["message", "presence"]),
       apply_markdown: "false",
+      client_capabilities: JSON.stringify({
+        notification_settings_null: true,
+        bulk_message_deletion: true,
+        user_avatar_url_field_optional: true,
+        stream_typing_notifications: true,
+        user_settings_object: true,
+        archived_channels: true,
+        empty_topic_name: true,
+      }),
       fetch_event_types: JSON.stringify([
         "subscription",
         "user_topic",
@@ -659,7 +668,22 @@ describe("registerQueueForCredentials", () => {
     });
     expect(mockFetch).toHaveBeenCalledWith(
       "https://other.example.com/api/v1/register",
-      expect.objectContaining({ method: "POST" }),
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining(
+          `client_capabilities=${encodeURIComponent(
+            JSON.stringify({
+              notification_settings_null: true,
+              bulk_message_deletion: true,
+              user_avatar_url_field_optional: true,
+              stream_typing_notifications: true,
+              user_settings_object: true,
+              archived_channels: true,
+              empty_topic_name: true,
+            }),
+          )}`,
+        ),
+      }),
     );
   });
 
@@ -1503,16 +1527,22 @@ describe("fetchSubscriptions", () => {
       status: 200,
       data: {
         subscriptions: [
-          { stream_id: 1, name: "general", is_muted: true, creator_id: 77 },
-          { stream_id: 2, name: "dev", in_home_view: false },
+          {
+            stream_id: 1,
+            name: "general",
+            is_muted: true,
+            is_archived: false,
+            creator_id: 77,
+          },
+          { stream_id: 2, name: "dev", in_home_view: false, is_archived: true },
         ],
       },
       raw: { statusText: "OK" },
     });
 
     await expect(fetchSubscriptions()).resolves.toEqual([
-      { stream_id: 1, name: "general", is_muted: true, creator_id: 77 },
-      { stream_id: 2, name: "dev", is_muted: true },
+      { stream_id: 1, name: "general", is_muted: true, is_archived: false, creator_id: 77 },
+      { stream_id: 2, name: "dev", is_muted: true, is_archived: true },
     ]);
     expect(mockZulipApi.get).toHaveBeenCalledWith("/users/me/subscriptions", undefined);
   });

@@ -156,12 +156,43 @@ function mergeStreamEntry(
     ts: Math.max(existing.ts, ts),
     // Что делает: сохраняет channel-level metadata из подписок при приходе новых сообщений.
     // Сообщения не должны затирать permission-поля канала.
+    isArchived: existing.isArchived,
     creatorId: existing.creatorId,
     inviteOnly: existing.inviteOnly,
     canAddSubscribersGroup: existing.canAddSubscribersGroup,
     canRemoveSubscribersGroup: existing.canRemoveSubscribersGroup,
     canAdministerChannelGroup: existing.canAdministerChannelGroup,
     topics: nextTopics,
+  };
+}
+
+function mergeStreamAccessMetadata(
+  stream: StreamEntryInternal,
+  existing: StreamEntryInternal | undefined,
+): StreamEntryInternal {
+  if (existing == null) return stream;
+  const hasMetadata =
+    existing.isArchived != null ||
+    existing.creatorId != null ||
+    existing.inviteOnly != null ||
+    existing.canAddSubscribersGroup != null ||
+    existing.canRemoveSubscribersGroup != null ||
+    existing.canAdministerChannelGroup != null;
+  if (!hasMetadata) return stream;
+  return {
+    ...stream,
+    ...(existing.isArchived != null ? { isArchived: existing.isArchived } : {}),
+    ...(existing.creatorId != null ? { creatorId: existing.creatorId } : {}),
+    ...(existing.inviteOnly != null ? { inviteOnly: existing.inviteOnly } : {}),
+    ...(existing.canAddSubscribersGroup != null
+      ? { canAddSubscribersGroup: existing.canAddSubscribersGroup }
+      : {}),
+    ...(existing.canRemoveSubscribersGroup != null
+      ? { canRemoveSubscribersGroup: existing.canRemoveSubscribersGroup }
+      : {}),
+    ...(existing.canAdministerChannelGroup != null
+      ? { canAdministerChannelGroup: existing.canAdministerChannelGroup }
+      : {}),
   };
 }
 
@@ -320,6 +351,7 @@ function buildStreamMetadataEntry(
   existing: StreamEntryInternal | undefined,
 ): StreamEntryInternal {
   const name = row.name.trim();
+  const isArchived = row.isArchived ?? existing?.isArchived;
   const creatorId = row.creatorId ?? existing?.creatorId;
   const inviteOnly = row.inviteOnly ?? existing?.inviteOnly;
   const canAddSubscribersGroup = row.canAddSubscribersGroup ?? existing?.canAddSubscribersGroup;
@@ -331,6 +363,7 @@ function buildStreamMetadataEntry(
     return {
       ...existing,
       name: name.length > 0 ? name : existing.name,
+      ...(isArchived != null ? { isArchived } : {}),
       ...(creatorId != null ? { creatorId } : {}),
       ...(inviteOnly != null ? { inviteOnly } : {}),
       ...(canAddSubscribersGroup != null ? { canAddSubscribersGroup } : {}),
@@ -345,6 +378,7 @@ function buildStreamMetadataEntry(
     lastMessageSenderName: undefined,
     time: "",
     ts: 0,
+    ...(isArchived != null ? { isArchived } : {}),
     ...(creatorId != null ? { creatorId } : {}),
     ...(inviteOnly != null ? { inviteOnly } : {}),
     ...(canAddSubscribersGroup != null ? { canAddSubscribersGroup } : {}),
@@ -360,6 +394,9 @@ function hasStreamMetadataAccessChanged(
   existing: StreamEntryInternal,
   nextEntry: StreamEntryInternal,
 ): boolean {
+  if (existing.isArchived !== nextEntry.isArchived) {
+    return true;
+  }
   if (existing.creatorId !== nextEntry.creatorId) {
     return true;
   }
@@ -508,7 +545,16 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
   setFromMessages(messages, currentUserId) {
     const effectiveUserId = currentUserId ?? get().currentUserId;
     const avatarMap = getAvatarMap();
+    const previousStreamsMap = get().streamsMap;
     const { streamsMap, dmsMap } = buildSidebarFromMessages(messages, effectiveUserId, avatarMap);
+    if (previousStreamsMap.size > 0 && streamsMap.size > 0) {
+      for (const [streamId, stream] of streamsMap.entries()) {
+        streamsMap.set(
+          streamId,
+          mergeStreamAccessMetadata(stream, previousStreamsMap.get(streamId)),
+        );
+      }
+    }
     const messageIdToLocation = buildMessageIdToLocation(messages, effectiveUserId);
     logChatListFlow("store: setFromMessages (full rebuild from messages)", {
       ...summarizeZulipMessagesForFlowDebug(messages),

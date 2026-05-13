@@ -1736,7 +1736,7 @@ describe("RightPanel truthfulness", () => {
     renderWithProviders(<RightPanel title="engineering" participantsCount={3} onlineCount={1} />);
 
     expect(screen.queryByRole("button", { name: /edit channel/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /delete channel/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /archive channel/i })).not.toBeInTheDocument();
   });
 
   it("shows channel edit/delete actions for admin role and submits edit changes", async () => {
@@ -1767,7 +1767,7 @@ describe("RightPanel truthfulness", () => {
     renderWithProviders(<RightPanel title="engineering" participantsCount={3} onlineCount={1} />);
 
     expect(screen.getByRole("button", { name: /edit channel/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /delete channel/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /archive channel/i })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /edit channel/i }));
 
@@ -1900,6 +1900,6 @@ describe("RightPanel truthfulness", () => {
     renderWithProviders(<RightPanel title="engineering" participantsCount={3} onlineCount={1} />);
 
     expect(screen.getByRole("button", { name: /edit channel/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /delete channel/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /archive channel/i })).toBeInTheDocument();
   });
 });

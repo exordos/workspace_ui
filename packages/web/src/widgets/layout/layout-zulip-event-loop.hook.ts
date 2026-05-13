@@ -92,6 +92,9 @@ function toStreamMetadataRows(
       return {
         streamId: subscription.stream_id,
         name: subscription.name,
+        ...(typeof subscription.is_archived === "boolean"
+          ? { isArchived: subscription.is_archived }
+          : {}),
         // Что делает: пробрасывает channel-level metadata в store, чтобы UI решал права без raw Zulip payload.
         ...(creatorId != null ? { creatorId } : {}),
         ...(typeof subscription.invite_only === "boolean"

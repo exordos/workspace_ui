@@ -27,6 +27,7 @@ export function sortChatsByLastMessage(
   const prioritizeUnmutedUnreadChannels = options.prioritizeUnmutedUnreadChannels ?? false;
   const withTs: { c: SidebarChat; ts: number }[] = [];
   for (const s of streamsMap.values()) {
+    if (s.isArchived === true) continue;
     const topics = Array.from(s.topics.values())
       .sort((a, b) => b.ts - a.ts)
       .map((t) => ({

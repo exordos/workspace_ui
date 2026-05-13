@@ -7,6 +7,7 @@ function createStreamEntry(
   name: string,
   ts: number,
   unreadCount: number,
+  isArchived = false,
 ): StreamEntryInternal {
   return {
     stream_id,
@@ -14,6 +15,7 @@ function createStreamEntry(
     lastMessage: `${name} message`,
     time: "10:00",
     ts,
+    ...(isArchived ? { isArchived: true } : {}),
     topics: new Map([
       [
         "general",
@@ -96,5 +98,16 @@ describe("sortChatsByLastMessage", () => {
     });
     expect(sorted[0]).toMatchObject({ type: "dm", name: "Alpha" });
     expect(sorted[1]).toMatchObject({ type: "stream", name: "Zulu" });
+  });
+
+  it("excludes archived streams from sidebar projection", () => {
+    const streamsMap = new Map<number, StreamEntryInternal>([
+      [1, createStreamEntry(1, "Active", 2000, 1)],
+      [2, createStreamEntry(2, "Archived", 3000, 1, true)],
+    ]);
+
+    const sorted = sortChatsByLastMessage(streamsMap, new Map(), "recent", new Set());
+    expect(sorted).toHaveLength(1);
+    expect(sorted[0]).toMatchObject({ type: "stream", stream_id: 1, name: "Active" });
   });
 });

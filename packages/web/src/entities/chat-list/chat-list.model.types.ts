@@ -14,6 +14,8 @@ export interface ChatListStreamMetadataRow {
   streamId: number;
   // Что делает: текущее имя канала.
   name: string;
+  // Что делает: признак архивированного канала.
+  isArchived?: boolean;
   // Что делает: id создателя канала (если сервер вернул creator_id).
   creatorId?: number;
   // Что делает: признак приватности канала.

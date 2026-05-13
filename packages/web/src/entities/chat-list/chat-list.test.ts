@@ -1077,6 +1077,7 @@ describe("chatListStore", () => {
         {
           streamId: 11,
           name: "engineering",
+          isArchived: true,
           creatorId: 77,
           inviteOnly: true,
           canAddSubscribersGroup: { direct_members: [42], direct_subgroups: [] },
@@ -1086,6 +1087,7 @@ describe("chatListStore", () => {
       ]);
 
       const stream = useChatListStore.getState().streamsMap.get(11);
+      expect(stream?.isArchived).toBe(true);
       expect(stream?.creatorId).toBe(77);
       expect(stream?.inviteOnly).toBe(true);
       expect(stream?.canAddSubscribersGroup).toEqual({
@@ -1094,6 +1096,55 @@ describe("chatListStore", () => {
       });
       expect(stream?.canRemoveSubscribersGroup).toBe(7002);
       expect(stream?.canAdministerChannelGroup).toBe(5001);
+    });
+
+    it("updates archived flag from metadata updates", () => {
+      useChatListStore
+        .getState()
+        .upsertStreamMetadataRows([{ streamId: 11, name: "engineering", isArchived: false }]);
+      expect(useChatListStore.getState().streamsMap.get(11)?.isArchived).toBe(false);
+
+      useChatListStore
+        .getState()
+        .upsertStreamMetadataRows([{ streamId: 11, name: "engineering", isArchived: true }]);
+      expect(useChatListStore.getState().streamsMap.get(11)?.isArchived).toBe(true);
+    });
+
+    it("keeps archived flag after setFromMessages rebuild", () => {
+      useChatListStore
+        .getState()
+        .upsertStreamMetadataRows([{ streamId: 11, name: "engineering", isArchived: true }]);
+
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: 1,
+            stream_id: 11,
+            display_recipient: "engineering",
+            timestamp: 1000,
+          }),
+        ],
+        10,
+      );
+
+      expect(useChatListStore.getState().streamsMap.get(11)?.isArchived).toBe(true);
+    });
+
+    it("keeps archived flag after addMessages merge", () => {
+      useChatListStore
+        .getState()
+        .upsertStreamMetadataRows([{ streamId: 11, name: "engineering", isArchived: true }]);
+
+      useChatListStore.getState().addMessages([
+        streamMsg({
+          id: 2,
+          stream_id: 11,
+          display_recipient: "engineering",
+          timestamp: 2000,
+        }),
+      ]);
+
+      expect(useChatListStore.getState().streamsMap.get(11)?.isArchived).toBe(true);
     });
 
     it("adds personal DM rows from metadata with unread count", () => {

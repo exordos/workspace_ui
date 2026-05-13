@@ -261,8 +261,12 @@ export function buildSelectedFolderSidebarChats(
       continue;
     }
 
+    const streamRecord = streamsMap.get(streamId);
+    if (streamRecord?.isArchived === true) {
+      continue;
+    }
     seenFallbackStreamIds.add(streamId);
-    const streamName = streamsMap.get(streamId)?.name ?? `stream-${streamId}`;
+    const streamName = streamRecord?.name ?? `stream-${streamId}`;
     fallbackStreamChats.push({
       type: "stream",
       stream_id: streamId,

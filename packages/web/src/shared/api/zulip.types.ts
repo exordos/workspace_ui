@@ -291,6 +291,8 @@ export interface ZulipSubscription {
   stream_id: number;
   name: string;
   is_muted: boolean;
+  // Что делает: признак архивированного канала в Zulip.
+  is_archived?: boolean;
   // Что делает: id пользователя, создавшего канал (если сервер его хранит).
   creator_id?: number;
   // Что делает: приватность канала (true = private stream).

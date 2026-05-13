@@ -49,6 +49,15 @@ export const DEFAULT_REGISTER_FETCH_EVENT_TYPES = [
   "realm",
   "realm_user_groups",
 ] as const;
+const REGISTER_CLIENT_CAPABILITIES = {
+  notification_settings_null: true,
+  bulk_message_deletion: true,
+  user_avatar_url_field_optional: true,
+  stream_typing_notifications: true,
+  user_settings_object: true,
+  archived_channels: true,
+  empty_topic_name: true,
+} as const;
 
 let cachedOwnAvatarCapabilities: ZulipOwnAvatarCapabilities = {};
 
@@ -114,6 +123,7 @@ function parseSubscriptions(data: unknown): ZulipSubscription[] | null {
       stream_id?: unknown;
       name?: unknown;
       is_muted?: unknown;
+      is_archived?: unknown;
       in_home_view?: unknown;
       creator_id?: unknown;
       invite_only?: unknown;
@@ -140,6 +150,9 @@ function parseSubscriptions(data: unknown): ZulipSubscription[] | null {
         typeof subscription.is_muted === "boolean"
           ? subscription.is_muted
           : subscription.in_home_view === false,
+      ...(typeof subscription.is_archived === "boolean"
+        ? { is_archived: subscription.is_archived }
+        : {}),
       ...(isPositiveInteger(subscription.creator_id)
         ? { creator_id: subscription.creator_id }
         : {}),
@@ -213,6 +226,8 @@ export async function registerQueue(
   const body: Record<string, string> = {
     event_types: JSON.stringify(eventTypes),
     apply_markdown: "false",
+    // Что делает: просит сервер включать archived channels в register/events payload.
+    client_capabilities: JSON.stringify(REGISTER_CLIENT_CAPABILITIES),
   };
   if (fetchEventTypes.length > 0) {
     // Зачем: Zulip вернет в register дополнительные metadata-блоки одним запросом.
@@ -326,6 +341,7 @@ export async function registerQueueForCredentials(
       body: new URLSearchParams({
         event_types: JSON.stringify(eventTypes),
         apply_markdown: "false",
+        client_capabilities: JSON.stringify(REGISTER_CLIENT_CAPABILITIES),
         // Для фоновых инстансов payload сообщений не рендерится в UI,
         // поэтому HTML от backend здесь не нужен.
         ...(fetchEventTypes.length > 0

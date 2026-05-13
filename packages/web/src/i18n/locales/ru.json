@@ -200,7 +200,7 @@
     "memberBadgeCreator": "Владелец",
     "memberBadgeChannelAdmin": "Админ канала",
     "editChannel": "Редактировать канал",
-    "deleteChannel": "Удалить канал",
+    "deleteChannel": "Архивировать канал",
     "muteChannel": "Выключить уведомления",
     "unmuteChannel": "Включить уведомления",
     "topics": "Темы",
