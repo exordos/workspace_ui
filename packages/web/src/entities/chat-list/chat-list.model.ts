@@ -1128,6 +1128,64 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
     });
   },
 
+  removeStreamTopic(streamId, topic) {
+    if (!Number.isInteger(streamId) || streamId <= 0) return;
+    const topicKey = normalizeTopicForIdentity(topic);
+
+    set((state) => {
+      const stream = state.streamsMap.get(streamId);
+      if (!stream) return state;
+
+      let nextLocations = state.messageIdToLocation;
+      let locationsChanged = false;
+      for (const [messageId, location] of state.messageIdToLocation.entries()) {
+        if (
+          location.type === "stream" &&
+          location.stream_id === streamId &&
+          location.topic === topicKey
+        ) {
+          if (!locationsChanged) {
+            nextLocations = new Map(nextLocations);
+            locationsChanged = true;
+          }
+          nextLocations.delete(messageId);
+        }
+      }
+
+      if (!stream.topics.has(topicKey)) {
+        if (!locationsChanged) return state;
+        return { messageIdToLocation: nextLocations };
+      }
+
+      const nextTopics = new Map(stream.topics);
+      nextTopics.delete(topicKey);
+      const newestTopic = getNewestTopicEntry(nextTopics);
+      const nextStreams = new Map(state.streamsMap);
+      nextStreams.set(streamId, {
+        ...stream,
+        topics: nextTopics,
+        ...(newestTopic != null
+          ? {
+              lastMessage: newestTopic.lastMessage,
+              lastMessageSenderName: newestTopic.lastMessageSenderName,
+              time: newestTopic.time,
+              ts: newestTopic.ts,
+            }
+          : {
+              lastMessage: "",
+              lastMessageSenderName: undefined,
+              time: "",
+              ts: 0,
+            }),
+      });
+
+      return {
+        streamsMap: nextStreams,
+        ...(locationsChanged ? { messageIdToLocation: nextLocations } : {}),
+      };
+    });
+  },
+
   patchPersonalDmRowLabelsForUser(userId) {
     if (!Number.isFinite(userId) || userId <= 0) return;
     const users = useUsersStore.getState();

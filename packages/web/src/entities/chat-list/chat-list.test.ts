@@ -1199,6 +1199,94 @@ describe("chatListStore", () => {
       expect(stream?.topics.has("\u2714 incident")).toBe(true);
     });
 
+    it("removes stream topic row and message index entries for that topic", () => {
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: 1,
+            stream_id: 10,
+            display_recipient: "engineering",
+            subject: "incident",
+            timestamp: 1000,
+          }),
+          streamMsg({
+            id: 2,
+            stream_id: 10,
+            display_recipient: "engineering",
+            subject: "release",
+            timestamp: 2000,
+          }),
+          dmMsg({ id: 50 }),
+        ],
+        10,
+      );
+
+      useChatListStore.getState().removeStreamTopic(10, "incident");
+
+      const state = useChatListStore.getState();
+      const stream = state.streamsMap.get(10);
+      expect(stream?.topics.has("incident")).toBe(false);
+      expect(stream?.topics.has("release")).toBe(true);
+      expect(state.messageIdToLocation.get(1)).toBeUndefined();
+      expect(state.messageIdToLocation.get(2)?.type).toBe("stream");
+      expect(state.messageIdToLocation.get(50)?.type).toBe("dm");
+    });
+
+    it("recomputes stream preview fields from remaining topics", () => {
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: 1,
+            stream_id: 10,
+            display_recipient: "engineering",
+            subject: "incident",
+            timestamp: 1000,
+            sender_full_name: "Alice",
+          }),
+          streamMsg({
+            id: 2,
+            stream_id: 10,
+            display_recipient: "engineering",
+            subject: "release",
+            timestamp: 2000,
+            sender_full_name: "Bob",
+          }),
+        ],
+        10,
+      );
+
+      useChatListStore.getState().removeStreamTopic(10, "release");
+
+      const stream = useChatListStore.getState().streamsMap.get(10);
+      expect(stream?.ts).toBe(1000);
+      expect(stream?.lastMessageSenderName).toBe("Alice");
+      expect(stream?.lastMessage).toBe("hello");
+    });
+
+    it("keeps stream row and resets preview when removing last topic", () => {
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: 1,
+            stream_id: 10,
+            display_recipient: "engineering",
+            subject: "incident",
+            timestamp: 1000,
+          }),
+        ],
+        10,
+      );
+
+      useChatListStore.getState().removeStreamTopic(10, "incident");
+
+      const stream = useChatListStore.getState().streamsMap.get(10);
+      expect(stream).toBeDefined();
+      expect(stream?.topics.size).toBe(0);
+      expect(stream?.lastMessage).toBe("");
+      expect(stream?.time).toBe("");
+      expect(stream?.ts).toBe(0);
+    });
+
     it("merges topic metadata when move target already exists", () => {
       useChatListStore.getState().setFromMessages(
         [

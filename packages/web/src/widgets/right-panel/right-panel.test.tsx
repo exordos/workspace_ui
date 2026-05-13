@@ -728,6 +728,109 @@ describe("RightPanel truthfulness", () => {
     );
   });
 
+  it("shows delete-topic action for admin and deletes active topic from right panel", async () => {
+    const deleteTopicSpy = vi.spyOn(zulipStreams, "deleteTopic").mockResolvedValue({
+      ok: true,
+      complete: true,
+      attempts: 1,
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    act(() => {
+      useCurrentChatMessagesStore.setState({
+        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "release" },
+        messages: [],
+        isLoadingMore: false,
+        hasOlderMessages: true,
+        hasNewerMessages: false,
+      });
+      useChatListStore.getState().setFromMessages(
+        [
+          {
+            id: 1,
+            sender_id: 20,
+            sender_full_name: "Alice",
+            content: "hello",
+            timestamp: 1000,
+            type: "stream",
+            stream_id: 10,
+            display_recipient: "engineering",
+            subject: "release",
+            flags: [],
+          },
+        ],
+        42,
+      );
+      useChatInfoStore.getState().setData({
+        type: "stream",
+        name: "engineering",
+        memberCount: 3,
+        onlineCount: 1,
+        members: [],
+        description: "Engineering stream for product delivery",
+        isMuted: false,
+        topics: [{ name: "release", unreadCount: 2 }],
+      });
+      useChatListStore.getState().setCurrentUserId(42);
+      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Admin", role: 200 });
+    });
+
+    renderWithProviders(<RightPanel title="engineering" participantsCount={3} onlineCount={1} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /delete topic/i }));
+
+    await waitFor(() => {
+      expect(deleteTopicSpy).toHaveBeenCalledWith(10, "release");
+    });
+    expect(screen.queryByText("release")).not.toBeInTheDocument();
+    expect(navigateMock).toHaveBeenCalledWith(withCurrentOrgRoute("/stream/10-engineering"), {
+      replace: true,
+    });
+  });
+
+  it("hides delete-topic action for non-admin channel admin", () => {
+    act(() => {
+      useCurrentChatMessagesStore.setState({
+        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        messages: [],
+        isLoadingMore: false,
+        hasOlderMessages: true,
+        hasNewerMessages: false,
+      });
+      useChatInfoStore.getState().setData({
+        type: "stream",
+        name: "engineering",
+        memberCount: 3,
+        onlineCount: 1,
+        members: [],
+        description: "Engineering stream for product delivery",
+        isMuted: false,
+        topics: [{ name: "release", unreadCount: 0 }],
+      });
+      useChatListStore.getState().upsertStreamMetadataRows([
+        {
+          streamId: 10,
+          name: "engineering",
+          canAdministerChannelGroup: 9126,
+        },
+      ]);
+      useChatListStore.getState().setCurrentUserId(42);
+      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Member", role: 400 });
+      useUserGroupsStore.getState().setGroups([
+        {
+          id: 9126,
+          name: "channel-admins",
+          members: [42],
+          direct_subgroup_ids: [],
+        },
+      ]);
+    });
+
+    renderWithProviders(<RightPanel title="engineering" participantsCount={3} onlineCount={1} />);
+
+    expect(screen.queryByRole("button", { name: /delete topic/i })).not.toBeInTheDocument();
+  });
+
   it("opens user profile from stream members list", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({
@@ -1282,7 +1385,7 @@ describe("RightPanel truthfulness", () => {
 
     await waitFor(() => {
       expect(addMembersSpy).toHaveBeenCalledWith({
-        streamName: "engineering",
+        streamName: "Test clon",
         userIds: [88],
       });
     });

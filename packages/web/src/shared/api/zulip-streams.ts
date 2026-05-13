@@ -43,6 +43,13 @@ export interface RemoveStreamMembersResult {
   errorCode?: string;
 }
 
+export interface DeleteTopicResult {
+  ok: boolean;
+  complete: boolean;
+  attempts: number;
+  errorCode?: string;
+}
+
 function parsePrincipalKeyToUserId(value: string): number | null {
   const numeric = Number(value);
   if (!Number.isInteger(numeric) || numeric <= 0) {
@@ -406,4 +413,64 @@ export async function deleteStream(streamId: number): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/** Deletes all messages in a topic (POST /api/v1/streams/{stream_id}/delete_topic). */
+export async function deleteTopic(
+  streamId: number,
+  topicName: string,
+  maxAttempts = 5,
+): Promise<DeleteTopicResult> {
+  guard.streamId(streamId, "deleteTopic.streamId");
+  const normalizedTopicName = topicName.trim();
+  const attemptsLimit = Math.max(1, Math.floor(maxAttempts));
+
+  for (let attempt = 1; attempt <= attemptsLimit; attempt += 1) {
+    try {
+      const res = await zulipPipelinePost(`/streams/${streamId}/delete_topic`, {
+        topic_name: normalizedTopicName,
+      });
+      if (!res.ok) {
+        return {
+          ok: false,
+          complete: false,
+          attempts: attempt,
+          errorCode: `http_${res.status}`,
+        };
+      }
+
+      const data = res.data as { result?: string; complete?: unknown; code?: string };
+      if (data.result === "error") {
+        return {
+          ok: false,
+          complete: false,
+          attempts: attempt,
+          errorCode: data.code ?? "unknown_error",
+        };
+      }
+
+      const complete = data.complete !== false;
+      if (complete) {
+        return {
+          ok: true,
+          complete: true,
+          attempts: attempt,
+        };
+      }
+    } catch {
+      return {
+        ok: false,
+        complete: false,
+        attempts: attempt,
+        errorCode: "network_error",
+      };
+    }
+  }
+
+  return {
+    ok: false,
+    complete: false,
+    attempts: attemptsLimit,
+    errorCode: "incomplete_after_retries",
+  };
 }

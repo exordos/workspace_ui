@@ -205,6 +205,9 @@
     "noMembers": "No members found",
     "muteTopic": "Mute topic",
     "unmuteTopic": "Unmute topic",
+    "deleteTopic": "Delete topic",
+    "deleteTopicConfirm": "Delete topic \"{{topic}}\"?",
+    "deleteTopicInProgress": "Deleting topic…",
     "markTopicAsDone": "Mark topic as done",
     "markTopicAsNotDone": "Mark topic as not done"
   },

@@ -209,6 +209,9 @@
     "noMembers": "Участники не найдены",
     "muteTopic": "Заглушить тему",
     "unmuteTopic": "Включить тему",
+    "deleteTopic": "Удалить тему",
+    "deleteTopicConfirm": "Удалить тему «{{topic}}»?",
+    "deleteTopicInProgress": "Удаление темы…",
     "markTopicAsDone": "Отметить тему как выполненную",
     "markTopicAsNotDone": "Снять отметку выполнения темы"
   },

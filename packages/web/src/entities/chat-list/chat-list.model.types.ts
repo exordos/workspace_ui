@@ -75,6 +75,7 @@ export interface ChatListState {
     messageIds?: number[];
     anchorMessageId?: number;
   }) => void;
+  removeStreamTopic: (streamId: number, topic: string) => void;
   removeStream: (streamId: number) => void;
   /** After a user profile is fetched, refresh personal DM row titles that still use placeholders. */
   patchPersonalDmRowLabelsForUser: (userId: number) => void;
