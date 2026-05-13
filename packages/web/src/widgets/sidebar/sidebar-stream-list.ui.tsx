@@ -99,8 +99,8 @@ export const SidebarStreamList: React.FC<SidebarStreamListProps> = ({
                 <Link
                   to={`/stream/${streamSlug}`}
                   className={`${streamRowClass} w-full ${
-                    expanded ? "bg-sidebar-hover" : ""
-                  } ${isActive ? "bg-sidebar-hover" : ""} ${isCompactDensity ? "pr-10" : "pr-11"}`}
+                    expanded || isActive ? "bg-sidebar-hover" : "hover:bg-sidebar-hover"
+                  } ${isCompactDensity ? "pr-10" : "pr-11"}`}
                   onClick={() => {
                     if (!expanded) {
                       onToggleStream(streamSlug);

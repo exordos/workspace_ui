@@ -11,6 +11,18 @@ import type { CreateChatDialogProps } from "./create-chat-dialog.types";
 const CREATE_CHAT_TEXT_INPUT_CLASS =
   "w-full rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted transition-colors focus:border-accent focus-visible:outline-none focus-visible:ring-0";
 
+// Прокручиваемый список строк: общая рамка обёртки; без подложки и без линий между строками.
+const CREATE_CHAT_LIST_SCROLL_BASE_CLASS = "overflow-y-auto rounded-lg border border-border-subtle";
+
+// Интерактивная строка списка: тот же токен, что и строки сайдбара (`sidebarRowClass`).
+// Важно: фон модалки — bg-elevated; hover:bg-bg-elevated совпадал с подложкой и почти не был виден.
+const CREATE_CHAT_LIST_ROW_CLASS =
+  "flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-sm text-text-primary transition-colors hover:bg-sidebar-hover";
+
+// Составная строка (архив и т.п.): подсветка всей полосы, не только левой кнопки.
+const CREATE_CHAT_LIST_COMPOSITE_ROW_CLASS =
+  "flex w-full items-stretch gap-2 transition-colors hover:bg-sidebar-hover";
+
 // Нижняя панель: вне скролла, одна линия действий на всех вкладках.
 const CREATE_CHAT_FOOTER_CLASS =
   "border-border-subtle bg-bg-elevated flex shrink-0 justify-end gap-2 border-t px-4 py-3";
@@ -154,7 +166,7 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                     className={CREATE_CHAT_TEXT_INPUT_CLASS}
                     placeholder={t("message.searchUsers")}
                   />
-                  <div className="max-h-60 overflow-y-auto rounded-lg border border-border-subtle">
+                  <div className={`max-h-60 ${CREATE_CHAT_LIST_SCROLL_BASE_CLASS}`}>
                     {vm.filteredUsers.length === 0 ? (
                       <p className="px-3 py-4 text-center text-sm text-text-muted">
                         {t("search.noResults")}
@@ -165,7 +177,7 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                           <button
                             type="button"
                             key={u.userId}
-                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-primary transition-colors hover:bg-bg-elevated"
+                            className={CREATE_CHAT_LIST_ROW_CLASS}
                             onClick={() => onNavigateDm(vm.buildDmSlug(u.userId, u.fullName))}
                           >
                             <PresenceIndicator status={u.presence} size="sm" />
@@ -199,7 +211,7 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                     className={CREATE_CHAT_TEXT_INPUT_CLASS}
                     placeholder={t("message.searchUsers")}
                   />
-                  <div className="max-h-60 overflow-y-auto rounded-lg border border-border-subtle">
+                  <div className={`max-h-60 ${CREATE_CHAT_LIST_SCROLL_BASE_CLASS}`}>
                     {vm.groupUsers.length === 0 ? (
                       <p className="px-3 py-4 text-center text-sm text-text-muted">
                         {t("search.noResults")}
@@ -207,10 +219,7 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                     ) : (
                       vm.groupUsers.map((u) => {
                         return (
-                          <label
-                            key={u.userId}
-                            className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-text-primary transition-colors hover:bg-bg-elevated"
-                          >
+                          <label key={u.userId} className={CREATE_CHAT_LIST_ROW_CLASS}>
                             <input
                               type="checkbox"
                               checked={vm.groupSelectedUserIds.has(u.userId)}
@@ -301,7 +310,7 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                       className={CREATE_CHAT_TEXT_INPUT_CLASS}
                       placeholder={t("message.searchUsers")}
                     />
-                    <div className="max-h-40 min-w-80 overflow-y-auto rounded-lg border border-border-subtle">
+                    <div className={`max-h-40 min-w-80 ${CREATE_CHAT_LIST_SCROLL_BASE_CLASS}`}>
                       {vm.channelUsers.length === 0 ? (
                         <p className="px-3 py-4 text-center text-sm text-text-muted">
                           {t("search.noResults")}
@@ -309,10 +318,7 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                       ) : (
                         vm.channelUsers.map((u) => {
                           return (
-                            <label
-                              key={u.userId}
-                              className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-text-primary transition-colors hover:bg-bg-elevated"
-                            >
+                            <label key={u.userId} className={CREATE_CHAT_LIST_ROW_CLASS}>
                               <input
                                 type="checkbox"
                                 checked={vm.channelSelectedUserIds.has(u.userId)}
@@ -366,7 +372,7 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                           })}
                     </div>
                   )}
-                  <div className="max-h-60 overflow-y-auto rounded-lg border border-border-subtle">
+                  <div className={`max-h-60 ${CREATE_CHAT_LIST_SCROLL_BASE_CLASS}`}>
                     {vm.archivedChannels.length === 0 ? (
                       <p className="px-3 py-4 text-center text-sm text-text-muted">
                         {t("channel.noArchivedChannels")}
@@ -488,11 +494,11 @@ const ArchivedChannelRow = React.memo<ArchivedChannelRowProps>(function Archived
     `${lastMessage || t("channel.archivedChannels")}${time ? ` · ${time}` : ""}`.trim();
 
   return (
-    <div className="flex items-stretch gap-2 border-b border-border-subtle last:border-b-0">
+    <div className={CREATE_CHAT_LIST_COMPOSITE_ROW_CLASS}>
       <button
         type="button"
         onClick={handleRowClick}
-        className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left text-sm text-text-primary transition-colors hover:bg-bg-elevated"
+        className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left text-sm text-text-primary"
       >
         <Avatar size="sm">#</Avatar>
         <span className="min-w-0 flex-1">

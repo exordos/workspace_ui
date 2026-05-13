@@ -383,8 +383,8 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
                         <Link
                           to={`/stream/${streamSlug}`}
                           className={`${streamRowClass} ${streamLinkPaddingClass} w-full ${
-                            expanded ? "bg-sidebar-hover" : ""
-                          } ${isActive ? "bg-sidebar-hover" : ""}`}
+                            expanded || isActive ? "bg-sidebar-hover" : "hover:bg-sidebar-hover"
+                          }`}
                           onClick={() => {
                             if (!expanded) {
                               onToggleStream(streamSlug);
