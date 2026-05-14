@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:electron": "cross-env ELECTRON=1 vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/",
@@ -59,7 +60,7 @@
     "@types/http-proxy": "1.17.15",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
-    "@vitejs/plugin-react-swc": "3.7.0",
+    "@vitejs/plugin-react-swc": "3.8.0",
     "@vitest/coverage-v8": "4.1.0",
     "autoprefixer": "10.4.27",
     "cross-env": "10.1.0",

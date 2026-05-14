@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "build": "npm run build:web && npm run build:electron",
-    "build:web": "cd ../web && npx cross-env ELECTRON=1 vite build",
+    "build:web": "cd .. && npm run build:electron --workspace=web",
     "build:electron": "npx cross-env ELECTRON_DISABLE_AUTO_UPDATE=1 node scripts/build.mjs",
     "build:electron:with-updates": "node scripts/build.mjs",
     "package": "npm run build && electron-builder",
@@ -27,9 +27,15 @@
   },
   "devDependencies": {
     "@electron/notarize": "2.5.0",
+    "@vitejs/plugin-react-swc": "3.8.0",
+    "cross-env": "10.1.0",
     "electron": "41.3.0",
     "electron-builder": "26.8.1",
     "esbuild": "0.25.12",
-    "typescript": "5.9.3"
+    "http-proxy": "1.18.1",
+    "typescript": "5.9.3",
+    "vite": "6.4.2",
+    "vite-plugin-pwa": "1.2.0",
+    "vite-plugin-svgr": "4.5.0"
   }
 }
