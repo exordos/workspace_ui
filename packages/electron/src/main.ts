@@ -2,6 +2,7 @@ import path from "node:path";
 import {
   app,
   BrowserWindow,
+  clipboard,
   Menu,
   Tray,
   nativeImage,
@@ -560,6 +561,15 @@ function shouldApplyShellContentSecurityPolicy(requestUrl: string): boolean {
 }
 
 function configureSecurityPolicy(): void {
+  // Разрешения, которые мы явно даем renderer-процессу.
+  const allowedPermissions = new Set([
+    "media",
+    "notifications",
+    "fullscreen",
+    "clipboard-read",
+    "clipboard-sanitized-write",
+  ]);
+
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     if (!shouldApplyShellContentSecurityPolicy(details.url)) {
       callback({ responseHeaders: details.responseHeaders });
@@ -596,10 +606,15 @@ function configureSecurityPolicy(): void {
     });
   });
 
+  // Когда страница просит доступ (request), проверяем только наш allowlist.
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
-    const allowed = ["media", "notifications", "fullscreen"];
-    callback(allowed.includes(permission));
+    callback(allowedPermissions.has(permission));
   });
+
+  // Когда Chromium делает внутреннюю проверку (check), держим ту же логику.
+  session.defaultSession.setPermissionCheckHandler((_webContents, permission) =>
+    allowedPermissions.has(permission),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -610,6 +625,27 @@ function registerIpcHandlers(): void {
   // App info
   ipcMain.handle("app:getVersion", () => app.getVersion());
   ipcMain.handle("app:getPlatform", () => process.platform);
+
+  // Clipboard
+  ipcMain.handle("clipboard:writeText", (_event, text: unknown) => {
+    // Пишем в системный clipboard (Linux/Windows/macOS общий путь).
+    if (typeof text !== "string") return false;
+    try {
+      clipboard.writeText(text, "clipboard");
+      return true;
+    } catch {
+      return false;
+    }
+  });
+  ipcMain.handle("clipboard:readText", () => {
+    // Читаем из системного clipboard и отдаем renderer-процессу.
+    try {
+      const text = clipboard.readText("clipboard");
+      return typeof text === "string" ? text : null;
+    } catch {
+      return null;
+    }
+  });
 
   // Theme
   ipcMain.handle("theme:shouldUseDarkColors", () => nativeTheme.shouldUseDarkColors);

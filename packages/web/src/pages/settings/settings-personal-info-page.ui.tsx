@@ -19,6 +19,7 @@ import {
 import { t } from "~/i18n/i18n";
 import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
 import { bumpAvatarVersion, resolveAvatarUrl } from "~/shared/lib/avatar";
+import { writeText } from "~/shared/lib/clipboard";
 import { getRoleLabel, parseRole } from "~/shared/lib/roles";
 import { detectImageMime, isValidRealmUrl, validateFileUpload } from "~/shared/lib/validation";
 import { Avatar } from "~/shared/ui/avatar";
@@ -216,9 +217,9 @@ export const SettingsPersonalInfoPage: React.FC = () => {
   }, [currentInstance?.realm, userId]);
 
   const handleShareProfile = useCallback(() => {
-    if (!profileLink || !navigator.clipboard?.writeText) return;
-    void navigator.clipboard.writeText(profileLink).then(() => {
-      setCopied(true);
+    if (!profileLink) return;
+    void writeText(profileLink).then((ok) => {
+      if (ok) setCopied(true);
     });
   }, [profileLink]);
 

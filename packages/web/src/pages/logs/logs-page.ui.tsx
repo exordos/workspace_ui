@@ -8,6 +8,7 @@ import { useUsersStore } from "~/entities/user/user.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
+import { writeText } from "~/shared/lib/clipboard";
 import { isElectron } from "~/shared/lib/electron";
 import { env } from "~/shared/lib/env";
 import { clearLogHistory, getLogHistory, type LogEntry } from "~/shared/lib/logger";
@@ -221,15 +222,9 @@ export const LogsPage: React.FC = () => {
   );
 
   const handleCopySnapshot = useCallback(() => {
-    const clipboardApi = navigator.clipboard;
-    if (clipboardApi?.writeText == null) {
-      setCopyState("error");
-      return;
-    }
-    void clipboardApi
-      .writeText(diagnosticsSnapshotJson)
-      .then(() => setCopyState("success"))
-      .catch(() => setCopyState("error"));
+    void writeText(diagnosticsSnapshotJson).then((ok) => {
+      setCopyState(ok ? "success" : "error");
+    });
   }, [diagnosticsSnapshotJson]);
 
   useEffect(() => {

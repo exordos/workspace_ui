@@ -19,7 +19,7 @@
     "package:linux": "npm run build && electron-builder --linux",
     "package:appimage": "npx cross-env ELECTRON_DISABLE_AUTO_UPDATE=1  npm run build && electron-builder --linux AppImage",
     "package:appimage:with-updates": "npm run build && electron-builder --linux AppImage",
-    "test": "node --test scripts/electron-build-flags.test.mjs",
+    "test": "node --test scripts/*.test.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -22,6 +22,7 @@
  *   await deeplink.share({ title: "#general", url: shareUrl });
  */
 
+import { writeText } from "./clipboard";
 import { isElectron } from "./electron";
 import { createLogger } from "./logger";
 import { extractOrgRouteFromPathname, withCurrentOrgRoute } from "./org-route";
@@ -227,7 +228,8 @@ export async function share(data: { title: string; url: string; text?: string })
   }
 
   try {
-    await navigator.clipboard.writeText(data.url);
+    const copied = await writeText(data.url);
+    if (!copied) return false;
     log.info("Copied link to clipboard", { url: data.url });
     return true;
   } catch {

@@ -9,6 +9,13 @@ const electronAPI = {
     getPlatform: (): Promise<string> => ipcRenderer.invoke("app:getPlatform"),
   },
 
+  clipboard: {
+    // Мост для записи в буфер обмена через main-процесс.
+    writeText: (text: string): Promise<boolean> => ipcRenderer.invoke("clipboard:writeText", text),
+    // Мост для чтения буфера обмена через main-процесс.
+    readText: (): Promise<string | null> => ipcRenderer.invoke("clipboard:readText"),
+  },
+
   theme: {
     shouldUseDarkColors: (): Promise<boolean> => ipcRenderer.invoke("theme:shouldUseDarkColors"),
     set: (mode: "light" | "dark" | "system"): void => {

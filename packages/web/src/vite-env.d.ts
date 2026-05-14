@@ -116,6 +116,10 @@ interface ElectronAPI {
     getVersion: () => Promise<string>;
     getPlatform: () => Promise<string>;
   };
+  clipboard: {
+    writeText: (text: string) => Promise<boolean>;
+    readText: () => Promise<string | null>;
+  };
   theme: {
     shouldUseDarkColors: () => Promise<boolean>;
     set: (mode: "light" | "dark" | "system") => void;

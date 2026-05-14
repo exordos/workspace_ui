@@ -1,11 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { t } from "~/i18n/i18n";
-import { createLogger } from "~/shared/lib/logger";
+import { writeText } from "~/shared/lib/clipboard";
 import { Icon } from "./icon";
 import type { CopyableProps } from "./copyable.types";
 
 const RESET_STATE_TIMEOUT_MS = 2000;
-const log = createLogger("copyable");
 
 const joinClasses = (...classes: (string | false | null | undefined)[]): string =>
   classes.filter(Boolean).join(" ");
@@ -33,20 +32,9 @@ export const Copyable: React.FC<CopyableProps> = React.memo(function Copyable({
       event.preventDefault();
       event.stopPropagation();
 
-      const clipboardApi = typeof navigator !== "undefined" ? navigator.clipboard : undefined;
-      if (clipboardApi?.writeText == null) {
-        setCopyState("error");
-        log.warn("Clipboard API unavailable for copy action", { valueLength: value.length });
-        return;
-      }
-
-      void clipboardApi
-        .writeText(value)
-        .then(() => setCopyState("success"))
-        .catch((error) => {
-          setCopyState("error");
-          log.warn("Failed to copy text", { valueLength: value.length, error: String(error) });
-        });
+      void writeText(value).then((ok) => {
+        setCopyState(ok ? "success" : "error");
+      });
     },
     [value],
   );

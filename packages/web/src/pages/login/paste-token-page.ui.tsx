@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { t } from "~/i18n/i18n";
 import { exchangeDesktopFlowToken } from "~/shared/api/zulip-auth";
+import { readText } from "~/shared/lib/clipboard";
 import {
   clearDesktopFlowState,
   decryptDesktopFlowToken,
@@ -40,10 +41,10 @@ export const PasteTokenPage: React.FC = () => {
 
   const handlePaste = useCallback(async () => {
     try {
-      if (!navigator.clipboard?.readText) return;
-      const text = await navigator.clipboard.readText();
-      if (text.trim().length > 0) {
-        setCode(text.trim());
+      const text = await readText();
+      const trimmed = text?.trim();
+      if (trimmed != null && trimmed.length > 0) {
+        setCode(trimmed);
       }
     } catch {
       /* clipboard permissions may be denied */
