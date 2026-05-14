@@ -121,6 +121,22 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
     expect(html).toContain('data-user-id="99"');
     expect(html).toContain("😄");
   });
+
+  it("inlines user_upload image links into preview images", () => {
+    const html = messageBodyToUnsanitizedDisplayHtml(
+      "[image.png](/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png)",
+    );
+    expect(html).toContain('<a href="/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png"><img');
+    expect(html).toContain(
+      'src="/user_uploads/thumbnail/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png/840x560.webp"',
+    );
+  });
+
+  it("keeps non-image user_upload links as regular links", () => {
+    const html = messageBodyToUnsanitizedDisplayHtml("[report.pdf](/user_uploads/2/ff/report.pdf)");
+    expect(html).toContain('<a href="/user_uploads/2/ff/report.pdf">report.pdf</a>');
+    expect(html).not.toContain("<img");
+  });
 });
 
 describe("plainTextPreviewFromMessageBody", () => {

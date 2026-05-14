@@ -21,6 +21,10 @@ import {
   injectZulipMentionPlaceholders,
   restoreZulipMentionPlaceholders,
 } from "~/shared/lib/message-zulip-mentions.lib";
+import {
+  isUserUploadImagePath,
+  toUserUploadThumbnailUrl,
+} from "~/shared/lib/protected-message-media-thumbnail";
 
 const LANGUAGE_CLASS_PATTERN = /\b(?:language|lang)-([a-z0-9#+-]+)\b/i;
 
@@ -98,6 +102,40 @@ export function applySyntaxHighlighting(html: string): string {
   return wrapper.innerHTML;
 }
 
+function inlineUserUploadImageLinks(html: string): string {
+  // Что делает: пост-обрабатывает уже срендеренный markdown HTML и
+  // превращает ссылки на image-файлы из `/user_uploads/...` во встроенные preview-картинки.
+  // Зачем: храним и редактируем сообщение как markdown, но в UI показываем inline image как в Zulip.
+  if (typeof document === "undefined" || !html.includes("/user_uploads/")) {
+    return html;
+  }
+
+  const wrapper = document.createElement("div");
+  wrapper.innerHTML = html;
+
+  const links = wrapper.querySelectorAll<HTMLAnchorElement>("a[href]");
+  for (const link of links) {
+    const href = link.getAttribute("href")?.trim();
+    if (href == null || href.length === 0) continue;
+    // Обрабатываем только image-upload ссылки; не-image вложения (pdf/zip/...) остаются ссылками.
+    if (!isUserUploadImagePath(href)) continue;
+    // Если внутри ссылки уже есть `<img>`, ничего не переписываем.
+    if (link.querySelector("img") != null) continue;
+
+    const title = (link.textContent ?? "").trim();
+    const fallbackLabel = title.length > 0 ? title : "image";
+    const image = document.createElement("img");
+    // Используем thumbnail URL, чтобы остался действующий protected-media pipeline:
+    // `prepareProtectedMessageHtml` уберет реальный src из live DOM и загрузит blob через auth fetch.
+    image.setAttribute("src", toUserUploadThumbnailUrl(href));
+    image.setAttribute("alt", fallbackLabel);
+    image.setAttribute("title", fallbackLabel);
+    link.replaceChildren(image);
+  }
+
+  return wrapper.innerHTML;
+}
+
 export interface MessageBodyDisplayOptions {
   /** Resolves `@**DisplayName**` to a user id for client-side mention spans. Wildcards (`@**all**`, …) do not use this. */
   resolveUserMention?: (displayName: string) => number | null;
@@ -132,7 +170,7 @@ export function messageBodyToUnsanitizedDisplayHtml(
   html = renderEmojiShortcodesInHtml(html, {
     resolveCustomEmojiShortcodeImageUrl: options?.resolveCustomEmojiShortcodeImageUrl,
   });
-  return html;
+  return inlineUserUploadImageLinks(html);
 }
 
 /** One-line / list previews: strip tags; Markdown is converted via marked first. */

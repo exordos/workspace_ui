@@ -352,7 +352,7 @@ describe("MessageBubble edit/delete actions parity", () => {
     expect(image?.getAttribute("data-auth-src")).toContain("/user_uploads/thumbnail/");
   });
 
-  it("keeps markdown user_upload image links as links instead of expanding them into inline images", () => {
+  it("expands markdown user_upload image links into inline images", () => {
     render(
       <MessageBubble
         message={createMessage({
@@ -367,7 +367,10 @@ describe("MessageBubble edit/delete actions parity", () => {
     expect(link.getAttribute("href")).toMatch(
       /\/user_uploads\/2\/ff\/aP3oHiNs40xdmpUNVol7Z5ga\/image\.png$/,
     );
-    expect(link.querySelector("img")).toBeNull();
+    const image = link.querySelector("img");
+    expect(image).not.toBeNull();
+    expect(image?.getAttribute("data-auth-src")).toContain("/user_uploads/thumbnail/");
+    expect(image?.getAttribute("src")).not.toContain("/user_uploads/");
   });
 
   it("does not leave external_content preview URL in rendered img src", () => {
