@@ -44,6 +44,30 @@ function createMessage(overrides: Partial<MockMessage> = {}): MockMessage {
   };
 }
 
+function createRect({
+  left,
+  top,
+  right,
+  bottom,
+}: {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}): DOMRect {
+  return {
+    x: left,
+    y: top,
+    left,
+    top,
+    right,
+    bottom,
+    width: right - left,
+    height: bottom - top,
+    toJSON: () => ({}),
+  } as DOMRect;
+}
+
 describe("MessageBubble edit/delete actions parity", () => {
   afterEach(() => {
     window.getSelection()?.removeAllRanges();
@@ -166,6 +190,48 @@ describe("MessageBubble edit/delete actions parity", () => {
     const incomingMenuTrigger = screen.getByRole("button", { name: /message menu/i });
     expect(incomingMenuTrigger).toHaveClass("-right-8");
     expect(incomingMenuTrigger).not.toHaveClass("right-1");
+  });
+
+  it("anchors context menu near pointer for right-click within feed bounds", async () => {
+    render(
+      <div role="feed">
+        <MessageBubble message={createMessage()} isOwn={false} />
+      </div>,
+    );
+
+    const feed = screen.getByRole("feed");
+    vi.spyOn(feed, "getBoundingClientRect").mockReturnValue(
+      createRect({
+        left: 100,
+        top: 100,
+        right: 900,
+        bottom: 700,
+      }),
+    );
+
+    fireEvent.contextMenu(screen.getByTestId("message-101"), { clientX: 860, clientY: 320 });
+    expect(await screen.findByRole("menuitem", { name: /reply/i })).toBeInTheDocument();
+
+    const contextTrigger = document.querySelector<HTMLElement>(
+      '[data-context-menu-trigger-source="context"]',
+    );
+    expect(contextTrigger).toBeInTheDocument();
+    expect(contextTrigger?.style.left).toBe("854px");
+    expect(contextTrigger?.style.top).toBe("320px");
+  });
+
+  it("keeps three-dots opening in trigger mode without pointer anchor trigger", async () => {
+    const { container } = render(<MessageBubble message={createMessage()} isOwn={false} />);
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: /message menu/i }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    expect(await screen.findByRole("menuitem", { name: /reply/i })).toBeInTheDocument();
+
+    expect(
+      container.querySelector('[data-context-menu-trigger-source="context"]'),
+    ).not.toBeInTheDocument();
   });
 
   it("calls author callback when avatar is clicked", () => {

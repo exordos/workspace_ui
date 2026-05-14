@@ -26,6 +26,11 @@ import {
   MESSAGE_BUBBLE_ATTACHMENT_LINK_BASE_CLASSES,
   MESSAGE_BUBBLE_ATTACHMENT_LINK_STATUS_CLASSES,
 } from "./message-bubble-attachment-styles.lib";
+import {
+  computeMessageContextMenuPosition,
+  MESSAGE_CONTEXT_MENU_EST_HEIGHT_PX,
+  MESSAGE_CONTEXT_MENU_EST_WIDTH_PX,
+} from "./message-bubble-context-menu-position.lib";
 import { MessageBubbleContextMenu } from "./message-bubble-context-menu.ui";
 import {
   BASE_CONTEXT_SECTIONS,
@@ -42,6 +47,10 @@ import { getMessageImagesBaseUrl } from "./message-bubble-realm-html.lib";
 import { resolveJitsiLocationName } from "./message-jitsi-location.lib";
 import { normalizeMediaUrl } from "./message-list-media.lib";
 import { MessageMentionPopover } from "./message-mention-popover.ui";
+import type {
+  MessageBubbleContextMenuAnchor,
+  MessageBubbleContextMenuSource,
+} from "./message-bubble-context-menu.types";
 import type {
   MessageBubbleAttachmentDownloadStatus,
   MessageBubbleProps,
@@ -68,7 +77,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     resolveCustomEmojiShortcodeImageUrl,
     callbacks,
   }) => {
-    const [open, setOpen] = useState(false);
+    const [menuOpen, setMenuOpen] = useState(false);
+    // Источник открытия нужен, чтобы разделить поведение ПКМ и троеточия.
+    const [menuSource, setMenuSource] = useState<MessageBubbleContextMenuSource>("trigger");
+    // Якорь заполняется только для ПКМ-открытия (позиция рядом с курсором).
+    const [contextMenuAnchor, setContextMenuAnchor] =
+      useState<MessageBubbleContextMenuAnchor | null>(null);
     const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
     const [mentionPopover, setMentionPopover] = useState<{
       userId: number;
@@ -241,8 +255,42 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
         focusNode != null &&
         messageBody.contains(anchorNode.parentElement ?? anchorNode) &&
         messageBody.contains(focusNode.parentElement ?? focusNode);
+      // Сохраняем выделенный текст для reply/forward только если выделение внутри текущего сообщения.
       replySelectionRef.current = hasSelectionInsideMessageBody ? selectedText : undefined;
-      setOpen(true);
+      if (event instanceof MouseEvent) {
+        const currentTarget = event.currentTarget;
+        const feedRoot =
+          currentTarget instanceof HTMLElement
+            ? currentTarget.closest<HTMLElement>('[role="feed"]')
+            : null;
+        const feedRect = feedRoot?.getBoundingClientRect();
+        const fallbackBounds = {
+          left: 0,
+          top: 0,
+          right: window.innerWidth,
+          bottom: window.innerHeight,
+        };
+        // Основные границы — область чата; fallback нужен для редких edge-case сценариев.
+        const bounds = feedRect ?? fallbackBounds;
+        const nextPosition = computeMessageContextMenuPosition({
+          clientX: event.clientX,
+          clientY: event.clientY,
+          bounds,
+          menuWidth: MESSAGE_CONTEXT_MENU_EST_WIDTH_PX,
+          menuHeight: MESSAGE_CONTEXT_MENU_EST_HEIGHT_PX,
+        });
+        setContextMenuAnchor({
+          left: nextPosition.menuLeft,
+          top: nextPosition.menuTop,
+          side: nextPosition.side,
+        });
+        setMenuSource("context");
+      } else {
+        // Клавиатурный вызов и другие не-mouse события оставляем в старом режиме от trigger.
+        setContextMenuAnchor(null);
+        setMenuSource("trigger");
+      }
+      setMenuOpen(true);
     }, []);
 
     const handleKeyboardContextMenu = useCallback(
@@ -267,7 +315,10 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     const handleNativeTouchStart = useCallback(() => {
       clearLongPressTimer();
       longPressTimerRef.current = setTimeout(() => {
-        setOpen(true);
+        // Long press должен вести себя как обычное меню от троеточия.
+        setContextMenuAnchor(null);
+        setMenuSource("trigger");
+        setMenuOpen(true);
       }, 500);
     }, [clearLongPressTimer]);
 
@@ -316,7 +367,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
           callbacks?.onOpenJitsiCall?.(jitsiUrl, jitsiLocationName);
         }
         replySelectionRef.current = undefined;
-        setOpen(false);
+        setMenuOpen(false);
         return;
       }
       if (label === "copyCallLink") {
@@ -324,21 +375,21 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
           callbacks.onCopy({ ...message, content: jitsiUrl });
         }
         replySelectionRef.current = undefined;
-        setOpen(false);
+        setMenuOpen(false);
         return;
       }
       if (label === "reply") {
         const selectedReplyText = replySelectionRef.current;
         replySelectionRef.current = undefined;
         callbacks?.onReply?.(message, selectedReplyText);
-        setOpen(false);
+        setMenuOpen(false);
         return;
       }
       if (label === "forward") {
         const selectedForwardText = replySelectionRef.current;
         replySelectionRef.current = undefined;
         callbacks?.onForward?.(message, selectedForwardText);
-        setOpen(false);
+        setMenuOpen(false);
         return;
       }
 
@@ -347,21 +398,33 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
         (callbacks[action] as (msg: MockMessage) => void)(message);
       }
       replySelectionRef.current = undefined;
-      setOpen(false);
+      setMenuOpen(false);
     };
+
+    const handleContextMenuSourceChange = useCallback(
+      (nextSource: MessageBubbleContextMenuSource) => {
+        setMenuSource(nextSource);
+        if (nextSource === "trigger") {
+          // При переходе в trigger-режим позиция ПКМ больше не актуальна.
+          setContextMenuAnchor(null);
+        }
+      },
+      [],
+    );
 
     const handleContextMenuOpenChange = useCallback((nextOpen: boolean) => {
       if (!nextOpen) {
         replySelectionRef.current = undefined;
+        setContextMenuAnchor(null);
       }
-      setOpen(nextOpen);
+      setMenuOpen(nextOpen);
     }, []);
 
     const handleReaction = useCallback(
       (payload: MessageReactionPayload) => {
         callbacks?.onAddReaction?.(message.id, payload);
         setEmojiPickerOpen(false);
-        setOpen(false);
+        setMenuOpen(false);
       },
       [callbacks, message.id],
     );
@@ -573,7 +636,10 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
 
     const contextMenu = (
       <MessageBubbleContextMenu
-        open={open}
+        open={menuOpen}
+        source={menuSource}
+        contextAnchor={contextMenuAnchor}
+        onSourceChange={handleContextMenuSourceChange}
         onOpenChange={handleContextMenuOpenChange}
         isOwn={isOwn}
         emojiPickerOpen={emojiPickerOpen}
