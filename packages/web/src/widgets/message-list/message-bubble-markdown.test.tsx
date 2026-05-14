@@ -80,6 +80,40 @@ describe("MessageBubble markdown body", () => {
     expect(body?.querySelector("pre")?.textContent).toBe(longToken);
   });
 
+  it("renders ordered and nested unordered lists with surrounding paragraphs", () => {
+    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+
+    const markdown = [
+      "Intro paragraph",
+      "",
+      "1. First item",
+      "   - Nested A",
+      "   - Nested B",
+      "2. Second item",
+      "",
+      "Outro paragraph",
+    ].join("\n");
+
+    const { container } = render(
+      <MessageBubble message={createMessage({ content: markdown })} isOwn={false} />,
+    );
+
+    const body = container.querySelector(".message-body");
+    expect(body).toBeTruthy();
+    expect(body?.querySelector("ol")).toBeTruthy();
+    expect(body?.querySelector("ul")).toBeTruthy();
+    expect(body?.querySelector("ol li ul")).toBeTruthy();
+    expect(body?.textContent).toContain("Intro paragraph");
+    expect(body?.textContent).toContain("Outro paragraph");
+
+    const className = body?.className ?? "";
+    expect(className).toContain("[&_ol]:list-decimal");
+    expect(className).toContain("[&_ul]:list-disc");
+    expect(className).toContain("[&_li>p]:mb-0");
+    expect(className).toContain("[&_p+ol]:mt-1");
+    expect(className).toContain("[&_ol+p]:mt-1");
+  });
+
   it("renders custom shortcode emoji as inline image with alt/title", () => {
     useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
 

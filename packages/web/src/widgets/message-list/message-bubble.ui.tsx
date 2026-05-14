@@ -9,6 +9,7 @@ import type { MessageReactionPayload, MockMessage } from "~/shared/api/zulip.typ
 import { buildAuthHeader } from "~/shared/lib/auth-guard";
 import { formatMessageTime, getPresenceState } from "~/shared/lib/format";
 import { getJitsiMeetingUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
+import { MESSAGE_BUBBLE_BODY_CLASS_NAME } from "~/shared/lib/message-body-rich-text-classes";
 import { messageBodyToUnsanitizedDisplayHtml } from "~/shared/lib/message-markdown-display.lib";
 import { prepareProtectedMessageHtml } from "~/shared/lib/protected-message-media";
 import { useProtectedMessageHtml } from "~/shared/lib/protected-message-media.hook";
@@ -622,10 +623,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
               : `${peerBubbleTailClass} ${peerBubbleBackgroundClass} text-text-primary`
           }`}
         >
-          <div
-            ref={messageBodyRef}
-            className="message-body min-w-0 max-w-full select-text break-words [&_a]:text-accent [&_a]:underline hover:[&_a]:opacity-90 [&_blockquote]:border-l-2 [&_blockquote]:border-border-subtle [&_blockquote]:pl-2 [&_blockquote]:italic [&_blockquote]:text-text-muted [&_img]:my-1 [&_img]:h-auto [&_img]:max-h-[160px] [&_img]:w-auto [&_img]:max-w-full [&_img]:cursor-pointer [&_img]:rounded [&_img]:object-contain [&_p:last-child]:mb-0 [&_p]:mb-1 [&_pre]:my-1 [&_pre]:min-w-0 [&_pre]:max-w-full [&_pre]:whitespace-pre-wrap [&_pre]:border-l-2 [&_pre]:border-border-subtle [&_pre]:py-2 [&_pre]:pl-2 [&_pre]:pr-2 [&_pre]:font-mono [&_pre]:text-sm [&_pre]:italic [&_pre]:text-text-muted [&_pre]:[overflow-wrap:anywhere] [&_pre_code]:min-w-0 [&_pre_code]:max-w-full [&_pre_code]:whitespace-pre-wrap [&_pre_code]:[overflow-wrap:anywhere] [&_span.user-mention]:cursor-pointer [&_span.user-mention]:text-accent hover:[&_span.user-mention]:opacity-90 [&_table]:my-2 [&_table]:w-full [&_table]:border-collapse [&_table]:text-sm [&_td]:border [&_td]:border-border-subtle [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-border-subtle [&_th]:px-2 [&_th]:py-1 [&_th]:text-left"
-          />
+          <div ref={messageBodyRef} className={MESSAGE_BUBBLE_BODY_CLASS_NAME} />
           {hasReactions ? (
             <div className="mt-1 min-w-0">
               <MessageBubbleReactionsRow

@@ -101,4 +101,39 @@ describe("MessageComposerPreviewBody", () => {
     });
     expect(embedImage?.style.backgroundImage).not.toContain("/external_content/");
   });
+
+  it("keeps list structure and list formatting hooks in preview body", () => {
+    const listHtml = [
+      "<p>Intro paragraph</p>",
+      "<ol>",
+      "<li><p>First item</p><ul><li><p>Nested A</p></li><li><p>Nested B</p></li></ul></li>",
+      "<li><p>Second item</p></li>",
+      "</ol>",
+      "<p>Outro paragraph</p>",
+    ].join("");
+
+    const { container } = render(
+      <MessageComposerPreviewBody
+        outgoingBodyTrim="preview"
+        previewLoading={false}
+        previewError={null}
+        previewHtml={listHtml}
+      />,
+    );
+
+    const body = container.querySelector(".message-body");
+    expect(body).not.toBeNull();
+    expect(body?.querySelector("ol")).not.toBeNull();
+    expect(body?.querySelector("ul")).not.toBeNull();
+    expect(body?.querySelector("ol li ul")).not.toBeNull();
+    expect(body?.textContent).toContain("Intro paragraph");
+    expect(body?.textContent).toContain("Outro paragraph");
+
+    const className = body?.className ?? "";
+    expect(className).toContain("[&_ol]:list-decimal");
+    expect(className).toContain("[&_ul]:list-disc");
+    expect(className).toContain("[&_li>p]:mb-0");
+    expect(className).toContain("[&_p+ol]:mt-1");
+    expect(className).toContain("[&_ol+p]:mt-1");
+  });
 });
