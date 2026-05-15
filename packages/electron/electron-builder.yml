@@ -60,12 +60,12 @@ mac:
   target:
     - target: dmg
       arch:
-        - x64
         - arm64
+        - x64
     - target: zip
       arch:
-        - x64
         - arm64
+        - x64
   icon: resources/icon.icns
   category: public.app-category.social-networking
   artifactName: "${productName}-${version}-mac-${arch}.${ext}"
