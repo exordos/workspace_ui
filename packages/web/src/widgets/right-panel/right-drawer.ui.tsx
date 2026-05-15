@@ -7,7 +7,7 @@ import type { RightDrawerProps } from "./right-drawer.types";
 export const RightDrawer: React.FC<RightDrawerProps> = ({ onClose, children }) => {
   return (
     <aside
-      className="relative flex min-h-0 w-panel-right flex-shrink-0 flex-col overflow-hidden rounded-xl bg-sidebar-bg px-2 py-5"
+      className="relative flex min-h-0 w-panel-right flex-shrink-0 flex-col overflow-hidden bg-sidebar-bg px-2 py-5"
       data-focus-zone="panel"
       aria-label={t("a11y.infoPanel")}
     >

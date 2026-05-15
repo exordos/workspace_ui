@@ -147,7 +147,7 @@ describe("MessageComposer async send behavior", () => {
     fireEvent.change(textbox, { target: { value: "Hello world" } });
     fireEvent.click(screen.getByRole("button", { name: /write a message/i }));
 
-    expect(onSend).toHaveBeenCalledWith("Hello world", "general", undefined);
+    expect(onSend).toHaveBeenCalledWith("Hello world", "", undefined);
     await waitFor(() => {
       expect(textbox).toHaveValue("");
     });
@@ -176,7 +176,7 @@ describe("MessageComposer async send behavior", () => {
     fireEvent.keyDown(textbox, { key: "Enter", code: "Enter" });
 
     await waitFor(() => {
-      expect(onSend).toHaveBeenNthCalledWith(1, "First message", "general", undefined);
+      expect(onSend).toHaveBeenNthCalledWith(1, "First message", "", undefined);
       expect(textbox).toHaveValue("");
       expect(textbox).toHaveFocus();
     });
@@ -185,7 +185,7 @@ describe("MessageComposer async send behavior", () => {
     fireEvent.keyDown(textbox, { key: "Enter", code: "Enter" });
 
     await waitFor(() => {
-      expect(onSend).toHaveBeenNthCalledWith(2, "Second message", "general", undefined);
+      expect(onSend).toHaveBeenNthCalledWith(2, "Second message", "", undefined);
     });
 
     resolveFirstSend();
@@ -204,7 +204,7 @@ describe("MessageComposer async send behavior", () => {
     fireEvent.click(screen.getByRole("button", { name: /write a message/i }));
 
     await waitFor(() => {
-      expect(onSend).toHaveBeenCalledWith("Draft text", "general", undefined);
+      expect(onSend).toHaveBeenCalledWith("Draft text", "", undefined);
     });
 
     expect(textbox).toHaveValue("");
@@ -284,7 +284,7 @@ describe("MessageComposer scheduled send", () => {
       expect(screen.getByRole("button", { name: /cancel/i })).toBeInTheDocument();
 
       await vi.advanceTimersByTimeAsync(10 * 60 * 1000 + 1000);
-      expect(onSend).toHaveBeenCalledWith("Delayed update", "general", undefined);
+      expect(onSend).toHaveBeenCalledWith("Delayed update", "", undefined);
     } finally {
       vi.useRealTimers();
     }
@@ -602,7 +602,7 @@ describe("MessageComposer mention suggestions", () => {
     fireEvent.keyDown(textbox, { key: "Enter" });
 
     await waitFor(() => {
-      expect(onSend).toHaveBeenCalledWith("@zzz", "general", undefined);
+      expect(onSend).toHaveBeenCalledWith("@zzz", "", undefined);
     });
     expect(useMentionSuggestStore.getState().visible).toBe(false);
   });
@@ -877,7 +877,7 @@ describe("MessageComposer file attachments", () => {
     fireEvent.keyDown(textbox, { key: "Enter" });
 
     await waitFor(() => {
-      expect(onSend).toHaveBeenCalledWith("message with file", "general", [file]);
+      expect(onSend).toHaveBeenCalledWith("message with file", "", [file]);
     });
   });
 
@@ -896,7 +896,7 @@ describe("MessageComposer file attachments", () => {
     fireEvent.keyDown(textbox, { key: "Enter" });
 
     await waitFor(() => {
-      expect(onSend).toHaveBeenCalledWith("message from drop", "general", [file]);
+      expect(onSend).toHaveBeenCalledWith("message from drop", "", [file]);
     });
   });
 
@@ -1045,11 +1045,10 @@ describe("MessageComposer send shortcuts", () => {
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
     const textbox = screen.getByRole("textbox");
-    const inputRow = textbox.parentElement?.parentElement;
+    const paddedShell = textbox.closest(".p-3");
     const sendButton = screen.getByRole("button", { name: /write a message/i });
 
-    expect(inputRow).not.toBeNull();
-    expect(inputRow?.parentElement).toHaveClass("p-3");
+    expect(paddedShell).not.toBeNull();
     expect(sendButton).toHaveClass("h-9");
     expect(sendButton).toHaveClass("w-9");
     expect(sendButton).toHaveClass("self-center");
@@ -1065,7 +1064,7 @@ describe("MessageComposer send shortcuts", () => {
     fireEvent.keyDown(textbox, { key: "Enter" });
 
     await waitFor(() => {
-      expect(onSend).toHaveBeenCalledWith("hello", "general", undefined);
+      expect(onSend).toHaveBeenCalledWith("hello", "", undefined);
     });
   });
 

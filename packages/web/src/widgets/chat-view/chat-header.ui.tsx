@@ -42,7 +42,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
     dmPartner?.isTyping === true ? t("chat.typing") : (dmPartner?.customStatus ?? presenceText);
 
   return (
-    <header className="flex flex-shrink-0 items-center justify-between rounded-xl bg-card-bg px-5 py-2">
+    <header className="flex flex-shrink-0 items-center justify-between bg-card-bg px-5 py-2">
       <div className="flex min-w-0 flex-1 flex-col">
         {dmPartner ? (
           <div className="flex min-w-0 items-center gap-3">

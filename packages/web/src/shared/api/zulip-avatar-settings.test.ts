@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getCurrentInstance } from "./client";
-import { getMockZulipApi } from "./zulip.test.setup";
+import { getMockGetCurrentInstance, getMockZulipApi } from "./zulip.test.setup";
 
 const mockZulipApi = getMockZulipApi();
 
@@ -126,7 +125,7 @@ describe("uploadOwnAvatar", () => {
 
   it("returns transient error when there is no active instance", async () => {
     const { uploadOwnAvatar } = await import("./zulip-avatar-settings");
-    vi.mocked(getCurrentInstance).mockReturnValue(null);
+    getMockGetCurrentInstance().mockReturnValue(null);
 
     const file = new File(["data"], "avatar.png", { type: "image/png" });
     const result = await uploadOwnAvatar(file);

@@ -88,7 +88,9 @@ describe("downloadUserUploadAttachment", () => {
       value: revokeObjectURLMock,
     });
 
-    const fetchMock = vi.fn().mockResolvedValue(new Response(new Blob(["ok"]), { status: 200 }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response("ok", { status: 200, headers: { "content-length": "2" } }));
 
     const success = await downloadUserUploadAttachment({
       path: "/user_uploads/1/file.txt",
@@ -183,7 +185,9 @@ describe("downloadUserUploadAttachment", () => {
       value: revokeObjectURLMock,
     });
 
-    const fetchMock = vi.fn().mockResolvedValue(new Response(new Blob(["ok"]), { status: 200 }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response("ok", { status: 200, headers: { "content-length": "2" } }));
 
     const success = await downloadUserUploadAttachment({
       path: "https://evil.example.com/user_uploads/1/file.txt?token=unsafe",

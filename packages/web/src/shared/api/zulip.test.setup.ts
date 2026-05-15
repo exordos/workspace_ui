@@ -21,6 +21,8 @@ export function getMockZulipClient() {
   return mockZulipClient;
 }
 
+const mockGetCurrentInstance = vi.hoisted(() => vi.fn());
+
 const mockZulipApi = vi.hoisted(() => ({
   get: vi.fn(),
   post: vi.fn(),
@@ -31,6 +33,10 @@ const mockZulipApi = vi.hoisted(() => ({
 
 const mockRefreshZulipApiBase = vi.hoisted(() => vi.fn());
 const mockRefreshWorkspaceApiBase = vi.hoisted(() => vi.fn());
+
+export function getMockGetCurrentInstance() {
+  return mockGetCurrentInstance;
+}
 
 export function getMockZulipApi() {
   return mockZulipApi;
@@ -45,7 +51,7 @@ export function getMockRefreshWorkspaceApiBase() {
 }
 
 vi.mock("./client", () => ({
-  getCurrentInstance: vi.fn(),
+  getCurrentInstance: mockGetCurrentInstance,
   zulipApi: mockZulipApi,
   refreshZulipApiBase: mockRefreshZulipApiBase,
   refreshWorkspaceApiBase: mockRefreshWorkspaceApiBase,
@@ -102,7 +108,8 @@ export function jsonResponse(data: unknown, status = 200): Response {
 beforeEach(() => {
   vi.stubGlobal("fetch", mockFetch);
   mockFetch.mockReset();
-  vi.mocked(getCurrentInstance).mockReturnValue(TEST_INSTANCE);
+  mockGetCurrentInstance.mockReset();
+  mockGetCurrentInstance.mockReturnValue(TEST_INSTANCE);
   mockZulipClient.streams.retrieve.mockReset();
   mockZulipClient.streams.topics.retrieve.mockReset();
   mockZulipClient.messages.retrieve.mockReset();

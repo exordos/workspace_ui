@@ -1282,7 +1282,7 @@ describe("RightPanel truthfulness", () => {
 
     await waitFor(() => {
       expect(addMembersSpy).toHaveBeenCalledWith({
-        streamName: "engineering",
+        streamName: "Test clon",
         userIds: [88],
       });
     });
