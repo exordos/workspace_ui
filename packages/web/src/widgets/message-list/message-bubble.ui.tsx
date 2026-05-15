@@ -614,6 +614,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
         />
       ) : null;
     const bubbleSurfaceClass = "rounded-[18px]";
+    const bubbleMetadataClass =
+      "mt-1 flex min-w-0 items-center justify-end gap-1 text-[11px] text-text-muted";
     const focusedBubbleBackgroundClass = !isSelected && isFocused ? "bg-card-bg-active" : null;
     const ownBubbleBackgroundClass = focusedBubbleBackgroundClass ?? "bg-msg-own-bg";
     const peerBubbleBackgroundClass = focusedBubbleBackgroundClass ?? "bg-bg-elevated";
@@ -683,7 +685,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     ) : (
       <>
         <div
-          className={`relative overflow-hidden px-3 py-2 pb-5 pr-14 ${bubbleSurfaceClass} transition-colors duration-700 ${
+          className={`relative overflow-hidden px-3 py-2 ${bubbleSurfaceClass} transition-colors duration-700 ${
             isOwn
               ? `${ownBubbleTailClass} ${ownBubbleBackgroundClass} text-text-primary`
               : `${peerBubbleTailClass} ${peerBubbleBackgroundClass} text-text-primary`
@@ -702,8 +704,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
               />
             </div>
           ) : null}
-          <div className="absolute bottom-2 right-2 flex items-center gap-1 text-[11px] text-text-muted">
-            <span>{time}</span>
+          <div className={bubbleMetadataClass}>
+            <span className="whitespace-nowrap">{time}</span>
             {ownDeliveryIndicator}
           </div>
         </div>

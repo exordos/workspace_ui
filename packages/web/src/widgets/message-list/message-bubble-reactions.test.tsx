@@ -375,9 +375,9 @@ describe("MessageBubble quick reactions", () => {
     expect(reactionButton).toHaveClass("border", "border-border-subtle", "rounded-lg");
 
     const bubbleSurface = reactionRow?.parentElement?.parentElement;
-    expect(bubbleSurface).toHaveClass("pr-14", "pb-5");
+    expect(bubbleSurface).not.toHaveClass("pr-14", "pb-5", "pr-24", "pb-6");
     expect(
-      bubbleSurface?.querySelector(".absolute.bottom-2.right-2.flex.items-center.gap-1"),
+      bubbleSurface?.querySelector(".mt-1.flex.items-center.justify-end.gap-1"),
     ).not.toBeNull();
   });
 
@@ -420,12 +420,39 @@ describe("MessageBubble quick reactions", () => {
 
     const bubbleRoot = screen.getByTestId("message-101");
     const bubbleSurface = bubbleRoot.querySelector(".overflow-hidden.rounded-\\[18px\\]");
-    expect(bubbleSurface).toHaveClass("pr-14", "pb-5");
+    expect(bubbleSurface).not.toHaveClass("pr-14", "pb-5", "pr-24", "pb-6");
 
-    const metadata = bubbleSurface?.querySelector(
-      ".absolute.bottom-2.right-2.flex.items-center.gap-1",
-    );
+    const metadata = bubbleSurface?.querySelector(".mt-1.flex.items-center.justify-end.gap-1");
     expect(metadata).not.toBeNull();
     expect(metadata?.querySelector('[data-testid="message-delivery-101"]')).not.toBeNull();
+  });
+
+  it("uses expanded metadata reserve for failed own messages with text status", () => {
+    render(
+      <MessageBubble
+        isOwn
+        message={createMessage({
+          id: 101,
+          delivery_status: "failed",
+          reactions: [
+            {
+              emoji_name: "thumbs_up",
+              emoji_code: "1f44d",
+              reaction_type: "unicode_emoji",
+              user_id: 77,
+            },
+          ],
+        })}
+      />,
+    );
+
+    const bubbleRoot = screen.getByTestId("message-101");
+    const bubbleSurface = bubbleRoot.querySelector(".overflow-hidden.rounded-\\[18px\\]");
+    expect(bubbleSurface).not.toHaveClass("pr-14", "pb-5", "pr-24", "pb-6");
+
+    const metadata = bubbleSurface?.querySelector(".mt-1.flex.items-center.justify-end.gap-1");
+    expect(metadata).not.toBeNull();
+    expect(metadata?.querySelector('[data-testid="message-delivery-101"]')).not.toBeNull();
+    expect(screen.getByText(/not delivered/i)).toHaveClass("whitespace-nowrap", "leading-none");
   });
 });

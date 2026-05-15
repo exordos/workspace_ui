@@ -358,7 +358,17 @@ describe("MessageBubble edit/delete actions parity", () => {
       />,
     );
 
-    expect(screen.getByText(/not delivered/i)).toBeInTheDocument();
+    const bubbleRoot = screen.getByTestId("message-101");
+    const bubbleSurface = bubbleRoot.querySelector(".overflow-hidden.rounded-\\[18px\\]");
+    expect(bubbleSurface).not.toHaveClass("pr-24", "pb-6", "pr-14", "pb-5");
+
+    const metadata = bubbleSurface?.querySelector(".mt-1.flex.items-center.justify-end.gap-1");
+    expect(metadata).not.toBeNull();
+    expect(metadata?.querySelector('[data-testid="message-delivery-101"]')).not.toBeNull();
+
+    const notDeliveredLabel = screen.getByText(/not delivered/i);
+    expect(notDeliveredLabel).toBeInTheDocument();
+    expect(notDeliveredLabel).toHaveClass("whitespace-nowrap", "leading-none");
     expect(screen.queryByTitle(/sent to server/i)).not.toBeInTheDocument();
   });
 

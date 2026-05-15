@@ -90,7 +90,10 @@ export const MessageBubbleOwnDeliveryIndicator = React.memo(
           </button>
         )}
         {!showRetry && !showRemove && (
-          <span className="text-[11px] text-notice-base" title={t("message.notDelivered")}>
+          <span
+            className="whitespace-nowrap text-[11px] leading-none text-notice-base"
+            title={t("message.notDelivered")}
+          >
             {t("message.notDelivered")}
           </span>
         )}
