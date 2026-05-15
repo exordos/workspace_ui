@@ -45,7 +45,7 @@
     "node": ">=22"
   },
   "devDependencies": {
-    "@commitlint/cli": "20.4.4",
+    "@commitlint/cli": "21.0.1",
     "@commitlint/config-conventional": "20.4.4",
     "@playwright/test": "1.58.2",
     "lerna": "9.0.7",
