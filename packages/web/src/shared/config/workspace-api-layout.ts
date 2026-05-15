@@ -23,7 +23,7 @@ export const VANILLA_ZULIP_HTTP_PATH_DEFAULTS = {
 export const WORKSPACE_GATEWAY_HTTP_PATH_DEFAULTS = {
   zulipApiPath: "/api/v1",
   workspaceApiPath: "/workspace/v1",
-  workspaceRestApiPath: "",
+  workspaceRestApiPath: "/workspace",
   userUploadsPathPrefix: "",
 } as const;
 
