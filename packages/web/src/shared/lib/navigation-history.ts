@@ -71,6 +71,44 @@ export function getForwardPath(): string | null {
   return canGoForward() ? historyStack[currentIndex + 1]! : null;
 }
 
+interface NavigationSnapshot {
+  canGoBack: boolean;
+  canGoForward: boolean;
+  currentIndex: number;
+  stackSize: number;
+}
+
+let cachedSnapshot: NavigationSnapshot | null = null;
+let cachedBack = false;
+let cachedFwd = false;
+let cachedIdx = -1;
+let cachedSize = 0;
+
+function getNavigationSnapshot(): NavigationSnapshot {
+  const back = canGoBack();
+  const fwd = canGoForward();
+  if (
+    cachedSnapshot &&
+    back === cachedBack &&
+    fwd === cachedFwd &&
+    currentIndex === cachedIdx &&
+    historyStack.length === cachedSize
+  ) {
+    return cachedSnapshot;
+  }
+  cachedBack = back;
+  cachedFwd = fwd;
+  cachedIdx = currentIndex;
+  cachedSize = historyStack.length;
+  cachedSnapshot = {
+    canGoBack: back,
+    canGoForward: fwd,
+    currentIndex,
+    stackSize: historyStack.length,
+  };
+  return cachedSnapshot;
+}
+
 // ---------------------------------------------------------------------------
 // React hook
 // ---------------------------------------------------------------------------
@@ -83,46 +121,10 @@ export function useNavigationHistory() {
     pushEntry(location.pathname + location.search);
   }, [location.pathname, location.search]);
 
-  let _cachedSnapshot: {
-    canGoBack: boolean;
-    canGoForward: boolean;
-    currentIndex: number;
-    stackSize: number;
-  } | null = null;
-  let _cachedBack = false;
-  let _cachedFwd = false;
-  let _cachedIdx = -1;
-  let _cachedSize = 0;
-
-  const getSnapshot = () => {
-    const back = canGoBack();
-    const fwd = canGoForward();
-    if (
-      _cachedSnapshot &&
-      back === _cachedBack &&
-      fwd === _cachedFwd &&
-      currentIndex === _cachedIdx &&
-      historyStack.length === _cachedSize
-    ) {
-      return _cachedSnapshot;
-    }
-    _cachedBack = back;
-    _cachedFwd = fwd;
-    _cachedIdx = currentIndex;
-    _cachedSize = historyStack.length;
-    _cachedSnapshot = {
-      canGoBack: back,
-      canGoForward: fwd,
-      currentIndex,
-      stackSize: historyStack.length,
-    };
-    return _cachedSnapshot;
-  };
-
   const state = useSyncExternalStore((cb) => {
     listeners.add(cb);
     return () => listeners.delete(cb);
-  }, getSnapshot);
+  }, getNavigationSnapshot);
 
   const goBack = useCallback(() => {
     if (!canGoBack()) return;

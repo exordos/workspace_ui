@@ -10,6 +10,7 @@
   "endOfLine": "lf",
   "jsxSingleQuote": false,
   "plugins": ["prettier-plugin-tailwindcss"],
+  "tailwindConfig": "./packages/web/tailwind.config.ts",
   "overrides": [
     {
       "files": "*.md",

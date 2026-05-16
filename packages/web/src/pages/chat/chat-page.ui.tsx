@@ -195,10 +195,6 @@ export const ChatPage: React.FC = () => {
     streamRouteTopic,
   ]);
 
-  /** Same array as passed to `MessageList`; used when applying read flags so we do not rely on store alone. */
-  const effectiveMessagesForReadRef = useRef<MockMessage[]>(messages);
-  effectiveMessagesForReadRef.current = messages;
-
   useEffect(() => {
     const firstId = messages[0]?.id;
     const lastId = messages[messages.length - 1]?.id;
@@ -501,7 +497,7 @@ export const ChatPage: React.FC = () => {
       if (messageIds.length === 0) return;
 
       const storeMessages = useCurrentChatMessagesStore.getState().messages;
-      const effectiveMessages = effectiveMessagesForReadRef.current;
+      const effectiveMessages = messages;
       const unreadMessageIds = filterMessageIdsStillUnreadForOptimisticApply(messageIds, {
         storeMessages,
         effectiveMessages,
@@ -543,7 +539,7 @@ export const ChatPage: React.FC = () => {
         chatListState.decrementUnreadForDmKey(context.dmKey, missingIdsCount);
       }
     },
-    [updateMessageFlagsInStore],
+    [messages, updateMessageFlagsInStore],
   );
 
   const handleUnreadMessagesVisible = useCallback(
