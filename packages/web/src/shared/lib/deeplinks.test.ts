@@ -3,7 +3,7 @@
  *
  * Deep links enable navigation to specific streams, topics, messages, and DMs
  * via URL paths. They are used for shareable links, custom protocol handling
- * (workspace://), browser history, and cross-platform link opening.
+ * (ew://), browser history, and cross-platform link opening.
  * Broken deep links mean users can't navigate to shared content.
  */
 
@@ -160,9 +160,9 @@ describe("deeplink parser", () => {
     expect(result.filter).toBe("starred");
   });
 
-  // Custom protocol (workspace://) is used by Electron for OS-level deep linking
+  // Custom protocol (ew://) is used by Electron for OS-level deep linking
   it("parses custom protocol URL", () => {
-    const result = deeplink.parse("workspace://open/dm/42");
+    const result = deeplink.parse("ew://open/dm/42");
     expect(result.type).toBe("dm");
     expect(result.dmId).toBe("42");
   });
@@ -209,7 +209,7 @@ describe("toShareableUrl", () => {
   it("returns custom protocol URL in Electron", () => {
     (window as unknown as Record<string, unknown>).electronAPI = {};
     const result = deeplink.toShareableUrl("/dm/42");
-    expect(result).toBe("workspace://open/dm/42");
+    expect(result).toBe("ew://open/dm/42");
   });
 });
 

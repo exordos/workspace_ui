@@ -1,6 +1,6 @@
-appId: com.genesis_workspace.app
-productName: Genesis Workspace
-copyright: Copyright © 2026 Genesis Team
+appId: com.exordos.workspace
+productName: Exordos Workspace
+copyright: Copyright © 2026 Genesis Corporation JSC
 
 directories:
   buildResources: resources
@@ -20,6 +20,16 @@ asarUnpack:
   - resources/**
 compression: normal
 
+# ──────────────────────────── Deep link protocol ────────────────────────────
+# Registers ew:// as a custom URL scheme so the OS can open the app via deep links.
+# macOS: written into Info.plist (CFBundleURLTypes)
+# Windows: written into the registry (HKCU\Software\Classes\ew)
+# Linux: electron-builder adds x-scheme-handler/ew to the .desktop MimeType
+protocols:
+  name: Exordos Workspace
+  schemes:
+    - ew
+
 # ──────────────────────────── Windows 11 ────────────────────────────
 win:
   target:
@@ -37,7 +47,7 @@ nsis:
   uninstallerIcon: resources/icon.ico
   installerHeaderIcon: resources/icon.ico
   deleteAppDataOnUninstall: false
-  shortcutName: Workspace
+  shortcutName: Exordos Workspace
 
 # ──────────────────────────── macOS 26 ────────────────────────────
 #
@@ -115,7 +125,8 @@ linux:
   # Must be a map of Desktop Entry keys — not a raw .desktop string (breaks Icon=/Name=/Exec= merge).
   desktop:
     entry:
-      StartupWMClass: workspace
+      StartupWMClass: exordos-workspace
+      MimeType: x-scheme-handler/ew
   artifactName: "${productName}-${version}-linux-${arch}.${ext}"
 
 deb:
@@ -131,6 +142,7 @@ deb:
   priority: optional
 
 rpm:
+  maintainer: Exordos <info@genesis-corporation.ru>
   depends:
     - gtk3
     - libnotify

@@ -8,7 +8,7 @@
     "errorStatus": "Ошибка {{status}}",
     "queueRegistrationError": "Ошибка регистрации очереди",
     "invalidRegisterResponse": "Некорректный ответ register: нет queue_id или last_event_id",
-    "name": "Workspace",
+    "name": "Exordos Workspace",
     "loading": "Загрузка…",
     "error": "Что-то пошло не так",
     "retry": "Попробовать снова",

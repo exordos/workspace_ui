@@ -1,6 +1,6 @@
 {
   "app": {
-    "name": "Workspace",
+    "name": "Exordos Workspace",
     "loading": "Loading…",
     "error": "Something went wrong",
     "retry": "Try again",

@@ -60,7 +60,7 @@ export default async function afterSign(context) {
     "utf-8",
   );
   const appIdMatch = builderConfig.match(/^appId:\s*(.+)$/m);
-  const appId = appIdMatch?.[1]?.trim() ?? "com.workspace.app";
+  const appId = appIdMatch?.[1]?.trim() ?? "com.exordos.workspace";
 
   const appName = context.packager.appInfo.productFilename;
   const appPath = join(appOutDir, `${appName}.app`);

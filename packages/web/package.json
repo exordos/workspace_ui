@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "author": "Genesis Team <info@genesis-corporation.ru>",
-  "description": "GenesisWorkspace",
+  "author": "Exordos <info@genesis-corporation.ru>",
+  "description": "Exordos Workspace web app",
   "license": "Apache-2.0",
   "scripts": {
     "dev": "vite",

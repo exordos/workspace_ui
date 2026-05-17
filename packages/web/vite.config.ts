@@ -213,9 +213,10 @@ export default defineConfig(({ mode }) => {
               registerType: "prompt",
               includeAssets: ["favicon.ico", "apple-touch-icon.png"],
               manifest: {
-                name: env.VITE_BRAND_APP_NAME || "Workspace",
+                name: env.VITE_BRAND_APP_NAME || "Exordos Workspace",
                 short_name: env.VITE_BRAND_SHORT_NAME || "Workspace",
-                description: env.VITE_BRAND_DESCRIPTION || "Corporate messenger",
+                description:
+                  env.VITE_BRAND_DESCRIPTION || "Exordos Workspace — smart corporate messenger",
                 theme_color: env.VITE_BRAND_THEME_COLOR || "#1B1B1D",
                 background_color: env.VITE_BRAND_BG_COLOR || "#1B1B1D",
                 display: "standalone",

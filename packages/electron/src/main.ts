@@ -107,10 +107,10 @@ function appendLogsLine(rawLine: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Deep links (custom protocol: workspace://)
+// Deep links (custom protocol: ew://)
 // ---------------------------------------------------------------------------
 
-const PROTOCOL = "workspace";
+const PROTOCOL = "ew";
 let pendingDeepLink: string | null = null;
 
 if (!IS_DEV) {

@@ -44,7 +44,7 @@ messaging.onBackgroundMessage((payload) => {
     return;
   }
 
-  const title = notification.title || data.sender_full_name || "Workspace";
+  const title = notification.title || data.sender_full_name || "Exordos Workspace";
   const body =
     notification.body ||
     data.content ||

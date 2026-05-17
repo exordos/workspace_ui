@@ -2,7 +2,7 @@
   "name": "workspace",
   "private": true,
   "version": "0.1.0",
-  "description": "Genesis Workspace - corporate messenger built with React/Electron",
+  "description": "Exordos Workspace - smart corporate messenger built with React/Electron",
   "workspaces": [
     "packages/*"
   ],

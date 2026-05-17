@@ -90,7 +90,7 @@ export function toLicenses(): string {
 // Shareable URL (full external URL)
 // ---------------------------------------------------------------------------
 
-const CUSTOM_PROTOCOL = "workspace";
+const CUSTOM_PROTOCOL = "ew";
 
 export function toShareableUrl(internalPath: string): string {
   const scopedPath = withCurrentOrgRoute(internalPath);

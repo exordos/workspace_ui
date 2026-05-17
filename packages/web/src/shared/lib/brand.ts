@@ -20,22 +20,22 @@ const opt = (key: string, fallback: string): string => {
 
 export const brand = {
   /** Application name (displayed in title bar, PWA, about). */
-  appName: opt("VITE_BRAND_APP_NAME", "Workspace"),
+  appName: opt("VITE_BRAND_APP_NAME", "Exordos Workspace"),
 
   /** Short application name (for PWA, desktop shortcuts). */
   appShortName: opt("VITE_BRAND_SHORT_NAME", "Workspace"),
 
   /** Application description. */
-  appDescription: opt("VITE_BRAND_DESCRIPTION", "Corporate messenger"),
+  appDescription: opt("VITE_BRAND_DESCRIPTION", "Exordos Workspace — smart corporate messenger"),
 
   /** Copyright line. */
-  copyright: opt("VITE_BRAND_COPYRIGHT", "© 2025 Workspace Team"),
+  copyright: opt("VITE_BRAND_COPYRIGHT", "© 2026 Genesis Corporation JSC"),
 
   /** Company / organization name. */
-  companyName: opt("VITE_BRAND_COMPANY", "Workspace"),
+  companyName: opt("VITE_BRAND_COMPANY", "Exordos"),
 
   /** App ID for Electron and PWA (reverse domain). */
-  appId: opt("VITE_BRAND_APP_ID", "com.workspace.app"),
+  appId: opt("VITE_BRAND_APP_ID", "com.exordos.workspace"),
 
   /** Logo URL (SVG preferred). Used on login page, about screen. */
   logoUrl: opt("VITE_BRAND_LOGO_URL", "/favicon.svg"),
