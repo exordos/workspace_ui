@@ -1,0 +1,75 @@
+import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path, { dirname, resolve } from "node:path";
+import { after, before, describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
+import { build } from "esbuild";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const electronRoot = resolve(__dirname, "..");
+const webRoot = resolve(electronRoot, "..", "web");
+
+let trayLib;
+let tempBuildDir;
+
+before(async () => {
+  // Self-contained build: compile tray.lib.ts into a throwaway temp dir so the
+  // test does not depend on `npm run build:electron` having been run first.
+  tempBuildDir = mkdtempSync(path.join(tmpdir(), "workspace-tray-test-"));
+  const outfile = path.join(tempBuildDir, "tray.lib.js");
+  await build({
+    entryPoints: [resolve(electronRoot, "src", "tray.lib.ts")],
+    outfile,
+    bundle: true,
+    platform: "node",
+    target: "node20",
+    format: "esm",
+    logLevel: "silent",
+  });
+  trayLib = await import(`file://${outfile}`);
+});
+
+after(() => {
+  if (tempBuildDir) {
+    rmSync(tempBuildDir, { recursive: true, force: true });
+  }
+});
+
+describe("getTrayMenuLabels", () => {
+  it("returns Russian labels for ru locales", () => {
+    const labels = trayLib.getTrayMenuLabels("ru-RU");
+    assert.equal(labels.messenger, "Мессенджер");
+    assert.equal(labels.calendar, "Календарь");
+    assert.equal(labels.mail, "Почта");
+    assert.equal(labels.quit, "Выход");
+  });
+
+  it("returns English labels for non-ru locales", () => {
+    const labels = trayLib.getTrayMenuLabels("en-US");
+    assert.equal(labels.messenger, "Messenger");
+    assert.equal(labels.quit, "Quit");
+  });
+});
+
+describe("TRAY_NAV_ROUTES", () => {
+  it("exposes stable internal routes", () => {
+    assert.equal(trayLib.TRAY_NAV_ROUTES.messenger, "/open/messenger");
+    assert.equal(trayLib.TRAY_NAV_ROUTES.calendar, "/calendar");
+    assert.equal(trayLib.TRAY_NAV_ROUTES.mail, "/mail");
+  });
+
+  it("messenger sentinel stays in sync with web TRAY_MESSENGER_OPEN_ROUTE", () => {
+    // Cross-package contract: tray.lib.ts (electron main) and
+    // last-messenger-route.lib.ts (web renderer) MUST agree on the sentinel,
+    // otherwise the tray Messenger item silently stops opening the last chat.
+    const webLibSource = readFileSync(
+      path.join(webRoot, "src", "shared", "lib", "last-messenger-route.lib.ts"),
+      "utf8",
+    );
+    const match = webLibSource.match(/TRAY_MESSENGER_OPEN_ROUTE\s*=\s*"([^"]+)"/);
+    assert.ok(match, "TRAY_MESSENGER_OPEN_ROUTE constant not found in web lib");
+    assert.equal(trayLib.TRAY_NAV_ROUTES.messenger, match[1]);
+  });
+});

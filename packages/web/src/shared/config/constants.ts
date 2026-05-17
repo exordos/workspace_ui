@@ -63,3 +63,13 @@ export const NARROW_PAGE_MAX_WIDTH_PX = DESKTOP_MIN_VIEWPORT_WIDTH_PX - 1;
 
 /** Minimum root app shell width — mirror Tailwind `min-w-app-shell-min`. */
 export const APP_SHELL_MIN_WIDTH_PX = 360;
+
+// ---
+// Messenger defaults
+// ---
+
+/** Default Zulip stream slug used when no last-opened messenger chat is saved. */
+export const DEFAULT_MESSENGER_STREAM_SLUG = "general";
+
+/** Debounce for persisting the last opened messenger chat to localStorage. */
+export const LAST_MESSENGER_ROUTE_PERSIST_DEBOUNCE_MS = 300;

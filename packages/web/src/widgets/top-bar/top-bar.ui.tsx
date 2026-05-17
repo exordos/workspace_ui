@@ -1,16 +1,16 @@
 import React, { useCallback, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useInstancesStore } from "~/entities/instance/instance.model";
 import { InstanceSwitcher } from "~/features/instance-switch/instance-switch.ui";
 import { t } from "~/i18n/i18n";
-import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
+import { DEFAULT_MESSENGER_STREAM_SLUG, SCROLL_AREA_CLASS } from "~/shared/config/constants";
 import { isElectronDarwin } from "~/shared/lib/electron";
 import { ELECTRON_MAC_TITLEBAR_STRIP_CLASS } from "~/shared/lib/electron-title-bar.lib";
 import { env } from "~/shared/lib/env";
+import { resolveMessengerNavigationPath } from "~/shared/lib/last-messenger-route.lib";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { useSearchModalStore } from "~/widgets/search-modal/search-modal.model";
 import { SearchModal } from "~/widgets/search-modal/search-modal.ui";
-import { slugForStream } from "~/widgets/sidebar/sidebar.lib";
 import { TopBarDownloadCenter } from "./top-bar-download-center.ui";
 import { TopBarProfileTrigger } from "./top-bar-profile-trigger.ui";
 import { TopBarSearchButton } from "./top-bar-search-button.ui";
@@ -34,7 +34,7 @@ export const TopBar: React.FC = () => {
     onSelectMessage: handleSearchSelectMessage,
     onSelectUser: handleSearchSelectUser,
   } = useTopBarSearchModal({ navigate });
-  const streamsFromStore = useChatListStore((s) => s.streams());
+  const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
   const sections = useMemo(
     () =>
       getTopBarSectionNavItems({
@@ -52,15 +52,16 @@ export const TopBar: React.FC = () => {
   const handleSectionChange = useCallback(
     (section: TopBarSection) => {
       if (section === "chat") {
-        const first = streamsFromStore[0];
         void navigate(
-          first ? withCurrentOrgRoute(`/stream/${slugForStream(first)}`) : withCurrentOrgRoute("/"),
+          withCurrentOrgRoute(
+            resolveMessengerNavigationPath(currentInstanceId, DEFAULT_MESSENGER_STREAM_SLUG),
+          ),
         );
       } else {
         void navigate(withCurrentOrgRoute(`/${section}`));
       }
     },
-    [streamsFromStore, navigate],
+    [currentInstanceId, navigate],
   );
 
   return (

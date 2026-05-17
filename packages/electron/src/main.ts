@@ -12,6 +12,7 @@ import {
   ipcMain,
 } from "electron";
 import { autoUpdater } from "electron-updater";
+import { getTrayMenuLabels, TRAY_NAV_ROUTES } from "./tray.lib";
 
 /** Set at compile time via `ELECTRON_DISABLE_AUTO_UPDATE` in esbuild (`get-main-esbuild-define.mjs`). */
 declare const __ELECTRON_DISABLE_AUTO_UPDATE__: boolean;
@@ -24,6 +25,12 @@ const RESOURCES_PATH = path.join(__dirname, "..", "resources");
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
+/** True while `app.quit()` is in progress — allows the window to close instead of hiding to tray. */
+let isQuitting = false;
+/** Set when the user hides to tray; cleared on the next `show` event. */
+let hadTrayHideSinceLastShow = false;
+/** Linux: run GTK frame resync on the next `show` after tray hide (fixes native drag offset). */
+let pendingLinuxTrayFrameResync = false;
 let currentBadgeCount = 0;
 let callPowerSaveBlockerId: number | null = null;
 let activeCallRoom: string | null = null;
@@ -33,6 +40,13 @@ const LOG_FILE_NAME = "workspace.log";
 const LOG_ROTATED_FILE_NAME = "workspace.log.1";
 const MAX_LOG_FILE_BYTES = 1024 * 1024;
 const MAX_LOG_LINE_LENGTH = 32768;
+
+/**
+ * Fallback timeout for {@link focusMainWindow} when no `focus`/`closed` event
+ * arrives (e.g. WM refuses to give focus). After this window we still deliver
+ * the queued callback so tray/deeplink navigation never gets stuck.
+ */
+const FOCUS_DELIVERY_FALLBACK_MS = 400;
 
 function getLogsDirectoryPath(): string {
   return path.join(app.getPath("userData"), LOG_DIR_NAME);
@@ -107,14 +121,7 @@ function handleDeepLink(url: string): void {
   if (!url.startsWith(`${PROTOCOL}://`)) return;
   const route = url.replace(`${PROTOCOL}://open`, "").replace(`${PROTOCOL}://`, "");
   const safeRoute = route || "/";
-  if (!isSafeDeeplinkRoute(safeRoute)) return;
-  if (mainWindow) {
-    mainWindow.webContents.send("deeplink:navigate", safeRoute);
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.focus();
-  } else {
-    pendingDeepLink = safeRoute;
-  }
+  dispatchInternalNavigation(safeRoute);
 }
 
 // macOS: open-url event (app already running or launched via URL)
@@ -137,8 +144,7 @@ if (!gotTheLock) {
     if (url) handleDeepLink(url);
 
     if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
+      showMainWindow();
     }
   });
 }
@@ -169,14 +175,17 @@ function loadWindowState(): WindowState {
 
 function saveWindowState(): void {
   if (!mainWindow) return;
-  const bounds = mainWindow.getBounds();
+
+  const isMaximized = mainWindow.isMaximized();
+  const bounds = isMaximized ? mainWindow.getNormalBounds() : mainWindow.getBounds();
   const state: WindowState = {
     x: bounds.x,
     y: bounds.y,
     width: bounds.width,
     height: bounds.height,
-    isMaximized: mainWindow.isMaximized(),
+    isMaximized,
   };
+
   try {
     require("node:fs").writeFileSync(
       path.join(app.getPath("userData"), "window-state.json"),
@@ -185,6 +194,33 @@ function saveWindowState(): void {
   } catch {
     /* non-critical */
   }
+}
+
+/**
+ * Linux/GTK: after `hide()` + `show()` the native title-bar drag origin desyncs
+ * (~title-bar height, cursor appears above-left of the grab point). Pulse window
+ * geometry so the WM recalculates the frame before the user drags.
+ */
+function resyncLinuxNativeFrameAfterTrayShow(): void {
+  if (process.platform !== "linux" || !mainWindow) return;
+
+  setImmediate(() => {
+    if (!mainWindow || !mainWindow.isVisible() || mainWindow.isMaximized()) return;
+
+    const [width, height] = mainWindow.getSize();
+    const [contentWidth, contentHeight] = mainWindow.getContentSize();
+    if (height <= contentHeight) return;
+
+    const [x, y] = mainWindow.getPosition();
+    mainWindow.setContentSize(contentWidth, contentHeight);
+    mainWindow.setPosition(x, y);
+    mainWindow.setSize(width, height + 1);
+    setTimeout(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.setSize(width, height);
+      }
+    }, 10);
+  });
 }
 
 function isSafeExternalUrl(url: string): boolean {
@@ -237,7 +273,7 @@ function createWindow(): void {
     ...(saved.x != null && saved.y != null && { x: saved.x, y: saved.y }),
     minWidth: 960,
     minHeight: 600,
-    title: "Workspace",
+    title: app.getName(),
     backgroundColor: "#1B1B1D",
     show: false,
     webPreferences: {
@@ -272,7 +308,24 @@ function createWindow(): void {
     pendingDeepLink = null;
   });
 
-  mainWindow.on("close", () => saveWindowState());
+  mainWindow.on("show", () => {
+    if (pendingLinuxTrayFrameResync) {
+      pendingLinuxTrayFrameResync = false;
+      resyncLinuxNativeFrameAfterTrayShow();
+    }
+    hadTrayHideSinceLastShow = false;
+  });
+
+  mainWindow.on("close", (event) => {
+    if (isQuitting) {
+      saveWindowState();
+    } else {
+      event.preventDefault();
+      saveWindowState();
+      hadTrayHideSinceLastShow = true;
+      mainWindow?.hide();
+    }
+  });
   mainWindow.on("resize", () => saveWindowState());
   mainWindow.on("move", () => saveWindowState());
 
@@ -313,25 +366,118 @@ function createWindow(): void {
 // Tray
 // ---------------------------------------------------------------------------
 
-function createTray(): void {
-  const iconFile = process.platform === "darwin" ? "tray-icon-mac.png" : "tray-icon.png";
-  const iconPath = getIconPath(iconFile);
+function resolveTrayIcon(): Electron.NativeImage | null {
+  const candidates =
+    process.platform === "darwin"
+      ? ["tray-icon-mac.png", "icons/16x16.png", "icon.png"]
+      : ["tray-icon.png", "icons/16x16.png", "icon.png"];
 
-  try {
+  for (const fileName of candidates) {
+    const iconPath = getIconPath(fileName);
     const icon = nativeImage.createFromPath(iconPath);
-    if (icon.isEmpty()) return;
+    if (icon.isEmpty()) continue;
 
-    tray = new Tray(icon.resize({ width: 16, height: 16 }));
-    tray.setToolTip("Workspace");
+    const resized = icon.resize({ width: 16, height: 16 });
+    if (process.platform === "darwin" && fileName.includes("tray-icon-mac")) {
+      resized.setTemplateImage(true);
+    }
+    return resized;
+  }
+
+  return null;
+}
+
+function focusMainWindow(runAfterFocus?: () => void): void {
+  if (!mainWindow) {
+    createWindow();
+    return;
+  }
+
+  let delivered = false;
+  const deliverOnce = () => {
+    if (delivered) return;
+    delivered = true;
+    runAfterFocus?.();
+  };
+
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore();
+  }
+  if (!mainWindow.isVisible()) {
+    if (process.platform === "linux" && hadTrayHideSinceLastShow) {
+      pendingLinuxTrayFrameResync = true;
+    }
+    mainWindow.show();
+  }
+
+  if (mainWindow.isFocused()) {
+    deliverOnce();
+    return;
+  }
+
+  const win = mainWindow;
+  let cleanedUp = false;
+  const fallbackTimer = setTimeout(() => {
+    cleanup();
+    deliverOnce();
+  }, FOCUS_DELIVERY_FALLBACK_MS);
+
+  const focusListener = () => {
+    cleanup();
+    deliverOnce();
+  };
+  const closedListener = () => {
+    cleanup();
+  };
+
+  function cleanup() {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    clearTimeout(fallbackTimer);
+    win.off("focus", focusListener);
+    win.off("closed", closedListener);
+  }
+
+  win.once("focus", focusListener);
+  win.once("closed", closedListener);
+
+  win.focus();
+  app.focus({ steal: true });
+}
+
+function showMainWindow(): void {
+  focusMainWindow();
+}
+
+/**
+ * Sends an internal route to the renderer, restoring + focusing the window first.
+ * Used by tray menu items, custom protocol (`workspace://...`), and `second-instance`.
+ */
+function dispatchInternalNavigation(route: string): void {
+  if (!isSafeDeeplinkRoute(route)) return;
+
+  if (!mainWindow) {
+    pendingDeepLink = route;
+    createWindow();
+    return;
+  }
+
+  focusMainWindow(() => {
+    mainWindow?.webContents.send("deeplink:navigate", route);
+  });
+}
+
+function createTray(): void {
+  try {
+    const icon = resolveTrayIcon();
+    if (!icon) return;
+
+    tray = new Tray(icon);
+    tray.setToolTip(app.getName());
     updateTrayMenu();
 
     tray.on("click", () => {
-      if (mainWindow) {
-        if (mainWindow.isMinimized()) mainWindow.restore();
-        mainWindow.focus();
-      } else {
-        createWindow();
-      }
+      showMainWindow();
     });
   } catch {
     // tray icon file missing — non-critical
@@ -341,24 +487,29 @@ function createTray(): void {
 function updateTrayMenu(): void {
   if (!tray) return;
 
-  const badgeLabel = currentBadgeCount > 0 ? ` (${currentBadgeCount} unread)` : "";
+  const labels = getTrayMenuLabels(app.getLocale());
+  const header = currentBadgeCount > 0 ? `${app.getName()} (${currentBadgeCount})` : app.getName();
 
   const contextMenu = Menu.buildFromTemplate([
-    { label: `Workspace${badgeLabel}`, enabled: false },
+    { label: header, enabled: false },
     { type: "separator" },
     {
-      label: "Open",
-      click: () => {
-        if (mainWindow) {
-          mainWindow.show();
-          mainWindow.focus();
-        } else {
-          createWindow();
-        }
-      },
+      label: labels.messenger,
+      click: () => dispatchInternalNavigation(TRAY_NAV_ROUTES.messenger),
+    },
+    {
+      label: labels.calendar,
+      click: () => dispatchInternalNavigation(TRAY_NAV_ROUTES.calendar),
+    },
+    {
+      label: labels.mail,
+      click: () => dispatchInternalNavigation(TRAY_NAV_ROUTES.mail),
     },
     { type: "separator" },
-    { label: "Quit", click: () => app.quit() },
+    {
+      label: labels.quit,
+      click: () => quitApplication(),
+    },
   ]);
   tray.setContextMenu(contextMenu);
 }
@@ -436,16 +587,21 @@ function requestAttention(): void {
 // App lifecycle
 // ---------------------------------------------------------------------------
 
-app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  }
+function quitApplication(): void {
+  isQuitting = true;
+  app.quit();
+}
+
+app.on("before-quit", () => {
+  isQuitting = true;
 });
 
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
+app.on("activate", () => {
+  if (!mainWindow) {
+    createWindow();
+    return;
   }
+  showMainWindow();
 });
 
 app.whenReady().then(() => {
@@ -678,10 +834,7 @@ function registerIpcHandlers(): void {
       const { Notification } = await import("electron");
       const notification = new Notification({ title: t, body: b });
       notification.on("click", () => {
-        if (mainWindow) {
-          mainWindow.show();
-          mainWindow.focus();
-        }
+        showMainWindow();
       });
       notification.show();
       return true;
@@ -748,7 +901,7 @@ function registerIpcHandlers(): void {
 
     // Update tray tooltip
     if (tray) {
-      tray.setToolTip(`Workspace — In call: ${activeCallRoom}`);
+      tray.setToolTip(`${app.getName()} — In call: ${activeCallRoom}`);
     }
 
     // macOS dock: bouncing dot to show activity
@@ -769,7 +922,7 @@ function registerIpcHandlers(): void {
 
     // Restore tray tooltip
     if (tray) {
-      tray.setToolTip("Workspace");
+      tray.setToolTip(app.getName());
     }
 
     // Restore dock badge
@@ -781,7 +934,7 @@ function registerIpcHandlers(): void {
   ipcMain.on("call:update", (_event, data?: { participants?: number }) => {
     if (activeCallRoom && tray) {
       const p = data?.participants ?? 0;
-      tray.setToolTip(`Workspace — In call: ${activeCallRoom} (${p} participants)`);
+      tray.setToolTip(`${app.getName()} — In call: ${activeCallRoom} (${p} participants)`);
     }
   });
 

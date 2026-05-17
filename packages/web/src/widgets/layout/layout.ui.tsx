@@ -22,6 +22,7 @@ import { shouldRenderChatShell } from "./layout-chat-shell.lib";
 import { useLayoutFolderSyncOrchestration } from "./layout-folder-sync-orchestration.hook";
 import { useInactiveInstancesBackgroundWork } from "./layout-inactive-instances-background-work.hook";
 import { useLayoutInstanceBootstrap } from "./layout-instance-bootstrap.hook";
+import { useLayoutLastMessengerRoutePersistence } from "./layout-last-messenger-route.hook";
 import { useLayoutLegacyStreamSlugRedirect } from "./layout-legacy-stream-redirect.hook";
 import { LayoutLoadingGate } from "./layout-loading-gate.ui";
 import { useLayoutMuteSnapshotSync } from "./layout-mute-snapshot-sync.hook";
@@ -251,6 +252,8 @@ export const Layout: React.FC = () => {
     },
     [navigate],
   );
+
+  useLayoutLastMessengerRoutePersistence();
 
   const activeSection = getSectionFromPathname(location.pathname);
   const shouldShowChatShell = shouldRenderChatShell(location.pathname, activeSection);

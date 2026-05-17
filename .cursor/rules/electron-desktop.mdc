@@ -51,11 +51,33 @@ osIntegration.clearProgressBar();
 | Tray icon | System tray | Menu bar | System tray |
 | Startup | Registry | Login items | Autostart |
 
+### Close to tray
+
+Closing the main window (title-bar X, `window:close` IPC, or Window → Close) **hides** the window; the app keeps running in the system tray. Notifications, badge updates, and the event loop continue in the hidden renderer.
+
+Quit only via tray **Quit** / application menu **Quit** (`Cmd+Q` on macOS), which sets `isQuitting` before `app.quit()`.
+
+`window-all-closed` does **not** terminate the app on Windows/Linux (unlike a default Electron shell).
+
+**Linux:** after tray `hide()` + `show()`, native title-bar drag can desync (~title-bar height). On the first `show` after tray hide, main process runs `resyncLinuxNativeFrameAfterTrayShow()` (content-size sync + 1px height pulse) before the user drags.
+
 ### Tray Icon
 
-System tray icon with context menu (Open / Quit). Click → focus window.
+System tray icon with context menu. Left click → focus + restore window.
+Right click menu:
 
-Resources needed: `resources/tray-icon.png` (16×16), `resources/tray-icon-mac.png` (16×16 template).
+- `<App name> (N)` — header with unread badge, disabled
+- Separator
+- Messenger → opens last opened chat (via `/open/messenger` sentinel + last-route store)
+- Calendar → `/calendar`
+- Mail → `/mail`
+- Separator
+- Quit → `app.quit()`
+
+Localized labels live in `packages/electron/src/tray.lib.ts` (EN/RU based on `app.getLocale()`).
+All menu navigation goes through the same `dispatchInternalNavigation()` path as the `workspace://` protocol — IPC channel `deeplink:navigate`. The renderer resolves it via `resolveElectronTrayNavigation()` in `packages/web/src/app/app-electron-navigation.lib.ts`.
+
+Resources: `resources/tray-icon.png` + `resources/tray-icon-mac.png` (16×16; mac template optional). Falls back to `resources/icons/16x16.png` then `resources/icon.png`.
 
 ## Build Targets
 

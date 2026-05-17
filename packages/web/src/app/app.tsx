@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useThemeStore } from "~/entities/theme/theme.model";
 import { t } from "~/i18n/i18n";
+import { DEFAULT_MESSENGER_STREAM_SLUG } from "~/shared/config/constants";
 import { usePageView } from "~/shared/lib/analytics/usePageView";
 import { getElectronAPI } from "~/shared/lib/electron";
 import { initFocusManagement, focusMainContent } from "~/shared/lib/focus";
@@ -22,14 +23,12 @@ import { useShortcut } from "~/shared/lib/shortcuts";
 import { useAppUpdate } from "~/shared/lib/updater";
 import { isWebView } from "~/shared/lib/webview";
 import { ErrorBoundary, PageErrorFallback, PageLoader } from "~/shared/ui/error-boundary";
-import { normalizeElectronDeeplinkRoute } from "./app-deeplink.lib";
+import { resolveElectronTrayNavigation } from "./app-electron-navigation.lib";
 import { isForceUpdateRequiredStatus, shouldRedirectToForceUpdate } from "./app-force-update.lib";
 import { AuthenticatedAppRoutes, LoginAppRoutes, WebViewAppRoutes } from "./app-route-definitions";
 import { AppShortcutsHelpModal } from "./app-shortcuts-help-modal.ui";
 import { buildShortcutHelpSections } from "./app-shortcuts-help.lib";
 import { resolveGlobalNavigationRoute, resolveGlobalShortcutAction } from "./app-shortcuts.lib";
-
-const DEFAULT_STREAM = "general";
 
 const App: React.FC = () => {
   const location = useLocation();
@@ -67,27 +66,28 @@ const App: React.FC = () => {
   );
 
   const navigateToMessenger = useCallback(() => {
-    void navigate(resolveGlobalNavigationRoute("mod+1", DEFAULT_STREAM));
+    const instanceId = useInstancesStore.getState().currentInstanceId;
+    void navigate(resolveGlobalNavigationRoute("mod+1", DEFAULT_MESSENGER_STREAM_SLUG, instanceId));
   }, [navigate]);
 
   const navigateToCalendar = useCallback(() => {
-    void navigate(resolveGlobalNavigationRoute("mod+2", DEFAULT_STREAM));
+    void navigate(resolveGlobalNavigationRoute("mod+2", DEFAULT_MESSENGER_STREAM_SLUG));
   }, [navigate]);
 
   const navigateToMail = useCallback(() => {
-    void navigate(resolveGlobalNavigationRoute("mod+3", DEFAULT_STREAM));
+    void navigate(resolveGlobalNavigationRoute("mod+3", DEFAULT_MESSENGER_STREAM_SLUG));
   }, [navigate]);
 
   const navigateToCalls = useCallback(() => {
-    void navigate(resolveGlobalNavigationRoute("mod+4", DEFAULT_STREAM));
+    void navigate(resolveGlobalNavigationRoute("mod+4", DEFAULT_MESSENGER_STREAM_SLUG));
   }, [navigate]);
 
   const navigateToActivity = useCallback(() => {
-    void navigate(resolveGlobalNavigationRoute("mod+shift+a", DEFAULT_STREAM));
+    void navigate(resolveGlobalNavigationRoute("mod+shift+a", DEFAULT_MESSENGER_STREAM_SLUG));
   }, [navigate]);
 
   const toggleThemeShortcut = useCallback(() => {
-    const action = resolveGlobalShortcutAction("mod+shift+t", DEFAULT_STREAM);
+    const action = resolveGlobalShortcutAction("mod+shift+t", DEFAULT_MESSENGER_STREAM_SLUG);
     if (action.type === "toggle-theme") {
       useThemeStore.getState().toggleMode();
     }
@@ -199,9 +199,16 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const unsubscribe = getElectronAPI()?.deeplink.onNavigate((route) => {
-      const normalizedRoute = normalizeElectronDeeplinkRoute(route);
-      if (!normalizedRoute) return;
-      void navigate(withCurrentOrgRoute(normalizedRoute));
+      const target = resolveElectronTrayNavigation(route);
+      if (!target) return;
+      if (target.type === "open-messenger") {
+        const instanceId = useInstancesStore.getState().currentInstanceId;
+        void navigate(
+          resolveGlobalNavigationRoute("mod+1", DEFAULT_MESSENGER_STREAM_SLUG, instanceId),
+        );
+        return;
+      }
+      void navigate(withCurrentOrgRoute(target.route));
     });
 
     return () => unsubscribe?.();
@@ -245,9 +252,7 @@ const App: React.FC = () => {
       {shortcutsHelpOpen && (
         <AppShortcutsHelpModal sections={shortcutHelpSections} onClose={closeShortcutsHelp} />
       )}
-      <ErrorBoundary
-        fallback={(api) => <PageErrorFallback onRetry={api.resetErrorBoundary} />}
-      >
+      <ErrorBoundary fallback={(api) => <PageErrorFallback onRetry={api.resetErrorBoundary} />}>
         <Suspense fallback={<PageLoader />}>
           <AuthenticatedAppRoutes defaultInboxRoute={defaultInboxRoute} />
         </Suspense>

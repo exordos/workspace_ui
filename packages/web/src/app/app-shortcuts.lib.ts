@@ -1,3 +1,4 @@
+import { resolveMessengerNavigationPath } from "~/shared/lib/last-messenger-route.lib";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 
 export type GlobalNavigationShortcutKey = "mod+1" | "mod+2" | "mod+3" | "mod+4" | "mod+shift+a";
@@ -14,9 +15,10 @@ export type GlobalShortcutAction =
 export function resolveGlobalNavigationRoute(
   key: GlobalNavigationShortcutKey,
   defaultStream: string,
+  instanceId?: string | null,
 ): string {
   if (key === "mod+1") {
-    return withCurrentOrgRoute(`/stream/${defaultStream}`);
+    return withCurrentOrgRoute(resolveMessengerNavigationPath(instanceId ?? null, defaultStream));
   }
   if (key === "mod+2") {
     return withCurrentOrgRoute("/calendar");
