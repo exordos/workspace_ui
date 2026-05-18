@@ -38,9 +38,12 @@ jobs:
         run: npm run test
 
       - name: Build (web)
-        run: npm run build --workspace=web
+        run: |
+          cat "${PROD_ENVS}" | base64 -d > packages/web/.env.production
+          npm run build --workspace=web
         env:
           VITE_APP_VERSION: ${{ github.sha }}
+          PROD_ENVS: ${{ secrets.WEB_PROD_ENVS }}
 
   build-electron:
     name: Build Electron (${{ matrix.os }})
@@ -86,13 +89,19 @@ jobs:
       #   run: echo "Certificate imported from secrets"
 
       - name: Build web
-        run: npm run build --workspace=web
+        run: |
+          cat "${PROD_ENVS}" | base64 -d > packages/web/.env.production
+          npm run build --workspace=web
         env:
           VITE_APP_VERSION: ${{ github.sha }}
+          PROD_ENVS: ${{ secrets.WEB_PROD_ENVS }}
 
       - name: Build & Package
-        run: npm run ${{ matrix.cmd }}
-        # env:
+        run: |
+          cat "${PROD_ENVS}" | base64 -d > packages/web/.env.production
+          npm run ${{ matrix.cmd }}
+        env:
+          PROD_ENVS: ${{ secrets.WEB_PROD_ENVS }}
         #   # macOS code signing (set secrets in GitHub repo settings)
         #   CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
         #   CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
