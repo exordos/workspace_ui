@@ -55,6 +55,12 @@ describe("useLayoutAppIconBadge", () => {
       currentInstanceId: "a",
     });
 
+    const initialProps: HookTestProps = {
+      dmUnreadCountsByInstance: { a: 2, b: 3 },
+      currentInstanceId: "a",
+      currentInstanceDmUnread: 2,
+    };
+
     const { rerender } = renderHook(
       ({ dmUnreadCountsByInstance, currentInstanceId, currentInstanceDmUnread }: HookTestProps) =>
         useLayoutAppIconBadge({
@@ -63,11 +69,7 @@ describe("useLayoutAppIconBadge", () => {
           currentInstanceDmUnread,
         }),
       {
-        initialProps: {
-          dmUnreadCountsByInstance: { a: 2, b: 3 },
-          currentInstanceId: "a",
-          currentInstanceDmUnread: 2,
-        },
+        initialProps,
       },
     );
 
