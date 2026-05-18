@@ -135,7 +135,7 @@ export function buildRightPanelUserInfo(
       timezone: profileForRightPanelUser?.timezone ?? undefined,
       dateJoined: profileForRightPanelUser?.dateJoined ?? undefined,
       isBot: profileForRightPanelUser?.isBot ?? undefined,
-      isActive: profileForRightPanelUser?.isActive ?? undefined,
+      isActive: profileForRightPanelUser?.isActive ?? userFromStore?.is_active,
       profileLink,
       phone: profileForRightPanelUser?.phone ?? undefined,
       jobTitle: profileForRightPanelUser?.jobTitle ?? undefined,

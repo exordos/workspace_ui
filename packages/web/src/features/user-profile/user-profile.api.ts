@@ -38,7 +38,7 @@ interface ZulipUserResponse {
     avatar_url: string;
     role: number;
     is_bot?: boolean;
-    is_active?: boolean;
+    is_active?: boolean; // Zulip JSON
     date_joined?: string;
     timezone?: string;
     profile_data?: Record<string, { value?: string; rendered_value?: string }>;

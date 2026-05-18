@@ -5,6 +5,8 @@ import type { ComposerUploadProgressState } from "./chat-upload.lib";
 export interface ChatPageComposerSectionProps {
   isDmView: boolean;
   activeDmUserIds: number[] | null;
+  /** 1:1 DM with a Zulip-deactivated partner — composer disabled. */
+  dmPartnerDeactivated?: boolean;
   activeStream: string | null | undefined;
   showTopicPrompt: boolean;
   streamSlug: string | undefined;

@@ -1,12 +1,13 @@
 /**
- * PresenceIndicator — colored dot showing user online/idle/offline status.
+ * PresenceIndicator — online/idle/offline dot, or a deactivated-account block badge.
  *
- * Sizes: sm (8px), md (10px), lg (12px).
+ * Sizes: sm (8px), md (10px), lg (12px) for dots; block icon scales with the same breakpoint.
  * Colors: green (active), yellow (idle), gray (offline).
  * Active state has a subtle pulse animation.
  */
 import React from "react";
 import { t } from "~/i18n/i18n";
+import { Icon } from "./icon";
 import type { PresenceIndicatorProps, PresenceVisual } from "./presence-indicator.types";
 
 export type { PresenceVisual } from "./presence-indicator.types";
@@ -29,14 +30,33 @@ const HEADER_COLOR_MAP: Record<NonNullable<PresenceVisual>, string> = {
   offline: "bg-text-muted",
 };
 
+const BLOCK_ICON_PX = { sm: 12, md: 14, lg: 14 } as const;
+
 export const PresenceIndicator: React.FC<PresenceIndicatorProps> = ({
   status,
+  deactivated = false,
   size = "md",
   className = "",
   withBorder = true,
   tone = "default",
   pulse,
 }) => {
+  if (deactivated) {
+    const ringClass =
+      tone === "header"
+        ? "rounded-full bg-card-bg ring-2 ring-border-subtle"
+        : "rounded-full bg-card-bg ring-2 ring-bg";
+    return (
+      <span
+        className={`inline-flex shrink-0 items-center justify-center ${ringClass} ${className}`.trim()}
+        role="status"
+        aria-label={t("dm.partnerBlocked")}
+      >
+        <Icon name="block" size={BLOCK_ICON_PX[size]} className="text-text-muted" />
+      </span>
+    );
+  }
+
   if (!status) return null;
 
   const sizeClass = SIZE_MAP[size];

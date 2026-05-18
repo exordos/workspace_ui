@@ -226,7 +226,9 @@
     "partner": "Partner",
     "private": "Private",
     "recentDms": "Recent",
-    "allUsers": "All users"
+    "allUsers": "All users",
+    "partnerBlocked": "Account deactivated",
+    "composerBlockedPlaceholder": "This account is deactivated. Sending messages is disabled."
   },
   "call": {
     "call": "Call",

@@ -162,6 +162,8 @@ export interface ZulipUserMember {
   email?: string;
   avatar_url?: string | null;
   role?: number;
+  /** Zulip: `false` when the account is deactivated. */
+  is_active?: boolean;
   /** Present when `include_custom_profile_fields=true`. */
   profile_data?: Record<string, { value?: string; rendered_value?: string }>;
 }

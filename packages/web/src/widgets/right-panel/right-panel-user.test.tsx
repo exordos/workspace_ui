@@ -2,6 +2,7 @@ import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { renderWithProviders } from "~/test/render";
 import { useRightDrawerStore } from "./right-drawer.model";
@@ -22,6 +23,7 @@ describe("RightPanelUser", () => {
   afterEach(() => {
     useRightDrawerStore.setState({ open: false, mode: "info", userIdOverride: null });
     useChatListStore.getState().clear();
+    useChatDmCallBridgeStore.getState().setInvokeDmCallFromProfileHandler(null);
     navigateMock.mockReset();
   });
 
@@ -66,5 +68,16 @@ describe("RightPanelUser", () => {
     useChatListStore.getState().setCurrentUserId(7);
     renderWithProviders(<RightPanelUser user={{ name: "Partner", userId: 42 }} />);
     expect(screen.queryByRole("button", { name: /change avatar/i })).not.toBeInTheDocument();
+  });
+
+  it("hides profile call button when user account is deactivated", () => {
+    useChatListStore.getState().setCurrentUserId(7);
+    useChatDmCallBridgeStore.getState().setInvokeDmCallFromProfileHandler(vi.fn());
+
+    renderWithProviders(
+      <RightPanelUser user={{ name: "Deactivated User", userId: 99, isActive: false }} />,
+    );
+
+    expect(screen.queryByRole("button", { name: /^call$/i })).not.toBeInTheDocument();
   });
 });

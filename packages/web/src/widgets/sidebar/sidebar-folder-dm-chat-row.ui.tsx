@@ -61,6 +61,7 @@ export const DmChatRow = React.memo<DmChatRowProps>(function DmChatRow({
     typingMap,
   });
   const secondaryText = partnerIsTyping ? t("chat.typing") : (chat.lastMessage ?? "");
+  const partnerDeactivated = user?.is_active === false;
   const presenceState =
     user?.presence != null ? getPresenceState(user.presence.timestamp, user.presence.status) : null;
   const avatarSrc = !isGroupDm
@@ -98,6 +99,7 @@ export const DmChatRow = React.memo<DmChatRowProps>(function DmChatRow({
           <PresenceIndicator
             status={presenceState}
             size="sm"
+            deactivated={partnerDeactivated}
             className="absolute bottom-0 right-0"
           />
         )}

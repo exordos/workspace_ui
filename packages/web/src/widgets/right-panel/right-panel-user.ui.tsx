@@ -237,7 +237,8 @@ export const RightPanelUser = React.memo(function RightPanelUser({
               </button>
               {profileDmCallHandlerReady &&
                 currentUserId != null &&
-                directMessageUserId !== currentUserId && (
+                directMessageUserId !== currentUserId &&
+                user.isActive !== false && (
                   <button
                     type="button"
                     className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2 text-sm font-medium text-text-primary hover:bg-bg"

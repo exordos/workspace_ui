@@ -33,6 +33,25 @@ describe("ChatHeader", () => {
     expect(screen.getByText(/online|в сети/i)).toBeInTheDocument();
   });
 
+  it("shows deactivated label for DM partner instead of presence when account is deactivated", () => {
+    renderWithProviders(
+      <ChatHeader
+        channelName="unused"
+        dmPartner={{
+          name: "Alice",
+          avatarUrl: null,
+          presenceState: "active",
+          isAccountDeactivated: true,
+        }}
+        hideParticipants
+        hideTopic
+      />,
+    );
+
+    expect(screen.getByText(/deactivated|заблокирован/i)).toBeInTheDocument();
+    expect(screen.queryByText(/online|в сети/i)).not.toBeInTheDocument();
+  });
+
   it("shows group dm title and participant count", () => {
     renderWithProviders(
       <ChatHeader

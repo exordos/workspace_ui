@@ -2,6 +2,7 @@
  * Tests for user profile feature — loading, caching, clearing, and error handling.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { useUsersStore } from "~/entities/user/user.model";
 import { clearRealmProfileFieldsCache } from "~/shared/api/zulip-realm-profile-fields";
 import { useUserProfileStore } from "./user-profile.model";
 
@@ -33,6 +34,7 @@ const MOCK_ZULIP_USER = {
 describe("useUserProfileStore", () => {
   afterEach(() => {
     useUserProfileStore.getState().clear();
+    useUsersStore.getState().clear();
     clearRealmProfileFieldsCache();
     vi.restoreAllMocks();
   });
@@ -77,6 +79,13 @@ describe("useUserProfileStore", () => {
       expect(state.profile!.isBot).toBe(false);
       expect(state.profile!.isActive).toBe(true);
       expect(state.profile!.dateJoined).toBe("2025-01-10T08:15:00Z");
+
+      const merged = useUsersStore.getState().getUser(42);
+      expect(merged?.full_name).toBe("Alice Wonderland");
+      expect(merged?.email).toBe("alice@example.com");
+      expect(merged?.avatar_url).toBe("https://example.com/avatar.png");
+      expect(merged?.role).toBe(400);
+      expect(merged?.is_active).toBe(true);
     });
 
     it("maps profile_data using realm field definitions when instance is active", async () => {

@@ -1478,6 +1478,8 @@ export interface ZulipUserMember {
   email?: string;
   avatar_url?: string | null;
   role?: number;
+  /** Zulip: `false` когда аккаунт деактивирован. */
+  is_active?: boolean;
   // Присутствует, когда включен `include_custom_profile_fields=true`.
   profile_data?: Record<string, { value?: string; rendered_value?: string }>;
 }
