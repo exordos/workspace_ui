@@ -140,14 +140,6 @@ body {
   user-select: text;
 }
 
-.message-body .inline-spoiler.inline-spoiler-block {
-  border-radius: 8px;
-  display: block;
-  margin: 4px 0;
-  max-width: 100%;
-  padding: 6px 12px;
-}
-
 /* ── Видео в сообщениях ───────────────────────────────── */
 
 .message-body video {

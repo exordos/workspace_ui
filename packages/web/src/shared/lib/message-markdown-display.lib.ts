@@ -58,12 +58,15 @@ interface InlineSpoilerToken extends Tokens.Generic {
 
 interface ZulipBlockSpoilerToken extends Tokens.Generic {
   type: "zulip_block_spoiler";
+  header: string;
+  headerTokens: Token[];
   text: string;
   tokens: Token[];
 }
 
 const INLINE_SPOILER_TOKEN_TYPE = "inline_spoiler";
 const ZULIP_BLOCK_SPOILER_TOKEN_TYPE = "zulip_block_spoiler";
+const DEFAULT_ZULIP_SPOILER_HEADER = "Spoiler";
 
 // Расширение marked для локального fallback-рендера:
 // превращает `||secret||` в интерактивный inline-элемент спойлера для bubble.
@@ -102,7 +105,8 @@ const INLINE_SPOILER_EXTENSION: TokenizerAndRendererExtension = {
 // ```spoiler optional header
 // content
 // ```
-// Заголовок намеренно игнорируем, оставляем только содержимое.
+// Рендерим нативную для bubble структуру аккордеона:
+// `.spoiler-block > .spoiler-header + .spoiler-content`.
 const ZULIP_BLOCK_SPOILER_EXTENSION: TokenizerAndRendererExtension = {
   level: "block",
   name: ZULIP_BLOCK_SPOILER_TOKEN_TYPE,
@@ -112,23 +116,28 @@ const ZULIP_BLOCK_SPOILER_EXTENSION: TokenizerAndRendererExtension = {
   },
   tokenizer(src) {
     if (!src.startsWith("```spoiler")) return undefined;
-    const match = /^```spoiler(?:[ \t]+[^\n`]*)?[ \t]*\n([\s\S]*?)\n```(?:\n|$)/.exec(src);
+    const match = /^```spoiler(?:[ \t]+([^\n`]*))?[ \t]*\n([\s\S]*?)\n```(?:\n|$)/.exec(src);
     if (match == null) return undefined;
     const raw = match[0];
-    const text = match[1] ?? "";
+    const header = (match[1] ?? "").trim();
+    const text = match[2] ?? "";
+    const headerMarkdown = header.length > 0 ? header : DEFAULT_ZULIP_SPOILER_HEADER;
     return {
       type: ZULIP_BLOCK_SPOILER_TOKEN_TYPE,
       raw,
+      header,
+      headerTokens: this.lexer.inlineTokens(headerMarkdown),
       text,
       tokens: this.lexer.blockTokens(text, []),
     };
   },
-  childTokens: ["tokens"],
+  childTokens: ["tokens", "headerTokens"],
   renderer(token) {
     if (token.type !== ZULIP_BLOCK_SPOILER_TOKEN_TYPE) return false;
     const spoilerToken = token as ZulipBlockSpoilerToken;
     const blockHtml = this.parser.parse(spoilerToken.tokens);
-    return `<div class="inline-spoiler inline-spoiler-block" data-inline-spoiler="true">${blockHtml}</div>`;
+    const headerHtml = this.parser.parseInline(spoilerToken.headerTokens);
+    return `<div class="spoiler-block"><div class="spoiler-header">${headerHtml}</div><div class="spoiler-content">${blockHtml}</div></div>`;
   },
 };
 
@@ -225,8 +234,8 @@ function inlineUserUploadImageLinks(html: string): string {
 }
 
 function normalizeZulipSpoilerBlocks(html: string): string {
-  // Что делает: переводит Zulip block spoiler (`.spoiler-block`) в наш единый UI-формат
-  // `.inline-spoiler`, чтобы поведение раскрытия/скрытия было одинаковым во всех bubble.
+  // Что делает: мягко нормализует входящую Zulip spoiler-разметку,
+  // сохраняя block-аккордеон и добавляя fallback header, если он пустой/отсутствует.
   if (typeof document === "undefined" || !html.includes("spoiler-block")) {
     return html;
   }
@@ -236,23 +245,22 @@ function normalizeZulipSpoilerBlocks(html: string): string {
 
   const spoilerBlocks = wrapper.querySelectorAll<HTMLElement>(".spoiler-block");
   for (const block of spoilerBlocks) {
+    const header = block.querySelector<HTMLElement>(".spoiler-header");
     const content = block.querySelector<HTMLElement>(".spoiler-content");
     // Если структура неожиданная, не ломаем сообщение и оставляем исходный HTML.
     if (content == null) continue;
 
-    // В Zulip у spoiler может быть заголовок. По требованиям UI его не показываем.
-    // Берем только полезный контент из `.spoiler-content`.
-    const hasBlockLevelChildren =
-      content.querySelector("p,div,ul,ol,pre,table,blockquote,h1,h2,h3,h4,h5,h6") != null;
-    const spoiler = document.createElement(hasBlockLevelChildren ? "div" : "span");
-    spoiler.classList.add("inline-spoiler");
-    if (hasBlockLevelChildren) {
-      spoiler.classList.add("inline-spoiler-block");
+    if (header == null) {
+      const fallbackHeader = document.createElement("div");
+      fallbackHeader.classList.add("spoiler-header");
+      fallbackHeader.textContent = DEFAULT_ZULIP_SPOILER_HEADER;
+      block.insertBefore(fallbackHeader, content);
+      continue;
     }
-    spoiler.setAttribute("data-inline-spoiler", "true");
-    spoiler.innerHTML = content.innerHTML;
 
-    block.replaceWith(spoiler);
+    if ((header.textContent ?? "").trim().length === 0) {
+      header.textContent = DEFAULT_ZULIP_SPOILER_HEADER;
+    }
   }
 
   return wrapper.innerHTML;

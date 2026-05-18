@@ -189,7 +189,7 @@ describe("MessageBubble markdown body", () => {
     expect(spoiler?.classList.contains("open")).toBe(false);
   });
 
-  it("renders zulip spoiler block with local spoiler UI and ignores header text", () => {
+  it("renders zulip spoiler block as accordion with visible header", () => {
     useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
 
     const zulipSpoilerHtml = [
@@ -205,17 +205,22 @@ describe("MessageBubble markdown body", () => {
 
     const body = container.querySelector(".message-body");
     expect(body?.textContent).toContain("Server Hidden");
-    expect(body?.textContent).not.toContain("Server Header");
+    expect(body?.textContent).toContain("Server Header");
 
-    const spoiler = container.querySelector(".inline-spoiler.inline-spoiler-block");
-    expect(spoiler).toBeTruthy();
-    expect(spoiler?.classList.contains("open")).toBe(false);
+    const spoilerBlock = container.querySelector(".spoiler-block");
+    const spoilerHeader = container.querySelector(".spoiler-header");
+    expect(spoilerBlock).toBeTruthy();
+    expect(spoilerHeader).toBeTruthy();
+    expect(spoilerBlock?.classList.contains("open")).toBe(false);
 
-    fireEvent.click(spoiler as HTMLElement);
-    expect(spoiler?.classList.contains("open")).toBe(true);
+    fireEvent.click(spoilerHeader as HTMLElement);
+    expect(spoilerBlock?.classList.contains("open")).toBe(true);
+
+    fireEvent.click(spoilerHeader as HTMLElement);
+    expect(spoilerBlock?.classList.contains("open")).toBe(false);
   });
 
-  it("renders zulip markdown fenced spoiler using local spoiler UI", () => {
+  it("renders zulip markdown fenced spoiler with header and toggles by header click", () => {
     useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
 
     const markdown = "```spoiler Hidden Header\nосновной текст спойлера\n```";
@@ -225,13 +230,28 @@ describe("MessageBubble markdown body", () => {
 
     const body = container.querySelector(".message-body");
     expect(body?.textContent).toContain("основной текст спойлера");
-    expect(body?.textContent).not.toContain("Hidden Header");
+    expect(body?.textContent).toContain("Hidden Header");
 
-    const spoiler = container.querySelector(".inline-spoiler.inline-spoiler-block");
-    expect(spoiler).toBeTruthy();
-    expect(spoiler?.classList.contains("open")).toBe(false);
+    const spoilerBlock = container.querySelector(".spoiler-block");
+    const spoilerHeader = container.querySelector(".spoiler-header");
+    expect(spoilerBlock).toBeTruthy();
+    expect(spoilerHeader?.textContent).toContain("Hidden Header");
+    expect(spoilerBlock?.classList.contains("open")).toBe(false);
 
-    fireEvent.click(spoiler as HTMLElement);
-    expect(spoiler?.classList.contains("open")).toBe(true);
+    fireEvent.click(spoilerHeader as HTMLElement);
+    expect(spoilerBlock?.classList.contains("open")).toBe(true);
+  });
+
+  it("uses default header for fenced spoiler without explicit heading", () => {
+    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+
+    const markdown = "```spoiler\nосновной текст спойлера\n```";
+    const { container } = render(
+      <MessageBubble message={createMessage({ content: markdown })} isOwn={false} />,
+    );
+
+    const spoilerHeader = container.querySelector(".spoiler-header");
+    expect(spoilerHeader).toBeTruthy();
+    expect(spoilerHeader?.textContent).toContain("Spoiler");
   });
 });
