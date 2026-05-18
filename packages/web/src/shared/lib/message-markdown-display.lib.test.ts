@@ -34,6 +34,14 @@ describe("renderMarkdownFallbackHtml", () => {
     expect(html).toContain('data-inline-spoiler="true"');
     expect(html).toContain("secret");
   });
+
+  it("renders zulip fenced spoiler markdown and ignores its header", () => {
+    const html = renderMarkdownFallbackHtml("```spoiler Header\ninside text\n```");
+    expect(html).toContain('class="inline-spoiler inline-spoiler-block"');
+    expect(html).toContain('data-inline-spoiler="true"');
+    expect(html).toContain("inside text");
+    expect(html).not.toContain("Header");
+  });
 });
 
 describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
@@ -64,6 +72,23 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
       { resolveUserMention: () => 2 },
     );
     expect(html).toContain('data-user-id="1"');
+  });
+
+  it("normalizes zulip spoiler block to inline spoiler and ignores spoiler header", () => {
+    const html = messageBodyToUnsanitizedDisplayHtml(
+      [
+        '<div class="spoiler-block">',
+        '<div class="spoiler-header">Top Secret Header</div>',
+        '<div class="spoiler-content"><p>Hidden payload</p></div>',
+        "</div>",
+      ].join(""),
+    );
+    expect(html).toContain('class="inline-spoiler inline-spoiler-block"');
+    expect(html).toContain('data-inline-spoiler="true"');
+    expect(html).toContain("Hidden payload");
+    expect(html).not.toContain("Top Secret Header");
+    expect(html).not.toContain("spoiler-header");
+    expect(html).not.toContain("spoiler-content");
   });
 
   it("injects user-mention from reply silent @_**Name|id** without resolver", () => {

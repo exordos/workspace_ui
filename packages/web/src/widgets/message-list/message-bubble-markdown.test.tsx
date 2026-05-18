@@ -188,4 +188,50 @@ describe("MessageBubble markdown body", () => {
     fireEvent.click(spoiler as HTMLElement);
     expect(spoiler?.classList.contains("open")).toBe(false);
   });
+
+  it("renders zulip spoiler block with local spoiler UI and ignores header text", () => {
+    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+
+    const zulipSpoilerHtml = [
+      '<div class="spoiler-block">',
+      '<div class="spoiler-header">Server Header</div>',
+      '<div class="spoiler-content"><p>Server Hidden</p></div>',
+      "</div>",
+    ].join("");
+
+    const { container } = render(
+      <MessageBubble message={createMessage({ content: zulipSpoilerHtml })} isOwn={false} />,
+    );
+
+    const body = container.querySelector(".message-body");
+    expect(body?.textContent).toContain("Server Hidden");
+    expect(body?.textContent).not.toContain("Server Header");
+
+    const spoiler = container.querySelector(".inline-spoiler.inline-spoiler-block");
+    expect(spoiler).toBeTruthy();
+    expect(spoiler?.classList.contains("open")).toBe(false);
+
+    fireEvent.click(spoiler as HTMLElement);
+    expect(spoiler?.classList.contains("open")).toBe(true);
+  });
+
+  it("renders zulip markdown fenced spoiler using local spoiler UI", () => {
+    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+
+    const markdown = "```spoiler Hidden Header\nосновной текст спойлера\n```";
+    const { container } = render(
+      <MessageBubble message={createMessage({ content: markdown })} isOwn={false} />,
+    );
+
+    const body = container.querySelector(".message-body");
+    expect(body?.textContent).toContain("основной текст спойлера");
+    expect(body?.textContent).not.toContain("Hidden Header");
+
+    const spoiler = container.querySelector(".inline-spoiler.inline-spoiler-block");
+    expect(spoiler).toBeTruthy();
+    expect(spoiler?.classList.contains("open")).toBe(false);
+
+    fireEvent.click(spoiler as HTMLElement);
+    expect(spoiler?.classList.contains("open")).toBe(true);
+  });
 });

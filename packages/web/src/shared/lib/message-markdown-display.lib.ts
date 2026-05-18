@@ -56,7 +56,14 @@ interface InlineSpoilerToken extends Tokens.Generic {
   tokens: Token[];
 }
 
+interface ZulipBlockSpoilerToken extends Tokens.Generic {
+  type: "zulip_block_spoiler";
+  text: string;
+  tokens: Token[];
+}
+
 const INLINE_SPOILER_TOKEN_TYPE = "inline_spoiler";
+const ZULIP_BLOCK_SPOILER_TOKEN_TYPE = "zulip_block_spoiler";
 
 // Расширение marked для локального fallback-рендера:
 // превращает `||secret||` в интерактивный inline-элемент спойлера для bubble.
@@ -91,8 +98,44 @@ const INLINE_SPOILER_EXTENSION: TokenizerAndRendererExtension = {
   },
 };
 
+// Поддержка Zulip markdown-синтаксиса блочного спойлера:
+// ```spoiler optional header
+// content
+// ```
+// Заголовок намеренно игнорируем, оставляем только содержимое.
+const ZULIP_BLOCK_SPOILER_EXTENSION: TokenizerAndRendererExtension = {
+  level: "block",
+  name: ZULIP_BLOCK_SPOILER_TOKEN_TYPE,
+  start(src) {
+    const index = src.indexOf("```spoiler");
+    return index >= 0 ? index : undefined;
+  },
+  tokenizer(src) {
+    if (!src.startsWith("```spoiler")) return undefined;
+    const match = /^```spoiler(?:[ \t]+[^\n`]*)?[ \t]*\n([\s\S]*?)\n```(?:\n|$)/.exec(src);
+    if (match == null) return undefined;
+    const raw = match[0];
+    const text = match[1] ?? "";
+    return {
+      type: ZULIP_BLOCK_SPOILER_TOKEN_TYPE,
+      raw,
+      text,
+      tokens: this.lexer.blockTokens(text, []),
+    };
+  },
+  childTokens: ["tokens"],
+  renderer(token) {
+    if (token.type !== ZULIP_BLOCK_SPOILER_TOKEN_TYPE) return false;
+    const spoilerToken = token as ZulipBlockSpoilerToken;
+    const blockHtml = this.parser.parse(spoilerToken.tokens);
+    return `<div class="inline-spoiler inline-spoiler-block" data-inline-spoiler="true">${blockHtml}</div>`;
+  },
+};
+
 // Отдельный экземпляр marked, чтобы extension не влиял глобально на другие потребители.
-const markdownRenderer = new Marked({ extensions: [INLINE_SPOILER_EXTENSION] });
+const markdownRenderer = new Marked({
+  extensions: [ZULIP_BLOCK_SPOILER_EXTENSION, INLINE_SPOILER_EXTENSION],
+});
 
 /** True when the string looks like HTML from Zulip, not raw `<https://…>` autolink markdown. */
 export function isLikelyRenderedMessageHtml(s: string): boolean {
@@ -181,6 +224,40 @@ function inlineUserUploadImageLinks(html: string): string {
   return wrapper.innerHTML;
 }
 
+function normalizeZulipSpoilerBlocks(html: string): string {
+  // Что делает: переводит Zulip block spoiler (`.spoiler-block`) в наш единый UI-формат
+  // `.inline-spoiler`, чтобы поведение раскрытия/скрытия было одинаковым во всех bubble.
+  if (typeof document === "undefined" || !html.includes("spoiler-block")) {
+    return html;
+  }
+
+  const wrapper = document.createElement("div");
+  wrapper.innerHTML = html;
+
+  const spoilerBlocks = wrapper.querySelectorAll<HTMLElement>(".spoiler-block");
+  for (const block of spoilerBlocks) {
+    const content = block.querySelector<HTMLElement>(".spoiler-content");
+    // Если структура неожиданная, не ломаем сообщение и оставляем исходный HTML.
+    if (content == null) continue;
+
+    // В Zulip у spoiler может быть заголовок. По требованиям UI его не показываем.
+    // Берем только полезный контент из `.spoiler-content`.
+    const hasBlockLevelChildren =
+      content.querySelector("p,div,ul,ol,pre,table,blockquote,h1,h2,h3,h4,h5,h6") != null;
+    const spoiler = document.createElement(hasBlockLevelChildren ? "div" : "span");
+    spoiler.classList.add("inline-spoiler");
+    if (hasBlockLevelChildren) {
+      spoiler.classList.add("inline-spoiler-block");
+    }
+    spoiler.setAttribute("data-inline-spoiler", "true");
+    spoiler.innerHTML = content.innerHTML;
+
+    block.replaceWith(spoiler);
+  }
+
+  return wrapper.innerHTML;
+}
+
 export interface MessageBodyDisplayOptions {
   /** Resolves `@**DisplayName**` to a user id for client-side mention spans. Wildcards (`@**all**`, …) do not use this. */
   resolveUserMention?: (displayName: string) => number | null;
@@ -197,7 +274,7 @@ export function messageBodyToUnsanitizedDisplayHtml(
   if (t.length === 0) return "";
   // Если пришел уже готовый HTML от Zulip, не прогоняем через markdown повторно.
   if (isLikelyRenderedMessageHtml(t)) {
-    return t;
+    return normalizeZulipSpoilerBlocks(t);
   }
   let mdInput = t;
   let mentionTokens: ReturnType<typeof injectZulipMentionPlaceholders>["tokens"] | undefined;
@@ -218,7 +295,8 @@ export function messageBodyToUnsanitizedDisplayHtml(
   html = renderEmojiShortcodesInHtml(html, {
     resolveCustomEmojiShortcodeImageUrl: options?.resolveCustomEmojiShortcodeImageUrl,
   });
-  return inlineUserUploadImageLinks(html);
+  const withInlineUploads = inlineUserUploadImageLinks(html);
+  return normalizeZulipSpoilerBlocks(withInlineUploads);
 }
 
 /** One-line / list previews: strip tags; Markdown is converted via marked first. */
