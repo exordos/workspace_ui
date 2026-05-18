@@ -1,5 +1,5 @@
 /**
- * Tray context menu labels and internal navigation routes.
+ * Tray context menu labels, Windows taskbar overlay text, and internal navigation routes.
  *
  * Routes are sent to the renderer via `deeplink:navigate` and prefixed with the
  * current org scope in the React app (`withCurrentOrgRoute`).
@@ -19,6 +19,8 @@ export interface TrayMenuLabels {
   calendar: string;
   mail: string;
   quit: string;
+  /** Windows taskbar thumbnail overlay description (screen reader / tooltip). */
+  unreadTaskbarOverlay: string;
 }
 
 const LABELS_EN: TrayMenuLabels = {
@@ -26,6 +28,7 @@ const LABELS_EN: TrayMenuLabels = {
   calendar: "Calendar",
   mail: "Mail",
   quit: "Quit",
+  unreadTaskbarOverlay: "Unread messages",
 };
 
 const LABELS_RU: TrayMenuLabels = {
@@ -33,6 +36,7 @@ const LABELS_RU: TrayMenuLabels = {
   calendar: "Календарь",
   mail: "Почта",
   quit: "Выход",
+  unreadTaskbarOverlay: "Непрочитанные сообщения",
 };
 
 /** Resolves tray menu labels from a BCP-47 locale string (e.g. `app.getLocale()`). */

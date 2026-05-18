@@ -45,8 +45,7 @@ export function compositeUnreadDotOnNativeImage(
   const { r, g, b } = parseHexColor(UNREAD_INDICATOR_COLOR);
   const radiusSq = radius * radius;
 
-  const bitmap = image.toBitmap();
-  const out = Buffer.from(bitmap);
+  const out = image.toBitmap();
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {

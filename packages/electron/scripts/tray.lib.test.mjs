@@ -44,12 +44,14 @@ describe("getTrayMenuLabels", () => {
     assert.equal(labels.calendar, "Календарь");
     assert.equal(labels.mail, "Почта");
     assert.equal(labels.quit, "Выход");
+    assert.equal(labels.unreadTaskbarOverlay, "Непрочитанные сообщения");
   });
 
   it("returns English labels for non-ru locales", () => {
     const labels = trayLib.getTrayMenuLabels("en-US");
     assert.equal(labels.messenger, "Messenger");
     assert.equal(labels.quit, "Quit");
+    assert.equal(labels.unreadTaskbarOverlay, "Unread messages");
   });
 });
 

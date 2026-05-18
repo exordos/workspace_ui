@@ -23,8 +23,8 @@ export function createUnreadDotOverlaySvg(
   fraction = UNREAD_DOT_RADIUS_FRACTION,
 ): string {
   const radius = getUnreadDotRadiusPx(sizePx, fraction);
-  const cx = sizePx - Math.max(1, Math.round(radius / 2));
-  const cy = Math.max(1, Math.round(radius / 2));
+  const cx = sizePx - radius;
+  const cy = radius;
   return `<svg width="${sizePx}" height="${sizePx}" xmlns="http://www.w3.org/2000/svg">
       <circle cx="${cx}" cy="${cy}" r="${radius}" fill="${UNREAD_INDICATOR_COLOR}"/>
     </svg>`;

@@ -401,10 +401,7 @@ function loadTrayBaseIcon(): Electron.NativeImage | null {
     if (primary != null) return primary;
   }
 
-  const fallbackCandidates =
-    process.platform === "darwin"
-      ? ["icons/16x16.png", "icon.png"]
-      : ["icons/16x16.png", "icon.png"];
+  const fallbackCandidates = ["icons/16x16.png", "icon.png"];
   for (const fileName of fallbackCandidates) {
     const icon = loadTrayIconFromFile(fileName);
     if (icon != null) return icon;
@@ -603,7 +600,8 @@ function setBadgeCount(count: number): void {
   if (process.platform === "win32" && mainWindow) {
     if (hasUnread) {
       const badge = createUnreadDotOverlay();
-      mainWindow.setOverlayIcon(badge, "Unread messages");
+      const labels = getTrayMenuLabels(app.getLocale());
+      mainWindow.setOverlayIcon(badge, labels.unreadTaskbarOverlay);
     } else {
       mainWindow.setOverlayIcon(null, "");
     }

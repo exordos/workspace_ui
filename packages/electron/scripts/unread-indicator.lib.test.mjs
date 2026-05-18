@@ -53,6 +53,17 @@ describe("unread-indicator.lib (electron)", () => {
     assert.ok(svg.includes(unreadIndicatorLib.UNREAD_INDICATOR_COLOR));
     assert.ok(svg.includes("<circle"));
   });
+
+  it("createUnreadDotOverlaySvg keeps the circle inside the viewBox", () => {
+    const sizePx = 16;
+    const svg = unreadIndicatorLib.createUnreadDotOverlaySvg(sizePx);
+    const cx = Number(svg.match(/cx="(\d+)"/)?.[1]);
+    const cy = Number(svg.match(/cy="(\d+)"/)?.[1]);
+    const r = Number(svg.match(/r="(\d+)"/)?.[1]);
+    assert.ok(Number.isFinite(cx) && Number.isFinite(cy) && Number.isFinite(r));
+    assert.ok(cx - r >= 0 && cx + r <= sizePx);
+    assert.ok(cy - r >= 0 && cy + r <= sizePx);
+  });
 });
 
 process.on("exit", () => {
