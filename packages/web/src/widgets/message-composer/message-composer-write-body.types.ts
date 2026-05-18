@@ -1,4 +1,5 @@
 import type { MentionSuggestion } from "~/features/mention-suggest/mention-suggest.types";
+import type { ComposerSendNewlineMode } from "./message-composer-input-commands.lib";
 import type { ClipboardEvent, Dispatch, RefObject, SetStateAction } from "react";
 
 export interface MessageComposerWriteBodyProps {
@@ -17,6 +18,7 @@ export interface MessageComposerWriteBodyProps {
   applyFormattingShortcut: (delimiter: string) => void;
   onPaste: (e: ClipboardEvent<HTMLTextAreaElement>) => void;
   onSend: () => void | Promise<void>;
+  sendNewlineMode: ComposerSendNewlineMode;
   onEditLastMessage?: () => void;
   isEditing?: boolean;
   onCancelEdit?: () => void;

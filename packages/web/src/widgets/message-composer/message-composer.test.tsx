@@ -1219,6 +1219,57 @@ describe("MessageComposer send shortcuts", () => {
 
     expect(onSend).not.toHaveBeenCalled();
   });
+
+  it("continues bulleted list on Shift+Enter", () => {
+    const onSend = vi.fn();
+    renderWithProviders(<MessageComposer onSend={onSend} />);
+
+    const textbox = screen.getByRole("textbox");
+    if (!(textbox instanceof HTMLTextAreaElement)) {
+      throw new Error("Expected textarea element");
+    }
+
+    fireEvent.change(textbox, { target: { value: "- item" } });
+    textbox.setSelectionRange(textbox.value.length, textbox.value.length);
+    fireEvent.keyDown(textbox, { key: "Enter", shiftKey: true });
+
+    expect(onSend).not.toHaveBeenCalled();
+    expect(textbox).toHaveValue("- item\n- ");
+  });
+
+  it("continues numbered list on Shift+Enter", () => {
+    const onSend = vi.fn();
+    renderWithProviders(<MessageComposer onSend={onSend} />);
+
+    const textbox = screen.getByRole("textbox");
+    if (!(textbox instanceof HTMLTextAreaElement)) {
+      throw new Error("Expected textarea element");
+    }
+
+    fireEvent.change(textbox, { target: { value: "1. item" } });
+    textbox.setSelectionRange(textbox.value.length, textbox.value.length);
+    fireEvent.keyDown(textbox, { key: "Enter", shiftKey: true });
+
+    expect(onSend).not.toHaveBeenCalled();
+    expect(textbox).toHaveValue("1. item\n2. ");
+  });
+
+  it("exits list continuation on empty bullet marker line", () => {
+    const onSend = vi.fn();
+    renderWithProviders(<MessageComposer onSend={onSend} />);
+
+    const textbox = screen.getByRole("textbox");
+    if (!(textbox instanceof HTMLTextAreaElement)) {
+      throw new Error("Expected textarea element");
+    }
+
+    fireEvent.change(textbox, { target: { value: "- " } });
+    textbox.setSelectionRange(textbox.value.length, textbox.value.length);
+    fireEvent.keyDown(textbox, { key: "Enter", shiftKey: true });
+
+    expect(onSend).not.toHaveBeenCalled();
+    expect(textbox).toHaveValue("");
+  });
 });
 
 describe("MessageComposer emoji picker behavior", () => {

@@ -46,6 +46,7 @@ import { TOOLBAR_BTN } from "./message-composer-styles.lib";
 import { FormattingToolbar } from "./message-composer-toolbar.ui";
 import { useMessageComposerUpload } from "./message-composer-upload.hook";
 import { MessageComposerWriteBody } from "./message-composer-write-body.ui";
+import type { ComposerSendNewlineMode } from "./message-composer-input-commands.lib";
 import type { ScheduleMenuOption } from "./message-composer-schedule-popover.types";
 import type {
   ComposerMode,
@@ -76,6 +77,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   aiMessagesContext,
   aiChatContext,
 }) => {
+  const sendNewlineMode: ComposerSendNewlineMode = "enter-sends";
   const [mode, setMode] = useState<ComposerMode>("write");
   const [value, setValue] = useState(initialValue ?? "");
   const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
@@ -1031,6 +1033,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
                   applyFormattingShortcut={applyFormattingShortcut}
                   onPaste={handlePaste}
                   onSend={handleSend}
+                  sendNewlineMode={sendNewlineMode}
                   onEditLastMessage={onEditLastMessage}
                   isEditing={isEditing}
                   onCancelEdit={onCancelEdit}
