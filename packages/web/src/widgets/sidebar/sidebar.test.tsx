@@ -1154,7 +1154,7 @@ describe("Sidebar", () => {
       />,
     );
 
-    expect(screen.getByText("# incident")).toBeInTheDocument();
+    expect(screen.getByText("incident")).toBeInTheDocument();
   });
 
   it("shows topic last message sender name in folder stream list", async () => {
@@ -1182,7 +1182,7 @@ describe("Sidebar", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("# incident")).toBeInTheDocument();
+      expect(screen.getByText("incident")).toBeInTheDocument();
       expect(screen.getByText("Topic Sender")).toBeInTheDocument();
     });
   });
@@ -1256,12 +1256,12 @@ describe("Sidebar", () => {
     );
 
     expect(screen.getByTestId("route-path")).toHaveTextContent("/");
-    expect(screen.queryByText("# incident")).not.toBeInTheDocument();
+    expect(screen.queryByText("incident")).not.toBeInTheDocument();
 
     const streamLink = screen.getByRole("link", { name: /engineering/i });
     fireEvent.click(within(streamLink).getByText("3"));
 
-    expect(screen.getByText("# incident")).toBeInTheDocument();
+    expect(screen.getByText("incident")).toBeInTheDocument();
     expect(screen.getByTestId("route-path")).toHaveTextContent("/stream/11-engineering");
   });
 
@@ -1287,12 +1287,12 @@ describe("Sidebar", () => {
     );
 
     expect(screen.getByTestId("route-path")).toHaveTextContent("/");
-    expect(screen.queryByText("# incident")).not.toBeInTheDocument();
+    expect(screen.queryByText("incident")).not.toBeInTheDocument();
 
     const streamLink = screen.getByRole("link", { name: /engineering/i });
     fireEvent.click(within(streamLink).getByText("3"));
 
-    expect(screen.getByText("# incident")).toBeInTheDocument();
+    expect(screen.getByText("incident")).toBeInTheDocument();
     expect(screen.getByTestId("route-path")).toHaveTextContent("/stream/11-engineering");
   });
 
@@ -1311,9 +1311,9 @@ describe("Sidebar", () => {
       />,
     );
 
-    expect(screen.queryByText("# incident")).not.toBeInTheDocument();
+    expect(screen.queryByText("incident")).not.toBeInTheDocument();
     fireEvent.click(screen.getByText("#Engineering"));
-    expect(screen.getByText("# incident")).toBeInTheDocument();
+    expect(screen.getByText("incident")).toBeInTheDocument();
   });
 
   it("allows opening multiple stream topic lists via expand buttons", () => {
@@ -1339,8 +1339,8 @@ describe("Sidebar", () => {
     fireEvent.click(toggleButtons[0]!);
     fireEvent.click(toggleButtons[1]!);
 
-    expect(screen.getByText("# incident")).toBeInTheDocument();
-    expect(screen.getByText("# launch")).toBeInTheDocument();
+    expect(screen.getByText("incident")).toBeInTheDocument();
+    expect(screen.getByText("launch")).toBeInTheDocument();
   });
 
   it("keeps stream topics expanded after manual toggle when dm chat is active", () => {
@@ -1361,7 +1361,7 @@ describe("Sidebar", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /expand topics/i }));
 
-    expect(screen.getByText("# incident")).toBeInTheDocument();
+    expect(screen.getByText("incident")).toBeInTheDocument();
   });
 
   it("collapses all but target stream topics after stream navigation", async () => {
@@ -1389,8 +1389,8 @@ describe("Sidebar", () => {
     const toggleButtons = screen.getAllByRole("button", { name: /expand topics/i });
     fireEvent.click(toggleButtons[0]!);
     fireEvent.click(toggleButtons[1]!);
-    expect(screen.getByText("# incident")).toBeInTheDocument();
-    expect(screen.getByText("# launch")).toBeInTheDocument();
+    expect(screen.getByText("incident")).toBeInTheDocument();
+    expect(screen.getByText("launch")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("link", { name: /marketing/i }));
 
@@ -1398,8 +1398,8 @@ describe("Sidebar", () => {
       expect(screen.getByTestId("route-path")).toHaveTextContent("/stream/12-marketing");
     });
     await waitFor(() => {
-      expect(screen.queryByText("# incident")).not.toBeInTheDocument();
-      expect(screen.getByText("# launch")).toBeInTheDocument();
+      expect(screen.queryByText("incident")).not.toBeInTheDocument();
+      expect(screen.getByText("launch")).toBeInTheDocument();
     });
   });
 
@@ -1429,8 +1429,8 @@ describe("Sidebar", () => {
     const toggleButtons = screen.getAllByRole("button", { name: /expand topics/i });
     fireEvent.click(toggleButtons[0]!);
     fireEvent.click(toggleButtons[1]!);
-    expect(screen.getByText("# incident")).toBeInTheDocument();
-    expect(screen.getByText("# launch")).toBeInTheDocument();
+    expect(screen.getByText("incident")).toBeInTheDocument();
+    expect(screen.getByText("launch")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "go-inbox" }));
 
@@ -1438,8 +1438,8 @@ describe("Sidebar", () => {
       expect(screen.getByTestId("route-path")).toHaveTextContent("/inbox");
     });
     await waitFor(() => {
-      expect(screen.queryByText("# incident")).not.toBeInTheDocument();
-      expect(screen.queryByText("# launch")).not.toBeInTheDocument();
+      expect(screen.queryByText("incident")).not.toBeInTheDocument();
+      expect(screen.queryByText("launch")).not.toBeInTheDocument();
     });
   });
 
@@ -1461,7 +1461,7 @@ describe("Sidebar", () => {
     );
 
     await waitFor(() => {
-      expect(screen.queryByText("# incident")).not.toBeInTheDocument();
+      expect(screen.queryByText("incident")).not.toBeInTheDocument();
     });
   });
 

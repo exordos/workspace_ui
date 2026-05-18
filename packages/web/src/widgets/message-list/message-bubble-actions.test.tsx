@@ -65,7 +65,7 @@ function createRect({
     width: right - left,
     height: bottom - top,
     toJSON: () => ({}),
-  } as DOMRect;
+  };
 }
 
 describe("MessageBubble edit/delete actions parity", () => {
@@ -828,7 +828,7 @@ describe("MessageBubble edit/delete actions parity", () => {
     expect(jitsiCallButton).not.toHaveClass("bg-msg-own-bg");
     expect(jitsiCallButton).not.toHaveClass("rounded-xl");
     expect(jitsiCallButton).toHaveTextContent(/design sync room/i);
-    expect(jitsiCallButton).toHaveTextContent(/#\s*topic 2/i);
+    expect(jitsiCallButton).toHaveTextContent(/topic\s*2/i);
     expect(screen.getByTestId("jitsi-call-participants-101")).toBeInTheDocument();
     expect(screen.getByText("+1")).toBeInTheDocument();
 
