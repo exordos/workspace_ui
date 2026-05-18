@@ -535,7 +535,7 @@ export function useLayoutZulipEventLoop(options: {
             },
             mergeIntoCurrentChat: (messages, uid) => {
               const currentChat = useCurrentChatMessagesStore.getState();
-              if (currentChat.context == null) return 0;
+              if (currentChat.context == null || currentChat.hasNewerMessages) return 0;
 
               const messagesForCurrentChat = messages.filter((message) =>
                 isMessageForContext(message, currentChat.context, uid),

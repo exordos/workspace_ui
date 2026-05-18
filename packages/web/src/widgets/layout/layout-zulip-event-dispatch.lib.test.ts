@@ -35,6 +35,7 @@ function buildCtx(
     },
     currentChat: {
       context: null,
+      hasNewerMessages: false,
       appendMessage: noop,
       updateMessageFlags: noop,
       updateMessageReaction: noop,

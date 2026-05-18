@@ -144,9 +144,10 @@ function handleIncomingMessage(event: ZulipEvent, ctx: LayoutZulipEventDispatchC
   activity.markStale();
 
   const currentUserId = chatList.currentUserId;
-  const isForCurrentChat = currentChat.context
-    ? isMessageForContext(raw, currentChat.context, currentUserId)
-    : false;
+  const isForCurrentChat =
+    currentChat.context != null &&
+    !currentChat.hasNewerMessages &&
+    isMessageForContext(raw, currentChat.context, currentUserId);
   if (isForCurrentChat) {
     currentChat.appendMessage(rawMessageToMockMessage(raw));
   }

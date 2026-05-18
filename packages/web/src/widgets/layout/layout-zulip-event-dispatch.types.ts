@@ -39,6 +39,7 @@ export interface LayoutCurrentChatReaction {
 
 export interface LayoutCurrentChatActions {
   context: CurrentChatContext | null;
+  hasNewerMessages: boolean;
   appendMessage: (message: MockMessage) => void;
   updateMessageFlags: (messageIds: number[], flag: string, op: LayoutMessageFlagOp) => void;
   updateMessageReaction: (
