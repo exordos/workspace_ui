@@ -926,6 +926,54 @@ describe("MessageComposer file attachments", () => {
     });
   });
 
+  it("attaches selected files when picker dispatches input event", async () => {
+    const onSend = vi.fn();
+    const { container } = renderWithProviders(<MessageComposer onSend={onSend} />);
+    const input = container.querySelector('input[type="file"]');
+    if (!(input instanceof HTMLInputElement)) {
+      throw new Error("Expected hidden file input");
+    }
+    const file = new File(["hello"], "from-input-event.txt", { type: "text/plain" });
+    fireEvent.input(input, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(screen.getByText("from-input-event.txt")).toBeInTheDocument();
+    });
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "message with input event file" } });
+    fireEvent.keyDown(textbox, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith("message with input event file", "", [file]);
+    });
+  });
+
+  it("allows selecting the same file twice and sends both attachments", async () => {
+    const onSend = vi.fn();
+    const { container } = renderWithProviders(<MessageComposer onSend={onSend} />);
+    const input = container.querySelector('input[type="file"]');
+    if (!(input instanceof HTMLInputElement)) {
+      throw new Error("Expected hidden file input");
+    }
+
+    const file = new File(["dup"], "duplicate.txt", { type: "text/plain" });
+    fireEvent.change(input, { target: { files: [file] } });
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(screen.getAllByText("duplicate.txt")).toHaveLength(2);
+    });
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "message with duplicate files" } });
+    fireEvent.keyDown(textbox, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith("message with duplicate files", "", [file, file]);
+    });
+  });
+
   it("attaches dropped files and includes them in send payload", async () => {
     const onSend = vi.fn();
     renderWithProviders(<MessageComposer onSend={onSend} />);

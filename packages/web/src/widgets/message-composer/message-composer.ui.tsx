@@ -185,7 +185,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     onDragOver: handleDragOver,
     onDragLeave: handleDragLeave,
     onDrop: handleDrop,
-    onFileInputChange: handleFileChange,
+    onFileInputChange: handleFileChangeFromHook,
     removeFileByIndex: removeFile,
     uploadProgressPercent,
     isUploadInProgress,
@@ -507,8 +507,26 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
 
   const handleAttachClick = () => {
     if (disabled || isEditing) return;
-    fileInputRef.current?.click();
+    const fileInput = fileInputRef.current;
+    if (fileInput == null) return;
+    fileInput.value = "";
+    if (typeof fileInput.showPicker === "function") {
+      try {
+        fileInput.showPicker();
+        return;
+      } catch {
+        // Fallback to click for environments where showPicker throws.
+      }
+    }
+    fileInput.click();
   };
+
+  const handleFileInputEvent = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement> | React.FormEvent<HTMLInputElement>) => {
+      handleFileChangeFromHook(event);
+    },
+    [handleFileChangeFromHook],
+  );
 
   const handleCreateCallLink = useCallback(() => {
     if (disabled || isEditing || onCreateCallLink == null) {
@@ -954,8 +972,9 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
               ref={fileInputRef}
               type="file"
               multiple
-              className="hidden"
-              onChange={handleFileChange}
+              className="sr-only"
+              onChange={handleFileInputEvent}
+              onInput={handleFileInputEvent}
               accept="*/*"
             />
 

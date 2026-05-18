@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createRoot, type Root } from "react-dom/client";
 import { useDownloadStore } from "~/entities/download/download.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
@@ -64,7 +63,7 @@ export type { MessageBubbleCallbacks, MessageBubbleProps } from "./message-bubbl
 interface CodeCopyButtonMount {
   button: HTMLButtonElement;
   clickHandler: (event: MouseEvent) => void;
-  iconRoot: Root;
+  iconHost: HTMLSpanElement;
   resetTimerId: number | null;
 }
 
@@ -236,11 +235,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
         copyButton.setAttribute("title", t("message.copy"));
 
         const iconHost = document.createElement("span");
-        iconHost.className = "pointer-events-none";
+        iconHost.className =
+          "pointer-events-none inline-flex h-3 w-3 items-center justify-center text-[11px] leading-none";
         copyButton.appendChild(iconHost);
         preElement.appendChild(copyButton);
 
-        const iconRoot = createRoot(iconHost);
         const renderIconState = (state: "idle" | "success" | "error") => {
           copyButton.dataset.copyState = state;
           if (state === "success") {
@@ -253,13 +252,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
             copyButton.setAttribute("aria-label", t("message.copy"));
             copyButton.setAttribute("title", t("message.copy"));
           }
-          iconRoot.render(
-            <Icon
-              name={state === "success" ? "check" : "copy"}
-              size={12}
-              className={state === "success" ? "text-call-green" : "text-current"}
-            />,
-          );
+          iconHost.textContent = state === "success" ? "✓" : "⧉";
         };
 
         renderIconState("idle");
@@ -267,7 +260,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
         const mount: CodeCopyButtonMount = {
           button: copyButton,
           clickHandler: () => {},
-          iconRoot,
+          iconHost,
           resetTimerId: null,
         };
 
@@ -303,7 +296,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
             window.clearTimeout(mount.resetTimerId);
           }
           mount.button.removeEventListener("click", mount.clickHandler);
-          mount.iconRoot.unmount();
+          mount.iconHost.textContent = "";
           mount.button.remove();
         }
       };

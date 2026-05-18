@@ -1,10 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 interface ComposerUploadProgressLike {
   completed: number;
   total: number;
   activeFileName: string | null;
 }
+
+type ComposerFileInputEvent =
+  | React.ChangeEvent<HTMLInputElement>
+  | React.FormEvent<HTMLInputElement>;
 
 function hasFileDragPayload(dataTransfer: DataTransfer): boolean {
   try {
@@ -37,7 +41,7 @@ export function useMessageComposerUpload(options: {
   onDragLeave: () => void;
   onDrop: (e: React.DragEvent) => void;
 
-  onFileInputChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onFileInputChange: (e: ComposerFileInputEvent) => void;
   removeFileByIndex: (index: number) => void;
 
   uploadProgressPercent: number;
@@ -47,6 +51,11 @@ export function useMessageComposerUpload(options: {
 
   const [files, setFiles] = useState<File[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
+  const lastHandledSelectionRef = useRef<{
+    signature: string;
+    eventType: string;
+    tsMs: number;
+  } | null>(null);
 
   const filePreviewUrls = useMemo(
     () => files.map((file) => createAttachmentPreviewUrl(file)),
@@ -94,11 +103,26 @@ export function useMessageComposerUpload(options: {
     [disabled],
   );
 
-  const onFileInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = e.target.files;
+  const onFileInputChange = useCallback((e: ComposerFileInputEvent) => {
+    const selected = e.currentTarget.files;
     if (!selected?.length) return;
-    setFiles((prev) => [...prev, ...Array.from(selected)]);
-    e.target.value = "";
+    const selectedFiles = Array.from(selected);
+    const signature = selectedFiles
+      .map((file) => `${file.name}:${file.size}:${file.type}:${file.lastModified}`)
+      .join("|");
+    const nowMs = typeof performance === "undefined" ? Date.now() : performance.now();
+    const previousSelection = lastHandledSelectionRef.current;
+    if (
+      previousSelection?.signature === signature &&
+      previousSelection.eventType !== e.type &&
+      nowMs - previousSelection.tsMs < 400
+    ) {
+      e.currentTarget.value = "";
+      return;
+    }
+    lastHandledSelectionRef.current = { signature, eventType: e.type, tsMs: nowMs };
+    setFiles((prev) => [...prev, ...selectedFiles]);
+    e.currentTarget.value = "";
   }, []);
 
   const removeFileByIndex = useCallback((index: number) => {
@@ -112,7 +136,9 @@ export function useMessageComposerUpload(options: {
 
   const isUploadInProgress = useMemo(() => {
     return (
-      uploadProgress != null && uploadProgress.total > 0 && uploadProgress.completed < uploadProgress.total
+      uploadProgress != null &&
+      uploadProgress.total > 0 &&
+      uploadProgress.completed < uploadProgress.total
     );
   }, [uploadProgress]);
 
@@ -130,4 +156,3 @@ export function useMessageComposerUpload(options: {
     isUploadInProgress,
   };
 }
-
