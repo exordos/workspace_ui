@@ -6,7 +6,6 @@ import { useMentionSuggestStore } from "~/features/mention-suggest/mention-sugge
 import type { MentionSuggestion } from "~/features/mention-suggest/mention-suggest.types";
 import { t } from "~/i18n/i18n";
 import type { SavedSnippet } from "~/shared/api/zulip";
-import { createSavedSnippet, fetchSavedSnippets } from "~/shared/api/zulip-messages";
 import { ensureRealmEmojisLoaded, getCachedRealmEmojis } from "~/shared/lib/realm-emojis-cache";
 import { useViewportKeyboard } from "~/shared/lib/touch";
 import { isWebView } from "~/shared/lib/webview";
@@ -40,6 +39,7 @@ import { MessageComposerPreface } from "./message-composer-preface.ui";
 import { MessageComposerPreviewBody } from "./message-composer-preview-body.ui";
 import { useMessageComposerPreview } from "./message-composer-preview.hook";
 import { MessageComposerSavedSnippetsDialog } from "./message-composer-saved-snippets-dialog.ui";
+import { useComposerSavedSnippetsStore } from "./message-composer-saved-snippets.model";
 import { MessageComposerSchedulePopover } from "./message-composer-schedule-popover.ui";
 import { wrapSelection } from "./message-composer-selection.lib";
 import { TOOLBAR_BTN } from "./message-composer-styles.lib";
@@ -87,15 +87,19 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   const [scheduleMenuStyle, setScheduleMenuStyle] = useState<React.CSSProperties>({});
   const [savedSnippetsMenuOpen, setSavedSnippetsMenuOpen] = useState(false);
   const [savedSnippetsMenuStyle, setSavedSnippetsMenuStyle] = useState<React.CSSProperties>({});
-  const [savedSnippets, setSavedSnippets] = useState<SavedSnippet[]>([]);
   const [savedSnippetsFilter, setSavedSnippetsFilter] = useState("");
-  const [savedSnippetsLoading, setSavedSnippetsLoading] = useState(false);
-  const [savedSnippetsError, setSavedSnippetsError] = useState<string | null>(null);
   const [savedSnippetCreateMode, setSavedSnippetCreateMode] = useState(false);
   const [savedSnippetTitle, setSavedSnippetTitle] = useState("");
   const [savedSnippetContent, setSavedSnippetContent] = useState("");
   const [savedSnippetSaving, setSavedSnippetSaving] = useState(false);
-  const [savedSnippetsReloadToken, setSavedSnippetsReloadToken] = useState(0);
+  const savedSnippets = useComposerSavedSnippetsStore((s) => s.snippets);
+  const savedSnippetsLoading = useComposerSavedSnippetsStore((s) => s.loadingInitial);
+  const savedSnippetsErrorCode = useComposerSavedSnippetsStore((s) => s.error);
+  const openSavedSnippets = useComposerSavedSnippetsStore((s) => s.openSavedSnippets);
+  const createSavedSnippetAndSync = useComposerSavedSnippetsStore(
+    (s) => s.createSavedSnippetAndSync,
+  );
+  const clearSavedSnippetsError = useComposerSavedSnippetsStore((s) => s.clearSavedSnippetsError);
   const [scheduledMessages, setScheduledMessages] = useState<ScheduledComposerMessage[]>([]);
   const [aiMenuOpen, setAiMenuOpen] = useState(false);
   const [customEmojis, setCustomEmojis] = useState(() => getCachedRealmEmojis());
@@ -237,6 +241,15 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
       savedSnippetContent.trim().length > 0,
     [savedSnippetContent, savedSnippetSaving, savedSnippetTitle],
   );
+  const savedSnippetsError = useMemo(() => {
+    if (savedSnippetsErrorCode === "load_failed") {
+      return t("composer.savedSnippetsLoadError");
+    }
+    if (savedSnippetsErrorCode === "create_failed") {
+      return t("composer.savedSnippetsCreateError");
+    }
+    return null;
+  }, [savedSnippetsErrorCode]);
   const ensureCustomEmojisLoaded = useCallback(() => {
     void ensureRealmEmojisLoaded()
       .then((list) => {
@@ -668,30 +681,6 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     };
   }, [savedSnippetsMenuOpen, updateSavedSnippetsMenuPosition]);
 
-  React.useEffect(() => {
-    if (!savedSnippetsMenuOpen || savedSnippetCreateMode) return;
-    let cancelled = false;
-    setSavedSnippetsLoading(true);
-    setSavedSnippetsError(null);
-    void fetchSavedSnippets()
-      .then((snippets) => {
-        if (cancelled) return;
-        setSavedSnippets(snippets);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setSavedSnippets([]);
-        setSavedSnippetsError(t("composer.savedSnippetsLoadError"));
-      })
-      .finally(() => {
-        if (cancelled) return;
-        setSavedSnippetsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [savedSnippetCreateMode, savedSnippetsMenuOpen, savedSnippetsReloadToken]);
-
   const toggleSavedSnippetsMenu = useCallback(() => {
     setSavedSnippetsMenuOpen((prevOpen) => {
       const nextOpen = !prevOpen;
@@ -701,12 +690,13 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
         setScheduleMenuOpen(false);
         setSavedSnippetCreateMode(false);
         setSavedSnippetsFilter("");
-        setSavedSnippetsError(null);
+        clearSavedSnippetsError();
+        void openSavedSnippets();
         updateSavedSnippetsMenuPosition();
       }
       return nextOpen;
     });
-  }, [updateSavedSnippetsMenuPosition]);
+  }, [clearSavedSnippetsError, openSavedSnippets, updateSavedSnippetsMenuPosition]);
 
   const startCreateSavedSnippet = useCallback(() => {
     setSavedSnippetCreateMode(true);
@@ -723,9 +713,9 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   const submitCreateSavedSnippet = useCallback(async () => {
     if (!canSaveSnippet) return;
     setSavedSnippetSaving(true);
-    setSavedSnippetsError(null);
+    clearSavedSnippetsError();
     try {
-      await createSavedSnippet({
+      await createSavedSnippetAndSync({
         title: savedSnippetTitle.trim(),
         content: savedSnippetContent.trim(),
       });
@@ -733,13 +723,16 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
       setSavedSnippetTitle("");
       setSavedSnippetContent("");
       setSavedSnippetsFilter("");
-      setSavedSnippetsReloadToken((version) => version + 1);
-    } catch {
-      setSavedSnippetsError(t("composer.savedSnippetsCreateError"));
     } finally {
       setSavedSnippetSaving(false);
     }
-  }, [canSaveSnippet, savedSnippetContent, savedSnippetTitle]);
+  }, [
+    canSaveSnippet,
+    clearSavedSnippetsError,
+    createSavedSnippetAndSync,
+    savedSnippetContent,
+    savedSnippetTitle,
+  ]);
 
   React.useEffect(() => {
     void processDueScheduledMessage();

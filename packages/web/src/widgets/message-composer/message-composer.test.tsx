@@ -8,6 +8,7 @@ import { resetRealmEmojisCacheForTests } from "~/shared/lib/realm-emojis-cache";
 import { createUser } from "~/test/factories";
 import { renderWithProviders } from "~/test/render";
 import { computeFloatingPickerPosition } from "./message-composer-picker-position.lib";
+import { resetComposerSavedSnippetsModelForTests } from "./message-composer-saved-snippets.model";
 import { MessageComposer } from "./message-composer.ui";
 
 const isWebViewMock = vi.fn(() => false);
@@ -122,6 +123,7 @@ afterEach(() => {
 
 beforeEach(() => {
   resetRealmEmojisCacheForTests();
+  resetComposerSavedSnippetsModelForTests();
 });
 
 const focusComposerInput = () => {
@@ -351,6 +353,26 @@ describe("MessageComposer saved snippets", () => {
 
     expect(screen.getByText("No matching results")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /create new saved snippet/i })).toBeInTheDocument();
+  });
+
+  it("reuses snippets cache when menu is reopened within ttl window", async () => {
+    fetchSavedSnippetsMock.mockResolvedValue([
+      { id: 101, title: "Incident template", content: "Status update", date_created: 1710000000 },
+    ]);
+
+    renderWithProviders(<MessageComposer onSend={vi.fn()} />);
+
+    fireEvent.focus(screen.getByRole("textbox"));
+    const trigger = screen.getByRole("button", { name: /saved snippets/i });
+
+    fireEvent.click(trigger);
+    await screen.findByRole("button", { name: "Incident template" });
+    fireEvent.click(trigger);
+
+    fireEvent.click(trigger);
+    await screen.findByRole("button", { name: "Incident template" });
+
+    expect(fetchSavedSnippetsMock).toHaveBeenCalledTimes(1);
   });
 
   it("creates a saved snippet from the current draft", async () => {
