@@ -106,7 +106,7 @@ function buildStreamTitleSegment(
   const safeStreamName = toSafeTitleSegment(streamName);
   if (safeStreamName == null) return null;
   const safeTopicName = toSafeTitleSegment(topicName);
-  return safeTopicName != null ? `#${safeStreamName} | #${safeTopicName}` : `#${safeStreamName}`;
+  return safeTopicName != null ? `#${safeStreamName} | ${safeTopicName}` : `#${safeStreamName}`;
 }
 
 export function buildActiveChatWindowTitle({

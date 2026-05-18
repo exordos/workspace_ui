@@ -84,10 +84,14 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           </div>
         ) : (
           <>
-            <h1 className="truncate text-sm font-semibold text-text-primary">
-              {channelName}
-              {!hideTopic && topic && (
-                <span className="font-normal text-text-muted"> | #{topic}</span>
+            <h1 className="truncate text-sm text-text-primary">
+              {!hideTopic && topic ? (
+                <>
+                  <span className="font-semibold">{topic}</span>
+                  <span className="font-normal text-text-muted"> · {channelName}</span>
+                </>
+              ) : (
+                <span className="font-semibold">{channelName}</span>
               )}
             </h1>
             {!hideParticipants && (

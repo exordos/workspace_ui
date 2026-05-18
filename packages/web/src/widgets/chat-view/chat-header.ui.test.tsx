@@ -65,6 +65,21 @@ describe("ChatHeader", () => {
     expect(status).toHaveClass("text-xs");
   });
 
+  it("shows stream topic as primary heading with channel muted when topic is visible", () => {
+    renderWithProviders(
+      <ChatHeader
+        channelName="#engineering"
+        topic="sprint-planning"
+        hideTopic={false}
+        hideParticipants
+      />,
+    );
+
+    const heading = screen.getByRole("heading", { level: 1 });
+    expect(heading).toHaveTextContent("sprint-planning · #engineering");
+    expect(heading.querySelector(".font-semibold")).toHaveTextContent("sprint-planning");
+  });
+
   it("places chat actions button inside right controls cluster", () => {
     renderWithProviders(<ChatHeader channelName="general" hideTopic hideParticipants />);
 

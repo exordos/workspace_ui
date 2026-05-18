@@ -27,7 +27,7 @@ export const SearchResultItem = React.memo(function SearchResultItem({
             <span>{displayName}</span>
             <span>·</span>
             <span>
-              #{msg.channel ?? "?"} › #{msg.subject}
+              #{msg.channel ?? "?"} › {msg.subject}
             </span>
           </div>
           <p className="line-clamp-2 truncate text-text-primary">
@@ -37,7 +37,7 @@ export const SearchResultItem = React.memo(function SearchResultItem({
         <button
           type="button"
           onClick={onSelect}
-          className="hover:bg-bg-elevated/70 mt-0.5 rounded p-1 text-text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:text-text-primary"
+          className="hover:bg-bg-elevated/70 mt-0.5 rounded p-1 text-text-muted opacity-0 transition-opacity hover:text-text-primary group-hover:opacity-100"
           aria-label={t("message.openInChat")}
           title={t("message.openInChat")}
         >

@@ -395,7 +395,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
 
       const action = LABEL_TO_ACTION[label];
       if (action && callbacks?.[action]) {
-        (callbacks[action] as (msg: MockMessage) => void)(message);
+        callbacks[action](message);
       }
       replySelectionRef.current = undefined;
       setMenuOpen(false);
@@ -749,7 +749,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
                     <span
                       className={`text-[11px] font-medium ${isOwn ? "text-call-green" : "text-accent-soft"}`}
                     >
-                      #{message.subject}
+                      {message.subject}
                     </span>
                   )}
                 </div>
@@ -835,7 +835,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
                       isOwn ? "text-call-green" : "text-accent-soft"
                     }`}
                   >
-                    #{message.subject}
+                    {message.subject}
                   </span>
                 )}
               </div>

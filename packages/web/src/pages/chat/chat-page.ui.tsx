@@ -1780,6 +1780,8 @@ export const ChatPage: React.FC = () => {
 
       <ChatHeader
         channelName={activeStream ? `#${activeStream}` : t("channel.channelName")}
+        topic={activeTopic}
+        hideTopic={activeTopic == null || activeTopic.trim() === ""}
         participantsCount={chatInfo?.memberCount ?? 0}
         onlineCount={chatInfo?.onlineCount ?? 0}
         onOpenSearch={openSearch ?? undefined}
@@ -1788,7 +1790,6 @@ export const ChatPage: React.FC = () => {
         rightPanelLabel={
           isGroupDmView ? t("dm.groupChat") : isDmView ? t("info.partnerInfo") : undefined
         }
-        hideTopic
         hideParticipants={isDmView}
         onCallClick={canStartCall ? handleCallClick : undefined}
         dmPartner={dmPartner}
