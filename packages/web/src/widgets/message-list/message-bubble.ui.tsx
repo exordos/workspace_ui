@@ -516,9 +516,19 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
 
         const spoilerHeader = hit.closest(".spoiler-header");
         if (spoilerHeader) {
+          // Поддержка legacy/block-spoiler разметки Zulip (`.spoiler-block` + `.spoiler-header`).
           event.preventDefault();
           event.stopPropagation();
           spoilerHeader.closest(".spoiler-block")?.classList.toggle("open");
+          return;
+        }
+
+        const inlineSpoiler = hit.closest(".inline-spoiler");
+        if (inlineSpoiler) {
+          // Локально раскрываем/скрываем inline spoiler без влияния на остальные интеракции bubble.
+          event.preventDefault();
+          event.stopPropagation();
+          inlineSpoiler.classList.toggle("open");
           return;
         }
 

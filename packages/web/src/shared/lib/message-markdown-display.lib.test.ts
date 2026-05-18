@@ -26,6 +26,14 @@ describe("renderMarkdownFallbackHtml", () => {
     expect(html).toContain("strong");
     expect(html).toContain("x");
   });
+
+  it("renders inline spoiler syntax into dedicated spoiler span", () => {
+    // Проверяем именно формат разметки, который затем ожидает bubble click-handler.
+    const html = renderMarkdownFallbackHtml("Hello ||secret||");
+    expect(html).toContain('class="inline-spoiler"');
+    expect(html).toContain('data-inline-spoiler="true"');
+    expect(html).toContain("secret");
+  });
 });
 
 describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
@@ -111,6 +119,18 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
     expect(html).toContain("<code>:smile:</code>");
     expect(html).toMatch(/<pre><code[^>]*>:smile:\n<\/code><\/pre>/);
     expect(html).toContain("Outside 😄");
+  });
+
+  it("does not parse spoiler markers inside inline/fenced code", () => {
+    // Маркеры в code-сегментах должны остаться буквальным текстом.
+    // Спойлер должен сработать только для обычного текста вне code.
+    const html = messageBodyToUnsanitizedDisplayHtml(
+      "Inline `||keep||` and block:\n```txt\n||stay||\n```\nOutside ||reveal||",
+    );
+    expect(html).toContain("<code>||keep||</code>");
+    expect(html).toMatch(/<pre><code[^>]*>\|\|stay\|\|\n<\/code><\/pre>/);
+    expect(html).toContain('class="inline-spoiler"');
+    expect(html).toContain(">reveal<");
   });
 
   it("renders mentions and emoji shortcodes together", () => {

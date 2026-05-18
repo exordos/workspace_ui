@@ -118,6 +118,28 @@ body {
   display: block;
 }
 
+.message-body .inline-spoiler {
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline;
+  padding: 0 2px;
+  transition:
+    background-color 120ms ease,
+    filter 120ms ease;
+}
+
+.message-body .inline-spoiler:not(.open) {
+  background-color: var(--color-border-subtle);
+  filter: blur(0.22rem);
+  user-select: none;
+}
+
+.message-body .inline-spoiler.open {
+  background-color: transparent;
+  filter: none;
+  user-select: text;
+}
+
 /* ── Видео в сообщениях ───────────────────────────────── */
 
 .message-body video {

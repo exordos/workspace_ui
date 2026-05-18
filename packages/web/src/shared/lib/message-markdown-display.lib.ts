@@ -14,7 +14,7 @@
  *   } from "~/shared/lib/message-markdown-display.lib";
  */
 import hljs from "highlight.js/lib/common";
-import { marked } from "marked";
+import { Marked, type Token, type TokenizerAndRendererExtension, type Tokens } from "marked";
 import { stripHtml } from "~/shared/lib/html";
 import { renderEmojiShortcodesInHtml } from "~/shared/lib/message-emoji-shortcodes.lib";
 import {
@@ -50,6 +50,50 @@ function resolveLanguageFromClassName(className: string): string | null {
   return hljs.getLanguage(normalizedLanguage) ? normalizedLanguage : null;
 }
 
+interface InlineSpoilerToken extends Tokens.Generic {
+  type: "inline_spoiler";
+  text: string;
+  tokens: Token[];
+}
+
+const INLINE_SPOILER_TOKEN_TYPE = "inline_spoiler";
+
+// Расширение marked для локального fallback-рендера:
+// превращает `||secret||` в интерактивный inline-элемент спойлера для bubble.
+const INLINE_SPOILER_EXTENSION: TokenizerAndRendererExtension = {
+  level: "inline",
+  name: INLINE_SPOILER_TOKEN_TYPE,
+  start(src) {
+    // Оптимизация: подсказываем marked, где потенциально начинается inline spoiler.
+    const index = src.indexOf("||");
+    return index >= 0 ? index : undefined;
+  },
+  tokenizer(src) {
+    // Поддерживаем только scoped-синтаксис `||...||` для bubble fallback-рендера.
+    if (!src.startsWith("||")) return undefined;
+    const match = /^\|\|([\s\S]+?)\|\|/.exec(src);
+    if (match == null) return undefined;
+    const raw = match[0];
+    const text = match[1] ?? "";
+    return {
+      type: INLINE_SPOILER_TOKEN_TYPE,
+      raw,
+      text,
+      tokens: this.lexer.inlineTokens(text),
+    };
+  },
+  renderer(token) {
+    if (token.type !== INLINE_SPOILER_TOKEN_TYPE) return false;
+    const spoilerToken = token as InlineSpoilerToken;
+    // Внутренний markdown внутри spoiler (например, emphasis) рендерим штатным parseInline.
+    const inlineHtml = this.parser.parseInline(spoilerToken.tokens);
+    return `<span class="inline-spoiler" data-inline-spoiler="true">${inlineHtml}</span>`;
+  },
+};
+
+// Отдельный экземпляр marked, чтобы extension не влиял глобально на другие потребители.
+const markdownRenderer = new Marked({ extensions: [INLINE_SPOILER_EXTENSION] });
+
 /** True when the string looks like HTML from Zulip, not raw `<https://…>` autolink markdown. */
 export function isLikelyRenderedMessageHtml(s: string): boolean {
   const t = s.trimStart();
@@ -60,7 +104,8 @@ export function isLikelyRenderedMessageHtml(s: string): boolean {
 }
 
 export function renderMarkdownFallbackHtml(markdown: string): string {
-  const rendered = marked.parse(markdown, {
+  // Здесь всегда синхронный рендер: это UI-путь пузыря/превью, без async-плагинов.
+  const rendered = markdownRenderer.parse(markdown, {
     async: false,
     breaks: true,
     gfm: true,
@@ -150,6 +195,7 @@ export function messageBodyToUnsanitizedDisplayHtml(
 ): string {
   const t = body.trim();
   if (t.length === 0) return "";
+  // Если пришел уже готовый HTML от Zulip, не прогоняем через markdown повторно.
   if (isLikelyRenderedMessageHtml(t)) {
     return t;
   }
@@ -163,6 +209,8 @@ export function messageBodyToUnsanitizedDisplayHtml(
     }
   }
   const mdHtml = renderMarkdownFallbackHtml(mdInput);
+  // Шаги post-processing разделены специально:
+  // 1) синтаксис кода, 2) упоминания, 3) emoji, 4) inline user_upload image-links.
   let html = applySyntaxHighlighting(mdHtml);
   if (mentionTokens != null && mentionTokens.length > 0) {
     html = restoreZulipMentionPlaceholders(html, mentionTokens);

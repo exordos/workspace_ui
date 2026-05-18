@@ -153,4 +153,39 @@ describe("MessageBubble markdown body", () => {
     fireEvent.click(emojiImage as HTMLImageElement);
     expect(mediaViewerOpenSpy).not.toHaveBeenCalled();
   });
+
+  it("renders markdown strikethrough as del tag in bubble body", () => {
+    // Регресс: раньше sanitize-path удалял `<del>`, и зачеркнутый текст терялся в bubble.
+    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+
+    const { container } = render(
+      <MessageBubble message={createMessage({ content: "~~obsolete~~" })} isOwn={false} />,
+    );
+
+    const body = container.querySelector(".message-body");
+    expect(body).toBeTruthy();
+    expect(body?.innerHTML).toContain("<del>obsolete</del>");
+  });
+
+  it("toggles inline spoiler open class on click", () => {
+    // Проверяем пользовательское поведение: повторный клик открывает/закрывает один и тот же inline spoiler.
+    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+
+    const { container } = render(
+      <MessageBubble
+        message={createMessage({ content: "Before ||secret|| after" })}
+        isOwn={false}
+      />,
+    );
+
+    const spoiler = container.querySelector(".inline-spoiler");
+    expect(spoiler).toBeTruthy();
+    expect(spoiler?.classList.contains("open")).toBe(false);
+
+    fireEvent.click(spoiler as HTMLElement);
+    expect(spoiler?.classList.contains("open")).toBe(true);
+
+    fireEvent.click(spoiler as HTMLElement);
+    expect(spoiler?.classList.contains("open")).toBe(false);
+  });
 });

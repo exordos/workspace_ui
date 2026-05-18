@@ -74,6 +74,8 @@ function ensureMessageLinkTargetHooks(): void {
   if (messageSanitizeHooksInstalled) return;
   messageSanitizeHooksInstalled = true;
   DOMPurify.addHook("afterSanitizeAttributes", (node) => {
+    // Любые ссылки в сообщениях открываем безопасно в новом контексте.
+    // Это единое правило для внешних и внутренних ссылок из Zulip HTML.
     if (node.tagName !== "A" || !node.hasAttribute("href")) return;
     const href = node.getAttribute("href")?.trim() ?? "";
     if (href === "") return;
@@ -92,6 +94,8 @@ const MESSAGE_ALLOWED_TAGS = [
   "br",
   "strong",
   "b",
+  // Нужен для markdown strikethrough (`~~text~~` -> `<del>`).
+  "del",
   "em",
   "i",
   "a",
@@ -118,6 +122,8 @@ const MESSAGE_ALLOWED_TAGS = [
   "td",
 ];
 
+// Разрешаем только нужные для контента атрибуты.
+// Важно: сюда не добавляем обработчики событий и style, чтобы не открыть XSS-вектор.
 const MESSAGE_ADD_ATTR = [
   "src",
   "alt",

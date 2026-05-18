@@ -277,6 +277,7 @@ function createWindow(): void {
     backgroundColor: "#1B1B1D",
     show: false,
     webPreferences: {
+      devTools: true,
       preload: PRELOAD_PATH,
       contextIsolation: true,
       nodeIntegration: false,
@@ -350,6 +351,15 @@ function createWindow(): void {
     mainWindow?.flashFrame(false);
   });
 
+  mainWindow.webContents.on("before-input-event", (event, input) => {
+    const key = input.key.toLowerCase();
+    const isInspectorShortcut =
+      key === "f12" || (input.shift && (input.control || input.meta) && key === "i");
+    if (!isInspectorShortcut) return;
+    event.preventDefault();
+    toggleDevToolsForActiveWindow();
+  });
+
   if (IS_DEV) {
     mainWindow.loadURL(DEV_SERVER_URL);
     mainWindow.webContents.openDevTools({ mode: "detach" });
@@ -360,6 +370,11 @@ function createWindow(): void {
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
+}
+
+function toggleDevToolsForActiveWindow(): void {
+  const targetWindow = BrowserWindow.getFocusedWindow() ?? mainWindow;
+  targetWindow?.webContents.toggleDevTools();
 }
 
 // ---------------------------------------------------------------------------
@@ -662,7 +677,16 @@ function buildNativeMenu(): void {
       submenu: [
         { role: "reload" as const },
         { role: "forceReload" as const },
-        { role: "toggleDevTools" as const },
+        {
+          label: "Toggle Developer Tools",
+          accelerator: isMac ? "Alt+Command+I" : "Ctrl+Shift+I",
+          click: () => toggleDevToolsForActiveWindow(),
+        },
+        {
+          label: "Toggle Developer Tools (F12)",
+          accelerator: "F12",
+          click: () => toggleDevToolsForActiveWindow(),
+        },
         { type: "separator" as const },
         { role: "resetZoom" as const },
         { role: "zoomIn" as const },
