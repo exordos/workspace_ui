@@ -23,6 +23,7 @@ import { shouldRenderChatShell } from "./layout-chat-shell.lib";
 import { useLayoutFolderSyncOrchestration } from "./layout-folder-sync-orchestration.hook";
 import { useInactiveInstancesBackgroundWork } from "./layout-inactive-instances-background-work.hook";
 import { useLayoutInstanceBootstrap } from "./layout-instance-bootstrap.hook";
+import { computeInstanceDmUnreadCount } from "./layout-instance-unread.lib";
 import { useLayoutLastMessengerRoutePersistence } from "./layout-last-messenger-route.hook";
 import { useLayoutLegacyStreamSlugRedirect } from "./layout-legacy-stream-redirect.hook";
 import { LayoutLoadingGate } from "./layout-loading-gate.ui";
@@ -46,7 +47,9 @@ export const Layout: React.FC = () => {
   const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
   const setCurrentInstanceId = useInstancesStore((s) => s.setCurrentInstanceId);
   const setInstanceUnreadCount = useInstancesStore((s) => s.setInstanceUnreadCount);
+  const setInstanceDmUnreadCount = useInstancesStore((s) => s.setInstanceDmUnreadCount);
   const unreadCountsByInstance = useInstancesStore((s) => s.unreadCountsByInstance);
+  const dmUnreadCountsByInstance = useInstancesStore((s) => s.dmUnreadCountsByInstance);
   const {
     streamSlug,
     topicName,
@@ -97,25 +100,22 @@ export const Layout: React.FC = () => {
       streamMetadataHydrated,
     ],
   );
-  const {
-    realmIcon: currentInstanceRealmIcon,
-    unreadCount: unreadCountForCurrentInstance,
-    activeChatWindowTitle,
-  } = useLayoutUnreadAndTitle({
-    instances,
-    currentInstanceId,
-    streams: streamsFromStore,
-    dms: dmsFromStore,
-    streamsMap,
-    activeStreamSlug,
-    activeTopic,
-    dmIdParam,
-    currentUserId,
-  });
+  const { unreadCount: unreadCountForCurrentInstance, activeChatWindowTitle } =
+    useLayoutUnreadAndTitle({
+      instances,
+      currentInstanceId,
+      streams: streamsFromStore,
+      dms: dmsFromStore,
+      streamsMap,
+      activeStreamSlug,
+      activeTopic,
+      dmIdParam,
+      currentUserId,
+    });
 
-  const currentInstanceRealmBaseUrl = useMemo(
-    () => instances.find((instance) => instance.id === currentInstanceId)?.realm,
-    [instances, currentInstanceId],
+  const dmUnreadCountForCurrentInstance = useMemo(
+    () => computeInstanceDmUnreadCount({ dms: dmsFromStore }),
+    [dmsFromStore],
   );
 
   const selectedFolderId = useFolderSyncStore((s) => s.selectedFolderId);
@@ -158,17 +158,20 @@ export const Layout: React.FC = () => {
     setInstanceUnreadCount(currentInstanceId, unreadCountForCurrentInstance);
   }, [currentInstanceId, unreadCountForCurrentInstance, setInstanceUnreadCount]);
 
+  useEffect(() => {
+    if (!currentInstanceId) return;
+    setInstanceDmUnreadCount(currentInstanceId, dmUnreadCountForCurrentInstance);
+  }, [currentInstanceId, dmUnreadCountForCurrentInstance, setInstanceDmUnreadCount]);
+
   useLayoutWindowBranding({
     unreadCount: unreadCountForCurrentInstance,
     activeChatWindowTitle: activeChatWindowTitle ?? "",
   });
 
   useLayoutAppIconBadge({
-    unreadCountsByInstance,
+    dmUnreadCountsByInstance,
     currentInstanceId,
-    currentInstanceUnread: unreadCountForCurrentInstance,
-    realmIcon: currentInstanceRealmIcon,
-    realmBaseUrl: currentInstanceRealmBaseUrl,
+    currentInstanceDmUnread: dmUnreadCountForCurrentInstance,
   });
 
   useInactiveInstancesBackgroundWork({
@@ -177,6 +180,7 @@ export const Layout: React.FC = () => {
     enabled: currentUserStatus === "ready",
     online,
     setUnreadCount: setInstanceUnreadCount,
+    setDmUnreadCount: setInstanceDmUnreadCount,
   });
 
   useLayoutFolderSyncOrchestration({

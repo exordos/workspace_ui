@@ -1,43 +1,38 @@
 import { useEffect, useMemo } from "react";
+import { useInstancesStore } from "~/entities/instance/instance.model";
 import { getElectronAPI } from "~/shared/lib/electron";
 import { syncFaviconWithUnreadIndicator } from "~/shared/lib/organization-branding";
 import { osIntegration } from "~/shared/lib/os-integration";
-import { computeTotalUnreadAcrossInstances } from "./layout-instance-unread.lib";
+import { hasPersonalDmUnreadAcrossInstances } from "./layout-instance-unread.lib";
 
 export function useLayoutAppIconBadge(options: {
-  unreadCountsByInstance: Record<string, number>;
+  dmUnreadCountsByInstance: Record<string, number>;
   currentInstanceId: string | null;
-  currentInstanceUnread: number;
-  realmIcon?: string;
-  realmBaseUrl?: string;
+  currentInstanceDmUnread: number;
 }): void {
-  const {
-    unreadCountsByInstance,
-    currentInstanceId,
-    currentInstanceUnread,
-    realmIcon,
-    realmBaseUrl,
-  } = options;
+  const { dmUnreadCountsByInstance, currentInstanceId, currentInstanceDmUnread } = options;
+  const instances = useInstancesStore((s) => s.instances);
 
-  const totalUnread = useMemo(
+  const hasPersonalDmUnread = useMemo(
     () =>
-      computeTotalUnreadAcrossInstances(
-        unreadCountsByInstance,
-        currentInstanceId != null
-          ? { instanceId: currentInstanceId, unreadCount: currentInstanceUnread }
-          : null,
-      ),
-    [unreadCountsByInstance, currentInstanceId, currentInstanceUnread],
+      hasPersonalDmUnreadAcrossInstances({
+        instances,
+        currentInstanceId,
+        currentInstanceDmUnread,
+        dmUnreadCountsByInstance,
+      }),
+    [instances, dmUnreadCountsByInstance, currentInstanceId, currentInstanceDmUnread],
   );
 
-  const hasUnread = totalUnread > 0;
-
   useEffect(() => {
-    osIntegration.setBadgeCount(totalUnread);
-  }, [totalUnread]);
+    osIntegration.setBadgeCount(hasPersonalDmUnread ? 1 : 0);
+    return () => {
+      osIntegration.setBadgeCount(0);
+    };
+  }, [hasPersonalDmUnread]);
 
   useEffect(() => {
     if (getElectronAPI() != null) return;
-    return syncFaviconWithUnreadIndicator({ hasUnread, realmIcon, realmBaseUrl });
-  }, [hasUnread, realmIcon, realmBaseUrl]);
+    return syncFaviconWithUnreadIndicator({ hasUnread: hasPersonalDmUnread });
+  }, [hasPersonalDmUnread]);
 }

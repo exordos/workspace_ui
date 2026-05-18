@@ -51,6 +51,12 @@ const TRAY_ICON_CANDIDATES: Readonly<Record<string, readonly string[]>> = {
 
 const TRAY_ICON_UNREAD_SUFFIX = "-unread";
 
+/** macOS Dock runtime icons (`app.dock.setIcon`) — unread dot baked into PNG. */
+export const DOCK_ICON_FILES = {
+  normal: "dock-icon.png",
+  unread: "dock-icon-unread.png",
+} as const;
+
 /** Resolves tray PNG file name for the current platform (used by main process). */
 export function resolveTrayIconFileName(platform: NodeJS.Platform, unread: boolean): string | null {
   const candidates =
@@ -60,4 +66,9 @@ export function resolveTrayIconFileName(platform: NodeJS.Platform, unread: boole
   if (!unread) return primary;
   const dot = primary.replace(/\.png$/i, `${TRAY_ICON_UNREAD_SUFFIX}.png`);
   return dot.length > primary.length ? dot : null;
+}
+
+/** Resolves Dock PNG file name (macOS only). */
+export function resolveDockIconFileName(unread: boolean): string {
+  return unread ? DOCK_ICON_FILES.unread : DOCK_ICON_FILES.normal;
 }

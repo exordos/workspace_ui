@@ -12,14 +12,13 @@ import {
   ipcMain,
 } from "electron";
 import { autoUpdater } from "electron-updater";
+import { createUnreadDotOverlaySvg } from "./unread-indicator.lib";
 import {
-  compositeUnreadDotOnNativeImage,
-  createUnreadDotOverlaySvg,
-  DOCK_UNREAD_DOT_RADIUS_FRACTION,
-  getDockUnreadDotInsets,
-  TRAY_UNREAD_DOT_RADIUS_FRACTION,
-} from "./unread-indicator.lib";
-import { getTrayMenuLabels, resolveTrayIconFileName, TRAY_NAV_ROUTES } from "./tray.lib";
+  getTrayMenuLabels,
+  resolveDockIconFileName,
+  resolveTrayIconFileName,
+  TRAY_NAV_ROUTES,
+} from "./tray.lib";
 
 /** Set at compile time via `ELECTRON_DISABLE_AUTO_UPDATE` in esbuild (`get-main-esbuild-define.mjs`). */
 declare const __ELECTRON_DISABLE_AUTO_UPDATE__: boolean;
@@ -382,16 +381,17 @@ function loadTrayIconFromFile(fileName: string): Electron.NativeImage | null {
   const icon = nativeImage.createFromPath(iconPath);
   if (icon.isEmpty()) return null;
 
-  const resized = icon.resize({ width: 16, height: 16 });
-  // Template mode strips color — only for the normal monochrome tray asset.
-  if (
-    process.platform === "darwin" &&
-    fileName.includes("tray-icon-mac") &&
-    !fileName.includes("-unread")
-  ) {
-    resized.setTemplateImage(true);
+  // macOS menu bar assets are baked at 32×32 (16pt @2x); downscaling blurs the unread dot.
+  if (process.platform === "darwin") {
+    return icon;
   }
-  return resized;
+
+  return icon.resize({ width: 16, height: 16 });
+}
+
+function loadDockIconFromFile(fileName: string): Electron.NativeImage | null {
+  const icon = nativeImage.createFromPath(getIconPath(fileName));
+  return icon.isEmpty() ? null : icon;
 }
 
 function loadTrayBaseIcon(): Electron.NativeImage | null {
@@ -414,20 +414,20 @@ function loadTrayBaseIcon(): Electron.NativeImage | null {
 }
 
 function resolveTrayIcon(unread: boolean): Electron.NativeImage | null {
-  const base = loadTrayBaseIcon();
-  if (base == null) return null;
-  if (!unread) return base;
-
-  try {
-    return compositeUnreadDotOnNativeImage(base, TRAY_UNREAD_DOT_RADIUS_FRACTION);
-  } catch {
-    const unreadName = resolveTrayIconFileName(process.platform, true);
-    if (unreadName != null) {
-      const unreadIcon = loadTrayIconFromFile(unreadName);
-      if (unreadIcon != null) return unreadIcon;
-    }
-    return base;
+  const fileName = resolveTrayIconFileName(process.platform, unread);
+  if (fileName != null) {
+    const icon = loadTrayIconFromFile(fileName);
+    if (icon != null) return icon;
   }
+
+  if (unread) {
+    const normalName = resolveTrayIconFileName(process.platform, false);
+    if (normalName != null) {
+      return loadTrayIconFromFile(normalName);
+    }
+  }
+
+  return loadTrayBaseIcon();
 }
 
 function focusMainWindow(runAfterFocus?: () => void): void {
@@ -566,25 +566,8 @@ function updateTrayMenu(): void {
 function ensureDarwinDockIcons(): void {
   if (process.platform !== "darwin" || dockIconNormal != null) return;
 
-  const fromIcns = nativeImage.createFromPath(getIconPath("icon.icns"));
-  if (!fromIcns.isEmpty()) {
-    dockIconNormal = fromIcns;
-  } else {
-    const fromPng = nativeImage.createFromPath(getIconPath("icon.png"));
-    if (!fromPng.isEmpty()) {
-      dockIconNormal = fromPng;
-    }
-  }
-
-  if (dockIconNormal != null) {
-    const dockSize = dockIconNormal.getSize();
-    const dockIconSize = Math.min(dockSize.width, dockSize.height);
-    dockIconUnread = compositeUnreadDotOnNativeImage(
-      dockIconNormal,
-      DOCK_UNREAD_DOT_RADIUS_FRACTION,
-      getDockUnreadDotInsets(dockIconSize),
-    );
-  }
+  dockIconNormal = loadDockIconFromFile(resolveDockIconFileName(false));
+  dockIconUnread = loadDockIconFromFile(resolveDockIconFileName(true));
 }
 
 /** macOS Dock: small dot on app icon; no text in the system badge (except during calls). */

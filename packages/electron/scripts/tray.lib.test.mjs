@@ -65,6 +65,13 @@ describe("resolveTrayIconFileName", () => {
   });
 });
 
+describe("resolveDockIconFileName", () => {
+  it("returns baked dock PNG file names", () => {
+    assert.equal(trayLib.resolveDockIconFileName(false), "dock-icon.png");
+    assert.equal(trayLib.resolveDockIconFileName(true), "dock-icon-unread.png");
+  });
+});
+
 describe("TRAY_NAV_ROUTES", () => {
   it("exposes stable internal routes", () => {
     assert.equal(trayLib.TRAY_NAV_ROUTES.messenger, "/open/messenger");

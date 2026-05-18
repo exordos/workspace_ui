@@ -24,7 +24,9 @@ describe("startInactiveInstanceUnreadPolling", () => {
       .mockResolvedValueOnce(2)
       .mockResolvedValueOnce(5)
       .mockResolvedValueOnce(3);
+    const fetchDmUnreadCount = vi.fn().mockResolvedValue(0);
     const setUnreadCount = vi.fn();
+    const setDmUnreadCount = vi.fn();
 
     const stop = startInactiveInstanceUnreadPolling({
       instances: INSTANCES,
@@ -33,20 +35,26 @@ describe("startInactiveInstanceUnreadPolling", () => {
       online: true,
       pollIntervalMs: 1000,
       fetchUnreadCount,
+      fetchDmUnreadCount,
       setUnreadCount,
+      setDmUnreadCount,
     });
 
     await vi.waitFor(() => {
       expect(fetchUnreadCount).toHaveBeenCalledTimes(2);
+      expect(setUnreadCount).toHaveBeenCalledWith("inst-2", 4);
+      expect(setUnreadCount).toHaveBeenCalledWith("inst-3", 2);
+      expect(setDmUnreadCount).toHaveBeenCalledWith("inst-2", 0);
+      expect(setDmUnreadCount).toHaveBeenCalledWith("inst-3", 0);
     });
-    expect(setUnreadCount).toHaveBeenCalledWith("inst-2", 4);
-    expect(setUnreadCount).toHaveBeenCalledWith("inst-3", 2);
 
     await vi.advanceTimersByTimeAsync(1000);
 
-    expect(fetchUnreadCount).toHaveBeenCalledTimes(4);
-    expect(setUnreadCount).toHaveBeenCalledWith("inst-2", 5);
-    expect(setUnreadCount).toHaveBeenCalledWith("inst-3", 3);
+    await vi.waitFor(() => {
+      expect(fetchUnreadCount).toHaveBeenCalledTimes(4);
+      expect(setUnreadCount).toHaveBeenCalledWith("inst-2", 5);
+      expect(setUnreadCount).toHaveBeenCalledWith("inst-3", 3);
+    });
 
     stop();
   });
@@ -62,7 +70,9 @@ describe("startInactiveInstanceUnreadPolling", () => {
       online: true,
       pollIntervalMs: 1000,
       fetchUnreadCount,
+      fetchDmUnreadCount: vi.fn().mockResolvedValue(0),
       setUnreadCount,
+      setDmUnreadCount: vi.fn(),
     });
 
     await vi.advanceTimersByTimeAsync(1500);
@@ -89,7 +99,9 @@ describe("startInactiveInstanceUnreadPolling", () => {
       online: true,
       pollIntervalMs: 5000,
       fetchUnreadCount,
+      fetchDmUnreadCount: vi.fn().mockResolvedValue(0),
       setUnreadCount: vi.fn(),
+      setDmUnreadCount: vi.fn(),
     });
 
     await vi.waitFor(() => {
@@ -118,7 +130,9 @@ describe("startInactiveInstanceUnreadPolling", () => {
       online: true,
       pollIntervalMs: 1000,
       fetchUnreadCount,
+      fetchDmUnreadCount: vi.fn().mockResolvedValue(0),
       setUnreadCount,
+      setDmUnreadCount: vi.fn(),
       onError,
     });
 

@@ -12,7 +12,9 @@ export function startInactiveInstanceUnreadPolling(
     enabled,
     online,
     fetchUnreadCount,
+    fetchDmUnreadCount,
     setUnreadCount,
+    setDmUnreadCount,
     onError,
     pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,
   } = options;
@@ -41,9 +43,17 @@ export function startInactiveInstanceUnreadPolling(
         const controller = new AbortController();
         controllers.add(controller);
         try {
-          const unreadCount = await fetchUnreadCount(instance, controller.signal);
-          if (cancelled || unreadCount == null) return;
-          setUnreadCount(instance.id, unreadCount);
+          const [unreadCount, dmUnreadCount] = await Promise.all([
+            fetchUnreadCount(instance, controller.signal),
+            fetchDmUnreadCount(instance, controller.signal),
+          ]);
+          if (cancelled) return;
+          if (unreadCount != null) {
+            setUnreadCount(instance.id, unreadCount);
+          }
+          if (dmUnreadCount != null) {
+            setDmUnreadCount(instance.id, dmUnreadCount);
+          }
         } catch (error) {
           if (!cancelled) {
             onError?.(instance.id, error);

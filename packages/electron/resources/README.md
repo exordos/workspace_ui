@@ -4,22 +4,31 @@
 
 Place app icons here for electron-builder packaging:
 
-| File                       | Platform                    | Format | Size                |
-| -------------------------- | --------------------------- | ------ | ------------------- |
-| `icon.ico`                 | Windows                     | ICO    | 256×256 (multi-res) |
-| `icon.icns`                | macOS                       | ICNS   | 1024×1024           |
-| `icon.png`                 | Linux (fallback)            | PNG    | 512×512             |
-| `icons/512x512.png`        | Linux                       | PNG    | 512×512             |
-| `icons/256x256.png`        | Linux                       | PNG    | 256×256             |
-| `icons/128x128.png`        | Linux                       | PNG    | 128×128             |
-| `icons/64x64.png`          | Linux                       | PNG    | 64×64               |
-| `icons/48x48.png`          | Linux                       | PNG    | 48×48               |
-| `icons/32x32.png`          | Linux                       | PNG    | 32×32               |
-| `icons/16x16.png`          | Linux                       | PNG    | 16×16               |
-| `tray-icon.png`            | Win/Linux tray              | PNG    | 16×16 (menu bar)    |
-| `tray-icon-unread.png`     | Win/Linux tray (unread dot) | PNG    | 16×16               |
-| `tray-icon-mac.png`        | macOS tray                  | PNG    | 16×16 template      |
-| `tray-icon-mac-unread.png` | macOS tray (unread dot)     | PNG    | 16×16 template      |
+| File                       | Platform                         | Format | Size                     |
+| -------------------------- | -------------------------------- | ------ | ------------------------ |
+| `icon.ico`                 | Windows                          | ICO    | 256×256 (multi-res)      |
+| `icon.icns`                | macOS (app bundle + Installer)   | ICNS   | 1024×1024                |
+| `icons/512x512.png`        | Source logo (transparent)        | PNG    | 512×512                  |
+| `dock-icon.png`            | macOS Dock (normal)              | PNG    | 512×512                  |
+| `dock-icon-unread.png`     | macOS Dock (orange dot baked in) | PNG    | 512×512                  |
+| `icon.png`                 | Linux (fallback)                 | PNG    | 512×512                  |
+| `icons/256x256.png` …      | Linux multi-size                 | PNG    | various                  |
+| `tray-icon.png`            | Win/Linux tray                   | PNG    | 32×32 (shown @16 on Win) |
+| `tray-icon-unread.png`     | Win/Linux tray (small dot)       | PNG    | 32×32                    |
+| `tray-icon-mac.png`        | macOS menu bar tray              | PNG    | 32×32 white + alpha      |
+| `tray-icon-mac-unread.png` | macOS tray (small dot)           | PNG    | 32×32                    |
+
+Runtime code only **loads** these PNGs (no bitmap compositing in main).
+
+## Regenerate Dock icons
+
+After changing the logo or squircle style, rebake Dock assets from `icons/512x512.png`:
+
+```bash
+cd packages/electron && node scripts/bake-icon-assets.mjs
+```
+
+Requires `electron` from the workspace root. Writes `dock-icon*.png` and `tray-icon*.png` (tray unread uses a smaller dot than Dock).
 
 ## Generate Icons
 

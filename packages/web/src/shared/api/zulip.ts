@@ -44,7 +44,7 @@ import {
   parseMaxAvatarFileSizeMib,
   parseServerThumbnailFormats,
 } from "./zulip-register-metadata.lib";
-import { parseUnreadMessagesCount } from "./zulip-unread.lib";
+import { parseUnreadDmMessagesCount, parseUnreadMessagesCount } from "./zulip-unread.lib";
 import type {
   ReactionType,
   RealmEmoji,
@@ -1099,16 +1099,21 @@ export async function deleteQueue(queueId: string, credentials?: ZulipCredential
 const UNREAD_MESSAGES_NUM_BEFORE = 5000;
 const UNREAD_MESSAGES_NUM_AFTER = 0;
 const UNREAD_MESSAGES_NARROW = JSON.stringify([{ operator: "is", operand: "unread" }]);
+const UNREAD_DM_MESSAGES_NARROW = JSON.stringify([
+  { operator: "is", operand: "unread" },
+  { operator: "is", operand: "dm" },
+]);
 
-// Читает общее число непрочитанных сообщений для любых instance credentials.
-// Если запрос упал или payload не удалось распарсить, возвращает null.
-export async function fetchUnreadMessagesCountForCredentials(
+async function fetchUnreadMessagesCountForCredentialsWithNarrow(
   credentials: ZulipCredentials,
+  narrow: string,
+  contextLabel: string,
   options?: { signal?: AbortSignal },
+  parseCount: (payload: unknown) => number | null = parseUnreadMessagesCount,
 ): Promise<number | null> {
   let base: string;
   try {
-    base = getValidatedCredentialsRealm(credentials, "fetchUnreadMessagesCountForCredentials");
+    base = getValidatedCredentialsRealm(credentials, contextLabel);
   } catch {
     return null;
   }
@@ -1116,7 +1121,7 @@ export async function fetchUnreadMessagesCountForCredentials(
   url.searchParams.set("anchor", "newest");
   url.searchParams.set("num_before", String(UNREAD_MESSAGES_NUM_BEFORE));
   url.searchParams.set("num_after", String(UNREAD_MESSAGES_NUM_AFTER));
-  url.searchParams.set("narrow", UNREAD_MESSAGES_NARROW);
+  url.searchParams.set("narrow", narrow);
   url.searchParams.set("allow_empty_topic_name", "true");
   url.searchParams.set("client_gravatar", "true");
   const authValue = getBasicAuthValue({
@@ -1142,10 +1147,38 @@ export async function fetchUnreadMessagesCountForCredentials(
 
   try {
     const payload = (await response.json()) as unknown;
-    return parseUnreadMessagesCount(payload);
+    return parseCount(payload);
   } catch {
     return null;
   }
+}
+
+// Читает общее число непрочитанных сообщений для любых instance credentials.
+// Если запрос упал или payload не удалось распарсить, возвращает null.
+export async function fetchUnreadMessagesCountForCredentials(
+  credentials: ZulipCredentials,
+  options?: { signal?: AbortSignal },
+): Promise<number | null> {
+  return fetchUnreadMessagesCountForCredentialsWithNarrow(
+    credentials,
+    UNREAD_MESSAGES_NARROW,
+    "fetchUnreadMessagesCountForCredentials",
+    options,
+  );
+}
+
+/** Unread direct messages only — for app icon badges (dock / tray / favicon). */
+export async function fetchUnreadDmMessagesCountForCredentials(
+  credentials: ZulipCredentials,
+  options?: { signal?: AbortSignal },
+): Promise<number | null> {
+  return fetchUnreadMessagesCountForCredentialsWithNarrow(
+    credentials,
+    UNREAD_DM_MESSAGES_NARROW,
+    "fetchUnreadDmMessagesCountForCredentials",
+    options,
+    parseUnreadDmMessagesCount,
+  );
 }
 
 // Делает long-poll за событиями. Поддерживает timeout и `AbortSignal`.
@@ -1194,7 +1227,7 @@ export async function getEvents(
     if (data == null || typeof data !== "object") {
       return { result: "error", msg: "Invalid JSON in event response" };
     }
-    return data as GetEventsResult;
+    return data;
   } catch (e) {
     cleanup();
     throw e;
@@ -2383,9 +2416,7 @@ async function runDmMessagesRequest(ids: number[], signal?: AbortSignal): Promis
       apply_markdown: true,
     };
     const client = await getClient();
-    const data = await client.messages.retrieve(
-      params as Parameters<ZulipClient["messages"]["retrieve"]>[0],
-    );
+    const data = await client.messages.retrieve(params);
     const raw = data as { result?: string; messages?: Parameters<typeof mapZulipMessage>[0][] };
     if (raw.result === "error") return [];
     return (raw.messages ?? []).map(mapZulipMessage);

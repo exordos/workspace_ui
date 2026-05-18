@@ -1,6 +1,8 @@
 import { renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { useInstancesStore } from "~/entities/instance/instance.model";
 import { osIntegration } from "~/shared/lib/os-integration";
+import { createInstance } from "~/test/factories";
 
 vi.mock("~/shared/lib/electron", () => ({
   getElectronAPI: vi.fn(() => null),
@@ -17,53 +19,93 @@ vi.mock("~/shared/lib/organization-branding", () => ({
 import { syncFaviconWithUnreadIndicator } from "~/shared/lib/organization-branding";
 import { useLayoutAppIconBadge } from "./layout-app-icon-badge.hook";
 
+interface HookTestProps {
+  dmUnreadCountsByInstance: Record<string, number>;
+  currentInstanceId: string | null;
+  currentInstanceDmUnread: number;
+}
+
 describe("useLayoutAppIconBadge", () => {
   afterEach(() => {
     vi.clearAllMocks();
+    useInstancesStore.setState({
+      instances: [],
+      currentInstanceId: null,
+      dmUnreadCountsByInstance: {},
+    });
   });
 
-  it("syncs OS badge and favicon from total unread across instances", () => {
+  it("clears OS badge on unmount", () => {
+    const { unmount } = renderHook(() =>
+      useLayoutAppIconBadge({
+        dmUnreadCountsByInstance: { a: 1 },
+        currentInstanceId: "a",
+        currentInstanceDmUnread: 1,
+      }),
+    );
+
+    expect(osIntegration.setBadgeCount).toHaveBeenCalledWith(1);
+    unmount();
+    expect(osIntegration.setBadgeCount).toHaveBeenLastCalledWith(0);
+  });
+
+  it("syncs OS badge and favicon from total DM unread across instances", () => {
+    useInstancesStore.setState({
+      instances: [createInstance({ id: "a" }), createInstance({ id: "b" })],
+      currentInstanceId: "a",
+    });
+
     const { rerender } = renderHook(
-      ({
-        unreadCountsByInstance,
-        currentInstanceId,
-        currentInstanceUnread,
-      }: {
-        unreadCountsByInstance: Record<string, number>;
-        currentInstanceId: string | null;
-        currentInstanceUnread: number;
-      }) =>
+      ({ dmUnreadCountsByInstance, currentInstanceId, currentInstanceDmUnread }: HookTestProps) =>
         useLayoutAppIconBadge({
-          unreadCountsByInstance,
+          dmUnreadCountsByInstance,
           currentInstanceId,
-          currentInstanceUnread,
+          currentInstanceDmUnread,
         }),
       {
         initialProps: {
-          unreadCountsByInstance: { a: 2, b: 3 },
+          dmUnreadCountsByInstance: { a: 2, b: 3 },
           currentInstanceId: "a",
-          currentInstanceUnread: 2,
+          currentInstanceDmUnread: 2,
         },
       },
     );
 
-    expect(osIntegration.setBadgeCount).toHaveBeenCalledWith(5);
-    expect(syncFaviconWithUnreadIndicator).toHaveBeenCalledWith({
-      hasUnread: true,
-      realmIcon: undefined,
-      realmBaseUrl: undefined,
-    });
+    expect(osIntegration.setBadgeCount).toHaveBeenCalledWith(1);
+    expect(syncFaviconWithUnreadIndicator).toHaveBeenCalledWith({ hasUnread: true });
 
     rerender({
-      unreadCountsByInstance: {},
+      dmUnreadCountsByInstance: {},
       currentInstanceId: "a",
-      currentInstanceUnread: 0,
+      currentInstanceDmUnread: 0,
     });
     expect(osIntegration.setBadgeCount).toHaveBeenLastCalledWith(0);
-    expect(syncFaviconWithUnreadIndicator).toHaveBeenLastCalledWith({
-      hasUnread: false,
-      realmIcon: undefined,
-      realmBaseUrl: undefined,
+    expect(syncFaviconWithUnreadIndicator).toHaveBeenLastCalledWith({ hasUnread: false });
+  });
+
+  it("does not show badge when only channel unread exists for current instance", () => {
+    useInstancesStore.setState({
+      instances: [createInstance({ id: "a" })],
+      currentInstanceId: "a",
     });
+
+    renderHook(
+      ({ dmUnreadCountsByInstance, currentInstanceId, currentInstanceDmUnread }: HookTestProps) =>
+        useLayoutAppIconBadge({
+          dmUnreadCountsByInstance,
+          currentInstanceId,
+          currentInstanceDmUnread,
+        }),
+      {
+        initialProps: {
+          dmUnreadCountsByInstance: { a: 10 },
+          currentInstanceId: "a",
+          currentInstanceDmUnread: 0,
+        },
+      },
+    );
+
+    expect(osIntegration.setBadgeCount).toHaveBeenCalledWith(0);
+    expect(syncFaviconWithUnreadIndicator).toHaveBeenCalledWith({ hasUnread: false });
   });
 });

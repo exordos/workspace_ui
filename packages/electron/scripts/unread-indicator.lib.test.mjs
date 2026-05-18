@@ -48,22 +48,6 @@ describe("unread-indicator.lib (electron)", () => {
     assert.equal(unreadIndicatorLib.UNREAD_DOT_RADIUS_FRACTION, webFraction);
   });
 
-  it("uses a smaller dot fraction for tray than favicon", () => {
-    assert.ok(unreadIndicatorLib.TRAY_UNREAD_DOT_RADIUS_FRACTION < unreadIndicatorLib.UNREAD_DOT_RADIUS_FRACTION);
-    assert.equal(unreadIndicatorLib.getUnreadDotRadiusPx(16, unreadIndicatorLib.TRAY_UNREAD_DOT_RADIUS_FRACTION), 2);
-  });
-
-  it("uses a smaller dot fraction for dock than favicon", () => {
-    assert.ok(unreadIndicatorLib.DOCK_UNREAD_DOT_RADIUS_FRACTION < unreadIndicatorLib.UNREAD_DOT_RADIUS_FRACTION);
-  });
-
-  it("getDockUnreadDotInsets adds margin from the top-right corner", () => {
-    const insets = unreadIndicatorLib.getDockUnreadDotInsets(512);
-    assert.ok(insets.rightPx >= 3);
-    assert.ok(insets.topPx >= 3);
-    assert.equal(insets.rightPx, insets.topPx);
-  });
-
   it("createUnreadDotOverlaySvg uses UNREAD_INDICATOR_COLOR", () => {
     const svg = unreadIndicatorLib.createUnreadDotOverlaySvg(16);
     assert.ok(svg.includes(unreadIndicatorLib.UNREAD_INDICATOR_COLOR));

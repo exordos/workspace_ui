@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   buildActiveChatWindowTitle,
+  computeInstanceDmUnreadCount,
   computeInstanceUnreadCount,
+  computeTotalDmUnreadAcrossInstances,
   computeTotalUnreadAcrossInstances,
   formatWebWindowTitleWithUnreadCount,
+  hasPersonalDmUnreadAcrossInstances,
 } from "./layout-instance-unread.lib";
 
 describe("layout-instance-unread", () => {
@@ -14,6 +17,56 @@ describe("layout-instance-unread", () => {
         dms: [{ badge: 3 }],
       }),
     ).toBe(10);
+  });
+
+  it("sums only personal (1:1) DM unread badges for app icon indicator", () => {
+    expect(
+      computeInstanceDmUnreadCount({
+        dms: [{ badge: 3 }, { badge: 1, isGroup: true }],
+      }),
+    ).toBe(3);
+    expect(
+      computeInstanceDmUnreadCount({
+        dms: [{ badge: 2 }],
+      }),
+    ).toBe(2);
+  });
+
+  it("hasPersonalDmUnreadAcrossInstances ignores orphan store keys", () => {
+    expect(
+      hasPersonalDmUnreadAcrossInstances({
+        instances: [{ id: "inst-1" }],
+        currentInstanceId: "inst-1",
+        currentInstanceDmUnread: 0,
+        dmUnreadCountsByInstance: { "inst-1": 0, "removed-org": 5 },
+      }),
+    ).toBe(false);
+  });
+
+  it("hasPersonalDmUnreadAcrossInstances uses live current org DM count", () => {
+    expect(
+      hasPersonalDmUnreadAcrossInstances({
+        instances: [{ id: "a" }, { id: "b" }],
+        currentInstanceId: "a",
+        currentInstanceDmUnread: 2,
+        dmUnreadCountsByInstance: { b: 0 },
+      }),
+    ).toBe(true);
+  });
+
+  it("sums DM unread counts across all instances for app icon badges", () => {
+    expect(
+      computeTotalDmUnreadAcrossInstances({
+        "inst-1": 1,
+        "inst-2": 2,
+      }),
+    ).toBe(3);
+    expect(
+      computeTotalDmUnreadAcrossInstances(
+        { "inst-1": 0, "inst-2": 1 },
+        { instanceId: "inst-1", unreadCount: 5 },
+      ),
+    ).toBe(6);
   });
 
   it("sums unread counts across all instances", () => {

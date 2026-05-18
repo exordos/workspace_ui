@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import type { ZulipInstance } from "~/entities/instance/instance.model";
 import {
   deleteQueue,
+  fetchUnreadDmMessagesCountForCredentials,
   fetchUnreadMessagesCountForCredentials,
 } from "~/shared/api/zulip";
 import { startZulipEventLoopForCredentials } from "~/shared/lib/event-loop";
@@ -14,8 +15,10 @@ export function useInactiveInstancesBackgroundWork(options: {
   enabled: boolean;
   online: boolean;
   setUnreadCount: (instanceId: string, unreadCount: number) => void;
+  setDmUnreadCount: (instanceId: string, dmUnreadCount: number) => void;
 }): void {
-  const { instances, currentInstanceId, enabled, online, setUnreadCount } = options;
+  const { instances, currentInstanceId, enabled, online, setUnreadCount, setDmUnreadCount } =
+    options;
 
   useEffect(() => {
     return startInactiveInstanceEventStreams({
@@ -24,13 +27,20 @@ export function useInactiveInstancesBackgroundWork(options: {
       enabled,
       online,
       refreshUnreadForInstance: async (instance) => {
-        const unreadCount = await fetchUnreadMessagesCountForCredentials({
+        const credentials = {
           realm: instance.realm,
           email: instance.email,
           apiKey: instance.apiKey,
-        });
+        };
+        const [unreadCount, dmUnreadCount] = await Promise.all([
+          fetchUnreadMessagesCountForCredentials(credentials),
+          fetchUnreadDmMessagesCountForCredentials(credentials),
+        ]);
         if (unreadCount != null) {
           setUnreadCount(instance.id, unreadCount);
+        }
+        if (dmUnreadCount != null) {
+          setDmUnreadCount(instance.id, dmUnreadCount);
         }
       },
       startEventLoop: ({ credentials, onEvent, onBadQueue, onReconnect }) => {
@@ -67,7 +77,7 @@ export function useInactiveInstancesBackgroundWork(options: {
         };
       },
     });
-  }, [instances, currentInstanceId, enabled, online, setUnreadCount]);
+  }, [instances, currentInstanceId, enabled, online, setUnreadCount, setDmUnreadCount]);
 
   useEffect(() => {
     return startInactiveInstanceUnreadPolling({
@@ -76,6 +86,7 @@ export function useInactiveInstancesBackgroundWork(options: {
       enabled,
       online,
       setUnreadCount,
+      setDmUnreadCount,
       fetchUnreadCount: (instance, signal) =>
         fetchUnreadMessagesCountForCredentials(
           {
@@ -85,7 +96,15 @@ export function useInactiveInstancesBackgroundWork(options: {
           },
           { signal },
         ),
+      fetchDmUnreadCount: (instance, signal) =>
+        fetchUnreadDmMessagesCountForCredentials(
+          {
+            realm: instance.realm,
+            email: instance.email,
+            apiKey: instance.apiKey,
+          },
+          { signal },
+        ),
     });
-  }, [instances, currentInstanceId, enabled, online, setUnreadCount]);
+  }, [instances, currentInstanceId, enabled, online, setUnreadCount, setDmUnreadCount]);
 }
-

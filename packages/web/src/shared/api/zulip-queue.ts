@@ -20,7 +20,7 @@ import {
   parseMaxAvatarFileSizeMib,
   parseServerThumbnailFormats,
 } from "./zulip-register-metadata.lib";
-import { parseUnreadMessagesCount } from "./zulip-unread.lib";
+import { parseUnreadDmMessagesCount, parseUnreadMessagesCount } from "./zulip-unread.lib";
 import {
   buildUserTopicsCacheKey,
   getCachedUserTopicsForKey,
@@ -474,15 +474,23 @@ export async function deleteQueue(queueId: string, credentials?: ZulipCredential
   }
 }
 
-// Читает общее число непрочитанных сообщений для любых instance credentials.
-// Если запрос упал или payload не удалось распарсить, возвращает null.
-export async function fetchUnreadMessagesCountForCredentials(
+const UNREAD_ONLY_NARROW = [{ operator: "is", operand: "unread" }] as const;
+const UNREAD_DM_NARROW = [
+  { operator: "is", operand: "unread" },
+  { operator: "is", operand: "dm" },
+] as const;
+
+// Читает число непрочитанных по заданному narrow для любых instance credentials.
+async function fetchUnreadMessagesCountForCredentialsWithNarrow(
   credentials: ZulipCredentials,
+  narrow: readonly { operator: string; operand: string }[],
+  contextLabel: string,
   options?: { signal?: AbortSignal },
+  parseCount: (payload: unknown) => number | null = parseUnreadMessagesCount,
 ): Promise<number | null> {
   let base: string;
   try {
-    base = getValidatedCredentialsRealm(credentials, "fetchUnreadMessagesCountForCredentials");
+    base = getValidatedCredentialsRealm(credentials, contextLabel);
   } catch {
     return null;
   }
@@ -490,7 +498,7 @@ export async function fetchUnreadMessagesCountForCredentials(
   url.searchParams.set("anchor", "newest");
   url.searchParams.set("num_before", "5000");
   url.searchParams.set("num_after", "0");
-  url.searchParams.set("narrow", JSON.stringify([{ operator: "is", operand: "unread" }]));
+  url.searchParams.set("narrow", JSON.stringify(narrow));
   url.searchParams.set("allow_empty_topic_name", "true");
   url.searchParams.set("client_gravatar", "true");
   const authValue = getBasicAuthValue({
@@ -516,10 +524,38 @@ export async function fetchUnreadMessagesCountForCredentials(
 
   try {
     const payload = (await response.json()) as unknown;
-    return parseUnreadMessagesCount(payload);
+    return parseCount(payload);
   } catch {
     return null;
   }
+}
+
+// Читает общее число непрочитанных сообщений для любых instance credentials.
+// Если запрос упал или payload не удалось распарсить, возвращает null.
+export async function fetchUnreadMessagesCountForCredentials(
+  credentials: ZulipCredentials,
+  options?: { signal?: AbortSignal },
+): Promise<number | null> {
+  return fetchUnreadMessagesCountForCredentialsWithNarrow(
+    credentials,
+    UNREAD_ONLY_NARROW,
+    "fetchUnreadMessagesCountForCredentials",
+    options,
+  );
+}
+
+/** Unread direct messages only (personal chats) for inactive-instance app icon badges. */
+export async function fetchUnreadDmMessagesCountForCredentials(
+  credentials: ZulipCredentials,
+  options?: { signal?: AbortSignal },
+): Promise<number | null> {
+  return fetchUnreadMessagesCountForCredentialsWithNarrow(
+    credentials,
+    UNREAD_DM_NARROW,
+    "fetchUnreadDmMessagesCountForCredentials",
+    options,
+    parseUnreadDmMessagesCount,
+  );
 }
 
 // Делает long-poll за событиями.
@@ -569,7 +605,7 @@ export async function getEvents(
     if (data == null || typeof data !== "object") {
       return { result: "error", msg: "Invalid JSON in event response" };
     }
-    return data as GetEventsResult;
+    return data;
   } catch (e) {
     cleanup();
     throw e;

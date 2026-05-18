@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { brand } from "~/shared/lib/brand";
 import {
+  getAppFaviconUrl,
   getOrganizationFallbackLogoUrl,
   getOrganizationLogoSrc,
   resolveFaviconHref,
@@ -86,12 +88,16 @@ describe("organization-branding", () => {
     expect(dynamic).toHaveAttribute("href", "https://cdn.example.com/favicon-b.svg");
   });
 
-  it("syncs fallback favicon when organization logo is missing", async () => {
-    syncOrganizationFavicon();
+  it("getAppFaviconUrl returns white-label app icon", () => {
+    expect(getAppFaviconUrl()).toBe(brand.logoUrl);
+  });
+
+  it("syncs app favicon regardless of organization logo", async () => {
+    syncOrganizationFavicon("https://cdn.example.com/org-logo.svg", "https://chat.example.com");
     await flushFaviconUpdates();
 
     const icon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
-    expect(icon?.getAttribute("href")).toBe(getOrganizationFallbackLogoUrl());
+    expect(icon?.getAttribute("href")).toBe(brand.logoUrl);
   });
 
   it("resolveFaviconHref swaps known static paths when hasUnread", () => {
@@ -105,31 +111,11 @@ describe("organization-branding", () => {
     );
   });
 
-  it("syncFaviconWithUnreadIndicator applies unread variant for fallback", async () => {
+  it("syncFaviconWithUnreadIndicator applies unread variant for app favicon", async () => {
     syncFaviconWithUnreadIndicator({ hasUnread: true });
     await flushFaviconUpdates();
 
     const icon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
-    expect(icon?.getAttribute("href")).toBe(
-      `${import.meta.env.BASE_URL}organization-fallback-unread.svg`,
-    );
-  });
-
-  it("falls back favicon when organization logo cannot be loaded", async () => {
-    class BrokenImage {
-      onload: (() => void) | null = null;
-      onerror: (() => void) | null = null;
-      set src(_value: string) {
-        this.onerror?.();
-      }
-    }
-
-    vi.stubGlobal("Image", BrokenImage);
-    syncOrganizationFavicon("https://cdn.example.com/broken.svg");
-    await flushFaviconUpdates();
-
-    const icon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
-    expect(icon?.getAttribute("href")).toBe(getOrganizationFallbackLogoUrl());
-    vi.unstubAllGlobals();
+    expect(icon?.getAttribute("href")).toBe(resolveFaviconHref(brand.logoUrl, true));
   });
 });

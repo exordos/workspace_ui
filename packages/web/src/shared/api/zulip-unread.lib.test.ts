@@ -1,6 +1,10 @@
 // Тесты парсинга unread-ответа Zulip: и total count, и подробный snapshot.
 import { describe, expect, it } from "vitest";
-import { parseUnreadMessagesCount, parseUnreadMessagesSnapshot } from "./zulip-unread.lib";
+import {
+  parseUnreadDmMessagesCount,
+  parseUnreadMessagesCount,
+  parseUnreadMessagesSnapshot,
+} from "./zulip-unread.lib";
 
 describe("parseUnreadMessagesCount", () => {
   it("prefers direct unread count when present", () => {
@@ -48,6 +52,69 @@ describe("parseUnreadMessagesCount", () => {
   });
 });
 
+describe("parseUnreadDmMessagesCount", () => {
+  it("returns 1 when personal DMs have unread, ignoring streams/huddles", () => {
+    const result = parseUnreadDmMessagesCount({
+      unread_msgs: {
+        count: 99,
+        streams: [{ unread_message_ids: [1, 2, 3] }],
+        pms: [{ sender_id: 20, unread_message_ids: [4, 5] }],
+        huddles: [{ user_ids_string: "20,30", unread_message_ids: [6, 7, 8] }],
+        mentions: [],
+      },
+    });
+    expect(result).toBe(1);
+  });
+
+  it("prefers messages array over stale unread_msgs on combined payloads", () => {
+    const result = parseUnreadDmMessagesCount({
+      messages: [],
+      unread_msgs: {
+        count: 99,
+        streams: [],
+        pms: [{ sender_id: 20, unread_message_ids: [4, 5] }],
+        huddles: [],
+        mentions: [],
+      },
+    });
+    expect(result).toBe(0);
+  });
+
+  it("ignores stream and group DM messages in /messages payload", () => {
+    const result = parseUnreadDmMessagesCount({
+      messages: [
+        { id: 1, type: "stream", stream_id: 10, subject: "bugs" },
+        {
+          id: 2,
+          type: "private",
+          display_recipient: [
+            { id: 20, full_name: "Alice" },
+            { id: 30, full_name: "Bob" },
+            { id: 31, full_name: "Carol" },
+          ],
+        },
+        {
+          id: 3,
+          type: "private",
+          display_recipient: [
+            { id: 40, full_name: "Dave" },
+            { id: 50, full_name: "Eve" },
+          ],
+        },
+      ],
+    });
+    expect(result).toBe(1);
+  });
+
+  it("returns 0 for valid empty personal DM payload", () => {
+    expect(
+      parseUnreadDmMessagesCount({
+        unread_msgs: { streams: [], pms: [], huddles: [], mentions: [] },
+      }),
+    ).toBe(0);
+  });
+});
+
 describe("parseUnreadMessagesSnapshot", () => {
   it("parses streams, pms and huddles buckets", () => {
     const result = parseUnreadMessagesSnapshot({
@@ -64,8 +131,8 @@ describe("parseUnreadMessagesSnapshot", () => {
       totalCount: 7,
       streams: [{ streamId: 10, topic: "bugs", unreadMessageIds: [1, 2] }],
       dms: [
-        { userIds: [20], unreadMessageIds: [3] },
-        { userIds: [20, 30], unreadMessageIds: [4, 5] },
+        { userIds: [20], unreadMessageIds: [3], isGroup: false },
+        { userIds: [20, 30], unreadMessageIds: [4, 5], isGroup: true },
       ],
     });
   });
@@ -87,8 +154,8 @@ describe("parseUnreadMessagesSnapshot", () => {
       totalCount: 5,
       streams: [{ streamId: 10, topic: "", unreadMessageIds: [1] }],
       dms: [
-        { userIds: [20], unreadMessageIds: [3] },
-        { userIds: [20, 30], unreadMessageIds: [4, 5] },
+        { userIds: [20], unreadMessageIds: [3], isGroup: false },
+        { userIds: [20, 30], unreadMessageIds: [4, 5], isGroup: true },
       ],
     });
   });
@@ -139,7 +206,7 @@ describe("parseUnreadMessagesSnapshot", () => {
     expect(result).toEqual({
       totalCount: 4,
       streams: [{ streamId: 10, topic: "bugs", unreadMessageIds: [1, 2] }],
-      dms: [{ userIds: [20, 30], unreadMessageIds: [3, 4] }],
+      dms: [{ userIds: [20, 30], unreadMessageIds: [3, 4], isGroup: false }],
     });
   });
 
@@ -157,7 +224,7 @@ describe("parseUnreadMessagesSnapshot", () => {
     expect(result).toEqual({
       totalCount: 3,
       streams: [{ streamId: 10, topic: "", unreadMessageIds: [3] }],
-      dms: [{ userIds: [77], unreadMessageIds: [5] }],
+      dms: [{ userIds: [77], unreadMessageIds: [5], isGroup: false }],
     });
   });
 });

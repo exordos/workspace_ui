@@ -152,6 +152,8 @@ function generateId(): string {
 }
 
 interface InstancesState extends StoredState {
+  /** DM unread per instance (in-memory; used for dock/tray/favicon badges). */
+  dmUnreadCountsByInstance: Record<string, number>;
   /** Effective Jitsi base URL from last Zulip register for the active instance (not persisted). */
   jitsiMeetBaseUrl: string | null;
   setJitsiMeetBaseUrl: (url: string | null) => void;
@@ -161,10 +163,13 @@ interface InstancesState extends StoredState {
   getCurrentInstance: () => ZulipInstance | null;
   setInstanceUnreadCount: (id: string, unreadCount: number) => void;
   getInstanceUnreadCount: (id: string) => number;
+  setInstanceDmUnreadCount: (id: string, dmUnreadCount: number) => void;
+  getInstanceDmUnreadCount: (id: string) => number;
 }
 
 export const useInstancesStore = create<InstancesState>((set, get) => ({
   ...loadFromStorage(),
+  dmUnreadCountsByInstance: {},
   jitsiMeetBaseUrl: null,
 
   setJitsiMeetBaseUrl: (url) => {
@@ -200,11 +205,14 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
       }
       const unreadCountsByInstance = { ...state.unreadCountsByInstance };
       delete unreadCountsByInstance[id];
+      const dmUnreadCountsByInstance = { ...state.dmUnreadCountsByInstance };
+      delete dmUnreadCountsByInstance[id];
       persist(instances, currentInstanceId, unreadCountsByInstance);
       return {
         instances,
         currentInstanceId,
         unreadCountsByInstance,
+        dmUnreadCountsByInstance,
         ...(removedWasCurrent ? { jitsiMeetBaseUrl: null as string | null } : {}),
       };
     });
@@ -252,4 +260,21 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
   },
 
   getInstanceUnreadCount: (id) => get().unreadCountsByInstance[id] ?? 0,
+
+  setInstanceDmUnreadCount: (id, dmUnreadCount) => {
+    set((state) => {
+      if (!state.instances.some((instance) => instance.id === id)) return state;
+
+      const safeUnread = toSafeUnreadCount(dmUnreadCount);
+      if ((state.dmUnreadCountsByInstance[id] ?? 0) === safeUnread) {
+        return state;
+      }
+
+      const dmUnreadCountsByInstance = { ...state.dmUnreadCountsByInstance, [id]: safeUnread };
+      logStoreAction("instances", "setInstanceDmUnreadCount", { id, dmUnreadCount: safeUnread });
+      return { dmUnreadCountsByInstance };
+    });
+  },
+
+  getInstanceDmUnreadCount: (id) => get().dmUnreadCountsByInstance[id] ?? 0,
 }));

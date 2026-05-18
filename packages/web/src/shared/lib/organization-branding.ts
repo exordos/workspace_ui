@@ -1,12 +1,13 @@
 /**
- * Organization branding helpers for logo + favicon.
+ * Organization branding helpers for logos and tab favicon.
  *
- * Provides a single fallback asset for organization logos and keeps a dynamic
- * favicon link synchronized with the currently selected organization.
+ * Organization logos (`realm_icon`) are used in the UI (sidebar, instance switcher).
+ * Tab favicon always uses the white-label app icon (`brand.logoUrl`), not the org logo.
  *
  * Zulip `realm_icon` may be an absolute URL or a realm-relative path (e.g.
  * `/user_avatars/…/realm/icon.png`); the latter is resolved against the org URL.
  */
+import { brand } from "~/shared/lib/brand";
 import { drawUnreadDotOnFavicon } from "~/shared/lib/favicon-unread.lib";
 import { createLogger } from "~/shared/lib/logger";
 import { isValidUrl } from "~/shared/lib/validation";
@@ -22,6 +23,11 @@ let faviconApplyGeneration = 0;
  */
 export function getOrganizationFallbackLogoUrl(): string {
   return `${import.meta.env.BASE_URL}organization-fallback.svg`;
+}
+
+/** Default app favicon (white-label `VITE_BRAND_LOGO_URL`, usually `/favicon.svg`). */
+export function getAppFaviconUrl(): string {
+  return brand.logoUrl;
 }
 
 const ORGANIZATION_FAVICON_LINK_ID = "organization-favicon";
@@ -148,41 +154,17 @@ function applyOrganizationFaviconHref(
   });
 }
 
-export function syncOrganizationFavicon(realmIcon?: string, realmBaseUrl?: string): () => void {
-  return syncFaviconWithUnreadIndicator({ hasUnread: false, realmIcon, realmBaseUrl });
+export function syncOrganizationFavicon(_realmIcon?: string, _realmBaseUrl?: string): () => void {
+  return syncFaviconWithUnreadIndicator({ hasUnread: false });
 }
 
-export function syncFaviconWithUnreadIndicator(options: {
-  hasUnread: boolean;
-  realmIcon?: string;
-  realmBaseUrl?: string;
-}): () => void {
-  const { hasUnread, realmIcon, realmBaseUrl } = options;
-  const fallback = getOrganizationFallbackLogoUrl();
-  const targetSrc = getOrganizationLogoSrc(realmIcon, realmBaseUrl);
+export function syncFaviconWithUnreadIndicator(options: { hasUnread: boolean }): () => void {
+  const { hasUnread } = options;
   const generation = ++faviconApplyGeneration;
   let cancelled = false;
   const isStale = () => cancelled || generation !== faviconApplyGeneration;
 
-  if (targetSrc === fallback || typeof Image === "undefined") {
-    applyOrganizationFaviconHref(targetSrc, hasUnread, isStale, generation);
-    return () => {
-      cancelled = true;
-    };
-  }
-
-  const probe = new Image();
-  probe.onload = () => {
-    if (!isStale()) {
-      applyOrganizationFaviconHref(targetSrc, hasUnread, isStale, generation);
-    }
-  };
-  probe.onerror = () => {
-    if (!isStale()) {
-      applyOrganizationFaviconHref(fallback, hasUnread, isStale, generation);
-    }
-  };
-  probe.src = targetSrc;
+  applyOrganizationFaviconHref(getAppFaviconUrl(), hasUnread, isStale, generation);
 
   return () => {
     cancelled = true;
