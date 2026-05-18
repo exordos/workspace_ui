@@ -1,4 +1,4 @@
-import { fireEvent, render } from "@testing-library/react";
+import { fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useCallParticipantsStore } from "~/entities/call/call.model";
 import { useUsersStore } from "~/entities/user/user.model";
@@ -8,14 +8,15 @@ import { createUser } from "~/test/factories";
 import { MessageBubble } from "./message-bubble.ui";
 
 const buildAuthHeaderMock = vi.fn(() => ({}));
+const writeTextMock = vi.fn(() => Promise.resolve(true));
 
-vi.mock("~/shared/lib/auth-guard", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/shared/lib/auth-guard")>();
-  return {
-    ...actual,
-    buildAuthHeader: () => buildAuthHeaderMock(),
-  };
-});
+vi.mock("~/shared/lib/auth-guard", () => ({
+  buildAuthHeader: () => buildAuthHeaderMock(),
+}));
+
+vi.mock("~/shared/lib/clipboard", () => ({
+  writeText: (value: string) => writeTextMock(value),
+}));
 
 function createMessage(overrides: Partial<MockMessage> = {}): MockMessage {
   return {
@@ -36,6 +37,7 @@ describe("MessageBubble markdown body", () => {
     useUsersStore.getState().clear();
     useCallParticipantsStore.setState({ participantsByUrl: {} });
     buildAuthHeaderMock.mockReset();
+    writeTextMock.mockReset();
     vi.unstubAllGlobals();
   });
 
@@ -78,6 +80,39 @@ describe("MessageBubble markdown body", () => {
     expect(body?.className).toContain("[&_pre]:[overflow-wrap:anywhere]");
     expect(body?.className).toContain("min-w-0");
     expect(body?.querySelector("pre")?.textContent).toBe(longToken);
+  });
+
+  it("adds syntax-highlight classes to fenced code blocks in bubble markdown", () => {
+    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+
+    const markdown = "```javascript\nconst value = 1;\n```";
+    const { container } = render(
+      <MessageBubble message={createMessage({ content: markdown })} isOwn={false} />,
+    );
+
+    const body = container.querySelector(".message-body");
+    const highlightedCode = body?.querySelector("code.hljs");
+    expect(highlightedCode).toBeTruthy();
+    expect(highlightedCode?.querySelector(".hljs-keyword")).toBeTruthy();
+  });
+
+  it("renders copy-code button for fenced code blocks and copies source text", async () => {
+    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+
+    const markdown = "```javascript\nconst value = 1;\n```";
+    const { container } = render(
+      <MessageBubble message={createMessage({ content: markdown })} isOwn={false} />,
+    );
+
+    const copyButton = container.querySelector<HTMLButtonElement>('[data-code-copy-button="true"]');
+    expect(copyButton).toBeTruthy();
+
+    fireEvent.click(copyButton as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(writeTextMock).toHaveBeenCalledTimes(1);
+    });
+    expect(writeTextMock).toHaveBeenCalledWith(expect.stringContaining("const value = 1;"));
   });
 
   it("renders ordered and nested unordered lists with surrounding paragraphs", () => {

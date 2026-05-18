@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createRoot, type Root } from "react-dom/client";
 import { useDownloadStore } from "~/entities/download/download.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
@@ -7,6 +8,7 @@ import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model"
 import { t } from "~/i18n/i18n";
 import type { MessageReactionPayload, MockMessage } from "~/shared/api/zulip.types";
 import { buildAuthHeader } from "~/shared/lib/auth-guard";
+import { writeText } from "~/shared/lib/clipboard";
 import { formatMessageTime, getPresenceState } from "~/shared/lib/format";
 import { getJitsiMeetingUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
 import { MESSAGE_BUBBLE_BODY_CLASS_NAME } from "~/shared/lib/message-body-rich-text-classes";
@@ -58,6 +60,13 @@ import type {
 import type { EmojiClickData } from "emoji-picker-react";
 
 export type { MessageBubbleCallbacks, MessageBubbleProps } from "./message-bubble.types";
+
+interface CodeCopyButtonMount {
+  button: HTMLButtonElement;
+  clickHandler: (event: MouseEvent) => void;
+  iconRoot: Root;
+  resetTimerId: number | null;
+}
 
 export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
   ({
@@ -203,6 +212,102 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     useProtectedMessageHtml(messageBodyRef, safeMessageHtml, {
       deferRootSelector: '[role="feed"]',
     });
+
+    useEffect(() => {
+      const messageBodyElement = messageBodyRef.current;
+      if (!messageBodyElement) return;
+
+      const mounts: CodeCopyButtonMount[] = [];
+      const codeBlocks = messageBodyElement.querySelectorAll<HTMLElement>("pre > code");
+
+      for (const codeBlock of codeBlocks) {
+        const preElement = codeBlock.parentElement;
+        if (!(preElement instanceof HTMLElement)) {
+          continue;
+        }
+
+        const copyButton = document.createElement("button");
+        copyButton.type = "button";
+        copyButton.dataset.codeCopyButton = "true";
+        copyButton.dataset.copyState = "idle";
+        copyButton.className =
+          "message-code-copy-btn inline-flex h-6 w-6 items-center justify-center rounded-md border border-border-subtle bg-bg-elevated/90 text-composer-icon transition-colors hover:text-icon-active focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft";
+        copyButton.setAttribute("aria-label", t("message.copy"));
+        copyButton.setAttribute("title", t("message.copy"));
+
+        const iconHost = document.createElement("span");
+        iconHost.className = "pointer-events-none";
+        copyButton.appendChild(iconHost);
+        preElement.appendChild(copyButton);
+
+        const iconRoot = createRoot(iconHost);
+        const renderIconState = (state: "idle" | "success" | "error") => {
+          copyButton.dataset.copyState = state;
+          if (state === "success") {
+            copyButton.setAttribute("aria-label", t("message.copied"));
+            copyButton.setAttribute("title", t("message.copied"));
+          } else if (state === "error") {
+            copyButton.setAttribute("aria-label", t("message.copyFailed"));
+            copyButton.setAttribute("title", t("message.copyFailed"));
+          } else {
+            copyButton.setAttribute("aria-label", t("message.copy"));
+            copyButton.setAttribute("title", t("message.copy"));
+          }
+          iconRoot.render(
+            <Icon
+              name={state === "success" ? "check" : "copy"}
+              size={12}
+              className={state === "success" ? "text-call-green" : "text-current"}
+            />,
+          );
+        };
+
+        renderIconState("idle");
+
+        const mount: CodeCopyButtonMount = {
+          button: copyButton,
+          clickHandler: () => {},
+          iconRoot,
+          resetTimerId: null,
+        };
+
+        mount.clickHandler = (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const source = codeBlock.textContent ?? "";
+          if (source.trim().length === 0) {
+            return;
+          }
+
+          if (mount.resetTimerId != null) {
+            window.clearTimeout(mount.resetTimerId);
+            mount.resetTimerId = null;
+          }
+
+          void writeText(source).then((ok) => {
+            renderIconState(ok ? "success" : "error");
+            mount.resetTimerId = window.setTimeout(() => {
+              mount.resetTimerId = null;
+              renderIconState("idle");
+            }, 1200);
+          });
+        };
+
+        copyButton.addEventListener("click", mount.clickHandler);
+        mounts.push(mount);
+      }
+
+      return () => {
+        for (const mount of mounts) {
+          if (mount.resetTimerId != null) {
+            window.clearTimeout(mount.resetTimerId);
+          }
+          mount.button.removeEventListener("click", mount.clickHandler);
+          mount.iconRoot.unmount();
+          mount.button.remove();
+        }
+      };
+    }, [safeMessageHtml]);
 
     useEffect(() => {
       const div = messageBodyRef.current;
