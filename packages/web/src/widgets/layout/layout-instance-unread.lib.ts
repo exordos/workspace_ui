@@ -1,6 +1,9 @@
+import { effectiveDmIsGroupFromSlug } from "~/shared/lib/dm-route.lib";
+import { parseDmSlugToUserIds } from "~/widgets/sidebar/sidebar.lib";
 import type {
   LayoutBuildActiveChatWindowTitleInput,
   LayoutComputeInstanceUnreadInput,
+  LayoutDmBadgeHolder,
 } from "./layout-instance-unread.types";
 
 function toSafeUnreadCount(value: number | null | undefined): number {
@@ -18,12 +21,33 @@ export function computeInstanceUnreadCount({
   return streamUnread + dmUnread;
 }
 
+function resolveDmSlugUserIds(dm: LayoutDmBadgeHolder): number[] {
+  if (Array.isArray(dm.userIds) && dm.userIds.length > 0) {
+    return [...dm.userIds];
+  }
+  if (typeof dm.slug === "string" && dm.slug.length > 0) {
+    return parseDmSlugToUserIds(dm.slug);
+  }
+  return [];
+}
+
+/** Same personal-DM rule as sidebar DM list (`effectiveDmIsGroupFromSlug`). */
+export function isPersonalDmUnreadEntry(
+  dm: LayoutDmBadgeHolder,
+  currentUserId: number | null,
+): boolean {
+  return !effectiveDmIsGroupFromSlug(dm.isGroup, resolveDmSlugUserIds(dm), currentUserId);
+}
+
 /** Sums 1:1 DM unread badges for one instance (excludes group / huddle DMs). */
 export function computeInstanceDmUnreadCount({
   dms,
-}: Pick<LayoutComputeInstanceUnreadInput, "dms">): number {
+  currentUserId = null,
+}: Pick<LayoutComputeInstanceUnreadInput, "dms"> & {
+  currentUserId?: number | null;
+}): number {
   return dms
-    .filter((dm) => dm.isGroup !== true)
+    .filter((dm) => isPersonalDmUnreadEntry(dm, currentUserId))
     .reduce((sum, dm) => sum + toSafeUnreadCount(dm.badge), 0);
 }
 
@@ -59,31 +83,9 @@ export function computeTotalDmUnreadAcrossInstances(
   return sumUnreadCountsByInstance(dmUnreadCountsByInstance, liveCurrent);
 }
 
-export interface HasPersonalDmUnreadAcrossInstancesInput {
-  instances: readonly { id: string }[];
-  currentInstanceId: string | null;
-  currentInstanceDmUnread: number;
-  dmUnreadCountsByInstance: Record<string, number>;
-}
-
-/** App icon dot: any registered org has personal DM unread (sidebar for active, polling for others). */
-export function hasPersonalDmUnreadAcrossInstances(
-  input: HasPersonalDmUnreadAcrossInstancesInput,
-): boolean {
-  const { instances, currentInstanceId, currentInstanceDmUnread, dmUnreadCountsByInstance } = input;
-
-  if (toSafeUnreadCount(currentInstanceDmUnread) > 0) {
-    return true;
-  }
-
-  for (const instance of instances) {
-    if (instance.id === currentInstanceId) continue;
-    if (toSafeUnreadCount(dmUnreadCountsByInstance[instance.id]) > 0) {
-      return true;
-    }
-  }
-
-  return false;
+/** App icon dot: personal DM unread on the active org only (same source as sidebar). */
+export function hasPersonalDmUnreadForActiveInstance(currentInstanceDmUnread: number): boolean {
+  return toSafeUnreadCount(currentInstanceDmUnread) > 0;
 }
 
 function toSafeTitleSegment(value: string | null | undefined): string | null {

@@ -6,7 +6,8 @@ import {
   computeTotalDmUnreadAcrossInstances,
   computeTotalUnreadAcrossInstances,
   formatWebWindowTitleWithUnreadCount,
-  hasPersonalDmUnreadAcrossInstances,
+  hasPersonalDmUnreadForActiveInstance,
+  isPersonalDmUnreadEntry,
 } from "./layout-instance-unread.lib";
 
 describe("layout-instance-unread", () => {
@@ -22,7 +23,11 @@ describe("layout-instance-unread", () => {
   it("sums only personal (1:1) DM unread badges for app icon indicator", () => {
     expect(
       computeInstanceDmUnreadCount({
-        dms: [{ badge: 3 }, { badge: 1, isGroup: true }],
+        dms: [
+          { badge: 3, slug: "10-alice" },
+          { badge: 1, isGroup: true, slug: "7-alice,42-bob,51-carol" },
+        ],
+        currentUserId: 7,
       }),
     ).toBe(3);
     expect(
@@ -32,26 +37,26 @@ describe("layout-instance-unread", () => {
     ).toBe(2);
   });
 
-  it("hasPersonalDmUnreadAcrossInstances ignores orphan store keys", () => {
+  it("excludes huddle unread when isGroup and slug both imply a group DM", () => {
     expect(
-      hasPersonalDmUnreadAcrossInstances({
-        instances: [{ id: "inst-1" }],
-        currentInstanceId: "inst-1",
-        currentInstanceDmUnread: 0,
-        dmUnreadCountsByInstance: { "inst-1": 0, "removed-org": 5 },
-      }),
+      isPersonalDmUnreadEntry({ isGroup: true, slug: "7-alice,42-bob,51-carol", badge: 2 }, 7),
     ).toBe(false);
+    expect(
+      computeInstanceDmUnreadCount({
+        currentUserId: 7,
+        dms: [
+          { badge: 4, slug: "7-alice,42-bob" },
+          { badge: 2, isGroup: true, slug: "7-alice,42-bob,51-carol" },
+        ],
+      }),
+    ).toBe(4);
   });
 
-  it("hasPersonalDmUnreadAcrossInstances uses live current org DM count", () => {
-    expect(
-      hasPersonalDmUnreadAcrossInstances({
-        instances: [{ id: "a" }, { id: "b" }],
-        currentInstanceId: "a",
-        currentInstanceDmUnread: 2,
-        dmUnreadCountsByInstance: { b: 0 },
-      }),
-    ).toBe(true);
+  it("hasPersonalDmUnreadForActiveInstance reflects only current org sidebar DM unread", () => {
+    expect(hasPersonalDmUnreadForActiveInstance(0)).toBe(false);
+    expect(hasPersonalDmUnreadForActiveInstance(2)).toBe(true);
+    expect(hasPersonalDmUnreadForActiveInstance(-1)).toBe(false);
+    expect(hasPersonalDmUnreadForActiveInstance(Number.NaN)).toBe(false);
   });
 
   it("sums DM unread counts across all instances for app icon badges", () => {

@@ -49,7 +49,6 @@ export const Layout: React.FC = () => {
   const setInstanceUnreadCount = useInstancesStore((s) => s.setInstanceUnreadCount);
   const setInstanceDmUnreadCount = useInstancesStore((s) => s.setInstanceDmUnreadCount);
   const unreadCountsByInstance = useInstancesStore((s) => s.unreadCountsByInstance);
-  const dmUnreadCountsByInstance = useInstancesStore((s) => s.dmUnreadCountsByInstance);
   const {
     streamSlug,
     topicName,
@@ -114,8 +113,8 @@ export const Layout: React.FC = () => {
     });
 
   const dmUnreadCountForCurrentInstance = useMemo(
-    () => computeInstanceDmUnreadCount({ dms: dmsFromStore }),
-    [dmsFromStore],
+    () => computeInstanceDmUnreadCount({ dms: dmsFromStore, currentUserId }),
+    [dmsFromStore, currentUserId],
   );
 
   const selectedFolderId = useFolderSyncStore((s) => s.selectedFolderId);
@@ -169,8 +168,6 @@ export const Layout: React.FC = () => {
   });
 
   useLayoutAppIconBadge({
-    dmUnreadCountsByInstance,
-    currentInstanceId,
     currentInstanceDmUnread: dmUnreadCountForCurrentInstance,
   });
 

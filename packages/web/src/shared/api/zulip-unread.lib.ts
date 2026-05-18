@@ -249,10 +249,19 @@ function parseUnreadDmMessagesSnapshot(payload: unknown): ZulipUnreadMessagesSna
   return parseUnreadMessagesSnapshotFromUnreadMsgs(payload);
 }
 
+/** Personal 1:1 for inactive-instance badge polling (stricter than sidebar row reconciliation). */
+function isPersonalDmBucketForBadge(dm: ZulipUnreadDmBucket): boolean {
+  if (dm.isGroup === true) return false;
+  // Legacy `unread_msgs.pms` buckets only include the other party's user id.
+  if (dm.userIds.length === 1) return true;
+  // `/messages` buckets list every participant — only two-user conversations are 1:1.
+  return dm.userIds.length === 2;
+}
+
 function countPersonalDmUnreadFromSnapshot(snapshot: ZulipUnreadMessagesSnapshot): number {
   let total = 0;
   for (const dm of snapshot.dms) {
-    if (dm.isGroup === true) continue;
+    if (!isPersonalDmBucketForBadge(dm)) continue;
     total += dm.unreadMessageIds.length;
   }
   return total;

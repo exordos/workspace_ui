@@ -80,6 +80,23 @@ describe("parseUnreadDmMessagesCount", () => {
     expect(result).toBe(0);
   });
 
+  it("ignores three-person huddles in /messages payload even when isGroup is not set", () => {
+    const result = parseUnreadDmMessagesCount({
+      messages: [
+        {
+          id: 1,
+          type: "private",
+          display_recipient: [
+            { id: 7, full_name: "Me" },
+            { id: 42, full_name: "Alice" },
+            { id: 51, full_name: "Bob" },
+          ],
+        },
+      ],
+    });
+    expect(result).toBe(0);
+  });
+
   it("ignores stream and group DM messages in /messages payload", () => {
     const result = parseUnreadDmMessagesCount({
       messages: [

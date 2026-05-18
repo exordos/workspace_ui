@@ -4,6 +4,8 @@ export interface LayoutBadgeHolder {
 
 export interface LayoutDmBadgeHolder extends LayoutBadgeHolder {
   isGroup?: boolean;
+  slug?: string;
+  userIds?: readonly number[];
 }
 
 export interface LayoutComputeInstanceUnreadInput {

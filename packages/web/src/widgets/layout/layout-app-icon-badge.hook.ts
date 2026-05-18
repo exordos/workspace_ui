@@ -1,27 +1,15 @@
 import { useEffect, useMemo } from "react";
-import { useInstancesStore } from "~/entities/instance/instance.model";
 import { getElectronAPI } from "~/shared/lib/electron";
 import { syncFaviconWithUnreadIndicator } from "~/shared/lib/organization-branding";
 import { osIntegration } from "~/shared/lib/os-integration";
-import { hasPersonalDmUnreadAcrossInstances } from "./layout-instance-unread.lib";
+import { hasPersonalDmUnreadForActiveInstance } from "./layout-instance-unread.lib";
 
-export function useLayoutAppIconBadge(options: {
-  dmUnreadCountsByInstance: Record<string, number>;
-  currentInstanceId: string | null;
-  currentInstanceDmUnread: number;
-}): void {
-  const { dmUnreadCountsByInstance, currentInstanceId, currentInstanceDmUnread } = options;
-  const instances = useInstancesStore((s) => s.instances);
+export function useLayoutAppIconBadge(options: { currentInstanceDmUnread: number }): void {
+  const { currentInstanceDmUnread } = options;
 
   const hasPersonalDmUnread = useMemo(
-    () =>
-      hasPersonalDmUnreadAcrossInstances({
-        instances,
-        currentInstanceId,
-        currentInstanceDmUnread,
-        dmUnreadCountsByInstance,
-      }),
-    [instances, dmUnreadCountsByInstance, currentInstanceId, currentInstanceDmUnread],
+    () => hasPersonalDmUnreadForActiveInstance(currentInstanceDmUnread),
+    [currentInstanceDmUnread],
   );
 
   useEffect(() => {
