@@ -28,11 +28,12 @@ export interface RunLayoutReconnectRefreshOptions {
   cancelled: boolean;
   latestMessageIdRef: { current: number | null };
   setFromMessages: (messages: ZulipRawMessage[], uid: number | null) => void;
+  mergeIntoCurrentChat: (messages: ZulipRawMessage[], uid: number | null) => number;
 }
 
 /** After reconnect or bad queue: refresh messages window + presence without tearing down the loop. */
 export function runLayoutReconnectRefresh(options: RunLayoutReconnectRefreshOptions): void {
-  const { cancelled, latestMessageIdRef, setFromMessages } = options;
+  const { cancelled, latestMessageIdRef, setFromMessages, mergeIntoCurrentChat } = options;
   if (cancelled) return;
 
   const uid = useChatListStore.getState().currentUserId ?? null;
@@ -54,9 +55,12 @@ export function runLayoutReconnectRefresh(options: RunLayoutReconnectRefreshOpti
           useUsersStore.getState().mergeFromMessage(m);
         }
         setFromMessages(freshMsgs, uid);
+        const currentChatAppliedCount = mergeIntoCurrentChat(freshMsgs, uid);
         latestMessageIdRef.current = getNewestMessageId(freshMsgs);
         logChatListFlow("reconnectRefresh: recent window applied", {
           ...summarizeZulipMessagesForFlowDebug(freshMsgs),
+          chatListMergedCount: freshMsgs.length,
+          currentChatAppliedCount,
           latestMessageIdRef: latestMessageIdRef.current,
         });
       })
@@ -87,6 +91,7 @@ export function runLayoutReconnectRefresh(options: RunLayoutReconnectRefreshOpti
           usersStore.mergeFromMessage(message);
           chatListStore.addMessage(message);
         }
+        const currentChatAppliedCount = mergeIntoCurrentChat(deltaMessages, uid);
 
         latestMessageIdRef.current =
           getNewestMessageId(deltaMessages) ?? latestMessageIdRef.current;
@@ -94,6 +99,8 @@ export function runLayoutReconnectRefresh(options: RunLayoutReconnectRefreshOpti
         useInboxStore.getState().markStale();
         logChatListFlow("reconnectRefresh: delta merged into chat list", {
           ...summarizeZulipMessagesForFlowDebug(deltaMessages),
+          chatListMergedCount: deltaMessages.length,
+          currentChatAppliedCount,
           latestMessageIdRef: latestMessageIdRef.current,
         });
       })

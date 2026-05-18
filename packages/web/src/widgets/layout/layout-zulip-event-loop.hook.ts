@@ -8,7 +8,7 @@ import type {
 } from "~/entities/chat-list/chat-list.model.types";
 import { useInboxStore } from "~/entities/inbox/inbox.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
-import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
+import { isMessageForContext, useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { persistUsersDirectoryToIndexedDb } from "~/entities/user/user-directory-snapshot-persist.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
@@ -24,6 +24,7 @@ import {
   fetchSubscriptions,
   fetchUsers,
   getCurrentUser,
+  rawMessageToMockMessage,
   type ZulipEvent,
 } from "~/shared/api/zulip";
 import { DEFAULT_REGISTER_FETCH_EVENT_TYPES } from "~/shared/api/zulip-queue";
@@ -531,6 +532,20 @@ export function useLayoutZulipEventLoop(options: {
                 return;
               }
               setFromMessagesRef.current(messages, uid);
+            },
+            mergeIntoCurrentChat: (messages, uid) => {
+              const currentChat = useCurrentChatMessagesStore.getState();
+              if (currentChat.context == null) return 0;
+
+              const messagesForCurrentChat = messages.filter((message) =>
+                isMessageForContext(message, currentChat.context, uid),
+              );
+              if (messagesForCurrentChat.length === 0) return 0;
+
+              currentChat.appendMessages(
+                messagesForCurrentChat.map((message) => rawMessageToMockMessage(message)),
+              );
+              return messagesForCurrentChat.length;
             },
           });
         };
