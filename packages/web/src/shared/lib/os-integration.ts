@@ -8,7 +8,7 @@
  * Usage:
  *   import { osIntegration } from "~/lib/os-integration";
  *
- *   osIntegration.setBadgeCount(5);           // unread messages
+ *   osIntegration.setBadgeCount(totalUnread); // >0 → dot on PWA/Electron icons
  *   osIntegration.setProgressBar(0.75);       // download progress
  *   osIntegration.requestAttention();         // flash taskbar / bounce dock
  *   osIntegration.clearProgressBar();
@@ -55,9 +55,9 @@ function createWebIntegration(): OsIntegration {
     setBadgeCount(count) {
       if ("setAppBadge" in navigator) {
         if (count > 0) {
-          void (navigator as Navigator & { setAppBadge: (n: number) => Promise<void> }).setAppBadge(
-            count,
-          );
+          void (
+            navigator as Navigator & { setAppBadge: (contents?: string) => Promise<void> }
+          ).setAppBadge();
         } else {
           void (navigator as Navigator & { clearAppBadge: () => Promise<void> }).clearAppBadge();
         }

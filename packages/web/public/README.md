@@ -2,14 +2,16 @@
 
 Place these icon files here for PWA and favicon support:
 
-| File                   | Size    | Purpose                                         |
-| ---------------------- | ------- | ----------------------------------------------- |
-| `favicon.svg`          | vector  | Browser tab icon (already created, placeholder) |
-| `favicon-32x32.png`    | 32×32   | Fallback favicon                                |
-| `favicon.ico`          | multi   | Legacy favicon                                  |
-| `pwa-192x192.png`      | 192×192 | PWA manifest icon                               |
-| `pwa-512x512.png`      | 512×512 | PWA manifest icon + maskable                    |
-| `apple-touch-icon.png` | 180×180 | iOS home screen icon                            |
+| File                               | Size    | Purpose                                         |
+| ---------------------------------- | ------- | ----------------------------------------------- |
+| `favicon.svg`                      | vector  | Browser tab icon (already created, placeholder) |
+| `favicon-unread.svg`               | vector  | Browser tab icon with unread dot                |
+| `organization-fallback-unread.svg` | vector  | Org fallback favicon with unread dot            |
+| `favicon-32x32.png`                | 32×32   | Fallback favicon                                |
+| `favicon.ico`                      | multi   | Legacy favicon                                  |
+| `pwa-192x192.png`                  | 192×192 | PWA manifest icon                               |
+| `pwa-512x512.png`                  | 512×512 | PWA manifest icon + maskable                    |
+| `apple-touch-icon.png`             | 180×180 | iOS home screen icon                            |
 
 ## Generate from source
 

@@ -36,8 +36,8 @@ describe("osIntegration (web runtime)", () => {
     vi.restoreAllMocks();
   });
 
-  // Positive count sets the badge icon on PWA taskbar/dock icon
-  it("setBadgeCount calls navigator.setAppBadge for count > 0", () => {
+  // Positive count shows generic dot on PWA taskbar/dock icon (no numeric badge)
+  it("setBadgeCount calls navigator.setAppBadge without contents for count > 0", () => {
     const setAppBadge = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "setAppBadge", {
       value: setAppBadge,
@@ -46,7 +46,7 @@ describe("osIntegration (web runtime)", () => {
     });
 
     osIntegration.setBadgeCount(5);
-    expect(setAppBadge).toHaveBeenCalledWith(5);
+    expect(setAppBadge).toHaveBeenCalledWith();
 
     // @ts-expect-error — cleanup
     delete (navigator as Record<string, unknown>).setAppBadge;

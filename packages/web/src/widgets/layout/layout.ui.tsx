@@ -13,6 +13,7 @@ import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { useRightDrawerStore } from "~/widgets/right-panel/right-drawer.model";
 import { useSearchModalStore } from "~/widgets/search-modal/search-modal.model";
 import { getSectionFromPathname } from "~/widgets/top-bar/top-bar.lib";
+import { useLayoutAppIconBadge } from "./layout-app-icon-badge.hook";
 import { LayoutAppShell } from "./layout-app-shell.ui";
 import { useLayoutAuthErrorHandler } from "./layout-auth-error-handler.hook";
 import { useLayoutAuthGuard } from "./layout-auth-guard.hook";
@@ -45,6 +46,7 @@ export const Layout: React.FC = () => {
   const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
   const setCurrentInstanceId = useInstancesStore((s) => s.setCurrentInstanceId);
   const setInstanceUnreadCount = useInstancesStore((s) => s.setInstanceUnreadCount);
+  const unreadCountsByInstance = useInstancesStore((s) => s.unreadCountsByInstance);
   const {
     streamSlug,
     topicName,
@@ -159,6 +161,12 @@ export const Layout: React.FC = () => {
   useLayoutWindowBranding({
     unreadCount: unreadCountForCurrentInstance,
     activeChatWindowTitle: activeChatWindowTitle ?? "",
+  });
+
+  useLayoutAppIconBadge({
+    unreadCountsByInstance,
+    currentInstanceId,
+    currentInstanceUnread: unreadCountForCurrentInstance,
     realmIcon: currentInstanceRealmIcon,
     realmBaseUrl: currentInstanceRealmBaseUrl,
   });

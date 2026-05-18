@@ -39,6 +39,10 @@ describe("brand", () => {
     expect(brand.accentColor).toMatch(/^#[0-9A-Fa-f]{6}$/);
   });
 
+  it("has valid unreadIndicatorColor hex", () => {
+    expect(brand.unreadIndicatorColor).toMatch(/^#[0-9A-Fa-f]{6}$/);
+  });
+
   // Palette ID must map to an existing theme palette — prevents theme initialization crash
   it("defaultPaletteId is a known palette", () => {
     expect(["orange-warm", "blue-cold", "blue-mist", "emerald-chat"]).toContain(

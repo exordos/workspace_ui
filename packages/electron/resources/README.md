@@ -4,18 +4,22 @@
 
 Place app icons here for electron-builder packaging:
 
-| File                | Platform         | Format | Size                |
-| ------------------- | ---------------- | ------ | ------------------- |
-| `icon.ico`          | Windows          | ICO    | 256×256 (multi-res) |
-| `icon.icns`         | macOS            | ICNS   | 1024×1024           |
-| `icon.png`          | Linux (fallback) | PNG    | 512×512             |
-| `icons/512x512.png` | Linux            | PNG    | 512×512             |
-| `icons/256x256.png` | Linux            | PNG    | 256×256             |
-| `icons/128x128.png` | Linux            | PNG    | 128×128             |
-| `icons/64x64.png`   | Linux            | PNG    | 64×64               |
-| `icons/48x48.png`   | Linux            | PNG    | 48×48               |
-| `icons/32x32.png`   | Linux            | PNG    | 32×32               |
-| `icons/16x16.png`   | Linux            | PNG    | 16×16               |
+| File                       | Platform                    | Format | Size                |
+| -------------------------- | --------------------------- | ------ | ------------------- |
+| `icon.ico`                 | Windows                     | ICO    | 256×256 (multi-res) |
+| `icon.icns`                | macOS                       | ICNS   | 1024×1024           |
+| `icon.png`                 | Linux (fallback)            | PNG    | 512×512             |
+| `icons/512x512.png`        | Linux                       | PNG    | 512×512             |
+| `icons/256x256.png`        | Linux                       | PNG    | 256×256             |
+| `icons/128x128.png`        | Linux                       | PNG    | 128×128             |
+| `icons/64x64.png`          | Linux                       | PNG    | 64×64               |
+| `icons/48x48.png`          | Linux                       | PNG    | 48×48               |
+| `icons/32x32.png`          | Linux                       | PNG    | 32×32               |
+| `icons/16x16.png`          | Linux                       | PNG    | 16×16               |
+| `tray-icon.png`            | Win/Linux tray              | PNG    | 16×16 (menu bar)    |
+| `tray-icon-unread.png`     | Win/Linux tray (unread dot) | PNG    | 16×16               |
+| `tray-icon-mac.png`        | macOS tray                  | PNG    | 16×16 template      |
+| `tray-icon-mac-unread.png` | macOS tray (unread dot)     | PNG    | 16×16 template      |
 
 ## Generate Icons
 

@@ -64,6 +64,9 @@ export const brand = {
   /** Accent color for brand highlights. */
   accentColor: opt("VITE_BRAND_ACCENT_COLOR", "#FF8438"),
 
+  /** Unread dot on favicon / tray (brighter than accent for small sizes). */
+  unreadIndicatorColor: opt("VITE_UNREAD_INDICATOR_COLOR", "#FF5500"),
+
   /** Auto-update server URL (Electron). */
   updateServerUrl: opt("VITE_BRAND_UPDATE_URL", "https://update.workspace.example.com/releases"),
 

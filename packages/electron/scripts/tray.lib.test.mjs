@@ -53,6 +53,18 @@ describe("getTrayMenuLabels", () => {
   });
 });
 
+describe("resolveTrayIconFileName", () => {
+  it("returns primary tray icon for normal state", () => {
+    assert.equal(trayLib.resolveTrayIconFileName("darwin", false), "tray-icon-mac.png");
+    assert.equal(trayLib.resolveTrayIconFileName("win32", false), "tray-icon.png");
+  });
+
+  it("returns unread tray icon variant when requested", () => {
+    assert.equal(trayLib.resolveTrayIconFileName("darwin", true), "tray-icon-mac-unread.png");
+    assert.equal(trayLib.resolveTrayIconFileName("linux", true), "tray-icon-unread.png");
+  });
+});
+
 describe("TRAY_NAV_ROUTES", () => {
   it("exposes stable internal routes", () => {
     assert.equal(trayLib.TRAY_NAV_ROUTES.messenger, "/open/messenger");

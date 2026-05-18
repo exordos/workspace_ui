@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildActiveChatWindowTitle,
   computeInstanceUnreadCount,
+  computeTotalUnreadAcrossInstances,
   formatWebWindowTitleWithUnreadCount,
 } from "./layout-instance-unread.lib";
 
@@ -13,6 +14,32 @@ describe("layout-instance-unread", () => {
         dms: [{ badge: 3 }],
       }),
     ).toBe(10);
+  });
+
+  it("sums unread counts across all instances", () => {
+    expect(
+      computeTotalUnreadAcrossInstances({
+        "inst-1": 3,
+        "inst-2": 5,
+      }),
+    ).toBe(8);
+    expect(computeTotalUnreadAcrossInstances({})).toBe(0);
+    expect(
+      computeTotalUnreadAcrossInstances({
+        a: -2,
+        b: Number.NaN,
+        c: 2.9,
+      }),
+    ).toBe(2);
+  });
+
+  it("prefers live current-instance unread over stale store value", () => {
+    expect(
+      computeTotalUnreadAcrossInstances(
+        { "inst-1": 0, "inst-2": 2 },
+        { instanceId: "inst-1", unreadCount: 4 },
+      ),
+    ).toBe(6);
   });
 
   it("ignores invalid badge values", () => {

@@ -1,4 +1,7 @@
-import type { LayoutBuildActiveChatWindowTitleInput, LayoutComputeInstanceUnreadInput } from "./layout-instance-unread.types";
+import type {
+  LayoutBuildActiveChatWindowTitleInput,
+  LayoutComputeInstanceUnreadInput,
+} from "./layout-instance-unread.types";
 
 function toSafeUnreadCount(value: number | null | undefined): number {
   if (!Number.isFinite(value)) return 0;
@@ -13,6 +16,23 @@ export function computeInstanceUnreadCount({
   const streamUnread = streams.reduce((sum, stream) => sum + toSafeUnreadCount(stream.badge), 0);
   const dmUnread = dms.reduce((sum, dm) => sum + toSafeUnreadCount(dm.badge), 0);
   return streamUnread + dmUnread;
+}
+
+/** Sums per-instance unread counts tracked for multi-org badge (dock, tray, favicon). */
+export function computeTotalUnreadAcrossInstances(
+  unreadCountsByInstance: Record<string, number>,
+  liveCurrent?: { instanceId: string; unreadCount: number } | null,
+): number {
+  const merged =
+    liveCurrent != null
+      ? { ...unreadCountsByInstance, [liveCurrent.instanceId]: liveCurrent.unreadCount }
+      : unreadCountsByInstance;
+
+  let total = 0;
+  for (const count of Object.values(merged)) {
+    total += toSafeUnreadCount(count);
+  }
+  return total;
 }
 
 function toSafeTitleSegment(value: string | null | undefined): string | null {

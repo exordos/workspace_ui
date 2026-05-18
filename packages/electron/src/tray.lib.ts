@@ -43,3 +43,21 @@ export function getTrayMenuLabels(locale: string): TrayMenuLabels {
   }
   return LABELS_EN;
 }
+
+const TRAY_ICON_CANDIDATES: Readonly<Record<string, readonly string[]>> = {
+  darwin: ["tray-icon-mac.png", "icons/16x16.png", "icon.png"],
+  default: ["tray-icon.png", "icons/16x16.png", "icon.png"],
+};
+
+const TRAY_ICON_UNREAD_SUFFIX = "-unread";
+
+/** Resolves tray PNG file name for the current platform (used by main process). */
+export function resolveTrayIconFileName(platform: NodeJS.Platform, unread: boolean): string | null {
+  const candidates =
+    platform === "darwin" ? TRAY_ICON_CANDIDATES.darwin : TRAY_ICON_CANDIDATES.default;
+  const primary = candidates[0];
+  if (primary == null) return null;
+  if (!unread) return primary;
+  const dot = primary.replace(/\.png$/i, `${TRAY_ICON_UNREAD_SUFFIX}.png`);
+  return dot.length > primary.length ? dot : null;
+}
