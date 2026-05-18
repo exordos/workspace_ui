@@ -949,7 +949,32 @@ describe("MessageComposer file attachments", () => {
     });
   });
 
-  it("allows selecting the same file twice and sends both attachments", async () => {
+  it("deduplicates paired input/change events from a single picker selection", async () => {
+    const onSend = vi.fn();
+    const { container } = renderWithProviders(<MessageComposer onSend={onSend} />);
+    const input = container.querySelector('input[type="file"]');
+    if (!(input instanceof HTMLInputElement)) {
+      throw new Error("Expected hidden file input");
+    }
+
+    const file = new File(["same"], "single-selection.txt", { type: "text/plain" });
+    fireEvent.input(input, { target: { files: [file] } });
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(screen.getAllByText("single-selection.txt")).toHaveLength(1);
+    });
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "message with single picker selection" } });
+    fireEvent.keyDown(textbox, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith("message with single picker selection", "", [file]);
+    });
+  });
+
+  it("allows selecting the same file in separate selections and sends both attachments", async () => {
     const onSend = vi.fn();
     const { container } = renderWithProviders(<MessageComposer onSend={onSend} />);
     const input = container.querySelector('input[type="file"]');

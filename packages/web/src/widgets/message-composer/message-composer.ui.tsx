@@ -185,6 +185,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     onDragOver: handleDragOver,
     onDragLeave: handleDragLeave,
     onDrop: handleDrop,
+    beginFileSelectionSession,
     onFileInputChange: handleFileChangeFromHook,
     removeFileByIndex: removeFile,
     uploadProgressPercent,
@@ -509,6 +510,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     if (disabled || isEditing) return;
     const fileInput = fileInputRef.current;
     if (fileInput == null) return;
+    beginFileSelectionSession();
     fileInput.value = "";
     if (typeof fileInput.showPicker === "function") {
       try {
