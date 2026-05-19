@@ -150,6 +150,23 @@ describe("MessageBubble edit/delete actions parity", () => {
     }
   });
 
+  it("uses explicit highlight hover contract for message menu items", async () => {
+    render(<MessageBubble message={createMessage()} isOwn={false} />);
+
+    fireEvent.contextMenu(screen.getByTestId("message-101"));
+    const replyItem = await screen.findByRole("menuitem", { name: /reply/i });
+    const moreReactionsButton = screen.getByRole("button", { name: /more reactions/i });
+
+    expect(replyItem).toHaveClass("data-[highlighted]:bg-sidebar-hover");
+    expect(replyItem).toHaveClass("hover:bg-sidebar-hover");
+    expect(replyItem).toHaveClass("transition-colors");
+    expect(replyItem).not.toHaveClass("hover:bg-bg/80");
+    expect(replyItem).not.toHaveClass("hover:bg-accent/20");
+    expect(moreReactionsButton).toHaveClass("hover:bg-sidebar-hover");
+    expect(moreReactionsButton).toHaveClass("transition-colors");
+    expect(moreReactionsButton).not.toHaveClass("hover:bg-bg/50");
+  });
+
   it("renders regular message actions grouped in a logical order", async () => {
     render(
       <MessageBubble

@@ -16,6 +16,10 @@ const CONTENT_CLASS_NAME =
 
 const MENU_TRIGGER_CLASS_NAME =
   "hover:bg-bg/50 absolute -top-2 z-float rounded p-1 text-text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:text-text-primary";
+const MENU_ITEM_CLASS_NAME =
+  "data-[highlighted]:bg-sidebar-hover hover:bg-sidebar-hover flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-text-primary outline-none transition-colors";
+const REACTION_BUTTON_CLASS_NAME =
+  "hover:bg-sidebar-hover flex h-6 w-6 items-center justify-center rounded p-1 transition-colors";
 
 const CONTEXT_ANCHOR_TRIGGER_STYLE: React.CSSProperties = {
   position: "fixed",
@@ -52,7 +56,7 @@ const MessageBubbleContextMenuContent = React.memo(function MessageBubbleContext
           <button
             key={reaction.emojiName}
             type="button"
-            className="hover:bg-bg/50 flex h-6 w-6 items-center justify-center rounded p-1 text-current"
+            className={`${REACTION_BUTTON_CLASS_NAME} text-current`}
             aria-label={t(reaction.a11yLabelKey)}
             onClick={(e) => {
               e.preventDefault();
@@ -67,7 +71,7 @@ const MessageBubbleContextMenuContent = React.memo(function MessageBubbleContext
         <div className="relative">
           <button
             type="button"
-            className="hover:bg-bg/50 flex h-6 w-6 items-center justify-center rounded p-1 text-text-muted hover:text-text-primary"
+            className={`${REACTION_BUTTON_CLASS_NAME} text-text-muted hover:text-text-primary`}
             aria-label={t("a11y.moreReactions")}
             onClick={(e) => {
               e.preventDefault();
@@ -109,7 +113,7 @@ const MessageBubbleContextMenuContent = React.memo(function MessageBubbleContext
           {section.map((label) => (
             <DropdownMenu.Item
               key={label}
-              className="hover:bg-bg/80 data-[highlighted]:bg-accent/20 flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-text-primary outline-none"
+              className={MENU_ITEM_CLASS_NAME}
               onSelect={(e) => {
                 e.preventDefault();
                 onMenuItem(label);
