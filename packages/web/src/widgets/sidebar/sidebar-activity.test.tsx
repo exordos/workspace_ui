@@ -428,6 +428,21 @@ describe("SidebarActivity", () => {
     expect(mentionsLink).toHaveAttribute("aria-current", "page");
   });
 
+  it("marks activity shortcut active for org-prefixed activity routes", () => {
+    useChatListStore.setState({ currentUserId: 7, lastAppliedMessages: [] });
+
+    render(
+      <MemoryRouter initialEntries={["/org/acme.zulip.com/activity/starred"]}>
+        <SidebarActivity open={false} onToggle={() => {}} />
+      </MemoryRouter>,
+    );
+
+    const starredLink = screen.getByRole("link", { name: /starred/i });
+    expect(starredLink).toHaveClass("border-border-subtle");
+    expect(starredLink).toHaveClass("bg-card-bg-active");
+    expect(starredLink).toHaveAttribute("aria-current", "page");
+  });
+
   it("renders private-notes entry as self DM route", () => {
     useChatListStore.setState({ currentUserId: 7, lastAppliedMessages: [] });
 
