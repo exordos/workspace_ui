@@ -225,7 +225,7 @@ export const useComposerSavedSnippetsStore = create<SavedSnippetsModelState>((se
       const createdSnippetId = await createSavedSnippet({ title, content });
       // Оптимистично добавляем/обновляем snippet в текущем списке.
       const optimisticSnippet: SavedSnippet = {
-        id: createdSnippetId > 0 ? createdSnippetId : Date.now(),
+        id: createdSnippetId > 0 ? createdSnippetId : -Date.now(),
         title,
         content,
         date_created: Math.floor(Date.now() / 1000),
