@@ -34,7 +34,7 @@
     "@radix-ui/react-tooltip": "1.2.8",
     "@sentry/react": "10.53.1",
     "buffer": "5.7.1",
-    "dompurify": "3.4.3",
+    "dompurify": "3.4.5",
     "emoji-picker-react": "4.18.0",
     "emojibase-data": "17.0.0",
     "firebase": "12.13.0",
