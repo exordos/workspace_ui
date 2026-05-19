@@ -3,6 +3,7 @@
  */
 
 import { create } from "zustand";
+import { areEquivalentChatIds } from "~/features/folder-sync/folder-sync-chat-id.lib";
 import { logStoreAction } from "~/shared/lib/logger";
 
 /** Module-level constant for empty pinned list (performance: avoid new [] per call). */
@@ -12,23 +13,51 @@ function pinKey(folderId: string, chatId: string): string {
   return `${folderId}:${chatId}`;
 }
 
+function findStoredChatId(folderChatIds: ReadonlySet<string>, chatId: string): string | null {
+  for (const storedChatId of folderChatIds) {
+    if (areEquivalentChatIds(storedChatId, chatId)) {
+      return storedChatId;
+    }
+  }
+  return null;
+}
+
+/** Newer pins first (descending pinned_at). */
+function comparePinnedAtDesc(leftPinnedAt: string, rightPinnedAt: string): number {
+  return rightPinnedAt.localeCompare(leftPinnedAt);
+}
+
+function sortPinnedChatIds(
+  chatIds: readonly string[],
+  pinnedAtByChatId: ReadonlyMap<string, string> | undefined,
+): string[] {
+  return [...chatIds].sort((leftChatId, rightChatId) => {
+    const leftPinnedAt = pinnedAtByChatId?.get(leftChatId) ?? "";
+    const rightPinnedAt = pinnedAtByChatId?.get(rightChatId) ?? "";
+    const byPinnedAt = comparePinnedAtDesc(leftPinnedAt, rightPinnedAt);
+    if (byPinnedAt !== 0) {
+      return byPinnedAt;
+    }
+    return leftChatId.localeCompare(rightChatId);
+  });
+}
+
 interface PinStoreState {
   pinnedKeys: Set<string>;
   folderPins: Map<string, Set<string>>;
-  pinOrder: Map<string, string[]>;
+  pinnedAtByFolder: Map<string, Map<string, string>>;
   folderItemIds: Map<string, Map<string, string>>;
 
   pinChat: (
     folderId: string,
     chatId: string,
-    options?: { folderItemUuid?: string; orderIndex?: number },
+    options?: { folderItemUuid?: string; pinnedAt?: string },
   ) => void;
   unpinChat: (folderId: string, chatId: string) => void;
   isPinned: (folderId: string, chatId: string) => boolean;
   getPinnedChatIds: (folderId: string) => string[];
-  getFolderIdsForChat: (chatId: string) => string[];
+  getPinnedSortIndex: (folderId: string, chatId: string) => number;
   getFolderItemUuid: (folderId: string, chatId: string) => string | null;
-  reorderPinnedChats: (folderId: string, orderedChatIds: string[]) => void;
 
   setFromServer: (
     pins: {
@@ -45,40 +74,45 @@ interface PinStoreState {
 export const usePinStore = create<PinStoreState>((set, get) => ({
   pinnedKeys: new Set(),
   folderPins: new Map(),
-  pinOrder: new Map(),
+  pinnedAtByFolder: new Map(),
   folderItemIds: new Map(),
 
   pinChat(folderId, chatId, options) {
     logStoreAction("pin", "pinChat", { folderId, chatId });
     set((s) => {
-      const key = pinKey(folderId, chatId);
-      const nextKeys = new Set(s.pinnedKeys);
-      nextKeys.add(key);
-
       const nextFolder = new Map(s.folderPins);
       const folderSet = new Set(nextFolder.get(folderId) ?? []);
+      const existingStoredChatId = findStoredChatId(folderSet, chatId);
+      if (existingStoredChatId != null) {
+        folderSet.delete(existingStoredChatId);
+      }
       folderSet.add(chatId);
       nextFolder.set(folderId, folderSet);
 
-      const nextOrder = new Map(s.pinOrder);
-      const currentOrder = nextOrder.get(folderId) ?? EMPTY_PINNED;
-      const withoutCurrent = currentOrder.filter((id) => id !== chatId);
-      const requestedIndex = options?.orderIndex;
-      if (
-        requestedIndex != null &&
-        Number.isInteger(requestedIndex) &&
-        requestedIndex >= 0 &&
-        requestedIndex <= withoutCurrent.length
-      ) {
-        withoutCurrent.splice(requestedIndex, 0, chatId);
-      } else {
-        withoutCurrent.push(chatId);
+      const nextPinnedAtByFolder = new Map(s.pinnedAtByFolder);
+      const pinnedAtByChatId = new Map(nextPinnedAtByFolder.get(folderId) ?? []);
+      if (existingStoredChatId != null) {
+        pinnedAtByChatId.delete(existingStoredChatId);
       }
-      nextOrder.set(folderId, withoutCurrent);
+      pinnedAtByChatId.set(chatId, options?.pinnedAt ?? new Date().toISOString());
+      nextPinnedAtByFolder.set(folderId, pinnedAtByChatId);
+
+      const nextKeys = new Set(s.pinnedKeys);
+      if (existingStoredChatId != null) {
+        nextKeys.delete(pinKey(folderId, existingStoredChatId));
+      }
+      nextKeys.add(pinKey(folderId, chatId));
 
       const nextFolderItemIds = new Map(s.folderItemIds);
       if (options?.folderItemUuid) {
         const folderItemMap = new Map(nextFolderItemIds.get(folderId) ?? []);
+        if (existingStoredChatId != null) {
+          const existingUuid = folderItemMap.get(existingStoredChatId);
+          if (existingUuid != null) {
+            folderItemMap.delete(existingStoredChatId);
+            folderItemMap.set(chatId, existingUuid);
+          }
+        }
         folderItemMap.set(chatId, options.folderItemUuid);
         nextFolderItemIds.set(folderId, folderItemMap);
       }
@@ -86,7 +120,7 @@ export const usePinStore = create<PinStoreState>((set, get) => ({
       return {
         pinnedKeys: nextKeys,
         folderPins: nextFolder,
-        pinOrder: nextOrder,
+        pinnedAtByFolder: nextPinnedAtByFolder,
         folderItemIds: nextFolderItemIds,
       };
     });
@@ -95,87 +129,86 @@ export const usePinStore = create<PinStoreState>((set, get) => ({
   unpinChat(folderId, chatId) {
     logStoreAction("pin", "unpinChat", { folderId, chatId });
     set((s) => {
-      const key = pinKey(folderId, chatId);
-      const nextKeys = new Set(s.pinnedKeys);
-      nextKeys.delete(key);
-
       const nextFolder = new Map(s.folderPins);
       const folderSet = new Set(nextFolder.get(folderId) ?? []);
-      folderSet.delete(chatId);
+      const storedChatId = findStoredChatId(folderSet, chatId);
+      if (storedChatId != null) {
+        folderSet.delete(storedChatId);
+      }
       nextFolder.set(folderId, folderSet);
 
-      const nextOrder = new Map(s.pinOrder);
-      const currentOrder = nextOrder.get(folderId) ?? [];
-      nextOrder.set(
-        folderId,
-        currentOrder.filter((id) => id !== chatId),
-      );
+      const nextKeys = new Set(s.pinnedKeys);
+      if (storedChatId != null) {
+        nextKeys.delete(pinKey(folderId, storedChatId));
+      }
 
-      return { pinnedKeys: nextKeys, folderPins: nextFolder, pinOrder: nextOrder };
+      const nextPinnedAtByFolder = new Map(s.pinnedAtByFolder);
+      const pinnedAtByChatId = new Map(nextPinnedAtByFolder.get(folderId) ?? []);
+      if (storedChatId != null) {
+        pinnedAtByChatId.delete(storedChatId);
+      }
+      nextPinnedAtByFolder.set(folderId, pinnedAtByChatId);
+
+      return {
+        pinnedKeys: nextKeys,
+        folderPins: nextFolder,
+        pinnedAtByFolder: nextPinnedAtByFolder,
+      };
     });
   },
 
   isPinned(folderId, chatId) {
-    return get().pinnedKeys.has(pinKey(folderId, chatId));
+    const folderSet = get().folderPins.get(folderId);
+    if (!folderSet || folderSet.size === 0) {
+      return false;
+    }
+    return findStoredChatId(folderSet, chatId) != null;
   },
 
   getPinnedChatIds(folderId) {
     const folderSet = get().folderPins.get(folderId);
     if (!folderSet || folderSet.size === 0) return EMPTY_PINNED;
-
-    const order = get().pinOrder.get(folderId);
-    if (!order || order.length === 0) {
-      return Array.from(folderSet);
-    }
-
-    const orderedPinned = order.filter((id) => folderSet.has(id));
-    const remaining = Array.from(folderSet).filter((id) => !orderedPinned.includes(id));
-    return remaining.length > 0 ? [...orderedPinned, ...remaining] : orderedPinned;
+    return sortPinnedChatIds(Array.from(folderSet), get().pinnedAtByFolder.get(folderId));
   },
 
-  getFolderIdsForChat(chatId) {
-    const result: string[] = [];
-    for (const [folderId, chatIds] of get().folderPins) {
-      if (chatIds.has(chatId)) result.push(folderId);
+  getPinnedSortIndex(folderId, chatId) {
+    const pinnedIds = get().getPinnedChatIds(folderId);
+    for (let index = 0; index < pinnedIds.length; index++) {
+      const pinnedChatId = pinnedIds[index];
+      if (pinnedChatId != null && areEquivalentChatIds(pinnedChatId, chatId)) {
+        return index;
+      }
     }
-    return result;
+    return -1;
   },
 
   getFolderItemUuid(folderId, chatId) {
-    return get().folderItemIds.get(folderId)?.get(chatId) ?? null;
-  },
-
-  reorderPinnedChats(folderId, orderedChatIds) {
-    logStoreAction("pin", "reorderPinnedChats", { folderId, count: orderedChatIds.length });
-    set((s) => {
-      const folderSet = s.folderPins.get(folderId);
-      if (!folderSet || folderSet.size === 0) {
-        return s;
+    const folderItemMap = get().folderItemIds.get(folderId);
+    if (!folderItemMap) {
+      return null;
+    }
+    for (const [storedChatId, uuid] of folderItemMap) {
+      if (areEquivalentChatIds(storedChatId, chatId)) {
+        return uuid;
       }
-
-      const filteredOrdered: string[] = [];
-      for (const chatId of orderedChatIds) {
-        if (!folderSet.has(chatId) || filteredOrdered.includes(chatId)) {
-          continue;
-        }
-        filteredOrdered.push(chatId);
-      }
-      const remaining = Array.from(folderSet).filter((chatId) => !filteredOrdered.includes(chatId));
-
-      const nextOrder = new Map(s.pinOrder);
-      nextOrder.set(folderId, [...filteredOrdered, ...remaining]);
-      return { pinOrder: nextOrder };
-    });
+    }
+    return null;
   },
 
   setFromServer(pins) {
     logStoreAction("pin", "setFromServer", { count: pins.length });
+    // Empty snapshot = folder items cache not hydrated yet — do not wipe pin store
+    // (would drop folderItemUuid mappings and break pin/unpin API resolution).
+    if (pins.length === 0) {
+      logStoreAction("pin", "setFromServer:skipped-empty", {});
+      return;
+    }
     const keys = new Set<string>();
     const folders = new Map<string, Set<string>>();
     const folderItemIds = new Map<string, Map<string, string>>();
-    const orderTuples = new Map<string, { chatId: string; orderIndex: number }[]>();
+    const pinnedAtByFolder = new Map<string, Map<string, string>>();
 
-    for (const { folderUuid, folderItemUuid, chatId, orderIndex, pinnedAt } of pins) {
+    for (const { folderUuid, folderItemUuid, chatId, pinnedAt } of pins) {
       const folderItemMap = new Map(folderItemIds.get(folderUuid) ?? []);
       folderItemMap.set(chatId, folderItemUuid);
       folderItemIds.set(folderUuid, folderItemMap);
@@ -187,20 +220,12 @@ export const usePinStore = create<PinStoreState>((set, get) => ({
       folderSet.add(chatId);
       folders.set(folderUuid, folderSet);
 
-      const tuples = orderTuples.get(folderUuid) ?? [];
-      tuples.push({ chatId, orderIndex });
-      orderTuples.set(folderUuid, tuples);
+      const pinnedAtByChatId = new Map(pinnedAtByFolder.get(folderUuid) ?? []);
+      pinnedAtByChatId.set(chatId, pinnedAt);
+      pinnedAtByFolder.set(folderUuid, pinnedAtByChatId);
     }
 
-    const pinOrder = new Map<string, string[]>();
-    for (const [folderUuid, tuples] of orderTuples) {
-      const ordered = [...tuples]
-        .sort((a, b) => a.orderIndex - b.orderIndex)
-        .map((tuple) => tuple.chatId);
-      pinOrder.set(folderUuid, ordered);
-    }
-
-    set({ pinnedKeys: keys, folderPins: folders, pinOrder, folderItemIds });
+    set({ pinnedKeys: keys, folderPins: folders, pinnedAtByFolder, folderItemIds });
   },
 
   clear() {
@@ -208,7 +233,7 @@ export const usePinStore = create<PinStoreState>((set, get) => ({
     set({
       pinnedKeys: new Set(),
       folderPins: new Map(),
-      pinOrder: new Map(),
+      pinnedAtByFolder: new Map(),
       folderItemIds: new Map(),
     });
   },

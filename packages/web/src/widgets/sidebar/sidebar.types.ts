@@ -25,8 +25,6 @@ export interface SidebarProps {
   sidebarDms?: Extract<SidebarChat, { type: "dm" }>[];
   sidebarChats?: SidebarChat[];
   sidebarChatsLoading?: boolean;
-  pinReorderMode?: boolean;
-  onExitPinReorderMode?: () => void;
 }
 
 export interface SidebarUiProps extends SidebarProps {

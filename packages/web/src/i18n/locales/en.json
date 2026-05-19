@@ -513,8 +513,6 @@
     "hideSystemFolders": "Hide system folders",
     "emptyFolder": "Folder is empty",
     "emptyFolderHint": "Add chats from a chat menu to populate this folder.",
-    "noPinnedChats": "No pinned chats in this folder",
-    "noPinnedChatsHint": "Pin chats in this folder first, then reorder them.",
     "delete": "Delete",
     "deleteConfirmTitle": "Delete folder?",
     "deleteConfirmText": "Are you sure you want to delete \"{{label}}\"?",

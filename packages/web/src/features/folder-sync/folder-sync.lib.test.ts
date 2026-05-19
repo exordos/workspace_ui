@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
+import { resolveFolderItemUuid } from "./folder-sync-chat-id.lib";
 import { SYSTEM_ALL_FOLDER_ID } from "./folder-sync-constants.lib";
 import { hasMatchingChatId, toChatIdSet } from "./folder-sync-sidebar-chats.lib";
-import { sidebarFolderItemsMembershipPending, withDefaultSystemFolders } from "./folder-sync.lib";
+import {
+  aliasAllFolderItemsCacheKeys,
+  mergeFolderItemsSnapshot,
+  resolveFolderItemsRequestUuid,
+  resolvePinScopeFolderUuid,
+  sidebarFolderItemsMembershipPending,
+  withDefaultSystemFolders,
+} from "./folder-sync.lib";
 
 const BASE_ITEM = {
   uuid: "item-1",
@@ -13,6 +21,60 @@ const BASE_ITEM = {
 } as const;
 
 const LABELS = { allChats: "All", personal: "Personal", channels: "Channels" };
+
+describe("resolvePinScopeFolderUuid", () => {
+  const apiAllUuid = "550e8400-e29b-41d4-a716-446655440000";
+
+  it("maps virtual system:all to API all-folder uuid", () => {
+    expect(resolvePinScopeFolderUuid(SYSTEM_ALL_FOLDER_ID, apiAllUuid)).toBe(apiAllUuid);
+  });
+});
+
+describe("resolveFolderItemsRequestUuid", () => {
+  const apiAllUuid = "550e8400-e29b-41d4-a716-446655440000";
+
+  it("maps virtual system:all to API all-folder uuid", () => {
+    expect(resolveFolderItemsRequestUuid(SYSTEM_ALL_FOLDER_ID, apiAllUuid)).toBe(apiAllUuid);
+  });
+
+  it("maps legacy all id to API all-folder uuid", () => {
+    expect(resolveFolderItemsRequestUuid("all", apiAllUuid)).toBe(apiAllUuid);
+  });
+
+  it("returns null for system:all when API uuid is not known yet", () => {
+    expect(resolveFolderItemsRequestUuid(SYSTEM_ALL_FOLDER_ID, null)).toBeNull();
+  });
+
+  it("passes through created folder uuid unchanged", () => {
+    expect(resolveFolderItemsRequestUuid("folder-created-1", apiAllUuid)).toBe("folder-created-1");
+  });
+});
+
+describe("mergeFolderItemsSnapshot", () => {
+  it("aliases all-folder items under system:all rail id", () => {
+    const apiAllUuid = "api-all-uuid";
+    const items = [{ ...BASE_ITEM, uuid: "item-1", chatId: "dm:1", folderUuid: apiAllUuid }];
+    const next = mergeFolderItemsSnapshot(new Map(), {
+      folders: [{ uuid: apiAllUuid, system_type: "all" }],
+      itemsByFolderId: new Map([[apiAllUuid, { ok: true, items }]]),
+    });
+
+    expect(next.get(apiAllUuid)).toEqual(items);
+    expect(next.get(SYSTEM_ALL_FOLDER_ID)).toEqual(items);
+    expect(next.get("all")).toEqual(items);
+  });
+});
+
+describe("aliasAllFolderItemsCacheKeys", () => {
+  it("mirrors items to system:all and legacy all keys", () => {
+    const apiAllUuid = "api-all-uuid";
+    const items = [{ ...BASE_ITEM, uuid: "item-1", chatId: "dm:1", folderUuid: apiAllUuid }];
+    const map = new Map([[apiAllUuid, items]]);
+    aliasAllFolderItemsCacheKeys(map, apiAllUuid);
+    expect(map.get(SYSTEM_ALL_FOLDER_ID)).toEqual(items);
+    expect(map.get("all")).toEqual(items);
+  });
+});
 
 describe("withDefaultSystemFolders", () => {
   it("keeps virtual «all chats» id when API returns system all folder with its own uuid", () => {
@@ -54,6 +116,11 @@ describe("folder-sync chat id matching", () => {
   it("matches numeric folder ids against canonical stream id", () => {
     const chatIdSet = toChatIdSet([{ ...BASE_ITEM, chatId: "11" }]);
     expect(hasMatchingChatId(chatIdSet, "stream:11:general")).toBe(true);
+  });
+
+  it("resolveFolderItemUuid matches numeric API chat_id to stream sidebar id", () => {
+    const items = [{ uuid: "item-11", chatId: "11" }];
+    expect(resolveFolderItemUuid(items, "stream:11:general")).toBe("item-11");
   });
 });
 

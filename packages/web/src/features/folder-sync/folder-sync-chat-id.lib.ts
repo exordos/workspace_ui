@@ -152,6 +152,28 @@ export function resolveFallbackUserName(
   return fallbackName;
 }
 
+/** True when two folder/API chat_id values refer to the same chat (numeric, stream, dm aliases). */
+export function areEquivalentChatIds(leftChatId: string, rightChatId: string): boolean {
+  const leftAliases = new Set<string>();
+  addChatIdAliases(leftAliases, leftChatId);
+  const rightAliases = new Set<string>();
+  addChatIdAliases(rightAliases, rightChatId);
+  for (const alias of leftAliases) {
+    if (rightAliases.has(alias)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Resolves a folder item UUID for a chat using alias-equivalent chat_id matching. */
+export function resolveFolderItemUuid(
+  items: readonly { chatId: string; uuid: string }[],
+  chatId: string,
+): string | null {
+  return items.find((item) => areEquivalentChatIds(item.chatId, chatId))?.uuid ?? null;
+}
+
 export function addChatIdAliases(target: Set<string>, chatId: string): void {
   const trimmedChatId = chatId.trim();
   if (trimmedChatId.length === 0) {

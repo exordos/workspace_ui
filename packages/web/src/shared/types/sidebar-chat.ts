@@ -51,8 +51,6 @@ export interface SidebarProps {
   sidebarChats?: SidebarChat[];
   // Признак загрузки списка чатов выбранной папки.
   sidebarChatsLoading?: boolean;
-  pinReorderMode?: boolean;
-  onExitPinReorderMode?: () => void;
 }
 
 export interface StreamWithLast {

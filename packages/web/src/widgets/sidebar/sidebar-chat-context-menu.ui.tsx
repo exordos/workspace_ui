@@ -8,24 +8,41 @@ import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { muteStream, unmuteStream } from "~/features/mute-chat/mute-chat.api";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { runOptimisticStreamMuteUpdate } from "~/features/mute-chat/mute-chat.optimistic.lib";
-import { pinChatInFolder, unpinChatInFolder } from "~/features/pin-chat/pin-chat.api";
-import { usePinStore } from "~/features/pin-chat/pin-chat.model";
 import { t } from "~/i18n/i18n";
-import { getFolderItems } from "~/shared/api/workspace-client";
 import { markDmAsRead, markStreamAsRead } from "~/shared/api/zulip";
 import { Icon } from "~/shared/ui/icon";
+import { useSidebarFolderPinMenu } from "./sidebar-folder-pin-menu.lib";
 import { chatToWorkspaceChatId, parseDmSlugToUserIds } from "./sidebar.lib";
 import type { SidebarChat } from "./sidebar.types";
+
+function PinFolderMenuItem({
+  label,
+  onAction,
+  children,
+}: {
+  label: string;
+  onAction: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <DropdownMenu.Item
+      className={MENU_ITEM_CLASS}
+      onSelect={(event) => {
+        event.preventDefault();
+        onAction();
+      }}
+    >
+      {children}
+      {label}
+    </DropdownMenu.Item>
+  );
+}
 
 const MENU_ITEM_CLASS =
   "flex cursor-pointer select-none items-center gap-2 rounded-md px-2 py-2 text-sm text-text-primary outline-none transition-colors data-[disabled]:pointer-events-none data-[disabled]:opacity-50 hover:bg-bg-elevated";
 
 function isContextMenuKeyboardEvent(event: React.KeyboardEvent): boolean {
   return event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey);
-}
-
-function isVirtualSystemFolderId(folderId: string | undefined): boolean {
-  return folderId === "system:personal" || folderId === "system:channels";
 }
 
 const FolderAssignmentsSubmenu = React.memo(function FolderAssignmentsSubmenu({
@@ -193,15 +210,32 @@ export const StreamContextMenu = React.memo(function StreamContextMenu({
   const [mutePending, setMutePending] = useState(false);
   const isMuted = useMuteStore((s) => s.isStreamMuted(streamId));
   const chatId = chatToWorkspaceChatId(chat);
-  const isPinnedInFolder = usePinStore((s) =>
-    folderId != null ? s.isPinned(folderId, chatId) : false,
+  const { isPinned, showFolderPinAction, runPin, runUnpin } = useSidebarFolderPinMenu(
+    folderId,
+    chatId,
   );
-  const isPinned = folderId != null && isPinnedInFolder;
 
-  const handleContextMenu = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
+  const openMenu = useCallback(() => {
     setMenuOpen(true);
   }, []);
+
+  const handleContextMenuCapture = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openMenu();
+    },
+    [openMenu],
+  );
+
+  const handleOpenMenuClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openMenu();
+    },
+    [openMenu],
+  );
 
   const handleToggleMute = useCallback((): void => {
     if (mutePending) return;
@@ -239,39 +273,20 @@ export const StreamContextMenu = React.memo(function StreamContextMenu({
     setMenuOpen(false);
   }, [streamId]);
 
-  const handleTogglePin = useCallback(() => {
-    if (folderId == null) return;
+  const handlePinChat = useCallback(() => {
     setMenuOpen(false);
-    void (async () => {
-      const pinStore = usePinStore.getState();
-      let folderItemUuid = pinStore.getFolderItemUuid(folderId, chatId);
-      if (!folderItemUuid) {
-        const items = await getFolderItems(folderId);
-        folderItemUuid = items.find((i) => i.chatId === chatId)?.uuid ?? null;
-      }
-      if (!folderItemUuid) return;
+    runPin();
+  }, [runPin]);
 
-      if (isPinned) {
-        const ok = await unpinChatInFolder(folderId, folderItemUuid);
-        if (ok) {
-          pinStore.unpinChat(folderId, chatId);
-        }
-      } else {
-        const ok = await pinChatInFolder(folderId, folderItemUuid);
-        if (ok) {
-          pinStore.pinChat(folderId, chatId, { folderItemUuid });
-        }
-      }
-    })();
-  }, [folderId, chatId, isPinned]);
+  const handleUnpinChat = useCallback(() => {
+    setMenuOpen(false);
+    runUnpin();
+  }, [runUnpin]);
 
   const handleCreateTopic = useCallback(() => {
     onCreateTopic?.();
     setMenuOpen(false);
   }, [onCreateTopic]);
-
-  const showFolderPinAction =
-    folderId != null && folderId.length > 0 && !isVirtualSystemFolderId(folderId);
 
   const contentWithContextMenu = useMemo(() => {
     const childrenArray = React.Children.toArray(children);
@@ -290,20 +305,20 @@ export const StreamContextMenu = React.memo(function StreamContextMenu({
     const firstChildWithContextMenu = React.cloneElement(firstChildElement, {
       onContextMenu: (e: React.MouseEvent) => {
         existingOnContextMenu?.(e);
-        handleContextMenu(e);
+        handleContextMenuCapture(e);
       },
       onKeyDown: (e: React.KeyboardEvent) => {
         existingOnKeyDown?.(e);
         if (e.defaultPrevented) return;
         if (isContextMenuKeyboardEvent(e)) {
           e.preventDefault();
-          setMenuOpen(true);
+          openMenu();
         }
       },
     });
 
     return [firstChildWithContextMenu, ...childrenArray.slice(1)];
-  }, [children, handleContextMenu]);
+  }, [children, handleContextMenuCapture, openMenu]);
 
   return (
     <DropdownMenu.Root open={menuOpen} onOpenChange={setMenuOpen}>
@@ -312,12 +327,9 @@ export const StreamContextMenu = React.memo(function StreamContextMenu({
         <DropdownMenu.Trigger asChild>
           <button
             type="button"
-            className={`absolute flex h-6 w-6 items-center justify-center rounded text-text-muted opacity-60 transition-opacity group-focus-within/stream:opacity-100 group-hover/stream:opacity-100 hover:bg-sidebar-hover hover:text-text-primary focus-visible:opacity-100 ${triggerOffsetClassName}`}
+            className={`absolute flex h-6 w-6 items-center justify-center rounded text-text-muted opacity-60 transition-opacity hover:bg-sidebar-hover hover:text-text-primary focus-visible:opacity-100 group-focus-within/stream:opacity-100 group-hover/stream:opacity-100 ${triggerOffsetClassName}`}
             aria-label={t("a11y.chatMenu")}
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }}
+            onClick={handleOpenMenuClick}
           >
             <Icon name="more" size={14} />
           </button>
@@ -328,6 +340,9 @@ export const StreamContextMenu = React.memo(function StreamContextMenu({
           className="z-dropdown min-w-context-menu-narrow rounded-lg border border-border-subtle bg-bg-elevated py-1 shadow-lg"
           sideOffset={4}
           align="start"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+          }}
         >
           <DropdownMenu.Item className={MENU_ITEM_CLASS} onSelect={handleToggleMute}>
             <Icon name={isMuted ? "bell_off" : "bell"} size={14} />
@@ -337,12 +352,16 @@ export const StreamContextMenu = React.memo(function StreamContextMenu({
             <Icon name="check" size={14} />
             {t("sidebar.markAsRead")}
           </DropdownMenu.Item>
-          {showFolderPinAction && (
-            <DropdownMenu.Item className={MENU_ITEM_CLASS} onSelect={handleTogglePin}>
-              <Icon name="pin" size={14} />
-              {isPinned ? t("sidebar.unpinChat") : t("sidebar.pinChat")}
-            </DropdownMenu.Item>
-          )}
+          {showFolderPinAction &&
+            (isPinned ? (
+              <PinFolderMenuItem label={t("sidebar.unpinChat")} onAction={handleUnpinChat}>
+                <Icon name="pin" size={14} />
+              </PinFolderMenuItem>
+            ) : (
+              <PinFolderMenuItem label={t("sidebar.pinChat")} onAction={handlePinChat}>
+                <Icon name="pin" size={14} />
+              </PinFolderMenuItem>
+            ))}
           {onCreateTopic && (
             <DropdownMenu.Item className={MENU_ITEM_CLASS} onSelect={handleCreateTopic}>
               <Icon name="plus" size={14} />
@@ -369,10 +388,10 @@ export const DmContextMenu = React.memo(function DmContextMenu({
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const chatId = chatToWorkspaceChatId(chat);
-  const isPinnedInFolder = usePinStore((s) =>
-    folderId != null ? s.isPinned(folderId, chatId) : false,
+  const { isPinned, showFolderPinAction, runPin, runUnpin } = useSidebarFolderPinMenu(
+    folderId,
+    chatId,
   );
-  const isPinned = folderId != null && isPinnedInFolder;
 
   const handleMarkAsRead = useCallback(() => {
     const userIds =
@@ -384,39 +403,37 @@ export const DmContextMenu = React.memo(function DmContextMenu({
     setMenuOpen(false);
   }, [chat.slug, chat.userIds]);
 
-  const handleTogglePin = useCallback(() => {
-    if (folderId == null) return;
+  const handlePinChat = useCallback(() => {
     setMenuOpen(false);
-    void (async () => {
-      const pinStore = usePinStore.getState();
-      let folderItemUuid = pinStore.getFolderItemUuid(folderId, chatId);
-      if (!folderItemUuid) {
-        const items = await getFolderItems(folderId);
-        folderItemUuid = items.find((i) => i.chatId === chatId)?.uuid ?? null;
-      }
-      if (!folderItemUuid) return;
+    runPin();
+  }, [runPin]);
 
-      if (isPinned) {
-        const ok = await unpinChatInFolder(folderId, folderItemUuid);
-        if (ok) {
-          pinStore.unpinChat(folderId, chatId);
-        }
-      } else {
-        const ok = await pinChatInFolder(folderId, folderItemUuid);
-        if (ok) {
-          pinStore.pinChat(folderId, chatId, { folderItemUuid });
-        }
-      }
-    })();
-  }, [folderId, chatId, isPinned]);
+  const handleUnpinChat = useCallback(() => {
+    setMenuOpen(false);
+    runUnpin();
+  }, [runUnpin]);
 
-  const handleContextMenu = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
+  const openMenu = useCallback(() => {
     setMenuOpen(true);
   }, []);
 
-  const showFolderPinAction =
-    folderId != null && folderId.length > 0 && !isVirtualSystemFolderId(folderId);
+  const handleContextMenuCapture = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openMenu();
+    },
+    [openMenu],
+  );
+
+  const handleOpenMenuClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openMenu();
+    },
+    [openMenu],
+  );
 
   const contentWithContextMenu = useMemo(() => {
     if (!React.isValidElement(children)) return children;
@@ -429,18 +446,18 @@ export const DmContextMenu = React.memo(function DmContextMenu({
     return React.cloneElement(childElement, {
       onContextMenu: (e: React.MouseEvent) => {
         existingOnContextMenu?.(e);
-        handleContextMenu(e);
+        handleContextMenuCapture(e);
       },
       onKeyDown: (e: React.KeyboardEvent) => {
         existingOnKeyDown?.(e);
         if (e.defaultPrevented) return;
         if (isContextMenuKeyboardEvent(e)) {
           e.preventDefault();
-          setMenuOpen(true);
+          openMenu();
         }
       },
     });
-  }, [children, handleContextMenu]);
+  }, [children, handleContextMenuCapture, openMenu]);
 
   return (
     <DropdownMenu.Root open={menuOpen} onOpenChange={setMenuOpen}>
@@ -449,12 +466,9 @@ export const DmContextMenu = React.memo(function DmContextMenu({
         <DropdownMenu.Trigger asChild>
           <button
             type="button"
-            className={`absolute flex h-6 w-6 items-center justify-center rounded text-text-muted opacity-60 transition-opacity group-focus-within/stream:opacity-100 group-hover/stream:opacity-100 hover:bg-sidebar-hover hover:text-text-primary focus-visible:opacity-100 ${triggerOffsetClassName}`}
+            className={`absolute flex h-6 w-6 items-center justify-center rounded text-text-muted opacity-60 transition-opacity hover:bg-sidebar-hover hover:text-text-primary focus-visible:opacity-100 group-focus-within/dm:opacity-100 group-hover/dm:opacity-100 ${triggerOffsetClassName}`}
             aria-label={t("a11y.chatMenu")}
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }}
+            onClick={handleOpenMenuClick}
           >
             <Icon name="more" size={14} />
           </button>
@@ -465,17 +479,24 @@ export const DmContextMenu = React.memo(function DmContextMenu({
           className="z-dropdown min-w-context-menu-narrow rounded-lg border border-border-subtle bg-bg-elevated py-1 shadow-lg"
           sideOffset={4}
           align="start"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+          }}
         >
           <DropdownMenu.Item className={MENU_ITEM_CLASS} onSelect={handleMarkAsRead}>
             <Icon name="check" size={14} />
             {t("sidebar.markAsRead")}
           </DropdownMenu.Item>
-          {showFolderPinAction && (
-            <DropdownMenu.Item className={MENU_ITEM_CLASS} onSelect={handleTogglePin}>
-              <Icon name="pin" size={14} />
-              {isPinned ? t("sidebar.unpinChat") : t("sidebar.pinChat")}
-            </DropdownMenu.Item>
-          )}
+          {showFolderPinAction &&
+            (isPinned ? (
+              <PinFolderMenuItem label={t("sidebar.unpinChat")} onAction={handleUnpinChat}>
+                <Icon name="pin" size={14} />
+              </PinFolderMenuItem>
+            ) : (
+              <PinFolderMenuItem label={t("sidebar.pinChat")} onAction={handlePinChat}>
+                <Icon name="pin" size={14} />
+              </PinFolderMenuItem>
+            ))}
           <FolderAssignmentsSubmenu chatId={chatId} menuOpen={menuOpen} />
         </DropdownMenu.Content>
       </DropdownMenu.Portal>

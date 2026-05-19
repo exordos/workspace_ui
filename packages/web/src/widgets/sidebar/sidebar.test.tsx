@@ -16,6 +16,7 @@ import { buildDmTypingChatKey } from "~/features/typing-indicator/typing-key";
 import { t } from "~/i18n/i18n";
 import type * as WorkspaceApiModule from "~/shared/api/workspace-client";
 import type * as ZulipApiModule from "~/shared/api/zulip";
+import { setCurrentOrgRouteIdResolver } from "~/shared/lib/org-route";
 import type { SidebarChat } from "~/shared/types/sidebar-chat";
 import { createUser } from "~/test/factories";
 import { renderWithProviders } from "~/test/render";
@@ -188,6 +189,7 @@ describe("Sidebar", () => {
     getFoldersMock.mockResolvedValue([]);
     addChatToFolderMock.mockReset();
     removeChatFromFolderMock.mockReset();
+    setCurrentOrgRouteIdResolver(null);
   });
 
   it("does not render the separate direct-messages section when sidebarChats is provided", () => {
@@ -839,6 +841,39 @@ describe("Sidebar", () => {
     });
   });
 
+  it("pins stream chat when folder item chat_id is numeric", async () => {
+    getFolderItemsMock.mockResolvedValue([
+      {
+        uuid: "item-11",
+        chatId: "11",
+        folderUuid: "custom-folder",
+        orderIndex: 0,
+        pinnedAt: null,
+        createdAt: "",
+        updatedAt: "",
+      },
+    ]);
+    pinChatInFolderMock.mockResolvedValue(true);
+
+    renderWithProviders(
+      <Sidebar
+        streams={[]}
+        selectedFolderId="custom-folder"
+        sidebarChats={[STREAM_CHAT]}
+        sidebarDms={[]}
+      />,
+    );
+
+    const streamRow = screen.getByRole("link", { name: /engineering/i });
+    fireEvent.contextMenu(streamRow);
+    fireEvent.click(await screen.findByRole("menuitem", { name: /^pin$/i }));
+
+    await waitFor(() => {
+      expect(getFolderItemsMock).toHaveBeenCalledWith("custom-folder");
+      expect(pinChatInFolderMock).toHaveBeenCalledWith("custom-folder", "item-11");
+    });
+  });
+
   it("shows unpin action in dm context menu when chat is already pinned", async () => {
     usePinStore.getState().pinChat("all", "dm:42", { folderItemUuid: "item-42" });
     unpinChatInFolderMock.mockResolvedValue(true);
@@ -863,8 +898,54 @@ describe("Sidebar", () => {
     });
   });
 
+  it("navigates to pinned dm without leaving org scope on click", () => {
+    setCurrentOrgRouteIdResolver(() => "chat.example.com");
+    usePinStore.getState().pinChat("all", "dm:42", {
+      folderItemUuid: "item-42",
+      pinnedAt: "2026-03-14T12:00:00Z",
+    });
+
+    renderWithProviders(
+      <>
+        <Sidebar
+          streams={[]}
+          selectedFolderId="all"
+          sidebarChats={[DM_CHAT, DM_CHAT_SECOND]}
+          sidebarDms={[DM_CHAT, DM_CHAT_SECOND]}
+        />
+        <RoutePathProbe />
+      </>,
+      { route: "/org/chat.example.com/inbox" },
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: /alice/i }));
+
+    expect(screen.getByTestId("route-path")).toHaveTextContent("/org/chat.example.com/dm/42-alice");
+  });
+
+  it("prefixes folder dm links with current org route", () => {
+    setCurrentOrgRouteIdResolver(() => "chat.example.com");
+
+    renderWithProviders(
+      <Sidebar
+        streams={[]}
+        selectedFolderId="all"
+        sidebarChats={[DM_CHAT]}
+        sidebarDms={[DM_CHAT]}
+      />,
+    );
+
+    expect(screen.getByRole("link", { name: /alice/i })).toHaveAttribute(
+      "href",
+      "/org/chat.example.com/dm/42-alice",
+    );
+  });
+
   it("renders pinned dm chats before unpinned ones", () => {
-    usePinStore.getState().pinChat("all", "dm:77", { folderItemUuid: "item-77", orderIndex: 0 });
+    usePinStore.getState().pinChat("all", "dm:77", {
+      folderItemUuid: "item-77",
+      pinnedAt: "2026-03-14T12:00:00Z",
+    });
 
     renderWithProviders(
       <Sidebar
@@ -882,10 +963,16 @@ describe("Sidebar", () => {
     expect(dmLinks[1]).toHaveAttribute("href", "/dm/42-alice");
   });
 
-  it("renders pinned stream chats before unpinned ones", () => {
-    usePinStore
-      .getState()
-      .pinChat("all", "stream:12:general", { folderItemUuid: "item-12", orderIndex: 0 });
+  it("renders pinned stream chats before unpinned ones when folder item uses numeric chat_id", () => {
+    usePinStore.getState().setFromServer([
+      {
+        folderUuid: "all",
+        folderItemUuid: "item-12",
+        chatId: "12",
+        orderIndex: 0,
+        pinnedAt: "2026-03-14T12:00:00Z",
+      },
+    ]);
 
     renderWithProviders(
       <Sidebar
@@ -904,9 +991,15 @@ describe("Sidebar", () => {
   });
 
   it("uses pinFolderId to order chats in system folders", () => {
-    usePinStore
-      .getState()
-      .pinChat("all", "stream:12:general", { folderItemUuid: "item-12", orderIndex: 0 });
+    usePinStore.getState().setFromServer([
+      {
+        folderUuid: "all",
+        folderItemUuid: "item-12",
+        chatId: "12",
+        orderIndex: 0,
+        pinnedAt: "2026-03-14T12:00:00Z",
+      },
+    ]);
 
     renderWithProviders(
       <Sidebar
@@ -957,28 +1050,6 @@ describe("Sidebar", () => {
       expect(getFolderItemsMock).toHaveBeenCalledWith("all");
       expect(pinChatInFolderMock).toHaveBeenCalledWith("all", "item-11");
     });
-  });
-
-  it("shows pinned chats only in pin-reorder mode and allows exiting mode", () => {
-    const onExitPinReorderMode = vi.fn();
-    usePinStore.getState().pinChat("all", "dm:42", { folderItemUuid: "item-42" });
-
-    renderWithProviders(
-      <Sidebar
-        streams={[]}
-        selectedFolderId="all"
-        sidebarChats={[DM_CHAT, DM_CHAT_SECOND]}
-        sidebarDms={[DM_CHAT, DM_CHAT_SECOND]}
-        pinReorderMode
-        onExitPinReorderMode={onExitPinReorderMode}
-      />,
-    );
-
-    expect(screen.getByText("Alice")).toBeInTheDocument();
-    expect(screen.queryByText("Bob")).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: /close/i }));
-    expect(onExitPinReorderMode).toHaveBeenCalledTimes(1);
   });
 
   it("opens stream new-topic dialog with zulip topic settings from context menu action", async () => {

@@ -160,8 +160,17 @@ const consoleTransport: LogTransport = {
       fn(prefix, entry.message, entry.data ?? "");
     } else if (entry.level === "warn") {
       fn(prefix, entry.message, entry.data ?? "");
+    } else if (import.meta.env?.DEV) {
+      // In dev, mirror info/debug to the console (still buffered for __dev__.logs()).
+      if (entry.level === "info") {
+        // eslint-disable-next-line no-console -- dev-only; production keeps info off console
+        console.info(prefix, entry.message, entry.data ?? "");
+      } else if (entry.level === "debug") {
+        // eslint-disable-next-line no-console -- dev-only trace
+        console.debug(prefix, entry.message, entry.data ?? "");
+      }
     }
-    // info/debug → only to buffer (avoid console.log in production)
+    // Production: info/debug → buffer only (avoid console noise)
   },
 };
 
