@@ -743,6 +743,10 @@ describe("Sidebar", () => {
     fireEvent.contextMenu(screen.getByText("Alice"));
 
     const markAsReadItem = await screen.findByRole("menuitem", { name: /mark as read/i });
+    expect(markAsReadItem).toHaveClass("hover:bg-sidebar-hover");
+    expect(markAsReadItem).toHaveClass("data-[highlighted]:bg-sidebar-hover");
+    expect(markAsReadItem).toHaveClass("focus-visible:outline-none");
+    expect(markAsReadItem).not.toHaveClass("hover:bg-bg-elevated");
     fireEvent.click(markAsReadItem);
 
     await waitFor(() => {

@@ -18,7 +18,7 @@ import { chatToWorkspaceChatId, parseDmSlugToUserIds } from "./sidebar.lib";
 import type { SidebarChat } from "./sidebar.types";
 
 const MENU_ITEM_CLASS =
-  "flex cursor-pointer select-none items-center gap-2 rounded-md px-2 py-2 text-sm text-text-primary outline-none transition-colors data-[disabled]:pointer-events-none data-[disabled]:opacity-50 hover:bg-bg-elevated";
+  "data-[highlighted]:bg-sidebar-hover flex cursor-pointer select-none items-center gap-2 px-2 py-2 text-sm text-text-primary outline-none transition-colors data-[disabled]:pointer-events-none data-[disabled]:opacity-50 hover:bg-sidebar-hover focus-visible:outline-none focus-visible:outline-0 focus-visible:outline-offset-0";
 
 function isContextMenuKeyboardEvent(event: React.KeyboardEvent): boolean {
   return event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey);
