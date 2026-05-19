@@ -1,8 +1,8 @@
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import React, { useCallback, useState } from "react";
 import { Badge } from "~/shared/ui/badge";
+import { DropdownMenu } from "~/shared/ui/dropdown-menu";
 import { Icon } from "~/shared/ui/icon";
-import { FolderContextMenuContent } from "./folder-rail-context-menu.ui";
+import { buildFolderContextMenuItems } from "./folder-rail-context-menu.lib";
 import { getFolderItemVisualState, isContextMenuKeyboardTrigger } from "./folder-rail.lib";
 import type { FolderItemProps, UseFolderItemActionsArgs } from "./folder-rail-folder-items.types";
 
@@ -126,8 +126,10 @@ export const HorizontalFolderItem: React.FC<FolderItemProps> = React.memo(
         : undefined;
 
     return (
-      <DropdownMenu.Root open={menuOpen} onOpenChange={setMenuOpen}>
-        <DropdownMenu.Trigger asChild>
+      <DropdownMenu
+        open={menuOpen}
+        onOpenChange={setMenuOpen}
+        trigger={
           <div className="shrink-0">
             <button
               type="button"
@@ -158,19 +160,19 @@ export const HorizontalFolderItem: React.FC<FolderItemProps> = React.memo(
               )}
             </button>
           </div>
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Portal>
-          <FolderContextMenuContent
-            isSystemFolder={visualState.isSystemFolder}
-            layout="horizontal"
-            showSystemFolders={showSystemFolders}
-            onRename={handleRename}
-            onToggleLayout={handleToggleLayout}
-            onToggleShowSystemFolders={onToggleShowSystemFolders}
-            onDelete={handleDelete}
-          />
-        </DropdownMenu.Portal>
-      </DropdownMenu.Root>
+        }
+        items={buildFolderContextMenuItems({
+          isSystemFolder: visualState.isSystemFolder,
+          layout: "horizontal",
+          showSystemFolders,
+          onRename: handleRename,
+          onToggleLayout: handleToggleLayout,
+          onToggleShowSystemFolders,
+          onDelete: handleDelete,
+        })}
+        contentVariant="default"
+        contentProps={{ sideOffset: 4, align: "start" }}
+      />
     );
   },
 );
@@ -210,8 +212,10 @@ export const VerticalFolderItem: React.FC<FolderItemProps> = React.memo(
     const verticalScaleClass = isSelected ? "scale-110" : "scale-100";
 
     return (
-      <DropdownMenu.Root open={menuOpen} onOpenChange={setMenuOpen}>
-        <DropdownMenu.Trigger asChild>
+      <DropdownMenu
+        open={menuOpen}
+        onOpenChange={setMenuOpen}
+        trigger={
           <div className="flex h-[72px] w-[56px] items-center justify-center p-1">
             <div
               className={`relative h-[64px] w-[48px] origin-center transform-gpu transition-transform duration-150 ease-out motion-reduce:transition-none ${verticalScaleClass}`}
@@ -266,19 +270,19 @@ export const VerticalFolderItem: React.FC<FolderItemProps> = React.memo(
               </span>
             </div>
           </div>
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Portal>
-          <FolderContextMenuContent
-            isSystemFolder={visualState.isSystemFolder}
-            layout="vertical"
-            showSystemFolders={showSystemFolders}
-            onRename={handleRename}
-            onToggleLayout={handleToggleLayout}
-            onToggleShowSystemFolders={onToggleShowSystemFolders}
-            onDelete={handleDelete}
-          />
-        </DropdownMenu.Portal>
-      </DropdownMenu.Root>
+        }
+        items={buildFolderContextMenuItems({
+          isSystemFolder: visualState.isSystemFolder,
+          layout: "vertical",
+          showSystemFolders,
+          onRename: handleRename,
+          onToggleLayout: handleToggleLayout,
+          onToggleShowSystemFolders,
+          onDelete: handleDelete,
+        })}
+        contentVariant="default"
+        contentProps={{ sideOffset: 4, align: "start" }}
+      />
     );
   },
 );

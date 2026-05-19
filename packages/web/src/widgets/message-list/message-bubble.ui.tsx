@@ -26,11 +26,6 @@ import {
   MESSAGE_BUBBLE_ATTACHMENT_LINK_BASE_CLASSES,
   MESSAGE_BUBBLE_ATTACHMENT_LINK_STATUS_CLASSES,
 } from "./message-bubble-attachment-styles.lib";
-import {
-  computeMessageContextMenuPosition,
-  MESSAGE_CONTEXT_MENU_EST_HEIGHT_PX,
-  MESSAGE_CONTEXT_MENU_EST_WIDTH_PX,
-} from "./message-bubble-context-menu-position.lib";
 import { MessageBubbleContextMenu } from "./message-bubble-context-menu.ui";
 import {
   BASE_CONTEXT_SECTIONS,
@@ -58,6 +53,8 @@ import type {
 import type { EmojiClickData } from "emoji-picker-react";
 
 export type { MessageBubbleCallbacks, MessageBubbleProps } from "./message-bubble.types";
+
+const MESSAGE_CONTEXT_MENU_CURSOR_GAP_PX = 6;
 
 export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
   ({
@@ -258,31 +255,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       // Сохраняем выделенный текст для reply/forward только если выделение внутри текущего сообщения.
       replySelectionRef.current = hasSelectionInsideMessageBody ? selectedText : undefined;
       if (event instanceof MouseEvent) {
-        const currentTarget = event.currentTarget;
-        const feedRoot =
-          currentTarget instanceof HTMLElement
-            ? currentTarget.closest<HTMLElement>('[role="feed"]')
-            : null;
-        const feedRect = feedRoot?.getBoundingClientRect();
-        const fallbackBounds = {
-          left: 0,
-          top: 0,
-          right: window.innerWidth,
-          bottom: window.innerHeight,
-        };
-        // Основные границы — область чата; fallback нужен для редких edge-case сценариев.
-        const bounds = feedRect ?? fallbackBounds;
-        const nextPosition = computeMessageContextMenuPosition({
-          clientX: event.clientX,
-          clientY: event.clientY,
-          bounds,
-          menuWidth: MESSAGE_CONTEXT_MENU_EST_WIDTH_PX,
-          menuHeight: MESSAGE_CONTEXT_MENU_EST_HEIGHT_PX,
-        });
         setContextMenuAnchor({
-          left: nextPosition.menuLeft,
-          top: nextPosition.menuTop,
-          side: nextPosition.side,
+          left: event.clientX + MESSAGE_CONTEXT_MENU_CURSOR_GAP_PX,
+          top: event.clientY,
         });
         setMenuSource("context");
       } else {

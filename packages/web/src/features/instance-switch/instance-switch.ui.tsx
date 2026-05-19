@@ -1,4 +1,3 @@
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import React from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useInstancesStore } from "~/entities/instance/instance.model";
@@ -9,6 +8,7 @@ import {
   getOrganizationLogoSrc,
 } from "~/shared/lib/organization-branding";
 import { Badge } from "~/shared/ui/badge";
+import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
 import { Icon } from "~/shared/ui/icon";
 
 function getInstanceLabel(realm: string, email: string): string {
@@ -97,6 +97,7 @@ const InstanceQuickButton = React.memo(function InstanceQuickButton({
 export const InstanceSwitcher: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const [menuOpen, setMenuOpen] = React.useState(false);
   const instances = useInstancesStore((s) => s.instances);
   const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
   const setCurrentInstanceId = useInstancesStore((s) => s.setCurrentInstanceId);
@@ -136,6 +137,78 @@ export const InstanceSwitcher: React.FC = () => {
     ],
   );
 
+  const menuItems = React.useMemo<DropdownMenuItem[]>(
+    () => [
+      ...instances.map((inst) => {
+        const label = getInstanceLabel(inst.realm, inst.email);
+        const unreadCount = unreadCountsByInstance[inst.id] ?? 0;
+        return {
+          type: "action" as const,
+          key: `instance-${inst.id}`,
+          onSelect: () => handleSelectInstance(inst.id),
+          label: (
+            <>
+              <span
+                data-testid={`instance-logo-${inst.id}`}
+                className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-bg"
+              >
+                <OrganizationLogo
+                  realmIcon={inst.realmIcon}
+                  realmBaseUrl={inst.realm}
+                  className="h-9 w-9 object-contain"
+                />
+                {unreadCount > 0 && (
+                  <span
+                    data-testid={`instance-unread-${inst.id}`}
+                    className="pointer-events-none absolute -right-1 -top-1"
+                  >
+                    <Badge count={unreadCount} variant="unread" />
+                  </span>
+                )}
+              </span>
+              <div className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
+                <span className="w-full truncate font-medium">{label}</span>
+                <span className="w-full truncate text-xs text-text-muted">{inst.email}</span>
+              </div>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  const confirmed = window.confirm(
+                    t("auth.logoutFromOrgConfirm", { server: label }),
+                  );
+                  if (!confirmed) return;
+                  removeInstance(inst.id);
+                }}
+                className="hover:bg-notice-base/20 border-notice-base/40 bg-notice-base/10 ml-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border text-notice-base transition-colors"
+                aria-label={t("auth.logoutFromOrg")}
+                title={t("auth.logoutFromOrg")}
+              >
+                <Icon name="logout" size={14} className="text-current" />
+              </button>
+            </>
+          ),
+        };
+      }),
+      { type: "separator" as const },
+      {
+        type: "action" as const,
+        key: "add-server",
+        onSelect: () => {
+          void navigate("/login");
+        },
+        label: (
+          <>
+            <Icon name="add" size={16} className="text-text-muted" />
+            {t("auth.addServer")}
+          </>
+        ),
+      },
+    ],
+    [handleSelectInstance, instances, navigate, removeInstance, unreadCountsByInstance],
+  );
+
   return (
     <div className="flex items-center gap-1.5" role="group" aria-label={t("auth.selectServer")}>
       {visibleInstances.map((inst) => {
@@ -161,8 +234,13 @@ export const InstanceSwitcher: React.FC = () => {
         </span>
       )}
 
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger asChild>
+      <DropdownMenu
+        open={menuOpen}
+        onOpenChange={setMenuOpen}
+        items={menuItems}
+        contentVariant="wide"
+        contentProps={{ sideOffset: 6, align: "start" }}
+        trigger={
           <button
             type="button"
             className="hover:bg-bg/50 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-transparent text-text-muted transition-colors hover:text-text-primary"
@@ -171,75 +249,8 @@ export const InstanceSwitcher: React.FC = () => {
           >
             <Icon name="chevron-down" size={14} className="text-current" />
           </button>
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Portal>
-          <DropdownMenu.Content
-            className="z-dropdown min-w-context-menu-wide rounded-lg border border-border-subtle bg-bg-elevated py-1 shadow-lg"
-            sideOffset={6}
-            align="start"
-          >
-            {instances.map((inst) => {
-              const label = getInstanceLabel(inst.realm, inst.email);
-              const unreadCount = unreadCountsByInstance[inst.id] ?? 0;
-              return (
-                <DropdownMenu.Item
-                  key={inst.id}
-                  onSelect={() => handleSelectInstance(inst.id)}
-                  className="hover:bg-bg/80 data-[highlighted]:bg-accent/20 group/item flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-text-primary outline-none"
-                >
-                  <span
-                    data-testid={`instance-logo-${inst.id}`}
-                    className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-bg"
-                  >
-                    <OrganizationLogo
-                      realmIcon={inst.realmIcon}
-                      realmBaseUrl={inst.realm}
-                      className="h-9 w-9 object-contain"
-                    />
-                    {unreadCount > 0 && (
-                      <span
-                        data-testid={`instance-unread-${inst.id}`}
-                        className="pointer-events-none absolute -right-1 -top-1"
-                      >
-                        <Badge count={unreadCount} variant="unread" />
-                      </span>
-                    )}
-                  </span>
-                  <div className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
-                    <span className="w-full truncate font-medium">{label}</span>
-                    <span className="w-full truncate text-xs text-text-muted">{inst.email}</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      const confirmed = window.confirm(
-                        t("auth.logoutFromOrgConfirm", { server: label }),
-                      );
-                      if (!confirmed) return;
-                      removeInstance(inst.id);
-                    }}
-                    className="hover:bg-notice-base/20 border-notice-base/40 bg-notice-base/10 ml-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border text-notice-base transition-colors"
-                    aria-label={t("auth.logoutFromOrg")}
-                    title={t("auth.logoutFromOrg")}
-                  >
-                    <Icon name="logout" size={14} className="text-current" />
-                  </button>
-                </DropdownMenu.Item>
-              );
-            })}
-            <DropdownMenu.Separator className="my-1 h-px bg-border-subtle" />
-            <DropdownMenu.Item
-              onSelect={() => navigate("/login")}
-              className="hover:bg-bg/80 data-[highlighted]:bg-accent/20 flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-text-primary outline-none"
-            >
-              <Icon name="add" size={16} className="text-text-muted" />
-              {t("auth.addServer")}
-            </DropdownMenu.Item>
-          </DropdownMenu.Content>
-        </DropdownMenu.Portal>
-      </DropdownMenu.Root>
+        }
+      />
     </div>
   );
 };

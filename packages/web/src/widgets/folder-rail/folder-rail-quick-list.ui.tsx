@@ -1,9 +1,9 @@
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { folderColorValueToCssHex } from "~/features/manage-folders/folder-colors";
 import { t } from "~/i18n/i18n";
 import { useShortcut } from "~/shared/lib/shortcuts";
 import { Badge } from "~/shared/ui/badge";
+import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
 import { Icon } from "~/shared/ui/icon";
 import { SearchInput } from "~/shared/ui/search-input";
 import {
@@ -138,8 +138,99 @@ export const FolderQuickList: React.FC<FolderQuickListProps> = React.memo(functi
     [setActiveIndex, setQuery],
   );
 
+  const menuItems = useMemo<DropdownMenuItem[]>(
+    () => [
+      {
+        type: "custom",
+        key: "folder-quick-list-custom",
+        render: () => (
+          <>
+            <p className="px-1 pb-2 text-xs font-medium text-text-muted">
+              {t("folder.quickListTitle")}
+            </p>
+            <SearchInput
+              ref={searchInputRef}
+              value={query}
+              onChange={handleSearchChange}
+              onKeyDown={handleSearchKeyDown}
+              placeholder={t("folder.searchFolders")}
+              ariaLabel={t("folder.searchFolders")}
+              size="sm"
+              className="rounded-md bg-bg px-2 py-1.5"
+              inputClassName="w-full"
+            />
+            <div
+              data-testid="folder-quick-list"
+              className="mt-2 max-h-64 space-y-0.5 overflow-y-auto"
+            >
+              {filteredFolders.map(({ folder, index }, listIndex) => {
+                const systemType = resolveFolderSystemType(folder, index);
+                const isSystemFolder = systemType !== "created";
+                const iconName =
+                  systemType === "all"
+                    ? "folders"
+                    : systemType === "personal"
+                      ? "profile"
+                      : systemType === "channels"
+                        ? "channels"
+                        : "folder";
+                const isSelected = selectedFolderId === folder.id;
+                const isActive = resolvedActiveIndex === listIndex;
+                return (
+                  <button
+                    key={folder.id}
+                    type="button"
+                    ref={(node) => {
+                      if (isActive) {
+                        activeItemRef.current = node;
+                      }
+                    }}
+                    data-active={isActive ? "true" : undefined}
+                    onClick={() => handleFolderSelect(folder.id)}
+                    className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-text-primary transition-colors ${
+                      isActive
+                        ? "bg-accent/20"
+                        : isSelected
+                          ? "bg-accent/10"
+                          : "hover:bg-sidebar-hover"
+                    }`}
+                  >
+                    <span
+                      className={`inline-flex shrink-0 ${isSystemFolder ? "text-accent" : "text-current"}`}
+                      style={
+                        !isSystemFolder
+                          ? { color: folderColorValueToCssHex(folder.backgroundColor) }
+                          : undefined
+                      }
+                    >
+                      <Icon name={iconName} size={18} />
+                    </span>
+                    <span className="flex-1 truncate">{folder.label}</span>
+                    {folder.badge !== undefined && <Badge count={folder.badge} variant="unread" />}
+                  </button>
+                );
+              })}
+              {filteredFolders.length === 0 && (
+                <p className="px-2 py-3 text-xs text-text-muted">{t("folder.noFoldersFound")}</p>
+              )}
+            </div>
+          </>
+        ),
+      },
+    ],
+    [
+      filteredFolders,
+      handleFolderSelect,
+      handleSearchChange,
+      handleSearchKeyDown,
+      query,
+      resolvedActiveIndex,
+      selectedFolderId,
+    ],
+  );
+
   return (
-    <DropdownMenu.Root
+    <DropdownMenu
       open={menuOpen}
       onOpenChange={(nextOpen) => {
         setMenuOpen(nextOpen);
@@ -148,8 +239,10 @@ export const FolderQuickList: React.FC<FolderQuickListProps> = React.memo(functi
           setActiveIndex(null);
         }
       }}
-    >
-      <DropdownMenu.Trigger asChild>
+      items={menuItems}
+      contentClassName="w-folder-quick-list p-2"
+      triggerContentProps={{ side: "right", align: "start", sideOffset: 8 }}
+      trigger={
         <button
           type="button"
           className="hover:bg-bg/60 flex h-8 w-8 items-center justify-center rounded-lg border border-border-subtle text-text-muted transition-colors hover:text-text-primary"
@@ -158,85 +251,7 @@ export const FolderQuickList: React.FC<FolderQuickListProps> = React.memo(functi
         >
           <Icon name="more" size={28} className="shrink-0" />
         </button>
-      </DropdownMenu.Trigger>
-      <DropdownMenu.Portal>
-        <DropdownMenu.Content
-          className="z-dropdown w-folder-quick-list rounded-lg border border-border-subtle bg-bg-elevated p-2 shadow-lg"
-          side="right"
-          align="start"
-          sideOffset={8}
-        >
-          <p className="px-1 pb-2 text-xs font-medium text-text-muted">
-            {t("folder.quickListTitle")}
-          </p>
-          <SearchInput
-            ref={searchInputRef}
-            value={query}
-            onChange={handleSearchChange}
-            onKeyDown={handleSearchKeyDown}
-            placeholder={t("folder.searchFolders")}
-            ariaLabel={t("folder.searchFolders")}
-            size="sm"
-            className="rounded-md bg-bg px-2 py-1.5"
-            inputClassName="w-full"
-          />
-          <div
-            data-testid="folder-quick-list"
-            className="mt-2 max-h-64 space-y-0.5 overflow-y-auto"
-          >
-            {filteredFolders.map(({ folder, index }, listIndex) => {
-              const systemType = resolveFolderSystemType(folder, index);
-              const isSystemFolder = systemType !== "created";
-              const iconName =
-                systemType === "all"
-                  ? "folders"
-                  : systemType === "personal"
-                    ? "profile"
-                    : systemType === "channels"
-                      ? "channels"
-                      : "folder";
-              const isSelected = selectedFolderId === folder.id;
-              const isActive = resolvedActiveIndex === listIndex;
-              return (
-                <button
-                  key={folder.id}
-                  type="button"
-                  ref={(node) => {
-                    if (isActive) {
-                      activeItemRef.current = node;
-                    }
-                  }}
-                  data-active={isActive ? "true" : undefined}
-                  onClick={() => handleFolderSelect(folder.id)}
-                  className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-text-primary transition-colors ${
-                    isActive
-                      ? "bg-accent/20"
-                      : isSelected
-                        ? "bg-accent/10"
-                        : "hover:bg-sidebar-hover"
-                  }`}
-                >
-                  <span
-                    className={`inline-flex shrink-0 ${isSystemFolder ? "text-accent" : "text-current"}`}
-                    style={
-                      !isSystemFolder
-                        ? { color: folderColorValueToCssHex(folder.backgroundColor) }
-                        : undefined
-                    }
-                  >
-                    <Icon name={iconName} size={18} />
-                  </span>
-                  <span className="flex-1 truncate">{folder.label}</span>
-                  {folder.badge !== undefined && <Badge count={folder.badge} variant="unread" />}
-                </button>
-              );
-            })}
-            {filteredFolders.length === 0 && (
-              <p className="px-2 py-3 text-xs text-text-muted">{t("folder.noFoldersFound")}</p>
-            )}
-          </div>
-        </DropdownMenu.Content>
-      </DropdownMenu.Portal>
-    </DropdownMenu.Root>
+      }
+    />
   );
 });
