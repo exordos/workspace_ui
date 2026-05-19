@@ -91,7 +91,7 @@ describe("useManageFoldersStore", () => {
       headers: new Headers(),
       raw: new Response(),
       durationMs: 10,
-    } as never);
+    });
   }
 
   describe("initial state", () => {
@@ -279,6 +279,23 @@ describe("manage-folders API", () => {
       );
     });
 
+    it("omits read-only timestamps from update payload", async () => {
+      const { workspaceApi } = await import("~/shared/api/client");
+      vi.mocked(workspaceApi.get).mockResolvedValue(folderGetResponse);
+      vi.mocked(workspaceApi.putJson).mockResolvedValue(folderResponse);
+      vi.mocked(workspaceApi.putJson).mockClear();
+
+      const { updateFolder } = await import("./manage-folders.api");
+      await updateFolder("folder-1", { title: "Renamed" });
+
+      const putJson = vi.mocked(workspaceApi.putJson);
+      expect(putJson).toHaveBeenCalledTimes(1);
+      const body = putJson.mock.calls[0]![1] as Record<string, unknown>;
+      expect(body).not.toHaveProperty("updated_at");
+      expect(body).not.toHaveProperty("created_at");
+      expect(body).not.toHaveProperty("unread_messages");
+    });
+
     it("sends backgroundColor when provided", async () => {
       const { workspaceApi } = await import("~/shared/api/client");
       vi.mocked(workspaceApi.get).mockResolvedValue(folderGetResponse);
@@ -350,7 +367,7 @@ describe("manage-folders API", () => {
         headers: new Headers(),
         raw: new Response(),
         durationMs: 20,
-      } as never);
+      });
 
       const { deleteFolder } = await import("./manage-folders.api");
       const result = await deleteFolder("folder-1");
@@ -368,7 +385,7 @@ describe("manage-folders API", () => {
         headers: new Headers(),
         raw: new Response(),
         durationMs: 10,
-      } as never);
+      });
 
       const { deleteFolder } = await import("./manage-folders.api");
       expect(await deleteFolder("folder-1")).toBe(false);
