@@ -8,7 +8,7 @@ import { createUser } from "~/test/factories";
 import { MessageBubble } from "./message-bubble.ui";
 
 const buildAuthHeaderMock = vi.fn(() => ({}));
-const writeTextMock = vi.fn(() => Promise.resolve(true));
+const writeTextMock = vi.fn<(value: string) => Promise<boolean>>(() => Promise.resolve(true));
 
 vi.mock("~/shared/lib/auth-guard", () => ({
   buildAuthHeader: () => buildAuthHeaderMock(),
