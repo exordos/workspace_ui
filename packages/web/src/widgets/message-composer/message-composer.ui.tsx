@@ -19,6 +19,8 @@ import {
   resolveTomorrowMorningTimestamp,
 } from "./message-composer-body.lib";
 import {
+  AI_UNAVAILABLE_POPOVER_HEIGHT,
+  AI_UNAVAILABLE_POPOVER_WIDTH,
   COMPOSER_TEXTAREA_MAX_HEIGHT_PX,
   COMPOSER_TEXTAREA_MIN_HEIGHT_PX,
   EMOJI_PICKER_HEIGHT,
@@ -87,6 +89,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   const [scheduleMenuStyle, setScheduleMenuStyle] = useState<React.CSSProperties>({});
   const [savedSnippetsMenuOpen, setSavedSnippetsMenuOpen] = useState(false);
   const [savedSnippetsMenuStyle, setSavedSnippetsMenuStyle] = useState<React.CSSProperties>({});
+  const [aiMenuStyle, setAiMenuStyle] = useState<React.CSSProperties>({});
   const [savedSnippetsFilter, setSavedSnippetsFilter] = useState("");
   const [savedSnippetCreateMode, setSavedSnippetCreateMode] = useState(false);
   const [savedSnippetTitle, setSavedSnippetTitle] = useState("");
@@ -130,6 +133,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   const emojiButtonRef = useRef<HTMLButtonElement>(null);
   const scheduleButtonRef = useRef<HTMLButtonElement>(null);
   const savedSnippetsButtonRef = useRef<HTMLButtonElement>(null);
+  const aiButtonAnchorRef = useRef<HTMLSpanElement>(null);
   const scheduledSendInFlightRef = useRef(false);
   const isWebViewMode = useMemo(() => isWebView(), []);
   const viewportKeyboard = useViewportKeyboard();
@@ -701,6 +705,41 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     };
   }, [savedSnippetsMenuOpen, updateSavedSnippetsMenuPosition]);
 
+  const updateAiMenuPosition = useCallback(() => {
+    setAiMenuStyle(
+      getFloatingPickerStyle(
+        aiButtonAnchorRef.current,
+        AI_UNAVAILABLE_POPOVER_WIDTH,
+        AI_UNAVAILABLE_POPOVER_HEIGHT,
+      ),
+    );
+  }, []);
+
+  React.useEffect(() => {
+    if (!aiMenuOpen) return;
+    updateAiMenuPosition();
+    const handleWindowChange = () => updateAiMenuPosition();
+    window.addEventListener("resize", handleWindowChange);
+    window.addEventListener("scroll", handleWindowChange, true);
+    return () => {
+      window.removeEventListener("resize", handleWindowChange);
+      window.removeEventListener("scroll", handleWindowChange, true);
+    };
+  }, [aiMenuOpen, updateAiMenuPosition]);
+
+  const toggleAiUnavailablePopover = useCallback(() => {
+    setMediaPickerOpen(false);
+    setScheduleMenuOpen(false);
+    setSavedSnippetsMenuOpen(false);
+    setAiMenuOpen((prevOpen) => {
+      const nextOpen = !prevOpen;
+      if (nextOpen) {
+        updateAiMenuPosition();
+      }
+      return nextOpen;
+    });
+  }, [updateAiMenuPosition]);
+
   const toggleSavedSnippetsMenu = useCallback(() => {
     setSavedSnippetsMenuOpen((prevOpen) => {
       const nextOpen = !prevOpen;
@@ -902,15 +941,9 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
                 }
                 aiTrigger={
                   !isEditing ? (
-                    <AiComposerButton
-                      onClick={() => {
-                        setMediaPickerOpen(false);
-                        setScheduleMenuOpen(false);
-                        setSavedSnippetsMenuOpen(false);
-                        setAiMenuOpen((o) => !o);
-                      }}
-                      active={aiMenuOpen}
-                    />
+                    <span ref={aiButtonAnchorRef}>
+                      <AiComposerButton onClick={toggleAiUnavailablePopover} active={aiMenuOpen} />
+                    </span>
                   ) : undefined
                 }
               />
@@ -932,6 +965,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
             onOpenChange={setAiMenuOpen}
             messagesContext={aiMessagesContext ?? []}
             chatContext={aiChatContext}
+            popoverStyle={aiMenuStyle}
           />
         )}
         {!isEditing && scheduleMenuOpen && (

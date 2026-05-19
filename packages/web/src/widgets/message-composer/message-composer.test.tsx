@@ -79,18 +79,12 @@ vi.mock("emoji-picker-react", () => ({
   },
 }));
 
-const aiActionMenuMock = vi.fn();
-
 vi.mock("~/features/ai-reply/ai-reply.ui", () => ({
   AiComposerButton: ({ onClick }: { onClick: () => void }) => (
     <button type="button" onClick={onClick}>
       AI
     </button>
   ),
-  AiActionMenu: (props: unknown) => {
-    aiActionMenuMock(props);
-    return null;
-  },
   SmartReplySuggestions: () => null,
 }));
 
@@ -105,7 +99,6 @@ vi.mock("~/entities/sticker/sticker.api", () => ({
 afterEach(() => {
   useUsersStore.getState().clear();
   useMentionSuggestStore.getState().clear();
-  aiActionMenuMock.mockReset();
   isWebViewMock.mockReset();
   isWebViewMock.mockReturnValue(false);
   useViewportKeyboardMock.mockReset();
@@ -1617,46 +1610,54 @@ describe("MessageComposer AI context wiring", () => {
     focusComposerInput();
 
     fireEvent.click(screen.getByRole("button", { name: "AI" }));
+    expect(screen.getByTestId("composer-ai-unavailable-popover")).toBeInTheDocument();
 
     const backdrop = screen.getByTestId("composer-ai-menu-backdrop");
     fireEvent.click(backdrop);
 
     expect(screen.queryByTestId("composer-ai-menu-backdrop")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("composer-ai-unavailable-popover")).not.toBeInTheDocument();
   });
 
-  it("passes chat context and messages context to AI action menu", () => {
-    const messagesContext = [
-      {
-        id: 1,
-        senderId: 42,
-        senderName: "Alice",
-        content: "Can you review this?",
-        timestamp: 1710000001,
-        isOwn: false,
-      },
-    ];
-    const chatContext = {
-      type: "stream" as const,
-      streamName: "engineering",
-      topic: "general",
-    };
-
-    renderWithProviders(
-      <MessageComposer
-        onSend={vi.fn()}
-        aiMessagesContext={messagesContext}
-        aiChatContext={chatContext}
-      />,
-    );
+  it("shows temporary unavailable message when AI trigger is clicked", () => {
+    renderWithProviders(<MessageComposer onSend={vi.fn()} />);
     focusComposerInput();
 
     fireEvent.click(screen.getByRole("button", { name: "AI" }));
 
-    const props = aiActionMenuMock.mock.calls.at(-1)?.[0] as {
-      messagesContext?: unknown;
-      chatContext?: unknown;
-    };
-    expect(props.messagesContext).toEqual(messagesContext);
-    expect(props.chatContext).toEqual(chatContext);
+    expect(
+      screen.getByText("AI features are temporarily unavailable in your organization."),
+    ).toBeInTheDocument();
+  });
+
+  it("toggles AI unavailable popover on repeated AI trigger click", () => {
+    renderWithProviders(<MessageComposer onSend={vi.fn()} />);
+    focusComposerInput();
+
+    fireEvent.click(screen.getByRole("button", { name: "AI" }));
+    expect(screen.getByTestId("composer-ai-unavailable-popover")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "AI" }));
+    expect(screen.queryByTestId("composer-ai-unavailable-popover")).not.toBeInTheDocument();
+  });
+
+  it("closes other popovers when opening AI unavailable popover", () => {
+    renderWithProviders(<MessageComposer onSend={vi.fn()} />);
+    focusComposerInput();
+
+    fireEvent.click(screen.getByRole("button", { name: /message menu/i }));
+    expect(screen.getByRole("dialog", { name: /message menu/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "AI" }));
+    expect(screen.queryByRole("dialog", { name: /message menu/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /saved snippets/i }));
+    expect(screen.getByTestId("composer-saved-snippets-picker")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "AI" }));
+    expect(screen.queryByTestId("composer-saved-snippets-picker")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /emoji/i }));
+    expect(screen.getByTestId("composer-media-picker")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "AI" }));
+    expect(screen.queryByTestId("composer-media-picker")).not.toBeInTheDocument();
   });
 });

@@ -5,7 +5,7 @@ import { computeFloatingPickerPosition } from "./message-composer-picker-positio
 import type { CSSProperties } from "react";
 
 export function getFloatingPickerStyle(
-  anchor: HTMLButtonElement | null,
+  anchor: HTMLElement | null,
   pickerWidth: number,
   pickerHeight: number,
 ): CSSProperties {
