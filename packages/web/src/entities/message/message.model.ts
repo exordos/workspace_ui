@@ -9,7 +9,7 @@ import { useUsersStore } from "~/entities/user/user.model";
 import { getCurrentInstance } from "~/shared/api/client";
 import { fetchMessagesWithNarrowPage } from "~/shared/api/zulip";
 import type { MockMessage } from "~/shared/api/zulip.types";
-import { createLogger } from "~/shared/lib/logger";
+import { createLogger, logStoreAction } from "~/shared/lib/logger";
 import {
   deleteMessagesByIds,
   patchMessageContentInCache,
@@ -21,6 +21,11 @@ import {
 } from "~/shared/lib/message-cache-db";
 import { chatKeyFromContext, chatKeyFromMockMessage } from "~/shared/lib/message-cache-keys.lib";
 import { logMessageFlow, summarizeChatContextForLog } from "~/shared/lib/message-flow-debug.lib";
+import { filterMessageLinkPreviewsForMarkdown } from "~/shared/lib/message-link-preview-filter.lib";
+import { upsertLinkPreviewOnMessage } from "~/shared/lib/message-link-preview-list.lib";
+import { mergeMessagePreservingLinkPreview } from "~/shared/lib/message-link-preview-merge.lib";
+import { applyPendingLinkPreviewsToMessage } from "~/shared/lib/message-link-preview-pending.lib";
+import { traceLinkPreview } from "~/shared/lib/message-link-preview-trace.lib";
 import {
   computeHasNewerAfterLoadNewerIdbPage,
   computeHasOlderAfterLoadOlderIdbPage,
@@ -236,7 +241,9 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
   appendMessages(msgs) {
     set((state) => {
       const existingIds = new Set(state.messages.map((m) => m.id));
-      const fresh = msgs.filter((m) => !existingIds.has(m.id));
+      const fresh = msgs
+        .filter((m) => !existingIds.has(m.id))
+        .map((m) => (m.id > 0 ? applyPendingLinkPreviewsToMessage(m) : m));
       if (fresh.length === 0) return state;
       return { messages: [...state.messages, ...fresh] };
     });
@@ -269,7 +276,12 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
           if (msgIdx >= 0) {
             const prev = state.messages[msgIdx]!;
             const stableKey = prev.local_echo_key ?? prev.id;
-            const merged = withOutgoingDeliveryStatus({ ...msg, local_echo_key: stableKey });
+            const merged = applyPendingLinkPreviewsToMessage(
+              mergeMessagePreservingLinkPreview(
+                withOutgoingDeliveryStatus({ ...msg, local_echo_key: stableKey }),
+                prev,
+              ),
+            );
             const queue = [...state.pendingOutgoingEchoKeys];
             queue.splice(qi, 1);
             const updated = [...state.messages];
@@ -309,15 +321,19 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         };
       }
 
-      const idx = state.messages.findIndex((m) => m.id === msg.id);
+      const normalizedMsg = msg.id > 0 ? applyPendingLinkPreviewsToMessage(msg) : msg;
+
+      const idx = state.messages.findIndex((m) => m.id === normalizedMsg.id);
       if (idx >= 0) {
         const updated = [...state.messages];
-        updated[idx] = msg;
-        idbRef.current = msg.id < 0 ? { kind: "none" } : { kind: "put", message: msg };
+        updated[idx] = normalizedMsg;
+        idbRef.current =
+          normalizedMsg.id < 0 ? { kind: "none" } : { kind: "put", message: normalizedMsg };
         return { messages: updated };
       }
-      idbRef.current = msg.id < 0 ? { kind: "none" } : { kind: "put", message: msg };
-      return { messages: [...state.messages, msg] };
+      idbRef.current =
+        normalizedMsg.id < 0 ? { kind: "none" } : { kind: "put", message: normalizedMsg };
+      return { messages: [...state.messages, normalizedMsg] };
     });
 
     const state = get();
@@ -352,6 +368,9 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         | { kind: "sync"; deleteNegativeId: number | null; message: MockMessage };
     } = { current: { kind: "none" } };
 
+    const withPendingIfPersisted = (message: MockMessage): MockMessage =>
+      message.id > 0 ? applyPendingLinkPreviewsToMessage(message) : message;
+
     set((state) => {
       const nextQueue = state.pendingOutgoingEchoKeys.filter((k) => k !== optimisticId);
       const delivered = withOutgoingDeliveryStatus(finalMessage);
@@ -363,10 +382,19 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       if (optIdx >= 0 && realIdx >= 0 && optIdx !== realIdx) {
         const optimistic = state.messages[optIdx]!;
         const echoKey = optimistic.local_echo_key ?? optimistic.id;
-        const merged = { ...delivered, local_echo_key: echoKey };
         const updated = [...state.messages];
         updated.splice(optIdx, 1);
         const targetIdx = realIdx > optIdx ? realIdx - 1 : realIdx;
+        const existingAtTarget = updated[targetIdx];
+        const merged = withPendingIfPersisted(
+          mergeMessagePreservingLinkPreview(
+            mergeMessagePreservingLinkPreview(
+              { ...delivered, local_echo_key: echoKey },
+              optimistic,
+            ),
+            existingAtTarget,
+          ),
+        );
         updated[targetIdx] = merged;
         idbRef.current = {
           kind: "sync",
@@ -379,7 +407,9 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       if (optIdx >= 0) {
         const prev = state.messages[optIdx]!;
         const echoKey = prev.local_echo_key ?? prev.id;
-        const merged = { ...delivered, local_echo_key: echoKey };
+        const merged = withPendingIfPersisted(
+          mergeMessagePreservingLinkPreview({ ...delivered, local_echo_key: echoKey }, prev),
+        );
         const updated = [...state.messages];
         updated[optIdx] = merged;
         idbRef.current = {
@@ -393,14 +423,19 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       if (realIdx >= 0) {
         const prev = state.messages[realIdx]!;
         const echoKey = prev.local_echo_key ?? optimisticId;
-        const merged = { ...delivered, local_echo_key: echoKey };
+        const merged = withPendingIfPersisted(
+          mergeMessagePreservingLinkPreview({ ...delivered, local_echo_key: echoKey }, prev),
+        );
         const updated = [...state.messages];
         updated[realIdx] = merged;
         idbRef.current = { kind: "sync", deleteNegativeId: null, message: merged };
         return { messages: updated, pendingOutgoingEchoKeys: nextQueue };
       }
 
-      const merged = { ...delivered, local_echo_key: optimisticId };
+      const merged = withPendingIfPersisted({
+        ...delivered,
+        local_echo_key: optimisticId,
+      });
       idbRef.current = { kind: "sync", deleteNegativeId: null, message: merged };
       return {
         messages: [...state.messages, merged],
@@ -519,16 +554,17 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
   },
 
   updateMessageContent(messageId, content, markdownSource) {
+    const markdownBody = markdownSource ?? content;
     set((state) => ({
-      messages: state.messages.map((m) =>
-        m.id === messageId
-          ? {
-              ...m,
-              content,
-              ...(markdownSource !== undefined ? { markdown_source: markdownSource } : {}),
-            }
-          : m,
-      ),
+      messages: state.messages.map((m) => {
+        if (m.id !== messageId) return m;
+        const updated = {
+          ...m,
+          content,
+          ...(markdownSource !== undefined ? { markdown_source: markdownSource } : {}),
+        };
+        return filterMessageLinkPreviewsForMarkdown(updated, markdownBody);
+      }),
     }));
     const state = get();
     if (!state.context) return;
@@ -542,6 +578,27 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
           ...(markdownSource !== undefined ? { markdown_source: markdownSource } : {}),
         });
     }
+  },
+
+  updateMessageLinkPreview(messageId, linkPreview) {
+    if (linkPreview == null) {
+      return;
+    }
+    set((state) => ({
+      messages: state.messages.map((m) =>
+        m.id === messageId ? upsertLinkPreviewOnMessage(m, linkPreview) : m,
+      ),
+    }));
+    logStoreAction("message", "updateMessageLinkPreview", {
+      messageId,
+      hasPreview: linkPreview != null,
+    });
+    traceLinkPreview("message:update-link-preview", {
+      messageId,
+      hasPreview: linkPreview != null,
+      title: linkPreview?.title,
+      targetUrl: linkPreview?.targetUrl,
+    });
   },
 
   moveStreamTopicMessages({ streamId, oldTopic, newTopic, messageIds, anchorMessageId }) {

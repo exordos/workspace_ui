@@ -24,10 +24,11 @@ export function ensureZulipApiReady(): void {
 export async function zulipPipelineGet(
   path: string,
   params?: Record<string, string>,
+  signal?: AbortSignal,
 ): Promise<{ ok: boolean; status: number; data: unknown } | null> {
   try {
     ensureZulipApiReady();
-    const response = await zulipApi.get(normalizeApiPath(path), params);
+    const response = await zulipApi.get(normalizeApiPath(path), params, signal);
     return {
       ok: response.ok,
       status: response.status,

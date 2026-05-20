@@ -1,6 +1,7 @@
 /**
  * Public TypeScript contracts for the Zulip API client (`zulip-*.ts` modules).
  */
+import type { LinkPreviewData } from "~/shared/lib/message-link-preview.types";
 
 export class ZulipAuthError extends Error {
   constructor(
@@ -270,6 +271,10 @@ export interface MockMessage {
    * Preserved after the server assigns a positive message id.
    */
   local_echo_key?: number;
+  /** Client-side link preview card data (Zulip unfurl via messages/render). */
+  link_preview?: LinkPreviewData;
+  /** Multiple link preview cards (one per URL in message). */
+  link_previews?: LinkPreviewData[];
 }
 
 /** Input shape for normalizing API messages to MockMessage. */

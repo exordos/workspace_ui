@@ -5,7 +5,7 @@ import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
 import { t } from "~/i18n/i18n";
-import type { MessageReactionPayload, MockMessage } from "~/shared/api/zulip.types";
+import type { MessageReactionPayload } from "~/shared/api/zulip.types";
 import CheckIconRaw from "~/shared/assets/icons/check.svg?raw";
 import CopyIconRaw from "~/shared/assets/icons/copy.svg?raw";
 import { buildAuthHeader } from "~/shared/lib/auth-guard";
@@ -43,6 +43,8 @@ import { MessageBubbleOwnDeliveryIndicator } from "./message-bubble-own-delivery
 import { MessageBubbleReactionsRow } from "./message-bubble-reactions-row.ui";
 import { getMessageImagesBaseUrl } from "./message-bubble-realm-html.lib";
 import { resolveJitsiLocationName } from "./message-jitsi-location.lib";
+import { useMessageLinkPreview } from "./message-link-preview.hook";
+import { MessageLinkPreview } from "./message-link-preview.ui";
 import { normalizeMediaUrl } from "./message-list-media.lib";
 import { MessageMentionPopover } from "./message-mention-popover.ui";
 import type {
@@ -164,6 +166,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     }, [message.content, imagesBase, resolveUserMention, resolveCustomEmojiShortcodeImageUrl]);
 
     const messageBodyRef = useRef<HTMLDivElement>(null);
+    const linkPreviewVisibilityRef = useRef<HTMLDivElement>(null);
     const groupedContainerRef = useRef<HTMLDivElement>(null);
     const regularContainerRef = useRef<HTMLDivElement>(null);
     const attachmentStatusRef = useRef<Map<string, MessageBubbleAttachmentDownloadStatus>>(
@@ -677,6 +680,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       };
     }, [handleMessageBodyClick]);
 
+    const { visiblePreviews: linkPreviews } = useMessageLinkPreview(
+      message,
+      linkPreviewVisibilityRef,
+    );
+
     const jitsiUrl =
       getJitsiMeetingUrl(message.content, jitsiLinkOptions) ??
       getJitsiMeetingUrl(displayHtmlForJitsi, jitsiLinkOptions);
@@ -771,6 +779,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     ) : (
       <>
         <div
+          ref={linkPreviewVisibilityRef}
           className={`relative overflow-hidden px-3 py-2 pb-5 pr-14 ${bubbleSurfaceClass} transition-colors duration-700 ${
             isOwn
               ? `${ownBubbleTailClass} ${ownBubbleBackgroundClass} text-text-primary`
@@ -778,6 +787,19 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
           }`}
         >
           <div ref={messageBodyRef} className={MESSAGE_BUBBLE_BODY_CLASS_NAME} />
+          {linkPreviews.length > 0 ? (
+            <div className="mt-2 flex flex-col gap-2">
+              {linkPreviews.map((item) => (
+                <MessageLinkPreview
+                  key={item.previewUrl}
+                  previewUrl={item.previewUrl}
+                  previewData={item.previewData}
+                  status={item.status}
+                  stacked
+                />
+              ))}
+            </div>
+          ) : null}
           {hasReactions ? (
             <div className="mt-1 min-w-0">
               <MessageBubbleReactionsRow

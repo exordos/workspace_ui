@@ -1,4 +1,5 @@
 import type { MockMessage, MockMessageDeliveryStatus, Reaction } from "~/shared/api/zulip.types";
+import type { LinkPreviewData } from "~/shared/lib/message-link-preview.types";
 
 export type CurrentChatContext =
   | {
@@ -39,6 +40,7 @@ export interface CurrentChatMessagesState {
   updateMessageReaction: (messageId: number, reaction: Reaction, op: "add" | "remove") => void;
   updateMessageFlags: (messageIds: number[], flag: string, op: "add" | "remove") => void;
   updateMessageContent: (messageId: number, content: string, markdownSource?: string) => void;
+  updateMessageLinkPreview: (messageId: number, linkPreview: LinkPreviewData | null) => void;
   moveStreamTopicMessages: (params: {
     streamId: number;
     oldTopic: string;

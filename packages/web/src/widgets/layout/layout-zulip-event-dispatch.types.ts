@@ -2,6 +2,7 @@ import type { ChatListStreamMetadataRow } from "~/entities/chat-list/chat-list.m
 import type { CurrentChatContext } from "~/entities/message/message.model";
 import type { IncomingDmCallInvite } from "~/features/jitsi-call/jitsi-call.model";
 import type { MockMessage, ZulipRawMessage } from "~/shared/api/zulip";
+import type { LinkPreviewData } from "~/shared/lib/message-link-preview.types";
 import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
 
 export type LayoutMessageFlagOp = "add" | "remove";
@@ -49,6 +50,7 @@ export interface LayoutCurrentChatActions {
   ) => void;
   removeMessages: (messageIds: number[]) => void;
   updateMessageContent: (messageId: number, content: string, markdownSource?: string) => void;
+  updateMessageLinkPreview: (messageId: number, linkPreview: LinkPreviewData | null) => void;
   moveStreamTopicMessages: (params: {
     streamId: number;
     oldTopic: string;

@@ -134,14 +134,18 @@ describe("fetchRecentMessages", () => {
     expect(result).toHaveLength(1);
     expect(result[0]!.id).toBe(1);
     expect(mockRefreshZulipApiBase).toHaveBeenCalled();
-    expect(mockZulipApi.get).toHaveBeenCalledWith("/messages", {
-      anchor: "newest",
-      num_before: "1000",
-      num_after: "0",
-      client_gravatar: "true",
-      allow_empty_topic_name: "true",
-      apply_markdown: "false",
-    });
+    expect(mockZulipApi.get).toHaveBeenCalledWith(
+      "/messages",
+      {
+        anchor: "newest",
+        num_before: "1000",
+        num_after: "0",
+        client_gravatar: "true",
+        allow_empty_topic_name: "true",
+        apply_markdown: "false",
+      },
+      undefined,
+    );
   });
 
   it("returns empty array on non-ok", async () => {
@@ -186,15 +190,19 @@ describe("fetchMessagesBeforeAnchor", () => {
 
     expect(result).toHaveLength(1);
     expect(result[0]!.id).toBe(50);
-    expect(mockZulipApi.get).toHaveBeenCalledWith("/messages", {
-      anchor: "100",
-      include_anchor: "false",
-      num_before: "5000",
-      num_after: "0",
-      client_gravatar: "true",
-      allow_empty_topic_name: "true",
-      apply_markdown: "false",
-    });
+    expect(mockZulipApi.get).toHaveBeenCalledWith(
+      "/messages",
+      {
+        anchor: "100",
+        include_anchor: "false",
+        num_before: "5000",
+        num_after: "0",
+        client_gravatar: "true",
+        allow_empty_topic_name: "true",
+        apply_markdown: "false",
+      },
+      undefined,
+    );
   });
 
   it("returns empty array on non-ok response", async () => {
@@ -225,15 +233,19 @@ describe("fetchMessagesAfterAnchor", () => {
 
     expect(result).toHaveLength(1);
     expect(result[0]!.id).toBe(101);
-    expect(mockZulipApi.get).toHaveBeenCalledWith("/messages", {
-      anchor: "100",
-      include_anchor: "false",
-      num_before: "0",
-      num_after: "5000",
-      client_gravatar: "true",
-      allow_empty_topic_name: "true",
-      apply_markdown: "false",
-    });
+    expect(mockZulipApi.get).toHaveBeenCalledWith(
+      "/messages",
+      {
+        anchor: "100",
+        include_anchor: "false",
+        num_before: "0",
+        num_after: "5000",
+        client_gravatar: "true",
+        allow_empty_topic_name: "true",
+        apply_markdown: "false",
+      },
+      undefined,
+    );
   });
 
   it("returns empty array on transport error", async () => {
@@ -259,15 +271,19 @@ describe("fetchActivityMessages", () => {
     });
     const result = await fetchActivityMessages("starred");
     expect(result).toHaveLength(1);
-    expect(mockZulipApi.get).toHaveBeenCalledWith("/messages", {
-      anchor: "newest",
-      num_before: "200",
-      num_after: "0",
-      narrow: JSON.stringify([{ negated: false, operator: "is", operand: "starred" }]),
-      allow_empty_topic_name: "true",
-      client_gravatar: "true",
-      apply_markdown: "false",
-    });
+    expect(mockZulipApi.get).toHaveBeenCalledWith(
+      "/messages",
+      {
+        anchor: "newest",
+        num_before: "200",
+        num_after: "0",
+        narrow: JSON.stringify([{ negated: false, operator: "is", operand: "starred" }]),
+        allow_empty_topic_name: "true",
+        client_gravatar: "true",
+        apply_markdown: "false",
+      },
+      undefined,
+    );
   });
 
   it("returns empty on error", async () => {
@@ -343,10 +359,14 @@ describe("fetchMessageById", () => {
     expect(result?.id).toBe(100);
     expect(result?.channel).toBe("general");
     expect(result?.markdown_source).toBe("hello");
-    expect(mockZulipApi.get).toHaveBeenCalledWith("/messages/100", {
-      allow_empty_topic_name: "true",
-      apply_markdown: "false",
-    });
+    expect(mockZulipApi.get).toHaveBeenCalledWith(
+      "/messages/100",
+      {
+        allow_empty_topic_name: "true",
+        apply_markdown: "false",
+      },
+      undefined,
+    );
   });
 });
 
@@ -530,15 +550,19 @@ describe("fetchAllMessagesPage", () => {
 
     await fetchAllMessagesPage("newest", 25);
 
-    expect(mockZulipApi.get).toHaveBeenCalledWith("/messages", {
-      anchor: "newest",
-      num_before: "25",
-      num_after: "0",
-      narrow: "[]",
-      allow_empty_topic_name: "true",
-      client_gravatar: "true",
-      apply_markdown: "false",
-    });
+    expect(mockZulipApi.get).toHaveBeenCalledWith(
+      "/messages",
+      {
+        anchor: "newest",
+        num_before: "25",
+        num_after: "0",
+        narrow: "[]",
+        allow_empty_topic_name: "true",
+        client_gravatar: "true",
+        apply_markdown: "false",
+      },
+      undefined,
+    );
   });
 
   it("throws for unsupported anchor string", async () => {

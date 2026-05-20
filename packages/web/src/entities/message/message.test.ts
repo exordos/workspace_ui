@@ -272,6 +272,32 @@ describe("currentChatMessagesStore", () => {
       expect(state.pendingOutgoingEchoKeys).toHaveLength(0);
     });
 
+    it("commitOutgoingMessage preserves link_preview from optimistic row", () => {
+      const me = 42;
+      useCurrentChatMessagesStore.getState().appendMessage({
+        ...mockMsg({
+          id: -1,
+          sender_id: me,
+          stream_id: 5,
+          content: "https://example.com",
+          link_preview: { targetUrl: "https://example.com", title: "Example" },
+        }),
+        delivery_status: "sending",
+        local_echo_key: -1,
+      });
+
+      useCurrentChatMessagesStore.getState().commitOutgoingMessage(-1, {
+        ...mockMsg({ id: 100, sender_id: me, stream_id: 5, content: "https://example.com" }),
+      });
+
+      const previews =
+        useCurrentChatMessagesStore.getState().messages[0]!.link_previews ??
+        (useCurrentChatMessagesStore.getState().messages[0]!.link_preview
+          ? [useCurrentChatMessagesStore.getState().messages[0]!.link_preview!]
+          : []);
+      expect(previews[0]?.title).toBe("Example");
+    });
+
     it("commitOutgoingMessage updates server row when real-time echo merged first", () => {
       const me = 42;
       useCurrentChatMessagesStore.getState().appendMessage({
@@ -640,6 +666,24 @@ describe("currentChatMessagesStore", () => {
       useCurrentChatMessagesStore.getState().updateMessageContent(1, "<p>only html</p>");
 
       expect(useCurrentChatMessagesStore.getState().messages[0]!.markdown_source).toBe("keep");
+    });
+
+    it("drops link_previews for URLs removed from edited markdown", () => {
+      useCurrentChatMessagesStore.getState().setMessages([
+        mockMsg({
+          id: 1,
+          content: "https://stay.test",
+          link_previews: [
+            { targetUrl: "https://stay.test", title: "Stay" },
+            { targetUrl: "https://gone.test", title: "Gone" },
+          ],
+        }),
+      ]);
+
+      useCurrentChatMessagesStore.getState().updateMessageContent(1, "https://stay.test");
+
+      const previews = useCurrentChatMessagesStore.getState().messages[0]!.link_previews;
+      expect(previews?.map((p) => p.targetUrl)).toEqual(["https://stay.test"]);
     });
   });
 

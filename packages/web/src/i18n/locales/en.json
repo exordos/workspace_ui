@@ -166,7 +166,8 @@
     "read": "Read",
     "readReceiptsError": "Could not load read receipts",
     "noReadReceipts": "No one has read this message yet",
-    "mentionUserCard": "User mention"
+    "mentionUserCard": "User mention",
+    "linkPreviewLoading": "Loading link preview"
   },
   "channel": {
     "createChannel": "Create channel",

@@ -345,9 +345,7 @@ export async function fetchDmMessages(userIds: number | number[]): Promise<MockM
     apply_markdown: true,
   };
   try {
-    const data = await client.messages.retrieve(
-      params as Parameters<ZulipClient["messages"]["retrieve"]>[0],
-    );
+    const data = await client.messages.retrieve(params);
     const raw = data as { result?: string; messages?: RawMessageToMockInput[] };
     if (raw.result === "error") return [];
     const list = raw.messages ?? [];
@@ -369,6 +367,41 @@ export async function fetchMessageById(messageId: number): Promise<MockMessage |
     return null;
   }
   return mockMessageFromGetMessageApiData(res.data);
+}
+
+/** Server-rendered HTML for one message (includes `.message_embed` when link previews are enabled). */
+export async function fetchMessageRenderedHtmlById(
+  messageId: number,
+  signal?: AbortSignal,
+): Promise<string | null> {
+  guard.messageId(messageId, "fetchMessageRenderedHtmlById");
+  const res = await zulipPipelineGet(
+    `/messages/${messageId}`,
+    {
+      allow_empty_topic_name: "true",
+      apply_markdown: "true",
+    },
+    signal,
+  );
+  if (!res?.ok) {
+    return null;
+  }
+  const data = res.data as {
+    result?: string;
+    message?: { content?: string };
+    content?: string;
+  };
+  if (data.result === "error") {
+    return null;
+  }
+  const content =
+    typeof data.message?.content === "string"
+      ? data.message.content
+      : typeof data.content === "string"
+        ? data.content
+        : null;
+  const trimmed = content?.trim() ?? "";
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 // Загружает saved snippets текущего пользователя.

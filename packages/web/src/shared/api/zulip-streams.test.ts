@@ -40,7 +40,7 @@ describe("fetchSubscriptions", () => {
       { stream_id: 1, name: "general", is_muted: true, is_archived: false },
       { stream_id: 2, name: "dev", is_muted: true, is_archived: true },
     ]);
-    expect(mockZulipApi.get).toHaveBeenCalledWith("/users/me/subscriptions", undefined);
+    expect(mockZulipApi.get).toHaveBeenCalledWith("/users/me/subscriptions", undefined, undefined);
   });
 
   it("maps channel-level remove-members group metadata", async () => {
@@ -115,7 +115,7 @@ describe("fetchStreamMembers", () => {
     });
 
     await expect(fetchStreamMembers(10)).resolves.toEqual([1, 2, 3]);
-    expect(mockZulipApi.get).toHaveBeenCalledWith("/streams/10/members", undefined);
+    expect(mockZulipApi.get).toHaveBeenCalledWith("/streams/10/members", undefined, undefined);
   });
 });
 

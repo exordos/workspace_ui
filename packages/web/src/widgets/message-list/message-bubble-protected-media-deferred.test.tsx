@@ -36,11 +36,14 @@ function createProtectedImageMessage(): MockMessage {
   }) as MockMessage;
 }
 
+interface IoInstance {
+  callback: (entries: IntersectionObserverEntry[], observer: IntersectionObserver) => void;
+  observed: Element[];
+}
+
 describe("MessageBubble deferred protected media (IntersectionObserver)", () => {
   const originalIntersectionObserver = globalThis.IntersectionObserver;
-  let deferredCallback:
-    | ((entries: IntersectionObserverEntry[], observer: IntersectionObserver) => void)
-    | null = null;
+  let ioInstances: IoInstance[] = [];
   let lastObserverRoot: Element | Document | null = null;
 
   class IntersectionObserverDeferredMock implements IntersectionObserver {
@@ -51,25 +54,46 @@ describe("MessageBubble deferred protected media (IntersectionObserver)", () => 
     observe = vi.fn();
     takeRecords = vi.fn((): IntersectionObserverEntry[] => []);
     unobserve = vi.fn();
+    private readonly instance: IoInstance;
 
     constructor(
       callback: (entries: IntersectionObserverEntry[], observer: IntersectionObserver) => void,
       options?: IntersectionObserverInit,
     ) {
-      deferredCallback = callback;
+      this.instance = { callback, observed: [] };
+      ioInstances.push(this.instance);
       this.root = options?.root ?? null;
       lastObserverRoot = this.root;
       this.rootMargin = options?.rootMargin ?? "";
       this.thresholds = options?.threshold != null ? [options.threshold as number] : [0];
+      this.observe = vi.fn((element: Element) => {
+        this.instance.observed.push(element);
+      });
+    }
+  }
+
+  function fireIntersection(target: Element, isIntersecting: boolean): void {
+    const entry = {
+      isIntersecting,
+      intersectionRatio: isIntersecting ? 1 : 0,
+      target,
+      boundingClientRect: target.getBoundingClientRect(),
+      intersectionRect: new DOMRectReadOnly(),
+      rootBounds: null,
+      time: 0,
+    } as IntersectionObserverEntry;
+
+    for (const instance of ioInstances) {
+      if (!instance.observed.includes(target)) continue;
+      instance.callback([entry], {} as IntersectionObserver);
     }
   }
 
   beforeEach(() => {
-    deferredCallback = null;
+    ioInstances = [];
     lastObserverRoot = null;
     buildAuthHeaderMock.mockReset();
-    globalThis.IntersectionObserver =
-      IntersectionObserverDeferredMock as unknown as typeof IntersectionObserver;
+    globalThis.IntersectionObserver = IntersectionObserverDeferredMock;
   });
 
   afterEach(() => {
@@ -107,38 +131,12 @@ describe("MessageBubble deferred protected media (IntersectionObserver)", () => 
 
     const image = container.querySelector("img");
     expect(image).not.toBeNull();
-    expect(deferredCallback).not.toBeNull();
+    expect(ioInstances.some((inst) => inst.observed.includes(image!))).toBe(true);
 
-    deferredCallback!(
-      [
-        {
-          isIntersecting: false,
-          intersectionRatio: 0,
-          target: image!,
-          boundingClientRect: image!.getBoundingClientRect(),
-          intersectionRect: new DOMRectReadOnly(),
-          rootBounds: null,
-          time: 0,
-        } as IntersectionObserverEntry,
-      ],
-      {} as IntersectionObserver,
-    );
+    fireIntersection(image!, false);
     expect(fetchMock).not.toHaveBeenCalled();
 
-    deferredCallback!(
-      [
-        {
-          isIntersecting: true,
-          intersectionRatio: 1,
-          target: image!,
-          boundingClientRect: image!.getBoundingClientRect(),
-          intersectionRect: new DOMRectReadOnly(),
-          rootBounds: null,
-          time: 0,
-        } as IntersectionObserverEntry,
-      ],
-      {} as IntersectionObserver,
-    );
+    fireIntersection(image!, true);
 
     await waitFor(() => {
       expect(image?.getAttribute("src")).toBe("blob:deferred-test");
@@ -173,39 +171,13 @@ describe("MessageBubble deferred protected media (IntersectionObserver)", () => 
     const image = container.querySelector("img");
     expect(image).not.toBeNull();
 
-    deferredCallback!(
-      [
-        {
-          isIntersecting: true,
-          intersectionRatio: 1,
-          target: image!,
-          boundingClientRect: image!.getBoundingClientRect(),
-          intersectionRect: new DOMRectReadOnly(),
-          rootBounds: null,
-          time: 0,
-        } as IntersectionObserverEntry,
-      ],
-      {} as IntersectionObserver,
-    );
+    fireIntersection(image!, true);
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
-    deferredCallback!(
-      [
-        {
-          isIntersecting: true,
-          intersectionRatio: 1,
-          target: image!,
-          boundingClientRect: image!.getBoundingClientRect(),
-          intersectionRect: new DOMRectReadOnly(),
-          rootBounds: null,
-          time: 0,
-        } as IntersectionObserverEntry,
-      ],
-      {} as IntersectionObserver,
-    );
+    fireIntersection(image!, true);
 
     await new Promise((r) => {
       setTimeout(r, 30);

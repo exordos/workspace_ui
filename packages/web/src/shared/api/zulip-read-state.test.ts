@@ -222,19 +222,23 @@ describe("setTopicResolvedState", () => {
     });
 
     await expect(setTopicResolvedState(10, "incident", true)).resolves.toBe(true);
-    expect(mockZulipApi.get).toHaveBeenCalledWith("/messages", {
-      anchor: "oldest",
-      num_before: "0",
-      num_after: "1",
-      include_anchor: "true",
-      allow_empty_topic_name: "true",
-      client_gravatar: "false",
-      apply_markdown: "false",
-      narrow: JSON.stringify([
-        { operator: "stream", operand: 10 },
-        { operator: "topic", operand: "incident" },
-      ]),
-    });
+    expect(mockZulipApi.get).toHaveBeenCalledWith(
+      "/messages",
+      {
+        anchor: "oldest",
+        num_before: "0",
+        num_after: "1",
+        include_anchor: "true",
+        allow_empty_topic_name: "true",
+        client_gravatar: "false",
+        apply_markdown: "false",
+        narrow: JSON.stringify([
+          { operator: "stream", operand: 10 },
+          { operator: "topic", operand: "incident" },
+        ]),
+      },
+      undefined,
+    );
     expect(mockZulipApi.patch).toHaveBeenCalledWith("/messages/501", {
       topic: "\u2714 incident",
       propagate_mode: "change_all",

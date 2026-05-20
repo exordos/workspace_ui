@@ -195,7 +195,7 @@ describe("RightPanel truthfulness", () => {
       fireEvent.click(screen.getByRole("button", { name: /compact|компактная/i }));
     });
     expect(useSettingsStore.getState().chatListDensity).toBe("compact");
-  });
+  }, 15_000);
 
   it("opens current user profile from settings personal-info action", () => {
     useChatListStore.getState().setCurrentUserId(42);

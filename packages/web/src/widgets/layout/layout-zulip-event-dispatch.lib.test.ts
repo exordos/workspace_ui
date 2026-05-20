@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import * as client from "~/shared/api/client";
-import type { ZulipEvent } from "~/shared/api/zulip.types";
+import type { MockMessage, ZulipEvent } from "~/shared/api/zulip.types";
 import { dispatchZulipEvent } from "./layout-zulip-event-dispatch.lib";
 import type {
   LayoutCurrentChatActions,
@@ -11,12 +12,14 @@ import type {
 function buildCtx(
   overrides: {
     updateMessageContentMock?: ReturnType<typeof vi.fn>;
+    updateMessageLinkPreviewMock?: ReturnType<typeof vi.fn>;
     moveStreamTopicMock?: ReturnType<typeof vi.fn>;
     moveStreamTopicMessagesMock?: ReturnType<typeof vi.fn>;
   } = {},
 ) {
   const noop = vi.fn();
   const updateMessageContentMock = overrides.updateMessageContentMock ?? vi.fn();
+  const updateMessageLinkPreviewMock = overrides.updateMessageLinkPreviewMock ?? vi.fn();
   const moveStreamTopicMock = overrides.moveStreamTopicMock ?? vi.fn();
   const moveStreamTopicMessagesMock = overrides.moveStreamTopicMessagesMock ?? vi.fn();
   const ctx: LayoutZulipEventDispatchContext = {
@@ -42,6 +45,8 @@ function buildCtx(
       removeMessages: noop,
       updateMessageContent:
         updateMessageContentMock as LayoutCurrentChatActions["updateMessageContent"],
+      updateMessageLinkPreview:
+        updateMessageLinkPreviewMock as LayoutCurrentChatActions["updateMessageLinkPreview"],
       moveStreamTopicMessages:
         moveStreamTopicMessagesMock as LayoutCurrentChatActions["moveStreamTopicMessages"],
     },
@@ -72,7 +77,13 @@ function buildCtx(
     jitsiCall: { ingestIncomingInvite: noop },
     updateLatestMessageId: noop,
   };
-  return { ctx, updateMessageContentMock, moveStreamTopicMock, moveStreamTopicMessagesMock };
+  return {
+    ctx,
+    updateMessageContentMock,
+    updateMessageLinkPreviewMock,
+    moveStreamTopicMock,
+    moveStreamTopicMessagesMock,
+  };
 }
 
 describe("dispatchZulipEvent", () => {
@@ -85,6 +96,12 @@ describe("dispatchZulipEvent", () => {
   afterEach(() => {
     getInstanceSpy.mockRestore();
     useChatListStore.getState().clear();
+    useCurrentChatMessagesStore.setState({
+      context: null,
+      messages: [],
+      pendingOutgoingEchoKeys: [],
+      isLoadingNewer: false,
+    });
   });
 
   describe("update_message", () => {
@@ -98,14 +115,15 @@ describe("dispatchZulipEvent", () => {
           rendered_content: "<p>new</p>",
           content: "*new*",
           rendering_only: false,
-        } as ZulipEvent,
+        },
         ctx,
       );
       expect(updateMessageContentMock).toHaveBeenCalledWith(42, "*new*", "*new*");
     });
 
     it("does not overwrite content when rendering_only", () => {
-      const { ctx, updateMessageContentMock, moveStreamTopicMock } = buildCtx();
+      const { ctx, updateMessageContentMock, updateMessageLinkPreviewMock, moveStreamTopicMock } =
+        buildCtx();
       dispatchZulipEvent(
         {
           id: 2,
@@ -114,11 +132,84 @@ describe("dispatchZulipEvent", () => {
           rendered_content: "<p>preview</p>",
           content: "same md",
           rendering_only: true,
-        } as ZulipEvent,
+        },
         ctx,
       );
       expect(updateMessageContentMock).not.toHaveBeenCalled();
+      expect(updateMessageLinkPreviewMock).not.toHaveBeenCalled();
       expect(moveStreamTopicMock).not.toHaveBeenCalled();
+    });
+
+    it("buffers link preview when rendering_only arrives before message row exists", () => {
+      const { ctx, updateMessageLinkPreviewMock } = buildCtx();
+      useCurrentChatMessagesStore.setState({ messages: [] });
+      dispatchZulipEvent(
+        {
+          id: 5,
+          type: "update_message",
+          message_id: 9,
+          rendering_only: true,
+          rendered_content: `
+            <div class="message_embed">
+              <a class="message_embed_image" href="https://example.com"></a>
+              <div class="data-container">
+                <div class="message_embed_title"><a href="https://example.com">Example</a></div>
+              </div>
+            </div>`,
+        },
+        ctx,
+      );
+      expect(updateMessageLinkPreviewMock).not.toHaveBeenCalled();
+      useCurrentChatMessagesStore.getState().appendMessage({
+        id: 9,
+        sender_id: 1,
+        sender_full_name: "Alice",
+        stream_id: 5,
+        subject: "general",
+        content: "https://example.com",
+        timestamp: 1,
+      });
+      expect(useCurrentChatMessagesStore.getState().messages[0]!.link_previews?.[0]?.title).toBe(
+        "Example",
+      );
+    });
+
+    it("applies link preview from rendering_only rendered_content without changing markdown", () => {
+      const { ctx, updateMessageContentMock, updateMessageLinkPreviewMock } = buildCtx();
+      const message: MockMessage = {
+        id: 9,
+        sender_id: 1,
+        sender_full_name: "Alice",
+        stream_id: 5,
+        subject: "general",
+        content: "https://example.com",
+        timestamp: 1,
+      };
+      useCurrentChatMessagesStore.setState({ messages: [message] });
+      dispatchZulipEvent(
+        {
+          id: 4,
+          type: "update_message",
+          message_id: 9,
+          rendering_only: true,
+          rendered_content: `
+            <p><a href="https://example.com">https://example.com</a></p>
+            <div class="message_embed">
+              <a class="message_embed_image" href="https://example.com"></a>
+              <div class="data-container">
+                <div class="message_embed_title"><a href="https://example.com">Example</a></div>
+                <div class="message_embed_description">Site description</div>
+              </div>
+            </div>`,
+        },
+        ctx,
+      );
+      expect(updateMessageContentMock).not.toHaveBeenCalled();
+      expect(updateMessageLinkPreviewMock).toHaveBeenCalledWith(9, {
+        targetUrl: "https://example.com",
+        title: "Example",
+        description: "Site description",
+      });
     });
 
     it("moves stream topic in chat list when topic is renamed", () => {
@@ -132,7 +223,7 @@ describe("dispatchZulipEvent", () => {
           orig_subject: "incident",
           subject: "\u2714 incident",
           message_ids: [1, 2, 3],
-        } as ZulipEvent,
+        },
         ctx,
       );
       expect(moveStreamTopicMock).toHaveBeenCalledWith({
@@ -160,7 +251,7 @@ describe("dispatchZulipEvent", () => {
           message_id: 7,
           stream_id: 42,
           subject: "incident",
-        } as ZulipEvent,
+        },
         ctx,
       );
       expect(moveStreamTopicMock).not.toHaveBeenCalled();
@@ -207,7 +298,7 @@ describe("dispatchZulipEvent", () => {
           orig_subject: "incident",
           subject: "\u2714 incident",
           message_ids: [1],
-        } as ZulipEvent,
+        },
         integrationCtx,
       );
       dispatchZulipEvent(
@@ -215,7 +306,7 @@ describe("dispatchZulipEvent", () => {
           id: 11,
           type: "delete_message",
           message_ids: [1],
-        } as ZulipEvent,
+        },
         integrationCtx,
       );
 
@@ -237,7 +328,7 @@ describe("dispatchZulipEvent", () => {
           stream_id: 42,
           topic_name: "incidents",
           visibility_policy: 0,
-        } as ZulipEvent,
+        },
         ctx,
       );
 
@@ -255,7 +346,7 @@ describe("dispatchZulipEvent", () => {
           stream_id: 42,
           topic_name: "incidents",
           visibility_policy: 3,
-        } as ZulipEvent,
+        },
         ctx,
       );
 
@@ -273,7 +364,7 @@ describe("dispatchZulipEvent", () => {
           stream_id: 42,
           topic_name: "  incidents  ",
           visibility_policy: 3,
-        } as ZulipEvent,
+        },
         ctx,
       );
 
@@ -294,7 +385,7 @@ describe("dispatchZulipEvent", () => {
           type: "stream",
           op: "create",
           streams: [{ stream_id: 42, name: "engineering", creator_id: 77 }],
-        } as ZulipEvent,
+        },
         ctx,
       );
 
@@ -317,7 +408,7 @@ describe("dispatchZulipEvent", () => {
           type: "stream",
           op: "create",
           streams: [{ stream_id: 42, name: "engineering", is_archived: true }],
-        } as ZulipEvent,
+        },
         ctx,
       );
 
@@ -344,7 +435,7 @@ describe("dispatchZulipEvent", () => {
           stream_id: 42,
           property: "name",
           value: "engineering v2",
-        } as ZulipEvent,
+        },
         ctx,
       );
 
@@ -371,7 +462,7 @@ describe("dispatchZulipEvent", () => {
           stream_id: 42,
           property: "is_archived",
           value: true,
-        } as ZulipEvent,
+        },
         ctx,
       );
 
@@ -396,7 +487,7 @@ describe("dispatchZulipEvent", () => {
           type: "stream",
           op: "delete",
           stream_id: 42,
-        } as ZulipEvent,
+        },
         ctx,
       );
 
@@ -426,7 +517,7 @@ describe("dispatchZulipEvent", () => {
             display_recipient: "##КокоБомбони V2",
             subject: "события канала",
           },
-        } as ZulipEvent,
+        },
         ctx,
       );
 
@@ -445,7 +536,7 @@ describe("dispatchZulipEvent", () => {
           type: "subscription",
           op: "peer_add",
           stream_ids: [10, 11],
-        } as ZulipEvent,
+        },
         {
           ...ctx,
           onStreamPeerMembersChanged,
@@ -465,7 +556,7 @@ describe("dispatchZulipEvent", () => {
           type: "subscription",
           op: "peer_remove",
           subscriptions: [{ stream_id: 42, name: "engineering" }],
-        } as ZulipEvent,
+        },
         {
           ...ctx,
           onStreamPeerMembersChanged,
@@ -495,7 +586,7 @@ describe("dispatchZulipEvent", () => {
           stream_id: 42,
           property: "can_add_subscribers_group",
           value: { direct_members: [1, 2], direct_subgroups: [] },
-        } as ZulipEvent,
+        },
         ctx,
       );
 
@@ -518,7 +609,7 @@ describe("dispatchZulipEvent", () => {
           type: "subscription",
           op: "add",
           subscriptions: [{ stream_id: 42, name: "engineering", creator_id: 77 }],
-        } as ZulipEvent,
+        },
         ctx,
       );
 
@@ -551,7 +642,7 @@ describe("dispatchZulipEvent", () => {
           stream_id: 42,
           property: "can_remove_subscribers_group",
           value: { direct_members: [7], direct_subgroups: [] },
-        } as ZulipEvent,
+        },
         ctx,
       );
 
@@ -584,7 +675,7 @@ describe("dispatchZulipEvent", () => {
           stream_id: 42,
           property: "is_archived",
           value: true,
-        } as ZulipEvent,
+        },
         ctx,
       );
 

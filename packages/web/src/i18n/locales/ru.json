@@ -168,7 +168,8 @@
     "read": "Прочитано",
     "readReceiptsError": "Не удалось загрузить список прочитавших",
     "noReadReceipts": "Это сообщение ещё никто не прочитал",
-    "mentionUserCard": "Упоминание пользователя"
+    "mentionUserCard": "Упоминание пользователя",
+    "linkPreviewLoading": "Загрузка превью ссылки"
   },
   "channel": {
     "createChannel": "Создать канал",

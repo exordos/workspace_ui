@@ -1,5 +1,5 @@
 import { useInstancesStore } from "~/entities/instance/instance.model";
-import { isMessageForContext } from "~/entities/message/message.model";
+import { isMessageForContext, useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { resolveIncomingDmCallInvite } from "~/features/jitsi-call/jitsi-call-invite.lib";
 import { resolveTypingEventRoute } from "~/features/typing-indicator/typing-event-routing";
 import { getCurrentInstance } from "~/shared/api/client";
@@ -11,6 +11,10 @@ import {
   applyZulipEventToMessageIndexedDb,
   isChatMessagesPersistToIndexedDbEnabled,
 } from "~/shared/lib/message-idb-from-zulip.lib";
+import { parseAllMessageEmbedsFromRenderedHtml } from "~/shared/lib/message-link-preview-fetch.lib";
+import { enqueuePendingLinkPreview } from "~/shared/lib/message-link-preview-pending.lib";
+import { linkPreviewUrlsMatch } from "~/shared/lib/message-link-preview-url-match.lib";
+import { extractLinkPreviewUrls } from "~/shared/lib/message-link-preview-urls.lib";
 import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
 import { shouldNotify } from "~/shared/lib/notifications-policy";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
@@ -301,6 +305,29 @@ function handleUpdateMessage(event: ZulipEvent, ctx: LayoutZulipEventDispatchCon
       newMarkdown,
       trimmed.length > 0 ? newMarkdown : undefined,
     );
+  }
+
+  if (renderingOnly && typeof event.rendered_content === "string") {
+    const embeds = parseAllMessageEmbedsFromRenderedHtml(event.rendered_content);
+    if (embeds.length > 0) {
+      const row = useCurrentChatMessagesStore.getState().messages.find((m) => m.id === messageId);
+      if (row == null) {
+        for (const preview of embeds) {
+          enqueuePendingLinkPreview(messageId, preview);
+        }
+      } else {
+        const markdownBody = row.markdown_source ?? row.content;
+        const expectedUrls = extractLinkPreviewUrls(markdownBody);
+        for (const preview of embeds) {
+          const matchesExpected = expectedUrls.some((url) =>
+            linkPreviewUrlsMatch(url, preview.targetUrl),
+          );
+          if (matchesExpected) {
+            currentChat.updateMessageLinkPreview(messageId, preview);
+          }
+        }
+      }
+    }
   }
 
   const topicMovePayload = extractTopicMoveFromUpdateEvent(event);
