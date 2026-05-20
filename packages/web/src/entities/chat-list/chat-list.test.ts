@@ -181,6 +181,63 @@ describe("chatListStore", () => {
   });
 
   describe("reconcileUnreadFromMessages", () => {
+    it("reconciles unread counts for multiple topics in the same stream in one pass", () => {
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: 201,
+            stream_id: 5,
+            subject: "alpha",
+            sender_id: OTHER_SENDER_ID,
+            flags: [],
+          }),
+          streamMsg({
+            id: 202,
+            stream_id: 5,
+            subject: "beta",
+            sender_id: OTHER_SENDER_ID,
+            flags: [],
+            timestamp: 2000,
+          }),
+          streamMsg({
+            id: 203,
+            stream_id: 5,
+            subject: "gamma",
+            sender_id: OTHER_SENDER_ID,
+            flags: [],
+            timestamp: 3000,
+          }),
+        ],
+        10,
+      );
+
+      useChatListStore.getState().reconcileUnreadFromMessages(
+        [
+          streamMsg({
+            id: 201,
+            stream_id: 5,
+            subject: "alpha",
+            sender_id: OTHER_SENDER_ID,
+            flags: [],
+          }),
+          streamMsg({
+            id: 204,
+            stream_id: 5,
+            subject: "beta",
+            sender_id: OTHER_SENDER_ID,
+            flags: [],
+            timestamp: 2500,
+          }),
+        ],
+        10,
+      );
+
+      const stream = useChatListStore.getState().streamsMap.get(5);
+      expect(stream?.topics.get("alpha")?.unreadCount).toBe(1);
+      expect(stream?.topics.get("beta")?.unreadCount).toBe(1);
+      expect(stream?.topics.get("gamma")?.unreadCount).toBe(0);
+    });
+
     it("clears stale unread count for a cached stream topic when server unread snapshot is empty", () => {
       useChatListStore.getState().setFromMessages(
         [

@@ -56,11 +56,11 @@ export interface ChatListState {
   currentUserId: number | null;
   lastAppliedMessages: ZulipRawMessage[] | null;
   messageIdToLocation: Map<number, MessageLocation>;
-  /** Inverted index streamId+topic → message ids; rebuilt when messageIdToLocation changes. */
+  /** Inverted index streamId+topic → message ids; patched incrementally on location changes. */
   streamTopicMessageIds: Map<string, number[]>;
-  /** Sum of stream topic unread counts; updated when streamsMap/dmsMap change. */
+  /** Sum of stream topic unread counts; updated incrementally or on full rebuild. */
   sidebarStreamsUnread: number;
-  /** Sum of DM unread counts; updated when streamsMap/dmsMap change. */
+  /** Sum of DM unread counts; updated incrementally or on full rebuild. */
   sidebarDmsUnread: number;
   /** Unread @mentions in lastAppliedMessages bootstrap snapshot. */
   mentionsUnreadCount: number;

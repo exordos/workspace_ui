@@ -23,6 +23,16 @@ export function computeSidebarUnreadTotals(
   return { sidebarStreamsUnread, sidebarDmsUnread };
 }
 
+export function applySidebarUnreadDeltas(
+  current: { sidebarStreamsUnread: number; sidebarDmsUnread: number },
+  delta: { streams?: number; dms?: number },
+): { sidebarStreamsUnread: number; sidebarDmsUnread: number } {
+  return {
+    sidebarStreamsUnread: current.sidebarStreamsUnread + (delta.streams ?? 0),
+    sidebarDmsUnread: current.sidebarDmsUnread + (delta.dms ?? 0),
+  };
+}
+
 export function countMentionsUnread(
   messages: readonly ZulipRawMessage[] | null,
   currentUserId: number | null,

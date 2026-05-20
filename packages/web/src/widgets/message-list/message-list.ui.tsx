@@ -467,11 +467,12 @@ export const MessageList: React.FC<MessageListProps> = ({
     const candidates = unreadCandidatesRef.current;
     const prevObserved = observedUnreadNodesRef.current;
     const nextObserved = new Map<number, HTMLElement>();
-    for (const messageId of candidates) {
-      const node = root.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`);
-      if (node != null) {
-        nextObserved.set(messageId, node);
-      }
+    for (const node of root.querySelectorAll<HTMLElement>("[data-message-id]")) {
+      const rawId = node.getAttribute("data-message-id");
+      if (!rawId) continue;
+      const messageId = Number(rawId);
+      if (!Number.isInteger(messageId) || !candidates.has(messageId)) continue;
+      nextObserved.set(messageId, node);
     }
     for (const [messageId, node] of prevObserved) {
       if (!nextObserved.has(messageId)) {

@@ -25,6 +25,11 @@ describe("message-patch", () => {
     expect(patchMessagesFlags(messages, new Set([99]), "read", "add")).toBe(messages);
   });
 
+  it("patchMessagesFlags returns same reference when flag change is a no-op", () => {
+    expect(patchMessagesFlags(messages, new Set([2]), "read", "add")).toBe(messages);
+    expect(patchMessagesFlags(messages, new Set([1]), "read", "remove")).toBe(messages);
+  });
+
   it("patchMessagesFlags updates only targeted ids", () => {
     const next = patchMessagesFlags(messages, new Set([1, 3]), "read", "add");
     expect(next[0]?.flags).toContain("read");

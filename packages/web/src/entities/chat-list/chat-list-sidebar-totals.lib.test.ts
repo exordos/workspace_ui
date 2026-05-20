@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { DmEntryInternal, StreamEntryInternal } from "~/shared/types/sidebar-chat";
-import { computeSidebarUnreadTotals, countMentionsUnread } from "./chat-list-sidebar-totals.lib";
+import {
+  applySidebarUnreadDeltas,
+  computeSidebarUnreadTotals,
+  countMentionsUnread,
+} from "./chat-list-sidebar-totals.lib";
 
 describe("chat-list-sidebar-totals", () => {
   it("computeSidebarUnreadTotals sums topic and dm unread", () => {
@@ -57,6 +61,15 @@ describe("chat-list-sidebar-totals", () => {
       sidebarStreamsUnread: 2,
       sidebarDmsUnread: 3,
     });
+  });
+
+  it("applySidebarUnreadDeltas adjusts cached totals", () => {
+    expect(
+      applySidebarUnreadDeltas(
+        { sidebarStreamsUnread: 4, sidebarDmsUnread: 2 },
+        { streams: 3, dms: -1 },
+      ),
+    ).toEqual({ sidebarStreamsUnread: 7, sidebarDmsUnread: 1 });
   });
 
   it("countMentionsUnread skips own messages and read mentions", () => {

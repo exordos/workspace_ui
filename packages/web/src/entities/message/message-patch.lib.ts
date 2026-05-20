@@ -28,22 +28,21 @@ export function patchMessagesFlags(
 ): MockMessage[] {
   if (messageIds.size === 0) return messages as MockMessage[];
 
-  let changed = false;
-  const next = messages.slice();
-  for (let i = 0; i < next.length; i++) {
-    const message = next[i]!;
+  let next: MockMessage[] | undefined;
+  for (let i = 0; i < messages.length; i++) {
+    const message = messages[i]!;
     if (!messageIds.has(message.id)) continue;
     const flags = message.flags ?? [];
     const hasFlag = flags.includes(flag);
     if (op === "add") {
       if (hasFlag) continue;
+      if (!next) next = messages.slice();
       next[i] = { ...message, flags: [...flags, flag] };
-      changed = true;
       continue;
     }
     if (!hasFlag) continue;
+    if (!next) next = messages.slice();
     next[i] = { ...message, flags: flags.filter((f) => f !== flag) };
-    changed = true;
   }
-  return changed ? next : (messages as MockMessage[]);
+  return next ?? (messages as MockMessage[]);
 }
