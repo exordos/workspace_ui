@@ -39,7 +39,7 @@ jobs:
 
       - name: Build (web)
         run: |
-          cat "${PROD_ENVS}" | base64 -d > packages/web/.env.production
+          echo "${PROD_ENVS}" | base64 -d > packages/web/.env.production
           npm run build --workspace=web
         env:
           VITE_APP_VERSION: ${{ github.sha }}
@@ -91,7 +91,7 @@ jobs:
       - name: Build web
         shell: bash
         run: |
-          cat "${PROD_ENVS}" | base64 -d > packages/web/.env.production
+          echo "${PROD_ENVS}" | base64 -d > packages/web/.env.production
           npm run build --workspace=web
         env:
           VITE_APP_VERSION: ${{ github.sha }}
@@ -99,7 +99,7 @@ jobs:
 
       - name: Build & Package
         run: |
-          cat "${PROD_ENVS}" | base64 -d > packages/web/.env.production
+          echo "${PROD_ENVS}" | base64 -d > packages/web/.env.production
           npm run ${{ matrix.cmd }}
         env:
           PROD_ENVS: ${{ secrets.WEB_PROD_ENVS }}
