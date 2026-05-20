@@ -89,6 +89,7 @@ jobs:
       #   run: echo "Certificate imported from secrets"
 
       - name: Build web
+        shell: bash
         run: |
           cat "${PROD_ENVS}" | base64 -d > packages/web/.env.production
           npm run build --workspace=web
