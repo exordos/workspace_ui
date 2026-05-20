@@ -176,6 +176,60 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
     });
   });
 
+  it("does not let cache metadata mark the live tail as having newer messages", async () => {
+    const ctx: CurrentChatContext = {
+      type: "stream",
+      streamId: 5,
+      streamName: "general",
+      topic: "topic1",
+    };
+    const cached = [mockMsg({ id: 86, stream_id: 5, subject: "topic1", content: "<p>cached</p>" })];
+    const deferred = Promise.withResolvers<MockMessage[]>();
+    mockGetChatMessagesAscending.mockResolvedValue(cached);
+    mockGetChatMeta.mockResolvedValue({ reachedOldest: false, reachedNewest: false });
+    mockFetchMessages.mockReturnValue(deferred.promise);
+
+    useCurrentChatMessagesStore.getState().setContext(ctx);
+    const loadPromise = useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
+      context: ctx,
+      focusedMessageId: null,
+      currentUserId: 1,
+    });
+
+    await vi.waitFor(() => {
+      expect(useCurrentChatMessagesStore.getState().messages).toEqual(cached);
+    });
+    expect(useCurrentChatMessagesStore.getState().hasOlderMessages).toBe(true);
+    expect(useCurrentChatMessagesStore.getState().hasNewerMessages).toBe(false);
+
+    deferred.resolve([mockMsg({ id: 200, stream_id: 5, subject: "topic1" })]);
+    await loadPromise;
+  });
+
+  it("keeps cache-hydrated live tail unblocked when network refresh fails", async () => {
+    const ctx: CurrentChatContext = {
+      type: "dm",
+      dmKey: "7,42",
+    };
+    const cached = [mockMsg({ id: 86, stream_id: null, content: "<p>cached dm</p>" })];
+    mockGetChatMessagesAscending.mockResolvedValue(cached);
+    mockGetChatMeta.mockResolvedValue({ reachedOldest: false, reachedNewest: false });
+    mockFetchDmMessages.mockRejectedValue(new Error("network down"));
+
+    useCurrentChatMessagesStore.getState().setContext(ctx);
+    await expect(
+      useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
+        context: ctx,
+        focusedMessageId: null,
+        currentUserId: 7,
+      }),
+    ).rejects.toThrow("network down");
+
+    expect(useCurrentChatMessagesStore.getState().messages).toEqual(cached);
+    expect(useCurrentChatMessagesStore.getState().hasOlderMessages).toBe(true);
+    expect(useCurrentChatMessagesStore.getState().hasNewerMessages).toBe(false);
+  });
+
   it("with empty IDB cache uses stream bootstrap fetchMessages", async () => {
     const ctx: CurrentChatContext = {
       type: "stream",

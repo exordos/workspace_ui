@@ -698,15 +698,18 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
             return;
           }
           mergeUsersFromMessages(messages);
+          const appliedHasNewerMessages = false;
           logMessageFlow("store:loadInitial idb hydrate before api", {
             chatKey: chatKeyFromContext(context),
             cachedCount: messages.length,
+            cacheHasNewerMessages: hasNewerMessages,
+            appliedHasNewerMessages,
           });
           set({
             messages,
             pendingOutgoingEchoKeys: [],
             hasOlderMessages,
-            hasNewerMessages,
+            hasNewerMessages: appliedHasNewerMessages,
           });
           onCacheHydrated?.();
         },
