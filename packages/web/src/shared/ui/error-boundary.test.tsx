@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import React, { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { t } from "~/i18n/i18n";
-import { ErrorBoundary, PageErrorFallback } from "./error-boundary";
+import { ErrorBoundary, PageErrorFallback, PageLoader } from "./error-boundary";
 
 describe("ErrorBoundary", () => {
   it("invokes render-prop fallback with resetErrorBoundary and remounts children after retry", async () => {
@@ -54,6 +54,14 @@ describe("ErrorBoundary", () => {
       </ErrorBoundary>,
     );
     expect(screen.getByText("static-fallback")).toBeInTheDocument();
+  });
+});
+
+describe("PageLoader", () => {
+  it("renders loading label and status region", () => {
+    render(<PageLoader />);
+    expect(screen.getByText(t("app.loading"))).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: t("app.loading") })).toBeInTheDocument();
   });
 });
 

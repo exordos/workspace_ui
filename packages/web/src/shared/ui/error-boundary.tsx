@@ -101,9 +101,20 @@ export function PageErrorFallback({ onRetry }: PageErrorFallbackProps): React.Re
 }
 
 export function PageLoader(): React.ReactElement {
+  const label = t("app.loading");
   return (
-    <div className="flex flex-1 items-center justify-center">
-      <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-subtle border-t-accent" />
+    <div
+      className="flex h-screen max-h-[100dvh] min-h-app-shell w-full items-center justify-center bg-bg text-text-primary"
+      role="status"
+      aria-label={label}
+    >
+      <div className="flex flex-col items-center gap-3">
+        <div
+          className="h-8 w-8 animate-spin rounded-full border-2 border-border-subtle border-t-accent"
+          aria-hidden
+        />
+        <p className="text-sm text-text-muted">{label}</p>
+      </div>
     </div>
   );
 }
