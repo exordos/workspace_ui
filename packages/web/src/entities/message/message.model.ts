@@ -124,6 +124,10 @@ function withOutgoingDeliveryStatus(message: MockMessage): MockMessage {
   return { ...message, delivery_status: "failed" };
 }
 
+function withPendingLinkPreviewsIfPersisted(message: MockMessage): MockMessage {
+  return message.id > 0 ? applyPendingLinkPreviewsToMessage(message) : message;
+}
+
 // Что делает: синхронизирует текущий набор сообщений из store в IDB.
 // Зачем: после локальных мутаций (append/prepend/replace) держать cache-слой актуальным.
 function schedulePersistFullChatMessages(get: () => CurrentChatMessagesState): void {
@@ -243,7 +247,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       const existingIds = new Set(state.messages.map((m) => m.id));
       const fresh = msgs
         .filter((m) => !existingIds.has(m.id))
-        .map((m) => (m.id > 0 ? applyPendingLinkPreviewsToMessage(m) : m));
+        .map(withPendingLinkPreviewsIfPersisted);
       if (fresh.length === 0) return state;
       return { messages: [...state.messages, ...fresh] };
     });
@@ -276,7 +280,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
           if (msgIdx >= 0) {
             const prev = state.messages[msgIdx]!;
             const stableKey = prev.local_echo_key ?? prev.id;
-            const merged = applyPendingLinkPreviewsToMessage(
+            const merged = withPendingLinkPreviewsIfPersisted(
               mergeMessagePreservingLinkPreview(
                 withOutgoingDeliveryStatus({ ...msg, local_echo_key: stableKey }),
                 prev,
@@ -321,7 +325,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         };
       }
 
-      const normalizedMsg = msg.id > 0 ? applyPendingLinkPreviewsToMessage(msg) : msg;
+      const normalizedMsg = withPendingLinkPreviewsIfPersisted(msg);
 
       const idx = state.messages.findIndex((m) => m.id === normalizedMsg.id);
       if (idx >= 0) {
@@ -368,9 +372,6 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         | { kind: "sync"; deleteNegativeId: number | null; message: MockMessage };
     } = { current: { kind: "none" } };
 
-    const withPendingIfPersisted = (message: MockMessage): MockMessage =>
-      message.id > 0 ? applyPendingLinkPreviewsToMessage(message) : message;
-
     set((state) => {
       const nextQueue = state.pendingOutgoingEchoKeys.filter((k) => k !== optimisticId);
       const delivered = withOutgoingDeliveryStatus(finalMessage);
@@ -386,7 +387,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         updated.splice(optIdx, 1);
         const targetIdx = realIdx > optIdx ? realIdx - 1 : realIdx;
         const existingAtTarget = updated[targetIdx];
-        const merged = withPendingIfPersisted(
+        const merged = withPendingLinkPreviewsIfPersisted(
           mergeMessagePreservingLinkPreview(
             mergeMessagePreservingLinkPreview(
               { ...delivered, local_echo_key: echoKey },
@@ -407,7 +408,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       if (optIdx >= 0) {
         const prev = state.messages[optIdx]!;
         const echoKey = prev.local_echo_key ?? prev.id;
-        const merged = withPendingIfPersisted(
+        const merged = withPendingLinkPreviewsIfPersisted(
           mergeMessagePreservingLinkPreview({ ...delivered, local_echo_key: echoKey }, prev),
         );
         const updated = [...state.messages];
@@ -423,7 +424,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       if (realIdx >= 0) {
         const prev = state.messages[realIdx]!;
         const echoKey = prev.local_echo_key ?? optimisticId;
-        const merged = withPendingIfPersisted(
+        const merged = withPendingLinkPreviewsIfPersisted(
           mergeMessagePreservingLinkPreview({ ...delivered, local_echo_key: echoKey }, prev),
         );
         const updated = [...state.messages];
@@ -432,7 +433,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         return { messages: updated, pendingOutgoingEchoKeys: nextQueue };
       }
 
-      const merged = withPendingIfPersisted({
+      const merged = withPendingLinkPreviewsIfPersisted({
         ...delivered,
         local_echo_key: optimisticId,
       });

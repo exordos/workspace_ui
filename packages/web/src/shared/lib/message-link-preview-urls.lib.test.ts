@@ -93,4 +93,20 @@ https://quoted.example.com
 see https://main.example.com`;
     expect(extractFirstLinkPreviewUrl(markdown)).toBe("https://main.example.com");
   });
+
+  it("keeps Wikipedia-style paths with balanced parentheses", () => {
+    const url = "https://en.wikipedia.org/wiki/Example_(disambiguation)";
+    expect(extractFirstLinkPreviewUrl(`read ${url} for context`)).toBe(url);
+    expect(extractFirstLinkPreviewUrl(`[wiki](${url})`)).toBe(url);
+  });
+
+  it("strips sentence punctuation wrapped around a plain URL", () => {
+    expect(extractFirstLinkPreviewUrl("(see https://example.com/page).")).toBe(
+      "https://example.com/page",
+    );
+  });
+
+  it("strips trailing comma after a URL", () => {
+    expect(extractFirstLinkPreviewUrl("see https://example.com/a,")).toBe("https://example.com/a");
+  });
 });
