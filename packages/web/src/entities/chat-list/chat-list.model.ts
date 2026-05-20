@@ -242,6 +242,81 @@ function mergeStreamEntry(
   };
 }
 
+/** Increments topic unread by one without changing preview fields (addMessages batch pass). */
+function bumpStreamTopicUnreadFromMessage(
+  streamsMap: Map<number, StreamEntryInternal>,
+  message: ZulipRawMessage,
+  currentUserId: number | null,
+): Map<number, StreamEntryInternal> {
+  const result = messageToStreamEntry(message);
+  if (!result) return streamsMap;
+  const { stream_id, name, lastMessage, lastMessageSenderName, time, ts } = result.stream;
+  const topic = result.topic;
+  const existing = streamsMap.get(stream_id);
+  if (!existing) {
+    const next = new Map(streamsMap);
+    next.set(
+      stream_id,
+      mergeStreamEntry(
+        undefined,
+        stream_id,
+        name,
+        lastMessage,
+        lastMessageSenderName,
+        time,
+        ts,
+        topic.subject,
+        topic.lastMessage,
+        topic.lastMessageSenderName,
+        topic.time,
+        topic.ts,
+        1,
+        message.id,
+      ),
+    );
+    return next;
+  }
+  const existingTopic = existing.topics.get(topic.subject);
+  const next = new Map(streamsMap);
+  const nextTopics = new Map(existing.topics);
+  nextTopics.set(topic.subject, {
+    subject: topic.subject,
+    lastMessage: existingTopic?.lastMessage ?? topic.lastMessage,
+    lastMessageSenderName: existingTopic?.lastMessageSenderName ?? topic.lastMessageSenderName,
+    time: existingTopic?.time ?? topic.time,
+    ts: existingTopic?.ts ?? topic.ts,
+    unreadCount: (existingTopic?.unreadCount ?? 0) + 1,
+    lastMessageId: existingTopic?.lastMessageId,
+  });
+  next.set(stream_id, { ...existing, topics: nextTopics });
+  return next;
+}
+
+function bumpDmUnreadFromMessage(
+  dmsMap: Map<string, DmEntryInternal>,
+  message: ZulipRawMessage,
+  currentUserId: number | null,
+  avatarMap: Map<number, string>,
+): Map<string, DmEntryInternal> {
+  if (!Array.isArray(message.display_recipient)) return dmsMap;
+  const key = dmConversationKey(message.display_recipient, currentUserId);
+  const existing = dmsMap.get(key);
+  const next = new Map(dmsMap);
+  if (existing) {
+    next.set(key, { ...existing, unreadCount: existing.unreadCount + 1 });
+    return next;
+  }
+  const dmEntry = messageToDmEntry(message, currentUserId, avatarMap);
+  if (!dmEntry) return dmsMap;
+  next.set(key, {
+    ...dmEntry,
+    unreadCount: 1,
+    avatar_url: dmEntry.avatar_url,
+    lastMessageId: message.id,
+  });
+  return next;
+}
+
 function mergeStreamAccessMetadata(
   stream: StreamEntryInternal,
   existing: StreamEntryInternal | undefined,
@@ -980,59 +1055,58 @@ export const useChatListStore = create<ChatListState>((set, get) => {
         dmsMapSizeBefore: get().dmsMap.size,
       });
       const currentUserId = get().currentUserId;
-      const streamByKey = new Map<number, ZulipRawMessage>();
-      const dmByKey = new Map<string, ZulipRawMessage>();
+      const streamTopicLatest = new Map<string, ZulipRawMessage>();
+      const dmLatest = new Map<string, ZulipRawMessage>();
 
       for (const m of messages) {
         if (m.type === "stream" && m.stream_id != null) {
-          const existing = streamByKey.get(m.stream_id);
+          const topic = normalizeTopicForIdentity(m.subject ?? "");
+          const key = streamTopicCompositeKey(m.stream_id, topic);
+          const existing = streamTopicLatest.get(key);
           if (!existing || m.timestamp >= existing.timestamp) {
-            streamByKey.set(m.stream_id, m);
+            streamTopicLatest.set(key, m);
           }
         } else if (m.type === "private" && Array.isArray(m.display_recipient)) {
           const key = dmConversationKey(m.display_recipient, currentUserId);
-          const existing = dmByKey.get(key);
+          const existing = dmLatest.get(key);
           if (!existing || m.timestamp >= existing.timestamp) {
-            dmByKey.set(key, m);
+            dmLatest.set(key, m);
           }
         }
       }
+
+      const avatarMap = getAvatarMap();
 
       patchSet((state) => {
         let nextStreams = state.streamsMap;
         let nextDms = state.dmsMap;
         const nextLoc = new Map(state.messageIdToLocation);
 
-        for (const m of streamByKey.values()) {
-          if (m.stream_id != null) {
+        for (const m of messages) {
+          if (m.type === "stream" && m.stream_id != null) {
             const topic = normalizeTopicForIdentity(m.subject ?? "");
             nextLoc.set(m.id, { type: "stream", stream_id: m.stream_id, topic });
-          }
-        }
-        for (const m of dmByKey.values()) {
-          if (Array.isArray(m.display_recipient)) {
+            if (isUnreadFromOthers(m, currentUserId)) {
+              nextStreams = bumpStreamTopicUnreadFromMessage(nextStreams, m, currentUserId);
+            }
+          } else if (m.type === "private" && Array.isArray(m.display_recipient)) {
             const key = dmConversationKey(m.display_recipient, currentUserId);
             nextLoc.set(m.id, { type: "dm", dmKey: key });
+            if (isUnreadFromOthers(m, currentUserId)) {
+              nextDms = bumpDmUnreadFromMessage(nextDms, m, currentUserId, avatarMap);
+            }
           }
         }
 
-        for (const m of streamByKey.values()) {
+        for (const m of streamTopicLatest.values()) {
           const result = messageToStreamEntry(m);
           if (!result) continue;
           const { stream_id, name, lastMessage, lastMessageSenderName, time, ts } = result.stream;
           const topic = result.topic;
-          const topicUnreadDelta = isUnreadFromOthers(m, currentUserId) ? 1 : 0;
           const existing = nextStreams.get(stream_id);
           if (existing && m.timestamp <= existing.ts) {
             const existingTopic = existing.topics.get(topic.subject);
             if (existingTopic && m.timestamp <= existingTopic.ts) {
-              nextStreams = new Map(nextStreams);
-              const nextTopics = new Map(existing.topics);
-              nextTopics.set(topic.subject, {
-                ...existingTopic,
-                unreadCount: existingTopic.unreadCount + topicUnreadDelta,
-              });
-              nextStreams.set(stream_id, { ...existing, topics: nextTopics });
               continue;
             }
           }
@@ -1050,31 +1124,26 @@ export const useChatListStore = create<ChatListState>((set, get) => {
             topic.lastMessageSenderName,
             topic.time,
             topic.ts,
-            topicUnreadDelta,
+            0,
             m.id,
           );
           nextStreams.set(stream_id, merged);
         }
 
-        for (const m of dmByKey.values()) {
-          const dmEntry = messageToDmEntry(m, currentUserId, getAvatarMap());
+        for (const m of dmLatest.values()) {
+          const dmEntry = messageToDmEntry(m, currentUserId, avatarMap);
           if (!dmEntry) continue;
           if (!Array.isArray(m.display_recipient)) continue;
           const key = dmConversationKey(m.display_recipient, currentUserId);
           const existing = nextDms.get(key);
-          const unreadDelta = isUnreadFromOthers(m, currentUserId) ? 1 : 0;
           if (existing && dmEntry.ts <= existing.ts) {
-            if (unreadDelta > 0) {
-              nextDms = new Map(nextDms);
-              nextDms.set(key, { ...existing, unreadCount: existing.unreadCount + unreadDelta });
-            }
             continue;
           }
           nextDms = new Map(nextDms);
           const avatar_url = dmEntry.avatar_url ?? existing?.avatar_url;
           nextDms.set(key, {
             ...dmEntry,
-            unreadCount: (existing?.unreadCount ?? 0) + unreadDelta,
+            unreadCount: existing?.unreadCount ?? 0,
             avatar_url,
             lastMessageId: m.id,
           });

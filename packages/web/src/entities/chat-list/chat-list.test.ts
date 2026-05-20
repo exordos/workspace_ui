@@ -660,6 +660,94 @@ describe("chatListStore", () => {
     });
   });
 
+  describe("addMessages (batch)", () => {
+    beforeEach(() => {
+      useChatListStore.setState({ currentUserId: 10 });
+    });
+
+    it("indexes every message and aggregates unread per topic in one batch", () => {
+      useChatListStore.getState().addMessages([
+        streamMsg({
+          id: 10,
+          stream_id: 5,
+          subject: "alpha",
+          timestamp: 1000,
+          flags: [],
+          sender_id: OTHER_SENDER_ID,
+        }),
+        streamMsg({
+          id: 11,
+          stream_id: 5,
+          subject: "beta",
+          timestamp: 2000,
+          flags: [],
+          sender_id: OTHER_SENDER_ID,
+        }),
+        streamMsg({
+          id: 12,
+          stream_id: 5,
+          subject: "alpha",
+          timestamp: 3000,
+          flags: [],
+          sender_id: OTHER_SENDER_ID,
+        }),
+        streamMsg({
+          id: 13,
+          stream_id: 5,
+          subject: "alpha",
+          timestamp: 4000,
+          flags: [],
+          sender_id: OTHER_SENDER_ID,
+        }),
+      ]);
+
+      const state = useChatListStore.getState();
+      expect(state.messageIdToLocation.get(10)?.type).toBe("stream");
+      expect(state.messageIdToLocation.get(11)?.type).toBe("stream");
+      expect(state.messageIdToLocation.get(12)?.type).toBe("stream");
+      expect(state.messageIdToLocation.get(13)?.type).toBe("stream");
+
+      const stream = state.streamsMap.get(5);
+      expect(stream?.topics.get("alpha")?.unreadCount).toBe(3);
+      expect(stream?.topics.get("beta")?.unreadCount).toBe(1);
+      expect(stream?.topics.get("alpha")?.lastMessage).toContain("hello");
+      expect(stream?.topics.get("beta")?.ts).toBe(2000);
+    });
+
+    it("decrements unread for each message id added in the same batch", () => {
+      useChatListStore
+        .getState()
+        .addMessages([
+          streamMsg({ id: 20, flags: [], sender_id: OTHER_SENDER_ID, timestamp: 1000 }),
+          streamMsg({ id: 21, flags: [], sender_id: OTHER_SENDER_ID, timestamp: 2000 }),
+          streamMsg({ id: 22, flags: [], sender_id: OTHER_SENDER_ID, timestamp: 3000 }),
+        ]);
+
+      expect(useChatListStore.getState().streams()[0]!.badge).toBe(3);
+
+      useChatListStore.getState().decrementUnreadForMessages([20, 21]);
+
+      expect(useChatListStore.getState().streams()[0]!.badge).toBe(1);
+      expect(useChatListStore.getState().messageIdToLocation.has(20)).toBe(false);
+      expect(useChatListStore.getState().messageIdToLocation.has(21)).toBe(false);
+      expect(useChatListStore.getState().messageIdToLocation.has(22)).toBe(true);
+    });
+
+    it("aggregates DM unread for multiple messages in one batch", () => {
+      useChatListStore
+        .getState()
+        .addMessages([
+          dmMsg({ id: 60, flags: [], timestamp: 3000, sender_id: OTHER_SENDER_ID }),
+          dmMsg({ id: 61, flags: [], timestamp: 4000, sender_id: OTHER_SENDER_ID }),
+          dmMsg({ id: 62, flags: [], timestamp: 5000, sender_id: OTHER_SENDER_ID }),
+        ]);
+
+      const dms = useChatListStore.getState().dms();
+      const dm = dms.find((d) => d.type === "dm");
+      expect(dm?.badge).toBe(3);
+    });
+  });
+
   // Sort order determines what the user sees at the top of the sidebar.
   describe("streams() sort order", () => {
     // Most-recent-first ensures active conversations are immediately visible.
