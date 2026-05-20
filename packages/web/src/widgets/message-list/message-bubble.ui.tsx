@@ -6,6 +6,8 @@ import { useUsersStore } from "~/entities/user/user.model";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
 import { t } from "~/i18n/i18n";
 import type { MessageReactionPayload, MockMessage } from "~/shared/api/zulip.types";
+import CheckIconRaw from "~/shared/assets/icons/check.svg?raw";
+import CopyIconRaw from "~/shared/assets/icons/copy.svg?raw";
 import { buildAuthHeader } from "~/shared/lib/auth-guard";
 import { writeText } from "~/shared/lib/clipboard";
 import { formatMessageTime, getPresenceState } from "~/shared/lib/format";
@@ -63,6 +65,8 @@ interface CodeCopyButtonMount {
 }
 
 const MESSAGE_CONTEXT_MENU_CURSOR_GAP_PX = 6;
+const CODE_COPY_ICON_MARKUP = CopyIconRaw;
+const CODE_COPY_SUCCESS_ICON_MARKUP = CheckIconRaw;
 
 export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
   ({
@@ -233,7 +237,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
 
         const iconHost = document.createElement("span");
         iconHost.className =
-          "pointer-events-none inline-flex h-3 w-3 items-center justify-center text-[11px] leading-none";
+          "pointer-events-none inline-flex h-3.5 w-3.5 items-center justify-center text-current [&>svg]:h-full [&>svg]:w-full";
         copyButton.appendChild(iconHost);
         preElement.appendChild(copyButton);
 
@@ -249,7 +253,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
             copyButton.setAttribute("aria-label", t("message.copy"));
             copyButton.setAttribute("title", t("message.copy"));
           }
-          iconHost.textContent = state === "success" ? "✓" : "⧉";
+          iconHost.innerHTML =
+            state === "success" ? CODE_COPY_SUCCESS_ICON_MARKUP : CODE_COPY_ICON_MARKUP;
         };
 
         renderIconState("idle");
@@ -293,7 +298,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
             window.clearTimeout(mount.resetTimerId);
           }
           mount.button.removeEventListener("click", mount.clickHandler);
-          mount.iconHost.textContent = "";
+          mount.iconHost.innerHTML = "";
           mount.button.remove();
         }
       };
