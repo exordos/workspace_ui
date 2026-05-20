@@ -226,7 +226,9 @@
     "partner": "Partner",
     "private": "Private",
     "recentDms": "Recent",
-    "allUsers": "All users"
+    "allUsers": "All users",
+    "partnerBlocked": "Account deactivated",
+    "composerBlockedPlaceholder": "This account is deactivated. Sending messages is disabled."
   },
   "call": {
     "call": "Call",
@@ -633,7 +635,8 @@
     "savedSnippetTitle": "Snippet title",
     "savedSnippetContent": "Snippet content",
     "savedSnippetsLoadError": "Failed to load saved snippets",
-    "savedSnippetsCreateError": "Failed to create saved snippet"
+    "savedSnippetsCreateError": "Failed to create saved snippet",
+    "aiTemporarilyUnavailable": "AI features are temporarily unavailable in your organization."
   },
   "a11y": {
     "collapseTopics": "Collapse topics",

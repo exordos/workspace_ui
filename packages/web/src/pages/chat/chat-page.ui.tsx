@@ -169,6 +169,8 @@ export const ChatPage: React.FC = () => {
   const partnerStoreDisplayName = useUsersStore((s) =>
     partnerUserId != null ? s.getDisplayName(partnerUserId) : "Unknown",
   );
+  const isOneToOneDm = isDmView && !isGroupDmView;
+  const partnerDeactivated = isOneToOneDm ? partnerUser?.is_active === false : false;
   useChatPartnerProfileHydration({ partnerUserId, isDmView, isGroupDmView });
 
   const chatContextForMessages = useCurrentChatMessagesStore((s) => s.context);
@@ -1062,8 +1064,8 @@ export const ChatPage: React.FC = () => {
       canStartCallFromHeader({
         target: callTarget,
         currentUserId,
-      }),
-    [callTarget, currentUserId],
+      }) && !(isOneToOneDm && partnerDeactivated),
+    [callTarget, currentUserId, isOneToOneDm, partnerDeactivated],
   );
 
   const callRoomChatLabel = useMemo(() => {
@@ -1083,7 +1085,6 @@ export const ChatPage: React.FC = () => {
       ? trimmedPartnerName
       : t("dm.partner");
   }, [callTarget, isGroupDmView, dmChat, partnerUser, t]);
-  const isOneToOneDm = isDmView && !isGroupDmView;
 
   const jitsiMeetBaseUrl = useInstancesStore((s) => s.jitsiMeetBaseUrl);
   const jitsiLinkOptions = useMemo<JitsiLinkOptions>(
@@ -1092,6 +1093,7 @@ export const ChatPage: React.FC = () => {
   );
 
   const buildCurrentCallLink = useCallback(() => {
+    if (isOneToOneDm && partnerDeactivated) return null;
     if (!canStartCallFromHeader({ target: callTarget, currentUserId }) || callTarget == null) {
       return null;
     }
@@ -1101,7 +1103,14 @@ export const ChatPage: React.FC = () => {
       chatLabel: callRoomChatLabel,
     });
     return buildJitsiMeetingUrl(roomName, jitsiLinkOptions);
-  }, [callTarget, currentUserId, callRoomChatLabel, jitsiLinkOptions]);
+  }, [
+    callTarget,
+    currentUserId,
+    callRoomChatLabel,
+    jitsiLinkOptions,
+    isOneToOneDm,
+    partnerDeactivated,
+  ]);
 
   const appendMessageIfContextMatches = useCallback(
     (msg: MockMessage) => {
@@ -1114,6 +1123,7 @@ export const ChatPage: React.FC = () => {
   );
 
   const performStartCallFromHeader = useCallback(async () => {
+    if (isOneToOneDm && partnerDeactivated) return;
     if (!canStartCallFromHeader({ target: callTarget, currentUserId }) || callTarget == null)
       return;
     if (jitsiHeaderCallInFlightRef.current) {
@@ -1154,6 +1164,7 @@ export const ChatPage: React.FC = () => {
     openJitsiCall,
     isOneToOneDm,
     callRoomChatLabel,
+    partnerDeactivated,
   ]);
 
   const handleCallClick = performStartCallFromHeader;
@@ -1666,6 +1677,7 @@ export const ChatPage: React.FC = () => {
           ? formatLastSeen(partnerUser.presence.timestamp, partnerUser.presence.status)
           : undefined,
       customStatus: formatUserStatusLabel(partnerUser?.status) ?? undefined,
+      isAccountDeactivated: partnerDeactivated,
       isTyping: dmPartnerIsTyping,
     };
   }, [
@@ -1674,6 +1686,7 @@ export const ChatPage: React.FC = () => {
     partnerUserId,
     partnerUser,
     dmPartnerIsTyping,
+    partnerDeactivated,
     dmChat?.name,
     partnerStoreDisplayName,
   ]);
@@ -1780,6 +1793,8 @@ export const ChatPage: React.FC = () => {
 
       <ChatHeader
         channelName={activeStream ? `#${activeStream}` : t("channel.channelName")}
+        topic={activeTopic}
+        hideTopic={activeTopic == null || activeTopic.trim() === ""}
         participantsCount={chatInfo?.memberCount ?? 0}
         onlineCount={chatInfo?.onlineCount ?? 0}
         onOpenSearch={openSearch ?? undefined}
@@ -1788,7 +1803,6 @@ export const ChatPage: React.FC = () => {
         rightPanelLabel={
           isGroupDmView ? t("dm.groupChat") : isDmView ? t("info.partnerInfo") : undefined
         }
-        hideTopic
         hideParticipants={isDmView}
         onCallClick={canStartCall ? handleCallClick : undefined}
         dmPartner={dmPartner}
@@ -1849,6 +1863,7 @@ export const ChatPage: React.FC = () => {
         <ChatPageComposerSection
           isDmView={isDmView}
           activeDmUserIds={activeDmUserIds}
+          dmPartnerDeactivated={partnerDeactivated}
           activeStream={activeStream}
           showTopicPrompt={!isDmView && !activeTopic}
           streamSlug={streamSlug}

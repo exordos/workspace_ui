@@ -33,6 +33,25 @@ describe("ChatHeader", () => {
     expect(screen.getByText(/online|в сети/i)).toBeInTheDocument();
   });
 
+  it("shows deactivated label for DM partner instead of presence when account is deactivated", () => {
+    renderWithProviders(
+      <ChatHeader
+        channelName="unused"
+        dmPartner={{
+          name: "Alice",
+          avatarUrl: null,
+          presenceState: "active",
+          isAccountDeactivated: true,
+        }}
+        hideParticipants
+        hideTopic
+      />,
+    );
+
+    expect(screen.getByText(/deactivated|заблокирован/i)).toBeInTheDocument();
+    expect(screen.queryByText(/online|в сети/i)).not.toBeInTheDocument();
+  });
+
   it("shows group dm title and participant count", () => {
     renderWithProviders(
       <ChatHeader
@@ -63,6 +82,21 @@ describe("ChatHeader", () => {
     expect(header).not.toHaveClass("rounded-xl");
     expect(header).toHaveClass("py-2");
     expect(status).toHaveClass("text-xs");
+  });
+
+  it("shows stream topic as primary heading with channel muted when topic is visible", () => {
+    renderWithProviders(
+      <ChatHeader
+        channelName="#engineering"
+        topic="sprint-planning"
+        hideTopic={false}
+        hideParticipants
+      />,
+    );
+
+    const heading = screen.getByRole("heading", { level: 1 });
+    expect(heading).toHaveTextContent("sprint-planning · #engineering");
+    expect(heading.querySelector(".font-semibold")).toHaveTextContent("sprint-planning");
   });
 
   it("places chat actions button inside right controls cluster", () => {

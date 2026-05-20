@@ -7,6 +7,7 @@ import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model"
 import { t } from "~/i18n/i18n";
 import type { MessageReactionPayload, MockMessage } from "~/shared/api/zulip.types";
 import { buildAuthHeader } from "~/shared/lib/auth-guard";
+import { writeText } from "~/shared/lib/clipboard";
 import { formatMessageTime, getPresenceState } from "~/shared/lib/format";
 import { getJitsiMeetingUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
 import { MESSAGE_BUBBLE_BODY_CLASS_NAME } from "~/shared/lib/message-body-rich-text-classes";
@@ -53,6 +54,13 @@ import type {
 import type { EmojiClickData } from "emoji-picker-react";
 
 export type { MessageBubbleCallbacks, MessageBubbleProps } from "./message-bubble.types";
+
+interface CodeCopyButtonMount {
+  button: HTMLButtonElement;
+  clickHandler: (event: MouseEvent) => void;
+  iconHost: HTMLSpanElement;
+  resetTimerId: number | null;
+}
 
 const MESSAGE_CONTEXT_MENU_CURSOR_GAP_PX = 6;
 
@@ -200,6 +208,96 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     useProtectedMessageHtml(messageBodyRef, safeMessageHtml, {
       deferRootSelector: '[role="feed"]',
     });
+
+    useEffect(() => {
+      const messageBodyElement = messageBodyRef.current;
+      if (!messageBodyElement) return;
+
+      const mounts: CodeCopyButtonMount[] = [];
+      const codeBlocks = messageBodyElement.querySelectorAll<HTMLElement>("pre > code");
+
+      for (const codeBlock of codeBlocks) {
+        const preElement = codeBlock.parentElement;
+        if (!(preElement instanceof HTMLElement)) {
+          continue;
+        }
+
+        const copyButton = document.createElement("button");
+        copyButton.type = "button";
+        copyButton.dataset.codeCopyButton = "true";
+        copyButton.dataset.copyState = "idle";
+        copyButton.className =
+          "message-code-copy-btn inline-flex h-6 w-6 items-center justify-center rounded-md border border-border-subtle bg-bg-elevated/90 text-composer-icon transition-colors hover:text-icon-active focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft";
+        copyButton.setAttribute("aria-label", t("message.copy"));
+        copyButton.setAttribute("title", t("message.copy"));
+
+        const iconHost = document.createElement("span");
+        iconHost.className =
+          "pointer-events-none inline-flex h-3 w-3 items-center justify-center text-[11px] leading-none";
+        copyButton.appendChild(iconHost);
+        preElement.appendChild(copyButton);
+
+        const renderIconState = (state: "idle" | "success" | "error") => {
+          copyButton.dataset.copyState = state;
+          if (state === "success") {
+            copyButton.setAttribute("aria-label", t("message.copied"));
+            copyButton.setAttribute("title", t("message.copied"));
+          } else if (state === "error") {
+            copyButton.setAttribute("aria-label", t("message.copyFailed"));
+            copyButton.setAttribute("title", t("message.copyFailed"));
+          } else {
+            copyButton.setAttribute("aria-label", t("message.copy"));
+            copyButton.setAttribute("title", t("message.copy"));
+          }
+          iconHost.textContent = state === "success" ? "✓" : "⧉";
+        };
+
+        renderIconState("idle");
+
+        const mount: CodeCopyButtonMount = {
+          button: copyButton,
+          clickHandler: () => {},
+          iconHost,
+          resetTimerId: null,
+        };
+
+        mount.clickHandler = (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const source = codeBlock.textContent ?? "";
+          if (source.trim().length === 0) {
+            return;
+          }
+
+          if (mount.resetTimerId != null) {
+            window.clearTimeout(mount.resetTimerId);
+            mount.resetTimerId = null;
+          }
+
+          void writeText(source).then((ok) => {
+            renderIconState(ok ? "success" : "error");
+            mount.resetTimerId = window.setTimeout(() => {
+              mount.resetTimerId = null;
+              renderIconState("idle");
+            }, 1200);
+          });
+        };
+
+        copyButton.addEventListener("click", mount.clickHandler);
+        mounts.push(mount);
+      }
+
+      return () => {
+        for (const mount of mounts) {
+          if (mount.resetTimerId != null) {
+            window.clearTimeout(mount.resetTimerId);
+          }
+          mount.button.removeEventListener("click", mount.clickHandler);
+          mount.iconHost.textContent = "";
+          mount.button.remove();
+        }
+      };
+    }, [safeMessageHtml]);
 
     useEffect(() => {
       const div = messageBodyRef.current;
@@ -370,7 +468,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
 
       const action = LABEL_TO_ACTION[label];
       if (action && callbacks?.[action]) {
-        (callbacks[action] as (msg: MockMessage) => void)(message);
+        callbacks[action](message);
       }
       replySelectionRef.current = undefined;
       setMenuOpen(false);
@@ -491,9 +589,19 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
 
         const spoilerHeader = hit.closest(".spoiler-header");
         if (spoilerHeader) {
+          // Поддержка legacy/block-spoiler разметки Zulip (`.spoiler-block` + `.spoiler-header`).
           event.preventDefault();
           event.stopPropagation();
           spoilerHeader.closest(".spoiler-block")?.classList.toggle("open");
+          return;
+        }
+
+        const inlineSpoiler = hit.closest(".inline-spoiler");
+        if (inlineSpoiler) {
+          // Локально раскрываем/скрываем inline spoiler без влияния на остальные интеракции bubble.
+          event.preventDefault();
+          event.stopPropagation();
+          inlineSpoiler.classList.toggle("open");
           return;
         }
 
@@ -724,7 +832,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
                     <span
                       className={`text-[11px] font-medium ${isOwn ? "text-call-green" : "text-accent-soft"}`}
                     >
-                      #{message.subject}
+                      {message.subject}
                     </span>
                   )}
                 </div>
@@ -810,7 +918,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
                       isOwn ? "text-call-green" : "text-accent-soft"
                     }`}
                   >
-                    #{message.subject}
+                    {message.subject}
                   </span>
                 )}
               </div>

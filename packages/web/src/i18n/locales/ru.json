@@ -230,7 +230,9 @@
     "partner": "Собеседник",
     "private": "Личное",
     "recentDms": "Недавние",
-    "allUsers": "Все пользователи"
+    "allUsers": "Все пользователи",
+    "partnerBlocked": "Пользователь заблокирован",
+    "composerBlockedPlaceholder": "Пользователь заблокирован. Отправить сообщение нельзя."
   },
   "call": {
     "call": "Позвонить",
@@ -638,7 +640,8 @@
     "savedSnippetTitle": "Название сниппета",
     "savedSnippetContent": "Содержимое сниппета",
     "savedSnippetsLoadError": "Не удалось загрузить сохраненные сниппеты",
-    "savedSnippetsCreateError": "Не удалось создать сохраненный сниппет"
+    "savedSnippetsCreateError": "Не удалось создать сохраненный сниппет",
+    "aiTemporarilyUnavailable": "AI-функции в вашей организации временно не подключены."
   },
   "a11y": {
     "collapseTopics": "Свернуть темы",

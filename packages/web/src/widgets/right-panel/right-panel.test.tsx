@@ -160,8 +160,8 @@ describe("RightPanel truthfulness", () => {
     renderWithProviders(<RightPanel title="engineering" participantsCount={3} onlineCount={1} />);
 
     expect(screen.queryByText(/36 photos/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/call \| #topic 1/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/call \| #topic 2/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/call \| topic 1/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/call \| topic 2/i)).not.toBeInTheDocument();
   });
 
   it("renders settings mode with explicit option selection for language and sound", () => {

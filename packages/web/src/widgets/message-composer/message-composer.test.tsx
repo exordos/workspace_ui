@@ -8,6 +8,7 @@ import { resetRealmEmojisCacheForTests } from "~/shared/lib/realm-emojis-cache";
 import { createUser } from "~/test/factories";
 import { renderWithProviders } from "~/test/render";
 import { computeFloatingPickerPosition } from "./message-composer-picker-position.lib";
+import { resetComposerSavedSnippetsModelForTests } from "./message-composer-saved-snippets.model";
 import { MessageComposer } from "./message-composer.ui";
 
 const isWebViewMock = vi.fn(() => false);
@@ -78,18 +79,12 @@ vi.mock("emoji-picker-react", () => ({
   },
 }));
 
-const aiActionMenuMock = vi.fn();
-
 vi.mock("~/features/ai-reply/ai-reply.ui", () => ({
   AiComposerButton: ({ onClick }: { onClick: () => void }) => (
     <button type="button" onClick={onClick}>
       AI
     </button>
   ),
-  AiActionMenu: (props: unknown) => {
-    aiActionMenuMock(props);
-    return null;
-  },
   SmartReplySuggestions: () => null,
 }));
 
@@ -104,7 +99,6 @@ vi.mock("~/entities/sticker/sticker.api", () => ({
 afterEach(() => {
   useUsersStore.getState().clear();
   useMentionSuggestStore.getState().clear();
-  aiActionMenuMock.mockReset();
   isWebViewMock.mockReset();
   isWebViewMock.mockReturnValue(false);
   useViewportKeyboardMock.mockReset();
@@ -122,6 +116,7 @@ afterEach(() => {
 
 beforeEach(() => {
   resetRealmEmojisCacheForTests();
+  resetComposerSavedSnippetsModelForTests();
 });
 
 const focusComposerInput = () => {
@@ -351,6 +346,26 @@ describe("MessageComposer saved snippets", () => {
 
     expect(screen.getByText("No matching results")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /create new saved snippet/i })).toBeInTheDocument();
+  });
+
+  it("reuses snippets cache when menu is reopened within ttl window", async () => {
+    fetchSavedSnippetsMock.mockResolvedValue([
+      { id: 101, title: "Incident template", content: "Status update", date_created: 1710000000 },
+    ]);
+
+    renderWithProviders(<MessageComposer onSend={vi.fn()} />);
+
+    fireEvent.focus(screen.getByRole("textbox"));
+    const trigger = screen.getByRole("button", { name: /saved snippets/i });
+
+    fireEvent.click(trigger);
+    await screen.findByRole("button", { name: "Incident template" });
+    fireEvent.click(trigger);
+
+    fireEvent.click(trigger);
+    await screen.findByRole("button", { name: "Incident template" });
+
+    expect(fetchSavedSnippetsMock).toHaveBeenCalledTimes(1);
   });
 
   it("creates a saved snippet from the current draft", async () => {
@@ -904,6 +919,79 @@ describe("MessageComposer file attachments", () => {
     });
   });
 
+  it("attaches selected files when picker dispatches input event", async () => {
+    const onSend = vi.fn();
+    const { container } = renderWithProviders(<MessageComposer onSend={onSend} />);
+    const input = container.querySelector('input[type="file"]');
+    if (!(input instanceof HTMLInputElement)) {
+      throw new Error("Expected hidden file input");
+    }
+    const file = new File(["hello"], "from-input-event.txt", { type: "text/plain" });
+    fireEvent.input(input, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(screen.getByText("from-input-event.txt")).toBeInTheDocument();
+    });
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "message with input event file" } });
+    fireEvent.keyDown(textbox, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith("message with input event file", "", [file]);
+    });
+  });
+
+  it("deduplicates paired input/change events from a single picker selection", async () => {
+    const onSend = vi.fn();
+    const { container } = renderWithProviders(<MessageComposer onSend={onSend} />);
+    const input = container.querySelector('input[type="file"]');
+    if (!(input instanceof HTMLInputElement)) {
+      throw new Error("Expected hidden file input");
+    }
+
+    const file = new File(["same"], "single-selection.txt", { type: "text/plain" });
+    fireEvent.input(input, { target: { files: [file] } });
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(screen.getAllByText("single-selection.txt")).toHaveLength(1);
+    });
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "message with single picker selection" } });
+    fireEvent.keyDown(textbox, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith("message with single picker selection", "", [file]);
+    });
+  });
+
+  it("allows selecting the same file in separate selections and sends both attachments", async () => {
+    const onSend = vi.fn();
+    const { container } = renderWithProviders(<MessageComposer onSend={onSend} />);
+    const input = container.querySelector('input[type="file"]');
+    if (!(input instanceof HTMLInputElement)) {
+      throw new Error("Expected hidden file input");
+    }
+
+    const file = new File(["dup"], "duplicate.txt", { type: "text/plain" });
+    fireEvent.change(input, { target: { files: [file] } });
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(screen.getAllByText("duplicate.txt")).toHaveLength(2);
+    });
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "message with duplicate files" } });
+    fireEvent.keyDown(textbox, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith("message with duplicate files", "", [file, file]);
+    });
+  });
+
   it("attaches dropped files and includes them in send payload", async () => {
     const onSend = vi.fn();
     renderWithProviders(<MessageComposer onSend={onSend} />);
@@ -1219,6 +1307,57 @@ describe("MessageComposer send shortcuts", () => {
 
     expect(onSend).not.toHaveBeenCalled();
   });
+
+  it("continues bulleted list on Shift+Enter", () => {
+    const onSend = vi.fn();
+    renderWithProviders(<MessageComposer onSend={onSend} />);
+
+    const textbox = screen.getByRole("textbox");
+    if (!(textbox instanceof HTMLTextAreaElement)) {
+      throw new Error("Expected textarea element");
+    }
+
+    fireEvent.change(textbox, { target: { value: "- item" } });
+    textbox.setSelectionRange(textbox.value.length, textbox.value.length);
+    fireEvent.keyDown(textbox, { key: "Enter", shiftKey: true });
+
+    expect(onSend).not.toHaveBeenCalled();
+    expect(textbox).toHaveValue("- item\n- ");
+  });
+
+  it("continues numbered list on Shift+Enter", () => {
+    const onSend = vi.fn();
+    renderWithProviders(<MessageComposer onSend={onSend} />);
+
+    const textbox = screen.getByRole("textbox");
+    if (!(textbox instanceof HTMLTextAreaElement)) {
+      throw new Error("Expected textarea element");
+    }
+
+    fireEvent.change(textbox, { target: { value: "1. item" } });
+    textbox.setSelectionRange(textbox.value.length, textbox.value.length);
+    fireEvent.keyDown(textbox, { key: "Enter", shiftKey: true });
+
+    expect(onSend).not.toHaveBeenCalled();
+    expect(textbox).toHaveValue("1. item\n2. ");
+  });
+
+  it("exits list continuation on empty bullet marker line", () => {
+    const onSend = vi.fn();
+    renderWithProviders(<MessageComposer onSend={onSend} />);
+
+    const textbox = screen.getByRole("textbox");
+    if (!(textbox instanceof HTMLTextAreaElement)) {
+      throw new Error("Expected textarea element");
+    }
+
+    fireEvent.change(textbox, { target: { value: "- " } });
+    textbox.setSelectionRange(textbox.value.length, textbox.value.length);
+    fireEvent.keyDown(textbox, { key: "Enter", shiftKey: true });
+
+    expect(onSend).not.toHaveBeenCalled();
+    expect(textbox).toHaveValue("");
+  });
 });
 
 describe("MessageComposer emoji picker behavior", () => {
@@ -1471,46 +1610,54 @@ describe("MessageComposer AI context wiring", () => {
     focusComposerInput();
 
     fireEvent.click(screen.getByRole("button", { name: "AI" }));
+    expect(screen.getByTestId("composer-ai-unavailable-popover")).toBeInTheDocument();
 
     const backdrop = screen.getByTestId("composer-ai-menu-backdrop");
     fireEvent.click(backdrop);
 
     expect(screen.queryByTestId("composer-ai-menu-backdrop")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("composer-ai-unavailable-popover")).not.toBeInTheDocument();
   });
 
-  it("passes chat context and messages context to AI action menu", () => {
-    const messagesContext = [
-      {
-        id: 1,
-        senderId: 42,
-        senderName: "Alice",
-        content: "Can you review this?",
-        timestamp: 1710000001,
-        isOwn: false,
-      },
-    ];
-    const chatContext = {
-      type: "stream" as const,
-      streamName: "engineering",
-      topic: "general",
-    };
-
-    renderWithProviders(
-      <MessageComposer
-        onSend={vi.fn()}
-        aiMessagesContext={messagesContext}
-        aiChatContext={chatContext}
-      />,
-    );
+  it("shows temporary unavailable message when AI trigger is clicked", () => {
+    renderWithProviders(<MessageComposer onSend={vi.fn()} />);
     focusComposerInput();
 
     fireEvent.click(screen.getByRole("button", { name: "AI" }));
 
-    const props = aiActionMenuMock.mock.calls.at(-1)?.[0] as {
-      messagesContext?: unknown;
-      chatContext?: unknown;
-    };
-    expect(props.messagesContext).toEqual(messagesContext);
-    expect(props.chatContext).toEqual(chatContext);
+    expect(
+      screen.getByText("AI features are temporarily unavailable in your organization."),
+    ).toBeInTheDocument();
+  });
+
+  it("toggles AI unavailable popover on repeated AI trigger click", () => {
+    renderWithProviders(<MessageComposer onSend={vi.fn()} />);
+    focusComposerInput();
+
+    fireEvent.click(screen.getByRole("button", { name: "AI" }));
+    expect(screen.getByTestId("composer-ai-unavailable-popover")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "AI" }));
+    expect(screen.queryByTestId("composer-ai-unavailable-popover")).not.toBeInTheDocument();
+  });
+
+  it("closes other popovers when opening AI unavailable popover", () => {
+    renderWithProviders(<MessageComposer onSend={vi.fn()} />);
+    focusComposerInput();
+
+    fireEvent.click(screen.getByRole("button", { name: /message menu/i }));
+    expect(screen.getByRole("dialog", { name: /message menu/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "AI" }));
+    expect(screen.queryByRole("dialog", { name: /message menu/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /saved snippets/i }));
+    expect(screen.getByTestId("composer-saved-snippets-picker")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "AI" }));
+    expect(screen.queryByTestId("composer-saved-snippets-picker")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /emoji/i }));
+    expect(screen.getByTestId("composer-media-picker")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "AI" }));
+    expect(screen.queryByTestId("composer-media-picker")).not.toBeInTheDocument();
   });
 });

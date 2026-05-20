@@ -6,6 +6,7 @@ import AtIcon from "../assets/icons/at.svg?react";
 import AttachIcon from "../assets/icons/attach.svg?react";
 import BellIcon from "../assets/icons/bell.svg?react";
 import BellOffIcon from "../assets/icons/bell_off.svg?react";
+import BlockIcon from "../assets/icons/block.svg?react";
 import BusinessCenterIcon from "../assets/icons/business_center.svg?react";
 import CalendarIcon from "../assets/icons/calendar.svg?react";
 import ChannelsIcon from "../assets/icons/channels.svg?react";
@@ -98,6 +99,7 @@ const ICONS: Record<string, IconSvgComponent> = {
   close: CloseIcon,
   bell: BellIcon,
   bell_off: BellOffIcon,
+  block: BlockIcon,
   channels: ChannelsIcon,
   more: MoreIcon,
   heart: HeartIcon,

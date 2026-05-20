@@ -1,4 +1,5 @@
 import type { AiMessageContext, AiReplyRequest } from "~/features/ai-reply/ai-reply.types";
+import type { CSSProperties } from "react";
 
 export interface MessageComposerSmartReplyStripProps {
   onAccept: (text: string) => void;
@@ -11,4 +12,5 @@ export interface MessageComposerAiActionMenuLayerProps {
   onOpenChange: (open: boolean) => void;
   messagesContext: AiMessageContext[];
   chatContext: AiReplyRequest["chatContext"] | undefined;
+  popoverStyle: CSSProperties;
 }

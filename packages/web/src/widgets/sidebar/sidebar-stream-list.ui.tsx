@@ -217,7 +217,7 @@ export const SidebarStreamList: React.FC<SidebarStreamListProps> = ({
                           >
                             <div className="min-w-0 flex-1">
                               <div className="truncate text-sm font-medium text-text-primary">
-                                # {topic.subject}
+                                {topic.subject}
                               </div>
                               {!isCompactDensity && (
                                 <>

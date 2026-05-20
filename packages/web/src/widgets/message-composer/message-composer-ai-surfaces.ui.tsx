@@ -1,5 +1,6 @@
 import React from "react";
-import { AiActionMenu, SmartReplySuggestions } from "~/features/ai-reply/ai-reply.ui";
+import { SmartReplySuggestions } from "~/features/ai-reply/ai-reply.ui";
+import { t } from "~/i18n/i18n";
 import type {
   MessageComposerAiActionMenuLayerProps,
   MessageComposerSmartReplyStripProps,
@@ -11,32 +12,29 @@ export const MessageComposerSmartReplyStrip = React.memo(function MessageCompose
   return <SmartReplySuggestions onAccept={onAccept} />;
 });
 
-export const MessageComposerAiActionMenuLayer = React.memo(function MessageComposerAiActionMenuLayer({
-  open,
-  draft,
-  onInsert,
-  onOpenChange,
-  messagesContext,
-  chatContext,
-}: MessageComposerAiActionMenuLayerProps) {
-  if (!open) return null;
+export const MessageComposerAiActionMenuLayer = React.memo(
+  function MessageComposerAiActionMenuLayer(props: MessageComposerAiActionMenuLayerProps) {
+    const { open, onOpenChange, popoverStyle } = props;
+    if (!open) return null;
 
-  return (
-    <>
-      <div
-        className="fixed inset-0 z-dropdown"
-        aria-hidden
-        data-testid="composer-ai-menu-backdrop"
-        onClick={() => onOpenChange(false)}
-      />
-      <AiActionMenu
-        draft={draft}
-        onInsert={onInsert}
-        open={open}
-        onOpenChange={onOpenChange}
-        messagesContext={messagesContext}
-        chatContext={chatContext}
-      />
-    </>
-  );
-});
+    return (
+      <>
+        <div
+          className="fixed inset-0 z-dropdown"
+          aria-hidden
+          data-testid="composer-ai-menu-backdrop"
+          onClick={() => onOpenChange(false)}
+        />
+        <div
+          className="fixed z-modal rounded-xl border border-border-subtle bg-bg-elevated p-3 shadow-lg"
+          role="dialog"
+          aria-label={t("composer.aiTemporarilyUnavailable")}
+          data-testid="composer-ai-unavailable-popover"
+          style={popoverStyle}
+        >
+          <p className="text-xs text-text-primary">{t("composer.aiTemporarilyUnavailable")}</p>
+        </div>
+      </>
+    );
+  },
+);

@@ -118,6 +118,28 @@ body {
   display: block;
 }
 
+.message-body .inline-spoiler {
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline;
+  padding: 0 2px;
+  transition:
+    background-color 120ms ease,
+    filter 120ms ease;
+}
+
+.message-body .inline-spoiler:not(.open) {
+  background-color: var(--color-border-subtle);
+  filter: blur(0.22rem);
+  user-select: none;
+}
+
+.message-body .inline-spoiler.open {
+  background-color: transparent;
+  filter: none;
+  user-select: text;
+}
+
 /* ── Видео в сообщениях ───────────────────────────────── */
 
 .message-body video {
@@ -194,7 +216,7 @@ body {
   line-height: 1.15rem;
 }
 
-/* ── Подсветка кода в preview composer ───────────────── */
+/* ── Подсветка кода в bubble и preview composer ─────── */
 
 .message-body pre code {
   max-width: 100%;
@@ -202,48 +224,87 @@ body {
   overflow-wrap: anywhere;
 }
 
-.composer-preview-html pre code.hljs {
+.message-body pre {
+  position: relative;
+}
+
+/*
+ * Для fenced-code переносим визуальную оболочку на `pre`,
+ * чтобы фон покрывал весь блок и не обрывался по границам `code`.
+ */
+.message-body pre:has(> code.hljs) {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-text-primary) 8%, var(--color-bg-elevated) 92%);
+  overflow: hidden;
+}
+
+.message-body pre code.hljs {
   display: block;
+  width: 100%;
+  min-width: 100%;
+  box-sizing: border-box;
   max-width: 100%;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  overflow-x: hidden;
+  overflow-x: auto;
+  border: 0;
+  border-radius: 0;
+  padding: 10px 14px;
+  line-height: 1.45;
+  font-style: normal;
+  font-weight: 500;
   color: var(--color-text-primary);
   background: transparent;
 }
 
-.composer-preview-html .hljs-comment,
-.composer-preview-html .hljs-quote {
+.message-body .message-code-copy-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 1;
+}
+
+.message-body .message-code-copy-btn[data-copy-state="success"] {
+  color: var(--color-call-green);
+}
+
+.message-body .message-code-copy-btn[data-copy-state="error"] {
+  color: var(--color-notice-base);
+}
+
+.message-body .hljs-comment,
+.message-body .hljs-quote {
   color: var(--color-text-muted);
 }
 
-.composer-preview-html .hljs-keyword,
-.composer-preview-html .hljs-selector-tag,
-.composer-preview-html .hljs-literal,
-.composer-preview-html .hljs-name,
-.composer-preview-html .hljs-tag {
+.message-body .hljs-keyword,
+.message-body .hljs-selector-tag,
+.message-body .hljs-literal,
+.message-body .hljs-name,
+.message-body .hljs-tag {
   color: var(--color-accent);
 }
 
-.composer-preview-html .hljs-string,
-.composer-preview-html .hljs-title,
-.composer-preview-html .hljs-section,
-.composer-preview-html .hljs-attribute,
-.composer-preview-html .hljs-symbol,
-.composer-preview-html .hljs-bullet,
-.composer-preview-html .hljs-addition {
+.message-body .hljs-string,
+.message-body .hljs-title,
+.message-body .hljs-section,
+.message-body .hljs-attribute,
+.message-body .hljs-symbol,
+.message-body .hljs-bullet,
+.message-body .hljs-addition {
   color: var(--color-indicator-green);
 }
 
-.composer-preview-html .hljs-number,
-.composer-preview-html .hljs-meta,
-.composer-preview-html .hljs-variable,
-.composer-preview-html .hljs-template-variable,
-.composer-preview-html .hljs-type {
+.message-body .hljs-number,
+.message-body .hljs-meta,
+.message-body .hljs-variable,
+.message-body .hljs-template-variable,
+.message-body .hljs-type {
   color: var(--color-indicator-orange);
 }
 
-.composer-preview-html .hljs-deletion {
+.message-body .hljs-deletion {
   color: var(--color-indicator-pink);
 }
 

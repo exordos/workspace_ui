@@ -121,8 +121,8 @@ describe("layout-instance-unread", () => {
   });
 
   it("includes active stream context in web window title", () => {
-    expect(formatWebWindowTitleWithUnreadCount(2, "Workspace", "#general | #release")).toBe(
-      "(2) #general | #release - Workspace",
+    expect(formatWebWindowTitleWithUnreadCount(2, "Workspace", "#general | release")).toBe(
+      "(2) #general | release - Workspace",
     );
     expect(formatWebWindowTitleWithUnreadCount(0, "Workspace", "#general")).toBe(
       "#general - Workspace",
@@ -144,7 +144,7 @@ describe("layout-instance-unread", () => {
       }),
     ).toBe("@Alice");
     expect(buildActiveChatWindowTitle({ streamName: "general", topicName: "release" })).toBe(
-      "#general | #release",
+      "#general | release",
     );
     expect(buildActiveChatWindowTitle({ streamName: "general" })).toBe("#general");
     expect(buildActiveChatWindowTitle({ streamName: "   ", topicName: "release" })).toBeNull();

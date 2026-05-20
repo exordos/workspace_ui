@@ -38,8 +38,11 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
             ? t("presence.online")
             : t("presence.lastSeen", { time: dmPartner.lastSeen })
           : t("presence.offline");
-  const statusText =
-    dmPartner?.isTyping === true ? t("chat.typing") : (dmPartner?.customStatus ?? presenceText);
+  const statusText = dmPartner?.isAccountDeactivated
+    ? t("dm.partnerBlocked")
+    : dmPartner?.isTyping === true
+      ? t("chat.typing")
+      : (dmPartner?.customStatus ?? presenceText);
 
   return (
     <header className="flex flex-shrink-0 items-center justify-between bg-card-bg px-5 py-2">
@@ -59,6 +62,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
                 size="md"
                 tone="header"
                 pulse={false}
+                deactivated={dmPartner.isAccountDeactivated === true}
                 className="absolute bottom-0 right-0 ring-border-subtle"
               />
             </div>
@@ -84,10 +88,14 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           </div>
         ) : (
           <>
-            <h1 className="truncate text-sm font-semibold text-text-primary">
-              {channelName}
-              {!hideTopic && topic && (
-                <span className="font-normal text-text-muted"> | #{topic}</span>
+            <h1 className="truncate text-sm text-text-primary">
+              {!hideTopic && topic ? (
+                <>
+                  <span className="font-semibold">{topic}</span>
+                  <span className="font-normal text-text-muted"> · {channelName}</span>
+                </>
+              ) : (
+                <span className="font-semibold">{channelName}</span>
               )}
             </h1>
             {!hideParticipants && (

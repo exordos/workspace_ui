@@ -19,6 +19,7 @@ export interface RightPanelUserFromStoreLike {
   avatar_url?: string | null;
   presence?: RightPanelPresenceLike;
   role?: number;
+  is_active?: boolean;
 }
 
 export interface RightPanelDetailedProfileLike {

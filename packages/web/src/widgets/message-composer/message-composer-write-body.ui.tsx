@@ -1,5 +1,14 @@
+// message-composer-write-body.ui.tsx
+// Назначение:
+// - Текстовый ввод composer: textarea, mention dropdown и keyboard-обработчики.
+// Правило приоритетов клавиш:
+// - formatting shortcuts -> mention navigation/select -> edit actions -> send/newline.
+// Важно:
+// - Режим send/newline берется из input-command resolver, а list continuation — из отдельного helper.
 import React from "react";
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
+import { isNewlineCommand, isSendCommand } from "./message-composer-input-commands.lib";
+import { applyListContinuationOnNewline } from "./message-composer-list-continuation.lib";
 import { ComposerMentionDropdown } from "./message-composer-mention-dropdown.ui";
 import type { MessageComposerWriteBodyProps } from "./message-composer-write-body.types";
 
@@ -19,6 +28,7 @@ export const MessageComposerWriteBody = React.memo(function MessageComposerWrite
   applyFormattingShortcut,
   onPaste,
   onSend,
+  sendNewlineMode,
   onEditLastMessage,
   isEditing = false,
   onCancelEdit,
@@ -44,6 +54,7 @@ export const MessageComposerWriteBody = React.memo(function MessageComposerWrite
         onKeyDown={(e) => {
           const normalizedKey = e.key.toLowerCase();
           const isModPressed = e.metaKey || e.ctrlKey;
+          // 1) Сначала форматирующие shortcut-ы, чтобы не конкурировать с send/newline.
           if (isModPressed && !e.altKey) {
             if (normalizedKey === "b") {
               e.preventDefault();
@@ -108,20 +119,47 @@ export const MessageComposerWriteBody = React.memo(function MessageComposerWrite
             onHideMentionDropdown();
             return;
           }
-          if (e.key === "Enter" && !e.shiftKey) {
-            if (showMentions && mentionSuggestions.length > 0) {
-              e.preventDefault();
-              const activeSuggestion = mentionSuggestions[activeMentionIndex];
-              if (activeSuggestion) {
-                onMentionSelect(activeSuggestion);
-              }
-              return;
+
+          // 2) Enter при активных mention-саджестах выбирает пользователя, а не отправляет.
+          if (e.key === "Enter" && !e.shiftKey && showMentions && mentionSuggestions.length > 0) {
+            e.preventDefault();
+            const activeSuggestion = mentionSuggestions[activeMentionIndex];
+            if (activeSuggestion) {
+              onMentionSelect(activeSuggestion);
             }
+            return;
+          }
+
+          if (isSendCommand(e, sendNewlineMode)) {
+            // 3) Команда отправки централизована в резолвере режимов ввода.
             e.preventDefault();
             if (showMentions) {
               onHideMentionDropdown();
             }
             void onSend();
+            return;
+          }
+
+          if (isNewlineCommand(e, sendNewlineMode)) {
+            const textarea = textareaRef.current;
+            if (!textarea) return;
+            const selectionStart = textarea.selectionStart ?? value.length;
+            const selectionEnd = textarea.selectionEnd ?? value.length;
+            const continuation = applyListContinuationOnNewline({
+              text: value,
+              selectionStart,
+              selectionEnd,
+            });
+            if (continuation == null) return;
+
+            // 4) Перехватываем только list-continuation; обычный перенос остается нативным.
+            e.preventDefault();
+            onValueChange(continuation.nextValue);
+            onDetectMention(continuation.nextValue, continuation.nextSelection);
+            requestAnimationFrame(() => {
+              textarea.focus();
+              textarea.setSelectionRange(continuation.nextSelection, continuation.nextSelection);
+            });
           }
         }}
         placeholder={placeholder}

@@ -16,7 +16,7 @@ export const CallBubble: React.FC<CallBubbleProps> = ({ callName = "", topic = "
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm text-text-primary">
-            {t("call.call")} {callName} | #{topic}
+            {t("call.call")} {callName} | {topic}
           </p>
           {showDuration && <p className="mt-0.5 text-[11px] text-text-muted">{durationTrimmed}</p>}
         </div>

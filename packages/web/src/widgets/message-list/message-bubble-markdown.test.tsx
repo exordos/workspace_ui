@@ -1,4 +1,4 @@
-import { fireEvent, render } from "@testing-library/react";
+import { fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useCallParticipantsStore } from "~/entities/call/call.model";
 import { useUsersStore } from "~/entities/user/user.model";
@@ -8,14 +8,15 @@ import { createUser } from "~/test/factories";
 import { MessageBubble } from "./message-bubble.ui";
 
 const buildAuthHeaderMock = vi.fn(() => ({}));
+const writeTextMock = vi.fn<(value: string) => Promise<boolean>>(() => Promise.resolve(true));
 
-vi.mock("~/shared/lib/auth-guard", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/shared/lib/auth-guard")>();
-  return {
-    ...actual,
-    buildAuthHeader: () => buildAuthHeaderMock(),
-  };
-});
+vi.mock("~/shared/lib/auth-guard", () => ({
+  buildAuthHeader: () => buildAuthHeaderMock(),
+}));
+
+vi.mock("~/shared/lib/clipboard", () => ({
+  writeText: (value: string) => writeTextMock(value),
+}));
 
 function createMessage(overrides: Partial<MockMessage> = {}): MockMessage {
   return {
@@ -36,6 +37,7 @@ describe("MessageBubble markdown body", () => {
     useUsersStore.getState().clear();
     useCallParticipantsStore.setState({ participantsByUrl: {} });
     buildAuthHeaderMock.mockReset();
+    writeTextMock.mockReset();
     vi.unstubAllGlobals();
   });
 
@@ -78,6 +80,39 @@ describe("MessageBubble markdown body", () => {
     expect(body?.className).toContain("[&_pre]:[overflow-wrap:anywhere]");
     expect(body?.className).toContain("min-w-0");
     expect(body?.querySelector("pre")?.textContent).toBe(longToken);
+  });
+
+  it("adds syntax-highlight classes to fenced code blocks in bubble markdown", () => {
+    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+
+    const markdown = "```javascript\nconst value = 1;\n```";
+    const { container } = render(
+      <MessageBubble message={createMessage({ content: markdown })} isOwn={false} />,
+    );
+
+    const body = container.querySelector(".message-body");
+    const highlightedCode = body?.querySelector("code.hljs");
+    expect(highlightedCode).toBeTruthy();
+    expect(highlightedCode?.querySelector(".hljs-keyword")).toBeTruthy();
+  });
+
+  it("renders copy-code button for fenced code blocks and copies source text", async () => {
+    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+
+    const markdown = "```javascript\nconst value = 1;\n```";
+    const { container } = render(
+      <MessageBubble message={createMessage({ content: markdown })} isOwn={false} />,
+    );
+
+    const copyButton = container.querySelector<HTMLButtonElement>('[data-code-copy-button="true"]');
+    expect(copyButton).toBeTruthy();
+
+    fireEvent.click(copyButton as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(writeTextMock).toHaveBeenCalledTimes(1);
+    });
+    expect(writeTextMock).toHaveBeenCalledWith(expect.stringContaining("const value = 1;"));
   });
 
   it("renders ordered and nested unordered lists with surrounding paragraphs", () => {
@@ -152,5 +187,106 @@ describe("MessageBubble markdown body", () => {
     expect(emojiImage).toBeTruthy();
     fireEvent.click(emojiImage as HTMLImageElement);
     expect(mediaViewerOpenSpy).not.toHaveBeenCalled();
+  });
+
+  it("renders markdown strikethrough as del tag in bubble body", () => {
+    // Регресс: раньше sanitize-path удалял `<del>`, и зачеркнутый текст терялся в bubble.
+    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+
+    const { container } = render(
+      <MessageBubble message={createMessage({ content: "~~obsolete~~" })} isOwn={false} />,
+    );
+
+    const body = container.querySelector(".message-body");
+    expect(body).toBeTruthy();
+    expect(body?.innerHTML).toContain("<del>obsolete</del>");
+  });
+
+  it("toggles inline spoiler open class on click", () => {
+    // Проверяем пользовательское поведение: повторный клик открывает/закрывает один и тот же inline spoiler.
+    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+
+    const { container } = render(
+      <MessageBubble
+        message={createMessage({ content: "Before ||secret|| after" })}
+        isOwn={false}
+      />,
+    );
+
+    const spoiler = container.querySelector(".inline-spoiler");
+    expect(spoiler).toBeTruthy();
+    expect(spoiler?.classList.contains("open")).toBe(false);
+
+    fireEvent.click(spoiler as HTMLElement);
+    expect(spoiler?.classList.contains("open")).toBe(true);
+
+    fireEvent.click(spoiler as HTMLElement);
+    expect(spoiler?.classList.contains("open")).toBe(false);
+  });
+
+  it("renders zulip spoiler block as accordion with visible header", () => {
+    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+
+    const zulipSpoilerHtml = [
+      '<div class="spoiler-block">',
+      '<div class="spoiler-header">Server Header</div>',
+      '<div class="spoiler-content"><p>Server Hidden</p></div>',
+      "</div>",
+    ].join("");
+
+    const { container } = render(
+      <MessageBubble message={createMessage({ content: zulipSpoilerHtml })} isOwn={false} />,
+    );
+
+    const body = container.querySelector(".message-body");
+    expect(body?.textContent).toContain("Server Hidden");
+    expect(body?.textContent).toContain("Server Header");
+
+    const spoilerBlock = container.querySelector(".spoiler-block");
+    const spoilerHeader = container.querySelector(".spoiler-header");
+    expect(spoilerBlock).toBeTruthy();
+    expect(spoilerHeader).toBeTruthy();
+    expect(spoilerBlock?.classList.contains("open")).toBe(false);
+
+    fireEvent.click(spoilerHeader as HTMLElement);
+    expect(spoilerBlock?.classList.contains("open")).toBe(true);
+
+    fireEvent.click(spoilerHeader as HTMLElement);
+    expect(spoilerBlock?.classList.contains("open")).toBe(false);
+  });
+
+  it("renders zulip markdown fenced spoiler with header and toggles by header click", () => {
+    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+
+    const markdown = "```spoiler Hidden Header\nосновной текст спойлера\n```";
+    const { container } = render(
+      <MessageBubble message={createMessage({ content: markdown })} isOwn={false} />,
+    );
+
+    const body = container.querySelector(".message-body");
+    expect(body?.textContent).toContain("основной текст спойлера");
+    expect(body?.textContent).toContain("Hidden Header");
+
+    const spoilerBlock = container.querySelector(".spoiler-block");
+    const spoilerHeader = container.querySelector(".spoiler-header");
+    expect(spoilerBlock).toBeTruthy();
+    expect(spoilerHeader?.textContent).toContain("Hidden Header");
+    expect(spoilerBlock?.classList.contains("open")).toBe(false);
+
+    fireEvent.click(spoilerHeader as HTMLElement);
+    expect(spoilerBlock?.classList.contains("open")).toBe(true);
+  });
+
+  it("uses default header for fenced spoiler without explicit heading", () => {
+    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+
+    const markdown = "```spoiler\nосновной текст спойлера\n```";
+    const { container } = render(
+      <MessageBubble message={createMessage({ content: markdown })} isOwn={false} />,
+    );
+
+    const spoilerHeader = container.querySelector(".spoiler-header");
+    expect(spoilerHeader).toBeTruthy();
+    expect(spoilerHeader?.textContent).toContain("Spoiler");
   });
 });

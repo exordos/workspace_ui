@@ -89,7 +89,7 @@ export const MessageBubbleJitsiCard = React.memo(function MessageBubbleJitsiCard
             <>
               <span className="h-4 w-1 shrink-0 rounded-full bg-accent" aria-hidden />
               <span className="truncate text-[15px] leading-tight text-text-muted">
-                # {jitsiTopicName}
+                {jitsiTopicName}
               </span>
             </>
           )}

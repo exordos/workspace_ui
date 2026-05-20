@@ -26,6 +26,30 @@ describe("renderMarkdownFallbackHtml", () => {
     expect(html).toContain("strong");
     expect(html).toContain("x");
   });
+
+  it("renders inline spoiler syntax into dedicated spoiler span", () => {
+    // Проверяем именно формат разметки, который затем ожидает bubble click-handler.
+    const html = renderMarkdownFallbackHtml("Hello ||secret||");
+    expect(html).toContain('class="inline-spoiler"');
+    expect(html).toContain('data-inline-spoiler="true"');
+    expect(html).toContain("secret");
+  });
+
+  it("renders zulip fenced spoiler markdown with block header/content structure", () => {
+    const html = renderMarkdownFallbackHtml("```spoiler Header\ninside text\n```");
+    expect(html).toContain('class="spoiler-block"');
+    expect(html).toContain('class="spoiler-header"');
+    expect(html).toContain('class="spoiler-content"');
+    expect(html).toContain("Header");
+    expect(html).toContain("inside text");
+  });
+
+  it("uses default spoiler header when fenced spoiler header is empty", () => {
+    const html = renderMarkdownFallbackHtml("```spoiler\ninside text\n```");
+    expect(html).toContain('class="spoiler-header"');
+    expect(html).toContain("Spoiler");
+    expect(html).toContain("inside text");
+  });
 });
 
 describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
@@ -56,6 +80,34 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
       { resolveUserMention: () => 2 },
     );
     expect(html).toContain('data-user-id="1"');
+  });
+
+  it("keeps zulip spoiler block structure for bubble accordion UI", () => {
+    const html = messageBodyToUnsanitizedDisplayHtml(
+      [
+        '<div class="spoiler-block">',
+        '<div class="spoiler-header">Top Secret Header</div>',
+        '<div class="spoiler-content"><p>Hidden payload</p></div>',
+        "</div>",
+      ].join(""),
+    );
+    expect(html).toContain('class="spoiler-block"');
+    expect(html).toContain('class="spoiler-header"');
+    expect(html).toContain('class="spoiler-content"');
+    expect(html).toContain("Hidden payload");
+    expect(html).toContain("Top Secret Header");
+  });
+
+  it("fills missing/empty spoiler header with default label", () => {
+    const html = messageBodyToUnsanitizedDisplayHtml(
+      [
+        '<div class="spoiler-block">',
+        '<div class="spoiler-content"><p>Hidden payload</p></div>',
+        "</div>",
+      ].join(""),
+    );
+    expect(html).toContain('class="spoiler-header"');
+    expect(html).toContain("Spoiler");
   });
 
   it("injects user-mention from reply silent @_**Name|id** without resolver", () => {
@@ -111,6 +163,18 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
     expect(html).toContain("<code>:smile:</code>");
     expect(html).toMatch(/<pre><code[^>]*>:smile:\n<\/code><\/pre>/);
     expect(html).toContain("Outside 😄");
+  });
+
+  it("does not parse spoiler markers inside inline/fenced code", () => {
+    // Маркеры в code-сегментах должны остаться буквальным текстом.
+    // Спойлер должен сработать только для обычного текста вне code.
+    const html = messageBodyToUnsanitizedDisplayHtml(
+      "Inline `||keep||` and block:\n```txt\n||stay||\n```\nOutside ||reveal||",
+    );
+    expect(html).toContain("<code>||keep||</code>");
+    expect(html).toMatch(/<pre><code[^>]*>\|\|stay\|\|\n<\/code><\/pre>/);
+    expect(html).toContain('class="inline-spoiler"');
+    expect(html).toContain(">reveal<");
   });
 
   it("renders mentions and emoji shortcodes together", () => {

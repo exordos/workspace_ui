@@ -16,14 +16,18 @@ export function serializeDirectoryMembersForSnapshot(
   const out: ZulipUserMember[] = [];
   for (const m of members) {
     if (m.user_id == null) continue;
-    out.push({
+    const row: ZulipUserMember = {
       user_id: m.user_id,
       full_name: m.full_name,
       email: m.email,
       avatar_url: m.avatar_url ?? undefined,
       role: m.role,
       profile_data: m.profile_data,
-    });
+    };
+    if (m.is_active !== undefined) {
+      row.is_active = m.is_active;
+    }
+    out.push(row);
   }
   return out;
 }

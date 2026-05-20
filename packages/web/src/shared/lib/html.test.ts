@@ -164,7 +164,8 @@ describe("sanitizeHtml", () => {
   });
 
   it("rewrites absolute external_content URLs to the canonical realm origin", () => {
-    const html = '<img src="https://sys.platform.genesis-core.team/external_content/preview.png" alt="">';
+    const html =
+      '<img src="https://sys.platform.genesis-core.team/external_content/preview.png" alt="">';
     const result = sanitizeHtml(html, "https://zulip.example.com/workspace/v1");
     expect(result).toContain('src="https://zulip.example.com/external_content/preview.png"');
   });
@@ -208,6 +209,13 @@ describe("sanitizeHtml", () => {
     const result = sanitizeHtml(html);
     expect(result).toContain('class="user-mention"');
     expect(result).toContain('data-user-id="31"');
+  });
+
+  it("preserves del tags for markdown strikethrough", () => {
+    // Защищаем поведение bubble markdown fallback: `<del>` не должен вырезаться санитайзером.
+    const html = "<p><del>obsolete</del> text</p>";
+    const result = sanitizeHtml(html);
+    expect(result).toContain("<del>obsolete</del>");
   });
 
   it("allows GFM table structure from marked fallback", () => {

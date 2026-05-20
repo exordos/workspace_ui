@@ -480,7 +480,7 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
                                   >
                                     <div className="min-w-0 flex-1">
                                       <div className="truncate text-sm font-medium text-text-primary">
-                                        # {topic.subject}
+                                        {topic.subject}
                                       </div>
                                       {topic.lastMessageSenderName && (
                                         <div className="mt-0.5 truncate text-xs text-sidebar-sender">

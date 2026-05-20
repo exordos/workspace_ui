@@ -5,6 +5,7 @@ import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useDraftStore } from "~/entities/draft/draft.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
+import { extractOrgRouteFromPathname, withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { Badge } from "~/shared/ui/badge";
 import { Icon, type IconName } from "~/shared/ui/icon";
 import { MY_ACTIVITY } from "./sidebar.lib";
@@ -35,7 +36,8 @@ function getExpandedActivityIconSize(key: string): number {
 }
 
 export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle }) => {
-  const location = useLocation();
+  const { pathname } = useLocation();
+  const { scopedPathname } = extractOrgRouteFromPathname(pathname);
   const currentUserId = useChatListStore((s) => s.currentUserId);
   const lastAppliedMessages = useChatListStore((s) => s.lastAppliedMessages);
   const inboxCount = useChatListStore((s) => {
@@ -57,8 +59,7 @@ export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle
         message.flags?.includes("mentioned") &&
         !message.flags.includes("read"),
     ).length ?? 0;
-  const isPrivateNotesActive =
-    currentUserId != null && location.pathname === `/dm/${currentUserId}`;
+  const isPrivateNotesActive = currentUserId != null && scopedPathname === `/dm/${currentUserId}`;
   const expandedListClass = isCompactDensity ? "mt-2 space-y-1" : "mt-2 space-y-1.5";
   const expandedRowClass = isCompactDensity ? expandedRowCompactClass : expandedRowBaseClass;
   const expandedIconClass = isCompactDensity ? expandedIconChipCompactClass : expandedIconChipClass;
@@ -89,7 +90,7 @@ export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle
           {currentUserId != null && (
             <li>
               <Link
-                to={`/dm/${currentUserId}`}
+                to={withCurrentOrgRoute(`/dm/${currentUserId}`)}
                 aria-label={t("activity.home")}
                 aria-current={isPrivateNotesActive ? "page" : undefined}
                 className={`${compactRowClass} ${
@@ -102,19 +103,19 @@ export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle
           )}
           {MY_ACTIVITY.map((item) => {
             const route = "route" in item ? item.route : undefined;
-            const isActive = route !== undefined && location.pathname === route;
+            const isActive = route !== undefined && scopedPathname === route;
             const label = t(item.labelKey);
             return (
               <li key={`compact-${item.key}`}>
                 {route ? (
                   <Link
-                    to={route}
+                    to={withCurrentOrgRoute(route)}
                     aria-label={label}
                     aria-current={isActive ? "page" : undefined}
                     className={`${compactRowClass} ${isActive ? compactRowActiveClass : ""}`}
                   >
                     <Icon
-                      name={item.icon as IconName}
+                      name={item.icon}
                       size={getCompactActivityIconSize(item.key)}
                       className="shrink-0 text-current"
                     />
@@ -141,11 +142,7 @@ export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle
                   </Link>
                 ) : (
                   <button type="button" aria-label={label} className={compactRowClass}>
-                    <Icon
-                      name={item.icon as IconName}
-                      size={18}
-                      className="shrink-0 text-current"
-                    />
+                    <Icon name={item.icon} size={18} className="shrink-0 text-current" />
                   </button>
                 )}
               </li>
@@ -169,11 +166,11 @@ export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle
           {currentUserId != null && (
             <li>
               <Link
-                to={`/dm/${currentUserId}`}
+                to={withCurrentOrgRoute(`/dm/${currentUserId}`)}
                 className={`${expandedRowClass} ${
-                  location.pathname === `/dm/${currentUserId}` ? expandedRowActiveClass : ""
+                  scopedPathname === `/dm/${currentUserId}` ? expandedRowActiveClass : ""
                 }`}
-                aria-current={location.pathname === `/dm/${currentUserId}` ? "page" : undefined}
+                aria-current={scopedPathname === `/dm/${currentUserId}` ? "page" : undefined}
               >
                 <span
                   className={`${expandedIconClass} bg-accent`}
@@ -187,7 +184,7 @@ export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle
           )}
           {MY_ACTIVITY.map((item) => {
             const route = "route" in item ? item.route : undefined;
-            const isActive = route !== undefined && location.pathname === route;
+            const isActive = route !== undefined && scopedPathname === route;
             const content = (
               <>
                 <span
@@ -195,7 +192,7 @@ export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle
                   data-testid={`activity-icon-bg-${item.key}`}
                 >
                   <Icon
-                    name={item.icon as IconName}
+                    name={item.icon}
                     size={getExpandedActivityIconSize(item.key)}
                     className="shrink-0 text-on-accent"
                   />
@@ -227,7 +224,7 @@ export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle
               <li key={item.key}>
                 {route ? (
                   <Link
-                    to={route}
+                    to={withCurrentOrgRoute(route)}
                     className={`${expandedRowClass} ${isActive ? expandedRowActiveClass : ""}`}
                     aria-current={isActive ? "page" : undefined}
                   >

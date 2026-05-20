@@ -27,7 +27,7 @@ export const SearchResultItem = React.memo(function SearchResultItem({
             <span>{displayName}</span>
             <span>·</span>
             <span>
-              #{msg.channel ?? "?"} › #{msg.subject}
+              #{msg.channel ?? "?"} › {msg.subject}
             </span>
           </div>
           <p className="line-clamp-2 truncate text-text-primary">

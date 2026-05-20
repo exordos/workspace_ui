@@ -98,6 +98,7 @@ export const SidebarDmList: React.FC<SidebarDmListProps> = ({ activeDmId, dms })
               userFullName: recentDmUser?.full_name,
               storeDisplayName,
             });
+            const recentDeactivated = recentDmUser?.is_active === false;
             const recentPresenceState =
               recentDmUser?.presence != null
                 ? getPresenceState(recentDmUser.presence.timestamp, recentDmUser.presence.status)
@@ -129,6 +130,7 @@ export const SidebarDmList: React.FC<SidebarDmListProps> = ({ activeDmId, dms })
                   <PresenceIndicator
                     status={recentPresenceState}
                     size="sm"
+                    deactivated={recentDeactivated}
                     className="absolute bottom-0 right-0"
                   />
                 </div>
@@ -162,6 +164,7 @@ export const SidebarDmList: React.FC<SidebarDmListProps> = ({ activeDmId, dms })
 
         {tab === "all" &&
           allUsersList.map((user) => {
+            const deactivated = user.is_active === false;
             const presenceState =
               user.presence != null
                 ? getPresenceState(user.presence.timestamp, user.presence.status)
@@ -187,6 +190,7 @@ export const SidebarDmList: React.FC<SidebarDmListProps> = ({ activeDmId, dms })
                   <PresenceIndicator
                     status={presenceState}
                     size="sm"
+                    deactivated={deactivated}
                     className="absolute bottom-0 right-0"
                   />
                 </div>

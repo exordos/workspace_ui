@@ -88,6 +88,17 @@ describe("usersStore", () => {
       expect(useUsersStore.getState().users.size).toBe(1);
     });
 
+    it("stores is_active from Zulip directory payloads", () => {
+      useUsersStore.getState().mergeUsers([{ user_id: 30, full_name: "Zed", is_active: false }]);
+      expect(useUsersStore.getState().getUser(30)?.is_active).toBe(false);
+    });
+
+    it("preserves is_active when batch entry omits it", () => {
+      useUsersStore.getState().mergeUsers([{ user_id: 31, full_name: "Y", is_active: false }]);
+      useUsersStore.getState().mergeUsers([{ user_id: 31, full_name: "Yol" }]);
+      expect(useUsersStore.getState().getUser(31)?.is_active).toBe(false);
+    });
+
     it("merges profile_data from directory payloads", () => {
       useUsersStore.getState().mergeUsers([
         {

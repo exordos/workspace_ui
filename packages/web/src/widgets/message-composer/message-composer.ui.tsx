@@ -6,7 +6,6 @@ import { useMentionSuggestStore } from "~/features/mention-suggest/mention-sugge
 import type { MentionSuggestion } from "~/features/mention-suggest/mention-suggest.types";
 import { t } from "~/i18n/i18n";
 import type { SavedSnippet } from "~/shared/api/zulip";
-import { createSavedSnippet, fetchSavedSnippets } from "~/shared/api/zulip-messages";
 import { ensureRealmEmojisLoaded, getCachedRealmEmojis } from "~/shared/lib/realm-emojis-cache";
 import { useViewportKeyboard } from "~/shared/lib/touch";
 import { isWebView } from "~/shared/lib/webview";
@@ -20,6 +19,8 @@ import {
   resolveTomorrowMorningTimestamp,
 } from "./message-composer-body.lib";
 import {
+  AI_UNAVAILABLE_POPOVER_HEIGHT,
+  AI_UNAVAILABLE_POPOVER_WIDTH,
   COMPOSER_TEXTAREA_MAX_HEIGHT_PX,
   COMPOSER_TEXTAREA_MIN_HEIGHT_PX,
   EMOJI_PICKER_HEIGHT,
@@ -40,12 +41,14 @@ import { MessageComposerPreface } from "./message-composer-preface.ui";
 import { MessageComposerPreviewBody } from "./message-composer-preview-body.ui";
 import { useMessageComposerPreview } from "./message-composer-preview.hook";
 import { MessageComposerSavedSnippetsDialog } from "./message-composer-saved-snippets-dialog.ui";
+import { useComposerSavedSnippetsStore } from "./message-composer-saved-snippets.model";
 import { MessageComposerSchedulePopover } from "./message-composer-schedule-popover.ui";
 import { wrapSelection } from "./message-composer-selection.lib";
 import { TOOLBAR_BTN } from "./message-composer-styles.lib";
 import { FormattingToolbar } from "./message-composer-toolbar.ui";
 import { useMessageComposerUpload } from "./message-composer-upload.hook";
 import { MessageComposerWriteBody } from "./message-composer-write-body.ui";
+import type { ComposerSendNewlineMode } from "./message-composer-input-commands.lib";
 import type { ScheduleMenuOption } from "./message-composer-schedule-popover.types";
 import type {
   ComposerMode,
@@ -76,6 +79,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   aiMessagesContext,
   aiChatContext,
 }) => {
+  const sendNewlineMode: ComposerSendNewlineMode = "enter-sends";
   const [mode, setMode] = useState<ComposerMode>("write");
   const [value, setValue] = useState(initialValue ?? "");
   const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
@@ -85,15 +89,20 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   const [scheduleMenuStyle, setScheduleMenuStyle] = useState<React.CSSProperties>({});
   const [savedSnippetsMenuOpen, setSavedSnippetsMenuOpen] = useState(false);
   const [savedSnippetsMenuStyle, setSavedSnippetsMenuStyle] = useState<React.CSSProperties>({});
-  const [savedSnippets, setSavedSnippets] = useState<SavedSnippet[]>([]);
+  const [aiMenuStyle, setAiMenuStyle] = useState<React.CSSProperties>({});
   const [savedSnippetsFilter, setSavedSnippetsFilter] = useState("");
-  const [savedSnippetsLoading, setSavedSnippetsLoading] = useState(false);
-  const [savedSnippetsError, setSavedSnippetsError] = useState<string | null>(null);
   const [savedSnippetCreateMode, setSavedSnippetCreateMode] = useState(false);
   const [savedSnippetTitle, setSavedSnippetTitle] = useState("");
   const [savedSnippetContent, setSavedSnippetContent] = useState("");
   const [savedSnippetSaving, setSavedSnippetSaving] = useState(false);
-  const [savedSnippetsReloadToken, setSavedSnippetsReloadToken] = useState(0);
+  const savedSnippets = useComposerSavedSnippetsStore((s) => s.snippets);
+  const savedSnippetsLoading = useComposerSavedSnippetsStore((s) => s.loadingInitial);
+  const savedSnippetsErrorCode = useComposerSavedSnippetsStore((s) => s.error);
+  const openSavedSnippets = useComposerSavedSnippetsStore((s) => s.openSavedSnippets);
+  const createSavedSnippetAndSync = useComposerSavedSnippetsStore(
+    (s) => s.createSavedSnippetAndSync,
+  );
+  const clearSavedSnippetsError = useComposerSavedSnippetsStore((s) => s.clearSavedSnippetsError);
   const [scheduledMessages, setScheduledMessages] = useState<ScheduledComposerMessage[]>([]);
   const [aiMenuOpen, setAiMenuOpen] = useState(false);
   const [customEmojis, setCustomEmojis] = useState(() => getCachedRealmEmojis());
@@ -124,6 +133,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   const emojiButtonRef = useRef<HTMLButtonElement>(null);
   const scheduleButtonRef = useRef<HTMLButtonElement>(null);
   const savedSnippetsButtonRef = useRef<HTMLButtonElement>(null);
+  const aiButtonAnchorRef = useRef<HTMLSpanElement>(null);
   const scheduledSendInFlightRef = useRef(false);
   const isWebViewMode = useMemo(() => isWebView(), []);
   const viewportKeyboard = useViewportKeyboard();
@@ -179,7 +189,8 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     onDragOver: handleDragOver,
     onDragLeave: handleDragLeave,
     onDrop: handleDrop,
-    onFileInputChange: handleFileChange,
+    beginFileSelectionSession,
+    onFileInputChange: handleFileChangeFromHook,
     removeFileByIndex: removeFile,
     uploadProgressPercent,
     isUploadInProgress,
@@ -235,6 +246,15 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
       savedSnippetContent.trim().length > 0,
     [savedSnippetContent, savedSnippetSaving, savedSnippetTitle],
   );
+  const savedSnippetsError = useMemo(() => {
+    if (savedSnippetsErrorCode === "load_failed") {
+      return t("composer.savedSnippetsLoadError");
+    }
+    if (savedSnippetsErrorCode === "create_failed") {
+      return t("composer.savedSnippetsCreateError");
+    }
+    return null;
+  }, [savedSnippetsErrorCode]);
   const ensureCustomEmojisLoaded = useCallback(() => {
     void ensureRealmEmojisLoaded()
       .then((list) => {
@@ -492,8 +512,27 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
 
   const handleAttachClick = () => {
     if (disabled || isEditing) return;
-    fileInputRef.current?.click();
+    const fileInput = fileInputRef.current;
+    if (fileInput == null) return;
+    beginFileSelectionSession();
+    fileInput.value = "";
+    if (typeof fileInput.showPicker === "function") {
+      try {
+        fileInput.showPicker();
+        return;
+      } catch {
+        // Fallback to click for environments where showPicker throws.
+      }
+    }
+    fileInput.click();
   };
+
+  const handleFileInputEvent = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement> | React.FormEvent<HTMLInputElement>) => {
+      handleFileChangeFromHook(event);
+    },
+    [handleFileChangeFromHook],
+  );
 
   const handleCreateCallLink = useCallback(() => {
     if (disabled || isEditing || onCreateCallLink == null) {
@@ -666,29 +705,40 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     };
   }, [savedSnippetsMenuOpen, updateSavedSnippetsMenuPosition]);
 
+  const updateAiMenuPosition = useCallback(() => {
+    setAiMenuStyle(
+      getFloatingPickerStyle(
+        aiButtonAnchorRef.current,
+        AI_UNAVAILABLE_POPOVER_WIDTH,
+        AI_UNAVAILABLE_POPOVER_HEIGHT,
+      ),
+    );
+  }, []);
+
   React.useEffect(() => {
-    if (!savedSnippetsMenuOpen || savedSnippetCreateMode) return;
-    let cancelled = false;
-    setSavedSnippetsLoading(true);
-    setSavedSnippetsError(null);
-    void fetchSavedSnippets()
-      .then((snippets) => {
-        if (cancelled) return;
-        setSavedSnippets(snippets);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setSavedSnippets([]);
-        setSavedSnippetsError(t("composer.savedSnippetsLoadError"));
-      })
-      .finally(() => {
-        if (cancelled) return;
-        setSavedSnippetsLoading(false);
-      });
+    if (!aiMenuOpen) return;
+    updateAiMenuPosition();
+    const handleWindowChange = () => updateAiMenuPosition();
+    window.addEventListener("resize", handleWindowChange);
+    window.addEventListener("scroll", handleWindowChange, true);
     return () => {
-      cancelled = true;
+      window.removeEventListener("resize", handleWindowChange);
+      window.removeEventListener("scroll", handleWindowChange, true);
     };
-  }, [savedSnippetCreateMode, savedSnippetsMenuOpen, savedSnippetsReloadToken]);
+  }, [aiMenuOpen, updateAiMenuPosition]);
+
+  const toggleAiUnavailablePopover = useCallback(() => {
+    setMediaPickerOpen(false);
+    setScheduleMenuOpen(false);
+    setSavedSnippetsMenuOpen(false);
+    setAiMenuOpen((prevOpen) => {
+      const nextOpen = !prevOpen;
+      if (nextOpen) {
+        updateAiMenuPosition();
+      }
+      return nextOpen;
+    });
+  }, [updateAiMenuPosition]);
 
   const toggleSavedSnippetsMenu = useCallback(() => {
     setSavedSnippetsMenuOpen((prevOpen) => {
@@ -699,12 +749,13 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
         setScheduleMenuOpen(false);
         setSavedSnippetCreateMode(false);
         setSavedSnippetsFilter("");
-        setSavedSnippetsError(null);
+        clearSavedSnippetsError();
+        void openSavedSnippets();
         updateSavedSnippetsMenuPosition();
       }
       return nextOpen;
     });
-  }, [updateSavedSnippetsMenuPosition]);
+  }, [clearSavedSnippetsError, openSavedSnippets, updateSavedSnippetsMenuPosition]);
 
   const startCreateSavedSnippet = useCallback(() => {
     setSavedSnippetCreateMode(true);
@@ -721,9 +772,9 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   const submitCreateSavedSnippet = useCallback(async () => {
     if (!canSaveSnippet) return;
     setSavedSnippetSaving(true);
-    setSavedSnippetsError(null);
+    clearSavedSnippetsError();
     try {
-      await createSavedSnippet({
+      await createSavedSnippetAndSync({
         title: savedSnippetTitle.trim(),
         content: savedSnippetContent.trim(),
       });
@@ -731,13 +782,16 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
       setSavedSnippetTitle("");
       setSavedSnippetContent("");
       setSavedSnippetsFilter("");
-      setSavedSnippetsReloadToken((version) => version + 1);
-    } catch {
-      setSavedSnippetsError(t("composer.savedSnippetsCreateError"));
     } finally {
       setSavedSnippetSaving(false);
     }
-  }, [canSaveSnippet, savedSnippetContent, savedSnippetTitle]);
+  }, [
+    canSaveSnippet,
+    clearSavedSnippetsError,
+    createSavedSnippetAndSync,
+    savedSnippetContent,
+    savedSnippetTitle,
+  ]);
 
   React.useEffect(() => {
     void processDueScheduledMessage();
@@ -887,15 +941,9 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
                 }
                 aiTrigger={
                   !isEditing ? (
-                    <AiComposerButton
-                      onClick={() => {
-                        setMediaPickerOpen(false);
-                        setScheduleMenuOpen(false);
-                        setSavedSnippetsMenuOpen(false);
-                        setAiMenuOpen((o) => !o);
-                      }}
-                      active={aiMenuOpen}
-                    />
+                    <span ref={aiButtonAnchorRef}>
+                      <AiComposerButton onClick={toggleAiUnavailablePopover} active={aiMenuOpen} />
+                    </span>
                   ) : undefined
                 }
               />
@@ -917,6 +965,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
             onOpenChange={setAiMenuOpen}
             messagesContext={aiMessagesContext ?? []}
             chatContext={aiChatContext}
+            popoverStyle={aiMenuStyle}
           />
         )}
         {!isEditing && scheduleMenuOpen && (
@@ -959,8 +1008,9 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
               ref={fileInputRef}
               type="file"
               multiple
-              className="hidden"
-              onChange={handleFileChange}
+              className="sr-only"
+              onChange={handleFileInputEvent}
+              onInput={handleFileInputEvent}
               accept="*/*"
             />
 
@@ -1031,6 +1081,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
                   applyFormattingShortcut={applyFormattingShortcut}
                   onPaste={handlePaste}
                   onSend={handleSend}
+                  sendNewlineMode={sendNewlineMode}
                   onEditLastMessage={onEditLastMessage}
                   isEditing={isEditing}
                   onCancelEdit={onCancelEdit}

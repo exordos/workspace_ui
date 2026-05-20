@@ -11,6 +11,7 @@ import type { ChatPageComposerSectionProps } from "./chat-page-composer-section.
 export const ChatPageComposerSection = React.memo(function ChatPageComposerSection({
   isDmView,
   activeDmUserIds,
+  dmPartnerDeactivated = false,
   activeStream,
   showTopicPrompt,
   streamSlug,
@@ -49,20 +50,22 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
     );
   }
 
-  const placeholder = isDmView
-    ? activeDmUserIds?.length
-      ? t("chat.sendPlaceholder")
-      : t("chat.selectChat")
-    : activeStream
-      ? t("chat.sendPlaceholder")
-      : t("chat.selectChannel");
+  const placeholder = dmPartnerDeactivated
+    ? t("dm.composerBlockedPlaceholder")
+    : isDmView
+      ? activeDmUserIds?.length
+        ? t("chat.sendPlaceholder")
+        : t("chat.selectChat")
+      : activeStream
+        ? t("chat.sendPlaceholder")
+        : t("chat.selectChannel");
 
   return (
     <MessageComposer
       onSend={onSend}
       onCreateCallLink={onCreateCallLink}
       onCancelUpload={onCancelUpload}
-      disabled={isDmView ? !activeDmUserIds?.length : !activeStream}
+      disabled={dmPartnerDeactivated || (isDmView ? !activeDmUserIds?.length : !activeStream)}
       uploadProgress={uploadProgress}
       placeholder={placeholder}
       activeTopic={activeTopic ?? undefined}

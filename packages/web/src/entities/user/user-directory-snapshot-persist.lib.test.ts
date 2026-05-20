@@ -30,6 +30,13 @@ describe("serializeDirectoryMembersForSnapshot", () => {
     expect(out[0]).toEqual({ user_id: 2, full_name: "B", avatar_url: undefined });
   });
 
+  it("preserves is_active when present", () => {
+    const out = serializeDirectoryMembersForSnapshot([
+      { user_id: 4, full_name: "D", is_active: false },
+    ]);
+    expect(out[0]).toEqual({ user_id: 4, full_name: "D", is_active: false });
+  });
+
   it("preserves profile_data for hydrated directory rows", () => {
     const profile = { "1": { value: "QA", rendered_value: "<p>QA</p>" } };
     const out = serializeDirectoryMembersForSnapshot([

@@ -8,6 +8,8 @@ export interface ChatHeaderDmPartner {
   lastSeen?: string;
   /** Custom Zulip status (emoji + text). */
   customStatus?: string;
+  /** When true, Zulip directory reports the partner account as deactivated (`is_active === false`). */
+  isAccountDeactivated?: boolean;
   /** Shows transient typing status in DM header when true. */
   isTyping?: boolean;
 }

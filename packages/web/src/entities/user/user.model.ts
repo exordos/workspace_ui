@@ -55,6 +55,8 @@ export interface UserRecord {
   statusNextRetryAt?: number;
   // Какая была последняя ошибка загрузки.
   statusErrorKind?: UserStatusErrorKind;
+  /** Zulip directory: `false` when the account is deactivated. */
+  is_active?: boolean;
   /** Zulip GET /users `profile_data` (custom profile fields). */
   profile_data?: ZulipCustomProfileDataMap;
 }
@@ -112,6 +114,7 @@ function normalizeUser(payload: Partial<UserRecord> & { user_id: number }): User
     statusFetchState: payload.statusFetchState,
     statusNextRetryAt: payload.statusNextRetryAt,
     statusErrorKind: payload.statusErrorKind,
+    is_active: payload.is_active,
     profile_data: payload.profile_data,
   };
 }
@@ -141,6 +144,7 @@ export const useUsersStore = create<UsersState>((set, get) => ({
         statusFetchState: payload.statusFetchState ?? existing?.statusFetchState,
         statusNextRetryAt: payload.statusNextRetryAt ?? existing?.statusNextRetryAt,
         statusErrorKind: payload.statusErrorKind ?? existing?.statusErrorKind,
+        is_active: payload.is_active ?? existing?.is_active,
         profile_data: payload.profile_data ?? existing?.profile_data,
       };
       next.set(user_id, merged);
@@ -174,6 +178,7 @@ export const useUsersStore = create<UsersState>((set, get) => ({
           statusFetchState: u.statusFetchState ?? existing?.statusFetchState,
           statusNextRetryAt: u.statusNextRetryAt ?? existing?.statusNextRetryAt,
           statusErrorKind: u.statusErrorKind ?? existing?.statusErrorKind,
+          is_active: u.is_active ?? existing?.is_active,
           profile_data: u.profile_data ?? existing?.profile_data,
         };
         next.set(u.user_id, merged);

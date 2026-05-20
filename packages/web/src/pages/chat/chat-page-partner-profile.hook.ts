@@ -22,6 +22,7 @@ export function useChatPartnerProfileHydration(options: {
             full_name: user.full_name ?? "",
             email: user.email,
             avatar_url: user.avatar_url ?? undefined,
+            is_active: user.is_active,
           });
           useChatListStore.getState().patchPersonalDmRowLabelsForUser(user.user_id);
         }
@@ -32,4 +33,3 @@ export function useChatPartnerProfileHydration(options: {
     };
   }, [partnerUserId, isDmView, isGroupDmView]);
 }
-
