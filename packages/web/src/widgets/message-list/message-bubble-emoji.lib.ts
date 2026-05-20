@@ -141,6 +141,7 @@ export function groupReactions(
       emojiCode: string;
       reactionType: Reaction["reaction_type"];
       userIds: number[];
+      userIdSet: Set<number>;
       displayChar: string;
       imageUrl?: string;
     }
@@ -152,7 +153,10 @@ export function groupReactions(
       r.reaction_type === "realm_emoji" ? resolveCustomEmojiImageUrl?.(r) : undefined;
     const existing = map.get(key);
     if (existing) {
-      if (!existing.userIds.includes(r.user_id)) existing.userIds.push(r.user_id);
+      if (!existing.userIdSet.has(r.user_id)) {
+        existing.userIdSet.add(r.user_id);
+        existing.userIds.push(r.user_id);
+      }
       if (existing.imageUrl == null && imageUrl != null) {
         existing.imageUrl = imageUrl;
       }
@@ -162,6 +166,7 @@ export function groupReactions(
         emojiCode: r.emoji_code,
         reactionType: r.reaction_type,
         userIds: [r.user_id],
+        userIdSet: new Set([r.user_id]),
         displayChar,
         ...(imageUrl != null ? { imageUrl } : {}),
       });

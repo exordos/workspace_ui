@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
-import { messageToDmEntry, messageToStreamEntry } from "./chat-list.lib";
+import { buildSidebarFromMessages, messageToDmEntry, messageToStreamEntry } from "./chat-list.lib";
 
 function dmMessage(overrides: Partial<ZulipRawMessage> = {}): ZulipRawMessage {
   return {
@@ -140,5 +140,54 @@ describe("messageToStreamEntry", () => {
 
     expect(emptyTopic?.topic.subject).toBe("");
     expect(generalTopic?.topic.subject).toBe("general");
+  });
+});
+
+describe("buildSidebarFromMessages", () => {
+  it("aggregates unread per topic and dm in a single messages pass", () => {
+    const messages: ZulipRawMessage[] = [
+      {
+        id: 1,
+        sender_id: 20,
+        sender_full_name: "Bob",
+        content: "unread stream",
+        timestamp: 1000,
+        type: "stream",
+        stream_id: 10,
+        display_recipient: "engineering",
+        subject: "bugs",
+        flags: [],
+      },
+      {
+        id: 2,
+        sender_id: 20,
+        sender_full_name: "Bob",
+        content: "read stream",
+        timestamp: 2000,
+        type: "stream",
+        stream_id: 10,
+        display_recipient: "engineering",
+        subject: "bugs",
+        flags: ["read"],
+      },
+      {
+        id: 3,
+        sender_id: 20,
+        sender_full_name: "Bob",
+        content: "dm unread",
+        timestamp: 3000,
+        type: "private",
+        display_recipient: [
+          { id: 10, full_name: "Me", email: "me@t.com" },
+          { id: 20, full_name: "Bob", email: "bob@t.com" },
+        ],
+        flags: [],
+      },
+    ];
+
+    const { streamsMap, dmsMap } = buildSidebarFromMessages(messages, 10);
+
+    expect(streamsMap.get(10)?.topics.get("bugs")?.unreadCount).toBe(1);
+    expect(dmsMap.get("10,20")?.unreadCount).toBe(1);
   });
 });

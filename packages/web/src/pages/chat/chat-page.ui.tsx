@@ -51,6 +51,10 @@ import { getPresenceState, formatLastSeen } from "~/shared/lib/format";
 import { buildJitsiMeetingUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
 import { createLogger } from "~/shared/lib/logger";
 import { logMessageFlow, summarizeChatContextForLog } from "~/shared/lib/message-flow-debug.lib";
+import {
+  createMessageIdSet,
+  messageIdsMissingFromBothLists,
+} from "~/shared/lib/message-id-index.lib";
 import { isLikelyRenderedMessageHtml } from "~/shared/lib/message-markdown-display.lib";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { useShortcut } from "~/shared/lib/shortcuts";
@@ -505,9 +509,10 @@ export const ChatPage: React.FC = () => {
         effectiveMessages,
       });
       if (unreadMessageIds.length === 0) {
-        const missingFromBothLists = messageIds.filter(
-          (id) =>
-            !storeMessages.some((m) => m.id === id) && !effectiveMessages.some((m) => m.id === id),
+        const missingFromBothLists = messageIdsMissingFromBothLists(
+          messageIds,
+          createMessageIdSet(storeMessages),
+          createMessageIdSet(effectiveMessages),
         );
         if (missingFromBothLists.length > 0) {
           log.warn("markAsRead optimistic: ids missing from store and effective message lists", {

@@ -67,6 +67,21 @@ interface StickerState {
   getFavoriteStickers: () => Sticker[];
 }
 
+let _cachedRecentRef: RecentSticker[] | null = null;
+let _cachedRecentStickers: Sticker[] = [];
+let _cachedFavoritesRef: string[] | null = null;
+let _cachedFavoriteStickers: Sticker[] = [];
+function invalidateStickerListCaches(): void {
+  _cachedRecentRef = null;
+  _cachedRecentStickers = [];
+  _cachedFavoritesRef = null;
+  _cachedFavoriteStickers = [];
+}
+
+function invalidateStickerLookupCache(): void {
+  invalidateStickerListCaches();
+}
+
 export const useStickerStore = create<StickerState>((set, get) => ({
   packs: [],
   recent: loadJson<RecentSticker[]>(RECENT_KEY, []),
@@ -75,6 +90,7 @@ export const useStickerStore = create<StickerState>((set, get) => ({
 
   setPacks(packs) {
     logStoreAction("sticker", "setPacks", { count: packs.length });
+    invalidateStickerLookupCache();
     set({ packs });
   },
 
@@ -82,16 +98,20 @@ export const useStickerStore = create<StickerState>((set, get) => ({
     logStoreAction("sticker", "addPack", { packId: pack.id });
     set((state) => {
       if (state.packs.some((p) => p.id === pack.id)) return state;
+      invalidateStickerLookupCache();
       return { packs: [...state.packs, pack] };
     });
   },
 
   removePack(packId) {
     logStoreAction("sticker", "removePack", { packId });
-    set((state) => ({
-      packs: state.packs.filter((p) => p.id !== packId),
-      recent: state.recent.filter((r) => r.packId !== packId),
-    }));
+    set((state) => {
+      invalidateStickerLookupCache();
+      return {
+        packs: state.packs.filter((p) => p.id !== packId),
+        recent: state.recent.filter((r) => r.packId !== packId),
+      };
+    });
   },
 
   addRecent(stickerId, packId) {
@@ -103,6 +123,7 @@ export const useStickerStore = create<StickerState>((set, get) => ({
         MAX_RECENT,
       );
       saveJson(RECENT_KEY, next);
+      invalidateStickerListCaches();
       return { recent: next };
     });
   },
@@ -115,6 +136,7 @@ export const useStickerStore = create<StickerState>((set, get) => ({
         ? state.favorites.filter((id) => id !== stickerId)
         : [...state.favorites, stickerId].slice(0, MAX_FAVORITES);
       saveJson(FAVORITES_KEY, next);
+      invalidateStickerListCaches();
       return { favorites: next };
     });
   },
@@ -155,13 +177,25 @@ export const useStickerStore = create<StickerState>((set, get) => ({
 
   getRecentStickers() {
     const state = get();
-    return state.recent
+    if (state.recent === _cachedRecentRef && _cachedRecentStickers.length > 0) {
+      return _cachedRecentStickers;
+    }
+    _cachedRecentRef = state.recent;
+    _cachedRecentStickers = state.recent
       .map((r) => state.getSticker(r.stickerId))
       .filter((s): s is Sticker => s != null);
+    return _cachedRecentStickers;
   },
 
   getFavoriteStickers() {
     const state = get();
-    return state.favorites.map((id) => state.getSticker(id)).filter((s): s is Sticker => s != null);
+    if (state.favorites === _cachedFavoritesRef) {
+      return _cachedFavoriteStickers;
+    }
+    _cachedFavoritesRef = state.favorites;
+    _cachedFavoriteStickers = state.favorites
+      .map((id) => state.getSticker(id))
+      .filter((s): s is Sticker => s != null);
+    return _cachedFavoriteStickers;
   },
 }));

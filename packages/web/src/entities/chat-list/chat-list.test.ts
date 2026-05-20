@@ -14,6 +14,7 @@ import type { ChatListSnapshotSerialized } from "~/shared/lib/chat-list-snapshot
 import { sortChatsByLastMessage } from "~/shared/lib/chat-sorting";
 import { useUsersStore } from "../user/user.model";
 import { buildChatListSnapshotSerialized } from "./chat-list-snapshot.lib";
+import { getStreamTopicMessageIds } from "./chat-list-stream-topic-index.lib";
 import { useChatListStore } from "./chat-list.model";
 
 function resetStores() {
@@ -82,6 +83,26 @@ describe("chatListStore", () => {
       });
       useChatListStore.getState().patchPersonalDmRowLabelsForUser(20);
       expect(useChatListStore.getState().dmsMap.get(dmKey)?.name).toBe("Bob Loaded");
+    });
+  });
+
+  describe("syncDerivedScalars", () => {
+    it("rebuilds stream topic index after raw setState bypasses patchSet", () => {
+      useChatListStore.getState().setFromMessages([], 10);
+      useChatListStore.setState({
+        messageIdToLocation: new Map([
+          [1, { type: "stream", stream_id: 5, topic: "topic1" }],
+          [2, { type: "stream", stream_id: 5, topic: "topic1" }],
+        ]),
+        streamTopicMessageIds: new Map(),
+      });
+      expect(
+        getStreamTopicMessageIds(useChatListStore.getState().streamTopicMessageIds, 5, "topic1"),
+      ).toEqual([]);
+      useChatListStore.getState().syncDerivedScalars();
+      expect(
+        getStreamTopicMessageIds(useChatListStore.getState().streamTopicMessageIds, 5, "topic1"),
+      ).toEqual([1, 2]);
     });
   });
 

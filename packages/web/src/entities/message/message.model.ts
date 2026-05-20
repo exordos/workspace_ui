@@ -40,7 +40,9 @@ import {
 import { parseDmKeyToUserIds } from "./message-chat-context.lib";
 import { loadInitialMessagesRouteDriven } from "./message-initial-loader.lib";
 import { persistChatMessagesToIndexedDb } from "./message-local-cache.lib";
+import { buildSendingEchoKeyIndex } from "./message-outgoing-echo-index.lib";
 import { outgoingEchoContentMatches } from "./message-outgoing-echo.lib";
+import { patchMessageAtId, patchMessagesFlags } from "./message-patch.lib";
 import type { CurrentChatContext, CurrentChatMessagesState } from "./message.model.types";
 
 export type { CurrentChatContext } from "./message.model.types";
@@ -266,18 +268,16 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
 
     set((state) => {
       if (msg.id > 0) {
+        const sendingEchoIndex = buildSendingEchoKeyIndex(state.messages);
         for (let qi = 0; qi < state.pendingOutgoingEchoKeys.length; qi++) {
           const echoKey = state.pendingOutgoingEchoKeys[qi]!;
-          const msgIdx = state.messages.findIndex((m) => {
-            const key = m.local_echo_key ?? (m.id < 0 ? m.id : undefined);
-            return (
-              key === echoKey &&
-              m.delivery_status === "sending" &&
-              m.sender_id === msg.sender_id &&
-              outgoingEchoContentMatches(m, msg)
-            );
-          });
-          if (msgIdx >= 0) {
+          const msgIdx = sendingEchoIndex.get(echoKey) ?? -1;
+          const pendingMessage = msgIdx >= 0 ? state.messages[msgIdx] : undefined;
+          if (
+            pendingMessage?.delivery_status === "sending" &&
+            pendingMessage.sender_id === msg.sender_id &&
+            outgoingEchoContentMatches(pendingMessage, msg)
+          ) {
             const prev = state.messages[msgIdx]!;
             const stableKey = prev.local_echo_key ?? prev.id;
             const merged = withPendingLinkPreviewsIfPersisted(
@@ -508,8 +508,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
 
   updateMessageReaction(messageId, reaction, op) {
     set((state) => ({
-      messages: state.messages.map((m) => {
-        if (m.id !== messageId) return m;
+      messages: patchMessageAtId(state.messages, messageId, (m) => {
         const list = m.reactions ?? [];
         const exists = list.some(
           (r) => r.emoji_name === reaction.emoji_name && r.user_id === reaction.user_id,
@@ -537,14 +536,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
   updateMessageFlags(messageIds, flag, op) {
     const ids = new Set(messageIds);
     set((state) => ({
-      messages: state.messages.map((m) => {
-        if (!ids.has(m.id)) return m;
-        const flags = m.flags ?? [];
-        const hasFlag = flags.includes(flag);
-        if (op === "add" && !hasFlag) return { ...m, flags: [...flags, flag] };
-        if (op === "remove" && hasFlag) return { ...m, flags: flags.filter((f) => f !== flag) };
-        return m;
-      }),
+      messages: patchMessagesFlags(state.messages, ids, flag, op),
     }));
     const state = get();
     if (!state.context) return;
@@ -557,8 +549,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
   updateMessageContent(messageId, content, markdownSource) {
     const markdownBody = markdownSource ?? content;
     set((state) => ({
-      messages: state.messages.map((m) => {
-        if (m.id !== messageId) return m;
+      messages: patchMessageAtId(state.messages, messageId, (m) => {
         const updated = {
           ...m,
           content,
@@ -586,8 +577,8 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       return;
     }
     set((state) => ({
-      messages: state.messages.map((m) =>
-        m.id === messageId ? upsertLinkPreviewOnMessage(m, linkPreview) : m,
+      messages: patchMessageAtId(state.messages, messageId, (m) =>
+        upsertLinkPreviewOnMessage(m, linkPreview),
       ),
     }));
     logStoreAction("message", "updateMessageLinkPreview", {
@@ -613,14 +604,17 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
 
     set((state) => {
       let changed = false;
-      const nextMessages = state.messages.map((message) => {
-        if (!targetedIds.has(message.id)) return message;
-        if (message.stream_id !== streamId) return message;
+      const nextMessages = state.messages.slice();
+      for (let i = 0; i < nextMessages.length; i++) {
+        const message = nextMessages[i]!;
+        if (!targetedIds.has(message.id)) continue;
+        if (message.stream_id !== streamId) continue;
         const topic = normalizeTopicForIdentity(message.subject ?? "");
-        if (topic !== oldTopicKey) return message;
+        if (topic !== oldTopicKey) continue;
+        if (message.subject === newTopicKey) continue;
+        nextMessages[i] = { ...message, subject: newTopicKey };
         changed = true;
-        return message.subject === newTopicKey ? message : { ...message, subject: newTopicKey };
-      });
+      }
 
       let nextContext = state.context;
       let contextChanged = false;

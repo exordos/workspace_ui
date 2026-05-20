@@ -106,18 +106,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       [jitsiMeetBaseUrl],
     );
     const getUser = useUsersStore((s) => s.getUser);
-    const users = useUsersStore((s) => s.users);
-    const user = useUsersStore((s) => s.getUser(message.sender_id));
+    const user = getUser(message.sender_id);
+    const findUserIdByDisplayName = useUsersStore((s) => s.findUserIdByDisplayName);
     const resolveUserMention = useCallback(
-      (displayName: string): number | null => {
-        const trimmed = displayName.trim();
-        if (trimmed.length === 0) return null;
-        for (const [, u] of users) {
-          if (u.full_name.trim() === trimmed) return u.user_id;
-        }
-        return null;
-      },
-      [users],
+      (displayName: string): number | null => findUserIdByDisplayName(displayName),
+      [findUserIdByDisplayName],
     );
     const trimmedUserName = user?.full_name?.trim();
     const displayName =
@@ -717,18 +710,30 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     const peerBubbleTailClass = "rounded-bl-[6px]";
     const hasReactions = reactionGroups.length > 0;
     const contextSections = isJitsiCall ? JITSI_CONTEXT_SECTIONS : BASE_CONTEXT_SECTIONS;
-    const visibleContextSections = contextSections
-      .map((section) =>
-        section.filter((label) => {
-          if ((label === "edit" || label === "delete") && !isOwn) return false;
-          if (label === "openInChat" && callbacks?.onOpenInChat == null) return false;
-          if (label === "joinCall" && (callbacks?.onOpenJitsiCall == null || !isJitsiCall))
-            return false;
-          if (label === "copyCallLink" && (callbacks?.onCopy == null || !isJitsiCall)) return false;
-          return true;
-        }),
-      )
-      .filter((section) => section.length > 0);
+    const visibleContextSections = useMemo(
+      () =>
+        contextSections
+          .map((section) =>
+            section.filter((label) => {
+              if ((label === "edit" || label === "delete") && !isOwn) return false;
+              if (label === "openInChat" && callbacks?.onOpenInChat == null) return false;
+              if (label === "joinCall" && (callbacks?.onOpenJitsiCall == null || !isJitsiCall))
+                return false;
+              if (label === "copyCallLink" && (callbacks?.onCopy == null || !isJitsiCall))
+                return false;
+              return true;
+            }),
+          )
+          .filter((section) => section.length > 0),
+      [
+        contextSections,
+        isOwn,
+        isJitsiCall,
+        callbacks?.onOpenInChat,
+        callbacks?.onOpenJitsiCall,
+        callbacks?.onCopy,
+      ],
+    );
 
     const contextMenu = (
       <MessageBubbleContextMenu
