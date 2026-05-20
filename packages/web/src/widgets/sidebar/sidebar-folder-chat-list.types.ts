@@ -11,7 +11,6 @@ export interface SidebarFolderChatListProps {
   expandedStreamSlugs?: string[];
   onToggleStream?: (slug: string) => void;
   onNewTopic?: (streamSlug: string, topicName: string) => void;
-  reorderPinnedOnly?: boolean;
   loading?: boolean;
   showEmptyState?: boolean;
 }

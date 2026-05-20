@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { usePinStore } from "~/features/pin-chat/pin-chat.model";
 import {
   addChatToFolder,
   getFolders,
@@ -21,7 +22,11 @@ import {
   type ToggleAssignmentInput,
   type ToggleAssignmentResult,
 } from "./folder-sync-assignment.types";
-import { addChatIdAliases } from "./folder-sync-chat-id.lib";
+import {
+  addChatIdAliases,
+  areEquivalentChatIds,
+  resolveFolderItemUuid,
+} from "./folder-sync-chat-id.lib";
 import { SYSTEM_ALL_FOLDER_ID } from "./folder-sync-constants.lib";
 import {
   buildSelectedFolderSidebarChats,
@@ -33,6 +38,11 @@ import {
   loadFolderSyncSnapshot,
   type FolderSyncSnapshot,
 } from "./folder-sync.api";
+import {
+  aliasAllFolderItemsCacheKeys,
+  resolveAllFolderApiUuid,
+  resolveFolderItemsRequestUuid,
+} from "./folder-sync.lib";
 import {
   mergeFolderItemsSnapshot,
   resolveSelectedFolderId,
@@ -96,21 +106,6 @@ function isAssignableRailFolder(folder: WorkspaceFolderForRail): boolean {
     return false;
   }
   return true;
-}
-
-// Сравнивает chat_id через alias-эквивалентность (stream/dm/numeric формы).
-function areEquivalentChatIds(leftChatId: string, rightChatId: string): boolean {
-  const aliases = new Set<string>();
-  addChatIdAliases(aliases, leftChatId);
-  return hasMatchingChatId(aliases, rightChatId);
-}
-
-// Ищет UUID item внутри папки для заданного chat_id с учетом alias-эквивалентности.
-function resolveChatAssignmentItemUuid(
-  items: readonly FolderItemForClient[],
-  chatId: string,
-): string | null {
-  return items.find((item) => areEquivalentChatIds(item.chatId, chatId))?.uuid ?? null;
 }
 
 // Генерирует технический UUID для оптимистичного item до подтверждения сервером.
@@ -213,8 +208,10 @@ async function reconcileFolderAssignment(
   for (const delay of ASSIGNMENT_RECONCILE_RETRY_DELAYS_MS) {
     await waitForDelay(delay);
     try {
-      const items = await loadFolderItemsForSelection(folderUuid);
-      const matchedItemUuid = resolveChatAssignmentItemUuid(items, chatId);
+      const items = await loadFolderItemsForSelection(folderUuid, {
+        allFolderApiUuid: useFolderSyncStore.getState().allFolderApiUuid,
+      });
+      const matchedItemUuid = resolveFolderItemUuid(items, chatId);
       const exists = matchedItemUuid != null;
       if (exists === shouldExist) {
         return { ok: true, items, matchedItemUuid };
@@ -249,6 +246,8 @@ interface FolderSyncState {
   labels: FolderSyncSystemLabels;
   // Кэш items по папкам (нужен для fallback и быстрого select).
   folderItemsByFolderId: Map<string, FolderItemForClient[]>;
+  /** Workspace API uuid for the «all chats» folder (pin/unpin endpoints). */
+  allFolderApiUuid: string | null;
   // Папки с потенциально устаревшим cache (после optimistic/error) — требуют ре-fetch.
   staleFolderIds: Set<string>;
   bootstrap: (options: FolderSyncBootstrapOptions) => Promise<void>;
@@ -256,6 +255,12 @@ interface FolderSyncState {
   refresh: (reason: FolderRefreshReason) => Promise<void>;
   /** Reloads items for one folder after add/remove chat assignment (avoids full snapshot refresh). */
   refreshFolderItemsCache: (folderUuid: string) => Promise<void>;
+  /** Optimistic pinned_at patch so pin mirror sync does not restore stale server state. */
+  patchFolderItemPinnedAt: (
+    folderUuid: string,
+    folderItemUuid: string,
+    pinnedAt: string | null,
+  ) => void;
   loadAssignmentsForChat: (chatId: string) => Promise<FolderAssignmentRow[]>;
   toggleAssignment: (input: ToggleAssignmentInput) => Promise<ToggleAssignmentResult>;
   /** Inserts a folder from POST /folders response without reloading all folders/items. */
@@ -357,6 +362,7 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
     showSystemFolders: true,
     labels: DEFAULT_LABELS,
     folderItemsByFolderId: new Map(),
+    allFolderApiUuid: null,
     staleFolderIds: new Set(),
 
     async bootstrap({ instanceId, showSystemFolders, labels }) {
@@ -393,8 +399,12 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
         loading: state.loading && !isInstanceChanged,
         // При смене инстанса очищаем кэш items, иначе переиспользуем текущий.
         folderItemsByFolderId: isInstanceChanged ? new Map() : state.folderItemsByFolderId,
+        allFolderApiUuid: isInstanceChanged ? null : state.allFolderApiUuid,
         staleFolderIds: isInstanceChanged ? new Set() : state.staleFolderIds,
       }));
+      if (isInstanceChanged) {
+        usePinStore.getState().clear();
+      }
 
       const afterBootstrap = get();
       folderSyncLog.debug("bootstrap:cacheApplied", {
@@ -454,7 +464,9 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
       }
 
       try {
-        const items = await loadFolderItemsForSelection(nextFolderId);
+        const items = await loadFolderItemsForSelection(nextFolderId, {
+          allFolderApiUuid: stateBeforeSelect.allFolderApiUuid,
+        });
         set((state) => {
           if (state.selectedFolderId !== nextFolderId) {
             // Пользователь уже переключился в другую папку — игнорируем устаревший ответ.
@@ -514,7 +526,10 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
         });
 
         try {
-          const priorityFolderUuid = get().selectedFolderId;
+          const priorityFolderUuid = resolveFolderItemsRequestUuid(
+            get().selectedFolderId,
+            get().allFolderApiUuid,
+          );
           const snapshot = await loadFolderSyncSnapshot(instanceId, {
             force: reason === "bootstrap",
             priorityFolderUuid,
@@ -556,6 +571,7 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
                 folders: foldersWithSystemDefaults,
                 selectedFolderId,
                 staleFolderIds: nextStaleFolderIds,
+                allFolderApiUuid: resolveAllFolderApiUuid(folderRows),
                 error: null,
               });
             },
@@ -620,6 +636,7 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
             selectedFolderId,
             selectedFolderChatIds,
             folderItemsByFolderId: nextFolderItemsByFolderId,
+            allFolderApiUuid: resolveAllFolderApiUuid(snapshot.folders),
             staleFolderIds: nextStaleFolderIds,
             error: null,
             ...(shouldToggleLoading ? { loading: needsFallbackSelectedLoad } : {}),
@@ -644,7 +661,9 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
           }
 
           try {
-            const selectedItems = await loadFolderItemsForSelection(selectedFolderId);
+            const selectedItems = await loadFolderItemsForSelection(selectedFolderId, {
+              allFolderApiUuid: latestState.allFolderApiUuid,
+            });
             const stateAfterFallback = get();
             if (!isCurrentRequest(stateAfterFallback, instanceId, requestVersion)) {
               return;
@@ -748,15 +767,27 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
         return;
       }
       logStoreAction("folderSync", "refreshFolderItemsCache", { folderUuid: trimmed });
+      const allFolderApiUuid = get().allFolderApiUuid;
+      const apiUuid = resolveFolderItemsRequestUuid(trimmed, allFolderApiUuid);
+      if (apiUuid == null) {
+        return;
+      }
       try {
-        const items = await loadFolderItemsForSelection(trimmed);
+        const items = await loadFolderItemsForSelection(trimmed, { allFolderApiUuid });
         set((state) => {
           const nextMap = new Map(state.folderItemsByFolderId);
-          nextMap.set(trimmed, items);
-          const nextStaleFolderIds = unmarkFolderAsStale(state.staleFolderIds, trimmed);
+          nextMap.set(apiUuid, items);
+          if (apiUuid !== trimmed) {
+            nextMap.set(trimmed, items);
+          }
+          aliasAllFolderItemsCacheKeys(nextMap, state.allFolderApiUuid);
+          let nextStaleFolderIds = unmarkFolderAsStale(state.staleFolderIds, apiUuid);
+          if (apiUuid !== trimmed) {
+            nextStaleFolderIds = unmarkFolderAsStale(nextStaleFolderIds, trimmed);
+          }
           const shouldPatchSelection =
-            state.selectedFolderId === trimmed &&
-            shouldLoadFolderItemsForSelection(state.folders, trimmed);
+            (state.selectedFolderId === trimmed || state.selectedFolderId === apiUuid) &&
+            shouldLoadFolderItemsForSelection(state.folders, state.selectedFolderId);
           return {
             folderItemsByFolderId: nextMap,
             staleFolderIds: nextStaleFolderIds,
@@ -764,11 +795,48 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
           };
         });
       } catch {
-        set((state) => ({
-          staleFolderIds: markFolderAsStale(state.staleFolderIds, trimmed),
-        }));
-        folderSyncLog.warn("refreshFolderItemsCache:failed", { folderUuid: trimmed });
+        set((state) => {
+          let nextStaleFolderIds = markFolderAsStale(state.staleFolderIds, apiUuid);
+          if (apiUuid !== trimmed) {
+            nextStaleFolderIds = markFolderAsStale(nextStaleFolderIds, trimmed);
+          }
+          return { staleFolderIds: nextStaleFolderIds };
+        });
+        folderSyncLog.warn("refreshFolderItemsCache:failed", { folderUuid: apiUuid });
       }
+    },
+
+    patchFolderItemPinnedAt(folderUuid, folderItemUuid, pinnedAt) {
+      const trimmedFolderUuid = folderUuid.trim();
+      const trimmedItemUuid = folderItemUuid.trim();
+      if (trimmedFolderUuid.length === 0 || trimmedItemUuid.length === 0) {
+        return;
+      }
+      logStoreAction("folderSync", "patchFolderItemPinnedAt", {
+        folderUuid: trimmedFolderUuid,
+        folderItemUuid: trimmedItemUuid,
+        pinned: pinnedAt != null,
+      });
+      set((state) => {
+        const items = state.folderItemsByFolderId.get(trimmedFolderUuid);
+        if (items == null || items.length === 0) {
+          return {};
+        }
+        let patched = false;
+        const nextItems = items.map((item) => {
+          if (item.uuid !== trimmedItemUuid) {
+            return item;
+          }
+          patched = true;
+          return { ...item, pinnedAt };
+        });
+        if (!patched) {
+          return {};
+        }
+        const nextMap = new Map(state.folderItemsByFolderId);
+        nextMap.set(trimmedFolderUuid, nextItems);
+        return { folderItemsByFolderId: nextMap };
+      });
     },
 
     async loadAssignmentsForChat(chatId) {
@@ -794,7 +862,7 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
               return {
                 folderUuid,
                 label: folder.title,
-                itemUuid: resolveChatAssignmentItemUuid(items, safeChatId),
+                itemUuid: resolveFolderItemUuid(items, safeChatId),
               } satisfies FolderAssignmentRow;
             } catch {
               return {
@@ -820,17 +888,19 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
             return {
               folderUuid: folderId,
               label: folder.label,
-              itemUuid: resolveChatAssignmentItemUuid(cached, safeChatId),
+              itemUuid: resolveFolderItemUuid(cached, safeChatId),
             } satisfies FolderAssignmentRow;
           }
 
           try {
-            const fetched = await loadFolderItemsForSelection(folderId);
+            const fetched = await loadFolderItemsForSelection(folderId, {
+              allFolderApiUuid: syncState.allFolderApiUuid,
+            });
             fetchedItemsByFolderId.set(folderId, fetched);
             return {
               folderUuid: folderId,
               label: folder.label,
-              itemUuid: resolveChatAssignmentItemUuid(fetched, safeChatId),
+              itemUuid: resolveFolderItemUuid(fetched, safeChatId),
             } satisfies FolderAssignmentRow;
           } catch {
             failedFetchFolderIds.add(folderId);
@@ -838,7 +908,7 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
             return {
               folderUuid: folderId,
               label: folder.label,
-              itemUuid: resolveChatAssignmentItemUuid(fallback, safeChatId),
+              itemUuid: resolveFolderItemUuid(fallback, safeChatId),
             } satisfies FolderAssignmentRow;
           }
         }),
@@ -1198,6 +1268,7 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
     clear() {
       logStoreAction("folderSync", "clear", {});
       inFlightAssignmentByFolder.clear();
+      usePinStore.getState().clear();
       set((state) => ({
         folders: [],
         selectedFolderId: DEFAULT_SELECTED_FOLDER_ID,
@@ -1209,6 +1280,7 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
         requestVersion: state.requestVersion + 1,
         instanceId: null,
         folderItemsByFolderId: new Map(),
+        allFolderApiUuid: null,
         staleFolderIds: new Set(),
       }));
     },

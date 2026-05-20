@@ -3,6 +3,7 @@ import {
   getFolders,
   type FolderItemForClient,
 } from "~/shared/api/workspace-client";
+import { resolveFolderItemsRequestUuid } from "./folder-sync.lib";
 
 type WorkspaceFolder = Awaited<ReturnType<typeof getFolders>>[number];
 
@@ -18,12 +19,8 @@ async function loadFolderItemsResultsMap(
   const next = new Map<string, FolderItemsLoadResult>();
   const priority = priorityFolderUuid?.trim();
   const priorityFolder =
-    priority != null && priority.length > 0
-      ? withUuid.find((f) => f.uuid === priority)
-      : undefined;
-  const others = priorityFolder
-    ? withUuid.filter((f) => f.uuid !== priorityFolder.uuid)
-    : withUuid;
+    priority != null && priority.length > 0 ? withUuid.find((f) => f.uuid === priority) : undefined;
+  const others = priorityFolder ? withUuid.filter((f) => f.uuid !== priorityFolder.uuid) : withUuid;
 
   if (priorityFolder) {
     try {
@@ -38,9 +35,9 @@ async function loadFolderItemsResultsMap(
     others.map(async (folder) => {
       try {
         const items = await getFolderItems(folder.uuid);
-        return [folder.uuid, { ok: true, items } as FolderItemsLoadResult] as const;
+        return [folder.uuid, { ok: true, items }] satisfies [string, FolderItemsLoadResult];
       } catch {
-        return [folder.uuid, { ok: false, items: [] } as FolderItemsLoadResult] as const;
+        return [folder.uuid, { ok: false, items: [] }] satisfies [string, FolderItemsLoadResult];
       }
     }),
   );
@@ -100,10 +97,7 @@ export async function loadFolderSyncSnapshot(
   const request = (async () => {
     const folders = await getFolders();
     await options?.onFoldersLoaded?.(folders);
-    const itemsByFolderId = await loadFolderItemsResultsMap(
-      folders,
-      options?.priorityFolderUuid,
-    );
+    const itemsByFolderId = await loadFolderItemsResultsMap(folders, options?.priorityFolderUuid);
 
     const snapshot: FolderSyncSnapshot = {
       folders,
@@ -126,11 +120,21 @@ export async function loadFolderSyncSnapshot(
   return request;
 }
 
+export interface LoadFolderItemsForSelectionOptions {
+  /** Workspace API uuid for `system_type === "all"` (not the synthetic `system:all` rail id). */
+  allFolderApiUuid?: string | null;
+}
+
 export async function loadFolderItemsForSelection(
   folderId: string,
+  options?: LoadFolderItemsForSelectionOptions,
 ): Promise<FolderItemForClient[]> {
   // Отдельный запрос для выбранной папки (используется в select/fallback).
-  return getFolderItems(folderId);
+  const apiUuid = resolveFolderItemsRequestUuid(folderId, options?.allFolderApiUuid ?? null);
+  if (apiUuid == null) {
+    return [];
+  }
+  return getFolderItems(apiUuid);
 }
 
 export function readLatestFolderSyncSnapshot(instanceId: string): FolderSyncSnapshot | null {

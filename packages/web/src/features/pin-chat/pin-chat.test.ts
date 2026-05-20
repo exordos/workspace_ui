@@ -60,7 +60,7 @@ describe("usePinStore", () => {
   });
 
   // Bulk initialization from server data
-  it("setFromServer loads pinned chats", () => {
+  it("setFromServer loads pinned chats sorted by pinned_at descending", () => {
     usePinStore.getState().setFromServer([
       {
         folderUuid: "f1",
@@ -74,7 +74,7 @@ describe("usePinStore", () => {
         folderItemUuid: "item-20",
         chatId: "c20",
         orderIndex: 0,
-        pinnedAt: "2026-03-14T00:00:00Z",
+        pinnedAt: "2026-03-14T01:00:00Z",
       },
       {
         folderUuid: "f2",
@@ -89,6 +89,20 @@ describe("usePinStore", () => {
     expect(usePinStore.getState().isPinned("f1", "c20")).toBe(true);
     expect(usePinStore.getState().isPinned("f2", "c30")).toBe(true);
     expect(usePinStore.getState().getPinnedChatIds("f1")).toEqual(["c20", "c10"]);
+  });
+
+  it("isPinned matches alias-equivalent chat ids", () => {
+    usePinStore.getState().setFromServer([
+      {
+        folderUuid: "f1",
+        folderItemUuid: "item-11",
+        chatId: "11",
+        orderIndex: 0,
+        pinnedAt: "2026-03-14T00:00:00Z",
+      },
+    ]);
+    expect(usePinStore.getState().isPinned("f1", "stream:11:general")).toBe(true);
+    expect(usePinStore.getState().getPinnedSortIndex("f1", "stream:11:general")).toBe(0);
   });
 
   it("setFromServer keeps folder item mapping and ignores non-pinned rows", () => {
@@ -107,6 +121,21 @@ describe("usePinStore", () => {
     expect(usePinStore.getState().getFolderItemUuid("f1", "c10")).toBe("item-10");
   });
 
+  it("setFromServer with empty array does not wipe existing pin state", () => {
+    usePinStore.getState().setFromServer([
+      {
+        folderUuid: "f1",
+        folderItemUuid: "item-1",
+        chatId: "dm:42",
+        orderIndex: 0,
+        pinnedAt: "2026-03-14T10:00:00Z",
+      },
+    ]);
+    usePinStore.getState().setFromServer([]);
+    expect(usePinStore.getState().isPinned("f1", "dm:42")).toBe(true);
+    expect(usePinStore.getState().getFolderItemUuid("f1", "dm:42")).toBe("item-1");
+  });
+
   // Clear resets everything
   it("clear resets all state", () => {
     usePinStore.getState().pinChat("f1", "c1");
@@ -115,11 +144,51 @@ describe("usePinStore", () => {
     expect(usePinStore.getState().getPinnedChatIds("f1")).toHaveLength(0);
   });
 
+  it("getPinnedChatIds returns stable array until folder pins change", () => {
+    usePinStore.getState().pinChat("f1", "c1");
+    const first = usePinStore.getState().getPinnedChatIds("f1");
+    const second = usePinStore.getState().getPinnedChatIds("f1");
+    expect(first).toBe(second);
+
+    usePinStore.getState().pinChat("f1", "c2");
+    const afterAdd = usePinStore.getState().getPinnedChatIds("f1");
+    expect(afterAdd).not.toBe(first);
+    expect(afterAdd.length).toBe(2);
+  });
+
   // Pinning the same chat twice is idempotent
   it("pinChat is idempotent", () => {
     usePinStore.getState().pinChat("f1", "c1");
     usePinStore.getState().pinChat("f1", "c1");
     expect(usePinStore.getState().getPinnedChatIds("f1")).toHaveLength(1);
+  });
+
+  it("getFolderItemUuid resolves alias-equivalent chat ids", () => {
+    usePinStore.getState().setFromServer([
+      {
+        folderUuid: "folder-1",
+        folderItemUuid: "item-11",
+        chatId: "11",
+        orderIndex: 0,
+        pinnedAt: null,
+      },
+    ]);
+    expect(usePinStore.getState().getFolderItemUuid("folder-1", "stream:11:general")).toBe(
+      "item-11",
+    );
+  });
+
+  it("getFolderItemUuid uses O(1) canonical map lookup for dm id order", () => {
+    usePinStore.getState().setFromServer([
+      {
+        folderUuid: "f1",
+        folderItemUuid: "item-dm",
+        chatId: "dm:21,7",
+        orderIndex: 0,
+        pinnedAt: null,
+      },
+    ]);
+    expect(usePinStore.getState().getFolderItemUuid("f1", "dm:7,21")).toBe("item-dm");
   });
 });
 
@@ -194,6 +263,11 @@ describe("pin-chat API", () => {
       const { pinChatInFolder } = await import("./pin-chat.api");
       await expect(pinChatInFolder("f1", "")).rejects.toThrow();
     });
+
+    it("returns false for optimistic folder item uuid", async () => {
+      const { pinChatInFolder } = await import("./pin-chat.api");
+      expect(await pinChatInFolder("f1", "__folder_assignment_pending__:f1:dm:1")).toBe(false);
+    });
   });
 
   describe("unpinChatInFolder", () => {
@@ -226,6 +300,11 @@ describe("pin-chat API", () => {
 
       const { unpinChatInFolder } = await import("./pin-chat.api");
       expect(await unpinChatInFolder("f1", "i1")).toBe(false);
+    });
+
+    it("returns false for optimistic folder item uuid", async () => {
+      const { unpinChatInFolder } = await import("./pin-chat.api");
+      expect(await unpinChatInFolder("f1", "__folder_assignment_pending__:f1:dm:1")).toBe(false);
     });
   });
 });

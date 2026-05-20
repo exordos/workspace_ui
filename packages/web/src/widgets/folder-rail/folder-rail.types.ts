@@ -46,7 +46,6 @@ export interface FolderRailProps {
   /** Folder selection handler. */
   onSelectFolder: (id: string) => void;
   /** Legacy prop kept for backward compatibility. */
-  onOrderPinning?: (id: string) => void;
   /** External layout toggle; if not provided, settings store is used. */
   onToggleLayout?: () => void;
   /** Signal that folders list changed (create/rename/delete). Use `created` / `deletedFolderId` to skip full refresh. */

@@ -13,6 +13,7 @@ import { Avatar } from "~/shared/ui/avatar";
 import { Badge } from "~/shared/ui/badge";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
+import { sidebarDmRoute } from "./sidebar-chat-routes.lib";
 import { isDmPartnerTyping } from "./sidebar-dm-list.lib";
 import { SidebarUserStatusEmoji } from "./sidebar-user-status-emoji.ui";
 import { parseDmSlugToUserIds } from "./sidebar.lib";
@@ -76,10 +77,11 @@ export const DmChatRow = React.memo(function DmChatRow({
   const rowClass = compact
     ? "flex items-start gap-2 rounded-md px-2 py-1.5 transition-colors"
     : "flex items-start gap-3 rounded-lg px-2.5 py-2.5 transition-colors";
+  const dmRoute = useMemo(() => sidebarDmRoute(chat.slug), [chat.slug]);
 
   return (
     <Link
-      to={`/dm/${chat.slug}`}
+      to={dmRoute}
       className={`${rowClass} ${sidebarRowClass(isActive)}`}
       onContextMenu={onContextMenu}
       onKeyDown={onKeyDown}

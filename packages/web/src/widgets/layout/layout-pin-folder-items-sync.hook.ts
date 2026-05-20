@@ -7,6 +7,12 @@ export function useLayoutPinFolderItemsSync(
   folderItemsByFolderId: ReadonlyMap<string, FolderItemForClient[]>,
 ): void {
   useEffect(() => {
+    // While folder items are still loading, the map is often empty — skip sync to avoid
+    // setFromServer([]) wiping folderItemIds needed for pin/unpin API calls.
+    if (folderItemsByFolderId.size === 0) {
+      return;
+    }
+
     const rows: {
       folderUuid: string;
       folderItemUuid: string;
@@ -24,6 +30,9 @@ export function useLayoutPinFolderItemsSync(
           pinnedAt: item.pinnedAt,
         });
       }
+    }
+    if (rows.length === 0) {
+      return;
     }
     usePinStore.getState().setFromServer(rows);
   }, [folderItemsByFolderId]);

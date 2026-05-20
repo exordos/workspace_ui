@@ -152,6 +152,85 @@ export function resolveFallbackUserName(
   return fallbackName;
 }
 
+/**
+ * Stable map/set key for a folder or pin chat_id.
+ * Bare numeric API ids are stream ids (`stream:N:general`); DM ids are sorted `dm:a,b`.
+ */
+export function canonicalizeChatId(chatId: string): string {
+  const trimmed = chatId.trim();
+  if (trimmed.length === 0) {
+    return trimmed;
+  }
+
+  const numericChatId = parseNumericChatId(trimmed);
+  if (numericChatId != null) {
+    return `stream:${numericChatId}:general`;
+  }
+
+  const streamDashMatch = /^stream-([0-9]+)$/i.exec(trimmed);
+  if (streamDashMatch?.[1]) {
+    const parsed = Number(streamDashMatch[1]);
+    if (Number.isSafeInteger(parsed) && parsed > 0) {
+      return `stream:${parsed}:general`;
+    }
+  }
+
+  const streamChat = parseStreamChatId(trimmed);
+  if (streamChat != null) {
+    return `stream:${streamChat.streamId}:${normalizeStreamTopic(streamChat.topic)}`;
+  }
+
+  const dmUserIds = parseFolderItemDmUserIds(trimmed);
+  if (dmUserIds != null) {
+    return `dm:${dmUserIds.join(",")}`;
+  }
+
+  return trimmed;
+}
+
+/**
+ * Canonical map keys for one folder item (numeric API ids may map to both stream and dm keys).
+ */
+export function folderItemLookupKeysForChatId(chatId: string): readonly string[] {
+  const aliases = new Set<string>();
+  addChatIdAliases(aliases, chatId);
+  const keys = new Set<string>();
+  for (const alias of aliases) {
+    keys.add(canonicalizeChatId(alias));
+  }
+  return [...keys];
+}
+
+/** True when two folder/API chat_id values refer to the same chat (numeric, stream, dm aliases). */
+export function areEquivalentChatIds(leftChatId: string, rightChatId: string): boolean {
+  const leftAliases = new Set<string>();
+  addChatIdAliases(leftAliases, leftChatId);
+  const rightAliases = new Set<string>();
+  addChatIdAliases(rightAliases, rightChatId);
+  for (const alias of leftAliases) {
+    if (rightAliases.has(alias)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Resolves a folder item UUID for a chat using canonical lookup keys. */
+export function resolveFolderItemUuid(
+  items: readonly { chatId: string; uuid: string }[],
+  chatId: string,
+): string | null {
+  const queryKeys = new Set(folderItemLookupKeysForChatId(chatId));
+  for (const item of items) {
+    for (const key of folderItemLookupKeysForChatId(item.chatId)) {
+      if (queryKeys.has(key)) {
+        return item.uuid;
+      }
+    }
+  }
+  return null;
+}
+
 export function addChatIdAliases(target: Set<string>, chatId: string): void {
   const trimmedChatId = chatId.trim();
   if (trimmedChatId.length === 0) {

@@ -18,23 +18,13 @@ export const SidebarShell: React.FC = () => {
   const selectFolderSync = useFolderSyncStore((s) => s.selectFolder);
   const selectedFolderId = useFolderSyncStore((s) => s.selectedFolderId);
   const setSelectedFolderId = useSidebarConfigStore((s) => s.setSelectedFolderId);
-  const setPinReorderMode = useSidebarConfigStore((s) => s.setPinReorderMode);
 
   const handleSelectFolder = useCallback(
     (folderId: string) => {
       setSelectedFolderId(folderId);
-      setPinReorderMode(false);
       void selectFolderSync(folderId);
     },
-    [selectFolderSync, setPinReorderMode, setSelectedFolderId],
-  );
-  const handleStartOrderPinning = useCallback(
-    (folderId: string) => {
-      setSelectedFolderId(folderId);
-      setPinReorderMode(true);
-      void selectFolderSync(folderId);
-    },
-    [selectFolderSync, setPinReorderMode, setSelectedFolderId],
+    [selectFolderSync, setSelectedFolderId],
   );
   const handleFoldersChanged = useCallback(
     (detail?: FolderRailFoldersChangedDetail) => {
@@ -61,7 +51,6 @@ export const SidebarShell: React.FC = () => {
             folders={folders}
             selectedFolderId={selectedFolderId}
             onSelectFolder={handleSelectFolder}
-            onOrderPinning={handleStartOrderPinning}
             onFoldersChanged={handleFoldersChanged}
             layout="vertical"
           />
@@ -81,7 +70,6 @@ export const SidebarShell: React.FC = () => {
             folders={folders}
             selectedFolderId={selectedFolderId}
             onSelectFolder={handleSelectFolder}
-            onOrderPinning={handleStartOrderPinning}
             onFoldersChanged={handleFoldersChanged}
             layout="horizontal"
           />
@@ -90,4 +78,3 @@ export const SidebarShell: React.FC = () => {
     />
   );
 };
-

@@ -21,10 +21,12 @@ function isoNow(): string {
   return new Date().toISOString();
 }
 
-function mapToFolderItem(raw: { uuid?: string; title: string; background_color_value?: number | null } & {
-  created_at: string;
-  updated_at: string;
-}): FolderItem {
+function mapToFolderItem(
+  raw: { uuid?: string; title: string; background_color_value?: number | null } & {
+    created_at: string;
+    updated_at: string;
+  },
+): FolderItem {
   return {
     id: raw.uuid ?? "",
     title: raw.title,
@@ -62,15 +64,10 @@ export async function updateFolder(
 
   try {
     const current = await getV1FoldersFolderUuid(folderId);
-    const t = isoNow();
-    const folderUpdate: FolderUpdate = {
-      ...current,
+    const folderUpdate = {
       title: input.title ?? current.title,
-      updated_at: t,
-    };
-    if (input.backgroundColor != null) {
-      folderUpdate.background_color_value = input.backgroundColor;
-    }
+      background_color_value: input.backgroundColor ?? current.background_color_value ?? 0,
+    } as FolderUpdate;
     const raw = await updateV1FoldersFolderUuid(folderId, folderUpdate);
     log.info("Folder updated", { folderId });
     return mapToFolderItem(raw);

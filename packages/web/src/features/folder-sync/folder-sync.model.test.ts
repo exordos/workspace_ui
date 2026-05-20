@@ -254,7 +254,9 @@ describe("folder-sync model orchestration", () => {
     const selectPromise = useFolderSyncStore.getState().selectFolder("folder-7");
 
     expect(loadFolderItemsForSelection).toHaveBeenCalledTimes(1);
-    expect(loadFolderItemsForSelection).toHaveBeenCalledWith("folder-7");
+    expect(loadFolderItemsForSelection).toHaveBeenCalledWith("folder-7", {
+      allFolderApiUuid: null,
+    });
     expect(useFolderSyncStore.getState().loading).toBe(false);
     expect(useFolderSyncStore.getState().selectedFolderChatIds?.size).toBe(0);
 
@@ -543,7 +545,9 @@ describe("refreshFolderItemsCache", () => {
 
     await useFolderSyncStore.getState().refreshFolderItemsCache(folderId);
 
-    expect(loadFolderItemsForSelection).toHaveBeenCalledWith(folderId);
+    expect(loadFolderItemsForSelection).toHaveBeenCalledWith(folderId, {
+      allFolderApiUuid: null,
+    });
     const state = useFolderSyncStore.getState();
     expect(state.folderItemsByFolderId.get(folderId)).toEqual(items);
     expect(state.selectedFolderChatIds?.has("dm:99")).toBe(true);
@@ -689,7 +693,9 @@ describe("folder assignment orchestration", () => {
       { folderUuid: staleFolder, label: "Stale", itemUuid: "item-stale" },
     ]);
     expect(loadFolderItemsForSelection).toHaveBeenCalledTimes(1);
-    expect(loadFolderItemsForSelection).toHaveBeenCalledWith(staleFolder);
+    expect(loadFolderItemsForSelection).toHaveBeenCalledWith(staleFolder, {
+      allFolderApiUuid: null,
+    });
     expect(useFolderSyncStore.getState().staleFolderIds.has(staleFolder)).toBe(false);
   });
 

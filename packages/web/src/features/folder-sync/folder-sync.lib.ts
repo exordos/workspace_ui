@@ -22,7 +22,7 @@ interface FolderItemsLoadResult {
 }
 
 interface FolderSnapshotLike {
-  folders: readonly { uuid?: string }[];
+  folders: readonly { uuid?: string; system_type?: string | null }[];
   itemsByFolderId: ReadonlyMap<string, FolderItemsLoadResult>;
 }
 
@@ -127,6 +127,62 @@ export function withDefaultSystemFolders(
   ];
 }
 
+/**
+ * Maps sidebar/rail folder id to Workspace API folder uuid for `GET /folders/{uuid}/items/`.
+ * Synthetic `system:all` and legacy `all` resolve to `allFolderApiUuid`; personal/channels have no items endpoint.
+ */
+export function resolveFolderItemsRequestUuid(
+  folderId: string,
+  allFolderApiUuid: string | null,
+): string | null {
+  const trimmed = folderId.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+
+  if (trimmed === SYSTEM_PERSONAL_FOLDER_ID || trimmed === SYSTEM_CHANNELS_FOLDER_ID) {
+    return null;
+  }
+
+  if (trimmed === SYSTEM_ALL_FOLDER_ID || trimmed === "all") {
+    const apiUuid = allFolderApiUuid?.trim();
+    return apiUuid != null && apiUuid.length > 0 ? apiUuid : null;
+  }
+
+  return trimmed;
+}
+
+/**
+ * Maps sidebar folder scope (rail id) to Workspace API folder uuid for pin/unpin and folder items.
+ * Falls back to legacy rail id `all` when API uuid is not hydrated yet.
+ */
+export function resolvePinScopeFolderUuid(
+  scopeFolderId: string,
+  allFolderApiUuid: string | null = null,
+): string | null {
+  const resolved = resolveFolderItemsRequestUuid(scopeFolderId, allFolderApiUuid);
+  if (resolved != null) {
+    return resolved;
+  }
+  return scopeFolderId.trim() === "all" ? (allFolderApiUuid ?? "all") : null;
+}
+
+/** Backend uuid for the Workspace folder with `system_type === "all"` (not the synthetic `system:all` rail id). */
+export function resolveAllFolderApiUuid(
+  folders: readonly { uuid?: string; system_type?: string | null }[],
+): string | null {
+  for (const folder of folders) {
+    if (folder.system_type !== "all") {
+      continue;
+    }
+    const uuid = folder.uuid?.trim();
+    if (uuid != null && uuid.length > 0) {
+      return uuid;
+    }
+  }
+  return null;
+}
+
 export function resolveSelectedFolderId(
   folders: readonly FolderLike[],
   selectedFolderId: string,
@@ -188,5 +244,24 @@ export function mergeFolderItemsSnapshot(
     }
   }
 
+  aliasAllFolderItemsCacheKeys(next, resolveAllFolderApiUuid(snapshot.folders));
+
   return next;
+}
+
+/** Mirrors API «all» folder items under rail id `system:all` and legacy `all` for pin/cache lookups. */
+export function aliasAllFolderItemsCacheKeys(
+  itemsByFolderId: Map<string, FolderItemForClient[]>,
+  allFolderApiUuid: string | null,
+): void {
+  const apiUuid = allFolderApiUuid?.trim();
+  if (apiUuid == null || apiUuid.length === 0) {
+    return;
+  }
+  const items = itemsByFolderId.get(apiUuid);
+  if (items == null) {
+    return;
+  }
+  itemsByFolderId.set(SYSTEM_ALL_FOLDER_ID, items);
+  itemsByFolderId.set("all", items);
 }

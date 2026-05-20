@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getFolderItems, getFolders } from "~/shared/api/workspace-client";
-import { loadFolderSyncSnapshot, resetFolderSyncApiCacheForTests } from "./folder-sync.api";
+import { SYSTEM_ALL_FOLDER_ID } from "./folder-sync-constants.lib";
+import {
+  loadFolderItemsForSelection,
+  loadFolderSyncSnapshot,
+  resetFolderSyncApiCacheForTests,
+} from "./folder-sync.api";
 
 vi.mock("~/shared/api/workspace-client", () => ({
   getFolders: vi.fn(),
@@ -145,6 +150,16 @@ describe("folder-sync.api", () => {
     expect(callOrder[0]).toBe("folder-b");
     expect(callOrder).toContain("folder-a");
     expect(callOrder).toHaveLength(2);
+  });
+
+  it("resolves virtual system:all to API uuid for folder items request", async () => {
+    const apiAllUuid = "api-all-folder-uuid";
+    vi.mocked(getFolderItems).mockResolvedValue([]);
+
+    await loadFolderItemsForSelection(SYSTEM_ALL_FOLDER_ID, { allFolderApiUuid: apiAllUuid });
+
+    expect(getFolderItems).toHaveBeenCalledWith(apiAllUuid);
+    expect(getFolderItems).not.toHaveBeenCalledWith(SYSTEM_ALL_FOLDER_ID);
   });
 
   it("marks failed folder-items requests without failing full snapshot", async () => {

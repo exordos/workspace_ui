@@ -4,7 +4,6 @@ import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { CreateChatDialog } from "~/features/create-chat/create-chat-dialog.ui";
 import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
-import { usePinStore } from "~/features/pin-chat/pin-chat.model";
 import { t } from "~/i18n/i18n";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { buildStreamSlug } from "~/shared/lib/stream-slug.lib";
@@ -15,13 +14,10 @@ import { useSidebarConfigStore } from "./sidebar-config.model";
 import { SidebarDmList } from "./sidebar-dm-list.ui";
 import { doesSidebarChatMatchQuery, normalizeSidebarSearchQuery } from "./sidebar-filtering.lib";
 import { SidebarFolderChatList } from "./sidebar-folder-chat-list.ui";
-import { SidebarPinReorderBanner } from "./sidebar-pin-reorder-banner.ui";
 import { SidebarSearchHeader } from "./sidebar-search-header.ui";
 import { SidebarStreamList } from "./sidebar-stream-list.ui";
-import { chatToWorkspaceChatId, getStreamChats, isSidebarSystemFolderScope } from "./sidebar.lib";
+import { getStreamChats, isSidebarSystemFolderScope } from "./sidebar.lib";
 import type { SidebarChat, SidebarUiProps } from "./sidebar.types";
-
-const EMPTY_PIN_REORDER_CHAT_IDS: string[] = [];
 
 // Убирает org-префикс, чтобы дальше одинаково разбирать пути с /org/:id и без него.
 function stripOrgPrefix(pathname: string): string {
@@ -59,8 +55,6 @@ export const Sidebar: React.FC<SidebarUiProps> = ({
   sidebarDms: sidebarDmsProp,
   sidebarChats: sidebarChatsProp,
   sidebarChatsLoading: sidebarChatsLoadingProp = false,
-  pinReorderMode: pinReorderModeProp = false,
-  onExitPinReorderMode,
   activityPanelBottomSlot,
 }) => {
   const navigate = useNavigate();
@@ -81,15 +75,12 @@ export const Sidebar: React.FC<SidebarUiProps> = ({
   const streams = streamsProp ?? streamsFromStore;
   const sidebarDms = sidebarDmsProp ?? sidebarDmsFromStore;
   const selectedFolderIdFromUi = useSidebarConfigStore((s) => s.selectedFolderId);
-  const pinReorderModeFromUi = useSidebarConfigStore((s) => s.pinReorderMode);
-  const setPinReorderModeFromUi = useSidebarConfigStore((s) => s.setPinReorderMode);
   const selectedFolderIdFromSync = useFolderSyncStore((s) => s.selectedFolderId);
   const selectedFolderId =
     selectedFolderIdProp ?? selectedFolderIdFromSync ?? selectedFolderIdFromUi;
   const sidebarChats = sidebarChatsProp ?? null;
   const sidebarChatsLoading = sidebarChatsLoadingProp || false;
   const pinFolderId = pinFolderIdProp ?? undefined;
-  const pinReorderMode = pinReorderModeProp || pinReorderModeFromUi;
   const activeStreamSlug = activeStreamSlugProp ?? streamSlug ?? null;
   const activeTopic = activeTopicProp ?? topicName ?? null;
   const activeDmIdParam = activeDmIdParamProp ?? dmIdParamFromRoute ?? null;
@@ -110,9 +101,6 @@ export const Sidebar: React.FC<SidebarUiProps> = ({
   const createChatOpen = useSidebarConfigStore((s) => s.createChatOpen);
   const setCreateChatOpen = useSidebarConfigStore((s) => s.setCreateChatOpen);
   const users = useUsersStore((s) => s.users);
-  const pinnedChatIdsForSelectedFolder = usePinStore((s) =>
-    pinReorderMode ? s.getPinnedChatIds(selectedFolderId) : EMPTY_PIN_REORDER_CHAT_IDS,
-  );
 
   useEffect(() => {
     // Route-sync раскрытий:
@@ -154,18 +142,6 @@ export const Sidebar: React.FC<SidebarUiProps> = ({
     () => listChats.filter(doesChatMatchQuery),
     [listChats, doesChatMatchQuery],
   );
-  const pinnedChatIdSetForReorder = useMemo(
-    () => new Set(pinnedChatIdsForSelectedFolder),
-    [pinnedChatIdsForSelectedFolder],
-  );
-  const filteredFolderChats = useMemo(() => {
-    if (!pinReorderMode) return filteredChats;
-    // В режиме reorder показываем только закрепленные чаты текущей папки.
-    return filteredChats.filter((chat) =>
-      pinnedChatIdSetForReorder.has(chatToWorkspaceChatId(chat)),
-    );
-  }, [filteredChats, pinReorderMode, pinnedChatIdSetForReorder]);
-
   const filteredStreamChats = useMemo(
     () => streamChats.filter(doesChatMatchQuery),
     [streamChats, doesChatMatchQuery],
@@ -191,11 +167,6 @@ export const Sidebar: React.FC<SidebarUiProps> = ({
     () => setActivityOpen(!activityOpen),
     [setActivityOpen, activityOpen],
   );
-  const handleExitPinReorderMode = useCallback(() => {
-    onExitPinReorderMode?.();
-    setPinReorderModeFromUi(false);
-  }, [onExitPinReorderMode, setPinReorderModeFromUi]);
-
   return (
     <aside
       className="flex min-h-0 w-sidebar min-w-sidebar max-w-sidebar flex-shrink-0 overflow-hidden rounded-xl bg-sidebar-bg"
@@ -222,9 +193,8 @@ export const Sidebar: React.FC<SidebarUiProps> = ({
               </div>
             </>
           )}
-          {pinReorderMode && <SidebarPinReorderBanner onClose={handleExitPinReorderMode} />}
           <SidebarFolderChatList
-            chats={filteredFolderChats}
+            chats={filteredChats}
             selectedFolderId={selectedFolderId}
             pinFolderId={pinFolderId}
             activeStreamSlug={activeStreamSlug}
@@ -233,7 +203,6 @@ export const Sidebar: React.FC<SidebarUiProps> = ({
             expandedStreamSlugs={expandedStreamSlugs}
             onToggleStream={handleToggleStream}
             onNewTopic={handleNewTopic}
-            reorderPinnedOnly={pinReorderMode}
             loading={folderChatListLoading}
             showEmptyState={sidebarChats != null && normalizedQuery.length === 0}
           />
