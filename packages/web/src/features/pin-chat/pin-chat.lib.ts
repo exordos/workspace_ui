@@ -23,8 +23,26 @@ interface PinActionTarget {
   folderItemUuid: string;
 }
 
-/** Cache/pin-store keys: API uuid, rail scope, and legacy aliases for «all» folder. */
-function folderLookupKeys(apiFolderUuid: string, scopeFolderId?: string | null): string[] {
+function isAllFolderPinContext(
+  apiFolderUuid: string,
+  scopeFolderId: string | null | undefined,
+  allFolderApiUuid: string | null,
+): boolean {
+  const scope = scopeFolderId?.trim();
+  if (scope === SYSTEM_ALL_FOLDER_ID || scope === "all") {
+    return true;
+  }
+  const api = apiFolderUuid.trim();
+  const allApi = allFolderApiUuid?.trim();
+  return allApi != null && allApi.length > 0 && api === allApi;
+}
+
+/** Cache/pin-store keys for the active folder only (no cross-folder «all» leakage). */
+function folderLookupKeys(
+  apiFolderUuid: string,
+  scopeFolderId: string | null | undefined,
+  allFolderApiUuid: string | null,
+): string[] {
   const keys = new Set<string>();
   const api = apiFolderUuid.trim();
   if (api.length > 0) {
@@ -34,8 +52,10 @@ function folderLookupKeys(apiFolderUuid: string, scopeFolderId?: string | null):
   if (scope != null && scope.length > 0 && scope !== api) {
     keys.add(scope);
   }
-  keys.add(SYSTEM_ALL_FOLDER_ID);
-  keys.add("all");
+  if (isAllFolderPinContext(api, scopeFolderId, allFolderApiUuid)) {
+    keys.add(SYSTEM_ALL_FOLDER_ID);
+    keys.add("all");
+  }
   return [...keys];
 }
 
@@ -108,7 +128,11 @@ async function resolvePinActionTarget(options: {
   folderItemUuid?: string | null;
 }): Promise<PinActionTarget | null> {
   const allFolderApiUuid = useFolderSyncStore.getState().allFolderApiUuid;
-  const lookupKeys = folderLookupKeys(options.apiFolderUuid, options.scopeFolderId);
+  const lookupKeys = folderLookupKeys(
+    options.apiFolderUuid,
+    options.scopeFolderId,
+    allFolderApiUuid,
+  );
   const explicitUuid = options.folderItemUuid?.trim();
 
   if (explicitUuid != null && explicitUuid.length > 0 && isPersistedFolderItemUuid(explicitUuid)) {
@@ -183,7 +207,7 @@ async function ensureFolderItemForPin(
 
   const allFolderApiUuid = useFolderSyncStore.getState().allFolderApiUuid;
   const fromCache = resolveFolderItemFromCache(
-    folderLookupKeys(apiFolderUuid, scopeFolderId),
+    folderLookupKeys(apiFolderUuid, scopeFolderId, allFolderApiUuid),
     chatId,
     false,
   );
@@ -197,8 +221,9 @@ export function resolveFolderItemUuidForMenu(options: {
   chatId: string;
   preferPinnedItem: boolean;
 }): string | null {
+  const allFolderApiUuid = useFolderSyncStore.getState().allFolderApiUuid;
   const target = resolveFolderItemFromCache(
-    folderLookupKeys(options.apiFolderUuid, options.scopeFolderId),
+    folderLookupKeys(options.apiFolderUuid, options.scopeFolderId, allFolderApiUuid),
     options.chatId,
     options.preferPinnedItem,
   );
@@ -209,9 +234,10 @@ function clearLocalPinState(
   apiFolderUuid: string,
   scopeFolderId: string | undefined,
   chatId: string,
+  allFolderApiUuid: string | null,
 ): void {
   const pinStore = usePinStore.getState();
-  for (const folderKey of folderLookupKeys(apiFolderUuid, scopeFolderId)) {
+  for (const folderKey of folderLookupKeys(apiFolderUuid, scopeFolderId, allFolderApiUuid)) {
     if (pinStore.isPinned(folderKey, chatId)) {
       pinStore.unpinChat(folderKey, chatId);
     }
@@ -279,7 +305,7 @@ export async function runFolderPinToggle(options: {
     if (!(await unpinChatInFolder(apiFolderUuid, folderItemUuid))) {
       return;
     }
-    clearLocalPinState(apiFolderUuid, options.scopeFolderId, options.chatId);
+    clearLocalPinState(apiFolderUuid, options.scopeFolderId, options.chatId, allFolderApiUuid);
     folderSync.patchFolderItemPinnedAt(apiFolderUuid, folderItemUuid, null);
     void folderSync.refreshFolderItemsCache(apiFolderUuid);
     return;

@@ -9,6 +9,7 @@ import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { muteTopic } from "~/features/mute-chat/mute-chat.api";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { runOptimisticTopicVisibilityUpdate } from "~/features/mute-chat/mute-chat.optimistic.lib";
+import { orderChatsWithPinnedFirst } from "~/features/pin-chat/pin-chat-order.lib";
 import { usePinStore } from "~/features/pin-chat/pin-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
@@ -79,36 +80,13 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
   const pinnedChatIds = usePinStore((s) =>
     pinApiFolderUuid != null ? s.getPinnedChatIds(pinApiFolderUuid) : EMPTY_PINNED_IDS,
   );
-  const orderedChats = useMemo(() => {
-    if (pinnedChatIds.length === 0 || pinApiFolderUuid == null) return chats;
-
-    const pinStore = usePinStore.getState();
-    const pinnedChats: SidebarChat[] = [];
-    const regularChats: SidebarChat[] = [];
-
-    for (const chat of chats) {
-      const chatId = chatToWorkspaceChatId(chat);
-      if (pinStore.getPinnedSortIndex(pinApiFolderUuid, chatId) >= 0) {
-        pinnedChats.push(chat);
-      } else {
-        regularChats.push(chat);
-      }
-    }
-
-    pinnedChats.sort((leftChat, rightChat) => {
-      const leftOrder = pinStore.getPinnedSortIndex(
-        pinApiFolderUuid,
-        chatToWorkspaceChatId(leftChat),
-      );
-      const rightOrder = pinStore.getPinnedSortIndex(
-        pinApiFolderUuid,
-        chatToWorkspaceChatId(rightChat),
-      );
-      return leftOrder - rightOrder;
-    });
-
-    return [...pinnedChats, ...regularChats];
-  }, [chats, pinApiFolderUuid, pinnedChatIds]);
+  const orderedChats = useMemo(
+    () =>
+      pinApiFolderUuid == null || pinnedChatIds.length === 0
+        ? chats
+        : orderChatsWithPinnedFirst(chats, pinnedChatIds),
+    [chats, pinApiFolderUuid, pinnedChatIds],
+  );
   const closeTopicDialog = useCallback(() => {
     setTopicDialogState(null);
     setNewTopicName("");

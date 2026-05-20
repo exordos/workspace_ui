@@ -3,7 +3,31 @@
  */
 
 import { create } from "zustand";
-import { areEquivalentChatIds } from "~/features/folder-sync/folder-sync-chat-id.lib";
+import {
+  areEquivalentChatIds,
+  canonicalizeChatId,
+  folderItemLookupKeysForChatId,
+} from "~/features/folder-sync/folder-sync-chat-id.lib";
+
+function setFolderItemUuidEntry(
+  folderItemMap: Map<string, string>,
+  chatId: string,
+  folderItemUuid: string,
+): void {
+  for (const key of folderItemLookupKeysForChatId(chatId)) {
+    folderItemMap.set(key, folderItemUuid);
+  }
+}
+
+function removeFolderItemUuidEntries(folderItemMap: Map<string, string>, chatId: string): void {
+  for (const key of folderItemLookupKeysForChatId(chatId)) {
+    folderItemMap.delete(key);
+  }
+}
+import {
+  buildPinnedChatSortIndexLookup,
+  lookupPinnedSortIndex,
+} from "~/features/pin-chat/pin-chat-order.lib";
 import { logStoreAction } from "~/shared/lib/logger";
 
 /** Module-level constant for empty pinned list (performance: avoid new [] per call). */
@@ -42,11 +66,54 @@ function sortPinnedChatIds(
   });
 }
 
+/** Recomputes sorted ids + alias lookup for one folder (call only when that folder's pins change). */
+function updateFolderPinCacheEntry(
+  folderId: string,
+  folderSet: ReadonlySet<string>,
+  pinnedAtByChatId: ReadonlyMap<string, string> | undefined,
+  sortedPinnedIdsByFolder: Map<string, string[]>,
+  pinnedSortLookupByFolder: Map<string, Map<string, number>>,
+): void {
+  if (folderSet.size === 0) {
+    sortedPinnedIdsByFolder.delete(folderId);
+    pinnedSortLookupByFolder.delete(folderId);
+    return;
+  }
+  const sorted = sortPinnedChatIds(Array.from(folderSet), pinnedAtByChatId);
+  sortedPinnedIdsByFolder.set(folderId, sorted);
+  pinnedSortLookupByFolder.set(folderId, buildPinnedChatSortIndexLookup(sorted));
+}
+
+function rebuildAllFolderPinCaches(
+  folderPins: Map<string, Set<string>>,
+  pinnedAtByFolder: Map<string, Map<string, string>>,
+): {
+  sortedPinnedIdsByFolder: Map<string, string[]>;
+  pinnedSortLookupByFolder: Map<string, Map<string, number>>;
+} {
+  const sortedPinnedIdsByFolder = new Map<string, string[]>();
+  const pinnedSortLookupByFolder = new Map<string, Map<string, number>>();
+  for (const [folderId, folderSet] of folderPins) {
+    updateFolderPinCacheEntry(
+      folderId,
+      folderSet,
+      pinnedAtByFolder.get(folderId),
+      sortedPinnedIdsByFolder,
+      pinnedSortLookupByFolder,
+    );
+  }
+  return { sortedPinnedIdsByFolder, pinnedSortLookupByFolder };
+}
+
 interface PinStoreState {
   pinnedKeys: Set<string>;
   folderPins: Map<string, Set<string>>;
   pinnedAtByFolder: Map<string, Map<string, string>>;
   folderItemIds: Map<string, Map<string, string>>;
+  /** Sorted pinned chat ids per folder — rebuilt on pin/unpin/setFromServer only. */
+  sortedPinnedIdsByFolder: Map<string, string[]>;
+  /** chat_id alias → sort index; avoids re-sorting in getPinnedSortIndex. */
+  pinnedSortLookupByFolder: Map<string, Map<string, number>>;
 
   pinChat: (
     folderId: string,
@@ -76,6 +143,8 @@ export const usePinStore = create<PinStoreState>((set, get) => ({
   folderPins: new Map(),
   pinnedAtByFolder: new Map(),
   folderItemIds: new Map(),
+  sortedPinnedIdsByFolder: new Map(),
+  pinnedSortLookupByFolder: new Map(),
 
   pinChat(folderId, chatId, options) {
     logStoreAction("pin", "pinChat", { folderId, chatId });
@@ -107,21 +176,29 @@ export const usePinStore = create<PinStoreState>((set, get) => ({
       if (options?.folderItemUuid) {
         const folderItemMap = new Map(nextFolderItemIds.get(folderId) ?? []);
         if (existingStoredChatId != null) {
-          const existingUuid = folderItemMap.get(existingStoredChatId);
-          if (existingUuid != null) {
-            folderItemMap.delete(existingStoredChatId);
-            folderItemMap.set(chatId, existingUuid);
-          }
+          removeFolderItemUuidEntries(folderItemMap, existingStoredChatId);
         }
-        folderItemMap.set(chatId, options.folderItemUuid);
+        setFolderItemUuidEntry(folderItemMap, chatId, options.folderItemUuid);
         nextFolderItemIds.set(folderId, folderItemMap);
       }
+
+      const nextSortedPinnedIdsByFolder = new Map(s.sortedPinnedIdsByFolder);
+      const nextPinnedSortLookupByFolder = new Map(s.pinnedSortLookupByFolder);
+      updateFolderPinCacheEntry(
+        folderId,
+        folderSet,
+        pinnedAtByChatId,
+        nextSortedPinnedIdsByFolder,
+        nextPinnedSortLookupByFolder,
+      );
 
       return {
         pinnedKeys: nextKeys,
         folderPins: nextFolder,
         pinnedAtByFolder: nextPinnedAtByFolder,
         folderItemIds: nextFolderItemIds,
+        sortedPinnedIdsByFolder: nextSortedPinnedIdsByFolder,
+        pinnedSortLookupByFolder: nextPinnedSortLookupByFolder,
       };
     });
   },
@@ -149,10 +226,22 @@ export const usePinStore = create<PinStoreState>((set, get) => ({
       }
       nextPinnedAtByFolder.set(folderId, pinnedAtByChatId);
 
+      const nextSortedPinnedIdsByFolder = new Map(s.sortedPinnedIdsByFolder);
+      const nextPinnedSortLookupByFolder = new Map(s.pinnedSortLookupByFolder);
+      updateFolderPinCacheEntry(
+        folderId,
+        folderSet,
+        pinnedAtByChatId,
+        nextSortedPinnedIdsByFolder,
+        nextPinnedSortLookupByFolder,
+      );
+
       return {
         pinnedKeys: nextKeys,
         folderPins: nextFolder,
         pinnedAtByFolder: nextPinnedAtByFolder,
+        sortedPinnedIdsByFolder: nextSortedPinnedIdsByFolder,
+        pinnedSortLookupByFolder: nextPinnedSortLookupByFolder,
       };
     });
   },
@@ -166,20 +255,15 @@ export const usePinStore = create<PinStoreState>((set, get) => ({
   },
 
   getPinnedChatIds(folderId) {
-    const folderSet = get().folderPins.get(folderId);
-    if (!folderSet || folderSet.size === 0) return EMPTY_PINNED;
-    return sortPinnedChatIds(Array.from(folderSet), get().pinnedAtByFolder.get(folderId));
+    return get().sortedPinnedIdsByFolder.get(folderId) ?? EMPTY_PINNED;
   },
 
   getPinnedSortIndex(folderId, chatId) {
-    const pinnedIds = get().getPinnedChatIds(folderId);
-    for (let index = 0; index < pinnedIds.length; index++) {
-      const pinnedChatId = pinnedIds[index];
-      if (pinnedChatId != null && areEquivalentChatIds(pinnedChatId, chatId)) {
-        return index;
-      }
+    const lookup = get().pinnedSortLookupByFolder.get(folderId);
+    if (lookup == null) {
+      return -1;
     }
-    return -1;
+    return lookupPinnedSortIndex(lookup, chatId);
   },
 
   getFolderItemUuid(folderId, chatId) {
@@ -187,12 +271,7 @@ export const usePinStore = create<PinStoreState>((set, get) => ({
     if (!folderItemMap) {
       return null;
     }
-    for (const [storedChatId, uuid] of folderItemMap) {
-      if (areEquivalentChatIds(storedChatId, chatId)) {
-        return uuid;
-      }
-    }
-    return null;
+    return folderItemMap.get(canonicalizeChatId(chatId)) ?? null;
   },
 
   setFromServer(pins) {
@@ -210,7 +289,7 @@ export const usePinStore = create<PinStoreState>((set, get) => ({
 
     for (const { folderUuid, folderItemUuid, chatId, pinnedAt } of pins) {
       const folderItemMap = new Map(folderItemIds.get(folderUuid) ?? []);
-      folderItemMap.set(chatId, folderItemUuid);
+      setFolderItemUuidEntry(folderItemMap, chatId, folderItemUuid);
       folderItemIds.set(folderUuid, folderItemMap);
 
       if (pinnedAt == null) continue;
@@ -225,7 +304,19 @@ export const usePinStore = create<PinStoreState>((set, get) => ({
       pinnedAtByFolder.set(folderUuid, pinnedAtByChatId);
     }
 
-    set({ pinnedKeys: keys, folderPins: folders, pinnedAtByFolder, folderItemIds });
+    const { sortedPinnedIdsByFolder, pinnedSortLookupByFolder } = rebuildAllFolderPinCaches(
+      folders,
+      pinnedAtByFolder,
+    );
+
+    set({
+      pinnedKeys: keys,
+      folderPins: folders,
+      pinnedAtByFolder,
+      folderItemIds,
+      sortedPinnedIdsByFolder,
+      pinnedSortLookupByFolder,
+    });
   },
 
   clear() {
@@ -235,6 +326,8 @@ export const usePinStore = create<PinStoreState>((set, get) => ({
       folderPins: new Map(),
       pinnedAtByFolder: new Map(),
       folderItemIds: new Map(),
+      sortedPinnedIdsByFolder: new Map(),
+      pinnedSortLookupByFolder: new Map(),
     });
   },
 }));

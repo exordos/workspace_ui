@@ -22,7 +22,7 @@ interface FolderItemsLoadResult {
 }
 
 interface FolderSnapshotLike {
-  folders: readonly { uuid?: string }[];
+  folders: readonly { uuid?: string; system_type?: string | null }[];
   itemsByFolderId: ReadonlyMap<string, FolderItemsLoadResult>;
 }
 

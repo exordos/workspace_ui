@@ -222,8 +222,10 @@ describe("runFolderPinToggle", () => {
     expect(pinChatInFolderMock).toHaveBeenCalledWith(apiAllUuid, "item-net");
   });
 
-  it("unpins when folder items are cached under legacy all key but API uuid differs", async () => {
+  it("unpins when folder items are cached under legacy all key in all-folder context", async () => {
+    const apiAllUuid = "api-all-folder-uuid";
     useFolderSyncStore.setState({
+      allFolderApiUuid: apiAllUuid,
       folderItemsByFolderId: new Map([
         [
           "all",
@@ -246,13 +248,59 @@ describe("runFolderPinToggle", () => {
 
     const { runFolderPinToggle } = await import("./pin-chat.lib");
     await runFolderPinToggle({
-      apiFolderUuid: "folder-api",
+      apiFolderUuid: apiAllUuid,
       scopeFolderId: SYSTEM_ALL_FOLDER_ID,
       chatId: "stream:11:general",
       isPinned: true,
     });
 
-    expect(unpinChatInFolderMock).toHaveBeenCalledWith("folder-api", "item-legacy");
+    expect(unpinChatInFolderMock).toHaveBeenCalledWith(apiAllUuid, "item-legacy");
     expect(getFolderItemsMock).not.toHaveBeenCalled();
+  });
+
+  it("does not use all-folder pin when unpinning in a custom folder", async () => {
+    const apiAllUuid = "api-all-folder-uuid";
+    const customUuid = "folder-custom";
+    useFolderSyncStore.setState({
+      allFolderApiUuid: apiAllUuid,
+      folderItemsByFolderId: new Map([
+        [
+          apiAllUuid,
+          [
+            {
+              uuid: "item-all-only",
+              chatId: "dm:42",
+              folderUuid: apiAllUuid,
+              orderIndex: 0,
+              pinnedAt: "2026-03-14T10:00:00Z",
+              createdAt: "",
+              updatedAt: "",
+            },
+          ],
+        ],
+      ]),
+    });
+    usePinStore.getState().setFromServer([
+      {
+        folderUuid: apiAllUuid,
+        folderItemUuid: "item-all-only",
+        chatId: "dm:42",
+        orderIndex: 0,
+        pinnedAt: "2026-03-14T10:00:00Z",
+      },
+    ]);
+    unpinChatInFolderMock.mockResolvedValue(true);
+    getFolderItemsMock.mockResolvedValue([]);
+
+    const { runFolderPinToggle } = await import("./pin-chat.lib");
+    await runFolderPinToggle({
+      apiFolderUuid: customUuid,
+      scopeFolderId: customUuid,
+      chatId: "dm:42",
+      isPinned: true,
+    });
+
+    expect(unpinChatInFolderMock).not.toHaveBeenCalled();
+    expect(usePinStore.getState().isPinned(apiAllUuid, "dm:42")).toBe(true);
   });
 });

@@ -144,6 +144,18 @@ describe("usePinStore", () => {
     expect(usePinStore.getState().getPinnedChatIds("f1")).toHaveLength(0);
   });
 
+  it("getPinnedChatIds returns stable array until folder pins change", () => {
+    usePinStore.getState().pinChat("f1", "c1");
+    const first = usePinStore.getState().getPinnedChatIds("f1");
+    const second = usePinStore.getState().getPinnedChatIds("f1");
+    expect(first).toBe(second);
+
+    usePinStore.getState().pinChat("f1", "c2");
+    const afterAdd = usePinStore.getState().getPinnedChatIds("f1");
+    expect(afterAdd).not.toBe(first);
+    expect(afterAdd.length).toBe(2);
+  });
+
   // Pinning the same chat twice is idempotent
   it("pinChat is idempotent", () => {
     usePinStore.getState().pinChat("f1", "c1");
@@ -164,6 +176,19 @@ describe("usePinStore", () => {
     expect(usePinStore.getState().getFolderItemUuid("folder-1", "stream:11:general")).toBe(
       "item-11",
     );
+  });
+
+  it("getFolderItemUuid uses O(1) canonical map lookup for dm id order", () => {
+    usePinStore.getState().setFromServer([
+      {
+        folderUuid: "f1",
+        folderItemUuid: "item-dm",
+        chatId: "dm:21,7",
+        orderIndex: 0,
+        pinnedAt: null,
+      },
+    ]);
+    expect(usePinStore.getState().getFolderItemUuid("f1", "dm:7,21")).toBe("item-dm");
   });
 });
 

@@ -35,9 +35,9 @@ async function loadFolderItemsResultsMap(
     others.map(async (folder) => {
       try {
         const items = await getFolderItems(folder.uuid);
-        return [folder.uuid, { ok: true, items }] as const;
+        return [folder.uuid, { ok: true, items }] satisfies [string, FolderItemsLoadResult];
       } catch {
-        return [folder.uuid, { ok: false, items: [] }] as const;
+        return [folder.uuid, { ok: false, items: [] }] satisfies [string, FolderItemsLoadResult];
       }
     }),
   );
