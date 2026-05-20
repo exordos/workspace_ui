@@ -175,6 +175,11 @@ export const ChatPage: React.FC = () => {
 
   const chatContextForMessages = useCurrentChatMessagesStore((s) => s.context);
   const messages = useCurrentChatMessagesStore((s) => s.messages);
+  const latestMessagesRef = useRef<MockMessage[]>([]);
+  // Держим свежие messages без пересоздания mark-as-read batcher при каждом refresh.
+  useEffect(() => {
+    latestMessagesRef.current = messages;
+  }, [messages]);
   const isFocusedMessageLoadedInCurrentRoute = useMemo(() => {
     return isFocusedMessageLoadedInRoute({
       focusedMessageId,
@@ -499,7 +504,7 @@ export const ChatPage: React.FC = () => {
       if (messageIds.length === 0) return;
 
       const storeMessages = useCurrentChatMessagesStore.getState().messages;
-      const effectiveMessages = messages;
+      const effectiveMessages = latestMessagesRef.current;
       const unreadMessageIds = filterMessageIdsStillUnreadForOptimisticApply(messageIds, {
         storeMessages,
         effectiveMessages,
@@ -541,7 +546,7 @@ export const ChatPage: React.FC = () => {
         chatListState.decrementUnreadForDmKey(context.dmKey, missingIdsCount);
       }
     },
-    [messages, updateMessageFlagsInStore],
+    [updateMessageFlagsInStore],
   );
 
   const handleUnreadMessagesVisible = useCallback(
@@ -574,6 +579,12 @@ export const ChatPage: React.FC = () => {
       markAsRead: markMessagesAsRead,
       onMarked: (messageIds) => {
         applyReadMessagesOptimistically(messageIds, batchFallbackContext);
+      },
+      onError: (error, messageIds) => {
+        log.warn("markAsRead failed", {
+          requestedCount: messageIds.length,
+          error: error instanceof Error ? error.message : String(error),
+        });
       },
     });
     markAsReadBatcherRef.current = batcher;
