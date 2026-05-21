@@ -575,6 +575,12 @@ The project follows [Semantic Versioning 2.0](https://semver.org/). All packages
 
 ### Creating a Release
 
+**GitHub Actions (recommended):** on the default branch, open **Actions → Release → Run workflow**, choose `patch`, `minor`, or `major`. The workflow bumps all `package.json` files, updates `CHANGELOG.md`, commits, tags `X.Y.Z`, and pushes. CI then builds desktop installers and publishes a GitHub Release.
+
+Repo settings: **Actions → Workflow permissions → Read and write**; branch/tag protection must allow `github-actions[bot]` to push.
+
+**Local alternative:**
+
 ```bash
 # 1. Bump version (updates package.json + CHANGELOG.md)
 npm run version:bump patch   # or: minor, major
@@ -582,15 +588,15 @@ npm run version:bump patch   # or: minor, major
 # 2. Review the changelog
 # Edit CHANGELOG.md if needed
 
-# 3. Commit and tag
+# 3. Commit and tag (tag without v — matches CI)
 git add -A && git commit -m "chore: release v$(node -p 'require(\"./package.json\").version')"
-git tag "v$(node -p 'require(\"./package.json\").version')"
+git tag "$(node -p 'require(\"./package.json\").version')"
 
 # 4. Push
-git push origin main --tags
+git push origin <default-branch> --tags
 ```
 
-CI automatically builds and publishes desktop installers for tagged releases.
+CI automatically builds and publishes desktop installers for semver tags (`0.1.0` or `v0.1.0`).
 
 ---
 

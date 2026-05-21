@@ -12,7 +12,12 @@
  */
 
 import { devWorkspaceBrowserMountPath } from "~/shared/config/dev-workspace-org-proxy";
-import { WORKSPACE_HTTP_PATH_DEFAULTS } from "~/shared/config/workspace-api-layout";
+import {
+  WORKSPACE_API_PATH,
+  WORKSPACE_GATEWAY_V1_PATH,
+  WORKSPACE_REST_API_PATH,
+  ZULIP_API_PATH,
+} from "~/shared/config/workspace-api-layout";
 
 function optional(key: string, fallback = ""): string {
   const value = import.meta.env[key] as string | undefined;
@@ -45,28 +50,8 @@ function parseBooleanEnvFlag(value: string, fallback: boolean): boolean {
 }
 
 const WORKSPACE_API_ORIGIN_RAW = optional("VITE_WORKSPACE_API_ORIGIN", "");
-const ZULIP_API_PATH = optional("VITE_ZULIP_API_PATH", WORKSPACE_HTTP_PATH_DEFAULTS.zulipApiPath);
-const WORKSPACE_API_PATH = optional(
-  "VITE_WORKSPACE_API_PATH",
-  WORKSPACE_HTTP_PATH_DEFAULTS.workspaceApiPath,
-);
-/** Path segment(s) after origin for Workspace REST (OpenAPI paths start with `/v1/`). Default empty. */
-const WORKSPACE_REST_API_PATH = optional(
-  "VITE_WORKSPACE_REST_API_PATH",
-  WORKSPACE_HTTP_PATH_DEFAULTS.workspaceRestApiPath,
-);
 
-function normalizeUserUploadsPathPrefix(raw: string): string {
-  const t = raw.trim().replace(/\/+$/, "");
-  if (t === "") return "";
-  return t.startsWith("/") ? t : `/${t}`;
-}
-
-const USER_UPLOADS_PATH_PREFIX = normalizeUserUploadsPathPrefix(
-  optional("VITE_USER_UPLOADS_PATH_PREFIX", WORKSPACE_HTTP_PATH_DEFAULTS.userUploadsPathPrefix),
-);
-
-/** Rare: Zulip webroot is bare origin but uploads are only under {@link USER_UPLOADS_PATH_PREFIX}. */
+/** Rare: Zulip webroot is bare origin but uploads are only under {@link WORKSPACE_GATEWAY_V1_PATH}. */
 const USER_UPLOADS_PREFIX_ON_ZULIP_REALM = parseBooleanEnvFlag(
   optional("VITE_USER_UPLOADS_PREFIX_ON_ZULIP_REALM", ""),
   false,
@@ -90,32 +75,22 @@ export const env = {
    */
   WORKSPACE_API_ORIGIN: cleanOrigin(WORKSPACE_API_ORIGIN_RAW),
 
-  /**
-   * Zulip API path (default `/api/v1`).
-   * Override via `VITE_ZULIP_API_PATH` for custom API gateways.
-   */
-  ZULIP_API_PATH: ZULIP_API_PATH,
+  /** Zulip JSON API path (`/api/v1`). Fixed — `~/shared/config/workspace-api-layout`. */
+  ZULIP_API_PATH,
+
+  /** Workspace gateway API path (`/workspace/v1`). Fixed — same module. */
+  WORKSPACE_API_PATH,
 
   /**
-   * Workspace API path (default `/api/v1`).
-   * Override via `VITE_WORKSPACE_API_PATH` for custom backend paths.
+   * Path after origin for Workspace REST (`/workspace`). Fixed — see `~/shared/config/workspace-api-layout`.
    */
-  WORKSPACE_API_PATH: WORKSPACE_API_PATH,
+  WORKSPACE_REST_API_PATH,
+
+  /** Path before `/user_uploads/` on the gateway. Fixed — {@link WORKSPACE_GATEWAY_V1_PATH}. */
+  USER_UPLOADS_PATH_PREFIX: WORKSPACE_GATEWAY_V1_PATH,
 
   /**
-   * Path after origin for Workspace REST (e.g. `/workspace`). Used when stripping gateway
-   * suffix from realm URLs for `/user_uploads/` resolution. See `VITE_WORKSPACE_REST_API_PATH`.
-   */
-  WORKSPACE_REST_API_PATH: WORKSPACE_REST_API_PATH.replace(/\/+$/, ""),
-
-  /**
-   * Path inserted before `/user_uploads/` on the server (e.g. `/workspace/v1`).
-   * Empty when files are at `{origin}/user_uploads/...`. Set for gateways that mount uploads under a prefix.
-   */
-  USER_UPLOADS_PATH_PREFIX: USER_UPLOADS_PATH_PREFIX,
-
-  /**
-   * When true, append {@link USER_UPLOADS_PATH_PREFIX} even if the realm base equals the upload site
+   * When true, append {@link WORKSPACE_GATEWAY_V1_PATH} even if the realm base equals the upload site
    * origin (no gateway tail was stripped). Default false — canonical Zulip serves `/user_uploads/`
    * at the realm root.
    */
@@ -124,14 +99,13 @@ export const env = {
   /**
    * Workspace REST API base (Orval paths are `/v1/...`).
    * Default: dev `/workspace`, prod `origin` — no extra suffix so URLs are `{base}/v1/...` (→ `/workspace/v1/...`).
-   * Zulip uploads still use {@link WORKSPACE_API_PATH}. Override: `VITE_WORKSPACE_REST_API_PATH`
-   * or full `VITE_WORKSPACE_API_BASE_URL`.
+   * Zulip uploads still use {@link WORKSPACE_API_PATH}. Override: `VITE_WORKSPACE_API_BASE_URL` only.
    */
   WORKSPACE_API_BASE: (() => {
     const override = optional("VITE_WORKSPACE_API_BASE_URL");
     if (override) return override.replace(/\/+$/, "");
     const origin = cleanOrigin(WORKSPACE_API_ORIGIN_RAW);
-    const restPath = WORKSPACE_REST_API_PATH.replace(/\/+$/, "");
+    const restPath = WORKSPACE_REST_API_PATH;
     if (import.meta.env.DEV) {
       return devWorkspaceBrowserMountPath(restPath).replace(/\/+$/, "");
     }
@@ -169,7 +143,7 @@ export const env = {
   CALL_INCOMING_MODAL_VARIANT: (() => {
     const raw = optional("VITE_CALL_INCOMING_MODAL_VARIANT", "large").toLowerCase();
     return raw === "compact" ? "compact" : "large";
-  })() as "large" | "compact",
+  })(),
 
   /**
    * CDN base URL for static assets (e.g. `https://cdn.example.com/workspace`).

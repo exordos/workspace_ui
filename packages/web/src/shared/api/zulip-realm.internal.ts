@@ -69,7 +69,6 @@ export function shouldApplyUserUploadsPathPrefixForRealmBase(
   realmBaseAfterApiStrip: string,
   uploadSiteOrigin: string,
 ): boolean {
-  if (env.USER_UPLOADS_PATH_PREFIX === "") return false;
   const realm = realmBaseAfterApiStrip.trim().replace(/\/+$/, "");
   const site = uploadSiteOrigin.trim().replace(/\/+$/, "");
   if (realm === "" || site === "") return false;

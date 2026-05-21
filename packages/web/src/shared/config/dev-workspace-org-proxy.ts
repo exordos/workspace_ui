@@ -14,7 +14,7 @@ export const DEV_WORKSPACE_ORG_PROXY_PATH_PREFIX = "/__dev_workspace_org";
 
 /**
  * Same rule as `env.WORKSPACE_API_BASE` in dev when not overridden by an absolute URL.
- * When `VITE_WORKSPACE_REST_API_PATH` is `/workspace` (REST under `origin/workspace/...` in prod),
+ * When {@link WORKSPACE_REST_API_PATH} is `/workspace` (REST under `origin/workspace/...` in prod),
  * the dev mount is still a single `/workspace` segment — do not produce `/workspace/workspace`.
  */
 export function devWorkspaceBrowserMountPath(restPathNoTrailingSlash: string): string {
@@ -36,7 +36,7 @@ export function workspaceRestApiPathSuffix(restPathRaw: string): string {
 
 /**
  * Path to send upstream when forwarding Workspace REST from the dev mount to the org origin.
- * Drops the dev-only Vite mount, then prefixes with `workspaceRestApiPathSuffix(VITE_WORKSPACE_REST_API_PATH)`
+ * Drops the dev-only Vite mount, then prefixes with `workspaceRestApiPathSuffix(WORKSPACE_REST_API_PATH)`
  * so the result matches prod (`origin + suffix + /v1/...`).
  */
 export function workspaceDevProxyUpstreamPathname(input: {

@@ -5,7 +5,10 @@ import { defineConfig, loadEnv } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 import svgr from "vite-plugin-svgr";
 import { devWorkspaceBrowserMountPath } from "./src/shared/config/dev-workspace-org-proxy";
-import { WORKSPACE_HTTP_PATH_DEFAULTS } from "./src/shared/config/workspace-api-layout";
+import {
+  WORKSPACE_GATEWAY_V1_PATH,
+  WORKSPACE_REST_API_PATH,
+} from "./src/shared/config/workspace-api-layout";
 import { buildPermissionsPolicyHeader } from "./src/shared/lib/permissions-policy";
 import { workspaceOrgApiOriginFromZulipRealmRoot } from "./src/shared/lib/workspace-org-origin.lib";
 import { installDevWorkspaceOrgProxyMiddleware } from "./vite-dev-workspace-org-proxy";
@@ -20,23 +23,8 @@ function normalizeWorkspaceRestPath(raw: string | undefined): string {
   return (raw ?? "").trim().replace(/\/+$/, "");
 }
 
-// Если `VITE_USER_UPLOADS_PATH_PREFIX` не задан,
-// подстраиваемся под dev-layout Orval: uploads лежат на upstream по пути
-// `/workspace{REST}/v1/user_uploads/...`, то есть так же, как и `/workspace` proxy.
-function defaultDevUserUploadsProxyPrefix(workspaceRestPath: string): string {
-  const rest = normalizeWorkspaceRestPath(workspaceRestPath);
-  const segment = rest === "" ? "" : rest.startsWith("/") ? rest : `/${rest}`;
-  return `/workspace${segment}/v1`;
-}
-
-function effectiveUserUploadsProxyRewritePrefix(
-  explicitPrefix: string,
-  workspaceRestPath: string,
-): string {
-  if (explicitPrefix !== "") {
-    return explicitPrefix.replace(/\/+$/, "");
-  }
-  return defaultDevUserUploadsProxyPrefix(workspaceRestPath).replace(/\/+$/, "");
+function effectiveUserUploadsProxyRewritePrefix(explicitPrefix: string): string {
+  return explicitPrefix.replace(/\/+$/, "");
 }
 
 function isViteDevProxyDebugEnabled(rawEnv: Record<string, string>): boolean {
@@ -112,24 +100,13 @@ function deriveLegacyWorkspaceOrigin(
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, import.meta.dirname, "");
   const workspaceOrigin = env.VITE_WORKSPACE_API_ORIGIN?.replace(/\/+$/, "");
-  const workspaceRestPath = normalizeWorkspaceRestPath(
-    env.VITE_WORKSPACE_REST_API_PATH !== undefined
-      ? env.VITE_WORKSPACE_REST_API_PATH
-      : WORKSPACE_HTTP_PATH_DEFAULTS.workspaceRestApiPath,
-  );
-  const rawUserUploadsPrefix =
-    env.VITE_USER_UPLOADS_PATH_PREFIX !== undefined
-      ? (env.VITE_USER_UPLOADS_PATH_PREFIX?.trim() ?? "")
-      : WORKSPACE_HTTP_PATH_DEFAULTS.userUploadsPathPrefix;
+  const workspaceRestPath = normalizeWorkspaceRestPath(WORKSPACE_REST_API_PATH);
   const uploadsAtRealmRootFlag = env.VITE_USER_UPLOADS_AT_REALM_ROOT?.trim().toLowerCase();
-  let proxyUserUploadsAsRealmRoot =
-    rawUserUploadsPrefix === "-" ||
-    rawUserUploadsPrefix.toLowerCase() === "realm-root" ||
-    uploadsAtRealmRootFlag === "true" ||
-    uploadsAtRealmRootFlag === "1";
+  const proxyUserUploadsAsRealmRoot =
+    uploadsAtRealmRootFlag === "true" || uploadsAtRealmRootFlag === "1";
   const userUploadsPathPrefix = proxyUserUploadsAsRealmRoot
     ? ""
-    : normalizeUserUploadsPathPrefix(env.VITE_USER_UPLOADS_PATH_PREFIX);
+    : normalizeUserUploadsPathPrefix(WORKSPACE_GATEWAY_V1_PATH);
   const workspaceLegacyOrigin = workspaceOrigin
     ? deriveLegacyWorkspaceOrigin(workspaceOrigin, env.VITE_WORKSPACE_API_LEGACY_ORIGIN)
     : "";
@@ -146,10 +123,7 @@ export default defineConfig(({ mode }) => {
     if (proxyUserUploadsAsRealmRoot) {
       return pathWithQuery;
     }
-    const prefix = effectiveUserUploadsProxyRewritePrefix(
-      userUploadsPathPrefix,
-      workspaceRestPath,
-    );
+    const prefix = effectiveUserUploadsProxyRewritePrefix(userUploadsPathPrefix);
     return `${prefix}${pathWithQuery}`;
   };
 

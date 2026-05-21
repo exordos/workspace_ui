@@ -31,7 +31,7 @@ describe("workspaceDevProxyUpstreamPathname", () => {
     ).toBe("/v1/folders/");
   });
 
-  it("prepends VITE_WORKSPACE_REST_API_PATH after stripping dev mount", () => {
+  it("prepends WORKSPACE_REST_API_PATH after stripping dev mount", () => {
     expect(
       workspaceDevProxyUpstreamPathname({
         pathname: "/workspace/v1/folders/",

@@ -8,6 +8,12 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  WORKSPACE_API_PATH,
+  WORKSPACE_GATEWAY_V1_PATH,
+  WORKSPACE_REST_API_PATH,
+  ZULIP_API_PATH,
+} from "~/shared/config/workspace-api-layout";
 
 // Core env object shape and types
 describe("env", () => {
@@ -70,45 +76,23 @@ describe("env", () => {
     }
   });
 
-  // Default API paths must match Zulip's standard — missing defaults would break API calls
-  describe("default API paths (isolated from repo .env)", () => {
-    beforeEach(() => {
-      vi.unstubAllEnvs();
-      vi.stubEnv("VITE_WORKSPACE_API_ORIGIN", "https://zulip.test");
-      vi.stubEnv("VITE_ZULIP_API_PATH", "");
-      vi.stubEnv("VITE_WORKSPACE_API_PATH", "");
-      vi.stubEnv("VITE_WORKSPACE_REST_API_PATH", "");
-      vi.stubEnv("VITE_USER_UPLOADS_PATH_PREFIX", "");
-      vi.resetModules();
+  describe("fixed API paths (not from VITE_*)", () => {
+    it("re-exports layout constants", async () => {
+      const { env } = await import("./env");
+      expect(env.ZULIP_API_PATH).toBe(ZULIP_API_PATH);
+      expect(env.WORKSPACE_API_PATH).toBe(WORKSPACE_API_PATH);
+      expect(env.WORKSPACE_REST_API_PATH).toBe(WORKSPACE_REST_API_PATH);
+      expect(env.USER_UPLOADS_PATH_PREFIX).toBe(WORKSPACE_GATEWAY_V1_PATH);
     });
 
-    afterEach(() => {
-      vi.unstubAllEnvs();
+    it("ignores legacy VITE_ZULIP_API_PATH / VITE_WORKSPACE_API_PATH", async () => {
+      vi.stubEnv("VITE_ZULIP_API_PATH", "/custom");
+      vi.stubEnv("VITE_WORKSPACE_API_PATH", "/custom");
       vi.resetModules();
-    });
-
-    it("ZULIP_API_PATH defaults to /api/v1", async () => {
       const { env } = await import("./env");
       expect(env.ZULIP_API_PATH).toBe("/api/v1");
-    });
-
-    it("WORKSPACE_API_PATH defaults to gateway /workspace/v1", async () => {
-      const { env } = await import("./env");
       expect(env.WORKSPACE_API_PATH).toBe("/workspace/v1");
     });
-
-    it("USER_UPLOADS_PATH_PREFIX is empty by default", async () => {
-      const { env } = await import("./env");
-      expect(env.USER_UPLOADS_PATH_PREFIX).toBe("");
-    });
-  });
-
-  it("USER_UPLOADS_PATH_PREFIX normalizes slashes", async () => {
-    vi.stubEnv("VITE_WORKSPACE_API_ORIGIN", "https://zulip.test");
-    vi.stubEnv("VITE_USER_UPLOADS_PATH_PREFIX", "workspace/v1/");
-    vi.resetModules();
-    const { env } = await import("./env");
-    expect(env.USER_UPLOADS_PATH_PREFIX).toBe("/workspace/v1");
   });
 
   // When Jitsi is not configured, the base URL must be empty to disable call features
@@ -145,10 +129,6 @@ describe("env", () => {
 
   it("TOP_BAR_CALLS_NAV and TOP_BAR_SERVICES_NAV respect their VITE_* vars independently", async () => {
     vi.stubEnv("VITE_WORKSPACE_API_ORIGIN", "https://zulip.test");
-    vi.stubEnv("VITE_ZULIP_API_PATH", "");
-    vi.stubEnv("VITE_WORKSPACE_API_PATH", "");
-    vi.stubEnv("VITE_WORKSPACE_REST_API_PATH", "");
-    vi.stubEnv("VITE_USER_UPLOADS_PATH_PREFIX", "");
     vi.resetModules();
     const { env: envDefault } = await import("./env");
     expect(envDefault.TOP_BAR_CALLS_NAV).toBe(false);
@@ -176,7 +156,6 @@ describe("VITE_WORKSPACE_API_ORIGIN optional", () => {
 
   it("returns empty string when unset", async () => {
     vi.stubEnv("VITE_WORKSPACE_API_ORIGIN", "");
-    vi.stubEnv("VITE_WORKSPACE_API_PATH", "/api/v1");
     vi.resetModules();
     const { env } = await import("./env");
     expect(env.WORKSPACE_API_ORIGIN).toBe("");

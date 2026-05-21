@@ -7,8 +7,8 @@ interface ImportMetaEnv {
   /** Legacy Workspace API host for dev `/workspace/workspace/v1` proxy. Optional. */
   readonly VITE_WORKSPACE_API_LEGACY_ORIGIN?: string;
   /**
-   * When true, dev proxy forwards `/user_uploads/...` without a `/workspace/v1` prefix (standard
-   * Zulip: `https://realm/user_uploads/...`). Same as VITE_USER_UPLOADS_PATH_PREFIX=realm-root.
+   * When true, dev proxy forwards `/user_uploads/...` without the fixed `/workspace/v1` prefix
+   * (standard Zulip: `https://realm/user_uploads/...`).
    */
   readonly VITE_USER_UPLOADS_AT_REALM_ROOT?: string;
   /**
@@ -28,17 +28,6 @@ interface ImportMetaEnv {
   readonly VITE_WORKSPACE_API_BASE_URL?: string;
   /** CDN base URL for static assets (e.g. https://cdn.example.com/workspace). Optional. */
   readonly VITE_CDN_URL?: string;
-  /** Zulip API base path (default: /api/v1). For custom API gateways. */
-  readonly VITE_ZULIP_API_PATH?: string;
-  /** Workspace API base path (default: /api/v1). For Zulip uploads and legacy routing. */
-  readonly VITE_WORKSPACE_API_PATH?: string;
-  /** Extra path before Orval `/v1/...` routes (default empty). */
-  readonly VITE_WORKSPACE_REST_API_PATH?: string;
-  /**
-   * Path before `/user_uploads/` on the backend (e.g. `/workspace/v1`). Dev proxy rewrites
-   * `/user_uploads/...` → `{prefix}/user_uploads/...`. Optional.
-   */
-  readonly VITE_USER_UPLOADS_PATH_PREFIX?: string;
   /** Sentry DSN for error tracking. Optional — disabled if empty (prod only; see sentry.ts). */
   readonly VITE_SENTRY_DSN?: string;
   /** App version for Sentry releases. Set by CI. */

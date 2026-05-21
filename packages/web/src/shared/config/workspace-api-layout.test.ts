@@ -1,23 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
-  VANILLA_ZULIP_HTTP_PATH_DEFAULTS,
-  WORKSPACE_GATEWAY_HTTP_PATH_DEFAULTS,
-  WORKSPACE_HTTP_PATH_DEFAULTS,
+  USER_UPLOADS_PATH_PREFIX,
+  WORKSPACE_API_PATH,
+  WORKSPACE_GATEWAY_V1_PATH,
+  WORKSPACE_REST_API_PATH,
+  ZULIP_API_PATH,
 } from "./workspace-api-layout";
 
 describe("workspace-api-layout", () => {
-  it("exposes vanilla Zulip path defaults", () => {
-    expect(VANILLA_ZULIP_HTTP_PATH_DEFAULTS.zulipApiPath).toBe("/api/v1");
-    expect(VANILLA_ZULIP_HTTP_PATH_DEFAULTS.workspaceApiPath).toBe("/api/v1");
-    expect(VANILLA_ZULIP_HTTP_PATH_DEFAULTS.workspaceRestApiPath).toBe("");
-  });
-
-  it("gateway defaults use /workspace/v1 for workspace API path", () => {
-    expect(WORKSPACE_GATEWAY_HTTP_PATH_DEFAULTS.workspaceApiPath).toBe("/workspace/v1");
-    expect(WORKSPACE_GATEWAY_HTTP_PATH_DEFAULTS.zulipApiPath).toBe("/api/v1");
-  });
-
-  it("active defaults match gateway preset", () => {
-    expect(WORKSPACE_HTTP_PATH_DEFAULTS).toEqual(WORKSPACE_GATEWAY_HTTP_PATH_DEFAULTS);
+  it("exposes fixed gateway and Zulip API paths", () => {
+    expect(ZULIP_API_PATH).toBe("/api/v1");
+    expect(WORKSPACE_REST_API_PATH).toBe("/workspace");
+    expect(WORKSPACE_GATEWAY_V1_PATH).toBe("/workspace/v1");
+    expect(WORKSPACE_API_PATH).toBe(WORKSPACE_GATEWAY_V1_PATH);
+    expect(USER_UPLOADS_PATH_PREFIX).toBe(WORKSPACE_GATEWAY_V1_PATH);
   });
 });

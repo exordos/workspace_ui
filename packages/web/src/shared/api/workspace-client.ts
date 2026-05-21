@@ -4,7 +4,7 @@
  * HTTP is implemented via Orval-generated calls + `workspaceOrvalMutator` → `workspaceApi`
  * (auth, logging, retries). All Workspace REST calls use {@link getWorkspaceApiBaseForCurrentInstance}
  * (login origin + realm; gateway `workspace.*` when Zulip realm is `zulip.*`).
- * Paths are `/v1/...` (see `VITE_WORKSPACE_REST_API_PATH`).
+ * Paths are `/v1/...` (REST mount `/workspace` — see `~/shared/config/workspace-api-layout`).
  *
  * Usage:
  *   import { getFolders, mapWorkspaceFoldersToRail } from "~/shared/api/workspace-client";

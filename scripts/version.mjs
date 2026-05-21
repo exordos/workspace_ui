@@ -142,6 +142,8 @@ updateChangelog(next);
 
 console.log(`\nNext steps:`);
 console.log(`  1. Review CHANGELOG.md`);
-console.log(`  2. git add -A && git commit -m "chore: release v${next}"`);
-console.log(`  3. git tag v${next}`);
-console.log(`  4. git push origin main --tags`);
+console.log(`  2. GitHub Actions → Release → Run workflow (patch | minor | major)`);
+console.log(`     or locally:`);
+console.log(`     git add -A && git commit -m "chore: release v${next}"`);
+console.log(`     git tag ${next}`);
+console.log(`     git push origin <default-branch> --tags`);

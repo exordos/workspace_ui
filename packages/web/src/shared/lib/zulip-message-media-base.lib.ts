@@ -10,7 +10,7 @@ import {
   shouldApplyUserUploadsPathPrefixForRealmBase,
 } from "~/shared/api/zulip-realm.internal";
 import { WORKSPACE_ORIGIN } from "~/shared/config/constants";
-import { env } from "~/shared/lib/env";
+import { WORKSPACE_GATEWAY_V1_PATH } from "~/shared/config/workspace-api-layout";
 
 function getMessageRealmSiteBase(): string | undefined {
   const siteOnly = (site: string): string => site.trim().replace(/\/+$/, "");
@@ -31,17 +31,15 @@ export function getMessageRealmBaseUrl(): string | undefined {
 }
 
 export function getMessageImagesBaseUrl(): string | undefined {
-  const prefix = env.USER_UPLOADS_PATH_PREFIX;
   const siteOnly = (site: string): string => site.trim().replace(/\/+$/, "");
 
   const withPrefixForWorkspaceOrigin = (site: string): string =>
-    prefix !== "" ? appendUserUploadsPathPrefix(site, prefix) : siteOnly(site);
+    appendUserUploadsPathPrefix(site, WORKSPACE_GATEWAY_V1_PATH);
 
   const withPrefixForRealm = (realmBase: string, site: string): string => {
     const base = siteOnly(site);
-    if (prefix === "") return base;
     if (shouldApplyUserUploadsPathPrefixForRealmBase(realmBase, site)) {
-      return appendUserUploadsPathPrefix(base, prefix);
+      return appendUserUploadsPathPrefix(base, WORKSPACE_GATEWAY_V1_PATH);
     }
     return base;
   };

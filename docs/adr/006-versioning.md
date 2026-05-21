@@ -19,11 +19,10 @@ All packages (`root`, `web`, `electron`) bump together via `scripts/version.mjs`
 
 Each release:
 
-1. `npm run version:bump <patch|minor|major>`
-2. Review `CHANGELOG.md`
-3. Commit: `chore: release v<version>`
-4. Tag: `git tag v<version>`
-5. Push with tags
+1. **GitHub Actions** (recommended): workflow `.github/workflows/release.yml` — `workflow_dispatch` with `patch` | `minor` | `major` on the default branch. It runs `version:bump`, commits, tags `X.Y.Z` (no `v` prefix), and pushes.
+2. **Local** (alternative): `npm run version:bump <patch|minor|major>` → review `CHANGELOG.md` → commit `chore: release v<version>` → `git tag <version>` → push with tags.
+
+Pushing a semver tag triggers CI (`build-electron` + GitHub Release).
 
 ## Consequences
 

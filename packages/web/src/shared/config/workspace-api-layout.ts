@@ -1,31 +1,23 @@
 /**
- * Default HTTP path layout for Workspace UI against the Workspace gateway vs vanilla Zulip.
+ * Fixed HTTP path layout for Workspace UI (Workspace gateway).
  *
- * - **Gateway-first** (defaults in {@link WORKSPACE_HTTP_PATH_DEFAULTS}): Workspace REST and
- *   upload-related URL construction use `/workspace/v1` on the gateway host; Zulip JSON API on
- *   the realm host stays `/api/v1` unless overridden.
- * - **Vanilla Zulip**: set `VITE_WORKSPACE_API_PATH=/api/v1` (and keep other paths default) or use
- *   {@link VANILLA_ZULIP_HTTP_PATH_DEFAULTS} values explicitly — see `docs/adr/008-workspace-http-path-defaults.md`.
+ * Not configurable via `VITE_*`. Optional runtime targets: `VITE_WORKSPACE_API_ORIGIN`,
+ * `VITE_WORKSPACE_API_BASE_URL` in `env.ts`.
+ *
+ * Historical vanilla Zulip (`/api/v1` for workspace uploads) is documented in ADR-008 only.
  */
 
-/** Historical defaults: single-host Zulip, `/api/v1` for both API and upload-origin construction. */
-export const VANILLA_ZULIP_HTTP_PATH_DEFAULTS = {
-  zulipApiPath: "/api/v1",
-  workspaceApiPath: "/api/v1",
-  workspaceRestApiPath: "",
-  userUploadsPathPrefix: "",
-} as const;
+/** Zulip JSON API path on the realm host. */
+export const ZULIP_API_PATH = "/api/v1";
 
-/**
- * Workspace gateway: REST under `/workspace/v1/...` on gateway; realm Zulip API still `/api/v1`
- * when talking to the canonical realm URL.
- */
-export const WORKSPACE_GATEWAY_HTTP_PATH_DEFAULTS = {
-  zulipApiPath: "/api/v1",
-  workspaceApiPath: "/workspace/v1",
-  workspaceRestApiPath: "/workspace",
-  userUploadsPathPrefix: "",
-} as const;
+/** Gateway REST mount after origin (Orval `/v1/...` → `/workspace/v1/...`). */
+export const WORKSPACE_REST_API_PATH = "/workspace";
 
-/** Applied when corresponding `VITE_*` env vars are unset (empty). */
-export const WORKSPACE_HTTP_PATH_DEFAULTS = WORKSPACE_GATEWAY_HTTP_PATH_DEFAULTS;
+/** Gateway `/v1` segment: `WORKSPACE_API_PATH` and uploads prefix before `/user_uploads/`. */
+export const WORKSPACE_GATEWAY_V1_PATH = "/workspace/v1";
+
+/** Workspace API path on the gateway (same as {@link WORKSPACE_GATEWAY_V1_PATH}). */
+export const WORKSPACE_API_PATH = WORKSPACE_GATEWAY_V1_PATH;
+
+/** @deprecated Prefer {@link WORKSPACE_GATEWAY_V1_PATH}. */
+export const USER_UPLOADS_PATH_PREFIX = WORKSPACE_GATEWAY_V1_PATH;

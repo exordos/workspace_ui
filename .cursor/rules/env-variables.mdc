@@ -39,11 +39,9 @@ env.PROD
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `VITE_WORKSPACE_API_ORIGIN` | No | Optional default API/realm host; multi-org uses instance + `X-Workspace-Dev-Target-Origin` in dev |
-| `VITE_WORKSPACE_API_PATH` / `VITE_WORKSPACE_REST_API_PATH` / `VITE_USER_UPLOADS_PATH_PREFIX` / `VITE_ZULIP_API_PATH` | No | When unset, defaults come from `~/shared/config/workspace-api-layout` (gateway-first; vanilla: set `/api/v1` — ADR-008) |
+| `ZULIP_API_PATH` / `WORKSPACE_API_PATH` / `WORKSPACE_REST_API_PATH` / `WORKSPACE_GATEWAY_V1_PATH` | — | Fixed in `~/shared/config/workspace-api-layout.ts`; exposed on `env`, not `VITE_*` |
 | `VITE_JITSI_MEET_DOMAIN` | No | Jitsi Meet domain (without protocol) |
 | `VITE_WORKSPACE_API_BASE_URL` | No | Override Workspace REST base |
-| `VITE_ZULIP_API_PATH` | No | Zulip API path (default `/api/v1`) |
-| `VITE_WORKSPACE_API_PATH` | No | Workspace API path (default `/api/v1`) |
 | `VITE_CDN_URL` | No | CDN origin for static assets |
 | `VITE_SENTRY_DSN` | No | Sentry DSN (production only when set; see `sentry.ts`) |
 | `VITE_APP_VERSION` | No | Version string for Sentry / about UI |
