@@ -27,6 +27,8 @@ export interface ChatHeaderProps {
   onlineCount?: number;
   onOpenSearch?: () => void;
   onToggleRightPanel?: () => void;
+  /** Opens right info panel from header content clicks (channel/group title area). */
+  onOpenRightPanel?: () => void;
   rightPanelOpen?: boolean;
   /** Button label for the panel (e.g. "Contact info" in a DM) */
   rightPanelLabel?: string;
@@ -39,4 +41,6 @@ export interface ChatHeaderProps {
   dmPartner?: ChatHeaderDmPartner;
   /** For group DMs: show conversation name and participant count. */
   dmGroup?: ChatHeaderDmGroup;
+  /** Opens DM partner profile in the right info panel when avatar is clicked. */
+  onDmPartnerClick?: () => void;
 }

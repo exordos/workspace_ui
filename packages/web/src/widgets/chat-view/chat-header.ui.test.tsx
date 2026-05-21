@@ -1,5 +1,5 @@
-import { screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "~/test/render";
 import { ChatHeader } from "./chat-header.ui";
 
@@ -52,6 +52,42 @@ describe("ChatHeader", () => {
     expect(screen.queryByText(/online|в сети/i)).not.toBeInTheDocument();
   });
 
+  it("opens DM partner profile from avatar click", () => {
+    const onDmPartnerClick = vi.fn();
+
+    renderWithProviders(
+      <ChatHeader
+        channelName="unused"
+        dmPartner={{ name: "Alice", avatarUrl: null, presenceState: "active" }}
+        hideParticipants
+        hideTopic
+        onDmPartnerClick={onDmPartnerClick}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /open profile: alice/i }));
+
+    expect(onDmPartnerClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens DM partner profile from status text click", () => {
+    const onDmPartnerClick = vi.fn();
+
+    renderWithProviders(
+      <ChatHeader
+        channelName="unused"
+        dmPartner={{ name: "Slon", avatarUrl: null, presenceState: "idle" }}
+        hideParticipants
+        hideTopic
+        onDmPartnerClick={onDmPartnerClick}
+      />,
+    );
+
+    fireEvent.click(screen.getByText(/away|отош/i));
+
+    expect(onDmPartnerClick).toHaveBeenCalledTimes(1);
+  });
+
   it("shows group dm title and participant count", () => {
     renderWithProviders(
       <ChatHeader
@@ -97,6 +133,26 @@ describe("ChatHeader", () => {
     const heading = screen.getByRole("heading", { level: 1 });
     expect(heading).toHaveTextContent("sprint-planning · #engineering");
     expect(heading.querySelector(".font-semibold")).toHaveTextContent("sprint-planning");
+  });
+
+  it("opens right panel from channel title block click", () => {
+    const onOpenRightPanel = vi.fn();
+
+    renderWithProviders(
+      <ChatHeader
+        channelName="#engineering"
+        topic="sprint-planning"
+        hideTopic={false}
+        hideParticipants={false}
+        participantsCount={2}
+        onlineCount={1}
+        onOpenRightPanel={onOpenRightPanel}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /channel info|информация о канале/i }));
+
+    expect(onOpenRightPanel).toHaveBeenCalledTimes(1);
   });
 
   it("places chat actions button inside right controls cluster", () => {

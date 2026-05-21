@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback } from "react";
 import { t } from "~/i18n/i18n";
 import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
 import { resolveAvatarUrl } from "~/shared/lib/avatar";
@@ -18,6 +18,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   onlineCount = 2,
   onOpenSearch,
   onToggleRightPanel,
+  onOpenRightPanel,
   rightPanelOpen = true,
   rightPanelLabel,
   hideTopic = false,
@@ -25,6 +26,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   onCallClick,
   dmPartner,
   dmGroup,
+  onDmPartnerClick,
 }) => {
   const infoLabel = rightPanelLabel ?? t("info.channelInfo");
   const avatarSrc = dmPartner ? resolveAvatarSrc(dmPartner.avatarUrl) : undefined;
@@ -44,12 +46,34 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
       ? t("chat.typing")
       : (dmPartner?.customStatus ?? presenceText);
 
+  // Клик по блоку собеседника в DM (аватар + имя + статус) должен открывать
+  // профиль в правой панели, как и клик по аватару автора в списке сообщений.
+  const handleDmPartnerAvatarClick = useCallback(() => {
+    onDmPartnerClick?.();
+  }, [onDmPartnerClick]);
+
+  // Для каналов и групповых чатов клик по левому блоку должен открывать
+  // правую инфо-панель. Если специальный обработчик не передан,
+  // используем существующий toggle как fallback.
+  const handleOpenRightPanelFromHeaderBlock = useCallback(() => {
+    if (onOpenRightPanel != null) {
+      onOpenRightPanel();
+      return;
+    }
+    onToggleRightPanel?.();
+  }, [onOpenRightPanel, onToggleRightPanel]);
+
   return (
     <header className="flex flex-shrink-0 items-center justify-between bg-card-bg px-5 py-2">
       <div className="flex min-w-0 flex-1 flex-col">
         {dmPartner ? (
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="relative shrink-0">
+          <button
+            type="button"
+            onClick={handleDmPartnerAvatarClick}
+            className="flex min-w-0 items-center gap-3 rounded-lg text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
+            aria-label={t("a11y.openUserProfile", { name: dmPartner.name })}
+          >
+            <span className="relative shrink-0">
               <Avatar
                 size="md"
                 className="border border-border-subtle bg-bg-elevated text-text-muted"
@@ -65,14 +89,19 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
                 deactivated={dmPartner.isAccountDeactivated === true}
                 className="absolute bottom-0 right-0 ring-border-subtle"
               />
-            </div>
-            <div className="flex min-w-0 flex-1 flex-col">
+            </span>
+            <span className="flex min-w-0 flex-1 flex-col">
               <h1 className="truncate text-sm font-semibold text-text-primary">{dmPartner.name}</h1>
-              <p className="truncate text-xs text-text-muted">{statusText}</p>
-            </div>
-          </div>
+              <span className="truncate text-xs text-text-muted">{statusText}</span>
+            </span>
+          </button>
         ) : dmGroup ? (
-          <div className="flex min-w-0 items-center gap-3">
+          <button
+            type="button"
+            onClick={handleOpenRightPanelFromHeaderBlock}
+            className="flex min-w-0 items-center gap-3 rounded-lg text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
+            aria-label={infoLabel}
+          >
             <Avatar
               size="md"
               className="shrink-0 border border-border-subtle bg-bg-elevated text-text-muted"
@@ -85,9 +114,14 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
                 {t("channel.participants", { count: dmGroup.participantsCount })}
               </p>
             </div>
-          </div>
+          </button>
         ) : (
-          <>
+          <button
+            type="button"
+            onClick={handleOpenRightPanelFromHeaderBlock}
+            className="flex min-w-0 flex-1 flex-col rounded-lg text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
+            aria-label={infoLabel}
+          >
             <h1 className="truncate text-sm text-text-primary">
               {!hideTopic && topic ? (
                 <>
@@ -104,7 +138,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
                 {t("channel.online", { count: onlineCount })}
               </p>
             )}
-          </>
+          </button>
         )}
       </div>
       <div className="flex items-center gap-1">
