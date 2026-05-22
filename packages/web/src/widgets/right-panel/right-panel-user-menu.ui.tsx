@@ -14,7 +14,7 @@ import {
 } from "~/entities/user/user-status.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
-import type { NotificationSound } from "~/features/settings/settings.types";
+import type { AuthIdleTimeout, NotificationSound } from "~/features/settings/settings.types";
 import {
   getAvailablePalettes,
   selectMode,
@@ -38,6 +38,8 @@ import {
 } from "./right-panel-user-menu-buttons.ui";
 import {
   APP_VERSION,
+  AUTH_IDLE_TIMEOUT_LABEL_KEYS,
+  AUTH_IDLE_TIMEOUTS,
   CHAT_LIST_DENSITIES,
   CHAT_LIST_DENSITY_LABEL_KEYS,
   FOLDER_LAYOUTS,
@@ -83,6 +85,8 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   const setFolderRailLayout = useSettingsStore((s) => s.setFolderRailLayout);
   const chatListDensity = useSettingsStore((s) => s.chatListDensity);
   const setChatListDensity = useSettingsStore((s) => s.setChatListDensity);
+  const authIdleTimeout = useSettingsStore((s) => s.authIdleTimeout);
+  const setAuthIdleTimeout = useSettingsStore((s) => s.setAuthIdleTimeout);
   const currentThemeMode = useThemeStore((s) => s.mode);
   const currentPaletteId = useThemeStore((s) => s.paletteId);
   const availablePalettes = useMemo(() => getAvailablePalettes(), []);
@@ -92,6 +96,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   // const [chatSortingOpen, setChatSortingOpen] = useState(false);
   const [folderLayoutOpen, setFolderLayoutOpen] = useState(false);
   const [chatListDensityOpen, setChatListDensityOpen] = useState(false);
+  const [authIdleTimeoutOpen, setAuthIdleTimeoutOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [statusTextDraft, setStatusTextDraft] = useState("");
   const [statusAwayDraft, setStatusAwayDraft] = useState(false);
@@ -243,7 +248,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   const handleSelectLanguage = useCallback(
     (nextLocale: (typeof locales)[number]["id"]) => {
       setLocale(nextLocale);
-      setLanguage(nextLocale as "en" | "ru");
+      setLanguage(nextLocale);
     },
     [setLanguage, setLocale],
   );
@@ -274,9 +279,21 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
     [handleSelectLanguage],
   );
 
+  const handleSetAuthIdleTimeout = useCallback(
+    (next: AuthIdleTimeout) => {
+      setAuthIdleTimeout(next);
+      setAuthIdleTimeoutOpen(false);
+    },
+    [setAuthIdleTimeout],
+  );
+
   const soundLabel = useMemo(
     () => t(NOTIFICATION_SOUND_LABEL_KEYS[notificationSound]),
     [notificationSound, t],
+  );
+  const authIdleTimeoutLabel = useMemo(
+    () => t(AUTH_IDLE_TIMEOUT_LABEL_KEYS[authIdleTimeout]),
+    [authIdleTimeout, t],
   );
 
   const currentLocaleOption = useMemo(
@@ -290,6 +307,9 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   }, []);
   const toggleLanguageSettings = useCallback(() => {
     setLanguageSettingsOpen((open) => !open);
+  }, []);
+  const toggleAuthIdleTimeoutSettings = useCallback(() => {
+    setAuthIdleTimeoutOpen((open) => !open);
   }, []);
 
   const handleClearCache = useCallback(() => {
@@ -464,6 +484,35 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
                       label={localeOption.nativeLabel}
                       active={currentLocale === localeOption.id}
                       onClick={() => handleSetLanguage(localeOption.id)}
+                    />
+                  ))}
+                </div>
+              )}
+
+              <RightPanelUserMenuMenuButton
+                label={t("settings.authIdleTimeout")}
+                icon="visibility"
+                subtitle={t("settings.authIdleTimeoutHint")}
+                onClick={toggleAuthIdleTimeoutSettings}
+                right={
+                  <span className="flex items-center gap-1 text-xs text-text-muted">
+                    {authIdleTimeoutLabel}
+                    <Icon
+                      name={authIdleTimeoutOpen ? "chevron-up" : "chevron-right"}
+                      size={16}
+                      className="text-current"
+                    />
+                  </span>
+                }
+              />
+              {authIdleTimeoutOpen && (
+                <div className="mx-2 mb-2 divide-y divide-border-subtle overflow-hidden rounded-md border border-border-subtle bg-bg-elevated">
+                  {AUTH_IDLE_TIMEOUTS.map((timeout) => (
+                    <RightPanelUserMenuOptionButton
+                      key={timeout}
+                      label={t(AUTH_IDLE_TIMEOUT_LABEL_KEYS[timeout])}
+                      active={authIdleTimeout === timeout}
+                      onClick={() => handleSetAuthIdleTimeout(timeout)}
                     />
                   ))}
                 </div>

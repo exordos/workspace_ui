@@ -68,6 +68,17 @@ describe("ProfileDrawer", () => {
     expect(useSettingsStore.getState().notificationSound).toBe("subtle");
   });
 
+  it("updates auth idle timeout from the drawer", () => {
+    renderWithProviders(<ProfileDrawer open onOpenChange={() => {}} />);
+
+    expect(useSettingsStore.getState().authIdleTimeout).toBe("3d");
+
+    fireEvent.click(screen.getByRole("button", { name: /auto sign-out/i }));
+    fireEvent.click(screen.getByRole("button", { name: /never/i }));
+
+    expect(useSettingsStore.getState().authIdleTimeout).toBe("never");
+  });
+
   it("shows diagnostics entry and hides service catalog entry", () => {
     renderWithProviders(<ProfileDrawer open onOpenChange={() => {}} />);
     expect(screen.getByRole("button", { name: /diagnostics/i })).toBeInTheDocument();

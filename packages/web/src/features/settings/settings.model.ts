@@ -13,6 +13,7 @@ import { buildOrgScopedStorageKey } from "~/shared/lib/org-scoped-storage";
 import type {
   AppLanguage,
   AppSettings,
+  AuthIdleTimeout,
   ChatListDensity,
   ChatSorting,
   FolderRailLayout,
@@ -56,6 +57,7 @@ function createDefaultSettings(): AppSettings {
     folderRailLayout: "vertical",
     showSystemFolders: true,
     chatListDensity: "standard",
+    authIdleTimeout: "3d",
   };
 }
 
@@ -69,6 +71,7 @@ const FALLBACK_SETTINGS: Omit<AppSettings, "language"> = {
   folderRailLayout: "horizontal",
   showSystemFolders: true,
   chatListDensity: "standard",
+  authIdleTimeout: "3d",
 };
 
 function coerceLegacySorting(value: unknown): ChatSorting | null {
@@ -147,6 +150,20 @@ function resolveChatListDensity(value: unknown): ChatListDensity {
   return value === "compact" ? "compact" : FALLBACK_SETTINGS.chatListDensity;
 }
 
+function resolveAuthIdleTimeout(value: unknown): AuthIdleTimeout {
+  if (
+    value === "6h" ||
+    value === "12h" ||
+    value === "24h" ||
+    value === "3d" ||
+    value === "7d" ||
+    value === "never"
+  ) {
+    return value;
+  }
+  return FALLBACK_SETTINGS.authIdleTimeout;
+}
+
 function loadSettings(organizationId: string | null = getActiveOrganizationId()): AppSettings {
   if (typeof window === "undefined") return createDefaultSettings();
   try {
@@ -172,6 +189,7 @@ function loadSettings(organizationId: string | null = getActiveOrganizationId())
       folderRailLayout: resolveFolderRailLayout(parsed.folderRailLayout),
       showSystemFolders: resolveShowSystemFolders(parsed.showSystemFolders),
       chatListDensity: resolveChatListDensity(parsed.chatListDensity),
+      authIdleTimeout: resolveAuthIdleTimeout(parsed.authIdleTimeout),
     };
   } catch {
     return createDefaultSettings();
@@ -200,6 +218,7 @@ interface SettingsState extends AppSettings {
   setFolderRailLayout: (layout: FolderRailLayout) => void;
   setShowSystemFolders: (enabled: boolean) => void;
   setChatListDensity: (density: ChatListDensity) => void;
+  setAuthIdleTimeout: (timeout: AuthIdleTimeout) => void;
   resetToDefaults: () => void;
 }
 
@@ -271,6 +290,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     logStoreAction("settings", "setChatListDensity", { chatListDensity });
     set({ chatListDensity });
     persistSettings({ ...get(), chatListDensity });
+  },
+
+  setAuthIdleTimeout(authIdleTimeout) {
+    logStoreAction("settings", "setAuthIdleTimeout", { authIdleTimeout });
+    set({ authIdleTimeout });
+    persistSettings({ ...get(), authIdleTimeout });
   },
 
   resetToDefaults() {

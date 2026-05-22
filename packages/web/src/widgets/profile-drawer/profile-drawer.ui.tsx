@@ -5,7 +5,7 @@ import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useThemeStore } from "~/entities/theme/theme.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
-import type { NotificationSound } from "~/features/settings/settings.types";
+import type { AuthIdleTimeout, NotificationSound } from "~/features/settings/settings.types";
 import {
   getAvailablePalettes,
   selectPalette,
@@ -49,6 +49,15 @@ const MODE_LABEL_KEYS: Record<(typeof THEME_MODES)[number], string> = {
   dark: "settings.themeDark",
   system: "settings.themeSystem",
 };
+const AUTH_IDLE_TIMEOUTS: AuthIdleTimeout[] = ["6h", "12h", "24h", "3d", "7d", "never"];
+const AUTH_IDLE_TIMEOUT_LABEL_KEYS: Record<AuthIdleTimeout, string> = {
+  "6h": "settings.authIdleTimeout6h",
+  "12h": "settings.authIdleTimeout12h",
+  "24h": "settings.authIdleTimeout24h",
+  "3d": "settings.authIdleTimeout3d",
+  "7d": "settings.authIdleTimeout7d",
+  never: "settings.authIdleTimeoutNever",
+};
 
 function getInstanceLabel(realm: string, email: string): string {
   try {
@@ -81,6 +90,8 @@ export const ProfileDrawer: React.FC<ProfileDrawerProps> = ({
   );
   const notificationSound = useSettingsStore((s) => s.notificationSound);
   const setNotificationSound = useSettingsStore((s) => s.setNotificationSound);
+  const authIdleTimeout = useSettingsStore((s) => s.authIdleTimeout);
+  const setAuthIdleTimeout = useSettingsStore((s) => s.setAuthIdleTimeout);
   const setLanguage = useSettingsStore((s) => s.setLanguage);
   const currentMode = useThemeStore((s) => s.mode);
   const currentPaletteId = useThemeStore((s) => s.paletteId);
@@ -104,7 +115,7 @@ export const ProfileDrawer: React.FC<ProfileDrawerProps> = ({
     const idx = locales.findIndex((l) => l.id === currentLocale);
     const next = locales[(idx + 1) % locales.length]!;
     setLocale(next.id);
-    setLanguage(next.id as "en" | "ru");
+    setLanguage(next.id);
   }, [currentLocale, locales, setLanguage, setLocale]);
 
   const handleCycleNotificationSound = useCallback(() => {
@@ -183,6 +194,18 @@ export const ProfileDrawer: React.FC<ProfileDrawerProps> = ({
           </span>
         ),
       },
+      {
+        label: t("settings.authIdleTimeout"),
+        icon: "visibility",
+        action: "authIdleTimeout",
+        subtitle: t("settings.authIdleTimeoutHint"),
+        right: (
+          <span className="flex items-center gap-1 text-sm text-text-primary">
+            {t(AUTH_IDLE_TIMEOUT_LABEL_KEYS[authIdleTimeout])}
+            <Icon name="chevron-down" size={16} className="text-current" />
+          </span>
+        ),
+      },
       { label: t("settings.themeSettings"), icon: "mood", action: "themeSettings" },
       {
         label: t("settings.chatSorting"),
@@ -213,7 +236,7 @@ export const ProfileDrawer: React.FC<ProfileDrawerProps> = ({
     }
 
     return items;
-  }, [t, currentLocaleName, notificationSound]);
+  }, [t, authIdleTimeout, currentLocaleName, notificationSound]);
 
   const handleItemClick = useCallback(
     (item: MenuItem) => {
@@ -436,6 +459,24 @@ export const ProfileDrawer: React.FC<ProfileDrawerProps> = ({
                       >
                         {t("settings.chatSortingPrioritizeUnmuted")}
                       </button>
+                    </div>
+                  )}
+                  {item.action === "authIdleTimeout" && (
+                    <div className="grid grid-cols-2 gap-2 px-3 py-2">
+                      {AUTH_IDLE_TIMEOUTS.map((timeout) => (
+                        <button
+                          key={timeout}
+                          type="button"
+                          onClick={() => setAuthIdleTimeout(timeout)}
+                          className={`rounded-lg px-3 py-2 text-left text-xs transition-colors ${
+                            authIdleTimeout === timeout
+                              ? "bg-accent text-on-accent"
+                              : "bg-bg text-text-primary hover:bg-bg-elevated"
+                          }`}
+                        >
+                          {t(AUTH_IDLE_TIMEOUT_LABEL_KEYS[timeout])}
+                        </button>
+                      ))}
                     </div>
                   )}
                 </li>

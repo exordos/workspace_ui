@@ -1,4 +1,5 @@
 import type {
+  AuthIdleTimeout,
   ChatListDensity,
   FolderRailLayout,
   NotificationSound,
@@ -45,6 +46,17 @@ export const CHAT_LIST_DENSITIES: ChatListDensity[] = ["standard", "compact"];
 export const CHAT_LIST_DENSITY_LABEL_KEYS: Record<ChatListDensity, string> = {
   standard: "settings.chatListDensityStandard",
   compact: "settings.chatListDensityCompact",
+};
+
+export const AUTH_IDLE_TIMEOUTS: AuthIdleTimeout[] = ["6h", "12h", "24h", "3d", "7d", "never"];
+
+export const AUTH_IDLE_TIMEOUT_LABEL_KEYS: Record<AuthIdleTimeout, string> = {
+  "6h": "settings.authIdleTimeout6h",
+  "12h": "settings.authIdleTimeout12h",
+  "24h": "settings.authIdleTimeout24h",
+  "3d": "settings.authIdleTimeout3d",
+  "7d": "settings.authIdleTimeout7d",
+  never: "settings.authIdleTimeoutNever",
 };
 
 export const STATUS_EMOJI_PRESETS = [

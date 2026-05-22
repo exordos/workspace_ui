@@ -1,10 +1,12 @@
 import React from "react";
-import type { FolderRailLayout } from "~/features/settings/settings.types";
+import type { AuthIdleTimeout, FolderRailLayout } from "~/features/settings/settings.types";
 import { selectMode, selectPalette } from "~/features/theme-picker/theme-picker.model";
 import type { AvailablePalette } from "~/features/theme-picker/theme-picker.types";
 import { useTranslation } from "~/i18n/i18n";
 import type { ThemeMode } from "~/shared/lib/themes/tokens";
 import {
+  AUTH_IDLE_TIMEOUT_LABEL_KEYS,
+  AUTH_IDLE_TIMEOUTS,
   FOLDER_LAYOUT_LABEL_KEYS,
   FOLDER_LAYOUTS,
   THEME_MODE_LABEL_KEYS,
@@ -126,6 +128,34 @@ export const RightPanelFolderLayoutPanel = React.memo(function RightPanelFolderL
           }`}
         >
           {t(FOLDER_LAYOUT_LABEL_KEYS[layout])}
+        </button>
+      ))}
+    </div>
+  );
+});
+
+export const RightPanelAuthIdleTimeoutPanel = React.memo(function RightPanelAuthIdleTimeoutPanel({
+  authIdleTimeout,
+  setAuthIdleTimeout,
+}: {
+  authIdleTimeout: AuthIdleTimeout;
+  setAuthIdleTimeout: (timeout: AuthIdleTimeout) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="grid grid-cols-2 gap-2 rounded-xl border border-border-subtle bg-card-bg p-4">
+      {AUTH_IDLE_TIMEOUTS.map((timeout) => (
+        <button
+          key={timeout}
+          type="button"
+          onClick={() => setAuthIdleTimeout(timeout)}
+          className={`rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+            authIdleTimeout === timeout
+              ? "bg-accent text-on-accent"
+              : "bg-bg text-text-primary hover:bg-bg-elevated"
+          }`}
+        >
+          {t(AUTH_IDLE_TIMEOUT_LABEL_KEYS[timeout])}
         </button>
       ))}
     </div>

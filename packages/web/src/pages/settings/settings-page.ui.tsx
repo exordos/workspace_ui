@@ -12,10 +12,12 @@ import { pushService } from "~/shared/lib/push/push.service";
 import { Icon } from "~/shared/ui/icon";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
 import {
+  AUTH_IDLE_TIMEOUT_LABEL_KEYS,
   NOTIFICATION_SOUND_LABEL_KEYS,
   NOTIFICATION_SOUNDS,
 } from "~/widgets/right-panel/right-panel-settings-constants.lib";
 import {
+  RightPanelAuthIdleTimeoutPanel,
   RightPanelChatSortingPanel,
   RightPanelFolderLayoutPanel,
   RightPanelThemeSettingsPanel,
@@ -40,11 +42,14 @@ export const SettingsPage: React.FC = () => {
   const setLanguage = useSettingsStore((s) => s.setLanguage);
   const folderRailLayout = useSettingsStore((s) => s.folderRailLayout);
   const setFolderRailLayout = useSettingsStore((s) => s.setFolderRailLayout);
+  const authIdleTimeout = useSettingsStore((s) => s.authIdleTimeout);
+  const setAuthIdleTimeout = useSettingsStore((s) => s.setAuthIdleTimeout);
   const currentThemeMode = useThemeStore((s) => s.mode);
   const currentPaletteId = useThemeStore((s) => s.paletteId);
   const [themeSettingsOpen, setThemeSettingsOpen] = useState(false);
   const [chatSortingSettingsOpen, setChatSortingSettingsOpen] = useState(false);
   const [folderLayoutSettingsOpen, setFolderLayoutSettingsOpen] = useState(false);
+  const [authIdleTimeoutSettingsOpen, setAuthIdleTimeoutSettingsOpen] = useState(false);
   const openPersonalInfo = useCallback(() => navigate("/settings/personal-info"), [navigate]);
   const openLogs = useCallback(() => navigate("/settings/logs"), [navigate]);
   const openBuilds = useCallback(() => navigate("/settings/build"), [navigate]);
@@ -56,6 +61,9 @@ export const SettingsPage: React.FC = () => {
   }, []);
   const toggleFolderLayoutSettings = useCallback(() => {
     setFolderLayoutSettingsOpen((open) => !open);
+  }, []);
+  const toggleAuthIdleTimeoutSettings = useCallback(() => {
+    setAuthIdleTimeoutSettingsOpen((open) => !open);
   }, []);
   const currentLocaleName =
     locales.find((supportedLocale) => supportedLocale.id === currentLocale)?.nativeLabel ??
@@ -75,7 +83,7 @@ export const SettingsPage: React.FC = () => {
     const idx = locales.findIndex((supportedLocale) => supportedLocale.id === currentLocale);
     const next = locales[(idx + 1) % locales.length]!;
     setLocale(next.id);
-    setLanguage(next.id as "en" | "ru");
+    setLanguage(next.id);
   }, [currentLocale, locales, setLocale, setLanguage]);
 
   const handleLogout = useCallback(() => {
@@ -88,6 +96,10 @@ export const SettingsPage: React.FC = () => {
   const soundLabel = useMemo(
     () => t(NOTIFICATION_SOUND_LABEL_KEYS[notificationSound]),
     [notificationSound, t],
+  );
+  const authIdleTimeoutLabel = useMemo(
+    () => t(AUTH_IDLE_TIMEOUT_LABEL_KEYS[authIdleTimeout]),
+    [authIdleTimeout, t],
   );
   const handleTogglePrioritizePersonalUnread = useCallback(() => {
     setPrioritizePersonalUnread(!prioritizePersonalUnread);
@@ -226,6 +238,32 @@ export const SettingsPage: React.FC = () => {
           <RightPanelFolderLayoutPanel
             folderRailLayout={folderRailLayout}
             setFolderRailLayout={setFolderRailLayout}
+          />
+        )}
+        <button
+          type="button"
+          onClick={toggleAuthIdleTimeoutSettings}
+          className="flex items-center justify-between rounded-xl border border-border-subtle bg-card-bg p-4 text-left transition-colors hover:bg-bg-elevated"
+          aria-expanded={authIdleTimeoutSettingsOpen}
+        >
+          <span className="flex items-center gap-3">
+            <Icon name="visibility" size={20} className="text-accent" />
+            <span className="flex min-w-0 flex-col">
+              <span className="text-sm font-medium text-text-primary">
+                {t("settings.authIdleTimeout")}
+              </span>
+              <span className="text-xs text-text-muted">{t("settings.authIdleTimeoutHint")}</span>
+            </span>
+          </span>
+          <span className="flex items-center gap-1 text-sm text-text-muted">
+            {authIdleTimeoutLabel}
+            <Icon name="chevron-right" size={16} className="text-current" />
+          </span>
+        </button>
+        {authIdleTimeoutSettingsOpen && (
+          <RightPanelAuthIdleTimeoutPanel
+            authIdleTimeout={authIdleTimeout}
+            setAuthIdleTimeout={setAuthIdleTimeout}
           />
         )}
         <div className="flex items-center justify-between rounded-xl border border-border-subtle bg-card-bg p-4">

@@ -95,6 +95,17 @@ describe("SettingsPage", () => {
     expect(useSettingsStore.getState().folderRailLayout).toBe("vertical");
   });
 
+  it("updates auth idle timeout in settings", () => {
+    renderWithProviders(<SettingsPage />);
+
+    expect(useSettingsStore.getState().authIdleTimeout).toBe("3d");
+
+    fireEvent.click(screen.getByRole("button", { name: /auto sign-out/i }));
+    fireEvent.click(screen.getByRole("button", { name: /never/i }));
+
+    expect(useSettingsStore.getState().authIdleTimeout).toBe("never");
+  });
+
   it("logs out from settings page", () => {
     renderWithProviders(<SettingsPage />);
 

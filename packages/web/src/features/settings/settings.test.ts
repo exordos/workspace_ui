@@ -46,6 +46,7 @@ describe("useSettingsStore", () => {
       expect(state.folderRailLayout).toBe("vertical");
       expect(state.showSystemFolders).toBe(true);
       expect(state.chatListDensity).toBe("standard");
+      expect(state.authIdleTimeout).toBe("3d");
     });
   });
 
@@ -133,6 +134,7 @@ describe("useSettingsStore", () => {
       useSettingsStore.getState().setLanguage("ru");
       useSettingsStore.getState().setShowSystemFolders(true);
       useSettingsStore.getState().setChatListDensity("compact");
+      useSettingsStore.getState().setAuthIdleTimeout("never");
 
       useSettingsStore.getState().resetToDefaults();
 
@@ -144,6 +146,7 @@ describe("useSettingsStore", () => {
       expect(state.language).toBe("en");
       expect(state.showSystemFolders).toBe(true);
       expect(state.chatListDensity).toBe("standard");
+      expect(state.authIdleTimeout).toBe("3d");
     });
 
     it("persists defaults to localStorage", () => {
@@ -155,6 +158,7 @@ describe("useSettingsStore", () => {
       expect(parsed.chatSorting).toBe("recent");
       expect(parsed.prioritizePersonalUnread).toBe(false);
       expect(parsed.prioritizeUnmutedUnreadChannels).toBe(false);
+      expect(parsed.authIdleTimeout).toBe("3d");
     });
   });
 
@@ -218,6 +222,25 @@ describe("useSettingsStore", () => {
     });
   });
 
+  describe("setAuthIdleTimeout", () => {
+    it("updates auth idle timeout", () => {
+      useSettingsStore.getState().setAuthIdleTimeout("7d");
+      expect(useSettingsStore.getState().authIdleTimeout).toBe("7d");
+    });
+
+    it("sets to never", () => {
+      useSettingsStore.getState().setAuthIdleTimeout("never");
+      expect(useSettingsStore.getState().authIdleTimeout).toBe("never");
+    });
+
+    it("persists auth idle timeout to localStorage", () => {
+      useSettingsStore.getState().setAuthIdleTimeout("12h");
+      const raw = localStorage.getItem("workspace-settings");
+      const parsed = JSON.parse(raw!);
+      expect(parsed.authIdleTimeout).toBe("12h");
+    });
+  });
+
   describe("combined persistence", () => {
     it("all settings persist together correctly", () => {
       useSettingsStore.getState().setPrioritizePersonalUnread(true);
@@ -227,6 +250,7 @@ describe("useSettingsStore", () => {
       useSettingsStore.getState().setFolderRailLayout("horizontal");
       useSettingsStore.getState().setShowSystemFolders(true);
       useSettingsStore.getState().setChatListDensity("compact");
+      useSettingsStore.getState().setAuthIdleTimeout("7d");
 
       const raw = localStorage.getItem("workspace-settings");
       const parsed = JSON.parse(raw!);
@@ -238,6 +262,7 @@ describe("useSettingsStore", () => {
       expect(parsed.folderRailLayout).toBe("horizontal");
       expect(parsed.showSystemFolders).toBe(true);
       expect(parsed.chatListDensity).toBe("compact");
+      expect(parsed.authIdleTimeout).toBe("7d");
     });
   });
 
@@ -251,6 +276,7 @@ describe("useSettingsStore", () => {
       expect(raw).not.toBeNull();
       const parsed = JSON.parse(raw!);
       expect(parsed.notificationSound).toBe("subtle");
+      expect(parsed.authIdleTimeout).toBe("3d");
       expect(localStorage.getItem("workspace-settings")).toBeNull();
     });
 
@@ -317,6 +343,7 @@ describe("loadSettings (module reload)", () => {
     expect(state.folderRailLayout).toBe("vertical");
     expect(state.showSystemFolders).toBe(true);
     expect(state.chatListDensity).toBe("standard");
+    expect(state.authIdleTimeout).toBe("3d");
   });
 
   it("maps legacy unread mode to both unread-priority flags", async () => {
@@ -332,6 +359,7 @@ describe("loadSettings (module reload)", () => {
     expect(state.folderRailLayout).toBe("horizontal");
     expect(state.showSystemFolders).toBe(true);
     expect(state.chatListDensity).toBe("standard");
+    expect(state.authIdleTimeout).toBe("3d");
   });
 
   it("derives unread chat sorting from persisted unread-priority flags when legacy field is absent", async () => {
@@ -349,6 +377,7 @@ describe("loadSettings (module reload)", () => {
     expect(state.chatSorting).toBe("unread");
     expect(state.prioritizePersonalUnread).toBe(true);
     expect(state.prioritizeUnmutedUnreadChannels).toBe(false);
+    expect(state.authIdleTimeout).toBe("3d");
   });
 
   it("uses defaults when localStorage key is absent", async () => {
@@ -364,6 +393,7 @@ describe("loadSettings (module reload)", () => {
     expect(state.folderRailLayout).toBe("vertical");
     expect(state.showSystemFolders).toBe(true);
     expect(state.chatListDensity).toBe("standard");
+    expect(state.authIdleTimeout).toBe("3d");
   });
 
   it("loads all saved settings on module init", async () => {
@@ -378,6 +408,7 @@ describe("loadSettings (module reload)", () => {
         folderRailLayout: "horizontal",
         showSystemFolders: true,
         chatListDensity: "compact",
+        authIdleTimeout: "never",
       }),
     );
     vi.resetModules();
@@ -391,6 +422,21 @@ describe("loadSettings (module reload)", () => {
     expect(state.folderRailLayout).toBe("horizontal");
     expect(state.showSystemFolders).toBe(true);
     expect(state.chatListDensity).toBe("compact");
+    expect(state.authIdleTimeout).toBe("never");
+  });
+
+  it("uses default auth idle timeout when persisted field is missing", async () => {
+    localStorage.setItem("workspace-settings", JSON.stringify({ notificationSound: "none" }));
+    vi.resetModules();
+    const { useSettingsStore: freshStore } = await import("./settings.model");
+    expect(freshStore.getState().authIdleTimeout).toBe("3d");
+  });
+
+  it("uses default auth idle timeout when persisted field is invalid", async () => {
+    localStorage.setItem("workspace-settings", JSON.stringify({ authIdleTimeout: "1y" }));
+    vi.resetModules();
+    const { useSettingsStore: freshStore } = await import("./settings.model");
+    expect(freshStore.getState().authIdleTimeout).toBe("3d");
   });
 
   it("respects explicit showSystemFolders false in persisted settings", async () => {

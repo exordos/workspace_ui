@@ -1,4 +1,8 @@
-import type { FolderRailLayout, NotificationSound } from "~/features/settings/settings.types";
+import type {
+  AuthIdleTimeout,
+  FolderRailLayout,
+  NotificationSound,
+} from "~/features/settings/settings.types";
 import type { ThemeMode } from "~/shared/lib/themes/tokens";
 
 export const NOTIFICATION_SOUNDS: NotificationSound[] = [
@@ -32,4 +36,15 @@ export const FOLDER_LAYOUTS: FolderRailLayout[] = ["vertical", "horizontal"];
 export const FOLDER_LAYOUT_LABEL_KEYS: Record<FolderRailLayout, string> = {
   vertical: "settings.folderLayoutVertical",
   horizontal: "settings.folderLayoutHorizontal",
+};
+
+export const AUTH_IDLE_TIMEOUTS: AuthIdleTimeout[] = ["6h", "12h", "24h", "3d", "7d", "never"];
+
+export const AUTH_IDLE_TIMEOUT_LABEL_KEYS: Record<AuthIdleTimeout, string> = {
+  "6h": "settings.authIdleTimeout6h",
+  "12h": "settings.authIdleTimeout12h",
+  "24h": "settings.authIdleTimeout24h",
+  "3d": "settings.authIdleTimeout3d",
+  "7d": "settings.authIdleTimeout7d",
+  never: "settings.authIdleTimeoutNever",
 };

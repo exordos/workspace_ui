@@ -195,6 +195,15 @@ describe("RightPanel truthfulness", () => {
       fireEvent.click(screen.getByRole("button", { name: /compact|компактная/i }));
     });
     expect(useSettingsStore.getState().chatListDensity).toBe("compact");
+
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: /auto sign-out|автовыход/i }));
+    });
+    expect(screen.getByRole("button", { name: /^never$|^никогда$/i })).toBeInTheDocument();
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: /^never$|^никогда$/i }));
+    });
+    expect(useSettingsStore.getState().authIdleTimeout).toBe("never");
   });
 
   it("opens current user profile from settings personal-info action", () => {
@@ -233,6 +242,11 @@ describe("RightPanel truthfulness", () => {
     expect(container.querySelector("header.border-b.border-border-subtle")).toBeNull();
     expect(screen.queryByRole("button", { name: /^settings$/i })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /folder layout/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /auto sign-out/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /auto sign-out/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^never$/i }));
+    expect(useSettingsStore.getState().authIdleTimeout).toBe("never");
+
     fireEvent.click(screen.getByRole("button", { name: /select build/i }));
     expect(onOpenBuildsDrawer).toHaveBeenCalledTimes(1);
 
