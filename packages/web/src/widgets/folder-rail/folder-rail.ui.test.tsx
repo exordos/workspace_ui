@@ -8,88 +8,69 @@ import { applyTheme } from "~/shared/lib/themes/engine";
 import { FolderRail } from "./folder-rail.ui";
 
 describe("FolderRail visual parity", () => {
-  const originalIntersectionObserver = globalThis.IntersectionObserver;
-  let latestFolderRailIntersectionCallback:
-    | ((entries: IntersectionObserverEntry[], observer: IntersectionObserver) => void)
-    | null = null;
-  let latestFolderRailIntersectionRoot: Element | Document | null = null;
-  let latestFolderRailIntersectionTarget: Element | null = null;
+  const originalResizeObserver = globalThis.ResizeObserver;
+  let latestFolderRailResizeCallback: ResizeObserverCallback | null = null;
+  let latestFolderRailResizeTargets: Element[] = [];
 
-  class FolderRailIntersectionObserverMock implements IntersectionObserver {
-    readonly root: Element | Document | null;
-    readonly rootMargin: string;
-    readonly thresholds: readonly number[];
+  class FolderRailResizeObserverMock implements ResizeObserver {
     disconnect = vi.fn();
     observe = vi.fn((target: Element) => {
-      latestFolderRailIntersectionTarget = target;
+      latestFolderRailResizeTargets.push(target);
     });
-    takeRecords = vi.fn((): IntersectionObserverEntry[] => []);
-    unobserve = vi.fn();
+    unobserve = vi.fn((target: Element) => {
+      latestFolderRailResizeTargets = latestFolderRailResizeTargets.filter(
+        (observedTarget) => observedTarget !== target,
+      );
+    });
 
-    constructor(
-      callback: (entries: IntersectionObserverEntry[], observer: IntersectionObserver) => void,
-      options?: IntersectionObserverInit,
-    ) {
-      this.root = options?.root ?? null;
-      this.rootMargin = options?.rootMargin ?? "0px";
-      this.thresholds = Array.isArray(options?.threshold)
-        ? options.threshold
-        : [options?.threshold ?? 0];
-      latestFolderRailIntersectionCallback = callback;
-      latestFolderRailIntersectionRoot = this.root;
+    constructor(callback: ResizeObserverCallback) {
+      latestFolderRailResizeCallback = callback;
     }
   }
 
-  async function emitFolderRailIntersection({
-    isIntersecting,
-    intersectionRatio,
-    scrollHeight,
-    clientHeight,
+  async function emitFolderRailResize({
+    rootScrollHeight,
+    rootClientHeight,
+    contentScrollHeight,
   }: {
-    isIntersecting: boolean;
-    intersectionRatio: number;
-    scrollHeight: number;
-    clientHeight: number;
+    rootScrollHeight?: number;
+    rootClientHeight: number;
+    contentScrollHeight: number;
   }) {
     await waitFor(() => {
-      expect(latestFolderRailIntersectionCallback).not.toBeNull();
+      expect(latestFolderRailResizeCallback).not.toBeNull();
+      expect(latestFolderRailResizeTargets).toHaveLength(2);
     });
 
-    if (latestFolderRailIntersectionRoot instanceof HTMLElement) {
-      Object.defineProperty(latestFolderRailIntersectionRoot, "scrollHeight", {
-        configurable: true,
-        value: scrollHeight,
-      });
-      Object.defineProperty(latestFolderRailIntersectionRoot, "clientHeight", {
-        configurable: true,
-        value: clientHeight,
-      });
-    }
+    const scrollList = screen.getByTestId("folder-rail-scroll-list");
+    const scrollContent = screen.getByTestId("folder-rail-scroll-content");
+    Object.defineProperty(scrollList, "scrollHeight", {
+      configurable: true,
+      value: rootScrollHeight ?? contentScrollHeight,
+    });
+    Object.defineProperty(scrollList, "clientHeight", {
+      configurable: true,
+      value: rootClientHeight,
+    });
+    Object.defineProperty(scrollContent, "scrollHeight", {
+      configurable: true,
+      value: contentScrollHeight,
+    });
 
     act(() => {
-      latestFolderRailIntersectionCallback!(
-        [
-          {
-            target: latestFolderRailIntersectionTarget ?? document.createElement("div"),
-            isIntersecting,
-            intersectionRatio,
-          } as IntersectionObserverEntry,
-        ],
-        {} as IntersectionObserver,
-      );
+      latestFolderRailResizeCallback!([], {} as ResizeObserver);
     });
   }
 
   beforeEach(() => {
-    latestFolderRailIntersectionCallback = null;
-    latestFolderRailIntersectionRoot = null;
-    latestFolderRailIntersectionTarget = null;
-    globalThis.IntersectionObserver = FolderRailIntersectionObserverMock;
+    latestFolderRailResizeCallback = null;
+    latestFolderRailResizeTargets = [];
+    globalThis.ResizeObserver = FolderRailResizeObserverMock;
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
-    globalThis.IntersectionObserver = originalIntersectionObserver;
+    globalThis.ResizeObserver = originalResizeObserver;
     useSettingsStore.getState().resetToDefaults();
   });
 
@@ -607,16 +588,39 @@ describe("FolderRail visual parity", () => {
       />,
     );
 
-    await emitFolderRailIntersection({
-      isIntersecting: true,
-      intersectionRatio: 1,
-      scrollHeight: 100,
-      clientHeight: 100,
+    await emitFolderRailResize({
+      rootClientHeight: 100,
+      contentScrollHeight: 100,
     });
 
     const scrollList = screen.getByTestId("folder-rail-scroll-list");
     expect(scrollList).toHaveClass("overflow-y-hidden");
     expect(scrollList).not.toHaveClass("overflow-y-auto");
+    expect(screen.queryByRole("button", { name: "Open folder list" })).not.toBeInTheDocument();
+  });
+
+  it("ignores scroll-root overflow caused outside real folder content", async () => {
+    render(
+      <FolderRail
+        folders={[
+          { id: "all", label: "All", backgroundColor: 0xff8438, systemType: "all" as const },
+          { id: "custom", label: "Team", backgroundColor: 0x3a92ff },
+        ]}
+        selectedFolderId="all"
+        onSelectFolder={vi.fn()}
+      />,
+    );
+
+    await emitFolderRailResize({
+      rootScrollHeight: 101,
+      rootClientHeight: 100,
+      contentScrollHeight: 100,
+    });
+
+    const scrollList = screen.getByTestId("folder-rail-scroll-list");
+    expect(scrollList).toHaveClass("overflow-y-hidden");
+    expect(scrollList).not.toHaveClass("overflow-y-auto");
+    expect(screen.queryByTestId("folder-rail-overflow-sentinel")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Open folder list" })).not.toBeInTheDocument();
   });
 
@@ -636,11 +640,9 @@ describe("FolderRail visual parity", () => {
       />,
     );
 
-    await emitFolderRailIntersection({
-      isIntersecting: false,
-      intersectionRatio: 0,
-      scrollHeight: 240,
-      clientHeight: 120,
+    await emitFolderRailResize({
+      rootClientHeight: 120,
+      contentScrollHeight: 240,
     });
 
     const scrollList = screen.getByTestId("folder-rail-scroll-list");
@@ -649,7 +651,7 @@ describe("FolderRail visual parity", () => {
     expect(screen.getByRole("button", { name: "Open folder list" })).toBeInTheDocument();
   });
 
-  it("keeps vertical scroll mode when sentinel is visible after scrolling to the bottom", async () => {
+  it("keeps vertical scroll mode when content remains taller than the viewport", async () => {
     render(
       <FolderRail
         folders={[
@@ -665,11 +667,9 @@ describe("FolderRail visual parity", () => {
       />,
     );
 
-    await emitFolderRailIntersection({
-      isIntersecting: true,
-      intersectionRatio: 1,
-      scrollHeight: 240,
-      clientHeight: 120,
+    await emitFolderRailResize({
+      rootClientHeight: 120,
+      contentScrollHeight: 240,
     });
 
     const scrollList = screen.getByTestId("folder-rail-scroll-list");
@@ -709,11 +709,9 @@ describe("FolderRail visual parity", () => {
     const scrollListButtons = within(scrollList).getAllByRole("button");
     expect(scrollListButtons.at(-1)).toBe(addFolderButton);
 
-    await emitFolderRailIntersection({
-      isIntersecting: false,
-      intersectionRatio: 0,
-      scrollHeight: 240,
-      clientHeight: 120,
+    await emitFolderRailResize({
+      rootClientHeight: 120,
+      contentScrollHeight: 240,
     });
 
     const quickListButton = screen.getByRole("button", { name: "Open folder list" });
@@ -746,11 +744,9 @@ describe("FolderRail visual parity", () => {
       <FolderRail folders={manyFolders} selectedFolderId="all" onSelectFolder={onSelectFolder} />,
     );
 
-    await emitFolderRailIntersection({
-      isIntersecting: false,
-      intersectionRatio: 0,
-      scrollHeight: 240,
-      clientHeight: 120,
+    await emitFolderRailResize({
+      rootClientHeight: 120,
+      contentScrollHeight: 240,
     });
 
     fireEvent.keyDown(window, { key: "f", ctrlKey: true, shiftKey: true });

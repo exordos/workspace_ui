@@ -19,7 +19,7 @@ export const FolderRailVerticalView: React.FC<FolderRailVerticalViewProps> = Rea
     onOpenCreateDialog,
   }) {
     const scrollListRef = useRef<HTMLDivElement | null>(null);
-    const overflowSentinelRef = useRef<HTMLDivElement | null>(null);
+    const scrollContentRef = useRef<HTMLDivElement | null>(null);
     const [hasVerticalOverflow, setHasVerticalOverflow] = useState(false);
 
     const orderedEntries = useMemo(
@@ -31,32 +31,26 @@ export const FolderRailVerticalView: React.FC<FolderRailVerticalViewProps> = Rea
 
     useEffect(() => {
       const root = scrollListRef.current;
-      const sentinel = overflowSentinelRef.current;
-      if (!root || !sentinel) return;
+      const content = scrollContentRef.current;
+      if (!root || !content) return;
 
-      const isContentTallerThanViewport = () => root.scrollHeight > root.clientHeight;
-      const setOverflowFromSentinel = (sentinelFullyVisible: boolean) => {
-        setHasVerticalOverflow(!sentinelFullyVisible || isContentTallerThanViewport());
+      const updateOverflow = () => {
+        setHasVerticalOverflow(content.scrollHeight > root.clientHeight);
       };
 
-      if (typeof IntersectionObserver === "undefined") {
-        setHasVerticalOverflow(isContentTallerThanViewport());
-        return;
+      updateOverflow();
+
+      if (typeof ResizeObserver === "undefined") {
+        window.addEventListener("resize", updateOverflow);
+        return () => {
+          window.removeEventListener("resize", updateOverflow);
+        };
       }
 
-      const observer = new IntersectionObserver(
-        (entries) => {
-          const entry = entries[0];
-          if (!entry) return;
-          setOverflowFromSentinel(entry.isIntersecting && entry.intersectionRatio >= 1);
-        },
-        {
-          root,
-          threshold: 1,
-        },
-      );
+      const observer = new ResizeObserver(updateOverflow);
+      observer.observe(root);
+      observer.observe(content);
 
-      observer.observe(sentinel);
       return () => {
         observer.disconnect();
       };
@@ -86,41 +80,40 @@ export const FolderRailVerticalView: React.FC<FolderRailVerticalViewProps> = Rea
         <div
           ref={scrollListRef}
           data-testid="folder-rail-scroll-list"
-          className={`mt-0.5 flex min-h-0 flex-1 flex-col items-center gap-0.5 px-0.5 ${
+          className={`mt-0.5 min-h-0 flex-1 px-0.5 ${
             hasVerticalOverflow ? "overflow-y-auto" : "overflow-y-hidden"
           }`}
         >
-          {scrollableFolderEntries.map(({ folder, index }) => (
-            <VerticalFolderItem
-              key={folder.id}
-              folder={folder}
-              index={index}
-              isSelected={selectedFolderId === folder.id}
-              showSystemFolders={showSystemFolders}
-              onSelectFolder={onSelectFolder}
-              onToggleLayout={onToggleLayout}
-              onToggleShowSystemFolders={onToggleShowSystemFolders}
-              onRequestRename={onRequestRename}
-              onRequestDelete={onRequestDelete}
-            />
-          ))}
-
-          <button
-            type="button"
-            onClick={onOpenCreateDialog}
-            data-folder-rail-action="add-folder"
-            className="mt-2 flex h-8 w-8 shrink-0 items-center justify-center text-text-primary"
-            aria-label={t("a11y.addFolder")}
-          >
-            <Icon name="add" size={28} className="shrink-0" />
-          </button>
-
           <div
-            ref={overflowSentinelRef}
-            data-testid="folder-rail-overflow-sentinel"
-            aria-hidden="true"
-            className="h-px w-px shrink-0"
-          />
+            ref={scrollContentRef}
+            data-testid="folder-rail-scroll-content"
+            className="flex flex-col items-center gap-0.5"
+          >
+            {scrollableFolderEntries.map(({ folder, index }) => (
+              <VerticalFolderItem
+                key={folder.id}
+                folder={folder}
+                index={index}
+                isSelected={selectedFolderId === folder.id}
+                showSystemFolders={showSystemFolders}
+                onSelectFolder={onSelectFolder}
+                onToggleLayout={onToggleLayout}
+                onToggleShowSystemFolders={onToggleShowSystemFolders}
+                onRequestRename={onRequestRename}
+                onRequestDelete={onRequestDelete}
+              />
+            ))}
+
+            <button
+              type="button"
+              onClick={onOpenCreateDialog}
+              data-folder-rail-action="add-folder"
+              className="mt-2 flex h-8 w-8 shrink-0 items-center justify-center text-text-primary"
+              aria-label={t("a11y.addFolder")}
+            >
+              <Icon name="add" size={28} className="shrink-0" />
+            </button>
+          </div>
         </div>
 
         {hasVerticalOverflow && (
