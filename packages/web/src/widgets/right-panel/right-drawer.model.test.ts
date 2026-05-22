@@ -35,6 +35,18 @@ describe("useRightDrawerStore", () => {
     });
   });
 
+  it("openInfo resets nested profile override and keeps drawer open", () => {
+    useRightDrawerStore.getState().openUserProfile(42);
+
+    useRightDrawerStore.getState().openInfo();
+
+    expect(useRightDrawerStore.getState()).toMatchObject({
+      open: true,
+      mode: "info",
+      userIdOverride: null,
+    });
+  });
+
   it("clearUserProfileOverride is a no-op when override is already null", () => {
     useRightDrawerStore.setState({ open: true, mode: "info", userIdOverride: null });
     useRightDrawerStore.getState().clearUserProfileOverride();

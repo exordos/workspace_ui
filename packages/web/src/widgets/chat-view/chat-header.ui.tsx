@@ -11,6 +11,9 @@ function resolveAvatarSrc(url: string | undefined | null): string | undefined {
   return resolveAvatarUrl(url, getRealmBaseUrl());
 }
 
+const TITLE_ACTION_BUTTON_CLASS =
+  "absolute inset-0 rounded-lg bg-transparent text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft";
+
 export const ChatHeader: React.FC<ChatHeaderProps> = ({
   channelName,
   topic = t("chat.generalChat"),
@@ -45,6 +48,8 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
     : dmPartner?.isTyping === true
       ? t("chat.typing")
       : (dmPartner?.customStatus ?? presenceText);
+  const canOpenDmPartner = onDmPartnerClick != null;
+  const canOpenRightPanelFromHeader = onOpenRightPanel != null || onToggleRightPanel != null;
 
   // Клик по блоку собеседника в DM (аватар + имя + статус) должен открывать
   // профиль в правой панели, как и клик по аватару автора в списке сообщений.
@@ -67,12 +72,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
     <header className="flex flex-shrink-0 items-center justify-between bg-card-bg px-5 py-2">
       <div className="flex min-w-0 flex-1 flex-col">
         {dmPartner ? (
-          <button
-            type="button"
-            onClick={handleDmPartnerAvatarClick}
-            className="flex min-w-0 items-center gap-3 rounded-lg text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
-            aria-label={t("a11y.openUserProfile", { name: dmPartner.name })}
-          >
+          <div className="relative flex min-w-0 items-center gap-3 rounded-lg text-left">
             <span className="relative shrink-0">
               <Avatar
                 size="md"
@@ -94,14 +94,17 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
               <h1 className="truncate text-sm font-semibold text-text-primary">{dmPartner.name}</h1>
               <span className="truncate text-xs text-text-muted">{statusText}</span>
             </span>
-          </button>
+            {canOpenDmPartner && (
+              <button
+                type="button"
+                onClick={handleDmPartnerAvatarClick}
+                className={TITLE_ACTION_BUTTON_CLASS}
+                aria-label={t("a11y.openUserProfile", { name: dmPartner.name })}
+              />
+            )}
+          </div>
         ) : dmGroup ? (
-          <button
-            type="button"
-            onClick={handleOpenRightPanelFromHeaderBlock}
-            className="flex min-w-0 items-center gap-3 rounded-lg text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
-            aria-label={infoLabel}
-          >
+          <div className="relative flex min-w-0 items-center gap-3 rounded-lg text-left">
             <Avatar
               size="md"
               className="shrink-0 border border-border-subtle bg-bg-elevated text-text-muted"
@@ -114,14 +117,17 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
                 {t("channel.participants", { count: dmGroup.participantsCount })}
               </p>
             </div>
-          </button>
+            {canOpenRightPanelFromHeader && (
+              <button
+                type="button"
+                onClick={handleOpenRightPanelFromHeaderBlock}
+                className={TITLE_ACTION_BUTTON_CLASS}
+                aria-label={infoLabel}
+              />
+            )}
+          </div>
         ) : (
-          <button
-            type="button"
-            onClick={handleOpenRightPanelFromHeaderBlock}
-            className="flex min-w-0 flex-1 flex-col rounded-lg text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
-            aria-label={infoLabel}
-          >
+          <div className="relative flex min-w-0 flex-1 flex-col rounded-lg text-left">
             <h1 className="truncate text-sm text-text-primary">
               {!hideTopic && topic ? (
                 <>
@@ -138,7 +144,15 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
                 {t("channel.online", { count: onlineCount })}
               </p>
             )}
-          </button>
+            {canOpenRightPanelFromHeader && (
+              <button
+                type="button"
+                onClick={handleOpenRightPanelFromHeaderBlock}
+                className={TITLE_ACTION_BUTTON_CLASS}
+                aria-label={infoLabel}
+              />
+            )}
+          </div>
         )}
       </div>
       <div className="flex items-center gap-1">
@@ -152,22 +166,26 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
             <Icon name="phone" size={20} className="text-current" />
           </button>
         )}
-        <button
-          type="button"
-          onClick={onOpenSearch}
-          className="hover:bg-bg/50 rounded-lg p-2 text-text-muted hover:text-text-primary"
-          aria-label={t("search.search")}
-        >
-          <Icon name="search" size={20} className="text-current" />
-        </button>
-        <button
-          type="button"
-          onClick={onToggleRightPanel}
-          className="hover:bg-bg/50 rounded-lg p-2 text-text-muted hover:text-text-primary"
-          aria-label={rightPanelOpen ? t("a11y.hidePanel") : infoLabel}
-        >
-          <Icon name="moreVert" size={20} className="text-current" />
-        </button>
+        {onOpenSearch != null && (
+          <button
+            type="button"
+            onClick={onOpenSearch}
+            className="hover:bg-bg/50 rounded-lg p-2 text-text-muted hover:text-text-primary"
+            aria-label={t("search.search")}
+          >
+            <Icon name="search" size={20} className="text-current" />
+          </button>
+        )}
+        {onToggleRightPanel != null && (
+          <button
+            type="button"
+            onClick={onToggleRightPanel}
+            className="hover:bg-bg/50 rounded-lg p-2 text-text-muted hover:text-text-primary"
+            aria-label={rightPanelOpen ? t("a11y.hidePanel") : infoLabel}
+          >
+            <Icon name="moreVert" size={20} className="text-current" />
+          </button>
+        )}
       </div>
     </header>
   );

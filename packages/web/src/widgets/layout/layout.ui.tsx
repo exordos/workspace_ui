@@ -131,6 +131,7 @@ export const Layout: React.FC = () => {
   const closeRightDrawer = useRightDrawerStore((s) => s.close);
   const rightDrawerMode = useRightDrawerStore((s) => s.mode);
   const rightDrawerUserIdOverride = useRightDrawerStore((s) => s.userIdOverride);
+  const openRightDrawerInfo = useRightDrawerStore((s) => s.openInfo);
   const openRightDrawerUserProfile = useRightDrawerStore((s) => s.openUserProfile);
   const openRightDrawerSettings = useRightDrawerStore((s) => s.openSettings);
   const openRightDrawerAbout = useRightDrawerStore((s) => s.openAbout);
@@ -304,6 +305,7 @@ export const Layout: React.FC = () => {
         online={online}
         rightDrawerOpen={rightDrawerOpen}
         setRightDrawerOpen={setRightDrawerOpen}
+        openRightDrawerInfo={openRightDrawerInfo}
         openRightDrawerUserProfile={openRightDrawerUserProfile}
         shouldShowChatShell={shouldShowChatShell}
         sidebarOpen={sidebarOpen}

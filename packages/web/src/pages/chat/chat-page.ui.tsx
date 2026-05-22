@@ -1614,7 +1614,12 @@ export const ChatPage: React.FC = () => {
   }, [rightDrawer]);
 
   const handleOpenRightPanel = useCallback(() => {
-    rightDrawer?.setOpen(true);
+    // Клик по шапке должен возвращать к инфо текущего чата и сбрасывать
+    // вложенный профиль пользователя, если он был открыт поверх.
+    rightDrawer?.openInfo?.();
+    if (rightDrawer?.openInfo == null) {
+      rightDrawer?.setOpen(true);
+    }
   }, [rightDrawer]);
 
   const handleOpenDmPartnerProfile = useCallback(() => {

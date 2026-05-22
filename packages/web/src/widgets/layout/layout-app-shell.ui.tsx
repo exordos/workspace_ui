@@ -16,6 +16,7 @@ export interface LayoutAppShellProps {
   online: boolean;
   rightDrawerOpen: boolean;
   setRightDrawerOpen: (open: boolean) => void;
+  openRightDrawerInfo: () => void;
   openRightDrawerUserProfile: (userId: number) => void;
   shouldShowChatShell: boolean;
   sidebarOpen: boolean;
@@ -35,6 +36,7 @@ export const LayoutAppShell = React.memo<LayoutAppShellProps>(function LayoutApp
   online,
   rightDrawerOpen,
   setRightDrawerOpen,
+  openRightDrawerInfo,
   openRightDrawerUserProfile,
   shouldShowChatShell,
   sidebarOpen,
@@ -56,6 +58,7 @@ export const LayoutAppShell = React.memo<LayoutAppShellProps>(function LayoutApp
         value={{
           open: rightDrawerOpen,
           setOpen: setRightDrawerOpen,
+          openInfo: openRightDrawerInfo,
           openUserProfile: openRightDrawerUserProfile,
         }}
       >
