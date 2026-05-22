@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useThemeStore } from "~/entities/theme/theme.model";
+import { AUTH_IDLE_TIMEOUT_PRESETS } from "~/features/settings/auth-idle-timeout.lib";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import type { AuthIdleTimeout, NotificationSound } from "~/features/settings/settings.types";
 import {
@@ -49,7 +50,6 @@ const MODE_LABEL_KEYS: Record<(typeof THEME_MODES)[number], string> = {
   dark: "settings.themeDark",
   system: "settings.themeSystem",
 };
-const AUTH_IDLE_TIMEOUTS: AuthIdleTimeout[] = ["6h", "12h", "24h", "3d", "7d", "never"];
 const AUTH_IDLE_TIMEOUT_LABEL_KEYS: Record<AuthIdleTimeout, string> = {
   "6h": "settings.authIdleTimeout6h",
   "12h": "settings.authIdleTimeout12h",
@@ -463,7 +463,7 @@ export const ProfileDrawer: React.FC<ProfileDrawerProps> = ({
                   )}
                   {item.action === "authIdleTimeout" && (
                     <div className="grid grid-cols-2 gap-2 px-3 py-2">
-                      {AUTH_IDLE_TIMEOUTS.map((timeout) => (
+                      {AUTH_IDLE_TIMEOUT_PRESETS.map((timeout) => (
                         <button
                           key={timeout}
                           type="button"

@@ -13,6 +13,7 @@ import {
   normalizeStatusEmojiName,
 } from "~/entities/user/user-status.lib";
 import { useUsersStore } from "~/entities/user/user.model";
+import { AUTH_IDLE_TIMEOUT_PRESETS } from "~/features/settings/auth-idle-timeout.lib";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import type { AuthIdleTimeout, NotificationSound } from "~/features/settings/settings.types";
 import {
@@ -39,7 +40,6 @@ import {
 import {
   APP_VERSION,
   AUTH_IDLE_TIMEOUT_LABEL_KEYS,
-  AUTH_IDLE_TIMEOUTS,
   CHAT_LIST_DENSITIES,
   CHAT_LIST_DENSITY_LABEL_KEYS,
   FOLDER_LAYOUTS,
@@ -507,7 +507,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
               />
               {authIdleTimeoutOpen && (
                 <div className="mx-2 mb-2 divide-y divide-border-subtle overflow-hidden rounded-md border border-border-subtle bg-bg-elevated">
-                  {AUTH_IDLE_TIMEOUTS.map((timeout) => (
+                  {AUTH_IDLE_TIMEOUT_PRESETS.map((timeout) => (
                     <RightPanelUserMenuOptionButton
                       key={timeout}
                       label={t(AUTH_IDLE_TIMEOUT_LABEL_KEYS[timeout])}

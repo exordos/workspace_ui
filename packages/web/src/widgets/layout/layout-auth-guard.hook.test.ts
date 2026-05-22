@@ -1,7 +1,8 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { authIdleTimeoutToMs } from "~/features/settings/auth-idle-timeout.lib";
 import { useSettingsStore } from "~/features/settings/settings.model";
-import { authIdleTimeoutToMs, useLayoutAuthGuard } from "./layout-auth-guard.hook";
+import { useLayoutAuthGuard } from "./layout-auth-guard.hook";
 
 const initAuthGuardMock = vi.hoisted(() => vi.fn());
 const unregisterMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));

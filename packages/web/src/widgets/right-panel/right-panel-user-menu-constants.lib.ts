@@ -48,8 +48,6 @@ export const CHAT_LIST_DENSITY_LABEL_KEYS: Record<ChatListDensity, string> = {
   compact: "settings.chatListDensityCompact",
 };
 
-export const AUTH_IDLE_TIMEOUTS: AuthIdleTimeout[] = ["6h", "12h", "24h", "3d", "7d", "never"];
-
 export const AUTH_IDLE_TIMEOUT_LABEL_KEYS: Record<AuthIdleTimeout, string> = {
   "6h": "settings.authIdleTimeout6h",
   "12h": "settings.authIdleTimeout12h",

@@ -1,4 +1,5 @@
 import React from "react";
+import { AUTH_IDLE_TIMEOUT_PRESETS } from "~/features/settings/auth-idle-timeout.lib";
 import type { AuthIdleTimeout, FolderRailLayout } from "~/features/settings/settings.types";
 import { selectMode, selectPalette } from "~/features/theme-picker/theme-picker.model";
 import type { AvailablePalette } from "~/features/theme-picker/theme-picker.types";
@@ -6,7 +7,6 @@ import { useTranslation } from "~/i18n/i18n";
 import type { ThemeMode } from "~/shared/lib/themes/tokens";
 import {
   AUTH_IDLE_TIMEOUT_LABEL_KEYS,
-  AUTH_IDLE_TIMEOUTS,
   FOLDER_LAYOUT_LABEL_KEYS,
   FOLDER_LAYOUTS,
   THEME_MODE_LABEL_KEYS,
@@ -144,7 +144,7 @@ export const RightPanelAuthIdleTimeoutPanel = React.memo(function RightPanelAuth
   const { t } = useTranslation();
   return (
     <div className="grid grid-cols-2 gap-2 rounded-xl border border-border-subtle bg-card-bg p-4">
-      {AUTH_IDLE_TIMEOUTS.map((timeout) => (
+      {AUTH_IDLE_TIMEOUT_PRESETS.map((timeout) => (
         <button
           key={timeout}
           type="button"

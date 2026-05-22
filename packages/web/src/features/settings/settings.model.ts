@@ -10,6 +10,7 @@ import { useInstancesStore } from "~/entities/instance/instance.model";
 import { setLocale } from "~/i18n/i18n";
 import { logStoreAction } from "~/shared/lib/logger";
 import { buildOrgScopedStorageKey } from "~/shared/lib/org-scoped-storage";
+import { resolveAuthIdleTimeout } from "./auth-idle-timeout.lib";
 import type {
   AppLanguage,
   AppSettings,
@@ -150,20 +151,6 @@ function resolveChatListDensity(value: unknown): ChatListDensity {
   return value === "compact" ? "compact" : FALLBACK_SETTINGS.chatListDensity;
 }
 
-function resolveAuthIdleTimeout(value: unknown): AuthIdleTimeout {
-  if (
-    value === "6h" ||
-    value === "12h" ||
-    value === "24h" ||
-    value === "3d" ||
-    value === "7d" ||
-    value === "never"
-  ) {
-    return value;
-  }
-  return FALLBACK_SETTINGS.authIdleTimeout;
-}
-
 function loadSettings(organizationId: string | null = getActiveOrganizationId()): AppSettings {
   if (typeof window === "undefined") return createDefaultSettings();
   try {
@@ -189,7 +176,10 @@ function loadSettings(organizationId: string | null = getActiveOrganizationId())
       folderRailLayout: resolveFolderRailLayout(parsed.folderRailLayout),
       showSystemFolders: resolveShowSystemFolders(parsed.showSystemFolders),
       chatListDensity: resolveChatListDensity(parsed.chatListDensity),
-      authIdleTimeout: resolveAuthIdleTimeout(parsed.authIdleTimeout),
+      authIdleTimeout: resolveAuthIdleTimeout(
+        parsed.authIdleTimeout,
+        FALLBACK_SETTINGS.authIdleTimeout,
+      ),
     };
   } catch {
     return createDefaultSettings();
