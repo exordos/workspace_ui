@@ -209,6 +209,9 @@ export const VerticalFolderItem: React.FC<FolderItemProps> = React.memo(
     });
     const visualState = getFolderItemVisualState({ folder, index, isSelected, isHovered });
     const verticalToneClass = isSelected ? "text-text-primary" : "text-text-muted";
+    const verticalLabelToneClass = visualState.labelUsesCustomColor
+      ? "text-current"
+      : verticalToneClass;
     const verticalScaleClass = isSelected ? "scale-110" : "scale-100";
 
     return (
@@ -229,10 +232,14 @@ export const VerticalFolderItem: React.FC<FolderItemProps> = React.memo(
                 onKeyDown={handleKeyboardContextMenu}
                 onMouseEnter={() => setIsHovered(true)}
                 onMouseLeave={() => setIsHovered(false)}
-                className={`absolute left-1/2 top-[10px] flex h-8 w-8 -translate-x-1/2 items-center justify-center rounded-lg transition-colors ${verticalToneClass}`}
+                className={`absolute left-1/2 top-[10px] flex h-8 w-8 -translate-x-1/2 items-center justify-center rounded-lg border border-transparent transition-colors ${verticalToneClass}`}
                 title={folder.label}
+                style={visualState.folderSurfaceStyle}
               >
-                <span className="inline-flex shrink-0">
+                <span
+                  className={`inline-flex shrink-0 ${visualState.iconTextColor}`}
+                  style={visualState.iconColorStyle}
+                >
                   <Icon name={visualState.iconName} size={32} className="shrink-0" />
                 </span>
               </button>
@@ -242,10 +249,11 @@ export const VerticalFolderItem: React.FC<FolderItemProps> = React.memo(
                 </span>
               )}
               <span
-                className={`absolute left-1/2 top-[42px] w-[52px] -translate-x-1/2 cursor-pointer truncate text-center text-xs leading-4 transition-colors ${verticalToneClass}`}
+                className={`absolute left-1/2 top-[42px] w-[52px] -translate-x-1/2 cursor-pointer truncate text-center text-xs leading-4 transition-colors ${verticalLabelToneClass}`}
                 title={folder.label}
                 role="button"
                 tabIndex={0}
+                style={visualState.labelColorStyle}
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={handleSelect}
                 onContextMenu={handleContextMenu}

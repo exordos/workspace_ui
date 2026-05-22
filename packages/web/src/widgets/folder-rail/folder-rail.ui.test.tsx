@@ -1,7 +1,10 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { folderColorValueToCssHex } from "~/features/manage-folders/folder-colors";
+import {
+  folderColorValueToCssHex,
+  folderColorValueToCssRgba,
+} from "~/features/manage-folders/folder-colors";
 import * as manageFolders from "~/features/manage-folders/manage-folders.api";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { applyTheme } from "~/shared/lib/themes/engine";
@@ -153,12 +156,14 @@ describe("FolderRail visual parity", () => {
     expect(allButton).toHaveClass("text-accent");
   });
 
-  it("renders vertical passive custom folder with muted token styling and stable slot size", () => {
+  it("renders vertical passive custom folder with colored icon and stable slot size", () => {
+    const customColor = 0x3a92ff;
+
     render(
       <FolderRail
         folders={[
           { id: "all", label: "All", backgroundColor: 0xff8438 },
-          { id: "custom", label: "Team", backgroundColor: 0x3a92ff },
+          { id: "custom", label: "Team", backgroundColor: customColor },
         ]}
         selectedFolderId="all"
         onSelectFolder={vi.fn()}
@@ -182,16 +187,20 @@ describe("FolderRail visual parity", () => {
     expect(customLabel).toHaveClass("text-text-muted");
     expect(customLabel).toHaveClass("text-xs");
     expect(customLabel).toHaveClass("leading-4");
+    const customIconWrapper = customButton?.querySelector("svg")?.parentElement;
+    expect(customIconWrapper).toHaveStyle({ color: folderColorValueToCssHex(customColor) });
     expect(customButton?.getAttribute("style")).toBeNull();
     expect(customLabel?.getAttribute("style")).toBeNull();
   });
 
-  it("renders vertical active custom folder with contrast styling and scale highlight", () => {
+  it("renders vertical active custom folder with folder color styling and scale highlight", () => {
+    const customColor = 0x3a92ff;
+
     render(
       <FolderRail
         folders={[
           { id: "all", label: "All", backgroundColor: 0xff8438 },
-          { id: "custom", label: "Team", backgroundColor: 0x3a92ff },
+          { id: "custom", label: "Team", backgroundColor: customColor },
         ]}
         selectedFolderId="custom"
         onSelectFolder={vi.fn()}
@@ -212,7 +221,44 @@ describe("FolderRail visual parity", () => {
     expect(visualWrapper).toHaveClass("scale-110");
     expect(visualWrapper).not.toHaveClass("scale-100");
     expect(customButton).toHaveClass("text-text-primary");
-    expect(customLabel).toHaveClass("text-text-primary");
+    expect(customButton).toHaveStyle({
+      backgroundColor: folderColorValueToCssRgba(customColor, 0.2),
+      borderColor: folderColorValueToCssRgba(customColor, 0.4),
+    });
+    const customIconWrapper = customButton?.querySelector("svg")?.parentElement;
+    expect(customIconWrapper).toHaveStyle({ color: folderColorValueToCssHex(customColor) });
+    expect(customLabel).toHaveClass("text-current");
+    expect(customLabel).toHaveStyle({ color: folderColorValueToCssHex(customColor) });
+  });
+
+  it("applies vertical custom folder label color and surface on hover", () => {
+    const customColor = 0x3a92ff;
+
+    render(
+      <FolderRail
+        folders={[
+          { id: "all", label: "All", backgroundColor: 0xff8438 },
+          { id: "custom", label: "Team", backgroundColor: customColor },
+        ]}
+        selectedFolderId="all"
+        onSelectFolder={vi.fn()}
+      />,
+    );
+
+    const customNodes = screen.getAllByTitle("Team");
+    const customButton = customNodes.find((node) => node.tagName === "BUTTON");
+    const customLabel = customNodes.find((node) => node.tagName === "SPAN");
+    expect(customButton).toBeDefined();
+    expect(customLabel).toBeDefined();
+
+    fireEvent.mouseEnter(customButton!);
+
+    expect(customButton).toHaveStyle({
+      backgroundColor: folderColorValueToCssRgba(customColor, 0.1),
+      borderColor: folderColorValueToCssRgba(customColor, 0.22),
+    });
+    expect(customLabel).toHaveClass("text-current");
+    expect(customLabel).toHaveStyle({ color: folderColorValueToCssHex(customColor) });
   });
 
   it("uses primary text token for active system folder in vertical view", () => {
@@ -232,6 +278,10 @@ describe("FolderRail visual parity", () => {
     const allLabel = allNodes.find((node) => node.tagName === "SPAN");
     expect(allButton).toHaveClass("text-text-primary");
     expect(allLabel).toHaveClass("text-text-primary");
+    const allIconWrapper = allButton?.querySelector("svg")?.parentElement;
+    expect(allButton?.getAttribute("style")).toBeNull();
+    expect(allIconWrapper?.getAttribute("style")).toBeNull();
+    expect(allLabel?.getAttribute("style")).toBeNull();
   });
 
   it("uses primary text token for selected all-folder in horizontal layout", () => {
@@ -254,7 +304,8 @@ describe("FolderRail visual parity", () => {
     expect(allIconWrapper).toHaveClass("text-text-primary");
   });
 
-  it("keeps vertical token classes stable for blue-cold and emerald-chat in light/dark modes", () => {
+  it("keeps vertical custom folder colors stable for blue-cold and emerald-chat in light/dark modes", () => {
+    const customColor = 0x3a92ff;
     const themeScenarios = [
       { paletteId: "blue-cold", mode: "light" as const },
       { paletteId: "blue-cold", mode: "dark" as const },
@@ -268,7 +319,7 @@ describe("FolderRail visual parity", () => {
         <FolderRail
           folders={[
             { id: "all", label: "All", backgroundColor: 0xff8438, systemType: "all" },
-            { id: "custom", label: "Team", backgroundColor: 0x3a92ff, systemType: "created" },
+            { id: "custom", label: "Team", backgroundColor: customColor, systemType: "created" },
           ]}
           selectedFolderId="custom"
           onSelectFolder={vi.fn()}
@@ -279,9 +330,12 @@ describe("FolderRail visual parity", () => {
       const customButton = customNodes.find((node) => node.tagName === "BUTTON");
       const customLabel = customNodes.find((node) => node.tagName === "SPAN");
       expect(customButton).toHaveClass("text-text-primary");
-      expect(customLabel).toHaveClass("text-text-primary");
-      expect(customButton?.getAttribute("style")).toBeNull();
-      expect(customLabel?.getAttribute("style")).toBeNull();
+      expect(customButton).toHaveStyle({
+        backgroundColor: folderColorValueToCssRgba(customColor, 0.2),
+        borderColor: folderColorValueToCssRgba(customColor, 0.4),
+      });
+      expect(customLabel).toHaveClass("text-current");
+      expect(customLabel).toHaveStyle({ color: folderColorValueToCssHex(customColor) });
 
       view.unmount();
     }
