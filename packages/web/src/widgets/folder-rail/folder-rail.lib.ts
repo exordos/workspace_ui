@@ -5,8 +5,6 @@ import {
 import type { FolderRailFolder } from "./folder-rail.types";
 import type { CSSProperties, KeyboardEvent } from "react";
 
-/** Порог количества папок, после которого в vertical-режиме показывается quick-list. */
-export const FOLDER_QUICK_LIST_THRESHOLD = 10;
 /** Глобальный shortcut открытия quick-list папок. */
 export const FOLDER_QUICK_LIST_SHORTCUT = "mod+shift+f";
 

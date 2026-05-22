@@ -46,7 +46,7 @@ export const SidebarShell: React.FC = () => {
   if (folderRailLayout === "vertical") {
     return (
       <>
-        <div className="flex-shrink-0">
+        <div className="flex min-h-0 flex-shrink-0 self-stretch">
           <FolderRail
             folders={folders}
             selectedFolderId={selectedFolderId}

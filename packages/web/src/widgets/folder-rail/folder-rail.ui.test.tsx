@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { folderColorValueToCssHex } from "~/features/manage-folders/folder-colors";
 import * as manageFolders from "~/features/manage-folders/manage-folders.api";
 import { useSettingsStore } from "~/features/settings/settings.model";
@@ -8,8 +8,88 @@ import { applyTheme } from "~/shared/lib/themes/engine";
 import { FolderRail } from "./folder-rail.ui";
 
 describe("FolderRail visual parity", () => {
+  const originalIntersectionObserver = globalThis.IntersectionObserver;
+  let latestFolderRailIntersectionCallback:
+    | ((entries: IntersectionObserverEntry[], observer: IntersectionObserver) => void)
+    | null = null;
+  let latestFolderRailIntersectionRoot: Element | Document | null = null;
+  let latestFolderRailIntersectionTarget: Element | null = null;
+
+  class FolderRailIntersectionObserverMock implements IntersectionObserver {
+    readonly root: Element | Document | null;
+    readonly rootMargin: string;
+    readonly thresholds: readonly number[];
+    disconnect = vi.fn();
+    observe = vi.fn((target: Element) => {
+      latestFolderRailIntersectionTarget = target;
+    });
+    takeRecords = vi.fn((): IntersectionObserverEntry[] => []);
+    unobserve = vi.fn();
+
+    constructor(
+      callback: (entries: IntersectionObserverEntry[], observer: IntersectionObserver) => void,
+      options?: IntersectionObserverInit,
+    ) {
+      this.root = options?.root ?? null;
+      this.rootMargin = options?.rootMargin ?? "0px";
+      this.thresholds = Array.isArray(options?.threshold)
+        ? options.threshold
+        : [options?.threshold ?? 0];
+      latestFolderRailIntersectionCallback = callback;
+      latestFolderRailIntersectionRoot = this.root;
+    }
+  }
+
+  async function emitFolderRailIntersection({
+    isIntersecting,
+    intersectionRatio,
+    scrollHeight,
+    clientHeight,
+  }: {
+    isIntersecting: boolean;
+    intersectionRatio: number;
+    scrollHeight: number;
+    clientHeight: number;
+  }) {
+    await waitFor(() => {
+      expect(latestFolderRailIntersectionCallback).not.toBeNull();
+    });
+
+    if (latestFolderRailIntersectionRoot instanceof HTMLElement) {
+      Object.defineProperty(latestFolderRailIntersectionRoot, "scrollHeight", {
+        configurable: true,
+        value: scrollHeight,
+      });
+      Object.defineProperty(latestFolderRailIntersectionRoot, "clientHeight", {
+        configurable: true,
+        value: clientHeight,
+      });
+    }
+
+    act(() => {
+      latestFolderRailIntersectionCallback!(
+        [
+          {
+            target: latestFolderRailIntersectionTarget ?? document.createElement("div"),
+            isIntersecting,
+            intersectionRatio,
+          } as IntersectionObserverEntry,
+        ],
+        {} as IntersectionObserver,
+      );
+    });
+  }
+
+  beforeEach(() => {
+    latestFolderRailIntersectionCallback = null;
+    latestFolderRailIntersectionRoot = null;
+    latestFolderRailIntersectionTarget = null;
+    globalThis.IntersectionObserver = FolderRailIntersectionObserverMock;
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
+    globalThis.IntersectionObserver = originalIntersectionObserver;
     useSettingsStore.getState().resetToDefaults();
   });
 
@@ -331,6 +411,9 @@ describe("FolderRail visual parity", () => {
 
     const verticalRoot = screen.getByTestId("folder-rail-vertical");
     expect(verticalRoot).toHaveAttribute("data-folder-rail-view", "vertical");
+    expect(verticalRoot).toHaveClass("h-full");
+    expect(verticalRoot).toHaveClass("min-h-0");
+    expect(verticalRoot).toHaveClass("overflow-hidden");
 
     const teamButton = screen
       .getAllByRole("button", { name: "Team" })
@@ -512,7 +595,89 @@ describe("FolderRail visual parity", () => {
     expect(screen.getByText("Create folder")).toBeInTheDocument();
   });
 
-  it("keeps all fixed, places add in scroll flow, and supports quick folder search for many folders", async () => {
+  it("keeps vertical quick-list hidden and disables scroll mode when folders fit", async () => {
+    render(
+      <FolderRail
+        folders={[
+          { id: "all", label: "All", backgroundColor: 0xff8438, systemType: "all" as const },
+          { id: "custom", label: "Team", backgroundColor: 0x3a92ff },
+        ]}
+        selectedFolderId="all"
+        onSelectFolder={vi.fn()}
+      />,
+    );
+
+    await emitFolderRailIntersection({
+      isIntersecting: true,
+      intersectionRatio: 1,
+      scrollHeight: 100,
+      clientHeight: 100,
+    });
+
+    const scrollList = screen.getByTestId("folder-rail-scroll-list");
+    expect(scrollList).toHaveClass("overflow-y-hidden");
+    expect(scrollList).not.toHaveClass("overflow-y-auto");
+    expect(screen.queryByRole("button", { name: "Open folder list" })).not.toBeInTheDocument();
+  });
+
+  it("shows vertical quick-list and enables scroll mode when folders overflow", async () => {
+    render(
+      <FolderRail
+        folders={[
+          { id: "all", label: "All", backgroundColor: 0xff8438, systemType: "all" as const },
+          ...Array.from({ length: 14 }, (_, idx) => ({
+            id: `folder-${idx + 1}`,
+            label: `Team ${idx + 1}`,
+            backgroundColor: 0x3a92ff,
+          })),
+        ]}
+        selectedFolderId="all"
+        onSelectFolder={vi.fn()}
+      />,
+    );
+
+    await emitFolderRailIntersection({
+      isIntersecting: false,
+      intersectionRatio: 0,
+      scrollHeight: 240,
+      clientHeight: 120,
+    });
+
+    const scrollList = screen.getByTestId("folder-rail-scroll-list");
+    expect(scrollList).toHaveClass("overflow-y-auto");
+    expect(scrollList).not.toHaveClass("overflow-y-hidden");
+    expect(screen.getByRole("button", { name: "Open folder list" })).toBeInTheDocument();
+  });
+
+  it("keeps vertical scroll mode when sentinel is visible after scrolling to the bottom", async () => {
+    render(
+      <FolderRail
+        folders={[
+          { id: "all", label: "All", backgroundColor: 0xff8438, systemType: "all" as const },
+          ...Array.from({ length: 14 }, (_, idx) => ({
+            id: `folder-${idx + 1}`,
+            label: `Team ${idx + 1}`,
+            backgroundColor: 0x3a92ff,
+          })),
+        ]}
+        selectedFolderId="all"
+        onSelectFolder={vi.fn()}
+      />,
+    );
+
+    await emitFolderRailIntersection({
+      isIntersecting: true,
+      intersectionRatio: 1,
+      scrollHeight: 240,
+      clientHeight: 120,
+    });
+
+    const scrollList = screen.getByTestId("folder-rail-scroll-list");
+    expect(scrollList).toHaveClass("overflow-y-auto");
+    expect(screen.getByRole("button", { name: "Open folder list" })).toBeInTheDocument();
+  });
+
+  it("keeps all fixed, places add in scroll flow, and supports quick folder search for overflowing folders", async () => {
     const user = userEvent.setup();
     const onSelectFolder = vi.fn();
     const manyFolders = [
@@ -544,6 +709,13 @@ describe("FolderRail visual parity", () => {
     const scrollListButtons = within(scrollList).getAllByRole("button");
     expect(scrollListButtons.at(-1)).toBe(addFolderButton);
 
+    await emitFolderRailIntersection({
+      isIntersecting: false,
+      intersectionRatio: 0,
+      scrollHeight: 240,
+      clientHeight: 120,
+    });
+
     const quickListButton = screen.getByRole("button", { name: "Open folder list" });
     await user.click(quickListButton);
 
@@ -573,6 +745,13 @@ describe("FolderRail visual parity", () => {
     render(
       <FolderRail folders={manyFolders} selectedFolderId="all" onSelectFolder={onSelectFolder} />,
     );
+
+    await emitFolderRailIntersection({
+      isIntersecting: false,
+      intersectionRatio: 0,
+      scrollHeight: 240,
+      clientHeight: 120,
+    });
 
     fireEvent.keyDown(window, { key: "f", ctrlKey: true, shiftKey: true });
 
