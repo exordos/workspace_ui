@@ -26,6 +26,13 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
       rightDrawerMode === "user-menu" ||
       rightDrawerMode === "about" ||
       shouldShowChatShell);
+  const stickRightPanelToChatContent = shouldShowChatShell && showRightPanel;
+  const mainClassName = [
+    "flex min-h-0 min-w-0 flex-1 items-stretch justify-start overflow-hidden",
+    stickRightPanelToChatContent ? "max-w-narrow-page" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <div className="flex min-h-0 flex-1 items-stretch justify-center">
@@ -36,7 +43,7 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
           </>
         )}
         <main
-          className="flex min-h-0 min-w-0 flex-1 items-stretch justify-start overflow-hidden"
+          className={mainClassName}
           data-focus-zone="main"
           role="main"
           aria-label={t("nav.messenger")}
