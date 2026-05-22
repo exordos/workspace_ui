@@ -39,26 +39,13 @@ export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle
   const { pathname } = useLocation();
   const { scopedPathname } = extractOrgRouteFromPathname(pathname);
   const currentUserId = useChatListStore((s) => s.currentUserId);
-  const lastAppliedMessages = useChatListStore((s) => s.lastAppliedMessages);
-  const inboxCount = useChatListStore((s) => {
-    const streamsUnread = s.streams().reduce((sum, stream) => sum + (stream.badge ?? 0), 0);
-    const dmsUnread = s.dms().reduce((sum, dm) => sum + (dm.badge ?? 0), 0);
-    return streamsUnread + dmsUnread;
-  });
+  const inboxCount = useChatListStore((s) => s.sidebarStreamsUnread + s.sidebarDmsUnread);
+  const mentionsCount = useChatListStore((s) => s.mentionsUnreadCount);
   const activityListId = "sidebar-activity-list";
-  const draftsCount = useDraftStore(
-    (s) => s.drafts.filter((draft) => draft.content.trim().length > 0).length,
-  );
+  const draftsCount = useDraftStore((s) => s.nonEmptyDraftCount);
   const isCompactDensity = useSettingsStore((s) => s.chatListDensity === "compact");
   const favoritesCount = useActivityStore((s) => s.starredSummary.count);
   const favoritesError = useActivityStore((s) => s.starredSummary.error);
-  const mentionsCount =
-    lastAppliedMessages?.filter(
-      (message) =>
-        (currentUserId == null || message.sender_id !== currentUserId) &&
-        message.flags?.includes("mentioned") &&
-        !message.flags.includes("read"),
-    ).length ?? 0;
   const isPrivateNotesActive = currentUserId != null && scopedPathname === `/dm/${currentUserId}`;
   const expandedListClass = isCompactDensity ? "mt-2 space-y-1" : "mt-2 space-y-1.5";
   const expandedRowClass = isCompactDensity ? expandedRowCompactClass : expandedRowBaseClass;

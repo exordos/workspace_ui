@@ -51,6 +51,10 @@ import { getPresenceState, formatLastSeen } from "~/shared/lib/format";
 import { buildJitsiMeetingUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
 import { createLogger } from "~/shared/lib/logger";
 import { logMessageFlow, summarizeChatContextForLog } from "~/shared/lib/message-flow-debug.lib";
+import {
+  createMessageIdSet,
+  messageIdsMissingFromBothLists,
+} from "~/shared/lib/message-id-index.lib";
 import { isLikelyRenderedMessageHtml } from "~/shared/lib/message-markdown-display.lib";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { useShortcut } from "~/shared/lib/shortcuts";
@@ -175,6 +179,11 @@ export const ChatPage: React.FC = () => {
 
   const chatContextForMessages = useCurrentChatMessagesStore((s) => s.context);
   const messages = useCurrentChatMessagesStore((s) => s.messages);
+  const latestMessagesRef = useRef<MockMessage[]>([]);
+  // Держим свежие messages без пересоздания mark-as-read batcher при каждом refresh.
+  useEffect(() => {
+    latestMessagesRef.current = messages;
+  }, [messages]);
   const isFocusedMessageLoadedInCurrentRoute = useMemo(() => {
     return isFocusedMessageLoadedInRoute({
       focusedMessageId,
@@ -499,15 +508,16 @@ export const ChatPage: React.FC = () => {
       if (messageIds.length === 0) return;
 
       const storeMessages = useCurrentChatMessagesStore.getState().messages;
-      const effectiveMessages = messages;
+      const effectiveMessages = latestMessagesRef.current;
       const unreadMessageIds = filterMessageIdsStillUnreadForOptimisticApply(messageIds, {
         storeMessages,
         effectiveMessages,
       });
       if (unreadMessageIds.length === 0) {
-        const missingFromBothLists = messageIds.filter(
-          (id) =>
-            !storeMessages.some((m) => m.id === id) && !effectiveMessages.some((m) => m.id === id),
+        const missingFromBothLists = messageIdsMissingFromBothLists(
+          messageIds,
+          createMessageIdSet(storeMessages),
+          createMessageIdSet(effectiveMessages),
         );
         if (missingFromBothLists.length > 0) {
           log.warn("markAsRead optimistic: ids missing from store and effective message lists", {
@@ -541,7 +551,7 @@ export const ChatPage: React.FC = () => {
         chatListState.decrementUnreadForDmKey(context.dmKey, missingIdsCount);
       }
     },
-    [messages, updateMessageFlagsInStore],
+    [updateMessageFlagsInStore],
   );
 
   const handleUnreadMessagesVisible = useCallback(
@@ -574,6 +584,12 @@ export const ChatPage: React.FC = () => {
       markAsRead: markMessagesAsRead,
       onMarked: (messageIds) => {
         applyReadMessagesOptimistically(messageIds, batchFallbackContext);
+      },
+      onError: (error, messageIds) => {
+        log.warn("markAsRead failed", {
+          requestedCount: messageIds.length,
+          error: error instanceof Error ? error.message : String(error),
+        });
       },
     });
     markAsReadBatcherRef.current = batcher;

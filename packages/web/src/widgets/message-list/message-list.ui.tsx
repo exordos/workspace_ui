@@ -7,6 +7,10 @@ import { createLogger } from "~/shared/lib/logger";
 import { normalizeStreamTopicForMessageCache } from "~/shared/lib/message-cache-keys.lib";
 import { containsEmojiShortcode } from "~/shared/lib/message-emoji-shortcodes.lib";
 import { logMessageFlow } from "~/shared/lib/message-flow-debug.lib";
+import {
+  buildMessageIdMap,
+  filterViewportUnreadIdsForReadDispatch,
+} from "~/shared/lib/message-id-index.lib";
 import { isLikelyRenderedMessageHtml } from "~/shared/lib/message-markdown-display.lib";
 import { computeReadTailReady } from "~/shared/lib/read-receipts-policy.lib";
 import { ensureRealmEmojisLoaded, getCachedRealmEmojis } from "~/shared/lib/realm-emojis-cache";
@@ -107,6 +111,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   const unreadScrollKeyRef = useRef<string | null>(null);
   const bottomReadDispatchKeyRef = useRef<string | null>(null);
   const intersectionObserverRef = useRef<IntersectionObserver | null>(null);
+  const observedUnreadNodesRef = useRef<Map<number, HTMLElement>>(new Map());
   const viewportUnreadIdsRef = useRef<Set<number>>(new Set());
   const unreadCandidatesRef = useRef<Set<number>>(new Set());
   const focusedHighlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -170,6 +175,8 @@ export const MessageList: React.FC<MessageListProps> = ({
       ),
     [messages],
   );
+
+  const messageById = useMemo(() => buildMessageIdMap(messages), [messages]);
 
   useEffect(() => {
     if (!hasMarkdownEmojiShortcodes && !hasRealmEmojiReactions) {
@@ -286,14 +293,11 @@ export const MessageList: React.FC<MessageListProps> = ({
       loadingNewer: isLoadingNewer,
     });
 
-    const ids = [...viewportUnreadIdsRef.current].filter((id) => {
-      const msg = messages.find((m) => m.id === id);
-      return (
-        msg != null &&
-        !msg.flags?.includes("read") &&
-        (currentUserId == null || msg.sender_id !== currentUserId)
-      );
-    });
+    const ids = filterViewportUnreadIdsForReadDispatch(
+      viewportUnreadIdsRef.current,
+      messageById,
+      currentUserId ?? null,
+    );
     if (ids.length === 0) return;
 
     const sorted = [...ids].sort((a, b) => a - b);
@@ -308,7 +312,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   }, [
     onUnreadMessagesVisible,
     onUnreadMessagesAtBottom,
-    messages,
+    messageById,
     currentUserId,
     scrollToBottomKey,
     hasNewerMessages,
@@ -460,10 +464,27 @@ export const MessageList: React.FC<MessageListProps> = ({
     );
     intersectionObserverRef.current = observer;
 
-    const nodes = root.querySelectorAll<HTMLElement>("[data-message-id]");
-    for (const node of nodes) {
-      observer.observe(node);
+    const candidates = unreadCandidatesRef.current;
+    const prevObserved = observedUnreadNodesRef.current;
+    const nextObserved = new Map<number, HTMLElement>();
+    for (const node of root.querySelectorAll<HTMLElement>("[data-message-id]")) {
+      const rawId = node.getAttribute("data-message-id");
+      if (!rawId) continue;
+      const messageId = Number(rawId);
+      if (!Number.isInteger(messageId) || !candidates.has(messageId)) continue;
+      nextObserved.set(messageId, node);
     }
+    for (const [messageId, node] of prevObserved) {
+      if (!nextObserved.has(messageId)) {
+        observer.unobserve(node);
+      }
+    }
+    for (const [messageId, node] of nextObserved) {
+      if (!prevObserved.has(messageId)) {
+        observer.observe(node);
+      }
+    }
+    observedUnreadNodesRef.current = nextObserved;
 
     const rafId = requestAnimationFrame(() => {
       const pending = observer.takeRecords();
@@ -478,6 +499,7 @@ export const MessageList: React.FC<MessageListProps> = ({
     return () => {
       cancelAnimationFrame(rafId);
       observer.disconnect();
+      observedUnreadNodesRef.current.clear();
       if (intersectionObserverRef.current === observer) {
         intersectionObserverRef.current = null;
       }
@@ -585,17 +607,25 @@ export const MessageList: React.FC<MessageListProps> = ({
   }, []);
 
   const groups = useMemo(() => {
-    const result: { dateKey: string; items: MockMessage[] }[] = [];
+    const result: { dateKey: string; senderGroups: MockMessage[][] }[] = [];
     let currentKey = "";
-    messages.forEach((msg) => {
+    let currentItems: MockMessage[] = [];
+    const flushDay = () => {
+      if (currentItems.length === 0) return;
+      result.push({ dateKey: currentKey, senderGroups: getSenderGroups(currentItems) });
+      currentItems = [];
+    };
+    for (const msg of messages) {
       const dateKey = getDateKey(msg.timestamp);
       if (dateKey !== currentKey) {
+        flushDay();
         currentKey = dateKey;
-        result.push({ dateKey, items: [msg] });
+        currentItems = [msg];
       } else {
-        result[result.length - 1]!.items.push(msg);
+        currentItems.push(msg);
       }
-    });
+    }
+    flushDay();
     return result;
   }, [messages]);
   const mediaGallery = useMemo(() => buildMessageMediaGallery(messages), [messages]);
@@ -611,70 +641,31 @@ export const MessageList: React.FC<MessageListProps> = ({
         role="feed"
         aria-label={t("a11y.conversation")}
       >
-        {groups.map(({ dateKey, items }) => (
+        {groups.map(({ dateKey, senderGroups }) => (
           <div key={dateKey}>
             <div className="sticky top-0 z-sticky flex justify-center py-2">
               <span className="bg-bg-elevated/90 rounded-full border border-border-subtle px-3 py-1 text-[11px] text-text-muted">
                 {dateKey}
               </span>
             </div>
-            {(() => {
-              const senderGroups = getSenderGroups(items);
-              return senderGroups.map((senderMessages) => {
-                const isOwn = senderMessages[0]!.sender_id === currentUserId;
-                const showUnreadMarker =
-                  firstUnreadId != null && senderMessages.some((m) => m.id === firstUnreadId);
-                const first = senderMessages[0]!;
-                const isStream = first.stream_id != null;
-                const topicKey = normalizeStreamTopicForMessageCache(first.subject ?? "");
-                const topicLabel = topicKey.length > 0 ? topicKey : t("chat.generalChat");
-                const showTopicSeparator =
-                  isStream && lastStreamTopicKey !== undefined && lastStreamTopicKey !== topicKey;
-                if (isStream) {
-                  lastStreamTopicKey = topicKey;
-                }
+            {senderGroups.map((senderMessages) => {
+              const isOwn = senderMessages[0]!.sender_id === currentUserId;
+              const showUnreadMarker =
+                firstUnreadId != null && senderMessages.some((m) => m.id === firstUnreadId);
+              const first = senderMessages[0]!;
+              const isStream = first.stream_id != null;
+              const topicKey = normalizeStreamTopicForMessageCache(first.subject ?? "");
+              const topicLabel = topicKey.length > 0 ? topicKey : t("chat.generalChat");
+              const showTopicSeparator =
+                isStream && lastStreamTopicKey !== undefined && lastStreamTopicKey !== topicKey;
+              if (isStream) {
+                lastStreamTopicKey = topicKey;
+              }
 
-                if (isOwn) {
-                  const ownGroupKey = senderMessages[0]!.local_echo_key ?? senderMessages[0]!.id;
-                  return (
-                    <React.Fragment key={`own-${ownGroupKey}`}>
-                      {showTopicSeparator && (
-                        <button
-                          type="button"
-                          onClick={() => callbacks?.onTopicSeparatorClick?.(senderMessages[0]!)}
-                          className="my-3 flex w-full items-center gap-3 px-4 text-left"
-                        >
-                          <div className="h-px flex-1 bg-border-subtle" />
-                          <span className="text-xs font-medium text-text-muted">{topicLabel}</span>
-                          <div className="h-px flex-1 bg-border-subtle" />
-                        </button>
-                      )}
-                      {showUnreadMarker && <UnreadMarker unreadCount={unreadCount} />}
-                      {senderMessages.map((m, i) => (
-                        <MessageBubble
-                          key={m.local_echo_key ?? m.id}
-                          message={m}
-                          isOwn
-                          showAvatar={false}
-                          showSenderName={i === 0}
-                          currentUserId={currentUserId}
-                          callbacks={bubbleCallbacks}
-                          selectionMode={selectionMode}
-                          isSelected={selectedMessageIds?.has(m.id)}
-                          isFocused={flashFocusedMessageId === m.id}
-                          mediaGallery={mediaGallery}
-                          customEmojis={customEmojis}
-                          onEmojiPickerOpen={ensureCustomEmojisLoaded}
-                          resolveCustomEmojiImageUrl={resolveCustomEmojiImageUrl}
-                          resolveCustomEmojiShortcodeImageUrl={resolveCustomEmojiShortcodeImageUrl}
-                        />
-                      ))}
-                    </React.Fragment>
-                  );
-                }
-
+              if (isOwn) {
+                const ownGroupKey = senderMessages[0]!.local_echo_key ?? senderMessages[0]!.id;
                 return (
-                  <React.Fragment key={`group-${senderMessages[0]!.id}`}>
+                  <React.Fragment key={`own-${ownGroupKey}`}>
                     {showTopicSeparator && (
                       <button
                         type="button"
@@ -687,23 +678,59 @@ export const MessageList: React.FC<MessageListProps> = ({
                       </button>
                     )}
                     {showUnreadMarker && <UnreadMarker unreadCount={unreadCount} />}
-                    <MessageListSenderGroup
-                      messages={senderMessages}
-                      currentUserId={currentUserId}
-                      bubbleCallbacks={bubbleCallbacks}
-                      selectionMode={selectionMode}
-                      selectedMessageIds={selectedMessageIds}
-                      focusedMessageId={flashFocusedMessageId}
-                      mediaGallery={mediaGallery}
-                      customEmojis={customEmojis}
-                      onEmojiPickerOpen={ensureCustomEmojisLoaded}
-                      resolveCustomEmojiImageUrl={resolveCustomEmojiImageUrl}
-                      resolveCustomEmojiShortcodeImageUrl={resolveCustomEmojiShortcodeImageUrl}
-                    />
+                    {senderMessages.map((m, i) => (
+                      <MessageBubble
+                        key={m.local_echo_key ?? m.id}
+                        message={m}
+                        isOwn
+                        showAvatar={false}
+                        showSenderName={i === 0}
+                        currentUserId={currentUserId}
+                        callbacks={bubbleCallbacks}
+                        selectionMode={selectionMode}
+                        isSelected={selectedMessageIds?.has(m.id)}
+                        isFocused={flashFocusedMessageId === m.id}
+                        mediaGallery={mediaGallery}
+                        customEmojis={customEmojis}
+                        onEmojiPickerOpen={ensureCustomEmojisLoaded}
+                        resolveCustomEmojiImageUrl={resolveCustomEmojiImageUrl}
+                        resolveCustomEmojiShortcodeImageUrl={resolveCustomEmojiShortcodeImageUrl}
+                      />
+                    ))}
                   </React.Fragment>
                 );
-              });
-            })()}
+              }
+
+              return (
+                <React.Fragment key={`group-${senderMessages[0]!.id}`}>
+                  {showTopicSeparator && (
+                    <button
+                      type="button"
+                      onClick={() => callbacks?.onTopicSeparatorClick?.(senderMessages[0]!)}
+                      className="my-3 flex w-full items-center gap-3 px-4 text-left"
+                    >
+                      <div className="h-px flex-1 bg-border-subtle" />
+                      <span className="text-xs font-medium text-text-muted">{topicLabel}</span>
+                      <div className="h-px flex-1 bg-border-subtle" />
+                    </button>
+                  )}
+                  {showUnreadMarker && <UnreadMarker unreadCount={unreadCount} />}
+                  <MessageListSenderGroup
+                    messages={senderMessages}
+                    currentUserId={currentUserId}
+                    bubbleCallbacks={bubbleCallbacks}
+                    selectionMode={selectionMode}
+                    selectedMessageIds={selectedMessageIds}
+                    focusedMessageId={flashFocusedMessageId}
+                    mediaGallery={mediaGallery}
+                    customEmojis={customEmojis}
+                    onEmojiPickerOpen={ensureCustomEmojisLoaded}
+                    resolveCustomEmojiImageUrl={resolveCustomEmojiImageUrl}
+                    resolveCustomEmojiShortcodeImageUrl={resolveCustomEmojiShortcodeImageUrl}
+                  />
+                </React.Fragment>
+              );
+            })}
           </div>
         ))}
         {hasNewerMessages && !isLoadingMore && !showLoadingOverlay && onLoadNewer && (

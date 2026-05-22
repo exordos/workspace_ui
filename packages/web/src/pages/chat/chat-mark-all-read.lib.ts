@@ -1,3 +1,5 @@
+import { buildMessageIdMap } from "~/shared/lib/message-id-index.lib";
+
 interface ResolveMarkAllAsReadTargetOptions {
   isDmView: boolean;
   activeDmUserIds: number[] | null;
@@ -65,10 +67,11 @@ export function filterMessageIdsStillUnreadForOptimisticApply(
   },
 ): number[] {
   const { storeMessages, effectiveMessages } = options;
+  const storeById = buildMessageIdMap(storeMessages);
+  const effectiveById = buildMessageIdMap(effectiveMessages);
   const out: number[] = [];
   for (const messageId of messageIds) {
-    const fromStore = storeMessages.find((m) => m.id === messageId);
-    const message = fromStore ?? effectiveMessages.find((m) => m.id === messageId);
+    const message = storeById.get(messageId) ?? effectiveById.get(messageId);
     if (message != null && !(message.flags ?? []).includes("read")) {
       out.push(messageId);
     }

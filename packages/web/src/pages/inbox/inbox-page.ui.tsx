@@ -3,7 +3,7 @@
 // 1) читаем локальный inbox bootstrap из IDB;
 // 2) применяем его только если он свежее текущих in-memory entries;
 // 3) всегда запускаем фоновый refresh unread с сервера без очистки UI.
-import React, { useCallback, useEffect } from "react";
+import React, { useCallback, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { fetchInboxEntries, hydrateInboxEntriesFromCache } from "~/entities/inbox/inbox.api";
@@ -70,9 +70,8 @@ export const InboxPage: React.FC = () => {
   const setEntries = useInboxStore((s) => s.setEntries);
   const startRequest = useInboxStore((s) => s.startRequest);
   const setError = useInboxStore((s) => s.setError);
-  const sortedEntries = useInboxStore((s) => s.sortedEntries);
-  const entries = sortedEntries();
-  const grouped = groupInboxEntries(entries);
+  const entries = useInboxStore((s) => s.sortedEntries());
+  const grouped = useMemo(() => groupInboxEntries(entries), [entries]);
 
   const loadInbox = useCallback(
     (hasCachedData: boolean) => {

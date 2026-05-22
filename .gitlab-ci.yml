@@ -24,11 +24,13 @@ default:
 
 build-web:
   stage: build
-  script:
-    - npm install
-    - npm run build --workspace=web
+  script: |
+    echo "$WEB_ENVS" | base64 -d > packages/web/.env.production
+    npm install
+    npm run build --workspace=web
   variables:
     VITE_APP_VERSION: $CI_COMMIT_SHA
+    WEB_ENVS: "$WEB_ENVS"
   artifacts:
     paths:
       - packages/web/dist/

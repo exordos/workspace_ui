@@ -2,6 +2,7 @@ import { act, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 import { useActivityStore } from "~/entities/activity/activity.model";
+import { countMentionsUnread } from "~/entities/chat-list/chat-list-sidebar-totals.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useDraftStore } from "~/entities/draft/draft.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
@@ -73,46 +74,48 @@ describe("SidebarActivity", () => {
   });
 
   it("shows mention and draft badges from current store state", () => {
+    const lastAppliedMessages = [
+      {
+        id: 1,
+        sender_id: 42,
+        sender_full_name: "Alice",
+        stream_id: 10,
+        subject: "bugs",
+        content: "hello",
+        timestamp: 1,
+        type: "stream" as const,
+        display_recipient: "engineering",
+        flags: ["mentioned"],
+      },
+      {
+        id: 2,
+        sender_id: 43,
+        sender_full_name: "Bob",
+        stream_id: 10,
+        subject: "bugs",
+        content: "hello",
+        timestamp: 2,
+        type: "stream" as const,
+        display_recipient: "engineering",
+        flags: ["mentioned", "read"],
+      },
+      {
+        id: 3,
+        sender_id: 7,
+        sender_full_name: "Me",
+        stream_id: 10,
+        subject: "bugs",
+        content: "self mention",
+        timestamp: 3,
+        type: "stream" as const,
+        display_recipient: "engineering",
+        flags: ["mentioned"],
+      },
+    ];
     useChatListStore.setState({
       currentUserId: 7,
-      lastAppliedMessages: [
-        {
-          id: 1,
-          sender_id: 42,
-          sender_full_name: "Alice",
-          stream_id: 10,
-          subject: "bugs",
-          content: "hello",
-          timestamp: 1,
-          type: "stream",
-          display_recipient: "engineering",
-          flags: ["mentioned"],
-        },
-        {
-          id: 2,
-          sender_id: 43,
-          sender_full_name: "Bob",
-          stream_id: 10,
-          subject: "bugs",
-          content: "hello",
-          timestamp: 2,
-          type: "stream",
-          display_recipient: "engineering",
-          flags: ["mentioned", "read"],
-        },
-        {
-          id: 3,
-          sender_id: 7,
-          sender_full_name: "Me",
-          stream_id: 10,
-          subject: "bugs",
-          content: "self mention",
-          timestamp: 3,
-          type: "stream",
-          display_recipient: "engineering",
-          flags: ["mentioned"],
-        },
-      ],
+      lastAppliedMessages,
+      mentionsUnreadCount: countMentionsUnread(lastAppliedMessages, 7),
     });
     useDraftStore.getState().setDrafts([
       { id: 1, type: "stream", to: [10], topic: "general", content: "one", timestamp: 1 },
@@ -163,22 +166,24 @@ describe("SidebarActivity", () => {
   });
 
   it("renders compact activity shortcuts with badges when collapsed", () => {
+    const lastAppliedMessages = [
+      {
+        id: 1,
+        sender_id: 42,
+        sender_full_name: "Alice",
+        stream_id: 10,
+        subject: "bugs",
+        content: "hello",
+        timestamp: 1,
+        type: "stream" as const,
+        display_recipient: "engineering",
+        flags: ["mentioned"],
+      },
+    ];
     useChatListStore.setState({
       currentUserId: 7,
-      lastAppliedMessages: [
-        {
-          id: 1,
-          sender_id: 42,
-          sender_full_name: "Alice",
-          stream_id: 10,
-          subject: "bugs",
-          content: "hello",
-          timestamp: 1,
-          type: "stream",
-          display_recipient: "engineering",
-          flags: ["mentioned"],
-        },
-      ],
+      lastAppliedMessages,
+      mentionsUnreadCount: countMentionsUnread(lastAppliedMessages, 7),
     });
     useDraftStore.getState().setDrafts([
       { id: 1, type: "stream", to: [10], topic: "general", content: "one", timestamp: 1 },

@@ -170,6 +170,31 @@ export function messageToDmEntry(
   };
 }
 
+function applyUnreadCountsToSidebarMaps(
+  streamsByKey: Map<number, StreamEntryInternal>,
+  dmsByKey: Map<string, DmEntryInternal>,
+  streamUnread: Map<string, number>,
+  dmUnread: Map<string, number>,
+): void {
+  for (const [streamId, stream] of streamsByKey) {
+    let nextTopics: Map<string, StreamTopicEntry> | null = null;
+    for (const [topicKey, topic] of stream.topics) {
+      const nextUnreadCount = streamUnread.get(`${streamId}\t${topicKey}`) ?? 0;
+      if (topic.unreadCount === nextUnreadCount) continue;
+      if (nextTopics == null) nextTopics = new Map(stream.topics);
+      nextTopics.set(topicKey, { ...topic, unreadCount: nextUnreadCount });
+    }
+    if (nextTopics != null) {
+      streamsByKey.set(streamId, { ...stream, topics: nextTopics });
+    }
+  }
+  for (const [dmKey, dm] of dmsByKey) {
+    const nextUnreadCount = dmUnread.get(dmKey) ?? 0;
+    if (dm.unreadCount === nextUnreadCount) continue;
+    dmsByKey.set(dmKey, { ...dm, unreadCount: nextUnreadCount });
+  }
+}
+
 /**
  * Builds lists of streams with topics and DMs with slug from latest Zulip messages.
  * Streams by stream_id, topics by subject; stream last message date — max across any topic.
@@ -187,38 +212,32 @@ export function buildSidebarFromMessages(
 } {
   const streamUnread = new Map<string, number>();
   const dmUnread = new Map<string, number>();
+  const streamsByKey = new Map<number, StreamEntryInternal>();
+  const dmsByKey = new Map<string, DmEntryInternal>();
 
   for (const m of messages) {
     const unread = isUnreadFromOthers(m, currentUserId);
     if (m.type === "stream" && m.stream_id != null) {
       const subject = normalizeTopicForIdentity(m.subject ?? "");
       const key = `${m.stream_id}\t${subject}`;
-      streamUnread.set(key, (streamUnread.get(key) ?? 0) + (unread ? 1 : 0));
+      if (unread) streamUnread.set(key, (streamUnread.get(key) ?? 0) + 1);
     } else if (m.type === "private" && Array.isArray(m.display_recipient)) {
       const key = dmConversationKey(m.display_recipient, currentUserId);
-      dmUnread.set(key, (dmUnread.get(key) ?? 0) + (unread ? 1 : 0));
+      if (unread) dmUnread.set(key, (dmUnread.get(key) ?? 0) + 1);
     }
-  }
 
-  const streamsByKey = new Map<number, StreamEntryInternal>();
-  const dmsByKey = new Map<string, DmEntryInternal>();
-
-  for (const m of messages) {
     const streamResult = messageToStreamEntry(m);
     if (streamResult) {
       const { stream_id, name, lastMessage, lastMessageSenderName, time, ts } = streamResult.stream;
       const topicEntry = streamResult.topic;
-      const unreadKey = `${stream_id}\t${topicEntry.subject}`;
-      const topicWithUnread: StreamTopicEntry = {
+      const topicWithMeta: StreamTopicEntry = {
         ...topicEntry,
-        unreadCount: streamUnread.get(unreadKey) ?? 0,
+        unreadCount: 0,
         lastMessageId: m.id,
       };
       const existing = streamsByKey.get(stream_id);
       if (!existing) {
-        const topics = new Map<string, StreamTopicEntry>([
-          [topicWithUnread.subject, topicWithUnread],
-        ]);
+        const topics = new Map<string, StreamTopicEntry>([[topicWithMeta.subject, topicWithMeta]]);
         streamsByKey.set(stream_id, {
           stream_id,
           name,
@@ -229,15 +248,10 @@ export function buildSidebarFromMessages(
           topics,
         });
       } else {
-        const existingTopic = existing.topics.get(topicWithUnread.subject);
+        const existingTopic = existing.topics.get(topicWithMeta.subject);
         const nextTopics = new Map(existing.topics);
-        if (!existingTopic || topicWithUnread.ts >= existingTopic.ts) {
-          nextTopics.set(topicWithUnread.subject, topicWithUnread);
-        } else {
-          nextTopics.set(topicWithUnread.subject, {
-            ...existingTopic,
-            unreadCount: topicWithUnread.unreadCount,
-          });
+        if (!existingTopic || topicWithMeta.ts >= existingTopic.ts) {
+          nextTopics.set(topicWithMeta.subject, topicWithMeta);
         }
         const newerStream = m.timestamp >= existing.ts;
         streamsByKey.set(stream_id, {
@@ -259,21 +273,26 @@ export function buildSidebarFromMessages(
     const dmEntry = messageToDmEntry(m, currentUserId, avatarUrlByUserId);
     if (dmEntry) {
       const key = dmConversationKey(m.display_recipient, currentUserId);
-      const unreadCount = dmUnread.get(key) ?? 0;
       const existing = dmsByKey.get(key);
       const avatar_url = dmEntry.avatar_url ?? existing?.avatar_url;
-      const entryWithUnread = { ...dmEntry, unreadCount, avatar_url, lastMessageId: m.id };
+      const entryWithMeta = {
+        ...dmEntry,
+        unreadCount: 0,
+        avatar_url,
+        lastMessageId: m.id,
+      };
       if (!existing || dmEntry.ts >= existing.ts) {
-        dmsByKey.set(key, entryWithUnread);
+        dmsByKey.set(key, entryWithMeta);
       } else {
         dmsByKey.set(key, {
           ...existing,
-          unreadCount,
           avatar_url: existing.avatar_url ?? avatar_url,
         });
       }
     }
   }
+
+  applyUnreadCountsToSidebarMaps(streamsByKey, dmsByKey, streamUnread, dmUnread);
 
   const streams: StreamWithLast[] = Array.from(streamsByKey.values())
     .sort((a, b) => b.ts - a.ts)

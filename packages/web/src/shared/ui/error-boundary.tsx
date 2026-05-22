@@ -106,6 +106,7 @@ export function PageLoader(): React.ReactElement {
     <div
       className="flex h-screen max-h-[100dvh] min-h-app-shell w-full items-center justify-center bg-bg text-text-primary"
       role="status"
+      aria-label={label}
     >
       <div className="flex flex-col items-center gap-3">
         <div

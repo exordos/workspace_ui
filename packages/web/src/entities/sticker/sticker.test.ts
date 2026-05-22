@@ -238,6 +238,22 @@ describe("useStickerStore", () => {
     expect(favs[0]!.id).toBe("s1");
   });
 
+  it("getRecentStickers returns cached array when recent ref is unchanged", () => {
+    useStickerStore.getState().setPacks([PACK_1]);
+    useStickerStore.getState().addRecent("s1", "p1");
+    const first = useStickerStore.getState().getRecentStickers();
+    const second = useStickerStore.getState().getRecentStickers();
+    expect(second).toBe(first);
+  });
+
+  it("getFavoriteStickers returns cached array when favorites ref is unchanged", () => {
+    useStickerStore.getState().setPacks([PACK_1]);
+    useStickerStore.getState().toggleFavorite("s1");
+    const first = useStickerStore.getState().getFavoriteStickers();
+    const second = useStickerStore.getState().getFavoriteStickers();
+    expect(second).toBe(first);
+  });
+
   // Removing a pack must also clean up its recent entries to avoid dangling references.
   it("removePack also removes recent entries for that pack", () => {
     useStickerStore.getState().addRecent("s1", "p1");

@@ -90,6 +90,8 @@ interface UsersState {
   getUser: (userId: number) => UserRecord | undefined;
   getAvatarUrl: (userId: number) => string | undefined;
   getDisplayName: (userId: number) => string;
+  /** Resolves mention display name without subscribing to the full users Map. */
+  findUserIdByDisplayName: (displayName: string) => number | null;
   getAvatarMap: () => AvatarUrlByUserId;
   clear: () => void;
 }
@@ -284,6 +286,15 @@ export const useUsersStore = create<UsersState>((set, get) => ({
     const name = u?.full_name;
     if (name != null && String(name).trim() !== "") return String(name).trim();
     return "Unknown";
+  },
+
+  findUserIdByDisplayName(displayName) {
+    const trimmed = displayName.trim();
+    if (trimmed.length === 0) return null;
+    for (const [, user] of get().users) {
+      if (user.full_name.trim() === trimmed) return user.user_id;
+    }
+    return null;
   },
 
   getAvatarMap() {
