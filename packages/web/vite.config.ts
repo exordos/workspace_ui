@@ -246,6 +246,17 @@ export default defineConfig(({ mode }) => {
               workbox: {
                 globPatterns: ["**/*.{js,css,html,ico,png,svg,woff,woff2}"],
                 navigateFallback: "/index.html",
+                navigateFallbackDenylist: [
+                  /^\/accounts(?:\/|$)/,
+                  /^\/login(?:\/|$)/,
+                  /^\/complete\/oidc(?:\/|$)/,
+                  /^\/api(?:\/|$)/,
+                  /^\/json(?:\/|$)/,
+                  /^\/workspace(?:\/|$)/,
+                  /^\/user_avatars(?:\/|$)/,
+                  /^\/user_uploads(?:\/|$)/,
+                  /^\/legacy(?:\/|$)/,
+                ],
                 cleanupOutdatedCaches: true,
                 runtimeCaching: [
                   {
