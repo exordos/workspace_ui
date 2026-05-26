@@ -12,6 +12,7 @@ import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { useSearchModalStore } from "~/widgets/search-modal/search-modal.model";
 import { SearchModal } from "~/widgets/search-modal/search-modal.ui";
 import { TopBarDownloadCenter } from "./top-bar-download-center.ui";
+import { TopBarNotificationDev } from "./top-bar-notification-dev.ui";
 import { TopBarProfileTrigger } from "./top-bar-profile-trigger.ui";
 import { TopBarSearchButton } from "./top-bar-search-button.ui";
 import { useTopBarSearchModal } from "./top-bar-search-modal.hook";
@@ -106,6 +107,7 @@ export const TopBar: React.FC = () => {
           />
 
           <div className="electron-no-drag flex flex-shrink-0 items-center gap-3">
+            <TopBarNotificationDev />
             <TopBarSearchButton onOpenSearch={openSearchModal} />
             <TopBarDownloadCenter />
             <TopBarProfileTrigger />

@@ -85,6 +85,7 @@ export interface LayoutTypingActions {
 
 export interface LayoutMuteActions {
   isEffectivelyMuted: (streamId: number, topic: string) => boolean;
+  isTopicFollowed: (streamId: number, topic: string) => boolean;
   muteStream: (streamId: number) => void;
   unmuteStream: (streamId: number) => void;
   muteTopic: (streamId: number, topic: string) => void;
@@ -103,7 +104,7 @@ export interface LayoutInboxActions {
 }
 
 export interface LayoutNotificationsActions {
-  show: (options: { title: string; body: string; tag: string }) => Promise<void>;
+  show: (options: { title: string; body: string; tag: string; silent?: boolean }) => Promise<void>;
   closeByTag: (tag: string) => void;
   playSound: (preset?: string) => void;
   getSoundPreset: () => string;

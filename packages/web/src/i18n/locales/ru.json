@@ -480,7 +480,12 @@
   },
   "notifications": {
     "notifications": "Уведомления",
-    "newMessage": "Новое сообщение"
+    "newMessage": "Новое сообщение",
+    "permissionBannerTitle": "Включить уведомления на рабочем столе?",
+    "permissionBannerBody": "Получайте оповещения о новых сообщениях и упоминаниях, когда вкладка в фоне.",
+    "permissionBannerEnable": "Включить уведомления",
+    "permissionBannerEnabling": "Подключение…",
+    "permissionBannerDismiss": "Не сейчас"
   },
   "downloads": {
     "open": "Открыть загрузки",

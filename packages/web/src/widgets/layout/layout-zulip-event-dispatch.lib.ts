@@ -1,6 +1,8 @@
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { isMessageForContext, useCurrentChatMessagesStore } from "~/entities/message/message.model";
+import { useNotificationSettingsStore } from "~/entities/notification-settings/notification-settings.model";
 import { resolveIncomingDmCallInvite } from "~/features/jitsi-call/jitsi-call-invite.lib";
+import { useSettingsStore } from "~/features/settings/settings.model";
 import { resolveTypingEventRoute } from "~/features/typing-indicator/typing-event-routing";
 import { getCurrentInstance } from "~/shared/api/client";
 import type { ZulipEvent, ZulipRawMessage } from "~/shared/api/zulip";
@@ -16,7 +18,9 @@ import { enqueuePendingLinkPreview } from "~/shared/lib/message-link-preview-pen
 import { linkPreviewUrlsMatch } from "~/shared/lib/message-link-preview-url-match.lib";
 import { extractLinkPreviewUrls } from "~/shared/lib/message-link-preview-urls.lib";
 import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
-import { shouldNotify } from "~/shared/lib/notifications-policy";
+import { registerNotifiedMessageId } from "~/shared/lib/notification-dedup.lib";
+import { resolveNotificationSoundPreset } from "~/shared/lib/notification-sound-preset.lib";
+import { shouldDesktopNotify } from "~/shared/lib/notifications-policy";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { extractTopicMoveFromUpdateEvent } from "~/shared/lib/update-message-topic-move.lib";
 import { normalizeGroupSettingValue } from "~/shared/lib/zulip-group-setting.lib";
@@ -172,6 +176,16 @@ function handleIncomingMessage(event: ZulipEvent, ctx: LayoutZulipEventDispatchC
   }
 }
 
+function readViewportState(): { windowFocused: boolean; windowHidden: boolean } {
+  if (typeof document === "undefined") {
+    return { windowFocused: true, windowHidden: false };
+  }
+  return {
+    windowFocused: document.hasFocus(),
+    windowHidden: document.hidden,
+  };
+}
+
 function maybeNotifyNewMessage(
   ctx: LayoutZulipEventDispatchContext,
   raw: ZulipRawMessage,
@@ -181,29 +195,69 @@ function maybeNotifyNewMessage(
 ): void {
   const { mute, notifications } = ctx;
   let isMuted = false;
+  let isTopicFollowed = false;
   if (raw.type === "stream" && raw.stream_id != null) {
     const topic = normalizeTopicForIdentity(raw.subject ?? "");
     isMuted = mute.isEffectivelyMuted(raw.stream_id, topic);
+    isTopicFollowed = mute.isTopicFollowed(raw.stream_id, topic);
   }
 
-  if (!shouldNotify({ isFromSelf, isForCurrentChat, isMuted })) return;
+  const isOnScreenInCurrentChat = isForCurrentChat;
+  const serverSettings = useNotificationSettingsStore.getState().settings;
+  const localSound = useSettingsStore.getState().notificationSound;
+  const resolvedPreset = resolveNotificationSoundPreset(
+    serverSettings.notificationSound,
+    localSound,
+  );
+
+  const decision = shouldDesktopNotify({
+    message: {
+      type: raw.type ?? "stream",
+      flags: raw.flags,
+      isTopicFollowed,
+    },
+    viewport: {
+      isFromSelf,
+      isOnScreenInCurrentChat,
+      isMuted,
+      ...readViewportState(),
+    },
+    settings: serverSettings,
+  });
+
+  if (!decision.notify) return;
+
+  registerNotifiedMessageId(raw.id);
 
   const senderName = raw.sender_full_name ?? "New message";
   const contentPreview = plainTextPreviewFromMessageBody(raw.content ?? "").slice(0, 100);
+  const playSound = decision.playSound && resolvedPreset !== "none";
+
   notifications
     .show({
       title: senderName,
       body: contentPreview,
       tag: `msg-${raw.id}`,
+      silent: playSound,
     })
     .catch(() => {});
 
-  const soundPreset = notifications.getSoundPreset();
-  if (soundPreset !== "none") {
-    notifications.playSound(soundPreset);
+  if (playSound) {
+    notifications.playSound(resolvedPreset);
   }
 
   notifications.requestAttentionIfNotFocused();
+}
+
+function handleUserSettings(event: ZulipEvent): void {
+  if (event.type !== "user_settings") return;
+  const property =
+    (typeof event.property === "string" && event.property) ||
+    (typeof event.setting_name === "string" && event.setting_name) ||
+    null;
+  if (property == null) return;
+  const value = "value" in event ? event.value : event.setting;
+  useNotificationSettingsStore.getState().patchSetting(property, value);
 }
 
 function handleUpdateMessageFlags(event: ZulipEvent, ctx: LayoutZulipEventDispatchContext): void {
@@ -712,6 +766,11 @@ export function dispatchZulipEvent(event: ZulipEvent, ctx: LayoutZulipEventDispa
 
   if (event.type === "user_topic") {
     handleUserTopic(event, ctx);
+    return;
+  }
+
+  if (event.type === "user_settings") {
+    handleUserSettings(event);
   }
 }
 

@@ -218,6 +218,18 @@ export const parsingMiddleware: PushMiddleware = async (ctx, next) => {
   } else if (event === "test") {
     ctx.payload = { event: "test", realm_uri: data.realm_uri };
   } else {
+    let flags: string[] | undefined;
+    if (data.flags) {
+      try {
+        const parsed = JSON.parse(data.flags) as unknown;
+        if (Array.isArray(parsed)) {
+          flags = parsed.filter((f): f is string => typeof f === "string");
+        }
+      } catch {
+        /* ignore malformed flags */
+      }
+    }
+
     ctx.payload = {
       event: "message",
       realm_uri: data.realm_uri,
@@ -228,8 +240,10 @@ export const parsingMiddleware: PushMiddleware = async (ctx, next) => {
         sender_avatar_url: data.sender_avatar_url,
         type: data.message_type === "private" ? "private" : "stream",
         stream_name: data.stream_name,
+        stream_id: data.stream_id != null ? Number(data.stream_id) : undefined,
         topic: data.topic,
         content: data.content ?? ctx.envelope.notification?.body ?? "",
+        flags,
         timestamp: Number(data.time) || Math.floor(Date.now() / 1000),
       },
     };

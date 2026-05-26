@@ -28,6 +28,8 @@ export interface PushMessagePayload {
     stream_name?: string;
     topic?: string;
     content: string;
+    stream_id?: number;
+    flags?: string[];
     /** Unix timestamp */
     timestamp: number;
   };

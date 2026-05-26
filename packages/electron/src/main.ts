@@ -895,22 +895,52 @@ function registerIpcHandlers(): void {
 
   // Notifications
   const MAX_NOTIFICATION_LENGTH = 200;
-  ipcMain.handle("notifications:show", async (_event, title: unknown, body: unknown) => {
-    const t = typeof title === "string" ? title.slice(0, MAX_NOTIFICATION_LENGTH) : "";
-    const b = typeof body === "string" ? body.slice(0, MAX_NOTIFICATION_LENGTH) : "";
-    if (!t.trim()) return false;
-    try {
-      const { Notification } = await import("electron");
-      const notification = new Notification({ title: t, body: b });
-      notification.on("click", () => {
-        showMainWindow();
-      });
-      notification.show();
-      return true;
-    } catch (err) {
-      console.error("[electron] Notification failed:", err);
-      return false;
-    }
+  const activeNotificationsByTag = new Map<string, { close: () => void }>();
+
+  ipcMain.handle(
+    "notifications:show",
+    async (_event, title: unknown, body: unknown, options: unknown) => {
+      const t = typeof title === "string" ? title.slice(0, MAX_NOTIFICATION_LENGTH) : "";
+      const b = typeof body === "string" ? body.slice(0, MAX_NOTIFICATION_LENGTH) : "";
+      if (!t.trim()) return false;
+      const opts =
+        options != null && typeof options === "object" && !Array.isArray(options)
+          ? (options as { tag?: unknown; silent?: unknown })
+          : {};
+      const tag = typeof opts.tag === "string" && opts.tag.length > 0 ? opts.tag : undefined;
+      const silent = opts.silent === true;
+      try {
+        const { Notification } = await import("electron");
+        if (tag != null) {
+          activeNotificationsByTag.get(tag)?.close();
+        }
+        const notification = new Notification({ title: t, body: b, silent });
+        if (tag != null) {
+          activeNotificationsByTag.set(tag, notification);
+          notification.on("close", () => {
+            if (activeNotificationsByTag.get(tag) === notification) {
+              activeNotificationsByTag.delete(tag);
+            }
+          });
+        }
+        notification.on("click", () => {
+          showMainWindow();
+        });
+        notification.show();
+        return true;
+      } catch (err) {
+        console.error("[electron] Notification failed:", err);
+        return false;
+      }
+    },
+  );
+
+  ipcMain.handle("notifications:closeByTag", async (_event, tag: unknown) => {
+    if (typeof tag !== "string" || tag.length === 0) return;
+    const notification = activeNotificationsByTag.get(tag);
+    if (notification == null) return;
+    activeNotificationsByTag.delete(tag);
+    notification.close();
   });
 
   // OS integration

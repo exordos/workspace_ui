@@ -339,7 +339,10 @@ describe("notificationService (electron runtime)", () => {
     const svc = mod.getNotificationService();
     await svc.show({ title: "Title", body: "Body" });
 
-    expect(showFn).toHaveBeenCalledWith("Title", "Body");
+    expect(showFn).toHaveBeenCalledWith("Title", "Body", {
+      tag: undefined,
+      silent: undefined,
+    });
   });
 
   // Electron uses os-integration for badges, not the notification service

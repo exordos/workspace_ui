@@ -802,6 +802,7 @@ const DEFAULT_REGISTER_FETCH_EVENT_TYPES = [
   "recent_private_conversations",
   "realm",
   "realm_user_groups",
+  "user_settings",
 ] as const;
 const REGISTER_CLIENT_CAPABILITIES = {
   notification_settings_null: true,

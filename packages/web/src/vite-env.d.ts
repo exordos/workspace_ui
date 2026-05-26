@@ -121,7 +121,12 @@ interface ElectronAPI {
     close: () => void;
   };
   notifications: {
-    show: (title: string, body: string) => Promise<boolean>;
+    show: (
+      title: string,
+      body: string,
+      options?: { tag?: string; silent?: boolean },
+    ) => Promise<boolean>;
+    closeByTag: (tag: string) => Promise<void>;
   };
   os: {
     setBadgeCount: (count: number) => void;

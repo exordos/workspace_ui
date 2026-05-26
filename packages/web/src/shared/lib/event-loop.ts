@@ -38,6 +38,7 @@ const DEFAULT_EVENT_TYPES = [
   // Зачем: чтобы rename канала и другие stream-изменения отражались в UI без перезагрузки.
   "stream",
   "user_topic",
+  "user_settings",
 ] as const;
 
 const RETRY_PAUSE_MS = 2000;

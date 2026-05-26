@@ -58,6 +58,7 @@ function buildCtx(
     typing: { setTyping: noop },
     mute: {
       isEffectivelyMuted: () => false,
+      isTopicFollowed: () => false,
       muteStream: noop,
       unmuteStream: noop,
       muteTopic: noop,

@@ -472,7 +472,12 @@
   },
   "notifications": {
     "notifications": "Notifications",
-    "newMessage": "New message"
+    "newMessage": "New message",
+    "permissionBannerTitle": "Enable desktop notifications?",
+    "permissionBannerBody": "Get alerts for new messages and mentions when this tab is in the background.",
+    "permissionBannerEnable": "Enable notifications",
+    "permissionBannerEnabling": "Enabling…",
+    "permissionBannerDismiss": "Not now"
   },
   "downloads": {
     "open": "Open downloads",

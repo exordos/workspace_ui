@@ -5,6 +5,7 @@ import { getBasicAuthValue } from "~/shared/lib/auth-guard";
 import { env } from "~/shared/lib/env";
 import { isBadEventQueueIdResponse } from "~/shared/lib/zulip-event-queue-errors.lib";
 import { normalizeGroupSettingValue } from "~/shared/lib/zulip-group-setting.lib";
+import { extractUserSettingsFromRegisterData } from "~/shared/lib/zulip-notification-settings.lib";
 import { getCurrentInstance, zulipApi } from "./client";
 import {
   getAuthValueForCredentials,
@@ -49,6 +50,7 @@ export const DEFAULT_REGISTER_FETCH_EVENT_TYPES = [
   "recent_private_conversations",
   "realm",
   "realm_user_groups",
+  "user_settings",
 ] as const;
 const REGISTER_CLIENT_CAPABILITIES = {
   notification_settings_null: true,
@@ -251,6 +253,7 @@ export async function registerQueue(
     max_avatar_file_size_mib?: unknown;
     realm_avatar_changes_disabled?: unknown;
     server_avatar_changes_disabled?: unknown;
+    user_settings?: unknown;
   } | null;
   if (data == null || typeof data !== "object") {
     throw new Error(t("app.invalidResponse"));
@@ -262,6 +265,7 @@ export async function registerQueue(
     throw new Error(t("app.invalidRegisterResponse"));
   }
 
+  const userSettings = extractUserSettingsFromRegisterData(data);
   const subscriptions = parseSubscriptions(data.subscriptions);
   const userTopics = parseUserTopics(data.user_topics);
   const recentPrivateConversations = parseRecentPrivateConversations(
@@ -317,6 +321,7 @@ export async function registerQueue(
       ? { server_avatar_changes_disabled: serverAvatarChangesDisabled }
       : {}),
     ...(jitsiServerUrlEffective ? { jitsi_server_url_effective: jitsiServerUrlEffective } : {}),
+    ...(userSettings ? { user_settings: userSettings } : {}),
   };
 }
 
@@ -370,6 +375,7 @@ export async function registerQueueForCredentials(
     max_avatar_file_size_mib?: unknown;
     realm_avatar_changes_disabled?: unknown;
     server_avatar_changes_disabled?: unknown;
+    user_settings?: unknown;
   };
   try {
     data = (await response.json()) as typeof data;
@@ -384,6 +390,7 @@ export async function registerQueueForCredentials(
     throw new Error(t("app.invalidRegisterResponse"));
   }
 
+  const userSettings = extractUserSettingsFromRegisterData(data);
   const subscriptions = parseSubscriptions(data.subscriptions);
   const userTopics = parseUserTopics(data.user_topics);
   const recentPrivateConversations = parseRecentPrivateConversations(
@@ -439,6 +446,7 @@ export async function registerQueueForCredentials(
       ? { server_avatar_changes_disabled: serverAvatarChangesDisabled }
       : {}),
     ...(jitsiServerUrlEffective ? { jitsi_server_url_effective: jitsiServerUrlEffective } : {}),
+    ...(userSettings ? { user_settings: userSettings } : {}),
   };
 }
 

@@ -32,8 +32,12 @@ const electronAPI = {
   },
 
   notifications: {
-    show: (title: string, body: string): Promise<boolean> =>
-      ipcRenderer.invoke("notifications:show", title, body),
+    show: (
+      title: string,
+      body: string,
+      options?: { tag?: string; silent?: boolean },
+    ): Promise<boolean> => ipcRenderer.invoke("notifications:show", title, body, options),
+    closeByTag: (tag: string): Promise<void> => ipcRenderer.invoke("notifications:closeByTag", tag),
   },
 
   os: {

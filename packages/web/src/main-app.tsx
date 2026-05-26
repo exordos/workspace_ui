@@ -17,6 +17,7 @@ import { initAnalytics } from "~/shared/lib/analytics/setup";
 import { setStoreWiper, setAuthInstanceGetter } from "~/shared/lib/auth-guard";
 import { initConnectionHealth } from "~/shared/lib/connection-health";
 import { initNetworkTracking } from "~/shared/lib/network";
+import { attachNotificationAudioUnlock } from "~/shared/lib/notification-sound";
 import { perf } from "~/shared/lib/perf";
 import { setPluginDataProvider } from "~/shared/lib/plugins/api";
 import { initPlugins } from "~/shared/lib/plugins/setup";
@@ -113,6 +114,7 @@ export function mountApplication(): void {
   });
   initPresenceTracker();
   initPush();
+  attachNotificationAudioUnlock();
   initWebViewBridge();
   installAiContext();
   installDevTools();

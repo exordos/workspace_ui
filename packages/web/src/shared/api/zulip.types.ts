@@ -123,6 +123,8 @@ export interface RegisterQueueResult {
    * Canonical origin without trailing slash.
    */
   jitsi_server_url_effective?: string;
+  /** Present when `user_settings_object` client capability is set. */
+  user_settings?: Record<string, unknown>;
 }
 
 export interface ZulipEvent {

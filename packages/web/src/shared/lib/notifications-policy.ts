@@ -1,8 +1,8 @@
 /**
  * Notification policy — pure decision helpers.
  *
- * Keeps "should we notify?" logic separate from side effects (sound, OS notifications),
- * so it can be unit-tested and reused across runtimes (web/electron).
+ * Legacy `shouldNotify` kept for simple mute/self checks.
+ * Desktop decisions use `shouldDesktopNotify` from zulip-desktop-notifications.lib.ts.
  *
  * Usage:
  *   import { shouldNotify } from "~/shared/lib/notifications-policy";
@@ -18,3 +18,10 @@ export function shouldNotify(options: {
   return !isFromSelf && !isForCurrentChat && !isMuted;
 }
 
+export {
+  shouldDesktopNotify,
+  classifyNotificationTrigger,
+  type NotificationMessageTrigger,
+  type ShouldDesktopNotifyInput,
+  type ShouldDesktopNotifyResult,
+} from "./zulip-desktop-notifications.lib";

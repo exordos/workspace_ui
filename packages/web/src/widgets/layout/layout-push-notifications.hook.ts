@@ -1,0 +1,97 @@
+import { useEffect } from "react";
+import { useNotificationSettingsStore } from "~/entities/notification-settings/notification-settings.model";
+import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
+import { useSettingsStore } from "~/features/settings/settings.model";
+import {
+  registerNotifiedMessageId,
+  wasRecentlyNotified,
+} from "~/shared/lib/notification-dedup.lib";
+import { playNotificationSound } from "~/shared/lib/notification-sound";
+import { resolveNotificationSoundPreset } from "~/shared/lib/notification-sound-preset.lib";
+import { notificationService } from "~/shared/lib/notifications";
+import { shouldDesktopNotify } from "~/shared/lib/notifications-policy";
+import { pushService, type PushMessagePayload } from "~/shared/lib/push/push.service";
+import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+
+function readViewportState(): { windowFocused: boolean; windowHidden: boolean } {
+  if (typeof document === "undefined") {
+    return { windowFocused: true, windowHidden: false };
+  }
+  return {
+    windowFocused: document.hasFocus(),
+    windowHidden: document.hidden,
+  };
+}
+
+function handleForegroundPush(payload: PushMessagePayload): void {
+  if (payload.event !== "message" || payload.message == null) return;
+
+  const message = payload.message;
+  const messageId = message.id;
+  if (messageId != null && wasRecentlyNotified(messageId)) {
+    return;
+  }
+
+  const mute = useMuteStore.getState();
+  let isMuted = false;
+  let isTopicFollowed = false;
+  if (message.type === "stream" && message.stream_id != null) {
+    const topic = normalizeTopicForIdentity(message.topic ?? "");
+    isMuted = mute.isEffectivelyMuted(message.stream_id, topic);
+    isTopicFollowed = mute.isTopicFollowed(message.stream_id, topic);
+  }
+
+  const serverSettings = useNotificationSettingsStore.getState().settings;
+  const localSound = useSettingsStore.getState().notificationSound;
+  const resolvedPreset = resolveNotificationSoundPreset(
+    serverSettings.notificationSound,
+    localSound,
+  );
+
+  const decision = shouldDesktopNotify({
+    message: {
+      type: message.type,
+      flags: message.flags,
+      isTopicFollowed,
+    },
+    viewport: {
+      isFromSelf: false,
+      isOnScreenInCurrentChat: false,
+      isMuted,
+      ...readViewportState(),
+    },
+    settings: serverSettings,
+  });
+
+  if (!decision.notify) return;
+
+  if (messageId != null) {
+    registerNotifiedMessageId(messageId);
+  }
+
+  const title = message.sender_full_name ?? "New message";
+  const body = (message.content ?? "").slice(0, 100);
+  const playSound = decision.playSound && resolvedPreset !== "none";
+
+  void notificationService
+    .show({
+      title,
+      body,
+      tag: messageId != null ? `msg-${messageId}` : `push-${Date.now()}`,
+      silent: playSound,
+    })
+    .catch(() => {});
+
+  if (playSound) {
+    playNotificationSound(resolvedPreset);
+  }
+}
+
+export function useLayoutPushNotifications(options: { enabled: boolean }): void {
+  const { enabled } = options;
+
+  useEffect(() => {
+    if (!enabled) return;
+    return pushService.onMessage(handleForegroundPush);
+  }, [enabled]);
+}

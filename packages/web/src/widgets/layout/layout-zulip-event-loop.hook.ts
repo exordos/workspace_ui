@@ -9,6 +9,7 @@ import type {
 import { useInboxStore } from "~/entities/inbox/inbox.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
+import { useNotificationSettingsStore } from "~/entities/notification-settings/notification-settings.model";
 import { persistUsersDirectoryToIndexedDb } from "~/entities/user/user-directory-snapshot-persist.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
@@ -56,6 +57,7 @@ import {
 } from "~/shared/lib/message-flow-debug.lib";
 import { loadMuteSnapshotRow, persistMuteSnapshotRow } from "~/shared/lib/mute-snapshot-db";
 import { playNotificationSound } from "~/shared/lib/notification-sound";
+import { resolveNotificationSoundPreset } from "~/shared/lib/notification-sound-preset.lib";
 import { notificationService } from "~/shared/lib/notifications";
 import { loadUsersDirectoryRow } from "~/shared/lib/users-directory-snapshot-db";
 import { applyChatListBootstrapResult } from "./layout-chat-list-bootstrap-apply.lib";
@@ -369,6 +371,7 @@ export function useLayoutZulipEventLoop(options: {
       useCurrentChatMessagesStore.getState().setMessages([]);
       useJitsiCallStore.getState().clear();
       useMuteStore.getState().clear();
+      useNotificationSettingsStore.getState().clear();
       resetLatestMessageIdRef(
         resolveLatestMessageIdRef(latestMessageIdRefProp, internalLatestMessageIdRef),
       );
@@ -650,6 +653,9 @@ export function useLayoutZulipEventLoop(options: {
                 useChatListStore.getState().upsertStreamMetadataRows(streamRows);
               }
               useChatListStore.getState().setStreamMetadataHydrated(true);
+              if (registration?.user_settings != null) {
+                useNotificationSettingsStore.getState().setFromServer(registration.user_settings);
+              }
               if (metadataBootstrapEnabled) {
                 // Что делает: подмешивает recent_private_conversations сразу после register.
                 const rows = toDmMetadataRowsFromRecentConversations(
@@ -731,7 +737,11 @@ export function useLayoutZulipEventLoop(options: {
                       playNotificationSound(preset);
                     }
                   },
-                  getSoundPreset: () => useSettingsStore.getState().notificationSound,
+                  getSoundPreset: () => {
+                    const server = useNotificationSettingsStore.getState().settings;
+                    const local = useSettingsStore.getState().notificationSound;
+                    return resolveNotificationSoundPreset(server.notificationSound, local);
+                  },
                 }),
                 updateLatestMessageId: (id) => {
                   updateLatestMessageIdMax(

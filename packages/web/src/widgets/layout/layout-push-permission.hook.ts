@@ -1,22 +1,31 @@
 import { useEffect } from "react";
 import { pushService } from "~/shared/lib/push/push.service";
 
-export function useLayoutPushPermission(options: { enabled: boolean; delayMs?: number }): void {
-  const { enabled, delayMs = 5000 } = options;
+function tryRegisterPushIfGranted(): void {
+  if (pushService.getPermission() === "granted") {
+    void pushService.register().catch(() => {});
+  }
+}
+
+/**
+ * Registers FCM when permission is granted (re-checks on focus for manual browser grants).
+ */
+export function useLayoutPushPermission(options: { enabled: boolean }): void {
+  const { enabled } = options;
 
   useEffect(() => {
     if (!enabled) return;
-    const timer = setTimeout(() => {
-      void pushService
-        .requestPermission()
-        .then((perm) => {
-          if (perm === "granted") {
-            void pushService.register();
-          }
-        })
-        .catch(() => {});
-    }, delayMs);
-    return () => clearTimeout(timer);
-  }, [enabled, delayMs]);
-}
 
+    tryRegisterPushIfGranted();
+
+    const onFocus = (): void => {
+      tryRegisterPushIfGranted();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
+  }, [enabled]);
+}

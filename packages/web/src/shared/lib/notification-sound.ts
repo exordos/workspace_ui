@@ -10,6 +10,37 @@
  */
 
 let audioContext: AudioContext | null = null;
+let unlockListenerAttached = false;
+
+/** Call once after first user gesture so autoplay policy allows notification sounds. */
+export function unlockNotificationAudio(): void {
+  if (typeof window === "undefined") return;
+  try {
+    audioContext ??= new AudioContext();
+    if (audioContext.state === "suspended") {
+      void audioContext.resume();
+    }
+  } catch {
+    /* AudioContext not available */
+  }
+}
+
+export function attachNotificationAudioUnlock(): () => void {
+  if (typeof window === "undefined" || unlockListenerAttached) {
+    return () => {};
+  }
+  unlockListenerAttached = true;
+  const handler = (): void => {
+    unlockNotificationAudio();
+  };
+  window.addEventListener("pointerdown", handler, { once: true, passive: true });
+  window.addEventListener("keydown", handler, { once: true });
+  return () => {
+    window.removeEventListener("pointerdown", handler);
+    window.removeEventListener("keydown", handler);
+    unlockListenerAttached = false;
+  };
+}
 
 type NotificationSoundPreset =
   | "default"
@@ -79,6 +110,9 @@ export function playNotificationSound(preset: NotificationSoundPreset = "default
     const context = audioContext;
     if (context == null) {
       return;
+    }
+    if (context.state === "suspended") {
+      void context.resume();
     }
     const tones = TONE_PRESETS[preset] ?? TONE_PRESETS.default;
     tones.forEach((tone) => playTone(context, tone));

@@ -44,34 +44,48 @@ messaging.onBackgroundMessage((payload) => {
     return;
   }
 
-  const title = notification.title || data.sender_full_name || "Exordos Workspace";
-  const body =
-    notification.body ||
-    data.content ||
-    (data.stream_name
-      ? `#${data.stream_name} > ${data.topic || "message"}`
-      : "New message");
+  const showNotification = () => {
+    const title = notification.title || data.sender_full_name || "New message";
+    const body =
+      notification.body ||
+      data.content ||
+      (data.stream_name
+        ? `#${data.stream_name} > ${data.topic || "message"}`
+        : "New message");
 
-  const options = {
-    body,
-    icon: data.sender_avatar_url || "/pwa-192x192.png",
-    badge: "/pwa-192x192.png",
-    tag: `zulip-msg-${data.message_id || Date.now()}`,
-    data: {
-      messageId: data.message_id,
-      messageType: data.message_type,
-      streamId: data.stream_id,
-      streamName: data.stream_name || data.stream,
-      topic: data.topic,
-      senderId: data.sender_id,
-      realmUri: data.realm_uri || data.realm_url,
-    },
-    actions: [{ action: "open", title: "Open" }],
-    renotify: true,
-    requireInteraction: false,
+    const options = {
+      body,
+      icon: data.sender_avatar_url || "/pwa-192x192.png",
+      badge: "/pwa-192x192.png",
+      tag: `msg-${data.message_id || Date.now()}`,
+      data: {
+        messageId: data.message_id,
+        messageType: data.message_type,
+        streamId: data.stream_id,
+        streamName: data.stream_name || data.stream,
+        topic: data.topic,
+        senderId: data.sender_id,
+        realmUri: data.realm_uri || data.realm_url,
+      },
+      actions: [{ action: "open", title: "Open" }],
+      renotify: true,
+      requireInteraction: false,
+    };
+
+    return self.registration.showNotification(title, options);
   };
 
-  self.registration.showNotification(title, options);
+  // Skip OS toast only when a visible tab is open (long-poll handles it there).
+  self.clients
+    .matchAll({ type: "window", includeUncontrolled: true })
+    .then((clients) => {
+      const hasVisibleClient = clients.some((client) => client.visibilityState === "visible");
+      if (hasVisibleClient) {
+        return;
+      }
+      return showNotification();
+    })
+    .catch(() => showNotification());
 });
 
 self.addEventListener("notificationclick", (event) => {

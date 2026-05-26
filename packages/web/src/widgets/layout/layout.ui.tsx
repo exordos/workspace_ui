@@ -19,11 +19,6 @@ import { useLayoutAuthErrorHandler } from "./layout-auth-error-handler.hook";
 import { useLayoutAuthGuard } from "./layout-auth-guard.hook";
 import { runChatListBootstrap } from "./layout-chat-list-bootstrap.lib";
 import { useLayoutChatListSnapshotSync } from "./layout-chat-list-snapshot-sync.hook";
-import { LayoutLoadingGate } from "./layout-loading-gate.ui";
-import type { LayoutUserConnectionStatus } from "./layout-user-connection-status.types";
-import { isLayoutUserConnectionReady } from "./layout-user-connection-status.types";
-import { useLayoutMuteSnapshotSync } from "./layout-mute-snapshot-sync.hook";
-import { useLayoutOnlineStatus } from "./layout-online-status.hook";
 import { parseFocusedMessageIdFromSearch } from "./layout-chat-route.lib";
 import { shouldRenderChatShell } from "./layout-chat-shell.lib";
 import { LayoutConnectionBanner } from "./layout-connection-banner.ui";
@@ -35,17 +30,25 @@ import { useLayoutInstanceBootstrap } from "./layout-instance-bootstrap.hook";
 import { computeInstanceDmUnreadCount } from "./layout-instance-unread.lib";
 import { useLayoutLastMessengerRoutePersistence } from "./layout-last-messenger-route.hook";
 import { useLayoutLegacyStreamSlugRedirect } from "./layout-legacy-stream-redirect.hook";
+import { LayoutLoadingGate } from "./layout-loading-gate.ui";
+import { useLayoutMuteSnapshotSync } from "./layout-mute-snapshot-sync.hook";
+import { LayoutNotificationPermissionBanner } from "./layout-notification-permission-banner.ui";
+import { useLayoutNotificationPermission } from "./layout-notification-permission.hook";
+import { useLayoutOnlineStatus } from "./layout-online-status.hook";
 import { useLayoutPresencePolling } from "./layout-presence-polling.hook";
 import { useLayoutPushClickRouting } from "./layout-push-click-routing.hook";
+import { useLayoutPushNotifications } from "./layout-push-notifications.hook";
 import { useLayoutPushPermission } from "./layout-push-permission.hook";
 import { useLayoutResetRightDrawerOnInstanceChange } from "./layout-reset-right-drawer-on-instance-change.hook";
 import { useLayoutRightPanelShell } from "./layout-right-panel-shell.hook";
 import { useLayoutShortcuts } from "./layout-shortcuts.hook";
 import { useSyncChatContextFromLocation } from "./layout-sync-chat-context.hook";
 import { useLayoutUnreadAndTitle } from "./layout-unread-title.hook";
+import { isLayoutUserConnectionReady } from "./layout-user-connection-status.types";
 import { useLayoutWindowBranding } from "./layout-window-branding.hook";
 import { useLayoutZulipEventLoop } from "./layout-zulip-event-loop.hook";
 import { useZulipRateLimitCountdownSeconds } from "./layout-zulip-rate-limit-banner.hook";
+import type { LayoutUserConnectionStatus } from "./layout-user-connection-status.types";
 
 export const Layout: React.FC = () => {
   const location = useLocation();
@@ -265,6 +268,7 @@ export const Layout: React.FC = () => {
   useSyncChatContextFromLocation();
 
   useLayoutPushPermission({ enabled: isLayoutUserConnectionReady(currentUserStatus) });
+  useLayoutPushNotifications({ enabled: isLayoutUserConnectionReady(currentUserStatus) });
 
   useLayoutPushClickRouting({
     currentInstanceId,
@@ -275,6 +279,11 @@ export const Layout: React.FC = () => {
 
   const layoutConnectionReady =
     currentInstanceId != null && isLayoutUserConnectionReady(currentUserStatus);
+
+  const notificationPermission = useLayoutNotificationPermission({
+    enabled: layoutConnectionReady,
+    organizationId: currentInstanceId,
+  });
 
   useLayoutPresencePolling({ enabled: layoutConnectionReady });
 
@@ -331,6 +340,13 @@ export const Layout: React.FC = () => {
         health={connectionHealth}
         rateLimitSeconds={rateLimitSeconds}
       />
+      {notificationPermission.visible ? (
+        <LayoutNotificationPermissionBanner
+          enabling={notificationPermission.enabling}
+          onEnable={notificationPermission.enable}
+          onDismiss={notificationPermission.dismiss}
+        />
+      ) : null}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <LayoutLoadingGate
           showFullscreenLoader={showFullscreenLoader}
