@@ -218,6 +218,7 @@ export const ChatPage: React.FC = () => {
     });
   }, [messages.length, messages, chatContextForMessages]);
   const streams = useChatListStore((s) => s.streams());
+  const handleDeleteMessagesInChatList = useChatListStore((s) => s.handleDeleteMessages);
   const realmBaseUrl = getRealmBaseUrl();
   const firstUnreadId = useMemo(
     () => resolveFirstUnreadBoundaryMessageId(messages, currentUserId),
@@ -1760,7 +1761,12 @@ export const ChatPage: React.FC = () => {
     if (deleteConfirm.type === "single") {
       const messageId = deleteConfirm.messageId;
       deleteMessage(messageId)
-        .then(() => removeMessageFromStore(messageId))
+        .then(() => {
+          handleDeleteMessagesInChatList([messageId], {
+            replacementMessages: useCurrentChatMessagesStore.getState().messages,
+          });
+          removeMessageFromStore(messageId);
+        })
         .catch((err) =>
           setActionError(err instanceof Error ? err.message : t("message.deleteError")),
         );
@@ -1768,6 +1774,9 @@ export const ChatPage: React.FC = () => {
       const ids = deleteConfirm.messageIds;
       Promise.all(ids.map((id) => deleteMessage(id)))
         .then(() => {
+          handleDeleteMessagesInChatList(ids, {
+            replacementMessages: useCurrentChatMessagesStore.getState().messages,
+          });
           removeMessagesFromStore(ids);
           setSelectedMessageIds(new Set());
           setSelectionMode(false);
@@ -1775,7 +1784,13 @@ export const ChatPage: React.FC = () => {
         .catch((err) => setActionError(err instanceof Error ? err.message : t("app.error")));
     }
     setDeleteConfirm(null);
-  }, [deleteConfirm, removeMessageFromStore, removeMessagesFromStore, t]);
+  }, [
+    deleteConfirm,
+    handleDeleteMessagesInChatList,
+    removeMessageFromStore,
+    removeMessagesFromStore,
+    t,
+  ]);
 
   const handleDeleteCancel = useCallback(() => {
     setDeleteConfirm(null);

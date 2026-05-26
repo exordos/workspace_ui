@@ -43,6 +43,23 @@ export type MessageLocation =
   | { type: "stream"; stream_id: number; topic: string }
   | { type: "dm"; dmKey: string };
 
+export interface ChatListPreviewSourceMessage {
+  id: number;
+  stream_id?: number | null;
+  display_recipient?:
+    | string
+    | { id: number; full_name: string; email?: string; avatar_url?: string }[];
+  subject?: string;
+  content: string;
+  timestamp: number;
+  sender_full_name?: string;
+}
+
+export interface ChatListHandleDeleteMessagesOptions {
+  replacementMessages?: readonly ChatListPreviewSourceMessage[];
+  resolveMissingPreview?: boolean;
+}
+
 export interface ChatListState {
   streamsMap: Map<number, StreamEntryInternal>;
   dmsMap: Map<string, DmEntryInternal>;
@@ -102,7 +119,10 @@ export interface ChatListState {
   decrementUnreadForTopic: (streamId: number, topic: string, count: number) => void;
   decrementUnreadForDmKey: (dmKey: string, count: number) => void;
   incrementUnreadForMessages: (messageIds: number[]) => void;
-  handleDeleteMessages: (messageIds: number[]) => void;
+  handleDeleteMessages: (
+    messageIds: number[],
+    options?: ChatListHandleDeleteMessagesOptions,
+  ) => void;
   streams: () => StreamWithLast[];
   dms: () => Extract<SidebarChat, { type: "dm" }>[];
 }

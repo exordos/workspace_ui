@@ -6,9 +6,11 @@
  * Tracks unread counts per topic/DM and a message-to-location index for flag/delete handling.
  */
 import { create } from "zustand";
+import { parseDmKeyToUserIds } from "~/entities/message/message-chat-context.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import { fetchMessagesWithNarrow } from "~/shared/api/zulip";
+import type { MockMessage, ZulipRawMessage } from "~/shared/api/zulip.types";
 import {
   deserializeStreamEntry,
   type ChatListSnapshotSerialized,
@@ -35,6 +37,7 @@ import {
   hashKey,
   resolvePersonalDmSidebarTitle,
   slugify,
+  truncatePreview,
 } from "./chat-list-format.lib";
 import {
   applySidebarUnreadDeltas,
@@ -60,6 +63,7 @@ import {
 import type { ChatListPatchMeta } from "./chat-list-patch-meta.types";
 import type {
   ChatListDmMetadataRow,
+  ChatListPreviewSourceMessage,
   ChatListState,
   ChatListStreamMetadataRow,
   MessageLocation,
@@ -870,7 +874,158 @@ function rebuildStreamFromTopics(
   };
 }
 
+interface SidebarResolvedPreview {
+  lastMessageId: number;
+  lastMessage: string;
+  lastMessageSenderName?: string;
+  time: string;
+  ts: number;
+}
+
+type DeletedPreviewContext =
+  | {
+      kind: "stream";
+      streamId: number;
+      topicKey: string;
+      streamName: string;
+      deletedLastMessageId: number;
+    }
+  | {
+      kind: "dm";
+      dmKey: string;
+      deletedLastMessageId: number;
+    };
+
+function buildResolvedPreviewFromMessage(
+  message: ChatListPreviewSourceMessage,
+): SidebarResolvedPreview {
+  return {
+    lastMessageId: message.id,
+    lastMessage: truncatePreview(message.content ?? ""),
+    lastMessageSenderName: message.sender_full_name?.trim() || undefined,
+    time: formatMessageTime(message.timestamp),
+    ts: message.timestamp,
+  };
+}
+
+function buildResolvedDmPreviewFromMessage(
+  message: ChatListPreviewSourceMessage,
+): Pick<DmEntryInternal, "lastMessageId" | "lastMessage" | "time" | "ts"> {
+  return {
+    lastMessageId: message.id,
+    lastMessage: truncatePreview(message.content ?? ""),
+    time: formatMessageTime(message.timestamp),
+    ts: message.timestamp,
+  };
+}
+
+function pickNewestMessage<T extends ChatListPreviewSourceMessage>(
+  messages: readonly T[],
+  predicate: (message: T) => boolean,
+  excludedMessageIds?: ReadonlySet<number>,
+): T | null {
+  let newest: T | null = null;
+  for (const message of messages) {
+    if (excludedMessageIds?.has(message.id)) continue;
+    if (!predicate(message)) continue;
+    if (
+      newest == null ||
+      message.timestamp > newest.timestamp ||
+      (message.timestamp === newest.timestamp && message.id > newest.id)
+    ) {
+      newest = message;
+    }
+  }
+  return newest;
+}
+
+function pickReplacementForStreamTopic<T extends ChatListPreviewSourceMessage>(
+  messages: readonly T[],
+  streamId: number,
+  topicKey: string,
+  excludedMessageIds?: ReadonlySet<number>,
+): T | null {
+  return pickNewestMessage(
+    messages,
+    (message) =>
+      message.stream_id === streamId &&
+      normalizeTopicForIdentity(message.subject ?? "") === topicKey,
+    excludedMessageIds,
+  );
+}
+
+function pickReplacementForDm<T extends ChatListPreviewSourceMessage>(
+  messages: readonly T[],
+  dmKey: string,
+  currentUserId: number | null,
+  excludedMessageIds?: ReadonlySet<number>,
+): T | null {
+  return pickNewestMessage(
+    messages,
+    (message) => {
+      if (message.stream_id != null || !Array.isArray(message.display_recipient)) return false;
+      return dmConversationKey(message.display_recipient, currentUserId) === dmKey;
+    },
+    excludedMessageIds,
+  );
+}
+
+async function fetchReplacementMessageForDeletedPreview(
+  context: DeletedPreviewContext,
+  currentUserId: number | null,
+  signal?: AbortSignal,
+): Promise<MockMessage | null> {
+  try {
+    if (context.kind === "stream") {
+      if (context.streamName.trim().length === 0) return null;
+      const messages = await fetchMessagesWithNarrow(
+        [
+          { operator: "stream", operand: context.streamName },
+          { operator: "topic", operand: context.topicKey },
+        ],
+        "newest",
+        1,
+        0,
+        { applyMarkdown: true, signal },
+      );
+      const replacement = pickReplacementForStreamTopic(
+        messages,
+        context.streamId,
+        context.topicKey,
+      );
+      return replacement?.id === context.deletedLastMessageId ? null : replacement;
+    }
+
+    const userIds = parseDmKeyToUserIds(context.dmKey, currentUserId);
+    if (userIds.length === 0) return null;
+    const messages = await fetchMessagesWithNarrow(
+      [{ operator: "dm", operand: userIds }],
+      "newest",
+      1,
+      0,
+      { applyMarkdown: true, signal },
+    );
+    const replacement = pickReplacementForDm(messages, context.dmKey, currentUserId);
+    return replacement?.id === context.deletedLastMessageId ? null : replacement;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      return null;
+    }
+    return null;
+  }
+}
+
 export const useChatListStore = create<ChatListState>((set, get) => {
+  let previewResolveGeneration = 0;
+  const previewResolveAbortControllers = new Set<AbortController>();
+  const invalidatePreviewResolveLifecycle = () => {
+    previewResolveGeneration += 1;
+    for (const controller of previewResolveAbortControllers) {
+      controller.abort();
+    }
+    previewResolveAbortControllers.clear();
+  };
+
   const patchSet = (update: Parameters<typeof set>[0], meta: ChatListPatchMeta = {}) => {
     if (typeof update === "function") {
       set((state) => {
@@ -897,6 +1052,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
     mentionsUnreadCount: 0,
 
     setFromMessages(messages, currentUserId) {
+      invalidatePreviewResolveLifecycle();
       const effectiveUserId = currentUserId ?? get().currentUserId;
       const avatarMap = getAvatarMap();
       const previousStreamsMap = get().streamsMap;
@@ -932,6 +1088,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
     },
 
     hydrateFromIndexedDbSnapshot(snapshot: ChatListSnapshotSerialized) {
+      invalidatePreviewResolveLifecycle();
       const streamsMap = new Map<number, StreamEntryInternal>();
       for (const [id, s] of snapshot.streamsEntries) {
         streamsMap.set(id, deserializeStreamEntry(s));
@@ -1457,6 +1614,9 @@ export const useChatListStore = create<ChatListState>((set, get) => {
 
     setCurrentUserId(id) {
       const prev = get().currentUserId;
+      if (prev !== id) {
+        invalidatePreviewResolveLifecycle();
+      }
       patchSet({ currentUserId: id });
       // Зачем: если user id пришел позже, пересобираем DM-ключи и заголовки, чтобы убрать кривые имена/ключи.
       if (prev === null && id != null) {
@@ -1741,6 +1901,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
 
     clear() {
       logChatListFlow("store: clear", {});
+      invalidatePreviewResolveLifecycle();
       _cachedStreams = null;
       _cachedStreamsMapRef = null;
       _cachedDms = null;
@@ -1889,50 +2050,302 @@ export const useChatListStore = create<ChatListState>((set, get) => {
       });
     },
 
-    handleDeleteMessages(messageIds) {
+    handleDeleteMessages(messageIds, options) {
       if (messageIds.length === 0) return;
+      const deletedMessageIds = new Set(messageIds);
+      const replacementMessages = options?.replacementMessages ?? [];
+      const resolveMissingPreview = options?.resolveMissingPreview ?? true;
+      const contextsToResolveFromNetwork: DeletedPreviewContext[] = [];
+      const currentUserId = get().currentUserId;
+
       patchSet(
         (state) => {
           const locMap = state.messageIdToLocation;
+          let nextLoc = locMap;
+          let locationsChanged = false;
           let nextStreams = state.streamsMap;
+          let streamsChanged = false;
           let nextDms = state.dmsMap;
-          const nextLoc = new Map(locMap);
+          let dmsChanged = false;
+          const streamContextsByKey = new Map<
+            string,
+            Extract<DeletedPreviewContext, { kind: "stream" }>
+          >();
+          const dmContextsByKey = new Map<string, Extract<DeletedPreviewContext, { kind: "dm" }>>();
+          const changedStreamIds = new Set<number>();
+
+          const ensureMutableLocations = () => {
+            if (!locationsChanged) {
+              nextLoc = new Map(nextLoc);
+              locationsChanged = true;
+            }
+          };
+          const ensureMutableStreams = () => {
+            if (!streamsChanged) {
+              nextStreams = new Map(nextStreams);
+              streamsChanged = true;
+            }
+          };
+          const ensureMutableDms = () => {
+            if (!dmsChanged) {
+              nextDms = new Map(nextDms);
+              dmsChanged = true;
+            }
+          };
+          const registerStreamContext = (
+            streamId: number,
+            topicKey: string,
+            streamName: string,
+            deletedLastMessageId: number,
+          ) => {
+            const key = streamTopicCompositeKey(streamId, topicKey);
+            const existing = streamContextsByKey.get(key);
+            if (!existing || deletedLastMessageId > existing.deletedLastMessageId) {
+              streamContextsByKey.set(key, {
+                kind: "stream",
+                streamId,
+                topicKey,
+                streamName,
+                deletedLastMessageId,
+              });
+            }
+          };
+          const registerDmContext = (dmKey: string, deletedLastMessageId: number) => {
+            const existing = dmContextsByKey.get(dmKey);
+            if (!existing || deletedLastMessageId > existing.deletedLastMessageId) {
+              dmContextsByKey.set(dmKey, {
+                kind: "dm",
+                dmKey,
+                deletedLastMessageId,
+              });
+            }
+          };
+
           for (const mid of messageIds) {
+            if (nextLoc.has(mid)) {
+              ensureMutableLocations();
+              nextLoc.delete(mid);
+            }
             const loc = locMap.get(mid);
             if (!loc) continue;
-            nextLoc.delete(mid);
             if (loc.type === "stream") {
-              const stream = nextStreams.get(loc.stream_id);
-              if (!stream) continue;
-              const topic = stream.topics.get(loc.topic);
-              if (topic?.lastMessageId !== mid) continue;
-              nextStreams = new Map(nextStreams);
-              const nextTopics = new Map(stream.topics);
-              nextTopics.set(loc.topic, { ...topic, lastMessageId: undefined });
-              nextStreams.set(loc.stream_id, {
-                ...stream,
-                topics: nextTopics,
-              });
+              const stream = state.streamsMap.get(loc.stream_id);
+              const topic = stream?.topics.get(loc.topic);
+              if (topic?.lastMessageId === mid && stream != null) {
+                registerStreamContext(loc.stream_id, loc.topic, stream.name, mid);
+              }
             } else {
-              const dm = nextDms.get(loc.dmKey);
-              if (dm?.lastMessageId !== mid) continue;
-              nextDms = new Map(nextDms);
-              nextDms.set(loc.dmKey, { ...dm, lastMessageId: undefined });
+              const dm = state.dmsMap.get(loc.dmKey);
+              if (dm?.lastMessageId === mid) {
+                registerDmContext(loc.dmKey, mid);
+              }
             }
           }
+
+          for (const [streamId, stream] of state.streamsMap.entries()) {
+            for (const [topicKey, topic] of stream.topics.entries()) {
+              if (topic.lastMessageId == null) continue;
+              if (!deletedMessageIds.has(topic.lastMessageId)) continue;
+              registerStreamContext(streamId, topicKey, stream.name, topic.lastMessageId);
+            }
+          }
+          for (const [dmKey, dm] of state.dmsMap.entries()) {
+            if (dm.lastMessageId == null) continue;
+            if (!deletedMessageIds.has(dm.lastMessageId)) continue;
+            registerDmContext(dmKey, dm.lastMessageId);
+          }
+
+          for (const context of streamContextsByKey.values()) {
+            const stream = nextStreams.get(context.streamId);
+            const topic = stream?.topics.get(context.topicKey);
+            if (!stream || !topic) continue;
+            const replacement = pickReplacementForStreamTopic(
+              replacementMessages,
+              context.streamId,
+              context.topicKey,
+              deletedMessageIds,
+            );
+            const nextTopic =
+              replacement == null
+                ? {
+                    ...topic,
+                    lastMessage: "",
+                    lastMessageSenderName: undefined,
+                    time: "",
+                    ts: 0,
+                    lastMessageId: undefined,
+                  }
+                : {
+                    ...topic,
+                    ...buildResolvedPreviewFromMessage(replacement),
+                  };
+            ensureMutableStreams();
+            const nextTopics = new Map(stream.topics);
+            nextTopics.set(context.topicKey, nextTopic);
+            nextStreams.set(context.streamId, { ...stream, topics: nextTopics });
+            changedStreamIds.add(context.streamId);
+            if (replacement == null && resolveMissingPreview) {
+              contextsToResolveFromNetwork.push(context);
+            }
+          }
+
+          for (const streamId of changedStreamIds) {
+            const stream = nextStreams.get(streamId);
+            if (!stream) continue;
+            const newestTopic = getNewestTopicEntry(stream.topics);
+            nextStreams.set(streamId, {
+              ...stream,
+              ...(newestTopic != null
+                ? {
+                    lastMessage: newestTopic.lastMessage,
+                    lastMessageSenderName: newestTopic.lastMessageSenderName,
+                    time: newestTopic.time,
+                    ts: newestTopic.ts,
+                  }
+                : {
+                    lastMessage: "",
+                    lastMessageSenderName: undefined,
+                    time: "",
+                    ts: 0,
+                  }),
+            });
+          }
+
+          for (const context of dmContextsByKey.values()) {
+            const dm = nextDms.get(context.dmKey);
+            if (!dm) continue;
+            const replacement = pickReplacementForDm(
+              replacementMessages,
+              context.dmKey,
+              currentUserId,
+              deletedMessageIds,
+            );
+            const nextDm =
+              replacement == null
+                ? {
+                    ...dm,
+                    lastMessage: "",
+                    time: "",
+                    ts: 0,
+                    lastMessageId: undefined,
+                  }
+                : {
+                    ...dm,
+                    ...buildResolvedDmPreviewFromMessage(replacement),
+                  };
+            ensureMutableDms();
+            nextDms.set(context.dmKey, nextDm);
+            if (replacement == null && resolveMissingPreview) {
+              contextsToResolveFromNetwork.push(context);
+            }
+          }
+
+          if (!locationsChanged && !streamsChanged && !dmsChanged) return state;
           return {
-            streamsMap: nextStreams,
-            dmsMap: nextDms,
-            messageIdToLocation: nextLoc,
-            streamTopicMessageIds: patchStreamTopicMessageIndex(
-              state.streamTopicMessageIds,
-              state.messageIdToLocation,
-              nextLoc,
-            ),
+            ...(streamsChanged ? { streamsMap: nextStreams } : {}),
+            ...(dmsChanged ? { dmsMap: nextDms } : {}),
+            ...(locationsChanged ? { messageIdToLocation: nextLoc } : {}),
+            ...(locationsChanged
+              ? {
+                  streamTopicMessageIds: patchStreamTopicMessageIndex(
+                    state.streamTopicMessageIds,
+                    state.messageIdToLocation,
+                    nextLoc,
+                  ),
+                }
+              : {}),
           };
         },
         { preserveSidebarTotals: true },
       );
+
+      if (!resolveMissingPreview || contextsToResolveFromNetwork.length === 0) return;
+      const previewResolveAbortController = new AbortController();
+      previewResolveAbortControllers.add(previewResolveAbortController);
+      const previewResolveStartedGeneration = previewResolveGeneration;
+      const uniqueContexts = new Map<string, DeletedPreviewContext>();
+      for (const context of contextsToResolveFromNetwork) {
+        const key =
+          context.kind === "stream"
+            ? streamTopicCompositeKey(context.streamId, context.topicKey)
+            : `dm:${context.dmKey}`;
+        uniqueContexts.set(key, context);
+      }
+      void Promise.all(
+        Array.from(uniqueContexts.values()).map(async (context) => {
+          if (
+            previewResolveAbortController.signal.aborted ||
+            previewResolveStartedGeneration !== previewResolveGeneration
+          ) {
+            return;
+          }
+          const replacement = await fetchReplacementMessageForDeletedPreview(
+            context,
+            currentUserId,
+            previewResolveAbortController.signal,
+          );
+          if (
+            replacement == null ||
+            previewResolveAbortController.signal.aborted ||
+            previewResolveStartedGeneration !== previewResolveGeneration
+          ) {
+            return;
+          }
+          if (context.kind === "stream") {
+            const streamContext = context;
+            patchSet(
+              (state) => {
+                if (
+                  previewResolveAbortController.signal.aborted ||
+                  previewResolveStartedGeneration !== previewResolveGeneration
+                ) {
+                  return state;
+                }
+                const stream = state.streamsMap.get(streamContext.streamId);
+                const topic = stream?.topics.get(streamContext.topicKey);
+                if (!stream || !topic || topic.lastMessageId != null) return state;
+                const nextStreams = new Map(state.streamsMap);
+                const nextTopics = new Map(stream.topics);
+                nextTopics.set(streamContext.topicKey, {
+                  ...topic,
+                  ...buildResolvedPreviewFromMessage(replacement),
+                });
+                const nextStream = rebuildStreamFromTopics(
+                  { ...stream, topics: nextTopics },
+                  nextTopics,
+                );
+                nextStreams.set(streamContext.streamId, nextStream);
+                return { streamsMap: nextStreams };
+              },
+              { preserveSidebarTotals: true },
+            );
+            return;
+          }
+
+          const dmContext = context;
+          patchSet(
+            (state) => {
+              if (
+                previewResolveAbortController.signal.aborted ||
+                previewResolveStartedGeneration !== previewResolveGeneration
+              ) {
+                return state;
+              }
+              const dm = state.dmsMap.get(dmContext.dmKey);
+              if (!dm || dm.lastMessageId != null) return state;
+              const nextDms = new Map(state.dmsMap);
+              nextDms.set(dmContext.dmKey, {
+                ...dm,
+                ...buildResolvedDmPreviewFromMessage(replacement),
+              });
+              return { dmsMap: nextDms };
+            },
+            { preserveSidebarTotals: true },
+          );
+        }),
+      ).finally(() => {
+        previewResolveAbortControllers.delete(previewResolveAbortController);
+      });
     },
 
     streams() {

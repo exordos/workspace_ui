@@ -7,8 +7,9 @@
  * lookups, and keeps entries sorted by most-recent-message timestamp.
  * Correctness here is critical because the sidebar is the primary navigation surface.
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setLocale } from "~/i18n/i18n";
+import { fetchMessagesWithNarrow, rawMessageToMockMessage } from "~/shared/api/zulip";
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import type { ChatListSnapshotSerialized } from "~/shared/lib/chat-list-snapshot-serialize.lib";
 import { sortChatsByLastMessage } from "~/shared/lib/chat-sorting";
@@ -16,6 +17,36 @@ import { useUsersStore } from "../user/user.model";
 import { buildChatListSnapshotSerialized } from "./chat-list-snapshot.lib";
 import { getStreamTopicMessageIds } from "./chat-list-stream-topic-index.lib";
 import { useChatListStore } from "./chat-list.model";
+
+vi.mock("~/shared/api/zulip", async (importOriginal) => {
+  const actual = await importOriginal<
+    Record<string, unknown> & {
+      fetchMessagesWithNarrow: typeof fetchMessagesWithNarrow;
+    }
+  >();
+  return {
+    ...actual,
+    fetchMessagesWithNarrow: vi.fn(actual.fetchMessagesWithNarrow),
+  };
+});
+
+const fetchMessagesWithNarrowMock = vi.mocked(fetchMessagesWithNarrow);
+
+function deferred<T>() {
+  let resolveFn!: (value: T) => void;
+  let rejectFn!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolve, reject) => {
+    resolveFn = resolve;
+    rejectFn = reject;
+  });
+  return { promise, resolve: resolveFn, reject: rejectFn };
+}
+
+async function flushMicrotasks(turns = 3): Promise<void> {
+  for (let index = 0; index < turns; index += 1) {
+    await Promise.resolve();
+  }
+}
 
 function resetStores() {
   useChatListStore.getState().clear();
@@ -61,7 +92,10 @@ const OTHER_SENDER_ID = 20;
 // Verifies all store actions: building entries from messages, live updates,
 // unread tracking, deletion handling, and sort order.
 describe("chatListStore", () => {
-  beforeEach(resetStores);
+  beforeEach(() => {
+    resetStores();
+    fetchMessagesWithNarrowMock.mockClear();
+  });
   afterEach(resetStores);
 
   describe("patchPersonalDmRowLabelsForUser", () => {
@@ -1036,8 +1070,8 @@ describe("chatListStore", () => {
 
   // handleDeleteMessages responds to server-side message deletion events.
   describe("handleDeleteMessages", () => {
-    // Deleting a known lastMessageId should keep topic row to avoid transient disappear after topic move notices.
-    it("keeps topic row and clears lastMessageId when deleting topic last message", () => {
+    // Deleting a known lastMessageId should keep topic row and clear stale preview fields.
+    it("keeps topic row and clears preview when deleting topic last message", () => {
       useChatListStore
         .getState()
         .setFromMessages(
@@ -1061,9 +1095,12 @@ describe("chatListStore", () => {
       expect(
         useChatListStore.getState().streamsMap.get(5)?.topics.get("topicA")?.lastMessageId,
       ).toBe(undefined);
+      expect(useChatListStore.getState().streamsMap.get(5)?.topics.get("topicA")?.lastMessage).toBe(
+        "",
+      );
     });
 
-    it("keeps stream last sender when deleting tracked topic last message id", () => {
+    it("recomputes stream preview from remaining newest topic after deleting tracked last message id", () => {
       useChatListStore.getState().setFromMessages(
         [
           streamMsg({
@@ -1091,7 +1128,7 @@ describe("chatListStore", () => {
         .streams()
         .find((item) => item.stream_id === 5);
       expect(stream).toBeDefined();
-      expect(stream?.lastMessageSenderName).toBe("Bob");
+      expect(stream?.lastMessageSenderName).toBe("Alice");
     });
 
     // Single-topic stream should remain visible after deleting currently tracked lastMessageId.
@@ -1124,6 +1161,181 @@ describe("chatListStore", () => {
 
       const dms = useChatListStore.getState().dms();
       expect(dms).toHaveLength(1);
+      expect(useChatListStore.getState().dmsMap.get("10,20")?.lastMessageId).toBe(undefined);
+      expect(useChatListStore.getState().dmsMap.get("10,20")?.lastMessage).toBe("");
+    });
+
+    it("uses local replacementMessages to update stream/topic preview without waiting for network", () => {
+      const older = streamMsg({
+        id: 1,
+        stream_id: 5,
+        subject: "topicA",
+        timestamp: 1000,
+        content: "older preview",
+        sender_full_name: "Alice",
+      });
+      const newer = streamMsg({
+        id: 2,
+        stream_id: 5,
+        subject: "topicA",
+        timestamp: 2000,
+        content: "newer preview",
+        sender_full_name: "Bob",
+      });
+      useChatListStore.getState().setFromMessages([older, newer], 10);
+
+      useChatListStore.getState().handleDeleteMessages([2], {
+        replacementMessages: [older, newer],
+        resolveMissingPreview: false,
+      });
+
+      const topic = useChatListStore.getState().streamsMap.get(5)?.topics.get("topicA");
+      expect(topic?.lastMessageId).toBe(1);
+      expect(topic?.lastMessage).toContain("older preview");
+      expect(topic?.lastMessageSenderName).toBe("Alice");
+    });
+
+    it("uses local replacementMessages to update DM preview without waiting for network", () => {
+      const older = dmMsg({
+        id: 50,
+        timestamp: 1000,
+        content: "dm older",
+        sender_full_name: "Alice",
+      });
+      const newer = dmMsg({
+        id: 51,
+        timestamp: 2000,
+        content: "dm newer",
+        sender_full_name: "Bob",
+      });
+      useChatListStore.getState().setFromMessages([older, newer], 10);
+
+      useChatListStore.getState().handleDeleteMessages([51], {
+        replacementMessages: [older, newer],
+        resolveMissingPreview: false,
+      });
+
+      const dm = useChatListStore.getState().dmsMap.get("10,20");
+      expect(dm?.lastMessageId).toBe(50);
+      expect(dm?.lastMessage).toContain("dm older");
+    });
+
+    it("builds DM fallback narrow without current user id", async () => {
+      const older = dmMsg({
+        id: 50,
+        timestamp: 1000,
+        content: "dm older",
+      });
+      const newer = dmMsg({
+        id: 51,
+        timestamp: 2000,
+        content: "dm newer",
+      });
+      useChatListStore.getState().setFromMessages([older, newer], 10);
+      fetchMessagesWithNarrowMock.mockResolvedValueOnce([rawMessageToMockMessage(older)]);
+
+      useChatListStore.getState().handleDeleteMessages([51]);
+      await flushMicrotasks();
+
+      expect(fetchMessagesWithNarrowMock).toHaveBeenCalledTimes(1);
+      expect(fetchMessagesWithNarrowMock.mock.calls[0]?.[0]).toEqual([
+        { operator: "dm", operand: [20] },
+      ]);
+      expect(useChatListStore.getState().dmsMap.get("10,20")?.lastMessageId).toBe(50);
+    });
+
+    it("builds DM fallback narrow from dmKey when currentUserId is null", async () => {
+      const older = dmMsg({
+        id: 50,
+        timestamp: 1000,
+        content: "dm older",
+      });
+      const newer = dmMsg({
+        id: 51,
+        timestamp: 2000,
+        content: "dm newer",
+      });
+      useChatListStore.getState().setFromMessages([older, newer], 10);
+      useChatListStore.getState().setCurrentUserId(null);
+      fetchMessagesWithNarrowMock.mockResolvedValueOnce([rawMessageToMockMessage(older)]);
+
+      useChatListStore.getState().handleDeleteMessages([51]);
+      await flushMicrotasks();
+
+      expect(fetchMessagesWithNarrowMock).toHaveBeenCalledTimes(1);
+      expect(fetchMessagesWithNarrowMock.mock.calls[0]?.[0]).toEqual([
+        { operator: "dm", operand: [10, 20] },
+      ]);
+      expect(useChatListStore.getState().dmsMap.get("10,20")?.lastMessageId).toBe(50);
+    });
+
+    it("ignores stale async refetch response after clear", async () => {
+      const older = dmMsg({
+        id: 50,
+        timestamp: 1000,
+        content: "dm older",
+      });
+      const newer = dmMsg({
+        id: 51,
+        timestamp: 2000,
+        content: "dm newer",
+      });
+      useChatListStore.getState().setFromMessages([older, newer], 10);
+      const gate = deferred<void>();
+      let signal: AbortSignal | undefined;
+      fetchMessagesWithNarrowMock.mockImplementationOnce(
+        async (_narrow, _anchor, _numBefore, _numAfter, options) => {
+          signal = options?.signal;
+          await gate.promise;
+          if (options?.signal?.aborted) {
+            throw new DOMException("Aborted", "AbortError");
+          }
+          return [rawMessageToMockMessage(older)];
+        },
+      );
+
+      useChatListStore.getState().handleDeleteMessages([51]);
+      useChatListStore.getState().clear();
+      expect(signal?.aborted).toBe(true);
+
+      gate.resolve();
+      await flushMicrotasks();
+
+      expect(useChatListStore.getState().dmsMap.size).toBe(0);
+    });
+
+    it("aborts pending preview refetch on current user switch and does not patch stale result", async () => {
+      const older = dmMsg({
+        id: 50,
+        timestamp: 1000,
+        content: "dm older",
+      });
+      const newer = dmMsg({
+        id: 51,
+        timestamp: 2000,
+        content: "dm newer",
+      });
+      useChatListStore.getState().setFromMessages([older, newer], 10);
+      const gate = deferred<void>();
+      let signal: AbortSignal | undefined;
+      fetchMessagesWithNarrowMock.mockImplementationOnce(
+        async (_narrow, _anchor, _numBefore, _numAfter, options) => {
+          signal = options?.signal;
+          await gate.promise;
+          if (options?.signal?.aborted) {
+            throw new DOMException("Aborted", "AbortError");
+          }
+          return [rawMessageToMockMessage(older)];
+        },
+      );
+
+      useChatListStore.getState().handleDeleteMessages([51]);
+      useChatListStore.getState().setCurrentUserId(999);
+      expect(signal?.aborted).toBe(true);
+
+      gate.resolve();
+      await flushMicrotasks();
+
       expect(useChatListStore.getState().dmsMap.get("10,20")?.lastMessageId).toBe(undefined);
     });
 
