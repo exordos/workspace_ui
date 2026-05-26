@@ -73,3 +73,15 @@ export const DEFAULT_MESSENGER_STREAM_SLUG = "general";
 
 /** Debounce for persisting the last opened messenger chat to localStorage. */
 export const LAST_MESSENGER_ROUTE_PERSIST_DEBOUNCE_MS = 300;
+
+/** In-app toast auto-dismiss for error variant. */
+export const TOAST_ERROR_DISMISS_MS = 5000;
+
+/** In-app toast auto-dismiss for success and info variants. */
+export const TOAST_SUCCESS_DISMISS_MS = 3000;
+
+/** Suppress duplicate toast messages with the same text within this window. */
+export const TOAST_DEDUP_WINDOW_MS = 2000;
+
+/** Maximum visible in-app toasts at once. */
+export const TOAST_MAX_VISIBLE = 3;

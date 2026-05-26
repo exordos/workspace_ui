@@ -3,7 +3,9 @@
  */
 
 import { create } from "zustand";
+import { t } from "~/i18n/i18n";
 import { logStoreAction } from "~/shared/lib/logger";
+import { toast } from "~/shared/lib/toast/toast";
 import {
   createFolder as apiCreateFolder,
   updateFolder as apiUpdateFolder,
@@ -58,7 +60,9 @@ export const useManageFoldersStore = create<ManageFoldersState>((set) => ({
     if (result) {
       set({ status: "idle", editMode: "none" });
     } else {
-      set({ status: "error", error: "Failed to create folder" });
+      const message = t("folder.createFailed");
+      toast.error(message);
+      set({ status: "error", error: message });
     }
     return result;
   },
@@ -71,7 +75,9 @@ export const useManageFoldersStore = create<ManageFoldersState>((set) => ({
     if (result) {
       set({ status: "idle", editMode: "none" });
     } else {
-      set({ status: "error", error: "Failed to update folder" });
+      const message = t("folder.updateFailed");
+      toast.error(message);
+      set({ status: "error", error: message });
     }
     return result;
   },
@@ -84,7 +90,9 @@ export const useManageFoldersStore = create<ManageFoldersState>((set) => ({
     if (success) {
       set({ status: "idle", selectedFolderId: null });
     } else {
-      set({ status: "error", error: "Failed to delete folder" });
+      const message = t("folder.deleteFailed");
+      toast.error(message);
+      set({ status: "error", error: message });
     }
     return success;
   },

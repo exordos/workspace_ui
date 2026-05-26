@@ -7,8 +7,20 @@ import {
 } from "~/features/manage-folders/folder-colors";
 import * as manageFolders from "~/features/manage-folders/manage-folders.api";
 import { useSettingsStore } from "~/features/settings/settings.model";
+import { t } from "~/i18n/i18n";
 import { applyTheme } from "~/shared/lib/themes/engine";
 import { FolderRail } from "./folder-rail.ui";
+
+const toastErrorMock = vi.hoisted(() => vi.fn());
+
+vi.mock("~/shared/lib/toast/toast", () => ({
+  toast: {
+    error: toastErrorMock,
+    success: vi.fn(),
+    info: vi.fn(),
+    dismiss: vi.fn(),
+  },
+}));
 
 describe("FolderRail visual parity", () => {
   const originalResizeObserver = globalThis.ResizeObserver;
@@ -73,6 +85,7 @@ describe("FolderRail visual parity", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    toastErrorMock.mockClear();
     globalThis.ResizeObserver = originalResizeObserver;
     useSettingsStore.getState().resetToDefaults();
   });
@@ -1296,5 +1309,30 @@ describe("FolderRail visual parity", () => {
       expect(manageFolders.deleteFolder).toHaveBeenCalledWith("custom");
     });
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(toastErrorMock).toHaveBeenCalledWith(t("folder.deleteFailed"));
+  });
+
+  it("shows toast when folder creation fails", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(manageFolders, "createFolder").mockResolvedValue(null);
+
+    render(
+      <FolderRail
+        folders={[{ id: "all", label: "All", backgroundColor: 0xff8438 }]}
+        selectedFolderId="all"
+        onSelectFolder={vi.fn()}
+        layout="vertical"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Add folder" }));
+    await user.type(screen.getByPlaceholderText("Folder name"), "Ops");
+    await user.click(screen.getByRole("button", { name: "Create" }));
+
+    await waitFor(() => {
+      expect(manageFolders.createFolder).toHaveBeenCalled();
+    });
+    expect(toastErrorMock).toHaveBeenCalledWith(t("folder.createFailed"));
+    expect(screen.getByText("Create folder")).toBeInTheDocument();
   });
 });

@@ -550,7 +550,10 @@
     "folderName": "Folder name",
     "color": "Color",
     "preview": "Preview",
-    "save": "Save"
+    "save": "Save",
+    "createFailed": "Could not create folder",
+    "updateFailed": "Could not update folder",
+    "deleteFailed": "Could not delete folder"
   },
   "inbox": {
     "title": "Inbox",

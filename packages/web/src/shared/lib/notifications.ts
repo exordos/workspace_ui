@@ -4,7 +4,7 @@
  * Three runtimes:
  * - Electron → ipcRenderer (native OS notifications via main process)
  * - PWA/Browser → Web Notifications API
- * - Fallback → in-app toast (not implemented here, use a toast lib)
+ * - In-app toasts for user-action errors → `~/shared/lib/toast/toast`
  *
  * Usage:
  *   import { notificationService } from "~/lib/notifications";

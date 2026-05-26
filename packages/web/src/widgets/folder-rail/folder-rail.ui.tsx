@@ -1,10 +1,16 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import React, { useCallback, useMemo, useState } from "react";
 import { CreateFolderModal } from "~/features/manage-folders/create-folder-modal.ui";
-import { createFolder, deleteFolder, updateFolder } from "~/features/manage-folders/manage-folders.api";
+import {
+  createFolder,
+  deleteFolder,
+  updateFolder,
+} from "~/features/manage-folders/manage-folders.api";
 import { UpdateFolderModal } from "~/features/manage-folders/update-folder-modal.ui";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
+import { formatUserFacingError } from "~/shared/lib/toast/format-user-error.lib";
+import { toast } from "~/shared/lib/toast/toast";
 import { FolderRailHorizontalView } from "./folder-rail-horizontal-view.ui";
 import { FolderRailVerticalView } from "./folder-rail-vertical-view.ui";
 import type { IndexedFolderEntry } from "./folder-rail.lib";
@@ -38,6 +44,7 @@ export const FolderRail: React.FC<FolderRailProps> = ({
       try {
         const result = await createFolder({ title: name, backgroundColor });
         if (!result) {
+          toast.error(t("folder.createFailed"));
           return false;
         }
         onFoldersChanged?.({
@@ -48,7 +55,8 @@ export const FolderRail: React.FC<FolderRailProps> = ({
           },
         });
         return true;
-      } catch {
+      } catch (err) {
+        toast.error(formatUserFacingError(err, "folder.createFailed"));
         return false;
       }
     },
@@ -61,11 +69,13 @@ export const FolderRail: React.FC<FolderRailProps> = ({
       try {
         const result = await updateFolder(renamingFolder.id, { title: name, backgroundColor });
         if (!result) {
+          toast.error(t("folder.updateFailed"));
           return false;
         }
         onFoldersChanged?.();
         return true;
-      } catch {
+      } catch (err) {
+        toast.error(formatUserFacingError(err, "folder.updateFailed"));
         return false;
       }
     },
@@ -87,12 +97,13 @@ export const FolderRail: React.FC<FolderRailProps> = ({
     try {
       const deleted = await deleteFolder(deletingFolder.id);
       if (!deleted) {
+        toast.error(t("folder.deleteFailed"));
         return;
       }
       onFoldersChanged?.({ deletedFolderId: deletingFolder.id });
       setDeletingFolder(null);
-    } catch {
-      // Keep the dialog open so user can retry.
+    } catch (err) {
+      toast.error(formatUserFacingError(err, "folder.deleteFailed"));
     } finally {
       setIsDeletingFolder(false);
     }
