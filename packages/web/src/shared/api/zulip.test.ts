@@ -116,6 +116,14 @@ vi.mock("zulip-js", () => ({
   default: vi.fn(() => Promise.resolve(mockZulipClient)),
 }));
 
+const mockIsElectron = vi.hoisted(() => vi.fn(() => false));
+const mockGetElectronAPI = vi.hoisted(() => vi.fn(() => null));
+
+vi.mock("~/shared/lib/electron", () => ({
+  isElectron: mockIsElectron,
+  getElectronAPI: mockGetElectronAPI,
+}));
+
 // ---------------------------------------------------------------------------
 // Вспомогательные функции
 // ---------------------------------------------------------------------------
@@ -153,6 +161,8 @@ beforeEach(() => {
   mockZulipApi.delete.mockReset();
   mockRefreshZulipApiBase.mockReset();
   mockRefreshWorkspaceApiBase.mockReset();
+  mockIsElectron.mockReturnValue(false);
+  mockGetElectronAPI.mockReturnValue(null);
 });
 
 afterEach(() => {
@@ -391,7 +401,7 @@ describe("fetchApiKey", () => {
       status: 200,
       json: () => Promise.reject(new SyntaxError("Unexpected token")),
       headers: new Headers(),
-    } as unknown as Response);
+    });
 
     await expect(fetchApiKey("https://z.com", "u@t.com", "pw")).rejects.toThrow(ZulipAuthError);
   });
@@ -1819,7 +1829,7 @@ describe("fetchMessages", () => {
     const retrievePromise = new Promise<{ messages: unknown[] }>((resolve) => {
       resolveRetrieve = resolve;
     });
-    mockZulipClient.messages.retrieve.mockReturnValue(retrievePromise as never);
+    mockZulipClient.messages.retrieve.mockReturnValue(retrievePromise);
 
     const first = fetchMessages("general", "topic1");
     const second = fetchMessages("general", "topic1");
@@ -1938,7 +1948,7 @@ describe("fetchMessagesWithNarrow", () => {
     const retrievePromise = new Promise<{ messages: unknown[] }>((resolve) => {
       resolveRetrieve = resolve;
     });
-    mockZulipClient.messages.retrieve.mockReturnValue(retrievePromise as never);
+    mockZulipClient.messages.retrieve.mockReturnValue(retrievePromise);
 
     const first = fetchMessagesWithNarrow(
       [{ operator: "is", operand: "unread" }],
@@ -2128,7 +2138,7 @@ describe("fetchDmMessages", () => {
     const retrievePromise = new Promise<{ messages: unknown[] }>((resolve) => {
       resolveRetrieve = resolve;
     });
-    mockZulipClient.messages.retrieve.mockReturnValue(retrievePromise as never);
+    mockZulipClient.messages.retrieve.mockReturnValue(retrievePromise);
 
     const first = fetchDmMessages(42);
     const second = fetchDmMessages(42);
@@ -2152,7 +2162,7 @@ describe("fetchDmMessages", () => {
     const retrievePromise = new Promise<{ messages: unknown[] }>((resolve) => {
       resolveRetrieve = resolve;
     });
-    mockZulipClient.messages.retrieve.mockReturnValue(retrievePromise as never);
+    mockZulipClient.messages.retrieve.mockReturnValue(retrievePromise);
 
     const first = fetchDmMessages([42, 77]);
     const second = fetchDmMessages([77, 42]);
@@ -2963,10 +2973,7 @@ describe("uploadFile", () => {
     });
     const file = new File(["data"], "cancellable.txt", { type: "text/plain" });
     const controller = new AbortController();
-    const uploadWithOptions = uploadFile as unknown as (
-      file: File,
-      options?: { signal?: AbortSignal },
-    ) => Promise<string>;
+    const uploadWithOptions = uploadFile;
 
     const result = await uploadWithOptions(file, { signal: controller.signal });
     expect(result).toBe("/user_uploads/2/cancellable.txt");
@@ -2989,37 +2996,37 @@ describe("uploadFile", () => {
         status: 201,
         headers: new Headers({ Location: "/api/v1/tus/upload-1" }),
         json: () => Promise.resolve({}),
-      } as unknown as Response)
+      })
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
         headers: new Headers({ "Upload-Offset": "0" }),
         json: () => Promise.resolve({}),
-      } as unknown as Response)
+      })
       .mockResolvedValueOnce({
         ok: true,
         status: 204,
         headers: new Headers({ "Upload-Offset": "5242880" }),
         json: () => Promise.resolve({}),
-      } as unknown as Response)
+      })
       .mockResolvedValueOnce({
         ok: true,
         status: 204,
         headers: new Headers({ "Upload-Offset": "10485760" }),
         json: () => Promise.resolve({}),
-      } as unknown as Response)
+      })
       .mockResolvedValueOnce({
         ok: true,
         status: 204,
         headers: new Headers({ "Upload-Offset": "15728640" }),
         json: () => Promise.resolve({}),
-      } as unknown as Response)
+      })
       .mockResolvedValueOnce({
         ok: true,
         status: 204,
         headers: new Headers({ "Upload-Offset": String(sixteenMb) }),
         json: () => Promise.resolve({}),
-      } as unknown as Response)
+      })
       .mockResolvedValueOnce(
         jsonResponse({
           attachments: [
@@ -3056,7 +3063,7 @@ describe("uploadFile", () => {
       status: 404,
       headers: new Headers(),
       json: () => Promise.resolve({ msg: "Not found" }),
-    } as unknown as Response);
+    });
     mockZulipApi.postFormData.mockResolvedValue({
       ok: true,
       status: 200,

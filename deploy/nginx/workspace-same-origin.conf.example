@@ -1,0 +1,88 @@
+# Workspace UI + Zulip on the SAME origin (e.g. https://workspace.example.com).
+#
+# Critical: backend `location` blocks MUST come BEFORE the SPA fallback,
+# otherwise nginx serves index.html for `/accounts/...`, `/api/v1/...`, etc.
+# and React Router renders the SPA login page instead of the OIDC redirect.
+#
+# Keep this list in sync with `packages/web/src/shared/config/backend-bypass-paths.ts`.
+
+upstream zulip_backend {
+    server 127.0.0.1:9991;   # Zulip / gateway upstream
+    keepalive 32;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name workspace.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/workspace.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/workspace.example.com/privkey.pem;
+
+    root /var/www/workspace-ui;             # built SPA from `npm run build --workspace=web`
+    index index.html;
+
+    # ---------------------------------------------------------------------
+    # Security headers (mirror packages/web/vite.config.ts dev defaults).
+    # ---------------------------------------------------------------------
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+
+    # ---------------------------------------------------------------------
+    # 1) BACKEND ROUTES — proxy to Zulip BEFORE SPA fallback.
+    # Keep this list in sync with BACKEND_BYPASS_PATH_PREFIXES in
+    # packages/web/src/shared/config/backend-bypass-paths.ts
+    #
+    # NOTE: `/login` matches here too. The SPA also has a `/login` route, but
+    # in same-origin deployments the backend takes priority — the SPA
+    # bootstrap detects backend paths and reloads through the network.
+    # ---------------------------------------------------------------------
+    location ~ ^/(accounts|api|json|workspace|legacy|user_uploads|user_avatars|external_content|avatar|thumbnail|complete|login|logout|register|completed|scim|lk)(/|$) {
+        proxy_pass http://zulip_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host  $host;
+        proxy_set_header Connection        "";
+
+        proxy_buffering off;
+        proxy_read_timeout 600s;             # long-polling /api/v1/events
+        proxy_send_timeout 600s;
+        client_max_body_size 200m;           # /user_uploads
+    }
+
+    # WebSocket (Tornado) for Zulip realtime — uncomment if your backend uses it.
+    # location /sockjs/ {
+    #     proxy_pass http://zulip_backend;
+    #     proxy_http_version 1.1;
+    #     proxy_set_header Upgrade $http_upgrade;
+    #     proxy_set_header Connection "upgrade";
+    #     proxy_set_header Host $host;
+    #     proxy_read_timeout 600s;
+    # }
+
+    # ---------------------------------------------------------------------
+    # 3) SPA static assets (long cache for hashed files).
+    # ---------------------------------------------------------------------
+    location ~* \.(?:js|css|woff2?|svg|png|jpg|jpeg|gif|webp|ico)$ {
+        try_files $uri =404;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # Service Worker and PWA manifest MUST NOT be long-cached.
+    location = /sw.js              { add_header Cache-Control "no-cache"; try_files $uri =404; }
+    location = /registerSW.js      { add_header Cache-Control "no-cache"; try_files $uri =404; }
+    location = /manifest.webmanifest { add_header Cache-Control "no-cache"; try_files $uri =404; }
+
+    # ---------------------------------------------------------------------
+    # 4) SPA history fallback — MUST be last.
+    # ---------------------------------------------------------------------
+    location / {
+        try_files $uri $uri/ /index.html;
+        add_header Cache-Control "no-cache";
+    }
+}

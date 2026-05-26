@@ -45,11 +45,13 @@ import {
   parseServerThumbnailFormats,
 } from "./zulip-register-metadata.lib";
 import { parseUnreadDmMessagesCount, parseUnreadMessagesCount } from "./zulip-unread.lib";
-import type {
-  ReactionType,
-  RealmEmoji,
-  RegisterQueueResult,
-  ZulipRealmUserGroup,
+import {
+  ZulipAuthError,
+  type DesktopFlowExchangeResult,
+  type ReactionType,
+  type RealmEmoji,
+  type RegisterQueueResult,
+  type ZulipRealmUserGroup,
 } from "./zulip.types";
 
 if (typeof (globalThis as unknown as { Buffer?: unknown }).Buffer === "undefined") {
@@ -265,27 +267,12 @@ export function getRealmBaseUrl(): string {
 
 // --- Auth & current user (Zulip API) ---
 
-export class ZulipAuthError extends Error {
-  constructor(
-    message: string,
-    public readonly code?: string,
-    public readonly response?: unknown,
-  ) {
-    super(message);
-    this.name = "ZulipAuthError";
-  }
-}
+export { ZulipAuthError, type DesktopFlowExchangeResult };
 
 interface FetchApiKeyResult {
   api_key: string;
   email: string;
   user_id: number;
-}
-
-export interface DesktopFlowExchangeResult {
-  authType: "api_key" | "session";
-  email: string;
-  apiKey?: string;
 }
 
 export interface ZulipUserTopic {
@@ -626,105 +613,7 @@ export async function fetchApiKey(
   throw new ZulipAuthError(msg || t("auth.invalidLogin"), data.code, data);
 }
 
-function normalizeExchangeCredentials(payload: unknown): { email: string; apiKey: string } | null {
-  if (typeof payload !== "object" || payload == null) {
-    return null;
-  }
-  const record = payload as Record<string, unknown>;
-  const email = typeof record.email === "string" ? record.email.trim() : "";
-  const apiKeyRaw = record.api_key ?? record.apiKey;
-  const apiKey = typeof apiKeyRaw === "string" ? apiKeyRaw.trim() : "";
-  if (!isValidEmail(email) || apiKey.length === 0) {
-    return null;
-  }
-  return { email, apiKey };
-}
-
-async function fetchSessionUserEmail(baseRealm: string): Promise<string | null> {
-  try {
-    const response = await fetch(`${baseRealm}/json/users/me`, {
-      method: "GET",
-      credentials: "include",
-    });
-    if (!response.ok) {
-      return null;
-    }
-    const data = (await response.json()) as { email?: unknown };
-    const email = typeof data.email === "string" ? data.email.trim() : "";
-    return isValidEmail(email) ? email : null;
-  } catch {
-    return null;
-  }
-}
-
-function buildSessionFallbackEmail(baseRealm: string): string {
-  try {
-    return `session@${new URL(baseRealm).hostname}`;
-  } catch {
-    return "session@unknown.local";
-  }
-}
-
-// Завершает OIDC desktop flow, обменивая расшифрованный login token
-// на `/accounts/login/subdomain/<token>`.
-//
-// Backend может либо сразу вернуть API credentials,
-// либо поднять cookie-based session auth.
-export async function exchangeDesktopFlowToken(
-  realm: string,
-  token: string,
-): Promise<DesktopFlowExchangeResult> {
-  const base = normalizeRealm(realm);
-  const normalizedToken = token.trim();
-  if (!base || normalizedToken.length === 0) {
-    throw new ZulipAuthError(t("auth.pasteTokenInvalid"));
-  }
-  const encodedToken = encodeURIComponent(normalizedToken);
-
-  let response: Response;
-  try {
-    response = await fetch(`${base}/accounts/login/subdomain/${encodedToken}`, {
-      method: "GET",
-      redirect: "manual",
-      credentials: "include",
-    });
-  } catch {
-    throw new ZulipAuthError(t("auth.pasteTokenInvalid"));
-  }
-
-  if (response.status >= 400) {
-    let message: string | null;
-    try {
-      const data = (await response.json()) as { msg?: unknown };
-      message = typeof data.msg === "string" ? data.msg : null;
-    } catch {
-      message = null;
-    }
-    throw new ZulipAuthError(message ?? t("auth.pasteTokenInvalid"));
-  }
-
-  let exchangePayload: unknown;
-  try {
-    exchangePayload = await response.json();
-  } catch {
-    exchangePayload = null;
-  }
-
-  const apiCredentials = normalizeExchangeCredentials(exchangePayload);
-  if (apiCredentials) {
-    return {
-      authType: "api_key",
-      email: apiCredentials.email,
-      apiKey: apiCredentials.apiKey,
-    };
-  }
-
-  const sessionEmail = await fetchSessionUserEmail(base);
-  return {
-    authType: "session",
-    email: sessionEmail ?? buildSessionFallbackEmail(base),
-  };
-}
+export { exchangeDesktopFlowToken } from "./zulip-auth";
 
 function normalizeApiPath(path: string): string {
   return path.startsWith("/") ? path : `/${path}`;

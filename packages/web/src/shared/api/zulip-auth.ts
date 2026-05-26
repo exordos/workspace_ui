@@ -2,6 +2,7 @@
  * Zulip auth and server discovery (no active instance required for server_settings).
  */
 import { t } from "~/i18n/i18n";
+import { getElectronAPI, isElectron } from "~/shared/lib/electron";
 import { env } from "~/shared/lib/env";
 import { isValidEmail, isValidRealmUrl } from "~/shared/lib/validation";
 import { normalizeRealm } from "./zulip-realm.internal";
@@ -158,21 +159,7 @@ async function fetchSessionUserEmail(baseRealm: string): Promise<string | null> 
   }
 }
 
-function buildSessionFallbackEmail(baseRealm: string): string {
-  try {
-    return `session@${new URL(baseRealm).hostname}`;
-  } catch {
-    return "session@unknown.local";
-  }
-}
-
-/**
- * Completes OIDC desktop flow by exchanging decrypted login token
- * against /accounts/login/subdomain/<token>.
- *
- * Backend may return API credentials directly or establish cookie-based session auth.
- */
-export async function exchangeDesktopFlowToken(
+async function exchangeDesktopFlowTokenInRenderer(
   realm: string,
   token: string,
 ): Promise<DesktopFlowExchangeResult> {
@@ -222,8 +209,42 @@ export async function exchangeDesktopFlowToken(
   }
 
   const sessionEmail = await fetchSessionUserEmail(base);
+  if (sessionEmail == null) {
+    throw new ZulipAuthError(t("auth.pasteTokenInvalid"));
+  }
   return {
     authType: "session",
-    email: sessionEmail ?? buildSessionFallbackEmail(base),
+    email: sessionEmail,
   };
+}
+
+async function exchangeDesktopFlowTokenInElectron(
+  realm: string,
+  token: string,
+): Promise<DesktopFlowExchangeResult> {
+  const exchange = getElectronAPI()?.auth?.exchangeDesktopFlowToken;
+  if (exchange == null) {
+    throw new ZulipAuthError(t("auth.pasteTokenInvalid"));
+  }
+  const result = await exchange({ realm, token });
+  if (!result.ok) {
+    throw new ZulipAuthError(t("auth.pasteTokenInvalid"));
+  }
+  return result.data;
+}
+
+/**
+ * Completes OIDC desktop flow by exchanging decrypted login token
+ * against /accounts/login/subdomain/<token>.
+ *
+ * Backend may return API credentials directly or establish cookie-based session auth.
+ */
+export async function exchangeDesktopFlowToken(
+  realm: string,
+  token: string,
+): Promise<DesktopFlowExchangeResult> {
+  if (isElectron()) {
+    return exchangeDesktopFlowTokenInElectron(realm, token);
+  }
+  return exchangeDesktopFlowTokenInRenderer(realm, token);
 }

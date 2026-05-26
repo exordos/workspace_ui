@@ -78,6 +78,23 @@ const electronAPI = {
     append: (line: string): Promise<boolean> => ipcRenderer.invoke("logs:append", line),
     getFilePath: (): Promise<string | null> => ipcRenderer.invoke("logs:getFilePath"),
   },
+
+  auth: {
+    exchangeDesktopFlowToken: (payload: {
+      realm: string;
+      token: string;
+    }): Promise<
+      | {
+          ok: true;
+          data: {
+            authType: "api_key" | "session";
+            email: string;
+            apiKey?: string;
+          };
+        }
+      | { ok: false }
+    > => ipcRenderer.invoke("auth:exchangeDesktopFlowToken", payload),
+  },
 };
 
 contextBridge.exposeInMainWorld("electronAPI", electronAPI);

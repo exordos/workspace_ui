@@ -2,10 +2,18 @@
  * Tests for Zulip API (zulip-auth module).
  */
 import "./zulip.test.setup";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { exchangeDesktopFlowToken, fetchApiKey, fetchServerSettings } from "./zulip-auth";
-import { jsonResponse, mockFetch } from "./zulip.test.setup";
+import {
+  getMockGetElectronAPI,
+  getMockIsElectron,
+  jsonResponse,
+  mockFetch,
+} from "./zulip.test.setup";
 import { ZulipAuthError } from "./zulip.types";
+
+const isElectron = getMockIsElectron();
+const getElectronAPI = getMockGetElectronAPI();
 
 describe("fetchServerSettings", () => {
   it("returns settings on success", async () => {
@@ -141,7 +149,7 @@ describe("fetchApiKey", () => {
       status: 200,
       json: () => Promise.reject(new SyntaxError("Unexpected token")),
       headers: new Headers(),
-    } as unknown as Response);
+    });
 
     await expect(fetchApiKey("https://z.com", "u@t.com", "pw")).rejects.toThrow(ZulipAuthError);
   });
@@ -208,6 +216,44 @@ describe("exchangeDesktopFlowToken", () => {
         credentials: "include",
       }),
     );
+  });
+
+  it("throws ZulipAuthError when session verification fails", async () => {
+    mockFetch
+      .mockResolvedValueOnce(jsonResponse({ result: "success" }))
+      .mockResolvedValueOnce(jsonResponse({ msg: "Not logged in" }, 401));
+
+    await expect(
+      exchangeDesktopFlowToken("https://zulip.example.com", "session-token"),
+    ).rejects.toThrow(ZulipAuthError);
+  });
+
+  it("delegates to Electron auth bridge when running in desktop shell", async () => {
+    const exchangeDesktopFlowTokenBridge = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        authType: "session",
+        email: "session-user@example.com",
+      },
+    });
+    isElectron.mockReturnValue(true);
+    getElectronAPI.mockReturnValue({
+      auth: {
+        exchangeDesktopFlowToken: exchangeDesktopFlowTokenBridge,
+      },
+    } as NonNullable<ReturnType<typeof getElectronAPI>>);
+
+    const result = await exchangeDesktopFlowToken("https://zulip.example.com", "desktop-token");
+
+    expect(result).toEqual({
+      authType: "session",
+      email: "session-user@example.com",
+    });
+    expect(exchangeDesktopFlowTokenBridge).toHaveBeenCalledWith({
+      realm: "https://zulip.example.com",
+      token: "",
+    });
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
   it("throws ZulipAuthError when exchange endpoint fails", async () => {

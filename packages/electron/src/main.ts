@@ -12,6 +12,7 @@ import {
   ipcMain,
 } from "electron";
 import { autoUpdater } from "electron-updater";
+import { exchangeDesktopFlowToken as exchangeDesktopFlowTokenInMain } from "./desktop-auth";
 import { createUnreadDotOverlaySvg } from "./unread-indicator.lib";
 import {
   getTrayMenuLabels,
@@ -1012,6 +1013,24 @@ function registerIpcHandlers(): void {
   ipcMain.on("updater:install", () => {
     if (IS_DEV || IS_AUTO_UPDATE_DISABLED) return;
     autoUpdater.quitAndInstall(false, true);
+  });
+
+  ipcMain.handle("auth:exchangeDesktopFlowToken", async (_event, payload: unknown) => {
+    if (typeof payload !== "object" || payload == null) {
+      return { ok: false as const };
+    }
+    const record = payload as Record<string, unknown>;
+    const realm = typeof record.realm === "string" ? record.realm.trim() : "";
+    const token = typeof record.token === "string" ? record.token.trim() : "";
+    if (realm.length === 0 || token.length === 0) {
+      return { ok: false as const };
+    }
+    try {
+      const data = await exchangeDesktopFlowTokenInMain(realm, token);
+      return { ok: true as const, data };
+    } catch {
+      return { ok: false as const };
+    }
   });
 }
 

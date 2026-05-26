@@ -4,6 +4,10 @@ import react from "@vitejs/plugin-react-swc";
 import { defineConfig, loadEnv } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 import svgr from "vite-plugin-svgr";
+import {
+  backendBypassDevProxyPrefixes,
+  backendBypassNavigateFallbackDenylist,
+} from "./src/shared/config/backend-bypass-paths";
 import { devWorkspaceBrowserMountPath } from "./src/shared/config/dev-workspace-org-proxy";
 import { WORKSPACE_HTTP_PATH_DEFAULTS } from "./src/shared/config/workspace-api-layout";
 import { buildPermissionsPolicyHeader } from "./src/shared/lib/permissions-policy";
@@ -117,6 +121,10 @@ export default defineConfig(({ mode }) => {
       ? env.VITE_WORKSPACE_REST_API_PATH
       : WORKSPACE_HTTP_PATH_DEFAULTS.workspaceRestApiPath,
   );
+  const zulipApiPath =
+    env.VITE_ZULIP_API_PATH !== undefined
+      ? env.VITE_ZULIP_API_PATH
+      : WORKSPACE_HTTP_PATH_DEFAULTS.zulipApiPath;
   const rawUserUploadsPrefix =
     env.VITE_USER_UPLOADS_PATH_PREFIX !== undefined
       ? (env.VITE_USER_UPLOADS_PATH_PREFIX?.trim() ?? "")
@@ -153,9 +161,27 @@ export default defineConfig(({ mode }) => {
     return `${prefix}${pathWithQuery}`;
   };
 
+  const backendBypassProxyEntries = workspaceOrigin
+    ? Object.fromEntries(
+        backendBypassDevProxyPrefixes(zulipApiPath).map((prefix) => [
+          prefix,
+          withDevProxyRequestLog(
+            prefix.replace(/^\//, "").replace(/\//g, "-") || "backend",
+            workspaceOrigin,
+            proxyDebug,
+            {
+              target: workspaceOrigin,
+              changeOrigin: true,
+            },
+          ),
+        ]),
+      )
+    : {};
+
   const devApiProxy =
     workspaceOrigin &&
     ({
+      ...backendBypassProxyEntries,
       "/workspace/workspace/v1": withDevProxyRequestLog(
         "workspace-legacy",
         workspaceLegacyOrigin,
@@ -186,8 +212,64 @@ export default defineConfig(({ mode }) => {
       ),
     } satisfies Record<string, ViteProxyEntry>);
 
+  // Без `VITE_WORKSPACE_API_ORIGIN` Vite history-fallback подменит `/accounts/login/google/`
+  // на `index.html`. Тогда React Router показывает SPA-логин вместо OIDC-редиректа.
+  // Этот guard явно отвечает 502 с подсказкой, как настроить proxy.
+  const backendBypassDevGuard = {
+    name: "dev-backend-bypass-guard",
+    enforce: "pre" as const,
+    configureServer(server: {
+      middlewares: {
+        use: (
+          fn: (
+            req: { url?: string; headers: Record<string, unknown> },
+            res: {
+              statusCode: number;
+              setHeader: (k: string, v: string) => void;
+              end: (b: string) => void;
+              headersSent?: boolean;
+            },
+            next: () => void,
+          ) => void,
+        ) => void;
+      };
+    }) {
+      const prefixes = backendBypassDevProxyPrefixes(zulipApiPath);
+      const proxyConfigured = workspaceOrigin !== undefined && workspaceOrigin !== "";
+      server.middlewares.use((req, res, next) => {
+        const url = req.url ?? "";
+        const pathname = url.split("?")[0] ?? "";
+        const matches = prefixes.some(
+          (p) => pathname === p || pathname.startsWith(`${p}/`),
+        );
+        if (!matches) {
+          next();
+          return;
+        }
+        if (proxyConfigured) {
+          // Запрос дойдет до `server.proxy` ниже по цепочке.
+          next();
+          return;
+        }
+        const accept = String(req.headers["accept"] ?? "");
+        const isNavigation = accept.includes("text/html");
+        if (!res.headersSent) {
+          res.statusCode = 502;
+          res.setHeader("Content-Type", "text/plain; charset=utf-8");
+        }
+        const hint =
+          `[vite] backend path ${pathname} is not proxied. ` +
+          `Set VITE_WORKSPACE_API_ORIGIN in packages/web/.env.local to your Zulip/balancer origin ` +
+          `so Vite forwards ${prefixes.join(", ")} instead of returning index.html.`;
+        console.warn(hint);
+        res.end(isNavigation ? `<pre>${hint}</pre>` : hint);
+      });
+    },
+  };
+
   return {
     plugins: [
+      ...(mode === "development" && !isElectron ? [backendBypassDevGuard] : []),
       // Multi-org Workspace REST: same-origin-путь `/workspace/...`
       // плюс `X-Workspace-Dev-Target-Origin` до прохода через `server.proxy`.
       ...(mode === "development" && !isElectron
@@ -210,7 +292,11 @@ export default defineConfig(({ mode }) => {
       ...(!isElectron
         ? [
             VitePWA({
-              registerType: "prompt",
+              // autoUpdate: новый SW активируется сразу при следующей навигации,
+              // не дожидаясь явного "Update?" prompt. Это критично для миграции
+              // существующих пользователей, у которых старый SW все еще
+              // перехватывает `/accounts/...` (нет navigateFallbackDenylist).
+              registerType: "autoUpdate",
               includeAssets: ["favicon.ico", "apple-touch-icon.png"],
               manifest: {
                 name: env.VITE_BRAND_APP_NAME || "Exordos Workspace",
@@ -246,6 +332,7 @@ export default defineConfig(({ mode }) => {
               workbox: {
                 globPatterns: ["**/*.{js,css,html,ico,png,svg,woff,woff2}"],
                 navigateFallback: "/index.html",
+                navigateFallbackDenylist: backendBypassNavigateFallbackDenylist(),
                 cleanupOutdatedCaches: true,
                 runtimeCaching: [
                   {

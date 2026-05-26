@@ -87,6 +87,22 @@ vi.mock("zulip-js", () => ({
   default: vi.fn(() => Promise.resolve(mockZulipClient)),
 }));
 
+const mockIsElectron = vi.hoisted(() => vi.fn(() => false));
+const mockGetElectronAPI = vi.hoisted(() => vi.fn(() => null));
+
+vi.mock("~/shared/lib/electron", () => ({
+  isElectron: mockIsElectron,
+  getElectronAPI: mockGetElectronAPI,
+}));
+
+export function getMockIsElectron() {
+  return mockIsElectron;
+}
+
+export function getMockGetElectronAPI() {
+  return mockGetElectronAPI;
+}
+
 export const TEST_INSTANCE = {
   id: "test-inst",
   realm: "https://zulip.example.com",
@@ -121,6 +137,8 @@ beforeEach(() => {
   mockZulipApi.delete.mockReset();
   mockRefreshZulipApiBase.mockReset();
   mockRefreshWorkspaceApiBase.mockReset();
+  mockIsElectron.mockReturnValue(false);
+  mockGetElectronAPI.mockReturnValue(null);
 });
 
 afterEach(() => {

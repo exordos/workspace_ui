@@ -158,6 +158,19 @@ interface ElectronAPI {
     append: (line: string) => Promise<boolean>;
     getFilePath: () => Promise<string | null>;
   };
+  auth: {
+    exchangeDesktopFlowToken: (payload: { realm: string; token: string }) => Promise<
+      | {
+          ok: true;
+          data: {
+            authType: "api_key" | "session";
+            email: string;
+            apiKey?: string;
+          };
+        }
+      | { ok: false }
+    >;
+  };
 }
 
 interface NativeAppBridge {
