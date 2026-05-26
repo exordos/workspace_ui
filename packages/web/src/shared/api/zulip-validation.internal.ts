@@ -23,7 +23,10 @@ const ALLOWED_MESSAGE_ANCHORS = ["newest", "oldest", "first_unread"] as const;
 
 export type MessagesApiAnchor = number | "newest" | "oldest" | "first_unread";
 
-export function validateMessagesApiAnchor(anchor: string | number, context: string): MessagesApiAnchor {
+export function validateMessagesApiAnchor(
+  anchor: string | number,
+  context: string,
+): MessagesApiAnchor {
   if (typeof anchor === "number") {
     return guard.messageId(anchor, `${context}.anchor`);
   }

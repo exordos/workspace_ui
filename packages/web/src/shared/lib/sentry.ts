@@ -124,7 +124,7 @@ function registerLoggerTransport(): void {
           category: entry.scope,
           message: entry.message,
           level: "error",
-          data: entry.data as Record<string, string>,
+          data: entry.data,
         });
       } else if (entry.level === "warn") {
         Sentry.addBreadcrumb({

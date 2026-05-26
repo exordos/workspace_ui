@@ -29,6 +29,6 @@ export function normalizeZulipMessagesNarrowForApi<T extends ZulipMessagesNarrow
     }
     const next = zulipTopicNarrowOperandForApi(entry.operand);
     if (next === entry.operand) return entry;
-    return { ...entry, operand: next } as T;
+    return { ...entry, operand: next };
   });
 }

@@ -11,4 +11,3 @@ export function parseJitsiMeetingUrlLoose(
     return null;
   }
 }
-

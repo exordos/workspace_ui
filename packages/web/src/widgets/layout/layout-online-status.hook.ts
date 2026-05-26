@@ -8,4 +8,3 @@ export function useLayoutOnlineStatus(): boolean {
 
   return online;
 }
-

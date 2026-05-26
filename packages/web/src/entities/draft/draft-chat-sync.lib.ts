@@ -176,4 +176,3 @@ export async function reconcileCreatedDraftServerId({
     await deleteDraftOnServer(serverId);
   }
 }
-

@@ -24,4 +24,3 @@ export const MediaViewerBackdrop: React.FC<MediaViewerBackdropProps> = ({ onClos
     </div>
   );
 };
-

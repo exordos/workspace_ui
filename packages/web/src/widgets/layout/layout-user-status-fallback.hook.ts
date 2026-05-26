@@ -40,4 +40,3 @@ export function useLayoutUserStatusFallback(options: {
     }
   }, [enabled, rightDrawerOpen, rightPanelMemberStatusIds]);
 }
-

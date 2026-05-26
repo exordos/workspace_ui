@@ -35,7 +35,9 @@ export async function persistUsersDirectoryRow(row: UsersDirectorySnapshotRow): 
   }
 }
 
-export async function loadUsersDirectoryRow(instanceId: string): Promise<UsersDirectorySnapshotRow | null> {
+export async function loadUsersDirectoryRow(
+  instanceId: string,
+): Promise<UsersDirectorySnapshotRow | null> {
   if (typeof indexedDB === "undefined") return null;
   try {
     const db = await openMessageCacheDb();

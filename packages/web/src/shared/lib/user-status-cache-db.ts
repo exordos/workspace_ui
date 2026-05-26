@@ -37,7 +37,9 @@ function rowId(instanceId: string, userId: number): string {
   return `${instanceId}:${userId}`;
 }
 
-export async function putUserStatusCacheRow(row: Omit<UserStatusCacheRow, "id"> & { id?: string }): Promise<void> {
+export async function putUserStatusCacheRow(
+  row: Omit<UserStatusCacheRow, "id"> & { id?: string },
+): Promise<void> {
   if (typeof indexedDB === "undefined") return;
   try {
     const id = row.id ?? rowId(row.instanceId, row.userId);

@@ -7,7 +7,9 @@ import type { WorkspaceFolderForRail } from "~/shared/api/workspace-client";
 export const SYSTEM_PERSONAL_FOLDER_ID = "system:personal";
 export const SYSTEM_CHANNELS_FOLDER_ID = "system:channels";
 
-export function withDefaultSystemFolders(folders: WorkspaceFolderForRail[]): WorkspaceFolderForRail[] {
+export function withDefaultSystemFolders(
+  folders: WorkspaceFolderForRail[],
+): WorkspaceFolderForRail[] {
   if (folders.length === 0) {
     return folders;
   }

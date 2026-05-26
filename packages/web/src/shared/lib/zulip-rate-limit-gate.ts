@@ -115,7 +115,10 @@ export function ingestZulipRateLimitFromApiResponse(
   const until = Date.now() + delayMs;
   if (until > blockedUntil) {
     blockedUntil = until;
-    log.warn("Zulip rate limit active", { delayMs, code: jsonRateLimit && isRecord(data) ? data.code : undefined });
+    log.warn("Zulip rate limit active", {
+      delayMs,
+      code: jsonRateLimit && isRecord(data) ? data.code : undefined,
+    });
     notifyListeners();
   }
 }

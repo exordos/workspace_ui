@@ -159,7 +159,7 @@ describe("pwa", () => {
           installing: null,
           unregister: unregisterFirebaseSw,
         },
-      ] as unknown as ServiceWorkerRegistration[]);
+      ] as unknown);
 
       Object.defineProperty(navigator, "serviceWorker", {
         configurable: true,

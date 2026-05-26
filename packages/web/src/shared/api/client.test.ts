@@ -622,16 +622,14 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
   it("retryMiddleware falls back to progressive delay for malformed Retry-After", async () => {
     const { retryMiddleware } = await import("./client");
 
-    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout").mockImplementation(((
-      callback: TimerHandler,
-      _delay?: number,
-      ...args: unknown[]
-    ) => {
-      if (typeof callback === "function") {
-        callback(...args);
-      }
-      return 0 as unknown as ReturnType<typeof setTimeout>;
-    }) as unknown as typeof setTimeout);
+    const setTimeoutSpy = vi
+      .spyOn(globalThis, "setTimeout")
+      .mockImplementation((callback: TimerHandler, _delay?: number, ...args: unknown[]) => {
+        if (typeof callback === "function") {
+          callback(...args);
+        }
+        return 0 as unknown as ReturnType<typeof setTimeout>;
+      });
 
     let callCount = 0;
     const fetchFn = vi.fn().mockImplementation(() => {

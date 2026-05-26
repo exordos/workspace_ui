@@ -97,7 +97,7 @@ function applyDatasetShortcodes(
   aliasToCodepoints: Map<string, Set<string>>,
   canonicalShortcodeByUnified: Map<string, string>,
 ): void {
-  const dataset = emojibaseShortcodes as EmojibaseShortcodeDataset;
+  const dataset = emojibaseShortcodes;
   for (const [hexCodeRaw, aliasesRaw] of Object.entries(dataset)) {
     const normalizedUnified = normalizeUnifiedCodeForLookup(hexCodeRaw);
     if (normalizedUnified.length === 0) {

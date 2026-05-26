@@ -43,9 +43,7 @@ describe("orderedIndexedFoldersForRail", () => {
   });
 
   it("falls back to first entry when no all match", () => {
-    const indexed: IndexedFolderEntry[] = [
-      entry("only", 0, "created"),
-    ];
+    const indexed: IndexedFolderEntry[] = [entry("only", 0, "created")];
     expect(orderedIndexedFoldersForRail(indexed).map((e) => e.folder.id)).toEqual(["only"]);
   });
 });

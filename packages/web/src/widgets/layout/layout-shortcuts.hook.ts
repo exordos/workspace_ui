@@ -65,4 +65,3 @@ export function useLayoutShortcuts(options: {
     enabled: enabled && sidebarChats.length > 1,
   });
 }
-

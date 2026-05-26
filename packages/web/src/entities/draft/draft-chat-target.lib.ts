@@ -22,4 +22,3 @@ export function resolveDraftTargetIds(options: ResolveDraftTargetIdsOptions): nu
 
   return [];
 }
-

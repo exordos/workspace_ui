@@ -58,7 +58,10 @@ export function useLayoutChatInfoSync(options: {
     topics,
   ]);
 
-  const chatInfoNetworkKey = useMemo(() => getChatInfoNetworkKey(chatInfoContext), [chatInfoContext]);
+  const chatInfoNetworkKey = useMemo(
+    () => getChatInfoNetworkKey(chatInfoContext),
+    [chatInfoContext],
+  );
   const hydratedChatInfoKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -76,4 +79,3 @@ export function useLayoutChatInfoSync(options: {
   const chatInfoData = useChatInfoStore((s) => s.data);
   return { chatInfoContext, chatInfoNetworkKey, chatInfoData };
 }
-

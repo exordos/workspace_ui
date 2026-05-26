@@ -28,4 +28,3 @@ export function useLayoutUserProfileAutoload(options: {
     };
   }, [currentInstanceId, rightDrawerMode, rightDrawerTargetUserId, rightDrawerOpen]);
 }
-

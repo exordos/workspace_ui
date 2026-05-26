@@ -2,7 +2,11 @@ import React from "react";
 import { t } from "~/i18n/i18n";
 import type { MediaViewerControlsProps } from "./media-viewer-controls.types";
 
-export const MediaViewerControls: React.FC<MediaViewerControlsProps> = ({ show, onPrev, onNext }) => {
+export const MediaViewerControls: React.FC<MediaViewerControlsProps> = ({
+  show,
+  onPrev,
+  onNext,
+}) => {
   if (!show) return null;
 
   return (
@@ -30,4 +34,3 @@ export const MediaViewerControls: React.FC<MediaViewerControlsProps> = ({ show, 
     </div>
   );
 };
-

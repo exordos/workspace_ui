@@ -13,4 +13,3 @@ export function useChatToastAutoClear(options: {
     return () => clearTimeout(t);
   }, [toastMessage, clearToast, timeoutMs]);
 }
-

@@ -93,7 +93,7 @@ export const TopicMuteButton = React.memo<TopicMuteButtonProps>(
         className={`flex h-6 w-6 items-center justify-center rounded border border-transparent text-text-muted transition-opacity hover:text-text-primary disabled:cursor-not-allowed ${
           isEffectivelyMuted || pending
             ? "bg-bg-elevated/70 border-border-subtle text-notice-base opacity-100"
-            : "opacity-0 group-focus-within/topic:opacity-100 group-hover/topic:opacity-100 focus-visible:opacity-100"
+            : "opacity-0 focus-visible:opacity-100 group-focus-within/topic:opacity-100 group-hover/topic:opacity-100"
         }`}
         aria-label={isEffectivelyMuted ? t("channel.unmuteTopic") : t("channel.muteTopic")}
         title={isEffectivelyMuted ? t("channel.unmuteTopic") : t("channel.muteTopic")}
@@ -181,7 +181,7 @@ export const TopicResolvedButton = React.memo<{
       className={`flex h-6 w-6 items-center justify-center rounded text-text-muted transition-opacity hover:text-text-primary disabled:cursor-not-allowed ${
         isResolved || isUpdating
           ? "opacity-100"
-          : "opacity-0 group-focus-within/topic:opacity-100 group-hover/topic:opacity-100 focus-visible:opacity-100"
+          : "opacity-0 focus-visible:opacity-100 group-focus-within/topic:opacity-100 group-hover/topic:opacity-100"
       }`}
       aria-label={buttonLabel}
       title={buttonLabel}

@@ -21,4 +21,3 @@ export function useMediaViewerZoom(options: { currentIndex: number }): {
 
   return { zoom, onWheel, reset };
 }
-

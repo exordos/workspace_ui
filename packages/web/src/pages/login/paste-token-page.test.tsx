@@ -18,9 +18,8 @@ vi.mock("react-router-dom", async () => {
 });
 
 vi.mock("~/shared/api/zulip-auth", async () => {
-  const actual = await vi.importActual<typeof import("~/shared/api/zulip-auth")>(
-    "~/shared/api/zulip-auth",
-  );
+  const actual =
+    await vi.importActual<typeof import("~/shared/api/zulip-auth")>("~/shared/api/zulip-auth");
   return {
     ...actual,
     exchangeDesktopFlowToken,

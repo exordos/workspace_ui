@@ -365,7 +365,7 @@ export const StreamContextMenu = React.memo(function StreamContextMenu({
         trigger={
           <button
             type="button"
-            className={`absolute flex h-6 w-6 items-center justify-center rounded text-text-muted opacity-60 transition-opacity group-focus-within/stream:opacity-100 group-hover/stream:opacity-100 hover:bg-sidebar-hover hover:text-text-primary focus-visible:opacity-100 ${triggerOffsetClassName}`}
+            className={`absolute flex h-6 w-6 items-center justify-center rounded text-text-muted opacity-60 transition-opacity hover:bg-sidebar-hover hover:text-text-primary focus-visible:opacity-100 group-focus-within/stream:opacity-100 group-hover/stream:opacity-100 ${triggerOffsetClassName}`}
             aria-label={t("a11y.chatMenu")}
             onClick={handleOpenMenuClick}
           >
@@ -510,7 +510,7 @@ export const DmContextMenu = React.memo(function DmContextMenu({
         trigger={
           <button
             type="button"
-            className={`absolute flex h-6 w-6 items-center justify-center rounded text-text-muted opacity-60 transition-opacity group-focus-within/dm:opacity-100 group-hover/dm:opacity-100 hover:bg-sidebar-hover hover:text-text-primary focus-visible:opacity-100 ${triggerOffsetClassName}`}
+            className={`absolute flex h-6 w-6 items-center justify-center rounded text-text-muted opacity-60 transition-opacity hover:bg-sidebar-hover hover:text-text-primary focus-visible:opacity-100 group-focus-within/dm:opacity-100 group-hover/dm:opacity-100 ${triggerOffsetClassName}`}
             aria-label={t("a11y.chatMenu")}
             onClick={handleOpenMenuClick}
           >

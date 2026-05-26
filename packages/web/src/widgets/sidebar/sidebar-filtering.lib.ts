@@ -25,7 +25,9 @@ export function doesSidebarChatMatchQuery(options: {
   if (nameMatch) return true;
 
   const participantIds =
-    Array.isArray(chat.userIds) && chat.userIds.length > 0 ? chat.userIds : parseDmSlugToUserIds(chat.slug);
+    Array.isArray(chat.userIds) && chat.userIds.length > 0
+      ? chat.userIds
+      : parseDmSlugToUserIds(chat.slug);
 
   return participantIds.some((userId) => {
     const user = users.get(userId);
@@ -34,4 +36,3 @@ export function doesSidebarChatMatchQuery(options: {
     return user.email?.toLowerCase().includes(normalizedQuery) ?? false;
   });
 }
-

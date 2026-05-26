@@ -117,7 +117,11 @@ export const MessageComposerSavedSnippetsDialog = React.memo(
                   </p>
                 ) : filteredSnippets.length > 0 ? (
                   filteredSnippets.map((snippet) => (
-                    <SavedSnippetRow key={snippet.id} snippet={snippet} onSelect={onSelectSnippet} />
+                    <SavedSnippetRow
+                      key={snippet.id}
+                      snippet={snippet}
+                      onSelect={onSelectSnippet}
+                    />
                   ))
                 ) : (
                   <p className="px-2 py-3 text-sm text-text-muted">

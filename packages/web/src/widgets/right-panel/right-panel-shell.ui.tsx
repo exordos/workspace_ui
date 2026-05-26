@@ -47,4 +47,3 @@ export const RightPanelShell: React.FC<RightPanelProps> = ({ mode = "info", ...p
 
   return <RightPanelInfo {...props} />;
 };
-

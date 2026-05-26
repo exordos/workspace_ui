@@ -40,7 +40,9 @@ export const RightPanelUserMenuOptionButton: React.FC<OptionButtonProps> = ({
       onClick={onClick}
       className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-bg"
     >
-      <span className={active ? "font-medium text-text-primary" : "text-text-primary"}>{label}</span>
+      <span className={active ? "font-medium text-text-primary" : "text-text-primary"}>
+        {label}
+      </span>
       {active ? <Icon name="check" size={14} className="text-accent" /> : null}
     </button>
   );

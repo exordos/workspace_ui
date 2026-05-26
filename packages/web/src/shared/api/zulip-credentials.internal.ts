@@ -18,6 +18,9 @@ export function getAuthValueForCredentials(credentials: ZulipCredentials): strin
   return authValue;
 }
 
-export function getValidatedCredentialsRealm(credentials: ZulipCredentials, context: string): string {
+export function getValidatedCredentialsRealm(
+  credentials: ZulipCredentials,
+  context: string,
+): string {
   return normalizeRealm(guard.url(credentials.realm, `${context}.realm`));
 }

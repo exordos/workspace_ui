@@ -52,4 +52,3 @@ export function useChatForwardHydration(options: {
 
   return { forwardMessages, setForwardMessages, forwardSelectedText, setForwardSelectedText };
 }
-

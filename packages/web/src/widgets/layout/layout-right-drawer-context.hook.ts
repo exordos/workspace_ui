@@ -10,11 +10,16 @@ import {
   resolveStreamRouteFromSlug,
 } from "~/widgets/sidebar/sidebar.lib";
 import type { SidebarChat } from "~/widgets/sidebar/sidebar.types";
-import type { LayoutRightDrawerContext, UseLayoutRightDrawerContextOptions } from "./layout-right-drawer-context.types";
+import type {
+  LayoutRightDrawerContext,
+  UseLayoutRightDrawerContextOptions,
+} from "./layout-right-drawer-context.types";
 
 export type { LayoutRightDrawerContext } from "./layout-right-drawer-context.types";
 
-export function useLayoutRightDrawerContext(options: UseLayoutRightDrawerContextOptions): LayoutRightDrawerContext {
+export function useLayoutRightDrawerContext(
+  options: UseLayoutRightDrawerContextOptions,
+): LayoutRightDrawerContext {
   const {
     streams,
     dms,
@@ -93,7 +98,8 @@ export function useLayoutRightDrawerContext(options: UseLayoutRightDrawerContext
       if (dmChat?.userIds != null && dmChat.userIds.length > 0) {
         return dmChat.userIds;
       }
-      const raw = dmChat != null ? parseDmSlugToUserIds(dmChat.slug) : parseDmSlugToUserIds(dmIdParam);
+      const raw =
+        dmChat != null ? parseDmSlugToUserIds(dmChat.slug) : parseDmSlugToUserIds(dmIdParam);
       if (currentUserId != null) {
         return Array.from(new Set([...raw, currentUserId]));
       }
@@ -159,4 +165,3 @@ export function useLayoutRightDrawerContext(options: UseLayoutRightDrawerContext
     activeStreamName,
   };
 }
-

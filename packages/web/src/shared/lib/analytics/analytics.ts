@@ -200,7 +200,7 @@ class Analytics {
   }
 
   identify(userId: string, traits?: UserTraits): void {
-    const safeTraits = stripPii(traits as EventProperties) as UserTraits | undefined;
+    const safeTraits = stripPii(traits) as UserTraits | undefined;
 
     if (this.consent !== "granted") {
       this.enqueue({ type: "identify", args: [userId, safeTraits] });

@@ -13,7 +13,7 @@ describe("useLayoutResetRightDrawerOnInstanceChange", () => {
           closeRightDrawer,
         }),
       {
-        initialProps: { currentInstanceId: "org-a" as string | null },
+        initialProps: { currentInstanceId: "org-a" },
       },
     );
 
@@ -30,7 +30,7 @@ describe("useLayoutResetRightDrawerOnInstanceChange", () => {
           closeRightDrawer,
         }),
       {
-        initialProps: { currentInstanceId: "org-a" as string | null },
+        initialProps: { currentInstanceId: "org-a" },
       },
     );
 
@@ -49,7 +49,7 @@ describe("useLayoutResetRightDrawerOnInstanceChange", () => {
           closeRightDrawer,
         }),
       {
-        initialProps: { currentInstanceId: "org-a" as string | null },
+        initialProps: { currentInstanceId: "org-a" },
       },
     );
 

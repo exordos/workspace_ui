@@ -133,9 +133,7 @@ export async function updateOwnStatus(params: UpdateOwnStatusParams): Promise<Us
       away: String(away),
     };
     const response = await zulipApi.post("/users/me/status", payload);
-    const normalized = normalizeOwnStatusResponse(
-      (response.data ?? {}) as ZulipUpdateOwnStatusResponse,
-    );
+    const normalized = normalizeOwnStatusResponse(response.data ?? {});
 
     if (normalized != null) {
       return normalized;

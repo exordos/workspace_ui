@@ -6,7 +6,10 @@ import { computeIsGroupDmView, normalizeDmRouteUserIds } from "~/shared/lib/dm-r
 import type { SidebarChat } from "~/shared/types/sidebar-chat";
 import { getDmById, parseDmSlugToUserIds, parseStreamSlug } from "~/widgets/sidebar/sidebar.lib";
 import type { StreamWithLast } from "~/widgets/sidebar/sidebar.types";
-import { computeInstanceUnreadCount, buildActiveChatWindowTitle  } from "./layout-instance-unread.lib";
+import {
+  computeInstanceUnreadCount,
+  buildActiveChatWindowTitle,
+} from "./layout-instance-unread.lib";
 
 type DmSidebarChat = Extract<SidebarChat, { type: "dm" }>;
 
@@ -128,4 +131,3 @@ export function useLayoutUnreadAndTitle(options: {
 
   return { realmIcon, unreadCount, activeChatWindowTitle };
 }
-

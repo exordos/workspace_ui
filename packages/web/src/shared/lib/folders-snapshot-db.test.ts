@@ -5,7 +5,10 @@ import {
   loadFoldersSnapshotRow,
   persistFoldersSnapshotRow,
 } from "~/shared/lib/folders-snapshot-db";
-import { openMessageCacheDb, resetMessageCacheDbSingletonForTests } from "~/shared/lib/message-cache-db";
+import {
+  openMessageCacheDb,
+  resetMessageCacheDbSingletonForTests,
+} from "~/shared/lib/message-cache-db";
 
 const INSTANCE = "inst-folders-test";
 
@@ -21,7 +24,9 @@ afterEach(async () => {
     const req = indexedDB.deleteDatabase("workspace-message-cache-v1");
     req.onerror = () =>
       reject(
-        req.error instanceof Error ? req.error : new Error(String(req.error ?? "deleteDatabase failed")),
+        req.error instanceof Error
+          ? req.error
+          : new Error(String(req.error ?? "deleteDatabase failed")),
       );
     req.onsuccess = () => resolve();
   });

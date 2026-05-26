@@ -108,7 +108,7 @@ describe("uploadComposerFiles", () => {
 
     await uploadComposerFiles([file], uploadFile, {
       signal: controller.signal,
-    } as unknown as Parameters<typeof uploadComposerFiles>[2]);
+    });
 
     expect(uploadFile).toHaveBeenCalledWith(file, { signal: controller.signal });
   });
@@ -129,7 +129,7 @@ describe("uploadComposerFiles", () => {
     await expect(
       uploadComposerFiles([file], uploadFile, {
         signal: controller.signal,
-      } as unknown as Parameters<typeof uploadComposerFiles>[2]),
+      }),
     ).rejects.toThrow("Aborted");
   });
 });

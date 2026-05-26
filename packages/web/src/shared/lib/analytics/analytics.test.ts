@@ -223,7 +223,7 @@ describe("Analytics PII stripping", () => {
 
   // PII stripping also applies to user traits, not just event properties
   it("redacts PII in identify traits", () => {
-    analytics.identify("user-1", { email: "a@b.com", role: "admin" } as UserTraits);
+    analytics.identify("user-1", { email: "a@b.com", role: "admin" });
     const traits = provider.identifyCalls[0]?.traits;
     expect(traits?.email).toBe("[REDACTED]");
     expect(traits?.role).toBe("admin");

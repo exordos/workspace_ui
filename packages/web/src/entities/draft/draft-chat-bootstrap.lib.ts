@@ -13,4 +13,3 @@ export function resolveHydratedDraftBootstrap(
     activeDraftId: matchingDraft.id,
   };
 }
-

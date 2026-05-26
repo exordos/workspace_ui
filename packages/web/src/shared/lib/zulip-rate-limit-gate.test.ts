@@ -79,7 +79,11 @@ describe("zulip-rate-limit-gate", () => {
   });
 
   it("ingests HTTP 429 with Retry-After header", () => {
-    ingestZulipRateLimitFromApiResponse(429, { result: "error", msg: "x" }, new Headers({ "Retry-After": "3" }));
+    ingestZulipRateLimitFromApiResponse(
+      429,
+      { result: "error", msg: "x" },
+      new Headers({ "Retry-After": "3" }),
+    );
     expect(getZulipRateLimitBlockedUntil()).toBe(Date.now() + 3000);
   });
 

@@ -45,7 +45,7 @@ function makeFolderPayload(overrides: Record<string, unknown> = {}): WorkspaceFo
     unread_messages: [],
     system_type: "created",
     ...overrides,
-  } as WorkspaceFolder;
+  };
 }
 
 // Pure mapping function — no mocks needed.

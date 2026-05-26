@@ -5,10 +5,7 @@ import {
   sendTypingStart,
   sendTypingStop,
 } from "./typing-indicator.api";
-import {
-  resolveComposerTypingTransition,
-  resolveTypingIdleTransition,
-} from "./typing-transition";
+import { resolveComposerTypingTransition, resolveTypingIdleTransition } from "./typing-transition";
 
 type ComposerTypingTarget =
   | { kind: "dm"; userIds: number[] }
@@ -95,4 +92,3 @@ export function useComposerTypingController(options: {
 
   return { onComposerValueChange, stopNow };
 }
-

@@ -44,7 +44,9 @@ export const SidebarFolderNewTopicDialog: React.FC<SidebarFolderNewTopicDialogPr
             </Dialog.Close>
           </div>
           <div className="flex flex-col gap-4 px-4 py-4">
-            <Dialog.Description className="text-xs text-text-muted">#{streamName}</Dialog.Description>
+            <Dialog.Description className="text-xs text-text-muted">
+              #{streamName}
+            </Dialog.Description>
             <label className="flex flex-col gap-1.5">
               <span className="text-sm text-text-muted">{t("channel.topicName")}</span>
               <input

@@ -47,8 +47,7 @@ export const ChatPageMessageListSection = React.memo(function ChatPageMessageLis
   const showLoadingOverlay =
     !showBlockingLoader && messages.length > 0 && (messagesLoading || isLoadingMore);
 
-  const showInitialLoadError =
-    !showBlockingLoader && messagesLoadError === "initial";
+  const showInitialLoadError = !showBlockingLoader && messagesLoadError === "initial";
 
   const showRefreshLoadError = messagesLoadError === "refresh" && messages.length > 0;
 

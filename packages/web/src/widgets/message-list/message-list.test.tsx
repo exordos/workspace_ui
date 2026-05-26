@@ -569,7 +569,9 @@ describe("MessageList focused message behavior", () => {
 
     const targetUnread2 = screen.getByTestId("message-2");
     intersectionCallback?.(
-      [{ target: targetUnread2, isIntersecting: true, intersectionRatio: 1 }] as unknown as IntersectionObserverEntry[],
+      [
+        { target: targetUnread2, isIntersecting: true, intersectionRatio: 1 },
+      ] as unknown as IntersectionObserverEntry[],
       {} as IntersectionObserver,
     );
     onUnreadMessagesVisible.mockClear();
@@ -609,7 +611,9 @@ describe("MessageList focused message behavior", () => {
 
     const targetUnread2 = screen.getByTestId("message-2");
     intersectionCallback?.(
-      [{ target: targetUnread2, isIntersecting: true, intersectionRatio: 1 }] as unknown as IntersectionObserverEntry[],
+      [
+        { target: targetUnread2, isIntersecting: true, intersectionRatio: 1 },
+      ] as unknown as IntersectionObserverEntry[],
       {} as IntersectionObserver,
     );
 

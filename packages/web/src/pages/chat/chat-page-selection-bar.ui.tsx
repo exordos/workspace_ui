@@ -14,7 +14,9 @@ export const ChatPageSelectionBar = React.memo(function ChatPageSelectionBar({
 
   return (
     <div className="flex items-center justify-between border-t border-border-subtle bg-bg-elevated px-4 py-2">
-      <span className="text-sm text-text-muted">{t("message.selected", { count: selectedCount })}</span>
+      <span className="text-sm text-text-muted">
+        {t("message.selected", { count: selectedCount })}
+      </span>
       <div className="flex items-center gap-2">
         <button
           type="button"

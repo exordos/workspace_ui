@@ -67,7 +67,7 @@ export const Copyable: React.FC<CopyableProps> = React.memo(function Copyable({
           showOnHover
             ? keepVisibleDuringSuccess
               ? "pointer-events-auto opacity-100"
-              : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
+              : "pointer-events-none opacity-0 focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
             : "opacity-100",
           buttonClassName,
         )}

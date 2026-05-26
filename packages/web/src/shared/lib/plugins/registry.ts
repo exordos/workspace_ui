@@ -157,7 +157,7 @@ export function getContributions<T = unknown>(slot: SlotName): SlotContribution<
   for (const [, list] of contributions) {
     for (const c of list) {
       if (c.slot === slot) {
-        all.push(c as SlotContribution<T>);
+        all.push(c);
       }
     }
   }

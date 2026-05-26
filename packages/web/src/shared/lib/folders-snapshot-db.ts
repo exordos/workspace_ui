@@ -37,7 +37,9 @@ export async function persistFoldersSnapshotRow(row: FoldersSnapshotRow): Promis
   }
 }
 
-export async function loadFoldersSnapshotRow(instanceId: string): Promise<FoldersSnapshotRow | null> {
+export async function loadFoldersSnapshotRow(
+  instanceId: string,
+): Promise<FoldersSnapshotRow | null> {
   if (typeof indexedDB === "undefined") return null;
   try {
     const db = await openMessageCacheDb();

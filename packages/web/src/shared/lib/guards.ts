@@ -241,9 +241,9 @@ export function safeCatch<T extends (...args: never[]) => unknown>(fn: T, contex
  * Useful for config objects to catch typos.
  */
 export function strictObject<T extends Record<string, unknown>>(obj: T, name = "config"): T {
-  if (!IS_DEV) return Object.freeze(obj) as T;
+  if (!IS_DEV) return Object.freeze(obj);
 
-  return new Proxy(Object.freeze(obj) as T, {
+  return new Proxy(Object.freeze(obj), {
     get(target, prop) {
       if (typeof prop === "symbol" || prop in target) {
         return target[prop as keyof T];

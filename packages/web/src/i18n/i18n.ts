@@ -37,8 +37,8 @@ type Messages = Record<string, unknown>;
 // ---------------------------------------------------------------------------
 
 const MESSAGES: Record<Locale, Messages> = {
-  ru: ruMessages as Messages,
-  en: enMessages as Messages,
+  ru: ruMessages,
+  en: enMessages,
 };
 
 const LOCALE_STORAGE_KEY = "workspace-locale";
@@ -129,11 +129,26 @@ function selectPlural(locale: Locale, count: number): string {
   return count === 1 ? "one" : "other";
 }
 
+function formatInterpolationValue(val: unknown): string {
+  switch (typeof val) {
+    case "string":
+      return val;
+    case "number":
+    case "boolean":
+    case "bigint":
+      return val.toString();
+    case "object":
+      return JSON.stringify(val);
+    default:
+      return String(val);
+  }
+}
+
 function interpolate(template: string, vars: Record<string, unknown>): string {
   return template.replace(/\{\{(\w+)\}\}/g, (_, key: string) => {
     const val = vars[key];
     if (val == null) return `{{${key}}}`;
-    return typeof val === "object" ? JSON.stringify(val) : String(val as string | number | boolean);
+    return formatInterpolationValue(val);
   });
 }
 

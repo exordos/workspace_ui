@@ -76,13 +76,25 @@ describe("shouldApplyUserUploadsPathPrefixForRealmBase", () => {
     ).toBe(false);
   });
 
-  it("is true when realm had gateway path stripped to site root", () => {
-    expect(
-      shouldApplyUserUploadsPathPrefixForRealmBase(
-        "https://gw.example.com/workspace/v1",
-        "https://gw.example.com",
-      ),
-    ).toBe(true);
+  it("is false for bare Zulip realm when prefix set but gateway tail was not stripped", async () => {
+    vi.stubEnv("VITE_WORKSPACE_API_ORIGIN", "https://zulip.test");
+    vi.stubEnv("VITE_USER_UPLOADS_PATH_PREFIX", "/workspace/v1");
+    vi.stubEnv("VITE_USER_UPLOADS_PREFIX_ON_ZULIP_REALM", "");
+    vi.resetModules();
+    const { shouldApplyUserUploadsPathPrefixForRealmBase: should } =
+      await import("./zulip-realm.internal");
+    expect(should("https://zulip.genesis-core.team", "https://zulip.genesis-core.team")).toBe(
+      false,
+    );
+  });
+
+  it("is true when realm had gateway path stripped to site root", async () => {
+    vi.stubEnv("VITE_WORKSPACE_API_ORIGIN", "https://zulip.test");
+    vi.stubEnv("VITE_USER_UPLOADS_PATH_PREFIX", "/workspace/v1");
+    vi.resetModules();
+    const { shouldApplyUserUploadsPathPrefixForRealmBase: should } =
+      await import("./zulip-realm.internal");
+    expect(should("https://gw.example.com/workspace/v1", "https://gw.example.com")).toBe(true);
   });
 
   it("is true for bare realm when VITE_USER_UPLOADS_PREFIX_ON_ZULIP_REALM is true", async () => {

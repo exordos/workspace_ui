@@ -92,4 +92,3 @@ export const useSearchModalStore = create<SearchModalState>((set) => ({
     });
   },
 }));
-

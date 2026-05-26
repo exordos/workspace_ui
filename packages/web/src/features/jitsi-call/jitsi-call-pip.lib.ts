@@ -25,4 +25,3 @@ export function getDefaultPipWindowBounds(): PipWindowBounds {
     height: DEFAULT_PIP_HEIGHT,
   };
 }
-
