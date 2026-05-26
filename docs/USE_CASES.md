@@ -283,17 +283,20 @@ UC-AUTH-04:
 
 ## 15. Profile and Settings
 
-| ID        | Use Case                                     | Actor | Status |
-| --------- | -------------------------------------------- | ----- | ------ |
-| UC-PRF-01 | View own profile (name, email, avatar, role) | User  | `[x]`  |
-| UC-PRF-02 | View another user's profile (right panel)    | User  | `[x]`  |
-| UC-PRF-03 | Edit own profile                             | User  | `[x]`  |
-| UC-SET-01 | Select language (ru/en)                      | User  | `[x]`  |
-| UC-SET-02 | Chat sorting (personal unread first)         | User  | `[x]`  |
-| UC-SET-03 | Configure notification sounds                | User  | `[x]`  |
-| UC-SET-04 | Clear cache                                  | User  | `[x]`  |
-| UC-SET-05 | View application version                     | User  | `[x]`  |
-| UC-SET-06 | View Open Source licenses                    | User  | `[x]`  |
+| ID        | Use Case                                      | Actor | Status |
+| --------- | --------------------------------------------- | ----- | ------ |
+| UC-PRF-01 | View own profile (name, email, avatar, role)  | User  | `[x]`  |
+| UC-PRF-02 | View another user's profile (right panel)     | User  | `[x]`  |
+| UC-PRF-03 | Edit own profile                              | User  | `[x]`  |
+| UC-SET-01 | Select language (ru/en)                       | User  | `[x]`  |
+| UC-SET-02 | Chat sorting (personal unread first)          | User  | `[x]`  |
+| UC-SET-03 | Configure notification sounds                 | User  | `[x]`  |
+| UC-SET-04 | Clear cache                                   | User  | `[x]`  |
+| UC-SET-05 | View application version                      | User  | `[x]`  |
+| UC-SET-06 | View Open Source licenses                     | User  | `[x]`  |
+| UC-SET-07 | View in-memory service logs (dev diagnostics) | User  | `[x]`  |
+
+`UC-SET-07` (dev only): `/settings/logs` — ring buffer of console output, API calls (params + status), and critical actions; filter, export JSON, diagnostic snapshot.
 
 ---
 

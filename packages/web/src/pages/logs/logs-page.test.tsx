@@ -1,4 +1,4 @@
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearLogHistory, createLogger, setMinLevel } from "~/shared/lib/logger";
 import { renderWithProviders } from "~/test/render";
@@ -111,6 +111,34 @@ describe("LogsPage", () => {
     expect(searchInput).toHaveClass("h-8");
     expect(resetButton).toHaveClass("h-8");
     expect(resetButton).not.toHaveClass("mt-5");
+  });
+
+  it("updates list when new logs arrive via subscribeLogHistory", async () => {
+    renderWithProviders(<LogsPage />);
+    expect(screen.queryByText(/live entry/i)).not.toBeInTheDocument();
+
+    const log = createLogger("live-subscribe");
+    log.info("Live entry");
+
+    await waitFor(() => {
+      expect(screen.getByText(/live entry/i)).toBeInTheDocument();
+    });
+  });
+
+  it("filters entries by log source", () => {
+    const apiLog = createLogger("api");
+    const actionLog = createLogger("action");
+    apiLog.info("API trace");
+    actionLog.info("User switched org");
+
+    renderWithProviders(<LogsPage />);
+
+    fireEvent.change(screen.getByRole("combobox", { name: /log source/i }), {
+      target: { value: "actions" },
+    });
+
+    expect(screen.getByText(/user switched org/i)).toBeInTheDocument();
+    expect(screen.queryByText(/api trace/i)).not.toBeInTheDocument();
   });
 
   it("renders compact log rows for denser diagnostics scanning", () => {

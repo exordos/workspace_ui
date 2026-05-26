@@ -20,7 +20,7 @@
 import { useSyncExternalStore } from "react";
 import { analytics, AnalyticsEvent } from "../analytics/analytics";
 import { isElectron } from "../electron";
-import { createLogger } from "../logger";
+import { createLogger, logAction } from "../logger";
 import { createFcmProvider } from "./fcm";
 import { installDefaultMiddlewares } from "./middleware";
 import { registerPushToken, unregisterPushToken } from "./zulip";
@@ -65,7 +65,7 @@ let provider: PushProvider | null = null;
 function getPermission(): PushPermission {
   if (isElectron()) return "granted";
   if (typeof window === "undefined" || !("Notification" in window)) return "unsupported";
-  return Notification.permission as PushPermission;
+  return Notification.permission;
 }
 
 async function requestPermission(): Promise<PushPermission> {
@@ -116,6 +116,10 @@ async function register(): Promise<boolean> {
       storeToken(token);
       setState({ token, registered: true, provider: provider.name });
       log.info("Push notifications registered", { provider: provider.name });
+      logAction("push_register", {
+        provider: provider.name,
+        tokenPrefix: `${token.slice(0, 8)}…`,
+      });
       return true;
     }
 
@@ -134,6 +138,9 @@ async function unregister(): Promise<void> {
   }
   setState({ token: null, registered: false });
   log.info("Push notifications unregistered");
+  if (token) {
+    logAction("push_unregister", { tokenPrefix: `${token.slice(0, 8)}…` });
+  }
 }
 
 function onMessage(handler: (payload: PushMessagePayload) => void): () => void {

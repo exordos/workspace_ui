@@ -15,7 +15,7 @@
  */
 
 import { Buffer } from "buffer";
-import { createLogger } from "./logger";
+import { createLogger, logAction } from "./logger";
 
 const log = createLogger("auth");
 
@@ -82,6 +82,7 @@ export function getCredentials(): { realm: string; email: string; apiKey: string
 /** Wipe all credentials from storage and memory. Call on logout. */
 export function wipeCredentials(): void {
   log.info("Wiping all credentials");
+  logAction("credentials_wiped");
 
   const hasInjectedStoreWiper = storeWiper != null;
 
@@ -131,6 +132,7 @@ function resetTimer(
   if (timeoutTimer) clearTimeout(timeoutTimer);
   timeoutTimer = setTimeout(() => {
     log.warn("Session expired due to inactivity", { timeoutMs });
+    logAction("session_expired", { timeoutMs });
     if (onBeforeExpired == null) {
       wipeCredentials();
       onExpired();

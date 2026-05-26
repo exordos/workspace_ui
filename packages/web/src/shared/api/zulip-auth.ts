@@ -4,7 +4,8 @@
 import { t } from "~/i18n/i18n";
 import { getElectronAPI, isElectron } from "~/shared/lib/electron";
 import { env } from "~/shared/lib/env";
-import { createLogger } from "~/shared/lib/logger";
+import { loggedFetch } from "~/shared/lib/logged-fetch.lib";
+import { createLogger, logAction } from "~/shared/lib/logger";
 import { isValidEmail, isValidRealmUrl } from "~/shared/lib/validation";
 import { normalizeRealm } from "./zulip-realm.internal";
 import { ZulipAuthError } from "./zulip.types";
@@ -38,7 +39,7 @@ export async function fetchServerSettings(realmUrl: string): Promise<ZulipServer
     const base = `${parsedRealm.origin}${normalizedPath}`.replace(/\/+$/, "");
     if (!base) return null;
     const url = `${base}${env.ZULIP_API_PATH}/server_settings`;
-    const res = await fetch(url);
+    const res = await loggedFetch(url);
     if (!res.ok) return null;
     const data = (await res.json()) as {
       realm_name?: string;
@@ -96,7 +97,7 @@ export async function fetchApiKey(
 
   let res: Response;
   try {
-    res = await fetch(url, {
+    res = await loggedFetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body,
@@ -121,6 +122,14 @@ export async function fetchApiKey(
   }
 
   if (data.result === "success" && data.api_key && data.email != null) {
+    const realmHost = (() => {
+      try {
+        return new URL(base).hostname;
+      } catch {
+        return "unknown";
+      }
+    })();
+    logAction("login_success", { realmHost, userId: data.user_id ?? 0 });
     return {
       api_key: data.api_key,
       email: data.email,
@@ -131,6 +140,7 @@ export async function fetchApiKey(
   const msg =
     data.msg ??
     (res.ok ? t("app.unknownError") : t("app.errorStatus", { status: String(res.status) }));
+  logAction("login_failed", { status: res.status, code: data.code ?? null });
   throw new ZulipAuthError(msg || t("auth.invalidLogin"), data.code, data);
 }
 
@@ -153,7 +163,7 @@ function normalizeExchangeCredentials(payload: unknown): { email: string; apiKey
 async function fetchSessionUserEmail(baseRealm: string): Promise<string | null> {
   try {
     // Check that the cookie session already works before saving the new instance.
-    const response = await fetch(`${baseRealm}/json/users/me`, {
+    const response = await loggedFetch(`${baseRealm}/json/users/me`, {
       method: "GET",
       // For cookie auth, the browser must send cookies explicitly.
       credentials: "include",
@@ -184,7 +194,7 @@ async function exchangeDesktopFlowTokenInRenderer(
   let response: Response;
   try {
     // In browser mode, do not follow the redirect automatically, so we can read the exchange response first.
-    response = await fetch(`${base}/accounts/login/subdomain/${encodedToken}`, {
+    response = await loggedFetch(`${base}/accounts/login/subdomain/${encodedToken}`, {
       method: "GET",
       redirect: "manual",
       credentials: "include",

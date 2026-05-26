@@ -20,6 +20,7 @@ import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { useThemeStore } from "~/entities/theme/theme.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { t, setLocale, getLocale, getSupportedLocales } from "~/i18n/i18n";
+import { initConsoleCapture } from "~/shared/lib/console-capture.lib";
 import { env } from "~/shared/lib/env";
 import {
   getLogHistory,
@@ -61,9 +62,14 @@ interface DevTools {
   help: () => void;
 }
 
+let consoleCaptureCleanup: (() => void) | undefined;
+
 export function installDevTools(): void {
   if (!import.meta.env.DEV) return;
   if (typeof window === "undefined") return;
+
+  consoleCaptureCleanup?.();
+  consoleCaptureCleanup = initConsoleCapture();
 
   const devtools: DevTools = {
     stores: {

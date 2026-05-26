@@ -29,6 +29,7 @@ import {
 } from "~/shared/lib/connection-health";
 import { env } from "~/shared/lib/env";
 import { logApiCall } from "~/shared/lib/logger";
+import { extractLoggableRequestParams } from "~/shared/lib/logger-request-params.lib";
 import { workspaceOrgApiOriginFromZulipRealmRoot } from "~/shared/lib/workspace-org-origin.lib";
 import {
   ingestZulipRateLimitFromApiResponse,
@@ -299,19 +300,30 @@ const devWorkspaceOrgTargetHeaderMiddleware: Middleware = async (req, next) => {
 
 const loggingMiddleware: Middleware = async (req, next) => {
   const start = performance.now();
+  const params = extractLoggableRequestParams(req);
+  const logPath = (() => {
+    try {
+      const parsed = new URL(req.url);
+      return `${parsed.pathname}${parsed.search}`;
+    } catch {
+      return req.url;
+    }
+  })();
   try {
     const res = await next(req);
     res.durationMs = Math.round(performance.now() - start);
-    logApiCall(req.method, req.url, {
+    logApiCall(req.method, logPath, {
       status: res.status,
       durationMs: res.durationMs,
+      ...(params ? { params } : {}),
     });
     return res;
   } catch (err) {
     const durationMs = Math.round(performance.now() - start);
-    logApiCall(req.method, req.url, {
+    logApiCall(req.method, logPath, {
       durationMs,
       error: err instanceof Error ? err.message : "Unknown error",
+      ...(params ? { params } : {}),
     });
     throw err;
   }

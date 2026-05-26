@@ -11,7 +11,12 @@ import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
 import { writeText } from "~/shared/lib/clipboard";
 import { isElectron } from "~/shared/lib/electron";
 import { env } from "~/shared/lib/env";
-import { clearLogHistory, getLogHistory, type LogEntry } from "~/shared/lib/logger";
+import {
+  clearLogHistory,
+  getLogHistory,
+  subscribeLogHistory,
+  type LogEntry,
+} from "~/shared/lib/logger";
 import { isOnline } from "~/shared/lib/network";
 import { getIdleTimeMs, getLocalPresenceStatus } from "~/shared/lib/presence";
 import { getRuntime, isPwa } from "~/shared/lib/pwa";
@@ -19,16 +24,15 @@ import { isTabVisible } from "~/shared/lib/visibility";
 import { getWebViewPlatform, isWebView } from "~/shared/lib/webview";
 import { Icon } from "~/shared/ui/icon";
 import { downloadLogsAsFile } from "./logs-export.lib";
-
-type RuntimeFilter = string;
-type ScopeFilter = string;
+import { matchesLogSourceFilter, type LogSourceFilter } from "./logs-source-filter.lib";
 
 export const LogsPage: React.FC = () => {
   const location = useLocation();
   const [entries, setEntries] = useState<readonly LogEntry[]>(() => [...getLogHistory()].reverse());
   const [levelFilter, setLevelFilter] = useState<LogEntry["level"] | "all">("all");
-  const [scopeFilter, setScopeFilter] = useState<ScopeFilter>("all");
-  const [runtimeFilter, setRuntimeFilter] = useState<RuntimeFilter>("all");
+  const [sourceFilter, setSourceFilter] = useState<LogSourceFilter>("all");
+  const [scopeFilter, setScopeFilter] = useState("all");
+  const [runtimeFilter, setRuntimeFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [copyState, setCopyState] = useState<"idle" | "success" | "error">("idle");
 
@@ -36,7 +40,6 @@ export const LogsPage: React.FC = () => {
   const streamsCount = useChatListStore((s) => s.streams().length);
   const dmsCount = useChatListStore((s) => s.dms().length);
   const usersCount = useUsersStore((s) => s.users.size);
-  const chatContext = useCurrentChatMessagesStore((s) => s.context);
   const currentChatMessagesCount = useCurrentChatMessagesStore((s) => s.messages.length);
   const currentInstance = useInstancesStore((s) => s.getCurrentInstance());
   const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
@@ -56,6 +59,10 @@ export const LogsPage: React.FC = () => {
   const refreshLogs = useCallback(() => {
     setEntries([...getLogHistory()].reverse());
   }, []);
+
+  useEffect(() => {
+    return subscribeLogHistory(refreshLogs);
+  }, [refreshLogs]);
 
   const clearLogs = useCallback(() => {
     clearLogHistory();
@@ -85,6 +92,7 @@ export const LogsPage: React.FC = () => {
 
     return entries.filter((entry) => {
       if (levelFilter !== "all" && entry.level !== levelFilter) return false;
+      if (!matchesLogSourceFilter(entry, sourceFilter)) return false;
       if (scopeFilter !== "all" && entry.scope !== scopeFilter) return false;
       if (runtimeFilter !== "all" && entry.runtime !== runtimeFilter) return false;
       if (normalizedQuery.length === 0) return true;
@@ -94,7 +102,7 @@ export const LogsPage: React.FC = () => {
         `${entry.level} ${entry.scope} ${entry.runtime} ${entry.message} ${serializedData}`.toLowerCase();
       return searchable.includes(normalizedQuery);
     });
-  }, [entries, levelFilter, runtimeFilter, scopeFilter, searchQuery]);
+  }, [entries, levelFilter, sourceFilter, runtimeFilter, scopeFilter, searchQuery]);
 
   const diagnosticsSnapshot = useMemo(() => {
     const hasWindow = typeof window !== "undefined";
@@ -323,6 +331,21 @@ export const LogsPage: React.FC = () => {
             />
           </label>
           <label className="min-w-0">
+            <span className="sr-only">{t("settings.logsSourceFilter")}</span>
+            <select
+              aria-label={t("settings.logsSourceFilter")}
+              value={sourceFilter}
+              onChange={(event) => setSourceFilter(event.target.value as LogSourceFilter)}
+              className="h-8 min-w-[110px] rounded-md border border-border-subtle bg-card-bg px-2 text-xs text-text-primary"
+            >
+              <option value="all">{t("settings.logsSourceAll")}</option>
+              <option value="api">{t("settings.logsSourceApi")}</option>
+              <option value="actions">{t("settings.logsSourceActions")}</option>
+              <option value="console">{t("settings.logsSourceConsole")}</option>
+              <option value="app">{t("settings.logsSourceApp")}</option>
+            </select>
+          </label>
+          <label className="min-w-0">
             <span className="sr-only">{t("settings.logsLevelFilter")}</span>
             <select
               aria-label={t("settings.logsLevelFilter")}
@@ -374,6 +397,7 @@ export const LogsPage: React.FC = () => {
             onClick={() => {
               setSearchQuery("");
               setLevelFilter("all");
+              setSourceFilter("all");
               setScopeFilter("all");
               setRuntimeFilter("all");
             }}

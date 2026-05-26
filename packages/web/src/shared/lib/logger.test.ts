@@ -15,8 +15,10 @@ import {
   clearLogHistory,
   setMinLevel,
   logApiCall,
+  logAction,
   logEvent,
   logStoreAction,
+  subscribeLogHistory,
   type LogEntry,
   type LogTransport,
   addTransport,
@@ -215,6 +217,24 @@ describe("createLogger", () => {
     expect(getLogHistory()[1]?.level).toBe("error");
   });
 
+  it("subscribeLogHistory notifies on new entries and clear", () => {
+    const log = createLogger("test");
+    let notifyCount = 0;
+    const unsub = subscribeLogHistory(() => {
+      notifyCount += 1;
+    });
+
+    log.info("one");
+    expect(notifyCount).toBe(1);
+
+    clearLogHistory();
+    expect(notifyCount).toBe(2);
+    unsub();
+
+    log.info("after unsub");
+    expect(notifyCount).toBe(2);
+  });
+
   // clearLogHistory resets the ring buffer — used when switching instances
   it("clearLogHistory clears buffer", () => {
     const log = createLogger("test");
@@ -322,6 +342,37 @@ describe("logApiCall", () => {
     expect(data.path).toBe("/messages");
     expect(data.status).toBe(200);
     expect(data.durationMs).toBe(100);
+  });
+
+  it("includes redacted params in data", () => {
+    logApiCall("POST", "/messages", {
+      status: 200,
+      durationMs: 50,
+      params: { type: "stream", password: "secret" },
+    });
+
+    const entry = getLogHistory().find((e) => e.scope === "api");
+    const data = entry!.data as Record<string, unknown>;
+    const params = data.params as Record<string, unknown>;
+    expect(params.type).toBe("stream");
+    expect(params.password).toBe("[REDACTED]");
+  });
+});
+
+describe("logAction", () => {
+  beforeEach(() => {
+    clearLogHistory();
+    setMinLevel("debug");
+  });
+
+  it("logs info entry under action scope", () => {
+    logAction("instance_switched", { instanceId: "abc" });
+
+    const entry = getLogHistory().find((e) => e.scope === "action");
+    expect(entry).toBeDefined();
+    expect(entry!.level).toBe("info");
+    expect(entry!.message).toBe("instance_switched");
+    expect((entry!.data as Record<string, unknown>).instanceId).toBe("abc");
   });
 });
 

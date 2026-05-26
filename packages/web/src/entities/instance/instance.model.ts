@@ -4,7 +4,7 @@
  * Persists realm URLs, credentials, and active instance selection to localStorage.
  */
 import { create } from "zustand";
-import { logStoreAction } from "~/shared/lib/logger";
+import { logAction, logStoreAction } from "~/shared/lib/logger";
 
 const INSTANCES_STORAGE_KEY = "zulip-web-instances";
 const CURRENT_INSTANCE_KEY = "zulip-web-current-instance";
@@ -142,6 +142,15 @@ function persist(
   }
 }
 
+function realmHostFromRealm(realm: string): string {
+  try {
+    const normalized = /^https?:\/\//i.test(realm) ? realm : `https://${realm}`;
+    return new URL(normalized).hostname;
+  } catch {
+    return "unknown";
+  }
+}
+
 function generateId(): string {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
     return crypto.randomUUID();
@@ -192,10 +201,16 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
       persist(instances, currentInstanceId, unreadCountsByInstance);
       return { instances, currentInstanceId, unreadCountsByInstance };
     });
+    logStoreAction("instances", "addInstance", { instanceId: id });
+    logAction("instance_added", {
+      instanceId: id,
+      realmHost: realmHostFromRealm(newInstance.realm),
+    });
     return id;
   },
 
   removeInstance: (id) => {
+    const removedRealm = get().instances.find((i) => i.id === id)?.realm;
     set((state) => {
       const removedWasCurrent = state.currentInstanceId === id;
       const instances = state.instances.filter((i) => i.id !== id);
@@ -216,9 +231,15 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
         ...(removedWasCurrent ? { jitsiMeetBaseUrl: null as string | null } : {}),
       };
     });
+    logStoreAction("instances", "removeInstance", { instanceId: id });
+    logAction("instance_removed", {
+      instanceId: id,
+      ...(removedRealm ? { realmHost: realmHostFromRealm(removedRealm) } : {}),
+    });
   },
 
   setCurrentInstanceId: (id) => {
+    const previousId = get().currentInstanceId;
     set((state) => {
       if (id && !state.instances.some((i) => i.id === id)) return state;
       const instances =
@@ -236,6 +257,15 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
         ...(switched ? { jitsiMeetBaseUrl: null as string | null } : {}),
       };
     });
+    if (id !== previousId) {
+      const targetRealm = id != null ? get().instances.find((i) => i.id === id)?.realm : undefined;
+      logStoreAction("instances", "setCurrentInstanceId", { instanceId: id });
+      logAction("instance_switched", {
+        instanceId: id,
+        previousInstanceId: previousId,
+        ...(targetRealm ? { realmHost: realmHostFromRealm(targetRealm) } : {}),
+      });
+    }
   },
 
   getCurrentInstance: () => {

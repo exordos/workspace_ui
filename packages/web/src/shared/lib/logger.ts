@@ -16,8 +16,15 @@
  *
  *   const apiLog = createLogger("api");
  *   apiLog.warn("Slow response", { ms: 3200, endpoint: "/messages" });
+ *
+ *   subscribeLogHistory(() => refreshLogsUi());
+ *   logAction("instance_switched", { instanceId: "…" });
+ *   logApiCall("GET", "/messages", { status: 200, params: { anchor: "newest" } });
+ *
+ * Dev-only console capture: initConsoleCapture() in installDevTools().
  */
 
+import { safeCatch } from "./guards";
 import { getRuntime } from "./pwa";
 
 // ---------------------------------------------------------------------------
@@ -107,12 +114,20 @@ export function redact(data: unknown, depth = 0): unknown {
 
 const MAX_BUFFER_SIZE = 500;
 const ringBuffer: LogEntry[] = [];
+const historyListeners = new Set<() => void>();
+
+function notifyLogHistoryListeners(): void {
+  for (const listener of historyListeners) {
+    safeCatch(listener, "log history subscriber")();
+  }
+}
 
 function pushToBuffer(entry: LogEntry): void {
   ringBuffer.push(entry);
   if (ringBuffer.length > MAX_BUFFER_SIZE) {
     ringBuffer.shift();
   }
+  notifyLogHistoryListeners();
 }
 
 export function getLogHistory(): readonly LogEntry[] {
@@ -121,6 +136,36 @@ export function getLogHistory(): readonly LogEntry[] {
 
 export function clearLogHistory(): void {
   ringBuffer.length = 0;
+  notifyLogHistoryListeners();
+}
+
+/** Subscribe to ring-buffer changes (new entry or clear). Returns unsubscribe. */
+export function subscribeLogHistory(listener: () => void): () => void {
+  historyListeners.add(listener);
+  return () => {
+    historyListeners.delete(listener);
+  };
+}
+
+/**
+ * Append to the in-memory ring buffer without transports (e.g. console capture).
+ * Always recorded regardless of min log level.
+ */
+export function appendBufferedLog(
+  level: LogLevel,
+  scope: string,
+  message: string,
+  data?: Record<string, unknown>,
+): void {
+  const entry: LogEntry = {
+    level,
+    scope,
+    message,
+    timestamp: new Date().toISOString(),
+    runtime: typeof window !== "undefined" ? getRuntime() : "node",
+    ...(data && { data: redact(data) as Record<string, unknown> }),
+  };
+  pushToBuffer(entry);
 }
 
 // ---------------------------------------------------------------------------
@@ -147,30 +192,27 @@ function shouldLog(level: LogLevel): boolean {
 const consoleTransport: LogTransport = {
   write(entry) {
     const prefix = `[${entry.scope}]`;
-    const fn =
-      entry.level === "error"
-        ? console.error
-        : entry.level === "warn"
-          ? console.warn
-          : entry.level === "debug"
-            ? () => {} // console.debug disabled by default in ESLint
-            : () => {};
+    const payload = entry.data ?? "";
 
     if (entry.level === "error") {
-      fn(prefix, entry.message, entry.data ?? "");
-    } else if (entry.level === "warn") {
-      fn(prefix, entry.message, entry.data ?? "");
-    } else if (import.meta.env?.DEV) {
-      // In dev, mirror info/debug to the console (still buffered for __dev__.logs()).
-      if (entry.level === "info") {
-        // eslint-disable-next-line no-console -- dev-only; production keeps info off console
-        console.info(prefix, entry.message, entry.data ?? "");
-      } else if (entry.level === "debug") {
-        // eslint-disable-next-line no-console -- dev-only trace
-        console.debug(prefix, entry.message, entry.data ?? "");
-      }
+      console.error(prefix, entry.message, payload);
+      return;
     }
-    // Production: info/debug → buffer only (avoid console noise)
+    if (entry.level === "warn") {
+      console.warn(prefix, entry.message, payload);
+      return;
+    }
+    if (!import.meta.env?.DEV) {
+      return;
+    }
+    // In dev, mirror info/debug to the console (still buffered for __dev__.logs()).
+    if (entry.level === "info") {
+      // eslint-disable-next-line no-console -- dev-only; production keeps info off console
+      console.info(prefix, entry.message, payload);
+    } else if (entry.level === "debug") {
+      // eslint-disable-next-line no-console -- dev-only trace
+      console.debug(prefix, entry.message, payload);
+    }
   },
 };
 
@@ -241,15 +283,27 @@ export const logger = createLogger("app");
 // Helpers for common patterns
 // ---------------------------------------------------------------------------
 
+export function logAction(action: string, data?: Record<string, unknown>): void {
+  createLogger("action").info(action, data);
+}
+
 export function logApiCall(
   method: string,
   path: string,
-  options?: { status?: number; durationMs?: number; error?: string },
+  options?: {
+    status?: number;
+    durationMs?: number;
+    error?: string;
+    params?: Record<string, unknown>;
+  },
 ): void {
   const apiLog = createLogger("api");
   const data: Record<string, unknown> = { method, path };
-  if (options?.status) data.status = options.status;
-  if (options?.durationMs) data.durationMs = options.durationMs;
+  if (options?.status != null) data.status = options.status;
+  if (options?.durationMs != null) data.durationMs = options.durationMs;
+  if (options?.params != null && Object.keys(options.params).length > 0) {
+    data.params = options.params;
+  }
 
   if (options?.error) {
     data.error = options.error;

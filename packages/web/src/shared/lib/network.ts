@@ -13,7 +13,7 @@
  *   await network.waitForOnline();            // resolves when online
  */
 
-import { createLogger } from "./logger";
+import { createLogger, logAction } from "./logger";
 
 const log = createLogger("network");
 
@@ -122,6 +122,7 @@ function handleOnline(): void {
   offlineSince = null;
 
   log.info("Network online", { downtimeMs: downtime });
+  logAction("network_online", { downtimeMs: downtime });
 
   for (const cb of statusListeners) {
     try {
@@ -148,6 +149,7 @@ function handleOffline(): void {
   wasOffline = true;
   offlineSince = Date.now();
   log.warn("Network offline");
+  logAction("network_offline");
 
   for (const cb of statusListeners) {
     try {
