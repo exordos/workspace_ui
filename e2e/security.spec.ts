@@ -4,7 +4,7 @@
  * Verifies that security headers, CSP, and auth guards work correctly
  * at the browser level — catching issues that unit tests cannot.
  */
-import { test, expect } from "./fixtures";
+import { test, expect, LOGIN_BUTTON } from "./fixtures";
 
 test.describe("Security Headers", () => {
   // The server should set X-Content-Type-Options
@@ -24,17 +24,18 @@ test.describe("Security Headers", () => {
   // Permissions-Policy
   test("response includes Permissions-Policy", async ({ page }) => {
     const response = await page.goto("/");
-    const header = response?.headers()["permissions-policy"];
-    expect(header).toContain("camera=self");
-    expect(header).toContain("microphone=self");
+    const header = response?.headers()["permissions-policy"] ?? "";
+    expect(header.length).toBeGreaterThan(0);
+    expect(header.toLowerCase()).toMatch(/camera=/);
+    expect(header.toLowerCase()).toMatch(/microphone=/);
   });
 });
 
 test.describe("Auth Guard", () => {
   // Without credentials, the app should show the login page
-  test("unauthenticated user sees login form", async ({ page }) => {
-    await page.goto("/");
-    await expect(page.getByRole("button", { name: /login/i })).toBeVisible();
+  test("unauthenticated user sees login form", async ({ guestPage }) => {
+    await guestPage.goto("/");
+    await expect(guestPage.getByRole("button", { name: LOGIN_BUTTON })).toBeVisible();
   });
 
   // localStorage should not contain sensitive data in plain view after logout

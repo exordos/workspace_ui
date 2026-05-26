@@ -9,7 +9,7 @@
 export function shouldBootstrapFolderSyncForLayout(params: {
   folderSyncInstanceId: string | null;
   currentInstanceId: string;
-  currentUserStatus: "idle" | "loading" | "ready" | "error";
+  currentUserStatus: "idle" | "loading" | "ready" | "degraded" | "blocked";
 }): boolean {
   const { folderSyncInstanceId, currentInstanceId, currentUserStatus } = params;
   if (currentInstanceId.trim().length === 0) {
@@ -19,5 +19,5 @@ export function shouldBootstrapFolderSyncForLayout(params: {
   if (switchedInstance) {
     return true;
   }
-  return currentUserStatus === "ready";
+  return currentUserStatus === "ready" || currentUserStatus === "degraded";
 }

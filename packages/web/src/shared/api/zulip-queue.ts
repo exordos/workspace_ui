@@ -3,6 +3,7 @@
 import { t } from "~/i18n/i18n";
 import { getBasicAuthValue } from "~/shared/lib/auth-guard";
 import { env } from "~/shared/lib/env";
+import { isBadEventQueueIdResponse } from "~/shared/lib/zulip-event-queue-errors.lib";
 import { normalizeGroupSettingValue } from "~/shared/lib/zulip-group-setting.lib";
 import { getCurrentInstance, zulipApi } from "./client";
 import {
@@ -604,6 +605,9 @@ export async function getEvents(
     const data = res.data;
     if (data == null || typeof data !== "object") {
       return { result: "error", msg: "Invalid JSON in event response" };
+    }
+    if (isBadEventQueueIdResponse(data)) {
+      return data;
     }
     return data;
   } catch (e) {

@@ -1,13 +1,13 @@
-import { test, expect } from "./fixtures";
+import { test, expect, LOGIN_BUTTON } from "./fixtures";
 
 test.describe("Navigation", () => {
-  test("redirects to login when not authenticated", async ({ page }) => {
-    await page.goto("/stream/general");
-    await expect(page.getByRole("button", { name: /login/i })).toBeVisible();
+  test("redirects to login when not authenticated", async ({ guestPage }) => {
+    await guestPage.goto("/stream/general");
+    await expect(guestPage.getByRole("button", { name: LOGIN_BUTTON })).toBeVisible();
   });
 
   test("shows sidebar when authenticated", async ({ authenticated }) => {
-    await expect(authenticated.getByText(/chats|channels/i).first()).toBeVisible({
+    await expect(authenticated.getByRole("navigation", { name: /chat list/i })).toBeVisible({
       timeout: 10_000,
     });
   });

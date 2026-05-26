@@ -12,8 +12,7 @@ test.describe("Responsive Layout", () => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto("/");
     // At desktop width, login form or sidebar should be visible
-    const hasContent = await page.locator("body").innerText();
-    expect(hasContent.length).toBeGreaterThan(0);
+    await expect(page.locator("body")).toContainText(/.+/);
   });
 
   // Narrow viewport should still render without horizontal scroll

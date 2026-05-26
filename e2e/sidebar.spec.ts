@@ -11,21 +11,23 @@ test.describe("Sidebar", () => {
   });
 
   test("has search input", async ({ authenticated }) => {
-    const search = authenticated.getByPlaceholder(/find|search/i).first();
-    await expect(search).toBeVisible({ timeout: 10_000 });
+    await expect(
+      authenticated.getByRole("searchbox", { name: /поиск|search/i }),
+    ).toBeVisible({ timeout: 10_000 });
   });
 
   test("shows activity section with links", async ({ authenticated }) => {
-    const starred = authenticated.getByText(/starred|favorites/i).first();
-    await expect(starred).toBeVisible({ timeout: 10_000 });
+    await expect(
+      authenticated.getByRole("link", { name: /входящие|inbox|избранное|starred/i }).first(),
+    ).toBeVisible({ timeout: 10_000 });
   });
 
-  test("folder rail is visible", async ({ authenticated }) => {
-    const folderBtn = authenticated.locator("button").filter({ hasText: /folder/i }).first();
+  test("folder rail is visible when folders UI is enabled", async ({ authenticated }) => {
+    const folderBtn = authenticated.locator("button").filter({ hasText: /folder|папк/i }).first();
     const folderRail = authenticated.locator('[class*="folder"], [class*="rail"]').first();
     const anyFolder = folderBtn.or(folderRail);
-    if (await anyFolder.isVisible().catch(() => false)) {
-      expect(true).toBe(true);
-    }
+    const visible = await anyFolder.isVisible().catch(() => false);
+    test.skip(!visible, "Folder rail is not rendered in this build");
+    await expect(anyFolder).toBeVisible();
   });
 });

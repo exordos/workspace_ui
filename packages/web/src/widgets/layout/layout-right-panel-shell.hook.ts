@@ -20,7 +20,7 @@ import { useLayoutUserStatusFallback } from "./layout-user-status-fallback.hook"
 export interface UseLayoutRightPanelShellParams {
   instances: readonly ZulipInstance[];
   currentInstanceId: string | null;
-  currentUserStatus: "idle" | "loading" | "ready" | "error";
+  currentUserStatus: "idle" | "loading" | "ready" | "degraded" | "blocked";
   streamsFromStore: StreamWithLast[];
   dmsFromStore: SidebarChat[];
   streamsMap: Map<number, StreamEntryInternal>;
@@ -140,7 +140,7 @@ export function useLayoutRightPanelShell(
   }, [chatInfoData, rightDrawerOpen]);
 
   useLayoutUserStatusFallback({
-    enabled: currentUserStatus === "ready",
+    enabled: currentUserStatus === "ready" || currentUserStatus === "degraded",
     currentUserId,
     partnerUserId,
     rightDrawerOpen,

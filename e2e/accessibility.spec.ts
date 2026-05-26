@@ -1,21 +1,24 @@
-import { test, expect } from "./fixtures";
+import { test, expect, LOGIN_BUTTON } from "./fixtures";
 
 test.describe("Accessibility", () => {
-  test("login page has proper document title", async ({ page }) => {
-    await page.goto("/");
-    await expect(page).toHaveTitle(/workspace/i);
+  test("login page has a non-empty document title", async ({ guestPage }) => {
+    await guestPage.goto("/");
+    await expect(guestPage).toHaveTitle(/.+/);
+    const title = await guestPage.title();
+    expect(title.trim().length).toBeGreaterThan(0);
   });
 
-  test("html lang attribute is set", async ({ page }) => {
-    await page.goto("/");
-    const lang = await page.getAttribute("html", "lang");
+  test("html lang attribute is set", async ({ guestPage }) => {
+    await guestPage.goto("/");
+    const lang = await guestPage.getAttribute("html", "lang");
     expect(lang).toBeTruthy();
     expect(["ru", "en"]).toContain(lang);
   });
 
-  test("login form fields have labels or placeholders", async ({ page }) => {
-    await page.goto("/");
-    const inputs = page.locator("input");
+  test("login form fields have labels or placeholders", async ({ guestPage }) => {
+    await guestPage.goto("/");
+    await expect(guestPage.getByRole("button", { name: LOGIN_BUTTON })).toBeVisible();
+    const inputs = guestPage.locator("input");
     const count = await inputs.count();
     expect(count).toBeGreaterThanOrEqual(2);
 

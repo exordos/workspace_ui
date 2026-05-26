@@ -1,0 +1,101 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  resetLayoutReconnectCoordinatorForTests,
+  scheduleLayoutReconnectRefresh,
+} from "./layout-reconnect-coordinator.lib";
+
+async function flushPromises(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
+const runChatListBootstrapMock = vi.fn();
+const fetchRealmPresenceMock = vi.fn();
+const loadInitialMessagesForContextMock = vi.fn();
+const lightRefreshMock = vi.fn();
+
+vi.mock("./layout-chat-list-bootstrap.lib", () => ({
+  runChatListBootstrap: (...args: unknown[]) => runChatListBootstrapMock(...args),
+}));
+
+vi.mock("./layout-chat-list-bootstrap-apply.lib", () => ({
+  applyChatListBootstrapResult: vi.fn(),
+}));
+
+vi.mock("./layout-realm-presence-refresh.lib", () => ({
+  refreshRealmPresenceFromApi: vi.fn(),
+}));
+
+vi.mock("./layout-active-chat-refresh.lib", () => ({
+  refreshActiveChatMessagesFromApi: (...args: unknown[]) => {
+    loadInitialMessagesForContextMock(...args);
+  },
+}));
+
+vi.mock("./layout-reconnect-light.lib", () => ({
+  refreshLayoutReconnectLight: (...args: unknown[]) => lightRefreshMock(...args),
+}));
+
+vi.mock("~/shared/api/zulip", () => ({
+  fetchRealmPresence: () => fetchRealmPresenceMock(),
+  fetchUnreadMessagesSnapshot: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock("~/entities/chat-list/chat-list.model", () => ({
+  useChatListStore: {
+    getState: () => ({
+      currentUserId: 1,
+      setFromMessages: vi.fn(),
+      reconcileUnreadFromMessages: vi.fn(),
+    }),
+  },
+}));
+
+describe("scheduleLayoutReconnectRefresh", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    resetLayoutReconnectCoordinatorForTests();
+    runChatListBootstrapMock.mockResolvedValue({ mode: "none", latestMessageIdHint: null });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.clearAllMocks();
+    resetLayoutReconnectCoordinatorForTests();
+  });
+
+  it("coalesces multiple full schedules into one bootstrap call", async () => {
+    scheduleLayoutReconnectRefresh({ instanceId: "inst-1" }, "full");
+    scheduleLayoutReconnectRefresh({ instanceId: "inst-1" }, "full");
+
+    await vi.advanceTimersByTimeAsync(400);
+    await flushPromises();
+
+    expect(runChatListBootstrapMock).toHaveBeenCalledTimes(1);
+    expect(runChatListBootstrapMock).toHaveBeenCalledWith(
+      "inst-1",
+      expect.objectContaining({ kind: "reconnect" }),
+    );
+  });
+
+  it("uses light path without cold bootstrap", async () => {
+    scheduleLayoutReconnectRefresh({ instanceId: "inst-1" }, "light");
+
+    await vi.advanceTimersByTimeAsync(400);
+    await flushPromises();
+
+    expect(runChatListBootstrapMock).not.toHaveBeenCalled();
+    expect(lightRefreshMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("escalates light then full to full path", async () => {
+    scheduleLayoutReconnectRefresh({ instanceId: "inst-1" }, "light");
+    scheduleLayoutReconnectRefresh({ instanceId: "inst-1" }, "full");
+
+    await vi.advanceTimersByTimeAsync(400);
+    await flushPromises();
+
+    expect(runChatListBootstrapMock).toHaveBeenCalledTimes(1);
+    expect(lightRefreshMock).not.toHaveBeenCalled();
+  });
+});

@@ -1,7 +1,6 @@
 import React from "react";
 import { JitsiCallShell } from "~/features/jitsi-call/jitsi-call-shell.ui";
 import { MediaViewerOverlay } from "~/features/media-viewer/media-viewer-overlay.ui";
-import { t } from "~/i18n/i18n";
 import { OpenSearchContext } from "~/shared/contexts/open-search";
 import { RightDrawerContext } from "~/shared/contexts/right-drawer";
 import { brand } from "~/shared/lib/brand";
@@ -9,11 +8,9 @@ import type { RightDrawerMode } from "~/widgets/right-panel/right-drawer.model";
 import type { RightPanelUserInfo } from "~/widgets/right-panel/right-panel.types";
 import { TopBar } from "~/widgets/top-bar/top-bar.ui";
 import { LayoutMainWorkspace } from "./layout-main-workspace.ui";
-import { useZulipRateLimitCountdownSeconds } from "./layout-zulip-rate-limit-banner.hook";
 
 export interface LayoutAppShellProps {
   openSearch: () => void;
-  online: boolean;
   rightDrawerOpen: boolean;
   setRightDrawerOpen: (open: boolean) => void;
   openRightDrawerInfo: () => void;
@@ -33,7 +30,6 @@ export interface LayoutAppShellProps {
 
 export const LayoutAppShell = React.memo<LayoutAppShellProps>(function LayoutAppShell({
   openSearch,
-  online,
   rightDrawerOpen,
   setRightDrawerOpen,
   openRightDrawerInfo,
@@ -50,8 +46,6 @@ export const LayoutAppShell = React.memo<LayoutAppShellProps>(function LayoutApp
   onOpenSettingsDrawer,
   onOpenAboutDrawer,
 }) {
-  const rateLimitSeconds = useZulipRateLimitCountdownSeconds(online);
-
   return (
     <OpenSearchContext.Provider value={openSearch}>
       <RightDrawerContext.Provider
@@ -63,25 +57,10 @@ export const LayoutAppShell = React.memo<LayoutAppShellProps>(function LayoutApp
         }}
       >
         <div
-          className="flex h-screen max-h-[100dvh] min-h-app-shell w-full min-w-app-shell-min flex-col items-stretch overflow-hidden bg-bg text-text-primary"
+          className="flex min-h-0 w-full flex-1 flex-col items-stretch overflow-hidden bg-bg text-text-primary"
           role="application"
           aria-label={brand.appName}
         >
-          {!online && (
-            <div className="bg-notice-base/90 text-badge-text shrink-0 py-1 text-center text-xs">
-              {t("app.offline")}
-            </div>
-          )}
-          {online && rateLimitSeconds > 0 && (
-            <div
-              className="bg-notice-base/90 text-badge-text shrink-0 py-1 text-center text-xs"
-              role="status"
-              aria-live="polite"
-              aria-atomic="true"
-            >
-              {t("app.rateLimitResume", { seconds: rateLimitSeconds })}
-            </div>
-          )}
           <MediaViewerOverlay />
           <JitsiCallShell />
           <TopBar />

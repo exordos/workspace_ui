@@ -428,6 +428,8 @@ npm run test              # Full Vitest suite (single run)
 npm run test:watch        # Watch mode (re-runs on file change)
 npm run test:coverage     # V8 coverage report
 npm run e2e               # Playwright E2E (headless)
+npm run e2e -- --grep @mock              # Connection/API resilience only
+npm run e2e -- --grep-invert @live       # CI default (mock API, no real Zulip)
 npm run e2e:ui            # Playwright interactive UI mode
 npm run e2e:headed        # Playwright with visible browser
 npm run e2e:report        # Open Playwright HTML report

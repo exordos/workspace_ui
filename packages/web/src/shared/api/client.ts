@@ -22,6 +22,11 @@ import {
   workspaceRestApiPathSuffix,
 } from "~/shared/config/dev-workspace-org-proxy";
 import { getBasicAuthValue, wipeCredentials } from "~/shared/lib/auth-guard";
+import {
+  noteApiTransportFailure,
+  noteApiTransportSuccess,
+  reportFailure,
+} from "~/shared/lib/connection-health";
 import { env } from "~/shared/lib/env";
 import { logApiCall } from "~/shared/lib/logger";
 import { workspaceOrgApiOriginFromZulipRealmRoot } from "~/shared/lib/workspace-org-origin.lib";
@@ -338,6 +343,23 @@ function isAbortError(err: unknown): boolean {
   );
 }
 
+const connectionHealthMiddleware: Middleware = async (req, next) => {
+  try {
+    const res = await next(req);
+    if (res.ok) {
+      noteApiTransportSuccess();
+    } else if (res.status === 502 || res.status === 503 || res.status === 504) {
+      reportFailure({ reason: "server", phase: "degraded" });
+    }
+    return res;
+  } catch (err) {
+    if (!isAbortError(err)) {
+      noteApiTransportFailure(err);
+    }
+    throw err;
+  }
+};
+
 const retryMiddleware: Middleware = async (req, next) => {
   const MAX_RETRIES = 2;
   const RETRY_STATUSES = new Set([429, 502, 503, 504]);
@@ -516,6 +538,7 @@ class ApiClient {
       sessionCsrfMiddleware,
       loggingMiddleware,
       retryMiddleware,
+      connectionHealthMiddleware,
       authErrorMiddleware,
     ];
   }
@@ -834,6 +857,7 @@ export function refreshWorkspaceApiBase(): void {
 }
 
 export {
+  connectionHealthMiddleware,
   noCacheMiddleware,
   authMiddleware,
   sessionCsrfMiddleware,

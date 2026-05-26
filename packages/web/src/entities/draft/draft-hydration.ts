@@ -4,10 +4,10 @@ import { useDraftStore } from "./draft.model";
 
 export function useHydrateDrafts(
   currentInstanceId: string | null,
-  currentUserStatus: "idle" | "loading" | "ready" | "error",
+  currentUserStatus: "idle" | "loading" | "ready" | "degraded" | "blocked",
 ): void {
   useEffect(() => {
-    if (!currentInstanceId || currentUserStatus !== "ready") {
+    if (!currentInstanceId || (currentUserStatus !== "ready" && currentUserStatus !== "degraded")) {
       useDraftStore.getState().clear();
       return;
     }

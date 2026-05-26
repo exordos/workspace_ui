@@ -77,6 +77,20 @@ describe("getCurrentUser", () => {
     const result = await getCurrentUser();
     expect(result).toEqual({ user_id: 1, full_name: "", email: "" });
   });
+
+  it("parses nested user object from /users/me", async () => {
+    mockZulipApi.get.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        user: { user_id: 55, full_name: "Nested", email: "nested@test.com" },
+      },
+      raw: { statusText: "OK" },
+    });
+    const result = await getCurrentUser();
+    expect(result).toEqual({ user_id: 55, full_name: "Nested", email: "nested@test.com" });
+  });
 });
 
 // ---------------------------------------------------------------------------

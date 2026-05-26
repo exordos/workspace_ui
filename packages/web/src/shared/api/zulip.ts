@@ -37,6 +37,7 @@ import {
   refreshZulipApiBase,
   zulipApi,
 } from "./client";
+import { parseCurrentUserFromApiData } from "./zulip-current-user.lib";
 import { mockMessageFromGetMessageApiData, rawMessageToMockMessage } from "./zulip-message-map.lib";
 import { parseRegisterResponseJitsiServerUrl } from "./zulip-register-jitsi.lib";
 import {
@@ -1454,18 +1455,7 @@ export async function getCurrentUser(): Promise<ZulipCurrentUser | null> {
   if (!res?.ok) {
     return null;
   }
-  const data = res.data as {
-    result?: string;
-    user_id?: number;
-    full_name?: string;
-    email?: string;
-  };
-  if (data.result === "error" || data.user_id == null) return null;
-  return {
-    user_id: data.user_id,
-    full_name: data.full_name ?? "",
-    email: data.email ?? "",
-  };
+  return parseCurrentUserFromApiData(res.data);
 }
 
 // Карта `user_id -> relative avatar_url`.

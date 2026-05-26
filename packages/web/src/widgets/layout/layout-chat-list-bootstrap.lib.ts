@@ -19,6 +19,7 @@ import {
   summarizeZulipMessagesForFlowDebug,
 } from "~/shared/lib/message-flow-debug.lib";
 import { loadDeepHistoryMessages } from "./layout-chat-history-sync.lib";
+import { getInMemoryLatestMessageId, maxMessageId } from "./layout-chat-list-latest-message-id.lib";
 
 // Что делает: размер одной страницы при подгрузке старой истории.
 const CHAT_HISTORY_BATCH_SIZE = 5000;
@@ -32,11 +33,18 @@ export type ChatListBootstrapResult =
   | { mode: "delta"; messages: ZulipRawMessage[]; latestMessageIdHint: number | null }
   | { mode: "none"; latestMessageIdHint: number | null };
 
+export type ChatListBootstrapKind = "cold" | "reconnect";
+
 export interface RunChatListBootstrapOptions {
   /** When aborted, skips further work after awaits (fetch cannot be cancelled here yet). */
   signal?: AbortSignal;
   /** When true, this bootstrap was superseded (effect cleanup / newer mount) — skip hydrate and network. */
   isStale?: () => boolean;
+  /**
+   * `cold` — hydrate/clear from IndexedDB then fetch (initial load).
+   * `reconnect` — keep in-memory sidebar, delta from max(IDB hint, in-memory anchor).
+   */
+  kind?: ChatListBootstrapKind;
 }
 
 function isBootstrapSuperseded(options?: RunChatListBootstrapOptions): boolean {
@@ -52,8 +60,11 @@ export async function runChatListBootstrap(
     return { mode: "none", latestMessageIdHint: null };
   }
 
+  const kind = options?.kind ?? "cold";
+
   logChatListFlow("bootstrap: runChatListBootstrap (start)", {
     instanceId,
+    kind,
     metadataChatBootstrap: env.METADATA_CHAT_BOOTSTRAP_ENABLED,
   });
 
@@ -63,26 +74,31 @@ export async function runChatListBootstrap(
     return { mode: "none", latestMessageIdHint: null };
   }
 
-  if (snap) {
-    useChatListStore.getState().hydrateFromIndexedDbSnapshot(snap);
-  } else {
-    useChatListStore.getState().clear();
-    logChatListFlow("bootstrap: no IDB snapshot, store cleared", { instanceId });
+  if (kind === "cold") {
+    if (snap) {
+      useChatListStore.getState().hydrateFromIndexedDbSnapshot(snap);
+    } else {
+      useChatListStore.getState().clear();
+      logChatListFlow("bootstrap: no IDB snapshot, store cleared", { instanceId });
+    }
   }
 
-  const hint = snap?.lastMessageId ?? null;
+  const idbHint = snap?.lastMessageId ?? null;
+  const hint = kind === "reconnect" ? maxMessageId(idbHint, getInMemoryLatestMessageId()) : idbHint;
 
-  if (snap?.lastMessageId != null) {
+  if (hint != null) {
     try {
       if (isBootstrapSuperseded(options)) {
         logChatListFlow("bootstrap: superseded before delta fetch", { instanceId });
         return { mode: "none", latestMessageIdHint: hint };
       }
       logChatListFlow("bootstrap: attempting delta after lastMessageId", {
-        lastMessageId: snap.lastMessageId,
+        lastMessageId: hint,
+        idbHint,
+        inMemoryHint: kind === "reconnect" ? getInMemoryLatestMessageId() : null,
         limit: DELTA_AFTER_ANCHOR_LIMIT,
       });
-      const delta = await fetchMessagesAfterAnchor(snap.lastMessageId, DELTA_AFTER_ANCHOR_LIMIT);
+      const delta = await fetchMessagesAfterAnchor(hint, DELTA_AFTER_ANCHOR_LIMIT);
       if (isBootstrapSuperseded(options)) {
         logChatListFlow("bootstrap: superseded after delta fetch (result discarded)", {
           instanceId,
@@ -123,7 +139,7 @@ export async function runChatListBootstrap(
     return { mode: "none", latestMessageIdHint: hint };
   }
 
-  logChatListFlow("bootstrap: full path (recent + deep history)", {});
+  logChatListFlow("bootstrap: full path (recent + deep history)", { kind });
   const initialMessages = await fetchRecentMessages();
   if (isBootstrapSuperseded(options)) {
     logChatListFlow("bootstrap: superseded after fetchRecentMessages", { instanceId });

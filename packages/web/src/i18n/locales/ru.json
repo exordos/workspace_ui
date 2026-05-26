@@ -17,7 +17,13 @@
     "underDevelopment": "Раздел в разработке",
     "webModeUnavailable": "Раздел временно недоступен в веб-режиме.",
     "offline": "Нет подключения к интернету",
-    "rateLimitResume": "Соединение восстановится через {{seconds}} с"
+    "rateLimitResume": "Соединение восстановится через {{seconds}} с",
+    "connectionFailed": "Не удалось подключиться к серверу",
+    "connectionDegraded": "Проблемы с соединением — показаны сохранённые данные",
+    "reconnecting": "Переподключение…",
+    "retryConnection": "Повторить",
+    "reloadApp": "Обновить страницу",
+    "retryIn": "Повтор через {{seconds}} с"
   },
   "auth": {
     "server": "Сервер",

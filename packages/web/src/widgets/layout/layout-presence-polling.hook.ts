@@ -1,41 +1,23 @@
 import { useCallback, useEffect, useRef } from "react";
-import { useUsersStore } from "~/entities/user/user.model";
-import { fetchRealmPresence } from "~/shared/api/zulip";
 import { createResilientInterval } from "~/shared/lib/visibility";
+import { refreshRealmPresenceFromApi } from "./layout-realm-presence-refresh.lib";
 
-export function useLayoutPresencePolling(options: {
-  enabled: boolean;
-  pollMs?: number;
-}): void {
+export function useLayoutPresencePolling(options: { enabled: boolean; pollMs?: number }): void {
   const { enabled, pollMs = 90_000 } = options;
   const cancelledRef = useRef(false);
 
-  const applyPresence = useCallback(() => {
+  const applyPresenceFromPoll = useCallback(() => {
     if (cancelledRef.current) return;
-    void fetchRealmPresence()
-      .then((data) => {
-        if (cancelledRef.current || data.result === "error" || !data.presences) return;
-        const store = useUsersStore.getState();
-        for (const [email, entry] of Object.entries(data.presences)) {
-          const agg = entry.aggregated ?? entry.website;
-          if (agg?.status != null && agg?.timestamp != null) {
-            store.setPresenceByEmail(email, {
-              status: agg.status === "idle" ? "idle" : "active",
-              timestamp: agg.timestamp,
-            });
-          }
-        }
-      })
-      .catch(() => {});
+    refreshRealmPresenceFromApi({ isCancelled: () => cancelledRef.current });
   }, []);
 
   useEffect(() => {
     cancelledRef.current = false;
     if (!enabled) return;
 
-    applyPresence();
-    return createResilientInterval(applyPresence, pollMs);
-  }, [enabled, pollMs, applyPresence]);
+    applyPresenceFromPoll();
+    return createResilientInterval(applyPresenceFromPoll, pollMs);
+  }, [enabled, pollMs, applyPresenceFromPoll]);
 
   useEffect(() => {
     return () => {
@@ -43,4 +25,3 @@ export function useLayoutPresencePolling(options: {
     };
   }, []);
 }
-

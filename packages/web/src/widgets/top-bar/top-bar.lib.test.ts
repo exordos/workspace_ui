@@ -1,10 +1,38 @@
 import { describe, expect, it } from "vitest";
 import {
   getSectionFromPathname,
+  getTopBarProfileStatusMaxWidthClass,
   getTopBarSectionNavItems,
   resolveTopBarActiveSection,
+  shouldShowTopBarProfileStatusTooltip,
+  TOP_BAR_PROFILE_STATUS_MAX_CH,
 } from "./top-bar.lib";
 import type { TopBarSection } from "./top-bar.types";
+
+describe("shouldShowTopBarProfileStatusTooltip", () => {
+  it("returns false when status fits within the limit", () => {
+    const status = "a".repeat(TOP_BAR_PROFILE_STATUS_MAX_CH);
+    expect(shouldShowTopBarProfileStatusTooltip(status)).toBe(false);
+  });
+
+  it("returns true when status exceeds the limit", () => {
+    const status = "a".repeat(TOP_BAR_PROFILE_STATUS_MAX_CH + 1);
+    expect(shouldShowTopBarProfileStatusTooltip(status)).toBe(true);
+  });
+
+  it("respects a custom maxCh override", () => {
+    expect(shouldShowTopBarProfileStatusTooltip("hello", 4)).toBe(true);
+    expect(shouldShowTopBarProfileStatusTooltip("hi", 4)).toBe(false);
+  });
+});
+
+describe("getTopBarProfileStatusMaxWidthClass", () => {
+  it("builds a Tailwind max-width class from the default limit", () => {
+    expect(getTopBarProfileStatusMaxWidthClass()).toBe(
+      `max-w-[${TOP_BAR_PROFILE_STATUS_MAX_CH}ch]`,
+    );
+  });
+});
 
 describe("getSectionFromPathname", () => {
   it("resolves chat section for chat routes", () => {

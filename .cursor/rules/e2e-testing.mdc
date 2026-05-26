@@ -10,12 +10,22 @@ alwaysApply: false
 
 ```
 e2e/
-├── fixtures.ts           # Test fixtures (loginAs, authenticated)
-├── login.spec.ts         # Login page tests
-├── navigation.spec.ts    # Routing, sidebar
-├── theme.spec.ts         # Theme switching
-├── accessibility.spec.ts # a11y checks
-└── results/              # Reports (gitignored)
+├── fixtures.ts                    # loginAs, zulipApi, authenticated (+ mock)
+├── helpers/
+│   ├── zulip-api-mock.ts          # page.route mock for /api/v1/**
+│   ├── seed-auth.ts               # localStorage instance seed
+│   ├── seed-chat-list-cache.ts    # IndexedDB sidebar cache seed
+│   ├── network.ts                 # setBrowserOffline/Online
+│   └── live-auth-env.ts           # TEST_USER_* from .env
+├── mocks/
+│   └── zulip-default-responses.ts # default JSON bodies
+├── pages/
+│   └── connection-banner.page.ts
+├── connection-resilience.spec.ts  # @mock — network/API failures
+├── live/                          # @live — real Zulip (skipped without secrets)
+│   ├── live-auth.spec.ts
+│   └── feed-forward-live.spec.ts
+└── results/                       # gitignored
 ```
 
 Config: `playwright.config.ts` (root).
@@ -23,11 +33,13 @@ Config: `playwright.config.ts` (root).
 ## Commands
 
 ```bash
-npm run e2e                # All tests (headless)
-npm run e2e:headed         # With visible browser
-npm run e2e:ui             # Playwright UI mode (interactive)
-npm run e2e:chromium       # Chromium only
-npm run e2e:report         # Open HTML report
+npm run e2e                              # All tests (headless)
+npm run e2e -- --project=chromium        # Chromium only
+npm run e2e -- --grep @mock              # Resilience / mock API only
+npm run e2e -- --grep-invert @live       # CI default (no live server)
+npm run e2e:headed
+npm run e2e:ui
+npm run e2e:report
 ```
 
 ## Fixtures
@@ -35,71 +47,57 @@ npm run e2e:report         # Open HTML report
 ```typescript
 import { test, expect } from "./fixtures";
 
-test("with auth", async ({ authenticated }) => {
-  // authenticated — Page with localStorage credentials
-  await expect(authenticated.getByText("Chats")).toBeVisible();
+test("mocked shell", async ({ authenticated, zulipApi }) => {
+  await expect(authenticated.locator("[data-focus-zone='topbar']")).toBeVisible();
+  zulipApi.abortMatching(/\/events/, 1);
 });
 
-test("login flow", async ({ page, loginAs }) => {
-  await loginAs("user@example.com", "password", "https://zulip.example.com");
-  await expect(page).toHaveURL(/\/stream\//);
+test("live login", async ({ page, loginAs }) => {
+  test.describe.configure({ tag: "@live" });
+  await loginAs(email, password, realm);
 });
 ```
 
-## Writing E2E tests
+| Fixture | Description |
+|---------|-------------|
+| `zulipApi` | `ZulipApiMock` — intercepts `**/api/v1/**` |
+| `authenticated` | Seeds auth + opens shell (uses mock) |
+| `loginAs` | Real login form (live tests) |
 
-### Locators (priority)
-
-1. `getByRole("button", { name: "Login" })` — best: semantic
-2. `getByText("Messenger")` — good: visible text
-3. `getByPlaceholder("Message...")` — good: for inputs
-4. `getByTestId("chat-list")` — fallback: data-testid
-5. `locator(".css-class")` — avoid: brittle
-
-### Assertions
+## ZulipApiMock
 
 ```typescript
-await expect(page.getByText("Loading")).toBeHidden();
-await expect(page.getByRole("feed")).toBeVisible();
-await page.waitForURL(/\/stream\//);
-await page.waitForResponse(/\/api\/v1\/messages/);
+zulipApi.statusMatching(/\/api\/v1\//, 503, 10);
+zulipApi.abortMatching(/\/events/, 2);
+zulipApi.setNextEventsResponse({ result: "error", code: "BAD_EVENT_QUEUE_ID" });
+zulipApi.restoreDefaults();
+expect(zulipApi.getRegisterCallCount()).toBeGreaterThanOrEqual(2);
 ```
 
-### Page Object (for complex tests)
+Long-poll `/events` returns immediately with `{ result: "success", events: [] }` by default.
 
-```typescript
-class ChatPage {
-  constructor(private page: Page) {}
+## Locators (priority)
 
-  async sendMessage(text: string) {
-    await this.page.getByPlaceholder(/message/i).fill(text);
-    await this.page.getByRole("button", { name: /send/i }).click();
-  }
+1. `getByRole` / `getByLabel`
+2. `getByText` (locale-aware regex: `/Перезагрузить|Reload/`)
+3. `getByTestId("connection-banner")`
+4. Avoid brittle CSS classes
 
-  async expectMessage(text: string) {
-    await expect(this.page.getByText(text)).toBeVisible();
-  }
-}
-```
+## Tags
 
-## Browsers
+- `@mock` — uses `ZulipApiMock`, no real Zulip server
+- `@live` — requires `TEST_USER_ZULIP_SERVER`, `TEST_USER_EMAIL`, `TEST_USER_PASSWORD`
 
-| Project | Browser | Use case |
-|---------|---------|----------|
-| `chromium` | Chrome | Primary target |
-| `edge` | Edge | Secondary desktop |
-| `mobile-chrome` | Mobile Chrome (Pixel 7) | Responsive layout |
+CI runs `npm run e2e -- --project=chromium --grep-invert @live`.
 
 ## CI
 
-E2E tests run in GitHub Actions after unit tests (Chromium only).
-Artifacts: HTML report + screenshots on failure + video on failure.
+GitHub Actions job `e2e` (after `check`) and GitLab `e2e-web` stage.
+Artifacts: `e2e/results` on failure.
 
 ## For AI Agent
 
-When adding a new feature:
-1. Create `e2e/<feature>.spec.ts`
-2. Use fixtures from `./fixtures`
-3. Test user journeys, not implementation details
-4. Locators: `getByRole` > `getByText` > `getByTestId`
-5. Assertions: `toBeVisible`, `toHaveURL`, `toHaveText`
+1. Prefer `authenticated` + `zulipApi` for app shell tests
+2. Add resilience scenarios to `connection-resilience.spec.ts`
+3. Do not add live tests without `@live` + `test.skip` for missing env
+4. Never rely on real long-poll timeouts in E2E

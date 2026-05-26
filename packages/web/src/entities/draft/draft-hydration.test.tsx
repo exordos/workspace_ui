@@ -19,7 +19,7 @@ function Harness({
   currentUserStatus,
 }: {
   currentInstanceId: string | null;
-  currentUserStatus: "idle" | "loading" | "ready" | "error";
+  currentUserStatus: "idle" | "loading" | "ready" | "degraded" | "blocked";
 }) {
   useHydrateDrafts(currentInstanceId, currentUserStatus);
   return null;

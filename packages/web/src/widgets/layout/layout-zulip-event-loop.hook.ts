@@ -8,7 +8,7 @@ import type {
 } from "~/entities/chat-list/chat-list.model.types";
 import { useInboxStore } from "~/entities/inbox/inbox.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
-import { isMessageForContext, useCurrentChatMessagesStore } from "~/entities/message/message.model";
+import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { persistUsersDirectoryToIndexedDb } from "~/entities/user/user-directory-snapshot-persist.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
@@ -24,7 +24,6 @@ import {
   fetchSubscriptions,
   fetchUsers,
   getCurrentUser,
-  rawMessageToMockMessage,
   type ZulipEvent,
 } from "~/shared/api/zulip";
 import { DEFAULT_REGISTER_FETCH_EVENT_TYPES } from "~/shared/api/zulip-queue";
@@ -35,7 +34,14 @@ import type {
   ZulipUserMember,
 } from "~/shared/api/zulip.types";
 import {
-  loadDmIndexEntries,
+  cancelScheduledReconnect,
+  registerManualReconnectListener,
+  reportFailure,
+  reportSuccess,
+  scheduleReconnect,
+  setConnectionPhase,
+} from "~/shared/lib/connection-health";
+import {
   upsertDmIndexEntries,
   upsertDmIndexFromMessages,
   type DmIndexEntry,
@@ -52,7 +58,7 @@ import { loadMuteSnapshotRow, persistMuteSnapshotRow } from "~/shared/lib/mute-s
 import { playNotificationSound } from "~/shared/lib/notification-sound";
 import { notificationService } from "~/shared/lib/notifications";
 import { loadUsersDirectoryRow } from "~/shared/lib/users-directory-snapshot-db";
-import { getNewestMessageId } from "./layout-chat-history-sync.lib";
+import { applyChatListBootstrapResult } from "./layout-chat-list-bootstrap-apply.lib";
 import {
   buildLayoutNotificationsActions,
   dispatchZulipEvent,
@@ -60,6 +66,7 @@ import {
 import { runLayoutReconnectRefresh } from "./layout-zulip-refresh-stale.lib";
 import type { ChatListBootstrapResult } from "./layout-chat-list-bootstrap.lib";
 import type { LayoutMuteBootstrapData } from "./layout-instance-bootstrap.hook";
+import type { LayoutUserConnectionStatus } from "./layout-user-connection-status.types";
 
 // Increments on effect cleanup so superseded `runChatListBootstrap` runs skip hydrate/API (React Strict Mode).
 let chatListBootstrapEffectEpoch = 0;
@@ -71,6 +78,46 @@ const METADATA_DM_BACKFILL_MAX_BATCHES = 3;
 // Что делает: останавливает backfill, если несколько батчей подряд не добавляют новые DM.
 const METADATA_DM_BACKFILL_STAGNATION_LIMIT = 2;
 const log = createLogger("layout-zulip-event-loop");
+
+interface LatestMessageIdRef {
+  current: number | null;
+}
+
+interface RefreshStaleCallbackRef {
+  current: (() => void) | null;
+}
+
+function resolveLatestMessageIdRef(
+  external: LatestMessageIdRef | undefined,
+  internal: LatestMessageIdRef,
+): LatestMessageIdRef {
+  return external ?? internal;
+}
+
+function resetLatestMessageIdRef(ref: LatestMessageIdRef): void {
+  ref.current = null;
+}
+
+function updateLatestMessageIdMax(ref: LatestMessageIdRef, id: number): void {
+  if (ref.current == null || id > ref.current) {
+    ref.current = id;
+  }
+}
+
+function assignRefreshStaleCallback(
+  ref: RefreshStaleCallbackRef | undefined,
+  callback: () => void,
+): void {
+  if (ref) {
+    ref.current = callback;
+  }
+}
+
+function clearRefreshStaleCallback(ref: RefreshStaleCallbackRef | undefined): void {
+  if (ref) {
+    ref.current = null;
+  }
+}
 
 // Что делает: превращает register subscriptions metadata в строки для chat-list store.
 function toStreamMetadataRows(
@@ -112,16 +159,6 @@ function toStreamMetadataRows(
           : {}),
       };
     });
-}
-
-// Что делает: преобразует локальный DM-индекс в формат, который понимает chat-list store.
-function toDmMetadataRowsFromIndex(entries: readonly DmIndexEntry[]): ChatListDmMetadataRow[] {
-  return entries.map((entry) => ({
-    userIds: entry.userIds,
-    lastActivityTs: entry.lastActivityTs,
-    lastMessageId: entry.lastMessageId,
-    unreadCount: entry.unreadCount,
-  }));
 }
 
 // Что делает: достает последние DM-диалоги из register metadata.
@@ -200,8 +237,34 @@ function toLayoutMuteSnapshotFromRow(row: {
   };
 }
 
+function chatListHasCachedRowsInStore(): boolean {
+  const state = useChatListStore.getState();
+  return state.streamsMap.size > 0 || state.dmsMap.size > 0;
+}
+
+function resolveSelfUserIdFromMembers(
+  members: readonly ZulipUserMember[],
+  loginEmail: string | undefined,
+): number | null {
+  const normalized = loginEmail?.trim().toLowerCase();
+  if (normalized == null || normalized.length === 0) {
+    return null;
+  }
+  for (const member of members) {
+    const memberEmail = member.email?.trim().toLowerCase();
+    if (memberEmail === normalized && Number.isInteger(member.user_id) && member.user_id > 0) {
+      return member.user_id;
+    }
+  }
+  return null;
+}
+
 export function useLayoutZulipEventLoop(options: {
   currentInstanceId: string | null;
+  /** Shared with reconnect refresh so sidebar delta anchor stays in sync. */
+  latestMessageIdRef?: LatestMessageIdRef;
+  focusedMessageId?: number | null;
+  onRefreshStaleRef?: RefreshStaleCallbackRef;
   loadBootstrapMessages: (
     signal: AbortSignal,
     isStale: () => boolean,
@@ -214,10 +277,13 @@ export function useLayoutZulipEventLoop(options: {
   }>;
   setFromMessages: (messages: ZulipRawMessage[], currentUserId: number | null) => void;
   setCurrentUserId: (id: number) => void;
-  setCurrentUserStatus: (status: "idle" | "loading" | "ready" | "error") => void;
+  setCurrentUserStatus: (status: LayoutUserConnectionStatus) => void;
 }): void {
   const {
     currentInstanceId,
+    latestMessageIdRef: latestMessageIdRefProp,
+    focusedMessageId,
+    onRefreshStaleRef,
     loadBootstrapMessages,
     loadMuteSnapshot,
     setFromMessages,
@@ -253,22 +319,35 @@ export function useLayoutZulipEventLoop(options: {
   const instanceAtLoopStartRef = useRef<{ realm: string; email: string; apiKey: string } | null>(
     null,
   );
-  const latestMessageIdRef = useRef<number | null>(null);
+  const internalLatestMessageIdRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!currentInstanceId) {
       prevInstanceForBootstrapRef.current = null;
       useUsersStore.getState().setCurrentUserChannelCapabilities({});
       useUserGroupsStore.getState().clear();
+      cancelScheduledReconnect();
       return;
     }
     useUsersStore.getState().setCurrentUserChannelCapabilities({});
+    setConnectionPhase("connecting");
     let cancelled = false;
+    let unsubManualReconnect: (() => void) | null = null;
+    const eventLoopStartedRef = { current: false };
+    let startEventLoopFn: (() => void) | null = null;
     const bootstrapAbort = new AbortController();
     const bootstrapEpoch = ++chatListBootstrapEffectEpoch;
     const isBootstrapStale = () => bootstrapEpoch !== chatListBootstrapEffectEpoch;
+    const setBootstrapStatus = (status: LayoutUserConnectionStatus): void => {
+      if (cancelled || isBootstrapStale()) {
+        return;
+      }
+      setCurrentUserStatusRef.current(status);
+    };
 
-    const instanceSwitched = prevInstanceForBootstrapRef.current !== currentInstanceId;
+    const prevInstanceId = prevInstanceForBootstrapRef.current;
+    const instanceSwitched = prevInstanceId != null && prevInstanceId !== currentInstanceId;
+    prevInstanceForBootstrapRef.current = currentInstanceId;
     // Флаг authoritative-применения из register; после него кэш больше не должен "переехать" состояние.
     let registerMuteSnapshotApplied = false;
     // Параллельная загрузка кэша mute: запускаем заранее, чтобы быстрее отрисовать состояние после switch.
@@ -281,7 +360,6 @@ export function useLayoutZulipEventLoop(options: {
       logMessageFlow("eventLoop:clear stores (instance switched)", {
         instanceId: currentInstanceId,
       });
-      prevInstanceForBootstrapRef.current = currentInstanceId;
       useUsersStore.getState().clear();
       useUserGroupsStore.getState().clear();
       useActivityStore.getState().clear();
@@ -291,14 +369,16 @@ export function useLayoutZulipEventLoop(options: {
       useCurrentChatMessagesStore.getState().setMessages([]);
       useJitsiCallStore.getState().clear();
       useMuteStore.getState().clear();
-      latestMessageIdRef.current = null;
+      resetLatestMessageIdRef(
+        resolveLatestMessageIdRef(latestMessageIdRefProp, internalLatestMessageIdRef),
+      );
     }
 
     void (async () => {
       if (cancelled) return;
 
       void Promise.resolve().then(() => {
-        if (!cancelled) setCurrentUserStatusRef.current("loading");
+        setBootstrapStatus("loading");
       });
 
       // Cache-first mute + users directory run in parallel with chat-list IDB bootstrap and API,
@@ -329,31 +409,78 @@ export function useLayoutZulipEventLoop(options: {
       const metadataBootstrapEnabled = env.METADATA_CHAT_BOOTSTRAP_ENABLED;
       const metadataDmBackfillEnabled =
         metadataBootstrapEnabled && env.METADATA_DM_BACKFILL_ENABLED;
-      const pUsers = fetchUsers();
-      const pSubscriptions = fetchSubscriptions();
-      const pMessages = loadBootstrapMessagesRef.current(bootstrapAbort.signal, isBootstrapStale);
-      const pCurrentUserId = getCurrentUser()
-        .then((user) => {
-          if (cancelled) return null;
+      const attemptResolveCurrentUser = async (): Promise<number | null> => {
+        try {
+          const user = await getCurrentUser();
+          if (cancelled || isBootstrapStale()) return null;
           if (user?.user_id != null) {
             useUsersStore.getState().mergeUser(user);
             setCurrentUserIdRef.current(user.user_id);
-            setCurrentUserStatusRef.current("ready");
+            setBootstrapStatus("ready");
+            reportSuccess();
             return user.user_id;
-          } else {
-            setCurrentUserStatusRef.current("error");
-            useUsersStore.getState().clear();
-            useChatListStore.getState().clear();
-            return null;
           }
-        })
-        .catch(() => {
-          if (cancelled) return null;
-          setCurrentUserStatusRef.current("error");
-          useUsersStore.getState().clear();
-          useChatListStore.getState().clear();
           return null;
-        });
+        } catch {
+          if (cancelled || isBootstrapStale()) return null;
+          return null;
+        }
+      };
+
+      const finalizeBootstrapAuth = (
+        members: readonly ZulipUserMember[],
+        fromGetCurrentUser: number | null,
+      ): void => {
+        if (cancelled || isBootstrapStale()) return;
+
+        let uid = fromGetCurrentUser ?? useChatListStore.getState().currentUserId;
+        if (uid == null) {
+          const inst = useInstancesStore.getState().getCurrentInstance();
+          uid = resolveSelfUserIdFromMembers(members, inst?.email);
+          if (uid != null) {
+            setCurrentUserIdRef.current(uid);
+            const member = members.find((m) => m.user_id === uid);
+            if (member != null) {
+              useUsersStore.getState().mergeUser(member);
+            }
+          }
+        }
+
+        if (uid != null) {
+          setBootstrapStatus("ready");
+          reportSuccess();
+          startEventLoopFn?.();
+          return;
+        }
+
+        const hasCache = chatListHasCachedRowsInStore();
+        setBootstrapStatus(hasCache ? "degraded" : "blocked");
+        reportFailure({ reason: "server", phase: hasCache ? "degraded" : "blocked" });
+        scheduleCurrentUserRetry();
+        if (hasCache) {
+          startEventLoopFn?.();
+        }
+      };
+
+      const scheduleCurrentUserRetry = (): void => {
+        scheduleReconnect(
+          async () => {
+            const id = await attemptResolveCurrentUser();
+            return id != null;
+          },
+          { signal: bootstrapAbort.signal },
+        );
+      };
+
+      unsubManualReconnect = registerManualReconnectListener(() => {
+        if (cancelled) return;
+        void attemptResolveCurrentUser();
+      });
+
+      const pUsers = fetchUsers();
+      const pSubscriptions = fetchSubscriptions();
+      const pMessages = loadBootstrapMessagesRef.current(bootstrapAbort.signal, isBootstrapStale);
+      const pCurrentUserId = attemptResolveCurrentUser();
 
       try {
         const bootstrapBundle = await Promise.all([
@@ -372,6 +499,10 @@ export function useLayoutZulipEventLoop(options: {
         const result = bootstrap;
         const apiMembers: ZulipUserMember[] = members ?? [];
         useUsersStore.getState().mergeUsers(apiMembers);
+
+        if (resolvedCurrentUserId == null) {
+          finalizeBootstrapAuth(apiMembers, null);
+        }
 
         const streamRowsFromSubscriptions = toStreamMetadataRows(subscriptions ?? []);
         if (streamRowsFromSubscriptions.length > 0) {
@@ -395,63 +526,14 @@ export function useLayoutZulipEventLoop(options: {
           latestMessageIdHint: result.latestMessageIdHint,
         });
 
-        if (metadataBootstrapEnabled) {
-          // Что делает: сначала показываем DM из metadata, даже если окно сообщений пустое.
-          const dmIndexEntries = loadDmIndexEntries(currentInstanceId);
-          if (dmIndexEntries.length > 0) {
-            useChatListStore
-              .getState()
-              .upsertDmMetadataRows(toDmMetadataRowsFromIndex(dmIndexEntries));
-          }
-        }
-
-        if (result.mode === "full") {
-          const msgs = result.messages;
-          for (const m of msgs) {
-            useUsersStore.getState().mergeFromMessage(m);
-          }
-          if (metadataBootstrapEnabled) {
-            // Зачем: metadata-first не должен затирать уже добавленные metadata-строки.
-            useChatListStore.getState().addMessages(msgs);
-          } else {
-            setFromMessagesRef.current(msgs, uid);
-          }
-          if (currentInstanceId != null && msgs.length > 0) {
-            upsertDmIndexFromMessages(currentInstanceId, msgs, uid);
-          }
-          latestMessageIdRef.current = getNewestMessageId(msgs);
-          logChatListFlow("eventLoop: applied bootstrap full to chat list", {
-            usedAddMessagesMerge: metadataBootstrapEnabled,
-            streamsMapSize: useChatListStore.getState().streamsMap.size,
-            dmsMapSize: useChatListStore.getState().dmsMap.size,
-          });
-        } else if (result.mode === "delta") {
-          for (const m of result.messages) {
-            useUsersStore.getState().mergeFromMessage(m);
-          }
-          useChatListStore.getState().addMessages(result.messages);
-          if (currentInstanceId != null && result.messages.length > 0) {
-            upsertDmIndexFromMessages(currentInstanceId, result.messages, uid);
-          }
-          const newest = getNewestMessageId(result.messages);
-          const prev = result.latestMessageIdHint;
-          latestMessageIdRef.current =
-            newest != null && (prev == null || newest > prev) ? newest : (prev ?? newest);
-          logChatListFlow("eventLoop: applied bootstrap delta (addMessages)", {
-            streamsMapSize: useChatListStore.getState().streamsMap.size,
-            dmsMapSize: useChatListStore.getState().dmsMap.size,
-            latestMessageIdRef: latestMessageIdRef.current,
-          });
-        } else {
-          if (result.latestMessageIdHint != null) {
-            latestMessageIdRef.current = result.latestMessageIdHint;
-          }
-          logChatListFlow("eventLoop: bootstrap mode none after metadata/hydrate", {
-            streamsMapSize: useChatListStore.getState().streamsMap.size,
-            dmsMapSize: useChatListStore.getState().dmsMap.size,
-            latestMessageIdRef: latestMessageIdRef.current,
-          });
-        }
+        applyChatListBootstrapResult(result, {
+          currentInstanceId,
+          setFromMessages: setFromMessagesRef.current,
+          latestMessageIdRef: resolveLatestMessageIdRef(
+            latestMessageIdRefProp,
+            internalLatestMessageIdRef,
+          ),
+        });
 
         // Что делает: всегда запускает authoritative unread reconcile после bootstrap.
         // Зачем: даже в delta/none режиме обычная загрузка сообщений не обязана исправить уже застрявшие cached unread.
@@ -511,6 +593,8 @@ export function useLayoutZulipEventLoop(options: {
           void persistUsersDirectoryToIndexedDb(instanceIdPersist, apiMembers);
         }
 
+        if (cancelled || isBootstrapStale()) return;
+
         eventLoopAbortRef.current?.abort();
         eventLoopAbortRef.current = new AbortController();
         queueIdRef.current = null;
@@ -522,168 +606,162 @@ export function useLayoutZulipEventLoop(options: {
         const refreshStaleData = () => {
           runLayoutReconnectRefresh({
             cancelled,
-            latestMessageIdRef,
-            setFromMessages: (messages, uid) => {
-              if (env.METADATA_CHAT_BOOTSTRAP_ENABLED) {
-                useChatListStore.getState().addMessages(messages);
-                if (currentInstanceId != null) {
-                  upsertDmIndexFromMessages(currentInstanceId, messages, uid);
-                }
-                return;
+            instanceId: currentInstanceId,
+            latestMessageIdRef: resolveLatestMessageIdRef(
+              latestMessageIdRefProp,
+              internalLatestMessageIdRef,
+            ),
+            focusedMessageId: focusedMessageId ?? null,
+          });
+        };
+
+        assignRefreshStaleCallback(onRefreshStaleRef, refreshStaleData);
+
+        startEventLoopFn = () => {
+          if (eventLoopStartedRef.current) return;
+          const loopAbort = eventLoopAbortRef.current;
+          if (loopAbort == null) return;
+          eventLoopStartedRef.current = true;
+
+          startZulipEventLoop({
+            signal: loopAbort.signal,
+            onTabStaleResume: () => refreshStaleData(),
+            onBadQueue: refreshStaleData,
+            fetchEventTypes: [...DEFAULT_REGISTER_FETCH_EVENT_TYPES],
+            onQueueRegistered: (id, registration) => {
+              queueIdRef.current = id;
+              if (registration?.jitsi_server_url_effective != null) {
+                useInstancesStore
+                  .getState()
+                  .setJitsiMeetBaseUrl(registration.jitsi_server_url_effective);
+              } else {
+                useInstancesStore.getState().setJitsiMeetBaseUrl(null);
               }
-              setFromMessagesRef.current(messages, uid);
+              useUsersStore.getState().setCurrentUserChannelCapabilities({
+                ...(registration?.realm_can_add_subscribers_group != null
+                  ? {
+                      realmCanAddSubscribersGroup: registration.realm_can_add_subscribers_group,
+                    }
+                  : {}),
+              });
+              useUserGroupsStore.getState().setGroups(registration?.realm_user_groups ?? []);
+              const streamRows = toStreamMetadataRows(registration?.subscriptions ?? []);
+              if (streamRows.length > 0) {
+                useChatListStore.getState().upsertStreamMetadataRows(streamRows);
+              }
+              useChatListStore.getState().setStreamMetadataHydrated(true);
+              if (metadataBootstrapEnabled) {
+                // Что делает: подмешивает recent_private_conversations сразу после register.
+                const rows = toDmMetadataRowsFromRecentConversations(
+                  registration?.recent_private_conversations,
+                );
+                if (rows.length > 0) {
+                  logChatListFlow(
+                    "eventLoop: registerQueue → upsertDmMetadataRows from recent_private_conversations",
+                    {
+                      rowCount: rows.length,
+                    },
+                  );
+                  useChatListStore.getState().upsertDmMetadataRows(rows);
+                  if (currentInstanceId != null) {
+                    persistDmIndexFromStore(currentInstanceId);
+                  }
+                }
+              }
+              void loadMuteSnapshotRef
+                .current({
+                  subscriptions: registration?.subscriptions,
+                  userTopics: registration?.user_topics,
+                })
+                .then((snapshot) => {
+                  if (!cancelled) {
+                    // Register всегда authoritative: после него считаем состояние истинным.
+                    registerMuteSnapshotApplied = true;
+                    useMuteStore.getState().setFromServer(snapshot);
+                    if (currentInstanceId != null) {
+                      // Сразу обновляем IDB-снапшот, чтобы следующий cold start поднялся из актуального состояния.
+                      void persistMuteSnapshotRow({
+                        instanceId: currentInstanceId,
+                        version: 1,
+                        savedAt: Date.now(),
+                        mutedStreamIds: snapshot.mutedStreamIds,
+                        mutedTopics: snapshot.mutedTopics,
+                        unmutedTopics: snapshot.unmutedTopics,
+                        followedTopics: snapshot.followedTopics,
+                      });
+                    }
+                  }
+                })
+                .catch(() => {});
             },
-            mergeIntoCurrentChat: (messages, uid) => {
+            onEvent(event: ZulipEvent) {
+              const chatList = useChatListStore.getState();
               const currentChat = useCurrentChatMessagesStore.getState();
-              if (currentChat.context == null || currentChat.hasNewerMessages) return 0;
+              const users = useUsersStore.getState();
+              const mute = useMuteStore.getState();
+              const typing = useTypingIndicatorStore.getState();
+              const activity = useActivityStore.getState();
+              const inbox = useInboxStore.getState();
+              const jitsiCall = useJitsiCallStore.getState();
 
-              const messagesForCurrentChat = messages.filter((message) =>
-                isMessageForContext(message, currentChat.context, uid),
-              );
-              if (messagesForCurrentChat.length === 0) return 0;
-
-              currentChat.appendMessages(
-                messagesForCurrentChat.map((message) => rawMessageToMockMessage(message)),
-              );
-              return messagesForCurrentChat.length;
+              dispatchZulipEvent(event, {
+                chatList,
+                currentChat,
+                users,
+                mute,
+                typing,
+                activity,
+                inbox,
+                jitsiCall,
+                notifications: buildLayoutNotificationsActions({
+                  show: notificationService.show,
+                  closeByTag: (tag) => {
+                    void notificationService.closeByTag(tag);
+                  },
+                  playSound: (preset) => {
+                    if (
+                      preset === "default" ||
+                      preset === "subtle" ||
+                      preset === "digital" ||
+                      preset === "glass" ||
+                      preset === "pulse" ||
+                      preset === "none" ||
+                      preset == null
+                    ) {
+                      playNotificationSound(preset);
+                    }
+                  },
+                  getSoundPreset: () => useSettingsStore.getState().notificationSound,
+                }),
+                updateLatestMessageId: (id) => {
+                  updateLatestMessageIdMax(
+                    resolveLatestMessageIdRef(latestMessageIdRefProp, internalLatestMessageIdRef),
+                    id,
+                  );
+                },
+                onStreamPeerMembersChanged: (streamIds) => {
+                  if (currentInstanceId == null) return;
+                  const chatInfoStore = useChatInfoStore.getState();
+                  for (const streamId of streamIds) {
+                    chatInfoStore.invalidateStream(currentInstanceId, streamId);
+                  }
+                },
+                onMessage: (message) => {
+                  if (currentInstanceId == null) return;
+                  // Зачем: каждое новое DM-сообщение обновляет локальный индекс для следующего старта.
+                  upsertDmIndexFromMessages(
+                    currentInstanceId,
+                    [message],
+                    useChatListStore.getState().currentUserId,
+                  );
+                },
+              });
             },
           });
         };
 
-        startZulipEventLoop({
-          signal: eventLoopAbortRef.current.signal,
-          onReconnect: refreshStaleData,
-          onBadQueue: refreshStaleData,
-          fetchEventTypes: [...DEFAULT_REGISTER_FETCH_EVENT_TYPES],
-          onQueueRegistered: (id, registration) => {
-            queueIdRef.current = id;
-            if (registration?.jitsi_server_url_effective != null) {
-              useInstancesStore
-                .getState()
-                .setJitsiMeetBaseUrl(registration.jitsi_server_url_effective);
-            } else {
-              useInstancesStore.getState().setJitsiMeetBaseUrl(null);
-            }
-            useUsersStore.getState().setCurrentUserChannelCapabilities({
-              ...(registration?.realm_can_add_subscribers_group != null
-                ? {
-                    realmCanAddSubscribersGroup: registration.realm_can_add_subscribers_group,
-                  }
-                : {}),
-            });
-            useUserGroupsStore.getState().setGroups(registration?.realm_user_groups ?? []);
-            const streamRows = toStreamMetadataRows(registration?.subscriptions ?? []);
-            if (streamRows.length > 0) {
-              useChatListStore.getState().upsertStreamMetadataRows(streamRows);
-            }
-            useChatListStore.getState().setStreamMetadataHydrated(true);
-            if (metadataBootstrapEnabled) {
-              // Что делает: подмешивает recent_private_conversations сразу после register.
-              const rows = toDmMetadataRowsFromRecentConversations(
-                registration?.recent_private_conversations,
-              );
-              if (rows.length > 0) {
-                logChatListFlow(
-                  "eventLoop: registerQueue → upsertDmMetadataRows from recent_private_conversations",
-                  {
-                    rowCount: rows.length,
-                  },
-                );
-                useChatListStore.getState().upsertDmMetadataRows(rows);
-                if (currentInstanceId != null) {
-                  persistDmIndexFromStore(currentInstanceId);
-                }
-              }
-            }
-            void loadMuteSnapshotRef
-              .current({
-                subscriptions: registration?.subscriptions,
-                userTopics: registration?.user_topics,
-              })
-              .then((snapshot) => {
-                if (!cancelled) {
-                  // Register всегда authoritative: после него считаем состояние истинным.
-                  registerMuteSnapshotApplied = true;
-                  useMuteStore.getState().setFromServer(snapshot);
-                  if (currentInstanceId != null) {
-                    // Сразу обновляем IDB-снапшот, чтобы следующий cold start поднялся из актуального состояния.
-                    void persistMuteSnapshotRow({
-                      instanceId: currentInstanceId,
-                      version: 1,
-                      savedAt: Date.now(),
-                      mutedStreamIds: snapshot.mutedStreamIds,
-                      mutedTopics: snapshot.mutedTopics,
-                      unmutedTopics: snapshot.unmutedTopics,
-                      followedTopics: snapshot.followedTopics,
-                    });
-                  }
-                }
-              })
-              .catch(() => {});
-          },
-          onEvent(event: ZulipEvent) {
-            const chatList = useChatListStore.getState();
-            const currentChat = useCurrentChatMessagesStore.getState();
-            const users = useUsersStore.getState();
-            const mute = useMuteStore.getState();
-            const typing = useTypingIndicatorStore.getState();
-            const activity = useActivityStore.getState();
-            const inbox = useInboxStore.getState();
-            const jitsiCall = useJitsiCallStore.getState();
-
-            dispatchZulipEvent(event, {
-              chatList,
-              currentChat,
-              users,
-              mute,
-              typing,
-              activity,
-              inbox,
-              jitsiCall,
-              notifications: buildLayoutNotificationsActions({
-                show: notificationService.show,
-                closeByTag: (tag) => {
-                  void notificationService.closeByTag(tag);
-                },
-                playSound: (preset) => {
-                  if (
-                    preset === "default" ||
-                    preset === "subtle" ||
-                    preset === "digital" ||
-                    preset === "glass" ||
-                    preset === "pulse" ||
-                    preset === "none" ||
-                    preset == null
-                  ) {
-                    playNotificationSound(preset);
-                  }
-                },
-                getSoundPreset: () => useSettingsStore.getState().notificationSound,
-              }),
-              updateLatestMessageId: (id) => {
-                if (latestMessageIdRef.current == null || id > latestMessageIdRef.current) {
-                  latestMessageIdRef.current = id;
-                }
-              },
-              onStreamPeerMembersChanged: (streamIds) => {
-                if (currentInstanceId == null) return;
-                const chatInfoStore = useChatInfoStore.getState();
-                for (const streamId of streamIds) {
-                  chatInfoStore.invalidateStream(currentInstanceId, streamId);
-                }
-              },
-              onMessage: (message) => {
-                if (currentInstanceId == null) return;
-                // Зачем: каждое новое DM-сообщение обновляет локальный индекс для следующего старта.
-                upsertDmIndexFromMessages(
-                  currentInstanceId,
-                  [message],
-                  useChatListStore.getState().currentUserId,
-                );
-              },
-            });
-          },
-        });
+        if (cancelled || isBootstrapStale()) return;
+        startEventLoopFn();
       } catch (error) {
         log.error("Bootstrap/users initialization failed before starting event loop", {
           instanceId: currentInstanceId,
@@ -695,7 +773,10 @@ export function useLayoutZulipEventLoop(options: {
         });
       }
     })().catch((error) => {
-      setCurrentUserStatusRef.current("error");
+      if (cancelled || isBootstrapStale()) return;
+      const hasCache = chatListHasCachedRowsInStore();
+      setBootstrapStatus(hasCache ? "degraded" : "blocked");
+      reportFailure({ reason: "unknown", phase: hasCache ? "degraded" : "blocked" });
       log.error("Unhandled bootstrap orchestration failure", {
         instanceId: currentInstanceId,
         error: error instanceof Error ? error.message : String(error),
@@ -704,6 +785,10 @@ export function useLayoutZulipEventLoop(options: {
 
     return () => {
       cancelled = true;
+      clearRefreshStaleCallback(onRefreshStaleRef);
+      unsubManualReconnect?.();
+      unsubManualReconnect = null;
+      cancelScheduledReconnect();
       chatListBootstrapEffectEpoch += 1;
       bootstrapAbort.abort();
       const qid = queueIdRef.current;
@@ -715,7 +800,9 @@ export function useLayoutZulipEventLoop(options: {
       eventLoopAbortRef.current = null;
       queueIdRef.current = null;
       instanceAtLoopStartRef.current = null;
-      latestMessageIdRef.current = null;
+      resetLatestMessageIdRef(
+        resolveLatestMessageIdRef(latestMessageIdRefProp, internalLatestMessageIdRef),
+      );
     };
-  }, [currentInstanceId]);
+  }, [currentInstanceId, latestMessageIdRefProp, onRefreshStaleRef]);
 }

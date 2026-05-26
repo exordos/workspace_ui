@@ -482,6 +482,26 @@ describe("getEvents", () => {
     await expect(getEvents("q-123", 0)).rejects.toThrow();
   });
 
+  it("returns BAD_EVENT_QUEUE_ID error body for the event loop to re-register", async () => {
+    mockZulipApi.get.mockResolvedValue({
+      ok: false,
+      status: 400,
+      data: {
+        result: "error",
+        code: "BAD_EVENT_QUEUE_ID",
+        msg: "Invalid event queue ID",
+        queue_id: "q-stale",
+      },
+      raw: { statusText: "Bad Request" },
+    });
+
+    const result = await getEvents("q-stale", 0);
+    expect(result).toMatchObject({
+      result: "error",
+      code: "BAD_EVENT_QUEUE_ID",
+    });
+  });
+
   it("returns error result for invalid JSON body", async () => {
     mockZulipApi.get.mockResolvedValue({
       ok: true,

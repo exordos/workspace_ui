@@ -6,6 +6,8 @@
 ##
 
 stages:
+  - check
+  - e2e
   - build
 
 variables:
@@ -22,8 +24,34 @@ default:
       - .npm-cache/
     policy: pull-push
 
+check-web:
+  stage: check
+  script: |
+    npm install
+    npm run typecheck
+    npm run lint
+    npm run test
+  artifacts:
+    expire_in: 1 day
+
+e2e-web:
+  stage: e2e
+  needs: [check-web]
+  script: |
+    npm install
+    npx playwright install --with-deps chromium
+    npm run e2e -- --project=chromium --grep-invert @live
+  variables:
+    CI: "true"
+  artifacts:
+    when: on_failure
+    paths:
+      - e2e/results/
+    expire_in: 7 days
+
 build-web:
   stage: build
+  needs: [check-web]
   script: |
     echo "$WEB_ENVS" | base64 -d > packages/web/.env.production
     npm install

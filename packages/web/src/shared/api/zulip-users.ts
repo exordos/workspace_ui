@@ -2,6 +2,7 @@
  * Zulip users and presence API.
  */
 import { guard } from "~/shared/lib/guards";
+import { parseCurrentUserFromApiData } from "./zulip-current-user.lib";
 import { zulipPipelineGet } from "./zulip-pipeline.internal";
 import type {
   AvatarUrlByUserId,
@@ -15,18 +16,7 @@ export async function getCurrentUser(): Promise<ZulipCurrentUser | null> {
   if (!res?.ok) {
     return null;
   }
-  const data = res.data as {
-    result?: string;
-    user_id?: number;
-    full_name?: string;
-    email?: string;
-  };
-  if (data.result === "error" || data.user_id == null) return null;
-  return {
-    user_id: data.user_id,
-    full_name: data.full_name ?? "",
-    email: data.email ?? "",
-  };
+  return parseCurrentUserFromApiData(res.data);
 }
 
 /** Fetches the full user list (GET /users) for populating usersStore. */

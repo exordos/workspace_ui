@@ -8,7 +8,11 @@ import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { useRightDrawerStore } from "~/widgets/right-panel/right-drawer.model";
-import { resolveTopBarAvatarSrc } from "./top-bar.lib";
+import {
+  getTopBarProfileStatusMaxWidthClass,
+  resolveTopBarAvatarSrc,
+  shouldShowTopBarProfileStatusTooltip,
+} from "./top-bar.lib";
 
 export const TopBarProfileTrigger = React.memo(function TopBarProfileTrigger() {
   const isUserMenuOpen = useRightDrawerStore((s) => s.open && s.mode === "user-menu");
@@ -27,8 +31,8 @@ export const TopBarProfileTrigger = React.memo(function TopBarProfileTrigger() {
       : t("nav.profile");
   const trimmedEmail = currentUser?.email?.trim();
   const displayEmail = trimmedEmail != null && trimmedEmail.length > 0 ? trimmedEmail : undefined;
-  const emailMaxWidth = `${Math.max(displayName.length, 1)}ch`;
   const avatarLetter = displayName[0]?.toUpperCase() ?? "?";
+  const statusMaxWidthClass = getTopBarProfileStatusMaxWidthClass();
   const avatarSrc = resolveTopBarAvatarSrc(currentUser?.avatar_url ?? undefined);
   const presenceState =
     currentUser?.presence != null
@@ -64,23 +68,20 @@ export const TopBarProfileTrigger = React.memo(function TopBarProfileTrigger() {
           className="absolute right-0 top-0 ring-bg-elevated"
         />
       </div>
-      <div className="hidden min-w-0 flex-col items-start leading-tight sm:flex">
-        <span className="text-sm font-medium text-text-primary">{displayName}</span>
+      <div className="hidden w-max min-w-0 flex-col items-start leading-tight sm:flex">
+        <span className="whitespace-nowrap text-sm font-medium text-text-primary">
+          {displayName}
+        </span>
         {statusLabel && (
           <span
-            className="block truncate text-[11px] text-text-secondary"
-            style={{ maxWidth: emailMaxWidth }}
+            className={`block truncate text-[11px] text-text-secondary ${statusMaxWidthClass}`}
+            title={shouldShowTopBarProfileStatusTooltip(statusLabel) ? statusLabel : undefined}
           >
             {statusLabel}
           </span>
         )}
         {displayEmail && (
-          <span
-            className="block truncate text-[11px] text-text-secondary"
-            style={{ maxWidth: emailMaxWidth }}
-          >
-            {displayEmail}
-          </span>
+          <span className="whitespace-nowrap text-[11px] text-text-secondary">{displayEmail}</span>
         )}
       </div>
       <Icon

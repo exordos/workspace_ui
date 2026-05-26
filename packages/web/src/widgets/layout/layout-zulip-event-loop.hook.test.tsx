@@ -26,6 +26,15 @@ vi.mock("~/shared/lib/event-loop", () => ({
   startZulipEventLoop: startZulipEventLoopMock,
 }));
 
+vi.mock("~/shared/lib/connection-health", () => ({
+  cancelScheduledReconnect: vi.fn(),
+  registerManualReconnectListener: vi.fn(() => vi.fn()),
+  reportFailure: vi.fn(),
+  reportSuccess: vi.fn(),
+  scheduleReconnect: vi.fn(),
+  setConnectionPhase: vi.fn(),
+}));
+
 vi.mock("~/shared/api/zulip", () => ({
   deleteQueue: deleteQueueMock,
   fetchDirectMessagesPage: fetchDirectMessagesPageMock,
@@ -286,7 +295,7 @@ describe("useLayoutZulipEventLoop", () => {
     await waitFor(() => {
       expect(startZulipEventLoopMock).toHaveBeenCalledTimes(1);
     });
-    expect(props.setCurrentUserStatus).not.toHaveBeenCalledWith("error");
+    expect(props.setCurrentUserStatus).not.toHaveBeenCalledWith("blocked");
   });
 
   it("stores modern realm add-subscribers group from register metadata", async () => {
@@ -316,6 +325,52 @@ describe("useLayoutZulipEventLoop", () => {
     expect(useUsersStore.getState().currentUserChannelCapabilities).toEqual({
       realmCanAddSubscribersGroup: 14,
     });
+  });
+
+  it("resolves current user from /users when /users/me returns null", async () => {
+    getCurrentUserMock.mockResolvedValueOnce(null as unknown as { user_id: number });
+    fetchUsersMock.mockResolvedValueOnce([
+      { user_id: 7, full_name: "Test User", email: "test@example.com" },
+    ] as never);
+    const props = createHarnessProps();
+
+    render(<Harness currentInstanceId="inst-1" props={props} />);
+
+    await waitFor(() => {
+      expect(props.setCurrentUserStatus).toHaveBeenCalledWith("ready");
+    });
+    expect(props.setCurrentUserId).toHaveBeenCalledWith(7);
+    await waitFor(() => {
+      expect(startZulipEventLoopMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("does not let a superseded bootstrap run set blocked after ready", async () => {
+    const props = createHarnessProps();
+    let resolveUsers!: (members: never[]) => void;
+    fetchUsersMock.mockImplementationOnce(
+      () =>
+        new Promise<never[]>((resolve) => {
+          resolveUsers = resolve;
+        }),
+    );
+    getCurrentUserMock.mockResolvedValueOnce({ user_id: 7 });
+
+    const { unmount } = render(<Harness currentInstanceId="inst-1" props={props} />);
+
+    await waitFor(() => {
+      expect(props.setCurrentUserStatus).toHaveBeenCalledWith("ready");
+    });
+
+    unmount();
+    resolveUsers([]);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(props.setCurrentUserStatus).not.toHaveBeenCalledWith("blocked");
   });
 
   it("marks stream metadata as hydrated on queue register even without subscriptions payload", async () => {

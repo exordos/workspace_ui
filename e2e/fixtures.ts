@@ -1,22 +1,35 @@
 /**
  * Playwright test fixtures.
  *
- * Extends base test with helpers for auth, navigation, and page objects.
- *
  * Usage:
  *   import { test, expect } from "./fixtures";
  *
- *   test("my test", async ({ page, loginAs }) => {
- *     await loginAs("user@example.com", "<password-from-env>", "https://zulip.example.com");
+ *   test("with mock API", async ({ authenticated, zulipApi }) => {
+ *     zulipApi.abortMatching(/\/events/, 1);
  *     // ...
  *   });
  */
 
 import { test as base, type Page } from "@playwright/test";
+import { clearAppStorage } from "./helpers/clear-app-storage";
+import { openStreamChatWithComposer } from "./helpers/navigate-messenger";
+import { ZulipApiMock } from "./helpers/zulip-api-mock";
+import { seedAuthStorage } from "./helpers/seed-auth";
 
 interface TestFixtures {
   loginAs: (email: string, password: string, realm: string) => Promise<void>;
+  zulipApi: ZulipApiMock;
+  guestPage: Page;
+  authenticatedMocked: Page;
   authenticated: Page;
+}
+
+const LOGIN_BUTTON = /login|log in|войти/i;
+export { LOGIN_BUTTON };
+
+async function openAuthenticatedShell(page: Page): Promise<void> {
+  await page.reload();
+  await page.waitForSelector("[data-focus-zone='topbar']", { timeout: 45_000 });
 }
 
 export const test = base.extend<TestFixtures>({
@@ -45,21 +58,26 @@ export const test = base.extend<TestFixtures>({
     await use(fn);
   },
 
-  authenticated: async ({ page }, use) => {
-    const fixtureApiKey = `fixture-key-${Date.now()}`;
-    await page.goto("/");
-    await page.evaluate((apiKey) => {
-      const instance = {
-        id: "test-1",
-        realm: "https://zulip.test.local",
-        email: "test@example.com",
-        apiKey,
-      };
-      localStorage.setItem("zulip-web-instances", JSON.stringify([instance]));
-      localStorage.setItem("zulip-web-current-instance", "test-1");
-    }, fixtureApiKey);
-    await page.reload();
+  zulipApi: async ({ page }, use) => {
+    const mock = new ZulipApiMock(page);
+    await mock.install();
+    await use(mock);
+    await mock.uninstall();
+  },
+
+  guestPage: async ({ page }, use) => {
+    await clearAppStorage(page);
     await use(page);
+  },
+
+  authenticatedMocked: async ({ page, zulipApi: _zulipApi }, use) => {
+    await seedAuthStorage(page);
+    await openAuthenticatedShell(page);
+    await use(page);
+  },
+
+  authenticated: async ({ authenticatedMocked }, use) => {
+    await use(authenticatedMocked);
   },
 });
 

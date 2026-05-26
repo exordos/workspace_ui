@@ -9,6 +9,7 @@ import { ELECTRON_MAC_TITLEBAR_STRIP_CLASS } from "~/shared/lib/electron-title-b
 import { renderWithProviders } from "~/test/render";
 import { useRightDrawerStore } from "~/widgets/right-panel/right-drawer.model";
 import { useSearchModalStore } from "~/widgets/search-modal/search-modal.model";
+import { TOP_BAR_PROFILE_STATUS_MAX_CH } from "./top-bar.lib";
 import { TopBar } from "./top-bar.ui";
 
 function LocationProbe() {
@@ -232,13 +233,48 @@ describe("TopBar", () => {
 
     const profileButton = screen.getByRole("button", { name: /profile/i });
     const profileScope = within(profileButton);
-    expect(profileScope.getByText("Dmitrii Korobkin")).toBeInTheDocument();
+    expect(profileScope.getByText("Dmitrii Korobkin")).toHaveClass("whitespace-nowrap");
 
     const email = profileScope.getByText("dmitrii@example.com");
     expect(email).toHaveClass("text-[11px]");
     expect(email).toHaveClass("text-text-secondary");
-    expect(email).toHaveClass("truncate");
-    expect(email).toHaveStyle({ maxWidth: `${"Dmitrii Korobkin".length}ch` });
+    expect(email).toHaveClass("whitespace-nowrap");
+    expect(email).not.toHaveClass("truncate");
+  });
+
+  it("shows short profile status without a hover title", () => {
+    useChatListStore.setState({ currentUserId: 11 });
+    useUsersStore.getState().mergeUser({
+      user_id: 11,
+      full_name: "Dmitrii Korobkin",
+      status: { text: "In a meeting", away: false },
+    });
+
+    renderWithProviders(<TopBar />);
+
+    const profileButton = screen.getByRole("button", { name: /profile/i });
+    const status = within(profileButton).getByText("In a meeting");
+    expect(status).toHaveClass("truncate");
+    expect(status).toHaveClass(`max-w-[${TOP_BAR_PROFILE_STATUS_MAX_CH}ch]`);
+    expect(status).not.toHaveAttribute("title");
+  });
+
+  it("shows full profile status on hover when truncated", () => {
+    const longStatus = "a".repeat(TOP_BAR_PROFILE_STATUS_MAX_CH + 5);
+    useChatListStore.setState({ currentUserId: 11 });
+    useUsersStore.getState().mergeUser({
+      user_id: 11,
+      full_name: "Dmitrii Korobkin",
+      status: { text: longStatus, away: false },
+    });
+
+    renderWithProviders(<TopBar />);
+
+    const profileButton = screen.getByRole("button", { name: /profile/i });
+    const status = within(profileButton).getByText(longStatus);
+    expect(status).toHaveClass("truncate");
+    expect(status).toHaveClass(`max-w-[${TOP_BAR_PROFILE_STATUS_MAX_CH}ch]`);
+    expect(status).toHaveAttribute("title", longStatus);
   });
 
   it("shows download center entries and allows clearing queue", () => {

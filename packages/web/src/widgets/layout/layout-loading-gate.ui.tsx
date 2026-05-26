@@ -1,22 +1,22 @@
 import React from "react";
-import { LayoutFullscreenError, LayoutFullscreenLoading } from "./layout-loading-state.ui";
+import { LayoutConnectionBlocked, LayoutFullscreenLoading } from "./layout-loading-state.ui";
 
 interface LayoutLoadingGateProps {
   showFullscreenLoader: boolean;
-  showError: boolean;
+  showConnectionBlocked: boolean;
   children: React.ReactNode;
 }
 
 export const LayoutLoadingGate = React.memo<LayoutLoadingGateProps>(function LayoutLoadingGate({
   showFullscreenLoader,
-  showError,
+  showConnectionBlocked,
   children,
 }) {
   if (showFullscreenLoader) {
     return <LayoutFullscreenLoading />;
   }
-  if (showError) {
-    return <LayoutFullscreenError />;
+  if (showConnectionBlocked) {
+    return <LayoutConnectionBlocked />;
   }
   return <>{children}</>;
 });

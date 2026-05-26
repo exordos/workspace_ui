@@ -15,6 +15,7 @@ import { clearInFlightWorkspaceFolderRequests } from "~/shared/api/workspace-cli
 import { registerWorkspaceOrvalMutator } from "~/shared/api/workspace-orval-mutator";
 import { initAnalytics } from "~/shared/lib/analytics/setup";
 import { setStoreWiper, setAuthInstanceGetter } from "~/shared/lib/auth-guard";
+import { initConnectionHealth } from "~/shared/lib/connection-health";
 import { initNetworkTracking } from "~/shared/lib/network";
 import { perf } from "~/shared/lib/perf";
 import { setPluginDataProvider } from "~/shared/lib/plugins/api";
@@ -104,6 +105,7 @@ export function mountApplication(): void {
   cleanupDevServiceWorkers();
   initPwaListeners();
   initNetworkTracking();
+  initConnectionHealth();
   initTouchTracking();
   initVisibilityTracking();
   setPresenceReporter((status) => {

@@ -18,7 +18,7 @@ export interface LayoutMuteBootstrapData {
 
 export function useLayoutInstanceBootstrap(options: {
   currentInstanceId: string | null;
-  currentUserStatus: "idle" | "loading" | "ready" | "error";
+  currentUserStatus: "idle" | "loading" | "ready" | "degraded" | "blocked";
 }): {
   loadMuteSnapshot: (bootstrap?: LayoutMuteBootstrapData) => Promise<LayoutMuteSnapshot>;
 } {
@@ -52,7 +52,7 @@ export function useLayoutInstanceBootstrap(options: {
   useEffect(() => {
     // Единый bootstrap starred для общего activity-store.
     // Срабатывает на смену инстанса и на явную invalidation (stale=true).
-    if (!currentInstanceId || currentUserStatus !== "ready") {
+    if (!currentInstanceId || (currentUserStatus !== "ready" && currentUserStatus !== "degraded")) {
       starredBootstrapInstanceRef.current = null;
       return;
     }

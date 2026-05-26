@@ -77,7 +77,7 @@ export function startInactiveInstanceEventStreams(
           scheduleRefresh(instance);
         }
       },
-      onReconnect: () => {
+      onQueueReady: () => {
         scheduleRefresh(instance);
       },
       onBadQueue: () => {

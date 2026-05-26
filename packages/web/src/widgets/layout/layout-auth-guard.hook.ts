@@ -8,7 +8,7 @@ import type { NavigateFunction } from "react-router-dom";
 
 export function useLayoutAuthGuard(options: {
   currentInstanceId: string | null;
-  currentUserStatus: "idle" | "loading" | "ready" | "error";
+  currentUserStatus: "idle" | "loading" | "ready" | "degraded" | "blocked";
   navigate: NavigateFunction;
 }): void {
   const { currentInstanceId, currentUserStatus, navigate } = options;
@@ -16,7 +16,9 @@ export function useLayoutAuthGuard(options: {
 
   // Session timeout: auto-logout after configured inactivity period when user is authenticated.
   useEffect(() => {
-    if (!currentInstanceId || currentUserStatus !== "ready") return;
+    if (!currentInstanceId || (currentUserStatus !== "ready" && currentUserStatus !== "degraded")) {
+      return;
+    }
     const timeoutMs = authIdleTimeoutToMs(authIdleTimeout);
     if (timeoutMs == null) return;
     const cleanup = initAuthGuard({

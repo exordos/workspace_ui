@@ -16,9 +16,11 @@ import {
   registerQueueForCredentials,
 } from "~/shared/api/zulip-queue";
 import type { RegisterQueueResult, ZulipCredentials, ZulipEvent } from "~/shared/api/zulip.types";
+import { noteApiTransportFailure, noteApiTransportSuccess } from "~/shared/lib/connection-health";
 import { createLogger } from "~/shared/lib/logger";
-import { isOnline, waitForOnline, onReconnect } from "~/shared/lib/network";
+import { isOnline, onReconnect, onStatusChange, waitForOnline } from "~/shared/lib/network";
 import { onTabResume } from "~/shared/lib/visibility";
+import { shouldReRegisterEventQueueFromPollResponse } from "~/shared/lib/zulip-event-queue-errors.lib";
 
 const log = createLogger("realtime");
 
@@ -45,7 +47,12 @@ const DEFAULT_LONGPOLL_TIMEOUT_SEC = 90;
 export interface StartZulipEventLoopOptions {
   onEvent: (event: ZulipEvent) => void;
   onBadQueue?: () => void;
+  /** Called after the event queue is registered or re-registered successfully. */
+  onQueueReady?: () => void;
+  /** @deprecated Use `onQueueReady`. */
   onReconnect?: () => void;
+  /** Called when the tab resumes after being hidden (in addition to waking the poll loop). */
+  onTabStaleResume?: (hiddenDurationMs: number) => void;
   /** Called when a queue is registered (for cleanup on logout/instance switch). */
   onQueueRegistered?: (queueId: string, registration?: RegisterQueueResult) => void;
   signal?: AbortSignal;
@@ -77,17 +84,21 @@ function startZulipEventLoopWithTransport(
   const {
     onEvent,
     onBadQueue,
-    onReconnect: onReconnectCb,
+    onQueueReady,
+    onReconnect: onReconnectLegacy,
+    onTabStaleResume,
     onQueueRegistered,
     signal,
     eventTypes = [...DEFAULT_EVENT_TYPES],
     fetchEventTypes,
   } = options;
+  const onQueueReadyCb = onQueueReady ?? onReconnectLegacy;
   const queueState: { id: string | null } = { id: null };
   let lastEventId = -1;
   let longpollTimeoutSec = DEFAULT_LONGPOLL_TIMEOUT_SEC;
   let retryCount = 0;
   let wakeUpResolve: (() => void) | null = null;
+  let activePollAbort: AbortController | null = null;
 
   function setQueueId(nextQueueId: string): void {
     queueState.id = nextQueueId;
@@ -110,15 +121,34 @@ function startZulipEventLoopWithTransport(
     }
   }
 
-  const unsubResume = onTabResume(() => {
-    log.info("Tab resumed, nudging event loop");
+  function abortActivePoll(): void {
+    activePollAbort?.abort();
+    activePollAbort = null;
+  }
+
+  /** Drop stale queue + interrupt in-flight long-poll so register/events resume promptly. */
+  function nudgeEventLoopAfterNetworkRestore(reason: "reconnect" | "online"): void {
+    log.info("Network restored, nudging event loop", { reason });
+    retryCount = 0;
+    clearQueueId();
+    abortActivePoll();
     wake();
+  }
+
+  const unsubResume = onTabResume((hiddenDurationMs) => {
+    log.info("Tab resumed, nudging event loop", { hiddenDurationMs });
+    wake();
+    onTabStaleResume?.(hiddenDurationMs);
   });
 
   const unsubReconnect = onReconnect(() => {
-    log.info("Network back online, nudging event loop");
-    retryCount = 0;
-    wake();
+    nudgeEventLoopAfterNetworkRestore("reconnect");
+  });
+
+  const unsubStatus = onStatusChange((online) => {
+    if (online) {
+      nudgeEventLoopAfterNetworkRestore("online");
+    }
   });
 
   let cleanedUp = false;
@@ -129,6 +159,8 @@ function startZulipEventLoopWithTransport(
     cleanedUp = true;
     unsubResume();
     unsubReconnect();
+    unsubStatus();
+    abortActivePoll();
     removeAbortListener?.();
     removeAbortListener = null;
     wake();
@@ -160,6 +192,55 @@ function startZulipEventLoopWithTransport(
     return delay;
   }
 
+  function isAbortLikeError(err: unknown): boolean {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      return true;
+    }
+    if (err instanceof Error) {
+      return err.name === "AbortError" || err.message.includes("abort");
+    }
+    return false;
+  }
+
+  async function registerEventQueue(): Promise<boolean> {
+    try {
+      log.info("Registering event queue");
+      // Зачем: вместе с queue_id сразу получаем metadata для быстрого bootstrap sidebar.
+      const reg = await transport.registerQueue(eventTypes, fetchEventTypes);
+      const nextQueueId = reg.queue_id;
+      setQueueId(nextQueueId);
+      lastEventId = reg.last_event_id;
+      longpollTimeoutSec = reg.event_queue_longpoll_timeout_seconds ?? DEFAULT_LONGPOLL_TIMEOUT_SEC;
+      retryCount = 0;
+      log.info("Queue registered", { queueId: nextQueueId, lastEventId });
+      onQueueRegistered?.(nextQueueId, reg);
+      onQueueReadyCb?.();
+      noteApiTransportSuccess();
+      return true;
+    } catch (err) {
+      if (signal?.aborted) return false;
+      if (!isOnline()) {
+        await waitForOnline();
+        if (signal?.aborted) return false;
+        return false;
+      }
+      noteApiTransportFailure(err);
+      const delay = getRetryDelay();
+      log.warn("Queue registration failed, retrying", { delayMs: delay, retryCount });
+      await interruptibleSleep(delay);
+      return false;
+    }
+  }
+
+  async function reRegisterEventQueueAfterPollFailure(): Promise<void> {
+    log.warn("Event poll failed, re-registering queue");
+    clearQueueId();
+    retryCount = 0;
+    onBadQueue?.();
+    wake();
+    await registerEventQueue();
+  }
+
   async function runLoop(): Promise<void> {
     while (true) {
       if (signal?.aborted) return;
@@ -175,27 +256,8 @@ function startZulipEventLoopWithTransport(
       }
 
       if (queueState.id == null) {
-        try {
-          log.info("Registering event queue");
-          // Зачем: вместе с queue_id сразу получаем metadata для быстрого bootstrap sidebar.
-          const reg = await transport.registerQueue(eventTypes, fetchEventTypes);
-          const nextQueueId = reg.queue_id;
-          setQueueId(nextQueueId);
-          lastEventId = reg.last_event_id;
-          longpollTimeoutSec =
-            reg.event_queue_longpoll_timeout_seconds ?? DEFAULT_LONGPOLL_TIMEOUT_SEC;
-          retryCount = 0;
-          log.info("Queue registered", { queueId: nextQueueId, lastEventId });
-          onQueueRegistered?.(nextQueueId, reg);
-          onReconnectCb?.();
-        } catch {
-          if (signal?.aborted) return;
-          if (!isOnline()) continue;
-          const delay = getRetryDelay();
-          log.warn("Queue registration failed, retrying", { delayMs: delay, retryCount });
-          await interruptibleSleep(delay);
-          continue;
-        }
+        await registerEventQueue();
+        continue;
       }
 
       try {
@@ -204,30 +266,52 @@ function startZulipEventLoopWithTransport(
           continue;
         }
 
-        const result = await transport.getEvents(activeQueueId, lastEventId, {
-          timeoutSec: longpollTimeoutSec,
-          signal,
-        });
+        abortActivePoll();
+        const pollAbort = new AbortController();
+        activePollAbort = pollAbort;
+        const onOuterAbort = () => {
+          pollAbort.abort();
+        };
+        signal?.addEventListener("abort", onOuterAbort);
+
+        let result;
+        try {
+          result = await transport.getEvents(activeQueueId, lastEventId, {
+            timeoutSec: longpollTimeoutSec,
+            signal: pollAbort.signal,
+          });
+        } finally {
+          signal?.removeEventListener("abort", onOuterAbort);
+          if (activePollAbort === pollAbort) {
+            activePollAbort = null;
+          }
+        }
+
         if (signal?.aborted) return;
 
-        retryCount = 0;
-
-        if (result.result === "error" && result.code === "BAD_EVENT_QUEUE_ID") {
-          log.warn("BAD_EVENT_QUEUE_ID, re-registering");
-          clearQueueId();
-          onBadQueue?.();
+        if (shouldReRegisterEventQueueFromPollResponse(result)) {
+          await reRegisterEventQueueAfterPollFailure();
           continue;
         }
+
+        retryCount = 0;
 
         if (result.events) {
           for (const ev of result.events) {
             handleEvent(ev);
           }
         }
+        noteApiTransportSuccess();
       } catch (err) {
         if (signal?.aborted) return;
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes("abort") || msg === "The operation was aborted") return;
+
+        if (isAbortLikeError(err)) {
+          if (queueState.id == null) {
+            continue;
+          }
+          clearQueueId();
+          continue;
+        }
 
         if (!isOnline()) {
           log.info("Request failed while offline, will wait for network");
@@ -235,10 +319,9 @@ function startZulipEventLoopWithTransport(
           continue;
         }
 
-        const delay = getRetryDelay();
-        log.warn("Event poll failed, retrying", { error: msg, delayMs: delay });
-        clearQueueId();
-        await interruptibleSleep(delay);
+        noteApiTransportFailure(err);
+        await reRegisterEventQueueAfterPollFailure();
+        continue;
       }
     }
   }

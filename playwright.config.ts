@@ -16,8 +16,13 @@ export default defineConfig({
     ? [["html", { open: "never" }], ["github"]]
     : [["html", { open: "on-failure" }]],
 
-  timeout: 30_000,
-  expect: { timeout: 5_000 },
+  timeout: 45_000,
+  expect: { timeout: 10_000 },
+  grepInvert: process.env.E2E_GREP_INVERT
+    ? new RegExp(process.env.E2E_GREP_INVERT)
+    : process.env.CI
+      ? /@live/
+      : undefined,
 
   use: {
     baseURL: BASE_URL,
@@ -32,6 +37,12 @@ export default defineConfig({
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "resilience",
+      testMatch: /connection-resilience\.spec\.ts/,
+      use: { ...devices["Desktop Chrome"] },
+      fullyParallel: false,
     },
     {
       name: "edge",

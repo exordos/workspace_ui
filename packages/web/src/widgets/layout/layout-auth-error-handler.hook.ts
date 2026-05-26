@@ -6,14 +6,14 @@ import type { NavigateFunction } from "react-router-dom";
 
 export function useLayoutAuthErrorHandler(options: {
   currentInstanceId: string | null;
-  currentUserStatus: "idle" | "loading" | "ready" | "error";
+  currentUserStatus: "idle" | "loading" | "ready" | "degraded" | "blocked";
   navigate: NavigateFunction;
 }): void {
   const { currentInstanceId, currentUserStatus, navigate } = options;
 
   // Auth expiry: auto-logout on protected API 401 responses.
   useEffect(() => {
-    if (!currentInstanceId || currentUserStatus !== "ready") {
+    if (!currentInstanceId || (currentUserStatus !== "ready" && currentUserStatus !== "degraded")) {
       setAuthErrorHandler(null);
       return;
     }
@@ -26,4 +26,3 @@ export function useLayoutAuthErrorHandler(options: {
     };
   }, [currentInstanceId, currentUserStatus, navigate]);
 }
-

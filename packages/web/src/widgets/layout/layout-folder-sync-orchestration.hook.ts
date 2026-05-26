@@ -26,7 +26,7 @@ function getFolderSyncLabelsFromI18n(): FolderSyncSystemLabels {
 
 export interface UseLayoutFolderSyncOrchestrationParams {
   currentInstanceId: string | null;
-  currentUserStatus: "idle" | "loading" | "ready" | "error";
+  currentUserStatus: "idle" | "loading" | "ready" | "degraded" | "blocked";
   showSystemFolders: boolean;
   language: string;
   folderItemsByFolderId: ReadonlyMap<string, FolderItemForClient[]>;
@@ -153,7 +153,10 @@ export function useLayoutFolderSyncOrchestration(
 
   useEffect(() => {
     return startFolderPolling({
-      enabled: currentInstanceId != null && currentUserStatus === "ready" && online,
+      enabled:
+        currentInstanceId != null &&
+        (currentUserStatus === "ready" || currentUserStatus === "degraded") &&
+        online,
       refreshFolders: () => refreshFolderSync("polling"),
       runImmediately: false,
     });

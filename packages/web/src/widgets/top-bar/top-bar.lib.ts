@@ -4,6 +4,22 @@ import { resolveAvatarUrl } from "~/shared/lib/avatar";
 import { extractOrgRouteFromPathname } from "~/shared/lib/org-route";
 import type { TopBarSection, TopBarSectionNavItem } from "./top-bar.types";
 
+/** Max visual width for custom status under the profile name in the top bar (~28–32 Latin chars). */
+export const TOP_BAR_PROFILE_STATUS_MAX_CH = 32;
+
+/** Whether the profile status line is truncated and should expose the full text on hover. */
+export function shouldShowTopBarProfileStatusTooltip(
+  statusLabel: string,
+  maxCh = TOP_BAR_PROFILE_STATUS_MAX_CH,
+): boolean {
+  return statusLabel.length > maxCh;
+}
+
+/** Tailwind `max-w-[Nch]` class for the profile status line — keep in sync with {@link TOP_BAR_PROFILE_STATUS_MAX_CH}. */
+export function getTopBarProfileStatusMaxWidthClass(maxCh = TOP_BAR_PROFILE_STATUS_MAX_CH): string {
+  return `max-w-[${maxCh}ch]`;
+}
+
 /** Maps the current pathname (including `/org/:id/...`) to the top-bar app section. */
 export function getSectionFromPathname(pathname: string): TopBarSection {
   const { scopedPathname } = extractOrgRouteFromPathname(pathname);
