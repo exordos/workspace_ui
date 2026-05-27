@@ -208,12 +208,11 @@ async function fetchMessageWindow(options: MessageWindowOptions): Promise<ZulipR
   return data.messages ?? [];
 }
 
-// Загружает последние 1000 сообщений без narrow,
-// чтобы собрать список чатов и каналов в sidebar.
-export async function fetchRecentMessages(): Promise<ZulipRawMessage[]> {
+// Загружает последние сообщения без narrow (default 1000).
+export async function fetchRecentMessages(numBefore = 1000): Promise<ZulipRawMessage[]> {
   return fetchMessageWindow({
     anchor: "newest",
-    numBefore: 1000,
+    numBefore,
     numAfter: 0,
     applyMarkdown: false,
   });

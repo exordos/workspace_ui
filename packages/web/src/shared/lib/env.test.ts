@@ -43,8 +43,6 @@ describe("env", () => {
     expect(env).toHaveProperty("CALENDAR_EMBED_URL");
     expect(env).toHaveProperty("MAIL_EMBED_URL");
     expect(env).toHaveProperty("CHAT_MESSAGES_PERSIST_INDEXEDDB");
-    expect(env).toHaveProperty("METADATA_CHAT_BOOTSTRAP_ENABLED");
-    expect(env).toHaveProperty("METADATA_DM_BACKFILL_ENABLED");
     expect(env).toHaveProperty("MESSAGE_FLOW_DEBUG");
     expect(env).toHaveProperty("CHAT_LIST_FLOW_DEBUG");
     expect(env).toHaveProperty("TOP_BAR_CALLS_NAV");
@@ -56,8 +54,6 @@ describe("env", () => {
     const { env } = await import("./env");
     expect(typeof env.DEV).toBe("boolean");
     expect(typeof env.PROD).toBe("boolean");
-    expect(typeof env.METADATA_CHAT_BOOTSTRAP_ENABLED).toBe("boolean");
-    expect(typeof env.METADATA_DM_BACKFILL_ENABLED).toBe("boolean");
     expect(typeof env.USER_UPLOADS_PREFIX_ON_ZULIP_REALM).toBe("boolean");
   });
 

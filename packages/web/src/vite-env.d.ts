@@ -50,10 +50,6 @@ interface ImportMetaEnv {
   readonly VITE_TOP_BAR_CALLS_NAV?: string;
   /** Top bar: show Services nav. */
   readonly VITE_TOP_BAR_SERVICES_NAV?: string;
-  /** Metadata-first chat list bootstrap. */
-  readonly VITE_METADATA_CHAT_BOOTSTRAP_ENABLED?: string;
-  /** DM backfill on top of metadata bootstrap. */
-  readonly VITE_METADATA_DM_BACKFILL_ENABLED?: string;
   /** Google Analytics 4 measurement ID (e.g. G-XXXXXXXXXX). Optional. */
   readonly VITE_GA4_MEASUREMENT_ID?: string;
   /** Yandex Metrika counter ID (numeric). Optional. */

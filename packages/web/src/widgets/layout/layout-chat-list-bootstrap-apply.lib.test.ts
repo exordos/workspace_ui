@@ -3,12 +3,8 @@ import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import { applyChatListBootstrapResult } from "./layout-chat-list-bootstrap-apply.lib";
 
 const setFromMessagesMock = vi.fn();
-const addMessagesMock = vi.fn();
+const applyStreamPreviewsMock = vi.fn();
 const mergeFromMessageMock = vi.fn();
-
-vi.mock("~/shared/lib/env", () => ({
-  env: { METADATA_CHAT_BOOTSTRAP_ENABLED: false },
-}));
 
 vi.mock("~/shared/lib/dm-index", () => ({
   loadDmIndexEntries: vi.fn(() => []),
@@ -20,7 +16,7 @@ vi.mock("~/entities/chat-list/chat-list.model", () => ({
     getState: () => ({
       currentUserId: 7,
       setFromMessages: setFromMessagesMock,
-      addMessages: addMessagesMock,
+      applyStreamSidebarPreviewsFromMessages: applyStreamPreviewsMock,
       streamsMap: new Map(),
       dmsMap: new Map(),
     }),
@@ -48,39 +44,20 @@ describe("applyChatListBootstrapResult", () => {
     vi.clearAllMocks();
   });
 
-  it("applies full bootstrap via setFromMessages when not metadata-first", () => {
+  it("applies streamPreviews via applyStreamSidebarPreviewsFromMessages", () => {
     const messages = [
-      { id: 10, sender_id: 1, type: "stream", content: "hi", timestamp: 1 },
-    ] as ZulipRawMessage[];
-    const latestMessageIdRef = { current: null as number | null };
-
-    applyChatListBootstrapResult(
-      { mode: "full", messages, latestMessageIdHint: 5 },
-      {
-        currentInstanceId: "inst-1",
-        setFromMessages: setFromMessagesMock,
-        latestMessageIdRef,
-      },
-    );
-
-    expect(setFromMessagesMock).toHaveBeenCalledWith(messages, 7);
-    expect(latestMessageIdRef.current).toBe(10);
-  });
-
-  it("applies delta bootstrap via addMessages", () => {
-    const messages = [
-      { id: 20, sender_id: 2, type: "private", content: "dm", timestamp: 2 },
+      { id: 30, sender_id: 1, type: "stream", stream_id: 9, content: "ch", timestamp: 3 },
     ] as ZulipRawMessage[];
 
     applyChatListBootstrapResult(
-      { mode: "delta", messages, latestMessageIdHint: 15 },
+      { mode: "streamPreviews", messages, latestMessageIdHint: null },
       {
         currentInstanceId: "inst-1",
         setFromMessages: setFromMessagesMock,
       },
     );
 
-    expect(addMessagesMock).toHaveBeenCalledWith(messages);
+    expect(applyStreamPreviewsMock).toHaveBeenCalledWith(messages);
     expect(setFromMessagesMock).not.toHaveBeenCalled();
   });
 });

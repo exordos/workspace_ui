@@ -23,6 +23,7 @@ import { sidebarStreamRoute, sidebarStreamTopicRoute } from "./sidebar-chat-rout
 import { DmChatRow } from "./sidebar-folder-dm-row.ui";
 import { SidebarFolderNewTopicDialog } from "./sidebar-folder-new-topic-dialog.ui";
 import { TopicMuteButton, TopicResolvedButton } from "./sidebar-folder-topic-buttons.ui";
+import { SidebarStreamHydrateWrapper } from "./sidebar-stream-hydrate-wrapper.ui";
 import {
   isSidebarSystemFolderScope,
   slugForStream,
@@ -291,139 +292,151 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
                       : undefined
                   }
                 >
-                  <div className="group/stream relative">
-                    <Link
-                      to={sidebarStreamRoute(streamSlug)}
-                      className={`${streamRowClass} ${streamLinkPaddingClass} w-full ${
-                        expanded || isActive ? "bg-sidebar-hover" : "hover:bg-sidebar-hover"
-                      }`}
-                      onClick={() => {
-                        if (!expanded) {
-                          onToggleStream(streamSlug);
-                        }
-                      }}
-                    >
-                      <Avatar size={streamAvatarSize}>#</Avatar>
-                      <div className="min-w-0 flex-1">
-                        <div
-                          className={`truncate text-sm font-medium ${
-                            streamMuted ? "text-text-muted" : "text-text-primary"
-                          }`}
-                        >
-                          #{displayName}
-                        </div>
-                        {!isCompactDensity && (
-                          <div className="mt-0.5 truncate text-xs text-text-muted">
-                            {chat.lastMessage ?? ""}
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex flex-shrink-0 flex-col items-end gap-1">
-                        <div className="flex items-center gap-1">
-                          {isPinnedChat && (
-                            <Icon name="pin" size={12} className="text-text-muted" />
-                          )}
-                          {chat.badge !== undefined && chat.badge > 0 && (
-                            <Badge count={chat.badge} variant="unread" />
-                          )}
-                        </div>
-                      </div>
-                    </Link>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        onToggleStream(streamSlug);
-                      }}
-                      className={`bg-bg/60 hover:bg-bg-elevated/80 absolute z-10 flex items-center justify-center rounded-lg text-text-muted transition-colors hover:text-text-primary focus-visible:text-text-primary ${streamExpandTriggerClassName}`}
-                      aria-label={expanded ? t("a11y.collapseTopics") : t("a11y.expandTopics")}
-                    >
-                      {expanded ? (
-                        <Icon name="chevron-up" size={16} />
-                      ) : (
-                        <Icon name="chevron-down" size={16} />
-                      )}
-                    </button>
-                  </div>
-                  {expanded && (
-                    <div className="ml-4 mt-0.5 space-y-0.5 border-l-2 border-transparent pl-2">
-                      <div className="flex items-center gap-1 py-1 pl-3">
-                        {onNewTopic && (
+                  <SidebarStreamHydrateWrapper
+                    streamId={chat.stream_id}
+                    topicsCount={topics.length}
+                    expanded={expanded}
+                  >
+                    {({ topicsLoading }) => (
+                      <>
+                        <div className="group/stream relative">
+                          <Link
+                            to={sidebarStreamRoute(streamSlug)}
+                            className={`${streamRowClass} ${streamLinkPaddingClass} w-full ${
+                              expanded || isActive ? "bg-sidebar-hover" : "hover:bg-sidebar-hover"
+                            }`}
+                            onClick={() => {
+                              if (!expanded) {
+                                onToggleStream(streamSlug);
+                              }
+                            }}
+                          >
+                            <Avatar size={streamAvatarSize}>#</Avatar>
+                            <div className="min-w-0 flex-1">
+                              <div
+                                className={`truncate text-sm font-medium ${
+                                  streamMuted ? "text-text-muted" : "text-text-primary"
+                                }`}
+                              >
+                                #{displayName}
+                              </div>
+                              {!isCompactDensity && (
+                                <div className="mt-0.5 truncate text-xs text-text-muted">
+                                  {chat.lastMessage ?? ""}
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex flex-shrink-0 flex-col items-end gap-1">
+                              <div className="flex items-center gap-1">
+                                {isPinnedChat && (
+                                  <Icon name="pin" size={12} className="text-text-muted" />
+                                )}
+                                {chat.badge !== undefined && chat.badge > 0 && (
+                                  <Badge count={chat.badge} variant="unread" />
+                                )}
+                              </div>
+                            </div>
+                          </Link>
                           <button
                             type="button"
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
-                              openTopicDialogForStream({
-                                streamId: chat.stream_id,
-                                streamName: displayName,
-                                streamSlug,
-                              });
+                              onToggleStream(streamSlug);
                             }}
-                            className="flex items-center gap-1 rounded px-2 py-1 text-xs text-text-muted transition-colors hover:bg-sidebar-hover hover:text-text-primary"
-                            aria-label={t("channel.newTopic")}
+                            className={`bg-bg/60 hover:bg-bg-elevated/80 absolute z-10 flex items-center justify-center rounded-lg text-text-muted transition-colors hover:text-text-primary focus-visible:text-text-primary ${streamExpandTriggerClassName}`}
+                            aria-label={
+                              expanded ? t("a11y.collapseTopics") : t("a11y.expandTopics")
+                            }
                           >
-                            <Icon name="plus" size={12} />
-                            {t("channel.newTopic")}
+                            {expanded ? (
+                              <Icon name="chevron-up" size={16} />
+                            ) : (
+                              <Icon name="chevron-down" size={16} />
+                            )}
                           </button>
-                        )}
-                      </div>
-                      {topics.length === 0 ? (
-                        <div className="py-2 pl-3 text-xs text-text-muted">
-                          {t("channel.noTopics")}
                         </div>
-                      ) : (
-                        topics.map((topic, idx) => {
-                          const topicColor = TOPIC_BAR_COLORS[idx % TOPIC_BAR_COLORS.length];
-                          const isTopicActive =
-                            streamSlug === activeStreamSlug && activeTopic === topic.subject;
-                          return (
-                            <div
-                              key={topic.subject}
-                              className={`group/topic flex items-start rounded-r-lg border-l-4 transition-colors ${sidebarRowClass(isTopicActive)}`}
-                              style={{ borderLeftColor: topicColor }}
-                            >
-                              <Link
-                                to={sidebarStreamTopicRoute(streamSlug, topic.subject)}
-                                className="flex min-w-0 flex-1 items-start gap-3 py-2 pl-3 pr-2"
-                              >
-                                <div className="min-w-0 flex-1">
-                                  <div className="truncate text-sm font-medium text-text-primary">
-                                    {topic.subject}
-                                  </div>
-                                  {topic.lastMessageSenderName && (
-                                    <div className="mt-0.5 truncate text-xs text-sidebar-sender">
-                                      {topic.lastMessageSenderName}
-                                    </div>
-                                  )}
-                                  <div className="mt-0.5 truncate text-xs text-text-muted">
-                                    {topic.lastMessage ?? ""}
-                                  </div>
-                                </div>
-                                {topic.badge !== undefined && topic.badge > 0 && (
-                                  <Badge count={topic.badge} variant="unread" />
-                                )}
-                              </Link>
-                              <div className="flex shrink-0 flex-col items-end gap-1 py-2 pr-2">
-                                <TopicMuteButton
-                                  streamId={chat.stream_id}
-                                  topic={topic.subject}
-                                  onMuteError={handleMuteError}
-                                />
-                                <TopicResolvedButton
-                                  streamId={chat.stream_id}
-                                  topic={topic.subject}
-                                  streamSlug={streamSlug}
-                                  isActiveTopic={isTopicActive}
-                                />
-                              </div>
+                        {expanded && (
+                          <div className="ml-4 mt-0.5 space-y-0.5 border-l-2 border-transparent pl-2">
+                            <div className="flex items-center gap-1 py-1 pl-3">
+                              {onNewTopic && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    openTopicDialogForStream({
+                                      streamId: chat.stream_id,
+                                      streamName: displayName,
+                                      streamSlug,
+                                    });
+                                  }}
+                                  className="flex items-center gap-1 rounded px-2 py-1 text-xs text-text-muted transition-colors hover:bg-sidebar-hover hover:text-text-primary"
+                                  aria-label={t("channel.newTopic")}
+                                >
+                                  <Icon name="plus" size={12} />
+                                  {t("channel.newTopic")}
+                                </button>
+                              )}
                             </div>
-                          );
-                        })
-                      )}
-                    </div>
-                  )}
+                            {topics.length === 0 ? (
+                              <div className="py-2 pl-3 text-xs text-text-muted">
+                                {topicsLoading ? t("app.loading") : t("channel.noTopics")}
+                              </div>
+                            ) : (
+                              topics.map((topic, idx) => {
+                                const topicColor = TOPIC_BAR_COLORS[idx % TOPIC_BAR_COLORS.length];
+                                const isTopicActive =
+                                  streamSlug === activeStreamSlug && activeTopic === topic.subject;
+                                return (
+                                  <div
+                                    key={topic.subject}
+                                    className={`group/topic flex items-start rounded-r-lg border-l-4 transition-colors ${sidebarRowClass(isTopicActive)}`}
+                                    style={{ borderLeftColor: topicColor }}
+                                  >
+                                    <Link
+                                      to={sidebarStreamTopicRoute(streamSlug, topic.subject)}
+                                      className="flex min-w-0 flex-1 items-start gap-3 py-2 pl-3 pr-2"
+                                    >
+                                      <div className="min-w-0 flex-1">
+                                        <div className="truncate text-sm font-medium text-text-primary">
+                                          {topic.subject}
+                                        </div>
+                                        {topic.lastMessageSenderName && (
+                                          <div className="mt-0.5 truncate text-xs text-sidebar-sender">
+                                            {topic.lastMessageSenderName}
+                                          </div>
+                                        )}
+                                        <div className="mt-0.5 truncate text-xs text-text-muted">
+                                          {topic.lastMessage ?? ""}
+                                        </div>
+                                      </div>
+                                      {topic.badge !== undefined && topic.badge > 0 && (
+                                        <Badge count={topic.badge} variant="unread" />
+                                      )}
+                                    </Link>
+                                    <div className="flex shrink-0 flex-col items-end gap-1 py-2 pr-2">
+                                      <TopicMuteButton
+                                        streamId={chat.stream_id}
+                                        topic={topic.subject}
+                                        onMuteError={handleMuteError}
+                                      />
+                                      <TopicResolvedButton
+                                        streamId={chat.stream_id}
+                                        topic={topic.subject}
+                                        streamSlug={streamSlug}
+                                        isActiveTopic={isTopicActive}
+                                      />
+                                    </div>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </SidebarStreamHydrateWrapper>
                 </StreamContextMenu>
               );
             }

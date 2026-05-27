@@ -941,6 +941,84 @@ describe("chatListStore", () => {
       expect(dm?.lastMessageId).toBe(123);
       expect(dm?.ts).toBe(1_700_000_000);
     });
+
+    it("applyStreamSidebarPreviewsFromMessages updates streams only, not DM metadata preview", () => {
+      useUsersStore.getState().mergeUser({ user_id: 10, full_name: "Alice", email: "a@x.test" });
+      useUsersStore.getState().mergeUser({ user_id: 20, full_name: "Bob", email: "b@x.test" });
+
+      useChatListStore
+        .getState()
+        .upsertStreamMetadataRows([{ streamId: 99, name: "meta-channel" }]);
+      useChatListStore.getState().upsertDmMetadataRows([
+        {
+          userIds: [10, 20],
+          unreadCount: 5,
+          lastMessageId: 500,
+          lastActivityTs: 1_800_000_000,
+        },
+      ]);
+      useChatListStore.getState().addMessages([
+        dmMsg({
+          id: 500,
+          content: "dm from register",
+          timestamp: 1_600_000_000,
+          sender_id: OTHER_SENDER_ID,
+          flags: ["read"],
+        }),
+      ]);
+
+      useChatListStore.getState().applyStreamSidebarPreviewsFromMessages([
+        streamMsg({
+          id: 1000,
+          stream_id: 99,
+          subject: "topic-a",
+          content: "stream preview body",
+          timestamp: 1_750_000_000,
+        }),
+        dmMsg({
+          id: 2000,
+          content: "must not replace dm preview",
+          timestamp: 1_900_000_000,
+          sender_id: OTHER_SENDER_ID,
+          flags: ["read"],
+        }),
+      ]);
+
+      const stream = useChatListStore.getState().streamsMap.get(99);
+      expect(stream?.lastMessage).toContain("stream preview body");
+      expect(stream?.topics.get("topic-a")?.lastMessage).toContain("stream preview body");
+
+      const dm = useChatListStore.getState().dmsMap.get("10,20");
+      expect(dm?.lastMessage).toContain("dm from register");
+      expect(dm?.unreadCount).toBe(5);
+      expect(useChatListStore.getState().sidebarStreamsUnread).toBe(0);
+    });
+
+    it("applyStreamSidebarPreviewsFromMessages does not change sidebarStreamsUnread after register reconcile", () => {
+      useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 1, name: "c1" }]);
+      useChatListStore.getState().reconcileUnreadFromSnapshot(
+        {
+          streams: [{ streamId: 1, topic: "t", unreadMessageIds: [1, 2, 3] }],
+          dms: [],
+          totalCount: 3,
+        },
+        10,
+      );
+      expect(useChatListStore.getState().sidebarStreamsUnread).toBe(3);
+
+      useChatListStore.getState().applyStreamSidebarPreviewsFromMessages([
+        streamMsg({
+          id: 10,
+          stream_id: 1,
+          subject: "t",
+          content: "read preview",
+          timestamp: 2000,
+          flags: ["read"],
+        }),
+      ]);
+
+      expect(useChatListStore.getState().sidebarStreamsUnread).toBe(3);
+    });
   });
 
   // Sort order determines what the user sees at the top of the sidebar.

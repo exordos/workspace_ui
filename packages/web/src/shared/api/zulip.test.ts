@@ -25,6 +25,9 @@ import {
   fetchRealmPresence,
   fetchRealmEmojis,
   fetchRecentMessages,
+  fetchRecentStreamMessagesForSidebarPreview,
+  fetchStreamChannelMessagesForSidebarTopics,
+  fetchStreamUnreadMessagesForSidebarPreview,
   fetchMessagesBeforeAnchor,
   fetchMessagesAfterAnchor,
   fetchActivityMessages,
@@ -97,8 +100,12 @@ vi.mock("~/i18n/i18n", () => ({
   t: (key: string) => key,
 }));
 
+const mockEnv = vi.hoisted(() => ({
+  ZULIP_API_PATH: "/api/v1",
+}));
+
 vi.mock("~/shared/lib/env", () => ({
-  env: { ZULIP_API_PATH: "/api/v1" },
+  env: mockEnv,
 }));
 
 vi.mock("~/shared/lib/logger", async (importOriginal) => {
@@ -770,6 +777,94 @@ describe("deleteQueue", () => {
     ).resolves.toBeUndefined();
 
     expect(mockFetch).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Stream sidebar preview (metadata-first, channels only)
+// ---------------------------------------------------------------------------
+
+describe("fetchStreamUnreadMessagesForSidebarPreview", () => {
+  it("requests is:unread with -is:dm narrow", async () => {
+    mockZulipApi.get.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        messages: [{ id: 1, type: "stream", stream_id: 5 }],
+      },
+      raw: { statusText: "OK" },
+    });
+
+    const messages = await fetchStreamUnreadMessagesForSidebarPreview(5000);
+
+    expect(messages).toHaveLength(1);
+    expect(mockZulipApi.get).toHaveBeenCalledWith("/messages", {
+      anchor: "newest",
+      num_before: "5000",
+      num_after: "0",
+      narrow: JSON.stringify([
+        { operator: "is", operand: "unread" },
+        { negated: true, operator: "is", operand: "dm" },
+      ]),
+      client_gravatar: "true",
+      allow_empty_topic_name: "true",
+      apply_markdown: "false",
+    });
+  });
+});
+
+describe("fetchStreamChannelMessagesForSidebarTopics", () => {
+  it("requests newest messages with stream narrow for one channel", async () => {
+    mockZulipApi.get.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        messages: [{ id: 3, type: "stream", stream_id: 42, subject: "t" }],
+      },
+      raw: { statusText: "OK" },
+    });
+
+    const messages = await fetchStreamChannelMessagesForSidebarTopics(42, 100);
+
+    expect(messages).toHaveLength(1);
+    expect(mockZulipApi.get).toHaveBeenCalledWith("/messages", {
+      anchor: "newest",
+      num_before: "100",
+      num_after: "0",
+      narrow: JSON.stringify([{ operator: "stream", operand: 42 }]),
+      client_gravatar: "true",
+      allow_empty_topic_name: "true",
+      apply_markdown: "false",
+    });
+  });
+});
+
+describe("fetchRecentStreamMessagesForSidebarPreview", () => {
+  it("requests recent messages with -is:dm narrow only", async () => {
+    mockZulipApi.get.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        messages: [{ id: 2, type: "stream", stream_id: 9 }],
+      },
+      raw: { statusText: "OK" },
+    });
+
+    const messages = await fetchRecentStreamMessagesForSidebarPreview(5000);
+
+    expect(messages).toHaveLength(1);
+    expect(mockZulipApi.get).toHaveBeenCalledWith("/messages", {
+      anchor: "newest",
+      num_before: "5000",
+      num_after: "0",
+      narrow: JSON.stringify([{ negated: true, operator: "is", operand: "dm" }]),
+      client_gravatar: "true",
+      allow_empty_topic_name: "true",
+      apply_markdown: "false",
+    });
   });
 });
 

@@ -1,84 +1,76 @@
-import { useActivityStore } from "~/entities/activity/activity.model";
+import { filterStreamMessagesForSidebar } from "~/entities/chat-list/chat-list-stream-preview-from-messages.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
-import { useInboxStore } from "~/entities/inbox/inbox.model";
 import { useUsersStore } from "~/entities/user/user.model";
-import { fetchMessagesAfterAnchor } from "~/shared/api/zulip";
-import { env } from "~/shared/lib/env";
-import { createLogger } from "~/shared/lib/logger";
-import {
-  logChatListFlow,
-  summarizeZulipMessagesForFlowDebug,
-} from "~/shared/lib/message-flow-debug.lib";
+import { logChatListFlow } from "~/shared/lib/message-flow-debug.lib";
 import { getNewestMessageId } from "./layout-chat-history-sync.lib";
-import { getInMemoryLatestMessageId } from "./layout-chat-list-latest-message-id.lib";
-
-const log = createLogger("layout-reconnect");
-
-const LIGHT_DELTA_BATCH_SIZE = 5000;
+import { runChatListBootstrap } from "./layout-chat-list-bootstrap.lib";
+import { getCachedRegisterUnreadSnapshot } from "./layout-instance-register-unread.lib";
+import { reconcileSidebarUnreadAfterBootstrap } from "./layout-sidebar-unread-reconcile.lib";
 
 export interface RefreshLayoutReconnectLightOptions {
+  instanceId?: string | null;
   latestMessageIdRef?: { current: number | null };
   isCancelled?: () => boolean;
 }
 
-/** Tab resume / focus: sidebar delta from anchor only (no IDB hydrate, no deep history). */
-export function refreshLayoutReconnectLight(options: RefreshLayoutReconnectLightOptions): void {
-  const { latestMessageIdRef, isCancelled } = options;
-  if (isCancelled?.()) return;
+/**
+ * Tab resume / focus: reconcile unread from cached register, then apply a small stream preview delta
+ * (no queue re-register — previews use preserveSidebarTotals).
+ */
+export async function refreshLayoutReconnectLight(
+  options: RefreshLayoutReconnectLightOptions,
+): Promise<void> {
+  if (options.isCancelled?.()) return;
 
-  if (env.METADATA_CHAT_BOOTSTRAP_ENABLED) {
-    logChatListFlow("reconnectLight: skip sidebar delta (metadata-first)", {});
-    return;
-  }
-
+  const instanceId = options.instanceId ?? null;
   const uid = useChatListStore.getState().currentUserId ?? null;
-  const anchor = maxAnchor(latestMessageIdRef?.current ?? null, getInMemoryLatestMessageId());
-  if (anchor == null) {
-    logChatListFlow("reconnectLight: skip sidebar delta (no anchor)", {});
+  const registerSnapshot =
+    instanceId != null ? getCachedRegisterUnreadSnapshot(instanceId) : undefined;
+  reconcileSidebarUnreadAfterBootstrap({
+    cancelled: () => options.isCancelled?.() ?? false,
+    currentUserId: uid,
+    registerSnapshot,
+    logScope: "reconnectLight",
+  });
+
+  if (instanceId == null) {
+    logChatListFlow("reconnectLight: skip stream delta (no instanceId)", {});
     return;
   }
 
-  logChatListFlow("reconnectLight: delta after anchor", { anchorMessageId: anchor });
-
-  void fetchMessagesAfterAnchor(anchor, LIGHT_DELTA_BATCH_SIZE)
-    .then((deltaMessages) => {
-      if (isCancelled?.()) return;
-      if (deltaMessages.length === 0) {
-        logChatListFlow("reconnectLight: delta empty", { anchorMessageId: anchor });
-        return;
-      }
-
-      const usersStore = useUsersStore.getState();
-      const chatListStore = useChatListStore.getState();
-      for (const message of deltaMessages) {
-        usersStore.mergeFromMessage(message);
-        chatListStore.addMessage(message);
-      }
-
-      if (latestMessageIdRef != null) {
-        latestMessageIdRef.current =
-          getNewestMessageId(deltaMessages) ?? latestMessageIdRef.current;
-      }
-
-      useActivityStore.getState().markStale();
-      useInboxStore.getState().markStale();
-      logChatListFlow("reconnectLight: delta merged", {
-        ...summarizeZulipMessagesForFlowDebug(deltaMessages),
-        anchorMessageId: anchor,
-        currentUserId: uid,
-      });
-    })
-    .catch((error: unknown) => {
-      if (isCancelled?.()) return;
-      log.warn("reconnectLight: sidebar delta failed", {
-        anchorMessageId: anchor,
-        error: error instanceof Error ? error.message : String(error),
-      });
+  try {
+    const result = await runChatListBootstrap(instanceId, {
+      isStale: options.isCancelled,
+      kind: "reconnect",
     });
-}
+    if (options.isCancelled?.()) return;
+    if (result.mode !== "streamPreviews" || result.messages.length === 0) {
+      logChatListFlow("reconnectLight: no stream preview delta", {
+        mode: result.mode,
+      });
+      return;
+    }
 
-function maxAnchor(refAnchor: number | null, memoryAnchor: number | null): number | null {
-  if (refAnchor == null) return memoryAnchor;
-  if (memoryAnchor == null) return refAnchor;
-  return Math.max(refAnchor, memoryAnchor);
+    const streamOnly = filterStreamMessagesForSidebar(result.messages);
+    if (streamOnly.length === 0) return;
+
+    for (const message of streamOnly) {
+      useUsersStore.getState().mergeFromMessage(message);
+    }
+    useChatListStore.getState().applyStreamSidebarPreviewsFromMessages(streamOnly);
+    const newest = getNewestMessageId(streamOnly);
+    const prev = result.latestMessageIdHint;
+    if (options.latestMessageIdRef != null) {
+      options.latestMessageIdRef.current =
+        newest != null && (prev == null || newest > prev) ? newest : (prev ?? newest);
+    }
+    logChatListFlow("reconnectLight: applied stream preview delta", {
+      messageCount: streamOnly.length,
+    });
+  } catch (error) {
+    if (options.isCancelled?.()) return;
+    logChatListFlow("reconnectLight: stream delta failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }

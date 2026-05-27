@@ -18,8 +18,10 @@ vi.mock("./layout-chat-list-bootstrap.lib", () => ({
   runChatListBootstrap: (...args: unknown[]) => runChatListBootstrapMock(...args),
 }));
 
-vi.mock("./layout-chat-list-bootstrap-apply.lib", () => ({
-  applyChatListBootstrapResult: vi.fn(),
+const stageReconnectStreamPreviewsMock = vi.fn();
+
+vi.mock("./layout-reconnect-stream-preview.lib", () => ({
+  stageReconnectStreamPreviews: (...args: unknown[]) => stageReconnectStreamPreviewsMock(...args),
 }));
 
 vi.mock("./layout-realm-presence-refresh.lib", () => ({
@@ -86,7 +88,8 @@ describe("scheduleLayoutReconnectRefresh", () => {
     );
   });
 
-  it("uses light path without cold bootstrap", async () => {
+  it("uses light path with reconnect light refresh", async () => {
+    lightRefreshMock.mockResolvedValue(undefined);
     scheduleLayoutReconnectRefresh({ instanceId: "inst-1" }, "light");
 
     await vi.advanceTimersByTimeAsync(400);
@@ -97,6 +100,11 @@ describe("scheduleLayoutReconnectRefresh", () => {
   });
 
   it("escalates light then full to full path", async () => {
+    runChatListBootstrapMock.mockResolvedValue({
+      mode: "streamPreviews",
+      messages: [],
+      latestMessageIdHint: null,
+    });
     scheduleLayoutReconnectRefresh({ instanceId: "inst-1" }, "light");
     scheduleLayoutReconnectRefresh({ instanceId: "inst-1" }, "full");
 
@@ -105,5 +113,6 @@ describe("scheduleLayoutReconnectRefresh", () => {
 
     expect(runChatListBootstrapMock).toHaveBeenCalledTimes(1);
     expect(lightRefreshMock).not.toHaveBeenCalled();
+    expect(stageReconnectStreamPreviewsMock).toHaveBeenCalledTimes(1);
   });
 });

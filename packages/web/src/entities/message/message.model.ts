@@ -658,6 +658,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     currentUserId,
     onCacheHydrated,
     onDmMessagesApplied,
+    onStreamMessagesApplied,
     signal,
   }) {
     // Что делает: каждый новый initial-load инвалидирует предыдущий запрос.
@@ -711,6 +712,15 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
             onDmMessagesApplied?.({
               messages,
               context,
+              hasNewerMessages,
+              focusedMessageId,
+              source: "cache",
+            });
+          }
+          if (context.type === "stream") {
+            onStreamMessagesApplied?.({
+              messages,
+              context: { type: "stream", streamId: context.streamId },
               hasNewerMessages,
               focusedMessageId,
               source: "cache",
@@ -789,6 +799,15 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
           source: "api",
         });
       }
+      if (loadResult.nextContext.type === "stream") {
+        onStreamMessagesApplied?.({
+          messages: snapshotBeforeApiApply.messages,
+          context: { type: "stream", streamId: loadResult.nextContext.streamId },
+          hasNewerMessages: snapshotBeforeApiApply.hasNewerMessages,
+          focusedMessageId,
+          source: "api",
+        });
+      }
       return;
     }
 
@@ -810,6 +829,15 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       onDmMessagesApplied?.({
         messages: loadResult.messages,
         context: loadResult.nextContext,
+        hasNewerMessages: loadResult.hasNewerMessages,
+        focusedMessageId,
+        source: "api",
+      });
+    }
+    if (loadResult.nextContext.type === "stream") {
+      onStreamMessagesApplied?.({
+        messages: loadResult.messages,
+        context: { type: "stream", streamId: loadResult.nextContext.streamId },
         hasNewerMessages: loadResult.hasNewerMessages,
         focusedMessageId,
         source: "api",

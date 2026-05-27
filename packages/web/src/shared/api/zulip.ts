@@ -10,6 +10,7 @@
 import { Buffer } from "buffer";
 import zulipInitDefault from "zulip-js";
 import { t } from "~/i18n/i18n";
+import { STREAM_SIDEBAR_TOPIC_HYDRATE_LIMIT } from "~/shared/config/metadata-chat-bootstrap.constants";
 import { getBasicAuthValue } from "~/shared/lib/auth-guard";
 import { env } from "~/shared/lib/env";
 import { guard, invariant } from "~/shared/lib/guards";
@@ -27,6 +28,7 @@ import {
   ZULIP_STREAM_CHAT_NUM_AFTER,
   ZULIP_STREAM_CHAT_NUM_BEFORE,
 } from "~/shared/lib/zulip-message-window.lib";
+import { buildStreamSidebarPreviewNarrow } from "~/shared/lib/zulip-stream-sidebar-preview-narrow.lib";
 import {
   normalizeZulipMessagesNarrowForApi,
   zulipTopicNarrowOperandForApi,
@@ -1616,6 +1618,7 @@ interface MessageWindowOptions {
   includeAnchor?: boolean;
   narrow?: { operator: string; operand: string | number | number[] }[];
   applyMarkdown?: boolean;
+  signal?: AbortSignal;
   // Если поле задано и включен `CHAT_LIST_FLOW_DEBUG`,
   // логирует запрос и ответ `GET /messages` для bootstrap sidebar.
   flowDebugLabel?: string;
@@ -1649,8 +1652,12 @@ async function fetchMessageWindow(options: MessageWindowOptions): Promise<ZulipR
     includeAnchor,
     narrow,
     applyMarkdown = false,
+    signal,
     flowDebugLabel,
   } = options;
+  if (signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
   if (flowDebugLabel != null) {
     logChatListFlow(`api: GET /messages → ${flowDebugLabel} (request)`, {
       anchor,
@@ -1661,17 +1668,24 @@ async function fetchMessageWindow(options: MessageWindowOptions): Promise<ZulipR
       applyMarkdown,
     });
   }
-  const res = await zulipPipelineGet("/messages", {
-    anchor: String(anchor),
-    ...(includeAnchor == null ? {} : { include_anchor: includeAnchor ? "true" : "false" }),
-    num_before: String(numBefore),
-    num_after: String(numAfter),
-    ...(narrow == null ? {} : { narrow: JSON.stringify(narrow) }),
-    client_gravatar: "true",
-    allow_empty_topic_name: "true",
-    apply_markdown: applyMarkdown ? "true" : "false",
-  });
-  throwIfZulipPipelineGetNull(res);
+  const res = await zulipPipelineGet(
+    "/messages",
+    {
+      anchor: String(anchor),
+      ...(includeAnchor == null ? {} : { include_anchor: includeAnchor ? "true" : "false" }),
+      num_before: String(numBefore),
+      num_after: String(numAfter),
+      ...(narrow == null ? {} : { narrow: JSON.stringify(narrow) }),
+      client_gravatar: "true",
+      allow_empty_topic_name: "true",
+      apply_markdown: applyMarkdown ? "true" : "false",
+    },
+    signal,
+  );
+  throwIfZulipPipelineGetNull(res, signal);
+  if (signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
   if (!res.ok) {
     if (flowDebugLabel != null) {
       logChatListFlow(`api: GET /messages → ${flowDebugLabel} (non-ok)`, { ok: false });
@@ -1696,16 +1710,94 @@ async function fetchMessageWindow(options: MessageWindowOptions): Promise<ZulipR
   return messages;
 }
 
-// Загружает последние 1000 сообщений без narrow,
-// чтобы собрать список чатов и каналов в sidebar.
-export async function fetchRecentMessages(): Promise<ZulipRawMessage[]> {
+// Загружает последние сообщения без narrow (default 1000) для sidebar bootstrap fallback.
+export async function fetchRecentMessages(numBefore = 1000): Promise<ZulipRawMessage[]> {
   return fetchMessageWindow({
     anchor: "newest",
-    numBefore: 1000,
+    numBefore,
     numAfter: 0,
     applyMarkdown: false,
     flowDebugLabel: "fetchRecentMessages (chat list bootstrap / reconnect fallback)",
   });
+}
+
+/** Recent channel messages only (`-is:dm`) for metadata-first stream sidebar preview. */
+export async function fetchRecentStreamMessagesForSidebarPreview(
+  numBefore = 5000,
+  signal?: AbortSignal,
+): Promise<ZulipRawMessage[]> {
+  const safeNumBefore = validateNonNegativeInteger(
+    numBefore,
+    "fetchRecentStreamMessagesForSidebarPreview.numBefore",
+  );
+  return fetchMessageWindow({
+    anchor: "newest",
+    numBefore: safeNumBefore,
+    numAfter: 0,
+    narrow: normalizeZulipMessagesNarrowForApi(buildStreamSidebarPreviewNarrow(false)),
+    applyMarkdown: false,
+    signal,
+    flowDebugLabel: "fetchRecentStreamMessagesForSidebarPreview (metadata stream preview)",
+  });
+}
+
+/** Recent messages in one channel for lazy sidebar topic previews. */
+export async function fetchStreamChannelMessagesForSidebarTopics(
+  streamId: number,
+  numBefore = STREAM_SIDEBAR_TOPIC_HYDRATE_LIMIT,
+  signal?: AbortSignal,
+): Promise<ZulipRawMessage[]> {
+  guard.streamId(streamId, "fetchStreamChannelMessagesForSidebarTopics");
+  const safeNumBefore = validateNonNegativeInteger(
+    numBefore,
+    "fetchStreamChannelMessagesForSidebarTopics.numBefore",
+  );
+  return fetchMessageWindow({
+    anchor: "newest",
+    numBefore: safeNumBefore,
+    numAfter: ZULIP_STREAM_CHAT_NUM_AFTER,
+    narrow: [{ operator: "stream", operand: streamId }],
+    applyMarkdown: false,
+    signal,
+    flowDebugLabel: "fetchStreamChannelMessagesForSidebarTopics (sidebar topic hydrate)",
+  });
+}
+
+/** Unread channel messages only (`is:unread` + `-is:dm`) for metadata-first stream sidebar preview. */
+export async function fetchStreamUnreadMessagesForSidebarPreview(
+  numBefore = 5000,
+  signal?: AbortSignal,
+): Promise<ZulipRawMessage[] | null> {
+  const safeNumBefore = validateNonNegativeInteger(
+    numBefore,
+    "fetchStreamUnreadMessagesForSidebarPreview.numBefore",
+  );
+  if (signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
+  const res = await zulipPipelineGet(
+    "/messages",
+    {
+      anchor: "newest",
+      num_before: String(safeNumBefore),
+      num_after: "0",
+      narrow: JSON.stringify(
+        normalizeZulipMessagesNarrowForApi(buildStreamSidebarPreviewNarrow(true)),
+      ),
+      client_gravatar: "true",
+      allow_empty_topic_name: "true",
+      apply_markdown: "false",
+    },
+    signal,
+  );
+  if (!res?.ok) {
+    return null;
+  }
+  const data = res.data as { result?: string; messages?: ZulipRawMessage[] };
+  if (!data || data.result === "error") {
+    return null;
+  }
+  return data.messages ?? [];
 }
 
 // Загружает более старые сообщения chat-list до anchor.
@@ -1730,6 +1822,8 @@ export async function fetchMessagesBeforeAnchor(
 export async function fetchMessagesAfterAnchor(
   anchorMessageId: number,
   numAfter = 5000,
+  narrow?: MessageWindowOptions["narrow"],
+  signal?: AbortSignal,
 ): Promise<ZulipRawMessage[]> {
   guard.messageId(anchorMessageId, "fetchMessagesAfterAnchor.anchorMessageId");
   return fetchMessageWindow({
@@ -1737,7 +1831,9 @@ export async function fetchMessagesAfterAnchor(
     numBefore: 0,
     numAfter,
     includeAnchor: false,
+    narrow,
     applyMarkdown: false,
+    signal,
     flowDebugLabel: "fetchMessagesAfterAnchor (chat list delta / reconnect)",
   });
 }
@@ -1747,10 +1843,6 @@ export async function fetchMessagesAfterAnchor(
 export async function fetchUnreadMessagesSnapshot(
   numBefore = 5000,
 ): Promise<ZulipRawMessage[] | null> {
-  if (env.DISABLE_UNREAD_MESSAGES_SNAPSHOT_FETCH) {
-    logChatListFlow("api: fetchUnreadMessagesSnapshot skipped (env flag)", { numBefore });
-    return null;
-  }
   // Что делает: `null` здесь означает ошибку запроса, а не "unread на сервере нет".
   // Зачем: caller не должен обнулять бейджи по временной сетевой ошибке или bad payload.
   const safeNumBefore = validateNonNegativeInteger(

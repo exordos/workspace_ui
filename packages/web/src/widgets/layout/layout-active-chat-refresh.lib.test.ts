@@ -34,10 +34,14 @@ describe("refreshActiveChatMessagesFromApi", () => {
 
     refreshActiveChatMessagesFromApi({ focusedMessageId: 77 });
 
-    expect(loadInitialMessagesForContextMock).toHaveBeenCalledWith({
-      context: streamContext,
-      focusedMessageId: 77,
-      currentUserId: 42,
-    });
+    expect(loadInitialMessagesForContextMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        context: streamContext,
+        focusedMessageId: 77,
+        currentUserId: 42,
+        onStreamMessagesApplied: expect.any(Function),
+        onDmMessagesApplied: expect.any(Function),
+      }),
+    );
   });
 });

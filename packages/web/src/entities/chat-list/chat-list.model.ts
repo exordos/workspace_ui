@@ -46,6 +46,10 @@ import {
   countMentionsUnread,
 } from "./chat-list-sidebar-totals.lib";
 import {
+  filterStreamMessagesForSidebar,
+  mergeStreamSidebarPreviewsFromMessages,
+} from "./chat-list-stream-preview-from-messages.lib";
+import {
   addMessageIdToStreamTopicIndex,
   buildStreamTopicMessageIndex,
   collectMessageIdsForStream,
@@ -1360,6 +1364,9 @@ export const useChatListStore = create<ChatListState>((set, get) => {
           if (existing && message.timestamp <= existing.ts) {
             const existingTopic = existing.topics.get(topic.subject);
             if (existingTopic && message.timestamp <= existingTopic.ts) {
+              if (topicUnreadDelta === 0) {
+                return state;
+              }
               const next = new Map(state.streamsMap);
               const nextTopics = new Map(existing.topics);
               nextTopics.set(topic.subject, {
@@ -1582,6 +1589,37 @@ export const useChatListStore = create<ChatListState>((set, get) => {
         streamsMapSizeAfter: get().streamsMap.size,
         dmsMapSizeAfter: get().dmsMap.size,
       });
+    },
+
+    applyStreamSidebarPreviewsFromMessages(messages) {
+      const streamMessages = filterStreamMessagesForSidebar(messages);
+      if (streamMessages.length === 0) return;
+      logChatListFlow("store: applyStreamSidebarPreviewsFromMessages", {
+        inputCount: messages.length,
+        streamCount: streamMessages.length,
+        ...summarizeZulipMessagesForFlowDebug(streamMessages),
+      });
+      patchSet(
+        (state) => {
+          const nextStreams = mergeStreamSidebarPreviewsFromMessages(
+            state.streamsMap,
+            streamMessages,
+          );
+          if (nextStreams === state.streamsMap) return state;
+          const nextLoc = new Map(state.messageIdToLocation);
+          for (const m of streamMessages) {
+            if (m.stream_id == null) continue;
+            const topic = normalizeTopicForIdentity(m.subject ?? "");
+            nextLoc.set(m.id, { type: "stream", stream_id: m.stream_id, topic });
+          }
+          return {
+            streamsMap: nextStreams,
+            messageIdToLocation: nextLoc,
+            sidebarDataHydrated: true,
+          };
+        },
+        { preserveSidebarTotals: true },
+      );
     },
 
     upsertStreamMetadataRows(rows) {

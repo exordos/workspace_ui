@@ -4,12 +4,7 @@ import type { ChatListDmMetadataRow } from "~/entities/chat-list/chat-list.model
 import { useInboxStore } from "~/entities/inbox/inbox.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
-import {
-  loadDmIndexEntries,
-  upsertDmIndexFromMessages,
-  type DmIndexEntry,
-} from "~/shared/lib/dm-index";
-import { env } from "~/shared/lib/env";
+import { loadDmIndexEntries, type DmIndexEntry } from "~/shared/lib/dm-index";
 import {
   logChatListFlow,
   summarizeZulipMessagesForFlowDebug,
@@ -30,6 +25,19 @@ export interface ApplyChatListBootstrapResultOptions {
   currentInstanceId: string | null;
   setFromMessages: (messages: ZulipRawMessage[], currentUserId: number | null) => void;
   latestMessageIdRef?: { current: number | null };
+  /** When true, skips DM index restore (caller already hydrated once). */
+  skipDmIndexHydrate?: boolean;
+}
+
+/** Restores DM sidebar rows from local DM index after metadata-first bootstrap. */
+export function hydrateChatListDmIndexForInstance(currentInstanceId: string | null): void {
+  if (currentInstanceId == null) {
+    return;
+  }
+  const dmIndexEntries = loadDmIndexEntries(currentInstanceId);
+  if (dmIndexEntries.length > 0) {
+    useChatListStore.getState().upsertDmMetadataRows(toDmMetadataRowsFromIndex(dmIndexEntries));
+  }
 }
 
 /** Applies `runChatListBootstrap` output to stores (same rules as cold-start event-loop bootstrap). */
@@ -37,62 +45,27 @@ export function applyChatListBootstrapResult(
   result: ChatListBootstrapResult,
   options: ApplyChatListBootstrapResultOptions,
 ): void {
-  const { currentInstanceId, setFromMessages, latestMessageIdRef } = options;
-  const metadataBootstrapEnabled = env.METADATA_CHAT_BOOTSTRAP_ENABLED;
-  const uid = useChatListStore.getState().currentUserId ?? null;
+  const { currentInstanceId, latestMessageIdRef } = options;
 
   logChatListFlow("bootstrapApply: start", {
     instanceId: currentInstanceId,
-    metadataBootstrapEnabled,
     bootstrapMode: result.mode,
     bootstrapMessages: summarizeZulipMessagesForFlowDebug(
-      result.mode === "full" || result.mode === "delta" ? result.messages : [],
+      result.mode === "streamPreviews" ? result.messages : [],
     ),
     latestMessageIdHint: result.latestMessageIdHint,
+    skipDmIndexHydrate: options.skipDmIndexHydrate === true,
   });
 
-  if (metadataBootstrapEnabled && currentInstanceId != null) {
-    const dmIndexEntries = loadDmIndexEntries(currentInstanceId);
-    if (dmIndexEntries.length > 0) {
-      useChatListStore.getState().upsertDmMetadataRows(toDmMetadataRowsFromIndex(dmIndexEntries));
-    }
+  if (options.skipDmIndexHydrate !== true) {
+    hydrateChatListDmIndexForInstance(currentInstanceId);
   }
 
-  if (result.mode === "full") {
-    const msgs = result.messages;
-    for (const m of msgs) {
-      useUsersStore.getState().mergeFromMessage(m);
-    }
-    if (metadataBootstrapEnabled) {
-      useChatListStore.getState().addMessages(msgs);
-    } else {
-      setFromMessages(msgs, uid);
-    }
-    if (currentInstanceId != null && msgs.length > 0) {
-      upsertDmIndexFromMessages(currentInstanceId, msgs, uid);
-    }
-    if (latestMessageIdRef != null) {
-      latestMessageIdRef.current = getNewestMessageId(msgs);
-    }
-    if (msgs.length > 0) {
-      useActivityStore.getState().markStale();
-      useInboxStore.getState().markStale();
-    }
-    logChatListFlow("bootstrapApply: applied full", {
-      streamsMapSize: useChatListStore.getState().streamsMap.size,
-      dmsMapSize: useChatListStore.getState().dmsMap.size,
-    });
-    return;
-  }
-
-  if (result.mode === "delta") {
+  if (result.mode === "streamPreviews") {
     for (const m of result.messages) {
       useUsersStore.getState().mergeFromMessage(m);
     }
-    useChatListStore.getState().addMessages(result.messages);
-    if (currentInstanceId != null && result.messages.length > 0) {
-      upsertDmIndexFromMessages(currentInstanceId, result.messages, uid);
-    }
+    useChatListStore.getState().applyStreamSidebarPreviewsFromMessages(result.messages);
     const newest = getNewestMessageId(result.messages);
     const prev = result.latestMessageIdHint;
     if (latestMessageIdRef != null) {
@@ -103,7 +76,7 @@ export function applyChatListBootstrapResult(
       useActivityStore.getState().markStale();
       useInboxStore.getState().markStale();
     }
-    logChatListFlow("bootstrapApply: applied delta", {
+    logChatListFlow("bootstrapApply: applied streamPreviews", {
       streamsMapSize: useChatListStore.getState().streamsMap.size,
       dmsMapSize: useChatListStore.getState().dmsMap.size,
       latestMessageIdRef: latestMessageIdRef?.current ?? null,

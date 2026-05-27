@@ -175,7 +175,7 @@ export const Sidebar: React.FC<SidebarUiProps> = ({
       aria-label="Chat list"
     >
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <ScrollArea className="flex-1 scrollbar-track-sidebar-bg">
+        <ScrollArea className="flex-1 scrollbar-track-sidebar-bg" data-sidebar-scroll>
           <SidebarSearchHeader
             searchQuery={searchQuery}
             onSearchQueryChange={setSearchQuery}

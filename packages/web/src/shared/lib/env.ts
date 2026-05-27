@@ -219,25 +219,4 @@ export const env = {
     const v = optional("VITE_TOP_BAR_SERVICES_NAV", "false").toLowerCase();
     return v === "true" || v === "1";
   })(),
-
-  // Зачем: включает сбор списка чатов из metadata (register/subscriptions), а не из большой выборки сообщений.
-  METADATA_CHAT_BOOTSTRAP_ENABLED: parseBooleanEnvFlag(
-    optional("VITE_METADATA_CHAT_BOOTSTRAP_ENABLED", "false"),
-    false,
-  ),
-
-  // Зачем: добавляет фоновый добор старых DM поверх metadata-first, чтобы поднять покрытие диалогов.
-  METADATA_DM_BACKFILL_ENABLED: parseBooleanEnvFlag(
-    optional("VITE_METADATA_DM_BACKFILL_ENABLED", "false"),
-    false,
-  ),
-
-  /**
-   * Debug/experiment: when true, disables the fallback `GET /messages?narrow=is:unread` initial reconcile.
-   * Allows verifying that unread counters are sourced from `POST /register` (`unread_msgs`) + realtime only.
-   */
-  DISABLE_UNREAD_MESSAGES_SNAPSHOT_FETCH: parseBooleanEnvFlag(
-    optional("VITE_DISABLE_UNREAD_MESSAGES_SNAPSHOT_FETCH", "false"),
-    false,
-  ),
 } as const;

@@ -1,4 +1,5 @@
 import { createOnDmMessagesAppliedHandler } from "~/entities/chat-list/chat-list-sync-dm-from-window.lib";
+import { createOnStreamMessagesAppliedHandler } from "~/entities/chat-list/chat-list-sync-stream-from-window.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { getCurrentInstance } from "~/shared/api/client";
@@ -32,6 +33,7 @@ export function refreshActiveChatMessagesFromApi(options?: RefreshActiveChatMess
       getInstanceId: () => getCurrentInstance()?.id ?? null,
       getCurrentUserId: () => useChatListStore.getState().currentUserId,
     }),
+    onStreamMessagesApplied: createOnStreamMessagesAppliedHandler(),
   })
     .then(() => {
       if (options?.isCancelled?.()) return;

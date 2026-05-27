@@ -3,19 +3,15 @@
  */
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
-import { fetchUnreadMessagesSnapshot } from "~/shared/api/zulip";
-import { env } from "~/shared/lib/env";
 import { createLogger } from "~/shared/lib/logger";
 import { logChatListFlow } from "~/shared/lib/message-flow-debug.lib";
 import { refreshActiveChatMessagesFromApi } from "./layout-active-chat-refresh.lib";
-import { applyChatListBootstrapResult } from "./layout-chat-list-bootstrap-apply.lib";
 import { runChatListBootstrap } from "./layout-chat-list-bootstrap.lib";
-import {
-  getCachedRegisterUnreadSnapshot,
-  isRegisterUnreadSnapshotUsable,
-} from "./layout-instance-register-unread.lib";
+import { getCachedRegisterUnreadSnapshot } from "./layout-instance-register-unread.lib";
 import { refreshRealmPresenceFromApi } from "./layout-realm-presence-refresh.lib";
 import { refreshLayoutReconnectLight } from "./layout-reconnect-light.lib";
+import { stageReconnectStreamPreviews } from "./layout-reconnect-stream-preview.lib";
+import { reconcileSidebarUnreadAfterBootstrap } from "./layout-sidebar-unread-reconcile.lib";
 
 const log = createLogger("layout-reconnect");
 
@@ -128,19 +124,23 @@ async function executeLayoutReconnectRefresh(
 }
 
 function refreshLayoutReconnectLightPass(params: LayoutReconnectRefreshParams): void {
-  refreshSharedLayers(params);
-  refreshLayoutReconnectLight({
+  refreshSharedLayers(params, "light");
+  void refreshLayoutReconnectLight({
+    instanceId: params.instanceId,
     latestMessageIdRef: params.latestMessageIdRef,
     isCancelled: params.isCancelled,
   });
 }
 
 async function refreshLayoutReconnectFull(params: LayoutReconnectRefreshParams): Promise<void> {
-  refreshSharedLayers(params);
+  refreshSharedLayers(params, "full");
   await refreshChatListReconnectBootstrap(params);
 }
 
-function refreshSharedLayers(params: LayoutReconnectRefreshParams): void {
+function refreshSharedLayers(
+  params: LayoutReconnectRefreshParams,
+  mode: LayoutReconnectRefreshMode,
+): void {
   if (params.isCancelled?.()) return;
 
   refreshRealmPresenceFromApi({ isCancelled: params.isCancelled });
@@ -149,30 +149,20 @@ function refreshSharedLayers(params: LayoutReconnectRefreshParams): void {
     isCancelled: params.isCancelled,
   });
 
+  // Full reconnect re-registers the queue — unread comes from fresh onQueueRegistered, not stale cache.
+  if (mode === "full") {
+    return;
+  }
+
   const uid = useChatListStore.getState().currentUserId ?? null;
   const registerSnapshot =
     params.instanceId != null ? getCachedRegisterUnreadSnapshot(params.instanceId) : undefined;
-  if (isRegisterUnreadSnapshotUsable(registerSnapshot)) {
-    if (params.isCancelled?.()) return;
-    useChatListStore.getState().reconcileUnreadFromSnapshot(registerSnapshot, uid);
-    return;
-  }
-
-  if (env.DISABLE_UNREAD_MESSAGES_SNAPSHOT_FETCH) {
-    return;
-  }
-
-  void fetchUnreadMessagesSnapshot()
-    .then((messages) => {
-      if (params.isCancelled?.() || messages == null) return;
-      useChatListStore.getState().reconcileUnreadFromMessages(messages, uid);
-    })
-    .catch((error: unknown) => {
-      if (params.isCancelled?.()) return;
-      log.warn("reconnect: unread snapshot failed", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-    });
+  reconcileSidebarUnreadAfterBootstrap({
+    cancelled: () => params.isCancelled?.() ?? false,
+    currentUserId: uid,
+    registerSnapshot,
+    logScope: "reconnect: refreshSharedLayers",
+  });
 }
 
 async function refreshChatListReconnectBootstrap(
@@ -196,11 +186,14 @@ async function refreshChatListReconnectBootstrap(
       return;
     }
 
-    applyChatListBootstrapResult(result, {
-      currentInstanceId: instanceId,
-      setFromMessages: useChatListStore.getState().setFromMessages,
-      latestMessageIdRef,
-    });
+    if (result.mode === "streamPreviews") {
+      stageReconnectStreamPreviews(result, {
+        currentInstanceId: instanceId,
+        setFromMessages: useChatListStore.getState().setFromMessages,
+        latestMessageIdRef,
+        skipDmIndexHydrate: true,
+      });
+    }
   } catch (error: unknown) {
     if (isCancelled?.()) return;
     log.warn("reconnectBootstrap: chat list bootstrap failed", {

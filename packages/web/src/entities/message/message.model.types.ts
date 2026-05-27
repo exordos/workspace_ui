@@ -11,6 +11,16 @@ export interface OnDmMessagesAppliedPayload {
   source: DmMessagesAppliedSource;
 }
 
+export type StreamMessagesAppliedSource = "cache" | "api";
+
+export interface OnStreamMessagesAppliedPayload {
+  messages: readonly MockMessage[];
+  context: { type: "stream"; streamId: number };
+  hasNewerMessages: boolean;
+  focusedMessageId: number | null;
+  source: StreamMessagesAppliedSource;
+}
+
 export type CurrentChatContext =
   | {
       type: "stream";
@@ -75,6 +85,8 @@ export interface CurrentChatMessagesState {
     signal?: AbortSignal;
     /** After cache/API apply for a DM — sync sidebar preview from loaded messages (pages/widgets wire this). */
     onDmMessagesApplied?: (payload: OnDmMessagesAppliedPayload) => void;
+    /** After cache/API apply for a stream — sync sidebar topic previews from loaded messages. */
+    onStreamMessagesApplied?: (payload: OnStreamMessagesAppliedPayload) => void;
   }) => Promise<void>;
   loadOlderBoundaryPage: (options: {
     pageSize: number;

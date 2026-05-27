@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { resolvePersonalDmSidebarTitle } from "~/entities/chat-list/chat-list-format.lib";
 import { createOnDmMessagesAppliedHandler } from "~/entities/chat-list/chat-list-sync-dm-from-window.lib";
+import { createOnStreamMessagesAppliedHandler } from "~/entities/chat-list/chat-list-sync-stream-from-window.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { resolveHydratedDraftBootstrap } from "~/entities/draft/draft-chat-bootstrap.lib";
 import {
@@ -252,6 +253,7 @@ export const ChatPage: React.FC = () => {
       }),
     [],
   );
+  const onStreamMessagesApplied = useMemo(() => createOnStreamMessagesAppliedHandler(), []);
   const loadOlderBoundaryPage = useCurrentChatMessagesStore((s) => s.loadOlderBoundaryPage);
   const loadNewerBoundaryPage = useCurrentChatMessagesStore((s) => s.loadNewerBoundaryPage);
   const boundaryLoadFailed = useCurrentChatMessagesStore((s) => s.boundaryLoadFailed);
@@ -846,6 +848,7 @@ export const ChatPage: React.FC = () => {
       focusedMessageId,
       currentUserId,
       signal: initialLoadController.signal,
+      onStreamMessagesApplied,
       // Что делает: фиксирует момент cache-first гидрации для UI-флагов.
       onCacheHydrated: () => {
         if (!initialLoadController.signal.aborted) {
@@ -898,6 +901,7 @@ export const ChatPage: React.FC = () => {
     focusedMessageId,
     currentUserId,
     loadInitialMessagesForContext,
+    onStreamMessagesApplied,
     isFocusedMessageLoadedInCurrentRoute,
     messagesReloadNonce,
     setActionError,
