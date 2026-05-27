@@ -90,6 +90,11 @@ async function executeLayoutReconnectRefresh(
 ): Promise<void> {
   if (params.isCancelled?.()) return;
 
+  const currentInstanceId = useInstancesStore.getState().currentInstanceId;
+  if (params.instanceId !== currentInstanceId) {
+    return;
+  }
+
   if (inFlight) {
     rerunAfterFlight = mergePendingParams(rerunAfterFlight, params);
     if (mode === "full") {
