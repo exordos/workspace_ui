@@ -17,12 +17,8 @@ import { traceLinkPreview } from "~/shared/lib/message-link-preview-trace.lib";
 import {
   findLinkPreviewDataForUrl,
   linkPreviewUrlKey,
-  linkPreviewUrlsMatch,
 } from "~/shared/lib/message-link-preview-url-match.lib";
-import {
-  extractFirstLinkPreviewUrl,
-  extractLinkPreviewUrls,
-} from "~/shared/lib/message-link-preview-urls.lib";
+import { extractLinkPreviewUrls } from "~/shared/lib/message-link-preview-urls.lib";
 import type {
   LinkPreviewData,
   LinkPreviewResolvedItem,
@@ -87,12 +83,6 @@ function parseEmbedElement(embed: Element): LinkPreviewData | null {
     description,
     thumbnailPath,
   };
-}
-
-/** Parses Zulip-rendered HTML for the first `.message_embed` block. */
-export function parseMessageEmbedFromRenderedHtml(html: string): LinkPreviewData | null {
-  const all = parseAllMessageEmbedsFromRenderedHtml(html);
-  return all[0] ?? null;
 }
 
 /** Parses every `.message_embed` block in Zulip-rendered HTML (deduped by target URL). */
@@ -193,18 +183,4 @@ export async function fetchLinkPreviewsFromMessageMarkdown(
     });
     return expectedUrls.map((targetUrl) => ({ targetUrl, data: null }));
   }
-}
-
-/** @deprecated Prefer `fetchLinkPreviewsFromMessageMarkdown` — returns first preview only. */
-export async function fetchLinkPreviewFromMessageMarkdown(
-  markdown: string,
-  messageId: number,
-): Promise<LinkPreviewData | null> {
-  const firstUrl = extractFirstLinkPreviewUrl(markdown);
-  if (firstUrl == null) {
-    return null;
-  }
-  const items = await fetchLinkPreviewsFromMessageMarkdown(markdown, messageId);
-  const match = items.find((item) => linkPreviewUrlsMatch(item.targetUrl, firstUrl));
-  return match?.data ?? null;
 }

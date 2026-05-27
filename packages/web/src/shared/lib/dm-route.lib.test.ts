@@ -4,7 +4,7 @@ import {
   effectiveDmIsGroupFromSlug,
   normalizeDmRouteUserIds,
   routeImpliesGroupDm,
-} from "./chat-dm-route.lib";
+} from "./dm-route.lib";
 
 describe("normalizeDmRouteUserIds", () => {
   it("removes current user id when opening multi-user private chat route", () => {

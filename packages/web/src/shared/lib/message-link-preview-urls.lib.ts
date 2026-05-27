@@ -97,7 +97,7 @@ function readMarkdownLinkDestinationUrl(markdown: string, openParenIndex: number
 
 function isExcludedPreviewUrl(
   url: string,
-  markdownBody: string,
+  _markdownBody: string,
   jitsiUrlInBody: string | null,
 ): boolean {
   try {

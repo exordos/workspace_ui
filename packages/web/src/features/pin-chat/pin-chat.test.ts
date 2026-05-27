@@ -15,7 +15,7 @@ vi.mock("~/shared/api/client", () => {
     workspaceApi: {
       post: api.post,
       postWithBase: vi.fn(
-        (base: string, path: string, body: Record<string, string>, signal?: AbortSignal) =>
+        (_base: string, path: string, body: Record<string, string>, signal?: AbortSignal) =>
           api.post(path, body, signal),
       ),
     },

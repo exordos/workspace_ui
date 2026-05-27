@@ -19,6 +19,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:ui": "vitest --ui",
+    "knip": "knip",
     "check": "npm run typecheck && npm run lint && npm run test",
     "licenses": "node ../../scripts/generate-licenses.mjs"
   },
@@ -73,6 +74,7 @@
     "globals": "17.6.0",
     "http-proxy": "1.18.1",
     "jsdom": "28.1.0",
+    "knip": "5.63.0",
     "license-checker": "25.0.1",
     "msw": "2.14.6",
     "postcss": "8.5.14",

@@ -41,7 +41,6 @@ import type {
   RegisterQueueResult,
   ZulipCredentials,
   ZulipOwnAvatarCapabilities,
-  ZulipRecentPrivateConversation,
   ZulipRealmUserGroup,
   ZulipSubscription,
   ZulipUserTopic,

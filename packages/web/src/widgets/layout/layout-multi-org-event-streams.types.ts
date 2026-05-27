@@ -7,8 +7,6 @@ export interface StartCredentialEventLoopOptions {
   onBadQueue?: () => void;
   /** Called after the event queue is registered or re-registered successfully. */
   onQueueReady?: () => void;
-  /** @deprecated Use `onQueueReady`. */
-  onReconnect?: () => void;
   onQueueRegistered?: (queueId: string, registration?: RegisterQueueResult) => void;
 }
 

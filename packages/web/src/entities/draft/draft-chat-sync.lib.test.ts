@@ -5,7 +5,7 @@ import {
   syncExistingDraftDeleteOnClear,
   syncExistingDraftDeleteOnCleanup,
   syncExistingDraftUpdateOnCleanup,
-} from "./chat-page-draft-sync";
+} from "./draft-chat-sync.lib";
 
 const EXISTING_DRAFT: Draft = {
   id: 7,

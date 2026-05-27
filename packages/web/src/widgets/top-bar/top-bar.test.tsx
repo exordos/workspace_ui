@@ -1,5 +1,4 @@
 import { act, fireEvent, screen, within } from "@testing-library/react";
-import React from "react";
 import { useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";

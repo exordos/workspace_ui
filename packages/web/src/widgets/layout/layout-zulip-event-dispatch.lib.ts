@@ -189,7 +189,7 @@ function readViewportState(): { windowFocused: boolean; windowHidden: boolean } 
 function maybeNotifyNewMessage(
   ctx: LayoutZulipEventDispatchContext,
   raw: ZulipRawMessage,
-  currentUserId: number | null,
+  _currentUserId: number | null,
   isForCurrentChat: boolean,
   isFromSelf: boolean,
 ): void {

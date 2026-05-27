@@ -16,7 +16,7 @@ Workspace UI is an open-source corporate messenger built on the Zulip API, shipp
 | Routing           | react-router-dom 7         | Lazy-loaded routes, nested layouts                                   |
 | UI Primitives     | Radix UI                   | dialog, dropdown-menu, scroll-area, tabs, tooltip                    |
 | API               | Zulip REST + Workspace API | Middleware pipeline: auth → logging → retry → parse                  |
-| Real-time         | Long-polling event loop    | `app.event-loop.ts`, background-tab resilient                        |
+| Real-time         | Long-polling event loop    | `shared/lib/event-loop.ts`, background-tab resilient                 |
 | Video Calls       | Jitsi Meet React SDK       | PiP mode, call participants store                                    |
 | Push              | Firebase Cloud Messaging   | `shared/lib/push/`, Zulip token sync                                 |
 | Desktop           | Electron 35                | electron-builder, macOS code signing + notarization                  |
@@ -67,7 +67,7 @@ workspace_ui/
 packages/web/src/
 ├── app/                              Entry, router, providers, event loop
 │   ├── app.tsx                       Root component + route definitions
-│   ├── app.event-loop.ts             Zulip long-poll event loop
+│   ├── shared/lib/event-loop.ts      Zulip long-poll event loop (via layout hook)
 │   ├── webview-shell.tsx             WebView mode (no sidebar/top-bar chrome)
 │   ├── app.styles.css                Global styles
 │   └── contexts/                     App-level contexts (search, right-drawer)
@@ -144,7 +144,7 @@ packages/web/src/
 ### Data Flow
 
 1. `main.tsx` → `app/app.tsx` — mounts router, providers, layout
-2. `app/app.event-loop.ts` — registers Zulip event queue, starts long-polling
+2. `widgets/layout/layout-zulip-event-loop.hook.ts` + `shared/lib/event-loop.ts` — registers Zulip event queue, starts long-polling
 3. `shared/api/client.ts` — all HTTP goes through middleware pipeline (auth → logging → retry)
 4. Entity stores (`entities/*/`) — single source of truth, cached selectors
 5. Components subscribe via `useStore((s) => s.field)` — minimal selectors only

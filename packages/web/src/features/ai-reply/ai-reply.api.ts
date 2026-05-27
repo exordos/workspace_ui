@@ -145,7 +145,7 @@ export function createMockProvider(): AiReplyProvider {
       };
     },
 
-    generateStream(request: AiReplyRequest, onChunk: AiStreamCallback): Promise<() => void> {
+    generateStream(_request: AiReplyRequest, onChunk: AiStreamCallback): Promise<() => void> {
       let cancelled = false;
       const text =
         "This is a streamed AI-generated reply. It arrives token by token, simulating a real LLM response.";

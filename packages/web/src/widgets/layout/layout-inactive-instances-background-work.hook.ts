@@ -59,14 +59,7 @@ export function useInactiveInstancesBackgroundWork(options: {
           setDmUnreadCount(instance.id, dmUnreadCount);
         }
       },
-      startEventLoop: ({
-        credentials,
-        onEvent,
-        onBadQueue,
-        onQueueReady,
-        onReconnect,
-        onQueueRegistered,
-      }) => {
+      startEventLoop: ({ credentials, onEvent, onBadQueue, onQueueReady, onQueueRegistered }) => {
         const controller = new AbortController();
         let queueId: string | null = null;
         let stopped = false;
@@ -78,7 +71,7 @@ export function useInactiveInstancesBackgroundWork(options: {
           signal: controller.signal,
           onEvent,
           onBadQueue,
-          onQueueReady: onQueueReady ?? onReconnect,
+          onQueueReady,
           eventTypes: [
             "message",
             "update_message_flags",

@@ -15,7 +15,7 @@ Architecture follows **Feature-Sliced Design** (FSD): `app → pages → widgets
 src/
 ├── app/                     Entry, router, providers, event loop
 │   ├── app.tsx              Root component + route definitions
-│   ├── app.event-loop.ts    Zulip long-poll event loop
+│   ├── shared/lib/event-loop.ts  Zulip long-poll event loop (started from layout hook)
 │   ├── webview-shell.tsx    WebView mode (no sidebar/top-bar chrome)
 │   └── contexts/            App-level contexts (search, right-drawer)
 │
@@ -117,7 +117,7 @@ src/
 ## Data Flow
 
 1. `app/app.tsx` — mounts router, providers, layout
-2. `app/app.event-loop.ts` — registers Zulip event queue, starts long-polling
+2. `widgets/layout/layout-zulip-event-loop.hook.ts` + `shared/lib/event-loop.ts` — registers Zulip event queue, starts long-polling
 3. `shared/api/client.ts` — all HTTP through middleware pipeline (auth → logging → retry)
 4. Entity stores (`entities/*/`) — single source of truth, cached selectors
 5. Components subscribe via `useStore((s) => s.field)` — minimal selectors only

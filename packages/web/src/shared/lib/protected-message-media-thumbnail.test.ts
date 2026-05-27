@@ -4,7 +4,7 @@ import {
   isUserUploadImagePath,
   toUserUploadThumbnailUrl,
   USER_UPLOAD_THUMBNAIL_SIZE,
-} from "./message-bubble-user-upload-thumbnail.lib";
+} from "./protected-message-media-thumbnail";
 
 describe("toUserUploadThumbnailUrl", () => {
   it("inserts /user_uploads/thumbnail/… and size suffix", () => {

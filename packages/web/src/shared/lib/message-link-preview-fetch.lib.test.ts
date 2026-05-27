@@ -1,9 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   fetchLinkPreviewsFromMessageMarkdown,
-  fetchLinkPreviewFromMessageMarkdown,
   parseAllMessageEmbedsFromRenderedHtml,
-  parseMessageEmbedFromRenderedHtml,
 } from "./message-link-preview-fetch.lib";
 
 const fetchMessageRenderedHtmlByIdMock = vi.hoisted(() => vi.fn());
@@ -14,7 +12,7 @@ vi.mock("~/shared/api/zulip-messages", () => ({
   renderMessageContent: (...args: unknown[]) => renderMessageContentMock(...args),
 }));
 
-describe("parseMessageEmbedFromRenderedHtml", () => {
+describe("parseAllMessageEmbedsFromRenderedHtml", () => {
   it("parses title, description, target URL, and external_content thumbnail", () => {
     const html = `
       <p><a href="https://example.com">https://example.com</a></p>
@@ -27,7 +25,7 @@ describe("parseMessageEmbedFromRenderedHtml", () => {
         </div>
       </div>`;
 
-    expect(parseMessageEmbedFromRenderedHtml(html)).toEqual({
+    expect(parseAllMessageEmbedsFromRenderedHtml(html)[0]).toEqual({
       targetUrl: "https://example.com",
       title: "Example Site",
       description: "A short description.",
@@ -35,16 +33,14 @@ describe("parseMessageEmbedFromRenderedHtml", () => {
     });
   });
 
-  it("returns null when embed block is missing", () => {
-    expect(parseMessageEmbedFromRenderedHtml("<p>https://example.com</p>")).toBeNull();
+  it("returns empty array when embed block is missing", () => {
+    expect(parseAllMessageEmbedsFromRenderedHtml("<p>https://example.com</p>")).toEqual([]);
   });
 
-  it("returns null for empty html", () => {
-    expect(parseMessageEmbedFromRenderedHtml("")).toBeNull();
+  it("returns empty array for empty html", () => {
+    expect(parseAllMessageEmbedsFromRenderedHtml("")).toEqual([]);
   });
-});
 
-describe("parseAllMessageEmbedsFromRenderedHtml", () => {
   it("parses multiple embed blocks", () => {
     const html = `
       <div class="message_embed">
@@ -67,7 +63,7 @@ describe("parseAllMessageEmbedsFromRenderedHtml", () => {
   });
 });
 
-describe("fetchLinkPreviewFromMessageMarkdown", () => {
+describe("fetchLinkPreviewsFromMessageMarkdown", () => {
   beforeEach(() => {
     fetchMessageRenderedHtmlByIdMock.mockReset();
     renderMessageContentMock.mockReset();
@@ -83,10 +79,10 @@ describe("fetchLinkPreviewFromMessageMarkdown", () => {
         </div>
       </div>`);
 
-    const result = await fetchLinkPreviewFromMessageMarkdown("https://example.com", 42);
+    const items = await fetchLinkPreviewsFromMessageMarkdown("https://example.com", 42);
     expect(fetchMessageRenderedHtmlByIdMock).toHaveBeenCalledWith(42, undefined);
     expect(renderMessageContentMock).not.toHaveBeenCalled();
-    expect(result?.title).toBe("Example");
+    expect(items[0]?.data?.title).toBe("Example");
   });
 
   it("uses POST render when message id is not persisted", async () => {
@@ -98,17 +94,10 @@ describe("fetchLinkPreviewFromMessageMarkdown", () => {
         </div>
       </div>`);
 
-    const result = await fetchLinkPreviewFromMessageMarkdown("https://example.com", 0);
+    const items = await fetchLinkPreviewsFromMessageMarkdown("https://example.com", 0);
     expect(renderMessageContentMock).toHaveBeenCalledWith("https://example.com");
     expect(fetchMessageRenderedHtmlByIdMock).not.toHaveBeenCalled();
-    expect(result?.title).toBe("Rendered");
-  });
-});
-
-describe("fetchLinkPreviewsFromMessageMarkdown", () => {
-  beforeEach(() => {
-    fetchMessageRenderedHtmlByIdMock.mockReset();
-    renderMessageContentMock.mockReset();
+    expect(items[0]?.data?.title).toBe("Rendered");
   });
 
   it("returns one item per URL in markdown", async () => {

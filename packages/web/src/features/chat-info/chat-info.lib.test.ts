@@ -1,16 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { createUser } from "~/test/factories";
-import {
-  buildDmChatInfoData,
-  buildStreamChatInfoData,
-  hasChatInfoContext,
-} from "./layout-chat-info.lib";
+import { buildDmChatInfoData, buildStreamChatInfoData, hasChatInfoContext } from "./chat-info.lib";
 
 describe("hasChatInfoContext", () => {
   it("returns true for an active dm context", () => {
     expect(
       hasChatInfoContext({
-        hasDmChat: true,
+        kind: "dm",
+        instanceId: "inst-1",
+        dmName: "Alice",
+        participantIds: [42],
       }),
     ).toBe(true);
   });
@@ -18,7 +17,10 @@ describe("hasChatInfoContext", () => {
   it("returns true for an active group dm context without partner id", () => {
     expect(
       hasChatInfoContext({
-        hasDmChat: true,
+        kind: "dm",
+        instanceId: "inst-1",
+        dmName: "Team",
+        participantIds: [42, 51],
       }),
     ).toBe(true);
   });
@@ -26,8 +28,12 @@ describe("hasChatInfoContext", () => {
   it("returns true for an active stream context", () => {
     expect(
       hasChatInfoContext({
-        hasDmChat: false,
+        kind: "stream",
+        instanceId: "inst-1",
         streamId: 42,
+        streamName: "engineering",
+        isMuted: false,
+        topics: [],
       }),
     ).toBe(true);
   });
@@ -35,7 +41,8 @@ describe("hasChatInfoContext", () => {
   it("returns false when there is no active chat context", () => {
     expect(
       hasChatInfoContext({
-        hasDmChat: false,
+        kind: "none",
+        instanceId: null,
       }),
     ).toBe(false);
   });

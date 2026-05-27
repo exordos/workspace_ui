@@ -6,7 +6,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceFolder } from "~/shared/api/workspace-client";
-import { getFolders, mapWorkspaceFoldersToRail } from "./folder.api";
+import { getFolders, mapWorkspaceFoldersToRail } from "~/shared/api/workspace-client";
 
 const { workspaceApi } = vi.hoisted(() => {
   const get = vi.fn();

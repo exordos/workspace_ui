@@ -1,0 +1,8 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": ["src/main.tsx", "src/test/setup.ts"],
+  "project": ["src/**/*.{ts,tsx}"],
+  "ignore": ["src/generated/**"],
+  "ignoreDependencies": ["tailwind-scrollbar", "tinyexec", "buffer"],
+  "ignoreExportsUsedInFile": true
+}

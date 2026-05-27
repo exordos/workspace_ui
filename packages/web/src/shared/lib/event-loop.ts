@@ -54,8 +54,6 @@ export interface StartZulipEventLoopOptions {
   onBadQueue?: () => void;
   /** Called after the event queue is registered or re-registered successfully. */
   onQueueReady?: () => void;
-  /** @deprecated Use `onQueueReady`. */
-  onReconnect?: () => void;
   /** Called when the tab resumes after being hidden (in addition to waking the poll loop). */
   onTabStaleResume?: (hiddenDurationMs: number) => void;
   /** Called when a queue is registered (for cleanup on logout/instance switch). */
@@ -90,14 +88,13 @@ function startZulipEventLoopWithTransport(
     onEvent,
     onBadQueue,
     onQueueReady,
-    onReconnect: onReconnectLegacy,
     onTabStaleResume,
     onQueueRegistered,
     signal,
     eventTypes = [...DEFAULT_EVENT_TYPES],
     fetchEventTypes,
   } = options;
-  const onQueueReadyCb = onQueueReady ?? onReconnectLegacy;
+  const onQueueReadyCb = onQueueReady;
   const queueState: { id: string | null } = { id: null };
   let lastEventId = -1;
   let longpollTimeoutSec = DEFAULT_LONGPOLL_TIMEOUT_SEC;

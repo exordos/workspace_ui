@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveDraftTargetIds } from "./chat-page-draft-target.lib";
+import { resolveDraftTargetIds } from "./draft-chat-target.lib";
 
 describe("resolveDraftTargetIds", () => {
   it("returns dm user ids in dm view", () => {

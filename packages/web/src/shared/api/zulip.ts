@@ -41,24 +41,12 @@ import {
 } from "./client";
 import { parseCurrentUserFromApiData } from "./zulip-current-user.lib";
 import { mockMessageFromGetMessageApiData, rawMessageToMockMessage } from "./zulip-message-map.lib";
-import { parseRecentPrivateConversations } from "./zulip-recent-private-conversations.lib";
-import { parseRegisterResponseJitsiServerUrl } from "./zulip-register-jitsi.lib";
+import { parseUnreadDmMessagesCount, parseUnreadMessagesCount } from "./zulip-unread.lib";
 import {
-  parseAvatarChangesDisabledFlag,
-  parseMaxAvatarFileSizeMib,
-  parseServerThumbnailFormats,
-} from "./zulip-register-metadata.lib";
-import {
-  parseRegisterUnreadSnapshot,
-  parseUnreadDmMessagesCount,
-  parseUnreadMessagesCount,
-} from "./zulip-unread.lib";
-import type {
-  ReactionType,
-  RealmEmoji,
-  RegisterQueueResult,
-  ZulipRealmUserGroup,
-} from "./zulip.types";
+  getCachedUserTopicsForKey,
+  getCurrentUserTopicsCacheKey,
+} from "./zulip-user-topics.internal";
+import type { ReactionType, RealmEmoji } from "./zulip.types";
 
 if (typeof (globalThis as unknown as { Buffer?: unknown }).Buffer === "undefined") {
   (globalThis as unknown as { Buffer: typeof Buffer }).Buffer = Buffer;
@@ -346,152 +334,6 @@ function resolveRealmRelativeUrl(path: string): string {
   return `${base}${normalizedPath.startsWith("/") ? normalizedPath : `/${normalizedPath}`}`;
 }
 
-const userTopicsByInstance = new Map<string, ZulipUserTopic[]>();
-
-function buildUserTopicsCacheKey(realm: string, email: string): string {
-  return `${normalizeRealm(realm).toLowerCase()}::${email.trim().toLowerCase()}`;
-}
-
-function setCachedUserTopicsForKey(cacheKey: string, topics: ZulipUserTopic[]): void {
-  userTopicsByInstance.set(cacheKey, [...topics]);
-}
-
-function getCurrentUserTopicsCacheKey(): string | null {
-  const instance = getCurrentInstance();
-  if (!instance) {
-    return null;
-  }
-  return buildUserTopicsCacheKey(instance.realm, instance.email);
-}
-
-function isZulipUserTopic(value: unknown): value is ZulipUserTopic {
-  if (typeof value !== "object" || value == null) {
-    return false;
-  }
-  const data = value as Record<string, unknown>;
-  return (
-    typeof data.stream_id === "number" &&
-    typeof data.topic_name === "string" &&
-    typeof data.visibility_policy === "number"
-  );
-}
-
-function parseUserTopics(data: unknown): ZulipUserTopic[] | null {
-  if (!Array.isArray(data)) {
-    return null;
-  }
-  return data.filter(isZulipUserTopic);
-}
-
-// Что делает: нормализует список подписок из register payload.
-// Поднимает channel-level поля (`can_*_group`) в доменный формат.
-function parseSubscriptions(data: unknown): ZulipSubscription[] | null {
-  if (!Array.isArray(data)) {
-    return null;
-  }
-  const parsed: ZulipSubscription[] = [];
-  for (const row of data) {
-    if (typeof row !== "object" || row == null || Array.isArray(row)) {
-      continue;
-    }
-    const subscription = row as {
-      stream_id?: unknown;
-      name?: unknown;
-      is_muted?: unknown;
-      is_archived?: unknown;
-      in_home_view?: unknown;
-      invite_only?: unknown;
-      can_add_subscribers_group?: unknown;
-      can_remove_subscribers_group?: unknown;
-      can_administer_channel_group?: unknown;
-    };
-    if (!isPositiveInteger(subscription.stream_id) || typeof subscription.name !== "string") {
-      continue;
-    }
-    const canAddSubscribersGroup = normalizeGroupSettingValue(
-      subscription.can_add_subscribers_group,
-    );
-    const canRemoveSubscribersGroup = normalizeGroupSettingValue(
-      subscription.can_remove_subscribers_group,
-    );
-    const canAdministerChannelGroup = normalizeGroupSettingValue(
-      subscription.can_administer_channel_group,
-    );
-    parsed.push({
-      stream_id: subscription.stream_id,
-      name: subscription.name,
-      is_muted:
-        typeof subscription.is_muted === "boolean"
-          ? subscription.is_muted
-          : subscription.in_home_view === false,
-      ...(typeof subscription.is_archived === "boolean"
-        ? { is_archived: subscription.is_archived }
-        : {}),
-      ...(typeof subscription.invite_only === "boolean"
-        ? { invite_only: subscription.invite_only }
-        : {}),
-      ...(canAddSubscribersGroup != null
-        ? { can_add_subscribers_group: canAddSubscribersGroup }
-        : {}),
-      ...(canRemoveSubscribersGroup != null
-        ? { can_remove_subscribers_group: canRemoveSubscribersGroup }
-        : {}),
-      ...(canAdministerChannelGroup != null
-        ? { can_administer_channel_group: canAdministerChannelGroup }
-        : {}),
-    });
-  }
-  return parsed;
-}
-
-// Что делает: парсит список групп организации из register metadata.
-// Используется для расчета membership в channel-level permissions.
-function parseRealmUserGroups(data: unknown): ZulipRealmUserGroup[] | null {
-  if (!Array.isArray(data)) {
-    return null;
-  }
-  const parsed: ZulipRealmUserGroup[] = [];
-  for (const row of data) {
-    if (row == null || typeof row !== "object" || Array.isArray(row)) {
-      continue;
-    }
-    const record = row as Record<string, unknown>;
-    const id = record.id;
-    const name = record.name;
-    if (!isPositiveInteger(id) || typeof name !== "string") {
-      continue;
-    }
-    const members = Array.isArray(record.members)
-      ? Array.from(new Set(record.members.filter(isPositiveInteger))).sort(
-          (left, right) => left - right,
-        )
-      : [];
-    const directSubgroupIds = Array.isArray(record.direct_subgroup_ids)
-      ? Array.from(new Set(record.direct_subgroup_ids.filter(isPositiveInteger))).sort(
-          (left, right) => left - right,
-        )
-      : [];
-    parsed.push({
-      id,
-      name,
-      members,
-      direct_subgroup_ids: directSubgroupIds,
-      ...(typeof record.is_system_group === "boolean"
-        ? { is_system_group: record.is_system_group }
-        : {}),
-    });
-  }
-  return parsed;
-}
-
-function parseRealmCanAddSubscribersGroup(data: unknown) {
-  return normalizeGroupSettingValue(data);
-}
-
-function isPositiveInteger(value: unknown): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value > 0;
-}
-
 // Загружает server settings без авторизации.
 // Используется на странице логина, чтобы показать иконку realm, имя и auth-методы.
 export async function fetchServerSettings(realmUrl: string): Promise<{
@@ -767,25 +609,11 @@ async function zulipPipelineDelete(path: string, body?: Record<string, string>) 
 
 // --- Real-time events API (register + get-events) ---
 
-// Зачем: по умолчанию подтягиваем metadata, чтобы быстрее собрать sidebar без полной истории сообщений.
-// `realm` — в т.ч. `server_thumbnail_formats`, а `realm_user_groups` нужен для channel-level permission checks.
-const DEFAULT_REGISTER_FETCH_EVENT_TYPES = [
-  "subscription",
-  "user_topic",
-  "recent_private_conversations",
-  "realm",
-  "realm_user_groups",
-  "user_settings",
-] as const;
-const REGISTER_CLIENT_CAPABILITIES = {
-  notification_settings_null: true,
-  bulk_message_deletion: true,
-  user_avatar_url_field_optional: true,
-  stream_typing_notifications: true,
-  user_settings_object: true,
-  archived_channels: true,
-  empty_topic_name: true,
-} as const;
+export {
+  DEFAULT_REGISTER_FETCH_EVENT_TYPES,
+  registerQueue,
+  registerQueueForCredentials,
+} from "./zulip-queue";
 
 export interface ZulipEvent {
   id: number;
@@ -833,215 +661,6 @@ function validateEventCursor(lastEventId: number, context: string): number {
     `${context}.lastEventId must be an integer >= -1, got: ${lastEventId}`,
   );
   return lastEventId;
-}
-
-// Регистрирует очередь событий и возвращает `queue_id` для последующего long-polling.
-export async function registerQueue(
-  eventTypes: string[],
-  fetchEventTypes: string[] = [...DEFAULT_REGISTER_FETCH_EVENT_TYPES],
-): Promise<RegisterQueueResult> {
-  const body: Record<string, string> = {
-    event_types: JSON.stringify(eventTypes),
-    apply_markdown: "false",
-    // Что делает: просит сервер включать archived channels в register/events payload.
-    client_capabilities: JSON.stringify(REGISTER_CLIENT_CAPABILITIES),
-  };
-  if (fetchEventTypes.length > 0) {
-    // Что делает: просит Zulip добавить в register нужные metadata-поля.
-    body.fetch_event_types = JSON.stringify(fetchEventTypes);
-  }
-  const res = await zulipPipelinePost("register", body);
-  const data = res.data as {
-    result?: string;
-    msg?: string;
-    code?: string;
-    queue_id?: string;
-    last_event_id?: number;
-    event_queue_longpoll_timeout_seconds?: number;
-    subscriptions?: unknown;
-    user_topics?: unknown;
-    recent_private_conversations?: unknown;
-    realm_can_add_subscribers_group?: unknown;
-    realm_user_groups?: unknown;
-    server_thumbnail_formats?: unknown;
-    max_avatar_file_size_mib?: unknown;
-    realm_avatar_changes_disabled?: unknown;
-    server_avatar_changes_disabled?: unknown;
-    unread_msgs?: unknown;
-  } | null;
-  if (data == null || typeof data !== "object") {
-    throw new Error(t("app.invalidResponse"));
-  }
-  if (data.result === "error") {
-    throw new Error(data.msg ?? data.code ?? t("app.queueRegistrationError"));
-  }
-  if (data.queue_id == null || data.last_event_id == null) {
-    throw new Error(t("app.invalidRegisterResponse"));
-  }
-
-  const unreadSnapshot = parseRegisterUnreadSnapshot(data);
-  const subscriptions = parseSubscriptions(data.subscriptions);
-  const userTopics = parseUserTopics(data.user_topics);
-  const recentPrivateConversations = parseRecentPrivateConversations(
-    data.recent_private_conversations,
-  );
-  const realmCanAddSubscribersGroup = parseRealmCanAddSubscribersGroup(
-    data.realm_can_add_subscribers_group,
-  );
-  // Что делает: подхватывает группы организации, чтобы UI мог корректно решать channel-level права.
-  const realmUserGroups = parseRealmUserGroups(data.realm_user_groups);
-  const serverThumbnailFormats = parseServerThumbnailFormats(data.server_thumbnail_formats);
-  const maxAvatarFileSizeMib = parseMaxAvatarFileSizeMib(data.max_avatar_file_size_mib);
-  const realmAvatarChangesDisabled = parseAvatarChangesDisabledFlag(
-    data.realm_avatar_changes_disabled,
-  );
-  const serverAvatarChangesDisabled = parseAvatarChangesDisabledFlag(
-    data.server_avatar_changes_disabled,
-  );
-  const jitsiServerUrlEffective = parseRegisterResponseJitsiServerUrl(data);
-  const cacheKey = getCurrentUserTopicsCacheKey();
-  if (cacheKey && userTopics) {
-    setCachedUserTopicsForKey(cacheKey, userTopics);
-  }
-
-  return {
-    queue_id: data.queue_id,
-    last_event_id: data.last_event_id,
-    event_queue_longpoll_timeout_seconds: data.event_queue_longpoll_timeout_seconds,
-    ...(subscriptions ? { subscriptions } : {}),
-    ...(userTopics ? { user_topics: userTopics } : {}),
-    ...(recentPrivateConversations
-      ? { recent_private_conversations: recentPrivateConversations }
-      : {}),
-    ...(realmCanAddSubscribersGroup != null
-      ? { realm_can_add_subscribers_group: realmCanAddSubscribersGroup }
-      : {}),
-    ...(realmUserGroups ? { realm_user_groups: realmUserGroups } : {}),
-    ...(serverThumbnailFormats ? { server_thumbnail_formats: serverThumbnailFormats } : {}),
-    ...(maxAvatarFileSizeMib != null ? { max_avatar_file_size_mib: maxAvatarFileSizeMib } : {}),
-    ...(realmAvatarChangesDisabled != null
-      ? { realm_avatar_changes_disabled: realmAvatarChangesDisabled }
-      : {}),
-    ...(serverAvatarChangesDisabled != null
-      ? { server_avatar_changes_disabled: serverAvatarChangesDisabled }
-      : {}),
-    ...(jitsiServerUrlEffective ? { jitsi_server_url_effective: jitsiServerUrlEffective } : {}),
-    ...(unreadSnapshot ? { unread_snapshot: unreadSnapshot } : {}),
-  };
-}
-
-// Регистрирует очередь с явными credentials.
-// Используется для фоновых multi-org loop.
-export async function registerQueueForCredentials(
-  credentials: ZulipCredentials,
-  eventTypes: string[],
-  fetchEventTypes: string[] = [...DEFAULT_REGISTER_FETCH_EVENT_TYPES],
-): Promise<RegisterQueueResult> {
-  const base = getValidatedCredentialsRealm(credentials, "registerQueueForCredentials");
-  const authValue = getAuthValueForCredentials(credentials);
-  const url = `${base}${env.ZULIP_API_PATH}/register`;
-
-  let response: Response;
-  try {
-    response = await fetch(url.toString(), {
-      method: "POST",
-      headers: {
-        Authorization: authValue,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams({
-        // event_types: JSON.stringify(eventTypes),
-        // client_capabilities: JSON.stringify(REGISTER_CLIENT_CAPABILITIES),
-        // Зачем: background-loop для других инстансов должен получать такой же metadata-набор.
-        // ...(fetchEventTypes.length > 0
-        //   ? { fetch_event_types: JSON.stringify(fetchEventTypes) }
-        //   : {}),
-      }).toString(),
-    });
-  } catch {
-    throw new Error(t("app.queueRegistrationError"));
-  }
-
-  let data: {
-    result?: string;
-    msg?: string;
-    code?: string;
-    queue_id?: string;
-    last_event_id?: number;
-    event_queue_longpoll_timeout_seconds?: number;
-    subscriptions?: unknown;
-    user_topics?: unknown;
-    recent_private_conversations?: unknown;
-    realm_can_add_subscribers_group?: unknown;
-    realm_user_groups?: unknown;
-    server_thumbnail_formats?: unknown;
-    max_avatar_file_size_mib?: unknown;
-    realm_avatar_changes_disabled?: unknown;
-    server_avatar_changes_disabled?: unknown;
-    unread_msgs?: unknown;
-  };
-  try {
-    data = (await response.json()) as typeof data;
-  } catch {
-    throw new Error(t("app.invalidResponse"));
-  }
-
-  if (data.result === "error") {
-    throw new Error(data.msg ?? data.code ?? t("app.queueRegistrationError"));
-  }
-  if (data.queue_id == null || data.last_event_id == null) {
-    throw new Error(t("app.invalidRegisterResponse"));
-  }
-
-  const unreadSnapshot = parseRegisterUnreadSnapshot(data);
-  const subscriptions = parseSubscriptions(data.subscriptions);
-  const userTopics = parseUserTopics(data.user_topics);
-  const recentPrivateConversations = parseRecentPrivateConversations(
-    data.recent_private_conversations,
-  );
-  const realmCanAddSubscribersGroup = parseRealmCanAddSubscribersGroup(
-    data.realm_can_add_subscribers_group,
-  );
-  // Что делает: подхватывает группы и для explicit-credentials/background режима.
-  const realmUserGroups = parseRealmUserGroups(data.realm_user_groups);
-  const serverThumbnailFormats = parseServerThumbnailFormats(data.server_thumbnail_formats);
-  const maxAvatarFileSizeMib = parseMaxAvatarFileSizeMib(data.max_avatar_file_size_mib);
-  const realmAvatarChangesDisabled = parseAvatarChangesDisabledFlag(
-    data.realm_avatar_changes_disabled,
-  );
-  const serverAvatarChangesDisabled = parseAvatarChangesDisabledFlag(
-    data.server_avatar_changes_disabled,
-  );
-  const jitsiServerUrlEffective = parseRegisterResponseJitsiServerUrl(data);
-  setCachedUserTopicsForKey(
-    buildUserTopicsCacheKey(credentials.realm, credentials.email),
-    userTopics ?? [],
-  );
-
-  return {
-    queue_id: data.queue_id,
-    last_event_id: data.last_event_id,
-    event_queue_longpoll_timeout_seconds: data.event_queue_longpoll_timeout_seconds,
-    ...(subscriptions ? { subscriptions } : {}),
-    ...(userTopics ? { user_topics: userTopics } : {}),
-    ...(recentPrivateConversations
-      ? { recent_private_conversations: recentPrivateConversations }
-      : {}),
-    ...(realmCanAddSubscribersGroup != null
-      ? { realm_can_add_subscribers_group: realmCanAddSubscribersGroup }
-      : {}),
-    ...(realmUserGroups ? { realm_user_groups: realmUserGroups } : {}),
-    ...(serverThumbnailFormats ? { server_thumbnail_formats: serverThumbnailFormats } : {}),
-    ...(maxAvatarFileSizeMib != null ? { max_avatar_file_size_mib: maxAvatarFileSizeMib } : {}),
-    ...(realmAvatarChangesDisabled != null
-      ? { realm_avatar_changes_disabled: realmAvatarChangesDisabled }
-      : {}),
-    ...(serverAvatarChangesDisabled != null
-      ? { server_avatar_changes_disabled: serverAvatarChangesDisabled }
-      : {}),
-    ...(jitsiServerUrlEffective ? { jitsi_server_url_effective: jitsiServerUrlEffective } : {}),
-    ...(unreadSnapshot ? { unread_snapshot: unreadSnapshot } : {}),
-  };
 }
 
 // Удаляет очередь событий.
@@ -2131,7 +1750,7 @@ export function fetchUserTopics(): Promise<ZulipUserTopic[]> {
   if (!cacheKey) {
     return Promise.resolve([]);
   }
-  return Promise.resolve([...(userTopicsByInstance.get(cacheKey) ?? [])]);
+  return Promise.resolve(getCachedUserTopicsForKey(cacheKey));
 }
 
 export async function fetchStreams(): Promise<MockStream[]> {

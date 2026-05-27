@@ -10,7 +10,6 @@ import { parseDmKeyToUserIds } from "~/entities/message/message-chat-context.lib
 import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
 import { fetchMessagesWithNarrow } from "~/shared/api/zulip";
-import type { ZulipUnreadMessagesSnapshot } from "~/shared/api/zulip-unread.lib";
 import type { MockMessage, ZulipRawMessage } from "~/shared/api/zulip.types";
 import {
   deserializeStreamEntry,
