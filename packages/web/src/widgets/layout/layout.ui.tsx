@@ -58,7 +58,6 @@ export const Layout: React.FC = () => {
   const setCurrentInstanceId = useInstancesStore((s) => s.setCurrentInstanceId);
   const setInstanceUnreadCount = useInstancesStore((s) => s.setInstanceUnreadCount);
   const setInstanceDmUnreadCount = useInstancesStore((s) => s.setInstanceDmUnreadCount);
-  const unreadCountsByInstance = useInstancesStore((s) => s.unreadCountsByInstance);
   const {
     streamSlug,
     topicName,

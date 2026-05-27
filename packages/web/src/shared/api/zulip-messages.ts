@@ -12,7 +12,7 @@ import {
   normalizeZulipMessagesNarrowForApi,
   zulipTopicNarrowOperandForApi,
 } from "~/shared/lib/zulip-topic-narrow.lib";
-import { getClient, type ZulipClient } from "./zulip-client.internal";
+import { getClient } from "./zulip-client.internal";
 import { mockMessageFromGetMessageApiData, rawMessageToMockMessage } from "./zulip-message-map.lib";
 import {
   zulipPipelineDelete,

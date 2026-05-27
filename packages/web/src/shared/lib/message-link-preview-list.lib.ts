@@ -38,6 +38,7 @@ export function upsertLinkPreviewOnMessage(
   const key = linkPreviewUrlKey(preview.targetUrl);
   const next = existing.filter((p) => linkPreviewUrlKey(p.targetUrl) !== key);
   next.push(preview);
-  const { link_preview: _removed, ...rest } = message;
+  const rest = { ...message };
+  delete rest.link_preview;
   return { ...rest, link_previews: next };
 }

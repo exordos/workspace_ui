@@ -145,7 +145,7 @@ describe("instancesStore", () => {
     });
 
     it("clears Jitsi URL when switching current instance", () => {
-      const id1 = useInstancesStore
+      useInstancesStore
         .getState()
         .addInstance({ realm: "https://a.test", email: "a@a.com", apiKey: "k1" });
       const id2 = useInstancesStore

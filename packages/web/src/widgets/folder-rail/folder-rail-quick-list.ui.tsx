@@ -6,11 +6,7 @@ import { Badge } from "~/shared/ui/badge";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
 import { Icon } from "~/shared/ui/icon";
 import { SearchInput } from "~/shared/ui/search-input";
-import {
-  FOLDER_QUICK_LIST_SHORTCUT,
-  resolveFolderSystemType,
-  type IndexedFolderEntry,
-} from "./folder-rail.lib";
+import { FOLDER_QUICK_LIST_SHORTCUT, resolveFolderSystemType } from "./folder-rail.lib";
 import type { FolderQuickListProps } from "./folder-rail-quick-list.types";
 
 export const FolderQuickList: React.FC<FolderQuickListProps> = React.memo(function FolderQuickList({

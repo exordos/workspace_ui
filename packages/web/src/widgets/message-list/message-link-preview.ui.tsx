@@ -106,7 +106,9 @@ export const MessageLinkPreview = React.memo<MessageLinkPreviewProps>(function M
     );
   }
 
-  const title = previewData?.title?.trim() || formatPreviewHostname(previewUrl);
+  const trimmedTitle = previewData?.title?.trim();
+  const title =
+    trimmedTitle && trimmedTitle.length > 0 ? trimmedTitle : formatPreviewHostname(previewUrl);
   const description = previewData?.description?.trim();
   const hostname = formatPreviewHostname(previewUrl);
   const hasThumbnail = (previewData?.thumbnailPath?.length ?? 0) > 0;

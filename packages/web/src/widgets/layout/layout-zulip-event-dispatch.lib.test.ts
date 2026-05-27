@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import * as client from "~/shared/api/client";
-import type { MockMessage, ZulipEvent } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/zulip.types";
 import { dispatchZulipEvent } from "./layout-zulip-event-dispatch.lib";
 import type {
   LayoutCurrentChatActions,

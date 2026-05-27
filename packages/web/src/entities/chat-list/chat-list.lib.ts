@@ -56,7 +56,9 @@ export function messageToStreamEntry(m: ZulipRawMessage): {
 } | null {
   if (m.type !== "stream" || m.stream_id == null) return null;
   const lastMsg = truncatePreview(m.content);
-  const lastMessageSenderName = m.sender_full_name?.trim() || undefined;
+  const trimmedSenderName = m.sender_full_name?.trim();
+  const lastMessageSenderName =
+    trimmedSenderName && trimmedSenderName.length > 0 ? trimmedSenderName : undefined;
   const time = formatMessageTime(m.timestamp);
   const name = typeof m.display_recipient === "string" ? m.display_recipient : String(m.stream_id);
   const subject = normalizeTopicForIdentity(m.subject ?? "");
@@ -181,7 +183,7 @@ function applyUnreadCountsToSidebarMaps(
     for (const [topicKey, topic] of stream.topics) {
       const nextUnreadCount = streamUnread.get(`${streamId}\t${topicKey}`) ?? 0;
       if (topic.unreadCount === nextUnreadCount) continue;
-      if (nextTopics == null) nextTopics = new Map(stream.topics);
+      nextTopics ??= new Map(stream.topics);
       nextTopics.set(topicKey, { ...topic, unreadCount: nextUnreadCount });
     }
     if (nextTopics != null) {

@@ -12,7 +12,6 @@ import type {
   AiAction,
   AiActionMenuProps,
   AiComposerButtonProps,
-  AiMessageContext,
   AiSuggestion,
   AiTone,
   SmartReplySuggestionsProps,

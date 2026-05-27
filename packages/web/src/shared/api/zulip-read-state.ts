@@ -1,7 +1,6 @@
 /**
  * Zulip read/unread and topic resolution (flags API + topic rename).
  */
-import { t } from "~/i18n/i18n";
 import { guard } from "~/shared/lib/guards";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { toResolvedTopicName, toUnresolvedTopicName } from "~/shared/lib/topic-resolve";

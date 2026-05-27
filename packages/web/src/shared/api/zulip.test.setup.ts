@@ -4,7 +4,6 @@
  * Import this module first in each test file so `vi.mock` runs before `./zulip` loads.
  */
 import { afterEach, beforeEach, vi } from "vitest";
-import { getCurrentInstance } from "./client";
 
 const mockZulipClient = vi.hoisted(() => ({
   streams: {

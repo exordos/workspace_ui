@@ -149,13 +149,15 @@ export const LoginPage: React.FC = () => {
     setLoading(true);
     try {
       const result = await fetchApiKey(realmTrim, usernameTrim, password);
-      const normalizedFromInput =
-        realmTrim
-          .replace(/\/+$/, "")
-          .replace(/\/api\/v1$/, "")
-          .replace(/\/api$/, "") || realmTrim;
+      const strippedRealm = realmTrim
+        .replace(/\/+$/, "")
+        .replace(/\/api\/v1$/, "")
+        .replace(/\/api$/, "");
+      const normalizedFromInput = strippedRealm.length > 0 ? strippedRealm : realmTrim;
       const canonicalFromServer =
-        serverSettings?.realm_url?.trim() || serverSettings?.realm_uri?.trim() || "";
+        [serverSettings?.realm_url?.trim(), serverSettings?.realm_uri?.trim()].find(
+          (part) => (part?.length ?? 0) > 0,
+        ) ?? "";
       const realmToStore =
         canonicalFromServer.length > 0 && isValidRealmUrl(canonicalFromServer)
           ? normalizeRealm(canonicalFromServer)

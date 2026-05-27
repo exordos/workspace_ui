@@ -22,17 +22,9 @@ import {
   type ToggleAssignmentInput,
   type ToggleAssignmentResult,
 } from "./folder-sync-assignment.types";
-import {
-  addChatIdAliases,
-  areEquivalentChatIds,
-  resolveFolderItemUuid,
-} from "./folder-sync-chat-id.lib";
+import { areEquivalentChatIds, resolveFolderItemUuid } from "./folder-sync-chat-id.lib";
 import { SYSTEM_ALL_FOLDER_ID } from "./folder-sync-constants.lib";
-import {
-  buildSelectedFolderSidebarChats,
-  hasMatchingChatId,
-  toChatIdSet,
-} from "./folder-sync-sidebar-chats.lib";
+import { buildSelectedFolderSidebarChats, toChatIdSet } from "./folder-sync-sidebar-chats.lib";
 import {
   loadFolderItemsForSelection,
   loadFolderSyncSnapshot,

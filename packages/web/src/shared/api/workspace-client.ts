@@ -236,7 +236,7 @@ function parseFolderItemOrderIndex(value: unknown): number {
   if (typeof value === "number" && Number.isInteger(value) && value >= 0) {
     return value;
   }
-  if (typeof value === "string" && /^[0-9]+$/.test(value.trim())) {
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) {
     const parsed = Number(value.trim());
     if (Number.isInteger(parsed) && parsed >= 0) {
       return parsed;
@@ -308,19 +308,19 @@ function parseNumericFolderChatId(chatId: string): number | null {
   const trimmed = chatId.trim();
   if (!trimmed) return null;
 
-  const decimalMatch = /^[0-9]+$/.exec(trimmed);
+  const decimalMatch = /^\d+$/.exec(trimmed);
   if (decimalMatch) {
     const parsed = Number(trimmed);
     return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
   }
 
-  const streamMatch = /^stream:([0-9]+)(?::.*)?$/.exec(trimmed);
+  const streamMatch = /^stream:(\d+)(?::.*)?$/.exec(trimmed);
   if (streamMatch?.[1]) {
     const parsed = Number(streamMatch[1]);
     return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
   }
 
-  const singleDmMatch = /^dm:([0-9]+)$/.exec(trimmed);
+  const singleDmMatch = /^dm:(\d+)$/.exec(trimmed);
   if (singleDmMatch?.[1]) {
     const parsed = Number(singleDmMatch[1]);
     return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;

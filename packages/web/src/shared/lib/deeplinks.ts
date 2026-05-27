@@ -128,7 +128,7 @@ export interface ParsedDeepLink {
   messageId?: number;
 }
 
-const DECIMAL_INTEGER_RE = /^[0-9]+$/;
+const DECIMAL_INTEGER_RE = /^\d+$/;
 
 function parseMessageId(searchParams: URLSearchParams): number | undefined {
   const rawMessageId = searchParams.get("msg");

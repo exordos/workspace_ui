@@ -14,7 +14,7 @@ import { toast } from "~/shared/lib/toast/toast";
 import { FolderRailHorizontalView } from "./folder-rail-horizontal-view.ui";
 import { FolderRailVerticalView } from "./folder-rail-vertical-view.ui";
 import type { IndexedFolderEntry } from "./folder-rail.lib";
-import type { FolderRailFolder, FolderRailLayout, FolderRailProps } from "./folder-rail.types";
+import type { FolderRailFolder, FolderRailProps } from "./folder-rail.types";
 
 export type {
   FolderRailFolder,

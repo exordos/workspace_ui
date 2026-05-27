@@ -300,7 +300,7 @@ function mergeStreamEntry(
 function bumpStreamTopicUnreadFromMessage(
   streamsMap: Map<number, StreamEntryInternal>,
   message: ZulipRawMessage,
-  currentUserId: number | null,
+  _currentUserId: number | null,
 ): Map<number, StreamEntryInternal> {
   const result = messageToStreamEntry(message);
   if (!result) return streamsMap;
@@ -804,9 +804,7 @@ function applyLatestUnreadStreamMetadata(
     let streamTopicsChanged = false;
 
     const ensureTopics = (): Map<string, StreamTopicEntryInternal> => {
-      if (nextTopics == null) {
-        nextTopics = stream != null ? new Map(stream.topics) : new Map();
-      }
+      nextTopics ??= stream != null ? new Map(stream.topics) : new Map();
       return nextTopics;
     };
 
@@ -899,10 +897,13 @@ type DeletedPreviewContext =
 function buildResolvedPreviewFromMessage(
   message: ChatListPreviewSourceMessage,
 ): SidebarResolvedPreview {
+  const trimmedSenderName = message.sender_full_name?.trim();
+  const lastMessageSenderName =
+    trimmedSenderName && trimmedSenderName.length > 0 ? trimmedSenderName : undefined;
   return {
     lastMessageId: message.id,
     lastMessage: truncatePreview(message.content ?? ""),
-    lastMessageSenderName: message.sender_full_name?.trim() || undefined,
+    lastMessageSenderName,
     time: formatMessageTime(message.timestamp),
     ts: message.timestamp,
   };
@@ -1571,7 +1572,8 @@ export const useChatListStore = create<ChatListState>((set, get) => {
           if (!existing || existing.isArchived === isArchived) return state;
           const nextStreams = new Map(state.streamsMap);
           if (isArchived === undefined) {
-            const { isArchived: _ignored, ...rest } = existing;
+            const rest = { ...existing };
+            delete rest.isArchived;
             nextStreams.set(streamId, rest);
           } else {
             nextStreams.set(streamId, { ...existing, isArchived });

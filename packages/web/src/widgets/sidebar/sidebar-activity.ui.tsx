@@ -7,7 +7,7 @@ import { useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
 import { extractOrgRouteFromPathname, withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { Badge } from "~/shared/ui/badge";
-import { Icon, type IconName } from "~/shared/ui/icon";
+import { Icon } from "~/shared/ui/icon";
 import { MY_ACTIVITY } from "./sidebar.lib";
 import type { SidebarActivityProps } from "./sidebar-activity.types";
 

@@ -1,4 +1,3 @@
-import type { ZulipInstance } from "~/entities/instance/instance.model";
 import type { StartInactiveInstanceUnreadPollingOptions } from "./layout-multi-org-polling.types";
 
 const DEFAULT_POLL_INTERVAL_MS = 60_000;

@@ -3,7 +3,6 @@ import {
   appendUserUploadsPathPrefix,
   normalizeRealm,
   normalizeRealmSiteOriginForUploads,
-  shouldApplyUserUploadsPathPrefixForRealmBase,
 } from "./zulip-realm.internal";
 
 describe("appendUserUploadsPathPrefix", () => {

@@ -18,9 +18,7 @@ function nextPipelineTrace(): { seq: number; elapsedMs: number } {
   if (typeof performance === "undefined") {
     return { seq: pipelineSeq, elapsedMs: 0 };
   }
-  if (pipelineT0Ms == null) {
-    pipelineT0Ms = performance.now();
-  }
+  pipelineT0Ms ??= performance.now();
   return { seq: pipelineSeq, elapsedMs: Math.round(performance.now() - pipelineT0Ms) };
 }
 

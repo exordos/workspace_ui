@@ -22,7 +22,8 @@ export function mergeMessagePreservingLinkPreview(
       messageId: incoming.id,
       count: existingList.length,
     });
-    const { link_preview: _legacy, ...rest } = incoming;
+    const rest = { ...incoming };
+    delete rest.link_preview;
     return { ...rest, link_previews: existingList };
   }
 
@@ -40,6 +41,7 @@ export function mergeMessagePreservingLinkPreview(
     mergedCount: byUrl.size,
   });
 
-  const { link_preview: _legacy, ...rest } = incoming;
+  const rest = { ...incoming };
+  delete rest.link_preview;
   return { ...rest, link_previews: Array.from(byUrl.values()) };
 }

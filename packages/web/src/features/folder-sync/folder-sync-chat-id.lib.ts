@@ -7,7 +7,7 @@ export interface FolderSyncUserLike {
 
 export function parseNumericChatId(chatId: string): number | null {
   const trimmed = chatId.trim();
-  if (!/^[0-9]+$/.test(trimmed)) {
+  if (!/^\d+$/.test(trimmed)) {
     return null;
   }
   const parsed = Number(trimmed);
@@ -39,7 +39,7 @@ function normalizeStreamTopic(topic: string | null): string {
 }
 
 function parseDmChatUserIds(chatId: string): number[] | null {
-  const dmMatch = /^dm:([0-9]+(?:,[0-9]+)*)$/.exec(chatId.trim());
+  const dmMatch = /^dm:(\d+(?:,\d+)*)$/.exec(chatId.trim());
   const rawUserIds = dmMatch?.[1];
   if (!rawUserIds) {
     return null;
@@ -59,7 +59,7 @@ function parseDmSlugToUserIds(dmSlug: string): number[] {
     .split(",")
     .map((part) => part.split("-")[0]?.trim() ?? "")
     .map((rawUserId) => {
-      if (!/^[0-9]+$/.test(rawUserId)) return null;
+      if (!/^\d+$/.test(rawUserId)) return null;
       const parsed = Number(rawUserId);
       if (!Number.isSafeInteger(parsed) || parsed <= 0) return null;
       return parsed;
@@ -84,13 +84,13 @@ export function parseFolderItemStreamId(chatId: string): number | null {
     return null;
   }
 
-  const streamColonMatch = /^stream:([0-9]+)/.exec(trimmed);
+  const streamColonMatch = /^stream:(\d+)/.exec(trimmed);
   if (streamColonMatch?.[1]) {
     const parsed = Number(streamColonMatch[1]);
     return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
   }
 
-  const streamDashMatch = /^stream-([0-9]+)$/.exec(trimmed);
+  const streamDashMatch = /^stream-(\d+)$/.exec(trimmed);
   if (streamDashMatch?.[1]) {
     const parsed = Number(streamDashMatch[1]);
     return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
@@ -100,7 +100,7 @@ export function parseFolderItemStreamId(chatId: string): number | null {
     return null;
   }
 
-  if (/^[0-9]+$/.test(trimmed)) {
+  if (/^\d+$/.test(trimmed)) {
     const parsed = Number(trimmed);
     return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
   }
@@ -114,7 +114,7 @@ export function parseFolderItemDmUserIds(chatId: string): number[] | null {
     return null;
   }
 
-  const dmMatch = /^(dm|pm):([0-9]+(?:,[0-9]+)*)$/i.exec(trimmed);
+  const dmMatch = /^(dm|pm):(\d+(?:,\d+)*)$/i.exec(trimmed);
   const rawUserIds = dmMatch?.[2];
   if (!rawUserIds) {
     return null;
@@ -167,7 +167,7 @@ export function canonicalizeChatId(chatId: string): string {
     return `stream:${numericChatId}:general`;
   }
 
-  const streamDashMatch = /^stream-([0-9]+)$/i.exec(trimmed);
+  const streamDashMatch = /^stream-(\d+)$/i.exec(trimmed);
   if (streamDashMatch?.[1]) {
     const parsed = Number(streamDashMatch[1]);
     if (Number.isSafeInteger(parsed) && parsed > 0) {

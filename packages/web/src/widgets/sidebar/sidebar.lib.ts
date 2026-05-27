@@ -233,7 +233,7 @@ export function parseDmSlugToUserIds(dmSlug: string): number[] {
     return cached;
   }
 
-  const DECIMAL_INTEGER_RE = /^[0-9]+$/;
+  const DECIMAL_INTEGER_RE = /^\d+$/;
   const parsedUserIds = dmSlug
     .split(",")
     .map((part) => part.split("-")[0]?.trim() ?? "")

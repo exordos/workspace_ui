@@ -4,9 +4,6 @@ import {
   ZULIP_SHORTCODE_TO_UNIFIED_OVERRIDES,
 } from "~/shared/lib/emoji-shortcodes-overrides.data";
 
-type EmojibaseShortcodeEntry = string | string[];
-type EmojibaseShortcodeDataset = Record<string, EmojibaseShortcodeEntry>;
-
 /** Runtime-логика резолва emoji shortcodes: нормализация, индексы и lookup. */
 interface ShortcodeIndices {
   unicodeByShortcode: ReadonlyMap<string, string>;

@@ -3,7 +3,8 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setInstanceProvider } from "~/shared/api/client";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import { type MockMessage } from "~/shared/api/zulip.types";
+// eslint-disable-next-line import-x/order -- inline type + lib import; false positive
 import {
   ZULIP_DM_ANCHOR_NUM_AFTER,
   ZULIP_DM_ANCHOR_NUM_BEFORE,

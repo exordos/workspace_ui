@@ -1,14 +1,11 @@
-/**
- * Pin store — tracks which chats are pinned in each folder.
- */
-
+/** Pin store — tracks which chats are pinned in each folder. */
 import { create } from "zustand";
+// eslint-disable-next-line import-x/order -- external + internal multiline import; false positive
 import {
   areEquivalentChatIds,
   canonicalizeChatId,
   folderItemLookupKeysForChatId,
 } from "~/features/folder-sync/folder-sync-chat-id.lib";
-
 function setFolderItemUuidEntry(
   folderItemMap: Map<string, string>,
   chatId: string,

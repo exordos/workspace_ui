@@ -33,8 +33,6 @@ import type {
   NewTopicDialogState,
   SidebarFolderChatListProps,
 } from "./sidebar-folder-chat-list.types";
-import type { SidebarChat } from "./sidebar.types";
-
 const EMPTY_PINNED_IDS: string[] = [];
 
 export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({

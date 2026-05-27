@@ -19,7 +19,6 @@ import type {
   RequestUserStatusOptions,
   StatusFetchOutcome,
   ZulipGetUserStatusResponse,
-  ZulipUpdateOwnStatusResponse,
 } from "./user.api.types";
 
 export type {

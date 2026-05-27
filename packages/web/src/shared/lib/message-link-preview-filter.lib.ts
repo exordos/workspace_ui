@@ -22,7 +22,9 @@ export function filterMessageLinkPreviewsForMarkdown(
   if (filtered.length === existing.length) {
     return message;
   }
-  const { link_preview: _legacy, link_previews: _old, ...rest } = message;
+  const rest = { ...message };
+  delete rest.link_preview;
+  delete rest.link_previews;
   if (filtered.length === 0) {
     return rest;
   }

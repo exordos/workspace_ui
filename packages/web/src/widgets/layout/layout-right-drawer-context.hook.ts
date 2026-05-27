@@ -28,7 +28,6 @@ export function useLayoutRightDrawerContext(
     activeTopic,
     dmIdParam,
     currentUserId,
-    rightDrawerMode,
     rightDrawerUserIdOverride,
     rightDrawerOverrideUserName,
     rightDrawerOpen,

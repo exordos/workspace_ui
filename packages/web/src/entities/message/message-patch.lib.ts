@@ -36,12 +36,12 @@ export function patchMessagesFlags(
     const hasFlag = flags.includes(flag);
     if (op === "add") {
       if (hasFlag) continue;
-      if (!next) next = messages.slice();
+      next ??= messages.slice();
       next[i] = { ...message, flags: [...flags, flag] };
       continue;
     }
     if (!hasFlag) continue;
-    if (!next) next = messages.slice();
+    next ??= messages.slice();
     next[i] = { ...message, flags: flags.filter((f) => f !== flag) };
   }
   return next ?? (messages as MockMessage[]);

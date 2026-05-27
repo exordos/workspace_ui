@@ -2,7 +2,7 @@ import React, { useCallback, useMemo, useRef, useState } from "react";
 import { t } from "~/i18n/i18n";
 import { Icon } from "~/shared/ui/icon";
 import { HorizontalFolderItem } from "./folder-rail-folder-items.ui";
-import { orderedIndexedFoldersForRail, type IndexedFolderEntry } from "./folder-rail.lib";
+import { orderedIndexedFoldersForRail } from "./folder-rail.lib";
 import type { FolderRailHorizontalViewProps } from "./folder-rail-horizontal-view.types";
 
 export const FolderRailHorizontalView: React.FC<FolderRailHorizontalViewProps> = React.memo(

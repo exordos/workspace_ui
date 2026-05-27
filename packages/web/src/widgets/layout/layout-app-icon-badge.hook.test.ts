@@ -1,6 +1,8 @@
 import { renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { syncFaviconWithUnreadIndicator } from "~/shared/lib/organization-branding";
 import { osIntegration } from "~/shared/lib/os-integration";
+import { useLayoutAppIconBadge } from "./layout-app-icon-badge.hook";
 
 vi.mock("~/shared/lib/electron", () => ({
   getElectronAPI: vi.fn(() => null),
@@ -13,9 +15,6 @@ vi.mock("~/shared/lib/os-integration", () => ({
 vi.mock("~/shared/lib/organization-branding", () => ({
   syncFaviconWithUnreadIndicator: vi.fn(() => () => {}),
 }));
-
-import { syncFaviconWithUnreadIndicator } from "~/shared/lib/organization-branding";
-import { useLayoutAppIconBadge } from "./layout-app-icon-badge.hook";
 
 describe("useLayoutAppIconBadge", () => {
   afterEach(() => {

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { brand } from "~/shared/lib/brand";
 import {
   getAppFaviconUrl,
