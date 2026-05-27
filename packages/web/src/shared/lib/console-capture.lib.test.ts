@@ -30,6 +30,24 @@ describe("initConsoleCapture", () => {
     expect(entry!.message).toBe("network glitch");
   });
 
+  it("serializes Date, RegExp, Set, and Map in buffered args", () => {
+    cleanup = initConsoleCapture();
+    const date = new Date("2026-01-15T12:00:00.000Z");
+    const pattern = /foo/gi;
+    const ids = new Set([1, 2]);
+    const byName = new Map([["alice", 1]]);
+    console.log("types", date, pattern, ids, byName);
+
+    const entry = getLogHistory().find((e) => e.scope === "console");
+    expect(entry?.data?.args).toEqual([
+      "types",
+      "2026-01-15T12:00:00.000Z",
+      "/foo/gi",
+      [1, 2],
+      [["alice", 1]],
+    ]);
+  });
+
   it("restores original console methods on cleanup", () => {
     cleanup = initConsoleCapture();
     cleanup();

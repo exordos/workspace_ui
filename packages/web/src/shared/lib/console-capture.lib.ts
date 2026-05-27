@@ -31,6 +31,25 @@ function serializeConsoleArg(value: unknown, depth = 0): unknown {
   if (value instanceof Error) {
     return { name: value.name, message: value.message };
   }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  if (value instanceof RegExp) {
+    return value.toString();
+  }
+  if (value instanceof Set) {
+    return Array.from(value)
+      .slice(0, MAX_SERIALIZED_ARGS)
+      .map((item) => serializeConsoleArg(item, depth + 1));
+  }
+  if (value instanceof Map) {
+    return Array.from(value.entries())
+      .slice(0, MAX_SERIALIZED_ARGS)
+      .map(([key, nested]) => [
+        serializeConsoleArg(key, depth + 1),
+        serializeConsoleArg(nested, depth + 1),
+      ]);
+  }
   if (Array.isArray(value)) {
     return value.slice(0, MAX_SERIALIZED_ARGS).map((item) => serializeConsoleArg(item, depth + 1));
   }

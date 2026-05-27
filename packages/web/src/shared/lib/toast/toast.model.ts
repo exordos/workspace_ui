@@ -20,7 +20,8 @@ interface ToastState {
 }
 
 const dismissTimers = new Map<string, ReturnType<typeof setTimeout>>();
-const recentMessages = new Map<string, number>();
+const dedupPruneTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const recentMessageKeys = new Set<string>();
 
 function dismissMsForVariant(variant: ToastVariant): number {
   return variant === "error" ? TOAST_ERROR_DISMISS_MS : TOAST_SUCCESS_DISMISS_MS;
@@ -52,12 +53,19 @@ function clearDismissTimer(id: string): void {
 
 function shouldDedupMessage(message: string, variant: ToastVariant): boolean {
   const key = `${variant}:${message}`;
-  const now = Date.now();
-  const lastAt = recentMessages.get(key);
-  if (lastAt != null && now - lastAt < TOAST_DEDUP_WINDOW_MS) {
+  if (recentMessageKeys.has(key)) {
     return true;
   }
-  recentMessages.set(key, now);
+  recentMessageKeys.add(key);
+  const existing = dedupPruneTimers.get(key);
+  if (existing != null) {
+    clearTimeout(existing);
+  }
+  const timer = setTimeout(() => {
+    recentMessageKeys.delete(key);
+    dedupPruneTimers.delete(key);
+  }, TOAST_DEDUP_WINDOW_MS);
+  dedupPruneTimers.set(key, timer);
   return false;
 }
 
@@ -66,7 +74,11 @@ export function resetToastStateForTests(): void {
     clearTimeout(timer);
   }
   dismissTimers.clear();
-  recentMessages.clear();
+  for (const timer of dedupPruneTimers.values()) {
+    clearTimeout(timer);
+  }
+  dedupPruneTimers.clear();
+  recentMessageKeys.clear();
   useToastStore.setState({ toasts: [] });
 }
 
