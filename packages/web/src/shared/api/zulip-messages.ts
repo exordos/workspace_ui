@@ -1,6 +1,7 @@
 // Сообщения Zulip: загрузка, отправка, редактирование, реакции, флаги, snippets и activity narrow.
 import { t } from "~/i18n/i18n";
 import { guard } from "~/shared/lib/guards";
+import { createLogger } from "~/shared/lib/logger";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import {
   ZULIP_DM_CHAT_NUM_AFTER,
@@ -50,6 +51,121 @@ interface NarrowEntry {
   negated?: boolean;
   operator: string;
   operand: string | number;
+}
+
+const log = createLogger("api:zulip-messages");
+
+/** Zulip allows up to 5000 messages per GET /messages request. */
+const MESSAGE_IDS_CHUNK_SIZE = 1000;
+const MESSAGE_IDS_FALLBACK_CONCURRENCY = 8;
+
+let loggedMessageIdsBatchFallback = false;
+
+function parseMessagesListResponse(data: unknown): ZulipRawMessage[] | null {
+  if (data == null || typeof data !== "object") return null;
+  const payload = data as { result?: string; messages?: ZulipRawMessage[] };
+  if (payload.result === "error") return null;
+  return payload.messages ?? [];
+}
+
+function zulipRawMessageFromGetMessageApiData(data: unknown): ZulipRawMessage | null {
+  if (data == null || typeof data !== "object") return null;
+  const row = data as Record<string, unknown>;
+  if (row.result === "error") return null;
+  if (row.message != null && typeof row.message === "object") {
+    const message = row.message as ZulipRawMessage;
+    return Number.isInteger(message.id) && message.id > 0 ? message : null;
+  }
+  if (typeof row.id === "number" && row.id > 0) {
+    return row as unknown as ZulipRawMessage;
+  }
+  return null;
+}
+
+async function fetchMessagesByIdsChunk(messageIds: number[]): Promise<{
+  messages: ZulipRawMessage[];
+  apiError: boolean;
+}> {
+  if (messageIds.length === 0) {
+    return { messages: [], apiError: false };
+  }
+  const messageIdsParam = JSON.stringify(messageIds);
+  log.info("fetchMessagesByIds: GET /messages (message_ids batch)", {
+    chunkSize: messageIds.length,
+    messageIdsParamLength: messageIdsParam.length,
+    messageIdSample: messageIds.slice(0, 8),
+  });
+  const res = await zulipPipelineGet("/messages", {
+    message_ids: messageIdsParam,
+    allow_empty_topic_name: "true",
+    client_gravatar: "true",
+    apply_markdown: "false",
+  });
+  if (!res?.ok) {
+    log.warn("fetchMessagesByIds: batch request not ok", {
+      httpStatus: res?.status ?? null,
+      result:
+        res?.data != null && typeof res.data === "object"
+          ? (res.data as { result?: string }).result
+          : undefined,
+      msg:
+        res?.data != null && typeof res.data === "object"
+          ? (res.data as { msg?: string }).msg
+          : undefined,
+    });
+    return { messages: [], apiError: true };
+  }
+  const parsed = parseMessagesListResponse(res.data);
+  if (parsed == null) {
+    log.warn("fetchMessagesByIds: batch response parse error", {
+      httpStatus: res.status,
+      result:
+        res.data != null && typeof res.data === "object"
+          ? (res.data as { result?: string }).result
+          : undefined,
+      msg:
+        res.data != null && typeof res.data === "object"
+          ? (res.data as { msg?: string }).msg
+          : undefined,
+    });
+    return { messages: [], apiError: true };
+  }
+  log.info("fetchMessagesByIds: batch response ok", {
+    httpStatus: res.status,
+    messageCount: parsed.length,
+  });
+  return { messages: parsed, apiError: false };
+}
+
+async function fetchMessagesByIdsFallback(messageIds: number[]): Promise<ZulipRawMessage[]> {
+  if (!loggedMessageIdsBatchFallback) {
+    loggedMessageIdsBatchFallback = true;
+    log.warn("GET /messages message_ids unavailable; falling back to per-message fetch", {
+      count: messageIds.length,
+    });
+  }
+  const results: ZulipRawMessage[] = [];
+  let nextIndex = 0;
+  const workerCount = Math.min(MESSAGE_IDS_FALLBACK_CONCURRENCY, messageIds.length);
+  const workers = Array.from({ length: workerCount }, async () => {
+    for (;;) {
+      const index = nextIndex;
+      nextIndex += 1;
+      if (index >= messageIds.length) return;
+      const messageId = messageIds[index]!;
+      const res = await zulipPipelineGet(`/messages/${messageId}`, {
+        allow_empty_topic_name: "true",
+        apply_markdown: "false",
+      });
+      if (!res?.ok) continue;
+      const message = zulipRawMessageFromGetMessageApiData(res.data);
+      if (message != null) {
+        results.push(message);
+      }
+    }
+  });
+  await Promise.all(workers);
+  return results;
 }
 
 function getActivityNarrow(filter: ActivityFilter, currentUserId?: number | null): NarrowEntry[] {
@@ -353,6 +469,72 @@ export async function fetchDmMessages(userIds: number | number[]): Promise<MockM
   } catch {
     return [];
   }
+}
+
+/**
+ * Fetches specific messages by id (Zulip 10+ `message_ids` on GET /messages).
+ * Falls back to per-id GET when the server rejects batch fetch.
+ */
+export async function fetchMessagesByIds(messageIds: number[]): Promise<ZulipRawMessage[]> {
+  log.info("fetchMessagesByIds: called", { inputCount: messageIds.length });
+
+  const uniqueIds = [
+    ...new Set(messageIds.filter((messageId) => Number.isInteger(messageId) && messageId > 0)),
+  ];
+  if (uniqueIds.length === 0) {
+    log.info("fetchMessagesByIds: no positive ids after filter", { inputCount: messageIds.length });
+    return [];
+  }
+
+  const validatedIds = validateMessageIds(uniqueIds, "fetchMessagesByIds");
+  const collected: ZulipRawMessage[] = [];
+  let useFallback = false;
+
+  log.info("fetchMessagesByIds: fetching chunks", {
+    validatedCount: validatedIds.length,
+    chunkSize: MESSAGE_IDS_CHUNK_SIZE,
+  });
+
+  for (let offset = 0; offset < validatedIds.length; offset += MESSAGE_IDS_CHUNK_SIZE) {
+    const chunk = validatedIds.slice(offset, offset + MESSAGE_IDS_CHUNK_SIZE);
+    const { messages, apiError } = await fetchMessagesByIdsChunk(chunk);
+    if (apiError) {
+      log.warn("fetchMessagesByIds: switching to per-id fallback", {
+        chunkOffset: offset,
+        chunkSize: chunk.length,
+      });
+      useFallback = true;
+      break;
+    }
+    collected.push(...messages);
+  }
+
+  if (useFallback) {
+    const fallbackMessages = await fetchMessagesByIdsFallback(validatedIds);
+    log.info("fetchMessagesByIds: fallback complete", {
+      requestedCount: validatedIds.length,
+      fetchedCount: fallbackMessages.length,
+    });
+    return fallbackMessages;
+  }
+
+  const foundIds = new Set(collected.map((message) => message.id));
+  const missingIds = validatedIds.filter((messageId) => !foundIds.has(messageId));
+  if (missingIds.length > 0) {
+    log.info("fetchMessagesByIds: recovering missing ids via fallback", {
+      missingCount: missingIds.length,
+      missingSample: missingIds.slice(0, 8),
+    });
+    const recovered = await fetchMessagesByIdsFallback(missingIds);
+    collected.push(...recovered);
+  }
+
+  log.info("fetchMessagesByIds: done", {
+    requestedCount: validatedIds.length,
+    fetchedCount: collected.length,
+  });
+
+  return collected;
 }
 
 // Загружает одно сообщение по id.

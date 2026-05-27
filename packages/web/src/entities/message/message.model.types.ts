@@ -1,6 +1,16 @@
 import type { MockMessage, Reaction } from "~/shared/api/zulip.types";
 import type { LinkPreviewData } from "~/shared/lib/message-link-preview.types";
 
+export type DmMessagesAppliedSource = "cache" | "api";
+
+export interface OnDmMessagesAppliedPayload {
+  messages: readonly MockMessage[];
+  context: CurrentChatContext;
+  hasNewerMessages: boolean;
+  focusedMessageId: number | null;
+  source: DmMessagesAppliedSource;
+}
+
 export type CurrentChatContext =
   | {
       type: "stream";
@@ -63,6 +73,8 @@ export interface CurrentChatMessagesState {
     // Что делает: позволяет отменить in-flight initial загрузку при быстром route-switch.
     // Зачем: старый запрос не должен продолжать сетевую работу и конкурировать с новым.
     signal?: AbortSignal;
+    /** After cache/API apply for a DM — sync sidebar preview from loaded messages (pages/widgets wire this). */
+    onDmMessagesApplied?: (payload: OnDmMessagesAppliedPayload) => void;
   }) => Promise<void>;
   loadOlderBoundaryPage: (options: {
     pageSize: number;

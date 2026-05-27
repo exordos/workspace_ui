@@ -85,6 +85,26 @@ export interface ZulipUnreadMessagesSnapshot {
   streams: ZulipUnreadStreamBucket[];
   dms: ZulipUnreadDmBucket[];
   totalCount: number;
+  /** Zulip `old_unreads_missing` — snapshot truncated; caller should fall back to GET /messages. */
+  oldUnreadsMissing?: boolean;
+}
+
+/** Parses `unread_msgs` from POST /register when `message` + `update_message_flags` are subscribed. */
+export function parseRegisterUnreadSnapshot(registerData: {
+  unread_msgs?: unknown;
+}): ZulipUnreadMessagesSnapshot | null {
+  if (registerData.unread_msgs == null) {
+    return null;
+  }
+  const snapshot = parseUnreadMessagesSnapshot({ unread_msgs: registerData.unread_msgs });
+  if (snapshot == null) {
+    return null;
+  }
+  const unreadMsgs = registerData.unread_msgs;
+  if (!isRecord(unreadMsgs) || unreadMsgs.old_unreads_missing !== true) {
+    return snapshot;
+  }
+  return { ...snapshot, oldUnreadsMissing: true };
 }
 
 // Парсит полный unread snapshot из legacy unread_msgs payload.
@@ -123,11 +143,13 @@ function parseUnreadMessagesSnapshotFromUnreadMsgs(
   const dms: ZulipUnreadDmBucket[] = [];
   for (const entry of pmsRaw) {
     if (!isRecord(entry)) continue;
-    const senderId = entry.sender_id;
-    if (!isPositiveInteger(senderId)) continue;
+    const otherUserId = isPositiveInteger(entry.other_user_id)
+      ? entry.other_user_id
+      : entry.sender_id;
+    if (!isPositiveInteger(otherUserId)) continue;
     const unreadMessageIds = parseUnreadMessageIds(entry.unread_message_ids);
     if (unreadMessageIds.length === 0) continue;
-    dms.push({ userIds: [senderId], unreadMessageIds, isGroup: false });
+    dms.push({ userIds: [otherUserId], unreadMessageIds, isGroup: false });
   }
 
   for (const entry of huddlesRaw) {
@@ -258,7 +280,8 @@ function isPersonalDmBucketForBadge(dm: ZulipUnreadDmBucket): boolean {
   return dm.userIds.length === 2;
 }
 
-function countPersonalDmUnreadFromSnapshot(snapshot: ZulipUnreadMessagesSnapshot): number {
+/** Personal 1:1 DM unread count from register `unread_msgs` buckets (not global `count`). */
+export function countPersonalDmUnreadFromSnapshot(snapshot: ZulipUnreadMessagesSnapshot): number {
   let total = 0;
   for (const dm of snapshot.dms) {
     if (!isPersonalDmBucketForBadge(dm)) continue;

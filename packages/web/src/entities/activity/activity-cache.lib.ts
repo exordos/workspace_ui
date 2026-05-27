@@ -3,6 +3,7 @@
 // всегда приходит с серверного refresh.
 import type { ActivityFilter, MockMessage, ZulipRawMessage } from "~/shared/api/zulip.types";
 import { getInstanceMessagesAscending } from "~/shared/lib/message-cache-db";
+import { mockMessageToRawMessage } from "~/shared/lib/message-mock-to-raw.lib";
 
 // Возвращает самый новый timestamp в snapshot сообщений.
 // Нужен как основной критерий свежести кэша.
@@ -47,30 +48,6 @@ export function isActivityMessagesSnapshotFresher(
   const candidateMaxMessageId = getActivityMessagesMaxMessageId(candidate);
   const currentMaxMessageId = getActivityMessagesMaxMessageId(current);
   return candidateMaxMessageId > currentMaxMessageId;
-}
-
-// Нормализует MockMessage из IDB в формат ZulipRawMessage,
-// который ожидает store страницы activity.
-function mockMessageToRawMessage(message: MockMessage): ZulipRawMessage {
-  const displayRecipient =
-    message.display_recipient ?? (message.stream_id != null ? (message.channel ?? "") : undefined);
-  const isPrivate =
-    message.stream_id == null &&
-    (Array.isArray(displayRecipient) || typeof displayRecipient !== "string");
-
-  return {
-    id: message.id,
-    sender_id: message.sender_id,
-    sender_full_name: message.sender_full_name,
-    content: message.content,
-    timestamp: message.timestamp,
-    display_recipient: displayRecipient,
-    subject: message.subject,
-    type: isPrivate ? "private" : "stream",
-    stream_id: message.stream_id,
-    flags: message.flags,
-    reactions: message.reactions,
-  };
 }
 
 // Проверяет, подходит ли сообщение под выбранный activity-фильтр.

@@ -2,6 +2,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { resolvePersonalDmSidebarTitle } from "~/entities/chat-list/chat-list-format.lib";
+import { createOnDmMessagesAppliedHandler } from "~/entities/chat-list/chat-list-sync-dm-from-window.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { resolveHydratedDraftBootstrap } from "~/entities/draft/draft-chat-bootstrap.lib";
 import {
@@ -31,6 +32,7 @@ import {
   buildStreamTypingChatKey,
 } from "~/features/typing-indicator/typing-key";
 import { t } from "~/i18n/i18n";
+import { getCurrentInstance } from "~/shared/api/client";
 import {
   fetchMessageById,
   getRealmBaseUrl,
@@ -241,6 +243,14 @@ export const ChatPage: React.FC = () => {
   const hasNewerMessages = useCurrentChatMessagesStore((s) => s.hasNewerMessages);
   const loadInitialMessagesForContext = useCurrentChatMessagesStore(
     (s) => s.loadInitialMessagesForContext,
+  );
+  const onDmMessagesApplied = useMemo(
+    () =>
+      createOnDmMessagesAppliedHandler({
+        getInstanceId: () => getCurrentInstance()?.id ?? null,
+        getCurrentUserId: () => useChatListStore.getState().currentUserId,
+      }),
+    [],
   );
   const loadOlderBoundaryPage = useCurrentChatMessagesStore((s) => s.loadOlderBoundaryPage);
   const loadNewerBoundaryPage = useCurrentChatMessagesStore((s) => s.loadNewerBoundaryPage);
@@ -948,6 +958,7 @@ export const ChatPage: React.FC = () => {
       focusedMessageId,
       currentUserId,
       signal: initialLoadController.signal,
+      onDmMessagesApplied,
       // Что делает: фиксирует момент cache-first гидрации для UI-флагов.
       onCacheHydrated: () => {
         if (!initialLoadController.signal.aborted) {
@@ -996,6 +1007,7 @@ export const ChatPage: React.FC = () => {
     focusedMessageId,
     currentUserId,
     loadInitialMessagesForContext,
+    onDmMessagesApplied,
     isFocusedMessageLoadedInCurrentRoute,
     messagesReloadNonce,
     setActionError,

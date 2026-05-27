@@ -39,13 +39,18 @@ import {
 } from "./client";
 import { parseCurrentUserFromApiData } from "./zulip-current-user.lib";
 import { mockMessageFromGetMessageApiData, rawMessageToMockMessage } from "./zulip-message-map.lib";
+import { parseRecentPrivateConversations } from "./zulip-recent-private-conversations.lib";
 import { parseRegisterResponseJitsiServerUrl } from "./zulip-register-jitsi.lib";
 import {
   parseAvatarChangesDisabledFlag,
   parseMaxAvatarFileSizeMib,
   parseServerThumbnailFormats,
 } from "./zulip-register-metadata.lib";
-import { parseUnreadDmMessagesCount, parseUnreadMessagesCount } from "./zulip-unread.lib";
+import {
+  parseRegisterUnreadSnapshot,
+  parseUnreadDmMessagesCount,
+  parseUnreadMessagesCount,
+} from "./zulip-unread.lib";
 import type {
   ReactionType,
   RealmEmoji,
@@ -485,40 +490,6 @@ function isPositiveInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value > 0;
 }
 
-// Что делает: безопасно читает recent_private_conversations из register-ответа и отфильтровывает битые данные.
-function parseRecentPrivateConversations(
-  data: unknown,
-): Record<string, ZulipRecentPrivateConversation> | null {
-  if (data == null || typeof data !== "object" || Array.isArray(data)) {
-    return null;
-  }
-
-  const entries = Object.entries(data as Record<string, unknown>);
-  if (entries.length === 0) {
-    return {};
-  }
-
-  const parsed: Record<string, ZulipRecentPrivateConversation> = {};
-  for (const [key, value] of entries) {
-    if (value == null || typeof value !== "object" || Array.isArray(value)) continue;
-    const record = value as Record<string, unknown>;
-    if (!Array.isArray(record.user_ids)) continue;
-    const userIds = record.user_ids.filter(isPositiveInteger);
-    if (userIds.length === 0) continue;
-    const unreadMessageIds = Array.isArray(record.unread_message_ids)
-      ? record.unread_message_ids.filter(isPositiveInteger)
-      : [];
-    const maxMessageId = isPositiveInteger(record.max_message_id) ? record.max_message_id : null;
-    parsed[key] = {
-      user_ids: Array.from(new Set(userIds)).sort((left, right) => left - right),
-      max_message_id: maxMessageId,
-      unread_message_ids: unreadMessageIds,
-    };
-  }
-
-  return parsed;
-}
-
 // Загружает server settings без авторизации.
 // Используется на странице логина, чтобы показать иконку realm, имя и auth-методы.
 export async function fetchServerSettings(realmUrl: string): Promise<{
@@ -894,6 +865,7 @@ export async function registerQueue(
     max_avatar_file_size_mib?: unknown;
     realm_avatar_changes_disabled?: unknown;
     server_avatar_changes_disabled?: unknown;
+    unread_msgs?: unknown;
   } | null;
   if (data == null || typeof data !== "object") {
     throw new Error(t("app.invalidResponse"));
@@ -905,6 +877,7 @@ export async function registerQueue(
     throw new Error(t("app.invalidRegisterResponse"));
   }
 
+  const unreadSnapshot = parseRegisterUnreadSnapshot(data);
   const subscriptions = parseSubscriptions(data.subscriptions);
   const userTopics = parseUserTopics(data.user_topics);
   const recentPrivateConversations = parseRecentPrivateConversations(
@@ -951,6 +924,7 @@ export async function registerQueue(
       ? { server_avatar_changes_disabled: serverAvatarChangesDisabled }
       : {}),
     ...(jitsiServerUrlEffective ? { jitsi_server_url_effective: jitsiServerUrlEffective } : {}),
+    ...(unreadSnapshot ? { unread_snapshot: unreadSnapshot } : {}),
   };
 }
 
@@ -974,12 +948,12 @@ export async function registerQueueForCredentials(
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: new URLSearchParams({
-        event_types: JSON.stringify(eventTypes),
-        client_capabilities: JSON.stringify(REGISTER_CLIENT_CAPABILITIES),
+        // event_types: JSON.stringify(eventTypes),
+        // client_capabilities: JSON.stringify(REGISTER_CLIENT_CAPABILITIES),
         // Зачем: background-loop для других инстансов должен получать такой же metadata-набор.
-        ...(fetchEventTypes.length > 0
-          ? { fetch_event_types: JSON.stringify(fetchEventTypes) }
-          : {}),
+        // ...(fetchEventTypes.length > 0
+        //   ? { fetch_event_types: JSON.stringify(fetchEventTypes) }
+        //   : {}),
       }).toString(),
     });
   } catch {
@@ -1002,6 +976,7 @@ export async function registerQueueForCredentials(
     max_avatar_file_size_mib?: unknown;
     realm_avatar_changes_disabled?: unknown;
     server_avatar_changes_disabled?: unknown;
+    unread_msgs?: unknown;
   };
   try {
     data = (await response.json()) as typeof data;
@@ -1016,6 +991,7 @@ export async function registerQueueForCredentials(
     throw new Error(t("app.invalidRegisterResponse"));
   }
 
+  const unreadSnapshot = parseRegisterUnreadSnapshot(data);
   const subscriptions = parseSubscriptions(data.subscriptions);
   const userTopics = parseUserTopics(data.user_topics);
   const recentPrivateConversations = parseRecentPrivateConversations(
@@ -1062,6 +1038,7 @@ export async function registerQueueForCredentials(
       ? { server_avatar_changes_disabled: serverAvatarChangesDisabled }
       : {}),
     ...(jitsiServerUrlEffective ? { jitsi_server_url_effective: jitsiServerUrlEffective } : {}),
+    ...(unreadSnapshot ? { unread_snapshot: unreadSnapshot } : {}),
   };
 }
 
@@ -1770,6 +1747,10 @@ export async function fetchMessagesAfterAnchor(
 export async function fetchUnreadMessagesSnapshot(
   numBefore = 5000,
 ): Promise<ZulipRawMessage[] | null> {
+  if (env.DISABLE_UNREAD_MESSAGES_SNAPSHOT_FETCH) {
+    logChatListFlow("api: fetchUnreadMessagesSnapshot skipped (env flag)", { numBefore });
+    return null;
+  }
   // Что делает: `null` здесь означает ошибку запроса, а не "unread на сервере нет".
   // Зачем: caller не должен обнулять бейджи по временной сетевой ошибке или bad payload.
   const safeNumBefore = validateNonNegativeInteger(

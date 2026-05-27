@@ -12,14 +12,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 let mockInstance: { email: string; apiKey: string; realm: string } | null = null;
 
-vi.mock("./logger", () => ({
-  createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  }),
-}));
+vi.mock("./logger", async (importOriginal) => {
+  const { createPartialLoggerMock } = await import("~/test/logger-vitest-mock");
+  return createPartialLoggerMock(importOriginal as () => Promise<typeof import("./logger")>);
+});
 
 describe("auth-guard", () => {
   beforeEach(() => {

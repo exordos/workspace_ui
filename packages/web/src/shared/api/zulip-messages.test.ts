@@ -11,6 +11,7 @@ import {
   fetchAllMessagesPage,
   fetchDmMessages,
   fetchMessageById,
+  fetchMessagesByIds,
   fetchMessages,
   fetchMessagesAfterAnchor,
   fetchMessagesBeforeAnchor,
@@ -334,6 +335,100 @@ describe("fetchActivityMessagesPage", () => {
 // ---------------------------------------------------------------------------
 // fetchSubscriptions / fetchUserTopics / fetchMessageById / fetchStreamMembers
 // ---------------------------------------------------------------------------
+describe("fetchMessagesByIds", () => {
+  it("returns empty array when no ids are provided", async () => {
+    await expect(fetchMessagesByIds([])).resolves.toEqual([]);
+    expect(mockZulipApi.get).not.toHaveBeenCalled();
+  });
+
+  it("requests messages by message_ids batch", async () => {
+    mockZulipApi.get.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        messages: [
+          {
+            id: 501,
+            sender_id: 42,
+            sender_full_name: "Alice",
+            content: "dm preview",
+            timestamp: 1710000200,
+            type: "private",
+            stream_id: null,
+            display_recipient: [
+              { id: 7, full_name: "Bob" },
+              { id: 42, full_name: "Alice" },
+            ],
+          },
+        ],
+      },
+      raw: { statusText: "OK" },
+    });
+
+    const result = await fetchMessagesByIds([501, 501, 0, -1]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.id).toBe(501);
+    expect(mockZulipApi.get).toHaveBeenCalledWith(
+      "/messages",
+      {
+        message_ids: "[501]",
+        allow_empty_topic_name: "true",
+        client_gravatar: "true",
+        apply_markdown: "false",
+      },
+      undefined,
+    );
+  });
+
+  it("falls back to per-message fetch when batch request fails", async () => {
+    mockZulipApi.get
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        data: { result: "error", msg: "message_ids not supported" },
+        raw: { statusText: "Bad Request" },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        data: {
+          result: "success",
+          message: {
+            id: 777,
+            sender_id: 42,
+            sender_full_name: "Alice",
+            content: "fallback dm",
+            timestamp: 1710000300,
+            type: "private",
+            stream_id: null,
+            display_recipient: [
+              { id: 7, full_name: "Bob" },
+              { id: 42, full_name: "Alice" },
+            ],
+          },
+        },
+        raw: { statusText: "OK" },
+      });
+
+    const result = await fetchMessagesByIds([777]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.content).toBe("fallback dm");
+    expect(mockZulipApi.get).toHaveBeenCalledTimes(2);
+    expect(mockZulipApi.get).toHaveBeenNthCalledWith(
+      2,
+      "/messages/777",
+      {
+        allow_empty_topic_name: "true",
+        apply_markdown: "false",
+      },
+      undefined,
+    );
+  });
+});
+
 describe("fetchMessageById", () => {
   it("returns mapped message data", async () => {
     mockZulipApi.get.mockResolvedValue({

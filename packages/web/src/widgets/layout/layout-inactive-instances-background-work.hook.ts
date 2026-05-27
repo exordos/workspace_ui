@@ -6,6 +6,12 @@ import {
   fetchUnreadMessagesCountForCredentials,
 } from "~/shared/api/zulip";
 import { startZulipEventLoopForCredentials } from "~/shared/lib/event-loop";
+import {
+  applyInstanceUnreadCountsFromRegisterSnapshot,
+  getCachedRegisterUnreadSnapshot,
+  isRegisterUnreadSnapshotUsable,
+  setCachedRegisterUnreadSnapshot,
+} from "./layout-instance-register-unread.lib";
 import { startInactiveInstanceEventStreams } from "./layout-multi-org-event-streams.lib";
 import { startInactiveInstanceUnreadPolling } from "./layout-multi-org-polling.lib";
 
@@ -27,6 +33,16 @@ export function useInactiveInstancesBackgroundWork(options: {
       enabled,
       online,
       refreshUnreadForInstance: async (instance) => {
+        const cached = getCachedRegisterUnreadSnapshot(instance.id);
+        if (isRegisterUnreadSnapshotUsable(cached)) {
+          applyInstanceUnreadCountsFromRegisterSnapshot(
+            instance.id,
+            cached,
+            setUnreadCount,
+            setDmUnreadCount,
+          );
+          return;
+        }
         const credentials = {
           realm: instance.realm,
           email: instance.email,
@@ -43,10 +59,20 @@ export function useInactiveInstancesBackgroundWork(options: {
           setDmUnreadCount(instance.id, dmUnreadCount);
         }
       },
-      startEventLoop: ({ credentials, onEvent, onBadQueue, onQueueReady, onReconnect }) => {
+      startEventLoop: ({
+        credentials,
+        onEvent,
+        onBadQueue,
+        onQueueReady,
+        onReconnect,
+        onQueueRegistered,
+      }) => {
         const controller = new AbortController();
         let queueId: string | null = null;
         let stopped = false;
+        const instance = instances.find(
+          (row) => row.realm === credentials.realm && row.email === credentials.email,
+        );
         startZulipEventLoopForCredentials({
           credentials,
           signal: controller.signal,
@@ -60,12 +86,24 @@ export function useInactiveInstancesBackgroundWork(options: {
             "subscription",
             "user_topic",
           ],
-          onQueueRegistered: (id) => {
+          onQueueRegistered: (id, registration) => {
             if (stopped) {
               deleteQueue(id, credentials).catch(() => {});
               return;
             }
             queueId = id;
+            if (instance != null && registration?.unread_snapshot != null) {
+              setCachedRegisterUnreadSnapshot(instance.id, registration.unread_snapshot);
+              if (isRegisterUnreadSnapshotUsable(registration.unread_snapshot)) {
+                applyInstanceUnreadCountsFromRegisterSnapshot(
+                  instance.id,
+                  registration.unread_snapshot,
+                  setUnreadCount,
+                  setDmUnreadCount,
+                );
+              }
+            }
+            onQueueRegistered?.(id, registration);
           },
         });
         return () => {

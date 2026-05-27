@@ -23,7 +23,7 @@ vi.mock("../entities/user/user.model", () => ({
 vi.mock("../entities/instance/instance.model", () => ({
   useInstancesStore: { getState: vi.fn(() => ({})) },
 }));
-const { mockThemeState } = vi.hoisted(() => ({
+const { mockThemeState, initConsoleCaptureMock } = vi.hoisted(() => ({
   mockThemeState: {
     paletteId: "orange-warm",
     mode: "dark",
@@ -31,6 +31,7 @@ const { mockThemeState } = vi.hoisted(() => ({
     setMode: vi.fn(),
     toggleMode: vi.fn(),
   },
+  initConsoleCaptureMock: vi.fn(() => () => {}),
 }));
 vi.mock("../entities/theme/theme.model", () => ({
   useThemeStore: {
@@ -52,20 +53,37 @@ vi.mock("../i18n/i18n", () => ({
 vi.mock("../shared/lib/env", () => ({
   env: { DEV: true, PROD: false, MODE: "development" },
 }));
-vi.mock("../shared/lib/logger", () => ({
-  createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  }),
-  getLogHistory: vi.fn(() => [
-    { level: "info", message: "test", scope: "app", timestamp: Date.now(), data: {} },
-    { level: "error", message: "err", scope: "app", timestamp: Date.now(), data: {} },
-  ]),
-  clearLogHistory: vi.fn(),
-  setMinLevel: vi.fn(),
+vi.mock("../shared/lib/console-capture.lib", () => ({
+  initConsoleCapture: initConsoleCaptureMock,
 }));
+vi.mock("../shared/lib/logger", async (importOriginal) => {
+  const { createPartialLoggerMock } = await import("~/test/logger-vitest-mock");
+  return createPartialLoggerMock(
+    importOriginal as () => Promise<typeof import("../shared/lib/logger")>,
+    {
+      getLogHistory: vi.fn(() => [
+        {
+          level: "info",
+          message: "test",
+          scope: "app",
+          timestamp: new Date().toISOString(),
+          runtime: "browser",
+          data: {},
+        },
+        {
+          level: "error",
+          message: "err",
+          scope: "app",
+          timestamp: new Date().toISOString(),
+          runtime: "browser",
+          data: {},
+        },
+      ]),
+      clearLogHistory: vi.fn(),
+      setMinLevel: vi.fn(),
+    },
+  );
+});
 vi.mock("../shared/lib/perf", () => ({
   perf: { startTimer: vi.fn(), mark: vi.fn(), measure: vi.fn() },
 }));
@@ -130,6 +148,7 @@ describe("devtools", () => {
     it("logs a ready message to console", () => {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       installDevTools();
+      expect(initConsoleCaptureMock).toHaveBeenCalled();
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining("DevTools ready"),
         expect.any(String),

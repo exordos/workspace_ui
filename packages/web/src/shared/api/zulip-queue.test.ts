@@ -5,6 +5,7 @@ import "./zulip.test.setup";
 import { describe, expect, it, vi } from "vitest";
 import { getCurrentInstance } from "./client";
 import {
+  DEFAULT_REGISTER_FETCH_EVENT_TYPES,
   deleteQueue,
   fetchUnreadMessagesCountForCredentials,
   getCachedOwnAvatarCapabilities,
@@ -56,13 +57,7 @@ describe("registerQueue", () => {
         archived_channels: true,
         empty_topic_name: true,
       }),
-      fetch_event_types: JSON.stringify([
-        "subscription",
-        "user_topic",
-        "recent_private_conversations",
-        "realm",
-        "realm_user_groups",
-      ]),
+      fetch_event_types: JSON.stringify([...DEFAULT_REGISTER_FETCH_EVENT_TYPES]),
     });
   });
 
@@ -96,7 +91,7 @@ describe("registerQueue", () => {
     await expect(registerQueue(["message"])).rejects.toThrow();
   });
 
-  it("parses recent_private_conversations from register payload", async () => {
+  it("parses recent_private_conversations from register payload (map format)", async () => {
     mockZulipApi.post.mockResolvedValue({
       ok: true,
       status: 200,
@@ -125,6 +120,35 @@ describe("registerQueue", () => {
     });
   });
 
+  it("parses recent_private_conversations from register payload (Zulip array format)", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        queue_id: "q-456",
+        last_event_id: -1,
+        recent_private_conversations: [
+          {
+            user_ids: [20],
+            max_message_id: 900,
+            unread_message_ids: [900],
+          },
+        ],
+      },
+      raw: { statusText: "OK" },
+    });
+
+    const result = await registerQueue(["message"]);
+    expect(result.recent_private_conversations).toEqual({
+      "20": {
+        user_ids: [20],
+        max_message_id: 900,
+        unread_message_ids: [900],
+      },
+    });
+  });
+
   it("parses subscriptions from register payload", async () => {
     mockZulipApi.post.mockResolvedValue({
       ok: true,
@@ -146,6 +170,58 @@ describe("registerQueue", () => {
       { stream_id: 10, name: "general", is_muted: true, is_archived: false },
       { stream_id: 11, name: "dev", is_muted: true, is_archived: true },
     ]);
+  });
+
+  it("parses unread_msgs into unread_snapshot from register payload", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        queue_id: "q-123",
+        last_event_id: -1,
+        unread_msgs: {
+          count: 4,
+          streams: [{ stream_id: 10, topic: "general", unread_message_ids: [1, 2] }],
+          pms: [{ other_user_id: 20, unread_message_ids: [3] }],
+          huddles: [],
+          mentions: [{ unread_message_ids: [4] }],
+        },
+      },
+      raw: { statusText: "OK" },
+    });
+
+    const result = await registerQueue(["message", "update_message_flags"]);
+    expect(result.unread_snapshot).toEqual({
+      streams: [{ streamId: 10, topic: "general", unreadMessageIds: [1, 2] }],
+      dms: [{ userIds: [20], unreadMessageIds: [3], isGroup: false }],
+      totalCount: 4,
+    });
+  });
+
+  it("sets oldUnreadsMissing on unread_snapshot when register reports truncation", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        queue_id: "q-123",
+        last_event_id: -1,
+        unread_msgs: {
+          count: 1,
+          streams: [],
+          pms: [{ sender_id: 20, unread_message_ids: [1] }],
+          huddles: [],
+          mentions: [],
+          old_unreads_missing: true,
+        },
+      },
+      raw: { statusText: "OK" },
+    });
+
+    const result = await registerQueue(["message", "update_message_flags"]);
+    expect(result.unread_snapshot?.oldUnreadsMissing).toBe(true);
+    expect(result.unread_snapshot?.totalCount).toBe(1);
   });
 
   it("parses server_thumbnail_formats when realm metadata is returned", async () => {

@@ -515,7 +515,33 @@ export function registerMessagesRoutes(app: Express, apiBase: string) {
 
   // GET /messages — Zulip API: narrow (JSON), anchor, num_before, num_after
   app.get(`${apiBase}/messages`, (req: Request, res: Response) => {
-    const { narrow: narrowRaw, anchor, num_before, num_after } = req.query;
+    const { narrow: narrowRaw, anchor, num_before, num_after, message_ids: messageIdsRaw } =
+      req.query;
+
+    if (typeof messageIdsRaw === "string" && messageIdsRaw.trim().length > 0) {
+      let requestedIds: number[] = [];
+      try {
+        const parsed = JSON.parse(messageIdsRaw) as unknown;
+        if (Array.isArray(parsed)) {
+          requestedIds = parsed.filter(
+            (value): value is number => typeof value === "number" && Number.isInteger(value),
+          );
+        }
+      } catch {
+        requestedIds = [];
+      }
+      const idSet = new Set(requestedIds);
+      const matched = messages
+        .filter((message) => idSet.has(message.id))
+        .sort((left, right) => left.id - right.id)
+        .map(toZulipMessage);
+      res.json({
+        result: "success",
+        msg: "",
+        messages: matched,
+      });
+      return;
+    }
     const numBefore = Math.min(Math.max(0, parseInt(String(num_before), 10) || 50), 5000);
     const numAfter = Math.min(Math.max(0, parseInt(String(num_after), 10) || 0), 5000);
 

@@ -1,6 +1,11 @@
 // Оркестрация bootstrap + long-poll event loop для активного инстанса.
 import { useEffect, useRef } from "react";
 import { useActivityStore } from "~/entities/activity/activity.model";
+import {
+  summarizeRecentPrivateConversationsForTrace,
+  traceDmPreviewHydrate,
+} from "~/entities/chat-list/chat-list-dm-preview-hydrate-trace.lib";
+import { hydrateDmSidebarPreviewsFromRecentConversations } from "~/entities/chat-list/chat-list-dm-preview-hydrate.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import type {
   ChatListDmMetadataRow,
@@ -28,6 +33,7 @@ import {
   type ZulipEvent,
 } from "~/shared/api/zulip";
 import { DEFAULT_REGISTER_FETCH_EVENT_TYPES } from "~/shared/api/zulip-queue";
+import type { ZulipUnreadMessagesSnapshot } from "~/shared/api/zulip-unread.lib";
 import type {
   ZulipRawMessage,
   ZulipRecentPrivateConversation,
@@ -61,6 +67,10 @@ import { resolveNotificationSoundPreset } from "~/shared/lib/notification-sound-
 import { notificationService } from "~/shared/lib/notifications";
 import { loadUsersDirectoryRow } from "~/shared/lib/users-directory-snapshot-db";
 import { applyChatListBootstrapResult } from "./layout-chat-list-bootstrap-apply.lib";
+import {
+  isRegisterUnreadSnapshotUsable,
+  setCachedRegisterUnreadSnapshot,
+} from "./layout-instance-register-unread.lib";
 import {
   buildLayoutNotificationsActions,
   dispatchZulipEvent,
@@ -207,15 +217,44 @@ function persistDmIndexFromStore(instanceId: string): void {
 function startSidebarUnreadReconcile(options: {
   cancelled: () => boolean;
   currentUserId: number | null;
+  registerSnapshot?: ZulipUnreadMessagesSnapshot | null;
 }): void {
-  // Что делает: после bootstrap отдельно сверяет unread sidebar с серверным is:unread snapshot.
+  // Что делает: после bootstrap сверяет unread sidebar с authoritative snapshot.
   // Зачем: IDB hydrate и delta bootstrap могут сохранить stale счетчики, если read-event был когда-то пропущен.
+  const snapshot = options.registerSnapshot;
+  if (isRegisterUnreadSnapshotUsable(snapshot)) {
+    if (options.cancelled()) return;
+    useChatListStore.getState().reconcileUnreadFromSnapshot(snapshot, options.currentUserId);
+    return;
+  }
+
+  if (env.DISABLE_UNREAD_MESSAGES_SNAPSHOT_FETCH) {
+    return;
+  }
+
   void fetchUnreadMessagesSnapshot()
     .then((messages) => {
       if (options.cancelled() || messages == null) return;
       useChatListStore.getState().reconcileUnreadFromMessages(messages, options.currentUserId);
     })
     .catch(() => {});
+}
+
+function reconcileSidebarUnreadFromRegister(
+  registration: { unread_snapshot?: ZulipUnreadMessagesSnapshot } | undefined,
+  currentUserId: number | null,
+): void {
+  const snapshot = registration?.unread_snapshot;
+  if (!isRegisterUnreadSnapshotUsable(snapshot)) {
+    return;
+  }
+  logChatListFlow("eventLoop: reconcileUnreadFromSnapshot from register unread_msgs", {
+    currentUserId,
+    streamBuckets: snapshot.streams.length,
+    dmBuckets: snapshot.dms.length,
+    totalCount: snapshot.totalCount,
+  });
+  useChatListStore.getState().reconcileUnreadFromSnapshot(snapshot, currentUserId);
 }
 
 // Нормализует формат строки IDB к контракту, который ожидает mute-store.
@@ -322,6 +361,10 @@ export function useLayoutZulipEventLoop(options: {
     null,
   );
   const internalLatestMessageIdRef = useRef<number | null>(null);
+  const registerUnreadSnapshotRef = useRef<ZulipUnreadMessagesSnapshot | null>(null);
+  const recentPrivateConversationsRef = useRef<
+    Record<string, ZulipRecentPrivateConversation> | undefined
+  >(undefined);
 
   useEffect(() => {
     if (!currentInstanceId) {
@@ -359,6 +402,8 @@ export function useLayoutZulipEventLoop(options: {
           .catch(() => null)
       : null;
     if (instanceSwitched) {
+      registerUnreadSnapshotRef.current = null;
+      recentPrivateConversationsRef.current = undefined;
       logMessageFlow("eventLoop:clear stores (instance switched)", {
         instanceId: currentInstanceId,
       });
@@ -412,13 +457,101 @@ export function useLayoutZulipEventLoop(options: {
       const metadataBootstrapEnabled = env.METADATA_CHAT_BOOTSTRAP_ENABLED;
       const metadataDmBackfillEnabled =
         metadataBootstrapEnabled && env.METADATA_DM_BACKFILL_ENABLED;
+      const metadataDmPreviewHydrationEnabled =
+        metadataBootstrapEnabled && !env.METADATA_DM_BACKFILL_ENABLED;
+      traceDmPreviewHydrate("bootstrap:envFlags", {
+        instanceId: currentInstanceId,
+        METADATA_CHAT_BOOTSTRAP_ENABLED: metadataBootstrapEnabled,
+        METADATA_DM_BACKFILL_ENABLED: env.METADATA_DM_BACKFILL_ENABLED,
+        metadataDmPreviewHydrationEnabled,
+      });
+      let bootstrapUserId: number | null = null;
+
+      const scheduleDmPreviewHydration = (
+        conversations?: Record<string, ZulipRecentPrivateConversation>,
+        currentUserIdOverride?: number | null,
+        metadataRows?: ChatListDmMetadataRow[],
+        source = "unknown",
+      ): void => {
+        traceDmPreviewHydrate("schedule:called", {
+          source,
+          cancelled,
+          metadataBootstrapEnabled,
+          metadataDmBackfillEnabled,
+          metadataDmPreviewHydrationEnabled,
+          hasConversationsArg: conversations != null,
+          conversations: summarizeRecentPrivateConversationsForTrace(conversations),
+          currentUserIdOverride: currentUserIdOverride ?? null,
+          storeCurrentUserId: useChatListStore.getState().currentUserId,
+          bootstrapUserId,
+          metadataRowsArgCount: metadataRows?.length ?? null,
+        });
+
+        if (!metadataDmPreviewHydrationEnabled) {
+          logChatListFlow("eventLoop: skip DM preview hydrate (feature disabled)", {
+            metadataBootstrapEnabled,
+            metadataDmBackfillEnabled,
+          });
+          traceDmPreviewHydrate("schedule:skip", { reason: "feature_disabled", source });
+          return;
+        }
+        if (conversations != null) {
+          recentPrivateConversationsRef.current = conversations;
+        }
+        const snapshot = conversations ?? recentPrivateConversationsRef.current;
+        if (snapshot == null) {
+          logChatListFlow("eventLoop: skip DM preview hydrate (no recent_private_conversations)");
+          traceDmPreviewHydrate("schedule:skip", { reason: "no_conversations_snapshot", source });
+          return;
+        }
+        const currentUserId =
+          currentUserIdOverride ?? useChatListStore.getState().currentUserId ?? bootstrapUserId;
+        const rows =
+          metadataRows ??
+          (metadataBootstrapEnabled ? toDmMetadataRowsFromRecentConversations(snapshot) : []);
+
+        traceDmPreviewHydrate("schedule:dispatchHydrate", {
+          source,
+          currentUserId,
+          metadataRowCount: rows.length,
+          conversations: summarizeRecentPrivateConversationsForTrace(snapshot),
+        });
+
+        void hydrateDmSidebarPreviewsFromRecentConversations({
+          conversations: snapshot,
+          metadataRows: rows,
+          currentUserId,
+          instanceId: currentInstanceId ?? undefined,
+          cancelled: () => cancelled,
+        })
+          .then(() => {
+            if (cancelled || currentInstanceId == null) return;
+            persistDmIndexFromStore(currentInstanceId);
+            traceDmPreviewHydrate("schedule:persistDmIndexDone", {
+              source,
+              instanceId: currentInstanceId,
+            });
+          })
+          .catch((error) => {
+            traceDmPreviewHydrate("schedule:hydrateRejected", {
+              source,
+              error: error instanceof Error ? error.message : String(error),
+            });
+            log.error("DM preview hydrate failed", {
+              source,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+      };
       const attemptResolveCurrentUser = async (): Promise<number | null> => {
         try {
           const user = await getCurrentUser();
           if (cancelled || isBootstrapStale()) return null;
           if (user?.user_id != null) {
+            bootstrapUserId = user.user_id;
             useUsersStore.getState().mergeUser(user);
             setCurrentUserIdRef.current(user.user_id);
+            scheduleDmPreviewHydration(undefined, user.user_id, undefined, "getCurrentUser");
             setBootstrapStatus("ready");
             reportSuccess();
             return user.user_id;
@@ -441,7 +574,9 @@ export function useLayoutZulipEventLoop(options: {
           const inst = useInstancesStore.getState().getCurrentInstance();
           uid = resolveSelfUserIdFromMembers(members, inst?.email);
           if (uid != null) {
+            bootstrapUserId = uid;
             setCurrentUserIdRef.current(uid);
+            scheduleDmPreviewHydration(undefined, uid, undefined, "finalizeBootstrapAuth");
             const member = members.find((m) => m.user_id === uid);
             if (member != null) {
               useUsersStore.getState().mergeUser(member);
@@ -514,6 +649,9 @@ export function useLayoutZulipEventLoop(options: {
         useChatListStore.getState().setStreamMetadataHydrated(true);
 
         const uid = resolvedCurrentUserId ?? useChatListStore.getState().currentUserId ?? null;
+        if (uid != null) {
+          bootstrapUserId = uid;
+        }
 
         logChatListFlow("eventLoop: bootstrap Promise.all settled", {
           instanceId: currentInstanceId,
@@ -543,6 +681,7 @@ export function useLayoutZulipEventLoop(options: {
         startSidebarUnreadReconcile({
           cancelled: () => cancelled,
           currentUserId: uid,
+          registerSnapshot: registerUnreadSnapshotRef.current,
         });
 
         if (metadataDmBackfillEnabled && currentInstanceId != null) {
@@ -632,7 +771,22 @@ export function useLayoutZulipEventLoop(options: {
             onBadQueue: refreshStaleData,
             fetchEventTypes: [...DEFAULT_REGISTER_FETCH_EVENT_TYPES],
             onQueueRegistered: (id, registration) => {
+              traceDmPreviewHydrate("register:onQueueRegistered", {
+                queueId: id,
+                metadataBootstrapEnabled,
+                metadataDmPreviewHydrationEnabled,
+                conversations: summarizeRecentPrivateConversationsForTrace(
+                  registration?.recent_private_conversations,
+                ),
+                storeCurrentUserId: useChatListStore.getState().currentUserId,
+                bootstrapUserId,
+              });
+
               queueIdRef.current = id;
+              registerUnreadSnapshotRef.current = registration?.unread_snapshot ?? null;
+              if (currentInstanceId != null && registration?.unread_snapshot != null) {
+                setCachedRegisterUnreadSnapshot(currentInstanceId, registration.unread_snapshot);
+              }
               if (registration?.jitsi_server_url_effective != null) {
                 useInstancesStore
                   .getState()
@@ -658,9 +812,8 @@ export function useLayoutZulipEventLoop(options: {
               }
               if (metadataBootstrapEnabled) {
                 // Что делает: подмешивает recent_private_conversations сразу после register.
-                const rows = toDmMetadataRowsFromRecentConversations(
-                  registration?.recent_private_conversations,
-                );
+                const conversations = registration?.recent_private_conversations;
+                const rows = toDmMetadataRowsFromRecentConversations(conversations);
                 if (rows.length > 0) {
                   logChatListFlow(
                     "eventLoop: registerQueue → upsertDmMetadataRows from recent_private_conversations",
@@ -673,7 +826,21 @@ export function useLayoutZulipEventLoop(options: {
                     persistDmIndexFromStore(currentInstanceId);
                   }
                 }
+                scheduleDmPreviewHydration(
+                  conversations,
+                  useChatListStore.getState().currentUserId ?? bootstrapUserId,
+                  rows,
+                  "onQueueRegistered",
+                );
+              } else {
+                traceDmPreviewHydrate("register:skipDmPreview", {
+                  reason: "metadata_bootstrap_disabled",
+                });
               }
+              reconcileSidebarUnreadFromRegister(
+                registration,
+                useChatListStore.getState().currentUserId,
+              );
               void loadMuteSnapshotRef
                 .current({
                   subscriptions: registration?.subscriptions,

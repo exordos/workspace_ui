@@ -9,15 +9,10 @@ import { ZULIP_API_FETCH_TIMEOUT_MS } from "../config/constants";
 import { wipeCredentials } from "../lib/auth-guard";
 import type { Middleware, ApiRequest, ApiResponse, NextFn } from "./client";
 
-vi.mock("../lib/logger", () => ({
-  logApiCall: vi.fn(),
-  createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  }),
-}));
+vi.mock("../lib/logger", async (importOriginal) => {
+  const { createPartialLoggerMock } = await import("~/test/logger-vitest-mock");
+  return createPartialLoggerMock(importOriginal as () => Promise<typeof import("../lib/logger")>);
+});
 
 vi.mock("../lib/env", () => ({
   env: {

@@ -26,6 +26,18 @@ describe("parseUnreadMessagesCount", () => {
     expect(result).toBe(7);
   });
 
+  it("uses other_user_id for pms buckets when present", () => {
+    const result = parseUnreadMessagesSnapshot({
+      unread_msgs: {
+        streams: [],
+        pms: [{ other_user_id: 42, unread_message_ids: [1, 2] }],
+        huddles: [],
+        mentions: [],
+      },
+    });
+    expect(result?.dms).toEqual([{ userIds: [42], unreadMessageIds: [1, 2], isGroup: false }]);
+  });
+
   it("returns zero for valid empty payload", () => {
     const result = parseUnreadMessagesCount({
       unread_msgs: {

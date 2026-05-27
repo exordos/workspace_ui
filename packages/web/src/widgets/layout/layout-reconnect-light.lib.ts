@@ -3,6 +3,7 @@ import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInboxStore } from "~/entities/inbox/inbox.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { fetchMessagesAfterAnchor } from "~/shared/api/zulip";
+import { env } from "~/shared/lib/env";
 import { createLogger } from "~/shared/lib/logger";
 import {
   logChatListFlow,
@@ -24,6 +25,11 @@ export interface RefreshLayoutReconnectLightOptions {
 export function refreshLayoutReconnectLight(options: RefreshLayoutReconnectLightOptions): void {
   const { latestMessageIdRef, isCancelled } = options;
   if (isCancelled?.()) return;
+
+  if (env.METADATA_CHAT_BOOTSTRAP_ENABLED) {
+    logChatListFlow("reconnectLight: skip sidebar delta (metadata-first)", {});
+    return;
+  }
 
   const uid = useChatListStore.getState().currentUserId ?? null;
   const anchor = maxAnchor(latestMessageIdRef?.current ?? null, getInMemoryLatestMessageId());

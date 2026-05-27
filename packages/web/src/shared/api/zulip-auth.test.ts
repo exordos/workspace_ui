@@ -119,7 +119,10 @@ describe("fetchServerSettings", () => {
   it("strips /api/v1 suffix before constructing URL", async () => {
     mockFetch.mockResolvedValue(jsonResponse({}));
     await fetchServerSettings("https://zulip.example.com/api/v1");
-    expect(mockFetch).toHaveBeenCalledWith("https://zulip.example.com/api/v1/server_settings");
+    expect(mockFetch).toHaveBeenCalledWith(
+      "https://zulip.example.com/api/v1/server_settings",
+      undefined,
+    );
   });
 
   it("skips request for malformed realm hostname ending with dot", async () => {

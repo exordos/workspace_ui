@@ -1,6 +1,7 @@
 /**
  * Public TypeScript contracts for the Zulip API client (`zulip-*.ts` modules).
  */
+import type { ZulipUnreadMessagesSnapshot } from "~/shared/api/zulip-unread.lib";
 import type { LinkPreviewData } from "~/shared/lib/message-link-preview.types";
 
 export class ZulipAuthError extends Error {
@@ -125,6 +126,11 @@ export interface RegisterQueueResult {
   jitsi_server_url_effective?: string;
   /** Present when `user_settings_object` client capability is set. */
   user_settings?: Record<string, unknown>;
+  /**
+   * Authoritative unread buckets from register `unread_msgs`
+   * (when `message` and `update_message_flags` are in `event_types`).
+   */
+  unread_snapshot?: ZulipUnreadMessagesSnapshot;
 }
 
 export interface ZulipEvent {

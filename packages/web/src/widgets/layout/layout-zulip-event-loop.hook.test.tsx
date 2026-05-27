@@ -21,6 +21,11 @@ const deleteQueueMock = vi.hoisted(() => vi.fn(() => Promise.resolve(undefined))
 const fetchDirectMessagesPageMock = vi.hoisted(() =>
   vi.fn(() => Promise.resolve({ messages: [], foundOldest: true })),
 );
+const hydrateDmSidebarPreviewsMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+const mockEnv = vi.hoisted(() => ({
+  METADATA_CHAT_BOOTSTRAP_ENABLED: false,
+  METADATA_DM_BACKFILL_ENABLED: false,
+}));
 
 vi.mock("~/shared/lib/event-loop", () => ({
   startZulipEventLoop: startZulipEventLoopMock,
@@ -42,6 +47,14 @@ vi.mock("~/shared/api/zulip", () => ({
   fetchUnreadMessagesSnapshot: fetchUnreadMessagesSnapshotMock,
   fetchUsers: fetchUsersMock,
   getCurrentUser: getCurrentUserMock,
+}));
+
+vi.mock("~/entities/chat-list/chat-list-dm-preview-hydrate.lib", () => ({
+  hydrateDmSidebarPreviewsFromRecentConversations: hydrateDmSidebarPreviewsMock,
+}));
+
+vi.mock("~/shared/lib/env", () => ({
+  env: mockEnv,
 }));
 
 vi.mock("~/shared/lib/mute-snapshot-db", () => ({
@@ -120,6 +133,9 @@ function Harness({
 
 describe("useLayoutZulipEventLoop", () => {
   beforeEach(() => {
+    mockEnv.METADATA_CHAT_BOOTSTRAP_ENABLED = false;
+    mockEnv.METADATA_DM_BACKFILL_ENABLED = false;
+    hydrateDmSidebarPreviewsMock.mockClear();
     useChatListStore.getState().clear();
     useUsersStore.getState().clear();
     useUserGroupsStore.getState().clear();
@@ -371,6 +387,136 @@ describe("useLayoutZulipEventLoop", () => {
     });
 
     expect(props.setCurrentUserStatus).not.toHaveBeenCalledWith("blocked");
+  });
+
+  it("reconciles sidebar unread from register after metadata rows are applied", async () => {
+    mockEnv.METADATA_CHAT_BOOTSTRAP_ENABLED = true;
+    const reconcileSpy = vi.spyOn(useChatListStore.getState(), "reconcileUnreadFromSnapshot");
+    const props = createHarnessProps();
+    props.setCurrentUserId.mockImplementation((id: number) => {
+      useChatListStore.getState().setCurrentUserId(id);
+    });
+
+    render(<Harness currentInstanceId="inst-1" props={props} />);
+
+    await waitFor(() => {
+      expect(startZulipEventLoopMock).toHaveBeenCalledTimes(1);
+    });
+
+    const firstCallArg = startZulipEventLoopMock.mock.calls[0]?.[0] as
+      | {
+          onQueueRegistered?: (
+            id: string,
+            registration?: {
+              unread_snapshot?: {
+                streams: unknown[];
+                dms: unknown[];
+                totalCount: number;
+              };
+              recent_private_conversations?: Record<
+                string,
+                { user_ids: number[]; max_message_id: number | null; unread_message_ids: number[] }
+              >;
+              subscriptions?: { stream_id: number; name: string }[];
+            },
+          ) => void;
+        }
+      | undefined;
+
+    reconcileSpy.mockClear();
+    useChatListStore.getState().clear();
+    useChatListStore.getState().setCurrentUserId(7);
+
+    act(() => {
+      firstCallArg?.onQueueRegistered?.("q-unread", {
+        subscriptions: [{ stream_id: 12, name: "engineering" }],
+        unread_snapshot: {
+          streams: [{ streamId: 12, topic: "incidents", unreadMessageIds: [401, 402] }],
+          dms: [{ userIds: [20], unreadMessageIds: [501], isGroup: false }],
+          totalCount: 3,
+        },
+        recent_private_conversations: {
+          "7,20": {
+            user_ids: [7, 20],
+            max_message_id: 900,
+            unread_message_ids: [501],
+          },
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(reconcileSpy).toHaveBeenCalled();
+    });
+
+    expect(
+      useChatListStore.getState().streamsMap.get(12)?.topics.get("incidents")?.unreadCount,
+    ).toBe(2);
+    expect(useChatListStore.getState().dmsMap.get("7,20")?.unreadCount).toBe(1);
+    reconcileSpy.mockRestore();
+  });
+
+  it("hydrates DM previews from recent_private_conversations when metadata bootstrap is enabled", async () => {
+    mockEnv.METADATA_CHAT_BOOTSTRAP_ENABLED = true;
+    mockEnv.METADATA_DM_BACKFILL_ENABLED = false;
+    const props = createHarnessProps();
+    props.setCurrentUserId.mockImplementation((id: number) => {
+      useChatListStore.getState().setCurrentUserId(id);
+    });
+
+    render(<Harness currentInstanceId="inst-1" props={props} />);
+
+    await waitFor(() => {
+      expect(startZulipEventLoopMock).toHaveBeenCalledTimes(1);
+    });
+
+    const firstCallArg = startZulipEventLoopMock.mock.calls[0]?.[0] as
+      | {
+          onQueueRegistered?: (
+            id: string,
+            registration?: {
+              recent_private_conversations?: Record<
+                string,
+                { user_ids: number[]; max_message_id: number | null; unread_message_ids: number[] }
+              >;
+            },
+          ) => void;
+        }
+      | undefined;
+
+    act(() => {
+      firstCallArg?.onQueueRegistered?.("q-dm", {
+        recent_private_conversations: {
+          "7,20": {
+            user_ids: [7, 20],
+            max_message_id: 900,
+            unread_message_ids: [900],
+          },
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(hydrateDmSidebarPreviewsMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          currentUserId: 7,
+          conversations: {
+            "7,20": {
+              user_ids: [7, 20],
+              max_message_id: 900,
+              unread_message_ids: [900],
+            },
+          },
+          metadataRows: [
+            expect.objectContaining({
+              userIds: [7, 20],
+              lastMessageId: 900,
+            }),
+          ],
+        }),
+      );
+    });
+    expect(fetchDirectMessagesPageMock).not.toHaveBeenCalled();
   });
 
   it("marks stream metadata as hydrated on queue register even without subscriptions payload", async () => {

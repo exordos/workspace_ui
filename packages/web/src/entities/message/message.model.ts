@@ -657,6 +657,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     focusedMessageId,
     currentUserId,
     onCacheHydrated,
+    onDmMessagesApplied,
     signal,
   }) {
     // Что делает: каждый новый initial-load инвалидирует предыдущий запрос.
@@ -706,6 +707,15 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
             hasNewerMessages: appliedHasNewerMessages,
           });
           onCacheHydrated?.();
+          if (context.type === "dm") {
+            onDmMessagesApplied?.({
+              messages,
+              context,
+              hasNewerMessages,
+              focusedMessageId,
+              source: "cache",
+            });
+          }
         },
       });
     } catch (e) {
@@ -770,6 +780,15 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         hasNewer: snapshotBeforeApiApply.hasNewerMessages,
         preserved: true,
       });
+      if (loadResult.nextContext.type === "dm") {
+        onDmMessagesApplied?.({
+          messages: snapshotBeforeApiApply.messages,
+          context: loadResult.nextContext,
+          hasNewerMessages: snapshotBeforeApiApply.hasNewerMessages,
+          focusedMessageId,
+          source: "api",
+        });
+      }
       return;
     }
 
@@ -787,6 +806,15 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       hasOlder: loadResult.hasOlderMessages,
       hasNewer: loadResult.hasNewerMessages,
     });
+    if (loadResult.nextContext.type === "dm") {
+      onDmMessagesApplied?.({
+        messages: loadResult.messages,
+        context: loadResult.nextContext,
+        hasNewerMessages: loadResult.hasNewerMessages,
+        focusedMessageId,
+        source: "api",
+      });
+    }
   },
 
   async loadOlderBoundaryPage({ pageSize, currentUserId }) {

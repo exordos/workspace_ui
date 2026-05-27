@@ -86,6 +86,16 @@ export async function runChatListBootstrap(
   const idbHint = snap?.lastMessageId ?? null;
   const hint = kind === "reconnect" ? maxMessageId(idbHint, getInMemoryLatestMessageId()) : idbHint;
 
+  if (env.METADATA_CHAT_BOOTSTRAP_ENABLED) {
+    // Что делает: в metadata-first режиме sidebar восстанавливается из register + realtime.
+    // Зачем: не тянем широкую дельту GET /messages?anchor=<id>&num_after=5000 без narrow.
+    logChatListFlow("bootstrap: mode none (metadata-first, skip message delta)", {
+      latestMessageIdHint: hint,
+      hadIdbHint: hint != null,
+    });
+    return { mode: "none", latestMessageIdHint: hint };
+  }
+
   if (hint != null) {
     try {
       if (isBootstrapSuperseded(options)) {
@@ -115,23 +125,9 @@ export async function runChatListBootstrap(
         logChatListFlow("bootstrap: superseded during delta error path", { instanceId });
         return { mode: "none", latestMessageIdHint: hint };
       }
-      logChatListFlow("bootstrap: delta fetch failed", {
-        metadataChatBootstrap: env.METADATA_CHAT_BOOTSTRAP_ENABLED,
-      });
-      if (env.METADATA_CHAT_BOOTSTRAP_ENABLED) {
-        // Зачем: в metadata-first режиме не проваливаемся в тяжелый full-bootstrap.
-        return { mode: "none", latestMessageIdHint: hint };
-      }
+      logChatListFlow("bootstrap: delta fetch failed", { instanceId });
       // fall through to full bootstrap
     }
-  }
-
-  if (env.METADATA_CHAT_BOOTSTRAP_ENABLED) {
-    // Что делает: оставляем восстановление списка чатов на metadata + события + фоновый backfill.
-    logChatListFlow("bootstrap: mode none (metadata-first, no full message window)", {
-      latestMessageIdHint: hint,
-    });
-    return { mode: "none", latestMessageIdHint: hint };
   }
 
   if (isBootstrapSuperseded(options)) {

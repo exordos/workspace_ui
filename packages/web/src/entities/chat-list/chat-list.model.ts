@@ -10,6 +10,7 @@ import { parseDmKeyToUserIds } from "~/entities/message/message-chat-context.lib
 import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
 import { fetchMessagesWithNarrow } from "~/shared/api/zulip";
+import type { ZulipUnreadMessagesSnapshot } from "~/shared/api/zulip-unread.lib";
 import type { MockMessage, ZulipRawMessage } from "~/shared/api/zulip.types";
 import {
   deserializeStreamEntry,
@@ -54,6 +55,7 @@ import {
   removeStreamTopicKeyFromIndex,
   streamTopicCompositeKey,
 } from "./chat-list-stream-topic-index.lib";
+import { buildUnreadReconcileMapsFromRegisterSnapshot } from "./chat-list-unread-reconcile.lib";
 import {
   buildSidebarFromMessages,
   messageToStreamEntry,
@@ -739,9 +741,12 @@ function groupStreamTopicUnreadPatches(
     const stream = streamsMap.get(streamId);
     if (stream == null) continue;
     const topic = stream.topics.get(topicKey);
-    if (topic == null) continue;
     const nextUnreadCount = unreadStreamCounts.get(compositeKey) ?? 0;
-    if (topic.unreadCount === nextUnreadCount) continue;
+    if (topic == null) {
+      if (nextUnreadCount === 0) continue;
+    } else if (topic.unreadCount === nextUnreadCount) {
+      continue;
+    }
     const patch = { topicKey, unreadCount: nextUnreadCount };
     const list = byStream.get(streamId);
     if (list) {
@@ -764,7 +769,17 @@ function applyStreamTopicUnreadPatches(
     const nextTopics = new Map(stream.topics);
     for (const { topicKey, unreadCount } of patches) {
       const topic = nextTopics.get(topicKey);
-      if (topic == null) continue;
+      if (topic == null) {
+        if (unreadCount === 0) continue;
+        nextTopics.set(topicKey, {
+          subject: topicKey,
+          lastMessage: "",
+          time: "",
+          ts: 0,
+          unreadCount,
+        });
+        continue;
+      }
       nextTopics.set(topicKey, { ...topic, unreadCount });
     }
     nextStreams.set(streamId, { ...stream, topics: nextTopics });
@@ -920,6 +935,21 @@ function buildResolvedDmPreviewFromMessage(
   };
 }
 
+/** Metadata/IDB rows can carry lastActivityTs + lastMessageId without preview text — still merge fetched bodies. */
+function shouldApplyDmPreviewFromFetchedMessage(
+  existing: DmEntryInternal,
+  message: ZulipRawMessage,
+  previewText: string,
+): boolean {
+  if (message.timestamp > existing.ts) {
+    return true;
+  }
+  if (existing.lastMessage.trim().length === 0 && previewText.trim().length > 0) {
+    return true;
+  }
+  return existing.lastMessageId === message.id;
+}
+
 function pickNewestMessage<T extends ChatListPreviewSourceMessage>(
   messages: readonly T[],
   predicate: (message: T) => boolean,
@@ -1039,6 +1069,156 @@ export const useChatListStore = create<ChatListState>((set, get) => {
     set({ ...get(), ...finalizeChatListPatch(get(), update, meta) });
   };
 
+  const reconcileUnreadMaps = (
+    unreadStreamCounts: Map<string, number>,
+    unreadDmCounts: Map<string, number>,
+    unreadLocationMap: Map<number, MessageLocation>,
+    latestUnreadStreams: Map<string, ZulipRawMessage>,
+    latestUnreadDms: Map<string, ZulipRawMessage>,
+    effectiveUserId: number | null,
+  ) => {
+    patchSet((state) => {
+      let nextStreams = state.streamsMap;
+      let streamsChanged = false;
+
+      const streamTopicKeysToReconcile = collectStreamTopicKeysForUnreadReconcile(
+        state.streamsMap,
+        unreadStreamCounts,
+      );
+
+      const topicUnreadPatchesByStream = groupStreamTopicUnreadPatches(
+        state.streamsMap,
+        streamTopicKeysToReconcile,
+        unreadStreamCounts,
+      );
+      if (topicUnreadPatchesByStream.size > 0) {
+        nextStreams = applyStreamTopicUnreadPatches(nextStreams, topicUnreadPatchesByStream);
+        streamsChanged = true;
+      }
+
+      let nextDms = state.dmsMap;
+      let dmsChanged = false;
+
+      const dmKeysToReconcile = collectDmKeysForUnreadReconcile(state.dmsMap, unreadDmCounts);
+
+      for (const dmKey of dmKeysToReconcile) {
+        const dm = nextDms.get(dmKey);
+        if (dm == null) continue;
+        const nextUnreadCount = unreadDmCounts.get(dmKey) ?? 0;
+        if (dm.unreadCount === nextUnreadCount) continue;
+        if (!dmsChanged) {
+          nextDms = new Map(nextDms);
+          dmsChanged = true;
+        }
+        nextDms.set(dmKey, { ...dm, unreadCount: nextUnreadCount });
+      }
+
+      const latestUnreadByStream = groupLatestUnreadStreamMessagesByStream(latestUnreadStreams);
+      const metadataResult = applyLatestUnreadStreamMetadata(
+        nextStreams,
+        latestUnreadByStream,
+        unreadStreamCounts,
+      );
+      if (metadataResult.changed) {
+        nextStreams = metadataResult.streamsMap;
+        streamsChanged = true;
+      }
+
+      for (const [dmKey, message] of latestUnreadDms.entries()) {
+        const dmEntry = messageToDmEntry(message, effectiveUserId, getAvatarMap());
+        if (dmEntry == null) continue;
+        const existing = nextDms.get(dmKey);
+        const unreadCount = unreadDmCounts.get(dmKey) ?? 0;
+
+        if (existing == null) {
+          if (!dmsChanged) {
+            nextDms = new Map(nextDms);
+            dmsChanged = true;
+          }
+          nextDms.set(dmKey, { ...dmEntry, unreadCount, lastMessageId: message.id });
+          continue;
+        }
+
+        if (!isMessageNewer(message, existing.ts, existing.lastMessageId)) {
+          continue;
+        }
+
+        if (!dmsChanged) {
+          nextDms = new Map(nextDms);
+          dmsChanged = true;
+        }
+        nextDms.set(dmKey, {
+          ...dmEntry,
+          unreadCount,
+          avatar_url: dmEntry.avatar_url ?? existing.avatar_url,
+          lastMessageId: message.id,
+        });
+      }
+
+      let nextLocations = state.messageIdToLocation;
+      let locationsChanged = false;
+      for (const [messageId, location] of unreadLocationMap.entries()) {
+        const existing = nextLocations.get(messageId);
+        const sameLocation =
+          existing?.type === location.type &&
+          (existing?.type === "stream"
+            ? location.type === "stream" &&
+              existing.stream_id === location.stream_id &&
+              existing.topic === location.topic
+            : location.type === "dm" && existing?.dmKey === location.dmKey);
+        if (sameLocation) continue;
+        if (!locationsChanged) {
+          nextLocations = new Map(nextLocations);
+          locationsChanged = true;
+        }
+        nextLocations.set(messageId, location);
+      }
+
+      if (
+        !streamsChanged &&
+        !dmsChanged &&
+        !locationsChanged &&
+        effectiveUserId === state.currentUserId
+      ) {
+        return state;
+      }
+
+      let sidebarStreamsUnreadDelta = 0;
+      for (const [streamId, patches] of topicUnreadPatchesByStream) {
+        const stream = state.streamsMap.get(streamId);
+        for (const { topicKey, unreadCount } of patches) {
+          sidebarStreamsUnreadDelta +=
+            unreadCount - (stream?.topics.get(topicKey)?.unreadCount ?? 0);
+        }
+      }
+      let sidebarDmsUnreadDelta = 0;
+      for (const dmKey of dmKeysToReconcile) {
+        sidebarDmsUnreadDelta +=
+          (unreadDmCounts.get(dmKey) ?? 0) - (state.dmsMap.get(dmKey)?.unreadCount ?? 0);
+      }
+
+      return {
+        ...(streamsChanged ? { streamsMap: nextStreams } : {}),
+        ...(dmsChanged ? { dmsMap: nextDms } : {}),
+        ...(locationsChanged ? { messageIdToLocation: nextLocations } : {}),
+        ...(effectiveUserId !== state.currentUserId ? { currentUserId: effectiveUserId } : {}),
+        sidebarStreamsUnread: state.sidebarStreamsUnread + sidebarStreamsUnreadDelta,
+        sidebarDmsUnread: state.sidebarDmsUnread + sidebarDmsUnreadDelta,
+        ...(locationsChanged
+          ? {
+              streamTopicMessageIds: patchStreamTopicMessageIndex(
+                state.streamTopicMessageIds,
+                state.messageIdToLocation,
+                nextLocations,
+              ),
+            }
+          : {}),
+      };
+    });
+
+    persistRecentDmPartnersFromMap(get().dmsMap);
+  };
+
   return {
     streamsMap: emptyStreamsMap(),
     dmsMap: emptyDmsMap(),
@@ -1130,164 +1310,39 @@ export const useChatListStore = create<ChatListState>((set, get) => {
       const unreadLocationMap = buildUnreadLocationMap(messages, effectiveUserId);
       const latestUnreadStreams = buildLatestUnreadStreamMessageMap(messages, effectiveUserId);
       const latestUnreadDms = buildLatestUnreadDmMessageMap(messages, effectiveUserId);
+      const unreadStreamCounts = new Map<string, number>();
+      const unreadDmCounts = new Map<string, number>();
 
-      patchSet((state) => {
-        // Что делает: authoritative reconcile unread без полного rebuild sidebar.
-        // Зачем: синхронизируем только счетчики и location-индекс, сохраняя текущую структуру списка чатов.
-        const unreadStreamCounts = new Map<string, number>();
-        const unreadDmCounts = new Map<string, number>();
-
-        for (const location of unreadLocationMap.values()) {
-          if (location.type === "stream") {
-            const key = streamTopicCompositeKey(location.stream_id, location.topic);
-            unreadStreamCounts.set(key, (unreadStreamCounts.get(key) ?? 0) + 1);
-          } else {
-            unreadDmCounts.set(location.dmKey, (unreadDmCounts.get(location.dmKey) ?? 0) + 1);
-          }
+      for (const location of unreadLocationMap.values()) {
+        if (location.type === "stream") {
+          const key = streamTopicCompositeKey(location.stream_id, location.topic);
+          unreadStreamCounts.set(key, (unreadStreamCounts.get(key) ?? 0) + 1);
+        } else {
+          unreadDmCounts.set(location.dmKey, (unreadDmCounts.get(location.dmKey) ?? 0) + 1);
         }
+      }
 
-        let nextStreams = state.streamsMap;
-        let streamsChanged = false;
+      reconcileUnreadMaps(
+        unreadStreamCounts,
+        unreadDmCounts,
+        unreadLocationMap,
+        latestUnreadStreams,
+        latestUnreadDms,
+        effectiveUserId,
+      );
+    },
 
-        const streamTopicKeysToReconcile = collectStreamTopicKeysForUnreadReconcile(
-          state.streamsMap,
-          unreadStreamCounts,
-        );
-
-        const topicUnreadPatchesByStream = groupStreamTopicUnreadPatches(
-          state.streamsMap,
-          streamTopicKeysToReconcile,
-          unreadStreamCounts,
-        );
-        if (topicUnreadPatchesByStream.size > 0) {
-          nextStreams = applyStreamTopicUnreadPatches(nextStreams, topicUnreadPatchesByStream);
-          streamsChanged = true;
-        }
-
-        let nextDms = state.dmsMap;
-        let dmsChanged = false;
-
-        const dmKeysToReconcile = collectDmKeysForUnreadReconcile(state.dmsMap, unreadDmCounts);
-
-        for (const dmKey of dmKeysToReconcile) {
-          const dm = nextDms.get(dmKey);
-          if (dm == null) continue;
-          const nextUnreadCount = unreadDmCounts.get(dmKey) ?? 0;
-          if (dm.unreadCount === nextUnreadCount) continue;
-          if (!dmsChanged) {
-            nextDms = new Map(nextDms);
-            dmsChanged = true;
-          }
-          nextDms.set(dmKey, { ...dm, unreadCount: nextUnreadCount });
-        }
-
-        const latestUnreadByStream = groupLatestUnreadStreamMessagesByStream(latestUnreadStreams);
-        const metadataResult = applyLatestUnreadStreamMetadata(
-          nextStreams,
-          latestUnreadByStream,
-          unreadStreamCounts,
-        );
-        if (metadataResult.changed) {
-          nextStreams = metadataResult.streamsMap;
-          streamsChanged = true;
-        }
-
-        for (const [dmKey, message] of latestUnreadDms.entries()) {
-          const dmEntry = messageToDmEntry(message, effectiveUserId, getAvatarMap());
-          if (dmEntry == null) continue;
-          const existing = nextDms.get(dmKey);
-          const unreadCount = unreadDmCounts.get(dmKey) ?? 0;
-
-          if (existing == null) {
-            // Что делает: поднимает unread DM из серверного snapshot, даже если локально диалог еще не был открыт/загружен.
-            if (!dmsChanged) {
-              nextDms = new Map(nextDms);
-              dmsChanged = true;
-            }
-            nextDms.set(dmKey, { ...dmEntry, unreadCount, lastMessageId: message.id });
-            continue;
-          }
-
-          if (!isMessageNewer(message, existing.ts, existing.lastMessageId)) {
-            continue;
-          }
-
-          if (!dmsChanged) {
-            nextDms = new Map(nextDms);
-            dmsChanged = true;
-          }
-          nextDms.set(dmKey, {
-            ...dmEntry,
-            unreadCount,
-            avatar_url: dmEntry.avatar_url ?? existing.avatar_url,
-            lastMessageId: message.id,
-          });
-        }
-
-        let nextLocations = state.messageIdToLocation;
-        let locationsChanged = false;
-        for (const [messageId, location] of unreadLocationMap.entries()) {
-          const existing = nextLocations.get(messageId);
-          const sameLocation =
-            existing?.type === location.type &&
-            (existing?.type === "stream"
-              ? location.type === "stream" &&
-                existing.stream_id === location.stream_id &&
-                existing.topic === location.topic
-              : location.type === "dm" && existing?.dmKey === location.dmKey);
-          if (sameLocation) continue;
-          // Что делает: сохраняет location каждого unread message id для будущих read/delete событий.
-          // Зачем: последующие flag/delete updates должны уметь точно уменьшить счетчик без нового full reconcile.
-          if (!locationsChanged) {
-            nextLocations = new Map(nextLocations);
-            locationsChanged = true;
-          }
-          nextLocations.set(messageId, location);
-        }
-
-        if (
-          !streamsChanged &&
-          !dmsChanged &&
-          !locationsChanged &&
-          effectiveUserId === state.currentUserId
-        ) {
-          return state;
-        }
-
-        let sidebarStreamsUnreadDelta = 0;
-        for (const [streamId, patches] of topicUnreadPatchesByStream) {
-          const stream = state.streamsMap.get(streamId);
-          for (const { topicKey, unreadCount } of patches) {
-            sidebarStreamsUnreadDelta +=
-              unreadCount - (stream?.topics.get(topicKey)?.unreadCount ?? 0);
-          }
-        }
-        let sidebarDmsUnreadDelta = 0;
-        for (const dmKey of dmKeysToReconcile) {
-          sidebarDmsUnreadDelta +=
-            (unreadDmCounts.get(dmKey) ?? 0) - (state.dmsMap.get(dmKey)?.unreadCount ?? 0);
-        }
-
-        return {
-          ...(streamsChanged ? { streamsMap: nextStreams } : {}),
-          ...(dmsChanged ? { dmsMap: nextDms } : {}),
-          ...(locationsChanged ? { messageIdToLocation: nextLocations } : {}),
-          ...(effectiveUserId !== state.currentUserId ? { currentUserId: effectiveUserId } : {}),
-          sidebarStreamsUnread: state.sidebarStreamsUnread + sidebarStreamsUnreadDelta,
-          sidebarDmsUnread: state.sidebarDmsUnread + sidebarDmsUnreadDelta,
-          ...(locationsChanged
-            ? {
-                streamTopicMessageIds: patchStreamTopicMessageIndex(
-                  state.streamTopicMessageIds,
-                  state.messageIdToLocation,
-                  nextLocations,
-                ),
-              }
-            : {}),
-        };
-      });
-
-      persistRecentDmPartnersFromMap(get().dmsMap);
+    reconcileUnreadFromSnapshot(snapshot, currentUserId) {
+      const effectiveUserId = currentUserId ?? get().currentUserId;
+      const maps = buildUnreadReconcileMapsFromRegisterSnapshot(snapshot, effectiveUserId);
+      reconcileUnreadMaps(
+        maps.unreadStreamCounts,
+        maps.unreadDmCounts,
+        maps.unreadLocationMap,
+        new Map(),
+        new Map(),
+        effectiveUserId,
+      );
     },
 
     addMessage(message) {
@@ -1486,16 +1541,25 @@ export const useChatListStore = create<ChatListState>((set, get) => {
           if (!Array.isArray(m.display_recipient)) continue;
           const key = dmConversationKey(m.display_recipient, currentUserId);
           const existing = nextDms.get(key);
-          if (existing && dmEntry.ts <= existing.ts) {
+          if (
+            existing != null &&
+            !shouldApplyDmPreviewFromFetchedMessage(existing, m, dmEntry.lastMessage)
+          ) {
             continue;
           }
           nextDms = new Map(nextDms);
           const avatar_url = dmEntry.avatar_url ?? existing?.avatar_url;
+          const preserveActivityTs =
+            existing != null && dmEntry.ts <= existing.ts ? existing.ts : dmEntry.ts;
+          const preserveTime =
+            existing != null && dmEntry.ts <= existing.ts ? existing.time : dmEntry.time;
           nextDms.set(key, {
             ...dmEntry,
             unreadCount: existing?.unreadCount ?? 0,
             avatar_url,
             lastMessageId: m.id,
+            ts: preserveActivityTs,
+            time: preserveTime,
           });
         }
 

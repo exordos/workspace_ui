@@ -4,11 +4,16 @@
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { fetchUnreadMessagesSnapshot } from "~/shared/api/zulip";
+import { env } from "~/shared/lib/env";
 import { createLogger } from "~/shared/lib/logger";
 import { logChatListFlow } from "~/shared/lib/message-flow-debug.lib";
 import { refreshActiveChatMessagesFromApi } from "./layout-active-chat-refresh.lib";
 import { applyChatListBootstrapResult } from "./layout-chat-list-bootstrap-apply.lib";
 import { runChatListBootstrap } from "./layout-chat-list-bootstrap.lib";
+import {
+  getCachedRegisterUnreadSnapshot,
+  isRegisterUnreadSnapshotUsable,
+} from "./layout-instance-register-unread.lib";
 import { refreshRealmPresenceFromApi } from "./layout-realm-presence-refresh.lib";
 import { refreshLayoutReconnectLight } from "./layout-reconnect-light.lib";
 
@@ -145,6 +150,18 @@ function refreshSharedLayers(params: LayoutReconnectRefreshParams): void {
   });
 
   const uid = useChatListStore.getState().currentUserId ?? null;
+  const registerSnapshot =
+    params.instanceId != null ? getCachedRegisterUnreadSnapshot(params.instanceId) : undefined;
+  if (isRegisterUnreadSnapshotUsable(registerSnapshot)) {
+    if (params.isCancelled?.()) return;
+    useChatListStore.getState().reconcileUnreadFromSnapshot(registerSnapshot, uid);
+    return;
+  }
+
+  if (env.DISABLE_UNREAD_MESSAGES_SNAPSHOT_FETCH) {
+    return;
+  }
+
   void fetchUnreadMessagesSnapshot()
     .then((messages) => {
       if (params.isCancelled?.() || messages == null) return;

@@ -231,4 +231,13 @@ export const env = {
     optional("VITE_METADATA_DM_BACKFILL_ENABLED", "false"),
     false,
   ),
+
+  /**
+   * Debug/experiment: when true, disables the fallback `GET /messages?narrow=is:unread` initial reconcile.
+   * Allows verifying that unread counters are sourced from `POST /register` (`unread_msgs`) + realtime only.
+   */
+  DISABLE_UNREAD_MESSAGES_SNAPSHOT_FETCH: parseBooleanEnvFlag(
+    optional("VITE_DISABLE_UNREAD_MESSAGES_SNAPSHOT_FETCH", "false"),
+    false,
+  ),
 } as const;

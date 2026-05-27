@@ -51,6 +51,14 @@ vi.mock("~/entities/chat-list/chat-list.model", () => ({
   },
 }));
 
+vi.mock("~/entities/instance/instance.model", () => ({
+  useInstancesStore: {
+    getState: () => ({
+      currentInstanceId: "inst-1",
+    }),
+  },
+}));
+
 describe("scheduleLayoutReconnectRefresh", () => {
   beforeEach(() => {
     vi.useFakeTimers();

@@ -214,6 +214,82 @@ describe("chatListStore", () => {
     });
   });
 
+  describe("reconcileUnreadFromSnapshot", () => {
+    it("reconciles stream and DM unread counts from register unread_msgs buckets", () => {
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: 201,
+            stream_id: 5,
+            subject: "alpha",
+            sender_id: OTHER_SENDER_ID,
+            flags: ["read"],
+          }),
+          dmMsg({
+            id: 50,
+            timestamp: 1000,
+            display_recipient: [
+              { id: 10, full_name: "Me", email: "me@t.com" },
+              { id: 20, full_name: "Bob", email: "bob@t.com" },
+            ],
+            sender_id: OTHER_SENDER_ID,
+            flags: ["read"],
+          }),
+        ],
+        10,
+      );
+
+      useChatListStore.getState().reconcileUnreadFromSnapshot(
+        {
+          streams: [{ streamId: 5, topic: "alpha", unreadMessageIds: [301, 302] }],
+          dms: [{ userIds: [20], unreadMessageIds: [303], isGroup: false }],
+          totalCount: 3,
+        },
+        10,
+      );
+
+      expect(useChatListStore.getState().streamsMap.get(5)?.topics.get("alpha")?.unreadCount).toBe(
+        2,
+      );
+      expect(useChatListStore.getState().dmsMap.get("10,20")?.unreadCount).toBe(1);
+    });
+
+    it("reconciles stream topic unread on metadata stream shells without topics", () => {
+      useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "engineering" }]);
+
+      useChatListStore.getState().reconcileUnreadFromSnapshot(
+        {
+          streams: [{ streamId: 5, topic: "alpha", unreadMessageIds: [301, 302] }],
+          dms: [],
+          totalCount: 2,
+        },
+        10,
+      );
+
+      expect(useChatListStore.getState().streamsMap.get(5)?.topics.get("alpha")?.unreadCount).toBe(
+        2,
+      );
+    });
+
+    it("reconciles DM unread after metadata-only DM rows exist", () => {
+      useChatListStore.getState().setCurrentUserId(10);
+      useChatListStore
+        .getState()
+        .upsertDmMetadataRows([{ userIds: [10, 20], lastMessageId: 50, unreadCount: 0 }]);
+
+      useChatListStore.getState().reconcileUnreadFromSnapshot(
+        {
+          streams: [],
+          dms: [{ userIds: [20], unreadMessageIds: [303, 304], isGroup: false }],
+          totalCount: 2,
+        },
+        10,
+      );
+
+      expect(useChatListStore.getState().dmsMap.get("10,20")?.unreadCount).toBe(2);
+    });
+  });
+
   describe("reconcileUnreadFromMessages", () => {
     it("reconciles unread counts for multiple topics in the same stream in one pass", () => {
       useChatListStore.getState().setFromMessages(
@@ -836,6 +912,34 @@ describe("chatListStore", () => {
       const dms = useChatListStore.getState().dms();
       const dm = dms.find((d) => d.type === "dm");
       expect(dm?.badge).toBe(3);
+    });
+
+    it("fills empty DM preview from addMessages when metadata ts is newer", () => {
+      useUsersStore.getState().mergeUser({ user_id: 10, full_name: "Alice", email: "a@x.test" });
+      useUsersStore.getState().mergeUser({ user_id: 20, full_name: "Bob", email: "b@x.test" });
+
+      useChatListStore.getState().upsertDmMetadataRows([
+        {
+          userIds: [10, 20],
+          unreadCount: 0,
+          lastMessageId: 123,
+          lastActivityTs: 1_700_000_000,
+        },
+      ]);
+
+      useChatListStore.getState().addMessages([
+        dmMsg({
+          id: 123,
+          content: "preview from message_ids hydrate",
+          timestamp: 1_600_000_000,
+          sender_id: OTHER_SENDER_ID,
+        }),
+      ]);
+
+      const dm = useChatListStore.getState().dmsMap.get("10,20");
+      expect(dm?.lastMessage).toContain("preview from message_ids hydrate");
+      expect(dm?.lastMessageId).toBe(123);
+      expect(dm?.ts).toBe(1_700_000_000);
     });
   });
 
