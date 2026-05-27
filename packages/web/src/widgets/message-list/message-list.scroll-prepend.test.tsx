@@ -1,4 +1,4 @@
-import { fireEvent, render, act } from "@testing-library/react";
+import { act, fireEvent, render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { MessageList } from "./message-list.ui";
@@ -24,25 +24,48 @@ function msg(id: number, overrides: Partial<MockMessage> = {}): MockMessage {
 }
 
 describe("MessageList prepend scroll anchor", () => {
-  it("restores scrollTop after older messages finish loading", () => {
+  it("restores scrollTop after older messages finish loading", async () => {
     const onLoadMore = vi.fn();
     const initial = [msg(1), msg(2), msg(3)];
 
     const { rerender } = render(
-      <MessageList messages={initial} onLoadMore={onLoadMore} isLoadingMore={false} />,
+      <MessageList
+        messages={initial}
+        scrollToBottomKey="prepend-test"
+        onLoadMore={onLoadMore}
+        isLoadingMore={false}
+      />,
     );
 
     const feed = document.querySelector('[role="feed"]') as HTMLDivElement;
     Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 1000 });
     Object.defineProperty(feed, "clientHeight", { configurable: true, value: 400 });
-    Object.defineProperty(feed, "scrollTop", { configurable: true, writable: true, value: 50 });
 
+    await act(async () => {
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            resolve();
+          });
+        });
+      });
+    });
+
+    Object.defineProperty(feed, "scrollTop", { configurable: true, writable: true, value: 50 });
+    fireEvent.wheel(feed);
     fireEvent.scroll(feed);
 
     expect(onLoadMore).toHaveBeenCalledTimes(1);
 
     act(() => {
-      rerender(<MessageList messages={initial} onLoadMore={onLoadMore} isLoadingMore={true} />);
+      rerender(
+        <MessageList
+          messages={initial}
+          scrollToBottomKey="prepend-test"
+          onLoadMore={onLoadMore}
+          isLoadingMore={true}
+        />,
+      );
     });
 
     act(() => {
@@ -50,6 +73,7 @@ describe("MessageList prepend scroll anchor", () => {
       rerender(
         <MessageList
           messages={[msg(0), ...initial]}
+          scrollToBottomKey="prepend-test"
           onLoadMore={onLoadMore}
           isLoadingMore={false}
         />,

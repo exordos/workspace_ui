@@ -1,20 +1,10 @@
 import type { MockMessage } from "~/shared/api/zulip.types";
+import {
+  resolveFirstUnreadBoundaryMessageId,
+  resolveLastUnreadBoundaryMessageId,
+} from "~/shared/lib/message-unread-boundary.lib";
 
-export function resolveFirstUnreadBoundaryMessageId(
-  messages: readonly MockMessage[],
-  currentUserId: number | null | undefined,
-): number | undefined {
-  for (const message of messages) {
-    if (message.flags?.includes("read")) {
-      continue;
-    }
-    if (currentUserId != null && message.sender_id === currentUserId) {
-      continue;
-    }
-    return message.id;
-  }
-  return undefined;
-}
+export { resolveFirstUnreadBoundaryMessageId, resolveLastUnreadBoundaryMessageId };
 
 export function countUnreadMessages(
   messages: readonly MockMessage[],
