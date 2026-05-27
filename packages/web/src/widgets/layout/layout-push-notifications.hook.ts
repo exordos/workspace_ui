@@ -78,7 +78,7 @@ function handleForegroundPush(payload: PushMessagePayload): void {
       title,
       body,
       tag: messageId != null ? `msg-${messageId}` : `push-${Date.now()}`,
-      silent: playSound,
+      silent: true,
     })
     .catch(() => {});
 

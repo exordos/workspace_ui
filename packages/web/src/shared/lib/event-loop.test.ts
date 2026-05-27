@@ -33,10 +33,14 @@ vi.mock("~/shared/lib/visibility", () => ({
   onTabResume: (...args: unknown[]) => onTabResumeMock(...args),
 }));
 
-vi.mock("~/shared/lib/connection-health", () => ({
-  noteApiTransportFailure: vi.fn(),
-  noteApiTransportSuccess: vi.fn(),
-}));
+vi.mock("~/shared/lib/connection-health", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("~/shared/lib/connection-health")>();
+  return {
+    ...actual,
+    noteApiTransportFailure: vi.fn(),
+    noteApiTransportSuccess: vi.fn(),
+  };
+});
 
 describe("startZulipEventLoop", () => {
   afterEach(() => {
@@ -247,6 +251,65 @@ describe("startZulipEventLoop", () => {
     await Promise.resolve();
   });
 
+  it("aborts long-poll on offline and re-registers promptly when online returns", async () => {
+    let statusCb: ((online: boolean) => void) | undefined;
+    onTabResumeMock.mockReturnValue(unsubResumeMock);
+    onReconnectMock.mockReturnValue(unsubReconnectMock);
+    onStatusChangeMock.mockImplementation((cb: (online: boolean) => void) => {
+      statusCb = cb;
+      return unsubStatusMock;
+    });
+    waitForOnlineMock.mockResolvedValue(undefined);
+
+    registerQueueMock
+      .mockResolvedValueOnce({ queue_id: "q-1", last_event_id: 0 })
+      .mockResolvedValueOnce({ queue_id: "q-2", last_event_id: 0 });
+    getEventsMock
+      .mockImplementationOnce(
+        (_queueId: string, _lastEventId: number, options?: { signal?: AbortSignal }) =>
+          new Promise((_resolve, reject) => {
+            options?.signal?.addEventListener(
+              "abort",
+              () => reject(new DOMException("Aborted", "AbortError")),
+              { once: true },
+            );
+          }),
+      )
+      .mockImplementation(
+        () =>
+          new Promise(() => {
+            /* block after recovery */
+          }),
+      );
+
+    isOnlineMock.mockReturnValue(true);
+
+    const controller = new AbortController();
+    startZulipEventLoop({
+      signal: controller.signal,
+      onEvent: vi.fn(),
+    });
+
+    await vi.waitFor(() => {
+      expect(registerQueueMock).toHaveBeenCalledTimes(1);
+      expect(getEventsMock).toHaveBeenCalledTimes(1);
+    });
+
+    isOnlineMock.mockReturnValue(false);
+    statusCb?.(false);
+
+    isOnlineMock.mockReturnValue(true);
+    statusCb?.(true);
+
+    await vi.waitFor(() => {
+      expect(registerQueueMock).toHaveBeenCalledTimes(2);
+    });
+    expect(getEventsMock).toHaveBeenCalledTimes(2);
+
+    controller.abort();
+    await Promise.resolve();
+  });
+
   it("continues polling after long-poll abort and re-registers on network reconnect", async () => {
     let reconnectCb: (() => void) | undefined;
     onReconnectMock.mockImplementation((cb: () => void) => {
@@ -297,6 +360,38 @@ describe("startZulipEventLoop", () => {
       0,
       expect.objectContaining({ timeoutSec: expect.any(Number) }),
     );
+
+    controller.abort();
+    await Promise.resolve();
+  });
+
+  it("re-registers quickly after transport error without stacking long backoff", async () => {
+    registerQueueMock
+      .mockResolvedValueOnce({ queue_id: "q-1", last_event_id: 0 })
+      .mockResolvedValueOnce({ queue_id: "q-2", last_event_id: 0 });
+    getEventsMock.mockRejectedValueOnce(new TypeError("Failed to fetch")).mockImplementation(
+      () =>
+        new Promise(() => {
+          /* block after recovery */
+        }),
+    );
+
+    onTabResumeMock.mockReturnValue(unsubResumeMock);
+    onReconnectMock.mockReturnValue(unsubReconnectMock);
+    onStatusChangeMock.mockReturnValue(unsubStatusMock);
+    waitForOnlineMock.mockResolvedValue(undefined);
+    isOnlineMock.mockReturnValue(true);
+
+    const controller = new AbortController();
+    startZulipEventLoop({
+      signal: controller.signal,
+      onEvent: vi.fn(),
+    });
+
+    await vi.waitFor(() => {
+      expect(registerQueueMock).toHaveBeenCalledTimes(2);
+    });
+    expect(getEventsMock).toHaveBeenCalledTimes(2);
 
     controller.abort();
     await Promise.resolve();

@@ -238,7 +238,7 @@ function maybeNotifyNewMessage(
       title: senderName,
       body: contentPreview,
       tag: `msg-${raw.id}`,
-      silent: playSound,
+      silent: true,
     })
     .catch(() => {});
 

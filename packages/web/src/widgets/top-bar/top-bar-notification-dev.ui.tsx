@@ -56,7 +56,7 @@ export const TopBarNotificationDev: React.FC = () => {
         title: "Test DM",
         body: "Silent OS + app sound (like production)",
         tag: `${DEV_TEST_TAG}-sound`,
-        silent: preset !== "none",
+        silent: true,
       })
       .then(() => {
         if (preset !== "none") {

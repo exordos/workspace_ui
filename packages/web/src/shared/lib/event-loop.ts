@@ -16,7 +16,11 @@ import {
   registerQueueForCredentials,
 } from "~/shared/api/zulip-queue";
 import type { RegisterQueueResult, ZulipCredentials, ZulipEvent } from "~/shared/api/zulip.types";
-import { noteApiTransportFailure, noteApiTransportSuccess } from "~/shared/lib/connection-health";
+import {
+  isLikelyNetworkError,
+  noteApiTransportFailure,
+  noteApiTransportSuccess,
+} from "~/shared/lib/connection-health";
 import { createLogger } from "~/shared/lib/logger";
 import { isOnline, onReconnect, onStatusChange, waitForOnline } from "~/shared/lib/network";
 import { onTabResume } from "~/shared/lib/visibility";
@@ -136,6 +140,14 @@ function startZulipEventLoopWithTransport(
     wake();
   }
 
+  /** Abort hung long-poll immediately — do not wait for server timeout (up to 90s). */
+  function pauseEventLoopForOffline(): void {
+    log.info("Network offline, interrupting event loop");
+    retryCount = 0;
+    abortActivePoll();
+    wake();
+  }
+
   const unsubResume = onTabResume((hiddenDurationMs) => {
     log.info("Tab resumed, nudging event loop", { hiddenDurationMs });
     wake();
@@ -149,6 +161,8 @@ function startZulipEventLoopWithTransport(
   const unsubStatus = onStatusChange((online) => {
     if (online) {
       nudgeEventLoopAfterNetworkRestore("online");
+    } else {
+      pauseEventLoopForOffline();
     }
   });
 
@@ -226,7 +240,10 @@ function startZulipEventLoopWithTransport(
         return false;
       }
       noteApiTransportFailure(err);
-      const delay = getRetryDelay();
+      const delay = isLikelyNetworkError(err) ? RETRY_PAUSE_MS : getRetryDelay();
+      if (isLikelyNetworkError(err)) {
+        retryCount = 0;
+      }
       log.warn("Queue registration failed, retrying", { delayMs: delay, retryCount });
       await interruptibleSleep(delay);
       return false;
@@ -317,6 +334,15 @@ function startZulipEventLoopWithTransport(
         if (!isOnline()) {
           log.info("Request failed while offline, will wait for network");
           clearQueueId();
+          continue;
+        }
+
+        if (isLikelyNetworkError(err)) {
+          log.info("Transport error during event poll, will re-register");
+          noteApiTransportFailure(err);
+          clearQueueId();
+          retryCount = 0;
+          wake();
           continue;
         }
 
