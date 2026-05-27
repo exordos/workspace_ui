@@ -33,6 +33,9 @@ export const MULTI_ORG_UNREAD_REFRESH_DEBOUNCE_MS = SEARCH_INPUT_DEBOUNCE_MS;
 /** Jitsi Meet API: poll interval for participant list display in the call UI. */
 export const JITSI_PARTICIPANTS_POLL_MS = 5000;
 
+/** Background Workspace folder rail + selective folder-items refresh (see folder-sync). */
+export const FOLDER_SYNC_POLL_INTERVAL_MS = 5 * 60_000;
+
 /**
  * Hard cap for each Zulip HTTP request (until response headers + JSON body read via fetch).
  * Retries receive a fresh timeout window. Does not apply to GET long-poll `.../events`.

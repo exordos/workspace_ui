@@ -165,6 +165,50 @@ describe("folder-sync model orchestration", () => {
     expect(useFolderSyncStore.getState().selectedFolderChatIds?.has("dm:42")).toBe(true);
   });
 
+  it("passes selective items load scope for polling refresh", async () => {
+    useFolderSyncStore.setState({
+      instanceId: "inst-a",
+      labels: { allChats: "All", personal: "Personal", channels: "Channels" },
+      showSystemFolders: false,
+      selectedFolderId: "folder-1",
+    });
+    vi.mocked(loadFolderSyncSnapshot).mockResolvedValue(makeFolderSnapshot({}));
+
+    await useFolderSyncStore.getState().refresh("polling");
+
+    expect(loadFolderSyncSnapshot).toHaveBeenCalledWith(
+      "inst-a",
+      expect.objectContaining({
+        itemsLoadScope: "selective",
+        resolveSelectiveFolderUuids: expect.any(Function),
+      }),
+    );
+  });
+
+  it("passes full items load scope with force for reconnect refresh without loading flag", async () => {
+    useFolderSyncStore.setState({
+      instanceId: "inst-a",
+      labels: { allChats: "All", personal: "Personal", channels: "Channels" },
+      showSystemFolders: false,
+      selectedFolderId: "folder-1",
+      loading: false,
+    });
+    vi.mocked(loadFolderSyncSnapshot).mockResolvedValue(makeFolderSnapshot({}));
+
+    const refreshPromise = useFolderSyncStore.getState().refresh("reconnect");
+    expect(useFolderSyncStore.getState().loading).toBe(false);
+    await refreshPromise;
+
+    expect(loadFolderSyncSnapshot).toHaveBeenCalledWith(
+      "inst-a",
+      expect.objectContaining({
+        itemsLoadScope: "all",
+        force: true,
+      }),
+    );
+    expect(useFolderSyncStore.getState().loading).toBe(false);
+  });
+
   it("normalizes numeric folder chat ids for sidebar matching", async () => {
     useFolderSyncStore.setState({
       instanceId: "inst-a",

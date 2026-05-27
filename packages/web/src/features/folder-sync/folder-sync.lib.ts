@@ -197,6 +197,53 @@ export function resolveSelectedFolderId(
   return folders[0]?.id ?? null;
 }
 
+/** API folder uuids to refresh items for during background polling (subset of all folders). */
+export function resolveFolderUuidsForPollingItemsRefresh(params: {
+  foldersFromApi: readonly { uuid?: string; system_type?: string | null }[];
+  folderItemsByFolderId: ReadonlyMap<string, FolderItemForClient[]>;
+  staleFolderIds: ReadonlySet<string>;
+  selectedFolderId: string;
+  foldersForRail: readonly FolderLike[];
+  allFolderApiUuid?: string | null;
+}): string[] {
+  const allFolderApiUuid =
+    params.allFolderApiUuid ?? resolveAllFolderApiUuid(params.foldersFromApi);
+  const uuids = new Set<string>();
+
+  if (shouldLoadFolderItemsForSelection(params.foldersForRail, params.selectedFolderId)) {
+    const selectedApiUuid = resolveFolderItemsRequestUuid(
+      params.selectedFolderId,
+      allFolderApiUuid,
+    );
+    if (selectedApiUuid != null && selectedApiUuid.length > 0) {
+      uuids.add(selectedApiUuid);
+    }
+  }
+
+  for (const staleFolderId of params.staleFolderIds) {
+    const resolved = resolveFolderItemsRequestUuid(staleFolderId, allFolderApiUuid);
+    if (resolved != null && resolved.length > 0) {
+      uuids.add(resolved);
+    }
+  }
+
+  for (const folder of params.foldersFromApi) {
+    const systemType = folder.system_type;
+    if (systemType === "all" || systemType === "personal" || systemType === "channels") {
+      continue;
+    }
+    const apiUuid = folder.uuid?.trim();
+    if (apiUuid == null || apiUuid.length === 0) {
+      continue;
+    }
+    if (!params.folderItemsByFolderId.has(apiUuid)) {
+      uuids.add(apiUuid);
+    }
+  }
+
+  return [...uuids];
+}
+
 export function shouldLoadFolderItemsForSelection(
   folders: readonly FolderLike[],
   selectedFolderId: string,

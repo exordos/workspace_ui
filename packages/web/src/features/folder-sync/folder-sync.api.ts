@@ -12,10 +12,10 @@ function isFolderWithUuid(f: WorkspaceFolder): f is WorkspaceFolder & { uuid: st
 }
 
 async function loadFolderItemsResultsMap(
-  folders: WorkspaceFolder[],
+  foldersToLoad: WorkspaceFolder[],
   priorityFolderUuid?: string | null,
 ): Promise<Map<string, FolderItemsLoadResult>> {
-  const withUuid = folders.filter(isFolderWithUuid);
+  const withUuid = foldersToLoad.filter(isFolderWithUuid);
   const next = new Map<string, FolderItemsLoadResult>();
   const priority = priorityFolderUuid?.trim();
   const priorityFolder =
@@ -74,10 +74,19 @@ function cloneSnapshot(snapshot: FolderSyncSnapshot): FolderSyncSnapshot {
   };
 }
 
+export type FolderSyncItemsLoadScope = "all" | "selective";
+
 export interface LoadFolderSyncSnapshotOptions {
   force?: boolean;
   /** Fetched before the parallel batch so the active folder hydrates first. */
   priorityFolderUuid?: string | null;
+  /**
+   * `all` — request items for every folder with uuid (bootstrap, mutation, reconnect).
+   * `selective` — only uuids from `resolveSelectiveFolderUuids` (background polling).
+   */
+  itemsLoadScope?: FolderSyncItemsLoadScope;
+  /** Called after `getFolders()` when `itemsLoadScope` is `selective`. */
+  resolveSelectiveFolderUuids?: (folders: WorkspaceFolder[]) => string[];
   /** After `getFolders()`, before item requests complete — for early rail update. */
   onFoldersLoaded?: (folders: WorkspaceFolder[]) => void | Promise<void>;
 }
@@ -97,7 +106,23 @@ export async function loadFolderSyncSnapshot(
   const request = (async () => {
     const folders = await getFolders();
     await options?.onFoldersLoaded?.(folders);
-    const itemsByFolderId = await loadFolderItemsResultsMap(folders, options?.priorityFolderUuid);
+    const allWithUuid = folders.filter(isFolderWithUuid);
+    const itemsLoadScope = options?.itemsLoadScope ?? "all";
+    const foldersForItems =
+      itemsLoadScope === "selective"
+        ? (() => {
+            const selectiveUuids = new Set(
+              (options?.resolveSelectiveFolderUuids?.(folders) ?? [])
+                .map((id) => id.trim())
+                .filter((id) => id.length > 0),
+            );
+            return allWithUuid.filter((folder) => selectiveUuids.has(folder.uuid));
+          })()
+        : allWithUuid;
+    const itemsByFolderId = await loadFolderItemsResultsMap(
+      foldersForItems,
+      options?.priorityFolderUuid,
+    );
 
     const snapshot: FolderSyncSnapshot = {
       folders,

@@ -3,6 +3,7 @@
  */
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
+import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { createLogger } from "~/shared/lib/logger";
 import { logChatListFlow } from "~/shared/lib/message-flow-debug.lib";
 import { refreshActiveChatMessagesFromApi } from "./layout-active-chat-refresh.lib";
@@ -134,7 +135,21 @@ function refreshLayoutReconnectLightPass(params: LayoutReconnectRefreshParams): 
 
 async function refreshLayoutReconnectFull(params: LayoutReconnectRefreshParams): Promise<void> {
   refreshSharedLayers(params, "full");
+  refreshFolderSyncOnReconnect(params);
   await refreshChatListReconnectBootstrap(params);
+}
+
+/** Full reconnect: refresh Workspace folder rail + all folder items (multi-device drift). */
+function refreshFolderSyncOnReconnect(params: LayoutReconnectRefreshParams): void {
+  const { instanceId, isCancelled } = params;
+  if (instanceId == null || isCancelled?.()) {
+    return;
+  }
+  const folderSync = useFolderSyncStore.getState();
+  if (folderSync.instanceId !== instanceId) {
+    return;
+  }
+  void folderSync.refresh("reconnect");
 }
 
 function refreshSharedLayers(

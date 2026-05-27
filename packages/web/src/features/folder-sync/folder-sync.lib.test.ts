@@ -6,6 +6,7 @@ import {
   aliasAllFolderItemsCacheKeys,
   mergeFolderItemsSnapshot,
   resolveFolderItemsRequestUuid,
+  resolveFolderUuidsForPollingItemsRefresh,
   resolvePinScopeFolderUuid,
   sidebarFolderItemsMembershipPending,
   withDefaultSystemFolders,
@@ -47,6 +48,47 @@ describe("resolveFolderItemsRequestUuid", () => {
 
   it("passes through created folder uuid unchanged", () => {
     expect(resolveFolderItemsRequestUuid("folder-created-1", apiAllUuid)).toBe("folder-created-1");
+  });
+});
+
+describe("resolveFolderUuidsForPollingItemsRefresh", () => {
+  const railFolders = [
+    { id: SYSTEM_ALL_FOLDER_ID, systemType: "all" as const },
+    { id: "folder-a", systemType: "created" as const },
+    { id: "folder-b", systemType: "created" as const },
+  ];
+
+  it("includes selected created folder, stale folders, and folders missing from cache", () => {
+    const uuids = resolveFolderUuidsForPollingItemsRefresh({
+      foldersFromApi: [
+        { uuid: "api-all", system_type: "all" },
+        { uuid: "folder-a", system_type: "created" },
+        { uuid: "folder-b", system_type: "created" },
+      ],
+      folderItemsByFolderId: new Map([["folder-a", []]]),
+      staleFolderIds: new Set(["folder-c"]),
+      selectedFolderId: "folder-b",
+      foldersForRail: railFolders,
+      allFolderApiUuid: "api-all",
+    });
+
+    expect(uuids).toContain("folder-b");
+    expect(uuids).toContain("folder-c");
+    expect(uuids).not.toContain("folder-a");
+    expect(uuids).not.toContain("api-all");
+  });
+
+  it("skips system folders for selection", () => {
+    const uuids = resolveFolderUuidsForPollingItemsRefresh({
+      foldersFromApi: [{ uuid: "api-all", system_type: "all" }],
+      folderItemsByFolderId: new Map(),
+      staleFolderIds: new Set(),
+      selectedFolderId: SYSTEM_ALL_FOLDER_ID,
+      foldersForRail: [{ id: SYSTEM_ALL_FOLDER_ID, systemType: "all" }],
+      allFolderApiUuid: "api-all",
+    });
+
+    expect(uuids).not.toContain("api-all");
   });
 });
 

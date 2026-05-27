@@ -162,6 +162,39 @@ describe("folder-sync.api", () => {
     expect(getFolderItems).not.toHaveBeenCalledWith(SYSTEM_ALL_FOLDER_ID);
   });
 
+  it("loads items only for selective folder uuids when itemsLoadScope is selective", async () => {
+    vi.mocked(getFolders).mockResolvedValue([
+      {
+        uuid: "folder-a",
+        title: "A",
+        background_color_value: 0,
+        unread_messages: [],
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+        system_type: "created",
+      },
+      {
+        uuid: "folder-b",
+        title: "B",
+        background_color_value: 0,
+        unread_messages: [],
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+        system_type: "created",
+      },
+    ]);
+    vi.mocked(getFolderItems).mockResolvedValue([]);
+
+    await loadFolderSyncSnapshot("inst-a", {
+      itemsLoadScope: "selective",
+      resolveSelectiveFolderUuids: () => ["folder-b"],
+    });
+
+    expect(getFolderItems).toHaveBeenCalledTimes(1);
+    expect(getFolderItems).toHaveBeenCalledWith("folder-b");
+    expect(getFolderItems).not.toHaveBeenCalledWith("folder-a");
+  });
+
   it("marks failed folder-items requests without failing full snapshot", async () => {
     vi.mocked(getFolders).mockResolvedValue([
       {

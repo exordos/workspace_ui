@@ -8,6 +8,7 @@ import type { FolderRefreshReason } from "~/features/folder-sync/folder-sync.mod
 import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { t } from "~/i18n/i18n";
 import type { FolderItemForClient } from "~/shared/api/workspace-client";
+import { FOLDER_SYNC_POLL_INTERVAL_MS } from "~/shared/config/constants";
 import { createLogger } from "~/shared/lib/logger";
 import type { SidebarChat, StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import { startFolderPolling } from "./layout-folder-polling.lib";
@@ -157,6 +158,7 @@ export function useLayoutFolderSyncOrchestration(
         currentInstanceId != null &&
         (currentUserStatus === "ready" || currentUserStatus === "degraded") &&
         online,
+      pollIntervalMs: FOLDER_SYNC_POLL_INTERVAL_MS,
       refreshFolders: () => refreshFolderSync("polling"),
       runImmediately: false,
     });

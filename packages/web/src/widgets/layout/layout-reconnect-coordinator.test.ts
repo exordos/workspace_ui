@@ -13,6 +13,7 @@ const runChatListBootstrapMock = vi.fn();
 const fetchRealmPresenceMock = vi.fn();
 const loadInitialMessagesForContextMock = vi.fn();
 const lightRefreshMock = vi.fn();
+const folderSyncRefreshMock = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("./layout-chat-list-bootstrap.lib", () => ({
   runChatListBootstrap: (...args: unknown[]) => runChatListBootstrapMock(...args),
@@ -61,11 +62,21 @@ vi.mock("~/entities/instance/instance.model", () => ({
   },
 }));
 
+vi.mock("~/features/folder-sync/folder-sync.model", () => ({
+  useFolderSyncStore: {
+    getState: () => ({
+      instanceId: "inst-1",
+      refresh: folderSyncRefreshMock,
+    }),
+  },
+}));
+
 describe("scheduleLayoutReconnectRefresh", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     resetLayoutReconnectCoordinatorForTests();
     runChatListBootstrapMock.mockResolvedValue({ mode: "none", latestMessageIdHint: null });
+    folderSyncRefreshMock.mockClear();
   });
 
   afterEach(() => {
@@ -86,6 +97,7 @@ describe("scheduleLayoutReconnectRefresh", () => {
       "inst-1",
       expect.objectContaining({ kind: "reconnect" }),
     );
+    expect(folderSyncRefreshMock).toHaveBeenCalledWith("reconnect");
   });
 
   it("uses light path with reconnect light refresh", async () => {
@@ -97,6 +109,7 @@ describe("scheduleLayoutReconnectRefresh", () => {
 
     expect(runChatListBootstrapMock).not.toHaveBeenCalled();
     expect(lightRefreshMock).toHaveBeenCalledTimes(1);
+    expect(folderSyncRefreshMock).not.toHaveBeenCalled();
   });
 
   it("escalates light then full to full path", async () => {

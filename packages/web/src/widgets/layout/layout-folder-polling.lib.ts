@@ -1,11 +1,14 @@
+/**
+ * Periodic folder-sync polling: folders list + selective folder-items refresh.
+ * Startup and reconnect use full snapshot via bootstrap / layout-reconnect-coordinator.
+ */
+import { FOLDER_SYNC_POLL_INTERVAL_MS } from "~/shared/config/constants";
 import type { StartFolderPollingOptions } from "./layout-folder-polling.types";
-
-const DEFAULT_FOLDER_POLL_INTERVAL_MS = 60_000;
 
 export function startFolderPolling({
   enabled,
   refreshFolders,
-  pollIntervalMs = DEFAULT_FOLDER_POLL_INTERVAL_MS,
+  pollIntervalMs = FOLDER_SYNC_POLL_INTERVAL_MS,
   runImmediately = false,
 }: StartFolderPollingOptions): () => void {
   if (!enabled) return () => {};

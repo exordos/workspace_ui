@@ -37,13 +37,14 @@ import {
 } from "./folder-sync.lib";
 import {
   mergeFolderItemsSnapshot,
+  resolveFolderUuidsForPollingItemsRefresh,
   resolveSelectedFolderId,
   shouldLoadFolderItemsForSelection,
   withDefaultSystemFolders,
   type FolderSyncSystemLabels,
 } from "./folder-sync.lib";
 
-export type FolderRefreshReason = "bootstrap" | "polling" | "mutation";
+export type FolderRefreshReason = "bootstrap" | "polling" | "mutation" | "reconnect";
 
 const folderSyncLog = createLogger("folderSync");
 // Паузы между попытками reconcile после optimistic mutation.
@@ -498,7 +499,7 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
     async refresh(reason) {
       const instanceId = get().instanceId;
       if (!instanceId) return;
-      const shouldToggleLoading = reason !== "polling";
+      const shouldToggleLoading = reason !== "polling" && reason !== "reconnect";
 
       const inFlight = inFlightRefreshByInstance.get(instanceId);
       if (inFlight) {
@@ -518,13 +519,29 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
         });
 
         try {
+          const stateBeforeSnapshot = get();
           const priorityFolderUuid = resolveFolderItemsRequestUuid(
-            get().selectedFolderId,
-            get().allFolderApiUuid,
+            stateBeforeSnapshot.selectedFolderId,
+            stateBeforeSnapshot.allFolderApiUuid,
           );
+          const itemsLoadScope = reason === "polling" ? "selective" : "all";
           const snapshot = await loadFolderSyncSnapshot(instanceId, {
-            force: reason === "bootstrap",
+            force: reason === "bootstrap" || reason === "reconnect",
             priorityFolderUuid,
+            itemsLoadScope,
+            ...(itemsLoadScope === "selective"
+              ? {
+                  resolveSelectiveFolderUuids: (folderRows) =>
+                    resolveFolderUuidsForPollingItemsRefresh({
+                      foldersFromApi: folderRows,
+                      folderItemsByFolderId: stateBeforeSnapshot.folderItemsByFolderId,
+                      staleFolderIds: stateBeforeSnapshot.staleFolderIds,
+                      selectedFolderId: stateBeforeSnapshot.selectedFolderId,
+                      foldersForRail: stateBeforeSnapshot.folders,
+                      allFolderApiUuid: stateBeforeSnapshot.allFolderApiUuid,
+                    }),
+                }
+              : {}),
             onFoldersLoaded: (folderRows) => {
               const phaseState = get();
               if (!isCurrentRequest(phaseState, instanceId, requestVersion)) {
