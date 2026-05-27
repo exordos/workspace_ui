@@ -51,6 +51,12 @@ type ViteProxyEntry = {
   configure?: (proxy: unknown, options: unknown) => void;
 };
 
+const BACKEND_NAVIGATE_FALLBACK_DENY_LIST: RegExp[] = [
+  /^\/accounts(?:\/|$|[?#])/,
+  /^\/login(?:\/|$)/,
+  /^\/complete(?:\/|$|[?#])/,
+];
+
 // Логирует входящий dev-path и итоговый upstream URL после rewrite.
 // Включается только через `VITE_DEV_PROXY_DEBUG`.
 function withDevProxyRequestLog(
@@ -246,19 +252,7 @@ export default defineConfig(({ mode }) => {
               workbox: {
                 globPatterns: ["**/*.{js,css,html,ico,png,svg,woff,woff2}"],
                 navigateFallback: "/index.html",
-                navigateFallbackDenylist: [
-                  /\/accounts(?:\/|$|[?#])/,
-                  /\/complete\/oidc(?:\/|$|[?#])/,
-                  /\/api(?:\/|$|[?#])/,
-                  /\/api\/v1(?:\/|$|[?#])/,
-                  /\/json(?:\/|$|[?#])/,
-                  /\/workspace(?:\/|$|[?#])/,
-                  /\/user_avatars(?:\/|$|[?#])/,
-                  /\/user_uploads(?:\/|$|[?#])/,
-                  /\/avatar(?:\/|$|[?#])/,
-                  /\/external_content(?:\/|$|[?#])/,
-                  /\/legacy(?:\/|$|[?#])/,
-                ],
+                navigateFallbackDenylist: BACKEND_NAVIGATE_FALLBACK_DENY_LIST,
                 cleanupOutdatedCaches: true,
                 runtimeCaching: [
                   {
