@@ -20,7 +20,7 @@ import { RightDrawerContext } from "~/shared/contexts/right-drawer";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { resetRealmEmojisCacheForTests } from "~/shared/lib/realm-emojis-cache";
 import { renderWithProviders } from "~/test/render";
-import { RightPanel } from "./right-panel.ui";
+import { RightPanelShell } from "./right-panel-shell.ui";
 import type * as ReactRouterDom from "react-router-dom";
 
 const fetchVersionCatalogMock = vi.hoisted(() => vi.fn());
@@ -133,7 +133,7 @@ describe("RightPanel truthfulness", () => {
 
   it("does not render fake DM action rows", () => {
     renderWithProviders(
-      <RightPanel
+      <RightPanelShell
         title="Alice"
         user={{
           name: "Alice",
@@ -157,7 +157,9 @@ describe("RightPanel truthfulness", () => {
       hasNewerMessages: false,
     });
 
-    renderWithProviders(<RightPanel title="engineering" participantsCount={3} onlineCount={1} />);
+    renderWithProviders(
+      <RightPanelShell title="engineering" participantsCount={3} onlineCount={1} />,
+    );
 
     expect(screen.queryByText(/36 photos/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/call \| topic 1/i)).not.toBeInTheDocument();
@@ -165,7 +167,7 @@ describe("RightPanel truthfulness", () => {
   });
 
   it("renders settings mode with explicit option selection for language and sound", () => {
-    renderWithProviders(<RightPanel mode="settings" title="Settings" />);
+    renderWithProviders(<RightPanelShell mode="settings" title="Settings" />);
 
     expect(screen.getByRole("heading", { name: /^settings$/i })).toBeInTheDocument();
     act(() => {
@@ -212,7 +214,7 @@ describe("RightPanel truthfulness", () => {
 
     renderWithProviders(
       <RightDrawerContext.Provider value={{ open: true, setOpen: vi.fn(), openUserProfile }}>
-        <RightPanel mode="settings" title="Settings" />
+        <RightPanelShell mode="settings" title="Settings" />
       </RightDrawerContext.Provider>,
     );
 
@@ -229,7 +231,7 @@ describe("RightPanel truthfulness", () => {
       <RightDrawerContext.Provider
         value={{ open: true, setOpen: vi.fn(), openUserProfile: vi.fn() }}
       >
-        <RightPanel
+        <RightPanelShell
           mode="user-menu"
           title="Profile"
           onOpenAboutDrawer={onOpenAboutDrawer}
@@ -255,7 +257,7 @@ describe("RightPanel truthfulness", () => {
   });
 
   it("opens user-status dialog from authenticated user menu", () => {
-    renderWithProviders(<RightPanel mode="user-menu" title="Profile" />);
+    renderWithProviders(<RightPanelShell mode="user-menu" title="Profile" />);
 
     fireEvent.click(screen.getByRole("button", { name: /^status/i }));
 
@@ -273,7 +275,7 @@ describe("RightPanel truthfulness", () => {
     };
     fetchRealmEmojisMock.mockResolvedValue([realmEmoji]);
 
-    renderWithProviders(<RightPanel mode="user-menu" title="Profile" />);
+    renderWithProviders(<RightPanelShell mode="user-menu" title="Profile" />);
 
     fireEvent.click(screen.getByRole("button", { name: /^status/i }));
 
@@ -302,7 +304,7 @@ describe("RightPanel truthfulness", () => {
     });
     useInstancesStore.getState().setCurrentInstanceId(instanceId);
 
-    renderWithProviders(<RightPanel mode="user-menu" title="Profile" />);
+    renderWithProviders(<RightPanelShell mode="user-menu" title="Profile" />);
 
     const currentServerItem = screen.getByTestId("user-menu-current-server-item");
     expect(currentServerItem).toHaveClass("px-2.5");
@@ -337,7 +339,7 @@ describe("RightPanel truthfulness", () => {
       },
     });
 
-    renderWithProviders(<RightPanel mode="builds" title="Select build" />);
+    renderWithProviders(<RightPanelShell mode="builds" title="Select build" />);
 
     expect(screen.getByRole("heading", { name: /select build/i })).toBeInTheDocument();
     expect(await screen.findByText("2.0.0")).toBeInTheDocument();
@@ -370,7 +372,7 @@ describe("RightPanel truthfulness", () => {
       },
     });
 
-    renderWithProviders(<RightPanel mode="user-menu" title="Profile" />);
+    renderWithProviders(<RightPanelShell mode="user-menu" title="Profile" />);
     fireEvent.click(screen.getByRole("button", { name: /select build/i }));
 
     expect(await screen.findByRole("heading", { name: /select build/i })).toBeInTheDocument();
@@ -378,7 +380,7 @@ describe("RightPanel truthfulness", () => {
   });
 
   it("renders about mode with app version, technical details, and licenses link", () => {
-    renderWithProviders(<RightPanel mode="about" title="About" />);
+    renderWithProviders(<RightPanelShell mode="about" title="About" />);
 
     expect(screen.getByRole("heading", { name: /app version/i })).toBeInTheDocument();
     expect(screen.getByText(/current version:/i)).toBeInTheDocument();
@@ -395,7 +397,7 @@ describe("RightPanel truthfulness", () => {
     const onSelectCommonGroup = vi.fn();
 
     renderWithProviders(
-      <RightPanel
+      <RightPanelShell
         title="Alice"
         user={{
           name: "Alice",
@@ -419,7 +421,7 @@ describe("RightPanel truthfulness", () => {
       localTime: "10:45",
     };
 
-    renderWithProviders(<RightPanel title="Alice" user={user} />);
+    renderWithProviders(<RightPanelShell title="Alice" user={user} />);
 
     expect(screen.getByText(/^user id$/i)).toBeInTheDocument();
     expect(screen.getByText("42")).toBeInTheDocument();
@@ -446,7 +448,7 @@ describe("RightPanel truthfulness", () => {
       profileLink: "https://chat.example.com/#user/42",
     };
 
-    renderWithProviders(<RightPanel title="Alice" user={user} />);
+    renderWithProviders(<RightPanelShell title="Alice" user={user} />);
 
     expect(screen.queryByRole("link", { name: "alice@example.com" })).not.toBeInTheDocument();
     expect(screen.getByText("alice@example.com")).toBeInTheDocument();
@@ -476,7 +478,7 @@ describe("RightPanel truthfulness", () => {
     });
 
     renderWithProviders(
-      <RightPanel
+      <RightPanelShell
         title="Alice"
         user={{
           name: "Alice Example",
@@ -497,7 +499,7 @@ describe("RightPanel truthfulness", () => {
 
   it("opens avatar preview in original size on avatar click", () => {
     renderWithProviders(
-      <RightPanel
+      <RightPanelShell
         title="Alice"
         user={{
           name: "Alice Example",
@@ -520,7 +522,7 @@ describe("RightPanel truthfulness", () => {
     const onOpenDirectMessage = vi.fn();
 
     renderWithProviders(
-      <RightPanel
+      <RightPanelShell
         title="Alice"
         user={{
           name: "Alice",
@@ -541,7 +543,7 @@ describe("RightPanel truthfulness", () => {
     useChatDmCallBridgeStore.getState().setInvokeDmCallFromProfileHandler(invokeDmCall);
 
     renderWithProviders(
-      <RightPanel
+      <RightPanelShell
         title="Alice"
         user={{
           name: "Alice",
@@ -579,7 +581,7 @@ describe("RightPanel truthfulness", () => {
     });
 
     act(() => {
-      renderWithProviders(<RightPanel title="Group chat" />);
+      renderWithProviders(<RightPanelShell title="Group chat" />);
     });
 
     expect(screen.getByText("Alice")).toBeInTheDocument();
@@ -620,7 +622,7 @@ describe("RightPanel truthfulness", () => {
       });
     });
 
-    renderWithProviders(<RightPanel title="Group chat" />);
+    renderWithProviders(<RightPanelShell title="Group chat" />);
 
     expect(screen.getByText("🏠 Working remotely")).toBeInTheDocument();
     expect(screen.getByText("Bob")).toBeInTheDocument();
@@ -631,7 +633,7 @@ describe("RightPanel truthfulness", () => {
     useThemeStore.getState().setPalette("blue-cold");
 
     renderWithProviders(
-      <RightPanel
+      <RightPanelShell
         title="Alice"
         user={{
           name: "Alice",
@@ -647,7 +649,7 @@ describe("RightPanel truthfulness", () => {
 
   it("places profile header inside the same scroll container", () => {
     renderWithProviders(
-      <RightPanel
+      <RightPanelShell
         title="Alice"
         user={{
           name: "Alice",
@@ -670,7 +672,9 @@ describe("RightPanel truthfulness", () => {
     });
     vi.spyOn(muteChat, "muteStream").mockResolvedValue(false);
 
-    renderWithProviders(<RightPanel title="engineering" participantsCount={3} onlineCount={1} />);
+    renderWithProviders(
+      <RightPanelShell title="engineering" participantsCount={3} onlineCount={1} />,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: /mute notifications/i }));
 
@@ -704,7 +708,9 @@ describe("RightPanel truthfulness", () => {
       });
     });
 
-    renderWithProviders(<RightPanel title="engineering" participantsCount={3} onlineCount={1} />);
+    renderWithProviders(
+      <RightPanelShell title="engineering" participantsCount={3} onlineCount={1} />,
+    );
 
     expect(screen.getByText("Engineering stream for product delivery")).toBeInTheDocument();
     expect(screen.getByText("release")).toBeInTheDocument();
@@ -733,7 +739,9 @@ describe("RightPanel truthfulness", () => {
       });
     });
 
-    renderWithProviders(<RightPanel title="engineering" participantsCount={3} onlineCount={1} />);
+    renderWithProviders(
+      <RightPanelShell title="engineering" participantsCount={3} onlineCount={1} />,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: /release/i }));
 
@@ -789,7 +797,9 @@ describe("RightPanel truthfulness", () => {
       useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Admin", role: 200 });
     });
 
-    renderWithProviders(<RightPanel title="engineering" participantsCount={3} onlineCount={1} />);
+    renderWithProviders(
+      <RightPanelShell title="engineering" participantsCount={3} onlineCount={1} />,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: /delete topic/i }));
 
@@ -840,7 +850,9 @@ describe("RightPanel truthfulness", () => {
       ]);
     });
 
-    renderWithProviders(<RightPanel title="engineering" participantsCount={3} onlineCount={1} />);
+    renderWithProviders(
+      <RightPanelShell title="engineering" participantsCount={3} onlineCount={1} />,
+    );
 
     expect(screen.queryByRole("button", { name: /delete topic/i })).not.toBeInTheDocument();
   });
@@ -877,7 +889,7 @@ describe("RightPanel truthfulness", () => {
 
     renderWithProviders(
       <RightDrawerContext.Provider value={{ open: true, setOpen: vi.fn(), openUserProfile }}>
-        <RightPanel title="engineering" participantsCount={1} onlineCount={1} />
+        <RightPanelShell title="engineering" participantsCount={1} onlineCount={1} />
       </RightDrawerContext.Provider>,
     );
 
@@ -925,7 +937,9 @@ describe("RightPanel truthfulness", () => {
       });
     });
 
-    renderWithProviders(<RightPanel title="engineering" participantsCount={1} onlineCount={1} />);
+    renderWithProviders(
+      <RightPanelShell title="engineering" participantsCount={1} onlineCount={1} />,
+    );
 
     expect(screen.getByText("💬 In focus")).toBeInTheDocument();
   });
@@ -964,7 +978,9 @@ describe("RightPanel truthfulness", () => {
       useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Admin", role: 200 });
     });
 
-    renderWithProviders(<RightPanel title="engineering" participantsCount={1} onlineCount={1} />);
+    renderWithProviders(
+      <RightPanelShell title="engineering" participantsCount={1} onlineCount={1} />,
+    );
 
     expect(screen.getByRole("button", { name: /add members/i })).toBeInTheDocument();
   });
@@ -1003,7 +1019,9 @@ describe("RightPanel truthfulness", () => {
       useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Member", role: 400 });
     });
 
-    renderWithProviders(<RightPanel title="engineering" participantsCount={1} onlineCount={1} />);
+    renderWithProviders(
+      <RightPanelShell title="engineering" participantsCount={1} onlineCount={1} />,
+    );
 
     expect(screen.queryByRole("button", { name: /add members/i })).not.toBeInTheDocument();
   });
@@ -1057,7 +1075,9 @@ describe("RightPanel truthfulness", () => {
       ]);
     });
 
-    renderWithProviders(<RightPanel title="engineering" participantsCount={1} onlineCount={1} />);
+    renderWithProviders(
+      <RightPanelShell title="engineering" participantsCount={1} onlineCount={1} />,
+    );
 
     expect(screen.getByRole("button", { name: /add members/i })).toBeInTheDocument();
   });
@@ -1115,7 +1135,9 @@ describe("RightPanel truthfulness", () => {
       ]);
     });
 
-    renderWithProviders(<RightPanel title="engineering" participantsCount={1} onlineCount={1} />);
+    renderWithProviders(
+      <RightPanelShell title="engineering" participantsCount={1} onlineCount={1} />,
+    );
 
     expect(screen.getByRole("button", { name: /add members/i })).toBeInTheDocument();
   });
@@ -1170,7 +1192,9 @@ describe("RightPanel truthfulness", () => {
       ]);
     });
 
-    renderWithProviders(<RightPanel title="engineering" participantsCount={1} onlineCount={1} />);
+    renderWithProviders(
+      <RightPanelShell title="engineering" participantsCount={1} onlineCount={1} />,
+    );
 
     expect(screen.getByRole("button", { name: /add members/i })).toBeInTheDocument();
   });
@@ -1225,7 +1249,9 @@ describe("RightPanel truthfulness", () => {
       ]);
     });
 
-    renderWithProviders(<RightPanel title="engineering" participantsCount={1} onlineCount={1} />);
+    renderWithProviders(
+      <RightPanelShell title="engineering" participantsCount={1} onlineCount={1} />,
+    );
 
     expect(screen.queryByRole("button", { name: /add members/i })).not.toBeInTheDocument();
   });
@@ -1282,7 +1308,9 @@ describe("RightPanel truthfulness", () => {
       ]);
     });
 
-    renderWithProviders(<RightPanel title="engineering" participantsCount={1} onlineCount={1} />);
+    renderWithProviders(
+      <RightPanelShell title="engineering" participantsCount={1} onlineCount={1} />,
+    );
 
     expect(screen.getByRole("button", { name: /remove from channel: alice/i })).toBeInTheDocument();
   });
@@ -1340,7 +1368,9 @@ describe("RightPanel truthfulness", () => {
       ]);
     });
 
-    renderWithProviders(<RightPanel title="engineering" participantsCount={1} onlineCount={1} />);
+    renderWithProviders(
+      <RightPanelShell title="engineering" participantsCount={1} onlineCount={1} />,
+    );
 
     expect(screen.getByRole("button", { name: /remove from channel: alice/i })).toBeInTheDocument();
   });
@@ -1391,7 +1421,9 @@ describe("RightPanel truthfulness", () => {
       ]);
     });
 
-    renderWithProviders(<RightPanel title="engineering" participantsCount={1} onlineCount={1} />);
+    renderWithProviders(
+      <RightPanelShell title="engineering" participantsCount={1} onlineCount={1} />,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: /add members/i }));
     fireEvent.click(screen.getByRole("checkbox", { name: /bob/i }));
@@ -1450,7 +1482,9 @@ describe("RightPanel truthfulness", () => {
       ]);
     });
 
-    renderWithProviders(<RightPanel title="test-clon" participantsCount={1} onlineCount={1} />);
+    renderWithProviders(
+      <RightPanelShell title="test-clon" participantsCount={1} onlineCount={1} />,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: /add members/i }));
 
@@ -1521,7 +1555,9 @@ describe("RightPanel truthfulness", () => {
       ]);
     });
 
-    renderWithProviders(<RightPanel title="engineering" participantsCount={4} onlineCount={1} />);
+    renderWithProviders(
+      <RightPanelShell title="engineering" participantsCount={4} onlineCount={1} />,
+    );
 
     expect(screen.getByRole("button", { name: /remove from channel: alice/i })).toBeInTheDocument();
     expect(
@@ -1596,7 +1632,9 @@ describe("RightPanel truthfulness", () => {
       ]);
     });
 
-    renderWithProviders(<RightPanel title="engineering" participantsCount={2} onlineCount={1} />);
+    renderWithProviders(
+      <RightPanelShell title="engineering" participantsCount={2} onlineCount={1} />,
+    );
 
     expect(screen.getByText("Creator")).toBeInTheDocument();
     expect(screen.getByText("Channel admin")).toBeInTheDocument();
@@ -1655,7 +1693,9 @@ describe("RightPanel truthfulness", () => {
       ]);
     });
 
-    renderWithProviders(<RightPanel title="engineering" participantsCount={1} onlineCount={1} />);
+    renderWithProviders(
+      <RightPanelShell title="engineering" participantsCount={1} onlineCount={1} />,
+    );
 
     expect(screen.getByText("Creator")).toBeInTheDocument();
     expect(screen.queryByText("Channel admin")).not.toBeInTheDocument();
@@ -1709,7 +1749,7 @@ describe("RightPanel truthfulness", () => {
 
     renderWithProviders(
       <RightDrawerContext.Provider value={{ open: true, setOpen: vi.fn(), openUserProfile }}>
-        <RightPanel title="test-clon" participantsCount={1} onlineCount={1} />
+        <RightPanelShell title="test-clon" participantsCount={1} onlineCount={1} />
       </RightDrawerContext.Provider>,
     );
 
@@ -1747,7 +1787,9 @@ describe("RightPanel truthfulness", () => {
       useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Member", role: 400 });
     });
 
-    renderWithProviders(<RightPanel title="engineering" participantsCount={3} onlineCount={1} />);
+    renderWithProviders(
+      <RightPanelShell title="engineering" participantsCount={3} onlineCount={1} />,
+    );
 
     expect(screen.queryByRole("button", { name: /edit channel/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /archive channel/i })).not.toBeInTheDocument();
@@ -1778,7 +1820,9 @@ describe("RightPanel truthfulness", () => {
       useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Admin", role: 200 });
     });
 
-    renderWithProviders(<RightPanel title="engineering" participantsCount={3} onlineCount={1} />);
+    renderWithProviders(
+      <RightPanelShell title="engineering" participantsCount={3} onlineCount={1} />,
+    );
 
     expect(screen.getByRole("button", { name: /edit channel/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /archive channel/i })).toBeInTheDocument();
@@ -1826,7 +1870,9 @@ describe("RightPanel truthfulness", () => {
       useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Admin", role: 200 });
     });
 
-    renderWithProviders(<RightPanel title="#engineering" participantsCount={3} onlineCount={1} />);
+    renderWithProviders(
+      <RightPanelShell title="#engineering" participantsCount={3} onlineCount={1} />,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: /edit channel/i }));
 
@@ -1866,7 +1912,9 @@ describe("RightPanel truthfulness", () => {
       useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Admin", role: 200 });
     });
 
-    renderWithProviders(<RightPanel title="##engineering" participantsCount={3} onlineCount={1} />);
+    renderWithProviders(
+      <RightPanelShell title="##engineering" participantsCount={3} onlineCount={1} />,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: /edit channel/i }));
 
@@ -1911,7 +1959,9 @@ describe("RightPanel truthfulness", () => {
       ]);
     });
 
-    renderWithProviders(<RightPanel title="engineering" participantsCount={3} onlineCount={1} />);
+    renderWithProviders(
+      <RightPanelShell title="engineering" participantsCount={3} onlineCount={1} />,
+    );
 
     expect(screen.getByRole("button", { name: /edit channel/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /archive channel/i })).toBeInTheDocument();
@@ -1979,7 +2029,9 @@ describe("RightPanel truthfulness", () => {
       });
     });
 
-    renderWithProviders(<RightPanel title="engineering" participantsCount={3} onlineCount={1} />);
+    renderWithProviders(
+      <RightPanelShell title="engineering" participantsCount={3} onlineCount={1} />,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: /archive channel/i }));
 
@@ -2024,7 +2076,9 @@ describe("RightPanel truthfulness", () => {
       });
     });
 
-    renderWithProviders(<RightPanel title="engineering" participantsCount={3} onlineCount={1} />);
+    renderWithProviders(
+      <RightPanelShell title="engineering" participantsCount={3} onlineCount={1} />,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: /archive channel/i }));
 

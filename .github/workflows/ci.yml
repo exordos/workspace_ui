@@ -37,6 +37,10 @@ jobs:
       - name: Tests
         run: npm run test
 
+      - name: Knip (dead code report)
+        continue-on-error: true
+        run: npm run knip --workspace=web
+
       - name: Build (web)
         run: |
           echo "${PROD_ENVS}" | base64 -d > packages/web/.env.production

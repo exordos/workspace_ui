@@ -31,6 +31,7 @@ check-web:
     npm run typecheck
     npm run lint
     npm run test
+    npm run knip --workspace=web || true
   artifacts:
     expire_in: 1 day
 
