@@ -60,6 +60,9 @@ import type { EmojiClickData } from "emoji-picker-react";
 
 export type { ReplyQuote } from "./message-composer.types";
 
+// TODO: Re-enable after scheduled send uses Zulip's server API and persists the target chat.
+const ENABLE_SCHEDULED_SEND_UI = false;
+
 export const MessageComposer: React.FC<MessageComposerProps> = ({
   onSend,
   onSubmitEdit,
@@ -910,7 +913,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
                   ) : undefined
                 }
                 scheduleTrigger={
-                  !isEditing ? (
+                  !isEditing && ENABLE_SCHEDULED_SEND_UI ? (
                     <button
                       ref={scheduleButtonRef}
                       type="button"

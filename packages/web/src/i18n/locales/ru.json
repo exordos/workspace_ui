@@ -648,7 +648,7 @@
     "savedSnippetContent": "Содержимое сниппета",
     "savedSnippetsLoadError": "Не удалось загрузить сохраненные сниппеты",
     "savedSnippetsCreateError": "Не удалось создать сохраненный сниппет",
-    "aiTemporarilyUnavailable": "AI-функции в вашей организации временно не подключены."
+    "aiTemporarilyUnavailable": "AI-функции в вашей организации не подключены."
   },
   "a11y": {
     "collapseTopics": "Свернуть темы",

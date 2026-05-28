@@ -262,47 +262,11 @@ describe("MessageComposer textarea autosize", () => {
 });
 
 describe("MessageComposer scheduled send", () => {
-  it("queues message for later and sends it when scheduled time arrives", async () => {
-    vi.useFakeTimers();
-    try {
-      const onSend = vi.fn().mockResolvedValue(undefined);
-      renderWithProviders(<MessageComposer onSend={onSend} />);
+  it("hides the schedule trigger until server-backed scheduled send is wired", () => {
+    renderWithProviders(<MessageComposer onSend={vi.fn()} />);
+    focusComposerInput();
 
-      const textbox = screen.getByRole("textbox");
-      fireEvent.change(textbox, { target: { value: "Delayed update" } });
-
-      fireEvent.click(screen.getByRole("button", { name: /message menu/i }));
-      fireEvent.click(screen.getByRole("button", { name: "10m" }));
-
-      expect(onSend).not.toHaveBeenCalled();
-      expect(textbox).toHaveValue("");
-      expect(screen.getByRole("button", { name: /cancel/i })).toBeInTheDocument();
-
-      await vi.advanceTimersByTimeAsync(10 * 60 * 1000 + 1000);
-      expect(onSend).toHaveBeenCalledWith("Delayed update", "", undefined);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("allows cancelling a scheduled message before it is sent", () => {
-    vi.useFakeTimers();
-    try {
-      const onSend = vi.fn().mockResolvedValue(undefined);
-      renderWithProviders(<MessageComposer onSend={onSend} />);
-
-      const textbox = screen.getByRole("textbox");
-      fireEvent.change(textbox, { target: { value: "Cancel me" } });
-
-      fireEvent.click(screen.getByRole("button", { name: /message menu/i }));
-      fireEvent.click(screen.getByRole("button", { name: "10m" }));
-
-      fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
-      vi.advanceTimersByTime(11 * 60 * 1000);
-      expect(onSend).not.toHaveBeenCalled();
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(screen.queryByRole("button", { name: /message menu/i })).not.toBeInTheDocument();
   });
 });
 
@@ -1497,14 +1461,15 @@ describe("MessageComposer AI context wiring", () => {
     expect(toolbar).toContainElement(attachButton);
   });
 
-  it("renders schedule trigger inside formatting toolbar", () => {
+  it("does not render schedule trigger inside formatting toolbar", () => {
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
     focusComposerInput();
 
     const toolbar = screen.getByRole("toolbar", { name: /message composer/i });
-    const scheduleButton = screen.getByRole("button", { name: /message menu/i });
 
-    expect(toolbar).toContainElement(scheduleButton);
+    expect(
+      within(toolbar).queryByRole("button", { name: /message menu/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("does not render stickers trigger inside formatting toolbar", () => {
@@ -1568,7 +1533,6 @@ describe("MessageComposer AI context wiring", () => {
       "Code block",
       "Link",
       "Attach file",
-      "Message menu",
       "Saved snippets",
       "AI",
     ]);
@@ -1644,11 +1608,6 @@ describe("MessageComposer AI context wiring", () => {
   it("closes other popovers when opening AI unavailable popover", () => {
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
     focusComposerInput();
-
-    fireEvent.click(screen.getByRole("button", { name: /message menu/i }));
-    expect(screen.getByRole("dialog", { name: /message menu/i })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "AI" }));
-    expect(screen.queryByRole("dialog", { name: /message menu/i })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /saved snippets/i }));
     expect(screen.getByTestId("composer-saved-snippets-picker")).toBeInTheDocument();
