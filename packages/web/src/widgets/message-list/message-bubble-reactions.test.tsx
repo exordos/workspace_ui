@@ -374,10 +374,10 @@ describe("MessageBubble quick reactions", () => {
     expect(reactionRow).toHaveClass("flex", "flex-1", "flex-wrap", "items-end", "justify-start");
     expect(reactionButton).toHaveClass("border", "border-border-subtle", "rounded-lg");
 
-    const bubbleSurface = reactionRow?.parentElement?.parentElement;
-    expect(bubbleSurface).toHaveClass("pr-14", "pb-5");
+    const bubbleSurface = reactionRow?.parentElement?.parentElement?.parentElement;
+    expect(bubbleSurface).toHaveClass("overflow-hidden", "rounded-[18px]");
     expect(
-      bubbleSurface?.querySelector(".absolute.bottom-2.right-2.flex.items-center.gap-1"),
+      bubbleSurface?.querySelector(".flex.flex-shrink-0.items-center.gap-1.text-\\[11px\\]"),
     ).not.toBeNull();
   });
 
@@ -420,11 +420,9 @@ describe("MessageBubble quick reactions", () => {
 
     const bubbleRoot = screen.getByTestId("message-101");
     const bubbleSurface = bubbleRoot.querySelector(".overflow-hidden.rounded-\\[18px\\]");
-    expect(bubbleSurface).toHaveClass("pr-14", "pb-5");
+    expect(bubbleSurface).toBeTruthy();
 
-    const metadata = bubbleSurface?.querySelector(
-      ".absolute.bottom-2.right-2.flex.items-center.gap-1",
-    );
+    const metadata = bubbleSurface?.querySelector(".flex.flex-shrink-0.items-center.gap-1");
     expect(metadata).not.toBeNull();
     expect(metadata?.querySelector('[data-testid="message-delivery-101"]')).not.toBeNull();
   });

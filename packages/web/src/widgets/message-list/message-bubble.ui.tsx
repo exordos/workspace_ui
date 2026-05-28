@@ -785,7 +785,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       <>
         <div
           ref={linkPreviewVisibilityRef}
-          className={`relative overflow-hidden px-3 py-2 pb-5 pr-14 ${bubbleSurfaceClass} transition-colors duration-700 ${
+          className={`relative overflow-hidden px-3 py-2 ${bubbleSurfaceClass} transition-colors duration-700 ${
             isOwn
               ? `${ownBubbleTailClass} ${ownBubbleBackgroundClass} text-text-primary`
               : `${peerBubbleTailClass} ${peerBubbleBackgroundClass} text-text-primary`
@@ -805,21 +805,23 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
               ))}
             </div>
           ) : null}
-          {hasReactions ? (
-            <div className="mt-1 min-w-0">
-              <MessageBubbleReactionsRow
-                message={message}
-                isOwn={isOwn}
-                currentUserId={currentUserId}
-                reactionGroups={reactionGroups}
-                resolveReactionAuthorLabel={resolveReactionAuthorLabel}
-                callbacks={callbacks}
-              />
+          <div className={`mt-2 flex min-w-0 items-end gap-2 ${hasReactions ? "" : "justify-end"}`}>
+            {hasReactions ? (
+              <div className="min-w-0 flex-1">
+                <MessageBubbleReactionsRow
+                  message={message}
+                  isOwn={isOwn}
+                  currentUserId={currentUserId}
+                  reactionGroups={reactionGroups}
+                  resolveReactionAuthorLabel={resolveReactionAuthorLabel}
+                  callbacks={callbacks}
+                />
+              </div>
+            ) : null}
+            <div className="flex flex-shrink-0 items-center gap-1 text-[11px] text-text-muted">
+              <span>{time}</span>
+              {ownDeliveryIndicator}
             </div>
-          ) : null}
-          <div className="absolute bottom-2 right-2 flex items-center gap-1 text-[11px] text-text-muted">
-            <span>{time}</span>
-            {ownDeliveryIndicator}
           </div>
         </div>
         {contextMenu}

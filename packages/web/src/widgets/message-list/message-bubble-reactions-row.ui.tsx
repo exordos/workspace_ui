@@ -34,7 +34,6 @@ function getReactionChipMetaText(
 /** Grouped reaction chips shown at the bottom of the message bubble. */
 export const MessageBubbleReactionsRow = React.memo(function MessageBubbleReactionsRow({
   message,
-  isOwn,
   currentUserId,
   reactionGroups,
   resolveReactionAuthorLabel,
@@ -45,11 +44,7 @@ export const MessageBubbleReactionsRow = React.memo(function MessageBubbleReacti
   const hideReactionChipMeta = isOneToOneDirectMessage(message);
 
   return (
-    <div
-      className={`flex min-w-0 flex-1 flex-wrap items-end gap-1 ${
-        isOwn ? "justify-end" : "justify-start"
-      }`}
-    >
+    <div className="flex min-w-0 flex-1 flex-wrap items-end justify-start gap-1">
       {reactionGroups.map(
         ({ key, count, userIds, displayChar, emojiName, emojiCode, reactionType, imageUrl }) => {
           const hasCurrentUser = currentUserId != null && userIds.includes(currentUserId);
