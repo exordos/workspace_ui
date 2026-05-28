@@ -413,7 +413,7 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
       logFolderFlow("bootstrap:refresh finished", { instanceId });
     },
 
-    selectFolder(folderId) {
+    async selectFolder(folderId) {
       const nextFolderId = folderId.trim();
       if (nextFolderId.length === 0) return;
 
@@ -456,7 +456,7 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
       }
       // Items приходят inline в `getFolders()`, поэтому отдельного запроса за items больше нет.
       // При cache miss/stale просто запускаем refresh; membershipPending покажет loader в сайдбаре.
-      void get().refresh("mutation");
+      await get().refresh("mutation");
     },
 
     async refresh(reason) {

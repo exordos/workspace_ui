@@ -134,4 +134,23 @@ describe("syncDmSidebarFromLoadedMessages", () => {
     const dm = useChatListStore.getState().dmsMap.get("10,20");
     expect(dm?.lastMessage).toBe("");
   });
+
+  it("indexes unread DM message locations even when preview sync is skipped", () => {
+    syncDmSidebarFromLoadedMessages({
+      messages: [
+        dmMessage({
+          id: 777,
+          flags: ["unread"],
+        }),
+      ],
+      dmKey: "10,20",
+      currentUserId: 10,
+      instanceId: null,
+      source: "api",
+      focusedMessageId: 777,
+      hasNewerMessages: true,
+    });
+
+    expect(useChatListStore.getState().messageIdToLocation.get(777)?.type).toBe("dm");
+  });
 });

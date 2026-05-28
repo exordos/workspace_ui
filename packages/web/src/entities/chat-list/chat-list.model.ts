@@ -1590,6 +1590,37 @@ export const useChatListStore = create<ChatListState>((set, get) => {
       });
     },
 
+    upsertUnreadMessageLocations(messages) {
+      if (messages.length === 0) return;
+      const currentUserId = get().currentUserId;
+      patchSet(
+        (state) => {
+          let changed = false;
+          const nextLoc = new Map(state.messageIdToLocation);
+
+          for (const m of messages) {
+            if (!isUnreadFromOthers(m, currentUserId)) continue;
+            if (nextLoc.has(m.id)) continue;
+
+            if (m.type === "stream" && m.stream_id != null) {
+              const topic = normalizeTopicForIdentity(m.subject ?? "");
+              nextLoc.set(m.id, { type: "stream", stream_id: m.stream_id, topic });
+              changed = true;
+            } else if (m.type === "private" && Array.isArray(m.display_recipient)) {
+              const dmKey = dmConversationKey(m.display_recipient, currentUserId);
+              if (dmKey.length === 0) continue;
+              nextLoc.set(m.id, { type: "dm", dmKey });
+              changed = true;
+            }
+          }
+
+          if (!changed) return state;
+          return { messageIdToLocation: nextLoc };
+        },
+        { preserveSidebarTotals: true },
+      );
+    },
+
     applyStreamSidebarPreviewsFromMessages(messages) {
       const streamMessages = filterStreamMessagesForSidebar(messages);
       if (streamMessages.length === 0) return;

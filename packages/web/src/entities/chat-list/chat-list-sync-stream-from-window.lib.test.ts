@@ -147,4 +147,22 @@ describe("syncStreamSidebarFromLoadedMessages", () => {
 
     expect(useChatListStore.getState().streamsMap.get(99)?.topics.size).toBe(0);
   });
+
+  it("indexes unread message locations even when preview sync is skipped", () => {
+    syncStreamSidebarFromLoadedMessages({
+      messages: [
+        streamMessage({
+          id: 555,
+          subject: "topic-a",
+          flags: ["unread"],
+        }),
+      ],
+      streamId: 99,
+      source: "api",
+      focusedMessageId: 999,
+      hasNewerMessages: true,
+    });
+
+    expect(useChatListStore.getState().messageIdToLocation.get(555)?.type).toBe("stream");
+  });
 });

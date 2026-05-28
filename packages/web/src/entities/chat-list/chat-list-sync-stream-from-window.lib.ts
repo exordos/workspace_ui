@@ -49,6 +49,12 @@ export function filterMessagesForStreamId(
 export function syncStreamSidebarFromLoadedMessages(
   options: SyncStreamSidebarFromLoadedMessagesOptions,
 ): void {
+  const forStream = filterMessagesForStreamId(options.messages, options.streamId);
+  if (forStream.length > 0) {
+    const raw = forStream.map((m) => mockMessageToRawMessage(m));
+    useChatListStore.getState().upsertUnreadMessageLocations(raw);
+  }
+
   if (!shouldSyncStreamPreviewFromWindow(options)) {
     logChatListFlow("chatList: skip stream preview sync from opened chat", {
       streamId: options.streamId,
@@ -69,7 +75,6 @@ export function syncStreamSidebarFromLoadedMessages(
     return;
   }
 
-  const forStream = filterMessagesForStreamId(options.messages, options.streamId);
   if (forStream.length === 0) {
     logChatListFlow("chatList: skip stream preview sync from opened chat", {
       streamId: options.streamId,

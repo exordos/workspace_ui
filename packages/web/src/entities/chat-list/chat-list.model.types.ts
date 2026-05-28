@@ -97,6 +97,12 @@ export interface ChatListState {
   ) => void;
   addMessage: (message: ZulipRawMessage) => void;
   addMessages: (messages: ZulipRawMessage[]) => void;
+  /**
+   * Adds `messageIdToLocation` entries for unread messages without touching previews/unread totals.
+   * Needed so `update_message_flags(read)` can decrement totals for messages that were loaded in the open chat
+   * but not previously indexed by sidebar bootstrap/lazy hydrate.
+   */
+  upsertUnreadMessageLocations: (messages: ZulipRawMessage[]) => void;
   /** Stream/topic preview only — does not bump unread (metadata-first stream batch). */
   applyStreamSidebarPreviewsFromMessages: (messages: ZulipRawMessage[]) => void;
   // Что делает: добавляет каналы в список из metadata, даже если сообщений по ним нет в памяти.
