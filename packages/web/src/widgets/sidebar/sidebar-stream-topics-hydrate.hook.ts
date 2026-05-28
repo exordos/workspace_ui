@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import {
   isStreamSidebarTopicsHydrateInFlight,
+  requestStreamSidebarTopicListHydrate,
   requestStreamSidebarTopicsHydrate,
 } from "~/entities/chat-list/chat-list-hydrate-stream-sidebar.lib";
 import { useIntersectedOnce } from "~/shared/lib/intersected-once.hook";
@@ -29,19 +30,27 @@ export function useStreamSidebarTopicsHydrate({
   const visible = useIntersectedOnce(rowRef, { rootSelector: SIDEBAR_SCROLL_ROOT_SELECTOR });
 
   useEffect(() => {
-    if (topicsCount > 0) {
-      setTopicsLoading(false);
-      return;
-    }
-    const shouldHydrate = expanded || visible;
-    if (!shouldHydrate) {
+    const shouldHydrateFromMessages = (expanded || visible) && topicsCount === 0;
+    const shouldHydrateTopicList = expanded;
+
+    if (!shouldHydrateFromMessages && !shouldHydrateTopicList) {
       setTopicsLoading(false);
       return;
     }
 
-    const reason = expanded ? "expand" : "visible";
     setTopicsLoading(true);
-    void requestStreamSidebarTopicsHydrate(streamId, reason).finally(() => {
+
+    // Always ensure we fetched the topic list when user expands a stream.
+    // This fixes cases where some topics exist (from messages) but not the full list.
+    const listPromise = shouldHydrateTopicList
+      ? requestStreamSidebarTopicListHydrate(streamId)
+      : Promise.resolve();
+
+    const messagePromise = shouldHydrateFromMessages
+      ? requestStreamSidebarTopicsHydrate(streamId, expanded ? "expand" : "visible")
+      : Promise.resolve();
+
+    void Promise.all([listPromise.catch(() => {}), messagePromise.catch(() => {})]).finally(() => {
       setTopicsLoading(false);
     });
   }, [expanded, visible, streamId, topicsCount]);

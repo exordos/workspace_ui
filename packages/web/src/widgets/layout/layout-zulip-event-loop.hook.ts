@@ -10,6 +10,7 @@ import {
   clearStreamSidebarHydrateState,
   queuePriorityStreamSidebarTopicsHydrate,
 } from "~/entities/chat-list/chat-list-hydrate-stream-sidebar.lib";
+import { hydrateStreamSidebarPreviewsFromUnreadSnapshot } from "~/entities/chat-list/chat-list-unread-preview-hydrate.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import type {
   ChatListDmMetadataRow,
@@ -235,6 +236,7 @@ function startSidebarUnreadReconcile(options: {
     ...options,
     logScope: "eventLoop: startSidebarUnreadReconcile",
   });
+  void hydrateStreamSidebarPreviewsFromUnreadSnapshot(options.registerSnapshot, options.cancelled);
 }
 
 function reconcileSidebarUnreadFromRegister(
@@ -247,6 +249,7 @@ function reconcileSidebarUnreadFromRegister(
     registerSnapshot: registration?.unread_snapshot,
     logScope: "eventLoop: reconcileSidebarUnreadFromRegister",
   });
+  void hydrateStreamSidebarPreviewsFromUnreadSnapshot(registration?.unread_snapshot, () => false);
 }
 
 // Нормализует формат строки IDB к контракту, который ожидает mute-store.

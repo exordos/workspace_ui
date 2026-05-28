@@ -2,7 +2,10 @@
  * Lazy per-channel sidebar topic hydrate: fetch recent stream messages and merge previews only.
  */
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
-import { fetchStreamChannelMessagesForSidebarTopics } from "~/shared/api/zulip";
+import {
+  fetchStreamChannelMessagesForSidebarTopics,
+  fetchStreamTopicNames,
+} from "~/shared/api/zulip";
 import type { ZulipUnreadMessagesSnapshot } from "~/shared/api/zulip-unread.lib";
 import { guard } from "~/shared/lib/guards";
 import { logChatListFlow } from "~/shared/lib/message-flow-debug.lib";
@@ -12,7 +15,9 @@ export type StreamSidebarTopicsHydrateReason = "expand" | "visible" | "unread-re
 const MAX_CONCURRENT_HYDRATES = 3;
 
 const hydratedStreamIds = new Set<number>();
+const hydratedStreamTopicLists = new Set<number>();
 const inFlight = new Map<number, Promise<void>>();
+const inFlightTopicList = new Map<number, Promise<void>>();
 const waitQueue: (() => void)[] = [];
 const priorityWaitQueue: (() => void)[] = [];
 let activeHydrates = 0;
@@ -55,10 +60,45 @@ export function isStreamSidebarTopicsHydrateInFlight(streamId: number): boolean 
 /** Resets lazy-hydrate dedupe state (instance switch / logout). */
 export function clearStreamSidebarHydrateState(): void {
   hydratedStreamIds.clear();
+  hydratedStreamTopicLists.clear();
   inFlight.clear();
+  inFlightTopicList.clear();
   waitQueue.length = 0;
   priorityWaitQueue.length = 0;
   activeHydrates = 0;
+}
+
+/**
+ * Loads topic names list for a stream and inserts topic shells into the sidebar store.
+ * This is needed because message-based hydration only discovers topics that have loaded messages.
+ */
+export function requestStreamSidebarTopicListHydrate(streamId: number): Promise<void> {
+  guard.streamId(streamId, "requestStreamSidebarTopicListHydrate");
+  if (hydratedStreamTopicLists.has(streamId)) {
+    return Promise.resolve();
+  }
+  const existing = inFlightTopicList.get(streamId);
+  if (existing != null) {
+    return existing;
+  }
+
+  const promise = (async () => {
+    try {
+      const topics = await fetchStreamTopicNames(streamId);
+      useChatListStore.getState().upsertStreamTopicShells(streamId, topics);
+      hydratedStreamTopicLists.add(streamId);
+    } catch (error) {
+      logChatListFlow("chatList: stream sidebar topic list hydrate failed", {
+        streamId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      inFlightTopicList.delete(streamId);
+    }
+  })();
+
+  inFlightTopicList.set(streamId, promise);
+  return promise;
 }
 
 /** Enqueues lazy topic hydrate for register-reported unread on channels still missing topic rows. */

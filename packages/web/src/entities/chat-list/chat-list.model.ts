@@ -1652,6 +1652,45 @@ export const useChatListStore = create<ChatListState>((set, get) => {
       );
     },
 
+    upsertStreamTopicShells(streamId, topics) {
+      if (!Number.isInteger(streamId) || streamId <= 0) return;
+      const normalizedTopics = topics
+        .map((t) => normalizeTopicForIdentity(t))
+        .map((t) => t.trim())
+        .filter((t) => t.length > 0);
+      if (normalizedTopics.length === 0) return;
+
+      patchSet(
+        (state) => {
+          const stream = state.streamsMap.get(streamId);
+          if (stream == null) return state;
+
+          let nextTopics = stream.topics;
+          let changed = false;
+          for (const topic of normalizedTopics) {
+            if (nextTopics.has(topic)) continue;
+            if (!changed) {
+              nextTopics = new Map(nextTopics);
+              changed = true;
+            }
+            nextTopics.set(topic, {
+              subject: topic,
+              lastMessage: "",
+              lastMessageSenderName: undefined,
+              time: "",
+              ts: 0,
+              unreadCount: 0,
+            });
+          }
+          if (!changed) return state;
+          const nextStreams = new Map(state.streamsMap);
+          nextStreams.set(streamId, { ...stream, topics: nextTopics });
+          return { streamsMap: nextStreams, sidebarDataHydrated: true };
+        },
+        { preserveSidebarTotals: true },
+      );
+    },
+
     upsertStreamMetadataRows(rows) {
       if (rows.length === 0) return;
       logChatListFlow("store: upsertStreamMetadataRows", { rowCount: rows.length });

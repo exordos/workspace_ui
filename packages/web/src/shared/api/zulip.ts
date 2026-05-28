@@ -1771,6 +1771,14 @@ export async function fetchTopics(stream: string): Promise<string[]> {
   return (data.topics ?? []).map((t) => t.name);
 }
 
+/** Loads topic names for a stream id (used for sidebar expand topic list). */
+export async function fetchStreamTopicNames(streamId: number): Promise<string[]> {
+  guard.streamId(streamId, "fetchStreamTopicNames.streamId");
+  const client = await getClient();
+  const data = await client.streams.topics.retrieve({ stream_id: streamId });
+  return (data.topics ?? []).map((t) => t.name);
+}
+
 export interface SendMessageParams {
   // Для stream message: имя стрима. Если используется `to` для private, поле опускается.
   stream?: string;

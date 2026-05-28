@@ -105,6 +105,8 @@ export interface ChatListState {
   upsertUnreadMessageLocations: (messages: ZulipRawMessage[]) => void;
   /** Stream/topic preview only — does not bump unread (metadata-first stream batch). */
   applyStreamSidebarPreviewsFromMessages: (messages: ZulipRawMessage[]) => void;
+  /** Ensures topic shells exist for a stream (used when expanding channel in sidebar). */
+  upsertStreamTopicShells: (streamId: number, topics: string[]) => void;
   // Что делает: добавляет каналы в список из metadata, даже если сообщений по ним нет в памяти.
   upsertStreamMetadataRows: (rows: ChatListStreamMetadataRow[]) => void;
   /** Marks stream metadata readiness from authoritative subscriptions sources. */
