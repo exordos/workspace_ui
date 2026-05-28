@@ -93,6 +93,18 @@ function resolveItemClassName(
   );
 }
 
+function suppressContextMenuPointerUp(
+  event: React.PointerEvent<HTMLElement>,
+  ctx: DropdownMenuCustomRenderContext,
+): void {
+  if (ctx.source !== "context") return;
+  if (event.button !== 2 && !event.ctrlKey) return;
+
+  // Гасим только release от ПКМ-жеста, открывшего меню: Radix иначе может
+  // синтетически выбрать item под курсором. Обычный левый клик по меню не трогаем.
+  event.preventDefault();
+}
+
 /**
  * Строит полный className контейнера меню из variant + overrides.
  */
@@ -147,6 +159,9 @@ export function renderDropdownMenuItems(
           <RadixDropdownMenu.SubTrigger
             className={submenuTriggerClassName}
             disabled={item.disabled}
+            onPointerUp={(event) => {
+              suppressContextMenuPointerUp(event, ctx);
+            }}
             onSelect={(event) => {
               if (item.keepOpenOnSelect) {
                 event.preventDefault();
@@ -189,6 +204,9 @@ export function renderDropdownMenuItems(
           className={checkboxItemClassName}
           disabled={item.disabled}
           checked={item.checked}
+          onPointerUp={(event) => {
+            suppressContextMenuPointerUp(event, ctx);
+          }}
           onCheckedChange={item.onCheckedChange}
           onSelect={(event) => {
             if (item.keepOpenOnSelect) {
@@ -209,6 +227,9 @@ export function renderDropdownMenuItems(
         key={key}
         className={actionClassName}
         disabled={item.disabled}
+        onPointerUp={(event) => {
+          suppressContextMenuPointerUp(event, ctx);
+        }}
         onSelect={(event) => {
           if (item.keepOpenOnSelect) {
             event.preventDefault();

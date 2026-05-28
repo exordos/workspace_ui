@@ -238,6 +238,34 @@ describe("MessageBubble edit/delete actions parity", () => {
     expect(contextTrigger?.style.top).toBe("320px");
   });
 
+  it("does not select an action from the right-click pointerup that opened the menu", async () => {
+    const onDelete = vi.fn();
+
+    render(
+      <MessageBubble
+        message={createMessage()}
+        isOwn
+        callbacks={{
+          onDelete,
+        }}
+      />,
+    );
+
+    fireEvent.contextMenu(screen.getByTestId("message-101"), {
+      clientX: 860,
+      clientY: 320,
+    });
+
+    const deleteItem = await screen.findByRole("menuitem", { name: /(delete|удал)/i });
+    fireEvent.pointerUp(deleteItem, { button: 2 });
+
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(deleteItem).toBeInTheDocument();
+
+    fireEvent.click(deleteItem);
+    expect(onDelete).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps three-dots opening in trigger mode without pointer anchor trigger", async () => {
     const { container } = render(<MessageBubble message={createMessage()} isOwn={false} />);
 
