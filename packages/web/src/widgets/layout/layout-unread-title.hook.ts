@@ -23,6 +23,8 @@ export function useLayoutUnreadAndTitle(options: {
   activeTopic: string | null;
   dmIdParam: string | undefined;
   currentUserId: number | null;
+  isStreamMuted?: (streamId: number) => boolean;
+  isEffectivelyMuted?: (streamId: number, topic: string) => boolean;
 }): {
   realmIcon: string | undefined;
   unreadCount: number;
@@ -38,6 +40,8 @@ export function useLayoutUnreadAndTitle(options: {
     activeTopic,
     dmIdParam,
     currentUserId,
+    isStreamMuted,
+    isEffectivelyMuted,
   } = options;
 
   const realmIcon = useMemo(
@@ -50,8 +54,10 @@ export function useLayoutUnreadAndTitle(options: {
       computeInstanceUnreadCount({
         streams,
         dms,
+        isStreamMuted,
+        isEffectivelyMuted,
       }),
-    [streams, dms],
+    [streams, dms, isStreamMuted, isEffectivelyMuted],
   );
 
   const activeStreamNameForTitle = useMemo(() => {

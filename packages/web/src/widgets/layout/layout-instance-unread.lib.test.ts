@@ -20,6 +20,50 @@ describe("layout-instance-unread", () => {
     ).toBe(10);
   });
 
+  it("excludes muted topic unread from instance total when mute predicate is provided", () => {
+    expect(
+      computeInstanceUnreadCount({
+        streams: [
+          {
+            stream_id: 10,
+            topics: [
+              { subject: "release", badge: 2 },
+              { subject: "incidents", badge: 3 },
+            ],
+          },
+        ],
+        dms: [{ badge: 4 }],
+        isEffectivelyMuted: (streamId, topic) => streamId === 10 && topic === "incidents",
+      }),
+    ).toBe(2 + 4);
+  });
+
+  it("excludes muted streams from instance total when stream mute predicate is provided", () => {
+    expect(
+      computeInstanceUnreadCount({
+        streams: [
+          { stream_id: 10, topics: [{ subject: "release", badge: 2 }] },
+          { stream_id: 11, topics: [{ subject: "bugs", badge: 5 }] },
+        ],
+        dms: [],
+        isStreamMuted: (streamId) => streamId === 11,
+      }),
+    ).toBe(2);
+  });
+
+  it("falls back to stream badge when topics are missing, still respecting stream mute", () => {
+    expect(
+      computeInstanceUnreadCount({
+        streams: [
+          { stream_id: 10, badge: 2 },
+          { stream_id: 11, badge: 5 },
+        ],
+        dms: [],
+        isStreamMuted: (streamId) => streamId === 11,
+      }),
+    ).toBe(2);
+  });
+
   it("sums only personal (1:1) DM unread badges for app icon indicator", () => {
     expect(
       computeInstanceDmUnreadCount({

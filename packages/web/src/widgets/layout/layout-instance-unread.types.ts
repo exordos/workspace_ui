@@ -1,5 +1,15 @@
 export interface LayoutBadgeHolder {
   badge?: number | null;
+  /**
+   * Optional stream id — available when caller passes sidebar stream entries.
+   * Used for unread total adjustments (e.g. excluding muted streams/topics).
+   */
+  stream_id?: number | null;
+  /**
+   * Optional topics list — available when caller passes sidebar stream entries.
+   * Used for unread total adjustments (e.g. excluding muted topics).
+   */
+  topics?: readonly { subject?: string; badge?: number | null }[] | null;
 }
 
 export interface LayoutDmBadgeHolder extends LayoutBadgeHolder {

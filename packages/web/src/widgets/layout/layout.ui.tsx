@@ -91,6 +91,8 @@ export const Layout: React.FC = () => {
   const language = useSettingsStore((s) => s.language);
   const showSystemFolders = useSettingsStore((s) => s.showSystemFolders);
   const mutedStreamIds = useMuteStore((s) => s.mutedStreamIds);
+  const isStreamMuted = useMuteStore((s) => s.isStreamMuted);
+  const isEffectivelyMuted = useMuteStore((s) => s.isEffectivelyMuted);
   const chatsSortedByLastMessage = useMemo(
     () =>
       sortChatsByLastMessage(streamsMap, dmsMap, chatSorting, mutedStreamIds, {
@@ -119,6 +121,8 @@ export const Layout: React.FC = () => {
       activeTopic,
       dmIdParam,
       currentUserId,
+      isStreamMuted,
+      isEffectivelyMuted,
     });
 
   const dmUnreadCountForCurrentInstance = useMemo(

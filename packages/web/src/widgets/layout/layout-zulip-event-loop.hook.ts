@@ -387,8 +387,9 @@ export function useLayoutZulipEventLoop(options: {
     prevInstanceForBootstrapRef.current = currentInstanceId;
     // Флаг authoritative-применения из register; после него кэш больше не должен "переехать" состояние.
     let registerMuteSnapshotApplied = false;
-    // Параллельная загрузка кэша mute: запускаем заранее, чтобы быстрее отрисовать состояние после switch.
-    const cachedMuteSnapshotPromise = instanceSwitched
+    // Поднимаем кэш mute на cold start и при switch, чтобы unread/title могли сразу учитывать mutes.
+    const shouldHydrateMuteFromCache = prevInstanceId == null || instanceSwitched;
+    const cachedMuteSnapshotPromise = shouldHydrateMuteFromCache
       ? loadMuteSnapshotRow(currentInstanceId)
           .then((row) => (row ? toLayoutMuteSnapshotFromRow(row) : null))
           .catch(() => null)
@@ -428,7 +429,7 @@ export function useLayoutZulipEventLoop(options: {
       // Cache-first mute + users directory run in parallel with chat-list IDB bootstrap and API,
       // so hydrateFromIndexedDbSnapshot is not blocked by unrelated IDB reads.
       const pMuteHydrate =
-        instanceSwitched && cachedMuteSnapshotPromise != null
+        cachedMuteSnapshotPromise != null
           ? cachedMuteSnapshotPromise.then((cachedMuteSnapshot) => {
               if (cancelled) return;
               if (cachedMuteSnapshot && !registerMuteSnapshotApplied) {
@@ -437,7 +438,7 @@ export function useLayoutZulipEventLoop(options: {
             })
           : Promise.resolve();
 
-      const pUsersDir = instanceSwitched
+      const pUsersDir = shouldHydrateMuteFromCache
         ? loadUsersDirectoryRow(currentInstanceId)
             .then((row) => {
               if (cancelled) return;

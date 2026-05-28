@@ -52,7 +52,7 @@ describe("LayoutMainWorkspace", () => {
       />,
     );
 
-    expect(screen.getByRole("main")).toHaveClass("max-w-narrow-page");
+    expect(screen.getByRole("main")).toHaveClass("max-w-chat-page");
   });
 
   it("does not limit main width when right panel is closed", () => {
@@ -66,7 +66,7 @@ describe("LayoutMainWorkspace", () => {
       />,
     );
 
-    expect(screen.getByRole("main")).not.toHaveClass("max-w-narrow-page");
+    expect(screen.getByRole("main")).not.toHaveClass("max-w-chat-page");
   });
 
   it("does not limit main width for non-chat shell drawers", () => {
@@ -80,6 +80,6 @@ describe("LayoutMainWorkspace", () => {
       />,
     );
 
-    expect(screen.getByRole("main")).not.toHaveClass("max-w-narrow-page");
+    expect(screen.getByRole("main")).not.toHaveClass("max-w-chat-page");
   });
 });
