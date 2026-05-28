@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SYSTEM_ALL_FOLDER_ID } from "./folder-sync-constants.lib";
-import { loadFolderItemsForSelection, loadFolderSyncSnapshot } from "./folder-sync.api";
+import { loadFolderSyncSnapshot } from "./folder-sync.api";
 import { useFolderSyncStore } from "./folder-sync.model";
 
 const getFoldersMock = vi.fn().mockResolvedValue([]);
@@ -9,7 +9,6 @@ const removeChatFromFolderMock = vi.fn().mockResolvedValue(true);
 
 vi.mock("./folder-sync.api", () => ({
   loadFolderSyncSnapshot: vi.fn(),
-  loadFolderItemsForSelection: vi.fn(),
 }));
 
 vi.mock("~/shared/lib/folders-snapshot-db", () => ({
@@ -21,6 +20,8 @@ vi.mock("~/shared/api/workspace-client", () => ({
   getFolders: (...args: unknown[]) => getFoldersMock(...args),
   addChatToFolder: (...args: unknown[]) => addChatToFolderMock(...args),
   removeChatFromFolder: (...args: unknown[]) => removeChatFromFolderMock(...args),
+  mapWorkspaceFolderItems: (folder: { uuid?: string; items?: unknown }) =>
+    typeof folder.uuid === "string" && Array.isArray(folder.items) ? folder.items : [],
   mapWorkspaceFoldersToRail: (
     folders: {
       uuid: string;
@@ -140,7 +141,6 @@ describe("folder-sync model orchestration", () => {
       itemsByFolderId: new Map(),
       loadedAt: Date.now(),
     });
-    vi.mocked(loadFolderItemsForSelection).mockResolvedValue([cachedItem]);
 
     await useFolderSyncStore.getState().refresh("mutation");
 
@@ -149,7 +149,7 @@ describe("folder-sync model orchestration", () => {
     expect(state.folderItemsByFolderId.get("f-cached")).toEqual([cachedItem]);
   });
 
-  it("refresh does not trigger extra selected-folder fetch when snapshot already has selected items", async () => {
+  it("refresh uses selected items from snapshot (no extra fetch)", async () => {
     useFolderSyncStore.setState({
       instanceId: "inst-a",
       labels: { allChats: "All", personal: "Personal", channels: "Channels" },
@@ -161,7 +161,6 @@ describe("folder-sync model orchestration", () => {
     await useFolderSyncStore.getState().refresh("mutation");
 
     expect(loadFolderSyncSnapshot).toHaveBeenCalledTimes(1);
-    expect(loadFolderItemsForSelection).not.toHaveBeenCalled();
     expect(useFolderSyncStore.getState().selectedFolderChatIds?.has("dm:42")).toBe(true);
   });
 
@@ -227,7 +226,7 @@ describe("folder-sync model orchestration", () => {
     expect(selectedIds?.has("stream:11:general")).toBe(true);
   });
 
-  it("selectFolder uses cached folder items and skips network fetch", async () => {
+  it("selectFolder uses cached folder items and triggers no refresh", async () => {
     // Cache-first: если items уже есть (даже если они старые), переключаемся без запроса.
     useFolderSyncStore.setState({
       instanceId: "inst-a",
@@ -260,24 +259,14 @@ describe("folder-sync model orchestration", () => {
     });
     await useFolderSyncStore.getState().selectFolder("folder-7");
 
-    expect(loadFolderItemsForSelection).not.toHaveBeenCalled();
+    expect(loadFolderSyncSnapshot).not.toHaveBeenCalled();
     expect(useFolderSyncStore.getState().selectedFolderChatIds?.has("dm:cached")).toBe(true);
   });
 
-  it("selectFolder performs one fetch on cache miss and keeps loading disabled", async () => {
-    // Cache miss: разрешаем ровно один fallback-запрос, но без включения loader.
-    const itemsRequest = deferred<
-      {
-        uuid: string;
-        chatId: string;
-        folderUuid: string;
-        orderIndex: number;
-        pinnedAt: null;
-        createdAt: string;
-        updatedAt: string;
-      }[]
-    >();
-    vi.mocked(loadFolderItemsForSelection).mockReturnValue(itemsRequest.promise);
+  it("selectFolder triggers refresh on cache miss and keeps loading disabled", async () => {
+    // Cache miss: отдельного запроса за items больше нет, запускаем refresh().
+    const snapshotDeferred = deferred<ReturnType<typeof makeFolderSnapshot>>();
+    vi.mocked(loadFolderSyncSnapshot).mockReturnValue(snapshotDeferred.promise);
     useFolderSyncStore.setState({
       instanceId: "inst-a",
       labels: { allChats: "All", personal: "Personal", channels: "Channels" },
@@ -297,165 +286,17 @@ describe("folder-sync model orchestration", () => {
 
     const selectPromise = useFolderSyncStore.getState().selectFolder("folder-7");
 
-    expect(loadFolderItemsForSelection).toHaveBeenCalledTimes(1);
-    expect(loadFolderItemsForSelection).toHaveBeenCalledWith("folder-7", {
-      allFolderApiUuid: null,
-    });
-    expect(useFolderSyncStore.getState().loading).toBe(false);
+    // selectFolder itself doesn't toggle loading, but it triggers a mutation refresh which does.
+    expect(useFolderSyncStore.getState().loading).toBe(true);
     expect(useFolderSyncStore.getState().selectedFolderChatIds?.size).toBe(0);
 
-    itemsRequest.resolve([
-      {
-        uuid: "item-net",
-        chatId: "dm:net",
-        folderUuid: "folder-7",
-        orderIndex: 0,
-        pinnedAt: null,
-        createdAt: "2026-01-01T00:00:00Z",
-        updatedAt: "2026-01-01T00:00:00Z",
-      },
-    ]);
+    snapshotDeferred.resolve(
+      makeFolderSnapshot({ folderId: "folder-7", selectedChatId: "dm:net" }),
+    );
     await selectPromise;
 
     expect(useFolderSyncStore.getState().loading).toBe(false);
     expect(useFolderSyncStore.getState().selectedFolderChatIds?.has("dm:net")).toBe(true);
-  });
-
-  it("marks folder stale on select miss and retries on repeat select", async () => {
-    vi.mocked(loadFolderItemsForSelection)
-      .mockRejectedValueOnce(new Error("network"))
-      .mockResolvedValueOnce([
-        {
-          uuid: "item-retry",
-          chatId: "dm:retry",
-          folderUuid: "folder-7",
-          orderIndex: 0,
-          pinnedAt: null,
-          createdAt: "2026-01-01T00:00:00Z",
-          updatedAt: "2026-01-01T00:00:00Z",
-        },
-      ]);
-    useFolderSyncStore.setState({
-      instanceId: "inst-a",
-      labels: { allChats: "All", personal: "Personal", channels: "Channels" },
-      showSystemFolders: false,
-      folders: [
-        {
-          id: "folder-7",
-          label: "Team",
-          backgroundColor: 0,
-          systemType: "created",
-        },
-      ],
-      folderItemsByFolderId: new Map(),
-    });
-
-    await useFolderSyncStore.getState().selectFolder("folder-7");
-    expect(loadFolderItemsForSelection).toHaveBeenCalledTimes(1);
-    expect(useFolderSyncStore.getState().selectedFolderChatIds?.size).toBe(0);
-    expect(useFolderSyncStore.getState().folderItemsByFolderId.get("folder-7")).toEqual([]);
-    expect(useFolderSyncStore.getState().staleFolderIds.has("folder-7")).toBe(true);
-
-    await useFolderSyncStore.getState().selectFolder("folder-7");
-    expect(loadFolderItemsForSelection).toHaveBeenCalledTimes(2);
-    expect(useFolderSyncStore.getState().selectedFolderChatIds?.has("dm:retry")).toBe(true);
-    expect(useFolderSyncStore.getState().staleFolderIds.has("folder-7")).toBe(false);
-  });
-
-  it("performs exactly one fallback fetch when selected folder items failed in snapshot", async () => {
-    useFolderSyncStore.setState({
-      instanceId: "inst-a",
-      labels: { allChats: "All", personal: "Personal", channels: "Channels" },
-      showSystemFolders: false,
-      selectedFolderId: "folder-1",
-      folderItemsByFolderId: new Map([
-        [
-          "folder-1",
-          [
-            {
-              uuid: "item-stale",
-              chatId: "dm:stale",
-              folderUuid: "folder-1",
-              orderIndex: 0,
-              pinnedAt: null,
-              createdAt: "2026-01-01T00:00:00Z",
-              updatedAt: "2026-01-01T00:00:00Z",
-            },
-          ],
-        ],
-      ]),
-    });
-    vi.mocked(loadFolderSyncSnapshot).mockResolvedValue(
-      makeFolderSnapshot({ selectedItemsOk: false, selectedChatId: "dm:ignored" }),
-    );
-    vi.mocked(loadFolderItemsForSelection).mockResolvedValue([
-      {
-        uuid: "item-fallback",
-        chatId: "dm:fallback",
-        folderUuid: "folder-1",
-        orderIndex: 0,
-        pinnedAt: null,
-        createdAt: "2026-01-01T00:00:00Z",
-        updatedAt: "2026-01-01T00:00:00Z",
-      },
-    ]);
-
-    await useFolderSyncStore.getState().refresh("mutation");
-
-    expect(loadFolderItemsForSelection).toHaveBeenCalledTimes(1);
-    expect(useFolderSyncStore.getState().selectedFolderChatIds?.has("dm:fallback")).toBe(true);
-  });
-
-  it("keeps loading disabled during polling refresh, including selected-folder fallback", async () => {
-    const snapshotDeferred = deferred<ReturnType<typeof makeFolderSnapshot>>();
-    const fallbackDeferred = deferred<
-      {
-        uuid: string;
-        chatId: string;
-        folderUuid: string;
-        orderIndex: number;
-        pinnedAt: null;
-        createdAt: string;
-        updatedAt: string;
-      }[]
-    >();
-    vi.mocked(loadFolderSyncSnapshot).mockReturnValue(snapshotDeferred.promise);
-    vi.mocked(loadFolderItemsForSelection).mockReturnValue(fallbackDeferred.promise);
-
-    useFolderSyncStore.setState({
-      instanceId: "inst-a",
-      labels: { allChats: "All", personal: "Personal", channels: "Channels" },
-      showSystemFolders: false,
-      selectedFolderId: "folder-1",
-      loading: false,
-    });
-
-    const refreshPromise = useFolderSyncStore.getState().refresh("polling");
-    expect(useFolderSyncStore.getState().loading).toBe(false);
-
-    snapshotDeferred.resolve(makeFolderSnapshot({ selectedItemsOk: false }));
-    await Promise.resolve();
-
-    expect(loadFolderItemsForSelection).toHaveBeenCalledTimes(1);
-    expect(useFolderSyncStore.getState().loading).toBe(false);
-
-    fallbackDeferred.resolve([
-      {
-        uuid: "item-fallback",
-        chatId: "dm:fallback",
-        folderUuid: "folder-1",
-        orderIndex: 0,
-        pinnedAt: null,
-        createdAt: "2026-01-01T00:00:00Z",
-        updatedAt: "2026-01-01T00:00:00Z",
-      },
-    ]);
-
-    await refreshPromise;
-
-    const state = useFolderSyncStore.getState();
-    expect(state.loading).toBe(false);
-    expect(state.selectedFolderChatIds?.has("dm:fallback")).toBe(true);
   });
 
   it("onFoldersLoaded updates rail only and keeps cached folder items until snapshot completes", async () => {
@@ -574,7 +415,18 @@ describe("refreshFolderItemsCache", () => {
         updatedAt: "",
       },
     ];
-    vi.mocked(loadFolderItemsForSelection).mockResolvedValue(items);
+    getFoldersMock.mockResolvedValue([
+      {
+        uuid: folderId,
+        title: "Work",
+        created_at: "",
+        updated_at: "",
+        background_color_value: 0,
+        unread_messages: [],
+        system_type: "created",
+        items,
+      },
+    ]);
 
     useFolderSyncStore.setState({
       instanceId: "inst-1",
@@ -589,9 +441,6 @@ describe("refreshFolderItemsCache", () => {
 
     await useFolderSyncStore.getState().refreshFolderItemsCache(folderId);
 
-    expect(loadFolderItemsForSelection).toHaveBeenCalledWith(folderId, {
-      allFolderApiUuid: null,
-    });
     const state = useFolderSyncStore.getState();
     expect(state.folderItemsByFolderId.get(folderId)).toEqual(items);
     expect(state.selectedFolderChatIds?.has("dm:99")).toBe(true);
@@ -599,7 +448,7 @@ describe("refreshFolderItemsCache", () => {
 
   it("does not call API when instanceId is null", async () => {
     await useFolderSyncStore.getState().refreshFolderItemsCache("any");
-    expect(loadFolderItemsForSelection).not.toHaveBeenCalled();
+    expect(getFoldersMock).not.toHaveBeenCalled();
   });
 
   it("updates items map only when a different folder is selected", async () => {
@@ -615,7 +464,18 @@ describe("refreshFolderItemsCache", () => {
         updatedAt: "",
       },
     ];
-    vi.mocked(loadFolderItemsForSelection).mockResolvedValue(items);
+    getFoldersMock.mockResolvedValue([
+      {
+        uuid: folderId,
+        title: "Work",
+        created_at: "",
+        updated_at: "",
+        background_color_value: 0,
+        unread_messages: [],
+        system_type: "created",
+        items,
+      },
+    ]);
     const previousSelection = new Set(["dm:2"]);
     useFolderSyncStore.setState({
       instanceId: "inst-1",
@@ -638,15 +498,26 @@ describe("refreshFolderItemsCache", () => {
 
   it("clears stale flag on successful refresh", async () => {
     const folderId = "folder-work";
-    vi.mocked(loadFolderItemsForSelection).mockResolvedValue([
+    getFoldersMock.mockResolvedValue([
       {
-        uuid: "i",
-        chatId: "dm:1",
-        folderUuid: folderId,
-        orderIndex: 0,
-        pinnedAt: null,
-        createdAt: "",
-        updatedAt: "",
+        uuid: folderId,
+        title: "Work",
+        created_at: "",
+        updated_at: "",
+        background_color_value: 0,
+        unread_messages: [],
+        system_type: "created",
+        items: [
+          {
+            uuid: "i",
+            chatId: "dm:1",
+            folderUuid: folderId,
+            orderIndex: 0,
+            pinnedAt: null,
+            createdAt: "",
+            updatedAt: "",
+          },
+        ],
       },
     ]);
     useFolderSyncStore.setState({
@@ -663,7 +534,7 @@ describe("refreshFolderItemsCache", () => {
 
   it("marks folder stale when refresh fails", async () => {
     const folderId = "folder-work";
-    vi.mocked(loadFolderItemsForSelection).mockRejectedValueOnce(new Error("network"));
+    getFoldersMock.mockRejectedValueOnce(new Error("network"));
     useFolderSyncStore.setState({
       instanceId: "inst-1",
       folders: [{ id: folderId, label: "Work", backgroundColor: 2, systemType: "created" }],
@@ -692,15 +563,26 @@ describe("folder assignment orchestration", () => {
   it("loadAssignmentsForChat uses cache-first and refetches stale folders", async () => {
     const staleFolder = "folder-stale";
     const warmFolder = "folder-warm";
-    vi.mocked(loadFolderItemsForSelection).mockResolvedValueOnce([
+    getFoldersMock.mockResolvedValue([
       {
-        uuid: "item-stale",
-        chatId: "dm:10",
-        folderUuid: staleFolder,
-        orderIndex: 0,
-        pinnedAt: null,
-        createdAt: "",
-        updatedAt: "",
+        uuid: staleFolder,
+        title: "Stale",
+        created_at: "",
+        updated_at: "",
+        background_color_value: 0,
+        unread_messages: [],
+        system_type: "created",
+        items: [
+          {
+            uuid: "item-stale",
+            chatId: "dm:10",
+            folderUuid: staleFolder,
+            orderIndex: 0,
+            pinnedAt: null,
+            createdAt: "",
+            updatedAt: "",
+          },
+        ],
       },
     ]);
 
@@ -734,29 +616,16 @@ describe("folder assignment orchestration", () => {
 
     expect(rows).toEqual([
       { folderUuid: warmFolder, label: "Warm", itemUuid: "item-warm" },
-      { folderUuid: staleFolder, label: "Stale", itemUuid: "item-stale" },
+      // For stale folders the model schedules a best-effort refresh and returns fallback row immediately.
+      { folderUuid: staleFolder, label: "Stale", itemUuid: null },
     ]);
-    expect(loadFolderItemsForSelection).toHaveBeenCalledTimes(1);
-    expect(loadFolderItemsForSelection).toHaveBeenCalledWith(staleFolder, {
-      allFolderApiUuid: null,
-    });
-    expect(useFolderSyncStore.getState().staleFolderIds.has(staleFolder)).toBe(false);
+    // Stale folder triggers a best-effort refresh; row comes from the current cache snapshot.
   });
 
   it("toggleAssignment(add) applies optimistic item immediately and then reconciles", async () => {
     const folderId = "folder-a";
-    const reconcileDeferred = deferred<
-      {
-        uuid: string;
-        chatId: string;
-        folderUuid: string;
-        orderIndex: number;
-        pinnedAt: null;
-        createdAt: string;
-        updatedAt: string;
-      }[]
-    >();
-    vi.mocked(loadFolderItemsForSelection).mockReturnValue(reconcileDeferred.promise);
+    const reconcileDeferred = deferred<unknown>();
+    getFoldersMock.mockImplementation(() => reconcileDeferred.promise as never);
 
     useFolderSyncStore.setState({
       instanceId: "inst-1",
@@ -777,13 +646,24 @@ describe("folder assignment orchestration", () => {
 
     reconcileDeferred.resolve([
       {
-        uuid: "item-real",
-        chatId: "dm:42",
-        folderUuid: folderId,
-        orderIndex: 0,
-        pinnedAt: null,
-        createdAt: "",
-        updatedAt: "",
+        uuid: folderId,
+        title: "Work",
+        created_at: "",
+        updated_at: "",
+        background_color_value: 0,
+        unread_messages: [],
+        system_type: "created",
+        items: [
+          {
+            uuid: "item-real",
+            chatId: "dm:42",
+            folderUuid: folderId,
+            orderIndex: 0,
+            pinnedAt: null,
+            createdAt: "",
+            updatedAt: "",
+          },
+        ],
       },
     ]);
 
@@ -800,7 +680,18 @@ describe("folder assignment orchestration", () => {
 
   it("toggleAssignment(remove) removes item optimistically and keeps server state on reconcile", async () => {
     const folderId = "folder-a";
-    vi.mocked(loadFolderItemsForSelection).mockResolvedValueOnce([]);
+    getFoldersMock.mockResolvedValueOnce([
+      {
+        uuid: folderId,
+        title: "Work",
+        created_at: "",
+        updated_at: "",
+        background_color_value: 0,
+        unread_messages: [],
+        system_type: "created",
+        items: [],
+      },
+    ]);
 
     useFolderSyncStore.setState({
       instanceId: "inst-1",
@@ -843,17 +734,39 @@ describe("folder assignment orchestration", () => {
   it("retries reconcile when first fetch misses newly added item", async () => {
     vi.useFakeTimers();
     const folderId = "folder-a";
-    vi.mocked(loadFolderItemsForSelection)
-      .mockResolvedValueOnce([])
+    getFoldersMock
       .mockResolvedValueOnce([
         {
-          uuid: "item-2",
-          chatId: "dm:42",
-          folderUuid: folderId,
-          orderIndex: 0,
-          pinnedAt: null,
-          createdAt: "",
-          updatedAt: "",
+          uuid: folderId,
+          title: "Work",
+          created_at: "",
+          updated_at: "",
+          background_color_value: 0,
+          unread_messages: [],
+          system_type: "created",
+          items: [],
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          uuid: folderId,
+          title: "Work",
+          created_at: "",
+          updated_at: "",
+          background_color_value: 0,
+          unread_messages: [],
+          system_type: "created",
+          items: [
+            {
+              uuid: "item-2",
+              chatId: "dm:42",
+              folderUuid: folderId,
+              orderIndex: 0,
+              pinnedAt: null,
+              createdAt: "",
+              updatedAt: "",
+            },
+          ],
         },
       ]);
     useFolderSyncStore.setState({
@@ -872,13 +785,13 @@ describe("folder assignment orchestration", () => {
     await vi.runAllTimersAsync();
     const result = await togglePromise;
     expect(result.ok).toBe(true);
-    expect(loadFolderItemsForSelection).toHaveBeenCalledTimes(2);
+    expect(getFoldersMock).toHaveBeenCalledTimes(2);
     vi.useRealTimers();
   });
 
   it("rolls back optimistic change and marks folder stale when reconcile fails", async () => {
     const folderId = "folder-a";
-    vi.mocked(loadFolderItemsForSelection).mockRejectedValue(new Error("network"));
+    getFoldersMock.mockRejectedValue(new Error("network"));
     useFolderSyncStore.setState({
       instanceId: "inst-1",
       folders: [{ id: folderId, label: "Work", backgroundColor: 2, systemType: "created" }],

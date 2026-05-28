@@ -34,7 +34,6 @@ const unmuteTopicMock = vi.fn();
 const unmuteTopicInMutedStreamMock = vi.fn();
 const pinChatInFolderMock = vi.fn();
 const unpinChatInFolderMock = vi.fn();
-const getFolderItemsMock = vi.fn();
 const getFoldersMock = vi.fn().mockResolvedValue([]);
 const addChatToFolderMock = vi.fn();
 const removeChatFromFolderMock = vi.fn();
@@ -82,7 +81,6 @@ vi.mock("~/shared/api/workspace-client", async (importOriginal) => {
   const actual = await importOriginal<typeof WorkspaceApiModule>();
   return {
     ...actual,
-    getFolderItems: (...args: unknown[]) => getFolderItemsMock(...args),
     getFolders: (...args: unknown[]) => getFoldersMock(...args),
     addChatToFolder: (...args: unknown[]) => addChatToFolderMock(...args),
     removeChatFromFolder: (...args: unknown[]) => removeChatFromFolderMock(...args),
@@ -184,7 +182,6 @@ describe("Sidebar", () => {
     unmuteTopicInMutedStreamMock.mockResolvedValue(true);
     pinChatInFolderMock.mockReset();
     unpinChatInFolderMock.mockReset();
-    getFolderItemsMock.mockReset();
     getFoldersMock.mockReset();
     getFoldersMock.mockResolvedValue([]);
     addChatToFolderMock.mockReset();
@@ -811,15 +808,27 @@ describe("Sidebar", () => {
   });
 
   it("shows pin action in dm context menu and pins chat in selected folder", async () => {
-    getFolderItemsMock.mockResolvedValue([
+    getFoldersMock.mockResolvedValue([
       {
-        uuid: "item-42",
-        chatId: "dm:42",
-        folderUuid: "all",
-        orderIndex: 0,
-        pinnedAt: null,
-        createdAt: "",
-        updatedAt: "",
+        uuid: "all",
+        title: "All",
+        created_at: "",
+        updated_at: "",
+        background_color_value: 0,
+        unread_messages: [],
+        system_type: "all",
+        items: [
+          {
+            uuid: "item-42",
+            chat_id: 42,
+            chat_type: "private",
+            folder_uuid: "all",
+            order_index: 0,
+            pinned_at: null,
+            created_at: "",
+            updated_at: "",
+          },
+        ],
       },
     ]);
     pinChatInFolderMock.mockResolvedValue(true);
@@ -839,22 +848,34 @@ describe("Sidebar", () => {
     fireEvent.click(pinItem);
 
     await waitFor(() => {
-      expect(getFolderItemsMock).toHaveBeenCalledWith("all");
+      expect(getFoldersMock).toHaveBeenCalled();
       expect(pinChatInFolderMock).toHaveBeenCalledWith("all", "item-42");
       expect(usePinStore.getState().isPinned("all", "dm:42")).toBe(true);
     });
   });
 
   it("pins stream chat when folder item chat_id is numeric", async () => {
-    getFolderItemsMock.mockResolvedValue([
+    getFoldersMock.mockResolvedValue([
       {
-        uuid: "item-11",
-        chatId: "11",
-        folderUuid: "custom-folder",
-        orderIndex: 0,
-        pinnedAt: null,
-        createdAt: "",
-        updatedAt: "",
+        uuid: "custom-folder",
+        title: "Custom",
+        created_at: "",
+        updated_at: "",
+        background_color_value: 0,
+        unread_messages: [],
+        system_type: "created",
+        items: [
+          {
+            uuid: "item-11",
+            chat_id: 11,
+            chat_type: "stream",
+            folder_uuid: "custom-folder",
+            order_index: 0,
+            pinned_at: null,
+            created_at: "",
+            updated_at: "",
+          },
+        ],
       },
     ]);
     pinChatInFolderMock.mockResolvedValue(true);
@@ -873,7 +894,7 @@ describe("Sidebar", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: /^pin$/i }));
 
     await waitFor(() => {
-      expect(getFolderItemsMock).toHaveBeenCalledWith("custom-folder");
+      expect(getFoldersMock).toHaveBeenCalled();
       expect(pinChatInFolderMock).toHaveBeenCalledWith("custom-folder", "item-11");
     });
   });
@@ -1022,15 +1043,27 @@ describe("Sidebar", () => {
   });
 
   it("uses pinFolderId for pin action in system folders", async () => {
-    getFolderItemsMock.mockResolvedValue([
+    getFoldersMock.mockResolvedValue([
       {
-        uuid: "item-11",
-        chatId: "stream:11:general",
-        folderUuid: "all",
-        orderIndex: 0,
-        pinnedAt: null,
-        createdAt: "2026-01-01T00:00:00Z",
-        updatedAt: "2026-01-01T00:00:00Z",
+        uuid: "all",
+        title: "All",
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+        background_color_value: 0,
+        unread_messages: [],
+        system_type: "all",
+        items: [
+          {
+            uuid: "item-11",
+            chat_id: 11,
+            chat_type: "stream",
+            folder_uuid: "all",
+            order_index: 0,
+            pinned_at: null,
+            created_at: "2026-01-01T00:00:00Z",
+            updated_at: "2026-01-01T00:00:00Z",
+          },
+        ],
       },
     ]);
     pinChatInFolderMock.mockResolvedValue(true);
@@ -1051,7 +1084,7 @@ describe("Sidebar", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: /^pin$/i }));
 
     await waitFor(() => {
-      expect(getFolderItemsMock).toHaveBeenCalledWith("all");
+      expect(getFoldersMock).toHaveBeenCalled();
       expect(pinChatInFolderMock).toHaveBeenCalledWith("all", "item-11");
     });
   });
@@ -1153,42 +1186,65 @@ describe("Sidebar", () => {
   });
 
   it("adds stream chat to folder from context submenu item click", async () => {
-    getFoldersMock.mockResolvedValue([
-      {
-        uuid: "all-folder",
-        title: "All",
-        created_at: "",
-        updated_at: "",
-        background_color_value: 0xff8438,
-        unread_messages: [],
-        system_type: "all",
-      },
-      {
-        uuid: "work-folder",
-        title: "Work",
-        created_at: "",
-        updated_at: "",
-        background_color_value: 0x3a92ff,
-        unread_messages: [],
-        system_type: "created",
-      },
-    ]);
+    getFoldersMock
+      .mockResolvedValueOnce([
+        {
+          uuid: "all-folder",
+          title: "All",
+          created_at: "",
+          updated_at: "",
+          background_color_value: 0xff8438,
+          unread_messages: [],
+          system_type: "all",
+          items: [],
+        },
+        {
+          uuid: "work-folder",
+          title: "Work",
+          created_at: "",
+          updated_at: "",
+          background_color_value: 0x3a92ff,
+          unread_messages: [],
+          system_type: "created",
+          // Initially empty: user action should ADD the stream.
+          items: [],
+        },
+      ])
+      .mockResolvedValue([
+        {
+          uuid: "all-folder",
+          title: "All",
+          created_at: "",
+          updated_at: "",
+          background_color_value: 0xff8438,
+          unread_messages: [],
+          system_type: "all",
+          items: [],
+        },
+        {
+          uuid: "work-folder",
+          title: "Work",
+          created_at: "",
+          updated_at: "",
+          background_color_value: 0x3a92ff,
+          unread_messages: [],
+          system_type: "created",
+          // After add: server returns the assignment in the folders list.
+          items: [
+            {
+              uuid: "work-item-1",
+              chat_id: 11,
+              chat_type: "stream",
+              folder_uuid: "work-folder",
+              order_index: 0,
+              pinned_at: null,
+              created_at: "",
+              updated_at: "",
+            },
+          ],
+        },
+      ]);
     addChatToFolderMock.mockResolvedValue(true);
-    const workFolderItems = [
-      {
-        uuid: "work-item-1",
-        chatId: "stream:11",
-        folderUuid: "work-folder",
-        orderIndex: 0,
-        pinnedAt: null,
-        createdAt: "",
-        updatedAt: "",
-      },
-    ];
-    getFolderItemsMock
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce(workFolderItems)
-      .mockResolvedValue(workFolderItems);
 
     renderWithProviders(
       <Sidebar streams={[]} selectedFolderId="all" sidebarChats={[STREAM_CHAT]} sidebarDms={[]} />,

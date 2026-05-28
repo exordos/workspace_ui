@@ -5,7 +5,7 @@ import { usePinStore } from "~/features/pin-chat/pin-chat.model";
 
 const unpinChatInFolderMock = vi.fn();
 const pinChatInFolderMock = vi.fn();
-const getFolderItemsMock = vi.fn();
+const getFoldersMock = vi.fn();
 const addChatToFolderMock = vi.fn();
 
 vi.mock("~/features/pin-chat/pin-chat.api", () => ({
@@ -17,7 +17,7 @@ vi.mock("~/shared/api/workspace-client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("~/shared/api/workspace-client")>();
   return {
     ...actual,
-    getFolderItems: (...args: unknown[]) => getFolderItemsMock(...args),
+    getFolders: (...args: unknown[]) => getFoldersMock(...args),
     addChatToFolder: (...args: unknown[]) => addChatToFolderMock(...args),
   };
 });
@@ -26,7 +26,7 @@ describe("runFolderPinToggle", () => {
   beforeEach(() => {
     unpinChatInFolderMock.mockReset();
     pinChatInFolderMock.mockReset();
-    getFolderItemsMock.mockReset();
+    getFoldersMock.mockReset();
     addChatToFolderMock.mockReset();
     usePinStore.getState().clear();
     useFolderSyncStore.setState({
@@ -65,7 +65,7 @@ describe("runFolderPinToggle", () => {
       },
     ]);
     unpinChatInFolderMock.mockResolvedValue(true);
-    getFolderItemsMock.mockResolvedValue([]);
+    getFoldersMock.mockResolvedValue([]);
 
     const { runFolderPinToggle } = await import("./pin-chat.lib");
     await runFolderPinToggle({
@@ -111,7 +111,7 @@ describe("runFolderPinToggle", () => {
       },
     ]);
     unpinChatInFolderMock.mockResolvedValue(true);
-    getFolderItemsMock.mockResolvedValue([]);
+    getFoldersMock.mockResolvedValue([]);
 
     const { runFolderPinToggle } = await import("./pin-chat.lib");
     await runFolderPinToggle({
@@ -122,7 +122,7 @@ describe("runFolderPinToggle", () => {
     });
 
     expect(unpinChatInFolderMock).toHaveBeenCalledWith(apiAllUuid, "item-all");
-    expect(getFolderItemsMock).not.toHaveBeenCalled();
+    expect(getFoldersMock).not.toHaveBeenCalled();
   });
 
   it("unpins using folder item uuid from cached items with pinned_at", async () => {
@@ -145,7 +145,7 @@ describe("runFolderPinToggle", () => {
       ]),
     });
     unpinChatInFolderMock.mockResolvedValue(true);
-    getFolderItemsMock.mockResolvedValue([]);
+    getFoldersMock.mockResolvedValue([]);
 
     const { runFolderPinToggle } = await import("./pin-chat.lib");
     await runFolderPinToggle({
@@ -155,7 +155,7 @@ describe("runFolderPinToggle", () => {
     });
 
     expect(unpinChatInFolderMock).toHaveBeenCalledWith("folder-api", "item-99");
-    expect(getFolderItemsMock).not.toHaveBeenCalled();
+    expect(getFoldersMock).not.toHaveBeenCalled();
   });
 
   it("pins in system:all by adding chat to all folder when folder item is missing", async () => {
@@ -166,18 +166,42 @@ describe("runFolderPinToggle", () => {
       folderItemsByFolderId: new Map(),
     });
     addChatToFolderMock.mockResolvedValue(true);
-    const createdItem = {
-      uuid: "item-new",
-      chatId: "dm:42",
-      folderUuid: apiAllUuid,
-      orderIndex: 0,
-      pinnedAt: null,
-      createdAt: "",
-      updatedAt: "",
-    };
-    getFolderItemsMock
-      .mockResolvedValueOnce([]) // resolvePinActionTarget: chat not in folder yet
-      .mockResolvedValue([createdItem]); // refreshFolderItemsCache after add
+    getFoldersMock
+      .mockResolvedValueOnce([
+        {
+          uuid: apiAllUuid,
+          title: "All",
+          created_at: "",
+          updated_at: "",
+          background_color_value: 0,
+          unread_messages: [],
+          system_type: "all",
+          items: [],
+        },
+      ])
+      .mockResolvedValue([
+        {
+          uuid: apiAllUuid,
+          title: "All",
+          created_at: "",
+          updated_at: "",
+          background_color_value: 0,
+          unread_messages: [],
+          system_type: "all",
+          items: [
+            {
+              uuid: "item-new",
+              chat_id: 42,
+              chat_type: "private",
+              folder_uuid: apiAllUuid,
+              order_index: 0,
+              pinned_at: null,
+              created_at: "",
+              updated_at: "",
+            },
+          ],
+        },
+      ]);
     pinChatInFolderMock.mockResolvedValue(true);
 
     const { runFolderPinToggle } = await import("./pin-chat.lib");
@@ -190,21 +214,32 @@ describe("runFolderPinToggle", () => {
 
     expect(addChatToFolderMock).toHaveBeenCalledWith(apiAllUuid, "dm:42");
     expect(pinChatInFolderMock).toHaveBeenCalledWith(apiAllUuid, "item-new");
-    expect(getFolderItemsMock).not.toHaveBeenCalledWith(SYSTEM_ALL_FOLDER_ID);
   });
 
-  it("fetches folder items with API all-folder uuid when scope is system:all and cache is empty", async () => {
+  it("fetches folders to resolve folder item when scope is system:all and cache is empty", async () => {
     const apiAllUuid = "api-all-folder-uuid";
     useFolderSyncStore.setState({ allFolderApiUuid: apiAllUuid });
-    getFolderItemsMock.mockResolvedValue([
+    getFoldersMock.mockResolvedValue([
       {
-        uuid: "item-net",
-        chatId: "dm:42",
-        folderUuid: apiAllUuid,
-        orderIndex: 0,
-        pinnedAt: null,
-        createdAt: "",
-        updatedAt: "",
+        uuid: apiAllUuid,
+        title: "All",
+        created_at: "",
+        updated_at: "",
+        background_color_value: 0,
+        unread_messages: [],
+        system_type: "all",
+        items: [
+          {
+            uuid: "item-net",
+            chat_id: 42,
+            chat_type: "private",
+            folder_uuid: apiAllUuid,
+            order_index: 0,
+            pinned_at: null,
+            created_at: "",
+            updated_at: "",
+          },
+        ],
       },
     ]);
     pinChatInFolderMock.mockResolvedValue(true);
@@ -217,8 +252,7 @@ describe("runFolderPinToggle", () => {
       isPinned: false,
     });
 
-    expect(getFolderItemsMock).toHaveBeenCalledWith(apiAllUuid);
-    expect(getFolderItemsMock).not.toHaveBeenCalledWith(SYSTEM_ALL_FOLDER_ID);
+    expect(getFoldersMock).toHaveBeenCalledTimes(1);
     expect(pinChatInFolderMock).toHaveBeenCalledWith(apiAllUuid, "item-net");
   });
 
@@ -244,7 +278,7 @@ describe("runFolderPinToggle", () => {
       ]),
     });
     unpinChatInFolderMock.mockResolvedValue(true);
-    getFolderItemsMock.mockResolvedValue([]);
+    getFoldersMock.mockResolvedValue([]);
 
     const { runFolderPinToggle } = await import("./pin-chat.lib");
     await runFolderPinToggle({
@@ -255,7 +289,7 @@ describe("runFolderPinToggle", () => {
     });
 
     expect(unpinChatInFolderMock).toHaveBeenCalledWith(apiAllUuid, "item-legacy");
-    expect(getFolderItemsMock).not.toHaveBeenCalled();
+    expect(getFoldersMock).not.toHaveBeenCalled();
   });
 
   it("does not use all-folder pin when unpinning in a custom folder", async () => {
@@ -290,7 +324,7 @@ describe("runFolderPinToggle", () => {
       },
     ]);
     unpinChatInFolderMock.mockResolvedValue(true);
-    getFolderItemsMock.mockResolvedValue([]);
+    getFoldersMock.mockResolvedValue([]);
 
     const { runFolderPinToggle } = await import("./pin-chat.lib");
     await runFolderPinToggle({

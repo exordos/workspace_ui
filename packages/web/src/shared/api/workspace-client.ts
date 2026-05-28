@@ -12,7 +12,6 @@
 import {
   createV1FoldersFolderUuidItems,
   deleteV1FoldersFolderUuidItemsFolderItemUuid,
-  filterV1FoldersFolderUuidItems,
   filterV1Services,
   getV1FoldersFolderUuidItemsFolderItemUuid,
   updateV1FoldersFolderUuidItemsFolderItemUuid,
@@ -30,7 +29,13 @@ import type {
 const inFlightWorkspaceGets = new Map<string, Promise<unknown>>();
 
 /** Folder row from Workspace OpenAPI — re-exported for callers typing `getFolders()`. */
-export type WorkspaceFolder = FolderFilter;
+export type WorkspaceFolder = FolderFilter & {
+  /**
+   * Workspace API: folder list now includes items (chat assignments) inline.
+   * We keep this as `unknown` and parse defensively.
+   */
+  items?: unknown;
+};
 
 type WorkspaceFolderSystemType = "created" | "all";
 export type WorkspaceFolderRailSystemType = WorkspaceFolderSystemType | "personal" | "channels";
@@ -256,6 +261,26 @@ function parseFolderItemChatId(value: unknown): string | null {
   return null;
 }
 
+type WorkspaceFolderItemChatType = "stream" | "group" | "private";
+
+function parseFolderItemChatType(value: unknown): WorkspaceFolderItemChatType | null {
+  if (value === "stream" || value === "group" || value === "private") {
+    return value;
+  }
+  return null;
+}
+
+function encodeFolderItemChatId(raw: Record<string, unknown>, chatId: string): string {
+  const chatType = parseFolderItemChatType(raw.chat_type);
+  // New API provides numeric chat_id + explicit chat_type. For streams we want the canonical
+  // `stream:<id>:general` form so stream links/ids are always correct.
+  if (chatType === "stream" && /^\d+$/.test(chatId)) {
+    return `stream:${chatId}:general`;
+  }
+  // For private/group we keep current encoding (DM links stay unchanged in our app).
+  return chatId;
+}
+
 function mapToFolderItemForClient(
   raw: unknown,
   requestFolderUuid: string,
@@ -266,7 +291,8 @@ function mapToFolderItemForClient(
   const uuid = typeof raw.uuid === "string" ? raw.uuid.trim() : "";
   const folderUuidRaw = typeof raw.folder_uuid === "string" ? raw.folder_uuid.trim() : "";
   const folderUuid = folderUuidRaw.length > 0 ? folderUuidRaw : requestFolderUuid.trim();
-  const chatId = parseFolderItemChatId(raw.chat_id);
+  const chatIdRaw = parseFolderItemChatId(raw.chat_id);
+  const chatId = chatIdRaw != null ? encodeFolderItemChatId(raw, chatIdRaw) : null;
   if (uuid.length === 0 || folderUuid.length === 0 || chatId == null) {
     return null;
   }
@@ -282,6 +308,26 @@ function mapToFolderItemForClient(
     createdAt,
     updatedAt,
   };
+}
+
+/** Parses folder items from a folder row returned by `getFolders()`. */
+export function mapWorkspaceFolderItems(folder: WorkspaceFolder): FolderItemForClient[] {
+  const folderUuid = typeof folder.uuid === "string" ? folder.uuid.trim() : "";
+  if (folderUuid.length === 0) {
+    return [];
+  }
+  const rawItems = folder.items;
+  if (!Array.isArray(rawItems)) {
+    return [];
+  }
+  const result: FolderItemForClient[] = [];
+  for (const rawItem of rawItems) {
+    const mapped = mapToFolderItemForClient(rawItem, folderUuid);
+    if (mapped != null) {
+      result.push(mapped);
+    }
+  }
+  return result;
 }
 
 function validateFolderUuid(folderUuid: string): string {
@@ -344,24 +390,6 @@ function folderItemCreateStub(chatId: number): FolderItemCreate {
     updated_at: now,
     chat_id: chatId,
   };
-}
-
-/** Fetches all chat assignments within a folder. */
-export async function getFolderItems(folderUuid: string): Promise<FolderItemForClient[]> {
-  const safeFolderUuid = validateFolderUuid(folderUuid);
-  const data = await filterV1FoldersFolderUuidItems(safeFolderUuid);
-  if (!Array.isArray(data)) {
-    return [];
-  }
-
-  const result: FolderItemForClient[] = [];
-  for (const rawItem of data) {
-    const mapped = mapToFolderItemForClient(rawItem, safeFolderUuid);
-    if (mapped != null) {
-      result.push(mapped);
-    }
-  }
-  return result;
 }
 
 /** Assigns a chat to a folder. Returns true on success. */

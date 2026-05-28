@@ -249,13 +249,21 @@ describe("workspace-client", () => {
     await expect(getWorkspaceServices()).resolves.toEqual([]);
   });
 
-  it("maps folder items from workspaceApi.get response", async () => {
-    workspaceApi.get.mockResolvedValue({
-      ok: true,
-      data: [
+  it("maps folder items from folders list payload via mapWorkspaceFolderItems", async () => {
+    const { mapWorkspaceFolderItems } = await import("./workspace-client");
+    const items = mapWorkspaceFolderItems({
+      uuid: "folder-1",
+      created_at: "2026-03-14T00:00:00Z",
+      updated_at: "2026-03-14T00:00:00Z",
+      title: "Work",
+      background_color_value: 0,
+      system_type: "created",
+      unread_messages: [],
+      items: [
         {
           uuid: "item-1",
-          chat_id: "dm:42",
+          chat_id: 42,
+          chat_type: "private",
           folder_uuid: "folder-1",
           order_index: 2,
           pinned_at: "2026-03-14T01:00:00Z",
@@ -263,13 +271,11 @@ describe("workspace-client", () => {
           updated_at: "2026-03-14T02:00:00Z",
         },
       ],
-    });
-
-    const { getFolderItems } = await import("./workspace-client");
-    await expect(getFolderItems("folder-1")).resolves.toEqual([
+    } as unknown as WorkspaceFolder);
+    expect(items).toEqual([
       {
         uuid: "item-1",
-        chatId: "dm:42",
+        chatId: "42",
         folderUuid: "folder-1",
         orderIndex: 2,
         pinnedAt: "2026-03-14T01:00:00Z",
@@ -277,98 +283,30 @@ describe("workspace-client", () => {
         updatedAt: "2026-03-14T02:00:00Z",
       },
     ]);
-    expect(workspaceApi.get).toHaveBeenCalledWith(
-      "/v1/folders/folder-1/items/",
-      undefined,
-      undefined,
-    );
-    expect(workspaceApi.setBaseUrl).not.toHaveBeenCalled();
   });
 
-  it("maps folder items using request folder uuid when folder_uuid is omitted in payload", async () => {
-    workspaceApi.get.mockResolvedValue({
-      ok: true,
-      data: [
+  it("encodes stream folder items as canonical stream chat ids using chat_type", async () => {
+    const { mapWorkspaceFolderItems } = await import("./workspace-client");
+    const items = mapWorkspaceFolderItems({
+      uuid: "folder-1",
+      created_at: "2026-03-14T00:00:00Z",
+      updated_at: "2026-03-14T00:00:00Z",
+      title: "Channels",
+      background_color_value: 0,
+      system_type: "created",
+      unread_messages: [],
+      items: [
         {
-          uuid: "item-no-folder-field",
-          chat_id: "dm:99",
+          uuid: "item-11",
+          chat_id: 11,
+          chat_type: "stream",
           order_index: 0,
           created_at: "2026-03-14T00:00:00Z",
           updated_at: "2026-03-14T00:00:00Z",
         },
       ],
-    });
-
-    const { getFolderItems } = await import("./workspace-client");
-    await expect(getFolderItems("folder-abc")).resolves.toEqual([
-      expect.objectContaining({
-        uuid: "item-no-folder-field",
-        chatId: "dm:99",
-        folderUuid: "folder-abc",
-      }),
-    ]);
-  });
-
-  it("maps folder items even when backend returns relaxed fields", async () => {
-    // Проверяем, что клиент не теряет элементы при "мягком" формате ответа backend.
-    workspaceApi.get.mockResolvedValue({
-      ok: true,
-      status: 200,
-      raw: { statusText: "OK" },
-      data: [
-        {
-          uuid: "item-relaxed-1",
-          chat_id: "dm:42,7",
-          folder_uuid: "folder-1",
-          order_index: "3",
-          pinned_at: 0,
-        },
-        {
-          uuid: "item-relaxed-2",
-          chat_id: 11,
-          folder_uuid: "folder-1",
-          order_index: null,
-          created_at: "2026-03-18T00:00:00Z",
-        },
-      ],
-    });
-
-    const { getFolderItems } = await import("./workspace-client");
-    await expect(getFolderItems("folder-1")).resolves.toEqual([
-      {
-        uuid: "item-relaxed-1",
-        chatId: "dm:42,7",
-        folderUuid: "folder-1",
-        orderIndex: 3,
-        pinnedAt: null,
-        createdAt: "",
-        updatedAt: "",
-      },
-      {
-        uuid: "item-relaxed-2",
-        chatId: "11",
-        folderUuid: "folder-1",
-        orderIndex: 0,
-        pinnedAt: null,
-        createdAt: "2026-03-18T00:00:00Z",
-        updatedAt: "2026-03-18T00:00:00Z",
-      },
-    ]);
-  });
-
-  it("fails fast for folder items and does not switch base on 404", async () => {
-    workspaceApi.get.mockResolvedValue({
-      ok: false,
-      status: 404,
-      raw: { statusText: "Not Found" },
-      data: [],
-    });
-
-    const { getFolderItems } = await import("./workspace-client");
-    await expect(getFolderItems("folder-1")).rejects.toThrow("Workspace API error: 404 Not Found");
-
-    expect(workspaceApi.get).toHaveBeenCalledTimes(1);
-    expect(workspaceApi.setBaseUrl).not.toHaveBeenCalled();
+    } as unknown as WorkspaceFolder);
+    expect(items[0]?.chatId).toBe("stream:11:general");
   });
 
   it("delegates folder assignment to workspaceApi.postJson", async () => {
@@ -458,13 +396,6 @@ describe("workspace-client", () => {
       }),
     );
     expect(workspaceApi.setBaseUrl).not.toHaveBeenCalled();
-  });
-
-  it("rejects getFolderItems when folder uuid is blank", async () => {
-    const { getFolderItems } = await import("./workspace-client");
-
-    await expect(getFolderItems("   ")).rejects.toThrow(/folderUuid must be a non-empty string/i);
-    expect(workspaceApi.get).not.toHaveBeenCalled();
   });
 
   it("returns false for addChatToFolder when folder or chat id is blank", async () => {

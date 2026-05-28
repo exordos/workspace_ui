@@ -11,7 +11,11 @@ import {
 import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { pinChatInFolder, unpinChatInFolder } from "~/features/pin-chat/pin-chat.api";
 import { usePinStore } from "~/features/pin-chat/pin-chat.model";
-import { addChatToFolder, getFolderItems } from "~/shared/api/workspace-client";
+import {
+  addChatToFolder,
+  getFolders,
+  mapWorkspaceFolderItems,
+} from "~/shared/api/workspace-client";
 import { createLogger } from "~/shared/lib/logger";
 
 const log = createLogger("pin:toggle");
@@ -156,7 +160,11 @@ async function resolvePinActionTarget(options: {
     resolveFolderItemsRequestUuid(options.apiFolderUuid, allFolderApiUuid) ?? options.apiFolderUuid;
 
   try {
-    const items = await getFolderItems(fetchUuid);
+    const folders = await getFolders();
+    const items = (() => {
+      const folder = folders.find((f) => f.uuid === fetchUuid);
+      return folder ? mapWorkspaceFolderItems(folder) : [];
+    })();
 
     if (options.preferPinnedItem) {
       for (const item of items) {
@@ -183,7 +191,7 @@ async function resolvePinActionTarget(options: {
       );
     }
   } catch (err) {
-    log.warn("resolvePinActionTarget:getFolderItems failed", {
+    log.warn("resolvePinActionTarget:getFolders failed", {
       folderUuid: fetchUuid,
       error: String(err),
     });
