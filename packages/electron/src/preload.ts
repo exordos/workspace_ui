@@ -78,6 +78,41 @@ const electronAPI = {
     append: (line: string): Promise<boolean> => ipcRenderer.invoke("logs:append", line),
     getFilePath: (): Promise<string | null> => ipcRenderer.invoke("logs:getFilePath"),
   },
+
+  auth: {
+    // Renderer не получает доступ к Electron session напрямую, только просит main process выполнить exchange.
+    exchangeDesktopFlowToken: (payload: {
+      // Realm нужен main process, чтобы знать, на каком Zulip сервере обменивать token.
+      realm: string;
+      // Token приходит из desktop-flow и живет только на время обмена.
+      token: string;
+    }): Promise<
+      | {
+          ok: true;
+          data: {
+            // api_key значит обычный Basic auth, session значит дальнейшая работа через cookies.
+            authType: "api_key" | "session";
+            // Email сохраняется в списке инстансов после успешного login.
+            email: string;
+            // API key есть только в api_key сценарии, при session auth он не нужен.
+            apiKey?: string;
+          };
+        }
+      | {
+          ok: false;
+          // Короткая причина нужна UI и логам, чтобы не зависеть от текста ошибки.
+          reason:
+            | "INVALID_DESKTOP_FLOW_TOKEN"
+            | "DESKTOP_FLOW_EXCHANGE_NETWORK_ERROR"
+            | "DESKTOP_FLOW_EXCHANGE_HTTP_ERROR"
+            | "DESKTOP_FLOW_SESSION_FAILED";
+          // HTTP статус есть не всегда: сетевые и validation ошибки его не имеют.
+          status?: number;
+          // Детали помогают диагностике, но не должны показываться пользователю как есть.
+          details?: string;
+        }
+    > => ipcRenderer.invoke("auth:exchangeDesktopFlowToken", payload),
+  },
 };
 
 contextBridge.exposeInMainWorld("electronAPI", electronAPI);

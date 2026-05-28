@@ -158,6 +158,35 @@ interface ElectronAPI {
     append: (line: string) => Promise<boolean>;
     getFilePath: () => Promise<string | null>;
   };
+  auth?: {
+    // Electron-only мост: renderer просит main process завершить desktop-flow login.
+    exchangeDesktopFlowToken: (payload: { realm: string; token: string }) => Promise<
+      | {
+          ok: true;
+          data: {
+            // api_key хранится как раньше, session означает работу через cookies.
+            authType: "api_key" | "session";
+            // Email нужен для создания инстанса в Zustand store.
+            email: string;
+            // При session auth ключа нет, потому что авторизация идет cookies.
+            apiKey?: string;
+          };
+        }
+      | {
+          ok: false;
+          // Короткий код ошибки приходит из main process и не зависит от текста сообщения.
+          reason:
+            | "INVALID_DESKTOP_FLOW_TOKEN"
+            | "DESKTOP_FLOW_EXCHANGE_NETWORK_ERROR"
+            | "DESKTOP_FLOW_EXCHANGE_HTTP_ERROR"
+            | "DESKTOP_FLOW_SESSION_FAILED";
+          // HTTP статус есть только у ошибок, где сервер успел ответить.
+          status?: number;
+          // Технические детали нужны для логов, не для пользовательского текста.
+          details?: string;
+        }
+    >;
+  };
 }
 
 interface NativeAppBridge {
