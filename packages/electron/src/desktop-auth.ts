@@ -173,7 +173,12 @@ async function fetchSessionUserEmail(
     // Статус возвращаем наверх, чтобы отличить 401 от других проблем в логах.
     return { email: null, status: response.status };
   }
-  const data = (await response.json()) as { email?: unknown };
+  let data: { email?: unknown };
+  try {
+    data = (await response.json()) as { email?: unknown };
+  } catch {
+    return { email: null, status: response.status };
+  }
   const email = typeof data.email === "string" ? data.email.trim() : "";
   return {
     email: isValidEmail(email) ? email : null,
