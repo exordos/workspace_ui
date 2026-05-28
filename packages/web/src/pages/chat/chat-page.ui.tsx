@@ -1813,7 +1813,7 @@ export const ChatPage: React.FC = () => {
   }, []);
 
   return (
-    <div className="flex max-h-full min-h-0 min-w-0 max-w-narrow-page flex-1 flex-col overflow-hidden">
+    <div className="flex max-h-full min-h-0 min-w-0 max-w-chat-page flex-1 flex-col overflow-hidden">
       {/* Forward message modal */}
       <Dialog.Root
         open={forwardMessages.length > 0}

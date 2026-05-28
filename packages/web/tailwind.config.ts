@@ -82,6 +82,7 @@ export default {
       maxWidth: {
         "main-workspace": "1920px",
         "narrow-page": "1199px",
+        "chat-page": "1600px",
         "modal-manage-folder": "520px",
         "drawer-profile": "360px",
       },
