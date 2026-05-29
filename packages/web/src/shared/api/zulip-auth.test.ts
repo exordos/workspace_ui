@@ -185,7 +185,7 @@ describe("fetchApiKey", () => {
 
 describe("exchangeDesktopFlowToken", () => {
   it("returns api_key auth payload when backend provides credentials", async () => {
-    // Backend может сразу вернуть api_key, тогда session fallback не нужен.
+    // The backend can return api_key right away, so session fallback is not needed.
     mockFetch
       .mockResolvedValueOnce(
         jsonResponse({
@@ -221,7 +221,7 @@ describe("exchangeDesktopFlowToken", () => {
   });
 
   it("falls back to session auth when exchange succeeds without api key payload", async () => {
-    // Если api_key в ответе нет, проверяем cookie session через /json/users/me.
+    // If the response has no api_key, check the cookie session with /json/users/me.
     mockFetch.mockResolvedValueOnce(jsonResponse({ result: "success" })).mockResolvedValueOnce(
       jsonResponse({
         email: "session-user@example.com",
@@ -245,7 +245,7 @@ describe("exchangeDesktopFlowToken", () => {
   });
 
   it("throws ZulipAuthError when session verification fails", async () => {
-    // Session auth нельзя сохранять, если сервер не подтвердил текущего пользователя.
+    // Session auth must not be saved if the server did not confirm the current user.
     mockFetch
       .mockResolvedValueOnce(jsonResponse({ result: "success" }))
       .mockResolvedValueOnce(jsonResponse({ msg: "Not logged in" }, 401));
@@ -256,7 +256,7 @@ describe("exchangeDesktopFlowToken", () => {
   });
 
   it("delegates to Electron auth bridge when running in desktop shell", async () => {
-    // В Electron renderer не должен сам трогать cookies, поэтому проверяем уход в preload bridge.
+    // In Electron, the renderer must not touch cookies, so check that it uses the preload bridge.
     const bridgeExchange = mockElectronAuthBridge(
       vi.fn().mockResolvedValue({
         ok: true,
@@ -282,7 +282,7 @@ describe("exchangeDesktopFlowToken", () => {
   });
 
   it("throws ZulipAuthError when Electron auth bridge returns failure", async () => {
-    // Ошибку классифицирует main process; renderer сохраняет код и не делает fallback на fetch.
+    // The main process classifies the error; the renderer keeps the code and does not fall back to fetch.
     mockElectronAuthBridge(
       vi.fn().mockResolvedValue({
         ok: false,

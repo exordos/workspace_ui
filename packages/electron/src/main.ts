@@ -1019,24 +1019,24 @@ function registerIpcHandlers(): void {
   });
 
   ipcMain.handle("auth:exchangeDesktopFlowToken", async (_event, payload: unknown) => {
-    // Renderer может прислать что угодно, поэтому сначала проверяем форму payload.
+    // The renderer can send anything, so first check the payload shape.
     if (typeof payload !== "object" || payload == null) {
       return { ok: false as const, reason: "INVALID_DESKTOP_FLOW_TOKEN" as const };
     }
     const record = payload as Record<string, unknown>;
-    // Realm и token чистим в main process, даже если renderer уже делал свою проверку.
+    // Clean realm and token in the main process, even if the renderer already checked them.
     const realm = typeof record.realm === "string" ? record.realm.trim() : "";
     const token = typeof record.token === "string" ? record.token.trim() : "";
     if (realm.length === 0 || token.length === 0) {
       return { ok: false as const, reason: "INVALID_DESKTOP_FLOW_TOKEN" as const };
     }
     try {
-      // Сам обмен идет в main process, чтобы Chromium session jar сохранил cookies.
+      // The exchange runs in the main process so the Chromium session jar stores cookies.
       const data = await exchangeDesktopFlowTokenInMain(realm, token);
       return { ok: true as const, data };
     } catch (error) {
       if (error instanceof DesktopAuthExchangeError) {
-        // Известные ошибки возвращаем структурно, без парсинга текста на стороне renderer.
+        // Return known errors as data, without parsing text in the renderer.
         return {
           ok: false as const,
           reason: error.reason,
@@ -1044,7 +1044,7 @@ function registerIpcHandlers(): void {
           ...(error.details != null ? { details: error.details } : {}),
         };
       }
-      // Неизвестный сбой тоже превращаем в безопасный ответ, чтобы IPC не падал исключением.
+      // Convert unknown failures to a safe response too, so IPC does not fail with an exception.
       return {
         ok: false as const,
         reason: "DESKTOP_FLOW_EXCHANGE_NETWORK_ERROR" as const,

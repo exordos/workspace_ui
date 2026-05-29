@@ -80,35 +80,35 @@ const electronAPI = {
   },
 
   auth: {
-    // Renderer не получает доступ к Electron session напрямую, только просит main process выполнить exchange.
+    // The renderer cannot access Electron session directly; it only asks the main process to exchange.
     exchangeDesktopFlowToken: (payload: {
-      // Realm нужен main process, чтобы знать, на каком Zulip сервере обменивать token.
+      // Realm tells the main process which Zulip server should exchange the token.
       realm: string;
-      // Token приходит из desktop-flow и живет только на время обмена.
+      // Token comes from desktop-flow and is only valid during exchange.
       token: string;
     }): Promise<
       | {
           ok: true;
           data: {
-            // api_key значит обычный Basic auth, session значит дальнейшая работа через cookies.
+            // api_key means normal Basic auth; session means later requests use cookies.
             authType: "api_key" | "session";
-            // Email сохраняется в списке инстансов после успешного login.
+            // Email is saved in the instance list after successful login.
             email: string;
-            // API key есть только в api_key сценарии, при session auth он не нужен.
+            // API key exists only for api_key auth; session auth does not need it.
             apiKey?: string;
           };
         }
       | {
           ok: false;
-          // Короткая причина нужна UI и логам, чтобы не зависеть от текста ошибки.
+          // A short reason is used by UI and logs, so they do not depend on error text.
           reason:
             | "INVALID_DESKTOP_FLOW_TOKEN"
             | "DESKTOP_FLOW_EXCHANGE_NETWORK_ERROR"
             | "DESKTOP_FLOW_EXCHANGE_HTTP_ERROR"
             | "DESKTOP_FLOW_SESSION_FAILED";
-          // HTTP статус есть не всегда: сетевые и validation ошибки его не имеют.
+          // HTTP status is optional: network and validation errors do not have it.
           status?: number;
-          // Детали помогают диагностике, но не должны показываться пользователю как есть.
+          // Details help debugging, but should not be shown to the user as is.
           details?: string;
         }
     > => ipcRenderer.invoke("auth:exchangeDesktopFlowToken", payload),

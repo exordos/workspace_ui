@@ -1,36 +1,36 @@
-// Обмен OIDC desktop-flow token в Electron main process.
+// Exchanges the OIDC desktop-flow token in the Electron main process.
 //
-// Renderer работает из file:// и из-за этого не может надежно сохранить и отправить
-// SameSite=Lax session cookies в cross-site запросах. Main process использует общий
-// Chromium cookie jar и после обмена меняет нужные auth cookies на SameSite=None.
+// The renderer runs from file://, so it cannot reliably store and send
+// SameSite=Lax session cookies in cross-site requests. The main process uses
+// the shared Chromium cookie jar and changes the needed auth cookies to SameSite=None.
 import { session } from "electron";
 
 export interface DesktopAuthExchangeResult {
-  // Говорит renderer-у, чем дальше авторизоваться: api key или cookie session.
+  // Tells the renderer what to use next: an API key or a cookie session.
   authType: "api_key" | "session";
-  // Email нужен, чтобы сохранить новый инстанс в общем списке аккаунтов.
+  // Email is needed to save the new instance in the account list.
   email: string;
-  // Заполняется только если backend вернул готовый Zulip API key.
+  // Set only when the backend returned a ready Zulip API key.
   apiKey?: string;
 }
 
 export type DesktopAuthExchangeFailureReason =
-  // Входные данные пустые, слишком длинные или realm не похож на безопасный https URL.
+  // Input is empty, too long, or the realm is not a safe HTTPS URL.
   | "INVALID_DESKTOP_FLOW_TOKEN"
-  // До сервера не удалось достучаться или сеть оборвалась.
+  // The server could not be reached, or the network failed.
   | "DESKTOP_FLOW_EXCHANGE_NETWORK_ERROR"
-  // Сервер ответил ошибочным HTTP статусом при обмене desktop token.
+  // The server returned a bad HTTP status while exchanging the desktop token.
   | "DESKTOP_FLOW_EXCHANGE_HTTP_ERROR"
-  // Cookie session не удалось подготовить или проверить через /json/users/me.
+  // The cookie session could not be prepared or checked with /json/users/me.
   | "DESKTOP_FLOW_SESSION_FAILED";
 
 export class DesktopAuthExchangeError extends Error {
   constructor(
-    // Короткий код причины возвращаем в renderer, чтобы UI не разбирал текст ошибки.
+    // Return a short reason code so the UI does not parse error text.
     public readonly reason: DesktopAuthExchangeFailureReason,
-    // HTTP статус сохраняем отдельно: он полезен для диагностики, но не является message.
+    // Keep the HTTP status separate: it helps debugging but is not the message.
     public readonly status?: number,
-    // Детали нужны только для логов, не для показа пользователю.
+    // Details are only for logs, not for user-facing text.
     public readonly details?: string,
   ) {
     super(reason);
@@ -39,7 +39,7 @@ export class DesktopAuthExchangeError extends Error {
 }
 
 function stringifyNetworkError(error: unknown): string {
-  // Сетевые ошибки в Electron часто несут code/cause, их удобно видеть в логах.
+  // Electron network errors often have code/cause, which is useful in logs.
   if (error instanceof Error) {
     const withCode = error as Error & { code?: unknown; cause?: unknown };
     const parts = [error.message];
@@ -57,7 +57,7 @@ function stringifyNetworkError(error: unknown): string {
 }
 
 function stringifyUnknownError(error: unknown): string {
-  // В catch может попасть не только Error, поэтому приводим всё к короткой строке.
+  // Catch can receive non-Error values, so convert everything to a short string.
   if (error instanceof Error) {
     return error.message;
   }
@@ -65,7 +65,7 @@ function stringifyUnknownError(error: unknown): string {
 }
 
 function normalizeRealm(realm: string): string {
-  // Пользователь мог вставить realm с API suffix, а exchange endpoint живет на корне realm.
+  // The user may paste a realm with an API suffix, but the exchange endpoint is at the realm root.
   return realm
     .trim()
     .replace(/\/+$/, "")
@@ -75,7 +75,7 @@ function normalizeRealm(realm: string): string {
 
 function isValidHttpsRealmUrl(realm: string): boolean {
   try {
-    // Если протокол не ввели, считаем realm https-only, потому что auth cookies требуют Secure.
+    // If no protocol was entered, treat the realm as HTTPS because auth cookies need Secure.
     const parsed = new URL(/^https?:\/\//i.test(realm) ? realm : `https://${realm}`);
     return parsed.protocol === "https:" && parsed.hostname.length > 0;
   } catch {
@@ -84,16 +84,16 @@ function isValidHttpsRealmUrl(realm: string): boolean {
 }
 
 function isValidEmail(email: string): boolean {
-  // Тут достаточно легкой проверки: email приходит от backend и нужен только для сохранения аккаунта.
+  // A light check is enough: the email comes from the backend and is only used to save the account.
   return email.includes("@") && email.length > 3;
 }
 
 function normalizeApiCredentials(payload: unknown): { email: string; apiKey: string } | null {
-  // Backend иногда отдает готовые API credentials вместо cookie session.
+  // The backend can return ready API credentials instead of a cookie session.
   if (typeof payload !== "object" || payload == null) {
     return null;
   }
-  // Поддерживаем оба имени поля, чтобы не зависеть от snake/camel формы ответа.
+  // Support both field names so we do not depend on snake/camel response shape.
   const record = payload as Record<string, unknown>;
   const email = typeof record.email === "string" ? record.email.trim() : "";
   const apiKeyRaw = record.api_key ?? record.apiKey;
@@ -104,7 +104,7 @@ function normalizeApiCredentials(payload: unknown): { email: string; apiKey: str
   return { email, apiKey };
 }
 
-// Это закрытый список Zulip cookies, которым правда нужна cross-site отправка в Electron.
+// Closed list of Zulip cookies that really need cross-site sending in Electron.
 const ZULIP_AUTH_COOKIES_TO_RELAX = new Set([
   "sessionid",
   "__Host-sessionid",
@@ -114,32 +114,32 @@ const ZULIP_AUTH_COOKIES_TO_RELAX = new Set([
 ]);
 
 function shouldRelaxZulipAuthCookieSameSite(name: string): boolean {
-  // Не ищем по подстроке: analytics_session и похожие cookies не должны слабеть случайно.
+  // Do not match by substring: analytics_session and similar cookies must not be relaxed by accident.
   return ZULIP_AUTH_COOKIES_TO_RELAX.has(name);
 }
 
 async function relaxSessionCookieSameSite(originUrl: string): Promise<void> {
-  // Берем только cookies этого realm origin, чтобы не смотреть весь Chromium jar.
+  // Read only cookies for this realm origin, not the whole Chromium jar.
   const cookies = await session.defaultSession.cookies.get({ url: originUrl });
   for (const cookie of cookies) {
-    // Неизвестные cookies оставляем как есть: они остаются в jar, но их SameSite не меняется.
+    // Leave unknown cookies as they are: they stay in the jar, but their SameSite is not changed.
     if (!shouldRelaxZulipAuthCookieSameSite(cookie.name)) {
       continue;
     }
-    // Если cookie уже подходит для Electron renderer, не трогаем ее повторно.
+    // If the cookie already works for the Electron renderer, do not touch it again.
     if (cookie.sameSite === "no_restriction") {
       continue;
     }
-    // SameSite=None без Secure Chromium не принимает, поэтому insecure cookies не переписываем.
+    // Chromium does not accept SameSite=None without Secure, so do not rewrite insecure cookies.
     if (!cookie.secure) {
       continue;
     }
 
-    // __Host- cookies должны быть без domain и только на path=/, иначе Chromium их отклонит.
+    // __Host- cookies must have no domain and must use path=/, or Chromium rejects them.
     const isHostPrefixedCookie = cookie.name.startsWith("__Host-");
     const cookiePath = isHostPrefixedCookie ? "/" : (cookie.path ?? "/");
     const cookieUrl = new URL(cookiePath, originUrl).toString();
-    // Перезаписываем ту же cookie с более подходящим SameSite для desktop file:// renderer.
+    // Rewrite the same cookie with a better SameSite value for the desktop file:// renderer.
     const nextCookie = {
       url: cookieUrl,
       name: cookie.name,
@@ -163,14 +163,14 @@ async function relaxSessionCookieSameSite(originUrl: string): Promise<void> {
 async function fetchSessionUserEmail(
   baseRealm: string,
 ): Promise<{ email: string | null; status: number }> {
-  // Проверяем session через endpoint, который требует уже установленную cookie.
+  // Check the session with an endpoint that needs an already stored cookie.
   const response = await session.defaultSession.fetch(`${baseRealm}/json/users/me`, {
     method: "GET",
-    // Явно просим Chromium отправить cookies; не полагаемся на дефолт fetch.
+    // Ask Chromium to send cookies explicitly; do not rely on the fetch default.
     credentials: "include",
   });
   if (!response.ok) {
-    // Статус возвращаем наверх, чтобы отличить 401 от других проблем в логах.
+    // Return the status so logs can separate 401 from other problems.
     return { email: null, status: response.status };
   }
   let data: { email?: unknown };
@@ -193,7 +193,7 @@ export async function exchangeDesktopFlowToken(
   realmInput: string,
   tokenInput: string,
 ): Promise<DesktopAuthExchangeResult> {
-  // Нормализуем ввод до одного базового URL, чтобы ниже не собирать разные варианты endpoint.
+  // Normalize input to one base URL so we do not build different endpoint forms below.
   const base = normalizeRealm(realmInput);
   const token = tokenInput.trim();
   if (!isValidHttpsRealmUrl(base) || token.length === 0 || token.length > 512) {
@@ -203,11 +203,11 @@ export async function exchangeDesktopFlowToken(
   const exchangeUrl = `${base}/accounts/login/subdomain/${encodeURIComponent(token)}`;
   let response: Response;
   try {
-    // Main process делает exchange вместо renderer, потому что renderer запущен из file://.
+    // The main process exchanges the token because the renderer runs from file://.
     response = await session.defaultSession.fetch(exchangeUrl, {
       method: "GET",
       redirect: "follow",
-      // Без include Set-Cookie и последующие cookies могут зависеть от дефолта Electron.
+      // Without include, Set-Cookie and later cookies may depend on the Electron default.
       credentials: "include",
     });
   } catch (error) {
@@ -225,7 +225,7 @@ export async function exchangeDesktopFlowToken(
   const contentType = response.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
     try {
-      // Если сервер вернул API key, cookie fallback уже не нужен.
+      // If the server returned an API key, cookie fallback is not needed.
       const payload: unknown = await response.json();
       const apiCredentials = normalizeApiCredentials(payload);
       if (apiCredentials) {
@@ -242,7 +242,7 @@ export async function exchangeDesktopFlowToken(
 
   const originUrl = `${new URL(base).origin}/`;
   try {
-    // Cookie session из Zulip обычно SameSite=Lax; для desktop file:// ее нужно ослабить явно.
+    // Zulip session cookies are usually SameSite=Lax; desktop file:// needs them relaxed explicitly.
     await relaxSessionCookieSameSite(originUrl);
   } catch (error) {
     throw new DesktopAuthExchangeError(
@@ -254,7 +254,7 @@ export async function exchangeDesktopFlowToken(
 
   let sessionCheck: { email: string | null; status: number };
   try {
-    // После правки cookies сразу проверяем, что session реально работает.
+    // After changing cookies, check right away that the session really works.
     sessionCheck = await fetchSessionUserEmail(base);
   } catch (error) {
     throw new DesktopAuthExchangeError(
@@ -264,7 +264,7 @@ export async function exchangeDesktopFlowToken(
     );
   }
   if (sessionCheck.email == null) {
-    // Если email не пришел, считаем cookie session нерабочей и не сохраняем инстанс.
+    // If email is missing, treat the cookie session as broken and do not save the instance.
     throw new DesktopAuthExchangeError("DESKTOP_FLOW_SESSION_FAILED", sessionCheck.status);
   }
 

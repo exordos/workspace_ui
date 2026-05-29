@@ -159,30 +159,30 @@ interface ElectronAPI {
     getFilePath: () => Promise<string | null>;
   };
   auth?: {
-    // Electron-only мост: renderer просит main process завершить desktop-flow login.
+    // Electron-only bridge: renderer asks the main process to finish desktop-flow login.
     exchangeDesktopFlowToken: (payload: { realm: string; token: string }) => Promise<
       | {
           ok: true;
           data: {
-            // api_key хранится как раньше, session означает работу через cookies.
+            // api_key is stored as before; session means auth works through cookies.
             authType: "api_key" | "session";
-            // Email нужен для создания инстанса в Zustand store.
+            // Email is needed to create the instance in the Zustand store.
             email: string;
-            // При session auth ключа нет, потому что авторизация идет cookies.
+            // Session auth has no key because auth uses cookies.
             apiKey?: string;
           };
         }
       | {
           ok: false;
-          // Короткий код ошибки приходит из main process и не зависит от текста сообщения.
+          // Short error code comes from the main process and does not depend on message text.
           reason:
             | "INVALID_DESKTOP_FLOW_TOKEN"
             | "DESKTOP_FLOW_EXCHANGE_NETWORK_ERROR"
             | "DESKTOP_FLOW_EXCHANGE_HTTP_ERROR"
             | "DESKTOP_FLOW_SESSION_FAILED";
-          // HTTP статус есть только у ошибок, где сервер успел ответить.
+          // HTTP status exists only when the server had time to respond.
           status?: number;
-          // Технические детали нужны для логов, не для пользовательского текста.
+          // Technical details are for logs, not for user-facing text.
           details?: string;
         }
     >;
