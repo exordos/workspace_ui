@@ -7,7 +7,7 @@
  * Incorrect env handling would break API connections or Jitsi integration.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   WORKSPACE_API_PATH,
   WORKSPACE_GATEWAY_V1_PATH,
