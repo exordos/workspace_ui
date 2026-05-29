@@ -6,10 +6,13 @@ export function e2eOrgBasePath(): string {
   return `/org/${hostname}`;
 }
 
+/** Stream slug with numeric id prefix (matches E2E mock `stream_id: 10`, name `general`). */
+export const E2E_STREAM_SLUG = "10-general";
+
 /** Opens a stream topic view where the message composer is rendered. */
 export async function openStreamChatWithComposer(
   page: Page,
-  streamSlug = "general",
+  streamSlug = E2E_STREAM_SLUG,
   topicName = "general",
 ): Promise<void> {
   const topicSegment = encodeURIComponent(topicName);

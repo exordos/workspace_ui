@@ -4,6 +4,7 @@
 import { test, expect } from "./fixtures";
 import { badEventQueueIdError } from "./helpers/zulip-api-mock";
 import { reconnectSidebarDeltaMessages } from "./mocks/zulip-default-responses";
+import { failWorkspaceApi } from "./helpers/fail-workspace-api";
 import { setBrowserOffline, setBrowserOnline } from "./helpers/network";
 import { seedAuthStorage } from "./helpers/seed-auth";
 import { seedChatListIndexedDb } from "./helpers/seed-chat-list-cache";
@@ -18,6 +19,7 @@ test.describe("Connection resilience @mock", () => {
   }) => {
     // 400 avoids client retry backoff on 503 (bootstrap would stay on fullscreen loader too long).
     zulipApi.statusMatching(/\/api\/v1\//, 400, 100);
+    await failWorkspaceApi(page);
     await seedAuthStorage(page);
     await page.reload();
 
@@ -37,6 +39,7 @@ test.describe("Connection resilience @mock", () => {
     await seedChatListIndexedDb(page);
 
     zulipApi.statusMatching(/\/api\/v1\//, 400, 100);
+    await failWorkspaceApi(page);
     await page.reload();
     await page.waitForSelector("[data-focus-zone='topbar']", { timeout: 45_000 });
 
@@ -99,13 +102,17 @@ test.describe("Connection resilience @mock", () => {
     zulipApi,
   }) => {
     await seedChatListIndexedDb(authenticated);
-    zulipApi.setPersistentMessagesResponse(reconnectSidebarDeltaMessages());
     await authenticated.reload();
     await authenticated.waitForSelector("[data-focus-zone='topbar']", { timeout: 45_000 });
     await expect(authenticated.getByText("Cached hello")).toBeVisible({ timeout: 15_000 });
 
+    zulipApi.setPersistentMessagesResponse(reconnectSidebarDeltaMessages());
     await setBrowserOffline(context);
     await setBrowserOnline(context);
+    // Full reconnect stages stream previews until the next queue register (rare in mock E2E).
+    // Window focus triggers the light reconnect path, which applies the /messages delta directly.
+    await authenticated.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await authenticated.waitForTimeout(800);
 
     await expect(authenticated.getByText("After reconnect sidebar")).toBeVisible({
       timeout: 30_000,

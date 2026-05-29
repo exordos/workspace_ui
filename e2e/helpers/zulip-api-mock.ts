@@ -171,6 +171,15 @@ export class ZulipApiMock {
       return;
     }
 
+    if (/\/users\/\d+\/status$/.test(path) && method === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ result: "success", status: { away: false } }),
+      });
+      return;
+    }
+
     if (/\/users\/\d+$/.test(path) && method === "GET") {
       const user = usersSuccess().members[0];
       await route.fulfill({

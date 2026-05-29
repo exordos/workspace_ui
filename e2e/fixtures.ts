@@ -13,6 +13,7 @@
 import { test as base, type Page } from "@playwright/test";
 import { clearAppStorage } from "./helpers/clear-app-storage";
 import { openStreamChatWithComposer } from "./helpers/navigate-messenger";
+import { WorkspaceApiMock } from "./helpers/workspace-api-mock";
 import { ZulipApiMock } from "./helpers/zulip-api-mock";
 import { seedAuthStorage } from "./helpers/seed-auth";
 
@@ -33,6 +34,13 @@ async function openAuthenticatedShell(page: Page): Promise<void> {
 }
 
 export const test = base.extend<TestFixtures>({
+  page: async ({ page }, use) => {
+    const workspaceApi = new WorkspaceApiMock(page);
+    await workspaceApi.install();
+    await use(page);
+    await workspaceApi.uninstall();
+  },
+
   loginAs: async ({ page }, use) => {
     const fn = async (email: string, password: string, realm: string) => {
       await page.goto("/");

@@ -13,12 +13,14 @@ e2e/
 ├── fixtures.ts                    # loginAs, zulipApi, authenticated (+ mock)
 ├── helpers/
 │   ├── zulip-api-mock.ts          # page.route mock for /api/v1/**
+│   ├── workspace-api-mock.ts      # page.route mock for /workspace/v1/**
 │   ├── seed-auth.ts               # localStorage instance seed
 │   ├── seed-chat-list-cache.ts    # IndexedDB sidebar cache seed
 │   ├── network.ts                 # setBrowserOffline/Online
 │   └── live-auth-env.ts           # TEST_USER_* from .env
 ├── mocks/
-│   └── zulip-default-responses.ts # default JSON bodies
+│   ├── zulip-default-responses.ts # default Zulip JSON bodies
+│   └── workspace-default-responses.ts # default Workspace JSON bodies
 ├── pages/
 │   └── connection-banner.page.ts
 ├── connection-resilience.spec.ts  # @mock — network/API failures
@@ -61,6 +63,7 @@ test("live login", async ({ page, loginAs }) => {
 | Fixture | Description |
 |---------|-------------|
 | `zulipApi` | `ZulipApiMock` — intercepts `**/api/v1/**` |
+| (auto) | `WorkspaceApiMock` — intercepts `**/*workspace*/**` on every `page` |
 | `authenticated` | Seeds auth + opens shell (uses mock) |
 | `loginAs` | Real login form (live tests) |
 
