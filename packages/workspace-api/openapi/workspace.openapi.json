@@ -23,10 +23,7 @@
         "title": "error",
         "description": "Error occurred while processing request",
         "type": "object",
-        "required": [
-          "status",
-          "json"
-        ],
+        "required": ["status", "json"],
         "properties": {
           "status": {
             "type": "integer",
@@ -38,11 +35,7 @@
           "json": {
             "type": "object",
             "description": "Detail error map",
-            "required": [
-              "code",
-              "type",
-              "message"
-            ],
+            "required": ["code", "type", "message"],
             "properties": {
               "code": {
                 "type": "integer",
@@ -109,16 +102,16 @@
             "format": "date-time",
             "nullable": true
           },
+          "chat_type": {
+            "type": "string",
+            "enum": ["group", "private", "stream"]
+          },
           "folder_uuid": {
             "type": "string",
             "format": "uuid"
           }
         },
-        "required": [
-          "created_at",
-          "updated_at",
-          "chat_id"
-        ]
+        "required": ["created_at", "updated_at", "chat_id", "chat_type"]
       },
       "Folder_Create": {
         "type": "object",
@@ -161,19 +154,12 @@
           },
           "system_type": {
             "type": "string",
-            "enum": [
-              "all",
-              "created"
-            ],
+            "enum": ["all", "created"],
             "default": "created",
             "nullable": true
           }
         },
-        "required": [
-          "created_at",
-          "updated_at",
-          "title"
-        ]
+        "required": ["created_at", "updated_at", "title"]
       },
       "Folder_Filter": {
         "type": "object",
@@ -216,19 +202,12 @@
           },
           "system_type": {
             "type": "string",
-            "enum": [
-              "all",
-              "created"
-            ],
+            "enum": ["all", "created"],
             "default": "created",
             "nullable": true
           }
         },
-        "required": [
-          "created_at",
-          "updated_at",
-          "title"
-        ]
+        "required": ["created_at", "updated_at", "title"]
       },
       "Folder_Get": {
         "type": "object",
@@ -271,19 +250,12 @@
           },
           "system_type": {
             "type": "string",
-            "enum": [
-              "all",
-              "created"
-            ],
+            "enum": ["all", "created"],
             "default": "created",
             "nullable": true
           }
         },
-        "required": [
-          "created_at",
-          "updated_at",
-          "title"
-        ]
+        "required": ["created_at", "updated_at", "title"]
       },
       "Folder_Update": {
         "type": "object",
@@ -326,19 +298,12 @@
           },
           "system_type": {
             "type": "string",
-            "enum": [
-              "all",
-              "created"
-            ],
+            "enum": ["all", "created"],
             "default": "created",
             "nullable": true
           }
         },
-        "required": [
-          "created_at",
-          "updated_at",
-          "title"
-        ]
+        "required": ["created_at", "updated_at", "title"]
       },
       "FolderItem_Create": {
         "type": "object",
@@ -376,16 +341,16 @@
             "format": "date-time",
             "nullable": true
           },
+          "chat_type": {
+            "type": "string",
+            "enum": ["group", "private", "stream"]
+          },
           "folder_uuid": {
             "type": "string",
             "format": "uuid"
           }
         },
-        "required": [
-          "created_at",
-          "updated_at",
-          "chat_id"
-        ]
+        "required": ["created_at", "updated_at", "chat_id", "chat_type"]
       },
       "FolderItem_Filter": {
         "type": "object",
@@ -423,16 +388,16 @@
             "format": "date-time",
             "nullable": true
           },
+          "chat_type": {
+            "type": "string",
+            "enum": ["group", "private", "stream"]
+          },
           "folder_uuid": {
             "type": "string",
             "format": "uuid"
           }
         },
-        "required": [
-          "created_at",
-          "updated_at",
-          "chat_id"
-        ]
+        "required": ["created_at", "updated_at", "chat_id", "chat_type"]
       },
       "FolderItem_Get": {
         "type": "object",
@@ -470,16 +435,16 @@
             "format": "date-time",
             "nullable": true
           },
+          "chat_type": {
+            "type": "string",
+            "enum": ["group", "private", "stream"]
+          },
           "folder_uuid": {
             "type": "string",
             "format": "uuid"
           }
         },
-        "required": [
-          "created_at",
-          "updated_at",
-          "chat_id"
-        ]
+        "required": ["created_at", "updated_at", "chat_id", "chat_type"]
       },
       "FolderItem_Update": {
         "type": "object",
@@ -517,16 +482,16 @@
             "format": "date-time",
             "nullable": true
           },
+          "chat_type": {
+            "type": "string",
+            "enum": ["group", "private", "stream"]
+          },
           "folder_uuid": {
             "type": "string",
             "format": "uuid"
           }
         },
-        "required": [
-          "created_at",
-          "updated_at",
-          "chat_id"
-        ]
+        "required": ["created_at", "updated_at", "chat_id", "chat_type"]
       },
       "Service_Create": {
         "type": "object",
@@ -568,12 +533,7 @@
             "nullable": true
           }
         },
-        "required": [
-          "name",
-          "created_at",
-          "updated_at",
-          "service_url"
-        ]
+        "required": ["name", "created_at", "updated_at", "service_url"]
       },
       "Service_Filter": {
         "type": "object",
@@ -615,12 +575,7 @@
             "nullable": true
           }
         },
-        "required": [
-          "name",
-          "created_at",
-          "updated_at",
-          "service_url"
-        ]
+        "required": ["name", "created_at", "updated_at", "service_url"]
       },
       "Service_Get": {
         "type": "object",
@@ -662,12 +617,7 @@
             "nullable": true
           }
         },
-        "required": [
-          "name",
-          "created_at",
-          "updated_at",
-          "service_url"
-        ]
+        "required": ["name", "created_at", "updated_at", "service_url"]
       },
       "Service_Update": {
         "type": "object",
@@ -709,12 +659,7 @@
             "nullable": true
           }
         },
-        "required": [
-          "name",
-          "created_at",
-          "updated_at",
-          "service_url"
-        ]
+        "required": ["name", "created_at", "updated_at", "service_url"]
       }
     },
     "parameters": {
@@ -792,6 +737,14 @@
           "nullable": true
         }
       },
+      "chat_type": {
+        "name": "chat_type",
+        "in": "query",
+        "schema": {
+          "type": "string",
+          "enum": ["group", "private", "stream"]
+        }
+      },
       "folder_uuid": {
         "name": "folder_uuid",
         "in": "query",
@@ -846,10 +799,7 @@
         "in": "query",
         "schema": {
           "type": "string",
-          "enum": [
-            "all",
-            "created"
-          ],
+          "enum": ["all", "created"],
           "default": "created",
           "nullable": true
         }
@@ -1031,9 +981,7 @@
     "/v1/folder_items/": {
       "get": {
         "summary": "Get FolderItemRAFixs",
-        "tags": [
-          "FolderItemRAFix"
-        ],
+        "tags": ["FolderItemRAFix"],
         "parameters": [
           {
             "name": "created_at",
@@ -1101,6 +1049,14 @@
             }
           },
           {
+            "name": "chat_type",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["group", "private", "stream"]
+            }
+          },
+          {
             "name": "folder_uuid",
             "in": "query",
             "schema": {
@@ -1132,10 +1088,8 @@
     },
     "/v1/folders/": {
       "get": {
-        "summary": "Get Folders",
-        "tags": [
-          "Folder"
-        ],
+        "summary": "List folders with nested items",
+        "tags": ["Folder"],
         "parameters": [
           {
             "name": "created_at",
@@ -1190,10 +1144,7 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "enum": [
-                "all",
-                "created"
-              ],
+              "enum": ["all", "created"],
               "default": "created",
               "nullable": true
             }
@@ -1201,13 +1152,84 @@
         ],
         "responses": {
           "200": {
-            "description": "Folder_Filter",
+            "description": "List of folders with nested items",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/Folder_Filter"
+                    "type": "object",
+                    "properties": {
+                      "uuid": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "user_id": {
+                        "type": "integer"
+                      },
+                      "background_color_value": {
+                        "type": "integer",
+                        "nullable": true
+                      },
+                      "unread_messages": {
+                        "type": "array",
+                        "items": {
+                          "type": "integer"
+                        }
+                      },
+                      "system_type": {
+                        "type": "string",
+                        "nullable": true,
+                        "enum": ["all", "created"]
+                      },
+                      "created_at": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "updated_at": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "items": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "uuid": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "chat_id": {
+                              "type": "integer"
+                            },
+                            "chat_type": {
+                              "type": "string",
+                              "enum": ["stream", "group", "private"]
+                            },
+                            "order_index": {
+                              "type": "integer",
+                              "nullable": true
+                            },
+                            "pinned_at": {
+                              "type": "string",
+                              "format": "date-time",
+                              "nullable": true
+                            },
+                            "created_at": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "updated_at": {
+                              "type": "string",
+                              "format": "date-time"
+                            }
+                          }
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -1221,9 +1243,7 @@
       },
       "post": {
         "summary": "Create Folder",
-        "tags": [
-          "Folder"
-        ],
+        "tags": ["Folder"],
         "parameters": [],
         "responses": {
           "201": {
@@ -1257,9 +1277,7 @@
     "/v1/folders/{FolderUuid}": {
       "get": {
         "summary": "Get Folder",
-        "tags": [
-          "Folder"
-        ],
+        "tags": ["Folder"],
         "parameters": [
           {
             "name": "FolderUuid",
@@ -1290,9 +1308,7 @@
       },
       "put": {
         "summary": "Update Folder",
-        "tags": [
-          "Folder"
-        ],
+        "tags": ["Folder"],
         "parameters": [
           {
             "name": "FolderUuid",
@@ -1334,9 +1350,7 @@
       },
       "delete": {
         "summary": "Delete Folder",
-        "tags": [
-          "Folder"
-        ],
+        "tags": ["Folder"],
         "parameters": [
           {
             "name": "FolderUuid",
@@ -1362,9 +1376,7 @@
     "/v1/folders/{FolderUuid}/items/": {
       "get": {
         "summary": "Get FolderItems",
-        "tags": [
-          "FolderItem"
-        ],
+        "tags": ["FolderItem"],
         "parameters": [
           {
             "name": "FolderUuid",
@@ -1398,9 +1410,7 @@
       },
       "post": {
         "summary": "Create FolderItem",
-        "tags": [
-          "FolderItem"
-        ],
+        "tags": ["FolderItem"],
         "parameters": [
           {
             "name": "FolderUuid",
@@ -1444,9 +1454,7 @@
     "/v1/folders/{FolderUuid}/items/{FolderItemUuid}": {
       "get": {
         "summary": "Get FolderItem",
-        "tags": [
-          "FolderItem"
-        ],
+        "tags": ["FolderItem"],
         "parameters": [
           {
             "name": "FolderUuid",
@@ -1486,9 +1494,7 @@
       },
       "put": {
         "summary": "Update FolderItem",
-        "tags": [
-          "FolderItem"
-        ],
+        "tags": ["FolderItem"],
         "parameters": [
           {
             "name": "FolderUuid",
@@ -1539,9 +1545,7 @@
       },
       "delete": {
         "summary": "Delete FolderItem",
-        "tags": [
-          "FolderItem"
-        ],
+        "tags": ["FolderItem"],
         "parameters": [
           {
             "name": "FolderUuid",
@@ -1576,9 +1580,7 @@
     "/v1/folders/{FolderUuid}/items/{FolderItemUuid}/actions/pin/invoke": {
       "post": {
         "summary": "Pin FolderItem",
-        "tags": [
-          "FolderItem"
-        ],
+        "tags": ["FolderItem"],
         "parameters": [
           {
             "name": "FolderUuid",
@@ -1618,9 +1620,7 @@
     "/v1/folders/{FolderUuid}/items/{FolderItemUuid}/actions/unpin/invoke": {
       "post": {
         "summary": "Unpin FolderItem",
-        "tags": [
-          "FolderItem"
-        ],
+        "tags": ["FolderItem"],
         "parameters": [
           {
             "name": "FolderUuid",
@@ -1660,9 +1660,7 @@
     "/v1/services/": {
       "get": {
         "summary": "Get Services",
-        "tags": [
-          "Service"
-        ],
+        "tags": ["Service"],
         "parameters": [
           {
             "name": "name",
@@ -1743,9 +1741,7 @@
       },
       "post": {
         "summary": "Create Service",
-        "tags": [
-          "Service"
-        ],
+        "tags": ["Service"],
         "parameters": [],
         "responses": {
           "201": {
@@ -1779,9 +1775,7 @@
     "/v1/services/{ServiceUuid}": {
       "get": {
         "summary": "Get Service",
-        "tags": [
-          "Service"
-        ],
+        "tags": ["Service"],
         "parameters": [
           {
             "name": "ServiceUuid",
@@ -1812,9 +1806,7 @@
       },
       "put": {
         "summary": "Update Service",
-        "tags": [
-          "Service"
-        ],
+        "tags": ["Service"],
         "parameters": [
           {
             "name": "ServiceUuid",
@@ -1856,9 +1848,7 @@
       },
       "delete": {
         "summary": "Delete Service",
-        "tags": [
-          "Service"
-        ],
+        "tags": ["Service"],
         "parameters": [
           {
             "name": "ServiceUuid",
@@ -1884,13 +1874,11 @@
   },
   "servers": [
     {
-      "url": "http://127.0.0.1:21081",
+      "url": "http://127.0.0.1:21080",
       "description": "",
       "variables": {
         "version": {
-          "enum": [
-            "v1"
-          ],
+          "enum": ["v1"],
           "default": "v1"
         }
       }

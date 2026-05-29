@@ -786,7 +786,7 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
           const items = mapWorkspaceFolderItems(folder);
           return {
             folderUuid,
-            label: folder.title,
+            label: folder.title ?? "",
             itemUuid: resolveFolderItemUuid(items, safeChatId),
           } satisfies FolderAssignmentRow;
         });

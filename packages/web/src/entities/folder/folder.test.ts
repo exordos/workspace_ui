@@ -199,6 +199,11 @@ describe("getFolders", () => {
 
     await getFolders();
 
-    expect(workspaceApi.getWithBase).toHaveBeenCalledWith("https://zulip.test", "/v1/folders/");
+    expect(workspaceApi.getWithBase).toHaveBeenCalledWith(
+      "https://zulip.test",
+      "/v1/folders/",
+      undefined,
+      undefined,
+    );
   });
 });

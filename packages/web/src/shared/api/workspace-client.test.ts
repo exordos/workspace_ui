@@ -72,6 +72,8 @@ describe("workspace-client", () => {
     expect(workspaceApi.getWithBase).toHaveBeenCalledWith(
       "https://zulip.genesis-core.tech",
       "/v1/folders/",
+      undefined,
+      undefined,
     );
   });
 
@@ -264,14 +266,13 @@ describe("workspace-client", () => {
           uuid: "item-1",
           chat_id: 42,
           chat_type: "private",
-          folder_uuid: "folder-1",
           order_index: 2,
           pinned_at: "2026-03-14T01:00:00Z",
           created_at: "2026-03-14T00:00:00Z",
           updated_at: "2026-03-14T02:00:00Z",
         },
       ],
-    } as unknown as WorkspaceFolder);
+    });
     expect(items).toEqual([
       {
         uuid: "item-1",
@@ -305,7 +306,7 @@ describe("workspace-client", () => {
           updated_at: "2026-03-14T00:00:00Z",
         },
       ],
-    } as unknown as WorkspaceFolder);
+    });
     expect(items[0]?.chatId).toBe("stream:11:general");
   });
 
@@ -319,6 +320,7 @@ describe("workspace-client", () => {
       "/v1/folders/folder-1/items/",
       expect.objectContaining({
         chat_id: 42,
+        chat_type: "private",
       }),
     );
     expect(workspaceApi.setBaseUrl).not.toHaveBeenCalled();
@@ -339,6 +341,7 @@ describe("workspace-client", () => {
       "/v1/folders/folder-1/items/",
       expect.objectContaining({
         chat_id: 1,
+        chat_type: "stream",
       }),
     );
     expect(workspaceApi.setBaseUrl).not.toHaveBeenCalled();

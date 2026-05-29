@@ -2,14 +2,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { getFolders } from "~/shared/api/workspace-client";
 import { loadFolderSyncSnapshot, resetFolderSyncApiCacheForTests } from "./folder-sync.api";
 
-vi.mock("~/shared/api/workspace-client", () => ({
-  getFolders: vi.fn(),
-  mapWorkspaceFolderItems: (folder: { uuid?: string; items?: unknown }) => {
-    // Keep this mapper minimal for this unit: folder-sync.api just delegates to it.
-    if (typeof folder.uuid !== "string" || folder.uuid.trim().length === 0) return [];
-    return Array.isArray(folder.items) ? folder.items : [];
-  },
-}));
+vi.mock("~/shared/api/workspace-client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("~/shared/api/workspace-client")>();
+  return {
+    ...actual,
+    getFolders: vi.fn(),
+  };
+});
 
 function deferred<T>() {
   let resolve: (value: T) => void = () => {};
@@ -40,12 +39,11 @@ describe("folder-sync.api", () => {
         items: [
           {
             uuid: "item-all",
-            chatId: "dm:7",
-            folderUuid: "folder-1",
-            orderIndex: 0,
-            pinnedAt: null,
-            createdAt: "2026-01-01T00:00:00Z",
-            updatedAt: "2026-01-01T00:00:00Z",
+            chat_id: 7,
+            chat_type: "private",
+            order_index: 0,
+            created_at: "2026-01-01T00:00:00Z",
+            updated_at: "2026-01-01T00:00:00Z",
           },
         ],
       },
@@ -60,12 +58,11 @@ describe("folder-sync.api", () => {
         items: [
           {
             uuid: "item-1",
-            chatId: "dm:42",
-            folderUuid: "folder-2",
-            orderIndex: 0,
-            pinnedAt: null,
-            createdAt: "2026-01-01T00:00:00Z",
-            updatedAt: "2026-01-01T00:00:00Z",
+            chat_id: 42,
+            chat_type: "private",
+            order_index: 0,
+            created_at: "2026-01-01T00:00:00Z",
+            updated_at: "2026-01-01T00:00:00Z",
           },
         ],
       },
@@ -79,7 +76,7 @@ describe("folder-sync.api", () => {
       items: [
         {
           uuid: "item-1",
-          chatId: "dm:42",
+          chatId: "42",
           folderUuid: "folder-2",
           orderIndex: 0,
           pinnedAt: null,
