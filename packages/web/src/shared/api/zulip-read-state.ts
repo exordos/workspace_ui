@@ -2,6 +2,7 @@
  * Zulip read/unread and topic resolution (flags API + topic rename).
  */
 import { guard } from "~/shared/lib/guards";
+import { logScrollReadFlow } from "~/shared/lib/message-flow-debug.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { toResolvedTopicName, toUnresolvedTopicName } from "~/shared/lib/topic-resolve";
 import { zulipTopicNarrowOperandForApi } from "~/shared/lib/zulip-topic-narrow.lib";
@@ -12,6 +13,7 @@ import { validateMessageIds } from "./zulip-validation.internal";
 export async function markMessagesAsRead(messageIds: number[]): Promise<void> {
   if (messageIds.length === 0) return;
   const validatedMessageIds = validateMessageIds(messageIds, "markMessagesAsRead.messageIds");
+  logScrollReadFlow("api:markMessagesAsRead", { count: validatedMessageIds.length });
   await zulipPipelinePost("messages/flags", {
     messages: JSON.stringify(validatedMessageIds),
     op: "add",

@@ -53,7 +53,11 @@ import { normalizeDmRouteUserIds } from "~/shared/lib/dm-route.lib";
 import { getPresenceState, formatLastSeen } from "~/shared/lib/format";
 import { buildJitsiMeetingUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
 import { createLogger } from "~/shared/lib/logger";
-import { logMessageFlow, summarizeChatContextForLog } from "~/shared/lib/message-flow-debug.lib";
+import {
+  logMessageFlow,
+  logScrollReadFlow,
+  summarizeChatContextForLog,
+} from "~/shared/lib/message-flow-debug.lib";
 import {
   createMessageIdSet,
   messageIdsMissingFromBothLists,
@@ -231,6 +235,15 @@ export const ChatPage: React.FC = () => {
     () => countUnreadMessages(messages, currentUserId),
     [messages, currentUserId],
   );
+
+  useEffect(() => {
+    logScrollReadFlow("read:firstUnreadChange", {
+      context: summarizeChatContextForLog(chatContextForMessages),
+      firstUnreadId: firstUnreadId ?? null,
+      unreadCount,
+    });
+  }, [firstUnreadId, unreadCount, chatContextForMessages]);
+
   const setContext = useCurrentChatMessagesStore((s) => s.setContext);
   const appendMessageToStore = useCurrentChatMessagesStore((s) => s.appendMessage);
   const commitOutgoingMessageToStore = useCurrentChatMessagesStore((s) => s.commitOutgoingMessage);

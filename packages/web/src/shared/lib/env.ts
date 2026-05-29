@@ -176,8 +176,8 @@ export const env = {
   CHAT_MESSAGES_PERSIST_INDEXEDDB: chatMessagesPersistIndexedDb,
 
   /**
-   * When true, `[message-flow]` traces appear in the browser console (chat store + IDB + chat page merge).
-   * Default: on in development, off in production. Set `VITE_MESSAGE_FLOW_DEBUG=false` to silence in dev.
+   * When true, `[message-flow]` and `[scroll-read]` traces appear in the browser console (chat store,
+   * IDB, chat page merge, scroll offsets, mark-as-read). Default: on in dev. Set `false` to silence.
    */
   MESSAGE_FLOW_DEBUG: (() => {
     if (import.meta.env.MODE === "test") return false;

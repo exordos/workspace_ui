@@ -6,7 +6,12 @@ import { normalizeEmojiShortcodeName } from "~/shared/lib/emoji-shortcodes.lib";
 import { createLogger } from "~/shared/lib/logger";
 import { normalizeStreamTopicForMessageCache } from "~/shared/lib/message-cache-keys.lib";
 import { containsEmojiShortcode } from "~/shared/lib/message-emoji-shortcodes.lib";
-import { logMessageFlow } from "~/shared/lib/message-flow-debug.lib";
+import {
+  logMessageFlow,
+  logScrollReadFlow,
+  summarizeMessageIdsForFlowDebug,
+  summarizeScrollElement,
+} from "~/shared/lib/message-flow-debug.lib";
 import {
   buildMessageIdMap,
   filterViewportUnreadIdsForReadDispatch,
@@ -58,6 +63,8 @@ const UnreadMarker: React.FC<{ unreadCount: number }> = ({ unreadCount }) => (
 
 const LOAD_MORE_THRESHOLD = 100;
 const VISIBILITY_READ_RECHECK_MS = 200;
+const SCROLL_LOG_THROTTLE_MS = 100;
+const INITIAL_READ_SUPPRESS_MS = 400;
 
 const messageListLog = createLogger("ui:message-list");
 
@@ -117,7 +124,10 @@ export const MessageList: React.FC<MessageListProps> = ({
   const programmaticScrollRef = useRef(false);
   const pendingScrollToBottomKeyRef = useRef<string | null>(null);
   const unreadScrollKeyRef = useRef<string | null>(null);
+  const suppressReadUntilMsRef = useRef(0);
+  const scrollLogLastAtMsRef = useRef(0);
   const bottomReadDispatchKeyRef = useRef<string | null>(null);
+  const [unreadAnchorId, setUnreadAnchorId] = useState<number | null>(null);
   const intersectionObserverRef = useRef<IntersectionObserver | null>(null);
   const observedUnreadNodesRef = useRef<Map<number, HTMLElement>>(new Map());
   const viewportUnreadIdsRef = useRef<Set<number>>(new Set());
@@ -188,6 +198,30 @@ export const MessageList: React.FC<MessageListProps> = ({
   const lastUnreadId = useMemo(
     () => resolveLastUnreadBoundaryMessageId(messages, currentUserId),
     [messages, currentUserId],
+  );
+
+  const syncWasAtBottomFromElement = useCallback((el: HTMLElement) => {
+    const metrics = summarizeScrollElement(el, SCROLL_AT_BOTTOM_THRESHOLD);
+    wasAtBottomRef.current = metrics.atBottom;
+    setIsAtBottom(metrics.atBottom);
+    return metrics.atBottom;
+  }, []);
+
+  const logScrollMetrics = useCallback(
+    (phase: string, extra?: Record<string, unknown>) => {
+      const el = scrollRef.current;
+      logScrollReadFlow(phase, {
+        scrollToBottomKey,
+        firstUnreadId: firstUnreadId ?? null,
+        unreadAnchorId,
+        programmaticScroll: programmaticScrollRef.current,
+        wasAtBottom: wasAtBottomRef.current,
+        userScrollSeen: userScrollSeenRef.current,
+        ...(el ? summarizeScrollElement(el, SCROLL_AT_BOTTOM_THRESHOLD) : {}),
+        ...extra,
+      });
+    },
+    [scrollToBottomKey, firstUnreadId, unreadAnchorId],
   );
 
   const runProgrammaticScroll = useCallback((scrollAction: () => void) => {
@@ -296,7 +330,14 @@ export const MessageList: React.FC<MessageListProps> = ({
     userScrollSeenRef.current = false;
     programmaticScrollRef.current = false;
     unreadScrollKeyRef.current = null;
+    suppressReadUntilMsRef.current = 0;
+    setUnreadAnchorId(null);
   }, [scrollToBottomKey]);
+
+  useEffect(() => {
+    if (firstUnreadId == null) return;
+    setUnreadAnchorId((prev) => prev ?? firstUnreadId);
+  }, [firstUnreadId, scrollToBottomKey]);
 
   const processIntersectionEntries = useCallback(
     (entries: readonly IntersectionObserverEntry[]) => {
@@ -316,6 +357,13 @@ export const MessageList: React.FC<MessageListProps> = ({
         }
       }
       if (visibleThisFrame.length > 0 && isTabVisible()) {
+        if (
+          typeof performance !== "undefined" &&
+          performance.now() < suppressReadUntilMsRef.current
+        ) {
+          return;
+        }
+        logScrollReadFlow("read:intersection", summarizeMessageIdsForFlowDebug(visibleThisFrame));
         onUnreadMessagesVisible?.(visibleThisFrame);
       }
     },
@@ -325,6 +373,9 @@ export const MessageList: React.FC<MessageListProps> = ({
   const dispatchUnreadAtBottom = useCallback(() => {
     if (!onUnreadMessagesVisible && !onUnreadMessagesAtBottom) return;
     if (!isTabVisible()) return;
+    if (typeof performance !== "undefined" && performance.now() < suppressReadUntilMsRef.current) {
+      return;
+    }
 
     const candidateUnread = unreadCandidatesRef.current;
     for (const id of viewportUnreadIdsRef.current) {
@@ -351,6 +402,10 @@ export const MessageList: React.FC<MessageListProps> = ({
     if (bottomReadDispatchKeyRef.current === dispatchKey) return;
     bottomReadDispatchKeyRef.current = dispatchKey;
 
+    logScrollReadFlow("read:atBottom", {
+      ...summarizeMessageIdsForFlowDebug(ids),
+      tailReady,
+    });
     onUnreadMessagesVisible?.(ids);
     if (tailReady) {
       onUnreadMessagesAtBottom?.(ids);
@@ -379,20 +434,40 @@ export const MessageList: React.FC<MessageListProps> = ({
     if (pending !== null && scrollToBottomKey !== undefined && pending === scrollToBottomKey) {
       pendingScrollToBottomKeyRef.current = null;
       if (focusedMessageId == null && firstUnreadId != null) {
+        wasAtBottomRef.current = false;
+        logScrollMetrics("scroll:openSkipBottom");
         return;
       }
+      logScrollMetrics("scroll:toBottom", { reason: "chatOpen" });
       runProgrammaticScroll(() => {
         scrollToBottom(el);
+        syncWasAtBottomFromElement(el);
       });
       return;
     }
     if (messages.length === 0) return;
     if (wasAtBottomRef.current) {
+      if (unreadAnchorId != null && !userScrollSeenRef.current) {
+        logScrollMetrics("scroll:skipBottomForUnreadAnchor", { reason: "messagesLengthChange" });
+        syncWasAtBottomFromElement(el);
+        return;
+      }
+      logScrollMetrics("scroll:toBottom", { reason: "wasAtBottom" });
       runProgrammaticScroll(() => {
         scrollToBottom(el);
+        syncWasAtBottomFromElement(el);
       });
     }
-  }, [scrollToBottomKey, messages.length, focusedMessageId, firstUnreadId, runProgrammaticScroll]);
+  }, [
+    scrollToBottomKey,
+    messages.length,
+    focusedMessageId,
+    firstUnreadId,
+    unreadAnchorId,
+    runProgrammaticScroll,
+    logScrollMetrics,
+    syncWasAtBottomFromElement,
+  ]);
 
   const markUserScrollIntent = useCallback(() => {
     userScrollSeenRef.current = true;
@@ -405,10 +480,15 @@ export const MessageList: React.FC<MessageListProps> = ({
       if (event.isTrusted) {
         userScrollSeenRef.current = true;
       }
-      const atBottom =
-        el.scrollHeight - el.scrollTop - el.clientHeight <= SCROLL_AT_BOTTOM_THRESHOLD;
-      wasAtBottomRef.current = atBottom;
-      setIsAtBottom(atBottom);
+      const atBottom = syncWasAtBottomFromElement(el);
+
+      if (event.isTrusted) {
+        const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+        if (now - scrollLogLastAtMsRef.current >= SCROLL_LOG_THROTTLE_MS) {
+          scrollLogLastAtMsRef.current = now;
+          logScrollMetrics("scroll:onScroll", { trusted: true });
+        }
+      }
 
       if (
         canAutoLoadOlder({
@@ -463,6 +543,8 @@ export const MessageList: React.FC<MessageListProps> = ({
       dispatchUnreadAtBottom,
       messages.length,
       isLastUnreadNearViewportBottom,
+      logScrollMetrics,
+      syncWasAtBottomFromElement,
     ],
   );
 
@@ -492,8 +574,17 @@ export const MessageList: React.FC<MessageListProps> = ({
         prevScrollTop: pending.scrollTop,
         nextScrollTop: nextTop,
       });
+      logScrollReadFlow("scroll:prependRestore", {
+        messagesLen: messages.length,
+        pendingMessageCount: pending.messageCount,
+        prevScrollTop: pending.scrollTop,
+        nextScrollTop: nextTop,
+        prevScrollHeight: pending.scrollHeight,
+        nextScrollHeight: el.scrollHeight,
+      });
       el.scrollTop = nextTop;
       pendingPrependScrollRef.current = null;
+      syncWasAtBottomFromElement(el);
       return;
     }
 
@@ -505,9 +596,19 @@ export const MessageList: React.FC<MessageListProps> = ({
       prevScrollTop: pending.scrollTop,
       nextScrollTop: nextTop,
     });
+    logScrollReadFlow("scroll:prependRestore", {
+      messagesLen: messages.length,
+      pendingMessageCount: pending.messageCount,
+      prevScrollTop: pending.scrollTop,
+      nextScrollTop: nextTop,
+      prevScrollHeight: pending.scrollHeight,
+      nextScrollHeight: el.scrollHeight,
+      sameLength: true,
+    });
     el.scrollTop = nextTop;
     pendingPrependScrollRef.current = null;
-  }, [isLoadingMore, messages.length]);
+    syncWasAtBottomFromElement(el);
+  }, [isLoadingMore, messages.length, syncWasAtBottomFromElement]);
 
   useEffect(() => {
     if (!isAtBottom) {
@@ -523,8 +624,8 @@ export const MessageList: React.FC<MessageListProps> = ({
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    setIsAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight <= SCROLL_AT_BOTTOM_THRESHOLD);
-  }, [messages.length]);
+    syncWasAtBottomFromElement(el);
+  }, [messages.length, syncWasAtBottomFromElement]);
 
   useEffect(() => {
     if (typeof IntersectionObserver === "undefined") return;
@@ -672,20 +773,33 @@ export const MessageList: React.FC<MessageListProps> = ({
   }, []);
 
   useEffect(() => {
-    if (focusedMessageId != null || firstUnreadId == null) return;
+    if (focusedMessageId != null || unreadAnchorId == null) return;
     const el = scrollRef.current;
     if (!el) return;
 
-    const unreadScrollKey = `${scrollToBottomKey ?? "__default__"}:${firstUnreadId}`;
+    const unreadScrollKey = scrollToBottomKey ?? "__default__";
     if (unreadScrollKeyRef.current === unreadScrollKey) return;
 
-    const target = el.querySelector<HTMLElement>(`[data-message-id="${firstUnreadId}"]`);
+    const target = el.querySelector<HTMLElement>(`[data-message-id="${unreadAnchorId}"]`);
     if (!target) return;
+    if (typeof performance !== "undefined") {
+      suppressReadUntilMsRef.current = performance.now() + INITIAL_READ_SUPPRESS_MS;
+    }
+    logScrollMetrics("scroll:toUnread", { anchorMessageId: unreadAnchorId });
     runProgrammaticScroll(() => {
       target.scrollIntoView({ block: "center", behavior: "instant" });
+      syncWasAtBottomFromElement(el);
     });
     unreadScrollKeyRef.current = unreadScrollKey;
-  }, [focusedMessageId, firstUnreadId, scrollToBottomKey, messages.length, runProgrammaticScroll]);
+  }, [
+    focusedMessageId,
+    unreadAnchorId,
+    scrollToBottomKey,
+    messages.length,
+    runProgrammaticScroll,
+    logScrollMetrics,
+    syncWasAtBottomFromElement,
+  ]);
 
   // По клику пользователя используем плавную прокрутку.
   // Это единственный сценарий в message-list, где анимация нужна намеренно.
@@ -741,7 +855,9 @@ export const MessageList: React.FC<MessageListProps> = ({
             {senderGroups.map((senderMessages) => {
               const isOwn = senderMessages[0]!.sender_id === currentUserId;
               const showUnreadMarker =
-                firstUnreadId != null && senderMessages.some((m) => m.id === firstUnreadId);
+                unreadAnchorId != null &&
+                unreadCount > 0 &&
+                senderMessages.some((m) => m.id === unreadAnchorId);
               const first = senderMessages[0]!;
               const isStream = first.stream_id != null;
               const topicKey = normalizeStreamTopicForMessageCache(first.subject ?? "");

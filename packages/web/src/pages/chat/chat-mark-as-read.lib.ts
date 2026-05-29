@@ -6,6 +6,10 @@
  * sent for content the user did not actually see.
  */
 
+import {
+  logScrollReadFlow,
+  summarizeMessageIdsForFlowDebug,
+} from "~/shared/lib/message-flow-debug.lib";
 import { isTabVisible, onVisibilityChange } from "~/shared/lib/visibility";
 
 export interface MarkAsReadBatcherOptions {
@@ -78,9 +82,11 @@ export function createMarkAsReadBatcher(options: MarkAsReadBatcherOptions): Mark
     const batch = Array.from(queued);
     queued.clear();
     inFlight = true;
+    logScrollReadFlow("read:batcherFlush", summarizeMessageIdsForFlowDebug(batch));
     try {
       await markAsRead(batch);
       onMarked?.(batch);
+      logScrollReadFlow("read:batcherMarked", summarizeMessageIdsForFlowDebug(batch));
     } catch (error) {
       onError?.(error, batch);
     } finally {
@@ -101,6 +107,10 @@ export function createMarkAsReadBatcher(options: MarkAsReadBatcherOptions): Mark
       for (const id of normalized) {
         queued.add(id);
       }
+      logScrollReadFlow("read:batcherSchedule", {
+        added: normalized.length,
+        queuedTotal: queued.size,
+      });
       scheduleFlush();
     },
     async flush() {
