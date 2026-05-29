@@ -55,6 +55,13 @@ const BACKEND_NAVIGATE_FALLBACK_DENY_LIST: RegExp[] = [
   /^\/accounts(?:\/|$|[?#])/,
   /^\/login(?:\/|$)/,
   /^\/complete(?:\/|$|[?#])/,
+  /^\/api(?:\/|$|[?#])/,
+  /^\/json(?:\/|$|[?#])/,
+  /^\/workspace(?:\/|$|[?#])/,
+  /^\/user_avatars(?:\/|$|[?#])/,
+  /^\/user_uploads(?:\/|$|[?#])/,
+  /^\/avatar(?:\/|$|[?#])/,
+  /^\/external_content(?:\/|$|[?#])/,
 ];
 
 // Логирует входящий dev-path и итоговый upstream URL после rewrite.
