@@ -33,6 +33,7 @@ const baseProps = {
   onRetryMessagesLoad: noop,
   boundaryLoadFailed: false,
   onDismissBoundaryLoadFailed: noop,
+  scrollToBottomAfterSendNonce: 0,
 };
 
 describe("ChatPageMessageListSection", () => {

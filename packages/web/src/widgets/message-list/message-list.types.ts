@@ -48,6 +48,8 @@ export interface MessageListProps {
   currentUserId?: number;
   /** When the key changes (chat/topic/DM), scroll resets to the latest messages */
   scrollToBottomKey?: string;
+  /** Increment after the user sends a message to force scroll to the latest row */
+  scrollToBottomAfterSendNonce?: number;
   callbacks?: MessageListCallbacks;
   selectionMode?: boolean;
   selectedMessageIds?: Set<number>;

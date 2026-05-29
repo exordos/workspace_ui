@@ -299,6 +299,10 @@ export const ChatPage: React.FC = () => {
   const cacheHydratedBeforeApiRef = useRef(false);
   const markAsReadBatcherRef = useRef<ReturnType<typeof createMarkAsReadBatcher> | null>(null);
   const optimisticMessageIdRef = useRef(-1);
+  const [scrollToBottomAfterSendNonce, setScrollToBottomAfterSendNonce] = useState(0);
+  const requestScrollToBottomAfterSend = useCallback(() => {
+    setScrollToBottomAfterSendNonce((nonce) => nonce + 1);
+  }, []);
   const jitsiHeaderCallInFlightRef = useRef(false);
   const uploadAbortControllerRef = useRef<AbortController | null>(null);
   const editRequestTokenRef = useRef(0);
@@ -1312,6 +1316,7 @@ export const ChatPage: React.FC = () => {
         target: { mode: "dm", recipientIds: activeDmUserIds },
       });
       appendMessageToStore(optimisticMessage);
+      requestScrollToBottomAfterSend();
       try {
         const newMsg = await sendMessage({
           to: activeDmUserIds,
@@ -1358,6 +1363,7 @@ export const ChatPage: React.FC = () => {
         },
       });
       appendMessageToStore(optimisticMessage);
+      requestScrollToBottomAfterSend();
       try {
         const newMsg = await sendMessage({
           stream: activeStreamCanonicalName,
@@ -1413,6 +1419,7 @@ export const ChatPage: React.FC = () => {
           target: { mode: "dm", recipientIds: activeDmUserIds },
         });
         appendMessageToStore(optimisticMessage);
+        requestScrollToBottomAfterSend();
         try {
           const newMsg = await sendMessage({
             to: activeDmUserIds,
@@ -1457,6 +1464,7 @@ export const ChatPage: React.FC = () => {
           },
         });
         appendMessageToStore(optimisticMessage);
+        requestScrollToBottomAfterSend();
         try {
           const newMsg = await sendMessage({
             stream: activeStreamCanonicalName,
@@ -1488,6 +1496,7 @@ export const ChatPage: React.FC = () => {
       currentUserId,
       isDmView,
       removeMessageFromStore,
+      requestScrollToBottomAfterSend,
       stopTypingNow,
       t,
     ],
@@ -1911,6 +1920,7 @@ export const ChatPage: React.FC = () => {
           onRetryMessagesLoad={handleRetryMessagesLoad}
           boundaryLoadFailed={boundaryLoadFailed}
           onDismissBoundaryLoadFailed={handleDismissBoundaryLoadFailed}
+          scrollToBottomAfterSendNonce={scrollToBottomAfterSendNonce}
         />
         {selectionMode && selectedMessageIds.size > 0 && (
           <ChatPageSelectionBar

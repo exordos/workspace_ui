@@ -33,4 +33,6 @@ export interface ChatPageMessageListSectionProps {
   /** Paginating older/newer messages failed (store). */
   boundaryLoadFailed: boolean;
   onDismissBoundaryLoadFailed: () => void;
+  /** Bumped when the user sends a message so the list scrolls to the new tail */
+  scrollToBottomAfterSendNonce: number;
 }
