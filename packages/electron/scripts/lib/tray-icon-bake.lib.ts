@@ -7,15 +7,35 @@ import type { NativeImage } from "electron";
 /** 16pt @2x — native menu bar asset size. */
 export const MAC_TRAY_ICON_CANVAS_PX = 32;
 
+/** Win/Linux tray PNG size (Linux uses full resolution; Windows downscales to 16 in main). */
+export const LINUX_TRAY_ICON_CANVAS_PX = 32;
+
 export const MAC_TRAY_LOGO_SIZE_FRACTION = 0.62;
+
+/** Larger glyph — status panels often render tray icons smaller than the PNG bounds. */
+export const LINUX_TRAY_LOGO_SIZE_FRACTION = 0.78;
 
 export const MAC_TRAY_ICON_WHITE = 255;
 
 /** Smaller than Dock/favicon — menu bar dot must stay subtle at 32px. */
 export const TRAY_UNREAD_DOT_RADIUS_FRACTION = 42 / 680;
 
-function silhouetteAlpha(b: number, g: number, r: number, a: number): number {
+/** Source alpha at or above this value becomes fully opaque white (Linux tray). */
+export const LINUX_TRAY_ALPHA_THRESHOLD = 48;
+
+export type TrayIconAlphaMode = "luminance" | "binary";
+
+export function resolveTraySilhouetteAlpha(
+  b: number,
+  g: number,
+  r: number,
+  a: number,
+  mode: TrayIconAlphaMode,
+): number {
   if (a === 0) return 0;
+  if (mode === "binary") {
+    return a >= LINUX_TRAY_ALPHA_THRESHOLD ? 255 : 0;
+  }
   const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
   return Math.min(255, Math.round((a / 255) * (luminance / 255) * 255));
 }
@@ -26,7 +46,28 @@ export function getMacTrayLogoLayout(canvasPx = MAC_TRAY_ICON_CANVAS_PX): {
   offsetX: number;
   offsetY: number;
 } {
-  const logoSize = Math.max(14, Math.round(canvasPx * MAC_TRAY_LOGO_SIZE_FRACTION));
+  return getTrayLogoLayout(canvasPx, MAC_TRAY_LOGO_SIZE_FRACTION);
+}
+
+export function getLinuxTrayLogoLayout(canvasPx = LINUX_TRAY_ICON_CANVAS_PX): {
+  canvasPx: number;
+  logoSize: number;
+  offsetX: number;
+  offsetY: number;
+} {
+  return getTrayLogoLayout(canvasPx, LINUX_TRAY_LOGO_SIZE_FRACTION);
+}
+
+function getTrayLogoLayout(
+  canvasPx: number,
+  logoSizeFraction: number,
+): {
+  canvasPx: number;
+  logoSize: number;
+  offsetX: number;
+  offsetY: number;
+} {
+  const logoSize = Math.max(14, Math.round(canvasPx * logoSizeFraction));
   const offsetX = Math.floor((canvasPx - logoSize) / 2);
   const offsetY = Math.floor((canvasPx - logoSize) / 2);
   return { canvasPx, logoSize, offsetX, offsetY };
@@ -48,9 +89,24 @@ export function getMacTrayUnreadDotInsets(canvasPx = MAC_TRAY_ICON_CANVAS_PX): {
   };
 }
 
-export function buildMacTrayIconFromLogo(logo: NativeImage): NativeImage {
+export function getLinuxTrayUnreadDotInsets(canvasPx = LINUX_TRAY_ICON_CANVAS_PX): {
+  rightPx: number;
+  topPx: number;
+} {
+  return getMacTrayUnreadDotInsets(canvasPx);
+}
+
+function buildTrayIconFromLogo(
+  logo: NativeImage,
+  options: {
+    canvasPx: number;
+    logoSizeFraction: number;
+    alphaMode: TrayIconAlphaMode;
+  },
+): NativeImage {
   const { nativeImage } = require("electron") as typeof import("electron");
-  const { canvasPx, logoSize, offsetX, offsetY } = getMacTrayLogoLayout();
+  const { canvasPx, logoSizeFraction, alphaMode } = options;
+  const { logoSize, offsetX, offsetY } = getTrayLogoLayout(canvasPx, logoSizeFraction);
   const resized = logo.resize({ width: logoSize, height: logoSize });
   const { width: logoW, height: logoH } = resized.getSize();
   const logoBitmap = resized.toBitmap();
@@ -66,11 +122,12 @@ export function buildMacTrayIconFromLogo(logo: NativeImage): NativeImage {
         continue;
       }
       const lidx = (ly * logoW + lx) * 4;
-      const alpha = silhouetteAlpha(
+      const alpha = resolveTraySilhouetteAlpha(
         logoBitmap[lidx] ?? 0,
         logoBitmap[lidx + 1] ?? 0,
         logoBitmap[lidx + 2] ?? 0,
         logoBitmap[lidx + 3] ?? 0,
+        alphaMode,
       );
       if (alpha === 0) continue;
 
@@ -83,4 +140,21 @@ export function buildMacTrayIconFromLogo(logo: NativeImage): NativeImage {
   }
 
   return nativeImage.createFromBitmap(out, { width: canvasPx, height: canvasPx });
+}
+
+export function buildMacTrayIconFromLogo(logo: NativeImage): NativeImage {
+  return buildTrayIconFromLogo(logo, {
+    canvasPx: MAC_TRAY_ICON_CANVAS_PX,
+    logoSizeFraction: MAC_TRAY_LOGO_SIZE_FRACTION,
+    alphaMode: "luminance",
+  });
+}
+
+/** StatusNotifier: solid white silhouette, no grayscale anti-aliasing. */
+export function buildLinuxTrayIconFromLogo(logo: NativeImage): NativeImage {
+  return buildTrayIconFromLogo(logo, {
+    canvasPx: LINUX_TRAY_ICON_CANVAS_PX,
+    logoSizeFraction: LINUX_TRAY_LOGO_SIZE_FRACTION,
+    alphaMode: "binary",
+  });
 }

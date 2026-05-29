@@ -20,26 +20,45 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // scripts/lib/tray-icon-bake.lib.ts
 var tray_icon_bake_lib_exports = {};
 __export(tray_icon_bake_lib_exports, {
+  LINUX_TRAY_ALPHA_THRESHOLD: () => LINUX_TRAY_ALPHA_THRESHOLD,
+  LINUX_TRAY_ICON_CANVAS_PX: () => LINUX_TRAY_ICON_CANVAS_PX,
+  LINUX_TRAY_LOGO_SIZE_FRACTION: () => LINUX_TRAY_LOGO_SIZE_FRACTION,
   MAC_TRAY_ICON_CANVAS_PX: () => MAC_TRAY_ICON_CANVAS_PX,
   MAC_TRAY_ICON_WHITE: () => MAC_TRAY_ICON_WHITE,
   MAC_TRAY_LOGO_SIZE_FRACTION: () => MAC_TRAY_LOGO_SIZE_FRACTION,
   TRAY_UNREAD_DOT_RADIUS_FRACTION: () => TRAY_UNREAD_DOT_RADIUS_FRACTION,
+  buildLinuxTrayIconFromLogo: () => buildLinuxTrayIconFromLogo,
   buildMacTrayIconFromLogo: () => buildMacTrayIconFromLogo,
+  getLinuxTrayLogoLayout: () => getLinuxTrayLogoLayout,
+  getLinuxTrayUnreadDotInsets: () => getLinuxTrayUnreadDotInsets,
   getMacTrayLogoLayout: () => getMacTrayLogoLayout,
-  getMacTrayUnreadDotInsets: () => getMacTrayUnreadDotInsets
+  getMacTrayUnreadDotInsets: () => getMacTrayUnreadDotInsets,
+  resolveTraySilhouetteAlpha: () => resolveTraySilhouetteAlpha
 });
 module.exports = __toCommonJS(tray_icon_bake_lib_exports);
 var MAC_TRAY_ICON_CANVAS_PX = 32;
+var LINUX_TRAY_ICON_CANVAS_PX = 32;
 var MAC_TRAY_LOGO_SIZE_FRACTION = 0.62;
+var LINUX_TRAY_LOGO_SIZE_FRACTION = 0.78;
 var MAC_TRAY_ICON_WHITE = 255;
 var TRAY_UNREAD_DOT_RADIUS_FRACTION = 42 / 680;
-function silhouetteAlpha(b, g, r, a) {
+var LINUX_TRAY_ALPHA_THRESHOLD = 48;
+function resolveTraySilhouetteAlpha(b, g, r, a, mode) {
   if (a === 0) return 0;
+  if (mode === "binary") {
+    return a >= LINUX_TRAY_ALPHA_THRESHOLD ? 255 : 0;
+  }
   const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
   return Math.min(255, Math.round(a / 255 * (luminance / 255) * 255));
 }
 function getMacTrayLogoLayout(canvasPx = MAC_TRAY_ICON_CANVAS_PX) {
-  const logoSize = Math.max(14, Math.round(canvasPx * MAC_TRAY_LOGO_SIZE_FRACTION));
+  return getTrayLogoLayout(canvasPx, MAC_TRAY_LOGO_SIZE_FRACTION);
+}
+function getLinuxTrayLogoLayout(canvasPx = LINUX_TRAY_ICON_CANVAS_PX) {
+  return getTrayLogoLayout(canvasPx, LINUX_TRAY_LOGO_SIZE_FRACTION);
+}
+function getTrayLogoLayout(canvasPx, logoSizeFraction) {
+  const logoSize = Math.max(14, Math.round(canvasPx * logoSizeFraction));
   const offsetX = Math.floor((canvasPx - logoSize) / 2);
   const offsetY = Math.floor((canvasPx - logoSize) / 2);
   return { canvasPx, logoSize, offsetX, offsetY };
@@ -56,9 +75,13 @@ function getMacTrayUnreadDotInsets(canvasPx = MAC_TRAY_ICON_CANVAS_PX) {
     topPx: Math.max(0, cy - radius)
   };
 }
-function buildMacTrayIconFromLogo(logo) {
+function getLinuxTrayUnreadDotInsets(canvasPx = LINUX_TRAY_ICON_CANVAS_PX) {
+  return getMacTrayUnreadDotInsets(canvasPx);
+}
+function buildTrayIconFromLogo(logo, options) {
   const { nativeImage } = require("electron");
-  const { canvasPx, logoSize, offsetX, offsetY } = getMacTrayLogoLayout();
+  const { canvasPx, logoSizeFraction, alphaMode } = options;
+  const { logoSize, offsetX, offsetY } = getTrayLogoLayout(canvasPx, logoSizeFraction);
   const resized = logo.resize({ width: logoSize, height: logoSize });
   const { width: logoW, height: logoH } = resized.getSize();
   const logoBitmap = resized.toBitmap();
@@ -72,11 +95,12 @@ function buildMacTrayIconFromLogo(logo) {
         continue;
       }
       const lidx = (ly * logoW + lx) * 4;
-      const alpha = silhouetteAlpha(
+      const alpha = resolveTraySilhouetteAlpha(
         logoBitmap[lidx] ?? 0,
         logoBitmap[lidx + 1] ?? 0,
         logoBitmap[lidx + 2] ?? 0,
-        logoBitmap[lidx + 3] ?? 0
+        logoBitmap[lidx + 3] ?? 0,
+        alphaMode
       );
       if (alpha === 0) continue;
       const idx = (y * canvasPx + x) * 4;
@@ -88,13 +112,34 @@ function buildMacTrayIconFromLogo(logo) {
   }
   return nativeImage.createFromBitmap(out, { width: canvasPx, height: canvasPx });
 }
+function buildMacTrayIconFromLogo(logo) {
+  return buildTrayIconFromLogo(logo, {
+    canvasPx: MAC_TRAY_ICON_CANVAS_PX,
+    logoSizeFraction: MAC_TRAY_LOGO_SIZE_FRACTION,
+    alphaMode: "luminance"
+  });
+}
+function buildLinuxTrayIconFromLogo(logo) {
+  return buildTrayIconFromLogo(logo, {
+    canvasPx: LINUX_TRAY_ICON_CANVAS_PX,
+    logoSizeFraction: LINUX_TRAY_LOGO_SIZE_FRACTION,
+    alphaMode: "binary"
+  });
+}
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
+  LINUX_TRAY_ALPHA_THRESHOLD,
+  LINUX_TRAY_ICON_CANVAS_PX,
+  LINUX_TRAY_LOGO_SIZE_FRACTION,
   MAC_TRAY_ICON_CANVAS_PX,
   MAC_TRAY_ICON_WHITE,
   MAC_TRAY_LOGO_SIZE_FRACTION,
   TRAY_UNREAD_DOT_RADIUS_FRACTION,
+  buildLinuxTrayIconFromLogo,
   buildMacTrayIconFromLogo,
+  getLinuxTrayLogoLayout,
+  getLinuxTrayUnreadDotInsets,
   getMacTrayLogoLayout,
-  getMacTrayUnreadDotInsets
+  getMacTrayUnreadDotInsets,
+  resolveTraySilhouetteAlpha
 });

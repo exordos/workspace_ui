@@ -50,6 +50,7 @@ export function getTrayMenuLabels(locale: string): TrayMenuLabels {
 
 const TRAY_ICON_CANDIDATES: Readonly<Record<string, readonly string[]>> = {
   darwin: ["tray-icon-mac.png", "icons/16x16.png", "icon.png"],
+  linux: ["tray-icon-linux.png", "tray-icon.png", "icons/16x16.png", "icon.png"],
   default: ["tray-icon.png", "icons/16x16.png", "icon.png"],
 };
 
@@ -64,7 +65,11 @@ export const DOCK_ICON_FILES = {
 /** Resolves tray PNG file name for the current platform (used by main process). */
 export function resolveTrayIconFileName(platform: NodeJS.Platform, unread: boolean): string | null {
   const candidates =
-    platform === "darwin" ? TRAY_ICON_CANDIDATES.darwin : TRAY_ICON_CANDIDATES.default;
+    platform === "darwin"
+      ? TRAY_ICON_CANDIDATES.darwin
+      : platform === "linux"
+        ? TRAY_ICON_CANDIDATES.linux
+        : TRAY_ICON_CANDIDATES.default;
   const primary = candidates[0];
   if (primary == null) return null;
   if (!unread) return primary;

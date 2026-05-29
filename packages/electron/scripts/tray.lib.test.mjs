@@ -63,7 +63,12 @@ describe("resolveTrayIconFileName", () => {
 
   it("returns unread tray icon variant when requested", () => {
     assert.equal(trayLib.resolveTrayIconFileName("darwin", true), "tray-icon-mac-unread.png");
-    assert.equal(trayLib.resolveTrayIconFileName("linux", true), "tray-icon-unread.png");
+    assert.equal(trayLib.resolveTrayIconFileName("linux", true), "tray-icon-linux-unread.png");
+    assert.equal(trayLib.resolveTrayIconFileName("win32", true), "tray-icon-unread.png");
+  });
+
+  it("prefers linux-specific tray assets on linux", () => {
+    assert.equal(trayLib.resolveTrayIconFileName("linux", false), "tray-icon-linux.png");
   });
 });
 

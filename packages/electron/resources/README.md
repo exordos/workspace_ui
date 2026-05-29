@@ -4,19 +4,21 @@
 
 Place app icons here for electron-builder packaging:
 
-| File                       | Platform                         | Format | Size                     |
-| -------------------------- | -------------------------------- | ------ | ------------------------ |
-| `icon.ico`                 | Windows                          | ICO    | 256×256 (multi-res)      |
-| `icon.icns`                | macOS (app bundle + Installer)   | ICNS   | 1024×1024                |
-| `icons/512x512.png`        | Source logo (transparent)        | PNG    | 512×512                  |
-| `dock-icon.png`            | macOS Dock (normal)              | PNG    | 512×512                  |
-| `dock-icon-unread.png`     | macOS Dock (orange dot baked in) | PNG    | 512×512                  |
-| `icon.png`                 | Linux (fallback)                 | PNG    | 512×512                  |
-| `icons/256x256.png` …      | Linux multi-size                 | PNG    | various                  |
-| `tray-icon.png`            | Win/Linux tray                   | PNG    | 32×32 (shown @16 on Win) |
-| `tray-icon-unread.png`     | Win/Linux tray (small dot)       | PNG    | 32×32                    |
-| `tray-icon-mac.png`        | macOS menu bar tray              | PNG    | 32×32 white + alpha      |
-| `tray-icon-mac-unread.png` | macOS tray (small dot)           | PNG    | 32×32                    |
+| File                         | Platform                         | Format | Size                     |
+| ---------------------------- | -------------------------------- | ------ | ------------------------ |
+| `icon.ico`                   | Windows                          | ICO    | 256×256 (multi-res)      |
+| `icon.icns`                  | macOS (app bundle + Installer)   | ICNS   | 1024×1024                |
+| `icons/512x512.png`          | Source logo (transparent)        | PNG    | 512×512                  |
+| `dock-icon.png`              | macOS Dock (normal)              | PNG    | 512×512                  |
+| `dock-icon-unread.png`       | macOS Dock (orange dot baked in) | PNG    | 512×512                  |
+| `icon.png`                   | Linux (fallback)                 | PNG    | 512×512                  |
+| `icons/256x256.png` …        | Linux multi-size                 | PNG    | various                  |
+| `tray-icon.png`              | Windows tray                     | PNG    | 32×32 (shown @16 on Win) |
+| `tray-icon-unread.png`       | Windows tray (small dot)         | PNG    | 32×32                    |
+| `tray-icon-linux.png`        | Linux StatusNotifier             | PNG    | 32×32 solid white        |
+| `tray-icon-linux-unread.png` | Linux tray (small dot)           | PNG    | 32×32                    |
+| `tray-icon-mac.png`          | macOS menu bar tray              | PNG    | 32×32 white + alpha      |
+| `tray-icon-mac-unread.png`   | macOS tray (small dot)           | PNG    | 32×32                    |
 
 Runtime code only **loads** these PNGs (no bitmap compositing in main).
 

@@ -385,11 +385,12 @@ function loadTrayIconFromFile(fileName: string): Electron.NativeImage | null {
   const icon = nativeImage.createFromPath(iconPath);
   if (icon.isEmpty()) return null;
 
-  // macOS menu bar assets are baked at 32×32 (16pt @2x); downscaling blurs the unread dot.
-  if (process.platform === "darwin") {
+  // macOS menu bar + Linux StatusNotifier: use baked PNG size (32×32).
+  if (process.platform === "darwin" || process.platform === "linux") {
     return icon;
   }
 
+  // Windows taskbar tray: 32×32 asset shown at 16×16.
   return icon.resize({ width: 16, height: 16 });
 }
 

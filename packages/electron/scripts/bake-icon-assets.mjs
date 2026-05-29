@@ -69,8 +69,10 @@ const {
 } = require(${JSON.stringify(dockOut)});
 const {
   buildMacTrayIconFromLogo,
+  buildLinuxTrayIconFromLogo,
   TRAY_UNREAD_DOT_RADIUS_FRACTION,
   getMacTrayUnreadDotInsets,
+  getLinuxTrayUnreadDotInsets,
 } = require(${JSON.stringify(trayOut)});
 const {
   compositeUnreadDotOnNativeImage,
@@ -117,6 +119,17 @@ app.whenReady().then(() => {
 
   fs.writeFileSync(path.join(resourcesDir, "tray-icon.png"), trayNormal.toPNG());
   fs.writeFileSync(path.join(resourcesDir, "tray-icon-unread.png"), trayUnread.toPNG());
+
+  const linuxTrayNormal = buildLinuxTrayIconFromLogo(logo);
+  fs.writeFileSync(path.join(resourcesDir, "tray-icon-linux.png"), linuxTrayNormal.toPNG());
+
+  const linuxTraySize = Math.min(linuxTrayNormal.getSize().width, linuxTrayNormal.getSize().height);
+  const linuxTrayUnread = compositeUnreadDotOnNativeImage(
+    linuxTrayNormal,
+    TRAY_UNREAD_DOT_RADIUS_FRACTION,
+    getLinuxTrayUnreadDotInsets(linuxTraySize),
+  );
+  fs.writeFileSync(path.join(resourcesDir, "tray-icon-linux-unread.png"), linuxTrayUnread.toPNG());
 
   console.log("Wrote dock + tray PNGs in", resourcesDir);
   app.exit(0);
