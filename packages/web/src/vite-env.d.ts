@@ -42,6 +42,8 @@ interface ImportMetaEnv {
   readonly VITE_CHAT_MESSAGES_PERSIST_INDEXEDDB?: string;
   /** @deprecated Prefer VITE_CHAT_MESSAGES_PERSIST_INDEXEDDB. */
   readonly VITE_CHAT_MESSAGES_SOURCE_INDEXEDDB?: string;
+  /** Persist avatar blobs to IndexedDB. Optional; default on. */
+  readonly VITE_AVATAR_PERSIST_INDEXEDDB?: string;
   /** Verbose `[message-flow]` logs in console. */
   readonly VITE_MESSAGE_FLOW_DEBUG?: string;
   /** Verbose `[chat-list-flow]` logs in console. */

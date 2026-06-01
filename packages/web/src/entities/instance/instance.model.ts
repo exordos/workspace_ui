@@ -4,6 +4,7 @@
  * Persists realm URLs, credentials, and active instance selection to localStorage.
  */
 import { create } from "zustand";
+import { clearAvatarBlobCacheForInstance } from "~/shared/lib/avatar-blob-cache-db";
 import { logAction, logStoreAction } from "~/shared/lib/logger";
 
 const INSTANCES_STORAGE_KEY = "zulip-web-instances";
@@ -232,6 +233,7 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
       };
     });
     logStoreAction("instances", "removeInstance", { instanceId: id });
+    void clearAvatarBlobCacheForInstance(id);
     logAction("instance_removed", {
       instanceId: id,
       ...(removedRealm ? { realmHost: realmHostFromRealm(removedRealm) } : {}),

@@ -40,6 +40,11 @@ const chatMessagesPersistIndexedDb = (() => {
   return legacy !== "false" && legacy !== "0";
 })();
 
+const avatarPersistIndexedDb = (() => {
+  if (import.meta.env.MODE === "test") return false;
+  return parseBooleanEnvFlag(optional("VITE_AVATAR_PERSIST_INDEXEDDB", "true"), true);
+})();
+
 function parseBooleanEnvFlag(value: string, fallback: boolean): boolean {
   // Что делает: единообразно парсит true/false и 1/0 из env, чтобы флаги не вели себя по-разному в разных местах.
   const normalized = value.trim().toLowerCase();
@@ -174,6 +179,12 @@ export const env = {
    * Legacy: `VITE_CHAT_MESSAGES_SOURCE_INDEXEDDB` is read if `VITE_CHAT_MESSAGES_PERSIST_INDEXEDDB` is unset.
    */
   CHAT_MESSAGES_PERSIST_INDEXEDDB: chatMessagesPersistIndexedDb,
+
+  /**
+   * When true, avatar images are cached as blobs in IndexedDB (LRU per instance).
+   * Set `VITE_AVATAR_PERSIST_INDEXEDDB=false` to disable.
+   */
+  AVATAR_PERSIST_INDEXEDDB: avatarPersistIndexedDb,
 
   /**
    * When true, `[message-flow]` and `[scroll-read]` traces appear in the browser console (chat store,
