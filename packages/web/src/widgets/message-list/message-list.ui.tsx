@@ -26,7 +26,13 @@ import { resolveLastUnreadBoundaryMessageId } from "~/shared/lib/message-unread-
 import { computeReadTailReady } from "~/shared/lib/read-receipts-policy.lib";
 import { ensureRealmEmojisLoaded, getCachedRealmEmojis } from "~/shared/lib/realm-emojis-cache";
 import { scrollToBottom } from "~/shared/lib/scroll-position.lib";
-import { computeScrollTopAfterPrepend } from "~/shared/lib/scroll-prepend-anchor.lib";
+import {
+  computeScrollTopAfterPrepend,
+  computeScrollTopFromAnchor,
+  resolveVisibleMessageAnchor,
+  type ScrollPrependAnchor,
+  type ScrollPrependSnapshot,
+} from "~/shared/lib/scroll-prepend-anchor.lib";
 import { isTabVisible, onVisibilityChange } from "~/shared/lib/visibility";
 import { FloatingLoadingOverlay } from "~/shared/ui/floating-loading-overlay";
 import { FloatingScrollToBottomButton } from "~/shared/ui/floating-scroll-to-bottom-button";
@@ -38,6 +44,12 @@ import type { MessageListProps } from "./message-list.types";
 
 const SCROLL_AT_BOTTOM_THRESHOLD = 80;
 const FOCUSED_MESSAGE_HIGHLIGHT_DURATION_MS = 6_000;
+
+interface PendingPrependScrollSnapshot extends ScrollPrependSnapshot {
+  messageCount: number;
+  firstMessageId: number | undefined;
+  anchor: ScrollPrependAnchor | null;
+}
 
 function getDateKey(ts: number): string {
   const d = new Date(ts * 1000);
@@ -116,11 +128,7 @@ export const MessageList: React.FC<MessageListProps> = ({
     [callbacks],
   );
   const scrollRef = useRef<HTMLDivElement>(null);
-  const pendingPrependScrollRef = useRef<{
-    scrollTop: number;
-    scrollHeight: number;
-    messageCount: number;
-  } | null>(null);
+  const pendingPrependScrollRef = useRef<PendingPrependScrollSnapshot | null>(null);
   const wasAtBottomRef = useRef(true);
   const userScrollSeenRef = useRef(false);
   const programmaticScrollRef = useRef(false);
@@ -301,6 +309,17 @@ export const MessageList: React.FC<MessageListProps> = ({
   const messageTailLen = messages.length;
   const messageFirstId = messages[0]?.id;
   const messageLastId = messageTailLen > 0 ? messages[messageTailLen - 1]?.id : undefined;
+  const capturePrependScrollSnapshot = useCallback(
+    (el: HTMLElement): PendingPrependScrollSnapshot => ({
+      scrollTop: el.scrollTop,
+      scrollHeight: el.scrollHeight,
+      messageCount: messageTailLen,
+      firstMessageId: messageFirstId,
+      anchor: resolveVisibleMessageAnchor(el),
+    }),
+    [messageFirstId, messageTailLen],
+  );
+
   useEffect(() => {
     logMessageFlow("ui:MessageList snapshot", {
       messageLen: messageTailLen,
@@ -331,6 +350,7 @@ export const MessageList: React.FC<MessageListProps> = ({
     bottomReadDispatchKeyRef.current = null;
     userScrollSeenRef.current = false;
     programmaticScrollRef.current = false;
+    pendingPrependScrollRef.current = null;
     unreadScrollKeyRef.current = null;
     suppressReadUntilMsRef.current = 0;
     setUnreadAnchorId(null);
@@ -470,6 +490,11 @@ export const MessageList: React.FC<MessageListProps> = ({
       return;
     }
     if (messages.length === 0) return;
+    if (pendingPrependScrollRef.current != null) {
+      logScrollMetrics("scroll:skipBottomForPendingPrepend", { reason: "messagesLengthChange" });
+      syncWasAtBottomFromElement(el);
+      return;
+    }
     if (wasAtBottomRef.current) {
       if (unreadAnchorId != null && !userScrollSeenRef.current) {
         logScrollMetrics("scroll:skipBottomForUnreadAnchor", { reason: "messagesLengthChange" });
@@ -506,6 +531,20 @@ export const MessageList: React.FC<MessageListProps> = ({
       }
       const atBottom = syncWasAtBottomFromElement(el);
 
+      if (
+        userScrollSeenRef.current &&
+        !programmaticScrollRef.current &&
+        isLoadingMore &&
+        pendingPrependScrollRef.current != null
+      ) {
+        const snap = capturePrependScrollSnapshot(el);
+        pendingPrependScrollRef.current = snap;
+        messageListLog.debug("prepend scroll snapshot updated while loading", {
+          ...snap,
+          clientHeight: el.clientHeight,
+        });
+      }
+
       if (event.isTrusted) {
         const now = typeof performance !== "undefined" ? performance.now() : Date.now();
         if (now - scrollLogLastAtMsRef.current >= SCROLL_LOG_THROTTLE_MS) {
@@ -524,11 +563,7 @@ export const MessageList: React.FC<MessageListProps> = ({
           hasOnLoadMore: onLoadMore != null,
         })
       ) {
-        const snap = {
-          scrollTop: el.scrollTop,
-          scrollHeight: el.scrollHeight,
-          messageCount: messages.length,
-        };
+        const snap = capturePrependScrollSnapshot(el);
         pendingPrependScrollRef.current = snap;
         messageListLog.debug("prepend scroll snapshot before loadOlder", {
           ...snap,
@@ -565,8 +600,8 @@ export const MessageList: React.FC<MessageListProps> = ({
       hasNewerMessages,
       onLoadNewer,
       dispatchUnreadAtBottom,
-      messages.length,
       isLastUnreadNearViewportBottom,
+      capturePrependScrollSnapshot,
       logScrollMetrics,
       syncWasAtBottomFromElement,
     ],
@@ -574,9 +609,10 @@ export const MessageList: React.FC<MessageListProps> = ({
 
   useLayoutEffect(() => {
     const pending = pendingPrependScrollRef.current;
-    if (!pending || isLoadingMore) return;
+    if (!pending) return;
     const el = scrollRef.current;
     if (!el) return;
+    const firstMessageId = messageFirstId;
 
     if (messages.length < pending.messageCount) {
       messageListLog.debug("prepend restore dropped pending (message list shrank)", {
@@ -587,38 +623,33 @@ export const MessageList: React.FC<MessageListProps> = ({
       return;
     }
 
-    const snapshot = { scrollTop: pending.scrollTop, scrollHeight: pending.scrollHeight };
-    const nextTop = computeScrollTopAfterPrepend(snapshot, el.scrollHeight);
-    if (messages.length > pending.messageCount) {
-      messageListLog.debug("prepend restore apply (length increased)", {
+    if (firstMessageId === pending.firstMessageId) {
+      if (isLoadingMore) return;
+
+      messageListLog.debug("prepend restore dropped pending (no older messages)", {
         messagesLen: messages.length,
         pendingMessageCount: pending.messageCount,
-        prevScrollHeight: pending.scrollHeight,
-        nextScrollHeight: el.scrollHeight,
-        prevScrollTop: pending.scrollTop,
-        nextScrollTop: nextTop,
+        firstMessageId,
       });
-      logScrollReadFlow("scroll:prependRestore", {
-        messagesLen: messages.length,
-        pendingMessageCount: pending.messageCount,
-        prevScrollTop: pending.scrollTop,
-        nextScrollTop: nextTop,
-        prevScrollHeight: pending.scrollHeight,
-        nextScrollHeight: el.scrollHeight,
-      });
-      el.scrollTop = nextTop;
       pendingPrependScrollRef.current = null;
-      syncWasAtBottomFromElement(el);
       return;
     }
 
-    messageListLog.debug("prepend restore apply (same length, spinner or duplicates)", {
+    const snapshot = { scrollTop: pending.scrollTop, scrollHeight: pending.scrollHeight };
+    const anchorScrollTop =
+      pending.anchor == null ? null : computeScrollTopFromAnchor(el, pending.anchor);
+    const nextTop = anchorScrollTop ?? computeScrollTopAfterPrepend(snapshot, el.scrollHeight);
+    messageListLog.debug("prepend restore apply", {
       messagesLen: messages.length,
       pendingMessageCount: pending.messageCount,
       prevScrollHeight: pending.scrollHeight,
       nextScrollHeight: el.scrollHeight,
       prevScrollTop: pending.scrollTop,
       nextScrollTop: nextTop,
+      firstMessageId,
+      pendingFirstMessageId: pending.firstMessageId,
+      anchorMessageId: pending.anchor?.messageId,
+      restoreMode: anchorScrollTop == null ? "scrollHeight" : "anchor",
     });
     logScrollReadFlow("scroll:prependRestore", {
       messagesLen: messages.length,
@@ -627,12 +658,23 @@ export const MessageList: React.FC<MessageListProps> = ({
       nextScrollTop: nextTop,
       prevScrollHeight: pending.scrollHeight,
       nextScrollHeight: el.scrollHeight,
-      sameLength: true,
+      firstMessageId,
+      pendingFirstMessageId: pending.firstMessageId,
+      anchorMessageId: pending.anchor?.messageId,
+      restoreMode: anchorScrollTop == null ? "scrollHeight" : "anchor",
     });
-    el.scrollTop = nextTop;
+    runProgrammaticScroll(() => {
+      el.scrollTop = nextTop;
+      syncWasAtBottomFromElement(el);
+    });
     pendingPrependScrollRef.current = null;
-    syncWasAtBottomFromElement(el);
-  }, [isLoadingMore, messages.length, syncWasAtBottomFromElement]);
+  }, [
+    isLoadingMore,
+    messageFirstId,
+    messages.length,
+    runProgrammaticScroll,
+    syncWasAtBottomFromElement,
+  ]);
 
   // Keep list pinned to the tail when viewport height changes (e.g. composer toolbar expands).
   useLayoutEffect(() => {

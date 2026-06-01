@@ -10,6 +10,53 @@ export interface ScrollPrependSnapshot {
   scrollHeight: number;
 }
 
+export interface ScrollPrependAnchor {
+  messageId: number;
+  offsetTop: number;
+}
+
+function findMessageNode(root: HTMLElement, messageId: number): HTMLElement | null {
+  const messageIdAttr = String(messageId);
+  for (const node of root.querySelectorAll<HTMLElement>("[data-message-id]")) {
+    if (node.getAttribute("data-message-id") === messageIdAttr) {
+      return node;
+    }
+  }
+  return null;
+}
+
+export function resolveVisibleMessageAnchor(root: HTMLElement): ScrollPrependAnchor | null {
+  const rootRect = root.getBoundingClientRect();
+  for (const node of root.querySelectorAll<HTMLElement>("[data-message-id]")) {
+    const rawId = node.getAttribute("data-message-id");
+    if (rawId == null) continue;
+    const messageId = Number(rawId);
+    if (!Number.isInteger(messageId)) continue;
+
+    const rect = node.getBoundingClientRect();
+    if (rect.bottom <= rootRect.top || rect.top >= rootRect.bottom) continue;
+
+    return {
+      messageId,
+      offsetTop: rect.top - rootRect.top,
+    };
+  }
+  return null;
+}
+
+export function computeScrollTopFromAnchor(
+  root: HTMLElement,
+  anchor: ScrollPrependAnchor,
+): number | null {
+  const node = findMessageNode(root, anchor.messageId);
+  if (node == null) return null;
+
+  const rootRect = root.getBoundingClientRect();
+  const nodeRect = node.getBoundingClientRect();
+  const next = root.scrollTop + (nodeRect.top - rootRect.top - anchor.offsetTop);
+  return Math.max(0, next);
+}
+
 /**
  * Computes the next `scrollTop` after prepending content above the scroll area.
  * Keeps the previously visible content anchored in the viewport.
