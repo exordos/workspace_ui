@@ -610,6 +610,37 @@ export const MessageList: React.FC<MessageListProps> = ({
     syncWasAtBottomFromElement(el);
   }, [isLoadingMore, messages.length, syncWasAtBottomFromElement]);
 
+  // Keep list pinned to the tail when viewport height changes (e.g. composer toolbar expands).
+  useLayoutEffect(() => {
+    if (typeof ResizeObserver === "undefined") return;
+    const root = scrollRef.current;
+    if (!root) return;
+
+    let prevClientHeight = root.clientHeight;
+    const observer = new ResizeObserver(() => {
+      const nextClientHeight = root.clientHeight;
+      if (nextClientHeight === prevClientHeight) return;
+
+      const wasPinnedBeforeResize = wasAtBottomRef.current;
+      prevClientHeight = nextClientHeight;
+      if (wasPinnedBeforeResize) {
+        logScrollMetrics("scroll:toBottom", { reason: "viewportResize" });
+        runProgrammaticScroll(() => {
+          scrollToBottom(root);
+          syncWasAtBottomFromElement(root);
+        });
+        return;
+      }
+
+      syncWasAtBottomFromElement(root);
+    });
+
+    observer.observe(root);
+    return () => {
+      observer.disconnect();
+    };
+  }, [runProgrammaticScroll, logScrollMetrics, syncWasAtBottomFromElement]);
+
   useEffect(() => {
     if (!isAtBottom) {
       bottomReadDispatchKeyRef.current = null;
@@ -620,8 +651,9 @@ export const MessageList: React.FC<MessageListProps> = ({
     dispatchUnreadAtBottom();
   }, [isAtBottom, dispatchUnreadAtBottom]);
 
-  // Sync isAtBottom after render (short chat without scrollbar)
-  useLayoutEffect(() => {
+  // Sync isAtBottom after render (short chat without scrollbar).
+  // Must be passive: auto-scroll effect should read pre-update bottom state first.
+  useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     syncWasAtBottomFromElement(el);

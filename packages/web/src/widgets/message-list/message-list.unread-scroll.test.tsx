@@ -1,4 +1,4 @@
-import { act, render } from "@testing-library/react";
+import { act, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { resetRealmEmojisCacheForTests } from "~/shared/lib/realm-emojis-cache";
@@ -50,6 +50,7 @@ describe("MessageList unread anchor scroll", () => {
     scrollTargets.push(this.getAttribute("data-message-id") ?? "");
   });
   const originalIntersectionObserver = globalThis.IntersectionObserver;
+  const originalResizeObserver = globalThis.ResizeObserver;
 
   class IntersectionObserverMock implements IntersectionObserver {
     readonly root = null;
@@ -82,6 +83,7 @@ describe("MessageList unread anchor scroll", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     globalThis.IntersectionObserver = originalIntersectionObserver;
+    globalThis.ResizeObserver = originalResizeObserver;
   });
 
   it("scrolls to initial unread anchor only once when firstUnreadId advances after read", async () => {
@@ -170,5 +172,80 @@ describe("MessageList unread anchor scroll", () => {
     });
 
     expect(scrollToBottomMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps tail pinned when viewport height shrinks while already at bottom", async () => {
+    let resizeCallback: ResizeObserverCallback = () => {};
+
+    class ResizeObserverMock implements ResizeObserver {
+      disconnect = vi.fn();
+      observe = vi.fn();
+      unobserve = vi.fn();
+
+      constructor(cb: ResizeObserverCallback) {
+        resizeCallback = cb;
+      }
+    }
+    globalThis.ResizeObserver = ResizeObserverMock;
+
+    const base = [
+      msg(1, { sender_id: 99, flags: ["read"] }),
+      msg(2, { sender_id: 43, flags: ["read"] }),
+      msg(3, { sender_id: 43, flags: ["read"] }),
+    ];
+
+    render(<MessageList messages={base} currentUserId={7} scrollToBottomKey="resize-pin-tail" />);
+
+    const feed = document.querySelector('[role="feed"]') as HTMLDivElement;
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 2000 });
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 500 });
+    Object.defineProperty(feed, "scrollTop", { configurable: true, writable: true, value: 1500 });
+
+    fireEvent.scroll(feed);
+    scrollToBottomMock.mockClear();
+
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 380 });
+    resizeCallback([], {} as ResizeObserver);
+
+    await act(async () => {
+      await flushProgrammaticScrollFrames();
+    });
+
+    expect(scrollToBottomMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("auto-scrolls when list was at bottom before message append", async () => {
+    const base = [
+      msg(1, { sender_id: 99, flags: ["read"] }),
+      msg(2, { sender_id: 43, flags: ["read"] }),
+      msg(3, { sender_id: 43, flags: ["read"] }),
+    ];
+
+    const { rerender } = render(
+      <MessageList messages={base} currentUserId={7} scrollToBottomKey="tail-follow-append" />,
+    );
+
+    const feed = document.querySelector('[role="feed"]') as HTMLDivElement;
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 2000 });
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 400 });
+    Object.defineProperty(feed, "scrollTop", { configurable: true, writable: true, value: 1600 });
+    fireEvent.scroll(feed);
+
+    scrollToBottomMock.mockClear();
+
+    rerender(
+      <MessageList
+        messages={[...base, msg(4, { sender_id: 99, flags: [] })]}
+        currentUserId={7}
+        scrollToBottomKey="tail-follow-append"
+      />,
+    );
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 2400 });
+
+    await act(async () => {
+      await flushProgrammaticScrollFrames();
+    });
+
+    expect(scrollToBottomMock).toHaveBeenCalledTimes(1);
   });
 });
