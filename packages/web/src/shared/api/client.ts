@@ -35,6 +35,10 @@ import {
   ingestZulipRateLimitFromApiResponse,
   waitUntilZulipRateLimitReleased,
 } from "~/shared/lib/zulip-rate-limit-gate";
+import {
+  getCachedSessionCsrfToken,
+  readSessionCsrfTokenFromDocument,
+} from "./zulip-session-csrf.internal";
 
 // ---------------------------------------------------------------------------
 // Провайдер текущего инстанса.
@@ -234,30 +238,31 @@ const authMiddleware: Middleware = async (req, next) => {
   return next(req);
 };
 
-function readCookieValue(name: string): string | null {
-  if (typeof document === "undefined") {
+async function readElectronCsrfToken(realm: string): Promise<string | null> {
+  if (typeof window === "undefined") {
     return null;
   }
-  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const pattern = new RegExp(`(?:^|; )${escapedName}=([^;]*)`);
-  const match = document.cookie.match(pattern);
-  if (!match) {
+  const getCsrfToken = window.electronAPI?.auth?.getCsrfToken;
+  if (typeof getCsrfToken !== "function") {
     return null;
   }
   try {
-    return decodeURIComponent(match[1] ?? "");
+    const token = await getCsrfToken({ realm });
+    return token != null && token.length > 0 ? token : null;
   } catch {
-    return match[1] ?? null;
+    return null;
   }
 }
 
-const sessionCsrfMiddleware: Middleware = async (req, next) => {
+const zulipSessionCsrfMiddleware: Middleware = async (req, next) => {
   const instance = getCurrentInstance();
   if (resolveInstanceAuthType(instance) !== "session" || req.method === "GET") {
     return next(req);
   }
   const csrfToken =
-    readCookieValue("__Host-csrftoken") ?? readCookieValue("csrftoken") ?? readCookieValue("csrf");
+    readSessionCsrfTokenFromDocument() ??
+    (instance != null ? getCachedSessionCsrfToken(instance.realm) : null) ??
+    (instance != null ? await readElectronCsrfToken(instance.realm) : null);
   if (csrfToken && csrfToken.length > 0) {
     req.headers["X-CSRFToken"] = csrfToken;
   }
@@ -551,7 +556,6 @@ class ApiClient {
     this.middlewares = [
       noCacheMiddleware,
       authMiddleware,
-      sessionCsrfMiddleware,
       loggingMiddleware,
       retryMiddleware,
       connectionHealthMiddleware,
@@ -848,12 +852,13 @@ function getZulipBaseUrl(): string {
 }
 
 export const zulipApi = new ApiClient("");
+zulipApi.useBefore(loggingMiddleware, zulipSessionCsrfMiddleware);
 zulipApi.useBefore(retryMiddleware, zulipRateLimitGateMiddleware);
 zulipApi.useBefore(authErrorMiddleware, zulipRequestTimeoutMiddleware);
 
 export const workspaceApi = new ApiClient(env.WORKSPACE_API_BASE);
 
-workspaceApi.useBefore(sessionCsrfMiddleware, devWorkspaceOrgTargetHeaderMiddleware);
+workspaceApi.useBefore(loggingMiddleware, devWorkspaceOrgTargetHeaderMiddleware);
 
 export function refreshZulipApiBase(): void {
   zulipApi.setBaseUrl(getZulipBaseUrl());
@@ -876,7 +881,7 @@ export {
   connectionHealthMiddleware,
   noCacheMiddleware,
   authMiddleware,
-  sessionCsrfMiddleware,
+  zulipSessionCsrfMiddleware,
   loggingMiddleware,
   retryMiddleware,
   zulipRateLimitGateMiddleware,

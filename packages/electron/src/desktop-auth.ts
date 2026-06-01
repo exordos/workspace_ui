@@ -118,6 +118,24 @@ function shouldRelaxZulipAuthCookieSameSite(name: string): boolean {
   return ZULIP_AUTH_COOKIES_TO_RELAX.has(name);
 }
 
+const ZULIP_CSRF_COOKIE_NAMES = ["__Host-csrftoken", "csrftoken", "csrf"] as const;
+
+export async function getSessionCsrfTokenForRealm(realmInput: string): Promise<string | null> {
+  const base = normalizeRealm(realmInput);
+  if (!isValidHttpsRealmUrl(base)) {
+    return null;
+  }
+  const originUrl = `${new URL(base).origin}/`;
+  const cookies = await session.defaultSession.cookies.get({ url: originUrl });
+  for (const cookieName of ZULIP_CSRF_COOKIE_NAMES) {
+    const cookie = cookies.find((row) => row.name === cookieName);
+    if (cookie != null && cookie.value.length > 0) {
+      return cookie.value;
+    }
+  }
+  return null;
+}
+
 async function relaxSessionCookieSameSite(originUrl: string): Promise<void> {
   // Read only cookies for this realm origin, not the whole Chromium jar.
   const cookies = await session.defaultSession.cookies.get({ url: originUrl });

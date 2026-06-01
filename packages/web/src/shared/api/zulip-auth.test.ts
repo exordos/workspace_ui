@@ -18,6 +18,7 @@ vi.mock("~/shared/lib/electron", () => ({
 }));
 
 import { exchangeDesktopFlowToken, fetchApiKey, fetchServerSettings } from "./zulip-auth";
+import { getCachedSessionCsrfToken } from "./zulip-session-csrf.internal";
 import { jsonResponse, mockFetch } from "./zulip.test.setup";
 import { ZulipAuthError } from "./zulip.types";
 
@@ -245,6 +246,20 @@ describe("exchangeDesktopFlowToken", () => {
         credentials: "include",
       }),
     );
+  });
+
+  it("caches csrf token after renderer session auth exchange", async () => {
+    document.cookie = "csrftoken=oidc-csrf-token";
+    mockFetch.mockResolvedValueOnce(jsonResponse({ result: "success" })).mockResolvedValueOnce(
+      jsonResponse({
+        email: "session-user@example.com",
+      }),
+    );
+
+    await exchangeDesktopFlowToken("https://zulip.example.com", "session-token");
+
+    expect(getCachedSessionCsrfToken("https://zulip.example.com")).toBe("oidc-csrf-token");
+    document.cookie = "csrftoken=; Max-Age=0";
   });
 
   it("throws ZulipAuthError when session verification fails", async () => {

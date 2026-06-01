@@ -8,6 +8,10 @@ import { loggedFetch } from "~/shared/lib/logged-fetch.lib";
 import { createLogger, logAction } from "~/shared/lib/logger";
 import { isValidEmail, isValidRealmUrl } from "~/shared/lib/validation";
 import { normalizeRealm } from "./zulip-realm.internal";
+import {
+  readSessionCsrfTokenFromDocument,
+  setCachedSessionCsrfToken,
+} from "./zulip-session-csrf.internal";
 import { ZulipAuthError } from "./zulip.types";
 import type { DesktopFlowExchangeResult, ZulipServerSettings } from "./zulip.types";
 
@@ -241,6 +245,10 @@ async function exchangeDesktopFlowTokenInRenderer(
     // Without a confirmed email, do not save a session auth instance.
     log.error("Renderer desktop token exchange failed during session verification");
     throw new ZulipAuthError(t("auth.pasteTokenInvalid"));
+  }
+  const csrfToken = readSessionCsrfTokenFromDocument();
+  if (csrfToken != null) {
+    setCachedSessionCsrfToken(base, csrfToken);
   }
   return {
     authType: "session",

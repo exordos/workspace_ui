@@ -15,6 +15,7 @@ import { autoUpdater } from "electron-updater";
 import {
   DesktopAuthExchangeError,
   exchangeDesktopFlowToken as exchangeDesktopFlowTokenInMain,
+  getSessionCsrfTokenForRealm,
 } from "./desktop-auth";
 import { createUnreadDotOverlaySvg } from "./unread-indicator.lib";
 import {
@@ -1081,6 +1082,22 @@ function registerIpcHandlers(): void {
         reason: "DESKTOP_FLOW_EXCHANGE_NETWORK_ERROR" as const,
         details: error instanceof Error ? error.message : String(error),
       };
+    }
+  });
+
+  ipcMain.handle("auth:getCsrfToken", async (_event, payload: unknown) => {
+    if (typeof payload !== "object" || payload == null) {
+      return null;
+    }
+    const record = payload as Record<string, unknown>;
+    const realm = typeof record.realm === "string" ? record.realm.trim() : "";
+    if (realm.length === 0) {
+      return null;
+    }
+    try {
+      return await getSessionCsrfTokenForRealm(realm);
+    } catch {
+      return null;
     }
   });
 }

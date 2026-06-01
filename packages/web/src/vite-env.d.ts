@@ -151,6 +151,8 @@ interface ElectronAPI {
     getFilePath: () => Promise<string | null>;
   };
   auth?: {
+    // Electron-only bridge: read the CSRF cookie for the current Zulip realm from Chromium session.
+    getCsrfToken: (payload: { realm: string }) => Promise<string | null>;
     // Electron-only bridge: renderer asks the main process to finish desktop-flow login.
     exchangeDesktopFlowToken: (payload: { realm: string; token: string }) => Promise<
       | {

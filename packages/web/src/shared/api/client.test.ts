@@ -588,6 +588,117 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
     document.cookie = "csrftoken=; Max-Age=0";
   });
 
+  it("adds cached csrf header for session auth register requests", async () => {
+    const { setCachedSessionCsrfToken } = await import("./zulip-session-csrf.internal");
+    const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
+    setCachedSessionCsrfToken("https://zulip.test", "cached-oidc-csrf-token");
+    setInstanceProvider(() => ({
+      id: "i-session",
+      realm: "https://zulip.test",
+      email: "session-user@example.com",
+      apiKey: "",
+      authType: "session",
+    }));
+    refreshZulipApiBase();
+
+    mockFetch.mockResolvedValueOnce(mockJsonResponse({ result: "success" }));
+
+    await zulipApi.post("/register", { event_types: JSON.stringify(["message"]) });
+
+    const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+    const headers = init.headers as Record<string, string>;
+    expect(headers["X-CSRFToken"]).toBe("cached-oidc-csrf-token");
+    expect(init.credentials).toBe("include");
+  });
+
+  it("reads csrf token from Electron bridge when session cookie is not visible to document", async () => {
+    const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
+    document.cookie = "__Host-csrftoken=; Max-Age=0";
+    document.cookie = "csrftoken=; Max-Age=0";
+    document.cookie = "csrf=; Max-Age=0";
+    const electronApi = {
+      auth: {
+        getCsrfToken: vi.fn().mockResolvedValue("electron-csrf-token"),
+      },
+    };
+    Object.defineProperty(window, "electronAPI", {
+      configurable: true,
+      value: electronApi,
+    });
+    setInstanceProvider(() => ({
+      id: "i-session",
+      realm: "https://electron-zulip.test",
+      email: "session-user@example.com",
+      apiKey: "",
+      authType: "session",
+    }));
+    refreshZulipApiBase();
+
+    mockFetch.mockResolvedValueOnce(mockJsonResponse({ result: "success" }));
+
+    await zulipApi.post("/register", { event_types: JSON.stringify(["message"]) });
+
+    const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+    const headers = init.headers as Record<string, string>;
+    expect(electronApi.auth.getCsrfToken).toHaveBeenCalledWith({
+      realm: "https://electron-zulip.test",
+    });
+    expect(headers["X-CSRFToken"]).toBe("electron-csrf-token");
+    expect(init.credentials).toBe("include");
+  });
+
+  it("does not add cached csrf header to workspace postJson requests", async () => {
+    const { setCachedSessionCsrfToken } = await import("./zulip-session-csrf.internal");
+    const { setInstanceProvider, workspaceApi } = await import("./client");
+    setCachedSessionCsrfToken("https://zulip.test", "cached-oidc-csrf-token");
+    setInstanceProvider(() => ({
+      id: "i-session",
+      realm: "https://zulip.test",
+      email: "session-user@example.com",
+      apiKey: "",
+      authType: "session",
+    }));
+
+    mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true }));
+
+    await workspaceApi.postJson("/v1/folders/", { name: "Inbox" });
+
+    const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+    const headers = init.headers as Record<string, string>;
+    expect(headers["X-CSRFToken"]).toBeUndefined();
+    expect(init.credentials).toBe("include");
+  });
+
+  it("does not add csrf header or call Electron bridge for workspace putJson requests", async () => {
+    const { setInstanceProvider, workspaceApi } = await import("./client");
+    const electronApi = {
+      auth: {
+        getCsrfToken: vi.fn().mockResolvedValue("electron-csrf-token"),
+      },
+    };
+    Object.defineProperty(window, "electronAPI", {
+      configurable: true,
+      value: electronApi,
+    });
+    setInstanceProvider(() => ({
+      id: "i-session",
+      realm: "https://electron-zulip.test",
+      email: "session-user@example.com",
+      apiKey: "",
+      authType: "session",
+    }));
+
+    mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true }));
+
+    await workspaceApi.putJson("/v1/folders/f1/items/i1", { order_index: 3 });
+
+    const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+    const headers = init.headers as Record<string, string>;
+    expect(electronApi.auth.getCsrfToken).not.toHaveBeenCalled();
+    expect(headers["X-CSRFToken"]).toBeUndefined();
+    expect(init.credentials).toBe("include");
+  });
+
   // Retry middleware должен повторять запрос при 5xx и успешно завершаться после восстановления сервера.
   it("retryMiddleware retries on 503 and eventually succeeds", async () => {
     const { retryMiddleware } = await import("./client");
