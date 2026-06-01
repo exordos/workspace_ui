@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useInboxStore } from "~/entities/inbox/inbox.model";
+import { useInstancesStore } from "~/entities/instance/instance.model";
 import { InboxPage } from "./inbox-page.ui";
 import type * as ReactRouterDom from "react-router-dom";
 
@@ -28,7 +29,24 @@ vi.mock("~/entities/inbox/inbox.api", async () => {
   };
 });
 
+const TEST_INSTANCE_ID = "instance-inbox-test";
+
 describe("InboxPage styling contract", () => {
+  beforeEach(() => {
+    useInstancesStore.setState({
+      instances: [
+        {
+          id: TEST_INSTANCE_ID,
+          realm: "https://zulip.example.com",
+          email: "user@example.com",
+          apiKey: "api-key",
+        },
+      ],
+      currentInstanceId: TEST_INSTANCE_ID,
+      unreadCountsByInstance: {},
+    });
+  });
+
   afterEach(() => {
     navigateSpy.mockReset();
     fetchInboxEntries.mockReset();
@@ -36,6 +54,11 @@ describe("InboxPage styling contract", () => {
     fetchInboxEntries.mockResolvedValue([]);
     hydrateInboxEntriesFromCache.mockResolvedValue([]);
     useInboxStore.getState().clear();
+    useInstancesStore.setState({
+      instances: [],
+      currentInstanceId: null,
+      unreadCountsByInstance: {},
+    });
   });
 
   it("renders inbox rows as themed cards for all palettes", async () => {
@@ -194,9 +217,8 @@ describe("InboxPage styling contract", () => {
 
     await waitFor(() => {
       expect(fetchInboxEntries).toHaveBeenCalled();
+      expect(screen.getByText("Fresh Alice")).toBeInTheDocument();
     });
-
-    expect(screen.getByText("Fresh Alice")).toBeInTheDocument();
     expect(screen.queryByText("Old Alice")).not.toBeInTheDocument();
   });
 

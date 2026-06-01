@@ -576,8 +576,10 @@ describe("SettingsPersonalInfoPage", () => {
       expect(createObjectURLMock).toHaveBeenCalledWith(file);
     });
     expect(uploadOwnAvatarMock).not.toHaveBeenCalled();
-    const avatarImage = document.querySelector("img");
-    expect(avatarImage?.getAttribute("src")).toContain("blob:avatar-preview");
+    await waitFor(() => {
+      const avatarImage = document.querySelector("img");
+      expect(avatarImage?.getAttribute("src")).toContain("blob:avatar-preview");
+    });
   });
 
   it("resolves relative avatar URL using realm base", async () => {
@@ -600,10 +602,14 @@ describe("SettingsPersonalInfoPage", () => {
     renderWithProviders(<SettingsPersonalInfoPage />);
     await waitFor(() => expect(fetchUserProfileMock).toHaveBeenCalledWith(42));
 
-    const avatarImage = document.querySelector("img");
-    expect(avatarImage).not.toBeNull();
-    expect(avatarImage?.getAttribute("src")).toContain("https://zulip.example.com/avatar/old.png");
-    expect(avatarImage?.getAttribute("src")).toContain("_av=");
+    await waitFor(() => {
+      const avatarImage = document.querySelector("img");
+      expect(avatarImage).not.toBeNull();
+      expect(avatarImage?.getAttribute("src")).toContain(
+        "https://zulip.example.com/avatar/old.png",
+      );
+      expect(avatarImage?.getAttribute("src")).toContain("_av=");
+    });
   });
 
   it("keeps avatar remove pending until save", async () => {
