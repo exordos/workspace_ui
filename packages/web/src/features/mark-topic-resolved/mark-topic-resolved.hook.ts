@@ -62,7 +62,7 @@ export function useMarkTopicResolved() {
         return;
       }
       const oldTopicKey = normalizeTopicForIdentity(oldTopic);
-      const messageIds = messages
+      const messageIds = useCurrentChatMessagesStore.getState().messages
         .filter(
           (message) =>
             message.stream_id === streamId &&
