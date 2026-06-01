@@ -25,6 +25,10 @@ import { createLogger } from "~/shared/lib/logger";
 import { isOnline, onReconnect, onStatusChange, waitForOnline } from "~/shared/lib/network";
 import { onTabResume } from "~/shared/lib/visibility";
 import { shouldReRegisterEventQueueFromPollResponse } from "~/shared/lib/zulip-event-queue-errors.lib";
+import {
+  clearZulipEventQueueId,
+  setZulipEventQueueId,
+} from "~/shared/lib/zulip-event-queue-registry.lib";
 
 const log = createLogger("realtime");
 
@@ -58,6 +62,8 @@ export interface StartZulipEventLoopOptions {
   onTabStaleResume?: (hiddenDurationMs: number) => void;
   /** Called when a queue is registered (for cleanup on logout/instance switch). */
   onQueueRegistered?: (queueId: string, registration?: RegisterQueueResult) => void;
+  /** Instance that owns this loop — used to expose `queue_id` for message send on that org. */
+  instanceId?: string;
   signal?: AbortSignal;
   eventTypes?: string[];
   // Что делает: передает в register список metadata-блоков, которые нужно получить сразу при старте очереди.
@@ -90,10 +96,12 @@ function startZulipEventLoopWithTransport(
     onQueueReady,
     onTabStaleResume,
     onQueueRegistered,
+    instanceId,
     signal,
     eventTypes = [...DEFAULT_EVENT_TYPES],
     fetchEventTypes,
   } = options;
+  const registryInstanceId = instanceId?.trim() ?? "";
   const onQueueReadyCb = onQueueReady;
   const queueState: { id: string | null } = { id: null };
   let lastEventId = -1;
@@ -104,10 +112,16 @@ function startZulipEventLoopWithTransport(
 
   function setQueueId(nextQueueId: string): void {
     queueState.id = nextQueueId;
+    if (registryInstanceId.length > 0) {
+      setZulipEventQueueId(registryInstanceId, nextQueueId);
+    }
   }
 
   function clearQueueId(): void {
     queueState.id = null;
+    if (registryInstanceId.length > 0) {
+      clearZulipEventQueueId(registryInstanceId);
+    }
   }
 
   function handleEvent(event: ZulipEvent): void {
@@ -173,6 +187,7 @@ function startZulipEventLoopWithTransport(
     unsubReconnect();
     unsubStatus();
     abortActivePoll();
+    clearQueueId();
     removeAbortListener?.();
     removeAbortListener = null;
     wake();

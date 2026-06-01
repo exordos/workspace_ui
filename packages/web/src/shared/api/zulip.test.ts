@@ -1693,12 +1693,16 @@ describe("fetchDmMessages", () => {
 });
 
 // ---------------------------------------------------------------------------
-// sendMessage — использует zulip-js клиент
+// sendMessage — POST /messages via API pipeline
 // ---------------------------------------------------------------------------
 
 describe("sendMessage", () => {
   it("returns the authoritative server message when follow-up fetch succeeds", async () => {
-    mockZulipClient.messages.send.mockResolvedValue({ id: 100 });
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { result: "success", id: 100 },
+    });
     mockZulipApi.get.mockResolvedValue({
       ok: true,
       status: 200,
@@ -1741,7 +1745,11 @@ describe("sendMessage", () => {
   });
 
   it("falls back to synthetic stream payload when follow-up fetch fails", async () => {
-    mockZulipClient.messages.send.mockResolvedValue({ id: 100 });
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { result: "success", id: 100 },
+    });
     mockZulipApi.get.mockResolvedValue({
       ok: false,
       status: 404,
@@ -1768,7 +1776,11 @@ describe("sendMessage", () => {
   });
 
   it("sends a stream message", async () => {
-    mockZulipClient.messages.send.mockResolvedValue({ id: 100 });
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { result: "success", id: 100 },
+    });
     const result = await sendMessage({
       stream: "general",
       streamId: 10,
@@ -1780,50 +1792,71 @@ describe("sendMessage", () => {
     expect(result.display_recipient).toBe("general");
     expect(result.channel).toBe("general");
     expect(result.subject).toBe("test");
-    expect(mockZulipClient.messages.send).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "stream", to: "general", topic: "test", content: "hello" }),
+    expect(mockZulipApi.post).toHaveBeenCalledWith(
+      "/messages",
+      expect.objectContaining({
+        type: "stream",
+        to: "general",
+        topic: "test",
+        content: "hello",
+        read_by_sender: "true",
+      }),
     );
   });
 
   it("sends a private message", async () => {
-    mockZulipClient.messages.send.mockResolvedValue({ id: 101 });
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { result: "success", id: 101 },
+    });
     const result = await sendMessage({ to: [42], content: "hi" });
     expect(result.id).toBe(101);
     expect(result.stream_id).toBeNull();
     expect(result.display_recipient).toEqual([{ id: 42, full_name: "" }]);
-    expect(mockZulipClient.messages.send).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "private", to: [42], content: "hi" }),
+    expect(mockZulipApi.post).toHaveBeenCalledWith(
+      "/messages",
+      expect.objectContaining({
+        type: "private",
+        to: "[42]",
+        content: "hi",
+        read_by_sender: "true",
+      }),
     );
   });
 
   it("throws when private recipient id is invalid", async () => {
     await expect(sendMessage({ to: [0], content: "hi" })).rejects.toThrow(/Invalid userId/);
-    expect(mockZulipClient.messages.send).not.toHaveBeenCalled();
+    expect(mockZulipApi.post).not.toHaveBeenCalled();
   });
 
   it("throws when provided stream id is invalid", async () => {
     await expect(
       sendMessage({ stream: "engineering", streamId: 0, content: "hi" }),
     ).rejects.toThrow(/Invalid streamId/);
-    expect(mockZulipClient.messages.send).not.toHaveBeenCalled();
+    expect(mockZulipApi.post).not.toHaveBeenCalled();
   });
 
   it("throws when stream name is blank", async () => {
     await expect(sendMessage({ stream: "   ", content: "hi" })).rejects.toThrow(
       /sendMessage\.stream must be a non-empty string/,
     );
-    expect(mockZulipClient.messages.send).not.toHaveBeenCalled();
+    expect(mockZulipApi.post).not.toHaveBeenCalled();
   });
 
   it("throws when message content is blank", async () => {
     await expect(sendMessage({ stream: "engineering", content: "   " })).rejects.toThrow(
       /sendMessage\.content must be a non-empty string/,
     );
-    expect(mockZulipClient.messages.send).not.toHaveBeenCalled();
+    expect(mockZulipApi.post).not.toHaveBeenCalled();
   });
 
   it("defaults subject to empty topic for stream message", async () => {
-    mockZulipClient.messages.send.mockResolvedValue({ id: 102 });
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { result: "success", id: 102 },
+    });
     const result = await sendMessage({ stream: "engineering", content: "test" });
     expect(result.subject).toBe("");
   });

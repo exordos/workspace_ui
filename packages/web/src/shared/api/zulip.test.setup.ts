@@ -4,6 +4,7 @@
  * Import this module first in each test file so `vi.mock` runs before `./zulip` loads.
  */
 import { afterEach, beforeEach, vi } from "vitest";
+import { clearAllZulipEventQueueIds } from "~/shared/lib/zulip-event-queue-registry.lib";
 
 const mockZulipClient = vi.hoisted(() => ({
   streams: {
@@ -100,6 +101,7 @@ export function jsonResponse(data: unknown, status = 200): Response {
 }
 
 beforeEach(() => {
+  clearAllZulipEventQueueIds();
   vi.stubGlobal("fetch", mockFetch);
   mockFetch.mockReset();
   mockGetCurrentInstance.mockReset();

@@ -808,6 +808,7 @@ export function useLayoutZulipEventLoop(options: {
 
           startZulipEventLoop({
             signal: loopAbort.signal,
+            instanceId: currentInstanceId ?? undefined,
             onTabStaleResume: () => refreshStaleData(),
             onBadQueue: refreshStaleData,
             fetchEventTypes: [...DEFAULT_REGISTER_FETCH_EVENT_TYPES],

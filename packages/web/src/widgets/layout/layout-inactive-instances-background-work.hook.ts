@@ -68,6 +68,7 @@ export function useInactiveInstancesBackgroundWork(options: {
         );
         startZulipEventLoopForCredentials({
           credentials,
+          instanceId: instance?.id,
           signal: controller.signal,
           onEvent,
           onBadQueue,

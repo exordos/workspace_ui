@@ -343,6 +343,8 @@ export interface SendMessageParams {
   sender_full_name?: string;
   /** For private/DM message: recipient user ids. When set, `stream` is ignored. */
   to?: number[];
+  /** Zulip local echo id (pairs with the active event queue `queue_id`). */
+  local_id?: string;
 }
 
 export interface CreateSavedSnippetParams {

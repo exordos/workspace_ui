@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { startZulipEventLoop, startZulipEventLoopForCredentials } from "./event-loop";
+import * as zulipEventQueueRegistry from "./zulip-event-queue-registry.lib";
 
 const registerQueueMock = vi.fn();
 const getEventsMock = vi.fn();
@@ -92,6 +93,45 @@ describe("startZulipEventLoop", () => {
     expect(unsubResumeMock).toHaveBeenCalled();
     expect(unsubReconnectMock).toHaveBeenCalled();
     expect(unsubStatusMock).toHaveBeenCalled();
+  });
+
+  it("publishes queue_id to the instance registry when instanceId is set", async () => {
+    registerQueueMock.mockResolvedValue({
+      queue_id: "q-registry",
+      last_event_id: 0,
+    });
+    getEventsMock.mockImplementation(
+      () =>
+        new Promise(() => {
+          /* keep loop alive */
+        }),
+    );
+    onTabResumeMock.mockReturnValue(unsubResumeMock);
+    onReconnectMock.mockReturnValue(unsubReconnectMock);
+    onStatusChangeMock.mockReturnValue(unsubStatusMock);
+    waitForOnlineMock.mockResolvedValue(undefined);
+    isOnlineMock.mockReturnValue(true);
+
+    const setQueueSpy = vi.spyOn(zulipEventQueueRegistry, "setZulipEventQueueId");
+    const clearQueueSpy = vi.spyOn(zulipEventQueueRegistry, "clearZulipEventQueueId");
+
+    const controller = new AbortController();
+    startZulipEventLoop({
+      instanceId: "inst-registry",
+      signal: controller.signal,
+      onEvent: vi.fn(),
+    });
+
+    await vi.waitFor(() => {
+      expect(setQueueSpy).toHaveBeenCalledWith("inst-registry", "q-registry");
+    });
+
+    controller.abort();
+    await Promise.resolve();
+
+    expect(clearQueueSpy).toHaveBeenCalledWith("inst-registry");
+    setQueueSpy.mockRestore();
+    clearQueueSpy.mockRestore();
   });
 
   it("starts credential-based event loop for background orgs", async () => {

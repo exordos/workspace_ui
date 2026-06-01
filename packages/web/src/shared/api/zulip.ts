@@ -39,6 +39,7 @@ import {
 } from "./client";
 import { parseCurrentUserFromApiData } from "./zulip-current-user.lib";
 import { mockMessageFromGetMessageApiData, rawMessageToMockMessage } from "./zulip-message-map.lib";
+import { postZulipSendMessage } from "./zulip-message-send.internal";
 import {
   getCachedUserTopicsForKey,
   getCurrentUserTopicsCacheKey,
@@ -1794,6 +1795,8 @@ export interface SendMessageParams {
   sender_full_name?: string;
   // Для private/DM message: id получателей. Если поле задано, `stream` игнорируется.
   to?: number[];
+  /** Zulip local echo id (pairs with the active event queue `queue_id`). */
+  local_id?: string;
 }
 
 // Загружает saved snippets текущего пользователя.
@@ -1855,18 +1858,24 @@ export async function sendMessage(params: SendMessageParams): Promise<MockMessag
     throw new Error(t("message.sendRequiresStreamOrTo"));
   }
   const content = guard.nonEmpty(params.content, "sendMessage.content");
-  const client = await getClient();
+  const sendOptions =
+    params.local_id != null && params.local_id.trim().length > 0
+      ? { localId: params.local_id.trim() }
+      : undefined;
 
   if (isPrivate) {
     const recipients = params.to ?? [];
     for (const recipientId of recipients) {
       guard.userId(recipientId, "sendMessage.to");
     }
-    const result = await client.messages.send({
-      type: "private",
-      to: recipients,
-      content,
-    });
+    const result = await postZulipSendMessage(
+      {
+        type: "private",
+        to: recipients,
+        content,
+      },
+      sendOptions,
+    );
     const id = result.id ?? 0;
     const authoritative = id > 0 ? await fetchMessageById(id) : null;
     if (authoritative) return authoritative;
@@ -1887,12 +1896,15 @@ export async function sendMessage(params: SendMessageParams): Promise<MockMessag
     guard.streamId(params.streamId, "sendMessage.streamId");
   }
   const subject = params.subject ?? "";
-  const result = await client.messages.send({
-    type: "stream",
-    to: stream,
-    topic: subject,
-    content,
-  });
+  const result = await postZulipSendMessage(
+    {
+      type: "stream",
+      to: stream,
+      topic: subject,
+      content,
+    },
+    sendOptions,
+  );
   const id = result.id ?? 0;
   const authoritative = id > 0 ? await fetchMessageById(id) : null;
   if (authoritative) return authoritative;

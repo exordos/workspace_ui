@@ -1323,6 +1323,7 @@ export const ChatPage: React.FC = () => {
           content: body,
           sender_id: currentUserId ?? 0,
           sender_full_name: t("common.you"),
+          local_id: String(optimisticMessageId),
         });
         commitOutgoingMessageToStore(optimisticMessageId, newMsg);
         setReplyQuote(null);
@@ -1372,6 +1373,7 @@ export const ChatPage: React.FC = () => {
           content: body,
           sender_id: currentUserId ?? 0,
           sender_full_name: t("common.you"),
+          local_id: String(optimisticMessageId),
         });
         commitOutgoingMessageToStore(optimisticMessageId, newMsg);
         setReplyQuote(null);
@@ -1426,6 +1428,7 @@ export const ChatPage: React.FC = () => {
             content: body,
             sender_id: currentUserId ?? 0,
             sender_full_name: t("common.you"),
+            local_id: String(optimisticMessageId),
           });
           commitOutgoingMessageToStore(optimisticMessageId, newMsg);
           setReplyQuote(null);
@@ -1473,6 +1476,7 @@ export const ChatPage: React.FC = () => {
             content: body,
             sender_id: currentUserId ?? 0,
             sender_full_name: t("common.you"),
+            local_id: String(optimisticMessageId),
           });
           commitOutgoingMessageToStore(optimisticMessageId, newMsg);
           setReplyQuote(null);

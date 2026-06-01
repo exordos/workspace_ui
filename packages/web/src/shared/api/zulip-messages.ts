@@ -15,6 +15,7 @@ import {
 } from "~/shared/lib/zulip-topic-narrow.lib";
 import { getClient } from "./zulip-client.internal";
 import { mockMessageFromGetMessageApiData, rawMessageToMockMessage } from "./zulip-message-map.lib";
+import { postZulipSendMessage } from "./zulip-message-send.internal";
 import {
   zulipPipelineDelete,
   zulipPipelineGet,
@@ -641,18 +642,24 @@ export async function sendMessage(params: SendMessageParams): Promise<MockMessag
     throw new Error(t("message.sendRequiresStreamOrTo"));
   }
   const content = guard.nonEmpty(params.content, "sendMessage.content");
-  const client = await getClient();
+  const sendOptions =
+    params.local_id != null && params.local_id.trim().length > 0
+      ? { localId: params.local_id.trim() }
+      : undefined;
 
   if (isPrivate) {
     const recipients = params.to ?? [];
     for (const recipientId of recipients) {
       guard.userId(recipientId, "sendMessage.to");
     }
-    const result = await client.messages.send({
-      type: "private",
-      to: recipients,
-      content,
-    });
+    const result = await postZulipSendMessage(
+      {
+        type: "private",
+        to: recipients,
+        content,
+      },
+      sendOptions,
+    );
     const id = result.id ?? 0;
     const authoritative = id > 0 ? await fetchMessageById(id) : null;
     if (authoritative) return authoritative;
@@ -673,12 +680,15 @@ export async function sendMessage(params: SendMessageParams): Promise<MockMessag
     guard.streamId(params.streamId, "sendMessage.streamId");
   }
   const subject = params.subject ?? "";
-  const result = await client.messages.send({
-    type: "stream",
-    to: stream,
-    topic: subject,
-    content,
-  });
+  const result = await postZulipSendMessage(
+    {
+      type: "stream",
+      to: stream,
+      topic: subject,
+      content,
+    },
+    sendOptions,
+  );
   const id = result.id ?? 0;
   const authoritative = id > 0 ? await fetchMessageById(id) : null;
   if (authoritative) return authoritative;
