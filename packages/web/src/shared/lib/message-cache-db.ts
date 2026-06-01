@@ -20,6 +20,9 @@ const DB_VERSION = 8;
 /** IndexedDB database name for message/chat bootstrap cache (tests, cold-start wipe). */
 export const MESSAGE_CACHE_DB_NAME = DB_NAME;
 
+/** Current schema version (E2E seed helpers must not open with a lower version). */
+export const MESSAGE_CACHE_DB_VERSION = DB_VERSION;
+
 const IDB_DELETE_BLOCKED_TIMEOUT_MS = 3_000;
 
 // Размер retention по умолчанию, если caller явно не передал windowSizeN.

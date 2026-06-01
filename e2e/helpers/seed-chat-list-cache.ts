@@ -1,14 +1,17 @@
 import type { Page } from "@playwright/test";
 import { E2E_INSTANCE_ID } from "../mocks/zulip-default-responses";
 
+/** Must match `MESSAGE_CACHE_DB_NAME` in `packages/web/src/shared/lib/message-cache-db.ts`. */
 const DB_NAME = "workspace-message-cache-v1";
-const DB_VERSION = 7;
 const STORE_CHAT_LIST_SNAPSHOT = "chatListSnapshot";
 
-/** Minimal IndexedDB chat-list row so bootstrap can enter degraded (not blocked) mode. */
+/**
+ * Minimal IndexedDB chat-list row so bootstrap can enter degraded (not blocked) mode.
+ * Call after the app shell has loaded once so the DB schema exists (currently v8+).
+ */
 export async function seedChatListIndexedDb(page: Page, instanceId = E2E_INSTANCE_ID): Promise<void> {
   await page.evaluate(
-    async ({ dbName, dbVersion, storeName, id }) => {
+    async ({ dbName, storeName, id }) => {
       const row = {
         instanceId: id,
         version: 1,
@@ -34,16 +37,16 @@ export async function seedChatListIndexedDb(page: Page, instanceId = E2E_INSTANC
       };
 
       await new Promise<void>((resolve, reject) => {
-        const request = indexedDB.open(dbName, dbVersion);
+        // Open without a fixed version: app must have created the DB on first load (see message-cache-db.ts).
+        const request = indexedDB.open(dbName);
         request.onerror = () => reject(request.error ?? new Error("indexedDB open failed"));
-        request.onupgradeneeded = () => {
-          const db = request.result;
-          if (!db.objectStoreNames.contains(storeName)) {
-            db.createObjectStore(storeName, { keyPath: "instanceId" });
-          }
-        };
         request.onsuccess = () => {
           const db = request.result;
+          if (!db.objectStoreNames.contains(storeName)) {
+            db.close();
+            reject(new Error(`indexedDB store missing: ${storeName}`));
+            return;
+          }
           const tx = db.transaction(storeName, "readwrite");
           tx.onerror = () => reject(tx.error ?? new Error("indexedDB tx failed"));
           tx.oncomplete = () => {
@@ -56,7 +59,6 @@ export async function seedChatListIndexedDb(page: Page, instanceId = E2E_INSTANC
     },
     {
       dbName: DB_NAME,
-      dbVersion: DB_VERSION,
       storeName: STORE_CHAT_LIST_SNAPSHOT,
       id: instanceId,
     },

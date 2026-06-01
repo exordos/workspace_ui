@@ -13,7 +13,7 @@ import {
   isAvatarBlobCacheVersionValid,
   shouldBypassAvatarBlobCache,
 } from "~/shared/lib/avatar-blob-cache.lib";
-import { fetchAvatarBlob } from "~/shared/lib/avatar-blob-fetch.lib";
+import { fetchAvatarBlob, shouldNetworkFetchAvatarBlob } from "~/shared/lib/avatar-blob-fetch.lib";
 
 /**
  * Resolves avatar `src` via IndexedDB blob cache when enabled; falls back to HTTPS URL.
@@ -66,6 +66,10 @@ export function useAvatarBlobSrc(resolvedSrc: string | undefined | null): string
         const now = Date.now();
         void touchAvatarBlobCacheRow(instanceId, cacheKey, now);
         applyBlobUrl(cached.blob);
+        return;
+      }
+
+      if (!shouldNetworkFetchAvatarBlob(trimmed)) {
         return;
       }
 

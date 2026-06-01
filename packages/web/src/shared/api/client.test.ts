@@ -1046,4 +1046,25 @@ describe("appendDevUserUploadsProxyHeaders", () => {
     expect(out["X-Workspace-Dev-Target-Origin"]).toBe("https://zulip.realm.test");
     setInstanceProvider(() => null);
   });
+
+  it("uses the same dev target header for /avatar paths", async () => {
+    vi.stubGlobal("window", { location: { origin: "http://localhost:5173" } });
+    const { appendDevRealmMediaProxyHeaders, setInstanceProvider } = await import("./client");
+    setInstanceProvider(() => ({
+      id: "i1",
+      realm: "https://zulip.realm.test",
+      email: "u@t.com",
+      apiKey: "k",
+      workspaceOrgOrigin: "https://workspace.gateway.test",
+    }));
+    const out = appendDevRealmMediaProxyHeaders("/avatar/42.png", {
+      Authorization: "Basic x",
+    });
+    if (!import.meta.env.DEV) {
+      expect(out["X-Workspace-Dev-Target-Origin"]).toBeUndefined();
+      return;
+    }
+    expect(out["X-Workspace-Dev-Target-Origin"]).toBe("https://zulip.realm.test");
+    setInstanceProvider(() => null);
+  });
 });

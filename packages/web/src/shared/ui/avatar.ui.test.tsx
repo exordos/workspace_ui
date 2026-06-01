@@ -6,6 +6,7 @@ const persistAvatarBlobsToIndexedDb = vi.hoisted(() => vi.fn(() => true));
 const getAvatarBlobCacheRow = vi.hoisted(() => vi.fn());
 const putAvatarBlobCacheRow = vi.hoisted(() => vi.fn());
 const fetchAvatarBlob = vi.hoisted(() => vi.fn());
+const shouldNetworkFetchAvatarBlob = vi.hoisted(() => vi.fn(() => true));
 
 vi.mock("~/shared/lib/avatar-blob-cache-persist.lib", () => ({
   persistAvatarBlobsToIndexedDb,
@@ -20,6 +21,7 @@ vi.mock("~/shared/lib/avatar-blob-cache-db", () => ({
 
 vi.mock("~/shared/lib/avatar-blob-fetch.lib", () => ({
   fetchAvatarBlob,
+  shouldNetworkFetchAvatarBlob,
 }));
 
 vi.mock("~/entities/instance/instance.model", () => ({
@@ -36,6 +38,7 @@ describe("Avatar IndexedDB cache", () => {
   afterEach(() => {
     vi.clearAllMocks();
     persistAvatarBlobsToIndexedDb.mockReturnValue(true);
+    shouldNetworkFetchAvatarBlob.mockReturnValue(true);
   });
 
   it("uses cached blob without fetch on hit", async () => {

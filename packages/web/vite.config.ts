@@ -171,6 +171,14 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
         },
       ),
+      "/avatar": withDevProxyRequestLog("avatar", workspaceOrigin, proxyDebug, {
+        target: workspaceOrigin,
+        changeOrigin: true,
+      }),
+      "/user_avatars": withDevProxyRequestLog("user_avatars", workspaceOrigin, proxyDebug, {
+        target: workspaceOrigin,
+        changeOrigin: true,
+      }),
     } satisfies Record<string, ViteProxyEntry>);
 
   return {

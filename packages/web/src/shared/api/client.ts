@@ -129,7 +129,11 @@ function isRealmMessageMediaProxyPath(pathOnly: string): boolean {
     pathOnly === "/user_uploads" ||
     pathOnly.startsWith("/user_uploads/") ||
     pathOnly === "/external_content" ||
-    pathOnly.startsWith("/external_content/")
+    pathOnly.startsWith("/external_content/") ||
+    pathOnly === "/avatar" ||
+    pathOnly.startsWith("/avatar/") ||
+    pathOnly === "/user_avatars" ||
+    pathOnly.startsWith("/user_avatars/")
   );
 }
 

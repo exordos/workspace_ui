@@ -5,7 +5,7 @@
 // Подключается раньше статического `server.proxy` в Vite:
 // - `/workspace...` — проксирует Workspace REST, если выставлен заголовок;
 //   иначе передает обработку статическому `/workspace` proxy.
-// - `/(user_uploads|external_content)...` — по тому же заголовку проксирует путь как есть в realm;
+// - `/(user_uploads|external_content|avatar|user_avatars)...` — по тому же заголовку проксирует путь как есть в realm;
 //   иначе передает обработку статическому proxy для этого пути.
 import type { IncomingMessage, ServerResponse } from "node:http";
 import httpProxy from "http-proxy";
@@ -77,12 +77,20 @@ export function installDevWorkspaceOrgProxyMiddleware(
       pathname === "/user_uploads" ||
       pathname.startsWith("/user_uploads/") ||
       pathname === "/external_content" ||
-      pathname.startsWith("/external_content/");
+      pathname.startsWith("/external_content/") ||
+      pathname === "/avatar" ||
+      pathname.startsWith("/avatar/") ||
+      pathname === "/user_avatars" ||
+      pathname.startsWith("/user_avatars/");
     if (onRealmMedia) {
       const mediaLabel =
         pathname === "/external_content" || pathname.startsWith("/external_content/")
           ? "external_content"
-          : "user_uploads";
+          : pathname === "/avatar" || pathname.startsWith("/avatar/")
+            ? "avatar"
+            : pathname === "/user_avatars" || pathname.startsWith("/user_avatars/")
+              ? "user_avatars"
+              : "user_uploads";
       const targetRaw = readHeader(req);
       const trimmedTarget = targetRaw?.trim() ?? "";
 
