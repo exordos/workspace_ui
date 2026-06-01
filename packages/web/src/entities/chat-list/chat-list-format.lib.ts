@@ -1,7 +1,8 @@
 /**
  * Text/time formatting helpers for chat-list sidebar preview labels.
  */
-import { t, getLocale } from "~/i18n/i18n";
+import { t } from "~/i18n/i18n";
+import { formatMessageTimeRelative } from "~/shared/lib/datetime.lib";
 import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
 
 const MAX_PREVIEW_LEN = 60;
@@ -12,20 +13,9 @@ export function truncatePreview(text: string): string {
   return plain.slice(0, MAX_PREVIEW_LEN) + "…";
 }
 
+/** Sidebar preview time — re-export for chat-list entity consumers. */
 export function formatMessageTime(ts: number): string {
-  const d = new Date(ts * 1000);
-  const now = new Date();
-  const sameDay =
-    d.getDate() === now.getDate() &&
-    d.getMonth() === now.getMonth() &&
-    d.getFullYear() === now.getFullYear();
-  const locale = getLocale() === "ru" ? "ru-RU" : "en-US";
-  if (sameDay) return d.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
-  const yesterday = new Date(now);
-  yesterday.setDate(yesterday.getDate() - 1);
-  if (d.getDate() === yesterday.getDate() && d.getMonth() === yesterday.getMonth())
-    return t("chat.yesterday");
-  return d.toLocaleDateString(locale, { day: "numeric", month: "short" });
+  return formatMessageTimeRelative(ts);
 }
 
 export function hashKey(s: string): number {

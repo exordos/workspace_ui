@@ -20,24 +20,12 @@ import { t } from "~/i18n/i18n";
 import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
 import { bumpAvatarVersion, resolveAvatarUrl } from "~/shared/lib/avatar";
 import { writeText } from "~/shared/lib/clipboard";
+import { formatDateJoined } from "~/shared/lib/datetime.lib";
 import { getRoleLabel, parseRole } from "~/shared/lib/roles";
 import { detectImageMime, isValidRealmUrl, validateFileUpload } from "~/shared/lib/validation";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
-
-function formatDateJoined(dateJoined: string | undefined): string | undefined {
-  if (!dateJoined) return undefined;
-  const trimmed = dateJoined.trim();
-  if (trimmed.length === 0) return undefined;
-  const parsed = Date.parse(trimmed);
-  if (Number.isNaN(parsed)) return trimmed;
-  return new Intl.DateTimeFormat(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  }).format(parsed);
-}
 
 const AVATAR_MAGIC_BYTE_VALIDATED_IMAGE_TYPES = new Set([
   "image/png",

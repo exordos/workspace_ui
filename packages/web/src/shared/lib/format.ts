@@ -5,18 +5,17 @@
  * is within PRESENCE_ONLINE_THRESHOLD_SEC (2 min) and status is "active".
  *
  * Usage:
- *   import { formatMessageTime, formatLastSeen, isPresenceOnline } from "~/lib/format";
+ *   import { formatMessageTime, formatLastSeen, isPresenceOnline } from "~/shared/lib/format";
  */
 import { t } from "~/i18n/i18n";
+import { formatMessageTimeShort } from "~/shared/lib/datetime.lib";
 
-/** Formats a Unix timestamp (seconds) into HH:MM. */
+/** @deprecated Prefer `formatMessageTimeShort` from `~/shared/lib/datetime.lib`. */
 export function formatMessageTime(timestamp: number): string {
-  const date = new Date(timestamp * 1000);
-  return date.toLocaleTimeString("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatMessageTimeShort(timestamp);
 }
+
+export { formatMessageTimeShort } from "~/shared/lib/datetime.lib";
 
 const PRESENCE_ONLINE_THRESHOLD_SEC = 2 * 60;
 const PRESENCE_IDLE_THRESHOLD_SEC = 10 * 60;

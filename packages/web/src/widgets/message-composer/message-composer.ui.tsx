@@ -1,8 +1,5 @@
 import React, { useState, useRef, useMemo, useCallback, useLayoutEffect } from "react";
-import { useUsersStore } from "~/entities/user/user.model";
 import { AiComposerButton } from "~/features/ai-reply/ai-reply.ui";
-import { filterUsers } from "~/features/mention-suggest/mention-suggest.lib";
-import { useMentionSuggestStore } from "~/features/mention-suggest/mention-suggest.model";
 import type { MentionSuggestion } from "~/features/mention-suggest/mention-suggest.types";
 import { t } from "~/i18n/i18n";
 import type { SavedSnippet } from "~/shared/api/zulip";
@@ -33,9 +30,11 @@ import {
   STICKER_PICKER_HEIGHT,
   STICKER_PICKER_WIDTH,
 } from "./message-composer-constants.lib";
+import { useComposerDraft } from "./message-composer-draft.hook";
 import { getFloatingPickerStyle } from "./message-composer-floating.lib";
 import { resolveComposerKeyboardInsetPx } from "./message-composer-keyboard-inset.lib";
 import { MessageComposerMediaPickerPopover } from "./message-composer-media-picker-popover.ui";
+import { useComposerMentions } from "./message-composer-mentions.hook";
 import { ComposerModeTabs } from "./message-composer-mode-tabs.ui";
 import { MessageComposerPreface } from "./message-composer-preface.ui";
 import { MessageComposerPreviewBody } from "./message-composer-preview-body.ui";
@@ -84,7 +83,6 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
 }) => {
   const sendNewlineMode: ComposerSendNewlineMode = "enter-sends";
   const [mode, setMode] = useState<ComposerMode>("write");
-  const [value, setValue] = useState(initialValue ?? "");
   const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
   const [mediaPickerTab, setMediaPickerTab] = useState<MediaPickerTab>("emoji");
   const [mediaPickerStyle, setMediaPickerStyle] = useState<React.CSSProperties>({});
@@ -109,21 +107,27 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   const [scheduledMessages, setScheduledMessages] = useState<ScheduledComposerMessage[]>([]);
   const [aiMenuOpen, setAiMenuOpen] = useState(false);
   const [customEmojis, setCustomEmojis] = useState(() => getCachedRealmEmojis());
-  const mentionQuery = useMentionSuggestStore((s) => s.query);
-  const mentionSuggestions = useMentionSuggestStore((s) => s.results);
-  const showMentions = useMentionSuggestStore((s) => s.visible);
-  const setMentionQuery = useMentionSuggestStore((s) => s.setQuery);
-  const setMentionResults = useMentionSuggestStore((s) => s.setResults);
-  const showMentionDropdown = useMentionSuggestStore((s) => s.show);
-  const hideMentionDropdown = useMentionSuggestStore((s) => s.hide);
-  const clearMentionState = useMentionSuggestStore((s) => s.clear);
-  const [activeMentionIndex, setActiveMentionIndex] = useState(0);
-  const [mentionStartPos, setMentionStartPos] = useState(0);
-  // editSession приходит извне (ChatPage) и переводит composer в режим редактирования.
-  const isEditing = editSession != null;
-  // Здесь временно храним обычный черновик, чтобы восстановить его после завершения редактирования.
-  const editModeDraftSnapshotRef = useRef<string | null>(null);
-  const activeEditMessageIdRef = useRef<number | null>(null);
+  const { value, setValue, isEditing } = useComposerDraft({
+    initialValue,
+    editSession,
+    onValueChange,
+    setAiMenuOpen,
+    setScheduleMenuOpen,
+    setSavedSnippetsMenuOpen,
+    setMediaPickerOpen,
+    setMode,
+  });
+  const {
+    mentionSuggestions,
+    showMentions,
+    setMentionQuery,
+    showMentionDropdown,
+    hideMentionDropdown,
+    activeMentionIndex,
+    setActiveMentionIndex,
+    mentionStartPos,
+    setMentionStartPos,
+  } = useComposerMentions();
   const effectiveReplyQuote = isEditing ? null : replyQuote;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const prevDisabledRef = useRef(disabled);
@@ -150,40 +154,6 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     [isWebViewMode, viewportKeyboard.isOpen, viewportKeyboard.keyboardHeight],
   );
 
-  const initialValueRef = React.useRef(initialValue);
-  React.useEffect(() => {
-    if (isEditing) return;
-    if (initialValue !== initialValueRef.current) {
-      initialValueRef.current = initialValue;
-      setValue(initialValue ?? "");
-    }
-  }, [initialValue, isEditing]);
-
-  React.useEffect(() => {
-    if (!isEditing || editSession == null) {
-      if (activeEditMessageIdRef.current == null) return;
-      // Выходим из edit-mode: возвращаем пользователю текст, который был до старта редактирования.
-      activeEditMessageIdRef.current = null;
-      if (editModeDraftSnapshotRef.current != null) {
-        setValue(editModeDraftSnapshotRef.current);
-      }
-      editModeDraftSnapshotRef.current = null;
-      return;
-    }
-
-    if (activeEditMessageIdRef.current === editSession.messageId) return;
-    // Входим в edit-mode: фиксируем draft только при первом входе и подменяем значение текстом редактируемого сообщения.
-    if (activeEditMessageIdRef.current == null) {
-      editModeDraftSnapshotRef.current = value;
-    }
-    activeEditMessageIdRef.current = editSession.messageId;
-    setValue(editSession.initialMarkdown);
-    setAiMenuOpen(false);
-    setScheduleMenuOpen(false);
-    setSavedSnippetsMenuOpen(false);
-    setMediaPickerOpen(false);
-    setMode("write");
-  }, [editSession, isEditing, value]);
   const {
     files,
     setFiles,
@@ -281,35 +251,6 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   );
 
   void filePreviewUrls;
-
-  const allUsers = useUsersStore((s) => s.users);
-  const mentionUsers: MentionSuggestion[] = useMemo(
-    () =>
-      Array.from(allUsers.values()).map((u) => ({
-        userId: u.user_id,
-        fullName: u.full_name,
-        email: u.email ?? "",
-        avatarUrl: u.avatar_url ?? undefined,
-      })),
-    [allUsers],
-  );
-
-  React.useEffect(() => {
-    if (!showMentions) return;
-    setMentionResults(filterUsers(mentionQuery, mentionUsers));
-  }, [showMentions, mentionQuery, mentionUsers, setMentionResults]);
-
-  React.useEffect(() => {
-    if (!showMentions) {
-      setActiveMentionIndex(0);
-      return;
-    }
-    if (activeMentionIndex >= mentionSuggestions.length) {
-      setActiveMentionIndex(0);
-    }
-  }, [showMentions, activeMentionIndex, mentionSuggestions.length]);
-
-  React.useEffect(() => clearMentionState, [clearMentionState]);
 
   const previewHtml = preview.html;
   const previewLoading = preview.loading;

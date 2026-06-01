@@ -54,19 +54,22 @@ app/app.tsx (Router, ErrorBoundary, Suspense)
 
 ## shared/ui — Design System Primitives
 
-| Component           | File                               | Props                                                                   | Purpose                       |
-| ------------------- | ---------------------------------- | ----------------------------------------------------------------------- | ----------------------------- |
-| `Avatar`            | `shared/ui/avatar.tsx`             | `size?: "xs"\|"sm"\|"md"\|"lg"`, `src?`, `children`, `className?`       | Circular avatar with fallback |
-| `Badge`             | `shared/ui/badge.tsx`              | `count`, `variant?: "muted"\|"unread"`, `rounded?`                      | Unread count pill             |
-| `Button`            | `shared/ui/button.tsx`             | extends `ButtonHTMLAttributes`, `variant?: "primary"\|"ghost"`, `size?` | Generic button                |
-| `Icon`              | `shared/ui/icon.tsx`               | `name: IconName`, `size?: number`, `className?`                         | SVG icon (40+ icons)          |
-| `ScrollArea`        | `shared/ui/scroll-area.tsx`        | `children`, `className?`, `as?`                                         | Custom scrollbar wrapper      |
-| `CallBubble`        | `shared/ui/call-bubble.tsx`        | `callName?`, `topic?`, `duration?`                                      | Call indicator                |
-| `ErrorBoundary`     | `shared/ui/error-boundary.tsx`     | `children`, `fallback?`                                                 | React error boundary          |
-| `PresenceIndicator` | `shared/ui/presence-indicator.tsx` | `status`, `size?`, `className?`                                         | Online/idle/offline dot       |
-| `StickerMessage`    | `shared/ui/sticker-message.tsx`    | `sticker`, `size?`                                                      | Sticker display in messages   |
+| Component           | File                                 | Props                                                                   | Purpose                       |
+| ------------------- | ------------------------------------ | ----------------------------------------------------------------------- | ----------------------------- |
+| `Avatar`            | `shared/ui/avatar.tsx`               | `size?: "xs"\|"sm"\|"md"\|"lg"`, `src?`, `children`, `className?`       | Circular avatar with fallback |
+| `Badge`             | `shared/ui/badge.tsx`                | `count`, `variant?: "muted"\|"unread"`, `rounded?`                      | Unread count pill             |
+| `Button`            | `shared/ui/button.tsx`               | extends `ButtonHTMLAttributes`, `variant?: "primary"\|"ghost"`, `size?` | Generic button                |
+| `Icon`              | `shared/ui/icon.tsx`                 | `name: IconName`, `size?: number`, `className?`                         | SVG icon (40+ icons)          |
+| `ScrollArea`        | `shared/ui/scroll-area.tsx`          | `children`, `className?`, `as?`                                         | Custom scrollbar wrapper      |
+| `CallBubble`        | `shared/ui/call-bubble.tsx`          | `callName?`, `topic?`, `duration?`                                      | Call indicator                |
+| `ErrorBoundary`     | `shared/ui/error-boundary.tsx`       | `children`, `fallback?`                                                 | React error boundary          |
+| `PresenceIndicator` | `shared/ui/presence-indicator.tsx`   | `status`, `size?`, `className?`                                         | Online/idle/offline dot       |
+| `StickerMessage`    | `shared/ui/sticker-message.tsx`      | `sticker`, `size?`                                                      | Sticker display in messages   |
+| `AppDialog`         | `shared/ui/app-dialog.ui.tsx`        | `open`, `onOpenChange`, `title`, `footer?`                              | Radix dialog shell            |
+| `FolderFormModal`   | `shared/ui/folder-form-modal.ui.tsx` | `mode: 'create'\|'edit'`, `onSubmit`                                    | Create/rename folder form     |
+| `UserPickerList`    | `shared/ui/user-picker-list.ui.tsx`  | `options`, `selectedUserIds`, `onToggle`                                | Searchable user checklist     |
 
-**Import**: `import { Avatar, Badge, Button, Icon, ScrollArea, PresenceIndicator } from '~/shared/ui'`
+**Import**: concrete paths, e.g. `import { Icon } from '~/shared/ui/icon'`, `import { AppDialog } from '~/shared/ui/app-dialog.ui'`
 
 ---
 

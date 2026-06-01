@@ -5,7 +5,7 @@ import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
 import { buildUserPickerOptions } from "~/shared/lib/user-picker";
 import { Icon } from "~/shared/ui/icon";
-import { PresenceIndicator } from "~/shared/ui/presence-indicator";
+import { UserPickerList } from "~/shared/ui/user-picker-list.ui";
 import { useAddStreamMembersStore } from "./add-stream-members.model";
 
 // Единый стиль текстового поля: аккуратный фокус через border без двойной обводки.
@@ -99,46 +99,15 @@ export const AddStreamMembersDialog: React.FC<AddStreamMembersDialogProps> = ({ 
             </Dialog.Close>
           </div>
 
-          <div className="flex flex-1 flex-col gap-3 overflow-hidden p-4">
-            <input
-              type="text"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              className={ADD_STREAM_MEMBERS_INPUT_CLASS}
-              placeholder={t("message.searchUsers")}
+          <div className="flex flex-1 flex-col overflow-hidden p-4">
+            <UserPickerList
+              options={options}
+              selectedUserIds={selectedUserIdSet}
+              onToggle={toggleSelected}
+              query={query}
+              onQueryChange={setQuery}
+              inputClassName={ADD_STREAM_MEMBERS_INPUT_CLASS}
             />
-
-            <div className="h-96 overflow-y-auto rounded-lg border border-border-subtle">
-              {options.length === 0 ? (
-                <p className="px-3 py-4 text-center text-sm text-text-muted">
-                  {t("search.noResults")}
-                </p>
-              ) : (
-                options.map((option) => (
-                  <label
-                    key={option.userId}
-                    className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-text-primary transition-colors hover:bg-bg"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedUserIdSet.has(option.userId)}
-                      onChange={() => toggleSelected(option.userId)}
-                      className="h-4 w-4 rounded border-border-subtle"
-                      disabled={option.isDisabled || submitting}
-                    />
-                    <PresenceIndicator status={option.presence} size="sm" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-medium">{option.fullName}</span>
-                      {(option.statusLabel ?? option.email) && (
-                        <span className="block truncate text-[11px] text-text-secondary">
-                          {option.statusLabel ?? option.email}
-                        </span>
-                      )}
-                    </span>
-                  </label>
-                ))
-              )}
-            </div>
 
             {error && <p className="text-xs text-notice-base">{t(error)}</p>}
 

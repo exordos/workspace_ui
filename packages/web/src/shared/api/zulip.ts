@@ -45,6 +45,7 @@ import {
   getCurrentUserTopicsCacheKey,
 } from "./zulip-user-topics.internal";
 import { validateMessageIds } from "./zulip-validation.internal";
+import { ZulipAuthError } from "./zulip.types";
 import type { ReactionType, RealmEmoji } from "./zulip.types";
 
 if (typeof (globalThis as unknown as { Buffer?: unknown }).Buffer === "undefined") {
@@ -256,16 +257,7 @@ export function getRealmBaseUrl(): string {
 
 // --- Auth & current user (Zulip API) ---
 
-export class ZulipAuthError extends Error {
-  constructor(
-    message: string,
-    public readonly code?: string,
-    public readonly response?: unknown,
-  ) {
-    super(message);
-    this.name = "ZulipAuthError";
-  }
-}
+export { ZulipAuthError } from "./zulip.types";
 
 interface FetchApiKeyResult {
   api_key: string;

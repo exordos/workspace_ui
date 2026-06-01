@@ -80,18 +80,7 @@ export function buildTelHref(phone: string | undefined): string | undefined {
   return `tel:${normalized}`;
 }
 
-export function formatDateJoined(dateJoined: string | undefined): string | undefined {
-  if (!dateJoined) return undefined;
-  const trimmed = dateJoined.trim();
-  if (trimmed.length === 0) return undefined;
-  const parsed = Date.parse(trimmed);
-  if (Number.isNaN(parsed)) return trimmed;
-  return new Intl.DateTimeFormat(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  }).format(parsed);
-}
+export { formatDateJoined } from "~/shared/lib/datetime.lib";
 
 export function resolveMentionNickname({
   username,

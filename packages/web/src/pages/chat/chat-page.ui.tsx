@@ -5,7 +5,6 @@ import { resolvePersonalDmSidebarTitle } from "~/entities/chat-list/chat-list-fo
 import { createOnDmMessagesAppliedHandler } from "~/entities/chat-list/chat-list-sync-dm-from-window.lib";
 import { createOnStreamMessagesAppliedHandler } from "~/entities/chat-list/chat-list-sync-stream-from-window.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
-import { resolveHydratedDraftBootstrap } from "~/entities/draft/draft-chat-bootstrap.lib";
 import {
   reconcileCreatedDraftServerId,
   syncExistingDraftDeleteOnCleanup,
@@ -81,7 +80,6 @@ import { resolveLastOwnMessageForEdit } from "./chat-edit-last-message.lib";
 import { countUnreadMessages, resolveFirstUnreadBoundaryMessageId } from "./chat-first-unread.lib";
 import {
   buildForwardQuote,
-  consumePendingForwardPrefill,
   mergeForwardDraftContent,
   resolveForwardDraftTarget,
   setPendingForwardPrefill,
@@ -97,6 +95,7 @@ import { resolveNextUnreadTopicRoute } from "./chat-next-unread-topic.lib";
 import { isAbortLikeError, normalizeAiContextContent } from "./chat-page-ai.lib";
 import { ChatPageComposerSection } from "./chat-page-composer-section.ui";
 import { ChatPageDeleteConfirmBar } from "./chat-page-delete-confirm-bar.ui";
+import { useChatPageDraftHydration } from "./chat-page-draft-sync.hook";
 import { ChatPageFloatingToast } from "./chat-page-floating-toast.ui";
 import { useChatForwardHydration } from "./chat-page-forward-hydration.hook";
 import { ForwardMessageModalBody } from "./chat-page-forward-modal.ui";
@@ -396,42 +395,16 @@ export const ChatPage: React.FC = () => {
     setComposerEditSession(null);
   }, [location.pathname]);
 
-  useEffect(() => {
-    if (!draftType || draftTo.length === 0) return;
-    const pendingForwardPrefill = consumePendingForwardPrefill(location.pathname);
-    if (pendingForwardPrefill != null) {
-      pendingForwardPrefillRef.current = pendingForwardPrefill;
-      setDraftInitialValue(pendingForwardPrefill);
-      composerValueRef.current = pendingForwardPrefill;
-      activeDraftIdRef.current = null;
-      return;
-    }
-
-    const existing = useDraftStore.getState().getDraftForChat(draftType, draftTo, draftTopic);
-    if (existing) {
-      setDraftInitialValue(existing.content);
-      composerValueRef.current = existing.content;
-      activeDraftIdRef.current = existing.id;
-    } else {
-      setDraftInitialValue("");
-      composerValueRef.current = "";
-      activeDraftIdRef.current = null;
-    }
-  }, [draftType, draftTo, draftTopic, location.pathname]);
-
-  useEffect(() => {
-    if (!draftType || draftTo.length === 0) return;
-    if (pendingForwardPrefillRef.current != null) {
-      pendingForwardPrefillRef.current = null;
-      return;
-    }
-    const existing = useDraftStore.getState().getDraftForChat(draftType, draftTo, draftTopic);
-    const bootstrap = resolveHydratedDraftBootstrap(composerValueRef.current, existing);
-    if (!bootstrap) return;
-    setDraftInitialValue(bootstrap.initialValue);
-    composerValueRef.current = bootstrap.initialValue;
-    activeDraftIdRef.current = bootstrap.activeDraftId;
-  }, [draftType, draftTo, draftTopic, drafts]);
+  useChatPageDraftHydration({
+    draftType,
+    draftTo,
+    draftTopic,
+    drafts,
+    composerValueRef,
+    activeDraftIdRef,
+    pendingForwardPrefillRef,
+    setDraftInitialValue,
+  });
 
   useEffect(() => {
     return () => {

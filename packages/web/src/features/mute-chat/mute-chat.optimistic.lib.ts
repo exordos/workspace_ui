@@ -1,4 +1,5 @@
 import { guard } from "~/shared/lib/guards";
+import { optimisticMutation } from "~/shared/lib/optimistic-mutation.lib";
 import { useMuteStore } from "./mute-chat.model";
 
 export type TopicVisibilityOverrideSnapshot = "muted" | "unmuted" | "followed" | "none";
@@ -50,19 +51,16 @@ export async function runOptimisticTopicVisibilityUpdate({
   applyOptimistic,
   request,
 }: RunOptimisticTopicVisibilityUpdateParams): Promise<boolean> {
-  // Каждый вызов снимает новый snapshot: retry всегда опирается на актуальное состояние стора.
   const snapshot = captureTopicVisibilityOverrideSnapshot(streamId, topic);
-  applyOptimistic();
-
-  try {
-    const ok = await request();
-    if (ok) return true;
-  } catch {
-    // rollback is applied below
-  }
-
-  restoreTopicVisibilityOverrideFromSnapshot(streamId, topic, snapshot);
-  return false;
+  const result = await optimisticMutation({
+    apply: applyOptimistic,
+    request,
+    reconcile: () => {},
+    rollback: () => restoreTopicVisibilityOverrideFromSnapshot(streamId, topic, snapshot),
+    rollbackOnFalsy: true,
+    label: "topic-visibility",
+  });
+  return result === true;
 }
 
 interface RunOptimisticStreamMuteUpdateParams {
@@ -80,19 +78,19 @@ export async function runOptimisticStreamMuteUpdate({
 
   const muteStore = useMuteStore.getState();
   const wasMuted = muteStore.isStreamMuted(streamId);
-  applyOptimistic(wasMuted);
-
-  try {
-    const ok = await request(wasMuted);
-    if (ok) return true;
-  } catch {
-    // rollback is applied below
-  }
-
-  if (wasMuted) {
-    muteStore.muteStream(streamId);
-  } else {
-    muteStore.unmuteStream(streamId);
-  }
-  return false;
+  const result = await optimisticMutation({
+    apply: () => applyOptimistic(wasMuted),
+    request: () => request(wasMuted),
+    reconcile: () => {},
+    rollback: () => {
+      if (wasMuted) {
+        muteStore.muteStream(streamId);
+      } else {
+        muteStore.unmuteStream(streamId);
+      }
+    },
+    rollbackOnFalsy: true,
+    label: "stream-mute",
+  });
+  return result === true;
 }

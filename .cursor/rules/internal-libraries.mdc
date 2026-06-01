@@ -1,0 +1,38 @@
+---
+description: When to extract internal libraries (shared/lib, shared/ui)
+globs:
+  - "packages/web/src/**"
+---
+
+# Internal libraries (in-repo)
+
+## When to extract
+
+| Signal | Target |
+|--------|--------|
+| Same UI markup 2+ times | `shared/ui/<name>.ui.tsx` |
+| Same pure logic 2+ times | `shared/lib/<name>.lib.ts` |
+| Same page lifecycle 2+ times | `shared/lib/*.hook.ts` |
+| File > 300 lines or cognitive complexity > 25 | Split by responsibility |
+
+## Forms
+
+- **Const object API** — `guard`, `env` pattern for stateless utilities
+- **Named functions** — `datetime.lib.ts`, `request-lifecycle.lib.ts`
+- **React hooks** — `use-cache-first-page.hook.ts`, feature `*.hook.ts`
+- **UI primitives** — Radix wrappers (`app-dialog`, `folder-form-modal`)
+
+## Rules
+
+- No barrel `index.ts` re-exports — import concrete files
+- `shared/` must not import from `features/` or `widgets/`
+- New cross-cutting pattern → ADR in `docs/adr/`
+- Prefer explicit names (`formatMessageTimeShort` vs overloaded `formatMessageTime`)
+
+## Dialogs
+
+Use `AppDialog` + `AppDialogFormFooter` from `~/shared/ui/app-dialog.ui` for new modals.
+
+## Cache-first lists
+
+Use `useCacheFirstPageLoad` + `request-lifecycle.lib` for feed/inbox/activity-style pages.

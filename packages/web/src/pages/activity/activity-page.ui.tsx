@@ -25,7 +25,7 @@ import { t } from "~/i18n/i18n";
 import { removeMessageFlag } from "~/shared/api/zulip-messages";
 import type { ActivityFilter, ZulipRawMessage } from "~/shared/api/zulip.types";
 import { useOpenSearch } from "~/shared/contexts/open-search";
-import { formatMessageTime } from "~/shared/lib/format";
+import { formatActivityItemTime } from "~/shared/lib/datetime.lib";
 import { createLogger } from "~/shared/lib/logger";
 import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
@@ -65,18 +65,7 @@ function truncateText(text: string, max = 80): string {
 }
 
 function formatItemTime(ts: number): string {
-  const d = new Date(ts * 1000);
-  const now = new Date();
-  const sameDay =
-    d.getDate() === now.getDate() &&
-    d.getMonth() === now.getMonth() &&
-    d.getFullYear() === now.getFullYear();
-  if (sameDay) return formatMessageTime(ts);
-  const yesterday = new Date(now);
-  yesterday.setDate(yesterday.getDate() - 1);
-  if (d.getDate() === yesterday.getDate() && d.getMonth() === yesterday.getMonth())
-    return t("chat.yesterday") + " " + formatMessageTime(ts);
-  return d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  return formatActivityItemTime(ts);
 }
 
 function ActivitySenderName({ senderId, fallback }: { senderId: number; fallback: string }) {

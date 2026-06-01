@@ -10,12 +10,13 @@ import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
 import { useOpenSearch } from "~/shared/contexts/open-search";
-import { formatMessageTime } from "~/shared/lib/format";
+import { formatMessageTimeWithDate } from "~/shared/lib/datetime.lib";
 import { createLogger } from "~/shared/lib/logger";
 import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
 import { buildNavigableRouteFromMessage } from "~/shared/lib/push-click";
 import { runInFlightDeduped } from "~/shared/lib/request-lifecycle.lib";
 import { scrollToBottom } from "~/shared/lib/scroll-position.lib";
+import { useCacheFirstPageLoad } from "~/shared/lib/use-cache-first-page.hook";
 import { FloatingLoadingOverlay } from "~/shared/ui/floating-loading-overlay";
 import { FloatingScrollToBottomButton } from "~/shared/ui/floating-scroll-to-bottom-button";
 import { Icon } from "~/shared/ui/icon";
@@ -35,23 +36,8 @@ function truncateText(text: string, max = 80): string {
   return text.slice(0, max) + "…";
 }
 
-// Формат времени для feed:
-// - сегодня: только HH:MM;
-// - вчера и старше: дата + HH:MM.
 function formatFeedItemTime(ts: number): string {
-  const date = new Date(ts * 1000);
-  const now = new Date();
-  const sameDay =
-    date.getDate() === now.getDate() &&
-    date.getMonth() === now.getMonth() &&
-    date.getFullYear() === now.getFullYear();
-  if (sameDay) return formatMessageTime(ts);
-  const datePart = date.toLocaleDateString(undefined, {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-  return `${datePart} ${formatMessageTime(ts)}`;
+  return formatMessageTimeWithDate(ts);
 }
 
 const FEED_PAGE_SIZE = 50;
@@ -96,52 +82,40 @@ export const FeedPage: React.FC = () => {
   const [isAtBottom, setIsAtBottom] = React.useState(true);
   const initialScrollPositionKey = currentInstanceId ?? null;
 
-  useEffect(() => {
-    if (currentInstanceId == null) {
-      return;
-    }
-
-    let cancelled = false;
-    const cachedInstanceId = useFeedStore.getState().instanceId;
-    // Если переключили инстанс, не переносим feed-кэш между инстансами.
-    if (cachedInstanceId != null && cachedInstanceId !== currentInstanceId) {
-      useFeedStore.getState().clear();
-    }
-    initialScrollPositionKeyRef.current = null;
-    pendingScrollRestoreRef.current = null;
-
-    void (async () => {
-      // 1) Быстрый локальный старт из IDB.
-      const cached = await hydrateFeedMessagesFromCache(currentInstanceId);
-      if (cancelled) return;
+  useCacheFirstPageLoad({
+    instanceId: currentInstanceId,
+    dedupeKey: `${currentInstanceId ?? "none"}:feed:newest:${FEED_PAGE_SIZE}`,
+    onInstanceChange: (instanceId) => {
+      const cachedInstanceId = useFeedStore.getState().instanceId;
+      if (cachedInstanceId != null && cachedInstanceId !== instanceId) {
+        useFeedStore.getState().clear();
+      }
+      initialScrollPositionKeyRef.current = null;
+      pendingScrollRestoreRef.current = null;
+    },
+    hydrate: async (instanceId) => {
+      const cached = await hydrateFeedMessagesFromCache(instanceId);
       if (cached.length > 0) {
-        setMessages(cached, false, currentInstanceId);
+        setMessages(cached, false, instanceId);
       }
-      // 2) Фоновая актуализация с requestVersion и dedupe.
-      const hasCachedData = cached.length > 0 || useFeedStore.getState().messages.length > 0;
+    },
+    hasCachedData: () => useFeedStore.getState().messages.length > 0,
+    startRequest: (hasCached) => {
       const scrollEl = listRef.current;
-      // Запоминаем, нужно ли после refresh автоматически удержать низ.
       shouldStickToBottomAfterRefreshRef.current =
-        hasCachedData && (scrollEl == null || isNearBottom(scrollEl));
-      const requestVersion = startRequest(hasCachedData);
-      const requestKey = `${currentInstanceId}:feed:newest:${FEED_PAGE_SIZE}`;
-      try {
-        const page = await runInFlightDeduped(requestKey, () =>
-          fetchFeedMessages("newest", FEED_PAGE_SIZE),
-        );
-        if (cancelled) return;
-        for (const m of page.messages) useUsersStore.getState().mergeFromMessage(m);
-        setMessagesIfActual(page.messages, page.foundOldest, requestVersion, currentInstanceId);
-      } catch (err) {
-        if (!cancelled) setError(String(err), requestVersion);
-        log.error("Failed to load feed", { error: String(err) });
-      }
-    })().catch(() => {});
-
-    return () => {
-      cancelled = true;
-    };
-  }, [currentInstanceId, setError, setMessages, setMessagesIfActual, startRequest]);
+        hasCached && (scrollEl == null || isNearBottom(scrollEl));
+      return startRequest(hasCached);
+    },
+    fetch: async (_instanceId, requestVersion) => {
+      const page = await fetchFeedMessages("newest", FEED_PAGE_SIZE);
+      for (const m of page.messages) useUsersStore.getState().mergeFromMessage(m);
+      setMessagesIfActual(page.messages, page.foundOldest, requestVersion, currentInstanceId);
+    },
+    onFetchError: (err, requestVersion) => {
+      setError(String(err), requestVersion);
+      log.error("Failed to load feed", { error: String(err) });
+    },
+  });
 
   useLayoutEffect(() => {
     if (initialScrollPositionKey == null || isInitialLoading || messages.length === 0) return;
