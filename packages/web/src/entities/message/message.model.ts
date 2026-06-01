@@ -7,7 +7,7 @@
 import { create } from "zustand";
 import { useUsersStore } from "~/entities/user/user.model";
 import { getCurrentInstance } from "~/shared/api/client";
-import { fetchMessagesWithNarrowPage } from "~/shared/api/zulip";
+import { fetchMessagesWithNarrowPage } from "~/shared/api/zulip-messages";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { createLogger, logStoreAction } from "~/shared/lib/logger";
 import {

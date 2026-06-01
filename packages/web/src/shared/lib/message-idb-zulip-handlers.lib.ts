@@ -1,7 +1,7 @@
 /**
  * Per-event IndexedDB mirrors for Zulip realtime events (`message-idb-from-zulip.lib.ts`).
  */
-import { rawMessageToMockMessage } from "~/shared/api/zulip";
+import { rawMessageToMockMessage } from "~/shared/api/zulip-messages";
 import type { ZulipEvent, ZulipRawMessage } from "~/shared/api/zulip.types";
 import {
   deleteMessagesByIds,

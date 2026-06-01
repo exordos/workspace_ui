@@ -2,14 +2,31 @@
  * Zulip users and presence API.
  */
 import { guard } from "~/shared/lib/guards";
+import { getRealmBaseUrl } from "./zulip-client.internal";
 import { parseCurrentUserFromApiData } from "./zulip-current-user.lib";
 import { zulipPipelineGet } from "./zulip-pipeline.internal";
 import type {
   AvatarUrlByUserId,
+  RealmEmoji,
   RealmPresenceResponse,
   ZulipCurrentUser,
   ZulipUserMember,
 } from "./zulip.types";
+
+function resolveRealmRelativeUrl(path: string): string {
+  const normalizedPath = path.trim();
+  if (!normalizedPath) {
+    return "";
+  }
+  if (normalizedPath.startsWith("http://") || normalizedPath.startsWith("https://")) {
+    return normalizedPath;
+  }
+  const base = getRealmBaseUrl();
+  if (!base) {
+    return "";
+  }
+  return `${base}${normalizedPath.startsWith("/") ? normalizedPath : `/${normalizedPath}`}`;
+}
 
 export async function getCurrentUser(): Promise<ZulipCurrentUser | null> {
   const res = await zulipPipelineGet("/users/me");
@@ -62,6 +79,63 @@ export async function fetchRealmPresence(): Promise<RealmPresenceResponse> {
     return { result: "error" };
   }
   return res.data as RealmPresenceResponse;
+}
+
+/** Fetches custom realm emoji in emoji-picker-react compatible shape (GET /realm/emoji). */
+export async function fetchRealmEmojis(): Promise<RealmEmoji[]> {
+  const res = await zulipPipelineGet("/realm/emoji");
+  if (!res?.ok) {
+    return [];
+  }
+  const data = res.data as {
+    result?: string;
+    emoji?: Record<
+      string,
+      {
+        id?: string | number;
+        name?: string;
+        source_url?: string;
+        deactivated?: boolean;
+      }
+    >;
+  };
+  if (data.result === "error") {
+    return [];
+  }
+  if (data.emoji == null || typeof data.emoji !== "object" || Array.isArray(data.emoji)) {
+    return [];
+  }
+
+  const normalized: RealmEmoji[] = [];
+  for (const value of Object.values(data.emoji)) {
+    if (typeof value !== "object" || value == null) {
+      continue;
+    }
+    if (value.deactivated === true) {
+      continue;
+    }
+    const id =
+      typeof value.id === "string"
+        ? value.id.trim()
+        : typeof value.id === "number"
+          ? String(value.id)
+          : "";
+    const name = typeof value.name === "string" ? value.name.trim() : "";
+    const sourceUrl = typeof value.source_url === "string" ? value.source_url.trim() : "";
+    if (!id || !name || !sourceUrl) {
+      continue;
+    }
+    const imgUrl = resolveRealmRelativeUrl(sourceUrl);
+    if (!imgUrl) {
+      continue;
+    }
+    normalized.push({
+      id,
+      names: [name],
+      imgUrl,
+    });
+  }
+  return normalized;
 }
 
 /**

@@ -1,5 +1,7 @@
 import { t } from "~/i18n/i18n";
-import { sendMessage, uploadFile, type MockMessage } from "~/shared/api/zulip";
+import { sendMessage } from "~/shared/api/zulip-messages";
+import { uploadFile } from "~/shared/api/zulip-upload";
+import type { MockMessage } from "~/shared/api/zulip.types";
 import { createLogger } from "~/shared/lib/logger";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { isAbortLikeError } from "./chat-page-ai.lib";

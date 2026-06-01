@@ -28,17 +28,13 @@ import { useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indicator.model";
-import {
-  deleteQueue,
-  fetchDirectMessagesPage,
-  fetchSubscriptions,
-  fetchUsers,
-  getCurrentUser,
-  type ZulipEvent,
-} from "~/shared/api/zulip";
-import { DEFAULT_REGISTER_FETCH_EVENT_TYPES } from "~/shared/api/zulip-queue";
+import { deleteQueue, DEFAULT_REGISTER_FETCH_EVENT_TYPES } from "~/shared/api/zulip-queue";
+import { fetchDirectMessagesPage } from "~/shared/api/zulip-sidebar-preview.lib";
+import { fetchSubscriptions } from "~/shared/api/zulip-streams";
 import type { ZulipUnreadMessagesSnapshot } from "~/shared/api/zulip-unread.lib";
+import { fetchUsers, getCurrentUser } from "~/shared/api/zulip-users";
 import type {
+  ZulipEvent,
   ZulipRawMessage,
   ZulipRecentPrivateConversation,
   ZulipSubscription,

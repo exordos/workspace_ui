@@ -5,7 +5,6 @@ import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
 import { DEFAULT_REGISTER_FETCH_EVENT_TYPES } from "~/shared/api/zulip-queue";
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import { loadUsersDirectoryRow } from "~/shared/lib/users-directory-snapshot-db";
 import { useLayoutZulipEventLoop } from "./layout-zulip-event-loop.hook";
 import type { ChatListBootstrapResult } from "./layout-chat-list-bootstrap.lib";
@@ -13,9 +12,6 @@ import type { ChatListBootstrapResult } from "./layout-chat-list-bootstrap.lib";
 const startZulipEventLoopMock = vi.hoisted(() => vi.fn());
 const fetchUsersMock = vi.hoisted(() => vi.fn(() => Promise.resolve([])));
 const fetchSubscriptionsMock = vi.hoisted(() => vi.fn(() => Promise.resolve([])));
-const fetchUnreadMessagesSnapshotMock = vi.hoisted(() =>
-  vi.fn<() => Promise<ZulipRawMessage[] | null>>(() => Promise.resolve([])),
-);
 const getCurrentUserMock = vi.hoisted(() => vi.fn(() => Promise.resolve({ user_id: 7 })));
 const deleteQueueMock = vi.hoisted(() => vi.fn(() => Promise.resolve(undefined)));
 const fetchDirectMessagesPageMock = vi.hoisted(() =>
@@ -36,11 +32,23 @@ vi.mock("~/shared/lib/connection-health", () => ({
   setConnectionPhase: vi.fn(),
 }));
 
-vi.mock("~/shared/api/zulip", () => ({
-  deleteQueue: deleteQueueMock,
+vi.mock("~/shared/api/zulip-queue", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("~/shared/api/zulip-queue")>();
+  return {
+    ...actual,
+    deleteQueue: deleteQueueMock,
+  };
+});
+
+vi.mock("~/shared/api/zulip-sidebar-preview.lib", () => ({
   fetchDirectMessagesPage: fetchDirectMessagesPageMock,
+}));
+
+vi.mock("~/shared/api/zulip-streams", () => ({
   fetchSubscriptions: fetchSubscriptionsMock,
-  fetchUnreadMessagesSnapshot: fetchUnreadMessagesSnapshotMock,
+}));
+
+vi.mock("~/shared/api/zulip-users", () => ({
   fetchUsers: fetchUsersMock,
   getCurrentUser: getCurrentUserMock,
 }));
@@ -211,7 +219,6 @@ describe("useLayoutZulipEventLoop", () => {
         useChatListStore.getState().streamsMap.get(12)?.topics.get("channel events")?.unreadCount,
       ).toBe(0);
     });
-    expect(fetchUnreadMessagesSnapshotMock).not.toHaveBeenCalled();
   });
 
   it("applies register unread snapshot to sidebar ordering and preview", async () => {
@@ -303,7 +310,6 @@ describe("useLayoutZulipEventLoop", () => {
     expect(stream?.lastMessage).toContain("fresh unread preview");
     expect(stream?.topics.get("incident response")?.lastMessageId).toBe(203);
     expect(stream?.topics.get("incident response")?.unreadCount).toBe(1);
-    expect(fetchUnreadMessagesSnapshotMock).not.toHaveBeenCalled();
   });
 
   it("starts Zulip event loop after bootstrap settles", async () => {

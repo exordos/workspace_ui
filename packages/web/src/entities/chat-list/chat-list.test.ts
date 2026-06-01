@@ -9,7 +9,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setLocale } from "~/i18n/i18n";
-import { fetchMessagesWithNarrow, rawMessageToMockMessage } from "~/shared/api/zulip";
+import { fetchMessagesWithNarrow, rawMessageToMockMessage } from "~/shared/api/zulip-messages";
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import type { ChatListSnapshotSerialized } from "~/shared/lib/chat-list-snapshot-serialize.lib";
 import { sortChatsByLastMessage } from "~/shared/lib/chat-sorting";
@@ -18,7 +18,7 @@ import { buildChatListSnapshotSerialized } from "./chat-list-snapshot.lib";
 import { getStreamTopicMessageIds } from "./chat-list-stream-topic-index.lib";
 import { useChatListStore } from "./chat-list.model";
 
-vi.mock("~/shared/api/zulip", async (importOriginal) => {
+vi.mock("~/shared/api/zulip-messages", async (importOriginal) => {
   const actual = await importOriginal<
     Record<string, unknown> & {
       fetchMessagesWithNarrow: typeof fetchMessagesWithNarrow;

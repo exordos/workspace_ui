@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
-import * as zulipMessages from "~/shared/api/zulip";
+import * as zulipSidebarPreview from "~/shared/api/zulip-sidebar-preview.lib";
 import * as chatListSnapshotDb from "~/shared/lib/chat-list-snapshot-db";
 import { runChatListBootstrap } from "./layout-chat-list-bootstrap.lib";
 
@@ -50,7 +50,9 @@ describe("runChatListBootstrap", () => {
       messageIdToLocationEntries: [],
       updatedAt: 0,
     });
-    const deltaSpy = vi.spyOn(zulipMessages, "fetchMessagesAfterAnchor").mockResolvedValue([]);
+    const deltaSpy = vi
+      .spyOn(zulipSidebarPreview, "fetchMessagesAfterAnchor")
+      .mockResolvedValue([]);
 
     await runChatListBootstrap("test-instance", { kind: "reconnect" });
 

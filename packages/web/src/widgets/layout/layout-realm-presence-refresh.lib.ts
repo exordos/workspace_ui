@@ -1,4 +1,4 @@
-import { fetchRealmPresence } from "~/shared/api/zulip";
+import { fetchRealmPresence } from "~/shared/api/zulip-users";
 import { applyRealmPresenceResponseToUsers } from "./layout-zulip-presence-apply.lib";
 
 export interface RefreshRealmPresenceOptions {

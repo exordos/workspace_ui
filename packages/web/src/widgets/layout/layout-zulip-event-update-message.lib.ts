@@ -1,5 +1,5 @@
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
-import type { ZulipEvent } from "~/shared/api/zulip";
+import type { ZulipEvent } from "~/shared/api/zulip.types";
 import { parseAllMessageEmbedsFromRenderedHtml } from "~/shared/lib/message-link-preview-fetch.lib";
 import { enqueuePendingLinkPreview } from "~/shared/lib/message-link-preview-pending.lib";
 import { linkPreviewUrlsMatch } from "~/shared/lib/message-link-preview-url-match.lib";

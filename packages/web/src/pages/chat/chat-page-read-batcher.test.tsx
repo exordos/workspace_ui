@@ -4,8 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import type { CurrentChatContext } from "~/entities/message/message.model.types";
-import { markMessagesAsRead } from "~/shared/api/zulip";
-import type * as ZulipApi from "~/shared/api/zulip";
+import type * as ZulipClientInternal from "~/shared/api/zulip-client.internal";
+import type * as ZulipMessagesApi from "~/shared/api/zulip-messages";
+import { markMessagesAsRead } from "~/shared/api/zulip-read-state";
+import type * as ZulipReadStateApi from "~/shared/api/zulip-read-state";
+import type * as ZulipUploadApi from "~/shared/api/zulip-upload";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { createMessage } from "~/test/factories";
 import { ChatPage } from "./chat-page.ui";
@@ -27,18 +30,39 @@ const zulipMocks = vi.hoisted(() => ({
   uploadFile: vi.fn(),
 }));
 
-vi.mock("~/shared/api/zulip", async (importOriginal) => {
-  const actual = await importOriginal<typeof ZulipApi>();
+vi.mock("~/shared/api/zulip-messages", async (importOriginal) => {
+  const actual = await importOriginal<typeof ZulipMessagesApi>();
   return {
     ...actual,
     deleteMessage: zulipMocks.deleteMessage,
     fetchMessageById: zulipMocks.fetchMessageById,
-    getRealmBaseUrl: zulipMocks.getRealmBaseUrl,
+    sendMessage: zulipMocks.sendMessage,
+    updateMessage: zulipMocks.updateMessage,
+  };
+});
+
+vi.mock("~/shared/api/zulip-read-state", async (importOriginal) => {
+  const actual = await importOriginal<typeof ZulipReadStateApi>();
+  return {
+    ...actual,
     markDmAsRead: zulipMocks.markDmAsRead,
     markMessagesAsRead: zulipMocks.markMessagesAsRead,
     markTopicAsRead: zulipMocks.markTopicAsRead,
-    sendMessage: zulipMocks.sendMessage,
-    updateMessage: zulipMocks.updateMessage,
+  };
+});
+
+vi.mock("~/shared/api/zulip-client.internal", async (importOriginal) => {
+  const actual = await importOriginal<typeof ZulipClientInternal>();
+  return {
+    ...actual,
+    getRealmBaseUrl: zulipMocks.getRealmBaseUrl,
+  };
+});
+
+vi.mock("~/shared/api/zulip-upload", async (importOriginal) => {
+  const actual = await importOriginal<typeof ZulipUploadApi>();
+  return {
+    ...actual,
     uploadFile: zulipMocks.uploadFile,
   };
 });

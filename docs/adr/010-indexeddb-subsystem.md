@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed (phase 1: shared open helper; full snapshot unification pending)
+Deferred — phase-1 scaffold removed (2026-06-01); full snapshot unification pending
 
 ## Context
 
@@ -10,14 +10,9 @@ Snapshot persistence is split across `message-cache-db.ts` and several `*-snapsh
 
 ## Decision
 
-Introduce `shared/lib/idb/`:
-
-- `idb-open.lib.ts` — single entry to open DB (delegates to `message-cache-db` until schema is unified)
-- `idb-snapshot-store.lib.ts` — generic read/write helpers for snapshot rows keyed by `instanceId`
-
-Future: bump DB version once, migrate stores, delete duplicate snapshot modules.
+When snapshot unification resumes, introduce `shared/lib/idb/` with a single open helper and generic snapshot row helpers. Until then, existing `*-snapshot-db.ts` modules and `message-cache-db.ts` remain the source of truth.
 
 ## Consequences
 
-- New snapshot stores use `idb-snapshot-store.lib.ts`
+- No `shared/lib/idb/` scaffold in the tree until a follow-up ADR implements migration
 - `message-cache-db.ts` remains source of truth for schema until migration ADR is implemented

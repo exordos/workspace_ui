@@ -5,8 +5,8 @@ import { useInstancesStore } from "~/entities/instance/instance.model";
 import { isMessageForContext } from "~/entities/message/message.model";
 import { resolveIncomingDmCallInvite } from "~/features/jitsi-call/jitsi-call-invite.lib";
 import { getCurrentInstance } from "~/shared/api/client";
-import type { ZulipEvent, ZulipRawMessage } from "~/shared/api/zulip";
-import { rawMessageToMockMessage } from "~/shared/api/zulip";
+import { rawMessageToMockMessage } from "~/shared/api/zulip-messages";
+import type { ZulipEvent, ZulipRawMessage } from "~/shared/api/zulip.types";
 import {
   applyZulipEventToMessageIndexedDb,
   isChatMessagesPersistToIndexedDbEnabled,

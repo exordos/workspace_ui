@@ -2,10 +2,8 @@
  * Lazy per-channel sidebar topic hydrate: fetch recent stream messages and merge previews only.
  */
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
-import {
-  fetchStreamChannelMessagesForSidebarTopics,
-  fetchStreamTopicNames,
-} from "~/shared/api/zulip";
+import { fetchStreamChannelMessagesForSidebarTopics } from "~/shared/api/zulip-sidebar-preview.lib";
+import { fetchStreamTopicNames } from "~/shared/api/zulip-streams";
 import type { ZulipUnreadMessagesSnapshot } from "~/shared/api/zulip-unread.lib";
 import { guard } from "~/shared/lib/guards";
 import { logChatListFlow } from "~/shared/lib/message-flow-debug.lib";

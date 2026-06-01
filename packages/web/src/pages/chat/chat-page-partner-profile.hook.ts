@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useUsersStore } from "~/entities/user/user.model";
-import { fetchUser } from "~/shared/api/zulip";
+import { fetchUser } from "~/shared/api/zulip-users";
 
 export function useChatPartnerProfileHydration(options: {
   partnerUserId: number | null;

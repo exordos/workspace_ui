@@ -113,19 +113,6 @@ export const MOCK_DMS: SidebarChat[] = [
   },
 ];
 
-export const MOCK_GROUPS: SidebarChat[] = [
-  {
-    type: "dm",
-    id: 201,
-    name: "Group chat",
-    slug: "201,202,203",
-    isGroup: true,
-    lastMessage: "Last message text",
-    time: "10:13",
-    badge: 458,
-  },
-];
-
 export function getStreamChats(streams: StreamWithLast[]): SidebarChat[] {
   return streams.map((s) => ({
     type: "stream" as const,

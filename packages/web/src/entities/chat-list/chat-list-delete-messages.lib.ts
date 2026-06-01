@@ -2,7 +2,7 @@
  * Sidebar preview repair when messages are deleted (local patch + optional network fetch).
  */
 import { parseDmKeyToUserIds } from "~/entities/message/message-chat-context.lib";
-import { fetchMessagesWithNarrow } from "~/shared/api/zulip";
+import { fetchMessagesWithNarrow } from "~/shared/api/zulip-messages";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";

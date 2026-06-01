@@ -4,15 +4,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { useUsersStore } from "~/entities/user/user.model";
-import type * as ZulipApiModule from "~/shared/api/zulip";
+import type * as ZulipReadStateModule from "~/shared/api/zulip-read-state";
 import { renderWithProviders } from "~/test/render";
 import { ChatHeader } from "./chat-header.ui";
 
 const setTopicResolvedStateMock = vi.fn();
 const renameStreamTopicMock = vi.fn();
 
-vi.mock("~/shared/api/zulip", async (importOriginal) => {
-  const actual = await importOriginal<typeof ZulipApiModule>();
+vi.mock("~/shared/api/zulip-read-state", async (importOriginal) => {
+  const actual = await importOriginal<typeof ZulipReadStateModule>();
   return {
     ...actual,
     setTopicResolvedState: (...args: unknown[]) => setTopicResolvedStateMock(...args),

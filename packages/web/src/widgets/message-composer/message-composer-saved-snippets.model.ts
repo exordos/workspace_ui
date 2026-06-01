@@ -7,8 +7,8 @@
 // - Ошибка refresh не очищает уже показанный список.
 import { create } from "zustand";
 import { getCurrentInstance } from "~/shared/api/client";
-import type { SavedSnippet } from "~/shared/api/zulip";
 import { createSavedSnippet, fetchSavedSnippets } from "~/shared/api/zulip-messages";
+import type { SavedSnippet } from "~/shared/api/zulip.types";
 import { logStoreAction } from "~/shared/lib/logger";
 
 export const SAVED_SNIPPETS_TTL_MS = 60_000;

@@ -11,7 +11,7 @@ import {
   fetchMessagesAfterAnchor,
   fetchRecentStreamMessagesForSidebarPreview,
   fetchStreamUnreadMessagesForSidebarPreview,
-} from "~/shared/api/zulip";
+} from "~/shared/api/zulip-sidebar-preview.lib";
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import { METADATA_STREAM_PREVIEW_MESSAGE_LIMIT } from "~/shared/config/metadata-chat-bootstrap.constants";
 import { loadChatListSnapshotRow } from "~/shared/lib/chat-list-snapshot-db";

@@ -3,7 +3,7 @@
  */
 import { useNotificationSettingsStore } from "~/entities/notification-settings/notification-settings.model";
 import { resolveTypingEventRoute } from "~/features/typing-indicator/typing-event-routing";
-import type { ZulipEvent } from "~/shared/api/zulip";
+import type { ZulipEvent } from "~/shared/api/zulip.types";
 import type { LayoutZulipEventDispatchContext } from "./layout-zulip-event-dispatch.types";
 
 export function handleUserSettings(event: ZulipEvent): void {

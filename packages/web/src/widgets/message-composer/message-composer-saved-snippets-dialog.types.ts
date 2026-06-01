@@ -1,4 +1,4 @@
-import type { SavedSnippet } from "~/shared/api/zulip";
+import type { SavedSnippet } from "~/shared/api/zulip.types";
 import type { CSSProperties } from "react";
 
 export interface MessageComposerSavedSnippetsDialogProps {

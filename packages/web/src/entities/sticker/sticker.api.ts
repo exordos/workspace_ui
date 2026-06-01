@@ -1,65 +1,13 @@
 /**
- * Sticker API — placeholder for backend integration.
- *
- * The Zulip/Workspace server does not yet have a sticker API.
- * These functions define the expected contract. When the backend is ready,
- * replace the mock implementations with real HTTP calls.
+ * Sticker wire-format helpers for message content.
  *
  * Stickers are sent as messages with a special markdown format:
  *   [sticker:pack_id:sticker_id](sticker_url)
  *
- * This allows them to degrade gracefully in clients that don't support stickers
- * (they'll see a linked image).
+ * Server pack management API is not wired yet — sticker data lives in the local store.
  */
 
-import { createLogger } from "~/shared/lib/logger";
-import type {
-  StickerPack,
-  StickerPackListResponse,
-  StickerSearchResult,
-  Sticker,
-} from "./sticker.types";
-
-const log = createLogger("sticker:api");
-
-const API_NOT_READY_MSG = "Sticker API not available yet — using local data";
-
-// ---------------------------------------------------------------------------
-// Pack management
-// ---------------------------------------------------------------------------
-
-export function fetchStickerPacks(): Promise<StickerPackListResponse> {
-  log.info(API_NOT_READY_MSG);
-  return Promise.resolve({ packs: [], totalCount: 0 });
-}
-
-export function fetchStickerPack(packId: string): Promise<StickerPack | null> {
-  log.info(API_NOT_READY_MSG, { packId });
-  return Promise.resolve(null);
-}
-
-export function installStickerPack(packId: string): Promise<boolean> {
-  log.info(API_NOT_READY_MSG, { packId });
-  return Promise.resolve(false);
-}
-
-export function uninstallStickerPack(packId: string): Promise<boolean> {
-  log.info(API_NOT_READY_MSG, { packId });
-  return Promise.resolve(false);
-}
-
-// ---------------------------------------------------------------------------
-// Search
-// ---------------------------------------------------------------------------
-
-export function searchStickers(query: string): Promise<StickerSearchResult> {
-  log.info(API_NOT_READY_MSG, { query });
-  return Promise.resolve({ stickers: [], query });
-}
-
-// ---------------------------------------------------------------------------
-// Sending
-// ---------------------------------------------------------------------------
+import type { Sticker } from "./sticker.types";
 
 /**
  * Build the markdown content for a sticker message.

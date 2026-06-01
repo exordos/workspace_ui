@@ -45,8 +45,8 @@ vi.mock("~/shared/api/zulip-messages", async () => {
   };
 });
 
-vi.mock("~/shared/api/zulip", async () => {
-  const actual = await vi.importActual("~/shared/api/zulip");
+vi.mock("~/shared/api/zulip-users", async () => {
+  const actual = await vi.importActual("~/shared/api/zulip-users");
   return {
     ...actual,
     fetchRealmEmojis: (...args: unknown[]) => fetchRealmEmojisMock(...args),

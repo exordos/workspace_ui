@@ -6,7 +6,7 @@ import { JitsiCallModal } from "~/features/jitsi-call/jitsi-call.ui";
 import { t } from "~/i18n/i18n";
 import { fetchAllMessagesPage } from "~/shared/api/zulip-messages";
 import type { MockMessage } from "~/shared/api/zulip.types";
-import { formatMessageTime } from "~/shared/lib/format";
+import { formatMessageTimeShort } from "~/shared/lib/datetime.lib";
 import { getJitsiMeetingUrl, parseJitsiUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
 import { createLogger } from "~/shared/lib/logger";
 import { buildNavigableRouteFromMessage } from "~/shared/lib/push-click";
@@ -139,7 +139,7 @@ const CallsRow = React.memo<CallsRowProps>(({ entry, onJoin, onOpenInChat }) => 
               {entry.roomLabel}
             </span>
             <span className="shrink-0 rounded-full bg-bg px-2 py-0.5 text-[10px] font-medium text-text-muted">
-              {formatMessageTime(entry.message.timestamp)}
+              {formatMessageTimeShort(entry.message.timestamp)}
             </span>
           </div>
           <p className="mt-1 truncate text-xs text-text-secondary">{entry.contextLabel}</p>

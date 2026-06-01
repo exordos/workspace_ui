@@ -1,7 +1,7 @@
 /**
  * Zulip realtime handlers: subscriptions, streams, user_topic.
  */
-import type { ZulipEvent } from "~/shared/api/zulip";
+import type { ZulipEvent } from "~/shared/api/zulip.types";
 import type { ZulipGroupSettingValue } from "~/shared/api/zulip.types";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { normalizeGroupSettingValue } from "~/shared/lib/zulip-group-setting.lib";

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchStreamMembers, fetchStreams } from "~/shared/api/zulip";
+import { fetchStreamMembers, fetchStreams } from "~/shared/api/zulip-streams";
 import {
   invalidateStream,
   loadStreamMembers,
@@ -8,7 +8,7 @@ import {
   resetChatInfoApiCacheForTests,
 } from "./chat-info.api";
 
-vi.mock("~/shared/api/zulip", () => ({
+vi.mock("~/shared/api/zulip-streams", () => ({
   fetchStreamMembers: vi.fn(),
   fetchStreams: vi.fn(),
 }));

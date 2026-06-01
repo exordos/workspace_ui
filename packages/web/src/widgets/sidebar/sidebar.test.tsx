@@ -14,7 +14,7 @@ import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indi
 import { buildDmTypingChatKey } from "~/features/typing-indicator/typing-key";
 import { t } from "~/i18n/i18n";
 import type * as WorkspaceApiModule from "~/shared/api/workspace-client";
-import type * as ZulipApiModule from "~/shared/api/zulip";
+import type * as ZulipReadStateModule from "~/shared/api/zulip-read-state";
 import { setCurrentOrgRouteIdResolver } from "~/shared/lib/org-route";
 import type { SidebarChat } from "~/shared/types/sidebar-chat";
 import { createUser } from "~/test/factories";
@@ -45,8 +45,8 @@ vi.mock("~/features/create-chat/create-chat.api", async (importOriginal) => {
   };
 });
 
-vi.mock("~/shared/api/zulip", async (importOriginal) => {
-  const actual = await importOriginal<typeof ZulipApiModule>();
+vi.mock("~/shared/api/zulip-read-state", async (importOriginal) => {
+  const actual = await importOriginal<typeof ZulipReadStateModule>();
   return {
     ...actual,
     markDmAsRead: (...args: unknown[]) => markDmAsReadMock(...args),

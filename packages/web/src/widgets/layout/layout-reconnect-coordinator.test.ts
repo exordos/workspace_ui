@@ -39,9 +39,8 @@ vi.mock("./layout-reconnect-light.lib", () => ({
   refreshLayoutReconnectLight: (...args: unknown[]) => lightRefreshMock(...args),
 }));
 
-vi.mock("~/shared/api/zulip", () => ({
+vi.mock("~/shared/api/zulip-users", () => ({
   fetchRealmPresence: () => fetchRealmPresenceMock(),
-  fetchUnreadMessagesSnapshot: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("~/entities/chat-list/chat-list.model", () => ({

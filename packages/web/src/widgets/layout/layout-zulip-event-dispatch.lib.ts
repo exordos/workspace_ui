@@ -1,7 +1,7 @@
 /**
  * Facade: routes Zulip realtime events to domain-specific dispatch modules.
  */
-import type { ZulipEvent } from "~/shared/api/zulip";
+import type { ZulipEvent } from "~/shared/api/zulip.types";
 import { getElectronAPI } from "~/shared/lib/electron";
 import {
   applyMessageCacheIndexedDb,

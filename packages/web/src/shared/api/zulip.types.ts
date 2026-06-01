@@ -244,6 +244,11 @@ export interface ActivityMessagesPageResult {
   foundOldest: boolean;
 }
 
+export interface DirectMessagesPageResult {
+  messages: ZulipRawMessage[];
+  foundOldest: boolean;
+}
+
 export interface MockStream {
   stream_id: number;
   name: string;

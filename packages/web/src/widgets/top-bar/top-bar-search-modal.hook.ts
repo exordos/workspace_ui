@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
-import type { MockMessage } from "~/shared/api/zulip";
+import type { MockMessage } from "~/shared/api/zulip.types";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { buildRouteFromMessage } from "~/shared/lib/push-click";
 import { useSearchModalStore } from "~/widgets/search-modal/search-modal.model";

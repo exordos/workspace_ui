@@ -4,7 +4,12 @@
 import { useMemo } from "react";
 import { useMessageReadersStore } from "~/features/message-readers/message-readers.model";
 import { t } from "~/i18n/i18n";
-import { addMessageFlag, addReaction, removeMessageFlag, removeReaction } from "~/shared/api/zulip";
+import {
+  addMessageFlag,
+  addReaction,
+  removeMessageFlag,
+  removeReaction,
+} from "~/shared/api/zulip-messages";
 import { writeText } from "~/shared/lib/clipboard";
 import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";

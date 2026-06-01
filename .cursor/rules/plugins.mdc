@@ -13,9 +13,7 @@ shared/lib/plugins/
 ├── types.ts      ← PluginManifest, Plugin, PluginAPI, SlotName, Permissions
 ├── registry.ts   ← registration, lifecycle (activate/deactivate), slot contributions, events
 ├── api.ts        ← PluginAPI factory (restricted surface for each plugin)
-├── hooks.tsx     ← useSlot(), PluginSlot, useSlotActions() — React integration
-├── index.ts      ← public barrel
-└── setup.ts      ← bootstrap (main.tsx), window.__plugins__ dev tool
+└── setup.ts      ← bootstrap (main-app.tsx), window.__plugins__ dev tool
 ```
 
 ## Concept

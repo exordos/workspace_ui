@@ -13,7 +13,7 @@ import type { InboxEntry } from "~/entities/inbox/inbox.types";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { t } from "~/i18n/i18n";
 import { useOpenSearch } from "~/shared/contexts/open-search";
-import { formatMessageTime } from "~/shared/lib/format";
+import { formatMessageTimeShort } from "~/shared/lib/datetime.lib";
 import { createLogger } from "~/shared/lib/logger";
 import { runInFlightDeduped } from "~/shared/lib/request-lifecycle.lib";
 import { useCacheFirstPageLoad } from "~/shared/lib/use-cache-first-page.hook";
@@ -46,7 +46,7 @@ const InboxRow = React.memo<{ entry: InboxEntry; onClick: (entry: InboxEntry) =>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium text-text-primary">{label}</p>
             <p className="mt-0.5 text-[11px] text-text-muted">
-              {formatMessageTime(entry.lastMessageTimestamp)}
+              {formatMessageTimeShort(entry.lastMessageTimestamp)}
             </p>
           </div>
           <span className="text-badge-text flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full border border-border-subtle bg-badge-bg px-1 text-[11px] font-medium">

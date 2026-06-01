@@ -10,15 +10,15 @@ Large orchestrator files and duplicated UI patterns increase cognitive load. We 
 
 ## Baseline (hot files, lines)
 
-| Priority | File                                                | Lines | Notes                                |
-| -------- | --------------------------------------------------- | ----: | ------------------------------------ |
-| P0       | `pages/chat/chat-page.ui.tsx`                       | ~1966 | Many `useEffect` clusters            |
-| P0       | `widgets/message-composer/message-composer.ui.tsx`  | ~1118 | 14+ `useState`                       |
-| P0       | `shared/api/zulip.ts`                               | ~2057 | Legacy monolith; prefer `zulip-*.ts` |
-| P1       | `entities/chat-list/chat-list.model.ts`             | ~2540 | Mega-store                           |
-| P1       | `widgets/layout/layout-zulip-event-dispatch.lib.ts` |  ~794 | Event switchboard                    |
-| P1       | `features/folder-sync/folder-sync.model.ts`         | ~1195 | Reconcile + cache                    |
-| P2       | `shared/lib/message-cache-db.ts`                    |  ~802 | Overlaps `*-snapshot-db.ts`          |
+| Priority | File                                                |   Lines | Notes                                        |
+| -------- | --------------------------------------------------- | ------: | -------------------------------------------- |
+| P0       | `pages/chat/chat-page.ui.tsx`                       |   ~1966 | Many `useEffect` clusters                    |
+| P0       | `widgets/message-composer/message-composer.ui.tsx`  |   ~1118 | 14+ `useState`                               |
+| P0       | `shared/api/zulip.ts`                               | removed | Split complete — import `zulip-*.ts` modules |
+| P1       | `entities/chat-list/chat-list.model.ts`             |   ~2540 | Mega-store                                   |
+| P1       | `widgets/layout/layout-zulip-event-dispatch.lib.ts` |    ~794 | Event switchboard                            |
+| P1       | `features/folder-sync/folder-sync.model.ts`         |   ~1195 | Reconcile + cache                            |
+| P2       | `shared/lib/message-cache-db.ts`                    |    ~802 | Overlaps `*-snapshot-db.ts`                  |
 
 ## Duplication map
 

@@ -128,6 +128,7 @@ There is no `zulip.ts` barrel — import from the concrete module:
 | Users | `./zulip-users` |
 | Streams | `./zulip-streams` |
 | Messages, reactions | `./zulip-messages` |
+| Sidebar preview / DM backfill | `./zulip-sidebar-preview.lib` |
 | Upload | `./zulip-upload` |
 
 Tests should mock the same module path the code under test imports (e.g. `~/shared/api/zulip-messages`).

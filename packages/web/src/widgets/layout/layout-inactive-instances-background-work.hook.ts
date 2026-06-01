@@ -4,7 +4,7 @@ import {
   deleteQueue,
   fetchUnreadDmMessagesCountForCredentials,
   fetchUnreadMessagesCountForCredentials,
-} from "~/shared/api/zulip";
+} from "~/shared/api/zulip-queue";
 import { startZulipEventLoopForCredentials } from "~/shared/lib/event-loop";
 import {
   applyInstanceUnreadCountsFromRegisterSnapshot,

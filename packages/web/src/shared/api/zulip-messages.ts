@@ -13,7 +13,7 @@ import {
   normalizeZulipMessagesNarrowForApi,
   zulipTopicNarrowOperandForApi,
 } from "~/shared/lib/zulip-topic-narrow.lib";
-import { getClient } from "./zulip-client.internal";
+import { getClient, buildMessagesQueryParams } from "./zulip-client.internal";
 import { mockMessageFromGetMessageApiData, rawMessageToMockMessage } from "./zulip-message-map.lib";
 import { postZulipSendMessage } from "./zulip-message-send.internal";
 import {
@@ -297,6 +297,21 @@ export async function fetchActivityMessagesPage(
 
 export { rawMessageToMockMessage };
 
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+function throwIfZulipPipelineGetNull(
+  response: Awaited<ReturnType<typeof zulipPipelineGet>> | null,
+  signal?: AbortSignal,
+): asserts response is NonNullable<Awaited<ReturnType<typeof zulipPipelineGet>>> {
+  if (response != null) return;
+  if (signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
+  throw new Error(t("app.networkError"));
+}
+
 function mapZulipMessage(m: RawMessageToMockInput): MockMessage {
   return rawMessageToMockMessage(m);
 }
@@ -305,6 +320,7 @@ export async function fetchMessages(
   stream?: string,
   topic?: string,
   q?: string,
+  options?: { signal?: AbortSignal },
 ): Promise<MockMessage[]> {
   const normalizedStream =
     stream == null ? undefined : guard.nonEmpty(stream, "fetchMessages.stream");
@@ -312,27 +328,20 @@ export async function fetchMessages(
   if (normalizedTopic !== undefined && normalizedStream === undefined) {
     throw new Error("fetchMessages.stream is required when topic is provided");
   }
-  const client = await getClient();
   const narrow: { operator: string; operand: string }[] = [];
   if (normalizedStream) narrow.push({ operator: "stream", operand: normalizedStream });
   if (normalizedTopic !== undefined) {
     narrow.push({ operator: "topic", operand: zulipTopicNarrowOperandForApi(normalizedTopic) });
   }
   if (q?.trim()) narrow.push({ operator: "search", operand: q.trim() });
-  try {
-    const data = (await client.messages.retrieve({
-      narrow: narrow.length ? narrow : undefined,
-      anchor: "newest",
-      num_before: ZULIP_STREAM_CHAT_NUM_BEFORE,
-      num_after: ZULIP_STREAM_CHAT_NUM_AFTER,
-      apply_markdown: true,
-    })) as { result?: string; messages?: RawMessageToMockInput[] };
-    if (data.result === "error") return [];
-    const list = data.messages ?? [];
-    return list.map(mapZulipMessage);
-  } catch {
-    return [];
-  }
+  const page = await fetchMessagesWithNarrowPage(
+    narrow,
+    "newest",
+    ZULIP_STREAM_CHAT_NUM_BEFORE,
+    ZULIP_STREAM_CHAT_NUM_AFTER,
+    { ...options, applyMarkdown: false },
+  );
+  return page.messages;
 }
 
 // Универсальная загрузка сообщений по narrow
@@ -342,7 +351,7 @@ export async function fetchMessagesWithNarrow(
   anchor: string | number = "newest",
   numBefore = ZULIP_STREAM_CHAT_NUM_BEFORE,
   numAfter = ZULIP_STREAM_CHAT_NUM_AFTER,
-  options?: { applyMarkdown?: boolean },
+  options?: { signal?: AbortSignal; applyMarkdown?: boolean },
 ): Promise<MockMessage[]> {
   const page = await fetchMessagesWithNarrowPage(narrow, anchor, numBefore, numAfter, options);
   return page.messages;
@@ -355,15 +364,50 @@ export async function fetchMessagesWithNarrowPage(
   anchor: string | number = "newest",
   numBefore = ZULIP_STREAM_CHAT_NUM_BEFORE,
   numAfter = ZULIP_STREAM_CHAT_NUM_AFTER,
-  options?: { applyMarkdown?: boolean },
+  options?: { signal?: AbortSignal; applyMarkdown?: boolean },
 ): Promise<MessagesPageResult> {
   const validatedAnchor = validateMessagesApiAnchor(anchor, "fetchMessagesWithNarrowPage");
   const validatedNumBefore = validateNonNegativeInteger(numBefore, "numBefore");
   const validatedNumAfter = validateNonNegativeInteger(numAfter, "numAfter");
   const applyMarkdown = options?.applyMarkdown ?? false;
   const apiNarrow = normalizeZulipMessagesNarrowForApi(narrow);
-  const client = await getClient();
+  if (options?.signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
   try {
+    if (options?.signal) {
+      const query = buildMessagesQueryParams({
+        narrow: apiNarrow.length > 0 ? apiNarrow : undefined,
+        anchor: validatedAnchor,
+        num_before: validatedNumBefore,
+        num_after: validatedNumAfter,
+      });
+      query.apply_markdown = applyMarkdown ? "true" : "false";
+      const response = await zulipPipelineGet("/messages", query, options.signal);
+      throwIfZulipPipelineGetNull(response, options.signal);
+      if (!response.ok) {
+        throw new Error(t("app.errorStatus", { status: String(response.status) }));
+      }
+      const data = response.data as {
+        result?: string;
+        messages?: RawMessageToMockInput[];
+        found_oldest?: boolean;
+        foundOldest?: boolean;
+        found_newest?: boolean;
+        foundNewest?: boolean;
+      };
+      if (options.signal.aborted) {
+        throw new DOMException("Aborted", "AbortError");
+      }
+      if (data.result === "error") return { messages: [], foundOldest: false, foundNewest: false };
+      return {
+        messages: (data.messages ?? []).map(mapZulipMessage),
+        foundOldest: data.found_oldest ?? data.foundOldest ?? false,
+        foundNewest: data.found_newest ?? data.foundNewest ?? false,
+      };
+    }
+
+    const client = await getClient();
     const data = (await client.messages.retrieve({
       narrow: apiNarrow.length > 0 ? apiNarrow : undefined,
       anchor: validatedAnchor,
@@ -384,7 +428,13 @@ export async function fetchMessagesWithNarrowPage(
       foundOldest: data.found_oldest ?? data.foundOldest ?? false,
       foundNewest: data.found_newest ?? data.foundNewest ?? false,
     };
-  } catch {
+  } catch (error) {
+    if (isAbortError(error) || options?.signal?.aborted) {
+      throw error;
+    }
+    if (options?.signal) {
+      throw error instanceof Error ? error : new Error(t("app.networkError"));
+    }
     return { messages: [], foundOldest: false, foundNewest: false };
   }
 }
@@ -443,14 +493,19 @@ const GROUP_DM_ID_OFFSET = 2_000_000;
 
 // Загружает сообщения DM, то есть 1:1 или групповые.
 // Для 1:1 передайте `userId` собеседника.
-export async function fetchDmMessages(userIds: number | number[]): Promise<MockMessage[]> {
-  const client = await getClient();
+export async function fetchDmMessages(
+  userIds: number | number[],
+  options?: { signal?: AbortSignal },
+): Promise<MockMessage[]> {
   const rawIds = Array.isArray(userIds) ? userIds : [userIds];
   if (rawIds.length === 0) return [];
   const ids = rawIds.map((userId, index) =>
     guard.userId(userId, `fetchDmMessages.userIds[${index}]`),
   );
   if (ids.some((id) => id >= GROUP_DM_ID_OFFSET)) return [];
+  if (options?.signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
   const params = {
     narrow: [{ negated: false, operator: "dm", operand: ids }] as DmNarrow[],
     anchor: "newest",
@@ -461,12 +516,42 @@ export async function fetchDmMessages(userIds: number | number[]): Promise<MockM
     apply_markdown: true,
   };
   try {
+    if (options?.signal) {
+      const response = await zulipPipelineGet(
+        "/messages",
+        buildMessagesQueryParams({
+          narrow: params.narrow,
+          anchor: params.anchor,
+          num_before: params.num_before,
+          num_after: params.num_after,
+        }),
+        options.signal,
+      );
+      throwIfZulipPipelineGetNull(response, options.signal);
+      if (!response.ok) {
+        throw new Error(t("app.errorStatus", { status: String(response.status) }));
+      }
+      const data = response.data as { result?: string; messages?: RawMessageToMockInput[] };
+      if (data.result === "error") return [];
+      if (options.signal.aborted) {
+        throw new DOMException("Aborted", "AbortError");
+      }
+      return (data.messages ?? []).map(mapZulipMessage);
+    }
+
+    const client = await getClient();
     const data = await client.messages.retrieve(params);
     const raw = data as { result?: string; messages?: RawMessageToMockInput[] };
     if (raw.result === "error") return [];
     const list = raw.messages ?? [];
     return list.map(mapZulipMessage);
-  } catch {
+  } catch (error) {
+    if (isAbortError(error) || options?.signal?.aborted) {
+      throw error;
+    }
+    if (options?.signal) {
+      throw error instanceof Error ? error : new Error(t("app.networkError"));
+    }
     return [];
   }
 }

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { SavedSnippet } from "~/shared/api/zulip";
+import type { SavedSnippet } from "~/shared/api/zulip.types";
 import {
   resetComposerSavedSnippetsModelForTests,
   useComposerSavedSnippetsStore,

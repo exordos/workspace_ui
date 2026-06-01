@@ -1,8 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  fetchStreamChannelMessagesForSidebarTopics,
-  fetchStreamTopicNames,
-} from "~/shared/api/zulip";
+import { fetchStreamChannelMessagesForSidebarTopics } from "~/shared/api/zulip-sidebar-preview.lib";
+import { fetchStreamTopicNames } from "~/shared/api/zulip-streams";
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import {
   clearStreamSidebarHydrateState,
@@ -13,11 +11,18 @@ import {
 } from "./chat-list-hydrate-stream-sidebar.lib";
 import { useChatListStore } from "./chat-list.model";
 
-vi.mock("~/shared/api/zulip", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/shared/api/zulip")>();
+vi.mock("~/shared/api/zulip-sidebar-preview.lib", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("~/shared/api/zulip-sidebar-preview.lib")>();
   return {
     ...actual,
     fetchStreamChannelMessagesForSidebarTopics: vi.fn(),
+  };
+});
+
+vi.mock("~/shared/api/zulip-streams", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("~/shared/api/zulip-streams")>();
+  return {
+    ...actual,
     fetchStreamTopicNames: vi.fn(),
   };
 });

@@ -4,7 +4,7 @@ import { useLayoutPresencePolling } from "./layout-presence-polling.hook";
 
 const fetchRealmPresenceMock = vi.fn();
 
-vi.mock("~/shared/api/zulip", () => ({
+vi.mock("~/shared/api/zulip-users", () => ({
   fetchRealmPresence: () => fetchRealmPresenceMock(),
 }));
 

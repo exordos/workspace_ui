@@ -1,8 +1,25 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
-  "entry": ["src/main.tsx", "src/test/setup.ts"],
+  "entry": [
+    "src/main.tsx",
+    "src/test/setup.ts",
+    "vite.config.ts",
+    "vite-dev-workspace-org-proxy.ts"
+  ],
   "project": ["src/**/*.{ts,tsx}"],
   "ignore": ["src/generated/**", "src/test/**", "src/shared/lib/deeplinks.ts"],
-  "ignoreDependencies": ["tailwind-scrollbar", "tinyexec", "buffer"],
+  "ignoreDependencies": [
+    "tailwind-scrollbar",
+    "tinyexec",
+    "buffer",
+    "workspace-api",
+    "@testing-library/dom",
+    "cross-env",
+    "http-proxy",
+    "license-checker",
+    "msw",
+    "prettier",
+    "prettier-plugin-tailwindcss"
+  ],
   "ignoreExportsUsedInFile": true
 }

@@ -8,7 +8,7 @@ import { muteStream, unmuteStream } from "~/features/mute-chat/mute-chat.api";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { runOptimisticStreamMuteUpdate } from "~/features/mute-chat/mute-chat.optimistic.lib";
 import { t } from "~/i18n/i18n";
-import { markDmAsRead, markStreamAsRead } from "~/shared/api/zulip";
+import { markDmAsRead, markStreamAsRead } from "~/shared/api/zulip-read-state";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
 import { Icon } from "~/shared/ui/icon";
 import { useSidebarFolderPinMenu } from "./sidebar-folder-pin-menu.lib";

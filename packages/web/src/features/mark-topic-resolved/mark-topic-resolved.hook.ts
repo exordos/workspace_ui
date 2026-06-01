@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { getCurrentInstance } from "~/shared/api/client";
-import { renameStreamTopic, setTopicResolvedState } from "~/shared/api/zulip";
+import { renameStreamTopic, setTopicResolvedState } from "~/shared/api/zulip-read-state";
 import { deleteChatListSnapshotRow } from "~/shared/lib/chat-list-snapshot-db";
 import { createLogger } from "~/shared/lib/logger";
 import { moveTopicMessagesInCache } from "~/shared/lib/message-cache-db";
@@ -62,8 +62,9 @@ export function useMarkTopicResolved() {
         return;
       }
       const oldTopicKey = normalizeTopicForIdentity(oldTopic);
-      const messageIds = useCurrentChatMessagesStore.getState().messages
-        .filter(
+      const messageIds = useCurrentChatMessagesStore
+        .getState()
+        .messages.filter(
           (message) =>
             message.stream_id === streamId &&
             normalizeTopicForIdentity(message.subject ?? "") === oldTopicKey,

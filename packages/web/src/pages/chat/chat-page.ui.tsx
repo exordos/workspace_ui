@@ -33,17 +33,15 @@ import {
 } from "~/features/typing-indicator/typing-key";
 import { t } from "~/i18n/i18n";
 import { getCurrentInstance } from "~/shared/api/client";
+import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
 import {
   fetchMessageById,
-  getRealmBaseUrl,
   sendMessage,
-  markMessagesAsRead,
   updateMessage,
   deleteMessage,
-  markDmAsRead,
-  markTopicAsRead,
-  type MockMessage,
-} from "~/shared/api/zulip";
+} from "~/shared/api/zulip-messages";
+import { markMessagesAsRead, markDmAsRead, markTopicAsRead } from "~/shared/api/zulip-read-state";
+import type { MockMessage } from "~/shared/api/zulip.types";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { dmRouteKey } from "~/shared/lib/dm-key";

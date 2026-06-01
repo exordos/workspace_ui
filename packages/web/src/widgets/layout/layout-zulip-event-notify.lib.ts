@@ -3,7 +3,7 @@
  */
 import { useNotificationSettingsStore } from "~/entities/notification-settings/notification-settings.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
-import type { ZulipRawMessage } from "~/shared/api/zulip";
+import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
 import { registerNotifiedMessageId } from "~/shared/lib/notification-dedup.lib";
 import { resolveNotificationSoundPreset } from "~/shared/lib/notification-sound-preset.lib";

@@ -1,7 +1,7 @@
 /**
  * Shared mocks and helpers for Zulip API client tests (`zulip-*.test.ts`).
  *
- * Import this module first in each test file so `vi.mock` runs before `./zulip` loads.
+ * Import this module first in each test file so `vi.mock` runs before the module under test loads.
  */
 import { afterEach, beforeEach, vi } from "vitest";
 import { clearAllZulipEventQueueIds } from "~/shared/lib/zulip-event-queue-registry.lib";
@@ -44,10 +44,6 @@ export function getMockZulipApi() {
 
 export function getMockRefreshZulipApiBase() {
   return mockRefreshZulipApiBase;
-}
-
-export function getMockRefreshWorkspaceApiBase() {
-  return mockRefreshWorkspaceApiBase;
 }
 
 vi.mock("./client", () => ({

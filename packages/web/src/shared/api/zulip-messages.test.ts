@@ -530,7 +530,7 @@ describe("fetchMessages", () => {
     mockZulipClient.messages.retrieve.mockResolvedValue({ messages: [] });
     await fetchMessages();
     expect(mockZulipClient.messages.retrieve).toHaveBeenCalledWith(
-      expect.objectContaining({ narrow: undefined, apply_markdown: true }),
+      expect.objectContaining({ narrow: undefined, apply_markdown: false }),
     );
   });
 

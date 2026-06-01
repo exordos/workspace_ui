@@ -1,4 +1,5 @@
-import { fetchStreamMembers, fetchStreams, type MockStream } from "~/shared/api/zulip";
+import { fetchStreamMembers, fetchStreams } from "~/shared/api/zulip-streams";
+import type { MockStream } from "~/shared/api/zulip.types";
 
 // Слой загрузки данных chat-info:
 // eager-загрузка участников и метадаты стрима.

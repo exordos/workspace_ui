@@ -1,7 +1,7 @@
 import type { ChatListStreamMetadataRow } from "~/entities/chat-list/chat-list.model.types";
 import type { CurrentChatContext } from "~/entities/message/message.model";
 import type { IncomingDmCallInvite } from "~/features/jitsi-call/jitsi-call.model";
-import type { MockMessage, ZulipRawMessage } from "~/shared/api/zulip";
+import type { MockMessage, ZulipRawMessage } from "~/shared/api/zulip.types";
 import type { LinkPreviewData } from "~/shared/lib/message-link-preview.types";
 import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
 

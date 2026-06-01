@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
-import * as zulipMessages from "~/shared/api/zulip";
-import * as zulip from "~/shared/api/zulip";
+import * as zulipSidebarPreview from "~/shared/api/zulip-sidebar-preview.lib";
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import { METADATA_STREAM_PREVIEW_MESSAGE_LIMIT } from "~/shared/config/metadata-chat-bootstrap.constants";
 import * as chatListSnapshotDb from "~/shared/lib/chat-list-snapshot-db";
@@ -30,13 +29,13 @@ describe("runChatListBootstrap (metadata-first)", () => {
       content: "preview",
     });
     const deltaSpy = vi
-      .spyOn(zulipMessages, "fetchMessagesAfterAnchor")
+      .spyOn(zulipSidebarPreview, "fetchMessagesAfterAnchor")
       .mockResolvedValue([streamMsg]);
     const unreadSpy = vi
-      .spyOn(zulip, "fetchStreamUnreadMessagesForSidebarPreview")
+      .spyOn(zulipSidebarPreview, "fetchStreamUnreadMessagesForSidebarPreview")
       .mockResolvedValue([]);
     const recentSpy = vi
-      .spyOn(zulip, "fetchRecentStreamMessagesForSidebarPreview")
+      .spyOn(zulipSidebarPreview, "fetchRecentStreamMessagesForSidebarPreview")
       .mockResolvedValue([]);
 
     vi.spyOn(chatListSnapshotDb, "loadChatListSnapshotRow").mockResolvedValue({
@@ -72,8 +71,12 @@ describe("runChatListBootstrap (metadata-first)", () => {
 
   it("falls back to unread snapshot when cold start has no IDB hint", async () => {
     const streamMsg = streamMessage({ type: "stream", stream_id: 3, subject: "t" });
-    vi.spyOn(zulip, "fetchStreamUnreadMessagesForSidebarPreview").mockResolvedValue([streamMsg]);
-    vi.spyOn(zulip, "fetchRecentStreamMessagesForSidebarPreview").mockResolvedValue([]);
+    vi.spyOn(zulipSidebarPreview, "fetchStreamUnreadMessagesForSidebarPreview").mockResolvedValue([
+      streamMsg,
+    ]);
+    vi.spyOn(zulipSidebarPreview, "fetchRecentStreamMessagesForSidebarPreview").mockResolvedValue(
+      [],
+    );
 
     vi.spyOn(chatListSnapshotDb, "loadChatListSnapshotRow").mockResolvedValue(null);
 
@@ -89,9 +92,11 @@ describe("runChatListBootstrap (metadata-first)", () => {
 
   it("uses fetchRecentStreamMessagesForSidebarPreview when unread snapshot is empty", async () => {
     const streamMsg = streamMessage({ type: "stream", stream_id: 7, subject: "x" });
-    vi.spyOn(zulip, "fetchStreamUnreadMessagesForSidebarPreview").mockResolvedValue([]);
+    vi.spyOn(zulipSidebarPreview, "fetchStreamUnreadMessagesForSidebarPreview").mockResolvedValue(
+      [],
+    );
     const recentSpy = vi
-      .spyOn(zulip, "fetchRecentStreamMessagesForSidebarPreview")
+      .spyOn(zulipSidebarPreview, "fetchRecentStreamMessagesForSidebarPreview")
       .mockResolvedValue([streamMsg]);
     vi.spyOn(chatListSnapshotDb, "loadChatListSnapshotRow").mockResolvedValue(null);
 

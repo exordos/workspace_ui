@@ -1,21 +1,10 @@
 /**
- * Date/time and presence formatting utilities.
- *
- * Presence logic: a user is considered "online" if their aggregated timestamp
- * is within PRESENCE_ONLINE_THRESHOLD_SEC (2 min) and status is "active".
+ * Presence and sidebar row formatting utilities.
  *
  * Usage:
- *   import { formatMessageTime, formatLastSeen, isPresenceOnline } from "~/shared/lib/format";
+ *   import { formatLastSeen, getPresenceState, sidebarRowClass } from "~/shared/lib/format";
  */
 import { t } from "~/i18n/i18n";
-import { formatMessageTimeShort } from "~/shared/lib/datetime.lib";
-
-/** @deprecated Prefer `formatMessageTimeShort` from `~/shared/lib/datetime.lib`. */
-export function formatMessageTime(timestamp: number): string {
-  return formatMessageTimeShort(timestamp);
-}
-
-export { formatMessageTimeShort } from "~/shared/lib/datetime.lib";
 
 const PRESENCE_ONLINE_THRESHOLD_SEC = 2 * 60;
 const PRESENCE_IDLE_THRESHOLD_SEC = 10 * 60;

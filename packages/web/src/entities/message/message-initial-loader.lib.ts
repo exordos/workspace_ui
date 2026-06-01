@@ -1,4 +1,8 @@
-import { fetchDmMessages, fetchMessages, fetchMessagesWithNarrow } from "~/shared/api/zulip";
+import {
+  fetchDmMessages,
+  fetchMessages,
+  fetchMessagesWithNarrow,
+} from "~/shared/api/zulip-messages";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import {
   getChatMessagesAscending,

@@ -20,8 +20,8 @@ import {
 } from "./chat-list-sync-stream-from-window.lib";
 import { useChatListStore } from "./chat-list.model";
 
-vi.mock("~/shared/api/zulip", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/shared/api/zulip")>();
+vi.mock("~/shared/api/zulip-sidebar-preview.lib", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("~/shared/api/zulip-sidebar-preview.lib")>();
   return {
     ...actual,
     fetchStreamChannelMessagesForSidebarTopics: vi.fn(() => new Promise(() => {})),

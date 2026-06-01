@@ -2,7 +2,7 @@ import React, { useState, useRef, useMemo, useCallback, useLayoutEffect } from "
 import { AiComposerButton } from "~/features/ai-reply/ai-reply.ui";
 import type { MentionSuggestion } from "~/features/mention-suggest/mention-suggest.types";
 import { t } from "~/i18n/i18n";
-import type { SavedSnippet } from "~/shared/api/zulip";
+import type { SavedSnippet } from "~/shared/api/zulip.types";
 import { ensureRealmEmojisLoaded, getCachedRealmEmojis } from "~/shared/lib/realm-emojis-cache";
 import { useViewportKeyboard } from "~/shared/lib/touch";
 import { isWebView } from "~/shared/lib/webview";

@@ -8,13 +8,7 @@
  */
 
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import {
-  formatMessageTime,
-  formatLastSeen,
-  isPresenceOnline,
-  getPresenceState,
-  sidebarRowClass,
-} from "./format";
+import { formatLastSeen, isPresenceOnline, getPresenceState, sidebarRowClass } from "./format";
 
 // formatLastSeen converts a Unix timestamp to a relative "last seen" string (e.g. "5 min ago")
 describe("formatLastSeen", () => {
@@ -146,27 +140,5 @@ describe("sidebarRowClass", () => {
   // Inactive rows only show background on hover
   it("returns hover class when not active", () => {
     expect(sidebarRowClass(false)).toBe("hover:bg-sidebar-hover");
-  });
-});
-
-// formatMessageTime converts a Unix timestamp to HH:MM for display in chat bubbles
-describe("formatMessageTime", () => {
-  // Chat messages always display time in HH:MM format
-  it("returns HH:MM format", () => {
-    const result = formatMessageTime(1710331200);
-    expect(result).toMatch(/^\d{2}:\d{2}$/);
-  });
-
-  // Different timestamps must produce different formatted times
-  it("returns different times for different timestamps", () => {
-    const a = formatMessageTime(1710331200);
-    const b = formatMessageTime(1710331200 + 3600);
-    expect(a).not.toBe(b);
-  });
-
-  // Edge case: epoch 0 should still produce valid HH:MM, not crash
-  it("handles epoch timestamp", () => {
-    const result = formatMessageTime(0);
-    expect(result).toMatch(/^\d{2}:\d{2}$/);
   });
 });

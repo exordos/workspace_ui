@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo, useRef } from "react";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
-import { formatMessageTime } from "~/shared/lib/format";
+import { formatMessageTimeShort } from "~/shared/lib/datetime.lib";
 import { getJitsiMeetingUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
 import { messageBodyToUnsanitizedDisplayHtml } from "~/shared/lib/message-markdown-display.lib";
 import { prepareProtectedMessageHtml } from "~/shared/lib/protected-message-media";
@@ -77,7 +77,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       callbacks?.onToggleSelect?.(message);
     }, [callbacks, message]);
 
-    const time = formatMessageTime(message.timestamp);
+    const time = formatMessageTimeShort(message.timestamp);
     const reactionGroups = useMemo(
       () =>
         message.reactions?.length

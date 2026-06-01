@@ -3,7 +3,7 @@
 // 1) убрать дублирующиеся загрузчики в разных виджетах;
 // 2) дедуплицировать параллельные запросы;
 // 3) дать единый тестовый reset singleton-состояния.
-import { fetchRealmEmojis } from "~/shared/api/zulip";
+import { fetchRealmEmojis } from "~/shared/api/zulip-users";
 import type { RealmEmoji } from "~/shared/api/zulip.types";
 
 // Единая пустая ссылка для стабильных fallback-значений без лишних аллокаций.
