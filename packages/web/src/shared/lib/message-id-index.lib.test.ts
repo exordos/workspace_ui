@@ -22,14 +22,14 @@ describe("message-id-index", () => {
     expect(set.has(5)).toBe(false);
   });
 
-  it("filterViewportUnreadIdsForReadDispatch skips read and own messages", () => {
+  it("filterViewportUnreadIdsForReadDispatch skips read messages but keeps own unread ids", () => {
     const byId = buildMessageIdMap([
       { id: 10, flags: [], sender_id: 2 },
       { id: 11, flags: ["read"], sender_id: 2 },
       { id: 12, flags: [], sender_id: 1 },
     ]);
-    expect(filterViewportUnreadIdsForReadDispatch(new Set([10, 11, 12, 99]), byId, 1)).toEqual([
-      10,
+    expect(filterViewportUnreadIdsForReadDispatch(new Set([10, 11, 12, 99]), byId)).toEqual([
+      10, 12,
     ]);
   });
 

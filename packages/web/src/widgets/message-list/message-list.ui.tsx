@@ -310,19 +310,12 @@ export const MessageList: React.FC<MessageListProps> = ({
   }, [messageTailLen, messageFirstId, messageLastId, isLoadingMore, scrollToBottomKey]);
 
   useEffect(() => {
-    const next = new Set(
-      messages
-        .filter(
-          (m) =>
-            !m.flags?.includes("read") && (currentUserId == null || m.sender_id !== currentUserId),
-        )
-        .map((m) => m.id),
-    );
+    const next = new Set(messages.filter((m) => !m.flags?.includes("read")).map((m) => m.id));
     unreadCandidatesRef.current = next;
     if (next.size === 0) {
       viewportUnreadIdsRef.current.clear();
     }
-  }, [messages, currentUserId]);
+  }, [messages]);
 
   useEffect(() => {
     viewportUnreadIdsRef.current.clear();
@@ -390,11 +383,7 @@ export const MessageList: React.FC<MessageListProps> = ({
       loadingNewer: isLoadingNewer,
     });
 
-    const ids = filterViewportUnreadIdsForReadDispatch(
-      viewportUnreadIdsRef.current,
-      messageById,
-      currentUserId ?? null,
-    );
+    const ids = filterViewportUnreadIdsForReadDispatch(viewportUnreadIdsRef.current, messageById);
     if (ids.length === 0) return;
 
     const sorted = [...ids].sort((a, b) => a - b);
@@ -414,7 +403,6 @@ export const MessageList: React.FC<MessageListProps> = ({
     onUnreadMessagesVisible,
     onUnreadMessagesAtBottom,
     messageById,
-    currentUserId,
     scrollToBottomKey,
     hasNewerMessages,
     isLoadingNewer,

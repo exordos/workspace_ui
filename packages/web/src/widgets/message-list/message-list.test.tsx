@@ -444,6 +444,28 @@ describe("MessageList focused message behavior", () => {
     expect(onUnreadMessagesVisible).toHaveBeenCalledWith([1]);
   });
 
+  it("reports own unread messages so Zulip personal read flags can be cleared", () => {
+    const onUnreadMessagesVisible = vi.fn();
+    render(
+      <MessageList
+        messages={[msg(1, { sender_id: 7, flags: [] })]}
+        currentUserId={7}
+        onUnreadMessagesVisible={onUnreadMessagesVisible}
+      />,
+    );
+    onUnreadMessagesVisible.mockClear();
+
+    const ownUnread = screen.getByTestId("message-1");
+    intersectionCallback?.(
+      [
+        { target: ownUnread, isIntersecting: true, intersectionRatio: 0.7 },
+      ] as unknown as IntersectionObserverEntry[],
+      {} as IntersectionObserver,
+    );
+
+    expect(onUnreadMessagesVisible).toHaveBeenCalledWith([1]);
+  });
+
   it("reports viewport unread messages when user scrolls to chat bottom", () => {
     const onUnreadMessagesVisible = vi.fn();
     render(

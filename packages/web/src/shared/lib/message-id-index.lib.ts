@@ -25,23 +25,17 @@ export function createMessageIdSet(messages: readonly { id: number }[]): Set<num
 
 export interface ViewportUnreadMessageSlice {
   flags?: string[];
-  sender_id: number;
 }
 
 /** Filters viewport unread ids using a pre-built id index — O(V) not O(V×M). */
 export function filterViewportUnreadIdsForReadDispatch(
   viewportIds: Iterable<number>,
   messageById: ReadonlyMap<number, ViewportUnreadMessageSlice>,
-  currentUserId: number | null,
 ): number[] {
   const out: number[] = [];
   for (const id of viewportIds) {
     const msg = messageById.get(id);
-    if (
-      msg != null &&
-      !(msg.flags ?? []).includes("read") &&
-      (currentUserId == null || msg.sender_id !== currentUserId)
-    ) {
+    if (msg != null && !(msg.flags ?? []).includes("read")) {
       out.push(id);
     }
   }
