@@ -6,20 +6,15 @@
  * Usage:
  *   import { applyZulipEventToMessageIndexedDb } from "~/shared/lib/message-idb-from-zulip.lib";
  */
-import { rawMessageToMockMessage } from "~/shared/api/zulip";
 import type { ZulipEvent, ZulipRawMessage } from "~/shared/api/zulip.types";
 import { env } from "~/shared/lib/env";
 import {
-  deleteMessagesByIds,
-  moveTopicMessagesInCache,
-  patchMessageContentInCache,
-  patchMessageFlagsInCache,
-  patchMessageReactionInCache,
-  putSingleMessage,
-} from "~/shared/lib/message-cache-db";
-import { chatKeyFromRawMessage } from "~/shared/lib/message-cache-keys.lib";
-import { extractTopicMoveFromUpdateEvent } from "~/shared/lib/update-message-topic-move.lib";
-import { zulipMessageCacheWindowNForChatKey } from "~/shared/lib/zulip-message-window.lib";
+  mirrorZulipDeleteMessageToIndexedDb,
+  mirrorZulipMessageEventToIndexedDb,
+  mirrorZulipReactionToIndexedDb,
+  mirrorZulipUpdateMessageFlagsToIndexedDb,
+  mirrorZulipUpdateMessageToIndexedDb,
+} from "~/shared/lib/message-idb-zulip-handlers.lib";
 
 export function isChatMessagesPersistToIndexedDbEnabled(): boolean {
   return env.CHAT_MESSAGES_PERSIST_INDEXEDDB;
@@ -34,79 +29,30 @@ export async function applyZulipEventToMessageIndexedDb(options: {
   const { instanceId, currentUserId, event } = options;
 
   if (event.type === "message" && event.message) {
-    const raw = event.message as unknown as ZulipRawMessage;
-    const chatKey = chatKeyFromRawMessage(raw, currentUserId);
-    if (chatKey == null) return;
-    const mock = rawMessageToMockMessage(raw);
-    await putSingleMessage({
+    await mirrorZulipMessageEventToIndexedDb({
       instanceId,
-      chatKey,
-      message: mock,
-      windowSizeN: zulipMessageCacheWindowNForChatKey(chatKey),
+      currentUserId,
+      raw: event.message as unknown as ZulipRawMessage,
     });
     return;
   }
 
   if (event.type === "update_message_flags") {
-    const op = event.op as "add" | "remove";
-    const flag = event.flag as string;
-    const messageIds = (event.messages ?? []) as number[];
-    if (messageIds.length === 0) return;
-    await patchMessageFlagsInCache({ instanceId, messageIds, flag, op });
+    await mirrorZulipUpdateMessageFlagsToIndexedDb({ instanceId, event });
     return;
   }
 
   if (event.type === "reaction") {
-    const messageId = event.message_id as number;
-    const reaction =
-      event.emoji_name != null
-        ? {
-            emoji_name: event.emoji_name as string,
-            emoji_code: (event.emoji_code as string) ?? "",
-            reaction_type:
-              (event.reaction_type as "unicode_emoji" | "realm_emoji" | "zulip_extra_emoji") ??
-              "unicode_emoji",
-            user_id: event.user_id as number,
-          }
-        : null;
-    if (!reaction) return;
-    const op = (event.op as "add" | "remove") ?? "add";
-    await patchMessageReactionInCache({ instanceId, messageId, reaction, op });
+    await mirrorZulipReactionToIndexedDb({ instanceId, event });
     return;
   }
 
   if (event.type === "delete_message") {
-    const messageIds = event.message_ids
-      ? (event.message_ids as number[])
-      : event.message_id != null
-        ? [event.message_id as number]
-        : [];
-    if (messageIds.length > 0) {
-      await deleteMessagesByIds(instanceId, messageIds);
-    }
+    await mirrorZulipDeleteMessageToIndexedDb({ instanceId, event });
     return;
   }
 
   if (event.type === "update_message") {
-    const messageId = event.message_id as number | undefined;
-    const renderingOnly = event.rendering_only === true;
-    const newMarkdown =
-      !renderingOnly && typeof event.content === "string" ? event.content : undefined;
-    if (messageId != null && newMarkdown != null) {
-      const trimmed = newMarkdown.trim();
-      await patchMessageContentInCache({
-        instanceId,
-        messageId,
-        content: newMarkdown,
-        ...(trimmed.length > 0 ? { markdown_source: newMarkdown } : {}),
-      });
-    }
-
-    const topicMovePayload = extractTopicMoveFromUpdateEvent(event);
-    if (topicMovePayload == null) return;
-    await moveTopicMessagesInCache({
-      instanceId,
-      ...topicMovePayload,
-    });
+    await mirrorZulipUpdateMessageToIndexedDb({ instanceId, event });
   }
 }

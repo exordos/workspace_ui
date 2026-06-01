@@ -1,74 +1,33 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useDownloadStore } from "~/entities/download/download.model";
+import React, { useCallback, useMemo, useRef } from "react";
 import { useInstancesStore } from "~/entities/instance/instance.model";
-import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore } from "~/entities/user/user.model";
-import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
-import { t } from "~/i18n/i18n";
-import type { MessageReactionPayload } from "~/shared/api/zulip.types";
-import CheckIconRaw from "~/shared/assets/icons/check.svg?raw";
-import CopyIconRaw from "~/shared/assets/icons/copy.svg?raw";
-import { buildAuthHeader } from "~/shared/lib/auth-guard";
-import { writeText } from "~/shared/lib/clipboard";
-import { formatMessageTime, getPresenceState } from "~/shared/lib/format";
+import { formatMessageTime } from "~/shared/lib/format";
 import { getJitsiMeetingUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
-import { MESSAGE_BUBBLE_BODY_CLASS_NAME } from "~/shared/lib/message-body-rich-text-classes";
 import { messageBodyToUnsanitizedDisplayHtml } from "~/shared/lib/message-markdown-display.lib";
 import { prepareProtectedMessageHtml } from "~/shared/lib/protected-message-media";
 import { useProtectedMessageHtml } from "~/shared/lib/protected-message-media.hook";
-import { Avatar } from "~/shared/ui/avatar";
-import { Icon } from "~/shared/ui/icon";
-import { PresenceIndicator } from "~/shared/ui/presence-indicator";
+import { filterVisibleContextSections } from "./message-bubble-actions.lib";
 import {
-  deriveAttachmentFileName,
-  downloadUserUploadAttachment,
-  extractUserUploadPath,
-} from "./message-attachment-download.lib";
-import { resolveAvatarSrc } from "./message-avatar.lib";
-import {
-  MESSAGE_BUBBLE_ATTACHMENT_LINK_BASE_CLASSES,
-  MESSAGE_BUBBLE_ATTACHMENT_LINK_STATUS_CLASSES,
-} from "./message-bubble-attachment-styles.lib";
+  MessageBubbleStandardBody,
+  resolveOwnDeliveryIndicatorNode,
+} from "./message-bubble-content.ui";
 import { MessageBubbleContextMenu } from "./message-bubble-context-menu.ui";
-import {
-  BASE_CONTEXT_SECTIONS,
-  JITSI_CONTEXT_SECTIONS,
-  LABEL_TO_ACTION,
-  type ContextItemLabel,
-} from "./message-bubble-context.lib";
+import { BASE_CONTEXT_SECTIONS, JITSI_CONTEXT_SECTIONS } from "./message-bubble-context.lib";
 import { resolveOwnMessageDeliveryStatus } from "./message-bubble-delivery.lib";
-import { groupReactions, reactionPayloadFromEmojiClickData } from "./message-bubble-emoji.lib";
+import { groupReactions } from "./message-bubble-emoji.lib";
+import { useMessageBubbleInteractions } from "./message-bubble-interactions.hook";
 import { MessageBubbleJitsiCard } from "./message-bubble-jitsi-card.ui";
-import { MessageBubbleOwnDeliveryIndicator } from "./message-bubble-own-delivery-indicator.ui";
-import { MessageBubbleReactionsRow } from "./message-bubble-reactions-row.ui";
+import {
+  MessageBubbleGroupedShell,
+  MessageBubbleStandaloneShell,
+} from "./message-bubble-layout.ui";
 import { getMessageImagesBaseUrl } from "./message-bubble-realm-html.lib";
 import { resolveJitsiLocationName } from "./message-jitsi-location.lib";
 import { useMessageLinkPreview } from "./message-link-preview.hook";
-import { MessageLinkPreview } from "./message-link-preview.ui";
-import { normalizeMediaUrl, resolveVideoElementMediaUrl } from "./message-list-media.lib";
 import { MessageMentionPopover } from "./message-mention-popover.ui";
-import type {
-  MessageBubbleContextMenuAnchor,
-  MessageBubbleContextMenuSource,
-} from "./message-bubble-context-menu.types";
-import type {
-  MessageBubbleAttachmentDownloadStatus,
-  MessageBubbleProps,
-} from "./message-bubble.types";
-import type { EmojiClickData } from "emoji-picker-react";
+import type { MessageBubbleProps } from "./message-bubble.types";
 
 export type { MessageBubbleCallbacks, MessageBubbleProps } from "./message-bubble.types";
-
-interface CodeCopyButtonMount {
-  button: HTMLButtonElement;
-  clickHandler: (event: MouseEvent) => void;
-  iconHost: HTMLSpanElement;
-  resetTimerId: number | null;
-}
-
-const MESSAGE_CONTEXT_MENU_CURSOR_GAP_PX = 6;
-const CODE_COPY_ICON_MARKUP = CopyIconRaw;
-const CODE_COPY_SUCCESS_ICON_MARKUP = CheckIconRaw;
 
 export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
   ({
@@ -89,18 +48,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     resolveCustomEmojiShortcodeImageUrl,
     callbacks,
   }) => {
-    const [menuOpen, setMenuOpen] = useState(false);
-    // Источник открытия нужен, чтобы разделить поведение ПКМ и троеточия.
-    const [menuSource, setMenuSource] = useState<MessageBubbleContextMenuSource>("trigger");
-    // Якорь заполняется только для ПКМ-открытия (позиция рядом с курсором).
-    const [contextMenuAnchor, setContextMenuAnchor] =
-      useState<MessageBubbleContextMenuAnchor | null>(null);
-    const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
-    const [mentionPopover, setMentionPopover] = useState<{
-      userId: number;
-      anchorRect: DOMRect;
-      fallbackName: string;
-    } | null>(null);
+    const messageBodyRef = useRef<HTMLDivElement>(null);
+    const linkPreviewVisibilityRef = useRef<HTMLDivElement>(null);
+    const groupedContainerRef = useRef<HTMLDivElement>(null);
+    const regularContainerRef = useRef<HTMLDivElement>(null);
+
     const jitsiMeetBaseUrl = useInstancesStore((s) => s.jitsiMeetBaseUrl);
     const jitsiLinkOptions = useMemo<JitsiLinkOptions>(
       () => ({ serverBaseUrl: jitsiMeetBaseUrl }),
@@ -118,19 +70,13 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       trimmedUserName != null && trimmedUserName.length > 0
         ? trimmedUserName
         : (message.sender_full_name ?? "");
-    const senderStatusLabel = !isOwn ? formatUserStatusLabel(user?.status) : null;
-    const presenceState =
-      user?.presence != null
-        ? getPresenceState(user.presence.timestamp, user.presence.status)
-        : null;
-    const avatarSrc = resolveAvatarSrc(user?.avatar_url ?? undefined);
     const handleAuthorClick = useCallback(() => {
       callbacks?.onAuthorClick?.(message.sender_id);
     }, [callbacks, message.sender_id]);
+    const handleToggleSelect = useCallback(() => {
+      callbacks?.onToggleSelect?.(message);
+    }, [callbacks, message]);
 
-    const closeMentionPopover = useCallback(() => {
-      setMentionPopover(null);
-    }, []);
     const time = formatMessageTime(message.timestamp);
     const reactionGroups = useMemo(
       () =>
@@ -159,582 +105,43 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       };
     }, [message.content, imagesBase, resolveUserMention, resolveCustomEmojiShortcodeImageUrl]);
 
-    const messageBodyRef = useRef<HTMLDivElement>(null);
-    const linkPreviewVisibilityRef = useRef<HTMLDivElement>(null);
-    const groupedContainerRef = useRef<HTMLDivElement>(null);
-    const regularContainerRef = useRef<HTMLDivElement>(null);
-    const attachmentStatusRef = useRef<Map<string, MessageBubbleAttachmentDownloadStatus>>(
-      new Map(),
-    );
-    const attachmentTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
-    const [attachmentStatusVersion, setAttachmentStatusVersion] = useState(0);
-    const replySelectionRef = useRef<string | undefined>(undefined);
+    const jitsiUrl =
+      getJitsiMeetingUrl(message.content, jitsiLinkOptions) ??
+      getJitsiMeetingUrl(displayHtmlForJitsi, jitsiLinkOptions);
+    const isJitsiCall = jitsiUrl != null;
+    const jitsiLocationName = isJitsiCall ? resolveJitsiLocationName(message) : "";
 
-    const setAttachmentStatus = useCallback(
-      (path: string, status: MessageBubbleAttachmentDownloadStatus) => {
-        attachmentStatusRef.current.set(path, status);
-        setAttachmentStatusVersion((value) => value + 1);
-      },
-      [],
-    );
-    const startDownload = useDownloadStore((s) => s.startDownload);
-    const setDownloadProgress = useDownloadStore((s) => s.setProgress);
-    const finishDownload = useDownloadStore((s) => s.finishDownload);
-
-    const scheduleAttachmentStatusClear = useCallback((path: string, delayMs = 1800) => {
-      const existingTimer = attachmentTimersRef.current.get(path);
-      if (existingTimer != null) {
-        clearTimeout(existingTimer);
-      }
-      const timer = setTimeout(() => {
-        attachmentTimersRef.current.delete(path);
-        attachmentStatusRef.current.delete(path);
-        setAttachmentStatusVersion((value) => value + 1);
-      }, delayMs);
-      attachmentTimersRef.current.set(path, timer);
-    }, []);
-
-    useEffect(() => {
-      const attachmentTimers = attachmentTimersRef.current;
-      const attachmentStatuses = attachmentStatusRef.current;
-      return () => {
-        for (const timer of attachmentTimers.values()) {
-          clearTimeout(timer);
-        }
-        attachmentTimers.clear();
-        attachmentStatuses.clear();
-      };
-    }, []);
+    const interactions = useMessageBubbleInteractions({
+      message,
+      messageContent: message.content,
+      safeMessageHtml,
+      inSenderGroup,
+      jitsiUrl,
+      jitsiLocationName,
+      mediaGallery,
+      callbacks,
+      onEmojiPickerOpen,
+      messageBodyRef,
+      linkPreviewVisibilityRef,
+      groupedContainerRef,
+      regularContainerRef,
+    });
 
     useProtectedMessageHtml(messageBodyRef, safeMessageHtml, {
       deferRootSelector: '[role="feed"]',
     });
-
-    useEffect(() => {
-      const messageBodyElement = messageBodyRef.current;
-      if (!messageBodyElement) return;
-
-      const mounts: CodeCopyButtonMount[] = [];
-      const codeBlocks = messageBodyElement.querySelectorAll<HTMLElement>("pre > code");
-
-      for (const codeBlock of codeBlocks) {
-        const preElement = codeBlock.parentElement;
-        if (!(preElement instanceof HTMLElement)) {
-          continue;
-        }
-
-        const copyButton = document.createElement("button");
-        copyButton.type = "button";
-        copyButton.dataset.codeCopyButton = "true";
-        copyButton.dataset.copyState = "idle";
-        copyButton.className =
-          "message-code-copy-btn inline-flex h-6 w-6 items-center justify-center rounded-md border border-border-subtle bg-bg-elevated/90 text-composer-icon transition-colors hover:text-icon-active focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft";
-        copyButton.setAttribute("aria-label", t("message.copy"));
-        copyButton.setAttribute("title", t("message.copy"));
-
-        const iconHost = document.createElement("span");
-        iconHost.className =
-          "pointer-events-none inline-flex h-3.5 w-3.5 items-center justify-center text-current [&>svg]:h-full [&>svg]:w-full";
-        copyButton.appendChild(iconHost);
-        preElement.appendChild(copyButton);
-
-        const renderIconState = (state: "idle" | "success" | "error") => {
-          copyButton.dataset.copyState = state;
-          if (state === "success") {
-            copyButton.setAttribute("aria-label", t("message.copied"));
-            copyButton.setAttribute("title", t("message.copied"));
-          } else if (state === "error") {
-            copyButton.setAttribute("aria-label", t("message.copyFailed"));
-            copyButton.setAttribute("title", t("message.copyFailed"));
-          } else {
-            copyButton.setAttribute("aria-label", t("message.copy"));
-            copyButton.setAttribute("title", t("message.copy"));
-          }
-          iconHost.innerHTML =
-            state === "success" ? CODE_COPY_SUCCESS_ICON_MARKUP : CODE_COPY_ICON_MARKUP;
-        };
-
-        renderIconState("idle");
-
-        const mount: CodeCopyButtonMount = {
-          button: copyButton,
-          clickHandler: () => {},
-          iconHost,
-          resetTimerId: null,
-        };
-
-        mount.clickHandler = (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          const source = codeBlock.textContent ?? "";
-          if (source.trim().length === 0) {
-            return;
-          }
-
-          if (mount.resetTimerId != null) {
-            window.clearTimeout(mount.resetTimerId);
-            mount.resetTimerId = null;
-          }
-
-          void writeText(source).then((ok) => {
-            renderIconState(ok ? "success" : "error");
-            mount.resetTimerId = window.setTimeout(() => {
-              mount.resetTimerId = null;
-              renderIconState("idle");
-            }, 1200);
-          });
-        };
-
-        copyButton.addEventListener("click", mount.clickHandler);
-        mounts.push(mount);
-      }
-
-      return () => {
-        for (const mount of mounts) {
-          if (mount.resetTimerId != null) {
-            window.clearTimeout(mount.resetTimerId);
-          }
-          mount.button.removeEventListener("click", mount.clickHandler);
-          mount.iconHost.innerHTML = "";
-          mount.button.remove();
-        }
-      };
-    }, [safeMessageHtml]);
-
-    useEffect(() => {
-      const div = messageBodyRef.current;
-      if (!div) return;
-
-      const links = div.querySelectorAll<HTMLAnchorElement>("a[href]");
-      for (const link of links) {
-        const path = extractUserUploadPath(link.getAttribute("href") ?? "");
-        const containsImage = link.querySelector("img") != null;
-        const containsVideo = link.querySelector("video") != null;
-        if (!path || containsImage || containsVideo) continue;
-
-        const status = attachmentStatusRef.current.get(path) ?? "idle";
-        link.dataset.attachmentLink = "true";
-        link.dataset.attachmentPath = path;
-        for (const className of MESSAGE_BUBBLE_ATTACHMENT_LINK_BASE_CLASSES) {
-          link.classList.add(className);
-        }
-        for (const statusClasses of Object.values(MESSAGE_BUBBLE_ATTACHMENT_LINK_STATUS_CLASSES)) {
-          for (const className of statusClasses) {
-            link.classList.remove(className);
-          }
-        }
-        for (const className of MESSAGE_BUBBLE_ATTACHMENT_LINK_STATUS_CLASSES[status]) {
-          link.classList.add(className);
-        }
-      }
-    }, [message.content, attachmentStatusVersion]);
-
-    const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-    const clearLongPressTimer = useCallback(() => {
-      if (longPressTimerRef.current) {
-        clearTimeout(longPressTimerRef.current);
-        longPressTimerRef.current = null;
-      }
-    }, []);
-
-    const handleNativeContextMenu = useCallback((event: Event) => {
-      event.preventDefault();
-      const selection = window.getSelection();
-      const selectedText = selection?.toString().trim();
-      const messageBody = messageBodyRef.current;
-      const anchorNode = selection?.anchorNode;
-      const focusNode = selection?.focusNode;
-      const hasSelectionInsideMessageBody =
-        selectedText != null &&
-        selectedText.length > 0 &&
-        messageBody != null &&
-        anchorNode != null &&
-        focusNode != null &&
-        messageBody.contains(anchorNode.parentElement ?? anchorNode) &&
-        messageBody.contains(focusNode.parentElement ?? focusNode);
-      // Сохраняем выделенный текст для reply/forward только если выделение внутри текущего сообщения.
-      replySelectionRef.current = hasSelectionInsideMessageBody ? selectedText : undefined;
-      if (event instanceof MouseEvent) {
-        setContextMenuAnchor({
-          left: event.clientX + MESSAGE_CONTEXT_MENU_CURSOR_GAP_PX,
-          top: event.clientY,
-        });
-        setMenuSource("context");
-      } else {
-        // Клавиатурный вызов и другие не-mouse события оставляем в старом режиме от trigger.
-        setContextMenuAnchor(null);
-        setMenuSource("trigger");
-      }
-      setMenuOpen(true);
-    }, []);
-
-    const handleKeyboardContextMenu = useCallback(
-      (event: React.KeyboardEvent<HTMLDivElement>) => {
-        const isContextMenuKey =
-          event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey);
-        if (!isContextMenuKey) return;
-
-        const target = event.target;
-        if (
-          target instanceof HTMLElement &&
-          target.closest("a,button,input,textarea,select,[contenteditable='true']")
-        ) {
-          return;
-        }
-
-        handleNativeContextMenu(event.nativeEvent);
-      },
-      [handleNativeContextMenu],
-    );
-
-    const handleNativeTouchStart = useCallback(() => {
-      clearLongPressTimer();
-      longPressTimerRef.current = setTimeout(() => {
-        // Long press должен вести себя как обычное меню от троеточия.
-        setContextMenuAnchor(null);
-        setMenuSource("trigger");
-        setMenuOpen(true);
-      }, 500);
-    }, [clearLongPressTimer]);
-
-    const handleNativeTouchEnd = useCallback(() => {
-      clearLongPressTimer();
-    }, [clearLongPressTimer]);
-
-    const handleNativeTouchMove = useCallback(() => {
-      clearLongPressTimer();
-    }, [clearLongPressTimer]);
-
-    useEffect(() => {
-      return () => {
-        clearLongPressTimer();
-      };
-    }, [clearLongPressTimer]);
-
-    useEffect(() => {
-      const container = inSenderGroup ? groupedContainerRef.current : regularContainerRef.current;
-      if (!container) return;
-
-      container.addEventListener("contextmenu", handleNativeContextMenu);
-      container.addEventListener("touchstart", handleNativeTouchStart);
-      container.addEventListener("touchend", handleNativeTouchEnd);
-      container.addEventListener("touchmove", handleNativeTouchMove);
-      container.addEventListener("touchcancel", handleNativeTouchEnd);
-
-      return () => {
-        container.removeEventListener("contextmenu", handleNativeContextMenu);
-        container.removeEventListener("touchstart", handleNativeTouchStart);
-        container.removeEventListener("touchend", handleNativeTouchEnd);
-        container.removeEventListener("touchmove", handleNativeTouchMove);
-        container.removeEventListener("touchcancel", handleNativeTouchEnd);
-      };
-    }, [
-      inSenderGroup,
-      handleNativeContextMenu,
-      handleNativeTouchStart,
-      handleNativeTouchEnd,
-      handleNativeTouchMove,
-    ]);
-
-    const handleMenuAction = (label: ContextItemLabel): void => {
-      if (label === "joinCall") {
-        if (jitsiUrl) {
-          callbacks?.onOpenJitsiCall?.(jitsiUrl, jitsiLocationName);
-        }
-        replySelectionRef.current = undefined;
-        setMenuOpen(false);
-        return;
-      }
-      if (label === "copyCallLink") {
-        if (jitsiUrl && callbacks?.onCopy) {
-          callbacks.onCopy({ ...message, content: jitsiUrl });
-        }
-        replySelectionRef.current = undefined;
-        setMenuOpen(false);
-        return;
-      }
-      if (label === "reply") {
-        const selectedReplyText = replySelectionRef.current;
-        replySelectionRef.current = undefined;
-        callbacks?.onReply?.(message, selectedReplyText);
-        setMenuOpen(false);
-        return;
-      }
-      if (label === "forward") {
-        const selectedForwardText = replySelectionRef.current;
-        replySelectionRef.current = undefined;
-        callbacks?.onForward?.(message, selectedForwardText);
-        setMenuOpen(false);
-        return;
-      }
-
-      const action = LABEL_TO_ACTION[label];
-      if (action && callbacks?.[action]) {
-        callbacks[action](message);
-      }
-      replySelectionRef.current = undefined;
-      setMenuOpen(false);
-    };
-
-    const handleContextMenuSourceChange = useCallback(
-      (nextSource: MessageBubbleContextMenuSource) => {
-        setMenuSource(nextSource);
-        if (nextSource === "trigger") {
-          // При переходе в trigger-режим позиция ПКМ больше не актуальна.
-          setContextMenuAnchor(null);
-        }
-      },
-      [],
-    );
-
-    const handleContextMenuOpenChange = useCallback((nextOpen: boolean) => {
-      if (!nextOpen) {
-        replySelectionRef.current = undefined;
-        setContextMenuAnchor(null);
-      }
-      setMenuOpen(nextOpen);
-    }, []);
-
-    const handleReaction = useCallback(
-      (payload: MessageReactionPayload) => {
-        callbacks?.onAddReaction?.(message.id, payload);
-        setEmojiPickerOpen(false);
-        setMenuOpen(false);
-      },
-      [callbacks, message.id],
-    );
-
-    const handleQuickReaction = useCallback(
-      (emojiName: string) => {
-        handleReaction({
-          emojiName,
-          reactionType: "unicode_emoji",
-        });
-      },
-      [handleReaction],
-    );
-
-    const handleEmojiPick = (data: EmojiClickData) => {
-      const payload = reactionPayloadFromEmojiClickData(data);
-      if (payload == null) {
-        return;
-      }
-      handleReaction(payload);
-    };
-
-    const handleEmojiPickerOpenChange = useCallback(
-      (nextOpen: boolean) => {
-        if (nextOpen) {
-          onEmojiPickerOpen?.();
-        }
-        setEmojiPickerOpen(nextOpen);
-      },
-      [onEmojiPickerOpen],
-    );
-
-    const handleMessageBodyClick = useCallback(
-      (event: MouseEvent) => {
-        const rawTarget = event.target;
-        const hit =
-          rawTarget instanceof HTMLElement
-            ? rawTarget
-            : rawTarget instanceof Node
-              ? rawTarget.parentElement
-              : null;
-        if (hit == null) return;
-        if (hit.tagName === "IMG") {
-          const image = hit as HTMLImageElement;
-          if (image.classList.contains("message-inline-emoji")) {
-            return;
-          }
-          event.preventDefault();
-          event.stopPropagation();
-          const src = image.currentSrc || image.src;
-          if (src) {
-            if (src.startsWith("blob:")) {
-              useMediaViewerStore.getState().open([{ url: src, type: "image" }], 0);
-            } else {
-              const gallery = mediaGallery;
-              const lookupUrl = normalizeMediaUrl(image.dataset.originalSrc ?? src);
-              const galleryIndex = gallery?.indexByUrl.get(lookupUrl);
-              if (gallery != null && galleryIndex != null && gallery.items.length > 0) {
-                useMediaViewerStore.getState().open(gallery.items, galleryIndex);
-              } else {
-                useMediaViewerStore.getState().open([{ url: src, type: "image" }], 0);
-              }
-            }
-          }
-          return;
-        }
-
-        const videoElement = hit.closest("video");
-        if (videoElement instanceof HTMLVideoElement) {
-          const clickTarget = event.target;
-          if (
-            clickTarget instanceof Element &&
-            clickTarget !== videoElement &&
-            videoElement.contains(clickTarget)
-          ) {
-            return;
-          }
-          event.preventDefault();
-          event.stopPropagation();
-          const rawSrc = resolveVideoElementMediaUrl(videoElement);
-          if (rawSrc !== "") {
-            if (rawSrc.startsWith("blob:")) {
-              useMediaViewerStore.getState().open([{ url: rawSrc, type: "video" }], 0);
-            } else {
-              const gallery = mediaGallery;
-              const lookupUrl = normalizeMediaUrl(rawSrc);
-              const galleryIndex = gallery?.indexByUrl.get(lookupUrl);
-              if (gallery != null && galleryIndex != null && gallery.items.length > 0) {
-                useMediaViewerStore.getState().open(gallery.items, galleryIndex);
-              } else {
-                useMediaViewerStore.getState().open([{ url: lookupUrl, type: "video" }], 0);
-              }
-            }
-          }
-          return;
-        }
-
-        const mentionSpan = hit.closest("span.user-mention[data-user-id]");
-        if (
-          mentionSpan != null &&
-          callbacks?.onOpenDirectMessage != null &&
-          !mentionSpan.classList.contains("user-group-mention")
-        ) {
-          const raw = mentionSpan.getAttribute("data-user-id");
-          if (raw !== "*" && raw != null && raw.trim() !== "") {
-            const id = Number(raw);
-            if (Number.isFinite(id) && Number.isInteger(id) && id > 0) {
-              event.preventDefault();
-              event.stopPropagation();
-              setMentionPopover({
-                userId: id,
-                anchorRect: mentionSpan.getBoundingClientRect(),
-                fallbackName: mentionSpan.textContent?.trim() ?? "",
-              });
-              return;
-            }
-          }
-        }
-
-        const spoilerHeader = hit.closest(".spoiler-header");
-        if (spoilerHeader) {
-          // Поддержка legacy/block-spoiler разметки Zulip (`.spoiler-block` + `.spoiler-header`).
-          event.preventDefault();
-          event.stopPropagation();
-          spoilerHeader.closest(".spoiler-block")?.classList.toggle("open");
-          return;
-        }
-
-        const inlineSpoiler = hit.closest(".inline-spoiler");
-        if (inlineSpoiler) {
-          // Локально раскрываем/скрываем inline spoiler без влияния на остальные интеракции bubble.
-          event.preventDefault();
-          event.stopPropagation();
-          inlineSpoiler.classList.toggle("open");
-          return;
-        }
-
-        const clickedLink = hit.closest<HTMLAnchorElement>("a[href]");
-        if (clickedLink) {
-          const href = clickedLink.getAttribute("href") ?? "";
-          const attachmentPath = extractUserUploadPath(href);
-          const containsImage = clickedLink.querySelector("img") != null;
-          const containsVideo = clickedLink.querySelector("video") != null;
-          if (attachmentPath != null && !containsImage && !containsVideo) {
-            event.preventDefault();
-            event.stopPropagation();
-
-            const fileName = deriveAttachmentFileName(
-              clickedLink.textContent ?? "",
-              attachmentPath,
-            );
-            if (!startDownload(attachmentPath, fileName)) {
-              return;
-            }
-            setAttachmentStatus(attachmentPath, "downloading");
-
-            void downloadUserUploadAttachment({
-              path: attachmentPath,
-              fileName,
-              authHeaders: buildAuthHeader(),
-              credentials: "include",
-              onProgress: (progress) => {
-                setDownloadProgress(attachmentPath, progress);
-              },
-            })
-              .then((success) => {
-                finishDownload(attachmentPath, success);
-                setAttachmentStatus(attachmentPath, success ? "downloaded" : "error");
-                scheduleAttachmentStatusClear(attachmentPath);
-              })
-              .catch(() => {
-                finishDownload(attachmentPath, false);
-                setAttachmentStatus(attachmentPath, "error");
-                scheduleAttachmentStatusClear(attachmentPath);
-              });
-            return;
-          }
-
-          if (callbacks?.onPermalinkClick?.(href) === true) {
-            event.preventDefault();
-            event.stopPropagation();
-            return;
-          }
-        }
-      },
-      [
-        callbacks,
-        finishDownload,
-        mediaGallery,
-        scheduleAttachmentStatusClear,
-        setAttachmentStatus,
-        setDownloadProgress,
-        startDownload,
-      ],
-    );
-
-    useEffect(() => {
-      const messageBodyElement = messageBodyRef.current;
-      if (!messageBodyElement) return;
-      messageBodyElement.addEventListener("click", handleMessageBodyClick);
-      return () => {
-        messageBodyElement.removeEventListener("click", handleMessageBodyClick);
-      };
-    }, [handleMessageBodyClick]);
 
     const { visiblePreviews: linkPreviews } = useMessageLinkPreview(
       message,
       linkPreviewVisibilityRef,
     );
 
-    const jitsiUrl =
-      getJitsiMeetingUrl(message.content, jitsiLinkOptions) ??
-      getJitsiMeetingUrl(displayHtmlForJitsi, jitsiLinkOptions);
-    const isJitsiCall = jitsiUrl != null;
-    const jitsiLocationName = isJitsiCall ? resolveJitsiLocationName(message) : "";
     const ownDeliveryStatus = isOwn ? resolveOwnMessageDeliveryStatus(message) : null;
-    const ownDeliveryIndicator =
-      ownDeliveryStatus === "sent" ||
-      ownDeliveryStatus === "sending" ||
-      ownDeliveryStatus === "failed" ? (
-        <MessageBubbleOwnDeliveryIndicator
-          message={message}
-          status={
-            ownDeliveryStatus === "sent"
-              ? "sent"
-              : ownDeliveryStatus === "sending"
-                ? "sending"
-                : "failed"
-          }
-          onViews={callbacks?.onViews}
-          onRetryFailedOutgoing={callbacks?.onRetryFailedOutgoing}
-          onRemoveFailedOutgoing={callbacks?.onRemoveFailedOutgoing}
-        />
-      ) : null;
+    const ownDeliveryIndicator = resolveOwnDeliveryIndicatorNode(
+      ownDeliveryStatus,
+      message,
+      callbacks,
+    );
     const bubbleSurfaceClass = "rounded-[18px]";
     const focusedBubbleBackgroundClass = !isSelected && isFocused ? "bg-card-bg-active" : null;
     const ownBubbleBackgroundClass = focusedBubbleBackgroundClass ?? "bg-msg-own-bg";
@@ -745,54 +152,39 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     const contextSections = isJitsiCall ? JITSI_CONTEXT_SECTIONS : BASE_CONTEXT_SECTIONS;
     const visibleContextSections = useMemo(
       () =>
-        contextSections
-          .map((section) =>
-            section.filter((label) => {
-              if ((label === "edit" || label === "delete") && !isOwn) return false;
-              if (label === "openInChat" && callbacks?.onOpenInChat == null) return false;
-              if (label === "joinCall" && (callbacks?.onOpenJitsiCall == null || !isJitsiCall))
-                return false;
-              if (label === "copyCallLink" && (callbacks?.onCopy == null || !isJitsiCall))
-                return false;
-              return true;
-            }),
-          )
-          .filter((section) => section.length > 0),
-      [
-        contextSections,
-        isOwn,
-        isJitsiCall,
-        callbacks?.onOpenInChat,
-        callbacks?.onOpenJitsiCall,
-        callbacks?.onCopy,
-      ],
+        filterVisibleContextSections(contextSections, {
+          isOwn,
+          isJitsiCall,
+          callbacks,
+        }),
+      [contextSections, isOwn, isJitsiCall, callbacks],
     );
 
     const contextMenu = (
       <MessageBubbleContextMenu
-        open={menuOpen}
-        source={menuSource}
-        contextAnchor={contextMenuAnchor}
-        onSourceChange={handleContextMenuSourceChange}
-        onOpenChange={handleContextMenuOpenChange}
+        open={interactions.menuOpen}
+        source={interactions.menuSource}
+        contextAnchor={interactions.contextMenuAnchor}
+        onSourceChange={interactions.handleContextMenuSourceChange}
+        onOpenChange={interactions.handleContextMenuOpenChange}
         isOwn={isOwn}
-        emojiPickerOpen={emojiPickerOpen}
-        onEmojiPickerOpenChange={handleEmojiPickerOpenChange}
+        emojiPickerOpen={interactions.emojiPickerOpen}
+        onEmojiPickerOpenChange={interactions.handleEmojiPickerOpenChange}
         visibleContextSections={visibleContextSections}
-        onMenuItem={handleMenuAction}
-        onQuickReaction={handleQuickReaction}
-        onEmojiPick={handleEmojiPick}
+        onMenuItem={interactions.handleMenuAction}
+        onQuickReaction={interactions.handleQuickReaction}
+        onEmojiPick={interactions.handleEmojiPick}
         customEmojis={customEmojis}
       />
     );
 
     const mentionPopoverPortal =
-      mentionPopover != null && callbacks?.onOpenDirectMessage != null ? (
+      interactions.mentionPopover != null && callbacks?.onOpenDirectMessage != null ? (
         <MessageMentionPopover
-          userId={mentionPopover.userId}
-          anchorRect={mentionPopover.anchorRect}
-          fallbackName={mentionPopover.fallbackName}
-          onClose={closeMentionPopover}
+          userId={interactions.mentionPopover.userId}
+          anchorRect={interactions.mentionPopover.anchorRect}
+          fallbackName={interactions.mentionPopover.fallbackName}
+          onClose={interactions.closeMentionPopover}
           onOpenDirectMessage={callbacks.onOpenDirectMessage}
           onOpenUserProfile={callbacks.onAuthorClick}
         />
@@ -816,103 +208,52 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       </>
     ) : (
       <>
-        <div
-          ref={linkPreviewVisibilityRef}
-          className={`relative overflow-hidden px-3 py-2 ${bubbleSurfaceClass} transition-colors duration-700 ${
-            isOwn
-              ? `${ownBubbleTailClass} ${ownBubbleBackgroundClass} text-text-primary`
-              : `${peerBubbleTailClass} ${peerBubbleBackgroundClass} text-text-primary`
-          }`}
-        >
-          <div ref={messageBodyRef} className={MESSAGE_BUBBLE_BODY_CLASS_NAME} />
-          {linkPreviews.length > 0 ? (
-            <div className="mt-2 flex flex-col gap-2">
-              {linkPreviews.map((item) => (
-                <MessageLinkPreview
-                  key={item.previewUrl}
-                  previewUrl={item.previewUrl}
-                  previewData={item.previewData}
-                  status={item.status}
-                  stacked
-                />
-              ))}
-            </div>
-          ) : null}
-          <div className={`mt-2 flex min-w-0 items-end gap-2 ${hasReactions ? "" : "justify-end"}`}>
-            {hasReactions ? (
-              <div className="min-w-0 flex-1">
-                <MessageBubbleReactionsRow
-                  message={message}
-                  isOwn={isOwn}
-                  currentUserId={currentUserId}
-                  reactionGroups={reactionGroups}
-                  resolveReactionAuthorLabel={resolveReactionAuthorLabel}
-                  callbacks={callbacks}
-                />
-              </div>
-            ) : null}
-            <div className="flex flex-shrink-0 items-center gap-1 text-[11px] text-text-muted">
-              <span>{time}</span>
-              {ownDeliveryIndicator}
-            </div>
-          </div>
-        </div>
+        <MessageBubbleStandardBody
+          message={message}
+          isOwn={isOwn}
+          time={time}
+          hasReactions={hasReactions}
+          reactionGroups={reactionGroups}
+          currentUserId={currentUserId}
+          resolveReactionAuthorLabel={resolveReactionAuthorLabel}
+          callbacks={callbacks}
+          ownDeliveryIndicator={ownDeliveryIndicator}
+          bubbleSurfaceClass={bubbleSurfaceClass}
+          ownBubbleTailClass={ownBubbleTailClass}
+          peerBubbleTailClass={peerBubbleTailClass}
+          ownBubbleBackgroundClass={ownBubbleBackgroundClass}
+          peerBubbleBackgroundClass={peerBubbleBackgroundClass}
+          messageBodyRef={messageBodyRef}
+          linkPreviewVisibilityRef={linkPreviewVisibilityRef}
+          linkPreviews={linkPreviews}
+        />
         {contextMenu}
       </>
     );
 
+    const shellProps = {
+      message,
+      isOwn,
+      isSelected,
+      isFocused,
+      selectionMode,
+      showSenderName,
+      showAvatar,
+      showTopicInSenderName,
+      inSenderGroup,
+      displayName,
+      user,
+      bubbleSurfaceClass,
+      onToggleSelect: handleToggleSelect,
+      onAuthorClick: handleAuthorClick,
+      onKeyDown: interactions.handleKeyboardContextMenu,
+      children: bubbleInner,
+    };
+
     if (inSenderGroup) {
       return (
         <>
-          <div
-            ref={groupedContainerRef}
-            data-message-id={message.id}
-            data-testid={`message-${message.id}`}
-            data-focused={isFocused ? "true" : "false"}
-            role="button"
-            tabIndex={0}
-            onKeyDown={handleKeyboardContextMenu}
-            className={`selectable group relative flex items-start gap-2 py-2 transition-colors duration-500 ${
-              !isSelected ? "hover:bg-bg-elevated/30" : ""
-            } ${isSelected ? "bg-msg-selected" : ""}`}
-          >
-            {selectionMode && (
-              <button
-                type="button"
-                onClick={() => callbacks?.onToggleSelect?.(message)}
-                className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded border border-border-subtle transition-colors"
-                aria-label={isSelected ? t("message.deselect") : t("message.select")}
-              >
-                {isSelected && <Icon name="check" size={14} className="text-accent" />}
-              </button>
-            )}
-            <div className={`min-w-0 flex-1 ${isOwn ? "flex flex-col items-end" : ""}`}>
-              {showSenderName && (
-                <div className="flex flex-wrap items-baseline gap-2">
-                  <span className="text-sm font-semibold text-text-primary">{displayName}</span>
-                  {senderStatusLabel != null && senderStatusLabel.length > 0 && (
-                    <span className="truncate text-[11px] text-text-secondary">
-                      {senderStatusLabel}
-                    </span>
-                  )}
-                  {showTopicInSenderName && message.subject && (
-                    <span
-                      className={`text-[11px] font-medium ${isOwn ? "text-call-green" : "text-accent-soft"}`}
-                    >
-                      {message.subject}
-                    </span>
-                  )}
-                </div>
-              )}
-              <div
-                className={`relative min-w-0 max-w-[85%] text-sm leading-relaxed ${bubbleSurfaceClass} ${
-                  showSenderName ? "mt-1" : "mt-0.5"
-                } ${isOwn ? "flex flex-col items-end" : ""}`}
-              >
-                {bubbleInner}
-              </div>
-            </div>
-          </div>
+          <MessageBubbleGroupedShell {...shellProps} containerRef={groupedContainerRef} />
           {mentionPopoverPortal}
         </>
       );
@@ -920,85 +261,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
 
     return (
       <>
-        <div
-          ref={regularContainerRef}
-          data-message-id={message.id}
-          data-testid={`message-${message.id}`}
-          data-focused={isFocused ? "true" : "false"}
-          role="button"
-          tabIndex={0}
-          onKeyDown={handleKeyboardContextMenu}
-          className={`selectable group relative flex gap-2 px-4 py-2 transition-colors duration-500 ${
-            isOwn ? "flex-row-reverse" : ""
-          } ${!isSelected ? "hover:bg-bg-elevated/30" : ""} ${isSelected ? "bg-msg-selected" : ""}`}
-        >
-          {selectionMode && (
-            <button
-              type="button"
-              onClick={() => callbacks?.onToggleSelect?.(message)}
-              className="flex h-5 w-5 flex-shrink-0 items-center justify-center self-center rounded border border-border-subtle transition-colors"
-              aria-label={isSelected ? t("message.deselect") : t("message.select")}
-            >
-              {isSelected && <Icon name="check" size={14} className="text-accent" />}
-            </button>
-          )}
-          {!isOwn &&
-            (showAvatar ? (
-              <button
-                type="button"
-                onClick={handleAuthorClick}
-                className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
-                aria-label={t("a11y.openUserProfile", { name: displayName })}
-              >
-                <span className="relative block">
-                  <Avatar
-                    size="lg"
-                    className="flex-shrink-0 bg-bg-elevated text-accent-soft"
-                    src={avatarSrc ?? undefined}
-                    imageLoading="lazy"
-                  >
-                    {displayName.slice(0, 1)}
-                  </Avatar>
-                  <PresenceIndicator
-                    status={presenceState}
-                    size="sm"
-                    className="absolute bottom-0 right-0"
-                  />
-                </span>
-              </button>
-            ) : (
-              <div className="w-12 flex-shrink-0" aria-hidden />
-            ))}
-          {isOwn && <div className="w-12 flex-shrink-0" />}
-          <div className={`min-w-0 flex-1 ${isOwn ? "flex flex-col items-end" : ""}`}>
-            {showSenderName && (
-              <div className="flex flex-wrap items-baseline gap-2">
-                <span className="text-sm font-semibold text-text-primary">{displayName}</span>
-                {senderStatusLabel != null && senderStatusLabel.length > 0 && (
-                  <span className="truncate text-[11px] text-text-secondary">
-                    {senderStatusLabel}
-                  </span>
-                )}
-                {showTopicInSenderName && message.subject && (
-                  <span
-                    className={`text-[11px] font-medium ${
-                      isOwn ? "text-call-green" : "text-accent-soft"
-                    }`}
-                  >
-                    {message.subject}
-                  </span>
-                )}
-              </div>
-            )}
-            <div
-              className={`relative min-w-0 max-w-[85%] text-sm leading-relaxed ${bubbleSurfaceClass} ${
-                showSenderName ? "mt-1" : "mt-0.5"
-              } ${isOwn ? "flex flex-col items-end" : ""}`}
-            >
-              {bubbleInner}
-            </div>
-          </div>
-        </div>
+        <MessageBubbleStandaloneShell {...shellProps} containerRef={regularContainerRef} />
         {mentionPopoverPortal}
       </>
     );

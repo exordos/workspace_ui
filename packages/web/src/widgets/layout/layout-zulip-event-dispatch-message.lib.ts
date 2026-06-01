@@ -2,10 +2,8 @@
  * Zulip realtime handlers: message, flags, reactions, delete, update.
  */
 import { useInstancesStore } from "~/entities/instance/instance.model";
-import { isMessageForContext, useCurrentChatMessagesStore } from "~/entities/message/message.model";
-import { useNotificationSettingsStore } from "~/entities/notification-settings/notification-settings.model";
+import { isMessageForContext } from "~/entities/message/message.model";
 import { resolveIncomingDmCallInvite } from "~/features/jitsi-call/jitsi-call-invite.lib";
-import { useSettingsStore } from "~/features/settings/settings.model";
 import { getCurrentInstance } from "~/shared/api/client";
 import type { ZulipEvent, ZulipRawMessage } from "~/shared/api/zulip";
 import { rawMessageToMockMessage } from "~/shared/api/zulip";
@@ -13,17 +11,13 @@ import {
   applyZulipEventToMessageIndexedDb,
   isChatMessagesPersistToIndexedDbEnabled,
 } from "~/shared/lib/message-idb-from-zulip.lib";
-import { parseAllMessageEmbedsFromRenderedHtml } from "~/shared/lib/message-link-preview-fetch.lib";
-import { enqueuePendingLinkPreview } from "~/shared/lib/message-link-preview-pending.lib";
-import { linkPreviewUrlsMatch } from "~/shared/lib/message-link-preview-url-match.lib";
-import { extractLinkPreviewUrls } from "~/shared/lib/message-link-preview-urls.lib";
-import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
-import { registerNotifiedMessageId } from "~/shared/lib/notification-dedup.lib";
-import { resolveNotificationSoundPreset } from "~/shared/lib/notification-sound-preset.lib";
-import { shouldDesktopNotify } from "~/shared/lib/notifications-policy";
-import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
-import { extractTopicMoveFromUpdateEvent } from "~/shared/lib/update-message-topic-move.lib";
 import { closeReadMessageNotifications } from "./layout-notification-tags.lib";
+import { maybeNotifyNewMessage } from "./layout-zulip-event-notify.lib";
+import {
+  applyRenderingOnlyLinkPreviews,
+  applyTopicMoveFromUpdateMessage,
+  applyUpdateMessageContent,
+} from "./layout-zulip-event-update-message.lib";
 import type {
   LayoutMessageFlagOp,
   LayoutZulipEventDispatchContext,
@@ -96,78 +90,8 @@ export function handleIncomingMessage(
   }
 }
 
-export function readViewportState(): { windowFocused: boolean; windowHidden: boolean } {
-  if (typeof document === "undefined") {
-    return { windowFocused: true, windowHidden: false };
-  }
-  return {
-    windowFocused: document.hasFocus(),
-    windowHidden: document.hidden,
-  };
-}
-
-export function maybeNotifyNewMessage(
-  ctx: LayoutZulipEventDispatchContext,
-  raw: ZulipRawMessage,
-  _currentUserId: number | null,
-  isForCurrentChat: boolean,
-  isFromSelf: boolean,
-): void {
-  const { mute, notifications } = ctx;
-  let isMuted = false;
-  let isTopicFollowed = false;
-  if (raw.type === "stream" && raw.stream_id != null) {
-    const topic = normalizeTopicForIdentity(raw.subject ?? "");
-    isMuted = mute.isEffectivelyMuted(raw.stream_id, topic);
-    isTopicFollowed = mute.isTopicFollowed(raw.stream_id, topic);
-  }
-
-  const isOnScreenInCurrentChat = isForCurrentChat;
-  const serverSettings = useNotificationSettingsStore.getState().settings;
-  const localSound = useSettingsStore.getState().notificationSound;
-  const resolvedPreset = resolveNotificationSoundPreset(
-    serverSettings.notificationSound,
-    localSound,
-  );
-
-  const decision = shouldDesktopNotify({
-    message: {
-      type: raw.type ?? "stream",
-      flags: raw.flags,
-      isTopicFollowed,
-    },
-    viewport: {
-      isFromSelf,
-      isOnScreenInCurrentChat,
-      isMuted,
-      ...readViewportState(),
-    },
-    settings: serverSettings,
-  });
-
-  if (!decision.notify) return;
-
-  registerNotifiedMessageId(raw.id);
-
-  const senderName = raw.sender_full_name ?? "New message";
-  const contentPreview = plainTextPreviewFromMessageBody(raw.content ?? "").slice(0, 100);
-  const playSound = decision.playSound && resolvedPreset !== "none";
-
-  notifications
-    .show({
-      title: senderName,
-      body: contentPreview,
-      tag: `msg-${raw.id}`,
-      silent: true,
-    })
-    .catch(() => {});
-
-  if (playSound) {
-    notifications.playSound(resolvedPreset);
-  }
-
-  notifications.requestAttentionIfNotFocused();
-}
+export { readViewportState } from "./layout-zulip-event-viewport.lib";
+export { maybeNotifyNewMessage } from "./layout-zulip-event-notify.lib";
 
 export function handleUpdateMessageFlags(
   event: ZulipEvent,
@@ -236,48 +160,11 @@ export function handleDeleteMessage(event: ZulipEvent, ctx: LayoutZulipEventDisp
 
 export function handleUpdateMessage(event: ZulipEvent, ctx: LayoutZulipEventDispatchContext): void {
   if (event.type !== "update_message") return;
-  const { currentChat, chatList, activity } = ctx;
+  const { activity } = ctx;
   activity.markStale();
   activity.markStarredSummaryStale();
-  const messageId = event.message_id as number | undefined;
-  const renderingOnly = event.rendering_only === true;
-  const newMarkdown =
-    !renderingOnly && typeof event.content === "string" ? event.content : undefined;
-  if (messageId == null) return;
-  if (newMarkdown != null) {
-    const trimmed = newMarkdown.trim();
-    currentChat.updateMessageContent(
-      messageId,
-      newMarkdown,
-      trimmed.length > 0 ? newMarkdown : undefined,
-    );
-  }
-
-  if (renderingOnly && typeof event.rendered_content === "string") {
-    const embeds = parseAllMessageEmbedsFromRenderedHtml(event.rendered_content);
-    if (embeds.length > 0) {
-      const row = useCurrentChatMessagesStore.getState().messages.find((m) => m.id === messageId);
-      if (row == null) {
-        for (const preview of embeds) {
-          enqueuePendingLinkPreview(messageId, preview);
-        }
-      } else {
-        const markdownBody = row.markdown_source ?? row.content;
-        const expectedUrls = extractLinkPreviewUrls(markdownBody);
-        for (const preview of embeds) {
-          const matchesExpected = expectedUrls.some((url) =>
-            linkPreviewUrlsMatch(url, preview.targetUrl),
-          );
-          if (matchesExpected) {
-            currentChat.updateMessageLinkPreview(messageId, preview);
-          }
-        }
-      }
-    }
-  }
-
-  const topicMovePayload = extractTopicMoveFromUpdateEvent(event);
-  if (topicMovePayload == null) return;
-  chatList.moveStreamTopic(topicMovePayload);
-  currentChat.moveStreamTopicMessages(topicMovePayload);
+  if (event.message_id == null) return;
+  applyUpdateMessageContent(event, ctx);
+  applyRenderingOnlyLinkPreviews(event, ctx);
+  applyTopicMoveFromUpdateMessage(event, ctx);
 }

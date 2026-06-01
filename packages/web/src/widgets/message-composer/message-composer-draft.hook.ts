@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { MessageComposerProps } from "./message-composer.types";
 
 interface UseComposerDraftParams {
@@ -22,7 +22,7 @@ export function useComposerDraft({
   setMediaPickerOpen,
   setMode,
 }: UseComposerDraftParams) {
-  const [value, setValue] = useState(initialValue ?? "");
+  const [value, setRawValue] = useState(initialValue ?? "");
   const isEditing = editSession != null;
   const editModeDraftSnapshotRef = useRef<string | null>(null);
   const activeEditMessageIdRef = useRef<number | null>(null);
@@ -32,7 +32,7 @@ export function useComposerDraft({
     if (isEditing) return;
     if (initialValue !== initialValueRef.current) {
       initialValueRef.current = initialValue;
-      setValue(initialValue ?? "");
+      setRawValue(initialValue ?? "");
     }
   }, [initialValue, isEditing]);
 
@@ -41,7 +41,7 @@ export function useComposerDraft({
       if (activeEditMessageIdRef.current == null) return;
       activeEditMessageIdRef.current = null;
       if (editModeDraftSnapshotRef.current != null) {
-        setValue(editModeDraftSnapshotRef.current);
+        setRawValue(editModeDraftSnapshotRef.current);
       }
       editModeDraftSnapshotRef.current = null;
       return;
@@ -52,7 +52,7 @@ export function useComposerDraft({
       editModeDraftSnapshotRef.current = value;
     }
     activeEditMessageIdRef.current = editSession.messageId;
-    setValue(editSession.initialMarkdown);
+    setRawValue(editSession.initialMarkdown);
     setAiMenuOpen(false);
     setScheduleMenuOpen(false);
     setSavedSnippetsMenuOpen(false);
@@ -69,17 +69,23 @@ export function useComposerDraft({
     setMode,
   ]);
 
-  const setValueAndNotify = (next: string) => {
-    setValue(next);
-    if (!isEditing) {
-      onValueChange?.(next);
-    }
-  };
+  const setValue = useCallback(
+    (next: string | ((prev: string) => string)) => {
+      setRawValue((prev) => {
+        const resolved = typeof next === "function" ? next(prev) : next;
+        if (!isEditing) {
+          onValueChange?.(resolved);
+        }
+        return resolved;
+      });
+    },
+    [isEditing, onValueChange],
+  );
 
   return {
     value,
     setValue,
-    setValueAndNotify,
+    setRawValue,
     isEditing,
   };
 }

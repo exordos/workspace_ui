@@ -6,11 +6,9 @@
  * Tracks unread counts per topic/DM and a message-to-location index for flag/delete handling.
  */
 import { create } from "zustand";
-import { parseDmKeyToUserIds } from "~/entities/message/message-chat-context.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
-import { fetchMessagesWithNarrow } from "~/shared/api/zulip";
-import type { MockMessage, ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import {
   deserializeStreamEntry,
   type ChatListSnapshotSerialized,
@@ -31,19 +29,35 @@ import type {
   DmEntryInternal,
 } from "~/shared/types/sidebar-chat";
 import {
+  applyAddMessagesBatchPatch,
+  buildDmLatestMap,
+  buildStreamTopicLatestMap,
+} from "./chat-list-add-messages-batch.lib";
+import {
+  applyHandleDeleteMessagesStatePatch,
+  buildResolvedDmPreviewFromMessage,
+  buildResolvedPreviewFromMessage,
+  fetchReplacementMessageForDeletedPreview,
+  type DeletedPreviewContext,
+} from "./chat-list-delete-messages.lib";
+import {
   formatMessageTime,
   GROUP_DM_ID_OFFSET,
   getDmPartnerName,
   hashKey,
   resolvePersonalDmSidebarTitle,
   slugify,
-  truncatePreview,
 } from "./chat-list-format.lib";
 import {
   applySidebarUnreadDeltas,
   computeSidebarUnreadTotals,
   countMentionsUnread,
 } from "./chat-list-sidebar-totals.lib";
+import {
+  getNewestTopicEntry,
+  mergeStreamEntry,
+  rebuildStreamFromTopics,
+} from "./chat-list-stream-entry-merge.lib";
 import {
   filterStreamMessagesForSidebar,
   mergeStreamSidebarPreviewsFromMessages,
@@ -58,6 +72,11 @@ import {
   removeStreamTopicKeyFromIndex,
   streamTopicCompositeKey,
 } from "./chat-list-stream-topic-index.lib";
+import {
+  applyReconcileUnreadMapsPatch,
+  buildLatestUnreadDmMessageMap,
+  buildLatestUnreadStreamMessageMap,
+} from "./chat-list-unread-reconcile-apply.lib";
 import { buildUnreadReconcileMapsFromRegisterSnapshot } from "./chat-list-unread-reconcile.lib";
 import {
   buildSidebarFromMessages,
@@ -68,7 +87,6 @@ import {
 import type { ChatListPatchMeta } from "./chat-list-patch-meta.types";
 import type {
   ChatListDmMetadataRow,
-  ChatListPreviewSourceMessage,
   ChatListState,
   ChatListStreamMetadataRow,
   MessageLocation,
@@ -76,43 +94,6 @@ import type {
 
 type StreamTopicEntryInternal =
   StreamEntryInternal["topics"] extends Map<string, infer TopicEntry> ? TopicEntry : never;
-
-function parseStreamTopicCompositeKey(key: string): { streamId: number; topicKey: string } | null {
-  const tab = key.indexOf("\t");
-  if (tab <= 0) return null;
-  const streamId = Number(key.slice(0, tab));
-  if (!Number.isInteger(streamId) || streamId <= 0) return null;
-  return { streamId, topicKey: key.slice(tab + 1) };
-}
-
-/** Keys that may need unread count updates: server snapshot + locally non-zero (stale reset). */
-function collectStreamTopicKeysForUnreadReconcile(
-  streamsMap: Map<number, StreamEntryInternal>,
-  unreadStreamCounts: Map<string, number>,
-): Set<string> {
-  const keys = new Set<string>(unreadStreamCounts.keys());
-  for (const [streamId, stream] of streamsMap.entries()) {
-    for (const [topicKey, topic] of stream.topics.entries()) {
-      if (topic.unreadCount > 0) {
-        keys.add(streamTopicCompositeKey(streamId, topicKey));
-      }
-    }
-  }
-  return keys;
-}
-
-function collectDmKeysForUnreadReconcile(
-  dmsMap: Map<string, DmEntryInternal>,
-  unreadDmCounts: Map<string, number>,
-): Set<string> {
-  const keys = new Set<string>(unreadDmCounts.keys());
-  for (const [dmKey, dm] of dmsMap.entries()) {
-    if (dm.unreadCount > 0) {
-      keys.add(dmKey);
-    }
-  }
-  return keys;
-}
 
 function finalizeChatListPatch(
   state: ChatListState,
@@ -233,150 +214,6 @@ function dmsMapToSortedDms(
     }));
 }
 
-function mergeStreamEntry(
-  existing: StreamEntryInternal | undefined,
-  streamId: number,
-  name: string,
-  lastMessage: string,
-  lastMessageSenderName: string | undefined,
-  time: string,
-  ts: number,
-  topicSubject: string,
-  topicLastMessage: string,
-  topicLastMessageSenderName: string | undefined,
-  topicTime: string,
-  topicTs: number,
-  topicUnreadDelta: number,
-  lastMessageId?: number,
-): StreamEntryInternal {
-  const existingTopic = existing?.topics.get(topicSubject);
-  const unreadCount = (existingTopic?.unreadCount ?? 0) + topicUnreadDelta;
-  const topicEntry = {
-    subject: topicSubject,
-    lastMessage: topicLastMessage,
-    lastMessageSenderName: topicLastMessageSenderName,
-    time: topicTime,
-    ts: topicTs,
-    unreadCount,
-    lastMessageId,
-  };
-  if (!existing) {
-    const topics = new Map<
-      string,
-      {
-        subject: string;
-        lastMessage: string;
-        lastMessageSenderName?: string;
-        time: string;
-        ts: number;
-        unreadCount: number;
-        lastMessageId?: number;
-      }
-    >([[topicSubject, topicEntry]]);
-    return { stream_id: streamId, name, lastMessage, lastMessageSenderName, time, ts, topics };
-  }
-  const nextTopics = new Map(existing.topics);
-  if (!existingTopic || topicTs >= existingTopic.ts) {
-    nextTopics.set(topicSubject, topicEntry);
-  } else {
-    nextTopics.set(topicSubject, { ...existingTopic, unreadCount });
-  }
-  const newerStream = ts >= existing.ts;
-  return {
-    stream_id: streamId,
-    name: existing.name,
-    lastMessage: newerStream ? lastMessage : existing.lastMessage,
-    lastMessageSenderName: newerStream ? lastMessageSenderName : existing.lastMessageSenderName,
-    time: newerStream ? time : existing.time,
-    ts: Math.max(existing.ts, ts),
-    // Что делает: сохраняет channel-level metadata из подписок при приходе новых сообщений.
-    // Сообщения не должны затирать permission-поля канала.
-    isArchived: existing.isArchived,
-    creatorId: existing.creatorId,
-    inviteOnly: existing.inviteOnly,
-    canAddSubscribersGroup: existing.canAddSubscribersGroup,
-    canRemoveSubscribersGroup: existing.canRemoveSubscribersGroup,
-    canAdministerChannelGroup: existing.canAdministerChannelGroup,
-    canResolveTopicsGroup: existing.canResolveTopicsGroup,
-    topics: nextTopics,
-  };
-}
-
-/** Increments topic unread by one without changing preview fields (addMessages batch pass). */
-function bumpStreamTopicUnreadFromMessage(
-  streamsMap: Map<number, StreamEntryInternal>,
-  message: ZulipRawMessage,
-  _currentUserId: number | null,
-): Map<number, StreamEntryInternal> {
-  const result = messageToStreamEntry(message);
-  if (!result) return streamsMap;
-  const { stream_id, name, lastMessage, lastMessageSenderName, time, ts } = result.stream;
-  const topic = result.topic;
-  const existing = streamsMap.get(stream_id);
-  if (!existing) {
-    const next = new Map(streamsMap);
-    next.set(
-      stream_id,
-      mergeStreamEntry(
-        undefined,
-        stream_id,
-        name,
-        lastMessage,
-        lastMessageSenderName,
-        time,
-        ts,
-        topic.subject,
-        topic.lastMessage,
-        topic.lastMessageSenderName,
-        topic.time,
-        topic.ts,
-        1,
-        message.id,
-      ),
-    );
-    return next;
-  }
-  const existingTopic = existing.topics.get(topic.subject);
-  const next = new Map(streamsMap);
-  const nextTopics = new Map(existing.topics);
-  nextTopics.set(topic.subject, {
-    subject: topic.subject,
-    lastMessage: existingTopic?.lastMessage ?? topic.lastMessage,
-    lastMessageSenderName: existingTopic?.lastMessageSenderName ?? topic.lastMessageSenderName,
-    time: existingTopic?.time ?? topic.time,
-    ts: existingTopic?.ts ?? topic.ts,
-    unreadCount: (existingTopic?.unreadCount ?? 0) + 1,
-    lastMessageId: existingTopic?.lastMessageId,
-  });
-  next.set(stream_id, { ...existing, topics: nextTopics });
-  return next;
-}
-
-function bumpDmUnreadFromMessage(
-  dmsMap: Map<string, DmEntryInternal>,
-  message: ZulipRawMessage,
-  currentUserId: number | null,
-  avatarMap: Map<number, string>,
-): Map<string, DmEntryInternal> {
-  if (!Array.isArray(message.display_recipient)) return dmsMap;
-  const key = dmConversationKey(message.display_recipient, currentUserId);
-  const existing = dmsMap.get(key);
-  const next = new Map(dmsMap);
-  if (existing) {
-    next.set(key, { ...existing, unreadCount: existing.unreadCount + 1 });
-    return next;
-  }
-  const dmEntry = messageToDmEntry(message, currentUserId, avatarMap);
-  if (!dmEntry) return dmsMap;
-  next.set(key, {
-    ...dmEntry,
-    unreadCount: 1,
-    avatar_url: dmEntry.avatar_url,
-    lastMessageId: message.id,
-  });
-  return next;
-}
-
 function mergeStreamAccessMetadata(
   stream: StreamEntryInternal,
   existing: StreamEntryInternal | undefined,
@@ -409,18 +246,6 @@ function mergeStreamAccessMetadata(
       ? { canResolveTopicsGroup: existing.canResolveTopicsGroup }
       : {}),
   };
-}
-
-function getNewestTopicEntry(
-  topics: Map<string, StreamTopicEntryInternal>,
-): StreamTopicEntryInternal | null {
-  let newest: StreamTopicEntryInternal | null = null;
-  for (const topic of topics.values()) {
-    if (newest == null || topic.ts > newest.ts) {
-      newest = topic;
-    }
-  }
-  return newest;
 }
 
 function mergeTopicsForMove(
@@ -689,379 +514,6 @@ function buildUnreadLocationMap(
   return map;
 }
 
-function isMessageNewer(
-  message: ZulipRawMessage,
-  existingTs: number,
-  existingLastMessageId?: number | null,
-): boolean {
-  if (message.timestamp !== existingTs) {
-    return message.timestamp > existingTs;
-  }
-  if (existingLastMessageId == null) {
-    return true;
-  }
-  return message.id > existingLastMessageId;
-}
-
-function buildLatestUnreadStreamMessageMap(
-  messages: readonly ZulipRawMessage[],
-  currentUserId: number | null,
-): Map<string, ZulipRawMessage> {
-  const map = new Map<string, ZulipRawMessage>();
-  for (const message of messages) {
-    if (!isUnreadFromOthers(message, currentUserId)) continue;
-    if (message.type !== "stream" || message.stream_id == null) continue;
-    const topic = normalizeTopicForIdentity(message.subject ?? "");
-    const key = `${message.stream_id}\t${topic}`;
-    const existing = map.get(key);
-    if (!existing || isMessageNewer(message, existing.timestamp, existing.id)) {
-      map.set(key, message);
-    }
-  }
-  return map;
-}
-
-function buildLatestUnreadDmMessageMap(
-  messages: readonly ZulipRawMessage[],
-  currentUserId: number | null,
-): Map<string, ZulipRawMessage> {
-  const map = new Map<string, ZulipRawMessage>();
-  for (const message of messages) {
-    if (!isUnreadFromOthers(message, currentUserId)) continue;
-    if (message.type !== "private" || !Array.isArray(message.display_recipient)) continue;
-    const dmKey = dmConversationKey(message.display_recipient, currentUserId);
-    const existing = map.get(dmKey);
-    if (!existing || isMessageNewer(message, existing.timestamp, existing.id)) {
-      map.set(dmKey, message);
-    }
-  }
-  return map;
-}
-
-interface StreamTopicUnreadPatch {
-  topicKey: string;
-  unreadCount: number;
-}
-
-/** Groups topic unread count changes by stream for a single topics-map clone per stream. */
-function groupStreamTopicUnreadPatches(
-  streamsMap: ReadonlyMap<number, StreamEntryInternal>,
-  streamTopicKeysToReconcile: Iterable<string>,
-  unreadStreamCounts: ReadonlyMap<string, number>,
-): Map<number, StreamTopicUnreadPatch[]> {
-  const byStream = new Map<number, StreamTopicUnreadPatch[]>();
-  for (const compositeKey of streamTopicKeysToReconcile) {
-    const parsed = parseStreamTopicCompositeKey(compositeKey);
-    if (parsed == null) continue;
-    const { streamId, topicKey } = parsed;
-    const stream = streamsMap.get(streamId);
-    if (stream == null) continue;
-    const topic = stream.topics.get(topicKey);
-    const nextUnreadCount = unreadStreamCounts.get(compositeKey) ?? 0;
-    if (topic == null) {
-      if (nextUnreadCount === 0) continue;
-    } else if (topic.unreadCount === nextUnreadCount) {
-      continue;
-    }
-    const patch = { topicKey, unreadCount: nextUnreadCount };
-    const list = byStream.get(streamId);
-    if (list) {
-      list.push(patch);
-    } else {
-      byStream.set(streamId, [patch]);
-    }
-  }
-  return byStream;
-}
-
-function applyStreamTopicUnreadPatches(
-  streamsMap: Map<number, StreamEntryInternal>,
-  patchesByStream: Map<number, StreamTopicUnreadPatch[]>,
-): Map<number, StreamEntryInternal> {
-  const nextStreams = new Map(streamsMap);
-  for (const [streamId, patches] of patchesByStream) {
-    const stream = nextStreams.get(streamId);
-    if (stream == null) continue;
-    const nextTopics = new Map(stream.topics);
-    for (const { topicKey, unreadCount } of patches) {
-      const topic = nextTopics.get(topicKey);
-      if (topic == null) {
-        if (unreadCount === 0) continue;
-        nextTopics.set(topicKey, {
-          subject: topicKey,
-          lastMessage: "",
-          time: "",
-          ts: 0,
-          unreadCount,
-        });
-        continue;
-      }
-      nextTopics.set(topicKey, { ...topic, unreadCount });
-    }
-    nextStreams.set(streamId, { ...stream, topics: nextTopics });
-  }
-  return nextStreams;
-}
-
-function groupLatestUnreadStreamMessagesByStream(
-  latestUnreadStreams: ReadonlyMap<string, ZulipRawMessage>,
-): Map<number, ZulipRawMessage[]> {
-  const byStream = new Map<number, ZulipRawMessage[]>();
-  for (const message of latestUnreadStreams.values()) {
-    if (message.stream_id == null) continue;
-    const streamId = message.stream_id;
-    const list = byStream.get(streamId);
-    if (list) {
-      list.push(message);
-    } else {
-      byStream.set(streamId, [message]);
-    }
-  }
-  return byStream;
-}
-
-function applyLatestUnreadStreamMetadata(
-  streamsMap: Map<number, StreamEntryInternal>,
-  latestByStream: Map<number, ZulipRawMessage[]>,
-  unreadStreamCounts: ReadonlyMap<string, number>,
-): { streamsMap: Map<number, StreamEntryInternal>; changed: boolean } {
-  let nextStreams = streamsMap;
-  let changed = false;
-
-  for (const [streamId, messages] of latestByStream) {
-    const stream = nextStreams.get(streamId);
-    let nextTopics: Map<string, StreamTopicEntryInternal> | null = null;
-    let streamShell: StreamEntryInternal | null = null;
-    let streamTopicsChanged = false;
-
-    const ensureTopics = (): Map<string, StreamTopicEntryInternal> => {
-      nextTopics ??= stream != null ? new Map(stream.topics) : new Map();
-      return nextTopics;
-    };
-
-    for (const message of messages) {
-      const entry = messageToStreamEntry(message);
-      if (!entry) continue;
-      const topicKey = entry.topic.subject;
-      const unreadCount = unreadStreamCounts.get(streamTopicCompositeKey(streamId, topicKey)) ?? 0;
-      const unreadTopic = { ...entry.topic, unreadCount };
-
-      if (stream == null) {
-        streamShell ??= entry.stream;
-        ensureTopics().set(topicKey, unreadTopic);
-        streamTopicsChanged = true;
-        continue;
-      }
-
-      const existingTopic = stream.topics.get(topicKey);
-      if (existingTopic == null) {
-        ensureTopics().set(topicKey, unreadTopic);
-        streamTopicsChanged = true;
-        continue;
-      }
-
-      if (!isMessageNewer(message, existingTopic.ts, existingTopic.lastMessageId)) {
-        continue;
-      }
-      ensureTopics().set(topicKey, unreadTopic);
-      streamTopicsChanged = true;
-    }
-
-    if (!streamTopicsChanged || nextTopics == null) continue;
-
-    if (!changed) {
-      nextStreams = new Map(nextStreams);
-      changed = true;
-    }
-
-    const baseStream = stream ?? {
-      ...streamShell!,
-      topics: new Map(),
-    };
-    nextStreams.set(streamId, rebuildStreamFromTopics(baseStream, nextTopics));
-  }
-
-  return { streamsMap: nextStreams, changed };
-}
-
-function rebuildStreamFromTopics(
-  stream: StreamEntryInternal,
-  topics: Map<string, StreamTopicEntryInternal>,
-): StreamEntryInternal {
-  const newestTopic = getNewestTopicEntry(topics);
-  return {
-    ...stream,
-    topics,
-    ...(newestTopic != null
-      ? {
-          lastMessage: newestTopic.lastMessage,
-          lastMessageSenderName: newestTopic.lastMessageSenderName,
-          time: newestTopic.time,
-          ts: newestTopic.ts,
-        }
-      : {}),
-  };
-}
-
-interface SidebarResolvedPreview {
-  lastMessageId: number;
-  lastMessage: string;
-  lastMessageSenderName?: string;
-  time: string;
-  ts: number;
-}
-
-type DeletedPreviewContext =
-  | {
-      kind: "stream";
-      streamId: number;
-      topicKey: string;
-      streamName: string;
-      deletedLastMessageId: number;
-    }
-  | {
-      kind: "dm";
-      dmKey: string;
-      deletedLastMessageId: number;
-    };
-
-function buildResolvedPreviewFromMessage(
-  message: ChatListPreviewSourceMessage,
-): SidebarResolvedPreview {
-  const trimmedSenderName = message.sender_full_name?.trim();
-  const lastMessageSenderName =
-    trimmedSenderName && trimmedSenderName.length > 0 ? trimmedSenderName : undefined;
-  return {
-    lastMessageId: message.id,
-    lastMessage: truncatePreview(message.content ?? ""),
-    lastMessageSenderName,
-    time: formatMessageTime(message.timestamp),
-    ts: message.timestamp,
-  };
-}
-
-function buildResolvedDmPreviewFromMessage(
-  message: ChatListPreviewSourceMessage,
-): Pick<DmEntryInternal, "lastMessageId" | "lastMessage" | "time" | "ts"> {
-  return {
-    lastMessageId: message.id,
-    lastMessage: truncatePreview(message.content ?? ""),
-    time: formatMessageTime(message.timestamp),
-    ts: message.timestamp,
-  };
-}
-
-/** Metadata/IDB rows can carry lastActivityTs + lastMessageId without preview text — still merge fetched bodies. */
-function shouldApplyDmPreviewFromFetchedMessage(
-  existing: DmEntryInternal,
-  message: ZulipRawMessage,
-  previewText: string,
-): boolean {
-  if (message.timestamp > existing.ts) {
-    return true;
-  }
-  if (existing.lastMessage.trim().length === 0 && previewText.trim().length > 0) {
-    return true;
-  }
-  return existing.lastMessageId === message.id;
-}
-
-function pickNewestMessage<T extends ChatListPreviewSourceMessage>(
-  messages: readonly T[],
-  predicate: (message: T) => boolean,
-  excludedMessageIds?: ReadonlySet<number>,
-): T | null {
-  let newest: T | null = null;
-  for (const message of messages) {
-    if (excludedMessageIds?.has(message.id)) continue;
-    if (!predicate(message)) continue;
-    if (
-      newest == null ||
-      message.timestamp > newest.timestamp ||
-      (message.timestamp === newest.timestamp && message.id > newest.id)
-    ) {
-      newest = message;
-    }
-  }
-  return newest;
-}
-
-function pickReplacementForStreamTopic<T extends ChatListPreviewSourceMessage>(
-  messages: readonly T[],
-  streamId: number,
-  topicKey: string,
-  excludedMessageIds?: ReadonlySet<number>,
-): T | null {
-  return pickNewestMessage(
-    messages,
-    (message) =>
-      message.stream_id === streamId &&
-      normalizeTopicForIdentity(message.subject ?? "") === topicKey,
-    excludedMessageIds,
-  );
-}
-
-function pickReplacementForDm<T extends ChatListPreviewSourceMessage>(
-  messages: readonly T[],
-  dmKey: string,
-  currentUserId: number | null,
-  excludedMessageIds?: ReadonlySet<number>,
-): T | null {
-  return pickNewestMessage(
-    messages,
-    (message) => {
-      if (message.stream_id != null || !Array.isArray(message.display_recipient)) return false;
-      return dmConversationKey(message.display_recipient, currentUserId) === dmKey;
-    },
-    excludedMessageIds,
-  );
-}
-
-async function fetchReplacementMessageForDeletedPreview(
-  context: DeletedPreviewContext,
-  currentUserId: number | null,
-  signal?: AbortSignal,
-): Promise<MockMessage | null> {
-  try {
-    if (context.kind === "stream") {
-      if (context.streamName.trim().length === 0) return null;
-      const messages = await fetchMessagesWithNarrow(
-        [
-          { operator: "stream", operand: context.streamName },
-          { operator: "topic", operand: context.topicKey },
-        ],
-        "newest",
-        1,
-        0,
-        { applyMarkdown: true, signal },
-      );
-      const replacement = pickReplacementForStreamTopic(
-        messages,
-        context.streamId,
-        context.topicKey,
-      );
-      return replacement?.id === context.deletedLastMessageId ? null : replacement;
-    }
-
-    const userIds = parseDmKeyToUserIds(context.dmKey, currentUserId);
-    if (userIds.length === 0) return null;
-    const messages = await fetchMessagesWithNarrow(
-      [{ operator: "dm", operand: userIds }],
-      "newest",
-      1,
-      0,
-      { applyMarkdown: true, signal },
-    );
-    const replacement = pickReplacementForDm(messages, context.dmKey, currentUserId);
-    return replacement?.id === context.deletedLastMessageId ? null : replacement;
-  } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
-      return null;
-    }
-    return null;
-  }
-}
-
 export const useChatListStore = create<ChatListState>((set, get) => {
   let previewResolveGeneration = 0;
   const previewResolveAbortControllers = new Set<AbortController>();
@@ -1093,144 +545,17 @@ export const useChatListStore = create<ChatListState>((set, get) => {
     latestUnreadDms: Map<string, ZulipRawMessage>,
     effectiveUserId: number | null,
   ) => {
-    patchSet((state) => {
-      let nextStreams = state.streamsMap;
-      let streamsChanged = false;
-
-      const streamTopicKeysToReconcile = collectStreamTopicKeysForUnreadReconcile(
-        state.streamsMap,
+    patchSet((state) =>
+      applyReconcileUnreadMapsPatch(state, {
         unreadStreamCounts,
-      );
-
-      const topicUnreadPatchesByStream = groupStreamTopicUnreadPatches(
-        state.streamsMap,
-        streamTopicKeysToReconcile,
-        unreadStreamCounts,
-      );
-      if (topicUnreadPatchesByStream.size > 0) {
-        nextStreams = applyStreamTopicUnreadPatches(nextStreams, topicUnreadPatchesByStream);
-        streamsChanged = true;
-      }
-
-      let nextDms = state.dmsMap;
-      let dmsChanged = false;
-
-      const dmKeysToReconcile = collectDmKeysForUnreadReconcile(state.dmsMap, unreadDmCounts);
-
-      for (const dmKey of dmKeysToReconcile) {
-        const dm = nextDms.get(dmKey);
-        if (dm == null) continue;
-        const nextUnreadCount = unreadDmCounts.get(dmKey) ?? 0;
-        if (dm.unreadCount === nextUnreadCount) continue;
-        if (!dmsChanged) {
-          nextDms = new Map(nextDms);
-          dmsChanged = true;
-        }
-        nextDms.set(dmKey, { ...dm, unreadCount: nextUnreadCount });
-      }
-
-      const latestUnreadByStream = groupLatestUnreadStreamMessagesByStream(latestUnreadStreams);
-      const metadataResult = applyLatestUnreadStreamMetadata(
-        nextStreams,
-        latestUnreadByStream,
-        unreadStreamCounts,
-      );
-      if (metadataResult.changed) {
-        nextStreams = metadataResult.streamsMap;
-        streamsChanged = true;
-      }
-
-      for (const [dmKey, message] of latestUnreadDms.entries()) {
-        const dmEntry = messageToDmEntry(message, effectiveUserId, getAvatarMap());
-        if (dmEntry == null) continue;
-        const existing = nextDms.get(dmKey);
-        const unreadCount = unreadDmCounts.get(dmKey) ?? 0;
-
-        if (existing == null) {
-          if (!dmsChanged) {
-            nextDms = new Map(nextDms);
-            dmsChanged = true;
-          }
-          nextDms.set(dmKey, { ...dmEntry, unreadCount, lastMessageId: message.id });
-          continue;
-        }
-
-        if (!isMessageNewer(message, existing.ts, existing.lastMessageId)) {
-          continue;
-        }
-
-        if (!dmsChanged) {
-          nextDms = new Map(nextDms);
-          dmsChanged = true;
-        }
-        nextDms.set(dmKey, {
-          ...dmEntry,
-          unreadCount,
-          avatar_url: dmEntry.avatar_url ?? existing.avatar_url,
-          lastMessageId: message.id,
-        });
-      }
-
-      let nextLocations = state.messageIdToLocation;
-      let locationsChanged = false;
-      for (const [messageId, location] of unreadLocationMap.entries()) {
-        const existing = nextLocations.get(messageId);
-        const sameLocation =
-          existing?.type === location.type &&
-          (existing?.type === "stream"
-            ? location.type === "stream" &&
-              existing.stream_id === location.stream_id &&
-              existing.topic === location.topic
-            : location.type === "dm" && existing?.dmKey === location.dmKey);
-        if (sameLocation) continue;
-        if (!locationsChanged) {
-          nextLocations = new Map(nextLocations);
-          locationsChanged = true;
-        }
-        nextLocations.set(messageId, location);
-      }
-
-      if (
-        !streamsChanged &&
-        !dmsChanged &&
-        !locationsChanged &&
-        effectiveUserId === state.currentUserId
-      ) {
-        return state;
-      }
-
-      let sidebarStreamsUnreadDelta = 0;
-      for (const [streamId, patches] of topicUnreadPatchesByStream) {
-        const stream = state.streamsMap.get(streamId);
-        for (const { topicKey, unreadCount } of patches) {
-          sidebarStreamsUnreadDelta +=
-            unreadCount - (stream?.topics.get(topicKey)?.unreadCount ?? 0);
-        }
-      }
-      let sidebarDmsUnreadDelta = 0;
-      for (const dmKey of dmKeysToReconcile) {
-        sidebarDmsUnreadDelta +=
-          (unreadDmCounts.get(dmKey) ?? 0) - (state.dmsMap.get(dmKey)?.unreadCount ?? 0);
-      }
-
-      return {
-        ...(streamsChanged ? { streamsMap: nextStreams } : {}),
-        ...(dmsChanged ? { dmsMap: nextDms } : {}),
-        ...(locationsChanged ? { messageIdToLocation: nextLocations } : {}),
-        ...(effectiveUserId !== state.currentUserId ? { currentUserId: effectiveUserId } : {}),
-        sidebarStreamsUnread: state.sidebarStreamsUnread + sidebarStreamsUnreadDelta,
-        sidebarDmsUnread: state.sidebarDmsUnread + sidebarDmsUnreadDelta,
-        ...(locationsChanged
-          ? {
-              streamTopicMessageIds: patchStreamTopicMessageIndex(
-                state.streamTopicMessageIds,
-                state.messageIdToLocation,
-                nextLocations,
-              ),
-            }
-          : {}),
-      };
-    });
+        unreadDmCounts,
+        unreadLocationMap,
+        latestUnreadStreams,
+        latestUnreadDms,
+        effectiveUserId,
+        avatarMap: getAvatarMap(),
+      }),
+    );
 
     persistRecentDmPartnersFromMap(get().dmsMap);
   };
@@ -1475,127 +800,19 @@ export const useChatListStore = create<ChatListState>((set, get) => {
         dmsMapSizeBefore: get().dmsMap.size,
       });
       const currentUserId = get().currentUserId;
-      const streamTopicLatest = new Map<string, ZulipRawMessage>();
-      const dmLatest = new Map<string, ZulipRawMessage>();
-
-      for (const m of messages) {
-        if (m.type === "stream" && m.stream_id != null) {
-          const topic = normalizeTopicForIdentity(m.subject ?? "");
-          const key = streamTopicCompositeKey(m.stream_id, topic);
-          const existing = streamTopicLatest.get(key);
-          if (!existing || m.timestamp >= existing.timestamp) {
-            streamTopicLatest.set(key, m);
-          }
-        } else if (m.type === "private" && Array.isArray(m.display_recipient)) {
-          const key = dmConversationKey(m.display_recipient, currentUserId);
-          const existing = dmLatest.get(key);
-          if (!existing || m.timestamp >= existing.timestamp) {
-            dmLatest.set(key, m);
-          }
-        }
-      }
-
+      const streamTopicLatest = buildStreamTopicLatestMap(messages);
+      const dmLatest = buildDmLatestMap(messages, currentUserId);
       const avatarMap = getAvatarMap();
 
-      patchSet((state) => {
-        let nextStreams = state.streamsMap;
-        let nextDms = state.dmsMap;
-        const nextLoc = new Map(state.messageIdToLocation);
-        let sidebarStreamsUnreadDelta = 0;
-        let sidebarDmsUnreadDelta = 0;
-
-        for (const m of messages) {
-          if (m.type === "stream" && m.stream_id != null) {
-            const topic = normalizeTopicForIdentity(m.subject ?? "");
-            nextLoc.set(m.id, { type: "stream", stream_id: m.stream_id, topic });
-            if (isUnreadFromOthers(m, currentUserId)) {
-              nextStreams = bumpStreamTopicUnreadFromMessage(nextStreams, m, currentUserId);
-              sidebarStreamsUnreadDelta += 1;
-            }
-          } else if (m.type === "private" && Array.isArray(m.display_recipient)) {
-            const key = dmConversationKey(m.display_recipient, currentUserId);
-            nextLoc.set(m.id, { type: "dm", dmKey: key });
-            if (isUnreadFromOthers(m, currentUserId)) {
-              nextDms = bumpDmUnreadFromMessage(nextDms, m, currentUserId, avatarMap);
-              sidebarDmsUnreadDelta += 1;
-            }
-          }
-        }
-
-        for (const m of streamTopicLatest.values()) {
-          const result = messageToStreamEntry(m);
-          if (!result) continue;
-          const { stream_id, name, lastMessage, lastMessageSenderName, time, ts } = result.stream;
-          const topic = result.topic;
-          const existing = nextStreams.get(stream_id);
-          if (existing && m.timestamp <= existing.ts) {
-            const existingTopic = existing.topics.get(topic.subject);
-            if (existingTopic && m.timestamp <= existingTopic.ts) {
-              continue;
-            }
-          }
-          nextStreams = new Map(nextStreams);
-          const merged = mergeStreamEntry(
-            existing,
-            stream_id,
-            name,
-            lastMessage,
-            lastMessageSenderName,
-            time,
-            ts,
-            topic.subject,
-            topic.lastMessage,
-            topic.lastMessageSenderName,
-            topic.time,
-            topic.ts,
-            0,
-            m.id,
-          );
-          nextStreams.set(stream_id, merged);
-        }
-
-        for (const m of dmLatest.values()) {
-          const dmEntry = messageToDmEntry(m, currentUserId, avatarMap);
-          if (!dmEntry) continue;
-          if (!Array.isArray(m.display_recipient)) continue;
-          const key = dmConversationKey(m.display_recipient, currentUserId);
-          const existing = nextDms.get(key);
-          if (
-            existing != null &&
-            !shouldApplyDmPreviewFromFetchedMessage(existing, m, dmEntry.lastMessage)
-          ) {
-            continue;
-          }
-          nextDms = new Map(nextDms);
-          const avatar_url = dmEntry.avatar_url ?? existing?.avatar_url;
-          const preserveActivityTs =
-            existing != null && dmEntry.ts <= existing.ts ? existing.ts : dmEntry.ts;
-          const preserveTime =
-            existing != null && dmEntry.ts <= existing.ts ? existing.time : dmEntry.time;
-          nextDms.set(key, {
-            ...dmEntry,
-            unreadCount: existing?.unreadCount ?? 0,
-            avatar_url,
-            lastMessageId: m.id,
-            ts: preserveActivityTs,
-            time: preserveTime,
-          });
-        }
-
-        return {
-          streamsMap: nextStreams,
-          dmsMap: nextDms,
-          messageIdToLocation: nextLoc,
-          sidebarDataHydrated: true,
-          sidebarStreamsUnread: state.sidebarStreamsUnread + sidebarStreamsUnreadDelta,
-          sidebarDmsUnread: state.sidebarDmsUnread + sidebarDmsUnreadDelta,
-          streamTopicMessageIds: patchStreamTopicMessageIndex(
-            state.streamTopicMessageIds,
-            state.messageIdToLocation,
-            nextLoc,
-          ),
-        };
-      });
+      patchSet((state) =>
+        applyAddMessagesBatchPatch(state, {
+          messages,
+          currentUserId,
+          avatarMap,
+          streamTopicLatest,
+          dmLatest,
+        }),
+      );
       persistRecentDmPartnersFromMap(get().dmsMap);
       logChatListFlow("store: addMessages (done)", {
         streamsMapSizeAfter: get().streamsMap.size,
@@ -2241,206 +1458,20 @@ export const useChatListStore = create<ChatListState>((set, get) => {
       const deletedMessageIds = new Set(messageIds);
       const replacementMessages = options?.replacementMessages ?? [];
       const resolveMissingPreview = options?.resolveMissingPreview ?? true;
-      const contextsToResolveFromNetwork: DeletedPreviewContext[] = [];
+      let contextsToResolveFromNetwork: DeletedPreviewContext[] = [];
       const currentUserId = get().currentUserId;
 
       patchSet(
         (state) => {
-          const locMap = state.messageIdToLocation;
-          let nextLoc = locMap;
-          let locationsChanged = false;
-          let nextStreams = state.streamsMap;
-          let streamsChanged = false;
-          let nextDms = state.dmsMap;
-          let dmsChanged = false;
-          const streamContextsByKey = new Map<
-            string,
-            Extract<DeletedPreviewContext, { kind: "stream" }>
-          >();
-          const dmContextsByKey = new Map<string, Extract<DeletedPreviewContext, { kind: "dm" }>>();
-          const changedStreamIds = new Set<number>();
-
-          const ensureMutableLocations = () => {
-            if (!locationsChanged) {
-              nextLoc = new Map(nextLoc);
-              locationsChanged = true;
-            }
-          };
-          const ensureMutableStreams = () => {
-            if (!streamsChanged) {
-              nextStreams = new Map(nextStreams);
-              streamsChanged = true;
-            }
-          };
-          const ensureMutableDms = () => {
-            if (!dmsChanged) {
-              nextDms = new Map(nextDms);
-              dmsChanged = true;
-            }
-          };
-          const registerStreamContext = (
-            streamId: number,
-            topicKey: string,
-            streamName: string,
-            deletedLastMessageId: number,
-          ) => {
-            const key = streamTopicCompositeKey(streamId, topicKey);
-            const existing = streamContextsByKey.get(key);
-            if (!existing || deletedLastMessageId > existing.deletedLastMessageId) {
-              streamContextsByKey.set(key, {
-                kind: "stream",
-                streamId,
-                topicKey,
-                streamName,
-                deletedLastMessageId,
-              });
-            }
-          };
-          const registerDmContext = (dmKey: string, deletedLastMessageId: number) => {
-            const existing = dmContextsByKey.get(dmKey);
-            if (!existing || deletedLastMessageId > existing.deletedLastMessageId) {
-              dmContextsByKey.set(dmKey, {
-                kind: "dm",
-                dmKey,
-                deletedLastMessageId,
-              });
-            }
-          };
-
-          for (const mid of messageIds) {
-            if (nextLoc.has(mid)) {
-              ensureMutableLocations();
-              nextLoc.delete(mid);
-            }
-            const loc = locMap.get(mid);
-            if (!loc) continue;
-            if (loc.type === "stream") {
-              const stream = state.streamsMap.get(loc.stream_id);
-              const topic = stream?.topics.get(loc.topic);
-              if (topic?.lastMessageId === mid && stream != null) {
-                registerStreamContext(loc.stream_id, loc.topic, stream.name, mid);
-              }
-            } else {
-              const dm = state.dmsMap.get(loc.dmKey);
-              if (dm?.lastMessageId === mid) {
-                registerDmContext(loc.dmKey, mid);
-              }
-            }
-          }
-
-          for (const [streamId, stream] of state.streamsMap.entries()) {
-            for (const [topicKey, topic] of stream.topics.entries()) {
-              if (topic.lastMessageId == null) continue;
-              if (!deletedMessageIds.has(topic.lastMessageId)) continue;
-              registerStreamContext(streamId, topicKey, stream.name, topic.lastMessageId);
-            }
-          }
-          for (const [dmKey, dm] of state.dmsMap.entries()) {
-            if (dm.lastMessageId == null) continue;
-            if (!deletedMessageIds.has(dm.lastMessageId)) continue;
-            registerDmContext(dmKey, dm.lastMessageId);
-          }
-
-          for (const context of streamContextsByKey.values()) {
-            const stream = nextStreams.get(context.streamId);
-            const topic = stream?.topics.get(context.topicKey);
-            if (!stream || !topic) continue;
-            const replacement = pickReplacementForStreamTopic(
-              replacementMessages,
-              context.streamId,
-              context.topicKey,
-              deletedMessageIds,
-            );
-            const nextTopic =
-              replacement == null
-                ? {
-                    ...topic,
-                    lastMessage: "",
-                    lastMessageSenderName: undefined,
-                    time: "",
-                    ts: 0,
-                    lastMessageId: undefined,
-                  }
-                : {
-                    ...topic,
-                    ...buildResolvedPreviewFromMessage(replacement),
-                  };
-            ensureMutableStreams();
-            const nextTopics = new Map(stream.topics);
-            nextTopics.set(context.topicKey, nextTopic);
-            nextStreams.set(context.streamId, { ...stream, topics: nextTopics });
-            changedStreamIds.add(context.streamId);
-            if (replacement == null && resolveMissingPreview) {
-              contextsToResolveFromNetwork.push(context);
-            }
-          }
-
-          for (const streamId of changedStreamIds) {
-            const stream = nextStreams.get(streamId);
-            if (!stream) continue;
-            const newestTopic = getNewestTopicEntry(stream.topics);
-            nextStreams.set(streamId, {
-              ...stream,
-              ...(newestTopic != null
-                ? {
-                    lastMessage: newestTopic.lastMessage,
-                    lastMessageSenderName: newestTopic.lastMessageSenderName,
-                    time: newestTopic.time,
-                    ts: newestTopic.ts,
-                  }
-                : {
-                    lastMessage: "",
-                    lastMessageSenderName: undefined,
-                    time: "",
-                    ts: 0,
-                  }),
-            });
-          }
-
-          for (const context of dmContextsByKey.values()) {
-            const dm = nextDms.get(context.dmKey);
-            if (!dm) continue;
-            const replacement = pickReplacementForDm(
-              replacementMessages,
-              context.dmKey,
-              currentUserId,
-              deletedMessageIds,
-            );
-            const nextDm =
-              replacement == null
-                ? {
-                    ...dm,
-                    lastMessage: "",
-                    time: "",
-                    ts: 0,
-                    lastMessageId: undefined,
-                  }
-                : {
-                    ...dm,
-                    ...buildResolvedDmPreviewFromMessage(replacement),
-                  };
-            ensureMutableDms();
-            nextDms.set(context.dmKey, nextDm);
-            if (replacement == null && resolveMissingPreview) {
-              contextsToResolveFromNetwork.push(context);
-            }
-          }
-
-          if (!locationsChanged && !streamsChanged && !dmsChanged) return state;
-          return {
-            ...(streamsChanged ? { streamsMap: nextStreams } : {}),
-            ...(dmsChanged ? { dmsMap: nextDms } : {}),
-            ...(locationsChanged ? { messageIdToLocation: nextLoc } : {}),
-            ...(locationsChanged
-              ? {
-                  streamTopicMessageIds: patchStreamTopicMessageIndex(
-                    state.streamTopicMessageIds,
-                    state.messageIdToLocation,
-                    nextLoc,
-                  ),
-                }
-              : {}),
-          };
+          const result = applyHandleDeleteMessagesStatePatch(state, {
+            messageIds,
+            deletedMessageIds,
+            replacementMessages,
+            resolveMissingPreview,
+            currentUserId,
+          });
+          contextsToResolveFromNetwork = result.contextsToResolveFromNetwork;
+          return result.patch;
         },
         { preserveSidebarTotals: true },
       );

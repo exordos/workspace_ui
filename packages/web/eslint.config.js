@@ -54,7 +54,7 @@ export default tseslint.config(
       // SonarJS: micro-optimisation hints that dominate the report without catching logic bugs.
       "sonarjs/slow-regex": "off",
       // Default Sonar threshold (15) is tight for real-world React/store code; 25 still flags very heavy functions.
-      "sonarjs/cognitive-complexity": ["warn", 25],
+      "sonarjs/cognitive-complexity": ["warn", 20],
     },
   },
 

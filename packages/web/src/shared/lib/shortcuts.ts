@@ -15,12 +15,14 @@
  */
 
 import { useEffect, useRef } from "react";
+import { dispatchShortcutKeyDown, type ShortcutActiveHandler } from "./shortcuts-keydown.lib";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-export type ShortcutContext = "global" | "chat" | "sidebar" | "composer" | "modal";
+export type { ShortcutContext } from "./shortcuts-match.lib";
+import type { ShortcutContext } from "./shortcuts-match.lib";
 
 export interface ShortcutDef {
   key: string;
@@ -30,12 +32,7 @@ export interface ShortcutDef {
   when?: string;
 }
 
-interface ActiveHandler {
-  combo: string;
-  context: ShortcutContext;
-  handler: () => void;
-  enabled: boolean;
-}
+type ActiveHandler = ShortcutActiveHandler;
 
 // ---------------------------------------------------------------------------
 // OS detection
@@ -122,49 +119,6 @@ export const SHORTCUTS: ShortcutDef[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Combo matching
-// ---------------------------------------------------------------------------
-
-function parseCombo(combo: string): { mod: boolean; alt: boolean; shift: boolean; key: string } {
-  const parts = combo.toLowerCase().split("+");
-  return {
-    mod: parts.includes("mod"),
-    alt: parts.includes("alt"),
-    shift: parts.includes("shift"),
-    key: parts.filter((p) => !["mod", "alt", "shift"].includes(p)).join("+"),
-  };
-}
-
-function matchesEvent(combo: string, event: KeyboardEvent): boolean {
-  const parsed = parseCombo(combo);
-
-  const modPressed = IS_MAC ? event.metaKey : event.ctrlKey;
-  if (parsed.mod !== modPressed) return false;
-  if (parsed.alt !== event.altKey) return false;
-  if (parsed.shift !== event.shiftKey) return false;
-
-  const eventKey = event.key.toLowerCase();
-  const targetKey = parsed.key.toLowerCase();
-
-  if (targetKey === "enter" && eventKey === "enter") return true;
-  if (targetKey === "escape" && eventKey === "escape") return true;
-  if (targetKey === "arrowup" && eventKey === "arrowup") return true;
-  if (targetKey === "arrowdown" && eventKey === "arrowdown") return true;
-  if (targetKey === "arrowleft" && eventKey === "arrowleft") return true;
-  if (targetKey === "arrowright" && eventKey === "arrowright") return true;
-  if (targetKey === "backspace" && eventKey === "backspace") return true;
-  if (targetKey === "delete" && eventKey === "delete") return true;
-  if (targetKey === "\\" && eventKey === "\\") return true;
-  if (targetKey === "." && eventKey === ".") return true;
-  if (targetKey === "/" && eventKey === "/") return true;
-
-  if (targetKey.length === 1 && eventKey === targetKey) return true;
-  if (/^[1-9]$/.test(targetKey) && eventKey === targetKey) return true;
-
-  return eventKey === targetKey;
-}
-
-// ---------------------------------------------------------------------------
 // Active handler registry
 // ---------------------------------------------------------------------------
 
@@ -178,39 +132,9 @@ function registerHandler(h: ActiveHandler): () => void {
   };
 }
 
-function isInputFocused(): boolean {
-  const el = document.activeElement;
-  if (!el) return false;
-  const tag = el.tagName.toLowerCase();
-  return tag === "input" || tag === "textarea" || (el as HTMLElement).isContentEditable;
-}
-
 function handleGlobalKeyDown(event: KeyboardEvent): void {
   const inModal = document.querySelector("[data-shortcut-context='modal']") != null;
-
-  for (let i = handlers.length - 1; i >= 0; i--) {
-    const h = handlers[i]!;
-    if (!h.enabled) continue;
-    if (!matchesEvent(h.combo, event)) continue;
-
-    if (inModal && h.context !== "modal" && h.context !== "global") continue;
-
-    if (
-      (h.context === "composer" || h.context === "chat") &&
-      h.combo !== "escape" &&
-      !h.combo.includes("mod") &&
-      !h.combo.includes("alt") &&
-      !isInputFocused() &&
-      h.context === "composer"
-    ) {
-      continue;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-    h.handler();
-    return;
-  }
+  dispatchShortcutKeyDown(event, handlers, inModal);
 }
 
 let globalListenerAttached = false;

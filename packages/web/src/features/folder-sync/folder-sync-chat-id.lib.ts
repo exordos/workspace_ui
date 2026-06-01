@@ -266,3 +266,16 @@ export function addChatIdAliases(target: Set<string>, chatId: string): void {
     }
   }
 }
+
+// Зачем: один и тот же чат может иметь несколько представлений chat_id (legacy/numeric/stream/dm).
+// Что делает: проверяет совпадение chat_id с учетом всех его alias-вариантов.
+export function hasMatchingChatId(chatIdSet: ReadonlySet<string>, chatId: string): boolean {
+  const aliases = new Set<string>();
+  addChatIdAliases(aliases, chatId);
+  for (const alias of aliases) {
+    if (chatIdSet.has(alias)) {
+      return true;
+    }
+  }
+  return false;
+}

@@ -242,12 +242,9 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     (marker: string) => {
       wrapSelection(textareaRef, marker, (nextValue) => {
         setValue(nextValue);
-        if (!isEditing) {
-          onValueChange?.(nextValue);
-        }
       });
     },
-    [isEditing, onValueChange],
+    [setValue],
   );
 
   void filePreviewUrls;
@@ -280,9 +277,6 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
       const mention = `@**${user.fullName}** `;
       const next = before + mention + after;
       setValue(next);
-      if (!isEditing) {
-        onValueChange?.(next);
-      }
       hideMentionDropdown();
       setActiveMentionIndex(0);
       const newCursorPos = before.length + mention.length;
@@ -291,7 +285,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
         textareaRef.current?.setSelectionRange(newCursorPos, newCursorPos);
       });
     },
-    [value, mentionStartPos, onValueChange, hideMentionDropdown, isEditing],
+    [value, mentionStartPos, hideMentionDropdown, setValue],
   );
 
   const clearComposerInput = useCallback(() => {
@@ -299,11 +293,8 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
       onClearReply?.();
     }
     setValue("");
-    if (!isEditing) {
-      onValueChange?.("");
-    }
     setFiles([]);
-  }, [onClearReply, onValueChange, effectiveReplyQuote, isEditing, setFiles]);
+  }, [onClearReply, effectiveReplyQuote, setFiles, setValue]);
 
   const scheduleMessage = useCallback(
     (sendAt: number) => {
@@ -383,7 +374,6 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     const bodyToSend = outgoingBody;
     const filesToSend = hasFiles ? [...files] : undefined;
     setValue("");
-    onValueChange?.("");
     setFiles([]);
 
     // После оптимистичной очистки сразу возвращаем фокус и каретку,
@@ -418,13 +408,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
       emoji = customEmojiName ? `:${customEmojiName}:` : "";
     }
     if (emoji.length === 0) return;
-    setValue((prev) => {
-      const next = prev + emoji;
-      if (!isEditing) {
-        onValueChange?.(next);
-      }
-      return next;
-    });
+    setValue((prev) => prev + emoji);
     const textarea = textareaRef.current;
     if (!textarea) return;
     textarea.focus();
@@ -489,11 +473,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
 
     setValue((prev) => {
       const needsLineBreak = prev.length > 0 && !prev.endsWith("\n");
-      const next = needsLineBreak ? `${prev}\n${callLink}` : `${prev}${callLink}`;
-      if (!isEditing) {
-        onValueChange?.(next);
-      }
-      return next;
+      return needsLineBreak ? `${prev}\n${callLink}` : `${prev}${callLink}`;
     });
     requestAnimationFrame(() => {
       const textarea = textareaRef.current;
@@ -504,7 +484,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
       const cursorPosition = textarea.value.length;
       textarea.setSelectionRange(cursorPosition, cursorPosition);
     });
-  }, [disabled, isEditing, onCreateCallLink, onValueChange]);
+  }, [disabled, isEditing, onCreateCallLink, setValue]);
 
   const resizeTextareaToContent = useCallback(() => {
     const textarea = textareaRef.current;
@@ -599,13 +579,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
 
       const textarea = textareaRef.current;
       if (!textarea) {
-        setValue((prev) => {
-          const next = prev + content;
-          if (!isEditing) {
-            onValueChange?.(next);
-          }
-          return next;
-        });
+        setValue((prev) => prev + content);
         setSavedSnippetsMenuOpen(false);
         return;
       }
@@ -614,9 +588,6 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
       const selectionEnd = textarea.selectionEnd ?? value.length;
       const nextValue = value.slice(0, selectionStart) + content + value.slice(selectionEnd);
       setValue(nextValue);
-      if (!isEditing) {
-        onValueChange?.(nextValue);
-      }
       setSavedSnippetsMenuOpen(false);
       requestAnimationFrame(() => {
         textarea.focus();
@@ -624,7 +595,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
         textarea.setSelectionRange(cursor, cursor);
       });
     },
-    [isEditing, onValueChange, value],
+    [setValue, value],
   );
 
   const updateSavedSnippetsMenuPosition = useCallback(() => {
@@ -793,14 +764,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
         onCancelEdit={onCancelEdit}
       />
 
-      {!isEditing && (
-        <MessageComposerSmartReplyStrip
-          onAccept={(text) => {
-            setValue(text);
-            onValueChange?.(text);
-          }}
-        />
-      )}
+      {!isEditing && <MessageComposerSmartReplyStrip onAccept={setValue} />}
 
       <div
         data-testid="composer-toolbar-row"
@@ -819,12 +783,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
             {mode === "write" && (
               <FormattingToolbar
                 textareaRef={textareaRef}
-                onValueChange={(v) => {
-                  setValue(v);
-                  if (!isEditing) {
-                    onValueChange?.(v);
-                  }
-                }}
+                onValueChange={setValue}
                 fileTrigger={
                   !isEditing ? (
                     <button
@@ -902,10 +861,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
           <MessageComposerAiActionMenuLayer
             open={aiMenuOpen}
             draft={value}
-            onInsert={(text) => {
-              setValue(text);
-              onValueChange?.(text);
-            }}
+            onInsert={setValue}
             onOpenChange={setAiMenuOpen}
             messagesContext={aiMessagesContext ?? []}
             chatContext={aiChatContext}
@@ -990,13 +946,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
                 onEmojiClick={handleEmojiClick}
                 customEmojis={customEmojis}
                 onStickerSelect={(markdown) => {
-                  setValue((prev) => {
-                    const next = prev + markdown;
-                    if (!isEditing) {
-                      onValueChange?.(next);
-                    }
-                    return next;
-                  });
+                  setValue((prev) => prev + markdown);
                   setMediaPickerOpen(false);
                 }}
               />
@@ -1015,12 +965,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
                   onActiveMentionIndexChange={setActiveMentionIndex}
                   onMentionSelect={handleMentionSelect}
                   onHideMentionDropdown={hideMentionDropdown}
-                  onValueChange={(next) => {
-                    setValue(next);
-                    if (!isEditing) {
-                      onValueChange?.(next);
-                    }
-                  }}
+                  onValueChange={setValue}
                   onDetectMention={detectMention}
                   applyFormattingShortcut={applyFormattingShortcut}
                   onPaste={handlePaste}

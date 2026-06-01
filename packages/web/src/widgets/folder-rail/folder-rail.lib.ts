@@ -1,7 +1,4 @@
-import {
-  folderColorValueToCssHex,
-  folderColorValueToCssRgba,
-} from "~/features/manage-folders/folder-colors";
+import { buildFolderItemVisualState } from "./folder-rail-visual.lib";
 import type { FolderRailFolder } from "./folder-rail.types";
 import type { CSSProperties, KeyboardEvent } from "react";
 
@@ -106,58 +103,5 @@ export function getFolderItemVisualState({
   isSelected: boolean;
   isHovered: boolean;
 }): FolderItemVisualState {
-  const systemType = resolveFolderSystemType(folder, index);
-  const isSystemFolder = systemType !== "created";
-  const isCustomFolder = !isSystemFolder;
-  const folderColor = folderColorValueToCssHex(folder.backgroundColor);
-  // Набор иконок жестко синхронизирован с системными типами папок.
-  const iconName =
-    systemType === "all"
-      ? "folders"
-      : systemType === "personal"
-        ? "profile"
-        : systemType === "channels"
-          ? "channels"
-          : isSelected
-            ? "folder_open"
-            : "folder";
-  // Для пользовательских папок цвет подписи показываем только в интерактивном состоянии.
-  const labelUsesCustomColor = isCustomFolder && (isSelected || isHovered);
-  const labelUsesAccent = isSystemFolder && (isSelected || isHovered);
-  const iconTextColor = isCustomFolder
-    ? "text-current"
-    : isSelected
-      ? "text-text-primary"
-      : "text-text-muted";
-  const labelTextColor = labelUsesCustomColor
-    ? "text-current"
-    : labelUsesAccent
-      ? "text-accent"
-      : "text-text-muted";
-  const iconColorStyle = isCustomFolder ? { color: folderColor } : undefined;
-  const labelColorStyle = labelUsesCustomColor ? { color: folderColor } : undefined;
-  const folderSurfaceStyle =
-    isCustomFolder && (isSelected || isHovered)
-      ? {
-          // Разная прозрачность делает selected немного заметнее hover.
-          backgroundColor: folderColorValueToCssRgba(
-            folder.backgroundColor,
-            isSelected ? 0.2 : 0.1,
-          ),
-          borderColor: folderColorValueToCssRgba(folder.backgroundColor, isSelected ? 0.4 : 0.22),
-        }
-      : undefined;
-
-  return {
-    isSystemFolder,
-    folderColor,
-    iconName,
-    iconTextColor,
-    labelTextColor,
-    iconColorStyle,
-    labelColorStyle,
-    folderSurfaceStyle,
-    labelUsesCustomColor,
-    labelUsesAccent,
-  };
+  return buildFolderItemVisualState({ folder, index, isSelected, isHovered });
 }

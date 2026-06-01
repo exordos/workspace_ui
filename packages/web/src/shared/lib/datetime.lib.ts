@@ -13,13 +13,16 @@ function localeTag(): string {
   return getLocale() === "ru" ? "ru-RU" : "en-US";
 }
 
-/** Unix seconds → HH:MM (24h, en-GB style for consistency in bubbles). */
+/** Local wall-clock HH:MM (24h). Avoids Intl — used on every message bubble. */
+function formatLocalHoursMinutes(date: Date): string {
+  const hours = date.getHours();
+  const minutes = date.getMinutes();
+  return `${hours < 10 ? "0" : ""}${hours}:${minutes < 10 ? "0" : ""}${minutes}`;
+}
+
+/** Unix seconds → HH:MM (24h, local timezone). */
 export function formatMessageTimeShort(timestamp: number): string {
-  const date = new Date(timestamp * 1000);
-  return date.toLocaleTimeString("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatLocalHoursMinutes(new Date(timestamp * 1000));
 }
 
 /** Sidebar / chat-list: today → time; yesterday label; else short date. */
@@ -32,7 +35,7 @@ export function formatMessageTimeRelative(ts: number): string {
     d.getFullYear() === now.getFullYear();
   const locale = localeTag();
   if (sameDay) {
-    return d.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
+    return formatLocalHoursMinutes(d);
   }
   const yesterday = new Date(now);
   yesterday.setDate(yesterday.getDate() - 1);

@@ -23,6 +23,42 @@ export function computeMessageIdBounds(messages: readonly ZulipRawMessage[]): {
   return { lastMessageId: max, oldestMessageId: min };
 }
 
+function updateMessageIdBounds(
+  bounds: { maxId: number; minId: number; any: boolean },
+  messageId: number,
+): void {
+  bounds.any = true;
+  if (messageId > bounds.maxId) bounds.maxId = messageId;
+  if (messageId < bounds.minId) bounds.minId = messageId;
+}
+
+function collectMessageIdBoundsFromStreamMaps(streamsMap: ChatListState["streamsMap"]): {
+  maxId: number;
+  minId: number;
+  any: boolean;
+} {
+  const bounds = { maxId: 0, minId: Number.MAX_SAFE_INTEGER, any: false };
+  for (const s of streamsMap.values()) {
+    for (const t of s.topics.values()) {
+      if (t.lastMessageId != null) {
+        updateMessageIdBounds(bounds, t.lastMessageId);
+      }
+    }
+  }
+  return bounds;
+}
+
+function collectMessageIdBoundsFromDmMaps(
+  dmsMap: ChatListState["dmsMap"],
+  bounds: { maxId: number; minId: number; any: boolean },
+): void {
+  for (const d of dmsMap.values()) {
+    if (d.lastMessageId != null) {
+      updateMessageIdBounds(bounds, d.lastMessageId);
+    }
+  }
+}
+
 export function computeMessageIdBoundsFromMaps(state: ChatListState): {
   lastMessageId: number | null;
   oldestMessageId: number | null;
@@ -30,27 +66,10 @@ export function computeMessageIdBoundsFromMaps(state: ChatListState): {
   if (state.lastAppliedMessages != null && state.lastAppliedMessages.length > 0) {
     return computeMessageIdBounds(state.lastAppliedMessages);
   }
-  let maxId = 0;
-  let minId = Number.MAX_SAFE_INTEGER;
-  let any = false;
-  for (const s of state.streamsMap.values()) {
-    for (const t of s.topics.values()) {
-      if (t.lastMessageId != null) {
-        any = true;
-        if (t.lastMessageId > maxId) maxId = t.lastMessageId;
-        if (t.lastMessageId < minId) minId = t.lastMessageId;
-      }
-    }
-  }
-  for (const d of state.dmsMap.values()) {
-    if (d.lastMessageId != null) {
-      any = true;
-      if (d.lastMessageId > maxId) maxId = d.lastMessageId;
-      if (d.lastMessageId < minId) minId = d.lastMessageId;
-    }
-  }
-  if (!any) return { lastMessageId: null, oldestMessageId: null };
-  return { lastMessageId: maxId, oldestMessageId: minId };
+  const bounds = collectMessageIdBoundsFromStreamMaps(state.streamsMap);
+  collectMessageIdBoundsFromDmMaps(state.dmsMap, bounds);
+  if (!bounds.any) return { lastMessageId: null, oldestMessageId: null };
+  return { lastMessageId: bounds.maxId, oldestMessageId: bounds.minId };
 }
 
 export function buildChatListSnapshotSerialized(state: ChatListState): ChatListSnapshotSerialized {

@@ -12,6 +12,7 @@
     "dev:web": "lerna run dev --scope web --stream",
     "dev:mock": "lerna run dev --scope mock-server --stream",
     "lint": "npm run lint --workspace=web",
+    "lint:cc": "node scripts/count-cognitive-complexity.mjs",
     "lint:fix": "npm run lint:fix --workspace=web",
     "format": "prettier --write \"packages/web/src/**/*.{ts,tsx,css}\"",
     "format:check": "prettier --check \"packages/web/src/**/*.{ts,tsx,css}\"",

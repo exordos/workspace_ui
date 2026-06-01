@@ -4,6 +4,7 @@
 // - отдавать bootstrap-данные для UI до завершения серверного refresh;
 // - поддерживать retention по чатам, чтобы кэш не рос бесконечно.
 import type { MockMessage, Reaction } from "~/shared/api/zulip.types";
+import { runMessageCacheDbUpgrade } from "~/shared/lib/message-cache-db-upgrade.lib";
 import { instanceChatKey } from "~/shared/lib/message-cache-keys.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { resolveTopicMoveTargetMessageIds } from "~/shared/lib/update-message-topic-move.lib";
@@ -26,12 +27,6 @@ export const MESSAGE_CACHE_DEFAULT_WINDOW_SIZE = ZULIP_CHAT_MESSAGE_CACHE_MAX_WI
 
 const STORE_MESSAGES = "messages";
 const STORE_CHAT_META = "chatMeta";
-const STORE_CHAT_LIST_SNAPSHOT = "chatListSnapshot";
-const STORE_USERS_DIRECTORY = "usersDirectory";
-const STORE_USER_STATUS_CACHE = "userStatusCache";
-const STORE_FOLDERS_SNAPSHOT = "foldersSnapshot";
-// Снапшот mute-состояния (muted streams + topic overrides) для cache-first bootstrap.
-const STORE_MUTE_SNAPSHOT = "muteSnapshot";
 /** Persisted avatar image blobs per Zulip instance (LRU eviction). */
 export const STORE_AVATAR_BLOBS = "avatarBlobs";
 
@@ -79,55 +74,7 @@ export function openMessageCacheDb(): Promise<IDBDatabase> {
     };
     req.onsuccess = () => resolve(req.result);
     req.onupgradeneeded = (event) => {
-      const db = req.result;
-      const oldVersion = event.oldVersion;
-      if (oldVersion < 1) {
-        if (!db.objectStoreNames.contains(STORE_MESSAGES)) {
-          const store = db.createObjectStore(STORE_MESSAGES, { keyPath: "id" });
-          store.createIndex("byChatOrder", ["instanceChatKey", "messageId"], { unique: true });
-        }
-        if (!db.objectStoreNames.contains(STORE_CHAT_META)) {
-          db.createObjectStore(STORE_CHAT_META, { keyPath: "instanceChatKey" });
-        }
-      }
-      if (oldVersion < 2 && !db.objectStoreNames.contains(STORE_CHAT_LIST_SNAPSHOT)) {
-        db.createObjectStore(STORE_CHAT_LIST_SNAPSHOT, { keyPath: "instanceId" });
-      }
-      if (oldVersion < 3 && !db.objectStoreNames.contains(STORE_USERS_DIRECTORY)) {
-        db.createObjectStore(STORE_USERS_DIRECTORY, { keyPath: "instanceId" });
-      }
-      if (oldVersion < 4 && !db.objectStoreNames.contains(STORE_USER_STATUS_CACHE)) {
-        db.createObjectStore(STORE_USER_STATUS_CACHE, { keyPath: "id" });
-      }
-      if (oldVersion < 5 && !db.objectStoreNames.contains(STORE_FOLDERS_SNAPSHOT)) {
-        db.createObjectStore(STORE_FOLDERS_SNAPSHOT, { keyPath: "instanceId" });
-      }
-      // Миграция v6: добавляет хранилище mute snapshot по ключу instanceId.
-      if (oldVersion < 6 && !db.objectStoreNames.contains(STORE_MUTE_SNAPSHOT)) {
-        db.createObjectStore(STORE_MUTE_SNAPSHOT, { keyPath: "instanceId" });
-      }
-      // Миграция v7: сбрасывает legacy message/chat snapshot stores, где могли смешаться
-      // empty-topic и literal "general" в одном cache key.
-      if (oldVersion < 7) {
-        const tx = req.transaction;
-        if (tx != null) {
-          if (db.objectStoreNames.contains(STORE_MESSAGES)) {
-            tx.objectStore(STORE_MESSAGES).clear();
-          }
-          if (db.objectStoreNames.contains(STORE_CHAT_META)) {
-            tx.objectStore(STORE_CHAT_META).clear();
-          }
-          if (db.objectStoreNames.contains(STORE_CHAT_LIST_SNAPSHOT)) {
-            tx.objectStore(STORE_CHAT_LIST_SNAPSHOT).clear();
-          }
-        }
-      }
-      if (oldVersion < 8 && !db.objectStoreNames.contains(STORE_AVATAR_BLOBS)) {
-        const avatarStore = db.createObjectStore(STORE_AVATAR_BLOBS, { keyPath: "id" });
-        avatarStore.createIndex("byInstanceLastAccessed", ["instanceId", "lastAccessedAt"], {
-          unique: false,
-        });
-      }
+      runMessageCacheDbUpgrade(req.result, event.oldVersion, req.transaction);
     };
   });
   return dbPromise;

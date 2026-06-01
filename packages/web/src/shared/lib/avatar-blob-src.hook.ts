@@ -52,10 +52,9 @@ export function useAvatarBlobSrc(resolvedSrc: string | undefined | null): string
     setDisplaySrc(trimmed);
 
     const applyBlobUrl = (blob: Blob) => {
+      if (cancelled) return;
       objectUrl = URL.createObjectURL(blob);
-      if (!cancelled) {
-        setDisplaySrc(objectUrl);
-      }
+      setDisplaySrc(objectUrl);
     };
 
     void (async () => {

@@ -1,23 +1,14 @@
 import { effectiveDmIsGroupFromSlug } from "~/shared/lib/dm-route.lib";
 import { parseDmSlugToUserIds } from "~/widgets/sidebar/sidebar.lib";
+import {
+  computeInstanceStreamUnreadCountWithMute,
+  toSafeUnreadCount,
+} from "./layout-instance-unread-stream.lib";
 import type {
   LayoutBuildActiveChatWindowTitleInput,
   LayoutComputeInstanceUnreadInput,
   LayoutDmBadgeHolder,
 } from "./layout-instance-unread.types";
-
-function toSafeUnreadCount(value: number | null | undefined): number {
-  if (!Number.isFinite(value)) return 0;
-  if (value == null) return 0;
-  return Math.max(0, Math.floor(value));
-}
-
-type LayoutTopicBadgeHolder = { subject?: string; badge?: number | null } | null | undefined;
-
-interface LayoutStreamWithTopics {
-  stream_id?: number | null;
-  topics?: readonly LayoutTopicBadgeHolder[] | null;
-}
 
 interface LayoutMutePredicates {
   /** True when the whole stream should be treated as muted for totals. */
@@ -28,52 +19,6 @@ interface LayoutMutePredicates {
 
 type LayoutComputeInstanceUnreadWithMuteInput = LayoutComputeInstanceUnreadInput &
   LayoutMutePredicates;
-
-function computeInstanceStreamUnreadCountWithMute(
-  streams: LayoutComputeInstanceUnreadInput["streams"],
-  predicates: LayoutMutePredicates,
-): number {
-  const { isStreamMuted, isEffectivelyMuted } = predicates;
-  let total = 0;
-
-  for (const stream of streams) {
-    const streamIdRaw = (stream as LayoutStreamWithTopics).stream_id;
-    const streamId =
-      typeof streamIdRaw === "number" && Number.isInteger(streamIdRaw) ? streamIdRaw : null;
-    const topics = (stream as LayoutStreamWithTopics).topics;
-
-    // If we can't reliably map topics -> stream/topic ids, fall back to stream badge,
-    // but still respect stream-level mute when we have streamId.
-    if (streamId == null || !Array.isArray(topics) || topics.length === 0) {
-      if (streamId != null && isStreamMuted?.(streamId)) {
-        continue;
-      }
-      total += toSafeUnreadCount(stream.badge);
-      continue;
-    }
-
-    if (isStreamMuted?.(streamId)) {
-      continue;
-    }
-
-    for (const topic of topics) {
-      if (topic == null) continue;
-      const subject = typeof topic.subject === "string" ? topic.subject : "";
-      if (subject.length === 0) {
-        // Defensive fallback: if subject is missing, we can't evaluate topic-level mute.
-        // Count it unless the stream is muted (handled above).
-        total += toSafeUnreadCount(topic.badge);
-        continue;
-      }
-      if (isEffectivelyMuted?.(streamId, subject)) {
-        continue;
-      }
-      total += toSafeUnreadCount(topic.badge);
-    }
-  }
-
-  return total;
-}
 
 export function computeInstanceUnreadCount({
   streams,

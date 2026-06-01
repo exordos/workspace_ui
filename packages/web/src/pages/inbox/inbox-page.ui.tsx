@@ -16,6 +16,7 @@ import { useOpenSearch } from "~/shared/contexts/open-search";
 import { formatMessageTime } from "~/shared/lib/format";
 import { createLogger } from "~/shared/lib/logger";
 import { runInFlightDeduped } from "~/shared/lib/request-lifecycle.lib";
+import { useCacheFirstPageLoad } from "~/shared/lib/use-cache-first-page.hook";
 import { FloatingLoadingOverlay } from "~/shared/ui/floating-loading-overlay";
 import { Icon } from "~/shared/ui/icon";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
@@ -90,29 +91,30 @@ export const InboxPage: React.FC = () => {
     [currentInstanceId, currentUserId, setEntries, setError, startRequest],
   );
 
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      // 1) Локальный bootstrap из IDB для мгновенного рендера.
-      const cached = await hydrateInboxEntriesFromCache(currentInstanceId, currentUserId);
-      if (cancelled) return;
+  useCacheFirstPageLoad({
+    instanceId: currentInstanceId,
+    dedupeKey: `${currentInstanceId ?? "none"}:inbox:newest`,
+    hydrate: async (instanceId) => {
+      const cached = await hydrateInboxEntriesFromCache(instanceId, currentUserId);
       const currentEntries = useInboxStore.getState().entries;
-      // Гибридный bootstrap:
-      // - если памяти нет, берем cached;
-      // - если память есть, заменяем только когда cached объективно свежее.
       const shouldApplyCached =
         cached.length > 0 &&
         (currentEntries.length === 0 || isInboxEntriesSnapshotFresher(cached, currentEntries));
       if (shouldApplyCached) {
         setEntries(cached);
       }
-      // 2) Серверный authoritative refresh.
-      void loadInbox(true);
-    })().catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [currentInstanceId, currentUserId, loadInbox, setEntries]);
+    },
+    hasCachedData: () => useInboxStore.getState().entries.length > 0,
+    startRequest: (hasCached) => startRequest(hasCached),
+    fetch: async (_instanceId, requestVersion) => {
+      const data = await fetchInboxEntries(currentUserId);
+      setEntries(data, requestVersion);
+    },
+    onFetchError: (err, requestVersion) => {
+      setError(String(err), requestVersion);
+      log.error("Failed to load inbox", { error: String(err) });
+    },
+  });
 
   useEffect(() => {
     // markStale инициирует мягкий фоновый refresh, не очищая текущий список.

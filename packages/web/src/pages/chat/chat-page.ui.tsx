@@ -42,7 +42,6 @@ import {
   deleteMessage,
   markDmAsRead,
   markTopicAsRead,
-  uploadFile,
   type MockMessage,
 } from "~/shared/api/zulip";
 import { useOpenSearch } from "~/shared/contexts/open-search";
@@ -105,6 +104,7 @@ import { useChatPartnerProfileHydration } from "./chat-page-partner-profile.hook
 import { ChatPageReadReceiptsDialog } from "./chat-page-read-receipts-dialog.ui";
 import { useChatRouteContext } from "./chat-page-route-context.hook";
 import { ChatPageSelectionBar } from "./chat-page-selection-bar.ui";
+import { executeChatPageSend } from "./chat-page-send-handler.lib";
 import { useChatToastAutoClear } from "./chat-page-toast.hook";
 import { ChatPageTypingLine } from "./chat-page-typing-line.ui";
 import { shouldLoadBoundaryPage } from "./chat-pagination.lib";
@@ -112,7 +112,7 @@ import {
   buildOptimisticOutgoingMessage,
   markOutgoingMessageFailed,
 } from "./chat-send-delivery.lib";
-import { uploadComposerFiles, type ComposerUploadProgressState } from "./chat-upload.lib";
+import type { ComposerUploadProgressState } from "./chat-upload.lib";
 
 const log = createLogger("chat-page");
 const AI_CONTEXT_MESSAGES_LIMIT = 30;
@@ -1239,128 +1239,42 @@ export const ChatPage: React.FC = () => {
   ]);
 
   const handleSend = async (content: string, subjectOverride?: string, files?: File[]) => {
-    setSendError(null);
-    let body = content;
-    setUploadProgress(null);
-
-    if (files && files.length > 0) {
-      const uploadController = new AbortController();
-      uploadAbortControllerRef.current = uploadController;
-      setUploadProgress({
-        completed: 0,
-        total: files.length,
-        activeFileName: files[0]?.name ?? null,
-      });
-      try {
-        const uploadedLinks = await uploadComposerFiles(files, uploadFile, {
-          onProgress: setUploadProgress,
-          signal: uploadController.signal,
-        });
-        body = body + "\n" + uploadedLinks.join("\n");
-      } catch (err) {
-        const wasCancelled = isAbortLikeError(err) || uploadController.signal.aborted;
-        const errorMessage = wasCancelled
-          ? t("composer.uploadCancelled")
-          : err instanceof Error
-            ? err.message
-            : t("message.sendFailed");
-        setSendError(errorMessage);
-        setUploadProgress(null);
-        throw new Error(errorMessage, { cause: err });
-      } finally {
-        if (uploadAbortControllerRef.current === uploadController) {
-          uploadAbortControllerRef.current = null;
-        }
-      }
-    }
-
-    const stopTypingAfterSend = () => {
-      stopTypingNow();
-    };
-
-    if (isDmView && activeDmUserIds?.length) {
-      const optimisticMessageId = optimisticMessageIdRef.current;
-      optimisticMessageIdRef.current -= 1;
-      const optimisticMessage = buildOptimisticOutgoingMessage({
-        id: optimisticMessageId,
-        senderId: currentUserId ?? 0,
-        senderFullName: t("common.you"),
-        content: body,
-        target: { mode: "dm", recipientIds: activeDmUserIds },
-      });
-      appendMessageToStore(optimisticMessage);
-      requestScrollToBottomAfterSend();
-      try {
-        const newMsg = await sendMessage({
-          to: activeDmUserIds,
-          content: body,
-          sender_id: currentUserId ?? 0,
-          sender_full_name: t("common.you"),
-          local_id: String(optimisticMessageId),
-        });
-        commitOutgoingMessageToStore(optimisticMessageId, newMsg);
-        setReplyQuote(null);
-        stopTypingAfterSend();
-      } catch (err) {
-        appendMessageToStore(markOutgoingMessageFailed(optimisticMessage));
-        setSendError(err instanceof Error ? err.message : t("message.sendFailed"));
-        throw err instanceof Error ? err : new Error(t("message.sendFailed"));
-      } finally {
-        setUploadProgress(null);
-      }
-      return;
-    }
-    if (activeStream) {
-      if (!activeStreamCanonicalName) {
-        log.warn("Blocked stream send without canonical stream name", {
-          streamId: activeStreamId ?? undefined,
-          displayName: activeStream,
-        });
-        const error = t("message.sendFailed");
-        setSendError(error);
-        setUploadProgress(null);
-        throw new Error(error);
-      }
-      const subject = normalizeTopicForIdentity(subjectOverride ?? activeTopic ?? "");
-      const optimisticMessageId = optimisticMessageIdRef.current;
-      optimisticMessageIdRef.current -= 1;
-      const optimisticMessage = buildOptimisticOutgoingMessage({
-        id: optimisticMessageId,
-        senderId: currentUserId ?? 0,
-        senderFullName: t("common.you"),
-        content: body,
-        target: {
-          mode: "stream",
-          stream: activeStreamCanonicalName,
-          streamId: activeStreamId ?? undefined,
-          subject,
+    await executeChatPageSend(
+      {
+        currentUserId,
+        isDmView,
+        activeDmUserIds,
+        activeStream: activeStream ?? null,
+        activeStreamCanonicalName: activeStreamCanonicalName ?? null,
+        activeStreamId,
+        activeTopic,
+        allocateOptimisticMessageId: () => {
+          const id = optimisticMessageIdRef.current;
+          optimisticMessageIdRef.current -= 1;
+          return id;
         },
-      });
-      appendMessageToStore(optimisticMessage);
-      requestScrollToBottomAfterSend();
-      try {
-        const newMsg = await sendMessage({
-          stream: activeStreamCanonicalName,
-          streamId: activeStreamId ?? undefined,
-          subject,
-          content: body,
-          sender_id: currentUserId ?? 0,
-          sender_full_name: t("common.you"),
-          local_id: String(optimisticMessageId),
-        });
-        commitOutgoingMessageToStore(optimisticMessageId, newMsg);
-        setReplyQuote(null);
-        stopTypingAfterSend();
-      } catch (err) {
-        appendMessageToStore(markOutgoingMessageFailed(optimisticMessage));
-        setSendError(err instanceof Error ? err.message : t("message.sendFailed"));
-        throw err instanceof Error ? err : new Error(t("message.sendFailed"));
-      } finally {
-        setUploadProgress(null);
-      }
-    }
-
-    setUploadProgress(null);
+        appendMessage: appendMessageToStore,
+        commitOutgoingMessage: commitOutgoingMessageToStore,
+        requestScrollToBottom: requestScrollToBottomAfterSend,
+        clearReplyQuote: () => {
+          setReplyQuote(null);
+        },
+        stopTyping: stopTypingNow,
+        setSendError,
+        setUploadProgress,
+        setUploadAbortController: (controller) => {
+          uploadAbortControllerRef.current = controller;
+        },
+        releaseUploadAbortController: (controller) => {
+          if (uploadAbortControllerRef.current === controller) {
+            uploadAbortControllerRef.current = null;
+          }
+        },
+      },
+      content,
+      subjectOverride,
+      files,
+    );
   };
 
   const handleRemoveFailedOutgoing = useCallback(

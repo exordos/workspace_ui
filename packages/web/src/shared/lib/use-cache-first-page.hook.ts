@@ -24,32 +24,25 @@ export function useCacheFirstPageLoad(config: UseCacheFirstPageLoadConfig): void
   });
 
   useEffect(() => {
-    const {
-      instanceId,
-      dedupeKey,
-      onInstanceChange,
-      hydrate,
-      hasCachedData,
-      startRequest,
-      fetch,
-      onFetchError,
-    } = configRef.current;
+    const { instanceId, dedupeKey } = configRef.current;
 
     if (instanceId == null) return;
 
     let cancelled = false;
-    onInstanceChange?.(instanceId);
+    configRef.current.onInstanceChange?.(instanceId);
 
     void (async () => {
-      await hydrate(instanceId);
+      await configRef.current.hydrate(instanceId);
       if (cancelled) return;
 
-      const requestVersion = startRequest(hasCachedData());
+      const requestVersion = configRef.current.startRequest(configRef.current.hasCachedData());
       try {
-        await runInFlightDeduped(dedupeKey, () => fetch(instanceId, requestVersion));
+        await runInFlightDeduped(dedupeKey, () =>
+          configRef.current.fetch(instanceId, requestVersion),
+        );
       } catch (error) {
         if (!cancelled) {
-          onFetchError?.(error, requestVersion);
+          configRef.current.onFetchError?.(error, requestVersion);
         }
       }
     })();

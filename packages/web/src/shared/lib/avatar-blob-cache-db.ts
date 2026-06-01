@@ -32,54 +32,46 @@ export interface AvatarBlobCacheRow {
   avatarVersion: number;
 }
 
-async function listAvatarBlobRowsForInstance(
-  db: IDBDatabase,
-  instanceId: string,
-): Promise<AvatarBlobCacheRow[]> {
-  return await new Promise<AvatarBlobCacheRow[]>((resolve, reject) => {
-    const tx = db.transaction(STORE_AVATAR_BLOBS, "readonly");
-    const store = tx.objectStore(STORE_AVATAR_BLOBS);
-    const index = store.index("byInstanceLastAccessed");
-    const range = IDBKeyRange.bound([instanceId, 0], [instanceId, Number.MAX_SAFE_INTEGER]);
-    const req = index.getAll(range);
-    req.onerror = () => reject(idbError(req.error));
-    req.onsuccess = () => {
-      const rows = (req.result as AvatarBlobCacheRow[] | undefined) ?? [];
-      resolve(rows);
-    };
-  });
+function instanceLastAccessedRange(instanceId: string): IDBKeyRange {
+  return IDBKeyRange.bound([instanceId, 0], [instanceId, Number.MAX_SAFE_INTEGER]);
 }
 
-async function deleteAvatarBlobRowsByIds(db: IDBDatabase, ids: readonly string[]): Promise<void> {
-  if (ids.length === 0) return;
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(STORE_AVATAR_BLOBS, "readwrite");
-    tx.onerror = () => reject(idbError(tx.error));
-    tx.oncomplete = () => resolve();
-    const store = tx.objectStore(STORE_AVATAR_BLOBS);
-    for (const id of ids) {
-      store.delete(id);
-    }
-  });
-}
-
-async function runEvictionForInstance(
-  db: IDBDatabase,
-  instanceId: string,
-  incomingBytes: number,
-  maxTotalBytes: number,
-): Promise<void> {
-  const rows = await listAvatarBlobRowsForInstance(db, instanceId);
-  const evictionInput: AvatarBlobCacheEvictionRow[] = rows.map((row) => ({
+function rowsToEvictionInput(rows: readonly AvatarBlobCacheRow[]): AvatarBlobCacheEvictionRow[] {
+  return rows.map((row) => ({
     id: row.id,
     byteSize: row.byteSize,
     lastAccessedAt: row.lastAccessedAt,
   }));
-  const idsToDelete = pickAvatarBlobEvictionIds(evictionInput, {
-    incomingBytes,
-    maxTotalBytes,
+}
+
+/** Lists instance rows, evicts if needed, and puts `row` in one readwrite transaction. */
+async function putAvatarBlobCacheRowAtomic(
+  db: IDBDatabase,
+  row: AvatarBlobCacheRow,
+  maxTotalBytes: number,
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE_AVATAR_BLOBS, "readwrite");
+    tx.onerror = () => reject(idbError(tx.error));
+    tx.oncomplete = () => resolve();
+
+    const store = tx.objectStore(STORE_AVATAR_BLOBS);
+    const listReq = store
+      .index("byInstanceLastAccessed")
+      .getAll(instanceLastAccessedRange(row.instanceId));
+    listReq.onerror = () => reject(idbError(listReq.error));
+    listReq.onsuccess = () => {
+      const existingRows = (listReq.result as AvatarBlobCacheRow[] | undefined) ?? [];
+      const idsToDelete = pickAvatarBlobEvictionIds(rowsToEvictionInput(existingRows), {
+        incomingBytes: row.byteSize,
+        maxTotalBytes,
+      });
+      for (const id of idsToDelete) {
+        store.delete(id);
+      }
+      store.put(row);
+    };
   });
-  await deleteAvatarBlobRowsByIds(db, idsToDelete);
 }
 
 export async function getAvatarBlobCacheRow(
@@ -132,19 +124,11 @@ export async function putAvatarBlobCacheRow(
 ): Promise<void> {
   if (typeof indexedDB === "undefined") return;
   const id = row.id ?? avatarBlobCacheRowId(row.instanceId, row.cacheKey);
+  const fullRow = { ...row, id } satisfies AvatarBlobCacheRow;
 
   const write = async (maxTotalBytes: number): Promise<void> => {
     const db = await openMessageCacheDb();
-    await runEvictionForInstance(db, row.instanceId, row.byteSize, maxTotalBytes);
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction(STORE_AVATAR_BLOBS, "readwrite");
-      tx.onerror = () => reject(idbError(tx.error));
-      tx.oncomplete = () => resolve();
-      tx.objectStore(STORE_AVATAR_BLOBS).put({
-        ...row,
-        id,
-      } satisfies AvatarBlobCacheRow);
-    });
+    await putAvatarBlobCacheRowAtomic(db, fullRow, maxTotalBytes);
   };
 
   try {
@@ -156,22 +140,7 @@ export async function putAvatarBlobCacheRow(
         : error instanceof Error && error.name === "QuotaExceededError";
     if (!isQuota) return;
     try {
-      const db = await openMessageCacheDb();
-      await runEvictionForInstance(
-        db,
-        row.instanceId,
-        row.byteSize,
-        AVATAR_BLOB_CACHE_QUOTA_RETRY_TOTAL_BYTES,
-      );
-      await new Promise<void>((resolve, reject) => {
-        const tx = db.transaction(STORE_AVATAR_BLOBS, "readwrite");
-        tx.onerror = () => reject(idbError(tx.error));
-        tx.oncomplete = () => resolve();
-        tx.objectStore(STORE_AVATAR_BLOBS).put({
-          ...row,
-          id,
-        } satisfies AvatarBlobCacheRow);
-      });
+      await write(AVATAR_BLOB_CACHE_QUOTA_RETRY_TOTAL_BYTES);
     } catch {
       // best-effort — UI falls back to network URL
     }
@@ -182,11 +151,23 @@ export async function clearAvatarBlobCacheForInstance(instanceId: string): Promi
   if (typeof indexedDB === "undefined") return;
   try {
     const db = await openMessageCacheDb();
-    const rows = await listAvatarBlobRowsForInstance(db, instanceId);
-    await deleteAvatarBlobRowsByIds(
-      db,
-      rows.map((r) => r.id),
-    );
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE_AVATAR_BLOBS, "readwrite");
+      tx.onerror = () => reject(idbError(tx.error));
+      tx.oncomplete = () => resolve();
+
+      const store = tx.objectStore(STORE_AVATAR_BLOBS);
+      const listReq = store
+        .index("byInstanceLastAccessed")
+        .getAll(instanceLastAccessedRange(instanceId));
+      listReq.onerror = () => reject(idbError(listReq.error));
+      listReq.onsuccess = () => {
+        const rows = (listReq.result as AvatarBlobCacheRow[] | undefined) ?? [];
+        for (const row of rows) {
+          store.delete(row.id);
+        }
+      };
+    });
   } catch {
     // best-effort
   }

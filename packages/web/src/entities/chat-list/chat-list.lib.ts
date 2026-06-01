@@ -197,6 +197,135 @@ function applyUnreadCountsToSidebarMaps(
   }
 }
 
+function accumulateSidebarUnreadFromMessage(
+  m: ZulipRawMessage,
+  currentUserId: number | null,
+  streamUnread: Map<string, number>,
+  dmUnread: Map<string, number>,
+): void {
+  if (!isUnreadFromOthers(m, currentUserId)) return;
+  if (m.type === "stream" && m.stream_id != null) {
+    const subject = normalizeTopicForIdentity(m.subject ?? "");
+    const key = `${m.stream_id}\t${subject}`;
+    streamUnread.set(key, (streamUnread.get(key) ?? 0) + 1);
+    return;
+  }
+  if (m.type === "private" && Array.isArray(m.display_recipient)) {
+    const key = dmConversationKey(m.display_recipient, currentUserId);
+    dmUnread.set(key, (dmUnread.get(key) ?? 0) + 1);
+  }
+}
+
+function upsertStreamFromMessage(
+  m: ZulipRawMessage,
+  streamsByKey: Map<number, StreamEntryInternal>,
+): boolean {
+  const streamResult = messageToStreamEntry(m);
+  if (!streamResult) return false;
+  const { stream_id, name, lastMessage, lastMessageSenderName, time, ts } = streamResult.stream;
+  const topicWithMeta: StreamTopicEntry = {
+    ...streamResult.topic,
+    unreadCount: 0,
+    lastMessageId: m.id,
+  };
+  const existing = streamsByKey.get(stream_id);
+  if (!existing) {
+    const topics = new Map<string, StreamTopicEntry>([[topicWithMeta.subject, topicWithMeta]]);
+    streamsByKey.set(stream_id, {
+      stream_id,
+      name,
+      lastMessage,
+      lastMessageSenderName,
+      time,
+      ts,
+      topics,
+    });
+    return true;
+  }
+  const existingTopic = existing.topics.get(topicWithMeta.subject);
+  const nextTopics = new Map(existing.topics);
+  if (!existingTopic || topicWithMeta.ts >= existingTopic.ts) {
+    nextTopics.set(topicWithMeta.subject, topicWithMeta);
+  }
+  const newerStream = m.timestamp >= existing.ts;
+  streamsByKey.set(stream_id, {
+    stream_id,
+    name: existing.name,
+    lastMessage: newerStream ? lastMessage : existing.lastMessage,
+    lastMessageSenderName: newerStream ? lastMessageSenderName : existing.lastMessageSenderName,
+    time: newerStream ? time : existing.time,
+    ts: Math.max(existing.ts, m.timestamp),
+    topics: nextTopics,
+  });
+  return true;
+}
+
+function upsertDmFromMessage(
+  m: ZulipRawMessage,
+  currentUserId: number | null,
+  avatarUrlByUserId: Map<number, string> | undefined,
+  dmsByKey: Map<string, DmEntryInternal>,
+): void {
+  if (m.type !== "private" || !Array.isArray(m.display_recipient)) return;
+  const dmEntry = messageToDmEntry(m, currentUserId, avatarUrlByUserId);
+  if (!dmEntry) return;
+  const key = dmConversationKey(m.display_recipient, currentUserId);
+  const existing = dmsByKey.get(key);
+  const avatar_url = dmEntry.avatar_url ?? existing?.avatar_url;
+  const entryWithMeta = {
+    ...dmEntry,
+    unreadCount: 0,
+    avatar_url,
+    lastMessageId: m.id,
+  };
+  if (!existing || dmEntry.ts >= existing.ts) {
+    dmsByKey.set(key, entryWithMeta);
+  } else {
+    dmsByKey.set(key, {
+      ...existing,
+      avatar_url: existing.avatar_url ?? avatar_url,
+    });
+  }
+}
+
+function mapInternalStreamToSidebar(s: StreamEntryInternal): StreamWithLast {
+  const topics = Array.from(s.topics.values())
+    .sort((a, b) => b.ts - a.ts)
+    .map((t) => ({
+      subject: t.subject,
+      lastMessage: t.lastMessage,
+      lastMessageSenderName: t.lastMessageSenderName,
+      time: t.time,
+      badge: t.unreadCount > 0 ? t.unreadCount : undefined,
+    }));
+  const badge = topics.reduce((sum, t) => sum + (t.badge ?? 0), 0);
+  return {
+    stream_id: s.stream_id,
+    name: s.name,
+    lastMessage: s.lastMessage,
+    lastMessageSenderName: s.lastMessageSenderName,
+    time: s.time,
+    topics,
+    badge: badge > 0 ? badge : undefined,
+  };
+}
+
+function mapInternalDmToSidebar(x: DmEntryInternal): Extract<SidebarChat, { type: "dm" }> {
+  return {
+    type: "dm" as const,
+    id: x.id,
+    name: x.name,
+    slug: x.slug,
+    isGroup: x.isGroup,
+    lastMessage: x.lastMessage,
+    time: x.time,
+    userIds: x.userIds,
+    badge: x.unreadCount > 0 ? x.unreadCount : undefined,
+    avatar_url: x.avatar_url,
+    ts: x.ts,
+  };
+}
+
 /**
  * Builds lists of streams with topics and DMs with slug from latest Zulip messages.
  * Streams by stream_id, topics by subject; stream last message date — max across any topic.
@@ -218,122 +347,19 @@ export function buildSidebarFromMessages(
   const dmsByKey = new Map<string, DmEntryInternal>();
 
   for (const m of messages) {
-    const unread = isUnreadFromOthers(m, currentUserId);
-    if (m.type === "stream" && m.stream_id != null) {
-      const subject = normalizeTopicForIdentity(m.subject ?? "");
-      const key = `${m.stream_id}\t${subject}`;
-      if (unread) streamUnread.set(key, (streamUnread.get(key) ?? 0) + 1);
-    } else if (m.type === "private" && Array.isArray(m.display_recipient)) {
-      const key = dmConversationKey(m.display_recipient, currentUserId);
-      if (unread) dmUnread.set(key, (dmUnread.get(key) ?? 0) + 1);
-    }
-
-    const streamResult = messageToStreamEntry(m);
-    if (streamResult) {
-      const { stream_id, name, lastMessage, lastMessageSenderName, time, ts } = streamResult.stream;
-      const topicEntry = streamResult.topic;
-      const topicWithMeta: StreamTopicEntry = {
-        ...topicEntry,
-        unreadCount: 0,
-        lastMessageId: m.id,
-      };
-      const existing = streamsByKey.get(stream_id);
-      if (!existing) {
-        const topics = new Map<string, StreamTopicEntry>([[topicWithMeta.subject, topicWithMeta]]);
-        streamsByKey.set(stream_id, {
-          stream_id,
-          name,
-          lastMessage,
-          lastMessageSenderName,
-          time,
-          ts,
-          topics,
-        });
-      } else {
-        const existingTopic = existing.topics.get(topicWithMeta.subject);
-        const nextTopics = new Map(existing.topics);
-        if (!existingTopic || topicWithMeta.ts >= existingTopic.ts) {
-          nextTopics.set(topicWithMeta.subject, topicWithMeta);
-        }
-        const newerStream = m.timestamp >= existing.ts;
-        streamsByKey.set(stream_id, {
-          stream_id,
-          name: existing.name,
-          lastMessage: newerStream ? lastMessage : existing.lastMessage,
-          lastMessageSenderName: newerStream
-            ? lastMessageSenderName
-            : existing.lastMessageSenderName,
-          time: newerStream ? time : existing.time,
-          ts: Math.max(existing.ts, m.timestamp),
-          topics: nextTopics,
-        });
-      }
-      continue;
-    }
-
-    if (m.type !== "private" || !Array.isArray(m.display_recipient)) continue;
-    const dmEntry = messageToDmEntry(m, currentUserId, avatarUrlByUserId);
-    if (dmEntry) {
-      const key = dmConversationKey(m.display_recipient, currentUserId);
-      const existing = dmsByKey.get(key);
-      const avatar_url = dmEntry.avatar_url ?? existing?.avatar_url;
-      const entryWithMeta = {
-        ...dmEntry,
-        unreadCount: 0,
-        avatar_url,
-        lastMessageId: m.id,
-      };
-      if (!existing || dmEntry.ts >= existing.ts) {
-        dmsByKey.set(key, entryWithMeta);
-      } else {
-        dmsByKey.set(key, {
-          ...existing,
-          avatar_url: existing.avatar_url ?? avatar_url,
-        });
-      }
-    }
+    accumulateSidebarUnreadFromMessage(m, currentUserId, streamUnread, dmUnread);
+    if (upsertStreamFromMessage(m, streamsByKey)) continue;
+    upsertDmFromMessage(m, currentUserId, avatarUrlByUserId, dmsByKey);
   }
 
   applyUnreadCountsToSidebarMaps(streamsByKey, dmsByKey, streamUnread, dmUnread);
 
-  const streams: StreamWithLast[] = Array.from(streamsByKey.values())
+  const streams = Array.from(streamsByKey.values())
     .sort((a, b) => b.ts - a.ts)
-    .map((s) => {
-      const topics = Array.from(s.topics.values())
-        .sort((a, b) => b.ts - a.ts)
-        .map((t) => ({
-          subject: t.subject,
-          lastMessage: t.lastMessage,
-          lastMessageSenderName: t.lastMessageSenderName,
-          time: t.time,
-          badge: t.unreadCount > 0 ? t.unreadCount : undefined,
-        }));
-      const badge = topics.reduce((sum, t) => sum + (t.badge ?? 0), 0);
-      return {
-        stream_id: s.stream_id,
-        name: s.name,
-        lastMessage: s.lastMessage,
-        lastMessageSenderName: s.lastMessageSenderName,
-        time: s.time,
-        topics,
-        badge: badge > 0 ? badge : undefined,
-      };
-    });
-  const dms: Extract<SidebarChat, { type: "dm" }>[] = Array.from(dmsByKey.values())
+    .map(mapInternalStreamToSidebar);
+  const dms = Array.from(dmsByKey.values())
     .sort((a, b) => (b.ts ?? 0) - (a.ts ?? 0))
-    .map((x) => ({
-      type: "dm" as const,
-      id: x.id,
-      name: x.name,
-      slug: x.slug,
-      isGroup: x.isGroup,
-      lastMessage: x.lastMessage,
-      time: x.time,
-      userIds: x.userIds,
-      badge: x.unreadCount > 0 ? x.unreadCount : undefined,
-      avatar_url: x.avatar_url,
-      ts: x.ts,
-    }));
+    .map(mapInternalDmToSidebar);
 
   return { streams, dms, streamsMap: streamsByKey, dmsMap: dmsByKey };
 }

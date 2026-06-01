@@ -39,8 +39,24 @@ Large orchestrator files and duplicated UI patterns increase cognitive load. We 
 
 Introduce internal libraries per plan phases 1–4. Imports stay concrete-file (no barrel `index.ts`).
 
+## ESLint cognitive-complexity ratchet log
+
+Rule: `sonarjs/cognitive-complexity` in `packages/web/eslint.config.js`.
+
+| Date       | Threshold | Warnings | Notes                                   |
+| ---------- | --------- | -------: | --------------------------------------- |
+| 2026-05-29 | 25        |       25 | Iteration 2 baseline; `npm run lint:cc` |
+| 2026-06-01 | 25        |        0 | See ADR 011                             |
+| 2026-06-01 | 20        |      TBD | Threshold lowered after 0 @ 25          |
+
+Count command (from repo root):
+
+```bash
+npm run lint:cc
+```
+
 ## Consequences
 
 - Smaller PRs per extraction
-- ESLint `cognitive-complexity` threshold 25 unchanged
+- Ratchet: fix all warnings at threshold 25, then lower to 20 (see ADR 011)
 - ADR 010 covers IndexedDB subsystem when migrated

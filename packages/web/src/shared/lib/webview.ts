@@ -18,6 +18,13 @@
 import { IS_CONNECTION_DIAGNOSTICS_ENABLED } from "~/shared/config/constants";
 import { createLogger } from "./logger";
 import { isValidRealmUrl } from "./validation";
+import {
+  dispatchNativeMessageToHandlers,
+  logRejectedMalformedNativeMessage,
+  logRejectedNativeOrigin,
+  parseIncomingNativeMessage,
+} from "./webview-incoming-message.lib";
+import { isTrustedWebViewMessageOrigin } from "./webview-trust.lib";
 
 const log = createLogger("webview");
 
@@ -154,15 +161,6 @@ export type NativeMessage =
   | NativeLocaleMessage
   | NativeLogoutMessage;
 
-const KNOWN_MESSAGE_TYPES: ReadonlySet<string> = new Set<NativeMessageType>([
-  "auth",
-  "theme",
-  "navigate",
-  "back",
-  "locale",
-  "logout",
-]);
-
 type NativeMessageHandler = (msg: NativeMessage) => void;
 const handlers = new Set<NativeMessageHandler>();
 
@@ -171,124 +169,21 @@ export function onNativeMessage(handler: NativeMessageHandler): () => void {
   return () => handlers.delete(handler);
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
-}
-
-function isThemeMode(value: unknown): value is NativeThemeMode {
-  return value === "light" || value === "dark" || value === "system";
-}
-
-function parseNativeMessage(data: unknown): NativeMessage | null {
-  const payload = asRecord(data);
-  if (!payload) return null;
-
-  const type = payload.type;
-  if (typeof type !== "string" || !KNOWN_MESSAGE_TYPES.has(type)) {
-    return null;
-  }
-
-  if (type === "auth") {
-    const email = payload.email;
-    const apiKey = payload.apiKey;
-    const realm = payload.realm;
-    if (typeof email !== "string" || typeof apiKey !== "string" || typeof realm !== "string") {
-      return null;
-    }
-    return { type, email, apiKey, realm };
-  }
-
-  if (type === "navigate") {
-    const path = payload.path;
-    if (typeof path !== "string" || !path.startsWith("/") || path.startsWith("//")) {
-      return null;
-    }
-    return { type, path };
-  }
-
-  if (type === "theme") {
-    const modeRaw = payload.mode;
-    const themeRaw = payload.theme;
-    const paletteIdRaw = payload.paletteId;
-
-    const modeIsDefined = modeRaw != null;
-    const themeIsDefined = themeRaw != null;
-
-    if (modeIsDefined && !isThemeMode(modeRaw)) return null;
-    if (themeIsDefined && !isThemeMode(themeRaw)) return null;
-    if (paletteIdRaw != null && typeof paletteIdRaw !== "string") return null;
-
-    return {
-      type,
-      mode: isThemeMode(modeRaw) ? modeRaw : undefined,
-      theme: isThemeMode(themeRaw) ? themeRaw : undefined,
-      paletteId: typeof paletteIdRaw === "string" && paletteIdRaw.trim() ? paletteIdRaw : undefined,
-    };
-  }
-
-  if (type === "locale") {
-    const locale = payload.locale;
-    if (typeof locale !== "string" || locale.trim().length === 0) return null;
-    return { type, locale: locale.trim() };
-  }
-
-  if (type === "back") {
-    return { type };
-  }
-
-  if (type === "logout") {
-    return { type };
-  }
-
-  return null;
-}
-
-function isTrustedOrigin(origin: string): boolean {
-  // "null" origin comes from sandboxed iframes and native WebView bridges.
-  // Only accept it when the NativeApp bridge is explicitly injected by the host app.
-  if (origin === "null" && window.NativeApp != null) return true;
-  // Empty or bare "null" without bridge must be rejected.
-  if (origin === "" || origin === "null") return false;
-  if (origin === window.location.origin) return true;
-  // Only trust the realm origin of the current Zulip instance.
-  // DO NOT trust arbitrary http/https origins — that would allow any
-  // website to inject messages via window.postMessage.
-  return false;
-}
-
 function handleIncomingMessage(event: MessageEvent): void {
   const inWebViewContext = isWebView();
-  if (!isTrustedOrigin(event.origin)) {
-    if (inWebViewContext) {
-      log.warn("Rejected message from untrusted origin", { origin: event.origin });
-    } else {
-      log.debug("Ignored non-native message from untrusted origin", { origin: event.origin });
-    }
+  if (!isTrustedWebViewMessageOrigin(event.origin)) {
+    logRejectedNativeOrigin(log, event.origin, inWebViewContext);
     return;
   }
 
-  const msg = parseNativeMessage(event.data);
+  const msg = parseIncomingNativeMessage(event.data);
   if (!msg) {
-    const typeHint =
-      typeof event.data === "object" && event.data != null && "type" in event.data
-        ? String((event.data as Record<string, unknown>).type)
-        : "unknown";
-    if (inWebViewContext) {
-      log.warn("Rejected malformed native message", { type: typeHint });
-    } else {
-      log.debug("Ignored non-native window message payload", { type: typeHint });
-    }
+    logRejectedMalformedNativeMessage(log, event.data, inWebViewContext);
     return;
   }
 
   log.info("Native message received", { type: msg.type });
-  handlers.forEach((h) => {
-    try {
-      h(msg);
-    } catch (err) {
-      log.warn("Native message handler error", { error: String(err) });
-    }
-  });
+  dispatchNativeMessageToHandlers(msg, handlers, log);
 }
 
 // ---------------------------------------------------------------------------

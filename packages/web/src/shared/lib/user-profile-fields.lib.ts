@@ -7,10 +7,13 @@
  */
 
 import { sanitizeHtml } from "~/shared/lib/html";
+import { parseZulipPersonPickerUserIds } from "~/shared/lib/user-profile-picker-parse.lib";
 import {
   realmCustomProfileFieldIsManager,
   type RealmProfileFieldDefinition,
 } from "~/shared/lib/zulip-profile-fields-map.lib";
+
+export { parseZulipPersonPickerUserIds } from "~/shared/lib/user-profile-picker-parse.lib";
 
 export interface ZulipCustomProfileFieldEntry {
   value?: string;
@@ -29,38 +32,6 @@ export interface CustomProfileFieldLine {
   managerProfileUserId?: number;
   /** Label if the users store has not loaded the manager's name yet. */
   managerDisplayFallback?: string;
-}
-
-/**
- * Parses Zulip person-picker `value` (e.g. `"[42]"` per GET /users examples) or plain numeric id.
- */
-export function parseZulipPersonPickerUserIds(value: string | undefined | null): number[] {
-  if (value == null) return [];
-  const t = value.trim();
-  if (t.length === 0) return [];
-  try {
-    const p: unknown = JSON.parse(t);
-    if (Array.isArray(p)) {
-      return p
-        .map((x) => (typeof x === "number" ? x : Number(x)))
-        .filter((n) => Number.isFinite(n) && n > 0);
-    }
-    if (typeof p === "number" && Number.isFinite(p) && p > 0) {
-      return [p];
-    }
-  } catch {
-    /* fall through */
-  }
-  const bracket = /^\[(\d+)\]$/.exec(t);
-  if (bracket) {
-    const id = Number(bracket[1]);
-    return Number.isFinite(id) && id > 0 ? [id] : [];
-  }
-  if (/^\d+$/.test(t)) {
-    const id = Number(t);
-    return id > 0 ? [id] : [];
-  }
-  return [];
 }
 
 /** Extracts `data-user-id` from Zulip-rendered profile HTML (e.g. user mentions). */
@@ -90,6 +61,72 @@ function sortProfileFieldKeys(keys: string[]): string[] {
   });
 }
 
+function findRealmFieldDefinition(
+  fieldKey: string,
+  fieldDefinitions: readonly RealmProfileFieldDefinition[] | null | undefined,
+): RealmProfileFieldDefinition | undefined {
+  if (fieldDefinitions == null || fieldDefinitions.length === 0) return undefined;
+  const fieldIdNum = Number.parseInt(fieldKey, 10);
+  if (!Number.isFinite(fieldIdNum) || String(fieldIdNum) !== fieldKey.trim()) {
+    return undefined;
+  }
+  return fieldDefinitions.find((f) => f.id === fieldIdNum);
+}
+
+function buildManagerProfileFieldLine(
+  fieldKey: string,
+  entry: ZulipCustomProfileFieldEntry,
+  plain: string | undefined,
+): CustomProfileFieldLine | null {
+  const rendered = entry.rendered_value?.trim();
+  let pickerIds = parseZulipPersonPickerUserIds(entry.value);
+  if (pickerIds.length === 0 && rendered != null && rendered.length > 0) {
+    pickerIds = extractUserIdsFromZulipProfileHtml(rendered);
+  }
+  if (pickerIds.length === 0) return null;
+  const uid = pickerIds[0]!;
+  return {
+    fieldKey,
+    html: null,
+    plainText: null,
+    managerProfileUserId: uid,
+    managerDisplayFallback: plain != null && plain.length > 0 ? plain : undefined,
+  };
+}
+
+function buildRenderedOrPlainProfileFieldLine(
+  fieldKey: string,
+  entry: ZulipCustomProfileFieldEntry,
+  baseUrl: string | undefined,
+): CustomProfileFieldLine | null {
+  const rendered = entry.rendered_value?.trim();
+  const plain = entry.value?.trim();
+  if (rendered != null && rendered.length > 0) {
+    const safe = sanitizeHtml(rendered, baseUrl);
+    if (safe.trim().length > 0) {
+      return { fieldKey, html: safe, plainText: null };
+    }
+  }
+  if (plain != null && plain.length > 0) {
+    return { fieldKey, html: null, plainText: plain };
+  }
+  return null;
+}
+
+function buildCustomProfileFieldLine(
+  fieldKey: string,
+  entry: ZulipCustomProfileFieldEntry,
+  baseUrl: string | undefined,
+  fieldDefinitions: readonly RealmProfileFieldDefinition[] | null | undefined,
+): CustomProfileFieldLine | null {
+  const plain = entry.value?.trim();
+  const fieldDef = findRealmFieldDefinition(fieldKey, fieldDefinitions);
+  if (fieldDef != null && realmCustomProfileFieldIsManager(fieldDef)) {
+    return buildManagerProfileFieldLine(fieldKey, entry, plain);
+  }
+  return buildRenderedOrPlainProfileFieldLine(fieldKey, entry, baseUrl);
+}
+
 /** Builds ordered display lines for custom profile data (GET /users `profile_data`). */
 export function getCustomProfileFieldLines(
   profileData: ZulipCustomProfileDataMap | undefined | null,
@@ -102,46 +139,8 @@ export function getCustomProfileFieldLines(
   for (const fieldKey of keys) {
     const entry = profileData[fieldKey];
     if (entry == null) continue;
-    const rendered = entry.rendered_value?.trim();
-    const plain = entry.value?.trim();
-
-    const fieldIdNum = Number.parseInt(fieldKey, 10);
-    const fieldDef =
-      fieldDefinitions != null &&
-      fieldDefinitions.length > 0 &&
-      Number.isFinite(fieldIdNum) &&
-      String(fieldIdNum) === fieldKey.trim()
-        ? fieldDefinitions.find((f) => f.id === fieldIdNum)
-        : undefined;
-
-    if (fieldDef != null && realmCustomProfileFieldIsManager(fieldDef)) {
-      let pickerIds = parseZulipPersonPickerUserIds(entry.value);
-      if (pickerIds.length === 0 && rendered != null && rendered.length > 0) {
-        pickerIds = extractUserIdsFromZulipProfileHtml(rendered);
-      }
-      if (pickerIds.length > 0) {
-        const uid = pickerIds[0]!;
-        out.push({
-          fieldKey,
-          html: null,
-          plainText: null,
-          managerProfileUserId: uid,
-          managerDisplayFallback: plain != null && plain.length > 0 ? plain : undefined,
-        });
-        continue;
-      }
-    }
-
-    if (rendered != null && rendered.length > 0) {
-      const safe = sanitizeHtml(rendered, baseUrl);
-      if (safe.trim().length > 0) {
-        out.push({ fieldKey, html: safe, plainText: null });
-        continue;
-      }
-    }
-    if (plain != null && plain.length > 0) {
-      out.push({ fieldKey, html: null, plainText: plain });
-    }
+    const line = buildCustomProfileFieldLine(fieldKey, entry, baseUrl, fieldDefinitions);
+    if (line != null) out.push(line);
   }
   return out;
 }

@@ -21,10 +21,14 @@ import {
   noteApiTransportFailure,
   noteApiTransportSuccess,
 } from "~/shared/lib/connection-health";
+import {
+  runEventLoopPollCycle,
+  shouldExitEventLoop,
+  waitForNetworkAtLoopStart,
+} from "~/shared/lib/event-loop-handlers/event-loop-poll.lib";
+import { attachEventLoopLifecycle } from "~/shared/lib/event-loop-lifecycle.lib";
 import { createLogger } from "~/shared/lib/logger";
-import { isOnline, onReconnect, onStatusChange, waitForOnline } from "~/shared/lib/network";
-import { onTabResume } from "~/shared/lib/visibility";
-import { shouldReRegisterEventQueueFromPollResponse } from "~/shared/lib/zulip-event-queue-errors.lib";
+import { isOnline, waitForOnline } from "~/shared/lib/network";
 import {
   clearZulipEventQueueId,
   setZulipEventQueueId,
@@ -159,22 +163,21 @@ function startZulipEventLoopWithTransport(
     wake();
   }
 
-  const unsubResume = onTabResume((hiddenDurationMs) => {
-    log.info("Tab resumed, nudging event loop", { hiddenDurationMs });
-    wake();
-    onTabStaleResume?.(hiddenDurationMs);
-  });
-
-  const unsubReconnect = onReconnect(() => {
-    nudgeEventLoopAfterNetworkRestore("reconnect");
-  });
-
-  const unsubStatus = onStatusChange((online) => {
-    if (online) {
+  const detachLifecycle = attachEventLoopLifecycle({
+    onTabResume: (hiddenDurationMs) => {
+      log.info("Tab resumed, nudging event loop", { hiddenDurationMs });
+      wake();
+      onTabStaleResume?.(hiddenDurationMs);
+    },
+    onReconnect: () => {
+      nudgeEventLoopAfterNetworkRestore("reconnect");
+    },
+    onOnline: () => {
       nudgeEventLoopAfterNetworkRestore("online");
-    } else {
+    },
+    onOffline: () => {
       pauseEventLoopForOffline();
-    }
+    },
   });
 
   let cleanedUp = false;
@@ -183,9 +186,7 @@ function startZulipEventLoopWithTransport(
   const cleanupLoop = () => {
     if (cleanedUp) return;
     cleanedUp = true;
-    unsubResume();
-    unsubReconnect();
-    unsubStatus();
+    detachLifecycle();
     abortActivePoll();
     clearQueueId();
     removeAbortListener?.();
@@ -217,16 +218,6 @@ function startZulipEventLoopWithTransport(
     const delay = Math.min(RETRY_PAUSE_MS * Math.pow(1.5, retryCount), MAX_RETRY_PAUSE_MS);
     retryCount++;
     return delay;
-  }
-
-  function isAbortLikeError(err: unknown): boolean {
-    if (err instanceof DOMException && err.name === "AbortError") {
-      return true;
-    }
-    if (err instanceof Error) {
-      return err.name === "AbortError" || err.message.includes("abort");
-    }
-    return false;
   }
 
   async function registerEventQueue(): Promise<boolean> {
@@ -273,95 +264,48 @@ function startZulipEventLoopWithTransport(
 
   async function runLoop(): Promise<void> {
     while (true) {
-      if (signal?.aborted) return;
+      if (shouldExitEventLoop(signal)) return;
 
-      // Wait for network if offline — no wasted requests
-      if (!isOnline()) {
-        log.info("Offline, waiting for network...");
-        await waitForOnline();
-        if (signal?.aborted) return;
-        log.info("Network restored, continuing");
-        clearQueueId();
-        retryCount = 0;
-      }
+      const networkWait = await waitForNetworkAtLoopStart({
+        signal,
+        onRestored: () => {
+          clearQueueId();
+          retryCount = 0;
+        },
+      });
+      if (networkWait === "exit") return;
 
       if (queueState.id == null) {
         await registerEventQueue();
         continue;
       }
 
-      try {
-        const activeQueueId = queueState.id;
-        if (activeQueueId == null) {
-          continue;
-        }
-
-        abortActivePoll();
-        const pollAbort = new AbortController();
-        activePollAbort = pollAbort;
-        const onOuterAbort = () => {
-          pollAbort.abort();
-        };
-        signal?.addEventListener("abort", onOuterAbort);
-
-        let result;
-        try {
-          result = await transport.getEvents(activeQueueId, lastEventId, {
-            timeoutSec: longpollTimeoutSec,
-            signal: pollAbort.signal,
-          });
-        } finally {
-          signal?.removeEventListener("abort", onOuterAbort);
-          if (activePollAbort === pollAbort) {
-            activePollAbort = null;
-          }
-        }
-
-        if (signal?.aborted) return;
-
-        if (shouldReRegisterEventQueueFromPollResponse(result)) {
-          await reRegisterEventQueueAfterPollFailure();
-          continue;
-        }
-
-        retryCount = 0;
-
-        if (result.events) {
-          for (const ev of result.events) {
+      const pollCycle = await runEventLoopPollCycle({
+        signal,
+        getQueueId: () => queueState.id,
+        lastEventId,
+        longpollTimeoutSec,
+        getEvents: transport.getEvents,
+        setActivePollAbort: (controller) => {
+          activePollAbort = controller;
+        },
+        abortActivePoll,
+        onReRegister: reRegisterEventQueueAfterPollFailure,
+        onEvents: (events) => {
+          for (const ev of events) {
             handleEvent(ev);
           }
-        }
-        noteApiTransportSuccess();
-      } catch (err) {
-        if (signal?.aborted) return;
-
-        if (isAbortLikeError(err)) {
-          if (queueState.id == null) {
-            continue;
-          }
-          clearQueueId();
-          continue;
-        }
-
-        if (!isOnline()) {
-          log.info("Request failed while offline, will wait for network");
-          clearQueueId();
-          continue;
-        }
-
-        if (isLikelyNetworkError(err)) {
-          log.info("Transport error during event poll, will re-register");
-          noteApiTransportFailure(err);
-          clearQueueId();
+        },
+        resetRetryCount: () => {
           retryCount = 0;
-          wake();
-          continue;
-        }
-
-        noteApiTransportFailure(err);
-        await reRegisterEventQueueAfterPollFailure();
-        continue;
-      }
+        },
+        clearQueueId,
+        wake,
+        resetRetryCountOnTransportError: () => {
+          retryCount = 0;
+        },
+      });
+      if (pollCycle === "exit") return;
     }
   }
 
