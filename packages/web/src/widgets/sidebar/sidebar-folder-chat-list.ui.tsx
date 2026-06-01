@@ -22,7 +22,7 @@ import { DmContextMenu, StreamContextMenu } from "./sidebar-chat-context-menu.ui
 import { sidebarStreamRoute, sidebarStreamTopicRoute } from "./sidebar-chat-routes.lib";
 import { DmChatRow } from "./sidebar-folder-dm-row.ui";
 import { SidebarFolderNewTopicDialog } from "./sidebar-folder-new-topic-dialog.ui";
-import { TopicMuteButton, TopicResolvedButton } from "./sidebar-folder-topic-buttons.ui";
+import { TopicMuteButton } from "./sidebar-folder-topic-buttons.ui";
 import { SidebarStreamHydrateWrapper } from "./sidebar-stream-hydrate-wrapper.ui";
 import {
   isSidebarSystemFolderScope,
@@ -420,12 +420,6 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
                                         streamId={chat.stream_id}
                                         topic={topic.subject}
                                         onMuteError={handleMuteError}
-                                      />
-                                      <TopicResolvedButton
-                                        streamId={chat.stream_id}
-                                        topic={topic.subject}
-                                        streamSlug={streamSlug}
-                                        isActiveTopic={isTopicActive}
                                       />
                                     </div>
                                   </div>

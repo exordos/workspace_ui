@@ -9,6 +9,7 @@ import {
   markMessagesAsRead,
   markStreamAsRead,
   markTopicAsRead,
+  renameStreamTopic,
   setTopicResolvedState,
 } from "./zulip-read-state";
 import { getMockZulipApi } from "./zulip.test.setup";
@@ -196,6 +197,39 @@ describe("markTopicAsRead", () => {
         ]),
       }),
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// renameStreamTopic
+// ---------------------------------------------------------------------------
+
+describe("renameStreamTopic", () => {
+  it("renames topic via anchor message patch", async () => {
+    mockZulipApi.get.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        messages: [{ id: 901 }],
+      },
+      raw: { statusText: "OK" },
+    });
+    mockZulipApi.patch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { result: "success" },
+      raw: { statusText: "OK" },
+    });
+
+    await expect(renameStreamTopic(10, "incident", "postmortem")).resolves.toBe(true);
+    expect(mockZulipApi.patch).toHaveBeenCalledWith("/messages/901", {
+      topic: "postmortem",
+      propagate_mode: "change_all",
+      send_notification_to_old_thread: "false",
+      send_notification_to_new_thread: "false",
+      send_webhook_notifications: "false",
+    });
   });
 });
 

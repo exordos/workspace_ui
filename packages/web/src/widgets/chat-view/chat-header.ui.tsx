@@ -1,4 +1,5 @@
 import React, { useCallback } from "react";
+import { MarkTopicResolvedHeaderMenu } from "~/features/mark-topic-resolved/mark-topic-resolved-header-menu.ui";
 import { t } from "~/i18n/i18n";
 import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
 import { resolveAvatarUrl } from "~/shared/lib/avatar";
@@ -176,6 +177,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
             <Icon name="search" size={20} className="text-current" />
           </button>
         )}
+        {!dmPartner && !dmGroup && !hideTopic && <MarkTopicResolvedHeaderMenu />}
         {onToggleRightPanel != null && (
           <button
             type="button"

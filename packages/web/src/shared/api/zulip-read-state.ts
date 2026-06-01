@@ -72,6 +72,88 @@ export async function markTopicAsRead(streamId: number, topic: string): Promise<
   return res.ok;
 }
 
+async function findTopicAnchorMessageId(streamId: number, topic: string): Promise<number | null> {
+  const normalizedTopic = normalizeTopicForIdentity(topic);
+  const anchorMessageResponse = await zulipPipelineGet("/messages", {
+    anchor: "oldest",
+    num_before: "0",
+    num_after: "1",
+    include_anchor: "true",
+    allow_empty_topic_name: "true",
+    client_gravatar: "false",
+    apply_markdown: "false",
+    narrow: JSON.stringify([
+      { operator: "stream", operand: streamId },
+      { operator: "topic", operand: zulipTopicNarrowOperandForApi(normalizedTopic) },
+    ]),
+  });
+
+  if (!anchorMessageResponse?.ok) {
+    return null;
+  }
+
+  const anchorData = anchorMessageResponse.data as {
+    result?: string;
+    messages?: { id?: number }[];
+  };
+  if (anchorData.result === "error") {
+    return null;
+  }
+
+  const anchorMessageId = anchorData.messages?.[0]?.id;
+  if (anchorMessageId == null) {
+    return null;
+  }
+  guard.messageId(anchorMessageId, "findTopicAnchorMessageId");
+  return anchorMessageId;
+}
+
+async function patchStreamTopicForAllMessages(
+  anchorMessageId: number,
+  targetTopic: string,
+): Promise<boolean> {
+  const patchResponse = await zulipPipelinePatch(`messages/${anchorMessageId}`, {
+    topic: targetTopic,
+    propagate_mode: "change_all",
+    send_notification_to_old_thread: "false",
+    send_notification_to_new_thread: "false",
+    send_webhook_notifications: "false",
+  });
+
+  if (!patchResponse.ok) {
+    return false;
+  }
+
+  const patchData = patchResponse.data as { result?: string };
+  return patchData.result !== "error";
+}
+
+/**
+ * Renames a stream topic by PATCHing the anchor message with propagate_mode=change_all.
+ */
+export async function renameStreamTopic(
+  streamId: number,
+  topic: string,
+  newTopic: string,
+): Promise<boolean> {
+  guard.streamId(streamId, "renameStreamTopic.streamId");
+  const normalizedTopic = normalizeTopicForIdentity(topic);
+  const targetTopic = normalizeTopicForIdentity(newTopic.trim());
+  if (targetTopic.length === 0) {
+    return false;
+  }
+  if (targetTopic === normalizedTopic) {
+    return true;
+  }
+
+  const anchorMessageId = await findTopicAnchorMessageId(streamId, topic);
+  if (anchorMessageId == null) {
+    return false;
+  }
+
+  return patchStreamTopicForAllMessages(anchorMessageId, targetTopic);
+}
+
 /**
  * Marks a stream topic as resolved/unresolved by renaming the whole topic thread.
  *
@@ -93,50 +175,10 @@ export async function setTopicResolvedState(
     return true;
   }
 
-  const anchorMessageResponse = await zulipPipelineGet("/messages", {
-    anchor: "oldest",
-    num_before: "0",
-    num_after: "1",
-    include_anchor: "true",
-    allow_empty_topic_name: "true",
-    client_gravatar: "false",
-    apply_markdown: "false",
-    narrow: JSON.stringify([
-      { operator: "stream", operand: streamId },
-      { operator: "topic", operand: zulipTopicNarrowOperandForApi(normalizedTopic) },
-    ]),
-  });
-
-  if (!anchorMessageResponse?.ok) {
-    return false;
-  }
-
-  const anchorData = anchorMessageResponse.data as {
-    result?: string;
-    messages?: { id?: number }[];
-  };
-  if (anchorData.result === "error") {
-    return false;
-  }
-
-  const anchorMessageId = anchorData.messages?.[0]?.id;
+  const anchorMessageId = await findTopicAnchorMessageId(streamId, topic);
   if (anchorMessageId == null) {
     return false;
   }
-  guard.messageId(anchorMessageId, "setTopicResolvedState.anchorMessageId");
 
-  const patchResponse = await zulipPipelinePatch(`messages/${anchorMessageId}`, {
-    topic: targetTopic,
-    propagate_mode: "change_all",
-    send_notification_to_old_thread: "false",
-    send_notification_to_new_thread: "false",
-    send_webhook_notifications: "false",
-  });
-
-  if (!patchResponse.ok) {
-    return false;
-  }
-
-  const patchData = patchResponse.data as { result?: string };
-  return patchData.result !== "error";
+  return patchStreamTopicForAllMessages(anchorMessageId, targetTopic);
 }

@@ -20,13 +20,13 @@ describe("getCurrentUser", () => {
     mockZulipApi.get.mockResolvedValue({
       ok: true,
       status: 200,
-      data: { user_id: 42, full_name: "Alice", email: "alice@test.com" },
+      data: { user_id: 42, full_name: "Alice", email: "alice@test.com", role: 200 },
       raw: { statusText: "OK" },
     });
 
     const result = await getCurrentUser();
 
-    expect(result).toEqual({ user_id: 42, full_name: "Alice", email: "alice@test.com" });
+    expect(result).toEqual({ user_id: 42, full_name: "Alice", email: "alice@test.com", role: 200 });
     expect(mockRefreshZulipApiBase).toHaveBeenCalled();
     expect(mockZulipApi.get).toHaveBeenCalledWith("/users/me", undefined, undefined);
   });
@@ -35,11 +35,11 @@ describe("getCurrentUser", () => {
     mockZulipApi.get.mockResolvedValue({
       ok: true,
       status: 200,
-      data: { user_id: 42, full_name: "Alice", email: "alice@test.com" },
+      data: { user_id: 42, full_name: "Alice", email: "alice@test.com", role: 200 },
       raw: { statusText: "OK" },
     });
     const result = await getCurrentUser();
-    expect(result).toEqual({ user_id: 42, full_name: "Alice", email: "alice@test.com" });
+    expect(result).toEqual({ user_id: 42, full_name: "Alice", email: "alice@test.com", role: 200 });
   });
 
   it("returns null on non-ok response", async () => {

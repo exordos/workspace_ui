@@ -88,6 +88,7 @@ function mergeStreamPreviewEntry(
     canAddSubscribersGroup: existing.canAddSubscribersGroup,
     canRemoveSubscribersGroup: existing.canRemoveSubscribersGroup,
     canAdministerChannelGroup: existing.canAdministerChannelGroup,
+    canResolveTopicsGroup: existing.canResolveTopicsGroup,
     topics: nextTopics,
   };
 }

@@ -182,6 +182,9 @@ function toStreamMetadataRows(
         ...(subscription.can_administer_channel_group != null
           ? { canAdministerChannelGroup: subscription.can_administer_channel_group }
           : {}),
+        ...(subscription.can_resolve_topics_group != null
+          ? { canResolveTopicsGroup: subscription.can_resolve_topics_group }
+          : {}),
       };
     });
 }
@@ -835,6 +838,11 @@ export function useLayoutZulipEventLoop(options: {
                 ...(registration?.realm_can_add_subscribers_group != null
                   ? {
                       realmCanAddSubscribersGroup: registration.realm_can_add_subscribers_group,
+                    }
+                  : {}),
+                ...(registration?.realm_can_resolve_topics_group != null
+                  ? {
+                      realmCanResolveTopicsGroup: registration.realm_can_resolve_topics_group,
                     }
                   : {}),
               });

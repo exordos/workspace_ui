@@ -25,6 +25,21 @@ describe("parseCurrentUserFromApiData", () => {
     ).toEqual({ user_id: 99, full_name: "Bob", email: "bob@test.com" });
   });
 
+  it("parses role from flat and nested payloads", () => {
+    expect(
+      parseCurrentUserFromApiData({
+        user_id: 1,
+        role: 200,
+      }),
+    ).toEqual({ user_id: 1, full_name: "", email: "", role: 200 });
+
+    expect(
+      parseCurrentUserFromApiData({
+        user: { user_id: 2, role: 300 },
+      }),
+    ).toEqual({ user_id: 2, full_name: "", email: "", role: 300 });
+  });
+
   it("parses string user_id", () => {
     expect(parseCurrentUserFromApiData({ user_id: "7" })).toEqual({
       user_id: 7,

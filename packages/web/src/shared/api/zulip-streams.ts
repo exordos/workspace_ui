@@ -158,6 +158,7 @@ export async function fetchSubscriptions(): Promise<ZulipSubscription[]> {
       can_add_subscribers_group?: unknown;
       can_remove_subscribers_group?: unknown;
       can_administer_channel_group?: unknown;
+      can_resolve_topics_group?: unknown;
     }[];
   };
   // Что делает: нормализует channel-level поля прав из ответа /users/me/subscriptions.
@@ -177,6 +178,7 @@ export async function fetchSubscriptions(): Promise<ZulipSubscription[]> {
     const canAdministerChannelGroup = normalizeGroupSettingValue(
       subscription.can_administer_channel_group,
     );
+    const canResolveTopicsGroup = normalizeGroupSettingValue(subscription.can_resolve_topics_group);
     return {
       stream_id: subscription.stream_id,
       name: subscription.name,
@@ -197,6 +199,7 @@ export async function fetchSubscriptions(): Promise<ZulipSubscription[]> {
       ...(canAdministerChannelGroup != null
         ? { can_administer_channel_group: canAdministerChannelGroup }
         : {}),
+      ...(canResolveTopicsGroup != null ? { can_resolve_topics_group: canResolveTopicsGroup } : {}),
     };
   });
 }

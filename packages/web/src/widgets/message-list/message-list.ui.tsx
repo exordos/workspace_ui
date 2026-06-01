@@ -87,6 +87,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   onUnreadMessagesVisible,
   onUnreadMessagesAtBottom,
   showLoadingOverlay = false,
+  showTopicInSenderName = true,
 }) => {
   const bubbleCallbacks: MessageBubbleCallbacks | undefined = useMemo(
     () =>
@@ -924,6 +925,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                         onEmojiPickerOpen={ensureCustomEmojisLoaded}
                         resolveCustomEmojiImageUrl={resolveCustomEmojiImageUrl}
                         resolveCustomEmojiShortcodeImageUrl={resolveCustomEmojiShortcodeImageUrl}
+                        showTopicInSenderName={showTopicInSenderName}
                       />
                     ))}
                   </React.Fragment>
@@ -956,6 +958,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                     onEmojiPickerOpen={ensureCustomEmojisLoaded}
                     resolveCustomEmojiImageUrl={resolveCustomEmojiImageUrl}
                     resolveCustomEmojiShortcodeImageUrl={resolveCustomEmojiShortcodeImageUrl}
+                    showTopicInSenderName={showTopicInSenderName}
                   />
                 </React.Fragment>
               );

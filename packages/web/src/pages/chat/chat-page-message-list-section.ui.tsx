@@ -85,6 +85,8 @@ export const ChatPageMessageListSection = React.memo(function ChatPageMessageLis
       : undefined
     : [activeStream ?? "", activeTopic ?? ""].join("|");
 
+  const showTopicInSenderName = activeTopic == null || activeTopic.trim() === "";
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       {showRefreshLoadError ? (
@@ -130,6 +132,7 @@ export const ChatPageMessageListSection = React.memo(function ChatPageMessageLis
         onUnreadMessagesVisible={onUnreadMessagesVisible}
         onUnreadMessagesAtBottom={onUnreadMessagesAtBottom}
         showLoadingOverlay={showLoadingOverlay}
+        showTopicInSenderName={showTopicInSenderName}
       />
     </div>
   );

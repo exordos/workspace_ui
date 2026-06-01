@@ -223,7 +223,9 @@
     "deleteTopicConfirm": "Delete topic \"{{topic}}\"?",
     "deleteTopicInProgress": "Deleting topic…",
     "markTopicAsDone": "Mark topic as done",
-    "markTopicAsNotDone": "Mark topic as not done"
+    "markTopicAsNotDone": "Mark topic as not done",
+    "renameTopic": "Rename topic",
+    "renameTopicTitle": "Rename topic"
   },
   "dm": {
     "groupChat": "Group chat",

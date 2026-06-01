@@ -43,6 +43,8 @@ export interface MessageBubbleProps {
   showAvatar?: boolean;
   /** Show sender name (only for the first message in a consecutive group). */
   showSenderName?: boolean;
+  /** Show topic label next to sender name (stream-wide view only). */
+  showTopicInSenderName?: boolean;
   /** Message inside a sender group: avatar is rendered outside, content has no avatar column. */
   inSenderGroup?: boolean;
   currentUserId?: number;

@@ -297,6 +297,7 @@ function mergeStreamEntry(
     canAddSubscribersGroup: existing.canAddSubscribersGroup,
     canRemoveSubscribersGroup: existing.canRemoveSubscribersGroup,
     canAdministerChannelGroup: existing.canAdministerChannelGroup,
+    canResolveTopicsGroup: existing.canResolveTopicsGroup,
     topics: nextTopics,
   };
 }
@@ -387,7 +388,8 @@ function mergeStreamAccessMetadata(
     existing.inviteOnly != null ||
     existing.canAddSubscribersGroup != null ||
     existing.canRemoveSubscribersGroup != null ||
-    existing.canAdministerChannelGroup != null;
+    existing.canAdministerChannelGroup != null ||
+    existing.canResolveTopicsGroup != null;
   if (!hasMetadata) return stream;
   return {
     ...stream,
@@ -402,6 +404,9 @@ function mergeStreamAccessMetadata(
       : {}),
     ...(existing.canAdministerChannelGroup != null
       ? { canAdministerChannelGroup: existing.canAdministerChannelGroup }
+      : {}),
+    ...(existing.canResolveTopicsGroup != null
+      ? { canResolveTopicsGroup: existing.canResolveTopicsGroup }
       : {}),
   };
 }
@@ -569,6 +574,7 @@ function buildStreamMetadataEntry(
     row.canRemoveSubscribersGroup ?? existing?.canRemoveSubscribersGroup;
   const canAdministerChannelGroup =
     row.canAdministerChannelGroup ?? existing?.canAdministerChannelGroup;
+  const canResolveTopicsGroup = row.canResolveTopicsGroup ?? existing?.canResolveTopicsGroup;
   if (existing) {
     return {
       ...existing,
@@ -579,6 +585,7 @@ function buildStreamMetadataEntry(
       ...(canAddSubscribersGroup != null ? { canAddSubscribersGroup } : {}),
       ...(canRemoveSubscribersGroup != null ? { canRemoveSubscribersGroup } : {}),
       ...(canAdministerChannelGroup != null ? { canAdministerChannelGroup } : {}),
+      ...(canResolveTopicsGroup != null ? { canResolveTopicsGroup } : {}),
     };
   }
   return {
@@ -594,6 +601,7 @@ function buildStreamMetadataEntry(
     ...(canAddSubscribersGroup != null ? { canAddSubscribersGroup } : {}),
     ...(canRemoveSubscribersGroup != null ? { canRemoveSubscribersGroup } : {}),
     ...(canAdministerChannelGroup != null ? { canAdministerChannelGroup } : {}),
+    ...(canResolveTopicsGroup != null ? { canResolveTopicsGroup } : {}),
     topics: new Map(),
   };
 }
@@ -631,6 +639,11 @@ function hasStreamMetadataAccessChanged(
       existing.canAdministerChannelGroup,
       nextEntry.canAdministerChannelGroup,
     )
+  ) {
+    return true;
+  }
+  if (
+    !areGroupSettingValuesEqual(existing.canResolveTopicsGroup, nextEntry.canResolveTopicsGroup)
   ) {
     return true;
   }

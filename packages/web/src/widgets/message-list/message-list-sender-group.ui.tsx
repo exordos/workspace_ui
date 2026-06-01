@@ -22,6 +22,7 @@ export const MessageListSenderGroup = React.memo<MessageListSenderGroupProps>(
     onEmojiPickerOpen,
     resolveCustomEmojiImageUrl,
     resolveCustomEmojiShortcodeImageUrl,
+    showTopicInSenderName = true,
   }) {
     const user = useUsersStore((s) => s.getUser(messages[0]!.sender_id));
     const trimmedUserName = user?.full_name?.trim();
@@ -84,6 +85,7 @@ export const MessageListSenderGroup = React.memo<MessageListSenderGroupProps>(
                 onEmojiPickerOpen={onEmojiPickerOpen}
                 resolveCustomEmojiImageUrl={resolveCustomEmojiImageUrl}
                 resolveCustomEmojiShortcodeImageUrl={resolveCustomEmojiShortcodeImageUrl}
+                showTopicInSenderName={showTopicInSenderName}
               />
             ))}
           </div>

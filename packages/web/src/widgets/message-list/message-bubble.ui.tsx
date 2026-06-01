@@ -76,6 +76,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     isOwn = false,
     showAvatar = true,
     showSenderName = true,
+    showTopicInSenderName = true,
     inSenderGroup = false,
     currentUserId,
     selectionMode = false,
@@ -862,7 +863,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
                       {senderStatusLabel}
                     </span>
                   )}
-                  {message.subject && (
+                  {showTopicInSenderName && message.subject && (
                     <span
                       className={`text-[11px] font-medium ${isOwn ? "text-call-green" : "text-accent-soft"}`}
                     >
@@ -946,7 +947,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
                     {senderStatusLabel}
                   </span>
                 )}
-                {message.subject && (
+                {showTopicInSenderName && message.subject && (
                   <span
                     className={`text-[11px] font-medium ${
                       isOwn ? "text-call-green" : "text-accent-soft"

@@ -27,6 +27,7 @@ export interface ChatListStreamMetadataRow {
   canRemoveSubscribersGroup?: ZulipGroupSettingValue;
   // Что делает: channel-level группа администраторов канала.
   canAdministerChannelGroup?: ZulipGroupSettingValue;
+  canResolveTopicsGroup?: ZulipGroupSettingValue;
 }
 
 export interface ChatListDmMetadataRow {

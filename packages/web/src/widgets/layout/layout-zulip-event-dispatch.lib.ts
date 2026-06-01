@@ -63,6 +63,7 @@ function parseSubscriptionRows(value: unknown): {
     canAddSubscribersGroup?: ZulipGroupSettingValue;
     canRemoveSubscribersGroup?: ZulipGroupSettingValue;
     canAdministerChannelGroup?: ZulipGroupSettingValue;
+    canResolveTopicsGroup?: ZulipGroupSettingValue;
   }[] = [];
   for (const row of value) {
     if (row == null || typeof row !== "object" || Array.isArray(row)) continue;
@@ -81,6 +82,7 @@ function parseOneSubscriptionRow(record: Record<string, unknown>): {
   canAddSubscribersGroup?: ZulipGroupSettingValue;
   canRemoveSubscribersGroup?: ZulipGroupSettingValue;
   canAdministerChannelGroup?: ZulipGroupSettingValue;
+  canResolveTopicsGroup?: ZulipGroupSettingValue;
 } | null {
   const streamIdRaw = record.stream_id;
   const name = record.name;
@@ -89,6 +91,7 @@ function parseOneSubscriptionRow(record: Record<string, unknown>): {
   const canAddSubscribersGroup = normalizeGroupSettingValue(record.can_add_subscribers_group);
   const canRemoveSubscribersGroup = normalizeGroupSettingValue(record.can_remove_subscribers_group);
   const canAdministerChannelGroup = normalizeGroupSettingValue(record.can_administer_channel_group);
+  const canResolveTopicsGroup = normalizeGroupSettingValue(record.can_resolve_topics_group);
   return {
     streamId: streamIdRaw,
     name: name.trim(),
@@ -98,6 +101,7 @@ function parseOneSubscriptionRow(record: Record<string, unknown>): {
     ...(canAddSubscribersGroup != null ? { canAddSubscribersGroup } : {}),
     ...(canRemoveSubscribersGroup != null ? { canRemoveSubscribersGroup } : {}),
     ...(canAdministerChannelGroup != null ? { canAdministerChannelGroup } : {}),
+    ...(canResolveTopicsGroup != null ? { canResolveTopicsGroup } : {}),
   };
 }
 
@@ -492,6 +496,9 @@ function buildStreamMetadataRowFromExisting(
     ...(existing?.canAdministerChannelGroup != null
       ? { canAdministerChannelGroup: existing.canAdministerChannelGroup }
       : {}),
+    ...(existing?.canResolveTopicsGroup != null
+      ? { canResolveTopicsGroup: existing.canResolveTopicsGroup }
+      : {}),
   };
 }
 
@@ -504,6 +511,7 @@ function applySubscriptionMetadataField(
     canAddSubscribersGroup?: ZulipGroupSettingValue;
     canRemoveSubscribersGroup?: ZulipGroupSettingValue;
     canAdministerChannelGroup?: ZulipGroupSettingValue;
+    canResolveTopicsGroup?: ZulipGroupSettingValue;
   },
   property: string,
   event: ZulipEvent,
@@ -534,9 +542,18 @@ function applySubscriptionMetadataField(
     }
     return;
   }
-  const parsed = normalizeGroupSettingValue(event.value);
-  if (parsed != null) {
-    row.canAdministerChannelGroup = parsed;
+  if (property === "can_administer_channel_group") {
+    const parsed = normalizeGroupSettingValue(event.value);
+    if (parsed != null) {
+      row.canAdministerChannelGroup = parsed;
+    }
+    return;
+  }
+  if (property === "can_resolve_topics_group") {
+    const parsed = normalizeGroupSettingValue(event.value);
+    if (parsed != null) {
+      row.canResolveTopicsGroup = parsed;
+    }
   }
 }
 
@@ -569,6 +586,7 @@ function handleSubscriptionPropertyUpdate(
     property !== "can_add_subscribers_group" &&
     property !== "can_remove_subscribers_group" &&
     property !== "can_administer_channel_group" &&
+    property !== "can_resolve_topics_group" &&
     property !== "invite_only"
   ) {
     return;
@@ -631,6 +649,7 @@ function handleStreamPropertyUpdate(
     property !== "can_add_subscribers_group" &&
     property !== "can_remove_subscribers_group" &&
     property !== "can_administer_channel_group" &&
+    property !== "can_resolve_topics_group" &&
     property !== "invite_only"
   ) {
     return;

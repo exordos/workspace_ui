@@ -227,7 +227,9 @@
     "deleteTopicConfirm": "Удалить тему «{{topic}}»?",
     "deleteTopicInProgress": "Удаление темы…",
     "markTopicAsDone": "Отметить тему как выполненную",
-    "markTopicAsNotDone": "Снять отметку выполнения темы"
+    "markTopicAsNotDone": "Снять отметку выполнения темы",
+    "renameTopic": "Переименовать тему",
+    "renameTopicTitle": "Переименовать тему"
   },
   "dm": {
     "groupChat": "Групповой чат",

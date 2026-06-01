@@ -2,7 +2,6 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
-import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import type * as CreateChatApiModule from "~/features/create-chat/create-chat.api";
 import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
@@ -26,7 +25,6 @@ import { Sidebar } from "./sidebar.ui";
 const createChannelMock = vi.fn();
 const unarchiveChannelMock = vi.fn();
 const markDmAsReadMock = vi.fn();
-const setTopicResolvedStateMock = vi.fn();
 const muteStreamMock = vi.fn();
 const unmuteStreamMock = vi.fn();
 const muteTopicMock = vi.fn();
@@ -52,7 +50,6 @@ vi.mock("~/shared/api/zulip", async (importOriginal) => {
   return {
     ...actual,
     markDmAsRead: (...args: unknown[]) => markDmAsReadMock(...args),
-    setTopicResolvedState: (...args: unknown[]) => setTopicResolvedStateMock(...args),
   };
 });
 
@@ -169,7 +166,6 @@ describe("Sidebar", () => {
     createChannelMock.mockReset();
     unarchiveChannelMock.mockReset();
     markDmAsReadMock.mockReset();
-    setTopicResolvedStateMock.mockReset();
     muteStreamMock.mockReset();
     unmuteStreamMock.mockReset();
     muteTopicMock.mockReset();
@@ -1827,78 +1823,5 @@ describe("Sidebar", () => {
     fireEvent.click(screen.getByRole("button", { name: /mute topic/i }));
 
     expect(screen.getByTestId("route-path")).toHaveTextContent("/");
-  });
-
-  it("marks topic as done from topic row action", async () => {
-    setTopicResolvedStateMock.mockResolvedValue(true);
-    const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
-      ...STREAM_CHAT,
-      topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
-    };
-    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
-
-    renderWithProviders(
-      <>
-        <Sidebar
-          streams={[]}
-          selectedFolderId="all"
-          activeStreamSlug="11-engineering"
-          sidebarChats={[streamWithTopics]}
-          sidebarDms={[]}
-        />
-        <RoutePathProbe />
-      </>,
-    );
-
-    const markDoneButton = screen.getByRole("button", { name: /mark topic as done/i });
-    fireEvent.click(markDoneButton);
-
-    await waitFor(() => {
-      expect(setTopicResolvedStateMock).toHaveBeenCalledWith(11, "incident", true);
-    });
-    expect(screen.getByTestId("route-path")).toHaveTextContent("/");
-  });
-
-  it("marks resolved topic as not done from topic row action", async () => {
-    setTopicResolvedStateMock.mockResolvedValue(true);
-    const moveStreamTopicSpy = vi.spyOn(useChatListStore.getState(), "moveStreamTopic");
-    const moveCurrentTopicSpy = vi.spyOn(
-      useCurrentChatMessagesStore.getState(),
-      "moveStreamTopicMessages",
-    );
-    const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
-      ...STREAM_CHAT,
-      topics: [{ subject: "\u2714 incident", badge: 0, lastMessage: "Topic update" }],
-    };
-    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
-
-    renderWithProviders(
-      <Sidebar
-        streams={[]}
-        selectedFolderId="all"
-        activeStreamSlug="11-engineering"
-        sidebarChats={[streamWithTopics]}
-        sidebarDms={[]}
-      />,
-    );
-
-    const markNotDoneButton = screen.getByRole("button", { name: /mark topic as not done/i });
-    fireEvent.click(markNotDoneButton);
-
-    await waitFor(() => {
-      expect(setTopicResolvedStateMock).toHaveBeenCalledWith(11, "\u2714 incident", false);
-    });
-    expect(moveStreamTopicSpy).toHaveBeenCalledWith({
-      streamId: 11,
-      oldTopic: "\u2714 incident",
-      newTopic: "incident",
-    });
-    expect(moveCurrentTopicSpy).toHaveBeenCalledWith({
-      streamId: 11,
-      oldTopic: "\u2714 incident",
-      newTopic: "incident",
-    });
-    moveStreamTopicSpy.mockRestore();
-    moveCurrentTopicSpy.mockRestore();
   });
 });

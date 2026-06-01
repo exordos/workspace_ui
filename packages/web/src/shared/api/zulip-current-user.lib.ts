@@ -7,6 +7,22 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+function parseRoleCode(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (/^\d+$/.test(trimmed)) {
+      const parsed = Number(trimmed);
+      if (Number.isSafeInteger(parsed) && parsed > 0) {
+        return parsed;
+      }
+    }
+  }
+  return undefined;
+}
+
 function parsePositiveUserId(value: unknown): number | null {
   if (typeof value === "number" && Number.isInteger(value) && value > 0) {
     return value;
@@ -35,6 +51,7 @@ export function parseCurrentUserFromApiData(data: unknown): ZulipCurrentUser | n
   let userId = parsePositiveUserId(data.user_id);
   let fullName = typeof data.full_name === "string" ? data.full_name : "";
   let email = typeof data.email === "string" ? data.email : "";
+  let role = parseRoleCode(data.role);
 
   if (userId == null && isRecord(data.user)) {
     userId = parsePositiveUserId(data.user.user_id);
@@ -44,6 +61,7 @@ export function parseCurrentUserFromApiData(data: unknown): ZulipCurrentUser | n
     if (typeof data.user.email === "string") {
       email = data.user.email;
     }
+    role = role ?? parseRoleCode(data.user.role);
   }
 
   if (userId == null) {
@@ -54,5 +72,6 @@ export function parseCurrentUserFromApiData(data: unknown): ZulipCurrentUser | n
     user_id: userId,
     full_name: fullName,
     email,
+    ...(role != null ? { role } : {}),
   };
 }

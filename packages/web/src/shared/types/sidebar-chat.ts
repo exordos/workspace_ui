@@ -82,6 +82,7 @@ export interface StreamEntryInternal {
   canRemoveSubscribersGroup?: ZulipGroupSettingValue;
   // Что делает: channel-level group-setting админов канала.
   canAdministerChannelGroup?: ZulipGroupSettingValue;
+  canResolveTopicsGroup?: ZulipGroupSettingValue;
   topics: Map<
     string,
     {
