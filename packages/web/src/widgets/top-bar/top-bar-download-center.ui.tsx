@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useDownloadStore } from "~/entities/download/download.model";
 import type { DownloadEntry } from "~/entities/download/download.types";
 import { t } from "~/i18n/i18n";
+import { useDismissOnOutsideAndEscape } from "~/shared/lib/use-dismiss-on-outside-escape.hook";
 import { Icon } from "~/shared/ui/icon";
 import { TopBarDownloadRow } from "./top-bar-download-row.ui";
 import { formatDownloadBytes } from "./top-bar.lib";
@@ -55,28 +56,15 @@ export const TopBarDownloadCenter = React.memo(function TopBarDownloadCenter() {
     return () => clearTimeout(timer);
   }, [duplicateRequestTick]);
 
-  useEffect(() => {
-    if (!panelOpen) return;
+  const handleDismissPanel = useCallback(() => {
+    setPanelOpen(false);
+  }, []);
 
-    const handleMouseDown = (event: MouseEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-      if (containerRef.current?.contains(target)) return;
-      setPanelOpen(false);
-    };
-
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      setPanelOpen(false);
-    };
-
-    document.addEventListener("mousedown", handleMouseDown);
-    document.addEventListener("keydown", handleEscape);
-    return () => {
-      document.removeEventListener("mousedown", handleMouseDown);
-      document.removeEventListener("keydown", handleEscape);
-    };
-  }, [panelOpen]);
+  useDismissOnOutsideAndEscape({
+    enabled: panelOpen,
+    containerRef,
+    onDismiss: handleDismissPanel,
+  });
 
   if (downloads.length === 0) {
     return null;

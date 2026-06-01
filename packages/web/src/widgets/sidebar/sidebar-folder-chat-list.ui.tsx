@@ -9,6 +9,7 @@ import { usePinStore } from "~/features/pin-chat/pin-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
 import { Icon } from "~/shared/ui/icon";
+import { Spinner } from "~/shared/ui/spinner.ui";
 import { resolveSidebarFolderEmptyStatePresentation } from "./sidebar-folder-chat-list-empty.lib";
 import { SidebarFolderChatRow } from "./sidebar-folder-chat-row.ui";
 import { SidebarFolderNewTopicDialog } from "./sidebar-folder-new-topic-dialog.ui";
@@ -161,7 +162,7 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
           aria-busy="true"
           aria-label={t("app.loading")}
         >
-          <div className="h-8 w-8 shrink-0 animate-spin rounded-full border-2 border-border-subtle border-t-accent" />
+          <Spinner size="lg" className="shrink-0" />
           <p className="text-sm text-text-muted">{t("app.loading")}</p>
         </div>
       </div>

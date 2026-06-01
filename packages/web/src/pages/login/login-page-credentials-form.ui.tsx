@@ -1,6 +1,7 @@
 import React from "react";
 import { t } from "~/i18n/i18n";
 import { Button } from "~/shared/ui/button";
+import { FormField } from "~/shared/ui/form-field.ui";
 import { Icon } from "~/shared/ui/icon";
 
 export interface LoginPageCredentialsFormProps {
@@ -35,10 +36,7 @@ export const LoginPageCredentialsForm = React.memo<LoginPageCredentialsFormProps
   }) {
     return (
       <form onSubmit={onSubmit} className="flex flex-col gap-4">
-        <div>
-          <label htmlFor="realm" className="mb-1.5 block text-sm font-medium text-text-primary">
-            {t("auth.zulipServerUrl")}
-          </label>
+        <FormField label={t("auth.zulipServerUrl")} htmlFor="realm">
           <input
             id="realm"
             type="url"
@@ -51,12 +49,9 @@ export const LoginPageCredentialsForm = React.memo<LoginPageCredentialsFormProps
             className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2.5 text-text-primary placeholder:text-text-muted focus:border-transparent focus:outline-none focus:ring-2 focus:ring-accent"
             disabled={loading}
           />
-        </div>
+        </FormField>
 
-        <div>
-          <label htmlFor="username" className="mb-1.5 block text-sm font-medium text-text-primary">
-            {t("auth.email")}
-          </label>
+        <FormField label={t("auth.email")} htmlFor="username">
           <input
             id="username"
             type="email"
@@ -67,12 +62,9 @@ export const LoginPageCredentialsForm = React.memo<LoginPageCredentialsFormProps
             className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2.5 text-text-primary placeholder:text-text-muted focus:border-transparent focus:outline-none focus:ring-2 focus:ring-accent"
             disabled={loading}
           />
-        </div>
+        </FormField>
 
-        <div>
-          <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-text-primary">
-            {t("auth.password")}
-          </label>
+        <FormField label={t("auth.password")} htmlFor="password">
           <div className="relative">
             <input
               id="password"
@@ -93,7 +85,7 @@ export const LoginPageCredentialsForm = React.memo<LoginPageCredentialsFormProps
               <Icon name={showPassword ? "close" : "profile"} size={18} />
             </button>
           </div>
-        </div>
+        </FormField>
 
         {error != null && error.length > 0 && (
           <div className="border-notice-base/20 bg-notice-base/10 rounded-lg border px-3 py-2 text-sm text-notice-base">

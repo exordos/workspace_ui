@@ -1,3 +1,4 @@
+import type * as DialogPrimitive from "@radix-ui/react-dialog";
 import type { ReactNode } from "react";
 
 export interface AppDialogProps {
@@ -22,4 +23,19 @@ export interface AppDialogFormFooterProps {
   onSubmit: () => void;
   submitDisabled?: boolean;
   isSubmitting?: boolean;
+}
+
+export interface AppDialogShellProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  contentClassName: string;
+  children: ReactNode;
+  onCloseAutoFocus?: (event: Event) => void;
+  modal?: boolean;
+  ariaDescribedBy?: string;
+  showOverlay?: boolean;
+  overlayClassName?: string;
+  forceMountContent?: boolean;
+  onPointerDownOutside?: DialogPrimitive.DialogContentProps["onPointerDownOutside"];
+  onInteractOutside?: DialogPrimitive.DialogContentProps["onInteractOutside"];
 }

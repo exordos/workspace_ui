@@ -1,4 +1,3 @@
-import * as Dialog from "@radix-ui/react-dialog";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { resolvePersonalDmSidebarTitle } from "~/entities/chat-list/chat-list-format.lib";
@@ -63,6 +62,7 @@ import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { useShortcut } from "~/shared/lib/shortcuts";
 import { resolveCanonicalStreamName } from "~/shared/lib/stream-name.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import { AppDialogShell, APP_DIALOG_CONTENT_BASE_CLASS } from "~/shared/ui/app-dialog.ui";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
 import { useSidebarConfigStore } from "~/widgets/sidebar/sidebar-config.model";
 import { parseDmSlugToUserIds } from "~/widgets/sidebar/sidebar.lib";
@@ -1726,34 +1726,27 @@ export const ChatPage: React.FC = () => {
   return (
     <div className="flex max-h-full min-h-0 min-w-0 max-w-chat-page flex-1 flex-col overflow-hidden">
       {/* Forward message modal */}
-      <Dialog.Root
+      <AppDialogShell
         open={forwardMessages.length > 0}
-        onOpenChange={(open) => {
-          if (!open) {
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
             setForwardMessages([]);
             setForwardSelectedText(undefined);
           }
         }}
+        contentClassName={`${APP_DIALOG_CONTENT_BASE_CLASS} top-1/2 flex max-h-[70vh] max-w-md -translate-y-1/2 flex-col p-0`}
       >
-        <Dialog.Portal>
-          <Dialog.Overlay className="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-overlay bg-black/50" />
-          <Dialog.Content
-            className="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed left-1/2 top-1/2 z-modal flex max-h-[70vh] w-full max-w-md -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl border border-border-subtle bg-bg-elevated shadow-xl"
-            onCloseAutoFocus={(e) => e.preventDefault()}
-          >
-            {forwardMessages.length > 0 && (
-              <ForwardMessageModalBody
-                streams={streams}
-                onForward={handleForwardTo}
-                onClose={() => {
-                  setForwardMessages([]);
-                  setForwardSelectedText(undefined);
-                }}
-              />
-            )}
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
+        {forwardMessages.length > 0 && (
+          <ForwardMessageModalBody
+            streams={streams}
+            onForward={handleForwardTo}
+            onClose={() => {
+              setForwardMessages([]);
+              setForwardSelectedText(undefined);
+            }}
+          />
+        )}
+      </AppDialogShell>
 
       <ChatPageReadReceiptsDialog
         open={readReceiptsOpen}

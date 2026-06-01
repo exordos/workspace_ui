@@ -2,6 +2,7 @@ import React from "react";
 import { useMessageReadersStore } from "~/features/message-readers/message-readers.model";
 import { t } from "~/i18n/i18n";
 import { AppDialog } from "~/shared/ui/app-dialog.ui";
+import { Spinner } from "~/shared/ui/spinner.ui";
 import type { ChatPageReadReceiptsDialogProps } from "./chat-page-read-receipts-dialog.types";
 
 export const ChatPageReadReceiptsDialog: React.FC<ChatPageReadReceiptsDialogProps> = ({
@@ -27,7 +28,7 @@ export const ChatPageReadReceiptsDialog: React.FC<ChatPageReadReceiptsDialogProp
       <div className="flex-1 overflow-y-auto p-4">
         {readersLoading && (
           <div className="flex items-center justify-center py-6">
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-border-subtle border-t-accent" />
+            <Spinner size="md" />
           </div>
         )}
         {readersError && (

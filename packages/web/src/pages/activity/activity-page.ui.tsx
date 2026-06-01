@@ -2,7 +2,6 @@
 // Для mentions/starred/reactions используем cache-first паттерн:
 // локальный hydrate -> фоновый refresh -> authoritative replace на newest.
 // Для drafts берём уже гидрейтнутый global store без дополнительного initial fetch.
-import * as Dialog from "@radix-ui/react-dialog";
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
@@ -33,6 +32,7 @@ import { buildNavigableRouteFromMessage } from "~/shared/lib/push-click";
 import { runInFlightDeduped } from "~/shared/lib/request-lifecycle.lib";
 import { scrollToBottom } from "~/shared/lib/scroll-position.lib";
 import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
+import { AppDialog, DialogCancelButton, DialogPrimaryButton } from "~/shared/ui/app-dialog.ui";
 import { FloatingLoadingOverlay } from "~/shared/ui/floating-loading-overlay";
 import { Icon } from "~/shared/ui/icon";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
@@ -552,50 +552,42 @@ export const ActivityPage: React.FC = () => {
           </div>
         )}
       </section>
-      <Dialog.Root open={editingDraft != null} onOpenChange={handleEditDialogOpenChange}>
-        <Dialog.Portal>
-          <Dialog.Overlay className="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-overlay bg-black/50" />
-          <Dialog.Content
-            className="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed left-1/2 top-[20%] z-modal w-full max-w-lg -translate-x-1/2 rounded-xl border border-border-subtle bg-bg-elevated p-6 shadow-xl"
-            onCloseAutoFocus={(e) => e.preventDefault()}
-            aria-describedby={undefined}
-          >
-            <Dialog.Title className="mb-4 text-base font-semibold text-text-primary">
-              {t("activity.editDraft")}
-            </Dialog.Title>
-            <textarea
-              ref={editDraftTextareaRef}
-              value={editingContent}
-              onChange={(e) => setEditingContent(e.target.value)}
-              className="mb-4 min-h-32 w-full rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
+      <AppDialog
+        open={editingDraft != null}
+        onOpenChange={handleEditDialogOpenChange}
+        title={t("activity.editDraft")}
+        maxWidthClassName="max-w-lg"
+        footer={
+          <>
+            <DialogCancelButton
+              useDialogClose={false}
+              onClick={() => setEditingDraft(null)}
               disabled={editingDraft?.id != null && pendingDraftId === editingDraft.id}
-            />
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setEditingDraft(null)}
-                disabled={editingDraft?.id != null && pendingDraftId === editingDraft.id}
-                className="hover:bg-bg/60 rounded-lg px-4 py-2 text-sm text-text-muted transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {t("common.cancel")}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  void handleSaveDraftEdit();
-                }}
-                disabled={
-                  editingContent === (editingDraft?.content ?? "") ||
-                  (editingDraft?.id != null && pendingDraftId === editingDraft.id)
-                }
-                className="hover:bg-accent/90 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-on-accent transition-colors disabled:opacity-50"
-              >
-                {t("common.save")}
-              </button>
-            </div>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
+            >
+              {t("common.cancel")}
+            </DialogCancelButton>
+            <DialogPrimaryButton
+              onClick={() => {
+                void handleSaveDraftEdit();
+              }}
+              disabled={
+                editingContent === (editingDraft?.content ?? "") ||
+                (editingDraft?.id != null && pendingDraftId === editingDraft.id)
+              }
+            >
+              {t("common.save")}
+            </DialogPrimaryButton>
+          </>
+        }
+      >
+        <textarea
+          ref={editDraftTextareaRef}
+          value={editingContent}
+          onChange={(e) => setEditingContent(e.target.value)}
+          className="min-h-32 w-full rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
+          disabled={editingDraft?.id != null && pendingDraftId === editingDraft.id}
+        />
+      </AppDialog>
     </div>
   );
 };

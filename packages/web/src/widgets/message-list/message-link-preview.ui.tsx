@@ -5,6 +5,7 @@ import { guard } from "~/shared/lib/guards";
 import { traceLinkPreview } from "~/shared/lib/message-link-preview-trace.lib";
 import { prepareProtectedMessageHtml } from "~/shared/lib/protected-message-media";
 import { useProtectedMessageHtml } from "~/shared/lib/protected-message-media.hook";
+import { Skeleton, SkeletonText } from "~/shared/ui/skeleton.ui";
 import type { MessageLinkPreviewProps } from "./message-link-preview.types";
 
 function buildThumbnailHtml(thumbnailPath: string, targetUrl: string): string {
@@ -97,10 +98,10 @@ export const MessageLinkPreview = React.memo<MessageLinkPreviewProps>(function M
         role="status"
         aria-label={t("message.linkPreviewLoading")}
       >
-        <div className="bg-border-subtle/60 h-[84px] w-28 shrink-0 animate-pulse rounded-lg" />
+        <Skeleton className="h-[84px] w-28 shrink-0 rounded-lg" />
         <div className="min-w-0 flex-1 space-y-2 py-1">
-          <div className="bg-border-subtle/60 h-4 w-3/4 animate-pulse rounded" />
-          <div className="bg-border-subtle/50 h-3 w-full animate-pulse rounded" />
+          <SkeletonText className="h-4 w-3/4" />
+          <SkeletonText className="bg-border-subtle/50 h-3 w-full" />
         </div>
       </div>
     );

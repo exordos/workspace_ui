@@ -27,7 +27,7 @@ app/app.tsx (Router, ErrorBoundary, Suspense)
     │   │   │   └── features/chat-info/ (channel/DM info panel)
     │   │   ├── widgets/message-list/MessageList
     │   │   │   └── widgets/message-list/MessageBubble (per message)
-    │   │   │       ├── shared/ui/StickerMessage (if sticker)
+    │   │   │       ├── widgets/message-list (Jitsi card, stickers inline)
     │   │   │       └── features/message-readers/ (read receipts)
     │   │   ├── widgets/message-composer/MessageComposer
     │   │   │   ├── features/sticker-picker/StickerPicker
@@ -54,20 +54,33 @@ app/app.tsx (Router, ErrorBoundary, Suspense)
 
 ## shared/ui — Design System Primitives
 
-| Component           | File                                 | Props                                                                   | Purpose                       |
-| ------------------- | ------------------------------------ | ----------------------------------------------------------------------- | ----------------------------- |
-| `Avatar`            | `shared/ui/avatar.tsx`               | `size?: "xs"\|"sm"\|"md"\|"lg"`, `src?`, `children`, `className?`       | Circular avatar with fallback |
-| `Badge`             | `shared/ui/badge.tsx`                | `count`, `variant?: "muted"\|"unread"`, `rounded?`                      | Unread count pill             |
-| `Button`            | `shared/ui/button.tsx`               | extends `ButtonHTMLAttributes`, `variant?: "primary"\|"ghost"`, `size?` | Generic button                |
-| `Icon`              | `shared/ui/icon.tsx`                 | `name: IconName`, `size?: number`, `className?`                         | SVG icon (40+ icons)          |
-| `ScrollArea`        | `shared/ui/scroll-area.tsx`          | `children`, `className?`, `as?`                                         | Custom scrollbar wrapper      |
-| `CallBubble`        | `shared/ui/call-bubble.tsx`          | `callName?`, `topic?`, `duration?`                                      | Call indicator                |
-| `ErrorBoundary`     | `shared/ui/error-boundary.tsx`       | `children`, `fallback?`                                                 | React error boundary          |
-| `PresenceIndicator` | `shared/ui/presence-indicator.tsx`   | `status`, `size?`, `className?`                                         | Online/idle/offline dot       |
-| `StickerMessage`    | `shared/ui/sticker-message.tsx`      | `sticker`, `size?`                                                      | Sticker display in messages   |
-| `AppDialog`         | `shared/ui/app-dialog.ui.tsx`        | `open`, `onOpenChange`, `title`, `footer?`                              | Radix dialog shell            |
-| `FolderFormModal`   | `shared/ui/folder-form-modal.ui.tsx` | `mode: 'create'\|'edit'`, `onSubmit`                                    | Create/rename folder form     |
-| `UserPickerList`    | `shared/ui/user-picker-list.ui.tsx`  | `options`, `selectedUserIds`, `onToggle`                                | Searchable user checklist     |
+| Component                      | File                                             | Purpose                                            |
+| ------------------------------ | ------------------------------------------------ | -------------------------------------------------- |
+| `Avatar`                       | `shared/ui/avatar.tsx`                           | Circular avatar with fallback                      |
+| `Badge`                        | `shared/ui/badge.tsx`                            | Unread count pill                                  |
+| `Button`                       | `shared/ui/button.tsx`                           | Generic button                                     |
+| `Icon`                         | `shared/ui/icon.tsx`                             | SVG icon registry                                  |
+| `ScrollArea`                   | `shared/ui/scroll-area.tsx`                      | Custom scrollbar wrapper                           |
+| `Spinner`                      | `shared/ui/spinner.ui.tsx`                       | Loading indicator (`sm` / `md` / `lg`)             |
+| `Skeleton`, `SkeletonText`     | `shared/ui/skeleton.ui.tsx`                      | Pulse placeholders                                 |
+| `SectionLabel`                 | `shared/ui/section-label.ui.tsx`                 | Uppercase micro section caption                    |
+| `FormField`                    | `shared/ui/form-field.ui.tsx`                    | Label + control + optional error                   |
+| `SelectableRow`                | `shared/ui/selectable-row.ui.tsx`                | Hoverable list row (`sidebarRowClass`)             |
+| `AnchoredPopover`              | `shared/ui/anchored-popover.ui.tsx`              | Fixed backdrop + positioned panel                  |
+| `ErrorBoundary`, `PageLoader`  | `shared/ui/error-boundary.tsx`                   | Error boundary + full-screen loader                |
+| `PresenceIndicator`            | `shared/ui/presence-indicator.tsx`               | Online/idle/offline dot                            |
+| `AppDialog`, `AppDialogShell`  | `shared/ui/app-dialog.ui.tsx`                    | Radix dialog shell + shared overlay classes        |
+| `DialogCancelButton`           | `shared/ui/app-dialog.ui.tsx`                    | Styled cancel for custom dialog footers            |
+| `DialogPrimaryButton`          | `shared/ui/app-dialog.ui.tsx`                    | Styled submit with optional spinner                |
+| `AppDialogFormFooter`          | `shared/ui/app-dialog.ui.tsx`                    | Cancel + submit pair                               |
+| `FolderFormModal`              | `shared/ui/folder-form-modal.ui.tsx`             | Create/rename folder form                          |
+| `UserPickerList`               | `shared/ui/user-picker-list.ui.tsx`              | Searchable user checklist                          |
+| `SearchInput`                  | `shared/ui/search-input.tsx`                     | Search field with icon + clear                     |
+| `DropdownMenu`                 | `shared/ui/dropdown-menu.tsx`                    | Radix dropdown / context menu                      |
+| `Copyable`                     | `shared/ui/copyable.tsx`                         | Text with copy button                              |
+| `ToastHost`, `ToastItem`       | `shared/ui/toast-host.ui.tsx`                    | Toast stack (imperative API in `shared/lib/toast`) |
+| `FloatingLoadingOverlay`       | `shared/ui/floating-loading-overlay.tsx`         | In-list loading chip                               |
+| `FloatingScrollToBottomButton` | `shared/ui/floating-scroll-to-bottom-button.tsx` | Scroll-to-bottom FAB                               |
 
 **Import**: concrete paths, e.g. `import { Icon } from '~/shared/ui/icon'`, `import { AppDialog } from '~/shared/ui/app-dialog.ui'`
 

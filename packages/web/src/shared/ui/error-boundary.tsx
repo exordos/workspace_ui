@@ -2,6 +2,7 @@ import React from "react";
 import { t } from "~/i18n/i18n";
 import { createLogger } from "~/shared/lib/logger";
 import { captureException } from "~/shared/lib/sentry";
+import { Spinner } from "~/shared/ui/spinner.ui";
 import type { ErrorBoundaryProps, ErrorBoundaryState } from "./error-boundary.types";
 
 const log = createLogger("error-boundary");
@@ -105,10 +106,7 @@ export function PageLoader(): React.ReactElement {
       aria-label={label}
     >
       <div className="flex flex-col items-center gap-3">
-        <div
-          className="h-8 w-8 animate-spin rounded-full border-2 border-border-subtle border-t-accent"
-          aria-hidden
-        />
+        <Spinner size="lg" />
         <p className="text-sm text-text-muted">{label}</p>
       </div>
     </div>

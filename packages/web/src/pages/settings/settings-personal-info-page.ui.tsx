@@ -25,6 +25,7 @@ import { getRoleLabel, parseRole } from "~/shared/lib/roles";
 import { detectImageMime, isValidRealmUrl, validateFileUpload } from "~/shared/lib/validation";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
+import { SectionLabel } from "~/shared/ui/section-label.ui";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
 
 const AVATAR_MAGIC_BYTE_VALIDATED_IMAGE_TYPES = new Set([
@@ -572,9 +573,7 @@ export const SettingsPersonalInfoPage: React.FC = () => {
             <li className="flex items-start gap-3 rounded-lg px-1 py-1.5 text-sm">
               <Icon name="profile" size={20} className="mt-0.5 shrink-0 text-icon-base" />
               <div className="min-w-0 flex-1">
-                <p className="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-text-secondary">
-                  {t("settings.fullName")}
-                </p>
+                <SectionLabel className="mb-0.5">{t("settings.fullName")}</SectionLabel>
                 {isEditing ? (
                   <input
                     type="text"
@@ -602,9 +601,7 @@ export const SettingsPersonalInfoPage: React.FC = () => {
             <li className="flex items-start gap-3 rounded-lg px-1 py-1.5 text-sm">
               <Icon name="calendar" size={20} className="mt-0.5 shrink-0 text-icon-base" />
               <div className="min-w-0 flex-1">
-                <p className="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-text-secondary">
-                  {t("info.timezone")}
-                </p>
+                <SectionLabel className="mb-0.5">{t("info.timezone")}</SectionLabel>
                 {isEditing ? (
                   <>
                     <input
@@ -635,9 +632,7 @@ export const SettingsPersonalInfoPage: React.FC = () => {
             <li className="flex items-start gap-3 rounded-lg px-1 py-1.5 text-sm">
               <Icon name="info" size={20} className="mt-0.5 shrink-0 text-icon-base" />
               <div className="min-w-0 flex-1">
-                <p className="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-text-secondary">
-                  {t("settings.status")}
-                </p>
+                <SectionLabel className="mb-0.5">{t("settings.status")}</SectionLabel>
                 {isEditing ? (
                   <div className="flex flex-wrap items-center gap-3">
                     <input
@@ -668,27 +663,21 @@ export const SettingsPersonalInfoPage: React.FC = () => {
             <li className="flex items-start gap-3 rounded-lg px-1 py-1.5 text-sm">
               <Icon name="profile" size={20} className="mt-0.5 shrink-0 text-icon-base" />
               <div className="min-w-0 flex-1">
-                <p className="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-text-secondary">
-                  {t("info.userId")}
-                </p>
+                <SectionLabel className="mb-0.5">{t("info.userId")}</SectionLabel>
                 <span className="block truncate whitespace-nowrap text-text-primary">{userId}</span>
               </div>
             </li>
             <li className="flex items-start gap-3 rounded-lg px-1 py-1.5 text-sm">
               <Icon name="mail" size={20} className="mt-0.5 shrink-0 text-icon-base" />
               <div className="min-w-0 flex-1">
-                <p className="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-text-secondary">
-                  {t("common.email")}
-                </p>
+                <SectionLabel className="mb-0.5">{t("common.email")}</SectionLabel>
                 <span className="block truncate whitespace-nowrap text-text-primary">{email}</span>
               </div>
             </li>
             <li className="flex items-start gap-3 rounded-lg px-1 py-1.5 text-sm">
               <Icon name="businessCenter" size={20} className="mt-0.5 shrink-0 text-icon-base" />
               <div className="min-w-0 flex-1">
-                <p className="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-text-secondary">
-                  {t("info.jobTitle")}
-                </p>
+                <SectionLabel className="mb-0.5">{t("info.jobTitle")}</SectionLabel>
                 <span className="block truncate whitespace-nowrap text-text-primary">
                   {jobTitle}
                 </span>
@@ -697,9 +686,7 @@ export const SettingsPersonalInfoPage: React.FC = () => {
             <li className="flex items-start gap-3 rounded-lg px-1 py-1.5 text-sm">
               <Icon name="handshake" size={20} className="mt-0.5 shrink-0 text-icon-base" />
               <div className="min-w-0 flex-1">
-                <p className="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-text-secondary">
-                  {t("info.manager")}
-                </p>
+                <SectionLabel className="mb-0.5">{t("info.manager")}</SectionLabel>
                 <span className="block truncate whitespace-nowrap text-text-primary">
                   {manager}
                 </span>
@@ -708,27 +695,21 @@ export const SettingsPersonalInfoPage: React.FC = () => {
             <li className="flex items-start gap-3 rounded-lg px-1 py-1.5 text-sm">
               <Icon name="phone" size={20} className="mt-0.5 shrink-0 text-icon-base" />
               <div className="min-w-0 flex-1">
-                <p className="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-text-secondary">
-                  {t("info.phone")}
-                </p>
+                <SectionLabel className="mb-0.5">{t("info.phone")}</SectionLabel>
                 <span className="block truncate whitespace-nowrap text-text-primary">{phone}</span>
               </div>
             </li>
             <li className="flex items-start gap-3 rounded-lg px-1 py-1.5 text-sm">
               <Icon name="profile" size={20} className="mt-0.5 shrink-0 text-icon-base" />
               <div className="min-w-0 flex-1">
-                <p className="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-text-secondary">
-                  {t("info.role")}
-                </p>
+                <SectionLabel className="mb-0.5">{t("info.role")}</SectionLabel>
                 <span className="block truncate whitespace-nowrap text-text-primary">{role}</span>
               </div>
             </li>
             <li className="flex items-start gap-3 rounded-lg px-1 py-1.5 text-sm">
               <Icon name="group" size={20} className="mt-0.5 shrink-0 text-icon-base" />
               <div className="min-w-0 flex-1">
-                <p className="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-text-secondary">
-                  {t("info.accountType")}
-                </p>
+                <SectionLabel className="mb-0.5">{t("info.accountType")}</SectionLabel>
                 <span className="block truncate whitespace-nowrap text-text-primary">
                   {accountType}
                 </span>
@@ -737,9 +718,7 @@ export const SettingsPersonalInfoPage: React.FC = () => {
             <li className="flex items-start gap-3 rounded-lg px-1 py-1.5 text-sm">
               <Icon name="info" size={20} className="mt-0.5 shrink-0 text-icon-base" />
               <div className="min-w-0 flex-1">
-                <p className="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-text-secondary">
-                  {t("info.accountStatus")}
-                </p>
+                <SectionLabel className="mb-0.5">{t("info.accountStatus")}</SectionLabel>
                 <span className="block truncate whitespace-nowrap text-text-primary">
                   {accountStatus}
                 </span>
@@ -748,9 +727,7 @@ export const SettingsPersonalInfoPage: React.FC = () => {
             <li className="flex items-start gap-3 rounded-lg px-1 py-1.5 text-sm">
               <Icon name="calendar" size={20} className="mt-0.5 shrink-0 text-icon-base" />
               <div className="min-w-0 flex-1">
-                <p className="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-text-secondary">
-                  {t("info.localTime")}
-                </p>
+                <SectionLabel className="mb-0.5">{t("info.localTime")}</SectionLabel>
                 <span className="block truncate whitespace-nowrap text-text-primary">
                   {localTime}
                 </span>
@@ -759,9 +736,7 @@ export const SettingsPersonalInfoPage: React.FC = () => {
             <li className="flex items-start gap-3 rounded-lg px-1 py-1.5 text-sm">
               <Icon name="calendar" size={20} className="mt-0.5 shrink-0 text-icon-base" />
               <div className="min-w-0 flex-1">
-                <p className="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-text-secondary">
-                  {t("info.joined")}
-                </p>
+                <SectionLabel className="mb-0.5">{t("info.joined")}</SectionLabel>
                 <span className="block truncate whitespace-nowrap text-text-primary">
                   {joinedDate}
                 </span>
@@ -770,9 +745,7 @@ export const SettingsPersonalInfoPage: React.FC = () => {
             <li className="flex items-start gap-3 rounded-lg px-1 py-1.5 text-sm">
               <Icon name="calendar" size={20} className="mt-0.5 shrink-0 text-icon-base" />
               <div className="min-w-0 flex-1">
-                <p className="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-text-secondary">
-                  {t("info.birthday")}
-                </p>
+                <SectionLabel className="mb-0.5">{t("info.birthday")}</SectionLabel>
                 <span className="block truncate whitespace-nowrap text-text-primary">
                   {birthday}
                 </span>

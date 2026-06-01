@@ -7,6 +7,7 @@
  */
 
 import React, { useCallback, useState } from "react";
+import { Spinner } from "~/shared/ui/spinner.ui";
 import { getSandboxPolicy, isEmbedAllowed } from "./embed.lib";
 import { createLogger } from "./logger";
 import type { EmbedFrameProps } from "./embed-frame.types";
@@ -53,7 +54,7 @@ export const EmbedFrame: React.FC<EmbedFrameProps> = ({
     <div className={`relative ${className}`}>
       {loading && (
         <div className="absolute inset-0 flex items-center justify-center bg-bg">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-border-subtle border-t-accent" />
+          <Spinner size="md" />
         </div>
       )}
       <iframe

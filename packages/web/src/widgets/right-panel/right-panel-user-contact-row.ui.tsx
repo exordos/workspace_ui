@@ -1,6 +1,7 @@
 import React from "react";
 import { Copyable } from "~/shared/ui/copyable";
 import { Icon } from "~/shared/ui/icon";
+import { SectionLabel } from "~/shared/ui/section-label.ui";
 import type { RightPanelUserContactRow } from "./right-panel-user-contact.lib";
 
 export const RightPanelUserContactRowItem = React.memo(function RightPanelUserContactRowItem({
@@ -34,9 +35,7 @@ export const RightPanelUserContactRowItem = React.memo(function RightPanelUserCo
     <li className="flex items-start gap-3 rounded-lg px-1 py-1.5 text-sm">
       <Icon name={row.icon} size={20} className="mt-0.5 shrink-0 text-icon-base" />
       <div className="min-w-0 flex-1">
-        <p className="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-text-secondary">
-          {row.label}
-        </p>
+        <SectionLabel className="mb-0.5">{row.label}</SectionLabel>
         {renderedRowValue}
       </div>
     </li>

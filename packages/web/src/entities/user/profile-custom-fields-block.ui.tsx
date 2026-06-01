@@ -8,6 +8,7 @@ import {
   type ZulipCustomProfileDataMap,
 } from "~/shared/lib/user-profile-fields.lib";
 import type { RealmProfileFieldDefinition } from "~/shared/lib/zulip-profile-fields-map.lib";
+import { SectionLabel } from "~/shared/ui/section-label.ui";
 import { useUsersStore } from "./user.model";
 
 export interface ProfileCustomFieldsBlockProps {
@@ -128,11 +129,11 @@ export const ProfileCustomFieldsBlock = React.memo(function ProfileCustomFieldsB
     density === "compact"
       ? "text-sm leading-normal text-text-primary"
       : "text-sm text-text-primary";
-  const labelClass = "mb-1.5 text-[11px] font-medium uppercase tracking-wide text-text-secondary";
-
   return (
     <div className={className}>
-      {showSectionTitle ? <p className={labelClass}>{t("info.customProfileFields")}</p> : null}
+      {showSectionTitle ? (
+        <SectionLabel className="mb-1.5">{t("info.customProfileFields")}</SectionLabel>
+      ) : null}
       <ul className={`space-y-2 ${textClass}`}>
         {lines.map((line) => (
           <li key={line.fieldKey} className={`min-w-0 break-words ${textClass}`}>

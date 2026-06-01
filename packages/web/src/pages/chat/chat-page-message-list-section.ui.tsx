@@ -1,5 +1,6 @@
 import React, { useCallback } from "react";
 import { t } from "~/i18n/i18n";
+import { Spinner } from "~/shared/ui/spinner.ui";
 import { MessageList } from "~/widgets/message-list/message-list.ui";
 import type { ChatPageMessageListSectionProps } from "./chat-page-message-list-section.types";
 
@@ -59,7 +60,7 @@ export const ChatPageMessageListSection = React.memo(function ChatPageMessageLis
         aria-busy="true"
         aria-label={t("chat.loadingMessages")}
       >
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-subtle border-t-accent" />
+        <Spinner size="lg" />
       </div>
     );
   }

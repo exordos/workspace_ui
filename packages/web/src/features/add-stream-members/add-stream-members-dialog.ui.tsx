@@ -4,13 +4,20 @@ import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
 import { buildUserPickerOptions } from "~/shared/lib/user-picker";
+import {
+  AppDialogShell,
+  APP_DIALOG_CONTENT_BASE_CLASS,
+  DialogCancelButton,
+  DialogPrimaryButton,
+} from "~/shared/ui/app-dialog.ui";
 import { Icon } from "~/shared/ui/icon";
 import { UserPickerList } from "~/shared/ui/user-picker-list.ui";
 import { useAddStreamMembersStore } from "./add-stream-members.model";
 
-// Единый стиль текстового поля: аккуратный фокус через border без двойной обводки.
 const ADD_STREAM_MEMBERS_INPUT_CLASS =
   "w-full rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted transition-colors focus:border-accent focus-visible:outline-none focus-visible:ring-0";
+
+const CONTENT_CLASS = `${APP_DIALOG_CONTENT_BASE_CLASS} top-1/2 flex max-h-[70vh] max-w-md -translate-y-1/2 flex-col p-0`;
 
 export interface AddStreamMembersDialogProps {
   onSuccess: (streamId: number) => void;
@@ -72,67 +79,52 @@ export const AddStreamMembersDialog: React.FC<AddStreamMembersDialogProps> = ({ 
   );
 
   return (
-    <Dialog.Root open={open} onOpenChange={handleOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-overlay bg-black/50" />
-        <Dialog.Content
-          className="fixed left-1/2 top-1/2 z-modal flex max-h-[70vh] w-full max-w-md -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl border border-border-subtle bg-bg-elevated shadow-xl"
-          onCloseAutoFocus={(event) => event.preventDefault()}
-        >
-          <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
-            <div className="min-w-0">
-              <Dialog.Title className="truncate text-sm font-semibold text-text-primary">
-                {t("channel.addMembers")}
-              </Dialog.Title>
-              <Dialog.Description className="truncate text-xs text-text-secondary">
-                #{streamName}
-              </Dialog.Description>
-            </div>
-            <Dialog.Close asChild>
-              <button
-                type="button"
-                className="hover:bg-bg/50 rounded p-1 text-text-muted"
-                aria-label={t("common.close")}
-              >
-                <Icon name="close" size={18} />
-              </button>
-            </Dialog.Close>
-          </div>
+    <AppDialogShell open={open} onOpenChange={handleOpenChange} contentClassName={CONTENT_CLASS}>
+      <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
+        <div className="min-w-0">
+          <Dialog.Title className="truncate text-sm font-semibold text-text-primary">
+            {t("channel.addMembers")}
+          </Dialog.Title>
+          <Dialog.Description className="truncate text-xs text-text-secondary">
+            #{streamName}
+          </Dialog.Description>
+        </div>
+        <Dialog.Close asChild>
+          <button
+            type="button"
+            className="hover:bg-bg/50 rounded p-1 text-text-muted"
+            aria-label={t("common.close")}
+          >
+            <Icon name="close" size={18} />
+          </button>
+        </Dialog.Close>
+      </div>
 
-          <div className="flex flex-1 flex-col overflow-hidden p-4">
-            <UserPickerList
-              options={options}
-              selectedUserIds={selectedUserIdSet}
-              onToggle={toggleSelected}
-              query={query}
-              onQueryChange={setQuery}
-              inputClassName={ADD_STREAM_MEMBERS_INPUT_CLASS}
-            />
+      <div className="flex flex-1 flex-col overflow-hidden p-4">
+        <UserPickerList
+          options={options}
+          selectedUserIds={selectedUserIdSet}
+          onToggle={toggleSelected}
+          query={query}
+          onQueryChange={setQuery}
+          inputClassName={ADD_STREAM_MEMBERS_INPUT_CLASS}
+        />
 
-            {error && <p className="text-xs text-notice-base">{t(error)}</p>}
+        {error && <p className="text-xs text-notice-base">{t(error)}</p>}
 
-            <div className="flex justify-end gap-2 pt-1">
-              <Dialog.Close asChild>
-                <button
-                  type="button"
-                  className="hover:bg-bg/50 rounded-lg px-3 py-1.5 text-sm text-text-muted"
-                  disabled={submitting}
-                >
-                  {t("common.cancel")}
-                </button>
-              </Dialog.Close>
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={submitting || selectedIds.length === 0}
-                className="rounded-lg bg-accent px-3 py-1.5 text-sm text-on-accent hover:opacity-90 disabled:opacity-60"
-              >
-                {t("common.add")}
-              </button>
-            </div>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+        <div className="flex justify-end gap-2 pt-1">
+          <DialogCancelButton disabled={submitting} className="rounded-lg px-3 py-1.5">
+            {t("common.cancel")}
+          </DialogCancelButton>
+          <DialogPrimaryButton
+            onClick={handleSubmit}
+            disabled={submitting || selectedIds.length === 0}
+            className="rounded-lg px-3 py-1.5"
+          >
+            {t("common.add")}
+          </DialogPrimaryButton>
+        </div>
+      </div>
+    </AppDialogShell>
   );
 };

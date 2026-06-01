@@ -11,9 +11,11 @@ import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
 import { fetchUser } from "~/shared/api/zulip-users";
 import { formatLastSeen, getPresenceState } from "~/shared/lib/format";
 import { isValidEmail } from "~/shared/lib/validation";
+import { APP_DIALOG_BACKDROP_STATIC_CLASS } from "~/shared/ui/app-dialog.ui";
 import { Avatar } from "~/shared/ui/avatar";
 import { Copyable } from "~/shared/ui/copyable";
 import { Icon } from "~/shared/ui/icon";
+import { SectionLabel } from "~/shared/ui/section-label.ui";
 import { resolveAvatarSrc } from "./message-avatar.lib";
 import {
   computeMentionPopoverPosition,
@@ -41,9 +43,7 @@ const MentionPopoverInfoRow = React.memo(function MentionPopoverInfoRow({
     <li className="flex gap-2">
       <Icon name={icon} size={16} className="mt-0.5 shrink-0 text-icon-base" aria-hidden />
       <div className="min-w-0 flex-1">
-        <p className="text-[11px] font-medium uppercase tracking-wide text-text-secondary">
-          {label}
-        </p>
+        <SectionLabel>{label}</SectionLabel>
         {copyValue != null ? (
           <Copyable
             value={copyValue}
@@ -203,7 +203,7 @@ export const MessageMentionPopover = React.memo(function MessageMentionPopover({
   return createPortal(
     <>
       <div
-        className="fixed inset-0 z-overlay bg-black/50"
+        className={APP_DIALOG_BACKDROP_STATIC_CLASS}
         role="presentation"
         aria-hidden
         onMouseDown={onClose}

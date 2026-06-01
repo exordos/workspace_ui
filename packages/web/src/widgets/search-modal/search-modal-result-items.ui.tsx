@@ -5,6 +5,7 @@ import type { MockMessage } from "~/shared/api/zulip.types";
 import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
+import { SelectableRow } from "~/shared/ui/selectable-row.ui";
 
 export const MAX_USER_RESULTS = 20;
 
@@ -19,7 +20,7 @@ export const SearchResultItem = React.memo(function SearchResultItem({
   const displayName = senderName !== "Unknown" ? senderName : msg.sender_full_name;
   return (
     <li>
-      <div className="hover:bg-bg/60 group flex items-start gap-2 rounded-lg px-3 py-2 transition-colors">
+      <SelectableRow className="group items-start">
         <button type="button" onClick={onSelect} className="min-w-0 flex-1 text-left text-sm">
           <div className="mb-0.5 flex items-center gap-2 text-[11px] text-text-muted">
             <span>{displayName}</span>
@@ -41,7 +42,7 @@ export const SearchResultItem = React.memo(function SearchResultItem({
         >
           <Icon name="newWindow" size={16} className="text-current" />
         </button>
-      </div>
+      </SelectableRow>
     </li>
   );
 });
@@ -64,10 +65,10 @@ export const UserResultItem = React.memo(function UserResultItem({
   const secondaryText = statusLabel ?? email ?? "";
   return (
     <li>
-      <button
-        type="button"
+      <SelectableRow
+        as="button"
         onClick={onSelect}
-        className="hover:bg-bg/60 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors"
+        className="w-full"
         aria-label={`${fullName} (${email ?? userId})`}
       >
         <PresenceIndicator status={presenceState} size="sm" />
@@ -78,7 +79,7 @@ export const UserResultItem = React.memo(function UserResultItem({
           )}
         </span>
         <span className="ml-2 shrink-0 text-[11px] text-text-muted">#{userId}</span>
-      </button>
+      </SelectableRow>
     </li>
   );
 });

@@ -33,6 +33,7 @@ import { resolveOrganizationLogoUrl } from "~/shared/lib/organization-branding";
 import { ensureRealmEmojisLoaded, getCachedRealmEmojis } from "~/shared/lib/realm-emojis-cache";
 import { Icon } from "~/shared/ui/icon";
 import { ScrollArea } from "~/shared/ui/scroll-area";
+import { SectionLabel } from "~/shared/ui/section-label.ui";
 import {
   RightPanelUserMenuMenuButton,
   RightPanelUserMenuOptionButton,
@@ -376,9 +377,9 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
       <ScrollArea className="flex-1 px-2 py-2">
         <div className="space-y-3">
           <section>
-            <p className="px-2.5 pb-1 text-[11px] font-medium uppercase tracking-wide text-text-muted">
+            <SectionLabel tone="muted" className="px-2.5 pb-1">
               {t("nav.profile")}
-            </p>
+            </SectionLabel>
             <div className="divide-y divide-border-subtle overflow-hidden rounded-lg border border-border-subtle bg-card-bg">
               {currentInstance != null && (
                 <div
@@ -437,9 +438,9 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
           </section>
 
           <section>
-            <p className="px-2.5 pb-1 text-[11px] font-medium uppercase tracking-wide text-text-muted">
+            <SectionLabel tone="muted" className="px-2.5 pb-1">
               {t("settings.settings")}
-            </p>
+            </SectionLabel>
             <div className="divide-y divide-border-subtle overflow-hidden rounded-lg border border-border-subtle bg-card-bg">
               <RightPanelUserMenuMenuButton
                 label={t("settings.notificationSound")}
@@ -660,9 +661,9 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
           </section>
 
           <section>
-            <p className="px-2.5 pb-1 text-[11px] font-medium uppercase tracking-wide text-text-muted">
+            <SectionLabel tone="muted" className="px-2.5 pb-1">
               {t("settings.appVersion")}
-            </p>
+            </SectionLabel>
             <div className="divide-y divide-border-subtle overflow-hidden rounded-lg border border-border-subtle bg-card-bg">
               <RightPanelUserMenuMenuButton
                 label={t("settings.selectBuild")}
