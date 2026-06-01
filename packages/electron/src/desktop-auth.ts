@@ -73,10 +73,14 @@ function normalizeRealm(realm: string): string {
     .replace(/\/api$/, "");
 }
 
+function ensureHttpsProtocol(realm: string): string {
+  return /^https?:\/\//i.test(realm) ? realm : `https://${realm}`;
+}
+
 function isValidHttpsRealmUrl(realm: string): boolean {
   try {
     // If no protocol was entered, treat the realm as HTTPS because auth cookies need Secure.
-    const parsed = new URL(/^https?:\/\//i.test(realm) ? realm : `https://${realm}`);
+    const parsed = new URL(ensureHttpsProtocol(realm));
     return parsed.protocol === "https:" && parsed.hostname.length > 0;
   } catch {
     return false;
@@ -118,14 +122,15 @@ function shouldRelaxZulipAuthCookieSameSite(name: string): boolean {
   return ZULIP_AUTH_COOKIES_TO_RELAX.has(name);
 }
 
-const ZULIP_CSRF_COOKIE_NAMES = ["__Host-csrftoken", "csrftoken", "csrf"] as const;
+const ZULIP_CSRF_COOKIE_NAMES = ["__Host-csrftoken", "csrftoken"] as const;
 
 export async function getSessionCsrfTokenForRealm(realmInput: string): Promise<string | null> {
   const base = normalizeRealm(realmInput);
   if (!isValidHttpsRealmUrl(base)) {
     return null;
   }
-  const originUrl = `${new URL(base).origin}/`;
+  const baseWithProtocol = ensureHttpsProtocol(base);
+  const originUrl = `${new URL(baseWithProtocol).origin}/`;
   const cookies = await session.defaultSession.cookies.get({ url: originUrl });
   for (const cookieName of ZULIP_CSRF_COOKIE_NAMES) {
     const cookie = cookies.find((row) => row.name === cookieName);
@@ -218,7 +223,8 @@ export async function exchangeDesktopFlowToken(
     throw new DesktopAuthExchangeError("INVALID_DESKTOP_FLOW_TOKEN");
   }
 
-  const exchangeUrl = `${base}/accounts/login/subdomain/${encodeURIComponent(token)}`;
+  const baseWithProtocol = ensureHttpsProtocol(base);
+  const exchangeUrl = `${baseWithProtocol}/accounts/login/subdomain/${encodeURIComponent(token)}`;
   let response: Response;
   try {
     // The main process exchanges the token because the renderer runs from file://.
