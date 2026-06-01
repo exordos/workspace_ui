@@ -45,7 +45,7 @@ import { getMessageImagesBaseUrl } from "./message-bubble-realm-html.lib";
 import { resolveJitsiLocationName } from "./message-jitsi-location.lib";
 import { useMessageLinkPreview } from "./message-link-preview.hook";
 import { MessageLinkPreview } from "./message-link-preview.ui";
-import { normalizeMediaUrl } from "./message-list-media.lib";
+import { normalizeMediaUrl, resolveVideoElementMediaUrl } from "./message-list-media.lib";
 import { MessageMentionPopover } from "./message-mention-popover.ui";
 import type {
   MessageBubbleContextMenuAnchor,
@@ -309,7 +309,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       for (const link of links) {
         const path = extractUserUploadPath(link.getAttribute("href") ?? "");
         const containsImage = link.querySelector("img") != null;
-        if (!path || containsImage) continue;
+        const containsVideo = link.querySelector("video") != null;
+        if (!path || containsImage || containsVideo) continue;
 
         const status = attachmentStatusRef.current.get(path) ?? "idle";
         link.dataset.attachmentLink = "true";
@@ -567,6 +568,36 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
           return;
         }
 
+        const videoElement = hit.closest("video");
+        if (videoElement instanceof HTMLVideoElement) {
+          const clickTarget = event.target;
+          if (
+            clickTarget instanceof Element &&
+            clickTarget !== videoElement &&
+            videoElement.contains(clickTarget)
+          ) {
+            return;
+          }
+          event.preventDefault();
+          event.stopPropagation();
+          const rawSrc = resolveVideoElementMediaUrl(videoElement);
+          if (rawSrc !== "") {
+            if (rawSrc.startsWith("blob:")) {
+              useMediaViewerStore.getState().open([{ url: rawSrc, type: "video" }], 0);
+            } else {
+              const gallery = mediaGallery;
+              const lookupUrl = normalizeMediaUrl(rawSrc);
+              const galleryIndex = gallery?.indexByUrl.get(lookupUrl);
+              if (gallery != null && galleryIndex != null && gallery.items.length > 0) {
+                useMediaViewerStore.getState().open(gallery.items, galleryIndex);
+              } else {
+                useMediaViewerStore.getState().open([{ url: lookupUrl, type: "video" }], 0);
+              }
+            }
+          }
+          return;
+        }
+
         const mentionSpan = hit.closest("span.user-mention[data-user-id]");
         if (
           mentionSpan != null &&
@@ -612,7 +643,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
           const href = clickedLink.getAttribute("href") ?? "";
           const attachmentPath = extractUserUploadPath(href);
           const containsImage = clickedLink.querySelector("img") != null;
-          if (attachmentPath != null && !containsImage) {
+          const containsVideo = clickedLink.querySelector("video") != null;
+          if (attachmentPath != null && !containsImage && !containsVideo) {
             event.preventDefault();
             event.stopPropagation();
 

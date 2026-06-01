@@ -581,6 +581,10 @@
     "privateDraft": "DM draft",
     "topic": "Topic: {{topic}}"
   },
+  "mediaViewer": {
+    "openInNewTab": "Open in new tab",
+    "download": "Download"
+  },
   "chatInfo": {
     "title": "Chat info",
     "dmInfo": "Direct message info",

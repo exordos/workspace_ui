@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { buildAuthHeader } from "~/shared/lib/auth-guard";
+import { upgradeUserUploadVideoLinksInContainer } from "~/shared/lib/message-inline-user-upload-video.lib";
 import {
   AUTH_IMAGE_PLACEHOLDER_SRC,
   AUTH_MEDIA_BACKGROUND_IMAGE_DATA_ATTR,
@@ -8,6 +9,7 @@ import {
   fetchProtectedUploadDisplayUrl,
   isAuthMediaPlaceholderAttr,
   isProtectedMessageMediaUrl,
+  protectMessageMediaElementsInContainer,
 } from "~/shared/lib/protected-message-media";
 
 const PROTECTED_MEDIA_IO_ROOT_MARGIN = "200px 0px";
@@ -35,6 +37,9 @@ export function useProtectedMessageHtml(
     if (isSameHtml && isSameElement) return;
 
     element.innerHTML = html;
+    if (upgradeUserUploadVideoLinksInContainer(element) > 0) {
+      protectMessageMediaElementsInContainer(element);
+    }
     lastInjectedHtmlRef.current = html;
     lastInjectedElementRef.current = element;
   });

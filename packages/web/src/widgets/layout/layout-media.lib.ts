@@ -1,7 +1,7 @@
 import type { MockMessage } from "~/shared/api/zulip.types";
+import { isVideoFileHref } from "~/shared/lib/user-upload-media-path.lib";
 
 const IMAGE_EXT_RE = /\.(?:png|jpe?g|gif|webp|svg|bmp|avif)(?:[?#]|$)/i;
-const VIDEO_EXT_RE = /\.(?:mp4|mov|webm|m4v|avi|mkv)(?:[?#]|$)/i;
 const FILE_EXT_RE = /\.(?:pdf|docx?|xlsx?|pptx?|zip|rar|7z|txt|csv|rtf|odt|ods|odp)(?:[?#]|$)/i;
 const HREF_RE = /<a\b[^>]*href=["']([^"']+)["'][^>]*>/gi;
 
@@ -35,7 +35,7 @@ export function buildRightPanelMedia(messages: MockMessage[]): RightPanelMediaSt
       const href = match[1] ?? "";
       if (IMAGE_EXT_RE.test(href)) {
         photos += 1;
-      } else if (VIDEO_EXT_RE.test(href)) {
+      } else if (isVideoFileHref(href)) {
         videos += 1;
       } else if (FILE_EXT_RE.test(href)) {
         files += 1;

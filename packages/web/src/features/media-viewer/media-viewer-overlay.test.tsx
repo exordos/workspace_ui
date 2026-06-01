@@ -1,6 +1,6 @@
 // Регрессия: overlay должен вызывать один и тот же набор хуков
 // и в закрытом, и в открытом состоянии, чтобы не нарушать Rules of Hooks.
-import { render, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MediaViewerOverlay } from "./media-viewer-overlay.ui";
 import { useMediaViewerStore } from "./media-viewer.model";
@@ -101,5 +101,88 @@ describe("MediaViewerOverlay", () => {
       expect(fetchMock).toHaveBeenCalled();
     });
     expect(video?.getAttribute("src")).toBeNull();
+  });
+
+  it("renders toolbar with open, download, and close controls", () => {
+    useMediaViewerStore
+      .getState()
+      .open([{ url: "https://example.com/photo.png", type: "image" }], 0);
+
+    render(<MediaViewerOverlay />);
+
+    expect(screen.getByRole("toolbar", { name: /media viewer/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /open in new tab/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /download/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /close/i })).toBeInTheDocument();
+  });
+
+  it("closes viewer when toolbar close is clicked", () => {
+    useMediaViewerStore
+      .getState()
+      .open([{ url: "https://example.com/photo.png", type: "image" }], 0);
+
+    render(<MediaViewerOverlay />);
+    fireEvent.click(screen.getByRole("button", { name: /^close$/i }));
+
+    expect(useMediaViewerStore.getState().isOpen).toBe(false);
+  });
+
+  it("disables open and download until protected image display URL is ready", async () => {
+    const fetchMock = vi.fn((input: string | URL) => {
+      const value = String(input);
+      if (value === "https://zulip.example.com/external_content/preview.png") {
+        return Promise.resolve({
+          ok: true,
+          blob: () => Promise.resolve(new Blob(["ok"])),
+        });
+      }
+      return Promise.resolve({
+        ok: false,
+        blob: () => Promise.resolve(new Blob([])),
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test-viewer-image");
+
+    useMediaViewerStore
+      .getState()
+      .open([{ url: "https://zulip.example.com/external_content/preview.png", type: "image" }], 0);
+
+    render(<MediaViewerOverlay />);
+
+    const openButton = screen.getByRole("button", { name: /open in new tab/i });
+    const downloadButton = screen.getByRole("button", { name: /download/i });
+
+    expect(openButton).toBeDisabled();
+    expect(downloadButton).toBeDisabled();
+
+    await waitFor(() => {
+      expect(openButton).not.toBeDisabled();
+      expect(downloadButton).not.toBeDisabled();
+    });
+  });
+
+  it("opens resolved display URL in a new tab when toolbar open is clicked", async () => {
+    const openMock = vi.fn();
+    vi.stubGlobal("open", openMock);
+
+    useMediaViewerStore
+      .getState()
+      .open([{ url: "https://example.com/photo.png", type: "image" }], 0);
+
+    render(<MediaViewerOverlay />);
+
+    const openButton = screen.getByRole("button", { name: /open in new tab/i });
+    await waitFor(() => {
+      expect(openButton).not.toBeDisabled();
+    });
+
+    fireEvent.click(openButton);
+
+    expect(openMock).toHaveBeenCalledWith(
+      "https://example.com/photo.png",
+      "_blank",
+      "noopener,noreferrer",
+    );
   });
 });

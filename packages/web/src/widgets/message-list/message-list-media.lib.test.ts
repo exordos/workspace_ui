@@ -63,4 +63,41 @@ describe("buildMessageMediaGallery", () => {
       /\/user_uploads\/2\/ff\/aP3oHiNs40xdmpUNVol7Z5ga\/image\.png$/,
     );
   });
+
+  it("extracts video urls from video source and user_upload links", () => {
+    const gallery = buildMessageMediaGallery([
+      msg(
+        1,
+        '<video controls><source src="/user_uploads/1/private.mp4" type="video/mp4" /></video>',
+      ),
+      msg(2, '<p><a href="/user_uploads/2/clip.webm">clip.webm</a></p>'),
+    ]);
+
+    expect(gallery.items).toHaveLength(2);
+    expect(gallery.items[0]?.type).toBe("video");
+    expect(gallery.items[0]?.url).toMatch(/private\.mp4$/);
+    expect(gallery.items[1]?.type).toBe("video");
+    expect(gallery.items[1]?.url).toMatch(/clip\.webm$/);
+  });
+
+  it("orders images before videos within the same message", () => {
+    const gallery = buildMessageMediaGallery([
+      msg(
+        1,
+        '<p><img src="https://cdn.example.com/a.png" /><video><source src="/user_uploads/1/v.mp4" /></video></p>',
+      ),
+    ]);
+
+    expect(gallery.items.map((item) => item.type)).toEqual(["image", "video"]);
+  });
+
+  it("deduplicates repeated videos across messages", () => {
+    const gallery = buildMessageMediaGallery([
+      msg(1, '<video><source src="/user_uploads/1/same.mp4" type="video/mp4" /></video>'),
+      msg(2, '<video><source src="/user_uploads/1/same.mp4" type="video/mp4" /></video>'),
+    ]);
+
+    expect(gallery.items).toHaveLength(1);
+    expect(gallery.items[0]?.type).toBe("video");
+  });
 });

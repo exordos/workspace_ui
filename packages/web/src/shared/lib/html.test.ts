@@ -218,6 +218,14 @@ describe("sanitizeHtml", () => {
     expect(result).toContain("<del>obsolete</del>");
   });
 
+  it("preserves video inside user_upload anchor links", () => {
+    const html =
+      '<p><a href="https://zulip.example.com/user_uploads/1/clip.webm"><video controls=""><source src="https://zulip.example.com/user_uploads/1/clip.webm" type="video/webm"></source></video></a></p>';
+    const result = sanitizeHtml(html, "https://zulip.example.com");
+    expect(result).toContain("<video");
+    expect(result).toContain('type="video/webm"');
+  });
+
   it("allows GFM table structure from marked fallback", () => {
     const html =
       "<table><thead><tr><th>a</th></tr></thead><tbody><tr><td>b</td></tr></tbody></table>";

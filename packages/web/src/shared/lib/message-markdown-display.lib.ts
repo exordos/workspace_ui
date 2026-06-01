@@ -17,6 +17,7 @@ import hljs from "highlight.js/lib/common";
 import { Marked, type Token, type TokenizerAndRendererExtension, type Tokens } from "marked";
 import { stripHtml } from "~/shared/lib/html";
 import { renderEmojiShortcodesInHtml } from "~/shared/lib/message-emoji-shortcodes.lib";
+import { createInlineUserUploadVideoElement } from "~/shared/lib/message-inline-user-upload-video.lib";
 import {
   injectZulipMentionPlaceholders,
   restoreZulipMentionPlaceholders,
@@ -25,6 +26,7 @@ import {
   isUserUploadImagePath,
   toUserUploadThumbnailUrl,
 } from "~/shared/lib/protected-message-media-thumbnail";
+import { isUserUploadVideoPath } from "~/shared/lib/user-upload-media-path.lib";
 
 const LANGUAGE_CLASS_PATTERN = /\b(?:language|lang)-([a-z0-9#+-]+)\b/i;
 
@@ -233,6 +235,32 @@ function inlineUserUploadImageLinks(html: string): string {
   return wrapper.innerHTML;
 }
 
+function inlineUserUploadVideoLinks(html: string): string {
+  // Пост-обработка: ссылки на video user_upload → inline `<video>` (как image → `<img>`).
+  if (typeof document === "undefined" || !html.includes("/user_uploads/")) {
+    return html;
+  }
+
+  const wrapper = document.createElement("div");
+  wrapper.innerHTML = html;
+
+  const links = wrapper.querySelectorAll<HTMLAnchorElement>("a[href]");
+  for (const link of links) {
+    const href = link.getAttribute("href")?.trim();
+    if (href == null || href.length === 0) continue;
+    if (!isUserUploadVideoPath(href)) continue;
+    if (link.querySelector("video") != null) continue;
+
+    link.replaceWith(createInlineUserUploadVideoElement(href));
+  }
+
+  return wrapper.innerHTML;
+}
+
+function inlineUserUploadMediaLinks(html: string): string {
+  return inlineUserUploadVideoLinks(inlineUserUploadImageLinks(html));
+}
+
 function normalizeZulipSpoilerBlocks(html: string): string {
   // Что делает: мягко нормализует входящую Zulip spoiler-разметку,
   // сохраняя block-аккордеон и добавляя fallback header, если он пустой/отсутствует.
@@ -282,7 +310,7 @@ export function messageBodyToUnsanitizedDisplayHtml(
   if (t.length === 0) return "";
   // Если пришел уже готовый HTML от Zulip, не прогоняем через markdown повторно.
   if (isLikelyRenderedMessageHtml(t)) {
-    return normalizeZulipSpoilerBlocks(t);
+    return inlineUserUploadMediaLinks(normalizeZulipSpoilerBlocks(t));
   }
   let mdInput = t;
   let mentionTokens: ReturnType<typeof injectZulipMentionPlaceholders>["tokens"] | undefined;
@@ -303,7 +331,7 @@ export function messageBodyToUnsanitizedDisplayHtml(
   html = renderEmojiShortcodesInHtml(html, {
     resolveCustomEmojiShortcodeImageUrl: options?.resolveCustomEmojiShortcodeImageUrl,
   });
-  const withInlineUploads = inlineUserUploadImageLinks(html);
+  const withInlineUploads = inlineUserUploadMediaLinks(html);
   return normalizeZulipSpoilerBlocks(withInlineUploads);
 }
 

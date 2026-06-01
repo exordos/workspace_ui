@@ -5,6 +5,7 @@ import {
   plainTextPreviewFromMessageBody,
   renderMarkdownFallbackHtml,
 } from "./message-markdown-display.lib";
+import { prepareProtectedMessageHtml } from "./protected-message-media";
 
 describe("isLikelyRenderedMessageHtml", () => {
   it("returns false for markdown text", () => {
@@ -200,6 +201,34 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
     const html = messageBodyToUnsanitizedDisplayHtml("[report.pdf](/user_uploads/2/ff/report.pdf)");
     expect(html).toContain('<a href="/user_uploads/2/ff/report.pdf">report.pdf</a>');
     expect(html).not.toContain("<img");
+  });
+
+  it("inlines user_upload video links into preview video elements", () => {
+    const html = messageBodyToUnsanitizedDisplayHtml(
+      "[clip.webm](/user_uploads/2/52/zVGJf8gDr9qR_a5GJff5PZS7/Screencast.webm)",
+    );
+    expect(html).toContain("<video");
+    expect(html).not.toContain("</a>");
+    expect(html).toContain('type="video/webm"');
+  });
+
+  it("inlines video links in pre-rendered Zulip HTML bodies", () => {
+    const html = messageBodyToUnsanitizedDisplayHtml(
+      '<p><a href="https://sys.example.com/user_uploads/2/52/id/file.webm" target="_blank">file.webm</a></p>',
+    );
+    expect(html).toContain("<video");
+    expect(html).toContain('type="video/webm"');
+    expect(html).not.toContain(">file.webm</a>");
+  });
+
+  it("keeps inline video through sanitize and protected-media preparation", () => {
+    const raw = messageBodyToUnsanitizedDisplayHtml(
+      "[Screencast.webm](/user_uploads/2/52/zVGJf8gDr9qR_a5GJff5PZS7/Screencast.webm)",
+    );
+    const safe = prepareProtectedMessageHtml(raw, "https://sys.platform.tokens.team/workspace/v1");
+    expect(safe).toContain("<video");
+    expect(safe).toContain("data-auth-src");
+    expect(safe).not.toContain('src="/user_uploads/');
   });
 });
 

@@ -66,6 +66,22 @@ describe("MessageBubble attachment links", () => {
     downloadUserUploadAttachmentMock.mockResolvedValue(true);
   });
 
+  it("does not decorate inlined user_upload video links as attachments", async () => {
+    const { container } = render(
+      <MessageBubble
+        message={msg({
+          content: "[clip.webm](/user_uploads/1/clip.webm)",
+        })}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector("video")).toBeTruthy();
+    });
+    expect(container.querySelector("a[href*='clip.webm']")).toBeNull();
+    expect(container.querySelector("video")).not.toHaveAttribute("data-attachment-link");
+  });
+
   it("decorates user_upload links as attachment actions", async () => {
     render(<MessageBubble message={msg()} />);
 

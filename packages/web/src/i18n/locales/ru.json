@@ -586,6 +586,10 @@
     "privateDraft": "Черновик ЛС",
     "topic": "Тема: {{topic}}"
   },
+  "mediaViewer": {
+    "openInNewTab": "Открыть в новой вкладке",
+    "download": "Скачать"
+  },
   "chatInfo": {
     "title": "Информация о чате",
     "dmInfo": "Информация о диалоге",

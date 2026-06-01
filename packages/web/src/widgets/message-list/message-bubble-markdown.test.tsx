@@ -6,6 +6,7 @@ import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model"
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { createUser } from "~/test/factories";
 import { MessageBubble } from "./message-bubble.ui";
+import { buildMessageMediaGallery } from "./message-list-media.lib";
 
 const buildAuthHeaderMock = vi.fn(() => ({}));
 const writeTextMock = vi.fn<(value: string) => Promise<boolean>>(() => Promise.resolve(true));
@@ -36,6 +37,7 @@ describe("MessageBubble markdown body", () => {
     window.getSelection()?.removeAllRanges();
     useUsersStore.getState().clear();
     useCallParticipantsStore.setState({ participantsByUrl: {} });
+    useMediaViewerStore.getState().close();
     buildAuthHeaderMock.mockReset();
     writeTextMock.mockReset();
     vi.unstubAllGlobals();
@@ -167,6 +169,28 @@ describe("MessageBubble markdown body", () => {
     expect(emojiImage).toHaveAttribute("src", "https://cdn.example.com/parrot.png");
     expect(emojiImage).toHaveAttribute("alt", ":party_parrot:");
     expect(emojiImage).toHaveAttribute("title", ":party_parrot:");
+  });
+
+  it("opens media viewer when clicking inline video", () => {
+    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+    const mediaViewerOpenSpy = vi.spyOn(useMediaViewerStore.getState(), "open");
+    const content =
+      '<video controls><source src="/user_uploads/1/private.mp4" type="video/mp4" /></video>';
+    const gallery = buildMessageMediaGallery([createMessage({ content })]);
+
+    const { container } = render(
+      <MessageBubble message={createMessage({ content })} isOwn={false} mediaGallery={gallery} />,
+    );
+
+    const video = container.querySelector("video");
+    expect(video).toBeTruthy();
+    fireEvent.click(video as HTMLVideoElement);
+
+    expect(mediaViewerOpenSpy).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.objectContaining({ type: "video" })]),
+      0,
+    );
+    mediaViewerOpenSpy.mockRestore();
   });
 
   it("does not open media viewer when clicking inline custom emoji", () => {

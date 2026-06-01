@@ -19,6 +19,7 @@ import ChevronUpIcon from "../assets/icons/chevron-up.svg?react";
 import CloseIcon from "../assets/icons/close.svg?react";
 import CopyIcon from "../assets/icons/copy.svg?react";
 import DeleteIcon from "../assets/icons/delete.svg?react";
+import DownloadIcon from "../assets/icons/download.svg?react";
 import DraftsIcon from "../assets/icons/drafts.svg?react";
 import FilesIcon from "../assets/icons/files.svg?react";
 import FlagIcon from "../assets/icons/flag.svg?react";
@@ -93,6 +94,7 @@ const ICONS: Record<string, IconSvgComponent> = {
   check: CheckIcon,
   copy: CopyIcon,
   delete: DeleteIcon,
+  download: DownloadIcon,
   forward: ForwardIcon,
   profile: ProfileIcon,
   reply: ReplyIcon,
