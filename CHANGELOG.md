@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 Versioning follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.1] — 2026-06-01
+
+### Bug Fixes
+
+- restore tail autoscroll at bottom (#92)
+
+### Other
+
+- Fix/release fixes (#93)
+
 ## [Unreleased]
 
 ### Changed
