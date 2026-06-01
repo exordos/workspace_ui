@@ -1,64 +1,83 @@
-const CRITICAL_STORAGE_KEYS = [
-  "zulip-web-instances",
-  "zulip-web-current-instance",
-  "workspace-palette",
-  "workspace-theme-mode",
-  "workspace-settings",
-  "workspace-locale",
-  "zulip-web-sidebar-config",
-  "recent_dm_partners",
-  "analytics_consent",
-] as const;
+/**
+ * Application cold-start reset — wipes local caches while preserving saved org logins.
+ *
+ * Usage:
+ *   import { performApplicationColdStart } from "~/shared/lib/local-reset";
+ *   await performApplicationColdStart();
+ *   window.location.reload();
+ */
+import { deleteMessageCacheDatabase } from "~/shared/lib/message-cache-db";
 
-const CRITICAL_STORAGE_KEY_PREFIXES = [
-  "workspace-palette:",
-  "workspace-theme-mode:",
-  "workspace-settings:",
-  "workspace-locale:",
-  "zulip-web-sidebar-config:",
-] as const;
+const PRESERVED_AUTH_STORAGE_KEYS = ["zulip-web-instances", "zulip-web-current-instance"] as const;
 
-function isCriticalStorageKey(key: string): boolean {
-  if ((CRITICAL_STORAGE_KEYS as readonly string[]).includes(key)) {
-    return true;
-  }
-  return CRITICAL_STORAGE_KEY_PREFIXES.some((prefix) => key.startsWith(prefix));
+function isPreservedAuthStorageKey(key: string): boolean {
+  return (PRESERVED_AUTH_STORAGE_KEYS as readonly string[]).includes(key);
 }
 
-/** Clears non-critical local storage entries while preserving auth and user preference keys. */
-export function clearLocalStatePreservingCriticalKeys(storage: Storage = localStorage): void {
+function collectStorageKeys(storage: Storage): string[] {
+  const keys: string[] = [];
+  for (let i = 0; i < storage.length; i += 1) {
+    const key = storage.key(i);
+    if (key != null) keys.push(key);
+  }
+  return keys;
+}
+
+function clearLocalStorageExceptAuth(storage: Storage = localStorage): void {
+  const keys = collectStorageKeys(storage);
+  for (const key of keys) {
+    if (isPreservedAuthStorageKey(key)) continue;
+    try {
+      storage.removeItem(key);
+    } catch {
+      return;
+    }
+  }
+}
+
+function clearSessionStorage(storage: Storage = sessionStorage): void {
   try {
-    const preserved = new Map<string, string>();
-
-    const keys: string[] = [];
-    for (let i = 0; i < storage.length; i += 1) {
-      const key = storage.key(i);
-      if (key != null) keys.push(key);
-    }
-
-    for (const key of keys) {
-      try {
-        if (!isCriticalStorageKey(key)) continue;
-        const value = storage.getItem(key);
-        if (value != null) preserved.set(key, value);
-      } catch {
-        // If storage is restricted, keep best-effort behavior and exit cleanly.
-        return;
-      }
-    }
-
-    for (const key of keys) {
-      if (!preserved.has(key)) {
-        storage.removeItem(key);
-      }
-    }
-
-    for (const [key, value] of preserved) {
-      storage.setItem(key, value);
-    }
+    storage.clear();
   } catch {
-    // Storage is optional in some runtimes (restricted mode / iframe / tests).
+    /* sessionStorage may be restricted */
   }
 }
 
-export { CRITICAL_STORAGE_KEYS };
+async function clearHttpCaches(): Promise<void> {
+  if (typeof caches === "undefined") return;
+  try {
+    const names = await caches.keys();
+    await Promise.all(names.map((name) => caches.delete(name)));
+  } catch {
+    /* Cache Storage is optional */
+  }
+}
+
+/** Wipes IDB message cache, sessionStorage, HTTP caches, and localStorage except saved org logins. */
+export async function performApplicationColdStart(): Promise<void> {
+  try {
+    await deleteMessageCacheDatabase();
+  } catch {
+    /* IDB wipe is best-effort */
+  }
+
+  try {
+    clearSessionStorage();
+  } catch {
+    /* optional runtime */
+  }
+
+  try {
+    clearLocalStorageExceptAuth();
+  } catch {
+    /* optional runtime */
+  }
+
+  try {
+    await clearHttpCaches();
+  } catch {
+    /* optional runtime */
+  }
+}
+
+export { PRESERVED_AUTH_STORAGE_KEYS };

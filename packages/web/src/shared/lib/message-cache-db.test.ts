@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import {
   applyRetentionForChat,
+  deleteMessageCacheDatabase,
   getChatMeta,
   getChatMessageBounds,
   getChatMessagesAscending,
@@ -203,5 +204,19 @@ describe("message-cache-db", () => {
     expect(oldRows.every((row) => row.subject === "incident")).toBe(true);
     const streamWideRows = await getStreamMessagesAscending(INSTANCE, 1);
     expect(streamWideRows.map((row) => row.id)).toEqual([10, 20, 30]);
+  });
+
+  it("deleteMessageCacheDatabase removes persisted chat messages", async () => {
+    await upsertChatMessages({
+      instanceId: INSTANCE,
+      chatKey: CHAT,
+      messages: [msg(1)],
+      windowSizeN: 200,
+    });
+    expect(await getChatMessagesAscending(INSTANCE, CHAT)).toHaveLength(1);
+
+    await deleteMessageCacheDatabase();
+
+    expect(await getChatMessagesAscending(INSTANCE, CHAT)).toEqual([]);
   });
 });

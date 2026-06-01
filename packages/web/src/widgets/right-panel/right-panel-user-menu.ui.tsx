@@ -25,7 +25,7 @@ import { useTranslation } from "~/i18n/i18n";
 import { IS_CONNECTION_DIAGNOSTICS_ENABLED } from "~/shared/config/constants";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { resolveUnicodeToCanonicalShortcode } from "~/shared/lib/emoji-shortcodes.lib";
-import { clearLocalStatePreservingCriticalKeys } from "~/shared/lib/local-reset";
+import { performApplicationColdStart } from "~/shared/lib/local-reset";
 import { createLogger } from "~/shared/lib/logger";
 import { playNotificationSound } from "~/shared/lib/notification-sound";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
@@ -312,11 +312,18 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
     setAuthIdleTimeoutOpen((open) => !open);
   }, []);
 
-  const handleClearCache = useCallback(() => {
+  const handleClearCache = useCallback(async () => {
+    const confirmed = window.confirm(t("settings.clearCacheConfirm"));
+    if (!confirmed) return;
+
     log.info("Clearing application cache from unified account/settings sidebar");
-    clearLocalStatePreservingCriticalKeys();
+    try {
+      await performApplicationColdStart();
+    } catch (err) {
+      log.warn("Application cold-start reset failed", { error: String(err) });
+    }
     window.location.reload();
-  }, []);
+  }, [t]);
 
   const handleLogoutFromCurrentOrg = useCallback(() => {
     if (currentInstance == null) return;

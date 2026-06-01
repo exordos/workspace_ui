@@ -16,6 +16,11 @@ function idbError(reason: unknown): Error {
 const DB_NAME = "workspace-message-cache-v1";
 const DB_VERSION = 8;
 
+/** IndexedDB database name for message/chat bootstrap cache (tests, cold-start wipe). */
+export const MESSAGE_CACHE_DB_NAME = DB_NAME;
+
+const IDB_DELETE_BLOCKED_TIMEOUT_MS = 3_000;
+
 // Размер retention по умолчанию, если caller явно не передал windowSizeN.
 export const MESSAGE_CACHE_DEFAULT_WINDOW_SIZE = ZULIP_CHAT_MESSAGE_CACHE_MAX_WINDOW;
 
@@ -131,6 +136,40 @@ export function openMessageCacheDb(): Promise<IDBDatabase> {
 // Test helper: сбрасывает singleton после удаления БД.
 export function resetMessageCacheDbSingletonForTests(): void {
   dbPromise = null;
+}
+
+/** Drops the message cache database and resets the open-connection singleton (cold-start wipe). */
+export async function deleteMessageCacheDatabase(): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+
+  try {
+    if (dbPromise != null) {
+      const db = await dbPromise.catch(() => null);
+      db?.close();
+    }
+  } catch {
+    /* close is best-effort */
+  }
+  dbPromise = null;
+
+  await new Promise<void>((resolve, reject) => {
+    const req = indexedDB.deleteDatabase(DB_NAME);
+    let settled = false;
+    const finishOk = (): void => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    req.onsuccess = () => finishOk();
+    req.onerror = () => {
+      if (settled) return;
+      settled = true;
+      reject(idbError(req.error));
+    };
+    req.onblocked = () => {
+      globalThis.setTimeout(() => finishOk(), IDB_DELETE_BLOCKED_TIMEOUT_MS);
+    };
+  });
 }
 
 function rowId(instanceId: string, messageId: number): string {
