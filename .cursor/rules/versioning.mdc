@@ -1,7 +1,7 @@
 ---
 description: Semantic versioning and release process
 alwaysApply: false
-globs: "{package.json,CHANGELOG.md,scripts/version.mjs}"
+globs: "{package.json,lerna.json,CHANGELOG.md,scripts/version-bump.mjs,scripts/release-tag.mjs}"
 ---
 
 # Versioning
@@ -29,44 +29,38 @@ MAJOR.MINOR.PATCH
 | i18n: add new language | minor | `feat(i18n): add German` |
 | New theme palette | minor | `feat(theme): add green palette` |
 
-## Release Process
-
-### GitHub Actions (recommended)
-
-On the repository default branch: **Actions → Release → Run workflow** → choose `patch`, `minor`, or `major`.
-
-The workflow runs `npm run version:bump`, commits, creates tag `X.Y.Z` (no `v` prefix), and pushes. CI builds Electron installers and publishes a GitHub Release when the tag is pushed.
-
-Requires **Settings → Actions → Workflow permissions → Read and write**. Branch protection must allow `github-actions[bot]` to push commits and tags.
-
-### Local (alternative)
+## Release Process (Lerna fixed mode)
 
 ```bash
-# 1. Bump version across all packages + update CHANGELOG
-npm run version:bump patch    # or minor, major, or explicit 1.2.3
+# 1. Bump root (.) + all packages/* + lerna.json via Lerna
+npm run version:bump -- patch    # or minor, major, or explicit 1.2.3
 
-# 2. Review generated CHANGELOG.md
+# 2. Update CHANGELOG.md manually (if needed)
 
-# 3. Commit and tag (tag without v — matches CI trigger)
+# 3. Commit → MR to master (direct push to master forbidden)
 git add -A
-git commit -m "chore: release v$(node -p 'require(\"./package.json\").version')"
-git tag "$(node -p 'require(\"./package.json\").version')"
+git commit -m "chore: release v$(npm run version:print -s)"
 
-# 4. Push
-git push origin <default-branch> --tags
+# 4. After merge, on master: tag and push tag only (no "v" prefix)
+npm run version:tag
 ```
+
+`npm run version:print` prints the current version from `lerna.json`.
+
+Pushing a semver tag triggers GitHub Actions (`build-electron` + GitHub Release). Push to `master` alone does not create a Release.
 
 ## Version is used in
 
 | Where | How |
 |-------|-----|
-| `package.json` (root, web, electron) | `version` field |
+| `lerna.json` | Fixed monorepo version (source of truth) |
+| `package.json` (root `.` + all `packages/*`) | `version` field (bumped by Lerna) |
 | Electron auto-updater | reads from package.json |
 | Sentry releases | `VITE_APP_VERSION` (CI sets from git tag) |
-| CHANGELOG.md | auto-generated section header |
+| CHANGELOG.md | manual release notes |
 | PWA cache | Workbox precache manifest changes |
 | About screen (planned) | `brand.appName + version` |
 
 ## Monorepo sync
 
-All 3 packages share ONE version number. `scripts/version.mjs` bumps all simultaneously.
+Lerna `packages: [".", "packages/*"]` + `forcePublish: true` bumps root and every leaf on each release. `lerna run` ignores root (`workspace`) to avoid script recursion.

@@ -1,6 +1,8 @@
-# workspace-api
+# @workspace/api
 
 OpenAPI-driven TypeScript client for the Workspace backend (folders, services catalog, etc.), generated with [Orval](https://orval.dev/).
+
+npm package name is `@workspace/api` (not `workspace-api` — that name is taken on the public registry by an unrelated Trimble package).
 
 ## Regenerate after spec changes
 

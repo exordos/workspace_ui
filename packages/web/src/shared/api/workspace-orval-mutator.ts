@@ -2,7 +2,7 @@
  * Bridges Orval-generated Workspace API calls to `workspaceApi` (middleware pipeline).
  */
 
-import { setWorkspaceApiMutator } from "workspace-api/workspace-api-mutator";
+import { setWorkspaceApiMutator } from "@workspace/api/workspace-api-mutator";
 import { getWorkspaceApiBaseForCurrentInstance, workspaceApi } from "./client";
 import type { ApiResponse } from "./client";
 

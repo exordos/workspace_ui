@@ -1,5 +1,15 @@
 {
-  "packages": ["packages/*"],
-  "version": "0.1.0",
-  "npmClient": "npm"
+  "$schema": "node_modules/lerna/schemas/lerna-schema.json",
+  "version": "0.1.1",
+  "npmClient": "npm",
+  "packages": [".", "packages/*"],
+  "command": {
+    "version": {
+      "message": "chore(release): v%s",
+      "forcePublish": true
+    },
+    "run": {
+      "ignore": "workspace"
+    }
+  }
 }

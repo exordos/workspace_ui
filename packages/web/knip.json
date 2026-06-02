@@ -12,7 +12,7 @@
     "tailwind-scrollbar",
     "tinyexec",
     "buffer",
-    "workspace-api",
+    "@workspace/api",
     "@testing-library/dom",
     "cross-env",
     "http-proxy",

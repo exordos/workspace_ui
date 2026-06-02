@@ -7,7 +7,7 @@
 import {
   pinV1FoldersFolderUuidItemsFolderItemUuidActionsPinInvoke,
   unpinV1FoldersFolderUuidItemsFolderItemUuidActionsUnpinInvoke,
-} from "workspace-api/workspace-api.generated";
+} from "@workspace/api/workspace-api.generated";
 import { isPersistedFolderItemUuid } from "~/features/folder-sync/folder-sync-assignment.lib";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";

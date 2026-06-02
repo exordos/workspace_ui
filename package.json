@@ -4,11 +4,15 @@
   "version": "0.1.1",
   "description": "Exordos Workspace - smart corporate messenger built with React/Electron",
   "workspaces": [
+    ".",
     "packages/*"
   ],
+  "nx": {
+    "includedScripts": []
+  },
   "scripts": {
     "bootstrap": "lerna bootstrap",
-    "dev": "lerna run dev --parallel",
+    "dev": "lerna run dev --parallel --ignore workspace",
     "dev:web": "lerna run dev --scope web --stream",
     "dev:mock": "lerna run dev --scope mock-server --stream",
     "lint": "npm run lint --workspace=web",
@@ -25,7 +29,10 @@
     "check": "npm run check --workspace=web",
     "codegen:workspace-api": "npm run codegen --workspace=workspace-api",
     "licenses": "node scripts/generate-licenses.mjs",
-    "version:bump": "node scripts/version.mjs",
+    "version:print": "node -p \"require('./lerna.json').version\"",
+    "version:bump": "node scripts/version-bump.mjs",
+    "version:tag": "node scripts/release-tag.mjs",
+    "version:tag:dry-run": "node scripts/release-tag.mjs --dry-run",
     "e2e": "npx playwright test",
     "e2e:ui": "npx playwright test --ui",
     "e2e:headed": "npx playwright test --headed",

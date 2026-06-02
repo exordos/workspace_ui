@@ -17,7 +17,7 @@ import {
   FolderItemCreateChatType,
   getV1FoldersFolderUuidItemsFolderItemUuid,
   updateV1FoldersFolderUuidItemsFolderItemUuid,
-} from "workspace-api/workspace-api.generated";
+} from "@workspace/api/workspace-api.generated";
 import { guard, invariant } from "~/shared/lib/guards";
 import { isValidUrl } from "~/shared/lib/validation";
 import { getCurrentInstance } from "./client";
@@ -27,7 +27,7 @@ import type {
   FilterV1Folders200ItemItemsItemChatType,
   FolderItemCreate,
   ServiceFilter,
-} from "workspace-api/workspace-api.generated";
+} from "@workspace/api/workspace-api.generated";
 
 const inFlightWorkspaceGets = new Map<string, Promise<unknown>>();
 

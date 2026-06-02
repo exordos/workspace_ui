@@ -577,28 +577,24 @@ The project follows [Semantic Versioning 2.0](https://semver.org/). All packages
 
 ### Creating a Release
 
-**GitHub Actions (recommended):** on the default branch, open **Actions → Release → Run workflow**, choose `patch`, `minor`, or `major`. The workflow bumps all `package.json` files, updates `CHANGELOG.md`, commits, tags `X.Y.Z`, and pushes. CI then builds desktop installers and publishes a GitHub Release.
-
-Repo settings: **Actions → Workflow permissions → Read and write**; branch/tag protection must allow `github-actions[bot]` to push.
-
-**Local alternative:**
-
 ```bash
-# 1. Bump version (updates package.json + CHANGELOG.md)
-npm run version:bump patch   # or: minor, major
+# 1. Bump version (Lerna fixed mode — all packages/* + lerna.json + root package.json)
+npm run version:bump -- patch   # or: minor, major, or explicit 1.2.3
 
-# 2. Review the changelog
-# Edit CHANGELOG.md if needed
+# 2. Update CHANGELOG.md manually (if needed)
 
-# 3. Commit and tag (tag without v — matches CI)
-git add -A && git commit -m "chore: release v$(node -p 'require(\"./package.json\").version')"
-git tag "$(node -p 'require(\"./package.json\").version')"
+# 3. Commit and merge to master via MR (direct push to master is forbidden)
+git add -A && git commit -m "chore: release v$(npm run version:print -s)"
+# open MR → merge
 
-# 4. Push
-git push origin <default-branch> --tags
+# 4. On master after merge: create tag and push (GitHub Release runs on tag push only)
+npm run version:tag
+# dry-run: npm run version:tag:dry-run
 ```
 
-CI automatically builds and publishes desktop installers for semver tags (`0.1.0` or `v0.1.0`).
+Current version: `npm run version:print` (reads `lerna.json`).
+
+GitHub Actions builds desktop installers and publishes a GitHub Release when a semver tag is pushed (e.g. `0.1.2`, not `v0.1.2`). Push to `master` alone does not create a Release.
 
 ---
 
