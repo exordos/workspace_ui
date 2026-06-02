@@ -6,6 +6,7 @@ on:
     tags:
       - "[0-9]+.[0-9]+.[0-9]+*"
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -88,8 +89,9 @@ jobs:
     name: Build Electron (${{ matrix.os }})
     needs: check
     if: >
-      github.event_name == 'push' &&
-      (github.ref == 'refs/heads/master' || github.ref_type == 'tag')
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' &&
+      (github.ref == 'refs/heads/master' || github.ref_type == 'tag'))
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
 
@@ -101,8 +103,8 @@ jobs:
             cmd: package:electron:linux -- --linux rpm deb AppImage
           - os: windows-latest
             cmd: package:electron:win
-          # - os: macos-latest
-          #   cmd: package:electron:mac
+          - os: macos-latest
+            cmd: package:electron:mac
 
     steps:
       - uses: actions/checkout@v6
