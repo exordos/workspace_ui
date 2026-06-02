@@ -11,6 +11,7 @@ import { groupInboxEntries, isInboxEntriesSnapshotFresher } from "~/entities/inb
 import { useInboxStore } from "~/entities/inbox/inbox.model";
 import type { InboxEntry } from "~/entities/inbox/inbox.types";
 import { useInstancesStore } from "~/entities/instance/instance.model";
+import { topicKey, useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { t } from "~/i18n/i18n";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { formatMessageTimeShort } from "~/shared/lib/datetime.lib";
@@ -72,14 +73,35 @@ export const InboxPage: React.FC = () => {
   const startRequest = useInboxStore((s) => s.startRequest);
   const setError = useInboxStore((s) => s.setError);
   const entries = useInboxStore((s) => s.sortedEntries());
-  const grouped = useMemo(() => groupInboxEntries(entries), [entries]);
+  const mutedStreamIds = useMuteStore((s) => s.mutedStreamIds);
+  const mutedTopicKeys = useMuteStore((s) => s.mutedTopicKeys);
+  const unmutedTopicKeys = useMuteStore((s) => s.unmutedTopicKeys);
+  const followedTopicKeys = useMuteStore((s) => s.followedTopicKeys);
+  const isStreamMuted = useMuteStore((s) => s.isStreamMuted);
+  const isEffectivelyMuted = useMuteStore((s) => s.isEffectivelyMuted);
+  const visibleEntries = useMemo(
+    () =>
+      entries.filter((entry) => {
+        if (entry.streamId == null) return true;
+        if (mutedStreamIds.has(entry.streamId)) return false;
+        if (entry.topic == null) return true;
+        const key = topicKey(entry.streamId, entry.topic);
+        if (unmutedTopicKeys.has(key) || followedTopicKeys.has(key)) return true;
+        if (mutedTopicKeys.has(key)) return false;
+        return true;
+      }),
+    [entries, followedTopicKeys, mutedStreamIds, mutedTopicKeys, unmutedTopicKeys],
+  );
+  const grouped = useMemo(() => groupInboxEntries(visibleEntries), [visibleEntries]);
 
   const loadInbox = useCallback(
     (hasCachedData: boolean) => {
       // Запускаем запрос с версионированием, чтобы закрыть гонки ответов.
       const requestVersion = startRequest(hasCachedData);
       const requestKey = `${currentInstanceId ?? "none"}:inbox:newest`;
-      return runInFlightDeduped(requestKey, () => fetchInboxEntries(currentUserId))
+      return runInFlightDeduped(requestKey, () =>
+        fetchInboxEntries(currentUserId, { isStreamMuted, isEffectivelyMuted }),
+      )
         .then((data) => {
           setEntries(data, requestVersion);
         })
@@ -88,14 +110,25 @@ export const InboxPage: React.FC = () => {
           log.error("Failed to load inbox", { error: String(err) });
         });
     },
-    [currentInstanceId, currentUserId, setEntries, setError, startRequest],
+    [
+      currentInstanceId,
+      currentUserId,
+      isEffectivelyMuted,
+      isStreamMuted,
+      setEntries,
+      setError,
+      startRequest,
+    ],
   );
 
   useCacheFirstPageLoad({
     instanceId: currentInstanceId,
     dedupeKey: `${currentInstanceId ?? "none"}:inbox:newest`,
     hydrate: async (instanceId) => {
-      const cached = await hydrateInboxEntriesFromCache(instanceId, currentUserId);
+      const cached = await hydrateInboxEntriesFromCache(instanceId, currentUserId, {
+        isStreamMuted,
+        isEffectivelyMuted,
+      });
       const currentEntries = useInboxStore.getState().entries;
       const shouldApplyCached =
         cached.length > 0 &&
@@ -107,7 +140,7 @@ export const InboxPage: React.FC = () => {
     hasCachedData: () => useInboxStore.getState().entries.length > 0,
     startRequest: (hasCached) => startRequest(hasCached),
     fetch: async (_instanceId, requestVersion) => {
-      const data = await fetchInboxEntries(currentUserId);
+      const data = await fetchInboxEntries(currentUserId, { isStreamMuted, isEffectivelyMuted });
       setEntries(data, requestVersion);
     },
     onFetchError: (err, requestVersion) => {
@@ -118,8 +151,8 @@ export const InboxPage: React.FC = () => {
 
   useEffect(() => {
     // markStale инициирует мягкий фоновый refresh, не очищая текущий список.
-    if (stale) void loadInbox(entries.length > 0);
-  }, [stale, loadInbox, entries.length]);
+    if (stale) void loadInbox(visibleEntries.length > 0);
+  }, [stale, loadInbox, visibleEntries.length]);
 
   const handleEntryClick = useCallback(
     (entry: InboxEntry) => {
@@ -140,16 +173,16 @@ export const InboxPage: React.FC = () => {
         onOpenSearch={openSearch ?? undefined}
       />
       <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        {loading && entries.length === 0 && (
+        {loading && visibleEntries.length === 0 && (
           <div className={`${INBOX_STATE_CARD_CLASS} text-text-muted`}>{t("app.loading")}</div>
         )}
-        {!loading && error && entries.length === 0 && (
+        {!loading && error && visibleEntries.length === 0 && (
           <div className={`${INBOX_STATE_CARD_CLASS} text-notice-base`}>{t("inbox.loadError")}</div>
         )}
-        {!loading && !error && entries.length === 0 && (
+        {!loading && !error && visibleEntries.length === 0 && (
           <div className={`${INBOX_STATE_CARD_CLASS} text-text-muted`}>{t("inbox.noUnread")}</div>
         )}
-        {entries.length > 0 && (
+        {visibleEntries.length > 0 && (
           <div className="relative flex flex-1 flex-col overflow-auto px-3 pb-3 pt-2">
             {grouped.dms.length > 0 && (
               <section className="space-y-1.5">

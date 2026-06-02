@@ -78,6 +78,20 @@ interface DmConversationMeta {
   senderName: string;
 }
 
+export interface InboxMuteFilterOptions {
+  isStreamMuted?: (streamId: number) => boolean;
+  isEffectivelyMuted?: (streamId: number, topic: string) => boolean;
+}
+
+function shouldOmitStreamInboxMessage(
+  streamId: number,
+  topic: string,
+  options: InboxMuteFilterOptions,
+): boolean {
+  if (options.isStreamMuted?.(streamId)) return true;
+  return options.isEffectivelyMuted?.(streamId, topic) ?? false;
+}
+
 function resolveDmConversationMeta(
   message: Pick<MockMessage, "display_recipient" | "sender_id" | "sender_full_name">,
   currentUserId: number | null,
@@ -107,67 +121,87 @@ function resolveDmConversationMeta(
   };
 }
 
+function updateExistingInboxEntry(existing: InboxEntry, msg: MockMessage): void {
+  existing.unreadCount += 1;
+  existing.messageIds.push(msg.id);
+  if (msg.timestamp > existing.lastMessageTimestamp) {
+    existing.lastMessageTimestamp = msg.timestamp;
+  }
+}
+
+function addStreamInboxEntry(
+  entryMap: Map<string, InboxEntry>,
+  msg: MockMessage,
+  streamId: number,
+  topic: string,
+): void {
+  const key = `stream:${streamId}:${topic}`;
+  const existing = entryMap.get(key);
+  if (existing) {
+    updateExistingInboxEntry(existing, msg);
+    return;
+  }
+
+  entryMap.set(key, {
+    key,
+    streamId,
+    streamName: msg.channel ?? null,
+    topic,
+    senderId: null,
+    senderName: null,
+    dmSlug: null,
+    unreadCount: 1,
+    lastMessageTimestamp: msg.timestamp,
+    messageIds: [msg.id],
+  });
+}
+
+function addDmInboxEntry(
+  entryMap: Map<string, InboxEntry>,
+  msg: MockMessage,
+  currentUserId: number | null,
+): void {
+  const dmMeta = resolveDmConversationMeta(msg, currentUserId);
+  const key = `dm:${dmMeta.dmSlug}`;
+  const existing = entryMap.get(key);
+  if (existing) {
+    updateExistingInboxEntry(existing, msg);
+    return;
+  }
+
+  entryMap.set(key, {
+    key,
+    streamId: null,
+    streamName: null,
+    topic: null,
+    senderId: dmMeta.senderId,
+    senderName: dmMeta.senderName,
+    dmSlug: dmMeta.dmSlug,
+    unreadCount: 1,
+    lastMessageTimestamp: msg.timestamp,
+    messageIds: [msg.id],
+  });
+}
+
 export function buildInboxEntries(
   messages: MockMessage[],
   currentUserId: number | null = null,
+  options: InboxMuteFilterOptions = {},
 ): InboxEntry[] {
   const entryMap = new Map<string, InboxEntry>();
 
   for (const msg of messages) {
-    const isStream = msg.stream_id != null && msg.stream_id > 0;
+    const streamId = msg.stream_id;
+    const isStream = streamId != null && streamId > 0;
     const topic = (msg.subject ?? "").trim();
 
     if (isStream) {
-      const key = `stream:${msg.stream_id}:${topic}`;
-      const existing = entryMap.get(key);
-      if (existing) {
-        existing.unreadCount += 1;
-        existing.messageIds.push(msg.id);
-        if (msg.timestamp > existing.lastMessageTimestamp) {
-          existing.lastMessageTimestamp = msg.timestamp;
-        }
-        continue;
-      }
-
-      entryMap.set(key, {
-        key,
-        streamId: msg.stream_id,
-        streamName: msg.channel ?? null,
-        topic,
-        senderId: null,
-        senderName: null,
-        dmSlug: null,
-        unreadCount: 1,
-        lastMessageTimestamp: msg.timestamp,
-        messageIds: [msg.id],
-      });
+      if (shouldOmitStreamInboxMessage(streamId, topic, options)) continue;
+      addStreamInboxEntry(entryMap, msg, streamId, topic);
       continue;
     }
 
-    const dmMeta = resolveDmConversationMeta(msg, currentUserId);
-    const key = `dm:${dmMeta.dmSlug}`;
-    const existing = entryMap.get(key);
-    if (existing) {
-      existing.unreadCount += 1;
-      existing.messageIds.push(msg.id);
-      if (msg.timestamp > existing.lastMessageTimestamp) {
-        existing.lastMessageTimestamp = msg.timestamp;
-      }
-      continue;
-    }
-
-    entryMap.set(key, {
-      key,
-      streamId: null,
-      streamName: null,
-      topic: null,
-      senderId: dmMeta.senderId,
-      senderName: dmMeta.senderName,
-      dmSlug: dmMeta.dmSlug,
-      unreadCount: 1,
-      lastMessageTimestamp: msg.timestamp,
-      messageIds: [msg.id],
-    });
+    addDmInboxEntry(entryMap, msg, currentUserId);
   }
 
   return Array.from(entryMap.values()).sort(

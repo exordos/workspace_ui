@@ -5,6 +5,7 @@ import { useActivityStore } from "~/entities/activity/activity.model";
 import { countMentionsUnread } from "~/entities/chat-list/chat-list-sidebar-totals.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useDraftStore } from "~/entities/draft/draft.model";
+import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { SidebarActivity } from "./sidebar-activity.ui";
 import { MY_ACTIVITY } from "./sidebar.lib";
@@ -70,6 +71,7 @@ describe("SidebarActivity", () => {
     useActivityStore.getState().clear();
     useChatListStore.getState().clear();
     useDraftStore.getState().clear();
+    useMuteStore.getState().clear();
     useSettingsStore.getState().resetToDefaults();
   });
 
@@ -149,6 +151,21 @@ describe("SidebarActivity", () => {
 
     const inboxRow = screen.getByRole("link", { name: /inbox/i });
     expect(within(inboxRow).getByText("3")).toBeInTheDocument();
+  });
+
+  it("excludes muted stream unread from expanded inbox badge", () => {
+    useChatListStore.getState().setFromMessages(INBOX_COUNT_THREE_MESSAGES, 7);
+    useMuteStore.getState().muteStream(10);
+
+    render(
+      <MemoryRouter>
+        <SidebarActivity open onToggle={() => {}} />
+      </MemoryRouter>,
+    );
+
+    const inboxRow = screen.getByRole("link", { name: /inbox/i });
+    expect(within(inboxRow).getByText("1")).toBeInTheDocument();
+    expect(within(inboxRow).queryByText("3")).not.toBeInTheDocument();
   });
 
   it("shows favorites badge in expanded view from starred summary", () => {

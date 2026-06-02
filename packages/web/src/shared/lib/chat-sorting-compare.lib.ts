@@ -6,7 +6,16 @@ export interface ChatSortingOptions {
   prioritizePersonalUnread?: boolean;
   prioritizeUnmutedUnreadChannels?: boolean;
   hideUnknownArchivedStreams?: boolean;
+  isEffectivelyMuted?: (streamId: number, topic: string) => boolean;
 }
+
+export type ResolvedChatSortingOptions = ChatSortingOptions &
+  Required<
+    Pick<
+      ChatSortingOptions,
+      "prioritizePersonalUnread" | "prioritizeUnmutedUnreadChannels" | "hideUnknownArchivedStreams"
+    >
+  >;
 
 interface TimestampedChat {
   c: SidebarChat;
@@ -31,6 +40,13 @@ function compareUnmutedUnreadStreams(a: SidebarChat, b: SidebarChat, muteSet: Se
   if (a.type !== "stream" || b.type !== "stream") return 0;
   const aIsMuted = muteSet.has(a.stream_id);
   const bIsMuted = muteSet.has(b.stream_id);
+  if (aIsMuted === bIsMuted) return 0;
+  return aIsMuted ? 1 : -1;
+}
+
+function compareMutedStreamPartition(a: SidebarChat, b: SidebarChat, muteSet: Set<number>): number {
+  const aIsMuted = a.type === "stream" && muteSet.has(a.stream_id);
+  const bIsMuted = b.type === "stream" && muteSet.has(b.stream_id);
   if (aIsMuted === bIsMuted) return 0;
   return aIsMuted ? 1 : -1;
 }
@@ -60,9 +76,12 @@ export function compareChatsByActivity(
   a: TimestampedChat,
   b: TimestampedChat,
   recentDmIds: readonly number[],
-  options: Required<ChatSortingOptions>,
+  options: ResolvedChatSortingOptions,
   muteSet: Set<number>,
 ): number {
+  const mutedPartition = compareMutedStreamPartition(a.c, b.c, muteSet);
+  if (mutedPartition !== 0) return mutedPartition;
+
   const personalUnread = options.prioritizePersonalUnread
     ? comparePersonalUnreadPriority(a.c, b.c)
     : 0;

@@ -106,6 +106,81 @@ describe("groupInboxEntries", () => {
 });
 
 describe("buildInboxEntries", () => {
+  it("omits muted stream and topic messages from inbox entries", async () => {
+    const { buildInboxEntries } = await import("./inbox.lib");
+    const messages: MockMessage[] = [
+      {
+        id: 10,
+        sender_id: 42,
+        sender_full_name: "Alice",
+        stream_id: 10,
+        channel: "muted-channel",
+        subject: "general",
+        content: "Muted channel unread",
+        timestamp: 300,
+        display_recipient: "muted-channel",
+      },
+      {
+        id: 11,
+        sender_id: 42,
+        sender_full_name: "Alice",
+        stream_id: 20,
+        channel: "engineering",
+        subject: "muted-topic",
+        content: "Muted topic unread",
+        timestamp: 200,
+        display_recipient: "engineering",
+      },
+      {
+        id: 12,
+        sender_id: 42,
+        sender_full_name: "Alice",
+        stream_id: 20,
+        channel: "engineering",
+        subject: "open-topic",
+        content: "Open topic unread",
+        timestamp: 100,
+        display_recipient: "engineering",
+      },
+    ];
+
+    const entries = buildInboxEntries(messages, 7, {
+      isStreamMuted: (streamId) => streamId === 10,
+      isEffectivelyMuted: (streamId, topic) => streamId === 20 && topic === "muted-topic",
+    });
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      key: "stream:20:open-topic",
+      messageIds: [12],
+      unreadCount: 1,
+    });
+  });
+
+  it("omits unread messages from muted streams even when topic predicate would allow them", async () => {
+    const { buildInboxEntries } = await import("./inbox.lib");
+    const messages: MockMessage[] = [
+      {
+        id: 20,
+        sender_id: 42,
+        sender_full_name: "Alice",
+        stream_id: 10,
+        channel: "muted-channel",
+        subject: "followed-topic",
+        content: "Muted channel unread",
+        timestamp: 300,
+        display_recipient: "muted-channel",
+      },
+    ];
+
+    const entries = buildInboxEntries(messages, 7, {
+      isStreamMuted: (streamId) => streamId === 10,
+      isEffectivelyMuted: () => false,
+    });
+
+    expect(entries).toEqual([]);
+  });
+
   it("groups unread private messages by DM conversation rather than sender", async () => {
     const { buildInboxEntries } = await import("./inbox.lib");
     const messages: MockMessage[] = [

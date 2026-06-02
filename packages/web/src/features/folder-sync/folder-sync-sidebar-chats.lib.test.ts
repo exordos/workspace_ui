@@ -409,4 +409,45 @@ describe("buildSelectedFolderSidebarChats", () => {
 
     expect(result.filter((chat) => chat.type === "stream")).toHaveLength(1);
   });
+
+  it("keeps fallback muted streams below unmuted chats", () => {
+    const folderId = "folder-1";
+    const result = buildSelectedFolderSidebarChats({
+      selectedFolderId: folderId,
+      folderChatIds: new Set(["stream:77", "stream:42"]),
+      folderItemsByFolderId: new Map([
+        [folderId, [folderItem("stream:77", 0), folderItem("stream:42", 1)]],
+      ]),
+      chatsSortedByLastMessage: [
+        {
+          type: "stream",
+          stream_id: 42,
+          name: "engineering",
+          topics: [],
+          lastMessage: "recent",
+          time: "10:00",
+        },
+      ],
+      streamsMap: new Map([
+        [
+          77,
+          {
+            stream_id: 77,
+            name: "muted",
+            lastMessage: "",
+            time: "",
+            ts: 0,
+            topics: new Map(),
+          },
+        ],
+      ]),
+      usersMapForChatInfo: new Map(),
+      currentUserId: 7,
+      isStreamMuted: (streamId) => streamId === 77,
+    });
+
+    expect(
+      result.map((chat) => (chat.type === "stream" ? `stream:${chat.stream_id}` : `dm:${chat.id}`)),
+    ).toEqual(["stream:42", "stream:77"]);
+  });
 });

@@ -3,6 +3,7 @@ import type { DmEntryInternal, StreamEntryInternal } from "~/shared/types/sideba
 import {
   applySidebarUnreadDeltas,
   computeSidebarUnreadTotals,
+  computeSidebarUnreadTotalsWithMute,
   countMentionsUnread,
 } from "./chat-list-sidebar-totals.lib";
 
@@ -70,6 +71,90 @@ describe("chat-list-sidebar-totals", () => {
         { streams: 3, dms: -1 },
       ),
     ).toEqual({ sidebarStreamsUnread: 7, sidebarDmsUnread: 1 });
+  });
+
+  it("computeSidebarUnreadTotalsWithMute excludes muted streams and topics", () => {
+    const streamsMap = new Map<number, StreamEntryInternal>([
+      [
+        10,
+        {
+          stream_id: 10,
+          name: "muted",
+          lastMessage: "",
+          time: "",
+          ts: 0,
+          topics: new Map([
+            [
+              "release",
+              {
+                subject: "release",
+                lastMessage: "",
+                time: "",
+                ts: 0,
+                unreadCount: 5,
+              },
+            ],
+          ]),
+        },
+      ],
+      [
+        20,
+        {
+          stream_id: 20,
+          name: "engineering",
+          lastMessage: "",
+          time: "",
+          ts: 0,
+          topics: new Map([
+            [
+              "muted-topic",
+              {
+                subject: "muted-topic",
+                lastMessage: "",
+                time: "",
+                ts: 0,
+                unreadCount: 3,
+              },
+            ],
+            [
+              "open-topic",
+              {
+                subject: "open-topic",
+                lastMessage: "",
+                time: "",
+                ts: 0,
+                unreadCount: 2,
+              },
+            ],
+          ]),
+        },
+      ],
+    ]);
+    const dmsMap = new Map<string, DmEntryInternal>([
+      [
+        "42",
+        {
+          id: 42,
+          name: "Alice",
+          slug: "42-alice",
+          isGroup: false,
+          lastMessage: "",
+          time: "",
+          ts: 0,
+          unreadCount: 4,
+        },
+      ],
+    ]);
+
+    expect(
+      computeSidebarUnreadTotalsWithMute(streamsMap, dmsMap, {
+        isStreamMuted: (streamId) => streamId === 10,
+        isEffectivelyMuted: (streamId, topic) => streamId === 20 && topic === "muted-topic",
+      }),
+    ).toEqual({
+      sidebarStreamsUnread: 2,
+      sidebarDmsUnread: 4,
+    });
   });
 
   it("countMentionsUnread skips own messages and read mentions", () => {

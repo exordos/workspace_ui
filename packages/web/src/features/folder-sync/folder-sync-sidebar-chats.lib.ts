@@ -17,6 +17,7 @@ export interface SelectedFolderSidebarProjectionInput {
   usersMapForChatInfo: ReadonlyMap<number, FolderSyncUserLike>;
   currentUserId: number | null;
   hideUnknownArchivedStreams?: boolean;
+  isStreamMuted?: (streamId: number) => boolean;
 }
 
 // Зачем: из folder items приходит набор chat_id в разных форматах, который нужен для быстрого membership-check.

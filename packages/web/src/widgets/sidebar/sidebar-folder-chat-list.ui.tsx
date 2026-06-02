@@ -46,6 +46,7 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
     setMuteErrorState({ id: Date.now(), retry });
   }, []);
   const isCompactDensity = useSettingsStore((s) => s.chatListDensity === "compact");
+  const mutedStreamIds = useMuteStore((s) => s.mutedStreamIds);
   const isStreamMuted = useMuteStore((s) => s.isStreamMuted);
   // Защита для совместимости: если управление раскрытиями не передано, рендерим без topic-expand логики.
   const canExpandStreams = onToggleStream != null && expandedStreamSlugs !== undefined;
@@ -66,8 +67,10 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
     () =>
       pinApiFolderUuid == null || pinnedChatIds.length === 0
         ? chats
-        : orderChatsWithPinnedFirst(chats, pinnedChatIds),
-    [chats, pinApiFolderUuid, pinnedChatIds],
+        : orderChatsWithPinnedFirst(chats, pinnedChatIds, {
+            isMuted: (chat) => chat.type === "stream" && mutedStreamIds.has(chat.stream_id),
+          }),
+    [chats, mutedStreamIds, pinApiFolderUuid, pinnedChatIds],
   );
   const closeTopicDialog = useCallback(() => {
     setTopicDialogState(null);

@@ -51,4 +51,13 @@ describe("orderChatsWithPinnedFirst", () => {
     const chats = [STREAM_A, STREAM_B];
     expect(orderChatsWithPinnedFirst(chats, [])).toEqual(chats);
   });
+
+  it("keeps pinned muted chats below unmuted chats", () => {
+    const chats = [STREAM_B, DM_CHAT, STREAM_A];
+    const ordered = orderChatsWithPinnedFirst(chats, ["12"], {
+      isMuted: (chat) => chat.type === "stream" && chat.stream_id === 12,
+    });
+
+    expect(ordered.map((c) => (c.type === "stream" ? c.stream_id : c.id))).toEqual([42, 11, 12]);
+  });
 });

@@ -6,6 +6,11 @@
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import type { DmEntryInternal, StreamEntryInternal } from "~/shared/types/sidebar-chat";
 
+export interface SidebarUnreadMutePredicates {
+  isStreamMuted?: (streamId: number) => boolean;
+  isEffectivelyMuted?: (streamId: number, topic: string) => boolean;
+}
+
 export function computeSidebarUnreadTotals(
   streamsMap: Map<number, StreamEntryInternal>,
   dmsMap: Map<string, DmEntryInternal>,
@@ -16,6 +21,31 @@ export function computeSidebarUnreadTotals(
       sidebarStreamsUnread += topic.unreadCount;
     }
   }
+  let sidebarDmsUnread = 0;
+  for (const dm of dmsMap.values()) {
+    sidebarDmsUnread += dm.unreadCount;
+  }
+  return { sidebarStreamsUnread, sidebarDmsUnread };
+}
+
+export function computeSidebarUnreadTotalsWithMute(
+  streamsMap: Map<number, StreamEntryInternal>,
+  dmsMap: Map<string, DmEntryInternal>,
+  predicates: SidebarUnreadMutePredicates,
+): { sidebarStreamsUnread: number; sidebarDmsUnread: number } {
+  let sidebarStreamsUnread = 0;
+  for (const stream of streamsMap.values()) {
+    if (predicates.isStreamMuted?.(stream.stream_id)) {
+      continue;
+    }
+    for (const topic of stream.topics.values()) {
+      if (predicates.isEffectivelyMuted?.(stream.stream_id, topic.subject)) {
+        continue;
+      }
+      sidebarStreamsUnread += topic.unreadCount;
+    }
+  }
+
   let sidebarDmsUnread = 0;
   for (const dm of dmsMap.values()) {
     sidebarDmsUnread += dm.unreadCount;

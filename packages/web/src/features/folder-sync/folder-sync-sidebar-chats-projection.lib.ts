@@ -229,6 +229,24 @@ function sortFolderItemsByOrderIndex(items: readonly FolderItemForClient[]): Fol
   return [...items].sort((leftItem, rightItem) => leftItem.orderIndex - rightItem.orderIndex);
 }
 
+function orderMutedStreamsLast(
+  chats: readonly SidebarChat[],
+  isStreamMuted: ((streamId: number) => boolean) | undefined,
+): SidebarChat[] {
+  if (isStreamMuted == null) return [...chats];
+
+  const unmutedChats: SidebarChat[] = [];
+  const mutedChats: SidebarChat[] = [];
+  for (const chat of chats) {
+    if (chat.type === "stream" && isStreamMuted(chat.stream_id)) {
+      mutedChats.push(chat);
+    } else {
+      unmutedChats.push(chat);
+    }
+  }
+  return [...unmutedChats, ...mutedChats];
+}
+
 export function buildCustomFolderSidebarChats(
   input: SelectedFolderSidebarProjectionInput,
 ): SidebarChat[] {
@@ -241,6 +259,7 @@ export function buildCustomFolderSidebarChats(
     usersMapForChatInfo,
     currentUserId,
     hideUnknownArchivedStreams = false,
+    isStreamMuted,
   } = input;
 
   if (folderChatIds == null) {
@@ -252,7 +271,7 @@ export function buildCustomFolderSidebarChats(
   );
   const selectedFolderItems = folderItemsByFolderId.get(selectedFolderId) ?? [];
   if (selectedFolderItems.length === 0) {
-    return filterHiddenDmChats(matchedChats, currentUserId);
+    return orderMutedStreamsLast(filterHiddenDmChats(matchedChats, currentUserId), isStreamMuted);
   }
 
   const { knownMatchedStreamIds, knownMatchedDmKeys } = collectKnownMatchedChatKeys(
@@ -273,8 +292,11 @@ export function buildCustomFolderSidebarChats(
     hideUnknownArchivedStreams,
   );
 
-  return filterHiddenDmChats(
-    [...fallbackDmChats, ...fallbackStreamChats, ...matchedChats],
-    currentUserId,
+  return orderMutedStreamsLast(
+    filterHiddenDmChats(
+      [...fallbackDmChats, ...fallbackStreamChats, ...matchedChats],
+      currentUserId,
+    ),
+    isStreamMuted,
   );
 }

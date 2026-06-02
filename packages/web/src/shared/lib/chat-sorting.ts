@@ -15,7 +15,7 @@ import type {
 
 export type { ChatSortingOptions } from "./chat-sorting-compare.lib";
 
-import type { ChatSortingOptions } from "./chat-sorting-compare.lib";
+import type { ChatSortingOptions, ResolvedChatSortingOptions } from "./chat-sorting-compare.lib";
 
 export function sortChatsByLastMessage(
   streamsMap: Map<number, StreamEntryInternal>,
@@ -26,10 +26,13 @@ export function sortChatsByLastMessage(
   const prioritizePersonalUnread = options.prioritizePersonalUnread ?? false;
   const prioritizeUnmutedUnreadChannels = options.prioritizeUnmutedUnreadChannels ?? false;
   const hideUnknownArchivedStreams = options.hideUnknownArchivedStreams ?? false;
-  const withTs = buildTimestampedSidebarChats(streamsMap, dmsMap, hideUnknownArchivedStreams);
+  const withTs = buildTimestampedSidebarChats(streamsMap, dmsMap, hideUnknownArchivedStreams, {
+    mutedStreamIds: muteSet,
+    isEffectivelyMuted: options.isEffectivelyMuted,
+  });
 
   const recentDmIds = loadRecentDmPartners();
-  const resolvedOptions: Required<ChatSortingOptions> = {
+  const resolvedOptions: ResolvedChatSortingOptions = {
     prioritizePersonalUnread,
     prioritizeUnmutedUnreadChannels,
     hideUnknownArchivedStreams,

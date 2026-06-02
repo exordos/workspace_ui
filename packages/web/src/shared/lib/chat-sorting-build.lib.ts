@@ -13,20 +13,36 @@ export interface TimestampedSidebarChat {
   ts: number;
 }
 
-function streamTopicsToSidebarTopics(s: StreamEntryInternal) {
-  return Array.from(s.topics.values())
-    .sort((a, b) => b.ts - a.ts)
-    .map((t) => ({
-      subject: t.subject,
-      lastMessage: t.lastMessage,
-      lastMessageSenderName: t.lastMessageSenderName,
-      time: t.time,
-      badge: t.unreadCount > 0 ? t.unreadCount : undefined,
-    }));
+export interface SidebarChatMuteProjectionOptions {
+  mutedStreamIds?: Set<number>;
+  isEffectivelyMuted?: (streamId: number, topic: string) => boolean;
 }
 
-function streamEntryToTimestampedChat(s: StreamEntryInternal): TimestampedSidebarChat {
-  const topics = streamTopicsToSidebarTopics(s);
+function streamTopicsToSidebarTopics(
+  s: StreamEntryInternal,
+  options: SidebarChatMuteProjectionOptions,
+) {
+  const streamMuted = options.mutedStreamIds?.has(s.stream_id) ?? false;
+  return Array.from(s.topics.values())
+    .sort((a, b) => b.ts - a.ts)
+    .map((t) => {
+      const topicMuted =
+        streamMuted || (options.isEffectivelyMuted?.(s.stream_id, t.subject) ?? false);
+      return {
+        subject: t.subject,
+        lastMessage: t.lastMessage,
+        lastMessageSenderName: t.lastMessageSenderName,
+        time: t.time,
+        badge: !topicMuted && t.unreadCount > 0 ? t.unreadCount : undefined,
+      };
+    });
+}
+
+function streamEntryToTimestampedChat(
+  s: StreamEntryInternal,
+  options: SidebarChatMuteProjectionOptions,
+): TimestampedSidebarChat {
+  const topics = streamTopicsToSidebarTopics(s, options);
   const badge = topics.reduce((sum, t) => sum + (t.badge ?? 0), 0);
   return {
     ts: s.ts,
@@ -65,12 +81,13 @@ export function buildTimestampedSidebarChats(
   streamsMap: Map<number, StreamEntryInternal>,
   dmsMap: Map<string, DmEntryInternal>,
   hideUnknownArchivedStreams: boolean,
+  options: SidebarChatMuteProjectionOptions = {},
 ): TimestampedSidebarChat[] {
   const withTs: TimestampedSidebarChat[] = [];
   for (const s of streamsMap.values()) {
     if (s.isArchived === true) continue;
     if (hideUnknownArchivedStreams && s.isArchived == null) continue;
-    withTs.push(streamEntryToTimestampedChat(s));
+    withTs.push(streamEntryToTimestampedChat(s, options));
   }
   for (const x of dmsMap.values()) {
     withTs.push(dmEntryToTimestampedChat(x));

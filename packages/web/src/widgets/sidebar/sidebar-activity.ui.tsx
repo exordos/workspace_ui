@@ -1,8 +1,10 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useActivityStore } from "~/entities/activity/activity.model";
+import { computeSidebarUnreadTotalsWithMute } from "~/entities/chat-list/chat-list-sidebar-totals.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useDraftStore } from "~/entities/draft/draft.model";
+import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
 import { extractOrgRouteFromPathname, withCurrentOrgRoute } from "~/shared/lib/org-route";
@@ -39,7 +41,30 @@ export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle
   const { pathname } = useLocation();
   const { scopedPathname } = extractOrgRouteFromPathname(pathname);
   const currentUserId = useChatListStore((s) => s.currentUserId);
-  const inboxCount = useChatListStore((s) => s.sidebarStreamsUnread + s.sidebarDmsUnread);
+  const streamsMap = useChatListStore((s) => s.streamsMap);
+  const dmsMap = useChatListStore((s) => s.dmsMap);
+  const mutedStreamIds = useMuteStore((s) => s.mutedStreamIds);
+  const mutedTopicKeys = useMuteStore((s) => s.mutedTopicKeys);
+  const unmutedTopicKeys = useMuteStore((s) => s.unmutedTopicKeys);
+  const followedTopicKeys = useMuteStore((s) => s.followedTopicKeys);
+  const isStreamMuted = useMuteStore((s) => s.isStreamMuted);
+  const isEffectivelyMuted = useMuteStore((s) => s.isEffectivelyMuted);
+  const inboxCount = React.useMemo(() => {
+    const totals = computeSidebarUnreadTotalsWithMute(streamsMap, dmsMap, {
+      isStreamMuted,
+      isEffectivelyMuted,
+    });
+    return totals.sidebarStreamsUnread + totals.sidebarDmsUnread;
+  }, [
+    dmsMap,
+    followedTopicKeys,
+    isEffectivelyMuted,
+    isStreamMuted,
+    mutedStreamIds,
+    mutedTopicKeys,
+    streamsMap,
+    unmutedTopicKeys,
+  ]);
   const mentionsCount = useChatListStore((s) => s.mentionsUnreadCount);
   const activityListId = "sidebar-activity-list";
   const draftsCount = useDraftStore((s) => s.nonEmptyDraftCount);

@@ -14,6 +14,7 @@ import { getInstanceMessagesAscending, upsertChatMessages } from "~/shared/lib/m
 import { chatKeyFromMockMessage } from "~/shared/lib/message-cache-keys.lib";
 import { zulipMessageCacheWindowNForChatKey } from "~/shared/lib/zulip-message-window.lib";
 import { buildInboxEntries } from "./inbox.lib";
+import type { InboxMuteFilterOptions } from "./inbox.lib";
 import type { InboxEntry } from "./inbox.types";
 
 const log = createLogger("inbox:api");
@@ -69,6 +70,7 @@ async function persistUnreadMessagesToIdb(
 // Серверная загрузка unread по narrow is:unread с последующей группировкой.
 export async function fetchInboxEntries(
   currentUserId: number | null = null,
+  options: InboxMuteFilterOptions = {},
 ): Promise<InboxEntry[]> {
   const start = performance.now();
   try {
@@ -82,7 +84,7 @@ export async function fetchInboxEntries(
     await persistUnreadMessagesToIdb(messages, currentUserId);
     const durationMs = Math.round(performance.now() - start);
     logApiCall("GET", "/messages?narrow=is:unread", { status: 200, durationMs });
-    return buildInboxEntries(messages, currentUserId);
+    return buildInboxEntries(messages, currentUserId, options);
   } catch (err) {
     const durationMs = Math.round(performance.now() - start);
     logApiCall("GET", "/messages?narrow=is:unread", {
@@ -99,9 +101,10 @@ export async function fetchInboxEntries(
 export async function hydrateInboxEntriesFromCache(
   instanceId: string | null,
   currentUserId: number | null = null,
+  options: InboxMuteFilterOptions = {},
 ): Promise<InboxEntry[]> {
   if (instanceId == null) return [];
   const messages = await getInstanceMessagesAscending(instanceId);
   const unread = messages.filter((message) => !message.flags?.includes("read"));
-  return buildInboxEntries(unread, currentUserId);
+  return buildInboxEntries(unread, currentUserId, options);
 }
