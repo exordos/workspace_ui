@@ -19,6 +19,11 @@ const createSavedSnippetMock = vi.hoisted(() => vi.fn());
 const emojiPickerMock = vi.hoisted(() => vi.fn());
 const fetchRealmEmojisMock = vi.hoisted(() => vi.fn());
 
+vi.mock("~/shared/config/constants", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("~/shared/config/constants")>();
+  return { ...actual, KEYBOARD_SHORTCUTS_ENABLED: true };
+});
+
 vi.mock("~/shared/lib/webview", async () => {
   const actual = await vi.importActual("~/shared/lib/webview");
   return {

@@ -15,6 +15,7 @@
  */
 
 import { useEffect, useRef } from "react";
+import { KEYBOARD_SHORTCUTS_ENABLED } from "~/shared/config/constants";
 import { dispatchShortcutKeyDown, type ShortcutActiveHandler } from "./shortcuts-keydown.lib";
 
 // ---------------------------------------------------------------------------
@@ -160,6 +161,7 @@ export function useShortcut(
   options: UseShortcutOptions = {},
 ): void {
   const { context = "global", enabled = true } = options;
+  const effectiveEnabled = enabled && KEYBOARD_SHORTCUTS_ENABLED;
   const handlerRef = useRef(handler);
   useEffect(() => {
     handlerRef.current = handler;
@@ -172,12 +174,12 @@ export function useShortcut(
       combo,
       context,
       handler: () => handlerRef.current(),
-      enabled,
+      enabled: effectiveEnabled,
     };
 
     const unregister = registerHandler(h);
     return unregister;
-  }, [combo, context, enabled]);
+  }, [combo, context, effectiveEnabled]);
 }
 
 export function useShortcuts(
@@ -201,7 +203,7 @@ export function useShortcuts(
         combo: s.combo,
         context: s.context ?? "global",
         handler: s.handler,
-        enabled: s.enabled ?? true,
+        enabled: (s.enabled ?? true) && KEYBOARD_SHORTCUTS_ENABLED,
       }),
     );
 
