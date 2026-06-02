@@ -457,7 +457,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
 
   const handleFileInputEvent = useCallback(
     (event: React.ChangeEvent<HTMLInputElement> | React.FormEvent<HTMLInputElement>) => {
-      handleFileChangeFromHook(event);
+      handleFileChangeFromHook(event as React.ChangeEvent<HTMLInputElement>);
     },
     [handleFileChangeFromHook],
   );

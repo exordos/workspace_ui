@@ -4,6 +4,7 @@
 
 import { create } from "zustand";
 import { logStoreAction } from "~/shared/lib/logger";
+import { applyMarkAsReadToInboxEntries } from "./inbox-mark-read.lib";
 import type { InboxEntry } from "./inbox.types";
 
 const EMPTY_ENTRIES: InboxEntry[] = [];
@@ -63,22 +64,10 @@ export const useInboxStore = create<InboxState>((set, get) => ({
   },
 
   markAsRead(messageIds) {
-    const idsSet = new Set(messageIds);
     logStoreAction("inbox", "markAsRead", { count: messageIds.length });
     set((state) => ({
       // Локально выкидываем прочитанные сообщения из каждого entry.
-      entries: state.entries
-        .map((entry) => {
-          const remaining = entry.messageIds.filter((id) => !idsSet.has(id));
-          if (remaining.length === entry.messageIds.length) return entry;
-          if (remaining.length === 0) return null;
-          return {
-            ...entry,
-            messageIds: remaining,
-            unreadCount: remaining.length,
-          };
-        })
-        .filter((e): e is InboxEntry => e !== null),
+      entries: applyMarkAsReadToInboxEntries(state.entries, messageIds),
     }));
   },
 

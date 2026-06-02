@@ -34,8 +34,10 @@ function getPlatformLabel(): string {
   const userAgentDataPlatform = (navigator as Navigator & { userAgentData?: { platform?: string } })
     .userAgentData?.platform;
 
-  const platform = userAgentDataPlatform ?? navigator.platform;
-  return platform && platform.trim().length > 0 ? platform : t("settings.aboutUnknown");
+  if (userAgentDataPlatform != null && userAgentDataPlatform.trim().length > 0) {
+    return userAgentDataPlatform;
+  }
+  return t("settings.aboutUnknown");
 }
 
 export const RightPanelAbout: React.FC = () => {

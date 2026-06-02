@@ -3,6 +3,7 @@ import { t } from "~/i18n/i18n";
 import { Avatar } from "~/shared/ui/avatar";
 import { Copyable } from "~/shared/ui/copyable";
 import { Icon } from "~/shared/ui/icon";
+import { resolveLastSeenLabel } from "./right-panel-presence-label.lib";
 import { RightPanelUserContactRowItem } from "./right-panel-user-contact-row.ui";
 import type { RightPanelUserContactRow } from "./right-panel-user-contact.lib";
 import type { RightPanelUserInfo } from "./right-panel.types";
@@ -40,12 +41,7 @@ export const RightPanelUserProfileHeader = React.memo(function RightPanelUserPro
     if (directMessageUserId != null) onOpenDirectMessage?.(directMessageUserId);
   }, [directMessageUserId, onOpenDirectMessage]);
 
-  const lastSeenLabel =
-    user.lastSeen != null
-      ? user.lastSeen === t("presence.online")
-        ? t("presence.online")
-        : t("presence.lastSeen", { time: user.lastSeen })
-      : null;
+  const lastSeenLabel = resolveLastSeenLabel(user.lastSeen);
 
   return (
     <header className="border-b border-border-subtle pb-3">

@@ -34,15 +34,18 @@ import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { resolveTopicMoveTargetMessageIds } from "~/shared/lib/update-message-topic-move.lib";
 import { zulipMessageCacheWindowN } from "~/shared/lib/zulip-message-window.lib";
 import {
+  computeAppendMessageStateUpdate,
+  type MessageAppendIdbPlan,
+} from "./message-append-state.lib";
+import {
   patchPartitionMetaByMessages,
   upsertMessagesByChatPartitions,
 } from "./message-cache-partition.lib";
-import { parseDmKeyToUserIds } from "./message-chat-context.lib";
+import { buildMessageFetchNarrow } from "./message-chat-context.lib";
 import { loadInitialMessagesRouteDriven } from "./message-initial-loader.lib";
 import { persistChatMessagesToIndexedDb } from "./message-local-cache.lib";
-import { buildSendingEchoKeyIndex } from "./message-outgoing-echo-index.lib";
-import { outgoingEchoContentMatches } from "./message-outgoing-echo.lib";
 import { patchMessageAtId, patchMessagesFlags } from "./message-patch.lib";
+import { applyMessageReactionUpdate } from "./message-reaction-update.lib";
 import type { CurrentChatContext, CurrentChatMessagesState } from "./message.model.types";
 
 export type { CurrentChatContext } from "./message.model.types";
@@ -259,86 +262,9 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
   },
 
   appendMessage(msg) {
-    const idbRef: {
-      current:
-        | { kind: "none" }
-        | { kind: "put"; message: MockMessage }
-        | { kind: "mergeReplace"; removeId: number; message: MockMessage };
-    } = { current: { kind: "none" } };
+    const idbRef: { current: MessageAppendIdbPlan } = { current: { kind: "none" } };
 
-    set((state) => {
-      if (msg.id > 0) {
-        const sendingEchoIndex = buildSendingEchoKeyIndex(state.messages);
-        for (let qi = 0; qi < state.pendingOutgoingEchoKeys.length; qi++) {
-          const echoKey = state.pendingOutgoingEchoKeys[qi]!;
-          const msgIdx = sendingEchoIndex.get(echoKey) ?? -1;
-          const pendingMessage = msgIdx >= 0 ? state.messages[msgIdx] : undefined;
-          if (
-            pendingMessage?.delivery_status === "sending" &&
-            pendingMessage.sender_id === msg.sender_id &&
-            outgoingEchoContentMatches(pendingMessage, msg)
-          ) {
-            const prev = state.messages[msgIdx]!;
-            const stableKey = prev.local_echo_key ?? prev.id;
-            const merged = withPendingLinkPreviewsIfPersisted(
-              mergeMessagePreservingLinkPreview(
-                withOutgoingDeliveryStatus({ ...msg, local_echo_key: stableKey }),
-                prev,
-              ),
-            );
-            const queue = [...state.pendingOutgoingEchoKeys];
-            queue.splice(qi, 1);
-            const updated = [...state.messages];
-            updated[msgIdx] = merged;
-            idbRef.current = { kind: "mergeReplace", removeId: prev.id, message: merged };
-            return { messages: updated, pendingOutgoingEchoKeys: queue };
-          }
-        }
-      }
-
-      if (msg.id < 0 && msg.delivery_status === "failed") {
-        const echoKey = msg.local_echo_key ?? msg.id;
-        const nextQueue = state.pendingOutgoingEchoKeys.filter((k) => k !== echoKey);
-        const idx = state.messages.findIndex((m) => m.id === msg.id);
-        if (idx >= 0) {
-          const updated = [...state.messages];
-          updated[idx] = msg;
-          return { messages: updated, pendingOutgoingEchoKeys: nextQueue };
-        }
-        return {
-          messages: [...state.messages, msg],
-          pendingOutgoingEchoKeys: nextQueue,
-        };
-      }
-
-      if (msg.id < 0 && msg.delivery_status === "sending") {
-        const echoKey = msg.local_echo_key ?? msg.id;
-        const idx = state.messages.findIndex((m) => m.id === msg.id);
-        if (idx >= 0) {
-          const updated = [...state.messages];
-          updated[idx] = msg;
-          return { messages: updated };
-        }
-        return {
-          messages: [...state.messages, msg],
-          pendingOutgoingEchoKeys: [...state.pendingOutgoingEchoKeys, echoKey],
-        };
-      }
-
-      const normalizedMsg = withPendingLinkPreviewsIfPersisted(msg);
-
-      const idx = state.messages.findIndex((m) => m.id === normalizedMsg.id);
-      if (idx >= 0) {
-        const updated = [...state.messages];
-        updated[idx] = normalizedMsg;
-        idbRef.current =
-          normalizedMsg.id < 0 ? { kind: "none" } : { kind: "put", message: normalizedMsg };
-        return { messages: updated };
-      }
-      idbRef.current =
-        normalizedMsg.id < 0 ? { kind: "none" } : { kind: "put", message: normalizedMsg };
-      return { messages: [...state.messages, normalizedMsg] };
-    });
+    set((state) => computeAppendMessageStateUpdate(state, msg, idbRef));
 
     const state = get();
     if (!state.context || !persistChatMessagesToIndexedDb()) return;
@@ -508,22 +434,9 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
 
   updateMessageReaction(messageId, reaction, op) {
     set((state) => ({
-      messages: patchMessageAtId(state.messages, messageId, (m) => {
-        const list = m.reactions ?? [];
-        const exists = list.some(
-          (r) => r.emoji_name === reaction.emoji_name && r.user_id === reaction.user_id,
-        );
-        if (op === "add") {
-          if (exists) return m;
-          return { ...m, reactions: [...list, reaction] };
-        }
-        return {
-          ...m,
-          reactions: list.filter(
-            (r) => !(r.emoji_name === reaction.emoji_name && r.user_id === reaction.user_id),
-          ),
-        };
-      }),
+      messages: patchMessageAtId(state.messages, messageId, (m) =>
+        applyMessageReactionUpdate(m, reaction, op),
+      ),
     }));
     const state = get();
     if (!state.context) return;
@@ -879,18 +792,15 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     });
     set({ isLoadingMore: true });
     try {
-      const narrow =
-        ctx.type === "stream"
-          ? ctx.streamWideView
-            ? [{ operator: "stream", operand: ctx.streamName }]
-            : [
-                { operator: "stream", operand: ctx.streamName },
-                { operator: "topic", operand: ctx.topic },
-              ]
-          : [{ operator: "dm", operand: parseDmKeyToUserIds(ctx.dmKey, currentUserId) }];
-      const page = await fetchMessagesWithNarrowPage(narrow, oldest.id, pageSize, 0, {
-        applyMarkdown: true,
-      });
+      const page = await fetchMessagesWithNarrowPage(
+        buildMessageFetchNarrow(ctx, currentUserId),
+        oldest.id,
+        pageSize,
+        0,
+        {
+          applyMarkdown: true,
+        },
+      );
       const withoutAnchor = page.messages.filter((m) => m.id !== oldest.id);
       const existingIds = new Set(get().messages.map((m) => m.id));
       const fresh = withoutAnchor.filter((m) => !existingIds.has(m.id));
@@ -999,18 +909,15 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     });
     set({ isLoadingMore: true, isLoadingNewer: true });
     try {
-      const narrow =
-        ctx.type === "stream"
-          ? ctx.streamWideView
-            ? [{ operator: "stream", operand: ctx.streamName }]
-            : [
-                { operator: "stream", operand: ctx.streamName },
-                { operator: "topic", operand: ctx.topic },
-              ]
-          : [{ operator: "dm", operand: parseDmKeyToUserIds(ctx.dmKey, currentUserId) }];
-      const page = await fetchMessagesWithNarrowPage(narrow, newest.id, 0, pageSize, {
-        applyMarkdown: true,
-      });
+      const page = await fetchMessagesWithNarrowPage(
+        buildMessageFetchNarrow(ctx, currentUserId),
+        newest.id,
+        0,
+        pageSize,
+        {
+          applyMarkdown: true,
+        },
+      );
       const withoutAnchor = page.messages.filter((m) => m.id !== newest.id);
       const existingIds = new Set(get().messages.map((m) => m.id));
       const fresh = withoutAnchor.filter((m) => !existingIds.has(m.id));

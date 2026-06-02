@@ -2,9 +2,9 @@
  * Zulip users and presence API.
  */
 import { guard } from "~/shared/lib/guards";
-import { getRealmBaseUrl } from "./zulip-client.internal";
 import { parseCurrentUserFromApiData } from "./zulip-current-user.lib";
 import { zulipPipelineGet } from "./zulip-pipeline.internal";
+import { normalizeRealmEmojiMap } from "./zulip-realm-emoji.lib";
 import type {
   AvatarUrlByUserId,
   RealmEmoji,
@@ -12,21 +12,6 @@ import type {
   ZulipCurrentUser,
   ZulipUserMember,
 } from "./zulip.types";
-
-function resolveRealmRelativeUrl(path: string): string {
-  const normalizedPath = path.trim();
-  if (!normalizedPath) {
-    return "";
-  }
-  if (normalizedPath.startsWith("http://") || normalizedPath.startsWith("https://")) {
-    return normalizedPath;
-  }
-  const base = getRealmBaseUrl();
-  if (!base) {
-    return "";
-  }
-  return `${base}${normalizedPath.startsWith("/") ? normalizedPath : `/${normalizedPath}`}`;
-}
 
 export async function getCurrentUser(): Promise<ZulipCurrentUser | null> {
   const res = await zulipPipelineGet("/users/me");
@@ -51,7 +36,13 @@ export async function fetchUsers(): Promise<ZulipUserMember[]> {
     users?: ZulipUserMember[];
   };
   if (data.result === "error") return [];
-  return Array.isArray(data.members) ? data.members : Array.isArray(data.users) ? data.users : [];
+  if (Array.isArray(data.members)) {
+    return data.members;
+  }
+  if (Array.isArray(data.users)) {
+    return data.users;
+  }
+  return [];
 }
 
 /** Fetches a single user by ID (GET /users/{user_id}). Used for DM profile panel. */
@@ -91,51 +82,13 @@ export async function fetchRealmEmojis(): Promise<RealmEmoji[]> {
     result?: string;
     emoji?: Record<
       string,
-      {
-        id?: string | number;
-        name?: string;
-        source_url?: string;
-        deactivated?: boolean;
-      }
+      { id?: string | number; name?: string; source_url?: string; deactivated?: boolean }
     >;
   };
   if (data.result === "error") {
     return [];
   }
-  if (data.emoji == null || typeof data.emoji !== "object" || Array.isArray(data.emoji)) {
-    return [];
-  }
-
-  const normalized: RealmEmoji[] = [];
-  for (const value of Object.values(data.emoji)) {
-    if (typeof value !== "object" || value == null) {
-      continue;
-    }
-    if (value.deactivated === true) {
-      continue;
-    }
-    const id =
-      typeof value.id === "string"
-        ? value.id.trim()
-        : typeof value.id === "number"
-          ? String(value.id)
-          : "";
-    const name = typeof value.name === "string" ? value.name.trim() : "";
-    const sourceUrl = typeof value.source_url === "string" ? value.source_url.trim() : "";
-    if (!id || !name || !sourceUrl) {
-      continue;
-    }
-    const imgUrl = resolveRealmRelativeUrl(sourceUrl);
-    if (!imgUrl) {
-      continue;
-    }
-    normalized.push({
-      id,
-      names: [name],
-      imgUrl,
-    });
-  }
-  return normalized;
+  return normalizeRealmEmojiMap(data.emoji);
 }
 
 /**

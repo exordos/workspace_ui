@@ -6,6 +6,11 @@ import { Badge } from "~/shared/ui/badge";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
 import { Icon } from "~/shared/ui/icon";
 import { SearchInput } from "~/shared/ui/search-input";
+import { createQuickListFolderSelectHandler } from "./folder-rail-quick-list-item.lib";
+import {
+  resolveQuickListFolderIconName,
+  resolveQuickListItemClassName,
+} from "./folder-rail-quick-list.lib";
 import { FOLDER_QUICK_LIST_SHORTCUT, resolveFolderSystemType } from "./folder-rail.lib";
 import type { FolderQuickListProps } from "./folder-rail-quick-list.types";
 
@@ -162,34 +167,17 @@ export const FolderQuickList: React.FC<FolderQuickListProps> = React.memo(functi
               {filteredFolders.map(({ folder, index }, listIndex) => {
                 const systemType = resolveFolderSystemType(folder, index);
                 const isSystemFolder = systemType !== "created";
-                const iconName =
-                  systemType === "all"
-                    ? "folders"
-                    : systemType === "personal"
-                      ? "profile"
-                      : systemType === "channels"
-                        ? "channels"
-                        : "folder";
+                const iconName = resolveQuickListFolderIconName(systemType);
                 const isSelected = selectedFolderId === folder.id;
                 const isActive = resolvedActiveIndex === listIndex;
                 return (
                   <button
                     key={folder.id}
                     type="button"
-                    ref={(node) => {
-                      if (isActive) {
-                        activeItemRef.current = node;
-                      }
-                    }}
+                    ref={isActive ? activeItemRef : undefined}
                     data-active={isActive ? "true" : undefined}
-                    onClick={() => handleFolderSelect(folder.id)}
-                    className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-text-primary transition-colors ${
-                      isActive
-                        ? "bg-accent/20"
-                        : isSelected
-                          ? "bg-accent/10"
-                          : "hover:bg-sidebar-hover"
-                    }`}
+                    onClick={createQuickListFolderSelectHandler(handleFolderSelect, folder.id)}
+                    className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-text-primary transition-colors ${resolveQuickListItemClassName(isActive, isSelected)}`}
                   >
                     <span
                       className={`inline-flex shrink-0 ${isSystemFolder ? "text-accent" : "text-current"}`}

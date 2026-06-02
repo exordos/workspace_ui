@@ -5,9 +5,9 @@ import { createLogger } from "~/shared/lib/logger";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import {
   ZULIP_DM_CHAT_NUM_AFTER,
-  ZULIP_DM_CHAT_NUM_BEFORE,
+  ZULIP_DM_ANCHOR_NUM_BEFORE,
+  ZULIP_STREAM_ANCHOR_NUM_BEFORE,
   ZULIP_STREAM_CHAT_NUM_AFTER,
-  ZULIP_STREAM_CHAT_NUM_BEFORE,
 } from "~/shared/lib/zulip-message-window.lib";
 import {
   normalizeZulipMessagesNarrowForApi,
@@ -16,6 +16,7 @@ import {
 import { getClient, buildMessagesQueryParams } from "./zulip-client.internal";
 import { mockMessageFromGetMessageApiData, rawMessageToMockMessage } from "./zulip-message-map.lib";
 import { postZulipSendMessage } from "./zulip-message-send.internal";
+import { mapMessagesPageFromApiData } from "./zulip-messages-page.lib";
 import {
   zulipPipelineDelete,
   zulipPipelineGet,
@@ -337,7 +338,7 @@ export async function fetchMessages(
   const page = await fetchMessagesWithNarrowPage(
     narrow,
     "newest",
-    ZULIP_STREAM_CHAT_NUM_BEFORE,
+    ZULIP_STREAM_ANCHOR_NUM_BEFORE,
     ZULIP_STREAM_CHAT_NUM_AFTER,
     { ...options, applyMarkdown: false },
   );
@@ -349,7 +350,7 @@ export async function fetchMessages(
 export async function fetchMessagesWithNarrow(
   narrow: { operator: string; operand: string | number | number[] }[],
   anchor: string | number = "newest",
-  numBefore = ZULIP_STREAM_CHAT_NUM_BEFORE,
+  numBefore = ZULIP_STREAM_ANCHOR_NUM_BEFORE,
   numAfter = ZULIP_STREAM_CHAT_NUM_AFTER,
   options?: { signal?: AbortSignal; applyMarkdown?: boolean },
 ): Promise<MockMessage[]> {
@@ -357,12 +358,57 @@ export async function fetchMessagesWithNarrow(
   return page.messages;
 }
 
+async function fetchMessagesWithNarrowPageViaPipeline(args: {
+  apiNarrow: { operator: string; operand: string | number | number[] }[];
+  validatedAnchor: string | number;
+  validatedNumBefore: number;
+  validatedNumAfter: number;
+  applyMarkdown: boolean;
+  signal: AbortSignal;
+}): Promise<MessagesPageResult> {
+  const query = buildMessagesQueryParams({
+    narrow: args.apiNarrow.length > 0 ? args.apiNarrow : undefined,
+    anchor: args.validatedAnchor,
+    num_before: args.validatedNumBefore,
+    num_after: args.validatedNumAfter,
+  });
+  query.apply_markdown = args.applyMarkdown ? "true" : "false";
+  const response = await zulipPipelineGet("/messages", query, args.signal);
+  throwIfZulipPipelineGetNull(response, args.signal);
+  if (!response.ok) {
+    throw new Error(t("app.errorStatus", { status: String(response.status) }));
+  }
+  const data = response.data as Parameters<typeof mapMessagesPageFromApiData>[0];
+  if (args.signal.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
+  return mapMessagesPageFromApiData(data, mapZulipMessage);
+}
+
+async function fetchMessagesWithNarrowPageViaClient(args: {
+  apiNarrow: { operator: string; operand: string | number | number[] }[];
+  validatedAnchor: string | number;
+  validatedNumBefore: number;
+  validatedNumAfter: number;
+  applyMarkdown: boolean;
+}): Promise<MessagesPageResult> {
+  const client = await getClient();
+  const data = (await client.messages.retrieve({
+    narrow: args.apiNarrow.length > 0 ? args.apiNarrow : undefined,
+    anchor: args.validatedAnchor,
+    num_before: args.validatedNumBefore,
+    num_after: args.validatedNumAfter,
+    apply_markdown: args.applyMarkdown,
+  })) as Parameters<typeof mapMessagesPageFromApiData>[0];
+  return mapMessagesPageFromApiData(data, mapZulipMessage);
+}
+
 // Универсальная загрузка страницы сообщений по narrow
 // с метаданными пагинации.
 export async function fetchMessagesWithNarrowPage(
   narrow: { operator: string; operand: string | number | number[] }[],
   anchor: string | number = "newest",
-  numBefore = ZULIP_STREAM_CHAT_NUM_BEFORE,
+  numBefore = ZULIP_STREAM_ANCHOR_NUM_BEFORE,
   numAfter = ZULIP_STREAM_CHAT_NUM_AFTER,
   options?: { signal?: AbortSignal; applyMarkdown?: boolean },
 ): Promise<MessagesPageResult> {
@@ -376,58 +422,23 @@ export async function fetchMessagesWithNarrowPage(
   }
   try {
     if (options?.signal) {
-      const query = buildMessagesQueryParams({
-        narrow: apiNarrow.length > 0 ? apiNarrow : undefined,
-        anchor: validatedAnchor,
-        num_before: validatedNumBefore,
-        num_after: validatedNumAfter,
+      return await fetchMessagesWithNarrowPageViaPipeline({
+        apiNarrow,
+        validatedAnchor,
+        validatedNumBefore,
+        validatedNumAfter,
+        applyMarkdown,
+        signal: options.signal,
       });
-      query.apply_markdown = applyMarkdown ? "true" : "false";
-      const response = await zulipPipelineGet("/messages", query, options.signal);
-      throwIfZulipPipelineGetNull(response, options.signal);
-      if (!response.ok) {
-        throw new Error(t("app.errorStatus", { status: String(response.status) }));
-      }
-      const data = response.data as {
-        result?: string;
-        messages?: RawMessageToMockInput[];
-        found_oldest?: boolean;
-        foundOldest?: boolean;
-        found_newest?: boolean;
-        foundNewest?: boolean;
-      };
-      if (options.signal.aborted) {
-        throw new DOMException("Aborted", "AbortError");
-      }
-      if (data.result === "error") return { messages: [], foundOldest: false, foundNewest: false };
-      return {
-        messages: (data.messages ?? []).map(mapZulipMessage),
-        foundOldest: data.found_oldest ?? data.foundOldest ?? false,
-        foundNewest: data.found_newest ?? data.foundNewest ?? false,
-      };
     }
 
-    const client = await getClient();
-    const data = (await client.messages.retrieve({
-      narrow: apiNarrow.length > 0 ? apiNarrow : undefined,
-      anchor: validatedAnchor,
-      num_before: validatedNumBefore,
-      num_after: validatedNumAfter,
-      apply_markdown: applyMarkdown,
-    })) as {
-      result?: string;
-      messages?: RawMessageToMockInput[];
-      found_oldest?: boolean;
-      foundOldest?: boolean;
-      found_newest?: boolean;
-      foundNewest?: boolean;
-    };
-    if (data.result === "error") return { messages: [], foundOldest: false, foundNewest: false };
-    return {
-      messages: (data.messages ?? []).map(mapZulipMessage),
-      foundOldest: data.found_oldest ?? data.foundOldest ?? false,
-      foundNewest: data.found_newest ?? data.foundNewest ?? false,
-    };
+    return await fetchMessagesWithNarrowPageViaClient({
+      apiNarrow,
+      validatedAnchor,
+      validatedNumBefore,
+      validatedNumAfter,
+      applyMarkdown,
+    });
   } catch (error) {
     if (isAbortError(error) || options?.signal?.aborted) {
       throw error;
@@ -509,7 +520,7 @@ export async function fetchDmMessages(
   const params = {
     narrow: [{ negated: false, operator: "dm", operand: ids }] as DmNarrow[],
     anchor: "newest",
-    num_before: ZULIP_DM_CHAT_NUM_BEFORE,
+    num_before: ZULIP_DM_ANCHOR_NUM_BEFORE,
     num_after: ZULIP_DM_CHAT_NUM_AFTER,
     client_gravatar: true,
     allow_empty_topic_name: true,
@@ -661,12 +672,12 @@ export async function fetchMessageRenderedHtmlById(
   if (data.result === "error") {
     return null;
   }
-  const content =
-    typeof data.message?.content === "string"
-      ? data.message.content
-      : typeof data.content === "string"
-        ? data.content
-        : null;
+  let content: string | null = null;
+  if (typeof data.message?.content === "string") {
+    content = data.message.content;
+  } else if (typeof data.content === "string") {
+    content = data.content;
+  }
   const trimmed = content?.trim() ?? "";
   return trimmed.length > 0 ? trimmed : null;
 }
@@ -691,12 +702,12 @@ export async function fetchSavedSnippets(): Promise<SavedSnippet[]> {
     const id = typeof row.id === "number" ? row.id : 0;
     const title = typeof row.title === "string" ? row.title : "";
     const content = typeof row.content === "string" ? row.content : "";
-    const dateCreated =
-      typeof row.date_created === "number"
-        ? row.date_created
-        : typeof row.dateCreated === "number"
-          ? row.dateCreated
-          : 0;
+    let dateCreated = 0;
+    if (typeof row.date_created === "number") {
+      dateCreated = row.date_created;
+    } else if (typeof row.dateCreated === "number") {
+      dateCreated = row.dateCreated;
+    }
     if (id <= 0 || title.trim().length === 0 || content.trim().length === 0) continue;
     snippets.push({
       id,

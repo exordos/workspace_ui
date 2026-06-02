@@ -105,6 +105,13 @@ import { ChatPageSelectionBar } from "./chat-page-selection-bar.ui";
 import { executeChatPageSend } from "./chat-page-send-handler.lib";
 import { useChatToastAutoClear } from "./chat-page-toast.hook";
 import { ChatPageTypingLine } from "./chat-page-typing-line.ui";
+import {
+  buildReadFallbackContext,
+  resolveChatHeaderRightPanelLabel,
+  resolveDmGroupParticipantIds,
+  resolveDraftType,
+  type ReadFallbackContext,
+} from "./chat-page.lib";
 import { shouldLoadBoundaryPage } from "./chat-pagination.lib";
 import {
   buildOptimisticOutgoingMessage,
@@ -375,7 +382,7 @@ export const ChatPage: React.FC = () => {
   const activeDraftIdRef = useRef<number | null>(null);
   const pendingForwardPrefillRef = useRef<string | null>(null);
 
-  const draftType: DraftType | null = isDmView ? "private" : activeStream ? "stream" : null;
+  const draftType: DraftType | null = resolveDraftType(isDmView, activeStream);
   const draftTo: number[] = useMemo(() => {
     const ctx = useCurrentChatMessagesStore.getState().context;
     return resolveDraftTargetIds({
@@ -500,10 +507,6 @@ export const ChatPage: React.FC = () => {
       idleStopDelayMs: 3000,
     });
 
-  type ReadFallbackContext =
-    | { type: "stream"; streamId: number; topic: string }
-    | { type: "dm"; dmKey: string };
-
   const applyReadMessagesOptimistically = useCallback(
     (messageIds: number[], fallbackContext?: ReadFallbackContext) => {
       if (messageIds.length === 0) return;
@@ -572,13 +575,13 @@ export const ChatPage: React.FC = () => {
   );
 
   useEffect(() => {
-    const batchFallbackContext: ReadFallbackContext | undefined = isDmView
-      ? activeDmUserIds != null && activeDmUserIds.length > 0
-        ? { type: "dm", dmKey: dmRouteKey(activeDmUserIds, currentUserId) }
-        : undefined
-      : activeStreamId != null
-        ? { type: "stream", streamId: activeStreamId, topic: activeTopic ?? "" }
-        : undefined;
+    const batchFallbackContext = buildReadFallbackContext({
+      isDmView,
+      activeDmUserIds,
+      currentUserId,
+      activeStreamId,
+      activeTopic,
+    });
 
     const batcher = createMarkAsReadBatcher({
       debounceMs: 250,
@@ -1651,12 +1654,11 @@ export const ChatPage: React.FC = () => {
 
   const dmGroup = useMemo(() => {
     if (!isGroupDmView || !dmChat) return undefined;
-    const participantIds =
-      dmChat.userIds != null && dmChat.userIds.length > 0
-        ? dmChat.userIds
-        : currentUserId != null
-          ? Array.from(new Set([...dmRecipientIds, currentUserId]))
-          : dmRecipientIds;
+    const participantIds = resolveDmGroupParticipantIds({
+      dmUserIds: dmChat.userIds,
+      currentUserId,
+      dmRecipientIds,
+    });
     const rawName = dmChat.name?.trim() ?? "";
     const resolvedName =
       rawName.length === 0 || rawName === t("dm.privateChat") ? t("dm.groupChat") : rawName;
@@ -1766,9 +1768,7 @@ export const ChatPage: React.FC = () => {
         onToggleRightPanel={rightDrawer ? handleToggleRightPanel : undefined}
         onOpenRightPanel={rightDrawer ? handleOpenRightPanel : undefined}
         rightPanelOpen={rightDrawer?.open ?? false}
-        rightPanelLabel={
-          isGroupDmView ? t("dm.groupChat") : isDmView ? t("info.partnerInfo") : undefined
-        }
+        rightPanelLabel={resolveChatHeaderRightPanelLabel(isGroupDmView, isDmView)}
         hideParticipants={isDmView}
         onCallClick={canStartCall ? handleCallClick : undefined}
         dmPartner={dmPartner}

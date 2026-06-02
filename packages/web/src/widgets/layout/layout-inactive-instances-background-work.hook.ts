@@ -1,16 +1,18 @@
 import { useEffect } from "react";
 import type { ZulipInstance } from "~/entities/instance/instance.model";
 import {
-  deleteQueue,
   fetchUnreadDmMessagesCountForCredentials,
   fetchUnreadMessagesCountForCredentials,
 } from "~/shared/api/zulip-queue";
 import { startZulipEventLoopForCredentials } from "~/shared/lib/event-loop";
 import {
+  abortInactiveInstanceQueueOnTeardown,
+  handleInactiveInstanceQueueRegistered,
+} from "./layout-inactive-instance-queue.lib";
+import {
   applyInstanceUnreadCountsFromRegisterSnapshot,
   getCachedRegisterUnreadSnapshot,
   isRegisterUnreadSnapshotUsable,
-  setCachedRegisterUnreadSnapshot,
 } from "./layout-instance-register-unread.lib";
 import { startInactiveInstanceEventStreams } from "./layout-multi-org-event-streams.lib";
 import { startInactiveInstanceUnreadPolling } from "./layout-multi-org-polling.lib";
@@ -81,31 +83,24 @@ export function useInactiveInstancesBackgroundWork(options: {
             "user_topic",
           ],
           onQueueRegistered: (id, registration) => {
-            if (stopped) {
-              deleteQueue(id, credentials).catch(() => {});
-              return;
+            const nextQueueId = handleInactiveInstanceQueueRegistered({
+              queueId: id,
+              registration,
+              stopped,
+              credentials,
+              instance,
+              setUnreadCount,
+              setDmUnreadCount,
+              onQueueRegistered,
+            });
+            if (nextQueueId != null) {
+              queueId = nextQueueId;
             }
-            queueId = id;
-            if (instance != null && registration?.unread_snapshot != null) {
-              setCachedRegisterUnreadSnapshot(instance.id, registration.unread_snapshot);
-              if (isRegisterUnreadSnapshotUsable(registration.unread_snapshot)) {
-                applyInstanceUnreadCountsFromRegisterSnapshot(
-                  instance.id,
-                  registration.unread_snapshot,
-                  setUnreadCount,
-                  setDmUnreadCount,
-                );
-              }
-            }
-            onQueueRegistered?.(id, registration);
           },
         });
         return () => {
           stopped = true;
-          if (queueId) {
-            deleteQueue(queueId, credentials).catch(() => {});
-          }
-          controller.abort();
+          abortInactiveInstanceQueueOnTeardown(queueId, credentials, controller);
         };
       },
     });

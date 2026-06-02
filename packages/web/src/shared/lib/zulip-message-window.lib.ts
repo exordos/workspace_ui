@@ -12,7 +12,6 @@ export const ZULIP_STREAM_ANCHOR_NUM_BEFORE = 100;
 export const ZULIP_STREAM_ANCHOR_NUM_AFTER = 100;
 
 /** Matches `fetchMessages` (stream/topic, anchor newest). */
-export const ZULIP_STREAM_CHAT_NUM_BEFORE = ZULIP_STREAM_ANCHOR_NUM_BEFORE;
 export const ZULIP_STREAM_CHAT_NUM_AFTER = 0;
 
 /**
@@ -23,19 +22,15 @@ export const ZULIP_DM_ANCHOR_NUM_BEFORE = 60;
 export const ZULIP_DM_ANCHOR_NUM_AFTER = 150;
 
 /** Matches `fetchDmMessages` (anchor newest). */
-export const ZULIP_DM_CHAT_NUM_BEFORE = ZULIP_DM_ANCHOR_NUM_BEFORE;
 export const ZULIP_DM_CHAT_NUM_AFTER = 0;
 
 /** Largest DM window we may load around an anchor (60 + 150). */
 export const ZULIP_DM_INITIAL_WINDOW_TOTAL = ZULIP_DM_ANCHOR_NUM_BEFORE + ZULIP_DM_ANCHOR_NUM_AFTER;
 
-/** Largest per-chat retention window we persist (DM). */
-export const ZULIP_CHAT_MESSAGE_CACHE_MAX_WINDOW = ZULIP_DM_INITIAL_WINDOW_TOTAL;
-
 export function zulipMessageCacheWindowN(context: { type: "stream" } | { type: "dm" }): number {
-  return context.type === "stream" ? ZULIP_STREAM_CHAT_NUM_BEFORE : ZULIP_DM_INITIAL_WINDOW_TOTAL;
+  return context.type === "stream" ? ZULIP_STREAM_ANCHOR_NUM_BEFORE : ZULIP_DM_INITIAL_WINDOW_TOTAL;
 }
 
 export function zulipMessageCacheWindowNForChatKey(chatKey: string): number {
-  return chatKey.startsWith("dm:") ? ZULIP_DM_INITIAL_WINDOW_TOTAL : ZULIP_STREAM_CHAT_NUM_BEFORE;
+  return chatKey.startsWith("dm:") ? ZULIP_DM_INITIAL_WINDOW_TOTAL : ZULIP_STREAM_ANCHOR_NUM_BEFORE;
 }

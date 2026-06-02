@@ -6,9 +6,7 @@ interface ComposerUploadProgressLike {
   activeFileName: string | null;
 }
 
-type ComposerFileInputEvent =
-  | React.ChangeEvent<HTMLInputElement>
-  | React.FormEvent<HTMLInputElement>;
+type ComposerFileInputEvent = React.ChangeEvent<HTMLInputElement>;
 
 interface FileSelectionSessionState {
   sessionId: number;
@@ -185,7 +183,7 @@ export function useMessageComposerUpload(options: {
           pendingInputFiles: selectedFiles,
         };
         // Даем change шанс сработать первым; если его нет, добавляем файлы из input в microtask.
-        Promise.resolve().then(() => {
+        void Promise.resolve().then(() => {
           const currentSession = fileSelectionSessionRef.current;
           if (currentSession.sessionId !== sessionId || currentSession.handled) return;
           const pendingFiles = currentSession.pendingInputFiles;

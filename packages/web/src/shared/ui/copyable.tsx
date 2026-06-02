@@ -53,6 +53,13 @@ export const Copyable: React.FC<CopyableProps> = React.memo(function Copyable({
     };
   }, [copyState]);
 
+  let copyButtonVisibilityClass = "opacity-100";
+  if (showOnHover) {
+    copyButtonVisibilityClass = keepVisibleDuringSuccess
+      ? "pointer-events-auto opacity-100"
+      : "pointer-events-none opacity-0 focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100";
+  }
+
   return (
     <span className={joinClasses("group flex min-w-0 items-center gap-1.5", className)}>
       <span className={joinClasses("min-w-0 max-w-full", contentClassName)}>{children}</span>
@@ -64,11 +71,7 @@ export const Copyable: React.FC<CopyableProps> = React.memo(function Copyable({
         data-copy-state={copyState}
         className={joinClasses(
           "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-text-muted transition-opacity hover:bg-bg-elevated hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft",
-          showOnHover
-            ? keepVisibleDuringSuccess
-              ? "pointer-events-auto opacity-100"
-              : "pointer-events-none opacity-0 focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
-            : "opacity-100",
+          copyButtonVisibilityClass,
           buttonClassName,
         )}
       >

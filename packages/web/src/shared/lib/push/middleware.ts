@@ -30,6 +30,7 @@
  */
 
 import { createLogger } from "../logger";
+import { buildPushPayloadFromEnvelopeData } from "./push-payload-parse.lib";
 import type { PushMessagePayload } from "./types";
 
 const log = createLogger("push:middleware");
@@ -202,52 +203,10 @@ export const parsingMiddleware: PushMiddleware = async (ctx, next) => {
     return;
   }
 
-  const data = ctx.envelope.data;
-  const event = (data.event ?? data.type ?? "message") as PushMessagePayload["event"];
-
-  if (event === "remove") {
-    let ids: number[] = [];
-    if (data.message_ids) {
-      try {
-        ids = JSON.parse(data.message_ids) as number[];
-      } catch {
-        log.warn("Failed to parse message_ids in push middleware");
-      }
-    }
-    ctx.payload = { event: "remove", realm_uri: data.realm_uri, message_ids: ids };
-  } else if (event === "test") {
-    ctx.payload = { event: "test", realm_uri: data.realm_uri };
-  } else {
-    let flags: string[] | undefined;
-    if (data.flags) {
-      try {
-        const parsed = JSON.parse(data.flags) as unknown;
-        if (Array.isArray(parsed)) {
-          flags = parsed.filter((f): f is string => typeof f === "string");
-        }
-      } catch {
-        /* ignore malformed flags */
-      }
-    }
-
-    ctx.payload = {
-      event: "message",
-      realm_uri: data.realm_uri,
-      message: {
-        id: Number(data.message_id) || 0,
-        sender_id: Number(data.sender_id) || 0,
-        sender_full_name: data.sender_full_name ?? "",
-        sender_avatar_url: data.sender_avatar_url,
-        type: data.message_type === "private" ? "private" : "stream",
-        stream_name: data.stream_name,
-        stream_id: data.stream_id != null ? Number(data.stream_id) : undefined,
-        topic: data.topic,
-        content: data.content ?? ctx.envelope.notification?.body ?? "",
-        flags,
-        timestamp: Number(data.time) || Math.floor(Date.now() / 1000),
-      },
-    };
-  }
+  ctx.payload = buildPushPayloadFromEnvelopeData(
+    ctx.envelope.data,
+    ctx.envelope.notification?.body,
+  );
 
   await next();
 };

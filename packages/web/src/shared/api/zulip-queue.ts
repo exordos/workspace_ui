@@ -4,35 +4,27 @@ import { t } from "~/i18n/i18n";
 import { getBasicAuthValue } from "~/shared/lib/auth-guard";
 import { env } from "~/shared/lib/env";
 import { isBadEventQueueIdResponse } from "~/shared/lib/zulip-event-queue-errors.lib";
-import { normalizeGroupSettingValue } from "~/shared/lib/zulip-group-setting.lib";
-import { extractUserSettingsFromRegisterData } from "~/shared/lib/zulip-notification-settings.lib";
 import { getCurrentInstance, zulipApi } from "./client";
 import {
   getAuthValueForCredentials,
   getValidatedCredentialsRealm,
 } from "./zulip-credentials.internal";
+import { createLongPollAbortSetup } from "./zulip-events-longpoll.lib";
 import {
   zulipPipelineDelete,
   zulipPipelinePost,
   ensureZulipApiReady,
 } from "./zulip-pipeline.internal";
-import { parseRecentPrivateConversations } from "./zulip-recent-private-conversations.lib";
-import { parseRegisterResponseJitsiServerUrl } from "./zulip-register-jitsi.lib";
 import {
-  parseAvatarChangesDisabledFlag,
-  parseMaxAvatarFileSizeMib,
-  parseServerThumbnailFormats,
-} from "./zulip-register-metadata.lib";
-import {
-  parseRegisterUnreadSnapshot,
-  parseUnreadDmMessagesCount,
-  parseUnreadMessagesCount,
-} from "./zulip-unread.lib";
+  buildRegisterQueueResult,
+  parseRegisterQueueMetadata,
+  toOwnAvatarCapabilities,
+} from "./zulip-register-queue-result.lib";
+import { parseUnreadDmMessagesCount, parseUnreadMessagesCount } from "./zulip-unread.lib";
 import {
   buildUserTopicsCacheKey,
   getCachedUserTopicsForKey,
   getCurrentUserTopicsCacheKey,
-  parseUserTopics,
   setCachedUserTopicsForKey,
 } from "./zulip-user-topics.internal";
 import { validateEventCursor, validateQueueId } from "./zulip-validation.internal";
@@ -41,10 +33,10 @@ import type {
   RegisterQueueResult,
   ZulipCredentials,
   ZulipOwnAvatarCapabilities,
-  ZulipRealmUserGroup,
-  ZulipSubscription,
   ZulipUserTopic,
 } from "./zulip.types";
+
+export { parseSubscriptions } from "./zulip-queue-parse-subscription.lib";
 
 // Зачем: просим у Zulip только те metadata-секции, которые нужны для sidebar без загрузки больших пачек сообщений.
 // `realm` — в т.ч. `server_thumbnail_formats` (размеры превью user_uploads), а `realm_user_groups` нужен для channel-level permission checks.
@@ -76,127 +68,6 @@ function setCachedOwnAvatarCapabilities(capabilities: ZulipOwnAvatarCapabilities
 
 export function getCachedOwnAvatarCapabilities(): ZulipOwnAvatarCapabilities {
   return cachedOwnAvatarCapabilities;
-}
-
-// Что делает: проверяет, что значение является положительным целым id.
-function isPositiveInteger(value: unknown): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value > 0;
-}
-
-// Что делает: нормализует список подписок из register-ответа.
-// Дополнительно поднимает channel-level поля прав (`can_*_group`) и приватность канала.
-function parseSubscriptions(data: unknown): ZulipSubscription[] | null {
-  if (!Array.isArray(data)) {
-    return null;
-  }
-  const parsed: ZulipSubscription[] = [];
-  for (const row of data) {
-    if (typeof row !== "object" || row == null || Array.isArray(row)) {
-      continue;
-    }
-    const subscription = row as {
-      stream_id?: unknown;
-      name?: unknown;
-      is_muted?: unknown;
-      is_archived?: unknown;
-      in_home_view?: unknown;
-      creator_id?: unknown;
-      invite_only?: unknown;
-      can_add_subscribers_group?: unknown;
-      can_remove_subscribers_group?: unknown;
-      can_administer_channel_group?: unknown;
-      can_resolve_topics_group?: unknown;
-    };
-    if (!isPositiveInteger(subscription.stream_id) || typeof subscription.name !== "string") {
-      continue;
-    }
-    const canAddSubscribersGroup = normalizeGroupSettingValue(
-      subscription.can_add_subscribers_group,
-    );
-    const canRemoveSubscribersGroup = normalizeGroupSettingValue(
-      subscription.can_remove_subscribers_group,
-    );
-    const canAdministerChannelGroup = normalizeGroupSettingValue(
-      subscription.can_administer_channel_group,
-    );
-    const canResolveTopicsGroup = normalizeGroupSettingValue(subscription.can_resolve_topics_group);
-    parsed.push({
-      stream_id: subscription.stream_id,
-      name: subscription.name,
-      is_muted:
-        typeof subscription.is_muted === "boolean"
-          ? subscription.is_muted
-          : subscription.in_home_view === false,
-      ...(typeof subscription.is_archived === "boolean"
-        ? { is_archived: subscription.is_archived }
-        : {}),
-      ...(isPositiveInteger(subscription.creator_id)
-        ? { creator_id: subscription.creator_id }
-        : {}),
-      ...(typeof subscription.invite_only === "boolean"
-        ? { invite_only: subscription.invite_only }
-        : {}),
-      ...(canAddSubscribersGroup != null
-        ? { can_add_subscribers_group: canAddSubscribersGroup }
-        : {}),
-      ...(canRemoveSubscribersGroup != null
-        ? { can_remove_subscribers_group: canRemoveSubscribersGroup }
-        : {}),
-      ...(canAdministerChannelGroup != null
-        ? { can_administer_channel_group: canAdministerChannelGroup }
-        : {}),
-      ...(canResolveTopicsGroup != null ? { can_resolve_topics_group: canResolveTopicsGroup } : {}),
-    });
-  }
-  return parsed;
-}
-
-function parseRealmCanResolveTopicsGroup(data: unknown) {
-  return normalizeGroupSettingValue(data);
-}
-
-// Что делает: парсит список realm user groups из register metadata.
-// Нужен для вычисления membership в channel-level group-setting значениях.
-function parseRealmUserGroups(data: unknown): ZulipRealmUserGroup[] | null {
-  if (!Array.isArray(data)) {
-    return null;
-  }
-  const parsed: ZulipRealmUserGroup[] = [];
-  for (const row of data) {
-    if (row == null || typeof row !== "object" || Array.isArray(row)) {
-      continue;
-    }
-    const record = row as Record<string, unknown>;
-    const id = record.id;
-    const name = record.name;
-    if (!isPositiveInteger(id) || typeof name !== "string") {
-      continue;
-    }
-    const members = Array.isArray(record.members)
-      ? Array.from(new Set(record.members.filter(isPositiveInteger))).sort(
-          (left, right) => left - right,
-        )
-      : [];
-    const directSubgroupIds = Array.isArray(record.direct_subgroup_ids)
-      ? Array.from(new Set(record.direct_subgroup_ids.filter(isPositiveInteger))).sort(
-          (left, right) => left - right,
-        )
-      : [];
-    parsed.push({
-      id,
-      name,
-      members,
-      direct_subgroup_ids: directSubgroupIds,
-      ...(typeof record.is_system_group === "boolean"
-        ? { is_system_group: record.is_system_group }
-        : {}),
-    });
-  }
-  return parsed;
-}
-
-function parseRealmCanAddSubscribersGroup(data: unknown) {
-  return normalizeGroupSettingValue(data);
 }
 
 // Регистрирует очередь событий и возвращает `queue_id`
@@ -246,72 +117,21 @@ export async function registerQueue(
     throw new Error(t("app.invalidRegisterResponse"));
   }
 
-  const unreadSnapshot = parseRegisterUnreadSnapshot(data);
-  const userSettings = extractUserSettingsFromRegisterData(data);
-  const subscriptions = parseSubscriptions(data.subscriptions);
-  const userTopics = parseUserTopics(data.user_topics);
-  const recentPrivateConversations = parseRecentPrivateConversations(
-    data.recent_private_conversations,
-  );
-  const realmCanAddSubscribersGroup = parseRealmCanAddSubscribersGroup(
-    data.realm_can_add_subscribers_group,
-  );
-  const realmCanResolveTopicsGroup = parseRealmCanResolveTopicsGroup(
-    data.realm_can_resolve_topics_group,
-  );
-  // Что делает: собирает группы организации для последующей проверки channel permissions в UI/store.
-  const realmUserGroups = parseRealmUserGroups(data.realm_user_groups);
-  const serverThumbnailFormats = parseServerThumbnailFormats(data.server_thumbnail_formats);
-  const maxAvatarFileSizeMib = parseMaxAvatarFileSizeMib(data.max_avatar_file_size_mib);
-  const realmAvatarChangesDisabled = parseAvatarChangesDisabledFlag(
-    data.realm_avatar_changes_disabled,
-  );
-  const serverAvatarChangesDisabled = parseAvatarChangesDisabledFlag(
-    data.server_avatar_changes_disabled,
-  );
-  setCachedOwnAvatarCapabilities({
-    ...(maxAvatarFileSizeMib != null ? { max_avatar_file_size_mib: maxAvatarFileSizeMib } : {}),
-    ...(realmAvatarChangesDisabled != null
-      ? { realm_avatar_changes_disabled: realmAvatarChangesDisabled }
-      : {}),
-    ...(serverAvatarChangesDisabled != null
-      ? { server_avatar_changes_disabled: serverAvatarChangesDisabled }
-      : {}),
-  });
-  const jitsiServerUrlEffective = parseRegisterResponseJitsiServerUrl(data);
+  const metadata = parseRegisterQueueMetadata(data);
+  setCachedOwnAvatarCapabilities(toOwnAvatarCapabilities(metadata));
   const cacheKey = getCurrentUserTopicsCacheKey();
-  if (cacheKey && userTopics) {
-    setCachedUserTopicsForKey(cacheKey, userTopics);
+  if (cacheKey && metadata.userTopics) {
+    setCachedUserTopicsForKey(cacheKey, metadata.userTopics);
   }
 
-  return {
-    queue_id: data.queue_id,
-    last_event_id: data.last_event_id,
-    event_queue_longpoll_timeout_seconds: data.event_queue_longpoll_timeout_seconds,
-    ...(subscriptions ? { subscriptions } : {}),
-    ...(userTopics ? { user_topics: userTopics } : {}),
-    ...(recentPrivateConversations
-      ? { recent_private_conversations: recentPrivateConversations }
-      : {}),
-    ...(realmCanAddSubscribersGroup != null
-      ? { realm_can_add_subscribers_group: realmCanAddSubscribersGroup }
-      : {}),
-    ...(realmCanResolveTopicsGroup != null
-      ? { realm_can_resolve_topics_group: realmCanResolveTopicsGroup }
-      : {}),
-    ...(realmUserGroups ? { realm_user_groups: realmUserGroups } : {}),
-    ...(serverThumbnailFormats ? { server_thumbnail_formats: serverThumbnailFormats } : {}),
-    ...(maxAvatarFileSizeMib != null ? { max_avatar_file_size_mib: maxAvatarFileSizeMib } : {}),
-    ...(realmAvatarChangesDisabled != null
-      ? { realm_avatar_changes_disabled: realmAvatarChangesDisabled }
-      : {}),
-    ...(serverAvatarChangesDisabled != null
-      ? { server_avatar_changes_disabled: serverAvatarChangesDisabled }
-      : {}),
-    ...(jitsiServerUrlEffective ? { jitsi_server_url_effective: jitsiServerUrlEffective } : {}),
-    ...(userSettings ? { user_settings: userSettings } : {}),
-    ...(unreadSnapshot ? { unread_snapshot: unreadSnapshot } : {}),
-  };
+  return buildRegisterQueueResult(
+    {
+      queue_id: data.queue_id,
+      last_event_id: data.last_event_id,
+      event_queue_longpoll_timeout_seconds: data.event_queue_longpoll_timeout_seconds,
+    },
+    metadata,
+  );
 }
 
 // Регистрирует очередь с явными credentials.
@@ -381,72 +201,21 @@ export async function registerQueueForCredentials(
     throw new Error(t("app.invalidRegisterResponse"));
   }
 
-  const unreadSnapshot = parseRegisterUnreadSnapshot(data);
-  const userSettings = extractUserSettingsFromRegisterData(data);
-  const subscriptions = parseSubscriptions(data.subscriptions);
-  const userTopics = parseUserTopics(data.user_topics);
-  const recentPrivateConversations = parseRecentPrivateConversations(
-    data.recent_private_conversations,
-  );
-  const realmCanAddSubscribersGroup = parseRealmCanAddSubscribersGroup(
-    data.realm_can_add_subscribers_group,
-  );
-  const realmCanResolveTopicsGroup = parseRealmCanResolveTopicsGroup(
-    data.realm_can_resolve_topics_group,
-  );
-  // Что делает: сохраняет группы и для background-loop сценариев.
-  const realmUserGroups = parseRealmUserGroups(data.realm_user_groups);
-  const serverThumbnailFormats = parseServerThumbnailFormats(data.server_thumbnail_formats);
-  const maxAvatarFileSizeMib = parseMaxAvatarFileSizeMib(data.max_avatar_file_size_mib);
-  const realmAvatarChangesDisabled = parseAvatarChangesDisabledFlag(
-    data.realm_avatar_changes_disabled,
-  );
-  const serverAvatarChangesDisabled = parseAvatarChangesDisabledFlag(
-    data.server_avatar_changes_disabled,
-  );
-  setCachedOwnAvatarCapabilities({
-    ...(maxAvatarFileSizeMib != null ? { max_avatar_file_size_mib: maxAvatarFileSizeMib } : {}),
-    ...(realmAvatarChangesDisabled != null
-      ? { realm_avatar_changes_disabled: realmAvatarChangesDisabled }
-      : {}),
-    ...(serverAvatarChangesDisabled != null
-      ? { server_avatar_changes_disabled: serverAvatarChangesDisabled }
-      : {}),
-  });
-  const jitsiServerUrlEffective = parseRegisterResponseJitsiServerUrl(data);
+  const metadata = parseRegisterQueueMetadata(data);
+  setCachedOwnAvatarCapabilities(toOwnAvatarCapabilities(metadata));
   setCachedUserTopicsForKey(
     buildUserTopicsCacheKey(credentials.realm, credentials.email),
-    userTopics ?? [],
+    metadata.userTopics ?? [],
   );
 
-  return {
-    queue_id: data.queue_id,
-    last_event_id: data.last_event_id,
-    event_queue_longpoll_timeout_seconds: data.event_queue_longpoll_timeout_seconds,
-    ...(subscriptions ? { subscriptions } : {}),
-    ...(userTopics ? { user_topics: userTopics } : {}),
-    ...(recentPrivateConversations
-      ? { recent_private_conversations: recentPrivateConversations }
-      : {}),
-    ...(realmCanAddSubscribersGroup != null
-      ? { realm_can_add_subscribers_group: realmCanAddSubscribersGroup }
-      : {}),
-    ...(realmCanResolveTopicsGroup != null
-      ? { realm_can_resolve_topics_group: realmCanResolveTopicsGroup }
-      : {}),
-    ...(realmUserGroups ? { realm_user_groups: realmUserGroups } : {}),
-    ...(serverThumbnailFormats ? { server_thumbnail_formats: serverThumbnailFormats } : {}),
-    ...(maxAvatarFileSizeMib != null ? { max_avatar_file_size_mib: maxAvatarFileSizeMib } : {}),
-    ...(realmAvatarChangesDisabled != null
-      ? { realm_avatar_changes_disabled: realmAvatarChangesDisabled }
-      : {}),
-    ...(serverAvatarChangesDisabled != null
-      ? { server_avatar_changes_disabled: serverAvatarChangesDisabled }
-      : {}),
-    ...(jitsiServerUrlEffective ? { jitsi_server_url_effective: jitsiServerUrlEffective } : {}),
-    ...(userSettings ? { user_settings: userSettings } : {}),
-    ...(unreadSnapshot ? { unread_snapshot: unreadSnapshot } : {}),
-  };
+  return buildRegisterQueueResult(
+    {
+      queue_id: data.queue_id,
+      last_event_id: data.last_event_id,
+      event_queue_longpoll_timeout_seconds: data.event_queue_longpoll_timeout_seconds,
+    },
+    metadata,
+  );
 }
 
 // Удаляет очередь событий.
@@ -577,27 +346,7 @@ export async function getEvents(
   const safeLastEventId = validateEventCursor(lastEventId, "getEvents");
   ensureZulipApiReady();
 
-  const controller = new AbortController();
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-  if (options?.timeoutSec != null && options.timeoutSec > 0) {
-    timeoutId = setTimeout(() => controller.abort(), options.timeoutSec * 1000);
-  }
-
-  const onAbort = () => {
-    if (timeoutId != null) clearTimeout(timeoutId);
-    controller.abort();
-  };
-  if (options?.signal) {
-    options.signal.addEventListener("abort", onAbort);
-  }
-  const signal = controller.signal;
-
-  const cleanup = () => {
-    if (timeoutId != null) clearTimeout(timeoutId);
-    if (options?.signal) {
-      options.signal.removeEventListener("abort", onAbort);
-    }
-  };
+  const { signal, cleanup } = createLongPollAbortSetup(options);
 
   try {
     const res = await zulipApi.get(
@@ -639,26 +388,7 @@ export async function getEventsForCredentials(
   url.searchParams.set("queue_id", safeQueueId);
   url.searchParams.set("last_event_id", String(safeLastEventId));
 
-  const controller = new AbortController();
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-  if (options?.timeoutSec != null && options.timeoutSec > 0) {
-    timeoutId = setTimeout(() => controller.abort(), options.timeoutSec * 1000);
-  }
-
-  const onAbort = () => {
-    if (timeoutId != null) clearTimeout(timeoutId);
-    controller.abort();
-  };
-  if (options?.signal) {
-    options.signal.addEventListener("abort", onAbort);
-  }
-
-  const cleanup = () => {
-    if (timeoutId != null) clearTimeout(timeoutId);
-    if (options?.signal) {
-      options.signal.removeEventListener("abort", onAbort);
-    }
-  };
+  const { signal, cleanup } = createLongPollAbortSetup(options);
 
   try {
     const response = await fetch(url.toString(), {
@@ -666,7 +396,7 @@ export async function getEventsForCredentials(
       headers: {
         Authorization: authValue,
       },
-      signal: controller.signal,
+      signal,
     });
 
     let payload: unknown;

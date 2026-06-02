@@ -98,12 +98,12 @@ export function upsertDmIndexEntries(instanceId: string, entries: readonly DmInd
         continue;
       }
       const lastActivityTs = Math.max(existing.lastActivityTs, normalized.lastActivityTs);
-      const lastMessageId =
-        existing.lastMessageId == null
-          ? normalized.lastMessageId
-          : normalized.lastMessageId == null
-            ? existing.lastMessageId
-            : Math.max(existing.lastMessageId, normalized.lastMessageId);
+      let lastMessageId = existing.lastMessageId;
+      if (existing.lastMessageId == null) {
+        lastMessageId = normalized.lastMessageId;
+      } else if (normalized.lastMessageId != null) {
+        lastMessageId = Math.max(existing.lastMessageId, normalized.lastMessageId);
+      }
       // Если в новом источнике нет unreadCount, сохраняем старое значение.
       const unreadCount = normalized.unreadCount ?? existing.unreadCount;
       next.set(normalized.dmKey, {

@@ -43,11 +43,11 @@ export const EmbedFrame: React.FC<EmbedFrameProps> = ({
 
   if (!allowed) {
     log.warn("Embed blocked — origin not in allowlist", { url });
-    return fallback ?? null;
+    return <>{fallback ?? null}</>;
   }
 
   if (error) {
-    return fallback ?? null;
+    return <>{fallback ?? null}</>;
   }
 
   return (

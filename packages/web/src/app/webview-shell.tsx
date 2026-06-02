@@ -133,7 +133,7 @@ export const WebViewShell: React.FC = () => {
         }
       }
       if (msg.type === "logout") {
-        pushService
+        void pushService
           .unregister()
           .catch(() => {})
           .finally(() => {

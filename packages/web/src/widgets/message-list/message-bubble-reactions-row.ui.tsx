@@ -1,5 +1,6 @@
 import React from "react";
 import { isOneToOneDirectMessage } from "./message-bubble-emoji.lib";
+import { resolveReactionTitle } from "./message-bubble-reactions-row.lib";
 import type { MessageBubbleReactionsRowProps } from "./message-bubble-reactions-row.types";
 
 /** Up to this many reactors — chip shows comma-separated names; above — numeric count only. */
@@ -50,12 +51,11 @@ export const MessageBubbleReactionsRow = React.memo(function MessageBubbleReacti
           const hasCurrentUser = currentUserId != null && userIds.includes(currentUserId);
           const reactionAuthors = userIds.map(resolveReactionAuthorLabel).join(", ");
           const reactionPrefix = imageUrl != null ? `:${emojiName}:` : displayChar;
-          const reactionTitle =
-            reactionAuthors.length > 0
-              ? `${reactionPrefix} ${count} - ${reactionAuthors}`
-              : count > 0
-                ? `${reactionPrefix} ${count}`
-                : undefined;
+          const reactionTitle = resolveReactionTitle({
+            reactionAuthors,
+            reactionPrefix,
+            count,
+          });
           const chipMetaText = getReactionChipMetaText(
             hideReactionChipMeta,
             reactionAuthors,

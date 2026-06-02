@@ -70,6 +70,26 @@ const INLINE_SPOILER_TOKEN_TYPE = "inline_spoiler";
 const ZULIP_BLOCK_SPOILER_TOKEN_TYPE = "zulip_block_spoiler";
 const DEFAULT_ZULIP_SPOILER_HEADER = "Spoiler";
 
+interface MarkedSpoilerRendererContext {
+  parser: {
+    parseInline: (tokens: Token[]) => string;
+    parse: (tokens: Token[]) => string;
+  };
+}
+
+function renderInlineSpoilerToken(this: MarkedSpoilerRendererContext, token: Token): string {
+  const spoilerToken = token as InlineSpoilerToken;
+  const inlineHtml = this.parser.parseInline(spoilerToken.tokens);
+  return `<span class="inline-spoiler" data-inline-spoiler="true">${inlineHtml}</span>`;
+}
+
+function renderZulipBlockSpoilerToken(this: MarkedSpoilerRendererContext, token: Token): string {
+  const spoilerToken = token as ZulipBlockSpoilerToken;
+  const blockHtml = this.parser.parse(spoilerToken.tokens);
+  const headerHtml = this.parser.parseInline(spoilerToken.headerTokens);
+  return `<div class="spoiler-block"><div class="spoiler-header">${headerHtml}</div><div class="spoiler-content">${blockHtml}</div></div>`;
+}
+
 // Расширение marked для локального fallback-рендера:
 // превращает `||secret||` в интерактивный inline-элемент спойлера для bubble.
 const INLINE_SPOILER_EXTENSION: TokenizerAndRendererExtension = {
@@ -94,13 +114,7 @@ const INLINE_SPOILER_EXTENSION: TokenizerAndRendererExtension = {
       tokens: this.lexer.inlineTokens(text),
     };
   },
-  renderer(token) {
-    if (token.type !== INLINE_SPOILER_TOKEN_TYPE) return false;
-    const spoilerToken = token as InlineSpoilerToken;
-    // Внутренний markdown внутри spoiler (например, emphasis) рендерим штатным parseInline.
-    const inlineHtml = this.parser.parseInline(spoilerToken.tokens);
-    return `<span class="inline-spoiler" data-inline-spoiler="true">${inlineHtml}</span>`;
-  },
+  renderer: renderInlineSpoilerToken,
 };
 
 // Поддержка Zulip markdown-синтаксиса блочного спойлера:
@@ -134,13 +148,7 @@ const ZULIP_BLOCK_SPOILER_EXTENSION: TokenizerAndRendererExtension = {
     };
   },
   childTokens: ["tokens", "headerTokens"],
-  renderer(token) {
-    if (token.type !== ZULIP_BLOCK_SPOILER_TOKEN_TYPE) return false;
-    const spoilerToken = token as ZulipBlockSpoilerToken;
-    const blockHtml = this.parser.parse(spoilerToken.tokens);
-    const headerHtml = this.parser.parseInline(spoilerToken.headerTokens);
-    return `<div class="spoiler-block"><div class="spoiler-header">${headerHtml}</div><div class="spoiler-content">${blockHtml}</div></div>`;
-  },
+  renderer: renderZulipBlockSpoilerToken,
 };
 
 // Отдельный экземпляр marked, чтобы extension не влиял глобально на другие потребители.

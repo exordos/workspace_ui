@@ -6,6 +6,7 @@ import { resolveAvatarUrl } from "~/shared/lib/avatar";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
+import { resolveDmStatusText } from "./chat-header.lib";
 import type { ChatHeaderProps } from "./chat-header.types";
 
 function resolveAvatarSrc(url: string | undefined | null): string | undefined {
@@ -34,21 +35,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
 }) => {
   const infoLabel = rightPanelLabel ?? t("info.channelInfo");
   const avatarSrc = dmPartner ? resolveAvatarSrc(dmPartner.avatarUrl) : undefined;
-  const presenceText =
-    dmPartner?.presenceState === "active"
-      ? t("presence.online")
-      : dmPartner?.presenceState === "idle"
-        ? t("presence.away")
-        : dmPartner?.lastSeen != null
-          ? dmPartner.lastSeen === t("presence.online")
-            ? t("presence.online")
-            : t("presence.lastSeen", { time: dmPartner.lastSeen })
-          : t("presence.offline");
-  const statusText = dmPartner?.isAccountDeactivated
-    ? t("dm.partnerBlocked")
-    : dmPartner?.isTyping === true
-      ? t("chat.typing")
-      : (dmPartner?.customStatus ?? presenceText);
+  const statusText = dmPartner ? resolveDmStatusText(dmPartner) : "";
   const canOpenDmPartner = onDmPartnerClick != null;
   const canOpenRightPanelFromHeader = onOpenRightPanel != null || onToggleRightPanel != null;
 
@@ -69,93 +56,101 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
     onToggleRightPanel?.();
   }, [onOpenRightPanel, onToggleRightPanel]);
 
-  return (
-    <header className="flex flex-shrink-0 items-center justify-between bg-card-bg px-5 py-2">
-      <div className="flex min-w-0 flex-1 flex-col">
-        {dmPartner ? (
-          <div className="relative flex min-w-0 items-center gap-3 rounded-lg text-left">
-            <span className="relative shrink-0">
-              <Avatar
-                size="md"
-                className="border border-border-subtle bg-bg-elevated text-text-muted"
-                src={avatarSrc}
-              >
-                {dmPartner.name.slice(0, 1).toUpperCase()}
-              </Avatar>
-              <PresenceIndicator
-                status={dmPartner.presenceState}
-                size="md"
-                tone="header"
-                pulse={false}
-                deactivated={dmPartner.isAccountDeactivated === true}
-                className="absolute bottom-0 right-0 ring-border-subtle"
-              />
-            </span>
-            <span className="flex min-w-0 flex-1 flex-col">
-              <h1 className="truncate text-sm font-semibold text-text-primary">{dmPartner.name}</h1>
-              <span className="truncate text-xs text-text-muted">{statusText}</span>
-            </span>
-            {canOpenDmPartner && (
-              <button
-                type="button"
-                onClick={handleDmPartnerAvatarClick}
-                className={TITLE_ACTION_BUTTON_CLASS}
-                aria-label={t("a11y.openUserProfile", { name: dmPartner.name })}
-              />
-            )}
-          </div>
-        ) : dmGroup ? (
-          <div className="relative flex min-w-0 items-center gap-3 rounded-lg text-left">
+  const renderHeaderTitle = () => {
+    if (dmPartner) {
+      return (
+        <div className="relative flex min-w-0 items-center gap-3 rounded-lg text-left">
+          <span className="relative shrink-0">
             <Avatar
               size="md"
-              className="shrink-0 border border-border-subtle bg-bg-elevated text-text-muted"
+              className="border border-border-subtle bg-bg-elevated text-text-muted"
+              src={avatarSrc}
             >
-              {dmGroup.name.slice(0, 1).toUpperCase()}
+              {dmPartner.name.slice(0, 1).toUpperCase()}
             </Avatar>
-            <div className="flex min-w-0 flex-1 flex-col">
-              <h1 className="truncate text-sm font-semibold text-text-primary">{dmGroup.name}</h1>
-              <p className="truncate text-xs text-text-muted">
-                {t("channel.participants", { count: dmGroup.participantsCount })}
-              </p>
-            </div>
-            {canOpenRightPanelFromHeader && (
-              <button
-                type="button"
-                onClick={handleOpenRightPanelFromHeaderBlock}
-                className={TITLE_ACTION_BUTTON_CLASS}
-                aria-label={infoLabel}
-              />
-            )}
+            <PresenceIndicator
+              status={dmPartner.presenceState}
+              size="md"
+              tone="header"
+              pulse={false}
+              deactivated={dmPartner.isAccountDeactivated === true}
+              className="absolute bottom-0 right-0 ring-border-subtle"
+            />
+          </span>
+          <span className="flex min-w-0 flex-1 flex-col">
+            <h1 className="truncate text-sm font-semibold text-text-primary">{dmPartner.name}</h1>
+            <span className="truncate text-xs text-text-muted">{statusText}</span>
+          </span>
+          {canOpenDmPartner && (
+            <button
+              type="button"
+              onClick={handleDmPartnerAvatarClick}
+              className={TITLE_ACTION_BUTTON_CLASS}
+              aria-label={t("a11y.openUserProfile", { name: dmPartner.name })}
+            />
+          )}
+        </div>
+      );
+    }
+    if (dmGroup) {
+      return (
+        <div className="relative flex min-w-0 items-center gap-3 rounded-lg text-left">
+          <Avatar
+            size="md"
+            className="shrink-0 border border-border-subtle bg-bg-elevated text-text-muted"
+          >
+            {dmGroup.name.slice(0, 1).toUpperCase()}
+          </Avatar>
+          <div className="flex min-w-0 flex-1 flex-col">
+            <h1 className="truncate text-sm font-semibold text-text-primary">{dmGroup.name}</h1>
+            <p className="truncate text-xs text-text-muted">
+              {t("channel.participants", { count: dmGroup.participantsCount })}
+            </p>
           </div>
-        ) : (
-          <div className="relative flex min-w-0 flex-1 flex-col rounded-lg text-left">
-            <h1 className="truncate text-sm text-text-primary">
-              {!hideTopic && topic ? (
-                <>
-                  <span className="font-semibold">{topic}</span>
-                  <span className="font-normal text-text-muted"> · {channelName}</span>
-                </>
-              ) : (
-                <span className="font-semibold">{channelName}</span>
-              )}
-            </h1>
-            {!hideParticipants && (
-              <p className="mt-0.5 text-xs text-text-muted">
-                {t("channel.participants", { count: participantsCount })},{" "}
-                {t("channel.online", { count: onlineCount })}
-              </p>
-            )}
-            {canOpenRightPanelFromHeader && (
-              <button
-                type="button"
-                onClick={handleOpenRightPanelFromHeaderBlock}
-                className={TITLE_ACTION_BUTTON_CLASS}
-                aria-label={infoLabel}
-              />
-            )}
-          </div>
+          {canOpenRightPanelFromHeader && (
+            <button
+              type="button"
+              onClick={handleOpenRightPanelFromHeaderBlock}
+              className={TITLE_ACTION_BUTTON_CLASS}
+              aria-label={infoLabel}
+            />
+          )}
+        </div>
+      );
+    }
+    return (
+      <div className="relative flex min-w-0 flex-1 flex-col rounded-lg text-left">
+        <h1 className="truncate text-sm text-text-primary">
+          {!hideTopic && topic ? (
+            <>
+              <span className="font-semibold">{topic}</span>
+              <span className="font-normal text-text-muted"> · {channelName}</span>
+            </>
+          ) : (
+            <span className="font-semibold">{channelName}</span>
+          )}
+        </h1>
+        {!hideParticipants && (
+          <p className="mt-0.5 text-xs text-text-muted">
+            {t("channel.participants", { count: participantsCount })},{" "}
+            {t("channel.online", { count: onlineCount })}
+          </p>
+        )}
+        {canOpenRightPanelFromHeader && (
+          <button
+            type="button"
+            onClick={handleOpenRightPanelFromHeaderBlock}
+            className={TITLE_ACTION_BUTTON_CLASS}
+            aria-label={infoLabel}
+          />
         )}
       </div>
+    );
+  };
+
+  return (
+    <header className="flex flex-shrink-0 items-center justify-between bg-card-bg px-5 py-2">
+      <div className="flex min-w-0 flex-1 flex-col">{renderHeaderTitle()}</div>
       <div className="flex items-center gap-1">
         {onCallClick != null && (
           <button

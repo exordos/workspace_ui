@@ -4,6 +4,7 @@
  */
 import { useEffect, useRef } from "react";
 import type { FolderSyncSystemLabels } from "~/features/folder-sync/folder-sync.lib";
+import { describeFolderChatIdsForLog } from "~/features/folder-sync/folder-sync.lib";
 import type { FolderRefreshReason } from "~/features/folder-sync/folder-sync.model";
 import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { t } from "~/i18n/i18n";
@@ -100,12 +101,7 @@ export function useLayoutFolderSyncOrchestration(
       streamsMapSize: streamsMap.size,
       dmsMapSize,
       selectedFolderId,
-      selectedFolderChatIds:
-        selectedFolderChatIds === null
-          ? "null"
-          : selectedFolderChatIds.size === 0
-            ? "empty"
-            : `size:${selectedFolderChatIds.size}`,
+      selectedFolderChatIds: describeFolderChatIdsForLog(selectedFolderChatIds),
     });
     syncFolderSyncSidebarProjection({
       chatsSortedByLastMessage,

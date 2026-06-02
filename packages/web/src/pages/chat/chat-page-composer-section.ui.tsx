@@ -2,6 +2,7 @@ import React from "react";
 import { t } from "~/i18n/i18n";
 import { Icon } from "~/shared/ui/icon";
 import { MessageComposer } from "~/widgets/message-composer/message-composer.ui";
+import { isComposerDisabled, resolveComposerPlaceholder } from "./chat-page-composer-section.lib";
 import {
   TOPIC_PROMPT_BUTTON_CLASS_NAME,
   TOPIC_PROMPT_ICON_HOVER_MODE,
@@ -50,22 +51,24 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
     );
   }
 
-  const placeholder = dmPartnerDeactivated
-    ? t("dm.composerBlockedPlaceholder")
-    : isDmView
-      ? activeDmUserIds?.length
-        ? t("chat.sendPlaceholder")
-        : t("chat.selectChat")
-      : activeStream
-        ? t("chat.sendPlaceholder")
-        : t("chat.selectChannel");
+  const placeholder = resolveComposerPlaceholder({
+    dmPartnerDeactivated,
+    isDmView,
+    activeDmUserIds,
+    activeStream,
+  });
 
   return (
     <MessageComposer
       onSend={onSend}
       onCreateCallLink={onCreateCallLink}
       onCancelUpload={onCancelUpload}
-      disabled={dmPartnerDeactivated || (isDmView ? !activeDmUserIds?.length : !activeStream)}
+      disabled={isComposerDisabled({
+        dmPartnerDeactivated,
+        isDmView,
+        activeDmUserIds,
+        activeStream,
+      })}
       uploadProgress={uploadProgress}
       placeholder={placeholder}
       activeTopic={activeTopic ?? undefined}

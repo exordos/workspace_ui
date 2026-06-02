@@ -16,7 +16,7 @@ export interface LoginPageCredentialsFormProps {
   onPasswordChange: (value: string) => void;
   onRealmBlur: () => void;
   onToggleShowPassword: () => void;
-  onSubmit: (e: React.FormEvent) => void;
+  onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
 }
 
 export const LoginPageCredentialsForm = React.memo<LoginPageCredentialsFormProps>(

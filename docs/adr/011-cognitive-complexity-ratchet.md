@@ -10,7 +10,7 @@ Large orchestrator functions hurt review velocity and hide bugs. SonarJS `cognit
 
 ## Decision
 
-1. Track warnings via `npm run lint:cc` (`scripts/count-cognitive-complexity.mjs`).
+1. Track warnings via `npm run lint:cc` (`scripts/count-cognitive-complexity.mjs`). Broader smell audit: ADR 012 (`npm run lint:smells`).
 2. Ratchet thresholds: **25 → 20** (steady-state target **15**, not in this sprint).
 3. Do not lower the threshold until the current threshold has **0** warnings.
 4. Refactor by extracting pure `*.lib.ts`, hooks, and `React.memo` subcomponents — no `eslint-disable` for new code.

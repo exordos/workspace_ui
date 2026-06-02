@@ -21,21 +21,26 @@ export const MessageComposerPreviewBody = React.memo(function MessageComposerPre
 
   useProtectedMessageHtml(previewBodyRef, safePreviewHtml);
 
+  const renderPreviewContent = () => {
+    if (outgoingBodyTrim.length === 0) {
+      return <p className="text-text-muted">{t("composer.previewEmpty")}</p>;
+    }
+    if (previewLoading) {
+      return <p className="text-text-muted">{t("composer.previewLoading")}</p>;
+    }
+    if (previewError) {
+      return <p className="text-notice-base">{previewError}</p>;
+    }
+    return <div ref={previewBodyRef} className={MESSAGE_COMPOSER_PREVIEW_BODY_CLASS_NAME} />;
+  };
+
   return (
     <div
       className={`max-h-32 min-h-10 w-full min-w-0 overflow-y-auto px-3 py-2 text-sm text-text-primary ${SCROLL_AREA_CLASS}`}
       role="region"
       aria-label={t("composer.preview")}
     >
-      {outgoingBodyTrim.length === 0 ? (
-        <p className="text-text-muted">{t("composer.previewEmpty")}</p>
-      ) : previewLoading ? (
-        <p className="text-text-muted">{t("composer.previewLoading")}</p>
-      ) : previewError ? (
-        <p className="text-notice-base">{previewError}</p>
-      ) : (
-        <div ref={previewBodyRef} className={MESSAGE_COMPOSER_PREVIEW_BODY_CLASS_NAME} />
-      )}
+      {renderPreviewContent()}
     </div>
   );
 });

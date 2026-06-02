@@ -30,10 +30,13 @@ function resolveFolderIconTextColor(isCustomFolder: boolean, isSelected: boolean
 function resolveFolderLabelTextColor(
   labelUsesCustomColor: boolean,
   labelUsesAccent: boolean,
+  isSelected: boolean,
 ): string {
   if (labelUsesCustomColor) return "text-current";
-  if (labelUsesAccent) return "text-accent";
-  return "text-text-muted";
+  if (labelUsesAccent) {
+    return isSelected ? "text-text-primary" : "text-accent";
+  }
+  return isSelected ? "text-text-primary" : "text-text-muted";
 }
 
 export function buildFolderItemVisualState({
@@ -73,7 +76,7 @@ export function buildFolderItemVisualState({
     folderColor,
     iconName: resolveFolderIconName(systemType, isSelected),
     iconTextColor: resolveFolderIconTextColor(isCustomFolder, isSelected),
-    labelTextColor: resolveFolderLabelTextColor(labelUsesCustomColor, labelUsesAccent),
+    labelTextColor: resolveFolderLabelTextColor(labelUsesCustomColor, labelUsesAccent, isSelected),
     iconColorStyle,
     labelColorStyle,
     folderSurfaceStyle,

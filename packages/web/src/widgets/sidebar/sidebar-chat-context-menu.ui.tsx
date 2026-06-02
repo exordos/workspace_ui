@@ -11,16 +11,16 @@ import { t } from "~/i18n/i18n";
 import { markDmAsRead, markStreamAsRead } from "~/shared/api/zulip-read-state";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
 import { Icon } from "~/shared/ui/icon";
+import {
+  isContextMenuKeyboardEvent,
+  wrapChildWithContextMenuHandlers,
+} from "./sidebar-chat-context-menu-clone.lib";
 import { useSidebarFolderPinMenu } from "./sidebar-folder-pin-menu.lib";
 import { chatToWorkspaceChatId, parseDmSlugToUserIds } from "./sidebar.lib";
 import type { SidebarChat } from "./sidebar.types";
 
 const SIDEBAR_MENU_ITEM_CLASS =
   "data-[highlighted]:bg-sidebar-hover flex cursor-pointer select-none items-center gap-2 px-2 py-2 text-sm text-text-primary outline-none transition-colors data-[disabled]:pointer-events-none data-[disabled]:opacity-50 hover:bg-sidebar-hover focus-visible:outline-none focus-visible:outline-0 focus-visible:outline-offset-0";
-
-function isContextMenuKeyboardEvent(event: React.KeyboardEvent): boolean {
-  return event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey);
-}
 
 function useFolderAssignmentsSubmenu(chatId: string, menuOpen: boolean): DropdownMenuItem {
   const [assignments, setAssignments] = useState<FolderAssignmentRow[]>([]);
@@ -477,29 +477,14 @@ export const DmContextMenu = React.memo(function DmContextMenu({
     showFolderPinAction,
   ]);
 
-  const contentWithContextMenu = useMemo(() => {
-    if (!React.isValidElement(children)) return children;
-    const childElement = children as React.ReactElement<{
-      onContextMenu?: React.MouseEventHandler;
-      onKeyDown?: React.KeyboardEventHandler;
-    }>;
-    const existingOnContextMenu = childElement.props.onContextMenu;
-    const existingOnKeyDown = childElement.props.onKeyDown;
-    return React.cloneElement(childElement, {
-      onContextMenu: (e: React.MouseEvent) => {
-        existingOnContextMenu?.(e);
-        handleContextMenuCapture(e);
-      },
-      onKeyDown: (e: React.KeyboardEvent) => {
-        existingOnKeyDown?.(e);
-        if (e.defaultPrevented) return;
-        if (isContextMenuKeyboardEvent(e)) {
-          e.preventDefault();
-          openMenu();
-        }
-      },
-    });
-  }, [children, handleContextMenuCapture, openMenu]);
+  const contentWithContextMenu = useMemo(
+    (): React.ReactElement =>
+      wrapChildWithContextMenuHandlers(children, {
+        handleContextMenuCapture,
+        openMenu,
+      }),
+    [children, handleContextMenuCapture, openMenu],
+  );
 
   return (
     <div className="group/dm relative">

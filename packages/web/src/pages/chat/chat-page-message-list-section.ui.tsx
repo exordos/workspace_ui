@@ -2,6 +2,7 @@ import React, { useCallback } from "react";
 import { t } from "~/i18n/i18n";
 import { Spinner } from "~/shared/ui/spinner.ui";
 import { MessageList } from "~/widgets/message-list/message-list.ui";
+import { resolveMessageListScrollKey } from "./chat-page.lib";
 import type { ChatPageMessageListSectionProps } from "./chat-page-message-list-section.types";
 
 const CHAT_MESSAGE_LIST_STATE_CARD_CLASS =
@@ -80,11 +81,12 @@ export const ChatPageMessageListSection = React.memo(function ChatPageMessageLis
     );
   }
 
-  const scrollToBottomKey = isDmView
-    ? activeDmUserIds !== null
-      ? `dm-${activeDmUserIds.join(",")}`
-      : undefined
-    : [activeStream ?? "", activeTopic ?? ""].join("|");
+  const scrollToBottomKey = resolveMessageListScrollKey({
+    isDmView,
+    activeDmUserIds,
+    activeStream,
+    activeTopic,
+  });
 
   const showTopicInSenderName = activeTopic == null || activeTopic.trim() === "";
 

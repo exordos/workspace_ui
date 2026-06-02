@@ -28,7 +28,7 @@ export const IS_CONNECTION_DIAGNOSTICS_ENABLED = env.DEV;
 export const SEARCH_INPUT_DEBOUNCE_MS = 300;
 
 /** Default debounce when coalescing unread refresh from inactive-instance event streams. */
-export const MULTI_ORG_UNREAD_REFRESH_DEBOUNCE_MS = SEARCH_INPUT_DEBOUNCE_MS;
+export { SEARCH_INPUT_DEBOUNCE_MS as MULTI_ORG_UNREAD_REFRESH_DEBOUNCE_MS };
 
 /** Jitsi Meet API: poll interval for participant list display in the call UI. */
 export const JITSI_PARTICIPANTS_POLL_MS = 5000;

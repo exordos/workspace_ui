@@ -17,7 +17,4 @@ export const WORKSPACE_REST_API_PATH = "/workspace";
 export const WORKSPACE_GATEWAY_V1_PATH = "/workspace/v1";
 
 /** Workspace API path on the gateway (same as {@link WORKSPACE_GATEWAY_V1_PATH}). */
-export const WORKSPACE_API_PATH = WORKSPACE_GATEWAY_V1_PATH;
-
-/** @deprecated Prefer {@link WORKSPACE_GATEWAY_V1_PATH}. */
-export const USER_UPLOADS_PATH_PREFIX = WORKSPACE_GATEWAY_V1_PATH;
+export { WORKSPACE_GATEWAY_V1_PATH as WORKSPACE_API_PATH };

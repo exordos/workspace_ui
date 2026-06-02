@@ -6,6 +6,7 @@ import { traceLinkPreview } from "~/shared/lib/message-link-preview-trace.lib";
 import { prepareProtectedMessageHtml } from "~/shared/lib/protected-message-media";
 import { useProtectedMessageHtml } from "~/shared/lib/protected-message-media.hook";
 import { Skeleton, SkeletonText } from "~/shared/ui/skeleton.ui";
+import { resolveLinkPreviewHideReason } from "./message-link-preview.lib";
 import type { MessageLinkPreviewProps } from "./message-link-preview.types";
 
 function buildThumbnailHtml(thumbnailPath: string, targetUrl: string): string {
@@ -59,12 +60,7 @@ export const MessageLinkPreview = React.memo<MessageLinkPreviewProps>(function M
 
   const prevUiTraceRef = useRef<string | null>(null);
   useEffect(() => {
-    const hideReason =
-      status === "unavailable"
-        ? "unavailable"
-        : status !== "loading" && previewData == null
-          ? "no-data-non-loading"
-          : null;
+    const hideReason = resolveLinkPreviewHideReason(status, previewData);
     const snapshot = JSON.stringify({
       status,
       hideReason,

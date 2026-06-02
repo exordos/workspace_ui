@@ -19,7 +19,7 @@ export function startFolderPolling({
   const tick = (): void => {
     if (cancelled || inProgress) return;
     inProgress = true;
-    Promise.resolve(refreshFolders())
+    void Promise.resolve(refreshFolders())
       .catch(() => {
         /* best-effort folder refresh polling */
       })

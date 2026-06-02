@@ -1,4 +1,4 @@
-import { useEffect, type MutableRefObject } from "react";
+import { useEffect, type RefObject } from "react";
 import { useLocation } from "react-router-dom";
 import { resolveHydratedDraftBootstrap } from "~/entities/draft/draft-chat-bootstrap.lib";
 import { useDraftStore } from "~/entities/draft/draft.model";
@@ -10,9 +10,9 @@ export interface UseChatPageDraftSyncParams {
   draftTo: number[];
   draftTopic: string;
   drafts: ReturnType<typeof useDraftStore.getState>["drafts"];
-  composerValueRef: MutableRefObject<string>;
-  activeDraftIdRef: MutableRefObject<number | null>;
-  pendingForwardPrefillRef: MutableRefObject<string | null>;
+  composerValueRef: RefObject<string>;
+  activeDraftIdRef: RefObject<number | null>;
+  pendingForwardPrefillRef: RefObject<string | null>;
   setDraftInitialValue: (value: string) => void;
 }
 

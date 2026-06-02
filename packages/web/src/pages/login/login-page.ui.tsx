@@ -133,7 +133,7 @@ export const LoginPage: React.FC = () => {
     e.currentTarget.src = getOrganizationFallbackLogoUrl();
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
     const realmTrim = realm.trim();

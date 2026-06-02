@@ -35,12 +35,14 @@ const ManagerProfileLink = React.memo(function ManagerProfileLink({
   onOpen: (userId: number) => void;
 }) {
   const nameFromStore = useUsersStore((s) => s.getUser(userId)?.full_name?.trim());
-  const label =
-    nameFromStore != null && nameFromStore.length > 0
-      ? nameFromStore
-      : fallbackLabel != null && fallbackLabel.trim().length > 0
-        ? fallbackLabel.trim()
-        : `#${userId}`;
+  let label: string;
+  if (nameFromStore != null && nameFromStore.length > 0) {
+    label = nameFromStore;
+  } else if (fallbackLabel != null && fallbackLabel.trim().length > 0) {
+    label = fallbackLabel.trim();
+  } else {
+    label = `#${userId}`;
+  }
 
   const handleClick = useCallback(() => {
     onOpen(userId);

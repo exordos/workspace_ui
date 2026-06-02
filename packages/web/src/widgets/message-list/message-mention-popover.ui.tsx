@@ -22,6 +22,7 @@ import {
   MENTION_POPOVER_EST_HEIGHT,
   MENTION_POPOVER_WIDTH,
 } from "./message-mention-popover-position.lib";
+import { resolveMentionPresenceText } from "./message-mention-popover-presence.lib";
 import type { MessageMentionPopoverProps } from "./message-mention-popover.types";
 
 type MentionInfoIcon = "profile" | "mail";
@@ -115,16 +116,7 @@ export const MessageMentionPopover = React.memo(function MessageMentionPopover({
       : undefined;
   const customStatus = formatUserStatusLabel(user?.status);
 
-  const presenceText =
-    presenceState === "active"
-      ? t("presence.online")
-      : presenceState === "idle"
-        ? t("presence.away")
-        : lastSeen != null
-          ? lastSeen === t("presence.online")
-            ? t("presence.online")
-            : t("presence.lastSeen", { time: lastSeen })
-          : t("presence.offline");
+  const presenceText = resolveMentionPresenceText({ presenceState, lastSeen });
   const statusLine = customStatus ?? presenceText;
 
   const avatarSrc = resolveAvatarSrc(user?.avatar_url ?? undefined);

@@ -58,6 +58,7 @@ import {
   mergeStreamEntry,
   rebuildStreamFromTopics,
 } from "./chat-list-stream-entry-merge.lib";
+import { buildStreamMetadataEntry } from "./chat-list-stream-metadata.lib";
 import {
   filterStreamMessagesForSidebar,
   mergeStreamSidebarPreviewsFromMessages,
@@ -88,7 +89,6 @@ import type { ChatListPatchMeta } from "./chat-list-patch-meta.types";
 import type {
   ChatListDmMetadataRow,
   ChatListState,
-  ChatListStreamMetadataRow,
   MessageLocation,
 } from "./chat-list.model.types";
 
@@ -106,7 +106,13 @@ function finalizeChatListPatch(
   const totalsProvidedInPatch =
     patch.sidebarStreamsUnread !== undefined || patch.sidebarDmsUnread !== undefined;
   if (!totalsProvidedInPatch) {
-    if (meta.recomputeSidebarTotals) {
+    const shouldRecomputeSidebarTotals =
+      meta.recomputeSidebarTotals ||
+      (mapsTouched &&
+        !meta.preserveSidebarTotals &&
+        meta.sidebarStreamsUnreadDelta === undefined &&
+        meta.sidebarDmsUnreadDelta === undefined);
+    if (shouldRecomputeSidebarTotals) {
       Object.assign(
         result,
         computeSidebarUnreadTotals(
@@ -127,14 +133,6 @@ function finalizeChatListPatch(
           streams: meta.sidebarStreamsUnreadDelta,
           dms: meta.sidebarDmsUnreadDelta,
         }),
-      );
-    } else if (mapsTouched) {
-      Object.assign(
-        result,
-        computeSidebarUnreadTotals(
-          patch.streamsMap ?? state.streamsMap,
-          patch.dmsMap ?? state.dmsMap,
-        ),
       );
     }
   }
@@ -382,52 +380,6 @@ function buildDmMetadataEntry(
       avatar_url: useUsersStore.getState().getAvatarUrl(partnerId) ?? existing?.avatar_url,
       lastMessageId,
     },
-  };
-}
-
-// Что делает: создает/обновляет строку канала из metadata, не трогая историю сообщений.
-function buildStreamMetadataEntry(
-  row: ChatListStreamMetadataRow,
-  existing: StreamEntryInternal | undefined,
-): StreamEntryInternal {
-  const name = row.name.trim();
-  const isArchived = row.isArchived ?? existing?.isArchived;
-  const creatorId = row.creatorId ?? existing?.creatorId;
-  const inviteOnly = row.inviteOnly ?? existing?.inviteOnly;
-  const canAddSubscribersGroup = row.canAddSubscribersGroup ?? existing?.canAddSubscribersGroup;
-  const canRemoveSubscribersGroup =
-    row.canRemoveSubscribersGroup ?? existing?.canRemoveSubscribersGroup;
-  const canAdministerChannelGroup =
-    row.canAdministerChannelGroup ?? existing?.canAdministerChannelGroup;
-  const canResolveTopicsGroup = row.canResolveTopicsGroup ?? existing?.canResolveTopicsGroup;
-  if (existing) {
-    return {
-      ...existing,
-      name: name.length > 0 ? name : existing.name,
-      ...(isArchived != null ? { isArchived } : {}),
-      ...(creatorId != null ? { creatorId } : {}),
-      ...(inviteOnly != null ? { inviteOnly } : {}),
-      ...(canAddSubscribersGroup != null ? { canAddSubscribersGroup } : {}),
-      ...(canRemoveSubscribersGroup != null ? { canRemoveSubscribersGroup } : {}),
-      ...(canAdministerChannelGroup != null ? { canAdministerChannelGroup } : {}),
-      ...(canResolveTopicsGroup != null ? { canResolveTopicsGroup } : {}),
-    };
-  }
-  return {
-    stream_id: row.streamId,
-    name: name.length > 0 ? name : String(row.streamId),
-    lastMessage: "",
-    lastMessageSenderName: undefined,
-    time: "",
-    ts: 0,
-    ...(isArchived != null ? { isArchived } : {}),
-    ...(creatorId != null ? { creatorId } : {}),
-    ...(inviteOnly != null ? { inviteOnly } : {}),
-    ...(canAddSubscribersGroup != null ? { canAddSubscribersGroup } : {}),
-    ...(canRemoveSubscribersGroup != null ? { canRemoveSubscribersGroup } : {}),
-    ...(canAdministerChannelGroup != null ? { canAdministerChannelGroup } : {}),
-    ...(canResolveTopicsGroup != null ? { canResolveTopicsGroup } : {}),
-    topics: new Map(),
   };
 }
 

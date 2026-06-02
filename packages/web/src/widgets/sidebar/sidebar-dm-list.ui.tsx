@@ -201,15 +201,19 @@ export const SidebarDmList: React.FC<SidebarDmListProps> = ({ activeDmId, dms })
                     </span>
                     <SidebarUserStatusEmoji status={user.status} />
                   </div>
-                  {!isCompactDensity && isTyping ? (
-                    <span className="block truncate text-[11px] italic text-text-primary">
-                      {t("chat.typing")}
-                    </span>
-                  ) : !isCompactDensity ? (
-                    <span className="block truncate text-[11px] text-text-secondary">
-                      {user.email ?? ""}
-                    </span>
-                  ) : null}
+                  {!isCompactDensity && (
+                    <>
+                      {isTyping ? (
+                        <span className="block truncate text-[11px] italic text-text-primary">
+                          {t("chat.typing")}
+                        </span>
+                      ) : (
+                        <span className="block truncate text-[11px] text-text-secondary">
+                          {user.email ?? ""}
+                        </span>
+                      )}
+                    </>
+                  )}
                 </div>
               </Link>
             );

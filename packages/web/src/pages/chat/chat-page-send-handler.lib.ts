@@ -68,11 +68,14 @@ async function prepareComposerBodyWithUploads(options: {
     return content + "\n" + uploadedLinks.join("\n");
   } catch (err) {
     const wasCancelled = isAbortLikeError(err) || uploadController.signal.aborted;
-    const errorMessage = wasCancelled
-      ? t("composer.uploadCancelled")
-      : err instanceof Error
-        ? err.message
-        : t("message.sendFailed");
+    let errorMessage: string;
+    if (wasCancelled) {
+      errorMessage = t("composer.uploadCancelled");
+    } else if (err instanceof Error) {
+      errorMessage = err.message;
+    } else {
+      errorMessage = t("message.sendFailed");
+    }
     setSendError(errorMessage);
     setUploadProgress(null);
     throw new Error(errorMessage, { cause: err });

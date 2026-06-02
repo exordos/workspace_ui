@@ -2,7 +2,8 @@
  * fetch wrapper that records method, path, status, and sanitized params via logApiCall.
  */
 
-import { logApiCall, redact } from "./logger";
+import { extractFetchParamsFromBody, resolveFetchBodyContentType } from "./logged-fetch-body.lib";
+import { logApiCall } from "./logger";
 
 function resolveRequestUrl(input: RequestInfo | URL): string {
   if (typeof input === "string") {
@@ -24,36 +25,7 @@ function resolveLogPath(url: string): string {
 }
 
 function extractFetchParams(init?: RequestInit): Record<string, unknown> | undefined {
-  const body = init?.body;
-  if (typeof body === "string" && body.length > 0) {
-    const contentType = init?.headers ? (new Headers(init.headers).get("Content-Type") ?? "") : "";
-    if (contentType.includes("application/json")) {
-      try {
-        const parsed: unknown = JSON.parse(body);
-        if (parsed != null && typeof parsed === "object" && !Array.isArray(parsed)) {
-          return redact(parsed) as Record<string, unknown>;
-        }
-      } catch {
-        return { body: "[unparsed body]" };
-      }
-    }
-    const params: Record<string, string> = {};
-    for (const [key, value] of new URLSearchParams(body).entries()) {
-      params[key] = value;
-    }
-    return Object.keys(params).length > 0 ? (redact(params) as Record<string, unknown>) : undefined;
-  }
-  if (body instanceof URLSearchParams) {
-    const params: Record<string, string> = {};
-    for (const [key, value] of body.entries()) {
-      params[key] = value;
-    }
-    return Object.keys(params).length > 0 ? (redact(params) as Record<string, unknown>) : undefined;
-  }
-  if (body instanceof FormData) {
-    return { body: "[FormData]" };
-  }
-  return undefined;
+  return extractFetchParamsFromBody(init?.body, resolveFetchBodyContentType(init));
 }
 
 export async function loggedFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {

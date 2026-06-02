@@ -15,6 +15,7 @@ import type {
   LinkPreviewCacheStatus,
   LinkPreviewResolvedItem,
 } from "~/shared/lib/message-link-preview.types";
+import { sliceAfterPreviewFetchAborted, sliceAfterPreviewResolved } from "./link-preview-store.lib";
 
 const DEFAULT_MAX_ENTRIES = 100;
 
@@ -186,13 +187,7 @@ export const useLinkPreviewStore = create<LinkPreviewState>((set, get) => ({
       const items = await fetchLinkPreviewsFromMessageMarkdown(markdown, messageId, signal);
       if (signal.aborted) {
         endFetchAbort(messageId, abortController);
-        set((state) => ({
-          inFlight: (() => {
-            const next = new Map(state.inFlight);
-            next.delete(messageId);
-            return next;
-          })(),
-        }));
+        set((state) => sliceAfterPreviewFetchAborted(state, messageId));
         const remaining = get().byMessageId[messageId];
         return (
           remaining ?? {
@@ -211,66 +206,18 @@ export const useLinkPreviewStore = create<LinkPreviewState>((set, get) => ({
         contentFingerprint: fingerprint,
         fetchedAt: Date.now(),
       };
-      set((state) => {
-        const current = state.byMessageId[messageId];
-        const keysBefore = Object.keys(state.byMessageId).map(Number);
-        if (
-          entry.status === "unavailable" &&
-          current?.status === "ready" &&
-          current.contentFingerprint === fingerprint &&
-          entryHasPreviewData(current)
-        ) {
-          traceLinkPreview("store:downgrade-blocked", {
-            messageId,
-            fingerprint,
-            keptCount: current.items.filter((i) => i.data != null).length,
-          });
-          return {
-            inFlight: (() => {
-              const next = new Map(state.inFlight);
-              next.delete(messageId);
-              return next;
-            })(),
-          };
-        }
-
-        const mergedItems = mergeResolvedItems(entry.items, current?.items);
-        const mergedEntry: LinkPreviewCacheEntry = {
-          ...entry,
-          items: mergedItems,
-          status: resolveCacheStatus(mergedItems),
-          fetchedAt: Date.now(),
-        };
-
-        const nextByMessageId = touchMessageEntry(
-          state.byMessageId,
+      set((state) =>
+        sliceAfterPreviewResolved({
+          state,
           messageId,
-          mergedEntry,
-          state.maxEntries,
-        );
-        const keysAfter = Object.keys(nextByMessageId).map(Number);
-        const evicted =
-          keysBefore.includes(messageId) && !keysAfter.includes(messageId)
-            ? [messageId]
-            : keysBefore.filter((id) => !keysAfter.includes(id));
-        traceLinkPreview("store:resolved", {
-          messageId,
-          status: mergedEntry.status,
           fingerprint,
-          itemCount: mergedEntry.items.length,
-          withDataCount: mergedEntry.items.filter((i) => i.data != null).length,
-          evictedIds: evicted.length > 0 ? evicted : undefined,
-          cacheSize: keysAfter.length,
-        });
-        return {
-          byMessageId: nextByMessageId,
-          inFlight: (() => {
-            const next = new Map(state.inFlight);
-            next.delete(messageId);
-            return next;
-          })(),
-        };
-      });
+          entry,
+          touchMessageEntry,
+          mergeResolvedItems,
+          resolveCacheStatus,
+          entryHasPreviewData,
+        }),
+      );
       endFetchAbort(messageId, abortController);
       const stored = get().byMessageId[messageId];
       if (stored == null) {

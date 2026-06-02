@@ -18,6 +18,10 @@ import { createLogger, logStoreAction } from "~/shared/lib/logger";
 import { logFolderFlow } from "~/shared/lib/message-flow-debug.lib";
 import type { SidebarChat, StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import {
+  sliceAfterFolderAssignmentRollback,
+  sliceAfterOptimisticFolderAssignment,
+} from "./folder-sync-assignment-rollback.lib";
+import {
   OPTIMISTIC_FOLDER_ASSIGNMENT_ITEM_UUID,
   type FolderAssignmentRow,
   type ToggleAssignmentInput,
@@ -31,6 +35,8 @@ import {
   aliasAllFolderItemsCacheKeys,
   resolveAllFolderApiUuid,
   resolveFolderItemsRequestUuid,
+  resolveSelectedFolderChatIdsOnSelect,
+  resolveSelectedFolderChatIdsOnSyncDerived,
 } from "./folder-sync.lib";
 import {
   mergeFolderItemsSnapshot,
@@ -337,6 +343,221 @@ function applySnapshotToFolderState(
   return { foldersWithSystemDefaults, nextFolderItemsByFolderId };
 }
 
+function applyFolderSyncRefreshSnapshot(
+  get: () => FolderSyncState,
+  set: (
+    partial: Partial<FolderSyncState> | ((state: FolderSyncState) => Partial<FolderSyncState>),
+  ) => void,
+  options: {
+    instanceId: string;
+    reason: FolderRefreshReason;
+    requestVersion: number;
+    snapshot: FolderSyncSnapshot;
+    shouldToggleLoading: boolean;
+  },
+): void {
+  const { instanceId, reason, requestVersion, snapshot, shouldToggleLoading } = options;
+  const latestState = get();
+  if (!isCurrentRequest(latestState, instanceId, requestVersion)) {
+    logFolderFlow("refresh:snapshot ignored (stale requestVersion)", {
+      instanceId,
+      requestVersion,
+    });
+    return;
+  }
+  logFolderFlow("refresh:snapshot ok", {
+    instanceId,
+    requestVersion,
+    reason,
+    folderCount: snapshot.folders.length,
+  });
+
+  const { foldersWithSystemDefaults, nextFolderItemsByFolderId } = applySnapshotToFolderState(
+    snapshot,
+    latestState,
+  );
+  schedulePersistFolders(instanceId, foldersWithSystemDefaults);
+
+  const selectedFolderId =
+    resolveSelectedFolderId(foldersWithSystemDefaults, latestState.selectedFolderId) ??
+    latestState.selectedFolderId;
+  const nextStaleFolderIds = filterStaleFolderIdsByFolders(
+    latestState.staleFolderIds,
+    foldersWithSystemDefaults,
+  );
+  for (const [folderId, loadResult] of snapshot.itemsByFolderId) {
+    if (loadResult.ok) {
+      nextStaleFolderIds.delete(folderId);
+    } else {
+      nextStaleFolderIds.add(folderId);
+    }
+  }
+  const shouldLoadSelectedItems = shouldLoadFolderItemsForSelection(
+    foldersWithSystemDefaults,
+    selectedFolderId,
+  );
+
+  let selectedFolderChatIds: Set<string> | null = null;
+  if (shouldLoadSelectedItems) {
+    const selectedLoadResult = snapshot.itemsByFolderId.get(selectedFolderId);
+    if (selectedLoadResult?.ok) {
+      selectedFolderChatIds = toChatIdSet(selectedLoadResult.items);
+    } else {
+      const staleItems = nextFolderItemsByFolderId.get(selectedFolderId);
+      if (staleItems) {
+        selectedFolderChatIds = toChatIdSet(staleItems);
+      }
+    }
+  }
+
+  set({
+    folders: foldersWithSystemDefaults,
+    selectedFolderId,
+    selectedFolderChatIds,
+    folderItemsByFolderId: nextFolderItemsByFolderId,
+    allFolderApiUuid: resolveAllFolderApiUuid(snapshot.folders),
+    staleFolderIds: nextStaleFolderIds,
+    error: null,
+    ...(shouldToggleLoading ? { loading: false } : {}),
+  });
+
+  folderSyncLog.debug("refresh:snapshotApplied", {
+    reason,
+    instanceId,
+    requestVersion,
+    folderCount: foldersWithSystemDefaults.length,
+    selectedFolderId,
+    shouldLoadSelectedItems,
+    folderChatIds: describeFolderChatIds(selectedFolderChatIds),
+  });
+}
+
+async function runFolderSyncRefreshAttempt(
+  get: () => FolderSyncState,
+  set: (
+    partial: Partial<FolderSyncState> | ((state: FolderSyncState) => Partial<FolderSyncState>),
+  ) => void,
+  options: {
+    instanceId: string;
+    reason: FolderRefreshReason;
+    requestVersion: number;
+    shouldToggleLoading: boolean;
+  },
+): Promise<void> {
+  const { instanceId, reason, requestVersion, shouldToggleLoading } = options;
+
+  try {
+    const stateBeforeSnapshot = get();
+    const priorityFolderUuid = resolveFolderItemsRequestUuid(
+      stateBeforeSnapshot.selectedFolderId,
+      stateBeforeSnapshot.allFolderApiUuid,
+    );
+    const itemsLoadScope = reason === "polling" ? "selective" : "all";
+    const snapshot = await loadFolderSyncSnapshot(instanceId, {
+      force: reason === "bootstrap" || reason === "reconnect",
+      priorityFolderUuid,
+      itemsLoadScope,
+      ...(itemsLoadScope === "selective"
+        ? {
+            resolveSelectiveFolderUuids: (folderRows) =>
+              resolveFolderUuidsForPollingItemsRefresh({
+                foldersFromApi: folderRows,
+                folderItemsByFolderId: stateBeforeSnapshot.folderItemsByFolderId,
+                staleFolderIds: stateBeforeSnapshot.staleFolderIds,
+                selectedFolderId: stateBeforeSnapshot.selectedFolderId,
+                foldersForRail: stateBeforeSnapshot.folders,
+                allFolderApiUuid: stateBeforeSnapshot.allFolderApiUuid,
+              }),
+          }
+        : {}),
+      onFoldersLoaded: (folderRows) => {
+        const phaseState = get();
+        if (!isCurrentRequest(phaseState, instanceId, requestVersion) || folderRows.length === 0) {
+          return;
+        }
+
+        const phaseSnapshot: FolderSyncSnapshot = {
+          folders: folderRows,
+          itemsByFolderId: new Map(),
+          loadedAt: Date.now(),
+        };
+        const foldersWithSystemDefaults = normalizeFoldersForPresentation(
+          phaseSnapshot,
+          phaseState.labels,
+          phaseState.showSystemFolders,
+        );
+        schedulePersistFolders(instanceId, foldersWithSystemDefaults);
+
+        const selectedFolderId =
+          resolveSelectedFolderId(foldersWithSystemDefaults, phaseState.selectedFolderId) ??
+          phaseState.selectedFolderId;
+        const nextStaleFolderIds = filterStaleFolderIdsByFolders(
+          phaseState.staleFolderIds,
+          foldersWithSystemDefaults,
+        );
+
+        set({
+          folders: foldersWithSystemDefaults,
+          selectedFolderId,
+          staleFolderIds: nextStaleFolderIds,
+          allFolderApiUuid: resolveAllFolderApiUuid(folderRows),
+          error: null,
+        });
+      },
+    });
+    applyFolderSyncRefreshSnapshot(get, set, {
+      instanceId,
+      reason,
+      requestVersion,
+      snapshot,
+      shouldToggleLoading,
+    });
+  } catch {
+    const stateOnFailure = get();
+    if (!isCurrentRequest(stateOnFailure, instanceId, requestVersion)) {
+      return;
+    }
+
+    const row = await loadFoldersSnapshotRow(instanceId).catch(() => null);
+    const offlineRail = row?.folders ?? [];
+    const offlineFolders = withDefaultSystemFolders(
+      offlineRail,
+      stateOnFailure.labels,
+      stateOnFailure.showSystemFolders,
+    );
+    const selectedFolderId =
+      resolveSelectedFolderId(offlineFolders, stateOnFailure.selectedFolderId) ??
+      stateOnFailure.selectedFolderId;
+    const selectedFolderChatIds = shouldLoadFolderItemsForSelection(
+      offlineFolders,
+      selectedFolderId,
+    )
+      ? stateOnFailure.selectedFolderChatIds
+      : null;
+
+    set({
+      folders: offlineFolders,
+      selectedFolderId,
+      selectedFolderChatIds,
+      staleFolderIds: filterStaleFolderIdsByFolders(stateOnFailure.staleFolderIds, offlineFolders),
+      error: "folder-sync:refresh_failed",
+      ...(shouldToggleLoading ? { loading: false } : {}),
+    });
+    folderSyncLog.warn("refresh:failedUsingOfflineFolders", {
+      instanceId,
+      requestVersion,
+      folderCount: offlineFolders.length,
+      selectedFolderId,
+      folderChatIds: describeFolderChatIds(selectedFolderChatIds),
+    });
+  } finally {
+    const stateAfterFinish = get();
+    if (shouldToggleLoading && isCurrentRequest(stateAfterFinish, instanceId, requestVersion)) {
+      set({ loading: false });
+    }
+  }
+}
+
 export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
   // Не даем стартовать двум refresh одновременно для одного instanceId.
   const inFlightRefreshByInstance = new Map<string, Promise<void>>();
@@ -435,13 +656,10 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
       set({
         selectedFolderId: nextFolderId,
         error: null,
-        selectedFolderChatIds:
-          shouldLoadSelectedFolderItems && cachedItemsForSelectedFolder != null
-            ? toChatIdSet(cachedItemsForSelectedFolder)
-            : shouldLoadSelectedFolderItems
-              ? // При cache miss сразу показываем "пустую папку", чтобы не светить чаты из all.
-                new Set<string>()
-              : null,
+        selectedFolderChatIds: resolveSelectedFolderChatIdsOnSelect({
+          shouldLoadSelectedFolderItems,
+          cachedItemsForSelectedFolder,
+        }),
         // Переключение папки всегда без loader: сначала cache-first, затем best-effort fallback.
         loading: false,
       });
@@ -480,195 +698,12 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
           requestVersion,
           ...(shouldToggleLoading ? { loading: true } : {}),
         });
-
-        try {
-          const stateBeforeSnapshot = get();
-          const priorityFolderUuid = resolveFolderItemsRequestUuid(
-            stateBeforeSnapshot.selectedFolderId,
-            stateBeforeSnapshot.allFolderApiUuid,
-          );
-          const itemsLoadScope = reason === "polling" ? "selective" : "all";
-          const snapshot = await loadFolderSyncSnapshot(instanceId, {
-            force: reason === "bootstrap" || reason === "reconnect",
-            priorityFolderUuid,
-            itemsLoadScope,
-            ...(itemsLoadScope === "selective"
-              ? {
-                  resolveSelectiveFolderUuids: (folderRows) =>
-                    resolveFolderUuidsForPollingItemsRefresh({
-                      foldersFromApi: folderRows,
-                      folderItemsByFolderId: stateBeforeSnapshot.folderItemsByFolderId,
-                      staleFolderIds: stateBeforeSnapshot.staleFolderIds,
-                      selectedFolderId: stateBeforeSnapshot.selectedFolderId,
-                      foldersForRail: stateBeforeSnapshot.folders,
-                      allFolderApiUuid: stateBeforeSnapshot.allFolderApiUuid,
-                    }),
-                }
-              : {}),
-            onFoldersLoaded: (folderRows) => {
-              const phaseState = get();
-              if (!isCurrentRequest(phaseState, instanceId, requestVersion)) {
-                return;
-              }
-              // Пустой список с сервера не должен затирать rail, уже показанный из IndexedDB.
-              if (folderRows.length === 0) {
-                return;
-              }
-
-              const phaseSnapshot: FolderSyncSnapshot = {
-                folders: folderRows,
-                itemsByFolderId: new Map(),
-                loadedAt: Date.now(),
-              };
-              const foldersWithSystemDefaults = normalizeFoldersForPresentation(
-                phaseSnapshot,
-                phaseState.labels,
-                phaseState.showSystemFolders,
-              );
-              schedulePersistFolders(instanceId, foldersWithSystemDefaults);
-
-              const selectedFolderId =
-                resolveSelectedFolderId(foldersWithSystemDefaults, phaseState.selectedFolderId) ??
-                phaseState.selectedFolderId;
-              const nextStaleFolderIds = filterStaleFolderIdsByFolders(
-                phaseState.staleFolderIds,
-                foldersWithSystemDefaults,
-              );
-
-              // На этом шаге getFolders() уже ответил и мы можем быстро обновить rail.
-              set({
-                folders: foldersWithSystemDefaults,
-                selectedFolderId,
-                staleFolderIds: nextStaleFolderIds,
-                allFolderApiUuid: resolveAllFolderApiUuid(folderRows),
-                error: null,
-              });
-            },
-          });
-          const latestState = get();
-          if (!isCurrentRequest(latestState, instanceId, requestVersion)) {
-            logFolderFlow("refresh:snapshot ignored (stale requestVersion)", {
-              instanceId,
-              requestVersion,
-            });
-            // Пришёл ответ от старой версии запроса — пропускаем.
-            return;
-          }
-          logFolderFlow("refresh:snapshot ok", {
-            instanceId,
-            requestVersion,
-            reason,
-            folderCount: snapshot.folders.length,
-          });
-
-          const { foldersWithSystemDefaults, nextFolderItemsByFolderId } =
-            applySnapshotToFolderState(snapshot, latestState);
-          schedulePersistFolders(instanceId, foldersWithSystemDefaults);
-
-          const selectedFolderId =
-            resolveSelectedFolderId(foldersWithSystemDefaults, latestState.selectedFolderId) ??
-            latestState.selectedFolderId;
-          const nextStaleFolderIds = filterStaleFolderIdsByFolders(
-            latestState.staleFolderIds,
-            foldersWithSystemDefaults,
-          );
-          for (const [folderId, loadResult] of snapshot.itemsByFolderId) {
-            if (loadResult.ok) {
-              nextStaleFolderIds.delete(folderId);
-            } else {
-              nextStaleFolderIds.add(folderId);
-            }
-          }
-          const shouldLoadSelectedItems = shouldLoadFolderItemsForSelection(
-            foldersWithSystemDefaults,
-            selectedFolderId,
-          );
-
-          let selectedFolderChatIds: Set<string> | null = null;
-          if (shouldLoadSelectedItems) {
-            const selectedLoadResult = snapshot.itemsByFolderId.get(selectedFolderId);
-            if (selectedLoadResult?.ok) {
-              selectedFolderChatIds = toChatIdSet(selectedLoadResult.items);
-            } else {
-              const staleItems = nextFolderItemsByFolderId.get(selectedFolderId);
-              if (staleItems) {
-                selectedFolderChatIds = toChatIdSet(staleItems);
-              }
-            }
-          }
-
-          set({
-            folders: foldersWithSystemDefaults,
-            selectedFolderId,
-            selectedFolderChatIds,
-            folderItemsByFolderId: nextFolderItemsByFolderId,
-            allFolderApiUuid: resolveAllFolderApiUuid(snapshot.folders),
-            staleFolderIds: nextStaleFolderIds,
-            error: null,
-            ...(shouldToggleLoading ? { loading: false } : {}),
-          });
-
-          folderSyncLog.debug("refresh:snapshotApplied", {
-            reason,
-            instanceId,
-            requestVersion,
-            folderCount: foldersWithSystemDefaults.length,
-            selectedFolderId,
-            shouldLoadSelectedItems,
-            folderChatIds: describeFolderChatIds(selectedFolderChatIds),
-          });
-        } catch {
-          const stateOnFailure = get();
-          if (!isCurrentRequest(stateOnFailure, instanceId, requestVersion)) {
-            return;
-          }
-
-          // На общей ошибке refresh откатываемся к кешу папок текущего инстанса.
-          const row = await loadFoldersSnapshotRow(instanceId).catch(() => null);
-          const offlineRail = row?.folders ?? [];
-          const offlineFolders = withDefaultSystemFolders(
-            offlineRail,
-            stateOnFailure.labels,
-            stateOnFailure.showSystemFolders,
-          );
-          const selectedFolderId =
-            resolveSelectedFolderId(offlineFolders, stateOnFailure.selectedFolderId) ??
-            stateOnFailure.selectedFolderId;
-          const selectedFolderChatIds = shouldLoadFolderItemsForSelection(
-            offlineFolders,
-            selectedFolderId,
-          )
-            ? stateOnFailure.selectedFolderChatIds
-            : null;
-
-          set({
-            folders: offlineFolders,
-            selectedFolderId,
-            selectedFolderChatIds,
-            staleFolderIds: filterStaleFolderIdsByFolders(
-              stateOnFailure.staleFolderIds,
-              offlineFolders,
-            ),
-            error: "folder-sync:refresh_failed",
-            ...(shouldToggleLoading ? { loading: false } : {}),
-          });
-          folderSyncLog.warn("refresh:failedUsingOfflineFolders", {
-            instanceId,
-            requestVersion,
-            folderCount: offlineFolders.length,
-            selectedFolderId,
-            folderChatIds: describeFolderChatIds(selectedFolderChatIds),
-          });
-        } finally {
-          const stateAfterFinish = get();
-          if (
-            shouldToggleLoading &&
-            isCurrentRequest(stateAfterFinish, instanceId, requestVersion)
-          ) {
-            // Гарантированно выключаем loading для актуального запроса.
-            set({ loading: false });
-          }
-        }
+        await runFolderSyncRefreshAttempt(get, set, {
+          instanceId,
+          reason,
+          requestVersion,
+          shouldToggleLoading,
+        });
       })();
 
       inFlightRefreshByInstance.set(instanceId, refreshPromise);
@@ -888,59 +923,35 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
         const wasStaleBefore = stateBefore.staleFolderIds.has(folderUuid);
         const isRemove = itemUuid != null;
 
+        const rollbackContext = {
+          folderUuid,
+          hadFolderCache,
+          previousItems,
+          wasStaleBefore,
+        };
         const rollbackToPrevious = (markStaleAfterRollback: boolean): void => {
           // Откат в предыдущее состояние, если server call/reconcile не подтвердил mutation.
-          set((state) => {
-            const nextMap = new Map(state.folderItemsByFolderId);
-            if (hadFolderCache) {
-              nextMap.set(folderUuid, previousItems);
-            } else {
-              nextMap.delete(folderUuid);
-            }
-
-            const nextStaleFolderIds = new Set(state.staleFolderIds);
-            if (wasStaleBefore || markStaleAfterRollback) {
-              nextStaleFolderIds.add(folderUuid);
-            } else {
-              nextStaleFolderIds.delete(folderUuid);
-            }
-
-            const shouldPatchSelection =
-              state.selectedFolderId === folderUuid &&
-              shouldLoadFolderItemsForSelection(state.folders, folderUuid);
-
-            return {
-              folderItemsByFolderId: nextMap,
-              staleFolderIds: nextStaleFolderIds,
-              ...(shouldPatchSelection
-                ? {
-                    selectedFolderChatIds: hadFolderCache
-                      ? toChatIdSet(previousItems)
-                      : new Set<string>(),
-                  }
-                : {}),
-            };
-          });
+          set(
+            sliceAfterFolderAssignmentRollback(
+              get(),
+              rollbackContext,
+              markStaleAfterRollback,
+            ) as Partial<FolderSyncState>,
+          );
         };
 
-        set((state) => {
-          // Оптимистичный апдейт, чтобы чат сразу появился/исчез в выбранной папке.
-          const currentItems = state.folderItemsByFolderId.get(folderUuid) ?? [];
-          const nextItems = isRemove
-            ? removeFolderAssignmentItem(currentItems, chatId, itemUuid ?? "")
-            : upsertOptimisticFolderItem(currentItems, folderUuid, chatId);
-          const nextMap = new Map(state.folderItemsByFolderId);
-          nextMap.set(folderUuid, nextItems);
-          const nextStaleFolderIds = markFolderAsStale(state.staleFolderIds, folderUuid);
-          const shouldPatchSelection =
-            state.selectedFolderId === folderUuid &&
-            shouldLoadFolderItemsForSelection(state.folders, folderUuid);
-          return {
-            folderItemsByFolderId: nextMap,
-            staleFolderIds: nextStaleFolderIds,
-            ...(shouldPatchSelection ? { selectedFolderChatIds: toChatIdSet(nextItems) } : {}),
-          };
-        });
+        // Оптимистичный апдейт, чтобы чат сразу появился/исчез в выбранной папке.
+        set(
+          sliceAfterOptimisticFolderAssignment(get(), {
+            folderUuid,
+            chatId,
+            itemUuid,
+            isRemove,
+            removeFolderAssignmentItem,
+            upsertOptimisticFolderItem,
+            markFolderAsStale,
+          }) as Partial<FolderSyncState>,
+        );
 
         const mutationOk = isRemove
           ? await removeChatFromFolder(folderUuid, itemUuid ?? "")
@@ -1151,11 +1162,10 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
       const selectedFolderId =
         resolveSelectedFolderId(nextFolders, state.selectedFolderId) ?? state.selectedFolderId;
       const selectedFolderItems = state.folderItemsByFolderId.get(selectedFolderId);
-      const selectedFolderChatIds = shouldLoadFolderItemsForSelection(nextFolders, selectedFolderId)
-        ? selectedFolderItems !== undefined
-          ? toChatIdSet(selectedFolderItems)
-          : new Set<string>()
-        : null;
+      const selectedFolderChatIds = resolveSelectedFolderChatIdsOnSyncDerived({
+        shouldLoadItems: shouldLoadFolderItemsForSelection(nextFolders, selectedFolderId),
+        selectedFolderItems,
+      });
       set({
         folders: nextFolders,
         selectedFolderId,

@@ -279,14 +279,20 @@ function usePwaUpdate(): UpdateState {
   };
 }
 
-const RUNTIME =
-  typeof window !== "undefined"
-    ? isElectron()
-      ? "electron"
-      : "serviceWorker" in navigator
-        ? "pwa"
-        : "noop"
-    : "noop";
+function resolveUpdateRuntime(): "electron" | "pwa" | "noop" {
+  if (typeof window === "undefined") {
+    return "noop";
+  }
+  if (isElectron()) {
+    return "electron";
+  }
+  if ("serviceWorker" in navigator) {
+    return "pwa";
+  }
+  return "noop";
+}
+
+const RUNTIME = resolveUpdateRuntime();
 
 export function useAppUpdate(): UpdateState {
   const electron = useElectronUpdate();

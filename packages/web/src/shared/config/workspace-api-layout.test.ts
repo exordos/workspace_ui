@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  USER_UPLOADS_PATH_PREFIX,
   WORKSPACE_API_PATH,
   WORKSPACE_GATEWAY_V1_PATH,
   WORKSPACE_REST_API_PATH,
@@ -13,6 +12,5 @@ describe("workspace-api-layout", () => {
     expect(WORKSPACE_REST_API_PATH).toBe("/workspace");
     expect(WORKSPACE_GATEWAY_V1_PATH).toBe("/workspace/v1");
     expect(WORKSPACE_API_PATH).toBe(WORKSPACE_GATEWAY_V1_PATH);
-    expect(USER_UPLOADS_PATH_PREFIX).toBe(WORKSPACE_GATEWAY_V1_PATH);
   });
 });

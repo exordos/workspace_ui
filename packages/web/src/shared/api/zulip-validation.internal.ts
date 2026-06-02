@@ -27,11 +27,13 @@ export function validateMessagesApiAnchor(
   anchor: string | number,
   context: string,
 ): MessagesApiAnchor {
-  if (typeof anchor === "number") {
-    return guard.messageId(anchor, `${context}.anchor`);
-  }
-  const normalizedAnchor = guard.nonEmpty(anchor, `${context}.anchor`);
-  return guard.oneOf(normalizedAnchor, ALLOWED_MESSAGE_ANCHORS, `${context}.anchor`);
+  return typeof anchor === "number"
+    ? guard.messageId(anchor, `${context}.anchor`)
+    : guard.oneOf(
+        guard.nonEmpty(anchor, `${context}.anchor`),
+        ALLOWED_MESSAGE_ANCHORS,
+        `${context}.anchor`,
+      );
 }
 
 export function validateNonNegativeInteger(value: number, label: string): number {

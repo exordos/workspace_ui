@@ -68,9 +68,8 @@ export function useLayoutNotificationPermission(options: {
       .then((perm) => {
         setPermission(perm);
         if (perm === "granted") {
-          return pushService.register();
+          void pushService.register();
         }
-        return false;
       })
       .finally(() => {
         setEnabling(false);

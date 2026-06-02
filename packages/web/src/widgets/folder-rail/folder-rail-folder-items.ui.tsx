@@ -108,15 +108,7 @@ export const HorizontalFolderItem: React.FC<FolderItemProps> = React.memo(
     });
 
     const visualState = getFolderItemVisualState({ folder, index, isSelected, isHovered });
-    const buttonTextColor = visualState.labelUsesCustomColor
-      ? "text-current"
-      : visualState.labelUsesAccent
-        ? isSelected
-          ? "text-text-primary"
-          : "text-accent"
-        : isSelected
-          ? "text-text-primary"
-          : "text-text-muted";
+    const buttonTextColor = visualState.labelTextColor;
     const buttonColorStyle = visualState.labelUsesCustomColor
       ? { color: visualState.folderColor }
       : undefined;

@@ -37,6 +37,7 @@ import { FloatingLoadingOverlay } from "~/shared/ui/floating-loading-overlay";
 import { Icon } from "~/shared/ui/icon";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
 import { MY_ACTIVITY, messageToDmEntry, slugForStream } from "~/widgets/sidebar/sidebar.lib";
+import { buildMessageNavigateRoute, formatActivityMessageContext } from "./activity-page.lib";
 import type { ActivityPageExtendedFilter } from "./activity-page.types";
 
 const log = createLogger("activity-page");
@@ -227,8 +228,7 @@ export const ActivityPage: React.FC = () => {
         currentUserId,
       );
       if (route) {
-        const nextRoute =
-          mode === "forward" ? `${route}${route.includes("?") ? "&" : "?"}forward=${m.id}` : route;
+        const nextRoute = buildMessageNavigateRoute(route, m.id, mode);
         void navigate(nextRoute);
       }
     },
@@ -384,6 +384,171 @@ export const ActivityPage: React.FC = () => {
 
   const title = getActivityTitle(validFilter);
 
+  const renderActivityContent = () => {
+    if (loading) {
+      return <div className="p-4 text-sm text-text-muted">{t("app.loading")}</div>;
+    }
+    if (isDrafts) {
+      if (drafts.length === 0) {
+        return <div className="p-4 text-sm text-text-muted">{t("draft.noDrafts")}</div>;
+      }
+      return (
+        <ul ref={listScrollRef} className="flex flex-col space-y-1 overflow-auto scroll-auto p-2">
+          {drafts.map((d) => {
+            const isPendingDelete = d.id != null && pendingDraftId === d.id;
+            return (
+              <li key={d.id ?? d.timestamp}>
+                <div className="flex items-start gap-2 rounded-lg p-3 transition-colors hover:bg-card-bg">
+                  <button
+                    type="button"
+                    onClick={() => handleDraftClick(d)}
+                    className="min-w-0 flex-1 text-left"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="shrink-0 text-[11px] text-text-muted">
+                        {formatItemTime(d.timestamp)}
+                      </span>
+                      <span className="truncate text-[11px] text-text-muted">
+                        {d.type === "stream" ? t("draft.streamDraft") : t("draft.privateDraft")}
+                      </span>
+                    </div>
+                    {d.type === "stream" && d.topic && (
+                      <p className="mt-0.5 text-xs text-sidebar-sender">
+                        {t("draft.topic", { topic: d.topic })}
+                      </p>
+                    )}
+                    <p className="mt-1 line-clamp-2 text-sm text-text-primary">
+                      {truncateText(d.content)}
+                    </p>
+                  </button>
+                  {d.id != null && (
+                    <button
+                      type="button"
+                      onClick={() => handleStartEditDraft(d)}
+                      disabled={isPendingDelete}
+                      className="shrink-0 rounded p-1.5 text-text-muted transition-colors hover:bg-card-bg hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                      aria-label={t("activity.editDraft")}
+                      title={t("activity.editDraft")}
+                    >
+                      ✎
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      void handleDeleteDraft(e, d);
+                    }}
+                    disabled={isPendingDelete}
+                    className="shrink-0 rounded p-1.5 text-text-muted transition-colors hover:bg-card-bg hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                    aria-label={t("activity.deleteDraft")}
+                    title={t("activity.deleteDraft")}
+                  >
+                    🗑
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      );
+    }
+    if (messages.length === 0) {
+      return <div className="p-4 text-sm text-text-muted">{t("chat.noMessages")}</div>;
+    }
+    return (
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <ul
+          ref={listScrollRef}
+          className="flex min-h-0 flex-1 flex-col space-y-1 overflow-auto scroll-auto p-2"
+        >
+          {messages.map((m) => {
+            const isStream = m.type === "stream" && m.stream_id != null;
+            const streamName =
+              isStream && typeof m.display_recipient === "string" ? m.display_recipient : null;
+            const topic = isStream ? (m.subject ?? "").trim() : null;
+            let dmName: string | null = null;
+            if (m.type === "private" && Array.isArray(m.display_recipient)) {
+              const entry = messageToDmEntry(m, currentUserId);
+              dmName = entry?.name ?? null;
+            }
+            const context = formatActivityMessageContext({
+              isStream,
+              streamName,
+              topic,
+              dmName,
+              generalChatLabel: t("chat.generalChat"),
+              privateLabel: t("dm.private"),
+            });
+            const isUnstarPending = pendingUnstarIds.has(m.id);
+
+            return (
+              <li key={m.id}>
+                <div className="group flex items-start gap-2 rounded-lg p-3 transition-colors hover:bg-card-bg">
+                  <button
+                    type="button"
+                    onClick={() => handleMessageClick(m)}
+                    className="min-w-0 flex-1 text-left"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="shrink-0 text-[11px] text-text-muted">
+                        {formatItemTime(m.timestamp)}
+                      </span>
+                      <span className="truncate text-[11px] text-text-muted">{context}</span>
+                    </div>
+                    <p className="mt-0.5 text-xs text-sidebar-sender">
+                      <ActivitySenderName
+                        senderId={m.sender_id}
+                        fallback={m.sender_full_name ?? ""}
+                      />
+                    </p>
+                    <p className="mt-1 line-clamp-2 text-sm text-text-primary">
+                      {truncateText(plainTextPreviewFromMessageBody(m.content))}
+                    </p>
+                  </button>
+                  <div className="mt-0.5 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                    {validFilter === "starred" && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void handleUnstarMessage(m.id);
+                        }}
+                        disabled={isUnstarPending}
+                        className="hover:bg-bg-elevated/70 rounded p-1 text-text-muted hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                        aria-label={t("message.unstar")}
+                        title={t("message.unstar")}
+                      >
+                        <Icon name="star" size={16} className="text-current" />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleMessageClick(m)}
+                      className="hover:bg-bg-elevated/70 rounded p-1 text-text-muted hover:text-text-primary"
+                      aria-label={t("message.openInChat")}
+                      title={t("message.openInChat")}
+                    >
+                      <Icon name="newWindow" size={16} className="text-current" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleMessageClick(m, "forward")}
+                      className="hover:bg-bg-elevated/70 rounded p-1 text-text-muted hover:text-text-primary"
+                      aria-label={t("message.forward")}
+                      title={t("message.forward")}
+                    >
+                      <Icon name="send" size={16} className="text-current" />
+                    </button>
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+        <FloatingLoadingOverlay visible={isRefreshing} />
+      </div>
+    );
+  };
+
   return (
     <div className="flex max-h-full min-h-0 min-w-0 max-w-narrow-page flex-1 flex-col overflow-hidden">
       <ChatHeader
@@ -393,164 +558,7 @@ export const ActivityPage: React.FC = () => {
         onOpenSearch={openSearch ?? undefined}
       />
       <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        {loading ? (
-          <div className="p-4 text-sm text-text-muted">{t("app.loading")}</div>
-        ) : isDrafts ? (
-          drafts.length === 0 ? (
-            <div className="p-4 text-sm text-text-muted">{t("draft.noDrafts")}</div>
-          ) : (
-            <ul
-              ref={listScrollRef}
-              className="flex flex-col space-y-1 overflow-auto scroll-auto p-2"
-            >
-              {drafts.map((d) => {
-                const isPendingDelete = d.id != null && pendingDraftId === d.id;
-                return (
-                  <li key={d.id ?? d.timestamp}>
-                    <div className="flex items-start gap-2 rounded-lg p-3 transition-colors hover:bg-card-bg">
-                      <button
-                        type="button"
-                        onClick={() => handleDraftClick(d)}
-                        className="min-w-0 flex-1 text-left"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <span className="shrink-0 text-[11px] text-text-muted">
-                            {formatItemTime(d.timestamp)}
-                          </span>
-                          <span className="truncate text-[11px] text-text-muted">
-                            {d.type === "stream" ? t("draft.streamDraft") : t("draft.privateDraft")}
-                          </span>
-                        </div>
-                        {d.type === "stream" && d.topic && (
-                          <p className="mt-0.5 text-xs text-sidebar-sender">
-                            {t("draft.topic", { topic: d.topic })}
-                          </p>
-                        )}
-                        <p className="mt-1 line-clamp-2 text-sm text-text-primary">
-                          {truncateText(d.content)}
-                        </p>
-                      </button>
-                      {d.id != null && (
-                        <button
-                          type="button"
-                          onClick={() => handleStartEditDraft(d)}
-                          disabled={isPendingDelete}
-                          className="shrink-0 rounded p-1.5 text-text-muted transition-colors hover:bg-card-bg hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
-                          aria-label={t("activity.editDraft")}
-                          title={t("activity.editDraft")}
-                        >
-                          ✎
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          void handleDeleteDraft(e, d);
-                        }}
-                        disabled={isPendingDelete}
-                        className="shrink-0 rounded p-1.5 text-text-muted transition-colors hover:bg-card-bg hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
-                        aria-label={t("activity.deleteDraft")}
-                        title={t("activity.deleteDraft")}
-                      >
-                        🗑
-                      </button>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )
-        ) : messages.length === 0 ? (
-          <div className="p-4 text-sm text-text-muted">{t("chat.noMessages")}</div>
-        ) : (
-          <div className="relative flex min-h-0 flex-1 flex-col">
-            <ul
-              ref={listScrollRef}
-              className="flex min-h-0 flex-1 flex-col space-y-1 overflow-auto scroll-auto p-2"
-            >
-              {messages.map((m) => {
-                const isStream = m.type === "stream" && m.stream_id != null;
-                const streamName =
-                  isStream && typeof m.display_recipient === "string" ? m.display_recipient : null;
-                const topic = isStream ? (m.subject ?? "").trim() : null;
-                let dmName: string | null = null;
-                if (m.type === "private" && Array.isArray(m.display_recipient)) {
-                  const entry = messageToDmEntry(m, currentUserId);
-                  dmName = entry?.name ?? null;
-                }
-                const context = isStream
-                  ? `#${streamName} · ${(topic?.length ?? 0) > 0 ? topic : t("chat.generalChat")}`
-                  : dmName
-                    ? `${t("dm.private")} · ${dmName}`
-                    : t("dm.private");
-                const isUnstarPending = pendingUnstarIds.has(m.id);
-
-                return (
-                  <li key={m.id}>
-                    <div className="group flex items-start gap-2 rounded-lg p-3 transition-colors hover:bg-card-bg">
-                      <button
-                        type="button"
-                        onClick={() => handleMessageClick(m)}
-                        className="min-w-0 flex-1 text-left"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <span className="shrink-0 text-[11px] text-text-muted">
-                            {formatItemTime(m.timestamp)}
-                          </span>
-                          <span className="truncate text-[11px] text-text-muted">{context}</span>
-                        </div>
-                        <p className="mt-0.5 text-xs text-sidebar-sender">
-                          <ActivitySenderName
-                            senderId={m.sender_id}
-                            fallback={m.sender_full_name ?? ""}
-                          />
-                        </p>
-                        <p className="mt-1 line-clamp-2 text-sm text-text-primary">
-                          {truncateText(plainTextPreviewFromMessageBody(m.content))}
-                        </p>
-                      </button>
-                      <div className="mt-0.5 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                        {validFilter === "starred" && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              void handleUnstarMessage(m.id);
-                            }}
-                            disabled={isUnstarPending}
-                            className="hover:bg-bg-elevated/70 rounded p-1 text-text-muted hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
-                            aria-label={t("message.unstar")}
-                            title={t("message.unstar")}
-                          >
-                            <Icon name="star" size={16} className="text-current" />
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => handleMessageClick(m)}
-                          className="hover:bg-bg-elevated/70 rounded p-1 text-text-muted hover:text-text-primary"
-                          aria-label={t("message.openInChat")}
-                          title={t("message.openInChat")}
-                        >
-                          <Icon name="newWindow" size={16} className="text-current" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleMessageClick(m, "forward")}
-                          className="hover:bg-bg-elevated/70 rounded p-1 text-text-muted hover:text-text-primary"
-                          aria-label={t("message.forward")}
-                          title={t("message.forward")}
-                        >
-                          <Icon name="send" size={16} className="text-current" />
-                        </button>
-                      </div>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-            <FloatingLoadingOverlay visible={isRefreshing} />
-          </div>
-        )}
+        {renderActivityContent()}
       </section>
       <AppDialog
         open={editingDraft != null}

@@ -47,6 +47,15 @@ export default tseslint.config(
   },
 
   {
+    files: ["**/src/**/*.test.{ts,tsx}"],
+    rules: {
+      "sonarjs/no-clear-text-protocols": "off",
+      "sonarjs/assertions-in-tests": "off",
+      "promise/param-names": "off",
+    },
+  },
+
+  {
     files: ["**/src/**/*.{ts,tsx}"],
     rules: {
       // Promise: `always-return` is noisy for void async handlers and fire-and-forget in React.

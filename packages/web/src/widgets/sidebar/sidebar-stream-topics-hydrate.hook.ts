@@ -42,13 +42,15 @@ export function useStreamSidebarTopicsHydrate({
 
     // Always ensure we fetched the topic list when user expands a stream.
     // This fixes cases where some topics exist (from messages) but not the full list.
-    const listPromise = shouldHydrateTopicList
-      ? requestStreamSidebarTopicListHydrate(streamId)
-      : Promise.resolve();
+    let listPromise: Promise<unknown> = Promise.resolve();
+    if (shouldHydrateTopicList) {
+      listPromise = requestStreamSidebarTopicListHydrate(streamId);
+    }
 
-    const messagePromise = shouldHydrateFromMessages
-      ? requestStreamSidebarTopicsHydrate(streamId, expanded ? "expand" : "visible")
-      : Promise.resolve();
+    let messagePromise: Promise<unknown> = Promise.resolve();
+    if (shouldHydrateFromMessages) {
+      messagePromise = requestStreamSidebarTopicsHydrate(streamId, expanded ? "expand" : "visible");
+    }
 
     void Promise.all([listPromise.catch(() => {}), messagePromise.catch(() => {})]).finally(() => {
       setTopicsLoading(false);

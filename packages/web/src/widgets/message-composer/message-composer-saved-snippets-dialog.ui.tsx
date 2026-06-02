@@ -25,6 +25,26 @@ export const MessageComposerSavedSnippetsDialog = React.memo(
     onSelectSnippet,
     onStartCreate,
   }: MessageComposerSavedSnippetsDialogProps) {
+    const renderSavedSnippetList = (): React.ReactNode => {
+      if (savedSnippetsLoading) {
+        return (
+          <p className="px-2 py-3 text-sm text-text-muted">{t("composer.savedSnippetsLoading")}</p>
+        );
+      }
+      if (filteredSnippets.length > 0) {
+        return (
+          <>
+            {filteredSnippets.map((snippet) => (
+              <SavedSnippetRow key={snippet.id} snippet={snippet} onSelect={onSelectSnippet} />
+            ))}
+          </>
+        );
+      }
+      return (
+        <p className="px-2 py-3 text-sm text-text-muted">{t("composer.savedSnippetsNoResults")}</p>
+      );
+    };
+
     return (
       <AnchoredPopover
         open
@@ -110,19 +130,7 @@ export const MessageComposerSavedSnippetsDialog = React.memo(
               className={`max-h-[250px] overflow-y-auto px-1 py-1 ${SCROLL_AREA_CLASS}`}
               role="list"
             >
-              {savedSnippetsLoading ? (
-                <p className="px-2 py-3 text-sm text-text-muted">
-                  {t("composer.savedSnippetsLoading")}
-                </p>
-              ) : filteredSnippets.length > 0 ? (
-                filteredSnippets.map((snippet) => (
-                  <SavedSnippetRow key={snippet.id} snippet={snippet} onSelect={onSelectSnippet} />
-                ))
-              ) : (
-                <p className="px-2 py-3 text-sm text-text-muted">
-                  {t("composer.savedSnippetsNoResults")}
-                </p>
-              )}
+              {renderSavedSnippetList()}
             </div>
             <div className="border-t border-border-subtle px-2 py-2">
               <button

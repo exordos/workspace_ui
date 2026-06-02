@@ -323,14 +323,14 @@ describe("fetchActivityMessagesPage", () => {
   });
 
   it("fails fast when numeric anchor is invalid", async () => {
-    await expect(fetchActivityMessagesPage("mentions", null, 0)).rejects.toThrowError(
+    await expect(fetchActivityMessagesPage("mentions", null, 0)).rejects.toThrow(
       /fetchActivityMessagesPage\.anchor/i,
     );
     expect(mockZulipApi.get).not.toHaveBeenCalled();
   });
 
   it("fails fast when reactions filter receives invalid current user id", async () => {
-    await expect(fetchActivityMessagesPage("reactions", 0)).rejects.toThrowError(
+    await expect(fetchActivityMessagesPage("reactions", 0)).rejects.toThrow(
       /fetchActivityMessagesPage\.currentUserId/i,
     );
     expect(mockZulipApi.get).not.toHaveBeenCalled();

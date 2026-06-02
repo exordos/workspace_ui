@@ -193,18 +193,22 @@ function useProtectedMediaLoader(
   }, [containerRef, html, options?.deferRootSelector]);
 }
 
+function resolveProtectedMediaInitialDisplayUrl(
+  url: string,
+  mediaType: "image" | "video",
+): string | undefined {
+  const isProtected = isProtectedMessageMediaUrl(url);
+  if (mediaType === "image") {
+    return isProtected ? AUTH_IMAGE_PLACEHOLDER_SRC : url;
+  }
+  return isProtected ? undefined : url;
+}
+
 export function useProtectedMediaDisplayUrl(
   url: string,
   mediaType: "image" | "video",
 ): string | undefined {
-  const initialValue =
-    mediaType === "image"
-      ? isProtectedMessageMediaUrl(url)
-        ? AUTH_IMAGE_PLACEHOLDER_SRC
-        : url
-      : isProtectedMessageMediaUrl(url)
-        ? undefined
-        : url;
+  const initialValue = resolveProtectedMediaInitialDisplayUrl(url, mediaType);
   const [displayUrl, setDisplayUrl] = useState<string | undefined>(initialValue);
 
   useEffect(() => {

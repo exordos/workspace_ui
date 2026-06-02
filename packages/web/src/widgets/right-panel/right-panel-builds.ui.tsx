@@ -43,7 +43,7 @@ function isWindowsPlatform(): boolean {
   const browserNavigator = navigator as Navigator & {
     userAgentData?: { platform?: string };
   };
-  const platform = browserNavigator.userAgentData?.platform ?? navigator.platform ?? "";
+  const platform = browserNavigator.userAgentData?.platform ?? "";
   return platform.toLowerCase().includes("win");
 }
 
@@ -100,7 +100,7 @@ export const RightPanelBuilds: React.FC = () => {
     setCatalogLoading(true);
     setCatalogError(null);
 
-    fetchVersionCatalog(controller.signal)
+    void fetchVersionCatalog(controller.signal)
       .then((nextCatalog) => {
         if (controller.signal.aborted) {
           return;

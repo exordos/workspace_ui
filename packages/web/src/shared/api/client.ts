@@ -395,8 +395,8 @@ const retryMiddleware: Middleware = async (req, next) => {
       lastError = new Error(`HTTP ${res.status}`);
       if (attempt < MAX_RETRIES) {
         const delay = resolveRetryDelayMs(res.headers.get("Retry-After"), attempt);
-        await new Promise<void>((r) => {
-          setTimeout(r, Math.min(delay, 10000));
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, Math.min(delay, 10000));
         });
       }
     } catch (err) {
@@ -405,8 +405,8 @@ const retryMiddleware: Middleware = async (req, next) => {
       }
       lastError = err;
       if (attempt >= MAX_RETRIES) throw err;
-      await new Promise<void>((r) => {
-        setTimeout(r, 1000 * (attempt + 1));
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 1000 * (attempt + 1));
       });
     }
   }

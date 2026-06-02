@@ -32,6 +32,16 @@ export function getSectionFromPathname(pathname: string): TopBarSection {
   return "chat";
 }
 
+function resolveDownloadBytePrecision(unitIndex: number, value: number): number {
+  if (unitIndex === 0) {
+    return 0;
+  }
+  if (value >= 10) {
+    return 1;
+  }
+  return 2;
+}
+
 export function formatDownloadBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
   const units = ["B", "KB", "MB", "GB"];
@@ -41,12 +51,22 @@ export function formatDownloadBytes(bytes: number): string {
     value /= 1024;
     unitIndex += 1;
   }
-  const precision = unitIndex === 0 ? 0 : value >= 10 ? 1 : 2;
+  const precision = resolveDownloadBytePrecision(unitIndex, value);
   return `${value.toFixed(precision)} ${units[unitIndex]}`;
 }
 
 export function resolveTopBarAvatarSrc(url: string | undefined | null): string | undefined {
   return resolveAvatarUrl(url, getRealmBaseUrl());
+}
+
+export function resolveTopBarSectionButtonClassName(isActive: boolean, available: boolean): string {
+  if (isActive) {
+    return "border border-border-subtle bg-card-bg-active text-text-primary";
+  }
+  if (available) {
+    return "hover:bg-bg/50 text-text-muted hover:text-text-primary";
+  }
+  return "text-text-muted/60 cursor-not-allowed";
 }
 
 export function getTopBarSectionNavItems(options: {

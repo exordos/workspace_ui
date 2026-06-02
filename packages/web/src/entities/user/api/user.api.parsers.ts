@@ -55,12 +55,12 @@ export function normalizeOwnStatusResponse(data: ZulipUpdateOwnStatusResponse): 
   const emojiInfo = Array.isArray(data.status_emoji_display_info)
     ? data.status_emoji_display_info[0]
     : (data.status_emoji_display_info ?? undefined);
-  const emojiName =
-    typeof emojiInfo?.emoji_name === "string"
-      ? emojiInfo.emoji_name
-      : typeof data.status_emoji === "string"
-        ? data.status_emoji
-        : "";
+  let emojiName = "";
+  if (typeof emojiInfo?.emoji_name === "string") {
+    emojiName = emojiInfo.emoji_name;
+  } else if (typeof data.status_emoji === "string") {
+    emojiName = data.status_emoji;
+  }
   const emojiCode = typeof emojiInfo?.emoji_code === "string" ? emojiInfo.emoji_code : undefined;
   const reactionType = isReactionType(emojiInfo?.reaction_type)
     ? emojiInfo.reaction_type

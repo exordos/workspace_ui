@@ -31,7 +31,13 @@ export function devWorkspaceBrowserMountPath(restPathNoTrailingSlash: string): s
 /** Path after Workspace API origin before `/v1/...` (same rules as `getWorkspaceApiBaseForCurrentInstance` in prod). */
 export function workspaceRestApiPathSuffix(restPathRaw: string): string {
   const restPath = restPathRaw.replace(/\/+$/, "");
-  return restPath === "" ? "" : restPath.startsWith("/") ? restPath : `/${restPath}`;
+  if (restPath === "") {
+    return "";
+  }
+  if (restPath.startsWith("/")) {
+    return restPath;
+  }
+  return `/${restPath}`;
 }
 
 /**
@@ -55,12 +61,12 @@ export function workspaceDevProxyUpstreamPathname(input: {
     throw new Error("Workspace dev proxy path mismatch");
   }
   const relative = effective === mountNorm ? "/" : effective.slice(mountNorm.length);
-  const rel =
-    relative === "" || relative === "/"
-      ? "/"
-      : relative.startsWith("/")
-        ? relative
-        : `/${relative}`;
+  let rel = relative;
+  if (relative === "" || relative === "/") {
+    rel = "/";
+  } else if (!relative.startsWith("/")) {
+    rel = `/${relative}`;
+  }
   const suffix = workspaceRestApiPathSuffix(input.workspaceRestPathRaw);
   if (suffix === "") {
     return rel === "/" ? "/" : rel;

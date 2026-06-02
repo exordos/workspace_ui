@@ -65,17 +65,20 @@ export const PresenceIndicator: React.FC<PresenceIndicatorProps> = ({
   const shouldPulse = pulse ?? tone === "default";
   const pulseClass = shouldPulse && status === "active" ? "animate-pulse" : "";
 
+  let ariaLabel: string;
+  if (status === "active") {
+    ariaLabel = t("presence.online");
+  } else if (status === "idle") {
+    ariaLabel = t("presence.away");
+  } else {
+    ariaLabel = t("presence.offline");
+  }
+
   return (
     <span
       className={`inline-block shrink-0 rounded-full ${sizeClass} ${colorClass} ${borderClass} ${pulseClass} ${className}`}
       role="status"
-      aria-label={
-        status === "active"
-          ? t("presence.online")
-          : status === "idle"
-            ? t("presence.away")
-            : t("presence.offline")
-      }
+      aria-label={ariaLabel}
       data-presence={status}
     />
   );

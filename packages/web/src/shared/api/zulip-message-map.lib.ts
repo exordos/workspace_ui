@@ -10,12 +10,12 @@ export function rawMessageToMockMessage(m: RawMessageToMockInput): MockMessage {
   const contentTrim = m.content.trim();
   const apiMd = m.markdown_source?.trim();
   const isHtmlBody = isLikelyRenderedMessageHtml(contentTrim);
-  const markdownSource =
-    apiMd != null && apiMd.length > 0
-      ? apiMd
-      : !isHtmlBody && contentTrim.length > 0
-        ? contentTrim
-        : undefined;
+  let markdownSource: string | undefined;
+  if (apiMd != null && apiMd.length > 0) {
+    markdownSource = apiMd;
+  } else if (!isHtmlBody && contentTrim.length > 0) {
+    markdownSource = contentTrim;
+  }
 
   const base: MockMessage = {
     id: m.id,

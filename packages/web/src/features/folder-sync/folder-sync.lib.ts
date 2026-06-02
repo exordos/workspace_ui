@@ -4,6 +4,7 @@ import {
   SYSTEM_CHANNELS_FOLDER_ID,
   SYSTEM_PERSONAL_FOLDER_ID,
 } from "./folder-sync-constants.lib";
+import { toChatIdSet } from "./folder-sync-sidebar-chats.lib";
 
 export interface FolderSyncSystemLabels {
   allChats: string;
@@ -311,4 +312,43 @@ export function aliasAllFolderItemsCacheKeys(
   }
   itemsByFolderId.set(SYSTEM_ALL_FOLDER_ID, items);
   itemsByFolderId.set("all", items);
+}
+
+export function describeFolderChatIdsForLog(
+  value: ReadonlySet<string> | Set<string> | null,
+): "null" | "empty" | `size:${number}` {
+  if (value === null) {
+    return "null";
+  }
+  if (value.size === 0) {
+    return "empty";
+  }
+  return `size:${value.size}`;
+}
+
+export function resolveSelectedFolderChatIdsOnSelect(options: {
+  shouldLoadSelectedFolderItems: boolean;
+  cachedItemsForSelectedFolder: readonly FolderItemForClient[] | undefined;
+}): Set<string> | null {
+  if (!options.shouldLoadSelectedFolderItems) {
+    return null;
+  }
+  if (options.cachedItemsForSelectedFolder != null) {
+    return toChatIdSet(options.cachedItemsForSelectedFolder);
+  }
+  // При cache miss сразу показываем "пустую папку", чтобы не светить чаты из all.
+  return new Set<string>();
+}
+
+export function resolveSelectedFolderChatIdsOnSyncDerived(options: {
+  shouldLoadItems: boolean;
+  selectedFolderItems: readonly FolderItemForClient[] | undefined;
+}): Set<string> | null {
+  if (!options.shouldLoadItems) {
+    return null;
+  }
+  if (options.selectedFolderItems !== undefined) {
+    return toChatIdSet(options.selectedFolderItems);
+  }
+  return new Set<string>();
 }

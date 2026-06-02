@@ -8,6 +8,7 @@ import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { ScrollArea } from "~/shared/ui/scroll-area";
+import { resolveDmGroupMemberSecondaryLine } from "./right-panel-dm-group.lib";
 import { resolveAvatarSrc } from "./right-panel.lib";
 import type { RightPanelDmGroupProps } from "./right-panel-dm-group.types";
 
@@ -86,17 +87,9 @@ export const RightPanelDmGroup = React.memo(function RightPanelDmGroup({
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm text-text-primary">{member.name}</p>
-                        {member.statusLabel ? (
-                          <p className="truncate text-[11px] text-text-secondary">
-                            {member.statusLabel}
-                          </p>
-                        ) : member.email.length > 0 ? (
-                          <p className="truncate text-[11px] text-text-secondary">{member.email}</p>
-                        ) : (
-                          <p className="truncate text-[11px] text-text-secondary">
-                            {member.isOnline ? t("presence.online") : t("presence.offline")}
-                          </p>
-                        )}
+                        <p className="truncate text-[11px] text-text-secondary">
+                          {resolveDmGroupMemberSecondaryLine(member)}
+                        </p>
                       </div>
                     </button>
                     <ProfileCustomFieldsBlock

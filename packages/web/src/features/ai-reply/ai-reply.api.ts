@@ -55,8 +55,8 @@ export function createMockProvider(): AiReplyProvider {
     isAvailable: () => true,
 
     async generate(request: AiReplyRequest): Promise<AiReplyResponse> {
-      await new Promise<void>((r) => {
-        setTimeout(r, 600 + Math.random() * 400);
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 600 + Math.random() * 400);
       });
 
       if (request.action === "smart-reply") {
@@ -154,8 +154,8 @@ export function createMockProvider(): AiReplyProvider {
       void (async () => {
         for (let i = 0; i < words.length; i++) {
           if (cancelled) return;
-          await new Promise<void>((r) => {
-            setTimeout(r, 50 + Math.random() * 80);
+          await new Promise<void>((resolve) => {
+            setTimeout(resolve, 50 + Math.random() * 80);
           });
           if (cancelled) return;
           onChunk({

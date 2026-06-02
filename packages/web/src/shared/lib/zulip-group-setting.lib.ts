@@ -35,10 +35,10 @@ function normalizeGroupSettingObject(value: unknown): ZulipGroupSettingValueObje
 // Приводит raw значение group-setting из API к стабильному доменному формату.
 // Поддерживает обе формы Zulip: `group_id` (число) и `{ direct_members, direct_subgroups }`.
 export function normalizeGroupSettingValue(value: unknown): ZulipGroupSettingValue | undefined {
-  if (isPositiveInteger(value)) {
-    return value;
-  }
-  return normalizeGroupSettingObject(value);
+  const normalized: ZulipGroupSettingValue | undefined = isPositiveInteger(value)
+    ? value
+    : normalizeGroupSettingObject(value);
+  return normalized;
 }
 
 // Сравнивает два group-setting значения с учетом формы и содержимого массивов.

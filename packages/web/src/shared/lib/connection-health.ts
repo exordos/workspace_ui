@@ -176,11 +176,12 @@ function syncRateLimitFromGate(): void {
     return;
   }
   if (snapshot.phase === "rate_limited") {
-    const nextPhase: ConnectionHealthPhase = !isOnline()
-      ? "offline"
-      : snapshot.lastFailureAt != null
-        ? "degraded"
-        : "ready";
+    let nextPhase: ConnectionHealthPhase = "ready";
+    if (!isOnline()) {
+      nextPhase = "offline";
+    } else if (snapshot.lastFailureAt != null) {
+      nextPhase = "degraded";
+    }
     snapshot = {
       ...snapshot,
       phase: nextPhase,

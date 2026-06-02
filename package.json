@@ -13,6 +13,8 @@
     "dev:mock": "lerna run dev --scope mock-server --stream",
     "lint": "npm run lint --workspace=web",
     "lint:cc": "node scripts/count-cognitive-complexity.mjs",
+    "lint:smells": "node scripts/lint-code-smells-report.mjs",
+    "knip": "npm run knip --workspace=web",
     "lint:fix": "npm run lint:fix --workspace=web",
     "format": "prettier --write \"packages/web/src/**/*.{ts,tsx,css}\"",
     "format:check": "prettier --check \"packages/web/src/**/*.{ts,tsx,css}\"",

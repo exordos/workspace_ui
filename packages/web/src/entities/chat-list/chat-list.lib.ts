@@ -85,6 +85,103 @@ export function messageToStreamEntry(m: ZulipRawMessage): {
   };
 }
 
+interface DmRecipientRow {
+  id: number;
+  full_name: string;
+  email: string;
+  avatar_url?: string;
+}
+
+/** Zulip: two recipients => 1:1 DM; when current user is unknown, infer peer from sender. */
+function resolveDmOtherUsers(
+  recipients: DmRecipientRow[],
+  currentUserId: number | null,
+  senderId: number,
+): DmRecipientRow[] {
+  const isOneToOneDm = recipients.length === 2;
+  if (currentUserId != null) {
+    return recipients.filter((r) => r.id !== currentUserId);
+  }
+  if (isOneToOneDm) {
+    const peer = recipients.find((r) => r.id !== senderId);
+    return peer != null ? [peer] : [recipients[0]!];
+  }
+  return recipients;
+}
+
+function buildDmEntryDisplayName(
+  isGroup: boolean,
+  otherUsers: DmRecipientRow[],
+  getName: (userId: number) => string,
+): string {
+  if (isGroup) {
+    return (
+      otherUsers
+        .map((u) => getName(u.id) || getDisplayName(u))
+        .filter(Boolean)
+        .join(", ") || t("dm.groupChat")
+    );
+  }
+  const rawStoreName = otherUsers[0] != null ? getName(otherUsers[0].id) : undefined;
+  const fromStore =
+    rawStoreName != null && rawStoreName.length > 0 && rawStoreName !== "Unknown"
+      ? rawStoreName
+      : undefined;
+  return (
+    fromStore ??
+    getDmPartnerName({
+      id: otherUsers[0]?.id,
+      full_name: otherUsers[0]?.full_name,
+      email: otherUsers[0]?.email,
+    })
+  );
+}
+
+function resolveDmEntryIdentity(
+  isGroup: boolean,
+  recipients: DmRecipientRow[],
+  otherUsers: DmRecipientRow[],
+  key: string,
+  currentUserId: number | null,
+  message: ZulipRawMessage,
+  getAvatar: (userId: number) => string | undefined,
+): { id: number; userIds?: number[]; avatar_url?: string } | null {
+  if (isGroup) {
+    return {
+      id: GROUP_DM_ID_OFFSET + hashKey(key),
+      userIds: recipients.map((r) => r.id),
+    };
+  }
+  const other = otherUsers[0];
+  const otherUserId =
+    other?.id ??
+    (currentUserId != null ? recipients.find((r) => r.id !== currentUserId)?.id : undefined);
+  if (otherUserId == null) return null;
+  const fromMessage =
+    message.sender_id === otherUserId && message.avatar_url
+      ? String(message.avatar_url).trim()
+      : undefined;
+  return {
+    id: otherUserId,
+    avatar_url: getAvatar(otherUserId) ?? fromMessage ?? other?.avatar_url,
+  };
+}
+
+function buildDmEntrySlug(
+  isGroup: boolean,
+  id: number,
+  name: string,
+  otherUsers: DmRecipientRow[],
+  getName: (userId: number) => string,
+): string {
+  if (isGroup) {
+    return otherUsers
+      .map((u) => `${u.id}-${slugify(getName(u.id) || getDisplayName(u))}`)
+      .join(",");
+  }
+  return `${id}-${slugify(name)}`;
+}
+
 export function messageToDmEntry(
   m: ZulipRawMessage,
   currentUserId: number | null,
@@ -92,7 +189,7 @@ export function messageToDmEntry(
 ): DmEntryInternal | null {
   if (m.type !== "private" || !Array.isArray(m.display_recipient)) return null;
   const usersStore = useUsersStore.getState();
-  const recipients = m.display_recipient
+  const recipients: DmRecipientRow[] = m.display_recipient
     .map((r) => ({
       id: r.id,
       full_name: r.full_name ?? "",
@@ -101,73 +198,34 @@ export function messageToDmEntry(
     }))
     .sort((a, b) => a.id - b.id);
   const key = recipients.map((r) => r.id).join(",");
-  // Zulip: exactly two recipients => 1:1 DM (not a huddle). When currentUserId is not yet known,
-  // both recipients were treated as "others" and isGroup became true → wrong "group" header + participant count.
-  const isOneToOneDm = recipients.length === 2;
-  const otherUsers =
-    currentUserId != null
-      ? recipients.filter((r) => r.id !== currentUserId)
-      : isOneToOneDm
-        ? (() => {
-            const peer = recipients.find((r) => r.id !== m.sender_id);
-            return peer != null ? [peer] : [recipients[0]!];
-          })()
-        : recipients;
-  const isGroup = !isOneToOneDm && otherUsers.length !== 1;
-  const nameFromStore = (userId: number) => usersStore.getDisplayName(userId);
-  const avatarFromStore = (userId: number) =>
+  const otherUsers = resolveDmOtherUsers(recipients, currentUserId, m.sender_id);
+  const isGroup = recipients.length !== 2 || otherUsers.length !== 1;
+  const getName = (userId: number) => usersStore.getDisplayName(userId);
+  const getAvatar = (userId: number) =>
     usersStore.getAvatarUrl(userId) ?? avatarUrlByUserId?.get(userId);
-  const rawStoreName = otherUsers[0] != null ? nameFromStore(otherUsers[0].id) : undefined;
-  const fromStore =
-    rawStoreName != null && rawStoreName.length > 0 && rawStoreName !== "Unknown"
-      ? rawStoreName
-      : undefined;
-  const name = isGroup
-    ? otherUsers
-        .map((u) => nameFromStore(u.id) || getDisplayName(u))
-        .filter(Boolean)
-        .join(", ") || t("dm.groupChat")
-    : (fromStore ??
-      getDmPartnerName({
-        id: otherUsers[0]?.id,
-        full_name: otherUsers[0]?.full_name,
-        email: otherUsers[0]?.email,
-      }));
-  let id: number;
-  let userIds: number[] | undefined;
-  let avatar_url: string | undefined;
-  if (isGroup) {
-    id = GROUP_DM_ID_OFFSET + hashKey(key);
-    userIds = recipients.map((r) => r.id);
-  } else {
-    const other = otherUsers[0];
-    const otherUserId =
-      other?.id ??
-      (currentUserId != null ? recipients.find((r) => r.id !== currentUserId)?.id : undefined);
-    if (otherUserId == null) return null;
-    id = otherUserId;
-    const fromMessage =
-      m.sender_id === id && m.avatar_url ? String(m.avatar_url).trim() : undefined;
-    avatar_url = avatarFromStore(id) ?? fromMessage ?? other?.avatar_url;
-  }
-  const slug = isGroup
-    ? otherUsers
-        .map((u) => `${u.id}-${slugify(nameFromStore(u.id) || getDisplayName(u))}`)
-        .join(",")
-    : `${id}-${slugify(name)}`;
-  const lastMsg = truncatePreview(m.content);
-  const time = formatMessageTime(m.timestamp);
+  const name = buildDmEntryDisplayName(isGroup, otherUsers, getName);
+  const identity = resolveDmEntryIdentity(
+    isGroup,
+    recipients,
+    otherUsers,
+    key,
+    currentUserId,
+    m,
+    getAvatar,
+  );
+  if (identity == null) return null;
+  const slug = buildDmEntrySlug(isGroup, identity.id, name, otherUsers, getName);
   return {
-    id,
+    id: identity.id,
     name,
     slug,
     isGroup,
-    lastMessage: lastMsg,
-    time,
+    lastMessage: truncatePreview(m.content),
+    time: formatMessageTime(m.timestamp),
     ts: m.timestamp,
-    userIds,
+    userIds: identity.userIds,
     unreadCount: isUnread(m) ? 1 : 0,
-    avatar_url,
+    avatar_url: identity.avatar_url,
     lastMessageId: m.id,
   };
 }

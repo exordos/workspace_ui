@@ -61,14 +61,14 @@ type MenuIconLike = IconName | React.ReactNode;
  * - строковые значения резолвятся через `Icon`;
  * - готовый React-узел возвращается как есть.
  */
-function resolveIconNode(icon: MenuIconLike | undefined): React.ReactNode {
+function resolveIconNode(icon: MenuIconLike | undefined): React.ReactElement | null {
   if (icon == null) {
     return null;
   }
   if (typeof icon === "string") {
     return <Icon name={icon} size={14} className="text-current opacity-70" />;
   }
-  return icon;
+  return <>{icon}</>;
 }
 
 /**

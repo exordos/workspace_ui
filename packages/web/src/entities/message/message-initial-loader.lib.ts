@@ -18,7 +18,6 @@ import {
   ZULIP_DM_ANCHOR_NUM_BEFORE,
   ZULIP_STREAM_ANCHOR_NUM_AFTER,
   ZULIP_STREAM_ANCHOR_NUM_BEFORE,
-  ZULIP_STREAM_CHAT_NUM_BEFORE,
   zulipMessageCacheWindowN,
 } from "~/shared/lib/zulip-message-window.lib";
 import { upsertMessagesByChatPartitions } from "./message-cache-partition.lib";
@@ -86,10 +85,10 @@ async function readCachedMessagesByMode(options: {
       () => [] as MockMessage[],
     );
     // Что делает: ограничивает bootstrap-окно wide до того же размера, что у API.
-    const sliced = cached.slice(-ZULIP_STREAM_CHAT_NUM_BEFORE);
+    const sliced = cached.slice(-ZULIP_STREAM_ANCHOR_NUM_BEFORE);
     return {
       messages: sliced,
-      hasOlderMessages: sliced.length >= ZULIP_STREAM_CHAT_NUM_BEFORE,
+      hasOlderMessages: sliced.length >= ZULIP_STREAM_ANCHOR_NUM_BEFORE,
       hasNewerMessages: false,
     };
   }

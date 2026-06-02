@@ -7,6 +7,11 @@ import {
   type DropdownMenuItem,
 } from "~/shared/ui/dropdown-menu";
 import { Icon } from "~/shared/ui/icon";
+import {
+  createContextMenuItemSelectHandler,
+  createEmojiPickerToggleHandler,
+  createQuickReactionClickHandler,
+} from "./message-bubble-context-menu-items.lib";
 import { CONTEXT_ITEMS_BY_LABEL } from "./message-bubble-context.lib";
 import { QUICK_REACTIONS, resolveEmojiShortcodeDisplayGlyph } from "./message-bubble-emoji.lib";
 import type { MessageBubbleContextMenuProps } from "./message-bubble-context-menu.types";
@@ -43,10 +48,7 @@ function useMessageMenuItems({
                 type="button"
                 className={`${REACTION_BUTTON_CLASS_NAME} text-current`}
                 aria-label={t(reaction.a11yLabelKey)}
-                onClick={(e) => {
-                  e.preventDefault();
-                  onQuickReaction(reaction.emojiName);
-                }}
+                onClick={createQuickReactionClickHandler(onQuickReaction, reaction.emojiName)}
               >
                 <span className="text-[15px] leading-none">
                   {resolveEmojiShortcodeDisplayGlyph(reaction.emojiName)}
@@ -58,10 +60,7 @@ function useMessageMenuItems({
                 type="button"
                 className={`${REACTION_BUTTON_CLASS_NAME} text-text-muted hover:text-text-primary`}
                 aria-label={t("a11y.moreReactions")}
-                onClick={(e) => {
-                  e.preventDefault();
-                  onEmojiPickerOpenChange(!emojiPickerOpen);
-                }}
+                onClick={createEmojiPickerToggleHandler(emojiPickerOpen, onEmojiPickerOpenChange)}
               >
                 <Icon name="plus" size={14} className="text-current" />
               </button>
@@ -107,9 +106,7 @@ function useMessageMenuItems({
           icon: CONTEXT_ITEMS_BY_LABEL[label].iconName,
           label: t(`message.${label}`),
           keepOpenOnSelect: true,
-          onSelect: () => {
-            onMenuItem(label);
-          },
+          onSelect: createContextMenuItemSelectHandler(onMenuItem, label),
         });
       });
     });
