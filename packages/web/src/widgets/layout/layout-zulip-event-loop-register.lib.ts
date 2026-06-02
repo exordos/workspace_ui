@@ -24,10 +24,7 @@ import {
   flushReconnectStreamPreviewsAfterRegister,
   markReconnectStreamPreviewRegisterReady,
 } from "./layout-reconnect-stream-preview.lib";
-import {
-  createRegisterMuteSnapshotAppliedMarker,
-  makeCancelledGetter,
-} from "./layout-zulip-event-loop-bootstrap.lib";
+import { createRegisterMuteSnapshotAppliedMarker } from "./layout-zulip-event-loop-bootstrap.lib";
 import type { ChatListBootstrapResult } from "./layout-chat-list-bootstrap.lib";
 import type { LayoutMuteBootstrapData, LayoutMuteSnapshot } from "./layout-instance-bootstrap.hook";
 
@@ -110,7 +107,7 @@ function applyReconnectStreamPreviewBootstrap(
 }
 
 export interface LayoutBootstrapQueueRegisteredDeps {
-  cancelled: boolean;
+  isCancelled: () => boolean;
   currentInstanceId: string | null;
   bootstrapUserId: number | null;
   metadataDmPreviewHydrationEnabled: boolean;
@@ -236,7 +233,7 @@ export function createLayoutBootstrapQueueRegisteredHandler(
       "onQueueRegistered",
     );
     deps.startSidebarUnreadReconcile({
-      cancelled: makeCancelledGetter(deps.cancelled),
+      cancelled: deps.isCancelled,
       currentUserId: useChatListStore.getState().currentUserId ?? deps.bootstrapUserId,
       registerSnapshot: deps.registerUnreadSnapshotRef.current,
     });
@@ -247,7 +244,7 @@ export function createLayoutBootstrapQueueRegisteredHandler(
       })
       .then((snapshot) =>
         deps.applyLayoutRegisterMuteSnapshot({
-          cancelled: deps.cancelled,
+          cancelled: deps.isCancelled(),
           currentInstanceId: deps.currentInstanceId,
           snapshot,
           markRegisterMuteSnapshotApplied: createRegisterMuteSnapshotAppliedMarker(

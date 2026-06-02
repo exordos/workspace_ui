@@ -9,10 +9,6 @@ import {
 import type { ChatListBootstrapResult } from "./layout-chat-list-bootstrap.lib";
 import type { StreamPreviewsBootstrapResult } from "./layout-metadata-stream-preview-coordinator.lib";
 
-export function makeCancelledGetter(cancelled: boolean): () => boolean {
-  return () => cancelled;
-}
-
 export function createDmPreviewHydrateSettledHandler(options: {
   getCancelled: () => boolean;
   instanceId: string | null;

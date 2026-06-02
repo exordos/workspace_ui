@@ -62,7 +62,6 @@ import {
   createStreamPreviewBootstrapRejectedHandler,
   createStreamPreviewBootstrapSettledHandler,
   findZulipMemberByUserId,
-  makeCancelledGetter,
 } from "./layout-zulip-event-loop-bootstrap.lib";
 import { applyLayoutRegisterMuteSnapshot } from "./layout-zulip-event-loop-mute-register.lib";
 import { createLayoutZulipEventLoopOnEventHandler } from "./layout-zulip-event-loop-on-event.lib";
@@ -466,7 +465,7 @@ export function useLayoutZulipEventLoop(options: {
         });
 
         const dmHydrateSettledHandler = createDmPreviewHydrateSettledHandler({
-          getCancelled: makeCancelledGetter(cancelled),
+          getCancelled: () => cancelled,
           instanceId: currentInstanceId,
           source,
           persistDmIndexFromStore,
@@ -477,7 +476,7 @@ export function useLayoutZulipEventLoop(options: {
           metadataRows: rows,
           currentUserId,
           instanceId: currentInstanceId ?? undefined,
-          cancelled: makeCancelledGetter(cancelled),
+          cancelled: () => cancelled,
         })
           .then(dmHydrateSettledHandler)
           .catch(dmHydrateRejectedHandler);
@@ -547,7 +546,7 @@ export function useLayoutZulipEventLoop(options: {
 
       unsubManualReconnect = registerManualReconnectListener(
         createManualReconnectBootstrapHandler({
-          getCancelled: makeCancelledGetter(cancelled),
+          getCancelled: () => cancelled,
           attemptResolveCurrentUser,
         }),
       );
@@ -608,7 +607,7 @@ export function useLayoutZulipEventLoop(options: {
         };
 
         const streamPreviewSettledHandler = createStreamPreviewBootstrapSettledHandler({
-          getCancelled: makeCancelledGetter(cancelled),
+          getCancelled: () => cancelled,
           isBootstrapStale,
           instanceId: currentInstanceId,
           stageMetadataStreamPreviewsBootstrap: (result) => {
@@ -627,7 +626,7 @@ export function useLayoutZulipEventLoop(options: {
           log,
         });
         const streamPreviewRejectedHandler = createStreamPreviewBootstrapRejectedHandler({
-          getCancelled: makeCancelledGetter(cancelled),
+          getCancelled: () => cancelled,
           isBootstrapStale,
           instanceId: currentInstanceId,
           log,
@@ -686,7 +685,7 @@ export function useLayoutZulipEventLoop(options: {
           ),
         });
         const onQueueRegisteredHandler = createLayoutBootstrapQueueRegisteredHandler({
-          cancelled,
+          isCancelled: () => cancelled,
           currentInstanceId,
           bootstrapUserId,
           metadataDmPreviewHydrationEnabled,
