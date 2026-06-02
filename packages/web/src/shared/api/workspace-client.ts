@@ -256,6 +256,9 @@ function encodeFolderItemChatId(
   if (chatType === "stream" && /^\d+$/.test(chatId)) {
     return `stream:${chatId}:general`;
   }
+  if (chatType === "private" && /^\d+$/.test(chatId)) {
+    return `dm:${chatId}`;
+  }
   return chatId;
 }
 

@@ -276,7 +276,7 @@ describe("workspace-client", () => {
     expect(items).toEqual([
       {
         uuid: "item-1",
-        chatId: "42",
+        chatId: "dm:42",
         folderUuid: "folder-1",
         orderIndex: 2,
         pinnedAt: "2026-03-14T01:00:00Z",
