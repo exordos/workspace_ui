@@ -16,13 +16,7 @@ export interface ScrollPrependAnchor {
 }
 
 function findMessageNode(root: HTMLElement, messageId: number): HTMLElement | null {
-  const messageIdAttr = String(messageId);
-  for (const node of root.querySelectorAll<HTMLElement>("[data-message-id]")) {
-    if (node.getAttribute("data-message-id") === messageIdAttr) {
-      return node;
-    }
-  }
-  return null;
+  return root.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`);
 }
 
 export function resolveVisibleMessageAnchor(root: HTMLElement): ScrollPrependAnchor | null {
