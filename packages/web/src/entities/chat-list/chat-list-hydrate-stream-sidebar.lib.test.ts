@@ -109,6 +109,7 @@ describe("requestStreamSidebarTopicsHydrate", () => {
       streams: [{ streamId: 5, topic: "t", unreadMessageIds: [1] }],
       dms: [],
       totalCount: 1,
+      mentionMessageIds: [],
       oldUnreadsMissing: false,
     });
     await flushMicrotasks(10);

@@ -7,6 +7,7 @@ import {
   computeTotalUnreadAcrossInstances,
   formatWebWindowTitleWithUnreadCount,
   hasPersonalDmUnreadForActiveInstance,
+  hasPersonalUnreadIndicator,
   isPersonalDmUnreadEntry,
 } from "./layout-instance-unread.lib";
 
@@ -192,5 +193,12 @@ describe("layout-instance-unread", () => {
     );
     expect(buildActiveChatWindowTitle({ streamName: "general" })).toBe("#general");
     expect(buildActiveChatWindowTitle({ streamName: "   ", topicName: "release" })).toBeNull();
+  });
+
+  it("hasPersonalUnreadIndicator is true for personal DM or mentions unread", () => {
+    expect(hasPersonalUnreadIndicator(0, 0)).toBe(false);
+    expect(hasPersonalUnreadIndicator(2, 0)).toBe(true);
+    expect(hasPersonalUnreadIndicator(0, 1)).toBe(true);
+    expect(hasPersonalUnreadIndicator(1, 3)).toBe(true);
   });
 });

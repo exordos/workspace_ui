@@ -21,6 +21,7 @@ import {
   fetchMessagesBeforeAnchor,
   fetchMessagesWithNarrow,
   fetchMessagesWithNarrowPage,
+  fetchUnreadMentionsPage,
   fetchRecentMessages,
   rawMessageToMockMessage,
   removeReaction,
@@ -627,6 +628,29 @@ describe("fetchMessagesWithNarrow", () => {
     expect(page.foundOldest).toBe(true);
     expect(page.foundNewest).toBe(true);
     expect(page.messages).toHaveLength(1);
+  });
+
+  it("fetchUnreadMentionsPage uses is:mentioned AND is:unread narrow", async () => {
+    mockZulipClient.messages.retrieve.mockResolvedValue({
+      messages: [],
+      found_oldest: true,
+      found_newest: true,
+    });
+
+    await fetchUnreadMentionsPage();
+
+    expect(mockZulipClient.messages.retrieve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        narrow: [
+          { negated: false, operator: "is", operand: "mentioned" },
+          { negated: false, operator: "is", operand: "unread" },
+        ],
+        anchor: "newest",
+        num_before: 200,
+        num_after: 0,
+        apply_markdown: false,
+      }),
+    );
   });
 });
 

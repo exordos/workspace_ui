@@ -233,8 +233,8 @@ describe("SidebarActivity", () => {
 
     const mentionsCompactLink = screen.getByRole("link", { name: /mentions/i });
     const draftsCompactLink = screen.getByRole("link", { name: /drafts/i });
-    expect(within(mentionsCompactLink).getByText("1")).toHaveClass("opacity-70");
-    expect(within(draftsCompactLink).getByText("2")).toHaveClass("opacity-70");
+    expect(within(mentionsCompactLink).getByText("1")).toHaveClass("text-text-primary", "h-4");
+    expect(within(draftsCompactLink).getByText("2")).toHaveClass("text-text-primary", "h-4");
   });
 
   it("shows compact inbox badge from summed unread stream and dm counts", () => {
@@ -247,7 +247,7 @@ describe("SidebarActivity", () => {
     );
 
     const inboxLink = screen.getByRole("link", { name: /inbox/i });
-    expect(within(inboxLink).getByText("3")).toHaveClass("opacity-70");
+    expect(within(inboxLink).getByText("3")).toHaveClass("text-text-primary", "h-4");
   });
 
   it("shows compact favorites badge from starred summary", () => {
@@ -261,7 +261,7 @@ describe("SidebarActivity", () => {
     );
 
     const favoritesLink = screen.getByRole("link", { name: /starred/i });
-    expect(within(favoritesLink).getByText("7")).toHaveClass("opacity-70");
+    expect(within(favoritesLink).getByText("7")).not.toHaveClass("opacity-70");
   });
 
   it("hides inbox badge when unread total is zero", () => {

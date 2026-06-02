@@ -10,9 +10,9 @@ import { resolveAvatarUrl } from "~/shared/lib/avatar";
 import { computeIsGroupDmView, normalizeDmRouteUserIds } from "~/shared/lib/dm-route.lib";
 import { sidebarRowClass, getPresenceState } from "~/shared/lib/format";
 import { Avatar } from "~/shared/ui/avatar";
-import { Badge } from "~/shared/ui/badge";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
+import { SidebarChatBadges } from "./sidebar-chat-badges.ui";
 import { sidebarDmRoute } from "./sidebar-chat-routes.lib";
 import { isDmPartnerTyping } from "./sidebar-dm-list.lib";
 import { SidebarUserStatusEmoji } from "./sidebar-user-status-emoji.ui";
@@ -124,7 +124,7 @@ export const DmChatRow = React.memo(function DmChatRow({
         <div className="flex items-center gap-1">
           {isPinned && <Icon name="pin" size={12} className="text-text-muted" />}
           <span className="text-xs text-text-muted">{chat.time ?? "10:13"}</span>
-          {chat.badge !== undefined && <Badge count={chat.badge} variant="unread" />}
+          <SidebarChatBadges unreadCount={chat.badge} hasMention={chat.hasMention} />
         </div>
       </div>
     </Link>

@@ -196,6 +196,7 @@ describe("registerQueue", () => {
       streams: [{ streamId: 10, topic: "general", unreadMessageIds: [1, 2] }],
       dms: [{ userIds: [20], unreadMessageIds: [3], isGroup: false }],
       totalCount: 4,
+      mentionMessageIds: [4],
     });
   });
 

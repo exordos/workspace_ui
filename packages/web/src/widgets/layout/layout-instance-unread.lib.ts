@@ -101,6 +101,14 @@ export function hasPersonalDmUnreadForActiveInstance(currentInstanceDmUnread: nu
   return toSafeUnreadCount(currentInstanceDmUnread) > 0;
 }
 
+/** Personal indicator: 1:1 DM unread or unread @mentions. */
+export function hasPersonalUnreadIndicator(
+  personalDmUnread: number,
+  mentionsUnread: number,
+): boolean {
+  return toSafeUnreadCount(personalDmUnread) > 0 || toSafeUnreadCount(mentionsUnread) > 0;
+}
+
 function toSafeTitleSegment(value: string | null | undefined): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();

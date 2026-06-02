@@ -699,6 +699,7 @@ describe("dispatchZulipEvent", () => {
           streams: [{ streamId: 5, topic: "topic1", unreadMessageIds: [1, 2, 3] }],
           dms: [],
           totalCount: 3,
+          mentionMessageIds: [],
         },
         1,
       );
@@ -741,6 +742,7 @@ describe("dispatchZulipEvent", () => {
           streams: [],
           dms: [{ userIds: [20], unreadMessageIds: [3081, 3082, 3083], isGroup: false }],
           totalCount: 3,
+          mentionMessageIds: [],
         },
         10,
       );

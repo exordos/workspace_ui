@@ -3,6 +3,7 @@
  */
 import {
   countPersonalDmUnreadFromSnapshot,
+  countMentionsUnreadFromSnapshot,
   type ZulipUnreadMessagesSnapshot,
 } from "~/shared/api/zulip-unread.lib";
 
@@ -37,7 +38,10 @@ export function applyInstanceUnreadCountsFromRegisterSnapshot(
   setDmUnreadCount: (id: string, count: number) => void,
 ): void {
   setUnreadCount(instanceId, snapshot.totalCount);
-  setDmUnreadCount(instanceId, countPersonalDmUnreadFromSnapshot(snapshot) > 0 ? 1 : 0);
+  const hasPersonalUnread =
+    countPersonalDmUnreadFromSnapshot(snapshot) > 0 ||
+    countMentionsUnreadFromSnapshot(snapshot) > 0;
+  setDmUnreadCount(instanceId, hasPersonalUnread ? 1 : 0);
 }
 
 export function isRegisterUnreadSnapshotUsable(

@@ -2,25 +2,28 @@ import { useEffect, useMemo } from "react";
 import { getElectronAPI } from "~/shared/lib/electron";
 import { syncFaviconWithUnreadIndicator } from "~/shared/lib/organization-branding";
 import { osIntegration } from "~/shared/lib/os-integration";
-import { hasPersonalDmUnreadForActiveInstance } from "./layout-instance-unread.lib";
+import { hasPersonalUnreadIndicator } from "./layout-instance-unread.lib";
 
-export function useLayoutAppIconBadge(options: { currentInstanceDmUnread: number }): void {
-  const { currentInstanceDmUnread } = options;
+export function useLayoutAppIconBadge(options: {
+  personalDmUnread: number;
+  mentionsUnread: number;
+}): void {
+  const { personalDmUnread, mentionsUnread } = options;
 
-  const hasPersonalDmUnread = useMemo(
-    () => hasPersonalDmUnreadForActiveInstance(currentInstanceDmUnread),
-    [currentInstanceDmUnread],
+  const hasPersonalUnread = useMemo(
+    () => hasPersonalUnreadIndicator(personalDmUnread, mentionsUnread),
+    [personalDmUnread, mentionsUnread],
   );
 
   useEffect(() => {
-    osIntegration.setBadgeCount(hasPersonalDmUnread ? 1 : 0);
+    osIntegration.setBadgeCount(hasPersonalUnread ? 1 : 0);
     return () => {
       osIntegration.setBadgeCount(0);
     };
-  }, [hasPersonalDmUnread]);
+  }, [hasPersonalUnread]);
 
   useEffect(() => {
     if (getElectronAPI() != null) return;
-    return syncFaviconWithUnreadIndicator({ hasUnread: hasPersonalDmUnread });
-  }, [hasPersonalDmUnread]);
+    return syncFaviconWithUnreadIndicator({ hasUnread: hasPersonalUnread });
+  }, [hasPersonalUnread]);
 }

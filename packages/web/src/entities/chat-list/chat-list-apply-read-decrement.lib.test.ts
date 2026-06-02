@@ -163,6 +163,22 @@ describe("applyChatListReadDecrement", () => {
       }),
     ).toEqual({ type: "stream", streamId: 1, topic: "t" });
   });
+
+  it("decrements mentionsUnreadCount when read ids are in mentionedUnreadMessageIds", () => {
+    useChatListStore.setState({
+      mentionedUnreadMessageIds: new Set([10, 11, 12]),
+      mentionsUnreadCount: 3,
+    });
+
+    const store = useChatListStore.getState();
+    applyChatListReadDecrement(() => useChatListStore.getState(), store, {
+      messageIds: [10, 99],
+      source: "test:mentions",
+    });
+
+    expect(useChatListStore.getState().mentionsUnreadCount).toBe(2);
+    expect([...useChatListStore.getState().mentionedUnreadMessageIds]).toEqual([11, 12]);
+  });
 });
 
 describe("getContextUnreadCount", () => {

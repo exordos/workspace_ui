@@ -193,6 +193,25 @@ function getActivityNarrow(filter: ActivityFilter, currentUserId?: number | null
   }
 }
 
+/** Narrow for unread @mentions counter sync (AND: mentioned + unread). */
+export const UNREAD_MENTIONS_NARROW: NarrowEntry[] = [
+  { negated: false, operator: "is", operand: "mentioned" },
+  { negated: false, operator: "is", operand: "unread" },
+];
+
+export const MENTIONS_UNREAD_SYNC_PAGE_SIZE = 200;
+
+/** Fetches newest unread @mentions for sidebar badge authoritative reconcile. */
+export async function fetchUnreadMentionsPage(
+  numBefore = MENTIONS_UNREAD_SYNC_PAGE_SIZE,
+  options?: { signal?: AbortSignal },
+): Promise<MessagesPageResult> {
+  return fetchMessagesWithNarrowPage(UNREAD_MENTIONS_NARROW, "newest", numBefore, 0, {
+    applyMarkdown: false,
+    signal: options?.signal,
+  });
+}
+
 async function fetchMessageWindow(options: MessageWindowOptions): Promise<ZulipRawMessage[]> {
   const { anchor, numBefore, numAfter, includeAnchor, applyMarkdown = false } = options;
   const res = await zulipPipelineGet("/messages", {

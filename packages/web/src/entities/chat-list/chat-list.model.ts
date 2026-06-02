@@ -54,9 +54,24 @@ import {
   slugify,
 } from "./chat-list-format.lib";
 import {
+  buildMentionLocationFlags,
+  buildTopicMentionKey,
+  messageLocationFromMockMessage,
+  messageLocationFromRawMessage,
+  type MentionLocationFlags,
+} from "./chat-list-mention-locations.lib";
+import {
+  buildMentionUnreadSetFromIds,
+  collectUnreadMentionIdsFromMessages,
+  collectUnreadMentionIdsFromMockMessages,
+  decrementMentionUnreadForMessageIds,
+  isUnreadMentionFromOthers,
+  mergeMentionUnreadPatch,
+} from "./chat-list-mentions.lib";
+import { shouldShowMentionBadgeOnDmRow } from "./chat-list-sidebar-mention-enrich.lib";
+import {
   applySidebarUnreadDeltas,
   computeSidebarUnreadTotals,
-  countMentionsUnread,
 } from "./chat-list-sidebar-totals.lib";
 import {
   getNewestTopicEntry,
@@ -143,15 +158,17 @@ function finalizeChatListPatch(
   }
 
   if (patch.lastAppliedMessages !== undefined) {
-    result.mentionsUnreadCount = countMentionsUnread(
-      patch.lastAppliedMessages,
-      patch.currentUserId ?? state.currentUserId,
-    );
+    const userId = patch.currentUserId ?? state.currentUserId;
+    const mentionIds = collectUnreadMentionIdsFromMessages(patch.lastAppliedMessages ?? [], userId);
+    result.mentionedUnreadMessageIds = buildMentionUnreadSetFromIds(mentionIds);
+    result.mentionsUnreadCount = mentionIds.length;
   } else if (patch.currentUserId !== undefined && state.lastAppliedMessages != null) {
-    result.mentionsUnreadCount = countMentionsUnread(
+    const mentionIds = collectUnreadMentionIdsFromMessages(
       state.lastAppliedMessages,
       patch.currentUserId,
     );
+    result.mentionedUnreadMessageIds = buildMentionUnreadSetFromIds(mentionIds);
+    result.mentionsUnreadCount = mentionIds.length;
   }
 
   if (patch.streamTopicMessageIds !== undefined) {
@@ -171,7 +188,10 @@ function finalizeChatListPatch(
   return result;
 }
 
-function streamsMapToSortedStreams(streamsMap: Map<number, StreamEntryInternal>): StreamWithLast[] {
+function streamsMapToSortedStreams(
+  streamsMap: Map<number, StreamEntryInternal>,
+  mentionFlags: MentionLocationFlags = buildMentionLocationFlags(new Set(), new Map()),
+): StreamWithLast[] {
   return Array.from(streamsMap.values())
     .sort((a, b) => b.ts - a.ts)
     .map((s) => {
@@ -183,6 +203,9 @@ function streamsMapToSortedStreams(streamsMap: Map<number, StreamEntryInternal>)
           lastMessageSenderName: t.lastMessageSenderName,
           time: t.time,
           badge: t.unreadCount > 0 ? t.unreadCount : undefined,
+          hasMention: mentionFlags.topicKeys.has(buildTopicMentionKey(s.stream_id, t.subject))
+            ? true
+            : undefined,
         }));
       const badge = topics.reduce((sum, t) => sum + (t.badge ?? 0), 0);
       return {
@@ -193,16 +216,19 @@ function streamsMapToSortedStreams(streamsMap: Map<number, StreamEntryInternal>)
         time: s.time,
         topics,
         badge: badge > 0 ? badge : undefined,
+        hasMention: mentionFlags.streamIds.has(s.stream_id) ? true : undefined,
       };
     });
 }
 
 function dmsMapToSortedDms(
   map: Map<string, DmEntryInternal>,
+  mentionFlags: MentionLocationFlags = buildMentionLocationFlags(new Set(), new Map()),
+  currentUserId: number | null = null,
 ): Extract<SidebarChat, { type: "dm" }>[] {
-  return Array.from(map.values())
-    .sort((a, b) => (b.ts ?? 0) - (a.ts ?? 0))
-    .map((x) => ({
+  return Array.from(map.entries())
+    .sort(([, a], [, b]) => (b.ts ?? 0) - (a.ts ?? 0))
+    .map(([dmKey, x]) => ({
       type: "dm" as const,
       id: x.id,
       name: x.name,
@@ -212,6 +238,9 @@ function dmsMapToSortedDms(
       time: x.time,
       userIds: x.userIds,
       badge: x.unreadCount > 0 ? x.unreadCount : undefined,
+      hasMention: shouldShowMentionBadgeOnDmRow(x, dmKey, currentUserId, mentionFlags)
+        ? true
+        : undefined,
       avatar_url: x.avatar_url,
       ts: x.ts,
     }));
@@ -275,9 +304,13 @@ const emptyDmsMap = () => new Map<string, DmEntryInternal>();
 // Referential-identity caches: recompute only when the underlying Map reference changes.
 let _cachedStreams: StreamWithLast[] | null = null;
 let _cachedStreamsMapRef: Map<number, StreamEntryInternal> | null = null;
+let _cachedStreamsMentionIdsRef: ReadonlySet<number> | null = null;
+let _cachedStreamsLocationsRef: ReadonlyMap<number, MessageLocation> | null = null;
 
 let _cachedDms: Extract<SidebarChat, { type: "dm" }>[] | null = null;
 let _cachedDmsMapRef: Map<string, DmEntryInternal> | null = null;
+let _cachedDmsMentionIdsRef: ReadonlySet<number> | null = null;
+let _cachedDmsLocationsRef: ReadonlyMap<number, MessageLocation> | null = null;
 
 function getAvatarMap() {
   return useUsersStore.getState().getAvatarMap();
@@ -540,6 +573,9 @@ export const useChatListStore = create<ChatListState>((set, get) => {
     sidebarStreamsUnread: 0,
     sidebarDmsUnread: 0,
     mentionsUnreadCount: 0,
+    mentionedUnreadMessageIds: new Set<number>(),
+    mentionsUnreadCapped: false,
+    mentionsUnreadApiSynced: false,
 
     setFromMessages(messages, currentUserId) {
       invalidatePreviewResolveLifecycle();
@@ -589,8 +625,12 @@ export const useChatListStore = create<ChatListState>((set, get) => {
       );
       _cachedStreams = null;
       _cachedStreamsMapRef = null;
+      _cachedStreamsMentionIdsRef = null;
+      _cachedStreamsLocationsRef = null;
       _cachedDms = null;
       _cachedDmsMapRef = null;
+      _cachedDmsMentionIdsRef = null;
+      _cachedDmsLocationsRef = null;
       const sidebarDataHydrated = streamsMap.size > 0 || dmsMap.size > 0;
       patchSet(
         {
@@ -662,11 +702,84 @@ export const useChatListStore = create<ChatListState>((set, get) => {
         new Map(),
         effectiveUserId,
       );
+      if (!get().mentionsUnreadApiSynced && (snapshot.mentionMessageIds?.length ?? 0) > 0) {
+        get().reconcileMentionsFromRegisterIds(snapshot.mentionMessageIds);
+      }
+    },
+
+    reconcileMentionsFromServer(messages, options) {
+      const currentUserId = get().currentUserId;
+      const mentionIds = collectUnreadMentionIdsFromMockMessages(messages, currentUserId);
+      const nextSet = buildMentionUnreadSetFromIds(mentionIds);
+      logChatListFlow("store: reconcileMentionsFromServer", {
+        incomingCount: messages.length,
+        mentionCount: mentionIds.length,
+        capped: options?.capped === true,
+      });
+      patchSet((state) => {
+        const nextLoc = new Map(state.messageIdToLocation);
+        for (const message of messages) {
+          const location = messageLocationFromMockMessage(message, currentUserId);
+          if (location != null) {
+            nextLoc.set(message.id, location);
+          }
+        }
+        return {
+          mentionedUnreadMessageIds: nextSet,
+          mentionsUnreadCount: nextSet.size,
+          mentionsUnreadCapped: options?.capped === true,
+          mentionsUnreadApiSynced: true,
+          messageIdToLocation: nextLoc,
+        };
+      });
+    },
+
+    reconcileMentionsFromRegisterIds(messageIds) {
+      if (get().mentionsUnreadApiSynced) return;
+      const nextSet = buildMentionUnreadSetFromIds(messageIds);
+      logChatListFlow("store: reconcileMentionsFromRegisterIds", {
+        mentionCount: nextSet.size,
+      });
+      patchSet({
+        mentionedUnreadMessageIds: nextSet,
+        mentionsUnreadCount: nextSet.size,
+      });
+    },
+
+    decrementMentionsForReadMessages(messageIds) {
+      if (messageIds.length === 0) return;
+      patchSet((state) => {
+        const next = decrementMentionUnreadForMessageIds(
+          state.mentionedUnreadMessageIds,
+          messageIds,
+        );
+        if (next.mentionsUnreadCount === state.mentionsUnreadCount) {
+          return state;
+        }
+        return next;
+      });
     },
 
     addMessage(message) {
-      const { type } = message;
       const currentUserId = get().currentUserId;
+      patchSet((state) => {
+        const mentionPatch = mergeMentionUnreadPatch(state, message, currentUserId, {});
+        if (!isUnreadMentionFromOthers(message, currentUserId)) {
+          return mentionPatch;
+        }
+        if (state.messageIdToLocation.has(message.id)) {
+          return mentionPatch;
+        }
+        const location = messageLocationFromRawMessage(message, currentUserId);
+        if (location == null) {
+          return mentionPatch;
+        }
+        const nextLoc = new Map(state.messageIdToLocation);
+        nextLoc.set(message.id, location);
+        return { ...mentionPatch, messageIdToLocation: nextLoc };
+      });
+
+      const { type } = message;
 
       if (type === "stream" && message.stream_id != null) {
         const result = messageToStreamEntry(message);
@@ -893,6 +1006,29 @@ export const useChatListStore = create<ChatListState>((set, get) => {
               nextLoc.set(m.id, { type: "dm", dmKey });
               changed = true;
             }
+          }
+
+          if (!changed) return state;
+          return { messageIdToLocation: nextLoc };
+        },
+        { preserveSidebarTotals: true },
+      );
+    },
+
+    upsertMentionMessageLocations(messages) {
+      if (messages.length === 0) return;
+      const currentUserId = get().currentUserId;
+      patchSet(
+        (state) => {
+          let changed = false;
+          const nextLoc = new Map(state.messageIdToLocation);
+
+          for (const message of messages) {
+            if (nextLoc.has(message.id)) continue;
+            const location = messageLocationFromMockMessage(message, currentUserId);
+            if (location == null) continue;
+            nextLoc.set(message.id, location);
+            changed = true;
           }
 
           if (!changed) return state;
@@ -1358,8 +1494,12 @@ export const useChatListStore = create<ChatListState>((set, get) => {
       invalidatePreviewResolveLifecycle();
       _cachedStreams = null;
       _cachedStreamsMapRef = null;
+      _cachedStreamsMentionIdsRef = null;
+      _cachedStreamsLocationsRef = null;
       _cachedDms = null;
       _cachedDmsMapRef = null;
+      _cachedDmsMentionIdsRef = null;
+      _cachedDmsLocationsRef = null;
       patchSet(
         {
           streamsMap: emptyStreamsMap(),
@@ -1373,6 +1513,9 @@ export const useChatListStore = create<ChatListState>((set, get) => {
           sidebarDmsUnread: 0,
           streamTopicMessageIds: new Map(),
           mentionsUnreadCount: 0,
+          mentionedUnreadMessageIds: new Set<number>(),
+          mentionsUnreadCapped: false,
+          mentionsUnreadApiSynced: false,
         },
         { recomputeSidebarTotals: true, rebuildStreamTopicIndex: true },
       );
@@ -1639,18 +1782,44 @@ export const useChatListStore = create<ChatListState>((set, get) => {
     },
 
     streams() {
-      const map = get().streamsMap;
-      if (map === _cachedStreamsMapRef && _cachedStreams != null) return _cachedStreams;
+      const state = get();
+      const map = state.streamsMap;
+      const mentionIds = state.mentionedUnreadMessageIds;
+      const locations = state.messageIdToLocation;
+      if (
+        map === _cachedStreamsMapRef &&
+        mentionIds === _cachedStreamsMentionIdsRef &&
+        locations === _cachedStreamsLocationsRef &&
+        _cachedStreams != null
+      ) {
+        return _cachedStreams;
+      }
+      const mentionFlags = buildMentionLocationFlags(mentionIds, locations);
       _cachedStreamsMapRef = map;
-      _cachedStreams = streamsMapToSortedStreams(map);
+      _cachedStreamsMentionIdsRef = mentionIds;
+      _cachedStreamsLocationsRef = locations;
+      _cachedStreams = streamsMapToSortedStreams(map, mentionFlags);
       return _cachedStreams;
     },
 
     dms() {
-      const map = get().dmsMap;
-      if (map === _cachedDmsMapRef && _cachedDms != null) return _cachedDms;
+      const state = get();
+      const map = state.dmsMap;
+      const mentionIds = state.mentionedUnreadMessageIds;
+      const locations = state.messageIdToLocation;
+      if (
+        map === _cachedDmsMapRef &&
+        mentionIds === _cachedDmsMentionIdsRef &&
+        locations === _cachedDmsLocationsRef &&
+        _cachedDms != null
+      ) {
+        return _cachedDms;
+      }
+      const mentionFlags = buildMentionLocationFlags(mentionIds, locations);
       _cachedDmsMapRef = map;
-      _cachedDms = dmsMapToSortedDms(map);
+      _cachedDmsMentionIdsRef = mentionIds;
+      _cachedDmsLocationsRef = locations;
+      _cachedDms = dmsMapToSortedDms(map, mentionFlags, state.currentUserId);
       return _cachedDms;
     },
   };

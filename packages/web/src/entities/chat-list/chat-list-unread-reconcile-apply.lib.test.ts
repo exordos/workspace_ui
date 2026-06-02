@@ -21,6 +21,9 @@ function emptyChatListState(overrides: Partial<ChatListState> = {}): ChatListSta
     sidebarStreamsUnread: 0,
     sidebarDmsUnread: 0,
     mentionsUnreadCount: 0,
+    mentionedUnreadMessageIds: new Set<number>(),
+    mentionsUnreadCapped: false,
+    mentionsUnreadApiSynced: false,
     ...overrides,
   } as ChatListState;
 }

@@ -52,6 +52,7 @@ describe("resolveLatestUnreadMessageIdsForMissingPreviews", () => {
       ],
       dms: [],
       totalCount: 5,
+      mentionMessageIds: [],
     };
 
     const ids = resolveLatestUnreadMessageIdsForMissingPreviews(
@@ -74,6 +75,7 @@ describe("resolveLatestUnreadMessageIdsForMissingPreviews", () => {
       streams: [{ streamId: 5, topic: "alpha", unreadMessageIds: [99] }],
       dms: [],
       totalCount: 1,
+      mentionMessageIds: [],
     };
 
     const ids = resolveLatestUnreadMessageIdsForMissingPreviews(
@@ -102,6 +104,7 @@ describe("hydrateStreamSidebarPreviewsFromUnreadSnapshot", () => {
       streams: [{ streamId: 5, topic: "alpha", unreadMessageIds: [301, 302] }],
       dms: [],
       totalCount: 2,
+      mentionMessageIds: [],
     };
 
     fetchMessagesByIdsMock.mockResolvedValue([
@@ -131,6 +134,7 @@ describe("hydrateStreamSidebarPreviewsFromUnreadSnapshot", () => {
       streams: [{ streamId: 5, topic: "alpha", unreadMessageIds: [301] }],
       dms: [],
       totalCount: 1,
+      mentionMessageIds: [],
     };
 
     let resolveFetch!: (value: ZulipRawMessage[]) => void;

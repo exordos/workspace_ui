@@ -50,6 +50,8 @@ export function isUnreadFromOthers(m: ZulipRawMessage, currentUserId: number | n
   return true;
 }
 
+export { isUnreadMentionFromOthers } from "./chat-list-mentions.lib";
+
 export function messageToStreamEntry(m: ZulipRawMessage): {
   stream: Omit<StreamEntryInternal, "topics"> & { topics: Map<string, StreamTopicEntry> };
   topic: StreamTopicEntry;

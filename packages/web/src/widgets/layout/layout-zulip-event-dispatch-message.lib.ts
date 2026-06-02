@@ -137,6 +137,7 @@ export function handleUpdateMessageFlags(
         source: "event:update_message_flags:read:add",
       });
     } else {
+      chatListStore.decrementMentionsForReadMessages(messageIds);
       logSidebarUnreadFlow("event:update_message_flags:read:add:skip", {
         reason: "context_already_zero",
         ...summarizeMessageIdsForFlowDebug(messageIds),

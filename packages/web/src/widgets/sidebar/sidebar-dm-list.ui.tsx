@@ -11,9 +11,9 @@ import { resolveAvatarUrl } from "~/shared/lib/avatar";
 import { effectiveDmIsGroupFromSlug } from "~/shared/lib/dm-route.lib";
 import { getPresenceState, sidebarRowClass } from "~/shared/lib/format";
 import { Avatar } from "~/shared/ui/avatar";
-import { Badge } from "~/shared/ui/badge";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
+import { SidebarChatBadges } from "./sidebar-chat-badges.ui";
 import { isDmPartnerTyping, sortDmAllUsersForDisplay } from "./sidebar-dm-list.lib";
 import { SidebarUserStatusEmoji } from "./sidebar-user-status-emoji.ui";
 import { MOCK_DMS, parseDmSlugToUserIds } from "./sidebar.lib";
@@ -156,7 +156,7 @@ export const SidebarDmList: React.FC<SidebarDmListProps> = ({ activeDmId, dms })
                     {chat.pinned && <Icon name="pin" size={12} className="text-text-muted" />}
                     <span className="text-xs text-text-muted">{chat.time ?? ""}</span>
                   </div>
-                  {chat.badge !== undefined && <Badge count={chat.badge} variant="unread" />}
+                  <SidebarChatBadges unreadCount={chat.badge} hasMention={chat.hasMention} />
                 </div>
               </Link>
             );

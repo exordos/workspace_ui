@@ -133,22 +133,32 @@ export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle
                     />
                     {item.key === "inbox" && inboxCount > 0 && (
                       <span className={compactBadgeClass}>
-                        <Badge count={inboxCount} variant="unread" className="opacity-70" />
+                        <Badge count={inboxCount} variant="unread" size="sm" textTone="primary" />
                       </span>
                     )}
                     {item.key === "mentions" && mentionsCount > 0 && (
                       <span className={compactBadgeClass}>
-                        <Badge count={mentionsCount} variant="unread" className="opacity-70" />
+                        <Badge
+                          count={mentionsCount}
+                          variant="unread"
+                          size="sm"
+                          textTone="primary"
+                        />
                       </span>
                     )}
                     {item.key === "drafts" && draftsCount > 0 && (
                       <span className={compactBadgeClass}>
-                        <Badge count={draftsCount} variant="muted" className="opacity-70" />
+                        <Badge count={draftsCount} variant="muted" size="sm" textTone="primary" />
                       </span>
                     )}
                     {item.key === "favorites" && favoritesError == null && favoritesCount > 0 && (
                       <span className={compactBadgeClass}>
-                        <Badge count={favoritesCount} variant="muted" className="opacity-70" />
+                        <Badge
+                          count={favoritesCount}
+                          variant="muted"
+                          size="sm"
+                          textTone="primary"
+                        />
                       </span>
                     )}
                   </Link>

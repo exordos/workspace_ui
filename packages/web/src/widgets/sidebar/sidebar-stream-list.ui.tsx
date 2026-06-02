@@ -6,8 +6,8 @@ import { t } from "~/i18n/i18n";
 import { sidebarRowClass } from "~/shared/lib/format";
 import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
 import { Avatar } from "~/shared/ui/avatar";
-import { Badge } from "~/shared/ui/badge";
 import { Icon } from "~/shared/ui/icon";
+import { SidebarChatBadges } from "./sidebar-chat-badges.ui";
 import { TopicMuteButton } from "./sidebar-folder-topic-buttons.ui";
 import { SidebarStreamHydrateWrapper } from "./sidebar-stream-hydrate-wrapper.ui";
 import { slugForStream, TOPIC_BAR_COLORS } from "./sidebar.lib";
@@ -131,9 +131,10 @@ export const SidebarStreamList: React.FC<SidebarStreamListProps> = ({
                         )}
                       </div>
                       <div className="flex flex-shrink-0 flex-col items-end gap-1">
-                        {stream.badge !== undefined && stream.badge > 0 && (
-                          <Badge count={stream.badge} variant="unread" />
-                        )}
+                        <SidebarChatBadges
+                          unreadCount={stream.badge}
+                          hasMention={stream.hasMention}
+                        />
                       </div>
                     </Link>
                     <button
@@ -242,9 +243,10 @@ export const SidebarStreamList: React.FC<SidebarStreamListProps> = ({
                                     </>
                                   )}
                                 </div>
-                                {topic.badge !== undefined && topic.badge > 0 && (
-                                  <Badge count={topic.badge} variant="unread" />
-                                )}
+                                <SidebarChatBadges
+                                  unreadCount={topic.badge}
+                                  hasMention={topic.hasMention}
+                                />
                               </Link>
                               <div className="flex shrink-0 items-center py-2 pr-2">
                                 <TopicMuteButton

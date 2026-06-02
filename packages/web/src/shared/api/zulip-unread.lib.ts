@@ -73,6 +73,8 @@ export interface ZulipUnreadMessagesSnapshot {
   streams: ZulipUnreadStreamBucket[];
   dms: ZulipUnreadDmBucket[];
   totalCount: number;
+  /** Unread @mention message ids from register `unread_msgs.mentions` buckets. */
+  mentionMessageIds: number[];
   /** Zulip `old_unreads_missing` — snapshot truncated; caller should fall back to GET /messages. */
   oldUnreadsMissing?: boolean;
 }
@@ -118,12 +120,29 @@ function parseUnreadMessagesSnapshotFromUnreadMsgs(
 
   const streams = parseStreamUnreadBuckets(streamsRaw);
   const dms = [...parsePmUnreadBuckets(pmsRaw), ...parseHuddleUnreadBuckets(huddlesRaw)];
+  const mentionMessageIds = parseMentionUnreadMessageIds(unreadMsgs.mentions);
 
   // Если сервер дал прямой count, используем его как authoritative total.
   // Иначе считаем fallback как сумму длин id-массивов.
   const totalCount = resolveUnreadMsgsTotalCount(unreadMsgs, streamsRaw, pmsRaw, huddlesRaw);
 
-  return { streams, dms, totalCount };
+  return { streams, dms, totalCount, mentionMessageIds };
+}
+
+function parseMentionUnreadMessageIds(mentionsRaw: unknown): number[] {
+  if (!Array.isArray(mentionsRaw)) {
+    return [];
+  }
+  const ids: number[] = [];
+  for (const entry of mentionsRaw) {
+    if (!isRecord(entry)) continue;
+    ids.push(...parseUnreadMessageIds(entry.unread_message_ids));
+  }
+  return ids;
+}
+
+export function countMentionsUnreadFromSnapshot(snapshot: ZulipUnreadMessagesSnapshot): number {
+  return snapshot.mentionMessageIds.length;
 }
 
 function accumulateUnreadStreamMessage(
@@ -206,6 +225,7 @@ function parseUnreadMessagesSnapshotFromMessages(
     streams: Array.from(streamBuckets.values()),
     dms: Array.from(dmBuckets.values()),
     totalCount: unreadMessageIds.size,
+    mentionMessageIds: [],
   };
 }
 
@@ -279,5 +299,7 @@ export function parseUnreadDmMessagesCount(payload: unknown): number | null {
   if (snapshot == null) {
     return null;
   }
-  return countPersonalDmUnreadFromSnapshot(snapshot) > 0 ? 1 : 0;
+  const hasPersonalDm = countPersonalDmUnreadFromSnapshot(snapshot) > 0;
+  const hasMentions = countMentionsUnreadFromSnapshot(snapshot) > 0;
+  return hasPersonalDm || hasMentions ? 1 : 0;
 }

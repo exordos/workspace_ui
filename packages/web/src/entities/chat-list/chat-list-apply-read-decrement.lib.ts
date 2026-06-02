@@ -20,6 +20,7 @@ export interface ChatListUnreadDecrementActions {
   decrementUnreadForMessages: (messageIds: number[]) => void;
   decrementUnreadForTopic: (streamId: number, topic: string, count: number) => void;
   decrementUnreadForDmKey: (dmKey: string, count: number) => void;
+  decrementMentionsForReadMessages: (messageIds: readonly number[]) => void;
 }
 
 export interface ChatListUnreadDecrementState {
@@ -175,6 +176,8 @@ export function applyChatListReadDecrement(
       });
     }
   }
+
+  actions.decrementMentionsForReadMessages(messageIds);
 
   const stateAfter = getState();
   logSidebarUnreadFlow(`${source}:done`, {

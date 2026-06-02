@@ -3,8 +3,8 @@ import { Link } from "react-router-dom";
 import { t } from "~/i18n/i18n";
 import { sidebarRowClass } from "~/shared/lib/format";
 import { Avatar } from "~/shared/ui/avatar";
-import { Badge } from "~/shared/ui/badge";
 import { Icon } from "~/shared/ui/icon";
+import { SidebarChatBadges } from "./sidebar-chat-badges.ui";
 import { StreamContextMenu } from "./sidebar-chat-context-menu.ui";
 import { sidebarStreamRoute, sidebarStreamTopicRoute } from "./sidebar-chat-routes.lib";
 import { TopicMuteButton } from "./sidebar-folder-topic-buttons.ui";
@@ -80,9 +80,7 @@ function StreamRowLinkContent({
           {showLastMessageSender && (
             <span className="text-xs text-text-muted">{chat.time ?? ""}</span>
           )}
-          {chat.badge !== undefined && chat.badge > 0 && (
-            <Badge count={chat.badge} variant="unread" />
-          )}
+          <SidebarChatBadges unreadCount={chat.badge} hasMention={chat.hasMention} />
         </div>
       </div>
     </>
@@ -166,9 +164,7 @@ const SidebarFolderStreamTopicsList = React.memo(function SidebarFolderStreamTop
                     {topic.lastMessage ?? ""}
                   </div>
                 </div>
-                {topic.badge !== undefined && topic.badge > 0 && (
-                  <Badge count={topic.badge} variant="unread" />
-                )}
+                <SidebarChatBadges unreadCount={topic.badge} hasMention={topic.hasMention} />
               </Link>
               <div className="flex shrink-0 flex-col items-end gap-1 py-2 pr-2">
                 <TopicMuteButton

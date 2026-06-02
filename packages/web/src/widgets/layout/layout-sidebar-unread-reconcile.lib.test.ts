@@ -25,6 +25,7 @@ describe("reconcileSidebarUnreadAfterBootstrap", () => {
         streams: [{ streamId: 1, topic: "t", unreadMessageIds: [1] }],
         dms: [],
         totalCount: 1,
+        mentionMessageIds: [],
       },
     });
 
@@ -52,7 +53,7 @@ describe("reconcileSidebarUnreadAfterBootstrap", () => {
     reconcileSidebarUnreadAfterBootstrap({
       cancelled: () => false,
       currentUserId: 10,
-      registerSnapshot: { streams: [], dms: [], totalCount: 0 },
+      registerSnapshot: { streams: [], dms: [], totalCount: 0, mentionMessageIds: [] },
       snapshotSource: "cached-register",
     });
 
@@ -63,7 +64,7 @@ describe("reconcileSidebarUnreadAfterBootstrap", () => {
     reconcileSidebarUnreadAfterBootstrap({
       cancelled: () => false,
       currentUserId: 10,
-      registerSnapshot: { streams: [], dms: [], totalCount: 0 },
+      registerSnapshot: { streams: [], dms: [], totalCount: 0, mentionMessageIds: [] },
       snapshotSource: "cached-register",
     });
 
@@ -79,7 +80,7 @@ describe("reconcileSidebarUnreadAfterBootstrap", () => {
     reconcileSidebarUnreadAfterBootstrap({
       cancelled: () => false,
       currentUserId: 10,
-      registerSnapshot: { streams: [], dms: [], totalCount: 0 },
+      registerSnapshot: { streams: [], dms: [], totalCount: 0, mentionMessageIds: [] },
       snapshotSource: "fresh-register",
     });
 

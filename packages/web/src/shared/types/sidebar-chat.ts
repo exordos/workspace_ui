@@ -6,6 +6,8 @@ export interface TopicWithLast {
   lastMessageSenderName?: string;
   time?: string;
   badge?: number;
+  /** True when this topic has at least one unread @mention. */
+  hasMention?: boolean;
 }
 
 export type SidebarChat =
@@ -18,6 +20,7 @@ export type SidebarChat =
       time?: string;
       topics?: TopicWithLast[];
       badge?: number;
+      hasMention?: boolean;
     }
   | {
       type: "dm";
@@ -28,6 +31,7 @@ export type SidebarChat =
       lastMessage?: string;
       time?: string;
       badge?: number;
+      hasMention?: boolean;
       pinned?: boolean;
       userIds?: number[];
       avatar_url?: string;
@@ -61,6 +65,7 @@ export interface StreamWithLast {
   time?: string;
   topics?: TopicWithLast[];
   badge?: number;
+  hasMention?: boolean;
 }
 
 export interface StreamEntryInternal {

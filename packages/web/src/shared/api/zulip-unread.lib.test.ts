@@ -109,6 +109,18 @@ describe("parseUnreadDmMessagesCount", () => {
     expect(result).toBe(0);
   });
 
+  it("returns 1 when register mentions bucket has unread ids", () => {
+    const result = parseUnreadDmMessagesCount({
+      unread_msgs: {
+        streams: [],
+        pms: [],
+        huddles: [],
+        mentions: [{ unread_message_ids: [9] }],
+      },
+    });
+    expect(result).toBe(1);
+  });
+
   it("ignores stream and group DM messages in /messages payload", () => {
     const result = parseUnreadDmMessagesCount({
       messages: [
@@ -163,6 +175,7 @@ describe("parseUnreadMessagesSnapshot", () => {
         { userIds: [20], unreadMessageIds: [3], isGroup: false },
         { userIds: [20, 30], unreadMessageIds: [4, 5], isGroup: true },
       ],
+      mentionMessageIds: [6, 7],
     });
   });
 
@@ -186,6 +199,7 @@ describe("parseUnreadMessagesSnapshot", () => {
         { userIds: [20], unreadMessageIds: [3], isGroup: false },
         { userIds: [20, 30], unreadMessageIds: [4, 5], isGroup: true },
       ],
+      mentionMessageIds: [],
     });
   });
 
@@ -198,7 +212,7 @@ describe("parseUnreadMessagesSnapshot", () => {
         mentions: [],
       },
     });
-    expect(result).toEqual({ totalCount: 0, streams: [], dms: [] });
+    expect(result).toEqual({ totalCount: 0, streams: [], dms: [], mentionMessageIds: [] });
   });
 
   it("returns null for invalid payload", () => {
@@ -236,6 +250,7 @@ describe("parseUnreadMessagesSnapshot", () => {
       totalCount: 4,
       streams: [{ streamId: 10, topic: "bugs", unreadMessageIds: [1, 2] }],
       dms: [{ userIds: [20, 30], unreadMessageIds: [3, 4], isGroup: false }],
+      mentionMessageIds: [],
     });
   });
 
@@ -254,6 +269,7 @@ describe("parseUnreadMessagesSnapshot", () => {
       totalCount: 3,
       streams: [{ streamId: 10, topic: "", unreadMessageIds: [3] }],
       dms: [{ userIds: [77], unreadMessageIds: [5], isGroup: false }],
+      mentionMessageIds: [],
     });
   });
 });

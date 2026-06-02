@@ -244,6 +244,7 @@ describe("chatListStore", () => {
           streams: [{ streamId: 5, topic: "alpha", unreadMessageIds: [301, 302] }],
           dms: [{ userIds: [20], unreadMessageIds: [303], isGroup: false }],
           totalCount: 3,
+          mentionMessageIds: [],
         },
         10,
       );
@@ -262,6 +263,7 @@ describe("chatListStore", () => {
           streams: [{ streamId: 5, topic: "alpha", unreadMessageIds: [301, 302] }],
           dms: [],
           totalCount: 2,
+          mentionMessageIds: [],
         },
         10,
       );
@@ -282,6 +284,7 @@ describe("chatListStore", () => {
           streams: [],
           dms: [{ userIds: [20], unreadMessageIds: [303, 304], isGroup: false }],
           totalCount: 2,
+          mentionMessageIds: [],
         },
         10,
       );
@@ -1032,6 +1035,7 @@ describe("chatListStore", () => {
           streams: [{ streamId: 1, topic: "t", unreadMessageIds: [1, 2, 3] }],
           dms: [],
           totalCount: 3,
+          mentionMessageIds: [],
         },
         10,
       );
@@ -1064,6 +1068,7 @@ describe("chatListStore", () => {
           ],
           dms: [],
           totalCount: 4,
+          mentionMessageIds: [],
         },
         10,
       );

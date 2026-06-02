@@ -123,6 +123,7 @@ export function getStreamChats(streams: StreamWithLast[]): SidebarChat[] {
     time: s.time,
     topics: s.topics,
     badge: s.badge,
+    hasMention: s.hasMention,
   }));
 }
 

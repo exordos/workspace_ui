@@ -11,13 +11,18 @@ describe("layout-instance-register-unread", () => {
         streams: [{ streamId: 1, topic: "t", unreadMessageIds: [1] }],
         dms: [],
         totalCount: 0,
+        mentionMessageIds: [],
       }),
     ).toBe(false);
   });
 
   it("shouldPreserveLocalUnreadOnCachedReconcile when empty cache and local badges", () => {
     expect(
-      shouldPreserveLocalUnreadOnCachedReconcile({ streams: [], dms: [], totalCount: 0 }, 2, 0),
+      shouldPreserveLocalUnreadOnCachedReconcile(
+        { streams: [], dms: [], totalCount: 0, mentionMessageIds: [] },
+        2,
+        0,
+      ),
     ).toBe(true);
   });
 });

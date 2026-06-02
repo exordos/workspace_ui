@@ -1,7 +1,11 @@
 // Типы Zustand-store для chat-list.
 // Здесь описаны состояние и публичные actions, которые используют layout/widgets.
 import type { ZulipUnreadMessagesSnapshot } from "~/shared/api/zulip-unread.lib";
-import type { ZulipGroupSettingValue, ZulipRawMessage } from "~/shared/api/zulip.types";
+import type {
+  MockMessage,
+  ZulipGroupSettingValue,
+  ZulipRawMessage,
+} from "~/shared/api/zulip.types";
 import type { ChatListSnapshotSerialized } from "~/shared/lib/chat-list-snapshot-serialize.lib";
 import type {
   SidebarChat,
@@ -81,8 +85,14 @@ export interface ChatListState {
   sidebarStreamsUnread: number;
   /** Sum of DM unread counts; updated incrementally or on full rebuild. */
   sidebarDmsUnread: number;
-  /** Unread @mentions in lastAppliedMessages bootstrap snapshot. */
+  /** Unread @mentions tracked for sidebar badge and personal indicator. */
   mentionsUnreadCount: number;
+  /** Message ids counted in `mentionsUnreadCount` (in-memory; rebuilt from API/register). */
+  mentionedUnreadMessageIds: Set<number>;
+  /** True when `mentionsUnreadCount` hit page cap (more unread mentions may exist server-side). */
+  mentionsUnreadCapped: boolean;
+  /** After authoritative GET is:mentioned+is:unread sync, register mention ids are not applied. */
+  mentionsUnreadApiSynced: boolean;
   setFromMessages: (messages: ZulipRawMessage[], currentUserId: number | null) => void;
   /** Restore sidebar maps from IndexedDB snapshot (no raw `lastAppliedMessages`). */
   hydrateFromIndexedDbSnapshot: (snapshot: ChatListSnapshotSerialized) => void;
@@ -96,6 +106,14 @@ export interface ChatListState {
     snapshot: ZulipUnreadMessagesSnapshot,
     currentUserId: number | null,
   ) => void;
+  /** Authoritative replace of unread mention ids/count from GET is:mentioned+is:unread. */
+  reconcileMentionsFromServer: (
+    messages: readonly MockMessage[],
+    options?: { capped?: boolean },
+  ) => void;
+  /** Register fallback for mention ids until first API sync. */
+  reconcileMentionsFromRegisterIds: (messageIds: readonly number[]) => void;
+  decrementMentionsForReadMessages: (messageIds: readonly number[]) => void;
   addMessage: (message: ZulipRawMessage) => void;
   addMessages: (messages: ZulipRawMessage[]) => void;
   /**
@@ -104,6 +122,8 @@ export interface ChatListState {
    * but not previously indexed by sidebar bootstrap/lazy hydrate.
    */
   upsertUnreadMessageLocations: (messages: ZulipRawMessage[]) => void;
+  /** Indexes mention message locations from API sync (stream/topic/DM rows for sidebar @ badge). */
+  upsertMentionMessageLocations: (messages: readonly MockMessage[]) => void;
   /** Stream/topic preview only — does not bump unread (metadata-first stream batch). */
   applyStreamSidebarPreviewsFromMessages: (messages: ZulipRawMessage[]) => void;
   /** Ensures topic shells exist for a stream (used when expanding channel in sidebar). */

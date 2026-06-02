@@ -24,7 +24,8 @@ describe("useLayoutAppIconBadge", () => {
   it("clears OS badge on unmount", () => {
     const { unmount } = renderHook(() =>
       useLayoutAppIconBadge({
-        currentInstanceDmUnread: 1,
+        personalDmUnread: 1,
+        mentionsUnread: 0,
       }),
     );
 
@@ -33,27 +34,37 @@ describe("useLayoutAppIconBadge", () => {
     expect(osIntegration.setBadgeCount).toHaveBeenLastCalledWith(0);
   });
 
-  it("syncs OS badge and favicon from active org personal DM unread only", () => {
+  it("syncs OS badge from personal DM or mentions unread", () => {
     const { rerender } = renderHook(
-      ({ currentInstanceDmUnread }: { currentInstanceDmUnread: number }) =>
-        useLayoutAppIconBadge({ currentInstanceDmUnread }),
+      ({
+        personalDmUnread,
+        mentionsUnread,
+      }: {
+        personalDmUnread: number;
+        mentionsUnread: number;
+      }) => useLayoutAppIconBadge({ personalDmUnread, mentionsUnread }),
       {
-        initialProps: { currentInstanceDmUnread: 2 },
+        initialProps: { personalDmUnread: 2, mentionsUnread: 0 },
       },
     );
 
     expect(osIntegration.setBadgeCount).toHaveBeenCalledWith(1);
     expect(syncFaviconWithUnreadIndicator).toHaveBeenCalledWith({ hasUnread: true });
 
-    rerender({ currentInstanceDmUnread: 0 });
+    rerender({ personalDmUnread: 0, mentionsUnread: 0 });
     expect(osIntegration.setBadgeCount).toHaveBeenLastCalledWith(0);
     expect(syncFaviconWithUnreadIndicator).toHaveBeenLastCalledWith({ hasUnread: false });
+
+    rerender({ personalDmUnread: 0, mentionsUnread: 3 });
+    expect(osIntegration.setBadgeCount).toHaveBeenLastCalledWith(1);
+    expect(syncFaviconWithUnreadIndicator).toHaveBeenLastCalledWith({ hasUnread: true });
   });
 
-  it("does not show badge when current org has no personal DM unread", () => {
+  it("does not show badge when no personal DM or mentions unread", () => {
     renderHook(() =>
       useLayoutAppIconBadge({
-        currentInstanceDmUnread: 0,
+        personalDmUnread: 0,
+        mentionsUnread: 0,
       }),
     );
 

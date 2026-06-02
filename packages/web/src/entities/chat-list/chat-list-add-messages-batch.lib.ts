@@ -5,6 +5,7 @@ import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import type { DmEntryInternal, StreamEntryInternal } from "~/shared/types/sidebar-chat";
+import { incrementMentionUnreadFromBatch } from "./chat-list-mentions.lib";
 import { mergeStreamEntry } from "./chat-list-stream-entry-merge.lib";
 import {
   patchStreamTopicMessageIndex,
@@ -243,6 +244,11 @@ export function applyAddMessagesBatchPatch(
   const indexed = indexBatchMessagesAndUnreadBumps(state, messages, currentUserId, avatarMap);
   const nextStreams = mergeStreamTopicPreviewsFromLatest(indexed.nextStreams, streamTopicLatest);
   const nextDms = mergeDmPreviewsFromLatest(indexed.nextDms, dmLatest, currentUserId, avatarMap);
+  const mentionPatch = incrementMentionUnreadFromBatch(
+    state.mentionedUnreadMessageIds,
+    messages,
+    currentUserId,
+  );
 
   return {
     streamsMap: nextStreams,
@@ -256,6 +262,7 @@ export function applyAddMessagesBatchPatch(
       state.messageIdToLocation,
       indexed.nextLoc,
     ),
+    ...mentionPatch,
   };
 }
 

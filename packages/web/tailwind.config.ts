@@ -57,6 +57,7 @@ export default {
         "notice-base": colorVar("notice-base"),
         "notice-disable": colorVar("notice-disable"),
         "badge-bg": colorVar("badge-bg"),
+        "badge-text": colorVar("badge-text"),
 
         /* Call */
         "call-bg": colorVar("call-bg"),
