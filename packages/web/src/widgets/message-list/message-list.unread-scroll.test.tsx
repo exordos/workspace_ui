@@ -211,7 +211,7 @@ describe("MessageList unread anchor scroll", () => {
       await flushProgrammaticScrollFrames();
     });
 
-    expect(scrollToBottomMock).toHaveBeenCalledTimes(1);
+    expect(scrollToBottomMock.mock.calls.length).toBeGreaterThanOrEqual(1);
   });
 
   it("auto-scrolls when list was at bottom before message append", async () => {
@@ -246,6 +246,119 @@ describe("MessageList unread anchor scroll", () => {
       await flushProgrammaticScrollFrames();
     });
 
-    expect(scrollToBottomMock).toHaveBeenCalledTimes(1);
+    expect(scrollToBottomMock.mock.calls.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("MessageList chat open scroll to bottom", () => {
+  const scrollIntoView = vi.fn();
+  const originalIntersectionObserver = globalThis.IntersectionObserver;
+
+  class IntersectionObserverMock implements IntersectionObserver {
+    readonly root = null;
+    readonly rootMargin = "0px";
+    readonly thresholds = [0.5];
+    disconnect = vi.fn();
+    observe = vi.fn();
+    takeRecords = vi.fn(() => []);
+    unobserve = vi.fn();
+
+    constructor(
+      _callback: (entries: IntersectionObserverEntry[], observer: IntersectionObserver) => void,
+    ) {}
+  }
+
+  beforeEach(() => {
+    resetRealmEmojisCacheForTests();
+    scrollIntoView.mockReset();
+    scrollToBottomMock.mockReset();
+    fetchRealmEmojisMock.mockReset();
+    fetchRealmEmojisMock.mockResolvedValue([]);
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    globalThis.IntersectionObserver = IntersectionObserverMock;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    globalThis.IntersectionObserver = originalIntersectionObserver;
+  });
+
+  async function flushOpenScroll(): Promise<void> {
+    await act(async () => {
+      await flushProgrammaticScrollFrames();
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => {
+          resolve();
+        });
+      });
+    });
+  }
+
+  it("scrolls to bottom on chat open when there are no unreads", async () => {
+    const base = [
+      msg(1, { sender_id: 99, flags: ["read"] }),
+      msg(2, { sender_id: 43, flags: ["read"] }),
+      msg(3, { sender_id: 43, flags: ["read"] }),
+    ];
+
+    render(<MessageList messages={base} currentUserId={7} scrollToBottomKey="open-no-unread" />);
+
+    await flushOpenScroll();
+
+    expect(scrollToBottomMock).toHaveBeenCalled();
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  it("scrolls to bottom when transient unread clears on chat open", async () => {
+    const withTransientUnread = [
+      msg(1, { sender_id: 99, flags: ["read"] }),
+      msg(2, { sender_id: 43, flags: [] }),
+      msg(3, { sender_id: 43, flags: ["read"] }),
+    ];
+    const allRead = withTransientUnread.map((m) => ({ ...m, flags: ["read"] }));
+
+    const { rerender } = render(
+      <MessageList
+        messages={withTransientUnread}
+        currentUserId={7}
+        firstUnreadId={2}
+        unreadCount={1}
+        scrollToBottomKey="open-recovery"
+      />,
+    );
+
+    await flushOpenScroll();
+    scrollToBottomMock.mockClear();
+    scrollIntoView.mockClear();
+
+    rerender(
+      <MessageList
+        messages={allRead}
+        currentUserId={7}
+        unreadCount={0}
+        scrollToBottomKey="open-recovery"
+      />,
+    );
+
+    await flushOpenScroll();
+
+    expect(scrollToBottomMock).toHaveBeenCalled();
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  it("pins tail with follow-up scroll on chat open", async () => {
+    const base = [
+      msg(1, { sender_id: 99, flags: ["read"] }),
+      msg(2, { sender_id: 43, flags: ["read"] }),
+    ];
+
+    render(<MessageList messages={base} currentUserId={7} scrollToBottomKey="open-double-pin" />);
+
+    await flushOpenScroll();
+
+    expect(scrollToBottomMock.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 });

@@ -133,6 +133,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   const userScrollSeenRef = useRef(false);
   const programmaticScrollRef = useRef(false);
   const pendingScrollToBottomKeyRef = useRef<string | null>(null);
+  const openAtBottomIntentKeyRef = useRef<string | null>(null);
   const unreadScrollKeyRef = useRef<string | null>(null);
   const suppressReadUntilMsRef = useRef(0);
   const scrollLogLastAtMsRef = useRef(0);
@@ -244,6 +245,21 @@ export const MessageList: React.FC<MessageListProps> = ({
     });
   }, []);
 
+  const pinTailToBottom = useCallback(
+    (el: HTMLElement, reason: string) => {
+      logScrollMetrics("scroll:toBottom", { reason });
+      runProgrammaticScroll(() => {
+        scrollToBottom(el);
+        syncWasAtBottomFromElement(el);
+      });
+      requestAnimationFrame(() => {
+        scrollToBottom(el);
+        syncWasAtBottomFromElement(el);
+      });
+    },
+    [runProgrammaticScroll, logScrollMetrics, syncWasAtBottomFromElement],
+  );
+
   const isLastUnreadNearViewportBottom = useCallback(
     (root: HTMLElement): boolean => {
       if (lastUnreadId == null) {
@@ -354,12 +370,20 @@ export const MessageList: React.FC<MessageListProps> = ({
     unreadScrollKeyRef.current = null;
     suppressReadUntilMsRef.current = 0;
     setUnreadAnchorId(null);
-  }, [scrollToBottomKey]);
+    if (scrollToBottomKey !== undefined && focusedMessageId == null) {
+      openAtBottomIntentKeyRef.current = scrollToBottomKey;
+    } else {
+      openAtBottomIntentKeyRef.current = null;
+    }
+  }, [scrollToBottomKey, focusedMessageId]);
 
   useEffect(() => {
-    if (firstUnreadId == null) return;
+    if (firstUnreadId == null || unreadCount === 0) {
+      setUnreadAnchorId(null);
+      return;
+    }
     setUnreadAnchorId((prev) => prev ?? firstUnreadId);
-  }, [firstUnreadId, scrollToBottomKey]);
+  }, [firstUnreadId, unreadCount, scrollToBottomKey]);
 
   const processIntersectionEntries = useCallback(
     (entries: readonly IntersectionObserverEntry[]) => {
@@ -477,16 +501,13 @@ export const MessageList: React.FC<MessageListProps> = ({
     const pending = pendingScrollToBottomKeyRef.current;
     if (pending !== null && scrollToBottomKey !== undefined && pending === scrollToBottomKey) {
       pendingScrollToBottomKeyRef.current = null;
-      if (focusedMessageId == null && firstUnreadId != null) {
+      if (focusedMessageId == null && firstUnreadId != null && unreadCount > 0) {
         wasAtBottomRef.current = false;
         logScrollMetrics("scroll:openSkipBottom");
         return;
       }
-      logScrollMetrics("scroll:toBottom", { reason: "chatOpen" });
-      runProgrammaticScroll(() => {
-        scrollToBottom(el);
-        syncWasAtBottomFromElement(el);
-      });
+      openAtBottomIntentKeyRef.current = null;
+      pinTailToBottom(el, "chatOpen");
       return;
     }
     if (messages.length === 0) return;
@@ -510,12 +531,39 @@ export const MessageList: React.FC<MessageListProps> = ({
   }, [
     scrollToBottomKey,
     messages.length,
+    messageLastId,
     focusedMessageId,
     firstUnreadId,
+    unreadCount,
     unreadAnchorId,
+    pinTailToBottom,
     runProgrammaticScroll,
     logScrollMetrics,
     syncWasAtBottomFromElement,
+  ]);
+
+  // After cache→API, unread flags may clear; honor open-at-bottom intent without waiting for another key change.
+  useLayoutEffect(() => {
+    if (scrollToBottomKey === undefined) return;
+    if (focusedMessageId != null) return;
+    if (firstUnreadId != null || unreadCount > 0) return;
+    if (userScrollSeenRef.current) return;
+    if (openAtBottomIntentKeyRef.current !== scrollToBottomKey) return;
+    const pending = pendingScrollToBottomKeyRef.current;
+    if (pending !== null && pending === scrollToBottomKey) return;
+    const el = scrollRef.current;
+    if (!el || messages.length === 0) return;
+
+    openAtBottomIntentKeyRef.current = null;
+    pinTailToBottom(el, "openAtBottomRecovery");
+  }, [
+    scrollToBottomKey,
+    focusedMessageId,
+    firstUnreadId,
+    unreadCount,
+    messages.length,
+    messageLastId,
+    pinTailToBottom,
   ]);
 
   const markUserScrollIntent = useCallback(() => {

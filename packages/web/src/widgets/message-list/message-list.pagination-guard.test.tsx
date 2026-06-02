@@ -93,6 +93,7 @@ describe("MessageList boundary pagination guards", () => {
         messages={messages}
         currentUserId={7}
         firstUnreadId={3}
+        unreadCount={21}
         scrollToBottomKey="chat-a"
         onLoadMore={onLoadMore}
       />,
