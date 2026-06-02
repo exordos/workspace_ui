@@ -215,6 +215,40 @@ describe("buildSelectedFolderSidebarChats", () => {
     });
   });
 
+  it("matches cached 1:1 DM rows by slug when userIds are missing", () => {
+    const folderId = "folder-1";
+    const result = buildSelectedFolderSidebarChats({
+      selectedFolderId: folderId,
+      folderChatIds: new Set(["dm:20"]),
+      folderItemsByFolderId: new Map([[folderId, [folderItem("dm:20", 0)]]]),
+      chatsSortedByLastMessage: [
+        {
+          type: "dm",
+          id: 20,
+          name: "Bob",
+          slug: "10-me,20-bob",
+          isGroup: false,
+          lastMessage: "cached preview",
+          time: "10:00",
+          ts: 5000,
+          avatar_url: "https://example.test/avatar.png",
+        },
+      ],
+      streamsMap: new Map(),
+      usersMapForChatInfo: new Map([[20, { full_name: "Bob" }]]),
+      currentUserId: 10,
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      type: "dm",
+      id: 20,
+      lastMessage: "cached preview",
+      time: "10:00",
+      avatar_url: "https://example.test/avatar.png",
+    });
+  });
+
   it("filters group DM built from folder chatId with three or more users", () => {
     const folderId = "folder-1";
     const result = buildSelectedFolderSidebarChats({

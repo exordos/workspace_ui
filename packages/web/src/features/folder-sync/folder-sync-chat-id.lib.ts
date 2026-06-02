@@ -84,7 +84,10 @@ export function chatToWorkspaceChatIds(chat: SidebarChat, currentUserId: number 
     return ids;
   }
 
-  const userIds = Array.isArray(chat.userIds) && chat.userIds.length > 0 ? chat.userIds : [];
+  const userIds =
+    Array.isArray(chat.userIds) && chat.userIds.length > 0
+      ? chat.userIds
+      : parseDmSlugToUserIds(chat.slug);
   if (userIds.length !== 2 || !userIds.includes(currentUserId)) {
     return ids;
   }

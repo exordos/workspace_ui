@@ -94,9 +94,11 @@ export function collectKnownMatchedChatKeys(
   matchedChats: readonly SidebarChat[],
   currentUserId: number | null,
 ): KnownMatchedChatKeys {
+  const knownMatchedStreamIds = new Set<number>();
   const knownMatchedDmKeys = new Set<string>();
   for (const chat of matchedChats) {
-    if (chat.type !== "dm") {
+    if (chat.type === "stream") {
+      knownMatchedStreamIds.add(chat.stream_id);
       continue;
     }
     for (const chatId of chatToWorkspaceChatIds(chat, currentUserId)) {
@@ -105,9 +107,7 @@ export function collectKnownMatchedChatKeys(
   }
 
   return {
-    knownMatchedStreamIds: new Set(
-      matchedChats.filter((chat) => chat.type === "stream").map((chat) => chat.stream_id),
-    ),
+    knownMatchedStreamIds,
     knownMatchedDmKeys,
   };
 }

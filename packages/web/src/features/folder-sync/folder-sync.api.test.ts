@@ -76,7 +76,7 @@ describe("folder-sync.api", () => {
       items: [
         {
           uuid: "item-1",
-          chatId: "42",
+          chatId: "dm:42",
           folderUuid: "folder-2",
           orderIndex: 0,
           pinnedAt: null,
