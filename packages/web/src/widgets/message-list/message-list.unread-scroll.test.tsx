@@ -129,6 +129,223 @@ describe("MessageList unread anchor scroll", () => {
     expect(scrollTargets).toEqual(["3"]);
   });
 
+  it("marks a single unread as read after scroll-to-unread without manual scroll", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const onUnreadMessagesVisible = vi.fn();
+    const unreadId = 3118;
+    const messages = [
+      msg(1, { sender_id: 99, flags: ["read"] }),
+      msg(2, { sender_id: 43, flags: ["read"] }),
+      msg(unreadId, { sender_id: 43, flags: [] }),
+    ];
+
+    render(
+      <MessageList
+        messages={messages}
+        currentUserId={7}
+        firstUnreadId={unreadId}
+        unreadCount={1}
+        scrollToBottomKey="single-unread-autoread"
+        onUnreadMessagesVisible={onUnreadMessagesVisible}
+      />,
+    );
+
+    const feed = document.querySelector('[role="feed"]') as HTMLDivElement;
+    const anchor = feed.querySelector<HTMLElement>(`[data-message-id="${unreadId}"]`);
+    if (anchor == null) {
+      throw new Error("expected unread anchor node");
+    }
+    const rootRect = {
+      top: 0,
+      bottom: 400,
+      left: 0,
+      right: 300,
+      width: 300,
+      height: 400,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect;
+    const anchorRect = {
+      top: 150,
+      bottom: 200,
+      left: 0,
+      right: 300,
+      width: 300,
+      height: 50,
+      x: 0,
+      y: 150,
+      toJSON: () => ({}),
+    } as DOMRect;
+    vi.spyOn(feed, "getBoundingClientRect").mockReturnValue(rootRect);
+    vi.spyOn(anchor, "getBoundingClientRect").mockReturnValue(anchorRect);
+
+    await act(async () => {
+      await flushProgrammaticScrollFrames();
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+      await flushProgrammaticScrollFrames();
+    });
+
+    expect(scrollIntoView).toHaveBeenCalled();
+    expect(onUnreadMessagesVisible).toHaveBeenCalledWith([unreadId]);
+    vi.useRealTimers();
+  });
+
+  it("does not auto-mark unread at bottom before user scroll on chat open", async () => {
+    const onUnreadMessagesVisible = vi.fn();
+    const messages = [
+      msg(1, { sender_id: 99, flags: ["read"] }),
+      msg(2, { sender_id: 43, flags: [] }),
+      msg(3, { sender_id: 43, flags: [] }),
+      msg(4, { sender_id: 43, flags: [] }),
+      msg(5, { sender_id: 43, flags: [] }),
+    ];
+
+    render(
+      <MessageList
+        messages={messages}
+        currentUserId={7}
+        firstUnreadId={2}
+        unreadCount={4}
+        scrollToBottomKey="unread-no-autoread"
+        onUnreadMessagesVisible={onUnreadMessagesVisible}
+      />,
+    );
+
+    const feed = document.querySelector('[role="feed"]') as HTMLDivElement;
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 2000 });
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 400 });
+    Object.defineProperty(feed, "scrollTop", { configurable: true, writable: true, value: 1600 });
+
+    await act(async () => {
+      await flushProgrammaticScrollFrames();
+    });
+
+    expect(onUnreadMessagesVisible).not.toHaveBeenCalled();
+    expect(scrollIntoView).toHaveBeenCalled();
+  });
+
+  it("does not mark intersection-visible unreads before user scroll", async () => {
+    let intersectionCallback: IntersectionObserverCallback = () => {};
+
+    class ImmediateIntersectionObserverMock implements IntersectionObserver {
+      readonly root = null;
+      readonly rootMargin = "0px";
+      readonly thresholds = [0.5];
+      disconnect = vi.fn();
+      unobserve = vi.fn();
+      takeRecords = vi.fn(() => []);
+
+      constructor(callback: IntersectionObserverCallback) {
+        intersectionCallback = callback;
+      }
+
+      observe = vi.fn((target: Element) => {
+        intersectionCallback(
+          [
+            {
+              target,
+              isIntersecting: true,
+              intersectionRatio: 0.5,
+              boundingClientRect: {} as DOMRectReadOnly,
+              intersectionRect: {} as DOMRectReadOnly,
+              rootBounds: null,
+              time: 0,
+            },
+          ],
+          this,
+        );
+      });
+    }
+
+    globalThis.IntersectionObserver = ImmediateIntersectionObserverMock;
+
+    const onUnreadMessagesVisible = vi.fn();
+    const messages = [
+      msg(1, { sender_id: 99, flags: ["read"] }),
+      msg(2, { sender_id: 43, flags: [] }),
+      msg(3, { sender_id: 43, flags: [] }),
+      msg(4, { sender_id: 43, flags: [] }),
+    ];
+
+    render(
+      <MessageList
+        messages={messages}
+        currentUserId={7}
+        firstUnreadId={2}
+        unreadCount={3}
+        scrollToBottomKey="unread-io-defer"
+        onUnreadMessagesVisible={onUnreadMessagesVisible}
+      />,
+    );
+
+    const feed = document.querySelector('[role="feed"]') as HTMLDivElement;
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 2000 });
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 400 });
+    Object.defineProperty(feed, "scrollTop", { configurable: true, writable: true, value: 1600 });
+
+    await act(async () => {
+      await flushProgrammaticScrollFrames();
+    });
+
+    expect(onUnreadMessagesVisible).not.toHaveBeenCalled();
+  });
+
+  it("does not auto-mark unread after API shrinks list while anchor is active", async () => {
+    const onUnreadMessagesVisible = vi.fn();
+    const cachedWindow = Array.from({ length: 10 }, (_, i) =>
+      msg(100 + i, {
+        sender_id: i < 5 ? 99 : 43,
+        flags: i < 5 ? ["read"] : [],
+      }),
+    );
+    const apiWindow = cachedWindow.slice(-5);
+
+    const { rerender } = render(
+      <MessageList
+        messages={cachedWindow}
+        currentUserId={7}
+        firstUnreadId={105}
+        unreadCount={5}
+        scrollToBottomKey="unread-api-shrink"
+        onUnreadMessagesVisible={onUnreadMessagesVisible}
+      />,
+    );
+
+    const feed = document.querySelector('[role="feed"]') as HTMLDivElement;
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 3000 });
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 400 });
+    Object.defineProperty(feed, "scrollTop", { configurable: true, writable: true, value: 2600 });
+
+    await act(async () => {
+      await flushProgrammaticScrollFrames();
+    });
+
+    onUnreadMessagesVisible.mockClear();
+    scrollToBottomMock.mockClear();
+
+    rerender(
+      <MessageList
+        messages={apiWindow}
+        currentUserId={7}
+        firstUnreadId={105}
+        unreadCount={5}
+        scrollToBottomKey="unread-api-shrink"
+        onUnreadMessagesVisible={onUnreadMessagesVisible}
+      />,
+    );
+
+    await act(async () => {
+      await flushProgrammaticScrollFrames();
+    });
+
+    expect(onUnreadMessagesVisible).not.toHaveBeenCalled();
+    expect(scrollToBottomMock).not.toHaveBeenCalled();
+  });
+
   it("does not scroll to bottom when messages grow with unread anchor before user scroll", async () => {
     const base = [
       msg(1, { sender_id: 99, flags: ["read"] }),
@@ -166,6 +383,56 @@ describe("MessageList unread anchor scroll", () => {
         scrollToBottomKey="unread-anchor-b"
       />,
     );
+
+    await act(async () => {
+      await flushProgrammaticScrollFrames();
+    });
+
+    expect(scrollToBottomMock).not.toHaveBeenCalled();
+  });
+
+  it("does not pin tail on viewport resize while unread anchor is active before user scroll", async () => {
+    let resizeCallback: ResizeObserverCallback = () => {};
+
+    class ResizeObserverMock implements ResizeObserver {
+      disconnect = vi.fn();
+      observe = vi.fn();
+      unobserve = vi.fn();
+
+      constructor(cb: ResizeObserverCallback) {
+        resizeCallback = cb;
+      }
+    }
+    globalThis.ResizeObserver = ResizeObserverMock;
+
+    const messages = [
+      msg(1, { sender_id: 99, flags: ["read"] }),
+      msg(2, { sender_id: 43, flags: [] }),
+      msg(3, { sender_id: 43, flags: [] }),
+    ];
+
+    render(
+      <MessageList
+        messages={messages}
+        currentUserId={7}
+        firstUnreadId={2}
+        unreadCount={2}
+        scrollToBottomKey="resize-skip-unread"
+      />,
+    );
+
+    const feed = document.querySelector('[role="feed"]') as HTMLDivElement;
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 2000 });
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 500 });
+    Object.defineProperty(feed, "scrollTop", { configurable: true, writable: true, value: 200 });
+
+    await act(async () => {
+      await flushProgrammaticScrollFrames();
+    });
+
+    scrollToBottomMock.mockClear();
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 380 });
+    resizeCallback([], {} as ResizeObserver);
 
     await act(async () => {
       await flushProgrammaticScrollFrames();

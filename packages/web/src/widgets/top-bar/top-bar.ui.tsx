@@ -95,7 +95,10 @@ export const TopBar: React.FC = () => {
               className={`min-w-0 max-w-xs overflow-x-auto ${SCROLL_AREA_CLASS}`}
               data-testid="topbar-instance-switcher-scroll"
             >
-              <InstanceSwitcher />
+              {/* Vertical padding keeps org unread dots inside the scrollport (overflow-x clips Y). */}
+              <div className="py-1 pr-0.5">
+                <InstanceSwitcher />
+              </div>
             </div>
           </div>
 

@@ -102,8 +102,8 @@ describe("InstanceSwitcher", () => {
     expect(logoContainer).toBeInTheDocument();
     expect(logoContainer).toContainElement(unreadBadge);
     expect(unreadBadge).toHaveClass("absolute");
-    expect(unreadBadge).toHaveClass("-top-1");
-    expect(unreadBadge).toHaveClass("-right-1");
+    expect(unreadBadge).toHaveClass("top-0");
+    expect(unreadBadge).toHaveClass("right-0");
   });
 
   it("keeps add-organization action only inside dropdown", async () => {

@@ -48,6 +48,8 @@ interface ImportMetaEnv {
   readonly VITE_MESSAGE_FLOW_DEBUG?: string;
   /** Verbose `[chat-list-flow]` logs in console. */
   readonly VITE_CHAT_LIST_FLOW_DEBUG?: string;
+  /** Verbose `[sidebar-unread]` logs (badge bootstrap, queue, mark-read). */
+  readonly VITE_SIDEBAR_UNREAD_DEBUG?: string;
   /** Top bar: show Calls nav. */
   readonly VITE_TOP_BAR_CALLS_NAV?: string;
   /** Top bar: show Services nav. */

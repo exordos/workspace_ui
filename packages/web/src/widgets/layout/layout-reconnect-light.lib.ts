@@ -31,6 +31,7 @@ export async function refreshLayoutReconnectLight(
     currentUserId: uid,
     registerSnapshot,
     logScope: "reconnectLight",
+    snapshotSource: "cached-register",
   });
 
   if (instanceId == null) {

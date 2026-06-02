@@ -513,7 +513,7 @@ describe("MessageList focused message behavior", () => {
     expect(onUnreadMessagesAtBottom).toHaveBeenCalledWith([1, 2]);
   });
 
-  it("does not call onUnreadMessagesAtBottom while hasNewerMessages even at bottom", () => {
+  it("does not bulk-mark unread at bottom while hasNewerMessages even when scrolled to tail", () => {
     const onUnreadMessagesAtBottom = vi.fn();
     const onUnreadMessagesVisible = vi.fn();
     render(
@@ -550,7 +550,7 @@ describe("MessageList focused message behavior", () => {
     fireEvent.scroll(feed);
 
     expect(onUnreadMessagesAtBottom).not.toHaveBeenCalled();
-    expect(onUnreadMessagesVisible).toHaveBeenCalledWith([1, 2]);
+    expect(onUnreadMessagesVisible).not.toHaveBeenCalled();
   });
 
   it("bottom read path only includes viewport unread ids", () => {

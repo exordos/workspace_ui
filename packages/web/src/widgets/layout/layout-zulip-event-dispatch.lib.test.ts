@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { applyChatListReadDecrement } from "~/entities/chat-list/chat-list-apply-read-decrement.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import * as client from "~/shared/api/client";
@@ -687,6 +688,86 @@ describe("dispatchZulipEvent", () => {
           isArchived: true,
         },
       ]);
+    });
+  });
+
+  describe("update_message_flags", () => {
+    it("decrements sidebar unread with topic fallback when read id is missing from index", () => {
+      useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
+      useChatListStore.getState().reconcileUnreadFromSnapshot(
+        {
+          streams: [{ streamId: 5, topic: "topic1", unreadMessageIds: [1, 2, 3] }],
+          dms: [],
+          totalCount: 3,
+        },
+        1,
+      );
+      useChatListStore.setState({
+        messageIdToLocation: new Map([[1, { type: "stream", stream_id: 5, topic: "topic1" }]]),
+      });
+
+      const { ctx } = buildCtx();
+      ctx.currentChat.context = {
+        type: "stream",
+        streamId: 5,
+        streamName: "general",
+        topic: "topic1",
+        streamWideView: false,
+      };
+
+      dispatchZulipEvent(
+        {
+          id: 99,
+          type: "update_message_flags",
+          op: "add",
+          flag: "read",
+          messages: [1, 2, 3],
+        },
+        ctx,
+      );
+
+      expect(useChatListStore.getState().streamsMap.get(5)?.topics.get("topic1")?.unreadCount).toBe(
+        0,
+      );
+    });
+
+    it("skips sidebar decrement when optimistic read already cleared open DM unread", () => {
+      useChatListStore.getState().setCurrentUserId(10);
+      useChatListStore
+        .getState()
+        .upsertDmMetadataRows([{ userIds: [10, 20], lastMessageId: 3083, unreadCount: 0 }]);
+      useChatListStore.getState().reconcileUnreadFromSnapshot(
+        {
+          streams: [],
+          dms: [{ userIds: [20], unreadMessageIds: [3081, 3082, 3083], isGroup: false }],
+          totalCount: 3,
+        },
+        10,
+      );
+
+      const store = useChatListStore.getState();
+      applyChatListReadDecrement(() => useChatListStore.getState(), store, {
+        messageIds: [3081, 3082, 3083],
+        fallbackContext: { type: "dm", dmKey: "10,20" },
+        source: "test:optimistic",
+      });
+      expect(useChatListStore.getState().dmsMap.get("10,20")?.unreadCount).toBe(0);
+
+      const { ctx } = buildCtx();
+      ctx.currentChat.context = { type: "dm", dmKey: "10,20" };
+
+      dispatchZulipEvent(
+        {
+          id: 100,
+          type: "update_message_flags",
+          op: "add",
+          flag: "read",
+          messages: [3081, 3082, 3083],
+        },
+        ctx,
+      );
+
+      expect(useChatListStore.getState().dmsMap.get("10,20")?.unreadCount).toBe(0);
     });
   });
 });

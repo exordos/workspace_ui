@@ -214,6 +214,19 @@ export const env = {
   })(),
 
   /**
+   * When true, `[sidebar-unread]` traces appear in the console (register reconcile, realtime bumps,
+   * mark-as-read decrements, MessageList dispatch). Default: on in dev.
+   */
+  SIDEBAR_UNREAD_DEBUG: (() => {
+    if (import.meta.env.MODE === "test") return false;
+    const v = optional(
+      "VITE_SIDEBAR_UNREAD_DEBUG",
+      import.meta.env.DEV ? "true" : "false",
+    ).toLowerCase();
+    return v === "true" || v === "1";
+  })(),
+
+  /**
    * When true, top bar shows the Calls section shortcut.
    * Build-time — `VITE_TOP_BAR_CALLS_NAV=true` (default: hidden).
    */

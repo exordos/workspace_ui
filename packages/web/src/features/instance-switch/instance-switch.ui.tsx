@@ -86,7 +86,7 @@ const InstanceQuickButton = React.memo(function InstanceQuickButton({
       />
       {unreadCount > 0 && (
         <span
-          className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border border-bg-elevated bg-badge-bg"
+          className="absolute right-0 top-0 h-2.5 w-2.5 rounded-full border border-bg-elevated bg-badge-bg"
           aria-hidden="true"
         />
       )}
@@ -152,7 +152,7 @@ export const InstanceSwitcher: React.FC = () => {
             <>
               <span
                 data-testid={`instance-logo-${inst.id}`}
-                className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-bg"
+                className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-visible rounded-full bg-bg"
               >
                 <OrganizationLogo
                   realmIcon={inst.realmIcon}
@@ -162,7 +162,7 @@ export const InstanceSwitcher: React.FC = () => {
                 {unreadCount > 0 && (
                   <span
                     data-testid={`instance-unread-${inst.id}`}
-                    className="pointer-events-none absolute -right-1 -top-1"
+                    className="pointer-events-none absolute right-0 top-0"
                   >
                     <Badge count={unreadCount} variant="unread" />
                   </span>

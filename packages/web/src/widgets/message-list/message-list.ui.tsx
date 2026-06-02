@@ -23,7 +23,11 @@ import {
 } from "~/shared/lib/message-list-pagination-policy.lib";
 import { isLikelyRenderedMessageHtml } from "~/shared/lib/message-markdown-display.lib";
 import { resolveLastUnreadBoundaryMessageId } from "~/shared/lib/message-unread-boundary.lib";
-import { computeReadTailReady } from "~/shared/lib/read-receipts-policy.lib";
+import {
+  collectViewportVisibleUnreadIds,
+  computeReadTailReady,
+  shouldDeferAutoMarkUnreadUntilUserScroll,
+} from "~/shared/lib/read-receipts-policy.lib";
 import { ensureRealmEmojisLoaded, getCachedRealmEmojis } from "~/shared/lib/realm-emojis-cache";
 import { scrollToBottom } from "~/shared/lib/scroll-position.lib";
 import {
@@ -33,6 +37,7 @@ import {
   type ScrollPrependAnchor,
   type ScrollPrependSnapshot,
 } from "~/shared/lib/scroll-prepend-anchor.lib";
+import { logSidebarUnreadFlow } from "~/shared/lib/sidebar-unread-debug.lib";
 import { isTabVisible, onVisibilityChange } from "~/shared/lib/visibility";
 import { FloatingLoadingOverlay } from "~/shared/ui/floating-loading-overlay";
 import { FloatingScrollToBottomButton } from "~/shared/ui/floating-scroll-to-bottom-button";
@@ -138,6 +143,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   const suppressReadUntilMsRef = useRef(0);
   const scrollLogLastAtMsRef = useRef(0);
   const bottomReadDispatchKeyRef = useRef<string | null>(null);
+  const prevMessagesLengthForReanchorRef = useRef<number | null>(null);
   const [unreadAnchorId, setUnreadAnchorId] = useState<number | null>(null);
   const intersectionObserverRef = useRef<IntersectionObserver | null>(null);
   const observedUnreadNodesRef = useRef<Map<number, HTMLElement>>(new Map());
@@ -211,12 +217,30 @@ export const MessageList: React.FC<MessageListProps> = ({
     [messages, currentUserId],
   );
 
-  const syncWasAtBottomFromElement = useCallback((el: HTMLElement) => {
-    const metrics = summarizeScrollElement(el, SCROLL_AT_BOTTOM_THRESHOLD);
-    wasAtBottomRef.current = metrics.atBottom;
-    setIsAtBottom(metrics.atBottom);
-    return metrics.atBottom;
-  }, []);
+  const deferAutoMarkUnreadUntilUserScroll = useCallback(
+    () =>
+      shouldDeferAutoMarkUnreadUntilUserScroll({
+        firstUnreadId,
+        unreadCount,
+        userScrollSeen: userScrollSeenRef.current,
+      }),
+    [firstUnreadId, unreadCount],
+  );
+
+  const syncWasAtBottomFromElement = useCallback(
+    (el: HTMLElement) => {
+      if (deferAutoMarkUnreadUntilUserScroll()) {
+        wasAtBottomRef.current = false;
+        setIsAtBottom(false);
+        return false;
+      }
+      const metrics = summarizeScrollElement(el, SCROLL_AT_BOTTOM_THRESHOLD);
+      wasAtBottomRef.current = metrics.atBottom;
+      setIsAtBottom(metrics.atBottom);
+      return metrics.atBottom;
+    },
+    [deferAutoMarkUnreadUntilUserScroll],
+  );
 
   const logScrollMetrics = useCallback(
     (phase: string, extra?: Record<string, unknown>) => {
@@ -369,6 +393,7 @@ export const MessageList: React.FC<MessageListProps> = ({
     pendingPrependScrollRef.current = null;
     unreadScrollKeyRef.current = null;
     suppressReadUntilMsRef.current = 0;
+    prevMessagesLengthForReanchorRef.current = null;
     setUnreadAnchorId(null);
     if (scrollToBottomKey !== undefined && focusedMessageId == null) {
       openAtBottomIntentKeyRef.current = scrollToBottomKey;
@@ -387,6 +412,9 @@ export const MessageList: React.FC<MessageListProps> = ({
 
   const processIntersectionEntries = useCallback(
     (entries: readonly IntersectionObserverEntry[]) => {
+      if (deferAutoMarkUnreadUntilUserScroll()) {
+        return;
+      }
       const candidates = unreadCandidatesRef.current;
       const visibleThisFrame: number[] = [];
       for (const entry of entries) {
@@ -413,13 +441,20 @@ export const MessageList: React.FC<MessageListProps> = ({
         onUnreadMessagesVisible?.(visibleThisFrame);
       }
     },
-    [onUnreadMessagesVisible],
+    [onUnreadMessagesVisible, deferAutoMarkUnreadUntilUserScroll],
   );
 
   const dispatchUnreadAtBottom = useCallback(() => {
     if (!onUnreadMessagesVisible && !onUnreadMessagesAtBottom) return;
     if (!isTabVisible()) return;
     if (typeof performance !== "undefined" && performance.now() < suppressReadUntilMsRef.current) {
+      return;
+    }
+    if (deferAutoMarkUnreadUntilUserScroll()) {
+      logSidebarUnreadFlow("ui:messageList:atBottom:blocked", {
+        reason: "defer_until_user_scroll",
+        viewportUnreadCount: viewportUnreadIdsRef.current.size,
+      });
       return;
     }
 
@@ -435,6 +470,28 @@ export const MessageList: React.FC<MessageListProps> = ({
       hasNewerMessages,
       loadingNewer: isLoadingNewer,
     });
+    if (!tailReady) {
+      logSidebarUnreadFlow("ui:messageList:atBottom:blocked", {
+        reason: "tail_not_ready",
+        hasNewerMessages,
+        loadingNewer: isLoadingNewer,
+        viewportUnreadCount: viewportUnreadIdsRef.current.size,
+      });
+      return;
+    }
+
+    const root = scrollRef.current;
+    if (firstUnreadId != null && unreadCount > 0 && root != null) {
+      if (!isLastUnreadNearViewportBottom(root)) {
+        logSidebarUnreadFlow("ui:messageList:atBottom:blocked", {
+          reason: "last_unread_not_near_bottom",
+          firstUnreadId,
+          unreadCount,
+          lastUnreadId,
+        });
+        return;
+      }
+    }
 
     const ids = filterViewportUnreadIdsForReadDispatch(
       viewportUnreadIdsRef.current,
@@ -452,6 +509,10 @@ export const MessageList: React.FC<MessageListProps> = ({
       ...summarizeMessageIdsForFlowDebug(ids),
       tailReady,
     });
+    logSidebarUnreadFlow("ui:messageList:atBottom:dispatch", {
+      ...summarizeMessageIdsForFlowDebug(ids),
+      scrollToBottomKey: scrollToBottomKey ?? null,
+    });
     onUnreadMessagesVisible?.(ids);
     if (tailReady) {
       onUnreadMessagesAtBottom?.(ids);
@@ -464,6 +525,11 @@ export const MessageList: React.FC<MessageListProps> = ({
     scrollToBottomKey,
     hasNewerMessages,
     isLoadingNewer,
+    deferAutoMarkUnreadUntilUserScroll,
+    firstUnreadId,
+    unreadCount,
+    isLastUnreadNearViewportBottom,
+    lastUnreadId,
   ]);
 
   // On chat/topic switch, remember to scroll down after messages load
@@ -517,7 +583,7 @@ export const MessageList: React.FC<MessageListProps> = ({
       return;
     }
     if (wasAtBottomRef.current) {
-      if (unreadAnchorId != null && !userScrollSeenRef.current) {
+      if (deferAutoMarkUnreadUntilUserScroll()) {
         logScrollMetrics("scroll:skipBottomForUnreadAnchor", { reason: "messagesLengthChange" });
         syncWasAtBottomFromElement(el);
         return;
@@ -540,6 +606,7 @@ export const MessageList: React.FC<MessageListProps> = ({
     runProgrammaticScroll,
     logScrollMetrics,
     syncWasAtBottomFromElement,
+    deferAutoMarkUnreadUntilUserScroll,
   ]);
 
   // After cache→API, unread flags may clear; honor open-at-bottom intent without waiting for another key change.
@@ -570,11 +637,87 @@ export const MessageList: React.FC<MessageListProps> = ({
     userScrollSeenRef.current = true;
   }, []);
 
+  const flushSingleAnchorUnreadIfVisible = useCallback(() => {
+    if (unreadCount !== 1) return;
+    const anchorId = unreadAnchorId ?? firstUnreadId;
+    if (anchorId == null) return;
+    if (!onUnreadMessagesVisible) return;
+    if (!isTabVisible()) return;
+    const root = scrollRef.current;
+    if (root == null) return;
+    if (!unreadCandidatesRef.current.has(anchorId)) return;
+
+    const visible = collectViewportVisibleUnreadIds(root, new Set([anchorId]));
+    if (visible.length === 0) return;
+
+    for (const id of visible) {
+      viewportUnreadIdsRef.current.add(id);
+    }
+    logScrollReadFlow("read:anchorVisible", summarizeMessageIdsForFlowDebug(visible));
+    onUnreadMessagesVisible(visible);
+  }, [unreadCount, unreadAnchorId, firstUnreadId, onUnreadMessagesVisible]);
+
+  const scheduleFlushSingleAnchorUnreadIfVisible = useCallback(() => {
+    const runFlush = () => {
+      flushSingleAnchorUnreadIfVisible();
+    };
+    if (typeof performance === "undefined") {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(runFlush);
+      });
+      return;
+    }
+    const delayMs = Math.max(0, suppressReadUntilMsRef.current - performance.now());
+    if (delayMs > 0) {
+      window.setTimeout(() => {
+        requestAnimationFrame(runFlush);
+      }, delayMs);
+      return;
+    }
+    requestAnimationFrame(() => {
+      requestAnimationFrame(runFlush);
+    });
+  }, [flushSingleAnchorUnreadIfVisible]);
+
+  // Cache→API shrink/grow changes scroll metrics; re-anchor without duplicating initial scroll:toUnread.
+  useLayoutEffect(() => {
+    const prevLen = prevMessagesLengthForReanchorRef.current;
+    prevMessagesLengthForReanchorRef.current = messages.length;
+    if (prevLen == null || prevLen === messages.length) return;
+
+    if (!deferAutoMarkUnreadUntilUserScroll()) return;
+    if (focusedMessageId != null) return;
+    if (pendingPrependScrollRef.current != null) return;
+    const anchorId = unreadAnchorId ?? firstUnreadId;
+    if (anchorId == null) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    const target = el.querySelector<HTMLElement>(`[data-message-id="${anchorId}"]`);
+    if (target == null) return;
+
+    logScrollMetrics("scroll:reanchorUnread", { anchorMessageId: anchorId });
+    runProgrammaticScroll(() => {
+      target.scrollIntoView({ block: "center", behavior: "instant" });
+      wasAtBottomRef.current = false;
+      setIsAtBottom(false);
+    });
+    scheduleFlushSingleAnchorUnreadIfVisible();
+  }, [
+    deferAutoMarkUnreadUntilUserScroll,
+    focusedMessageId,
+    unreadAnchorId,
+    firstUnreadId,
+    messages.length,
+    runProgrammaticScroll,
+    logScrollMetrics,
+    scheduleFlushSingleAnchorUnreadIfVisible,
+  ]);
+
   const handleScroll = useCallback(
     (event: React.UIEvent<HTMLDivElement>) => {
       const el = scrollRef.current;
       if (!el) return;
-      if (event.isTrusted) {
+      if (event.isTrusted && !programmaticScrollRef.current) {
         userScrollSeenRef.current = true;
       }
       const atBottom = syncWasAtBottomFromElement(el);
@@ -737,7 +880,7 @@ export const MessageList: React.FC<MessageListProps> = ({
 
       const wasPinnedBeforeResize = wasAtBottomRef.current;
       prevClientHeight = nextClientHeight;
-      if (wasPinnedBeforeResize) {
+      if (wasPinnedBeforeResize && !deferAutoMarkUnreadUntilUserScroll()) {
         logScrollMetrics("scroll:toBottom", { reason: "viewportResize" });
         runProgrammaticScroll(() => {
           scrollToBottom(root);
@@ -753,17 +896,23 @@ export const MessageList: React.FC<MessageListProps> = ({
     return () => {
       observer.disconnect();
     };
-  }, [runProgrammaticScroll, logScrollMetrics, syncWasAtBottomFromElement]);
+  }, [
+    runProgrammaticScroll,
+    logScrollMetrics,
+    syncWasAtBottomFromElement,
+    deferAutoMarkUnreadUntilUserScroll,
+  ]);
 
   useEffect(() => {
     if (!isAtBottom) {
       bottomReadDispatchKeyRef.current = null;
       return;
     }
+    if (deferAutoMarkUnreadUntilUserScroll()) return;
     // Safety net: when list is already pinned to bottom, unread rows can appear
     // without a new user scroll event (e.g. rerender/new message). Ensure they are reported.
     dispatchUnreadAtBottom();
-  }, [isAtBottom, dispatchUnreadAtBottom]);
+  }, [isAtBottom, dispatchUnreadAtBottom, deferAutoMarkUnreadUntilUserScroll]);
 
   // Sync isAtBottom after render (short chat without scrollbar).
   // Must be passive: auto-scroll effect should read pre-update bottom state first.
@@ -934,9 +1083,11 @@ export const MessageList: React.FC<MessageListProps> = ({
     logScrollMetrics("scroll:toUnread", { anchorMessageId: unreadAnchorId });
     runProgrammaticScroll(() => {
       target.scrollIntoView({ block: "center", behavior: "instant" });
-      syncWasAtBottomFromElement(el);
+      wasAtBottomRef.current = false;
+      setIsAtBottom(false);
     });
     unreadScrollKeyRef.current = unreadScrollKey;
+    scheduleFlushSingleAnchorUnreadIfVisible();
   }, [
     focusedMessageId,
     unreadAnchorId,
@@ -944,7 +1095,7 @@ export const MessageList: React.FC<MessageListProps> = ({
     messages.length,
     runProgrammaticScroll,
     logScrollMetrics,
-    syncWasAtBottomFromElement,
+    scheduleFlushSingleAnchorUnreadIfVisible,
   ]);
 
   // По клику пользователя используем плавную прокрутку.

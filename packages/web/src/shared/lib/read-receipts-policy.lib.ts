@@ -36,3 +36,44 @@ export function filterMessageIdsToViewportAllowlist(
 export function canAutoBulkMarkAsRead(tailReady: boolean): boolean {
   return tailReady;
 }
+
+export interface DeferAutoMarkUnreadInput {
+  firstUnreadId: number | null | undefined;
+  unreadCount: number;
+  userScrollSeen: boolean;
+}
+
+/** Matches IntersectionObserver threshold for viewport read receipts. */
+export const VIEWPORT_READ_VISIBLE_RATIO = 0.5;
+
+/**
+ * After opening a chat with unreads, defer automatic read receipts until the user scrolls.
+ * Blocks intersection-based and tail/at-bottom bulk paths so only messages the user reveals
+ * by scrolling are marked (single-unread chats use a dedicated anchor-visible flush).
+ */
+export function shouldDeferAutoMarkUnreadUntilUserScroll(input: DeferAutoMarkUnreadInput): boolean {
+  return input.firstUnreadId != null && input.unreadCount > 0 && !input.userScrollSeen;
+}
+
+/** DOM fallback when IntersectionObserver has not fired yet after scroll-to-unread. */
+export function collectViewportVisibleUnreadIds(
+  root: HTMLElement,
+  candidateIds: ReadonlySet<number>,
+  minVisibleRatio: number = VIEWPORT_READ_VISIBLE_RATIO,
+): number[] {
+  if (candidateIds.size === 0) return [];
+  const rootRect = root.getBoundingClientRect();
+  const visible: number[] = [];
+  for (const messageId of candidateIds) {
+    const node = root.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`);
+    if (node == null) continue;
+    const rect = node.getBoundingClientRect();
+    const visibleHeight = Math.min(rect.bottom, rootRect.bottom) - Math.max(rect.top, rootRect.top);
+    if (visibleHeight <= 0) continue;
+    const elementHeight = Math.max(rect.height, 1);
+    if (visibleHeight / elementHeight >= minVisibleRatio) {
+      visible.push(messageId);
+    }
+  }
+  return visible;
+}

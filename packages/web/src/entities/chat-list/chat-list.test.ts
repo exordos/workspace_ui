@@ -825,6 +825,21 @@ describe("chatListStore", () => {
       expect(loc).toBeDefined();
       expect(loc!.type).toBe("dm");
     });
+
+    it("bumps sidebar unread when indexing stale-timestamp unread DM", () => {
+      useChatListStore.setState({ currentUserId: 10 });
+      const dmKey = "10,20";
+
+      useChatListStore
+        .getState()
+        .addMessage(dmMsg({ id: 3083, flags: [], timestamp: 3000, sender_id: OTHER_SENDER_ID }));
+      useChatListStore
+        .getState()
+        .addMessage(dmMsg({ id: 3082, flags: [], timestamp: 2000, sender_id: OTHER_SENDER_ID }));
+
+      expect(useChatListStore.getState().dmsMap.get(dmKey)?.unreadCount).toBe(2);
+      expect(useChatListStore.getState().messageIdToLocation.has(3082)).toBe(true);
+    });
   });
 
   describe("addMessages (batch)", () => {
@@ -895,8 +910,8 @@ describe("chatListStore", () => {
       useChatListStore.getState().decrementUnreadForMessages([20, 21]);
 
       expect(useChatListStore.getState().streams()[0]!.badge).toBe(1);
-      expect(useChatListStore.getState().messageIdToLocation.has(20)).toBe(false);
-      expect(useChatListStore.getState().messageIdToLocation.has(21)).toBe(false);
+      expect(useChatListStore.getState().messageIdToLocation.has(20)).toBe(true);
+      expect(useChatListStore.getState().messageIdToLocation.has(21)).toBe(true);
       expect(useChatListStore.getState().messageIdToLocation.has(22)).toBe(true);
     });
 
@@ -912,6 +927,22 @@ describe("chatListStore", () => {
       const dms = useChatListStore.getState().dms();
       const dm = dms.find((d) => d.type === "dm");
       expect(dm?.badge).toBe(3);
+    });
+
+    it("does not double-count unread when batch includes already-indexed message ids", () => {
+      const msg = streamMsg({
+        id: 50,
+        stream_id: 5,
+        subject: "alpha",
+        timestamp: 1000,
+        flags: [],
+        sender_id: OTHER_SENDER_ID,
+      });
+      useChatListStore.getState().addMessage(msg);
+      expect(useChatListStore.getState().sidebarStreamsUnread).toBe(1);
+
+      useChatListStore.getState().addMessages([msg]);
+      expect(useChatListStore.getState().sidebarStreamsUnread).toBe(1);
     });
 
     it("fills empty DM preview from addMessages when metadata ts is newer", () => {
@@ -1019,6 +1050,42 @@ describe("chatListStore", () => {
 
       expect(useChatListStore.getState().sidebarStreamsUnread).toBe(3);
     });
+
+    it("does not bump unread when addMessage replays an older unread already counted by reconcile", () => {
+      useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
+      useChatListStore.getState().reconcileUnreadFromSnapshot(
+        {
+          streams: [
+            {
+              streamId: 5,
+              topic: "topic1",
+              unreadMessageIds: [1, 2, 3, 4],
+            },
+          ],
+          dms: [],
+          totalCount: 4,
+        },
+        10,
+      );
+
+      expect(useChatListStore.getState().streamsMap.get(5)?.topics.get("topic1")?.unreadCount).toBe(
+        4,
+      );
+
+      useChatListStore.getState().addMessage(
+        streamMsg({
+          id: 1,
+          flags: [],
+          sender_id: OTHER_SENDER_ID,
+          timestamp: 500,
+        }),
+      );
+
+      expect(useChatListStore.getState().streamsMap.get(5)?.topics.get("topic1")?.unreadCount).toBe(
+        4,
+      );
+      expect(useChatListStore.getState().messageIdToLocation.has(1)).toBe(true);
+    });
   });
 
   // Sort order determines what the user sees at the top of the sidebar.
@@ -1094,15 +1161,17 @@ describe("chatListStore", () => {
       expect(useChatListStore.getState().streams()[0]!.badge).toBe(1);
     });
 
-    // Once read, the message must be removed from the index to avoid double-decrement.
-    it("removes messageId from location index after decrement", () => {
+    it("keeps messageId in location index after decrement so duplicate read events do not re-count", () => {
       useChatListStore
         .getState()
         .setFromMessages([streamMsg({ id: 1, flags: [], sender_id: OTHER_SENDER_ID })], 10);
 
       useChatListStore.getState().decrementUnreadForMessages([1]);
+      expect(useChatListStore.getState().messageIdToLocation.has(1)).toBe(true);
+      expect(useChatListStore.getState().streams()[0]?.badge ?? 0).toBe(0);
 
-      expect(useChatListStore.getState().messageIdToLocation.has(1)).toBe(false);
+      useChatListStore.getState().decrementUnreadForMessages([1]);
+      expect(useChatListStore.getState().streams()[0]?.badge ?? 0).toBe(0);
     });
 
     // Defensive: badge must never become negative even with duplicate events.

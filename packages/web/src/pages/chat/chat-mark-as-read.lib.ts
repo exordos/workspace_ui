@@ -10,6 +10,7 @@ import {
   logScrollReadFlow,
   summarizeMessageIdsForFlowDebug,
 } from "~/shared/lib/message-flow-debug.lib";
+import { logSidebarUnreadFlow } from "~/shared/lib/sidebar-unread-debug.lib";
 import { isTabVisible, onVisibilityChange } from "~/shared/lib/visibility";
 
 export interface MarkAsReadBatcherOptions {
@@ -83,10 +84,12 @@ export function createMarkAsReadBatcher(options: MarkAsReadBatcherOptions): Mark
     queued.clear();
     inFlight = true;
     logScrollReadFlow("read:batcherFlush", summarizeMessageIdsForFlowDebug(batch));
+    logSidebarUnreadFlow("chat:markAsReadBatcher:flush", summarizeMessageIdsForFlowDebug(batch));
     try {
       await markAsRead(batch);
       onMarked?.(batch);
       logScrollReadFlow("read:batcherMarked", summarizeMessageIdsForFlowDebug(batch));
+      logSidebarUnreadFlow("chat:markAsReadBatcher:marked", summarizeMessageIdsForFlowDebug(batch));
     } catch (error) {
       onError?.(error, batch);
     } finally {

@@ -121,6 +121,9 @@ function indexBatchMessagesAndUnreadBumps(
   let sidebarDmsUnreadDelta = 0;
 
   for (const m of messages) {
+    if (state.messageIdToLocation.has(m.id)) {
+      continue;
+    }
     if (m.type === "stream" && m.stream_id != null) {
       const topic = normalizeTopicForIdentity(m.subject ?? "");
       nextLoc.set(m.id, { type: "stream", stream_id: m.stream_id, topic });

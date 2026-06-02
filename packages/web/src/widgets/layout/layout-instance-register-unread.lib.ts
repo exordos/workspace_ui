@@ -45,3 +45,36 @@ export function isRegisterUnreadSnapshotUsable(
 ): snapshot is ZulipUnreadMessagesSnapshot {
   return snapshot != null && snapshot.oldUnreadsMissing !== true;
 }
+
+/** True when register snapshot carries no unread message ids (totalCount may still be 0). */
+export function isRegisterUnreadSnapshotEmpty(snapshot: ZulipUnreadMessagesSnapshot): boolean {
+  if (snapshot.totalCount > 0) {
+    return false;
+  }
+  for (const bucket of snapshot.streams) {
+    if (bucket.unreadMessageIds.length > 0) {
+      return false;
+    }
+  }
+  for (const bucket of snapshot.dms) {
+    if (bucket.unreadMessageIds.length > 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Reconnect reads a cached register snapshot; an empty cache must not wipe sidebar badges
+ * rebuilt from IDB + realtime while the queue was offline.
+ */
+export function shouldPreserveLocalUnreadOnCachedReconcile(
+  snapshot: ZulipUnreadMessagesSnapshot,
+  localSidebarStreamsUnread: number,
+  localSidebarDmsUnread: number,
+): boolean {
+  return (
+    isRegisterUnreadSnapshotEmpty(snapshot) &&
+    (localSidebarStreamsUnread > 0 || localSidebarDmsUnread > 0)
+  );
+}

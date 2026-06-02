@@ -19,6 +19,11 @@ import {
   summarizeZulipMessagesForFlowDebug,
 } from "~/shared/lib/message-flow-debug.lib";
 import { saveRecentDmPartners } from "~/shared/lib/recent-dms";
+import {
+  logSidebarUnreadFlow,
+  summarizeMessageIdsForFlowDebug,
+  summarizeSidebarUnreadTotals,
+} from "~/shared/lib/sidebar-unread-debug.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { resolveTopicMoveTargetMessageIds } from "~/shared/lib/update-message-topic-move.lib";
 import { areGroupSettingValuesEqual } from "~/shared/lib/zulip-group-setting.lib";
@@ -497,6 +502,13 @@ export const useChatListStore = create<ChatListState>((set, get) => {
     latestUnreadDms: Map<string, ZulipRawMessage>,
     effectiveUserId: number | null,
   ) => {
+    const totalsBefore = summarizeSidebarUnreadTotals(get());
+    logSidebarUnreadFlow("store:reconcileUnreadMaps:start", {
+      streamTopicBuckets: unreadStreamCounts.size,
+      dmBuckets: unreadDmCounts.size,
+      locationIndexIncoming: unreadLocationMap.size,
+      totalsBefore,
+    });
     patchSet((state) =>
       applyReconcileUnreadMapsPatch(state, {
         unreadStreamCounts,
@@ -508,6 +520,10 @@ export const useChatListStore = create<ChatListState>((set, get) => {
         avatarMap: getAvatarMap(),
       }),
     );
+    logSidebarUnreadFlow("store:reconcileUnreadMaps:done", {
+      totalsAfter: summarizeSidebarUnreadTotals(get()),
+      locationIndexSize: get().messageIdToLocation.size,
+    });
 
     persistRecentDmPartnersFromMap(get().dmsMap);
   };
@@ -627,6 +643,16 @@ export const useChatListStore = create<ChatListState>((set, get) => {
 
     reconcileUnreadFromSnapshot(snapshot, currentUserId) {
       const effectiveUserId = currentUserId ?? get().currentUserId;
+      logSidebarUnreadFlow("store:reconcileUnreadFromSnapshot", {
+        currentUserId: effectiveUserId,
+        snapshot: {
+          totalCount: snapshot.totalCount,
+          streamBuckets: snapshot.streams.length,
+          dmBuckets: snapshot.dms.length,
+          oldUnreadsMissing: snapshot.oldUnreadsMissing === true,
+        },
+        totalsBefore: summarizeSidebarUnreadTotals(get()),
+      });
       const maps = buildUnreadReconcileMapsFromRegisterSnapshot(snapshot, effectiveUserId);
       reconcileUnreadMaps(
         maps.unreadStreamCounts,
@@ -648,7 +674,23 @@ export const useChatListStore = create<ChatListState>((set, get) => {
         const { stream_id, name, lastMessage, lastMessageSenderName, time, ts } = result.stream;
         const topic = result.topic;
         const topicUnreadDelta = isUnreadFromOthers(message, currentUserId) ? 1 : 0;
+        if (topicUnreadDelta > 0) {
+          logSidebarUnreadFlow("store:addMessage:stream", {
+            messageId: message.id,
+            streamId: stream_id,
+            topic: topic.subject,
+            topicUnreadDelta,
+            ...summarizeSidebarUnreadTotals(get()),
+          });
+        }
         patchSet((state) => {
+          if (topicUnreadDelta > 0 && state.messageIdToLocation.has(message.id)) {
+            logSidebarUnreadFlow("store:addMessage:stream:skip", {
+              reason: "alreadyInLocationIndex",
+              messageId: message.id,
+            });
+            return state;
+          }
           const existing = state.streamsMap.get(stream_id);
           if (existing && message.timestamp <= existing.ts) {
             const existingTopic = existing.topics.get(topic.subject);
@@ -656,16 +698,32 @@ export const useChatListStore = create<ChatListState>((set, get) => {
               if (topicUnreadDelta === 0) {
                 return state;
               }
-              const next = new Map(state.streamsMap);
-              const nextTopics = new Map(existing.topics);
-              nextTopics.set(topic.subject, {
-                ...existingTopic,
-                unreadCount: existingTopic.unreadCount + topicUnreadDelta,
+              if (state.messageIdToLocation.has(message.id)) {
+                logSidebarUnreadFlow("store:addMessage:stream:skip", {
+                  reason: "staleTimestampAlreadyIndexed",
+                  messageId: message.id,
+                });
+                return state;
+              }
+              logSidebarUnreadFlow("store:addMessage:stream:indexOnly", {
+                messageId: message.id,
+                streamId: stream_id,
+                topic: topic.subject,
               });
-              next.set(stream_id, { ...existing, topics: nextTopics });
+              const nextLoc = new Map(state.messageIdToLocation);
+              nextLoc.set(message.id, {
+                type: "stream",
+                stream_id,
+                topic: topic.subject,
+              });
               return {
-                streamsMap: next,
-                sidebarStreamsUnread: state.sidebarStreamsUnread + topicUnreadDelta,
+                messageIdToLocation: nextLoc,
+                streamTopicMessageIds: addMessageIdToStreamTopicIndex(
+                  state.streamTopicMessageIds,
+                  message.id,
+                  stream_id,
+                  topic.subject,
+                ),
               };
             }
           }
@@ -712,14 +770,55 @@ export const useChatListStore = create<ChatListState>((set, get) => {
         if (!dmEntry) return;
         const key = dmConversationKey(message.display_recipient, currentUserId);
         const unreadDelta = isUnreadFromOthers(message, currentUserId) ? 1 : 0;
+        if (unreadDelta > 0) {
+          logSidebarUnreadFlow("store:addMessage:dm", {
+            messageId: message.id,
+            dmKey: key,
+            unreadDelta,
+            ...summarizeSidebarUnreadTotals(get()),
+          });
+        }
         patchSet((state) => {
+          if (unreadDelta > 0 && state.messageIdToLocation.has(message.id)) {
+            logSidebarUnreadFlow("store:addMessage:dm:skip", {
+              reason: "alreadyInLocationIndex",
+              messageId: message.id,
+            });
+            return state;
+          }
           const existing = state.dmsMap.get(key);
           if (existing && message.timestamp <= existing.ts) {
             if (unreadDelta === 0) return state;
+            if (state.messageIdToLocation.has(message.id)) {
+              logSidebarUnreadFlow("store:addMessage:dm:skip", {
+                reason: "staleTimestampAlreadyIndexed",
+                messageId: message.id,
+              });
+              return state;
+            }
+            logSidebarUnreadFlow("store:addMessage:dm:indexOnly", {
+              messageId: message.id,
+              dmKey: key,
+              unreadDelta,
+              indexedOnly: existing == null,
+            });
+            const nextLoc = new Map(state.messageIdToLocation);
+            nextLoc.set(message.id, { type: "dm", dmKey: key });
+            if (existing == null) {
+              return { messageIdToLocation: nextLoc };
+            }
             const next = new Map(state.dmsMap);
-            next.set(key, { ...existing, unreadCount: existing.unreadCount + unreadDelta });
+            const dm = next.get(key);
+            if (dm == null) {
+              return { messageIdToLocation: nextLoc };
+            }
+            next.set(key, {
+              ...dm,
+              unreadCount: dm.unreadCount + unreadDelta,
+            });
             return {
               dmsMap: next,
+              messageIdToLocation: nextLoc,
               sidebarDmsUnread: state.sidebarDmsUnread + unreadDelta,
             };
           }
@@ -1281,6 +1380,11 @@ export const useChatListStore = create<ChatListState>((set, get) => {
 
     decrementUnreadForMessages(messageIds) {
       if (messageIds.length === 0) return;
+      const totalsBefore = summarizeSidebarUnreadTotals(get());
+      logSidebarUnreadFlow("store:decrementUnreadForMessages", {
+        ...summarizeMessageIdsForFlowDebug(messageIds),
+        totalsBefore,
+      });
       patchSet((state) => {
         const locMap = state.messageIdToLocation;
         let nextStreams = state.streamsMap;
@@ -1291,7 +1395,6 @@ export const useChatListStore = create<ChatListState>((set, get) => {
         for (const mid of messageIds) {
           const loc = locMap.get(mid);
           if (!loc) continue;
-          nextLoc.delete(mid);
           if (loc.type === "stream") {
             const stream = nextStreams.get(loc.stream_id);
             if (!stream) continue;
@@ -1326,11 +1429,20 @@ export const useChatListStore = create<ChatListState>((set, get) => {
           ),
         };
       });
+      logSidebarUnreadFlow("store:decrementUnreadForMessages:done", {
+        totalsAfter: summarizeSidebarUnreadTotals(get()),
+      });
     },
 
     decrementUnreadForTopic(streamId, topic, count) {
       if (!Number.isFinite(count) || count <= 0) return;
       const topicKey = normalizeTopicForIdentity(topic);
+      logSidebarUnreadFlow("store:decrementUnreadForTopic", {
+        streamId,
+        topic: topicKey,
+        count,
+        totalsBefore: summarizeSidebarUnreadTotals(get()),
+      });
       patchSet((state) => {
         const stream = state.streamsMap.get(streamId);
         const streamTopic = stream?.topics.get(topicKey);
@@ -1354,6 +1466,11 @@ export const useChatListStore = create<ChatListState>((set, get) => {
       if (!Number.isFinite(count) || count <= 0) return;
       const key = dmKey.trim();
       if (key.length === 0) return;
+      logSidebarUnreadFlow("store:decrementUnreadForDmKey", {
+        dmKey: key,
+        count,
+        totalsBefore: summarizeSidebarUnreadTotals(get()),
+      });
       patchSet((state) => {
         const dm = state.dmsMap.get(key);
         if (!dm || dm.unreadCount <= 0) return state;
@@ -1369,6 +1486,10 @@ export const useChatListStore = create<ChatListState>((set, get) => {
 
     incrementUnreadForMessages(messageIds) {
       if (messageIds.length === 0) return;
+      logSidebarUnreadFlow("store:incrementUnreadForMessages", {
+        ...summarizeMessageIdsForFlowDebug(messageIds),
+        totalsBefore: summarizeSidebarUnreadTotals(get()),
+      });
       patchSet((state) => {
         const locMap = state.messageIdToLocation;
         let nextStreams = state.streamsMap;

@@ -177,6 +177,7 @@ function refreshSharedLayers(
     currentUserId: uid,
     registerSnapshot,
     logScope: "reconnect: refreshSharedLayers",
+    snapshotSource: "cached-register",
   });
 }
 

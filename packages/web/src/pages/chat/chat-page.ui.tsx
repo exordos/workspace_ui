@@ -1,5 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+import {
+  applyChatListReadDecrement,
+  clearRemainingContextUnread,
+  readFallbackContextFromCurrentChat,
+} from "~/entities/chat-list/chat-list-apply-read-decrement.lib";
 import { resolvePersonalDmSidebarTitle } from "~/entities/chat-list/chat-list-format.lib";
 import { createOnDmMessagesAppliedHandler } from "~/entities/chat-list/chat-list-sync-dm-from-window.lib";
 import { createOnStreamMessagesAppliedHandler } from "~/entities/chat-list/chat-list-sync-stream-from-window.lib";
@@ -529,31 +534,21 @@ export const ChatPage: React.FC = () => {
             requestedCount: messageIds.length,
           });
         }
-        return;
+      } else {
+        updateMessageFlagsInStore(unreadMessageIds, "read", "add");
       }
 
-      updateMessageFlagsInStore(unreadMessageIds, "read", "add");
+      const readFallback =
+        fallbackContext ??
+        readFallbackContextFromCurrentChat(useCurrentChatMessagesStore.getState().context);
 
       const chatListState = useChatListStore.getState();
-      const locationIndex = chatListState.messageIdToLocation;
-      let knownIdsCount = 0;
-      for (const messageId of unreadMessageIds) {
-        if (locationIndex.has(messageId)) {
-          knownIdsCount += 1;
-        }
-      }
-
-      chatListState.decrementUnreadForMessages(unreadMessageIds);
-
-      const missingIdsCount = unreadMessageIds.length - knownIdsCount;
-      if (missingIdsCount <= 0) return;
-
-      const context = fallbackContext ?? useCurrentChatMessagesStore.getState().context;
-      if (context?.type === "stream") {
-        chatListState.decrementUnreadForTopic(context.streamId, context.topic, missingIdsCount);
-      } else if (context?.type === "dm") {
-        chatListState.decrementUnreadForDmKey(context.dmKey, missingIdsCount);
-      }
+      applyChatListReadDecrement(() => useChatListStore.getState(), chatListState, {
+        messageIds,
+        fallbackContext: readFallback,
+        clampWhenAlreadyRead: unreadMessageIds.length === 0,
+        source: "chat:optimisticMarkRead",
+      });
     },
     [updateMessageFlagsInStore],
   );
@@ -669,9 +664,19 @@ export const ChatPage: React.FC = () => {
 
     request
       .then((ok) => {
-        if (ok && unreadIds.length > 0) {
+        if (!ok || markFallbackContext == null) {
+          return;
+        }
+        if (unreadIds.length > 0) {
           applyReadMessagesOptimistically(unreadIds, markFallbackContext);
         }
+        const chatListState = useChatListStore.getState();
+        clearRemainingContextUnread(
+          () => useChatListStore.getState(),
+          chatListState,
+          markFallbackContext,
+          "chat:markAllClearRemaining",
+        );
       })
       .catch(() => {});
   }, [

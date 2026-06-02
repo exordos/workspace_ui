@@ -102,19 +102,19 @@ export function isSoundEnabledForTrigger(
 }
 
 /**
- * Zulip shows desktop notifications when the message is offscreen or the app is not focused.
+ * Whether the user should get audible / desktop alerts for this message.
+ *
+ * Tab in background → alert even when the open chat is with this sender (DM or live tail).
+ * Tab focused → alert only when the message is not on screen in the current chat.
  */
 export function isMessageOffscreenOrAppUnfocused(
   viewport: DesktopNotificationViewportContext,
 ): boolean {
-  if (viewport.isOnScreenInCurrentChat) {
-    return false;
-  }
-  if (!viewport.windowFocused || viewport.windowHidden) {
+  const appFocused = viewport.windowFocused && !viewport.windowHidden;
+  if (!appFocused) {
     return true;
   }
-  // Tab focused but another chat / scrolled history — message is offscreen.
-  return true;
+  return !viewport.isOnScreenInCurrentChat;
 }
 
 export function shouldDesktopNotify(input: ShouldDesktopNotifyInput): ShouldDesktopNotifyResult {
@@ -124,7 +124,6 @@ export function shouldDesktopNotify(input: ShouldDesktopNotifyInput): ShouldDesk
   const blocked =
     input.viewport.isFromSelf ||
     input.viewport.isMuted ||
-    input.viewport.isOnScreenInCurrentChat ||
     !isDesktopEnabledForTrigger(input.settings, trigger) ||
     !isMessageOffscreenOrAppUnfocused(input.viewport);
 

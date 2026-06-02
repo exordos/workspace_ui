@@ -1,6 +1,12 @@
 /**
  * Zulip realtime handlers: message, flags, reactions, delete, update.
  */
+import {
+  applyChatListReadDecrement,
+  getContextUnreadCount,
+  readFallbackContextFromCurrentChat,
+} from "~/entities/chat-list/chat-list-apply-read-decrement.lib";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { isMessageForContext } from "~/entities/message/message.model";
 import { resolveIncomingDmCallInvite } from "~/features/jitsi-call/jitsi-call-invite.lib";
@@ -11,6 +17,10 @@ import {
   applyZulipEventToMessageIndexedDb,
   isChatMessagesPersistToIndexedDbEnabled,
 } from "~/shared/lib/message-idb-from-zulip.lib";
+import {
+  logSidebarUnreadFlow,
+  summarizeMessageIdsForFlowDebug,
+} from "~/shared/lib/sidebar-unread-debug.lib";
 import { closeReadMessageNotifications } from "./layout-notification-tags.lib";
 import { maybeNotifyNewMessage } from "./layout-zulip-event-notify.lib";
 import {
@@ -77,7 +87,7 @@ export function handleIncomingMessage(
   inbox.markStale();
 
   const isFromSelf = raw.sender_id === currentUserId;
-  if (!isFromSelf && !isForCurrentChat) {
+  if (!isFromSelf) {
     maybeNotifyNewMessage(ctx, raw, currentUserId, isForCurrentChat, isFromSelf);
   }
 
@@ -109,11 +119,35 @@ export function handleUpdateMessageFlags(
   }
   if (flag !== "read") return;
   inbox.markStale();
+  logSidebarUnreadFlow("event:update_message_flags:read", {
+    op,
+    ...summarizeMessageIdsForFlowDebug(messageIds),
+    openChatContext: currentChat.context,
+  });
   if (op === "add") {
     closeReadMessageNotifications(notifications.closeByTag, messageIds);
-    chatList.decrementUnreadForMessages(messageIds);
+    const chatListStore = useChatListStore.getState();
+    const fallbackContext = readFallbackContextFromCurrentChat(currentChat.context);
+    const contextUnreadBefore =
+      fallbackContext != null ? getContextUnreadCount(chatListStore, fallbackContext) : 0;
+    if (contextUnreadBefore > 0) {
+      applyChatListReadDecrement(() => useChatListStore.getState(), chatListStore, {
+        messageIds,
+        fallbackContext,
+        source: "event:update_message_flags:read:add",
+      });
+    } else {
+      logSidebarUnreadFlow("event:update_message_flags:read:add:skip", {
+        reason: "context_already_zero",
+        ...summarizeMessageIdsForFlowDebug(messageIds),
+        fallbackContext,
+      });
+    }
     currentChat.updateMessageFlags(messageIds, "read", "add");
   } else {
+    logSidebarUnreadFlow("event:update_message_flags:read:remove", {
+      ...summarizeMessageIdsForFlowDebug(messageIds),
+    });
     chatList.incrementUnreadForMessages(messageIds);
     currentChat.updateMessageFlags(messageIds, "read", "remove");
   }
