@@ -1,7 +1,7 @@
 import type { FolderItemForClient } from "~/shared/api/workspace-client";
 import type { SidebarChat, StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import {
-  chatToWorkspaceChatId,
+  chatToWorkspaceChatIds,
   hasMatchingChatId,
   type FolderSyncUserLike,
   parseNumericChatId,
@@ -92,17 +92,34 @@ export interface KnownMatchedChatKeys {
 
 export function collectKnownMatchedChatKeys(
   matchedChats: readonly SidebarChat[],
+  currentUserId: number | null,
 ): KnownMatchedChatKeys {
+  const knownMatchedDmKeys = new Set<string>();
+  for (const chat of matchedChats) {
+    if (chat.type !== "dm") {
+      continue;
+    }
+    for (const chatId of chatToWorkspaceChatIds(chat, currentUserId)) {
+      knownMatchedDmKeys.add(chatId);
+    }
+  }
+
   return {
     knownMatchedStreamIds: new Set(
       matchedChats.filter((chat) => chat.type === "stream").map((chat) => chat.stream_id),
     ),
-    knownMatchedDmKeys: new Set(
-      matchedChats
-        .filter((chat): chat is Extract<SidebarChat, { type: "dm" }> => chat.type === "dm")
-        .map((chat) => chatToWorkspaceChatId(chat)),
-    ),
+    knownMatchedDmKeys,
   };
+}
+
+function hasMatchingSidebarChatId(
+  folderChatIds: ReadonlySet<string>,
+  chat: SidebarChat,
+  currentUserId: number | null,
+): boolean {
+  return chatToWorkspaceChatIds(chat, currentUserId).some((chatId) =>
+    hasMatchingChatId(folderChatIds, chatId),
+  );
 }
 
 function buildSingleUserDmFallback(
@@ -307,7 +324,7 @@ export function buildCustomFolderSidebarChats(
   }
 
   const matchedChats = chatsSortedByLastMessage.filter((chat) =>
-    hasMatchingChatId(folderChatIds, chatToWorkspaceChatId(chat)),
+    hasMatchingSidebarChatId(folderChatIds, chat, currentUserId),
   );
   const selectedFolderItems = folderItemsByFolderId.get(selectedFolderId) ?? [];
   if (selectedFolderItems.length === 0) {
@@ -327,6 +344,7 @@ export function buildCustomFolderSidebarChats(
   );
   const { knownMatchedStreamIds, knownMatchedDmKeys } = collectKnownMatchedChatKeys(
     matchedChatsWithoutAmbiguousNumericStreams,
+    currentUserId,
   );
   const orderedItems = sortFolderItemsByOrderIndex(selectedFolderItems);
   const fallbackDmChats = buildFallbackDmChatsFromFolderItems(

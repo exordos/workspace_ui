@@ -78,6 +78,24 @@ export function chatToWorkspaceChatId(chat: SidebarChat): string {
   return `dm:${userIds.join(",")}`;
 }
 
+export function chatToWorkspaceChatIds(chat: SidebarChat, currentUserId: number | null): string[] {
+  const ids = [chatToWorkspaceChatId(chat)];
+  if (chat.type !== "dm" || chat.isGroup === true || currentUserId == null) {
+    return ids;
+  }
+
+  const userIds = Array.isArray(chat.userIds) && chat.userIds.length > 0 ? chat.userIds : [];
+  if (userIds.length !== 2 || !userIds.includes(currentUserId)) {
+    return ids;
+  }
+
+  const peerId = userIds.find((userId) => userId !== currentUserId);
+  if (peerId != null) {
+    ids.push(`dm:${peerId}`);
+  }
+  return [...new Set(ids)];
+}
+
 export function parseFolderItemStreamId(chatId: string): number | null {
   const trimmed = chatId.trim();
   if (trimmed.length === 0) {
