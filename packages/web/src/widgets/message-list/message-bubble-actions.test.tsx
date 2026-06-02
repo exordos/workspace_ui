@@ -7,6 +7,30 @@ import { createUser } from "~/test/factories";
 import { MessageBubble } from "./message-bubble.ui";
 
 const buildAuthHeaderMock = vi.fn(() => ({}));
+const emojiPickerMock = vi.hoisted(() => vi.fn());
+
+vi.mock("emoji-picker-react", () => ({
+  default: (props: {
+    onEmojiClick?: (data: { emoji: string; names?: string[]; unified?: string }) => void;
+  }) => {
+    emojiPickerMock(props);
+    return (
+      <button
+        type="button"
+        onClick={() => props.onEmojiClick?.({ emoji: "😀", names: ["grinning"], unified: "1f600" })}
+      >
+        Pick emoji
+      </button>
+    );
+  },
+  Theme: {
+    LIGHT: "light",
+    DARK: "dark",
+  },
+  EmojiStyle: {
+    NATIVE: "native",
+  },
+}));
 
 vi.mock("~/shared/api/zulip-client.internal", () => ({
   getRealmBaseUrl: () => "https://uploads.example.com",
@@ -74,6 +98,7 @@ describe("MessageBubble edit/delete actions parity", () => {
     useUsersStore.getState().clear();
     useCallParticipantsStore.setState({ participantsByUrl: {} });
     buildAuthHeaderMock.mockReset();
+    emojiPickerMock.mockReset();
     vi.unstubAllGlobals();
   });
 
@@ -236,6 +261,89 @@ describe("MessageBubble edit/delete actions parity", () => {
     expect(contextTrigger).toBeInTheDocument();
     expect(contextTrigger?.style.left).toBe("866px");
     expect(contextTrigger?.style.top).toBe("320px");
+  });
+
+  it("keeps the extended reaction picker inside the viewport", async () => {
+    vi.stubGlobal("innerWidth", 720);
+    vi.stubGlobal("innerHeight", 620);
+
+    render(<MessageBubble message={createMessage()} isOwn={false} />);
+
+    fireEvent.contextMenu(screen.getByTestId("message-101"), { clientX: 320, clientY: 360 });
+    const moreReactionsButton = await screen.findByRole("button", { name: /more reactions/i });
+    vi.spyOn(moreReactionsButton, "getBoundingClientRect").mockReturnValue(
+      createRect({
+        left: 270,
+        top: 300,
+        right: 294,
+        bottom: 324,
+      }),
+    );
+
+    fireEvent.click(moreReactionsButton);
+
+    const popover = await screen.findByTestId("message-reaction-emoji-picker-popover");
+    const left = Number.parseFloat(popover.style.left);
+    const top = Number.parseFloat(popover.style.top);
+    const width = Number.parseFloat(popover.style.width);
+    expect(popover).toHaveClass("fixed");
+    expect(popover).toHaveClass("z-modal");
+    expect(popover).toHaveClass("pointer-events-auto");
+    expect(popover).not.toHaveClass("z-dropdown");
+    expect(popover.parentElement).toBe(document.body);
+    expect(left).toBeGreaterThanOrEqual(302);
+    expect(left).toBeGreaterThanOrEqual(8);
+    expect(left + width).toBeLessThanOrEqual(712);
+    expect(top).toBeGreaterThanOrEqual(8);
+    expect(top + 360).toBeLessThanOrEqual(612);
+    expect(emojiPickerMock).toHaveBeenCalled();
+  });
+
+  it("keeps the extended reaction picker interactive", async () => {
+    const onAddReaction = vi.fn();
+    render(
+      <MessageBubble
+        message={createMessage()}
+        isOwn={false}
+        callbacks={{
+          onAddReaction,
+        }}
+      />,
+    );
+
+    fireEvent.contextMenu(screen.getByTestId("message-101"), { clientX: 320, clientY: 360 });
+    fireEvent.click(await screen.findByRole("button", { name: /more reactions/i }));
+
+    const popover = await screen.findByTestId("message-reaction-emoji-picker-popover");
+    const backdrop = document.querySelector<HTMLElement>(
+      "[data-testid='message-reaction-emoji-picker-backdrop']",
+    );
+    expect(popover).toHaveClass("pointer-events-auto");
+    expect(backdrop).toHaveClass("pointer-events-auto");
+
+    fireEvent.click(await screen.findByRole("button", { name: /pick emoji/i }));
+    expect(onAddReaction).toHaveBeenCalledWith(101, {
+      emojiName: "grinning",
+      emojiCode: "1f600",
+      reactionType: "unicode_emoji",
+    });
+  });
+
+  it("closes the extended reaction picker when the message menu closes", async () => {
+    render(<MessageBubble message={createMessage()} isOwn={false} />);
+
+    fireEvent.contextMenu(screen.getByTestId("message-101"), { clientX: 320, clientY: 360 });
+    fireEvent.click(await screen.findByRole("button", { name: /more reactions/i }));
+    expect(await screen.findByTestId("message-reaction-emoji-picker-popover")).toBeInTheDocument();
+
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByTestId("message-reaction-emoji-picker-popover")).not.toBeInTheDocument();
+    });
+
+    fireEvent.contextMenu(screen.getByTestId("message-101"), { clientX: 320, clientY: 360 });
+    expect(await screen.findByRole("button", { name: /more reactions/i })).toBeInTheDocument();
+    expect(screen.queryByTestId("message-reaction-emoji-picker-popover")).not.toBeInTheDocument();
   });
 
   it("does not select an action from the right-click pointerup that opened the menu", async () => {

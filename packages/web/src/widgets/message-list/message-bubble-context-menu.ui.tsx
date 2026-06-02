@@ -1,5 +1,6 @@
 import EmojiPicker, { EmojiStyle, Theme } from "emoji-picker-react";
 import React from "react";
+import { createPortal } from "react-dom";
 import { t } from "~/i18n/i18n";
 import {
   DropdownMenu,
@@ -22,6 +23,126 @@ const MENU_ITEM_CLASS_NAME =
   "data-[highlighted]:bg-sidebar-hover hover:bg-sidebar-hover flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-text-primary outline-none transition-colors";
 const REACTION_BUTTON_CLASS_NAME =
   "hover:bg-sidebar-hover flex h-6 w-6 items-center justify-center rounded p-1 transition-colors";
+const REACTION_EMOJI_PICKER_WIDTH = 320;
+const REACTION_EMOJI_PICKER_HEIGHT = 360;
+const REACTION_EMOJI_PICKER_MARGIN = 8;
+const REACTION_EMOJI_PICKER_GAP = 8;
+
+interface MessageReactionEmojiPickerProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onEmojiPick: MessageBubbleContextMenuProps["onEmojiPick"];
+  customEmojis: MessageBubbleContextMenuProps["customEmojis"];
+}
+
+function getReactionEmojiPickerStyle(anchor: HTMLElement | null): React.CSSProperties {
+  if (typeof window === "undefined") return {};
+  const anchorRect = anchor?.getBoundingClientRect();
+  const width = Math.min(
+    REACTION_EMOJI_PICKER_WIDTH,
+    Math.max(160, window.innerWidth - REACTION_EMOJI_PICKER_MARGIN * 2),
+  );
+  const maxLeft = Math.max(
+    REACTION_EMOJI_PICKER_MARGIN,
+    window.innerWidth - width - REACTION_EMOJI_PICKER_MARGIN,
+  );
+  const fallbackTop = Math.max(
+    REACTION_EMOJI_PICKER_MARGIN,
+    window.innerHeight - REACTION_EMOJI_PICKER_HEIGHT - REACTION_EMOJI_PICKER_MARGIN,
+  );
+  if (anchorRect == null) {
+    return { left: REACTION_EMOJI_PICKER_MARGIN, top: fallbackTop, width };
+  }
+
+  const rightLeft = anchorRect.right + REACTION_EMOJI_PICKER_GAP;
+  const leftLeft = anchorRect.left - width - REACTION_EMOJI_PICKER_GAP;
+  let left = Math.min(Math.max(REACTION_EMOJI_PICKER_MARGIN, rightLeft), maxLeft);
+  if (rightLeft + width <= window.innerWidth - REACTION_EMOJI_PICKER_MARGIN) {
+    left = rightLeft;
+  } else if (leftLeft >= REACTION_EMOJI_PICKER_MARGIN) {
+    left = leftLeft;
+  }
+  const maxTop = Math.max(
+    REACTION_EMOJI_PICKER_MARGIN,
+    window.innerHeight - REACTION_EMOJI_PICKER_HEIGHT - REACTION_EMOJI_PICKER_MARGIN,
+  );
+  const top = Math.min(Math.max(REACTION_EMOJI_PICKER_MARGIN, anchorRect.top), maxTop);
+
+  return { left, top, width };
+}
+
+const MessageReactionEmojiPicker = React.memo(function MessageReactionEmojiPicker({
+  open,
+  onOpenChange,
+  onEmojiPick,
+  customEmojis,
+}: MessageReactionEmojiPickerProps) {
+  const triggerRef = React.useRef<HTMLButtonElement>(null);
+  const [pickerStyle, setPickerStyle] = React.useState<React.CSSProperties>({});
+
+  const updatePickerPosition = React.useCallback(() => {
+    setPickerStyle(getReactionEmojiPickerStyle(triggerRef.current));
+  }, []);
+
+  React.useLayoutEffect(() => {
+    if (!open) return;
+    updatePickerPosition();
+    const handleWindowChange = () => updatePickerPosition();
+    window.addEventListener("resize", handleWindowChange);
+    window.addEventListener("scroll", handleWindowChange, true);
+    return () => {
+      window.removeEventListener("resize", handleWindowChange);
+      window.removeEventListener("scroll", handleWindowChange, true);
+    };
+  }, [open, updatePickerPosition]);
+
+  const theme =
+    typeof document !== "undefined" && document.documentElement.dataset.theme === "light"
+      ? Theme.LIGHT
+      : Theme.DARK;
+
+  return (
+    <div className="relative">
+      <button
+        ref={triggerRef}
+        type="button"
+        className={`${REACTION_BUTTON_CLASS_NAME} text-text-muted hover:text-text-primary`}
+        aria-label={t("a11y.moreReactions")}
+        onClick={createEmojiPickerToggleHandler(open, onOpenChange)}
+      >
+        <Icon name="plus" size={14} className="text-current" />
+      </button>
+      {open &&
+        createPortal(
+          <>
+            <div
+              data-testid="message-reaction-emoji-picker-backdrop"
+              className="pointer-events-auto fixed inset-0 z-overlay"
+              aria-hidden
+              onClick={() => onOpenChange(false)}
+            />
+            <div
+              data-testid="message-reaction-emoji-picker-popover"
+              className="pointer-events-auto fixed z-modal overflow-hidden rounded-xl border border-border-subtle bg-bg-elevated shadow-xl"
+              style={pickerStyle}
+            >
+              <EmojiPicker
+                onEmojiClick={onEmojiPick}
+                customEmojis={customEmojis}
+                emojiStyle={EmojiStyle.NATIVE}
+                theme={theme}
+                width={REACTION_EMOJI_PICKER_WIDTH}
+                height={REACTION_EMOJI_PICKER_HEIGHT}
+                searchDisabled={false}
+                previewConfig={{ showPreview: false }}
+              />
+            </div>
+          </>,
+          document.body,
+        )}
+    </div>
+  );
+});
 
 function useMessageMenuItems({
   emojiPickerOpen,
@@ -55,41 +176,12 @@ function useMessageMenuItems({
                 </span>
               </button>
             ))}
-            <div className="relative">
-              <button
-                type="button"
-                className={`${REACTION_BUTTON_CLASS_NAME} text-text-muted hover:text-text-primary`}
-                aria-label={t("a11y.moreReactions")}
-                onClick={createEmojiPickerToggleHandler(emojiPickerOpen, onEmojiPickerOpenChange)}
-              >
-                <Icon name="plus" size={14} className="text-current" />
-              </button>
-              {emojiPickerOpen && (
-                <>
-                  <div
-                    className="fixed inset-0 z-overlay"
-                    aria-hidden
-                    onClick={() => onEmojiPickerOpenChange(false)}
-                  />
-                  <div className="absolute left-0 top-full z-dropdown mt-1 overflow-hidden rounded-xl border border-border-subtle bg-bg-elevated shadow-xl">
-                    <EmojiPicker
-                      onEmojiClick={onEmojiPick}
-                      customEmojis={customEmojis}
-                      emojiStyle={EmojiStyle.NATIVE}
-                      theme={
-                        document.documentElement.dataset.theme === "light"
-                          ? Theme.LIGHT
-                          : Theme.DARK
-                      }
-                      width={320}
-                      height={360}
-                      searchDisabled={false}
-                      previewConfig={{ showPreview: false }}
-                    />
-                  </div>
-                </>
-              )}
-            </div>
+            <MessageReactionEmojiPicker
+              open={emojiPickerOpen}
+              onOpenChange={onEmojiPickerOpenChange}
+              onEmojiPick={onEmojiPick}
+              customEmojis={customEmojis}
+            />
           </div>
         ),
       },
@@ -175,6 +267,7 @@ export const MessageBubbleContextMenu = React.memo(function MessageBubbleContext
         </button>
       }
       items={menuItems}
+      modal={false}
       contentVariant="message"
       itemClassName={MENU_ITEM_CLASS_NAME}
       submenuTriggerClassName={MENU_ITEM_CLASS_NAME}

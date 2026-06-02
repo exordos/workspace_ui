@@ -269,6 +269,7 @@ export function useMessageBubbleInteractions({
     if (!nextOpen) {
       replySelectionRef.current = undefined;
       setContextMenuAnchor(null);
+      setEmojiPickerOpen(false);
     }
     setMenuOpen(nextOpen);
   }, []);
