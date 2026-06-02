@@ -70,7 +70,7 @@
     "fake-indexeddb": "6.2.5",
     "globals": "17.6.0",
     "http-proxy": "1.18.1",
-    "jsdom": "28.1.0",
+    "jsdom": "29.1.1",
     "knip": "6.15.0",
     "license-checker": "25.0.1",
     "msw": "2.14.6",
