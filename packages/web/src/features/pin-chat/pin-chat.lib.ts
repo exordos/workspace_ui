@@ -33,7 +33,7 @@ function isAllFolderPinContext(
   allFolderApiUuid: string | null,
 ): boolean {
   const scope = scopeFolderId?.trim();
-  if (scope === SYSTEM_ALL_FOLDER_ID || scope === "all") {
+  if (scope === SYSTEM_ALL_FOLDER_ID) {
     return true;
   }
   const api = apiFolderUuid.trim();
@@ -58,7 +58,6 @@ function folderLookupKeys(
   }
   if (isAllFolderPinContext(api, scopeFolderId, allFolderApiUuid)) {
     keys.add(SYSTEM_ALL_FOLDER_ID);
-    keys.add("all");
   }
   return [...keys];
 }

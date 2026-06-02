@@ -15,7 +15,7 @@ function idbError(reason: unknown): Error {
 }
 
 const DB_NAME = "workspace-message-cache-v1";
-const DB_VERSION = 8;
+const DB_VERSION = 9;
 
 /** IndexedDB database name for message/chat bootstrap cache (tests, cold-start wipe). */
 export const MESSAGE_CACHE_DB_NAME = DB_NAME;
@@ -77,7 +77,8 @@ export function openMessageCacheDb(): Promise<IDBDatabase> {
     };
     req.onsuccess = () => resolve(req.result);
     req.onupgradeneeded = (event) => {
-      runMessageCacheDbUpgrade(req.result, event.oldVersion, req.transaction);
+      void event;
+      runMessageCacheDbUpgrade(req.result);
     };
   });
   return dbPromise;

@@ -69,7 +69,7 @@ Also includes middleware pipeline: `zulipApi.get/post/patch/delete` with auth, l
 | -------------------------------------- | ------------------------- | -------------------------------------------- | ------- |
 | `reportPresence(status, newUserInput)` | `POST /users/me/presence` | `status` ("active"/"idle"), `new_user_input` | `void`  |
 
-> Core user API functions (fetchUsers, fetchUser, getCurrentUser, fetchRealmPresence) currently remain in `lib/zulipClient.ts` and are re-exported through the entity index during the legacy cleanup phase.
+> Core user API functions live in `packages/web/src/shared/api/zulip-*.ts` modules and are consumed by entity APIs.
 
 ### entities/folder/folder.api.ts
 

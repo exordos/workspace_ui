@@ -188,7 +188,6 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
       resolveCanonicalStreamName({
         streamId,
         streamMapName: streamEntry?.name,
-        legacyRouteName: title,
       }),
     [streamEntry?.name, streamId, title],
   );

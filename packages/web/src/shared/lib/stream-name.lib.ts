@@ -7,7 +7,6 @@ export interface ResolveCanonicalStreamNameInput {
   streamId: number | null | undefined;
   streamMapName?: string | null;
   metadataName?: string | null;
-  legacyRouteName?: string | null;
 }
 
 export function resolveCanonicalStreamName(input: ResolveCanonicalStreamNameInput): string | null {
@@ -18,5 +17,5 @@ export function resolveCanonicalStreamName(input: ResolveCanonicalStreamNameInpu
     return streamMapName ?? metadataName ?? null;
   }
 
-  return normalizeStreamName(input.legacyRouteName);
+  return null;
 }

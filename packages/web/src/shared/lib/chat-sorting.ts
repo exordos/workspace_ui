@@ -8,28 +8,18 @@ import { buildTimestampedSidebarChats } from "~/shared/lib/chat-sorting-build.li
 import { compareChatsByActivity } from "~/shared/lib/chat-sorting-compare.lib";
 import { loadRecentDmPartners } from "~/shared/lib/recent-dms";
 import type {
-  SidebarChat,
   StreamEntryInternal,
   DmEntryInternal,
+  SidebarChat,
 } from "~/shared/types/sidebar-chat";
 
 export type { ChatSortingOptions } from "./chat-sorting-compare.lib";
 
 import type { ChatSortingOptions } from "./chat-sorting-compare.lib";
 
-interface TimestampedChat {
-  c: SidebarChat;
-  ts: number;
-}
-
-function compareChatsAlphabetical(a: TimestampedChat, b: TimestampedChat): number {
-  return a.c.name.localeCompare(b.c.name);
-}
-
 export function sortChatsByLastMessage(
   streamsMap: Map<number, StreamEntryInternal>,
   dmsMap: Map<string, DmEntryInternal>,
-  sorting: string,
   muteSet: Set<number>,
   options: ChatSortingOptions = {},
 ): SidebarChat[] {
@@ -45,11 +35,7 @@ export function sortChatsByLastMessage(
     hideUnknownArchivedStreams,
   };
 
-  if (sorting === "alphabetical") {
-    withTs.sort(compareChatsAlphabetical);
-  } else {
-    withTs.sort((a, b) => compareChatsByActivity(a, b, recentDmIds, resolvedOptions, muteSet));
-  }
+  withTs.sort((a, b) => compareChatsByActivity(a, b, recentDmIds, resolvedOptions, muteSet));
 
   return withTs.map((x) => x.c);
 }

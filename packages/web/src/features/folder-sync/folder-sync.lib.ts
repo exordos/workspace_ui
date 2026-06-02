@@ -130,7 +130,7 @@ export function withDefaultSystemFolders(
 
 /**
  * Maps sidebar/rail folder id to Workspace API folder uuid for `GET /folders/{uuid}/items/`.
- * Synthetic `system:all` and legacy `all` resolve to `allFolderApiUuid`; personal/channels have no items endpoint.
+ * Synthetic `system:all` resolves to `allFolderApiUuid`; personal/channels have no items endpoint.
  */
 export function resolveFolderItemsRequestUuid(
   folderId: string,
@@ -145,7 +145,7 @@ export function resolveFolderItemsRequestUuid(
     return null;
   }
 
-  if (trimmed === SYSTEM_ALL_FOLDER_ID || trimmed === "all") {
+  if (trimmed === SYSTEM_ALL_FOLDER_ID) {
     const apiUuid = allFolderApiUuid?.trim();
     return apiUuid != null && apiUuid.length > 0 ? apiUuid : null;
   }
@@ -155,7 +155,6 @@ export function resolveFolderItemsRequestUuid(
 
 /**
  * Maps sidebar folder scope (rail id) to Workspace API folder uuid for pin/unpin and folder items.
- * Falls back to legacy rail id `all` when API uuid is not hydrated yet.
  */
 export function resolvePinScopeFolderUuid(
   scopeFolderId: string,
@@ -165,7 +164,7 @@ export function resolvePinScopeFolderUuid(
   if (resolved != null) {
     return resolved;
   }
-  return scopeFolderId.trim() === "all" ? (allFolderApiUuid ?? "all") : null;
+  return null;
 }
 
 /** Backend uuid for the Workspace folder with `system_type === "all"` (not the synthetic `system:all` rail id). */
@@ -297,7 +296,7 @@ export function mergeFolderItemsSnapshot(
   return next;
 }
 
-/** Mirrors API «all» folder items under rail id `system:all` and legacy `all` for pin/cache lookups. */
+/** Mirrors API «all» folder items under rail id `system:all` for pin/cache lookups. */
 export function aliasAllFolderItemsCacheKeys(
   itemsByFolderId: Map<string, FolderItemForClient[]>,
   allFolderApiUuid: string | null,
@@ -311,7 +310,6 @@ export function aliasAllFolderItemsCacheKeys(
     return;
   }
   itemsByFolderId.set(SYSTEM_ALL_FOLDER_ID, items);
-  itemsByFolderId.set("all", items);
 }
 
 export function describeFolderChatIdsForLog(

@@ -13,7 +13,7 @@ export {
 /** System rail folders plus legacy `selectedFolderId="all"` used in tests and older routes. */
 export function isSidebarSystemFolderScope(folderId: string | undefined): boolean {
   if (folderId == null || folderId === "") return false;
-  return isSystemRailFolderId(folderId) || folderId === "all";
+  return isSystemRailFolderId(folderId);
 }
 
 /**
@@ -150,8 +150,10 @@ export function slugForStream(stream: { stream_id: number; name: string }): stri
   return `${stream.stream_id}-${slugify(stream.name)}`;
 }
 
-/** Parse streamSlug from URL: "5-general" -> { stream_id: 5, stream_name: "general" }; "general" (legacy) -> { stream_name: "general" }. */
-export function parseStreamSlug(streamSlug: string): { stream_id?: number; stream_name: string } {
+/** Parse stream slug from URL: "5-general" -> { stream_id: 5, stream_name: "general" }. */
+export function parseStreamSlug(
+  streamSlug: string,
+): { stream_id: number; stream_name: string } | null {
   const firstDash = streamSlug.indexOf("-");
   if (firstDash > 0) {
     const lead = streamSlug.slice(0, firstDash);
@@ -161,19 +163,14 @@ export function parseStreamSlug(streamSlug: string): { stream_id?: number; strea
       return { stream_id: num, stream_name: rest };
     }
   }
-  try {
-    return { stream_name: decodeURIComponent(streamSlug) };
-  } catch {
-    return { stream_name: streamSlug };
-  }
+  return null;
 }
 
 /**
  * Resolves canonical stream name and id from a parsed slug plus the chat-list map.
- * Legacy URLs without a numeric prefix are matched by exact stream name.
  */
 export function resolveStreamRouteFromSlug(
-  parsedStream: { stream_id?: number; stream_name: string } | null,
+  parsedStream: { stream_id: number; stream_name: string } | null,
   streamsMap: Map<number, { name: string }>,
 ): {
   resolvedStreamName: string;
@@ -183,33 +180,15 @@ export function resolveStreamRouteFromSlug(
   if (!parsedStream) {
     return { resolvedStreamName: "", resolvedCanonicalStreamName: null, resolvedStreamId: null };
   }
-  if (parsedStream.stream_id != null) {
-    const streamMapName = streamsMap.get(parsedStream.stream_id)?.name ?? null;
-    const resolvedStreamName = streamMapName ?? parsedStream.stream_name;
-    return {
-      resolvedStreamName,
-      resolvedCanonicalStreamName: resolveCanonicalStreamName({
-        streamId: parsedStream.stream_id,
-        streamMapName,
-      }),
-      resolvedStreamId: parsedStream.stream_id,
-    };
-  }
-  const resolvedStreamName = parsedStream.stream_name;
-  if (!resolvedStreamName) {
-    return { resolvedStreamName: "", resolvedCanonicalStreamName: null, resolvedStreamId: null };
-  }
-  const resolvedStreamId =
-    Array.from(streamsMap.entries()).find(
-      ([, stream]) => stream.name === resolvedStreamName,
-    )?.[0] ?? null;
+  const streamMapName = streamsMap.get(parsedStream.stream_id)?.name ?? null;
+  const resolvedStreamName = streamMapName ?? parsedStream.stream_name;
   return {
     resolvedStreamName,
     resolvedCanonicalStreamName: resolveCanonicalStreamName({
-      streamId: null,
-      legacyRouteName: resolvedStreamName,
+      streamId: parsedStream.stream_id,
+      streamMapName,
     }),
-    resolvedStreamId,
+    resolvedStreamId: parsedStream.stream_id,
   };
 }
 

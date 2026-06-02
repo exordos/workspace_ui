@@ -267,7 +267,7 @@ describe("buildSelectedFolderSidebarChats", () => {
     expect(result.filter((chat) => chat.type === "dm")).toHaveLength(0);
   });
 
-  it("prefers DM over stream for ambiguous legacy numeric folder chat ids", () => {
+  it("treats bare numeric folder chat ids as streams", () => {
     const folderId = "folder-1";
     const result = buildSelectedFolderSidebarChats({
       selectedFolderId: folderId,
@@ -297,8 +297,8 @@ describe("buildSelectedFolderSidebarChats", () => {
       currentUserId: 7,
     });
 
-    expect(result.filter((chat) => chat.type === "dm")).toHaveLength(1);
-    expect(result.filter((chat) => chat.type === "stream")).toHaveLength(0);
+    expect(result.filter((chat) => chat.type === "dm")).toHaveLength(0);
+    expect(result.filter((chat) => chat.type === "stream")).toHaveLength(1);
   });
 
   it("keeps legacy numeric stream when there is no matching DM candidate", () => {

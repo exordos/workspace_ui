@@ -16,7 +16,6 @@ import type {
   AppSettings,
   AuthIdleTimeout,
   ChatListDensity,
-  ChatSorting,
   FolderRailLayout,
   NotificationSound,
 } from "./settings.types";
@@ -50,7 +49,6 @@ function resolveBrowserLanguage(): AppLanguage {
 
 function createDefaultSettings(): AppSettings {
   return {
-    chatSorting: "recent",
     prioritizePersonalUnread: false,
     prioritizeUnmutedUnreadChannels: false,
     notificationSound: "default",
@@ -65,7 +63,6 @@ function createDefaultSettings(): AppSettings {
 const DEFAULT_SETTINGS: AppSettings = createDefaultSettings();
 
 const FALLBACK_SETTINGS: Omit<AppSettings, "language"> = {
-  chatSorting: "recent",
   prioritizePersonalUnread: false,
   prioritizeUnmutedUnreadChannels: false,
   notificationSound: "default",
@@ -74,54 +71,6 @@ const FALLBACK_SETTINGS: Omit<AppSettings, "language"> = {
   chatListDensity: "standard",
   authIdleTimeout: "3d",
 };
-
-function coerceLegacySorting(value: unknown): ChatSorting | null {
-  if (value === "recent" || value === "unread" || value === "alphabetical") {
-    return value;
-  }
-  return null;
-}
-
-function resolveSortingFlags(
-  parsed: Partial<AppSettings>,
-): Pick<
-  AppSettings,
-  "chatSorting" | "prioritizePersonalUnread" | "prioritizeUnmutedUnreadChannels"
-> {
-  const parsedPrioritizePersonalUnread =
-    typeof parsed.prioritizePersonalUnread === "boolean" ? parsed.prioritizePersonalUnread : null;
-  const parsedPrioritizeUnmutedUnreadChannels =
-    typeof parsed.prioritizeUnmutedUnreadChannels === "boolean"
-      ? parsed.prioritizeUnmutedUnreadChannels
-      : null;
-  const legacySorting = coerceLegacySorting(parsed.chatSorting);
-  const hasParsedPriorityFlags =
-    parsedPrioritizePersonalUnread != null || parsedPrioritizeUnmutedUnreadChannels != null;
-  const chatSorting =
-    legacySorting ??
-    (hasParsedPriorityFlags
-      ? deriveLegacySorting(
-          parsedPrioritizePersonalUnread ?? false,
-          parsedPrioritizeUnmutedUnreadChannels ?? false,
-        )
-      : DEFAULT_SETTINGS.chatSorting);
-  const prioritizePersonalUnread = parsedPrioritizePersonalUnread ?? chatSorting === "unread";
-  const prioritizeUnmutedUnreadChannels =
-    parsedPrioritizeUnmutedUnreadChannels ?? chatSorting === "unread";
-
-  return {
-    chatSorting,
-    prioritizePersonalUnread,
-    prioritizeUnmutedUnreadChannels,
-  };
-}
-
-function deriveLegacySorting(
-  prioritizePersonalUnread: boolean,
-  prioritizeUnmutedUnreadChannels: boolean,
-): ChatSorting {
-  return prioritizePersonalUnread || prioritizeUnmutedUnreadChannels ? "unread" : "recent";
-}
 
 function resolveFolderRailLayout(value: unknown): FolderRailLayout {
   return value === "vertical" ? "vertical" : "horizontal";
@@ -155,22 +104,24 @@ function loadSettings(organizationId: string | null = getActiveOrganizationId())
   if (typeof window === "undefined") return createDefaultSettings();
   try {
     const scopedKey = getStorageKeyForOrganization(organizationId);
-    const legacyFallbackKey = scopedKey === STORAGE_KEY ? null : STORAGE_KEY;
-    const raw =
-      localStorage.getItem(scopedKey) ??
-      (legacyFallbackKey ? localStorage.getItem(legacyFallbackKey) : null);
+    const raw = localStorage.getItem(scopedKey);
     if (!raw) return createDefaultSettings();
-    if (legacyFallbackKey != null && localStorage.getItem(scopedKey) == null) {
-      localStorage.setItem(scopedKey, raw);
-    }
     const parsed = JSON.parse(raw) as Partial<AppSettings>;
-    const sortingFlags = resolveSortingFlags(parsed);
+    const prioritizePersonalUnread =
+      typeof parsed.prioritizePersonalUnread === "boolean"
+        ? parsed.prioritizePersonalUnread
+        : DEFAULT_SETTINGS.prioritizePersonalUnread;
+    const prioritizeUnmutedUnreadChannels =
+      typeof parsed.prioritizeUnmutedUnreadChannels === "boolean"
+        ? parsed.prioritizeUnmutedUnreadChannels
+        : DEFAULT_SETTINGS.prioritizeUnmutedUnreadChannels;
     const language =
       parsed.language === "ru" || parsed.language === "en"
         ? parsed.language
         : resolveBrowserLanguage();
     return {
-      ...sortingFlags,
+      prioritizePersonalUnread,
+      prioritizeUnmutedUnreadChannels,
       notificationSound: resolveNotificationSound(parsed.notificationSound),
       language,
       folderRailLayout: resolveFolderRailLayout(parsed.folderRailLayout),
@@ -200,7 +151,6 @@ function persistSettings(
 }
 
 interface SettingsState extends AppSettings {
-  setChatSorting: (sorting: ChatSorting) => void;
   setPrioritizePersonalUnread: (enabled: boolean) => void;
   setPrioritizeUnmutedUnreadChannels: (enabled: boolean) => void;
   setNotificationSound: (sound: NotificationSound) => void;
@@ -217,38 +167,16 @@ const initial = loadSettings();
 export const useSettingsStore = create<SettingsState>((set, get) => ({
   ...initial,
 
-  setChatSorting(sorting) {
-    logStoreAction("settings", "setChatSorting", { sorting });
-    const prioritizeByUnreadMode = sorting === "unread";
-    const nextState = {
-      chatSorting: sorting,
-      prioritizePersonalUnread: prioritizeByUnreadMode,
-      prioritizeUnmutedUnreadChannels: prioritizeByUnreadMode,
-    };
-    set(nextState);
-    persistSettings({ ...get(), ...nextState });
-  },
-
   setPrioritizePersonalUnread(enabled) {
     logStoreAction("settings", "setPrioritizePersonalUnread", { enabled });
-    const prioritizeUnmutedUnreadChannels = get().prioritizeUnmutedUnreadChannels;
-    const nextState = {
-      prioritizePersonalUnread: enabled,
-      chatSorting: deriveLegacySorting(enabled, prioritizeUnmutedUnreadChannels),
-    };
-    set(nextState);
-    persistSettings({ ...get(), ...nextState });
+    set({ prioritizePersonalUnread: enabled });
+    persistSettings({ ...get(), prioritizePersonalUnread: enabled });
   },
 
   setPrioritizeUnmutedUnreadChannels(enabled) {
     logStoreAction("settings", "setPrioritizeUnmutedUnreadChannels", { enabled });
-    const prioritizePersonalUnread = get().prioritizePersonalUnread;
-    const nextState = {
-      prioritizeUnmutedUnreadChannels: enabled,
-      chatSorting: deriveLegacySorting(prioritizePersonalUnread, enabled),
-    };
-    set(nextState);
-    persistSettings({ ...get(), ...nextState });
+    set({ prioritizeUnmutedUnreadChannels: enabled });
+    persistSettings({ ...get(), prioritizeUnmutedUnreadChannels: enabled });
   },
 
   setNotificationSound(sound) {

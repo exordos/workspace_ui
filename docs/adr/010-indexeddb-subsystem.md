@@ -2,7 +2,7 @@
 
 ## Status
 
-Deferred — phase-1 scaffold removed (2026-06-01); full snapshot unification pending
+Deferred — `shared/lib/idb/` scaffold removed (2026-06-01); full snapshot unification pending
 
 ## Context
 
@@ -16,3 +16,4 @@ When snapshot unification resumes, introduce `shared/lib/idb/` with a single ope
 
 - No `shared/lib/idb/` scaffold in the tree until a follow-up ADR implements migration
 - `message-cache-db.ts` remains source of truth for schema until migration ADR is implemented
+- Message cache schema is created as the latest shape during upgrade (no incremental v1→vN migration steps)

@@ -90,7 +90,7 @@ describe("runFolderPinToggle", () => {
           [
             {
               uuid: "item-all",
-              chatId: "42",
+              chatId: "dm:42",
               folderUuid: apiAllUuid,
               orderIndex: 0,
               pinnedAt: "2026-03-14T10:00:00Z",
@@ -105,7 +105,7 @@ describe("runFolderPinToggle", () => {
       {
         folderUuid: apiAllUuid,
         folderItemUuid: "item-all",
-        chatId: "42",
+        chatId: "dm:42",
         orderIndex: 0,
         pinnedAt: "2026-03-14T10:00:00Z",
       },
@@ -133,7 +133,7 @@ describe("runFolderPinToggle", () => {
           [
             {
               uuid: "item-99",
-              chatId: "42",
+              chatId: "dm:42",
               folderUuid: "folder-api",
               orderIndex: 0,
               pinnedAt: "2026-03-14T10:00:00Z",
@@ -191,7 +191,7 @@ describe("runFolderPinToggle", () => {
           items: [
             {
               uuid: "item-new",
-              chat_id: 42,
+              chat_id: "dm:42",
               chat_type: "private",
               folder_uuid: apiAllUuid,
               order_index: 0,
@@ -231,7 +231,7 @@ describe("runFolderPinToggle", () => {
         items: [
           {
             uuid: "item-net",
-            chat_id: 42,
+            chat_id: "dm:42",
             chat_type: "private",
             folder_uuid: apiAllUuid,
             order_index: 0,
@@ -256,18 +256,18 @@ describe("runFolderPinToggle", () => {
     expect(pinChatInFolderMock).toHaveBeenCalledWith(apiAllUuid, "item-net");
   });
 
-  it("unpins when folder items are cached under legacy all key in all-folder context", async () => {
+  it("unpins when folder items are cached under system:all key in all-folder context", async () => {
     const apiAllUuid = "api-all-folder-uuid";
     useFolderSyncStore.setState({
       allFolderApiUuid: apiAllUuid,
       folderItemsByFolderId: new Map([
         [
-          "all",
+          SYSTEM_ALL_FOLDER_ID,
           [
             {
               uuid: "item-legacy",
               chatId: "11",
-              folderUuid: "all",
+              folderUuid: apiAllUuid,
               orderIndex: 0,
               pinnedAt: "2026-03-14T10:00:00Z",
               createdAt: "",

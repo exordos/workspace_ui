@@ -76,25 +76,4 @@ describe("mute-snapshot-db", () => {
     await deleteMuteSnapshotRow(INSTANCE);
     expect(await loadMuteSnapshotRow(INSTANCE)).toBeNull();
   });
-
-  it("treats legacy rows without followedTopics as empty followed list", async () => {
-    await openMessageCacheDb();
-    const db = await openMessageCacheDb();
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction("muteSnapshot", "readwrite");
-      tx.onerror = () => reject(tx.error ?? new Error("transaction failed"));
-      tx.oncomplete = () => resolve();
-      tx.objectStore("muteSnapshot").put({
-        instanceId: INSTANCE,
-        version: 1,
-        savedAt: 2,
-        mutedStreamIds: [],
-        mutedTopics: [],
-        unmutedTopics: [],
-      });
-    });
-
-    const row = await loadMuteSnapshotRow(INSTANCE);
-    expect(row?.followedTopics).toEqual([]);
-  });
 });

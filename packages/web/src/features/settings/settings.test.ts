@@ -38,7 +38,6 @@ describe("useSettingsStore", () => {
   describe("initial state", () => {
     it("starts with default settings", () => {
       const state = useSettingsStore.getState();
-      expect(state.chatSorting).toBe("recent");
       expect(state.prioritizePersonalUnread).toBe(false);
       expect(state.prioritizeUnmutedUnreadChannels).toBe(false);
       expect(state.notificationSound).toBe("default");
@@ -50,47 +49,17 @@ describe("useSettingsStore", () => {
     });
   });
 
-  describe("setChatSorting", () => {
-    it("updates chat sorting to unread", () => {
-      useSettingsStore.getState().setChatSorting("unread");
-      const state = useSettingsStore.getState();
-      expect(state.chatSorting).toBe("unread");
-      expect(state.prioritizePersonalUnread).toBe(true);
-      expect(state.prioritizeUnmutedUnreadChannels).toBe(true);
-    });
-
-    it("updates chat sorting to alphabetical", () => {
-      useSettingsStore.getState().setChatSorting("alphabetical");
-      const state = useSettingsStore.getState();
-      expect(state.chatSorting).toBe("alphabetical");
-      expect(state.prioritizePersonalUnread).toBe(false);
-      expect(state.prioritizeUnmutedUnreadChannels).toBe(false);
-    });
-
-    it("persists to localStorage", () => {
-      useSettingsStore.getState().setChatSorting("unread");
-      const raw = localStorage.getItem("workspace-settings");
-      expect(raw).not.toBeNull();
-      const parsed = JSON.parse(raw!);
-      expect(parsed.chatSorting).toBe("unread");
-      expect(parsed.prioritizePersonalUnread).toBe(true);
-      expect(parsed.prioritizeUnmutedUnreadChannels).toBe(true);
-    });
-  });
-
   describe("unread-priority flags", () => {
-    it("toggles prioritizePersonalUnread and derives legacy sorting", () => {
+    it("toggles prioritizePersonalUnread", () => {
       useSettingsStore.getState().setPrioritizePersonalUnread(true);
 
       let state = useSettingsStore.getState();
       expect(state.prioritizePersonalUnread).toBe(true);
       expect(state.prioritizeUnmutedUnreadChannels).toBe(false);
-      expect(state.chatSorting).toBe("unread");
 
       useSettingsStore.getState().setPrioritizePersonalUnread(false);
       state = useSettingsStore.getState();
       expect(state.prioritizePersonalUnread).toBe(false);
-      expect(state.chatSorting).toBe("recent");
     });
 
     it("toggles prioritizeUnmutedUnreadChannels and persists", () => {
@@ -98,7 +67,6 @@ describe("useSettingsStore", () => {
 
       const state = useSettingsStore.getState();
       expect(state.prioritizeUnmutedUnreadChannels).toBe(true);
-      expect(state.chatSorting).toBe("unread");
 
       const raw = localStorage.getItem("workspace-settings");
       const parsed = JSON.parse(raw!);
@@ -127,7 +95,6 @@ describe("useSettingsStore", () => {
 
   describe("resetToDefaults", () => {
     it("restores all settings to defaults", () => {
-      useSettingsStore.getState().setChatSorting("alphabetical");
       useSettingsStore.getState().setPrioritizePersonalUnread(true);
       useSettingsStore.getState().setPrioritizeUnmutedUnreadChannels(true);
       useSettingsStore.getState().setNotificationSound("none");
@@ -139,7 +106,6 @@ describe("useSettingsStore", () => {
       useSettingsStore.getState().resetToDefaults();
 
       const state = useSettingsStore.getState();
-      expect(state.chatSorting).toBe("recent");
       expect(state.prioritizePersonalUnread).toBe(false);
       expect(state.prioritizeUnmutedUnreadChannels).toBe(false);
       expect(state.notificationSound).toBe("default");
@@ -150,12 +116,11 @@ describe("useSettingsStore", () => {
     });
 
     it("persists defaults to localStorage", () => {
-      useSettingsStore.getState().setChatSorting("unread");
+      useSettingsStore.getState().setPrioritizePersonalUnread(true);
       useSettingsStore.getState().resetToDefaults();
 
       const raw = localStorage.getItem("workspace-settings");
       const parsed = JSON.parse(raw!);
-      expect(parsed.chatSorting).toBe("recent");
       expect(parsed.prioritizePersonalUnread).toBe(false);
       expect(parsed.prioritizeUnmutedUnreadChannels).toBe(false);
       expect(parsed.authIdleTimeout).toBe("3d");
@@ -254,7 +219,6 @@ describe("useSettingsStore", () => {
 
       const raw = localStorage.getItem("workspace-settings");
       const parsed = JSON.parse(raw!);
-      expect(parsed.chatSorting).toBe("unread");
       expect(parsed.prioritizePersonalUnread).toBe(true);
       expect(parsed.prioritizeUnmutedUnreadChannels).toBe(false);
       expect(parsed.notificationSound).toBe("none");
@@ -297,7 +261,7 @@ describe("useSettingsStore", () => {
       expect(useSettingsStore.getState().notificationSound).toBe("subtle");
     });
 
-    it("remembers notification sound and chat sorting per organization", () => {
+    it("remembers notification sound and unread-priority flags per organization", () => {
       setInstanceScope(["org-a", "org-b"], "org-a");
 
       useSettingsStore.getState().setNotificationSound("glass");
@@ -310,11 +274,11 @@ describe("useSettingsStore", () => {
       useSettingsStore.getState().setPrioritizeUnmutedUnreadChannels(false);
 
       expect(useSettingsStore.getState().notificationSound).toBe("none");
-      expect(useSettingsStore.getState().chatSorting).toBe("recent");
+      expect(useSettingsStore.getState().prioritizePersonalUnread).toBe(false);
+      expect(useSettingsStore.getState().prioritizeUnmutedUnreadChannels).toBe(false);
 
       useInstancesStore.getState().setCurrentInstanceId("org-a");
       expect(useSettingsStore.getState().notificationSound).toBe("glass");
-      expect(useSettingsStore.getState().chatSorting).toBe("unread");
       expect(useSettingsStore.getState().prioritizePersonalUnread).toBe(true);
       expect(useSettingsStore.getState().prioritizeUnmutedUnreadChannels).toBe(false);
     });
@@ -335,7 +299,6 @@ describe("loadSettings (module reload)", () => {
     vi.resetModules();
     const { useSettingsStore: freshStore } = await import("./settings.model");
     const state = freshStore.getState();
-    expect(state.chatSorting).toBe("recent");
     expect(state.prioritizePersonalUnread).toBe(false);
     expect(state.prioritizeUnmutedUnreadChannels).toBe(false);
     expect(state.notificationSound).toBe("default");
@@ -346,46 +309,11 @@ describe("loadSettings (module reload)", () => {
     expect(state.authIdleTimeout).toBe("3d");
   });
 
-  it("maps legacy unread mode to both unread-priority flags", async () => {
-    localStorage.setItem("workspace-settings", JSON.stringify({ chatSorting: "unread" }));
-    vi.resetModules();
-    const { useSettingsStore: freshStore } = await import("./settings.model");
-    const state = freshStore.getState();
-    expect(state.chatSorting).toBe("unread");
-    expect(state.prioritizePersonalUnread).toBe(true);
-    expect(state.prioritizeUnmutedUnreadChannels).toBe(true);
-    expect(state.notificationSound).toBe("default");
-    expect(state.language).toBe("en");
-    expect(state.folderRailLayout).toBe("horizontal");
-    expect(state.showSystemFolders).toBe(true);
-    expect(state.chatListDensity).toBe("standard");
-    expect(state.authIdleTimeout).toBe("3d");
-  });
-
-  it("derives unread chat sorting from persisted unread-priority flags when legacy field is absent", async () => {
-    localStorage.setItem(
-      "workspace-settings",
-      JSON.stringify({
-        prioritizePersonalUnread: true,
-        prioritizeUnmutedUnreadChannels: false,
-      }),
-    );
-    vi.resetModules();
-    const { useSettingsStore: freshStore } = await import("./settings.model");
-    const state = freshStore.getState();
-
-    expect(state.chatSorting).toBe("unread");
-    expect(state.prioritizePersonalUnread).toBe(true);
-    expect(state.prioritizeUnmutedUnreadChannels).toBe(false);
-    expect(state.authIdleTimeout).toBe("3d");
-  });
-
   it("uses defaults when localStorage key is absent", async () => {
     localStorage.removeItem("workspace-settings");
     vi.resetModules();
     const { useSettingsStore: freshStore } = await import("./settings.model");
     const state = freshStore.getState();
-    expect(state.chatSorting).toBe("recent");
     expect(state.prioritizePersonalUnread).toBe(false);
     expect(state.prioritizeUnmutedUnreadChannels).toBe(false);
     expect(state.notificationSound).toBe("default");
@@ -400,7 +328,6 @@ describe("loadSettings (module reload)", () => {
     localStorage.setItem(
       "workspace-settings",
       JSON.stringify({
-        chatSorting: "recent",
         prioritizePersonalUnread: true,
         prioritizeUnmutedUnreadChannels: false,
         notificationSound: "none",
@@ -414,7 +341,6 @@ describe("loadSettings (module reload)", () => {
     vi.resetModules();
     const { useSettingsStore: freshStore } = await import("./settings.model");
     const state = freshStore.getState();
-    expect(state.chatSorting).toBe("recent");
     expect(state.prioritizePersonalUnread).toBe(true);
     expect(state.prioritizeUnmutedUnreadChannels).toBe(false);
     expect(state.notificationSound).toBe("none");

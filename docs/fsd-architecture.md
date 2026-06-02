@@ -356,14 +356,10 @@ packages/web/src/
 └── main.tsx                        # Vite entry point → app/
 ```
 
-### Legacy Directories (still present, being phased out)
+### Legacy Directories
 
-The following directories contain the original pre-FSD code. FSD slices re-export from these where needed, and new code should only be added to FSD directories.
-
-- `components/` — Legacy page and UI components (re-exported via widgets/pages)
-- `stores/` — Legacy Zustand stores (re-exported via entities)
-- `lib/` — Legacy utilities and API functions (re-exported via shared/lib and shared/api)
-- `contexts/` — Legacy React contexts (moved to app/contexts/)
+The original pre-FSD directories (`components/`, `stores/`, `lib/`, `contexts/`) have been removed.
+New code must follow the FSD slice layout under `app/`, `pages/`, `widgets/`, `features/`, `entities/`, `shared/`.
 
 ---
 
@@ -376,7 +372,7 @@ The following directories contain the original pre-FSD code. FSD slices re-expor
 | Phase 3 | `features/` — 16 features (ai-reply, chat-info, create-chat, instance-switch, jitsi-call, manage-folders, media-viewer, mention-suggest, message-readers, mute-chat, pin-chat, settings, sticker-picker, theme-picker, typing-indicator, user-profile) | **Done** |
 | Phase 4 | `pages/` + `app/` — route pages, router, contexts, event loop                                                                                                                                                                                          | **Done** |
 
-All four phases are complete. New features (sticker, ai-reply) were created directly in FSD from scratch. Legacy directories remain for backward compatibility and will be removed in a future cleanup pass.
+All four phases are complete. New features (sticker, ai-reply) were created directly in FSD from scratch.
 
 ---
 

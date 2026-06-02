@@ -11,11 +11,10 @@ import {
 } from "./sidebar.lib";
 
 describe("isSidebarSystemFolderScope", () => {
-  it("includes system rail ids and legacy «all»", () => {
+  it("includes system rail ids", () => {
     expect(isSidebarSystemFolderScope(SYSTEM_ALL_FOLDER_ID)).toBe(true);
     expect(isSidebarSystemFolderScope(SYSTEM_PERSONAL_FOLDER_ID)).toBe(true);
     expect(isSidebarSystemFolderScope(SYSTEM_CHANNELS_FOLDER_ID)).toBe(true);
-    expect(isSidebarSystemFolderScope("all")).toBe(true);
   });
 
   it("returns false for created folders", () => {
@@ -26,6 +25,7 @@ describe("isSidebarSystemFolderScope", () => {
 describe("resolveStreamRouteFromSlug", () => {
   it("keeps slug name only as display fallback until canonical stream name is known", () => {
     const parsedStream = parseStreamSlug("14-test-slon");
+    expect(parsedStream).not.toBeNull();
 
     expect(resolveStreamRouteFromSlug(parsedStream, new Map())).toEqual({
       resolvedStreamName: "test-slon",
@@ -36,6 +36,7 @@ describe("resolveStreamRouteFromSlug", () => {
 
   it("prefers authoritative stream name from streamsMap over lowercased slug", () => {
     const parsedStream = parseStreamSlug("14-test-slon");
+    expect(parsedStream).not.toBeNull();
 
     expect(
       resolveStreamRouteFromSlug(parsedStream, new Map([[14, { name: "Test Slon" }]])),

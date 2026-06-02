@@ -61,13 +61,7 @@ function loadLocale(): Locale {
   try {
     const activeOrganizationId = getActiveOrganizationIdFromStorage();
     const scopedKey = buildOrgScopedStorageKey(LOCALE_STORAGE_KEY, activeOrganizationId);
-    const legacyFallbackKey = scopedKey === LOCALE_STORAGE_KEY ? null : LOCALE_STORAGE_KEY;
-    const scopedValue = localStorage.getItem(scopedKey);
-    const legacyValue = legacyFallbackKey ? localStorage.getItem(legacyFallbackKey) : null;
-    const stored = (scopedValue ?? legacyValue) as Locale | null;
-    if (scopedValue == null && legacyValue != null && legacyFallbackKey != null) {
-      localStorage.setItem(scopedKey, legacyValue);
-    }
+    const stored = localStorage.getItem(scopedKey) as Locale | null;
     if (stored && stored in MESSAGES) return stored;
   } catch {
     /* restricted storage */

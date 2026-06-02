@@ -4,7 +4,6 @@ import {
   chatToWorkspaceChatIds,
   hasMatchingChatId,
   type FolderSyncUserLike,
-  parseNumericChatId,
   parseFolderItemDmUserIds,
   parseFolderItemStreamId,
   resolveFallbackUserName,
@@ -13,77 +12,7 @@ import {
 import { filterHiddenDmChats } from "./folder-sync-sidebar-chats-dm.lib";
 import type { SelectedFolderSidebarProjectionInput } from "./folder-sync-sidebar-chats.lib";
 
-// Зачем: legacy numeric chat_id могут конфликтовать между stream и dm, нужен явный приоритет.
-// Что делает: извлекает числового DM-кандидата для дедупликации неоднозначных numeric id.
-export function resolveDmNumericCandidate(
-  dmUserIds: readonly number[],
-  currentUserId: number | null,
-): number | null {
-  if (dmUserIds.length === 1) {
-    return dmUserIds[0] ?? null;
-  }
-  if (dmUserIds.length !== 2) {
-    return null;
-  }
-  const sortedPair = [...dmUserIds].sort((left, right) => left - right);
-  if (currentUserId == null) {
-    return sortedPair[0] ?? null;
-  }
-  return sortedPair.find((id) => id !== currentUserId) ?? sortedPair[0] ?? null;
-}
-
-export interface NumericFolderItemIdSets {
-  numericFolderItemIds: Set<number>;
-  preferredDmNumericIds: Set<number>;
-}
-
-// Зачем: numeric id из folder items нужно отделить от DM-приоритетов для разрешения конфликтов stream/dm.
-// Что делает: собирает numericFolderItemIds и preferredDmNumericIds из items и matched DM-чатов.
-export function collectNumericFolderItemIdsAndPreferredDmNumericIds(
-  selectedFolderItems: readonly FolderItemForClient[],
-  matchedChats: readonly SidebarChat[],
-  currentUserId: number | null,
-): NumericFolderItemIdSets {
-  const numericFolderItemIds = new Set<number>();
-  const preferredDmNumericIds = new Set<number>();
-  for (const item of selectedFolderItems) {
-    const numericChatId = parseNumericChatId(item.chatId);
-    if (numericChatId != null) {
-      numericFolderItemIds.add(numericChatId);
-      continue;
-    }
-    const dmUserIds = parseFolderItemDmUserIds(item.chatId);
-    if (dmUserIds == null) {
-      continue;
-    }
-    const dmNumericCandidate = resolveDmNumericCandidate(dmUserIds, currentUserId);
-    if (dmNumericCandidate != null) {
-      preferredDmNumericIds.add(dmNumericCandidate);
-    }
-  }
-  for (const chat of matchedChats) {
-    if (chat.type !== "dm" || chat.isGroup) {
-      continue;
-    }
-    preferredDmNumericIds.add(chat.id);
-  }
-  return { numericFolderItemIds, preferredDmNumericIds };
-}
-
-// Зачем: при совпадении numeric id stream и dm должен остаться только DM.
-// Что делает: убирает stream-чаты, чей stream_id одновременно в numeric items и DM-приоритетах.
-export function filterAmbiguousNumericStreamMatches(
-  matchedChats: readonly SidebarChat[],
-  numericFolderItemIds: ReadonlySet<number>,
-  preferredDmNumericIds: ReadonlySet<number>,
-): SidebarChat[] {
-  return matchedChats.filter((chat) => {
-    if (chat.type !== "stream") {
-      return true;
-    }
-    return !(numericFolderItemIds.has(chat.stream_id) && preferredDmNumericIds.has(chat.stream_id));
-  });
-}
+// (greenfield) Numeric chat_id ambiguity is not supported.
 
 export interface KnownMatchedChatKeys {
   knownMatchedStreamIds: Set<number>;
@@ -254,7 +183,6 @@ export function buildFallbackDmChatsFromFolderItems(
 export function buildFallbackStreamChatsFromFolderItems(
   orderedItems: readonly FolderItemForClient[],
   knownMatchedStreamIds: ReadonlySet<number>,
-  preferredDmNumericIds: ReadonlySet<number>,
   streamsMap: ReadonlyMap<number, StreamEntryInternal>,
   hideUnknownArchivedStreams: boolean,
 ): SidebarChat[] {
@@ -269,10 +197,6 @@ export function buildFallbackStreamChatsFromFolderItems(
 
     const streamId = parseFolderItemStreamId(item.chatId);
     if (streamId == null) {
-      continue;
-    }
-    const numericChatId = parseNumericChatId(item.chatId);
-    if (numericChatId != null && preferredDmNumericIds.has(numericChatId)) {
       continue;
     }
     if (knownMatchedStreamIds.has(streamId) || seenFallbackStreamIds.has(streamId)) {
@@ -331,19 +255,8 @@ export function buildCustomFolderSidebarChats(
     return filterHiddenDmChats(matchedChats, currentUserId);
   }
 
-  const { numericFolderItemIds, preferredDmNumericIds } =
-    collectNumericFolderItemIdsAndPreferredDmNumericIds(
-      selectedFolderItems,
-      matchedChats,
-      currentUserId,
-    );
-  const matchedChatsWithoutAmbiguousNumericStreams = filterAmbiguousNumericStreamMatches(
-    matchedChats,
-    numericFolderItemIds,
-    preferredDmNumericIds,
-  );
   const { knownMatchedStreamIds, knownMatchedDmKeys } = collectKnownMatchedChatKeys(
-    matchedChatsWithoutAmbiguousNumericStreams,
+    matchedChats,
     currentUserId,
   );
   const orderedItems = sortFolderItemsByOrderIndex(selectedFolderItems);
@@ -356,13 +269,12 @@ export function buildCustomFolderSidebarChats(
   const fallbackStreamChats = buildFallbackStreamChatsFromFolderItems(
     orderedItems,
     knownMatchedStreamIds,
-    preferredDmNumericIds,
     streamsMap,
     hideUnknownArchivedStreams,
   );
 
   return filterHiddenDmChats(
-    [...fallbackDmChats, ...fallbackStreamChats, ...matchedChatsWithoutAmbiguousNumericStreams],
+    [...fallbackDmChats, ...fallbackStreamChats, ...matchedChats],
     currentUserId,
   );
 }

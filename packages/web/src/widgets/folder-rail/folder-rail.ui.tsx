@@ -1,4 +1,5 @@
 import React, { useCallback, useMemo, useState } from "react";
+import { SYSTEM_ALL_FOLDER_ID } from "~/features/folder-sync/folder-sync-constants.lib";
 import { CreateFolderModal } from "~/features/manage-folders/create-folder-modal.ui";
 import {
   createFolder,
@@ -31,6 +32,13 @@ export const FolderRail: React.FC<FolderRailProps> = ({
   onFoldersChanged,
   layout = "vertical",
 }) => {
+  const normalizedFolders = useMemo(() => {
+    return folders.map((folder) =>
+      folder.id === "all" ? { ...folder, id: SYSTEM_ALL_FOLDER_ID } : folder,
+    );
+  }, [folders]);
+  const resolvedSelectedFolderId =
+    selectedFolderId === "all" ? SYSTEM_ALL_FOLDER_ID : selectedFolderId;
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renamingFolder, setRenamingFolder] = useState<FolderRailFolder | null>(null);
@@ -125,8 +133,8 @@ export const FolderRail: React.FC<FolderRailProps> = ({
 
   // Единая структура для обоих view, чтобы не дублировать map + передачу индекса.
   const indexedFolders = useMemo<IndexedFolderEntry[]>(
-    () => folders.map((folder, index) => ({ folder, index })),
-    [folders],
+    () => normalizedFolders.map((folder, index) => ({ folder, index })),
+    [normalizedFolders],
   );
 
   return (
@@ -134,7 +142,7 @@ export const FolderRail: React.FC<FolderRailProps> = ({
       {layout === "horizontal" ? (
         <FolderRailHorizontalView
           indexedFolders={indexedFolders}
-          selectedFolderId={selectedFolderId}
+          selectedFolderId={resolvedSelectedFolderId}
           showSystemFolders={showSystemFolders}
           onSelectFolder={onSelectFolder}
           onToggleLayout={handleToggleLayout}
@@ -146,7 +154,7 @@ export const FolderRail: React.FC<FolderRailProps> = ({
       ) : (
         <FolderRailVerticalView
           indexedFolders={indexedFolders}
-          selectedFolderId={selectedFolderId}
+          selectedFolderId={resolvedSelectedFolderId}
           showSystemFolders={showSystemFolders}
           onSelectFolder={onSelectFolder}
           onToggleLayout={handleToggleLayout}

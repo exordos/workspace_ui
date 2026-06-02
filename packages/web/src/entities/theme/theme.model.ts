@@ -40,28 +40,8 @@ function loadStored(
   if (typeof window === "undefined") return { paletteId: defaultPaletteId, mode: DEFAULT_MODE };
   try {
     const { paletteKey, modeKey } = getStorageKeysForOrganization(organizationId);
-    const shouldUseLegacyFallback =
-      paletteKey !== STORAGE_KEY_PALETTE || modeKey !== STORAGE_KEY_MODE;
-    const legacyMode = shouldUseLegacyFallback ? localStorage.getItem(STORAGE_KEY_MODE) : null;
-    const legacyPalette = shouldUseLegacyFallback
-      ? localStorage.getItem(STORAGE_KEY_PALETTE)
-      : null;
-    const storedMode = localStorage.getItem(modeKey) ?? legacyMode;
-    const storedPaletteId = localStorage.getItem(paletteKey) ?? legacyPalette;
-
-    if (
-      shouldUseLegacyFallback &&
-      localStorage.getItem(paletteKey) == null &&
-      localStorage.getItem(modeKey) == null &&
-      (legacyPalette != null || legacyMode != null)
-    ) {
-      if (legacyPalette != null) {
-        localStorage.setItem(paletteKey, legacyPalette);
-      }
-      if (legacyMode != null) {
-        localStorage.setItem(modeKey, legacyMode);
-      }
-    }
+    const storedMode = localStorage.getItem(modeKey);
+    const storedPaletteId = localStorage.getItem(paletteKey);
 
     const mode: ThemeMode =
       storedMode === "light" || storedMode === "dark" || storedMode === "system"

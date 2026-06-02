@@ -1587,7 +1587,7 @@ describe("chatListStore", () => {
         );
 
       const { streamsMap, dmsMap } = useChatListStore.getState();
-      const sorted = sortChatsByLastMessage(streamsMap, dmsMap, "recent", new Set());
+      const sorted = sortChatsByLastMessage(streamsMap, dmsMap, new Set());
       expect(sorted.length).toBe(3);
       const first = sorted[0]!;
       expect(first.type).toBe("stream");
@@ -1598,7 +1598,7 @@ describe("chatListStore", () => {
 
     // Empty store is a valid initial state — must not throw.
     it("returns empty array for empty maps", () => {
-      expect(sortChatsByLastMessage(new Map(), new Map(), "recent", new Set())).toEqual([]);
+      expect(sortChatsByLastMessage(new Map(), new Map(), new Set())).toEqual([]);
     });
   });
 

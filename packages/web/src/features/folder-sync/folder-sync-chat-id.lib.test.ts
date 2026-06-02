@@ -37,16 +37,17 @@ describe("areEquivalentChatIds", () => {
     expect(areEquivalentChatIds("dm:7,21", "dm:21,7")).toBe(true);
   });
 
-  it("still matches bare numeric folder ids to dm sidebar ids", () => {
-    expect(areEquivalentChatIds("42", "dm:42")).toBe(true);
+  it("does not treat bare numeric ids as dm identifiers", () => {
+    expect(areEquivalentChatIds("42", "dm:42")).toBe(false);
   });
 });
 
 describe("folderItemLookupKeysForChatId", () => {
-  it("indexes ambiguous numeric ids under stream and dm canonical keys", () => {
+  it("indexes bare numeric ids under stream canonical key", () => {
     expect(folderItemLookupKeysForChatId("42")).toEqual(
-      expect.arrayContaining(["stream:42:general", "dm:42"]),
+      expect.arrayContaining(["stream:42:general"]),
     );
+    expect(folderItemLookupKeysForChatId("42")).not.toEqual(expect.arrayContaining(["dm:42"]));
   });
 });
 

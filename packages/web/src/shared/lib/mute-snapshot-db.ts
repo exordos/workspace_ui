@@ -62,17 +62,12 @@ export async function loadMuteSnapshotRow(instanceId: string): Promise<MuteSnaps
       const req = tx.objectStore(STORE_MUTE_SNAPSHOT).get(instanceId);
       req.onerror = () => reject(idbError(req.error));
       req.onsuccess = () => {
-        const row = req.result as
-          | (MuteSnapshotRow & { followedTopics?: MuteSnapshotTopicRow[] })
-          | undefined;
+        const row = req.result as MuteSnapshotRow | undefined;
         if (row == null) {
           resolve(null);
           return;
         }
-        resolve({
-          ...row,
-          followedTopics: row.followedTopics ?? [],
-        });
+        resolve(row);
       };
     });
   } catch {

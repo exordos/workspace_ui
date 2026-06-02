@@ -40,10 +40,6 @@ describe("resolveFolderItemsRequestUuid", () => {
     expect(resolveFolderItemsRequestUuid(SYSTEM_ALL_FOLDER_ID, apiAllUuid)).toBe(apiAllUuid);
   });
 
-  it("maps legacy all id to API all-folder uuid", () => {
-    expect(resolveFolderItemsRequestUuid("all", apiAllUuid)).toBe(apiAllUuid);
-  });
-
   it("returns null for system:all when API uuid is not known yet", () => {
     expect(resolveFolderItemsRequestUuid(SYSTEM_ALL_FOLDER_ID, null)).toBeNull();
   });
@@ -105,18 +101,16 @@ describe("mergeFolderItemsSnapshot", () => {
 
     expect(next.get(apiAllUuid)).toEqual(items);
     expect(next.get(SYSTEM_ALL_FOLDER_ID)).toEqual(items);
-    expect(next.get("all")).toEqual(items);
   });
 });
 
 describe("aliasAllFolderItemsCacheKeys", () => {
-  it("mirrors items to system:all and legacy all keys", () => {
+  it("mirrors items to system:all key", () => {
     const apiAllUuid = "api-all-uuid";
     const items = [{ ...BASE_ITEM, uuid: "item-1", chatId: "dm:1", folderUuid: apiAllUuid }];
     const map = new Map([[apiAllUuid, items]]);
     aliasAllFolderItemsCacheKeys(map, apiAllUuid);
     expect(map.get(SYSTEM_ALL_FOLDER_ID)).toEqual(items);
-    expect(map.get("all")).toEqual(items);
   });
 });
 
@@ -193,7 +187,7 @@ describe("sidebarFolderItemsMembershipPending", () => {
 });
 
 const folders = [
-  { id: "all", systemType: "all" as const },
+  { id: SYSTEM_ALL_FOLDER_ID, systemType: "all" as const },
   { id: "system:personal", systemType: "personal" as const },
   { id: "system:channels", systemType: "channels" as const },
   { id: "folder-1", systemType: "created" as const },
@@ -201,13 +195,13 @@ const folders = [
 ] as const;
 const unsortedFoldersWithSystemAll = [
   { id: "folder-1", systemType: "created" as const },
-  { id: "all", systemType: "all" as const },
+  { id: SYSTEM_ALL_FOLDER_ID, systemType: "all" as const },
 ] as const;
 const onlyAllFolder = [{ id: "system:all", systemType: "all" as const }] as const;
 
 describe("resolveSelectedFolderId", () => {
   it("falls back to the first folder when selected id is unknown", () => {
-    expect(resolveSelectedFolderId(folders, "1")).toBe("all");
+    expect(resolveSelectedFolderId(folders, "1")).toBe(SYSTEM_ALL_FOLDER_ID);
   });
 
   it("keeps existing selection when folder id exists", () => {
@@ -225,7 +219,7 @@ describe("shouldLoadFolderItemsForSelection", () => {
   });
 
   it("does not load folder items for all-folder selection", () => {
-    expect(shouldLoadFolderItemsForSelection(folders, "all")).toBe(false);
+    expect(shouldLoadFolderItemsForSelection(folders, SYSTEM_ALL_FOLDER_ID)).toBe(false);
   });
 
   it("does not load folder items for personal system-folder selection", () => {

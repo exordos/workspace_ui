@@ -51,15 +51,8 @@ function loadConfig(
   if (typeof window === "undefined") return DEFAULT_CONFIG;
   try {
     const scopedKey = getStorageKeyForOrganization(organizationId);
-    const legacyFallbackKey =
-      scopedKey === SIDEBAR_CONFIG_STORAGE_KEY ? null : SIDEBAR_CONFIG_STORAGE_KEY;
-    const raw =
-      window.localStorage.getItem(scopedKey) ??
-      (legacyFallbackKey ? window.localStorage.getItem(legacyFallbackKey) : null);
+    const raw = window.localStorage.getItem(scopedKey);
     if (!raw) return DEFAULT_CONFIG;
-    if (legacyFallbackKey != null && window.localStorage.getItem(scopedKey) == null) {
-      window.localStorage.setItem(scopedKey, raw);
-    }
     // Legacy single-slug формат намеренно игнорируем:
     // читаем только expandedStreamSlugs и activityOpen.
     const parsed = JSON.parse(raw) as Partial<SidebarConfig>;

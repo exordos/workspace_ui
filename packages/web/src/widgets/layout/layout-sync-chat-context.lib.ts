@@ -80,15 +80,8 @@ export function parseChatContextFromPathname(options: {
     const topic = topicExplicit ? decodeTopicFromRoute(topicRaw) : "";
     const parsed = parseStreamSlug(streamSlug);
     if (!parsed) return { context: null, streamTopicExplicitInUrl: false };
-    const streamName =
-      parsed.stream_id != null
-        ? (streamsMap.get(parsed.stream_id)?.name ?? parsed.stream_name)
-        : parsed.stream_name;
-    const streamId =
-      parsed.stream_id ??
-      (streamName
-        ? (Array.from(streamsMap.entries()).find(([, s]) => s.name === streamName)?.[0] ?? null)
-        : null);
+    const streamId = parsed.stream_id;
+    const streamName = streamsMap.get(streamId)?.name ?? parsed.stream_name;
     if (streamId == null) return { context: null, streamTopicExplicitInUrl: topicExplicit };
     return {
       context: {

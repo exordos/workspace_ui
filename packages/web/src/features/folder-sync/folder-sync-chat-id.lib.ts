@@ -209,9 +209,7 @@ export function canonicalizeChatId(chatId: string): string {
   return trimmed;
 }
 
-/**
- * Canonical map keys for one folder item (numeric API ids may map to both stream and dm keys).
- */
+/** Canonical map keys for one folder item chat_id. */
 export function folderItemLookupKeysForChatId(chatId: string): readonly string[] {
   const aliases = new Set<string>();
   addChatIdAliases(aliases, chatId);
@@ -263,7 +261,6 @@ export function addChatIdAliases(target: Set<string>, chatId: string): void {
   if (numericChatId != null) {
     target.add(String(numericChatId));
     target.add(`stream:${numericChatId}:general`);
-    target.add(`dm:${numericChatId}`);
     return;
   }
 
@@ -280,12 +277,6 @@ export function addChatIdAliases(target: Set<string>, chatId: string): void {
     return;
   }
   target.add(`dm:${dmUserIds.join(",")}`);
-  if (dmUserIds.length === 1) {
-    const singleDmUserId = dmUserIds[0];
-    if (singleDmUserId != null) {
-      target.add(String(singleDmUserId));
-    }
-  }
 }
 
 // Зачем: один и тот же чат может иметь несколько представлений chat_id (legacy/numeric/stream/dm).

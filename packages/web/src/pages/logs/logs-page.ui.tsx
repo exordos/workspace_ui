@@ -49,7 +49,6 @@ export const LogsPage: React.FC = () => {
   const themePalette = useThemeStore((s) => s.paletteId);
   const settingsLanguage = useSettingsStore((s) => s.language);
   const notificationSound = useSettingsStore((s) => s.notificationSound);
-  const chatSorting = useSettingsStore((s) => s.chatSorting);
   const prioritizePersonalUnread = useSettingsStore((s) => s.prioritizePersonalUnread);
   const prioritizeUnmutedUnreadChannels = useSettingsStore(
     (s) => s.prioritizeUnmutedUnreadChannels,
@@ -171,7 +170,6 @@ export const LogsPage: React.FC = () => {
         locale: settingsLanguage,
         themeMode,
         themePalette,
-        chatSorting,
         prioritizePersonalUnread,
         prioritizeUnmutedUnreadChannels,
         notificationSound,
@@ -199,7 +197,6 @@ export const LogsPage: React.FC = () => {
       },
     };
   }, [
-    chatSorting,
     currentChatMessagesCount,
     currentInstance?.email,
     currentInstance?.realm,

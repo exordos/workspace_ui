@@ -63,10 +63,8 @@ export function useLayoutUnreadAndTitle(options: {
   const activeStreamNameForTitle = useMemo(() => {
     if (!activeStreamSlug) return null;
     const parsedActiveStream = parseStreamSlug(activeStreamSlug);
-    if (parsedActiveStream.stream_id != null) {
-      return streamsMap.get(parsedActiveStream.stream_id)?.name ?? parsedActiveStream.stream_name;
-    }
-    return parsedActiveStream.stream_name;
+    if (!parsedActiveStream) return null;
+    return streamsMap.get(parsedActiveStream.stream_id)?.name ?? parsedActiveStream.stream_name;
   }, [activeStreamSlug, streamsMap]);
 
   const activeDmChatForTitle = useMemo((): DmSidebarChat | undefined => {

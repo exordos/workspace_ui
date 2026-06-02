@@ -29,7 +29,6 @@ import { useInactiveInstancesBackgroundWork } from "./layout-inactive-instances-
 import { useLayoutInstanceBootstrap } from "./layout-instance-bootstrap.hook";
 import { computeInstanceDmUnreadCount } from "./layout-instance-unread.lib";
 import { useLayoutLastMessengerRoutePersistence } from "./layout-last-messenger-route.hook";
-import { useLayoutLegacyStreamSlugRedirect } from "./layout-legacy-stream-redirect.hook";
 import { LayoutLoadingGate } from "./layout-loading-gate.ui";
 import { useLayoutMuteSnapshotSync } from "./layout-mute-snapshot-sync.hook";
 import { LayoutNotificationPermissionBanner } from "./layout-notification-permission-banner.ui";
@@ -83,7 +82,6 @@ export const Layout: React.FC = () => {
     [streamsMap, dmsMap],
   );
   const usersMapForChatInfo = useUsersStore((s) => s.users);
-  const chatSorting = useSettingsStore((s) => s.chatSorting);
   const prioritizePersonalUnread = useSettingsStore((s) => s.prioritizePersonalUnread);
   const prioritizeUnmutedUnreadChannels = useSettingsStore(
     (s) => s.prioritizeUnmutedUnreadChannels,
@@ -95,7 +93,7 @@ export const Layout: React.FC = () => {
   const isEffectivelyMuted = useMuteStore((s) => s.isEffectivelyMuted);
   const chatsSortedByLastMessage = useMemo(
     () =>
-      sortChatsByLastMessage(streamsMap, dmsMap, chatSorting, mutedStreamIds, {
+      sortChatsByLastMessage(streamsMap, dmsMap, mutedStreamIds, {
         prioritizePersonalUnread,
         prioritizeUnmutedUnreadChannels,
         hideUnknownArchivedStreams: !streamMetadataHydrated,
@@ -103,7 +101,6 @@ export const Layout: React.FC = () => {
     [
       streamsMap,
       dmsMap,
-      chatSorting,
       mutedStreamIds,
       prioritizePersonalUnread,
       prioritizeUnmutedUnreadChannels,
@@ -259,12 +256,6 @@ export const Layout: React.FC = () => {
     !chatListHasCachedRows;
   const showConnectionBlocked =
     currentInstanceId != null && currentUserStatus === "blocked" && !chatListHasCachedRows;
-
-  useLayoutLegacyStreamSlugRedirect({
-    activeStreamSlug,
-    streamsFromStore,
-    navigate,
-  });
 
   useLayoutAuthGuard({ currentInstanceId, currentUserStatus, navigate });
   useLayoutAuthErrorHandler({ currentInstanceId, currentUserStatus, navigate });

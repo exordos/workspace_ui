@@ -66,8 +66,8 @@ describe("performApplicationColdStart", () => {
     localStorage.setItem("zulip-web-current-instance", "1");
     localStorage.setItem("workspace-palette", "blue-cold");
     localStorage.setItem("workspace-theme-mode", "light");
-    localStorage.setItem("workspace-settings", '{"chatSorting":"recent"}');
-    localStorage.setItem("workspace-settings:org-1", '{"chatSorting":"alphabetical"}');
+    localStorage.setItem("workspace-settings", '{"prioritizePersonalUnread":true}');
+    localStorage.setItem("workspace-settings:org-1", '{"prioritizeUnmutedUnreadChannels":true}');
     localStorage.setItem("workspace-locale", "ru");
     localStorage.setItem("workspace-locale:org-1", "en");
     localStorage.setItem("zulip-web-sidebar-config", '{"activityOpen":true}');
