@@ -18,6 +18,7 @@
 
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { KEYBOARD_SHORTCUTS_ENABLED } from "~/shared/config/constants";
 import { createLogger } from "./logger";
 
 const log = createLogger("navigation");
@@ -161,6 +162,7 @@ export function useNavigationHistory() {
 let mouseListenerActive = false;
 
 export function initMouseNavigation(goBackFn: () => void, goForwardFn: () => void): () => void {
+  if (!KEYBOARD_SHORTCUTS_ENABLED) return () => {};
   if (mouseListenerActive) return () => {};
   mouseListenerActive = true;
 

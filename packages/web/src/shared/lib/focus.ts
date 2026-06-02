@@ -22,6 +22,7 @@
  */
 
 import { useCallback, useEffect, useRef } from "react";
+import { KEYBOARD_SHORTCUTS_ENABLED } from "~/shared/config/constants";
 
 // ---------------------------------------------------------------------------
 // Focus zone navigation (F6 cycle between landmarks)
@@ -264,6 +265,7 @@ export function focusMainContent(): void {
 let initialized = false;
 
 export function initFocusManagement(): () => void {
+  if (!KEYBOARD_SHORTCUTS_ENABLED) return () => {};
   if (initialized) return () => {};
   initialized = true;
 

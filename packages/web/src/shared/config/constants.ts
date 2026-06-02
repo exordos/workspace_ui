@@ -88,3 +88,10 @@ export const TOAST_DEDUP_WINDOW_MS = 2000;
 
 /** Maximum visible in-app toasts at once. */
 export const TOAST_MAX_VISIBLE = 3;
+
+// ---
+// Keyboard shortcuts
+// ---
+
+/** Master switch for app keyboard shortcuts (navigation, composer, F6 zones, mouse back/forward). */
+export const KEYBOARD_SHORTCUTS_ENABLED = false;

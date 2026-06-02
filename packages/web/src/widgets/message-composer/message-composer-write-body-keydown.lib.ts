@@ -1,3 +1,4 @@
+import { KEYBOARD_SHORTCUTS_ENABLED } from "~/shared/config/constants";
 import { isNewlineCommand, isSendCommand } from "./message-composer-input-commands.lib";
 import { applyListContinuationOnNewline } from "./message-composer-list-continuation.lib";
 import type { MessageComposerWriteBodyProps } from "./message-composer-write-body.types";
@@ -173,6 +174,10 @@ export function handleComposerWriteBodyKeyDown(
 ): void {
   const { event } = options;
 
+  if (handleMentionNavigation(event, options)) return;
+
+  if (!KEYBOARD_SHORTCUTS_ENABLED) return;
+
   if (handleFormattingShortcuts(event, options.applyFormattingShortcut)) return;
 
   if (
@@ -192,6 +197,5 @@ export function handleComposerWriteBodyKeyDown(
     return;
   }
 
-  if (handleMentionNavigation(event, options)) return;
   handleSendOrNewline(event, options);
 }
