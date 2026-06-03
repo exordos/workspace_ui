@@ -187,14 +187,16 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
     expect(html).toContain("😄");
   });
 
-  it("inlines user_upload image links into preview images", () => {
+  it("inlines user_upload image links as protected preview images", () => {
     const html = messageBodyToUnsanitizedDisplayHtml(
       "[image.png](/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png)",
     );
     expect(html).toContain('<a href="/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png"><img');
     expect(html).toContain(
-      'src="/user_uploads/thumbnail/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png/840x560.webp"',
+      'data-auth-src="/user_uploads/thumbnail/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png/840x560.webp"',
     );
+    expect(html).toContain('src="data:image/svg+xml');
+    expect(html).not.toMatch(/<img[^>]*\ssrc="\/user_uploads\//);
   });
 
   it("keeps non-image user_upload links as regular links", () => {
@@ -225,7 +227,7 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
     const raw = messageBodyToUnsanitizedDisplayHtml(
       "[Screencast.webm](/user_uploads/2/52/zVGJf8gDr9qR_a5GJff5PZS7/Screencast.webm)",
     );
-    const safe = prepareProtectedMessageHtml(raw, "https://sys.platform.tokens.team/workspace/v1");
+    const safe = prepareProtectedMessageHtml(raw, "https://sys.example.com/workspace/v1");
     expect(safe).toContain("<video");
     expect(safe).toContain("data-auth-src");
     expect(safe).not.toContain('src="/user_uploads/');
