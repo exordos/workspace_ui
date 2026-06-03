@@ -1,41 +1,9 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { useChatListStore } from "~/entities/chat-list/chat-list.model";
-import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
-import { useUsersStore } from "~/entities/user/user.model";
-import type * as ZulipReadStateModule from "~/shared/api/zulip-read-state";
+import { fireEvent, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "~/test/render";
 import { ChatHeader } from "./chat-header.ui";
 
-const setTopicResolvedStateMock = vi.fn();
-const renameStreamTopicMock = vi.fn();
-
-vi.mock("~/shared/api/zulip-read-state", async (importOriginal) => {
-  const actual = await importOriginal<typeof ZulipReadStateModule>();
-  return {
-    ...actual,
-    setTopicResolvedState: (...args: unknown[]) => setTopicResolvedStateMock(...args),
-    renameStreamTopic: (...args: unknown[]) => renameStreamTopicMock(...args),
-  };
-});
-
 describe("ChatHeader", () => {
-  afterEach(() => {
-    useCurrentChatMessagesStore.setState({
-      context: null,
-      messages: [],
-      isLoadingMore: false,
-      isLoadingNewer: false,
-      hasOlderMessages: true,
-      hasNewerMessages: false,
-    });
-    useChatListStore.getState().clear();
-    useUsersStore.getState().clear();
-    setTopicResolvedStateMock.mockReset();
-    renameStreamTopicMock.mockReset();
-  });
-
   it("shows typing status for DM partner when typing flag is set", () => {
     const dmPartner = {
       name: "Alice",
@@ -252,89 +220,5 @@ describe("ChatHeader", () => {
 
     expect(controlsCluster).not.toBeNull();
     expect(controlsCluster).toContainElement(actionButton);
-  });
-
-  it("marks topic as done from header topic menu", async () => {
-    const user = userEvent.setup();
-    setTopicResolvedStateMock.mockResolvedValue(true);
-    useCurrentChatMessagesStore.setState({
-      context: { type: "stream", streamId: 10, streamName: "engineering", topic: "incident" },
-      messages: [],
-      isLoadingMore: false,
-      isLoadingNewer: false,
-      hasOlderMessages: true,
-      hasNewerMessages: false,
-    });
-    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 10, name: "engineering" }]);
-    useChatListStore.getState().setCurrentUserId(42);
-    useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Admin", role: 200 });
-
-    renderWithProviders(
-      <ChatHeader channelName="#engineering" topic="incident" hideTopic={false} hideParticipants />,
-    );
-
-    await user.click(screen.getByRole("button", { name: /chat menu/i }));
-    await user.click(await screen.findByRole("menuitem", { name: /mark topic as done/i }));
-
-    await waitFor(() => {
-      expect(setTopicResolvedStateMock).toHaveBeenCalledWith(10, "incident", true);
-    });
-  });
-
-  it("renames topic from header topic menu", async () => {
-    const user = userEvent.setup();
-    renameStreamTopicMock.mockResolvedValue(true);
-    useCurrentChatMessagesStore.setState({
-      context: { type: "stream", streamId: 10, streamName: "engineering", topic: "incident" },
-      messages: [],
-      isLoadingMore: false,
-      isLoadingNewer: false,
-      hasOlderMessages: true,
-      hasNewerMessages: false,
-    });
-    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 10, name: "engineering" }]);
-    useChatListStore.getState().setCurrentUserId(42);
-
-    renderWithProviders(
-      <ChatHeader channelName="#engineering" topic="incident" hideTopic={false} hideParticipants />,
-    );
-
-    await user.click(screen.getByRole("button", { name: /chat menu/i }));
-    await user.click(await screen.findByRole("menuitem", { name: /rename topic/i }));
-
-    const input = await screen.findByRole("textbox", { name: /topic name/i });
-    await user.clear(input);
-    await user.type(input, "postmortem");
-    await user.click(screen.getByRole("button", { name: /save/i }));
-
-    await waitFor(() => {
-      expect(renameStreamTopicMock).toHaveBeenCalledWith(10, "incident", "postmortem");
-    });
-  });
-
-  it("hides topic resolve menu on stream-wide view", () => {
-    useCurrentChatMessagesStore.setState({
-      context: {
-        type: "stream",
-        streamId: 10,
-        streamName: "engineering",
-        topic: "general",
-        streamWideView: true,
-      },
-      messages: [],
-      isLoadingMore: false,
-      isLoadingNewer: false,
-      hasOlderMessages: true,
-      hasNewerMessages: false,
-    });
-    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 10, name: "engineering" }]);
-    useChatListStore.getState().setCurrentUserId(42);
-    useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Admin", role: 200 });
-
-    renderWithProviders(
-      <ChatHeader channelName="#engineering" topic="general" hideTopic={false} hideParticipants />,
-    );
-
-    expect(screen.queryByRole("button", { name: /chat menu/i })).not.toBeInTheDocument();
   });
 });

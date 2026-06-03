@@ -27,6 +27,8 @@ const createChannelMock = vi.fn();
 const unarchiveChannelMock = vi.fn();
 const markDmAsReadMock = vi.fn();
 const markTopicAsReadMock = vi.fn();
+const setTopicResolvedStateMock = vi.fn();
+const renameStreamTopicMock = vi.fn();
 const muteStreamMock = vi.fn();
 const unmuteStreamMock = vi.fn();
 const muteTopicMock = vi.fn();
@@ -53,6 +55,8 @@ vi.mock("~/shared/api/zulip-read-state", async (importOriginal) => {
     ...actual,
     markDmAsRead: (...args: unknown[]) => markDmAsReadMock(...args),
     markTopicAsRead: (...args: unknown[]) => markTopicAsReadMock(...args),
+    setTopicResolvedState: (...args: unknown[]) => setTopicResolvedStateMock(...args),
+    renameStreamTopic: (...args: unknown[]) => renameStreamTopicMock(...args),
   };
 });
 
@@ -170,6 +174,10 @@ describe("Sidebar", () => {
     unarchiveChannelMock.mockReset();
     markDmAsReadMock.mockReset();
     markTopicAsReadMock.mockReset();
+    setTopicResolvedStateMock.mockReset();
+    renameStreamTopicMock.mockReset();
+    setTopicResolvedStateMock.mockResolvedValue(true);
+    renameStreamTopicMock.mockResolvedValue(true);
     muteStreamMock.mockReset();
     unmuteStreamMock.mockReset();
     muteTopicMock.mockReset();
@@ -812,6 +820,64 @@ describe("Sidebar", () => {
     expect(
       useChatListStore.getState().streamsMap.get(11)?.topics.get("incident")?.unreadCount,
     ).toBe(0);
+  });
+
+  it("marks topic as done from topic context menu", async () => {
+    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 11, name: "Engineering" }]);
+    useChatListStore.getState().setCurrentUserId(42);
+    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
+    const streamWithTopics = {
+      ...STREAM_CHAT,
+      topics: [{ subject: "incident", badge: 0, lastMessage: "Need fix" }],
+    };
+
+    renderWithProviders(
+      <Sidebar
+        streams={[{ stream_id: 11, name: "Engineering" }]}
+        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+        activeStreamSlug="11-engineering"
+        sidebarChats={[streamWithTopics]}
+        sidebarDms={[]}
+      />,
+    );
+
+    fireEvent.contextMenu(screen.getByText("incident"));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /mark topic as done/i }));
+
+    await waitFor(() => {
+      expect(setTopicResolvedStateMock).toHaveBeenCalledWith(11, "incident", true);
+    });
+  });
+
+  it("renames topic from topic context menu", async () => {
+    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 11, name: "Engineering" }]);
+    useChatListStore.getState().setCurrentUserId(42);
+    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
+    const streamWithTopics = {
+      ...STREAM_CHAT,
+      topics: [{ subject: "incident", badge: 0, lastMessage: "Need fix" }],
+    };
+
+    renderWithProviders(
+      <Sidebar
+        streams={[{ stream_id: 11, name: "Engineering" }]}
+        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+        activeStreamSlug="11-engineering"
+        sidebarChats={[streamWithTopics]}
+        sidebarDms={[]}
+      />,
+    );
+
+    fireEvent.contextMenu(screen.getByText("incident"));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /rename topic/i }));
+
+    const input = await screen.findByRole("textbox", { name: /topic name/i });
+    fireEvent.change(input, { target: { value: "postmortem" } });
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => {
+      expect(renameStreamTopicMock).toHaveBeenCalledWith(11, "incident", "postmortem");
+    });
   });
 
   it("does not show pin action in personal system folder context menu", async () => {
