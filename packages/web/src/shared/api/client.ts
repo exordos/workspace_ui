@@ -27,6 +27,7 @@ import {
   noteApiTransportSuccess,
   reportFailure,
 } from "~/shared/lib/connection-health";
+import { isElectron } from "~/shared/lib/electron";
 import { env } from "~/shared/lib/env";
 import { logApiCall } from "~/shared/lib/logger";
 import { extractLoggableRequestParams } from "~/shared/lib/logger-request-params.lib";
@@ -37,6 +38,7 @@ import {
 } from "~/shared/lib/zulip-rate-limit-gate";
 import {
   getCachedSessionCsrfToken,
+  getOrFetchWebSessionCsrfToken,
   readSessionCsrfTokenFromDocument,
 } from "./zulip-session-csrf.internal";
 
@@ -260,11 +262,20 @@ const zulipSessionCsrfMiddleware: Middleware = async (req, next) => {
     return next(req);
   }
   const csrfToken =
-    readSessionCsrfTokenFromDocument() ??
     (instance != null ? getCachedSessionCsrfToken(instance.realm) : null) ??
+    (instance != null && !isElectron()
+      ? await getOrFetchWebSessionCsrfToken(instance.realm)
+      : null) ??
+    readSessionCsrfTokenFromDocument() ??
     (instance != null ? await readElectronCsrfToken(instance.realm) : null);
   if (csrfToken && csrfToken.length > 0) {
-    req.headers["X-CSRFToken"] = csrfToken;
+    return next({
+      ...req,
+      headers: {
+        ...req.headers,
+        "X-CSRFToken": csrfToken,
+      },
+    });
   }
   return next(req);
 };

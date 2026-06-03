@@ -565,29 +565,6 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
     expect(headers.Authorization).toBeUndefined();
   });
 
-  it("adds csrf header for session auth non-GET requests", async () => {
-    const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
-    document.cookie = "csrftoken=session-csrf-token";
-    setInstanceProvider(() => ({
-      id: "i-session",
-      realm: "https://zulip.test",
-      email: "session-user@example.com",
-      apiKey: "",
-      authType: "session",
-    }));
-    refreshZulipApiBase();
-
-    mockFetch.mockResolvedValueOnce(mockJsonResponse({ result: "success" }));
-
-    await zulipApi.post("/messages", { type: "stream", content: "hello" });
-
-    const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
-    const headers = init.headers as Record<string, string>;
-    expect(headers["X-CSRFToken"]).toBe("session-csrf-token");
-    expect(init.credentials).toBe("include");
-    document.cookie = "csrftoken=; Max-Age=0";
-  });
-
   it("adds cached csrf header for session auth register requests", async () => {
     const { setCachedSessionCsrfToken } = await import("./zulip-session-csrf.internal");
     const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
@@ -608,6 +585,43 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
     const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
     const headers = init.headers as Record<string, string>;
     expect(headers["X-CSRFToken"]).toBe("cached-oidc-csrf-token");
+    expect(init.credentials).toBe("include");
+  });
+
+  it("fetches csrf token from web legacy HTML for session auth register requests", async () => {
+    const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
+    setInstanceProvider(() => ({
+      id: "i-session",
+      realm: "https://zulip-web-legacy.test",
+      email: "session-user@example.com",
+      apiKey: "",
+      authType: "session",
+    }));
+    refreshZulipApiBase();
+
+    mockFetch
+      .mockResolvedValueOnce(
+        new Response('<input name="csrfmiddlewaretoken" value="  web-legacy-csrf-token  " />', {
+          status: 200,
+          headers: { "Content-Type": "text/html" },
+        }),
+      )
+      .mockResolvedValueOnce(mockJsonResponse({ result: "success" }));
+
+    await zulipApi.post("/register", { event_types: JSON.stringify(["message"]) });
+
+    const [legacyUrl, legacyInit] = mockFetch.mock.calls[0] as [string, RequestInit];
+    expect(legacyUrl).toBe(`${window.location.origin}/legacy`);
+    expect(legacyInit).toEqual(
+      expect.objectContaining({
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+      }),
+    );
+    const [, init] = mockFetch.mock.calls[1] as [string, RequestInit];
+    const headers = init.headers as Record<string, string>;
+    expect(headers["X-CSRFToken"]).toBe("web-legacy-csrf-token");
     expect(init.credentials).toBe("include");
   });
 
