@@ -23,7 +23,10 @@ import {
   restoreZulipMentionPlaceholders,
 } from "~/shared/lib/message-zulip-mentions.lib";
 import { prepareProtectedUserUploadImageElement } from "~/shared/lib/protected-message-media";
-import { isUserUploadImagePath } from "~/shared/lib/protected-message-media-thumbnail";
+import {
+  isUserUploadImagePath,
+  toUserUploadThumbnailUrl,
+} from "~/shared/lib/protected-message-media-thumbnail";
 import { isUserUploadVideoPath } from "~/shared/lib/user-upload-media-path.lib";
 
 const LANGUAGE_CLASS_PATTERN = /\b(?:language|lang)-([a-z0-9#+-]+)\b/i;
@@ -216,7 +219,10 @@ function inlineUserUploadImageLinks(html: string): string {
     const title = (link.textContent ?? "").trim();
     const fallbackLabel = title.length > 0 ? title : "image";
     const image = document.createElement("img");
-    image.setAttribute("src", toUserUploadThumbnailUrl(href));
+    // Сразу кладем protected URL в data-auth-src, чтобы браузер не успел
+    // запросить `/user_uploads/...` до auth-loader.
+    prepareProtectedUserUploadImageElement(image, href);
+
     image.setAttribute("alt", fallbackLabel);
     image.setAttribute("title", fallbackLabel);
     link.replaceChildren(image);
