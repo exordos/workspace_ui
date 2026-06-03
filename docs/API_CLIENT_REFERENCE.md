@@ -30,7 +30,7 @@ New code should use the functions from `shared/api/` directly, or entity-level A
 
 ## shared/api/client.ts — Zulip API Helpers
 
-**Import**: `import { zulipFetch, zulipPost, zulipPatch, zulipDelete } from '~/shared/api'`
+**Import**: `import { zulipFetch, zulipPost, zulipPatch, zulipDelete } from '~/shared/api/client'`
 
 These low-level helpers construct the full URL, attach Basic Auth headers, and handle form encoding for POST/PATCH/DELETE.
 
@@ -61,15 +61,15 @@ Also includes middleware pipeline: `zulipApi.get/post/patch/delete` with auth, l
 
 ## Entity API Functions
 
-### entities/user/user.api.ts
+### entities/user/api/
 
-**Import**: `import { reportPresence } from '~/entities/user'`
+**Import**: `import { reportPresence } from '~/entities/user/api/user.api'`
 
 | Function                               | Endpoint                  | Params                                       | Returns |
 | -------------------------------------- | ------------------------- | -------------------------------------------- | ------- |
 | `reportPresence(status, newUserInput)` | `POST /users/me/presence` | `status` ("active"/"idle"), `new_user_input` | `void`  |
 
-> Core user API functions live in `packages/web/src/shared/api/zulip-*.ts` modules and are consumed by entity APIs.
+> Core Zulip HTTP helpers live in `packages/web/src/shared/api/zulip-*.ts` and are consumed by entity/feature APIs.
 
 ### entities/folder/folder.api.ts
 
@@ -281,84 +281,22 @@ interface AiSuggestion {
 
 ---
 
-## Legacy API (lib/zulipClient.ts)
+## Zulip API modules (`shared/api/zulip-*.ts`)
 
-These functions are still in `lib/zulipClient.ts` and will be migrated to entity API files in a future pass.
+Legacy monolithic `lib/zulipClient.ts` was removed. Zulip REST calls are split across modules such as:
 
-### Auth
+| Module                     | Examples                                   |
+| -------------------------- | ------------------------------------------ |
+| `zulip-messages.ts`        | fetch/send/update/delete messages, flags   |
+| `zulip-queue.ts`           | `registerQueue`, `getEvents`               |
+| `zulip-streams.ts`         | streams, topics, subscriptions             |
+| `zulip-client.internal.ts` | shared fetch helpers used by modules above |
 
-| Function                                 | Endpoint                            | Returns                       |
-| ---------------------------------------- | ----------------------------------- | ----------------------------- |
-| `fetchApiKey(realm, username, password)` | `POST {realm}/api/v1/fetch_api_key` | `{ api_key, email, user_id }` |
-
-### Event Queue
-
-| Function                                    | Endpoint         | Returns                       |
-| ------------------------------------------- | ---------------- | ----------------------------- |
-| `registerQueue(eventTypes)`                 | `POST /register` | `{ queue_id, last_event_id }` |
-| `getEvents(queueId, lastEventId, options?)` | `GET /events`    | `{ events }`                  |
-
-### Messages
-
-| Function                                        | Endpoint                | Returns             |
-| ----------------------------------------------- | ----------------------- | ------------------- |
-| `fetchRecentMessages()`                         | `GET /messages`         | `ZulipRawMessage[]` |
-| `fetchMessages(stream?, topic?, q?)`            | `GET /messages`         | `MockMessage[]`     |
-| `fetchDmMessages(userIds)`                      | `GET /messages`         | `MockMessage[]`     |
-| `fetchActivityMessages(filter, currentUserId?)` | `GET /messages`         | `ZulipRawMessage[]` |
-| `sendMessage(params)`                           | `POST /messages`        | `MockMessage`       |
-| `updateMessage(messageId, { content })`         | `PATCH /messages/{id}`  | `void`              |
-| `deleteMessage(messageId)`                      | `DELETE /messages/{id}` | `void`              |
-
-### Reactions
-
-| Function                                           | Endpoint                          | Returns |
-| -------------------------------------------------- | --------------------------------- | ------- |
-| `addReaction(messageId, emojiName, reactionType?)` | `POST /messages/{id}/reactions`   | `void`  |
-| `removeReaction(messageId, emojiName, options?)`   | `DELETE /messages/{id}/reactions` | `void`  |
-
-### Message Flags
-
-| Function                                   | Endpoint                                    | Returns   |
-| ------------------------------------------ | ------------------------------------------- | --------- |
-| `updateMessageFlags(messageIds, op, flag)` | `POST /messages/flags`                      | `void`    |
-| `addMessageFlag(messageIds, flag)`         | → `updateMessageFlags(..., "add", flag)`    |           |
-| `removeMessageFlag(messageIds, flag)`      | → `updateMessageFlags(..., "remove", flag)` |           |
-| `markMessagesAsRead(messageIds)`           | `POST /messages/flags`                      | `void`    |
-| `markUnreadInNarrow(narrow)`               | `POST /messages/flags/narrow`               | `boolean` |
-| `markDmAsRead(userIds)`                    | → narrow: `is:unread` + `dm` (sidebar only) | `boolean` |
-| `markStreamAsRead(streamId)`               | → narrow: `is:unread` + `channel` (sidebar) | `boolean` |
-| `markTopicAsRead(streamId, topic)`         | → narrow: `is:unread` + `channel` + `topic` | `boolean` |
-
-**Read strategy:** Open chat uses per-id `markMessagesAsRead` (viewport, send/FAB tail, Mod+Shift+M). Sidebar context menu uses `flags/narrow` bulk mark-read only.
-
-### Users
-
-| Function                | Endpoint              | Returns                           |
-| ----------------------- | --------------------- | --------------------------------- |
-| `getCurrentUser()`      | `GET /users/me`       | `{ user_id, full_name, email }`   |
-| `fetchUsers()`          | `GET /users`          | `ZulipUserMember[]`               |
-| `fetchUser(userId)`     | `GET /users/{userId}` | `ZulipUserMember`                 |
-| `fetchRealmPresence()`  | `GET /realm/presence` | `{ presences, server_timestamp }` |
-| `fetchUsersAvatarMap()` | → `fetchUsers()`      | `Map<number, string>`             |
-
-### Streams
-
-| Function              | Endpoint                           | Returns        |
-| --------------------- | ---------------------------------- | -------------- |
-| `fetchStreams()`      | `GET /streams`                     | `MockStream[]` |
-| `fetchTopics(stream)` | `GET /users/me/{stream_id}/topics` | `string[]`     |
-
-### Utilities
-
-| Function                     | Description                        |
-| ---------------------------- | ---------------------------------- |
-| `rawMessageToMockMessage(m)` | Maps ZulipRawMessage → MockMessage |
-| `getRealmBaseUrl()`          | Base URL of the current realm      |
+Import the specific module you need, or use entity/feature `*.api.ts` wrappers.
 
 ---
 
-## Event Loop (app/app.event-loop.ts)
+## Event Loop (`shared/lib/event-loop.ts`)
 
 ### Configuration
 
@@ -393,14 +331,14 @@ function startZulipEventLoop(options: StartZulipEventLoopOptions): void;
 
 ### Event Handling
 
+Events are dispatched in `widgets/layout/layout-zulip-event-dispatch*.lib.ts` (message, subscription, presence, typing, etc.) — not inline in the event loop module.
+
 ```
-onEvent(event):
-  ├── type="message"         → chatList.addMessage + currentChat.appendMessage
-  ├── type="update_message_flags"
-  │   ├── flag="read", op="add"    → chatList.decrementUnread + currentChat.updateMessageFlags
-  │   └── flag="read", op="remove" → chatList.incrementUnread + currentChat.updateMessageFlags
-  ├── type="reaction"        → currentChat.updateMessageReaction
-  └── type="delete_message"  → chatList.handleDeleteMessages + currentChat.removeMessages
+onEvent(event) → layout-zulip-event-dispatch.lib.ts
+  ├── message / update_message / delete_message → message + chat-list stores
+  ├── update_message_flags → unread counts + message flags
+  ├── subscription / user_settings / … → chat-list, folder-sync, user stores
+  └── heartbeat → skipped
 ```
 
 ---

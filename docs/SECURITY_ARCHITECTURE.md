@@ -97,10 +97,11 @@
 
 ## Audit History
 
-| Date       | Scope                                               | Findings                                                     | Status   |
-| ---------- | --------------------------------------------------- | ------------------------------------------------------------ | -------- |
-| 2026-03-14 | Full codebase (353 files, 11 entities, 16 features) | 0 Critical, 7 High (fixed), 5 Medium (3 fixed, 2 documented) | Complete |
-| 2026-03-14 | Electron + config (15 files)                        | 0 Critical, 2 High (fixed), 3 Medium (1 fixed, 2 documented) | Complete |
+| Date       | Scope                                                        | Findings                                                     | Status                                          |
+| ---------- | ------------------------------------------------------------ | ------------------------------------------------------------ | ----------------------------------------------- |
+| 2026-03-14 | Full codebase (~350 source files, 11 entities, 16 features)  | 0 Critical, 7 High (fixed), 5 Medium (3 fixed, 2 documented) | Complete                                        |
+| 2026-06-04 | Full codebase (~1200 TS/TSX files, 17 entities, 22 features) | Re-audit pending                                             | See [SECURITY.md](../SECURITY.md) for reporting |
+| 2026-03-14 | Electron + config (15 files)                                 | 0 Critical, 2 High (fixed), 3 Medium (1 fixed, 2 documented) | Complete                                        |
 
 ## For AI Agents
 

@@ -1,38 +1,51 @@
 # Zustand Stores Reference
 
-Complete technical documentation for all Zustand stores in the FSD architecture.
+Complete technical documentation for Zustand stores in the FSD architecture.
 
-Stores are the `model` segment of their respective entity or feature slice.
+Stores are the `model` segment of their respective entity, feature, or widget slice. **Import concrete paths** (e.g. `~/entities/user/user.model`), not folder barrels. See [PROJECT_FACTS.md](PROJECT_FACTS.md) for slice counts.
 
 ---
 
 ## Store Map
 
-| Store                         | Layer    | Path                                                  | Persistence  |
-| ----------------------------- | -------- | ----------------------------------------------------- | ------------ |
-| `useInstancesStore`           | entities | `entities/instance/instance.model.ts`                 | localStorage |
-| `useChatListStore`            | entities | `entities/chat-list/chat-list.model.ts`               | —            |
-| `useCurrentChatMessagesStore` | entities | `entities/message/message.model.ts`                   | —            |
-| `useUsersStore`               | entities | `entities/user/user.model.ts`                         | —            |
-| `useThemeStore`               | entities | `entities/theme/theme.model.ts`                       | localStorage |
-| `useCallParticipantsStore`    | entities | `entities/call/call.model.ts`                         | —            |
-| `useStickerStore`             | entities | `entities/sticker/sticker.model.ts`                   | localStorage |
-| `useDraftStore`               | entities | `entities/draft/draft.model.ts`                       | —            |
-| `useInboxStore`               | entities | `entities/inbox/inbox.model.ts`                       | —            |
-| `useFeedStore`                | entities | `entities/feed/feed.model.ts`                         | —            |
-| `useAiReplyStore`             | features | `features/ai-reply/ai-reply.model.ts`                 | —            |
-| `useMuteStore`                | features | `features/mute-chat/mute-chat.model.ts`               | —            |
-| `usePinStore`                 | features | `features/pin-chat/pin-chat.model.ts`                 | —            |
-| `useCreateChatStore`          | features | `features/create-chat/create-chat.model.ts`           | —            |
-| `useChatInfoStore`            | features | `features/chat-info/chat-info.model.ts`               | —            |
-| `useManageFoldersStore`       | features | `features/manage-folders/manage-folders.model.ts`     | —            |
-| `useUserProfileStore`         | features | `features/user-profile/user-profile.model.ts`         | —            |
-| `useSettingsStore`            | features | `features/settings/settings.model.ts`                 | localStorage |
-| `useMediaViewerStore`         | features | `features/media-viewer/media-viewer.model.ts`         | —            |
-| `useMentionSuggestStore`      | features | `features/mention-suggest/mention-suggest.model.ts`   | —            |
-| `useMessageReadersStore`      | features | `features/message-readers/message-readers.model.ts`   | —            |
-| `useTypingIndicatorStore`     | features | `features/typing-indicator/typing-indicator.model.ts` | —            |
-| `useSidebarConfigStore`       | widgets  | `widgets/sidebar/sidebar-config.model.ts`             | localStorage |
+| Store                           | Layer    | Path                                                                | Persistence  |
+| ------------------------------- | -------- | ------------------------------------------------------------------- | ------------ |
+| `useInstancesStore`             | entities | `entities/instance/instance.model.ts`                               | localStorage |
+| `useChatListStore`              | entities | `entities/chat-list/chat-list.model.ts`                             | —            |
+| `useCurrentChatMessagesStore`   | entities | `entities/message/message.model.ts`                                 | —            |
+| `useUsersStore`                 | entities | `entities/user/user.model.ts`                                       | —            |
+| `useThemeStore`                 | entities | `entities/theme/theme.model.ts`                                     | localStorage |
+| `useCallParticipantsStore`      | entities | `entities/call/call.model.ts`                                       | —            |
+| `useStickerStore`               | entities | `entities/sticker/sticker.model.ts`                                 | localStorage |
+| `useDraftStore`                 | entities | `entities/draft/draft.model.ts`                                     | —            |
+| `useInboxStore`                 | entities | `entities/inbox/inbox.model.ts`                                     | —            |
+| `useFeedStore`                  | entities | `entities/feed/feed.model.ts`                                       | —            |
+| `useActivityStore`              | entities | `entities/activity/activity.model.ts`                               | —            |
+| `useDownloadStore`              | entities | `entities/download/download.model.ts`                               | —            |
+| `useLinkPreviewStore`           | entities | `entities/link-preview/link-preview.model.ts`                       | —            |
+| `useUserGroupsStore`            | entities | `entities/user-group/user-group.model.ts`                           | —            |
+| `useNotificationSettingsStore`  | entities | `entities/notification-settings/notification-settings.model.ts`     | localStorage |
+| `useAiReplyStore`               | features | `features/ai-reply/ai-reply.model.ts`                               | —            |
+| `useMuteStore`                  | features | `features/mute-chat/mute-chat.model.ts`                             | —            |
+| `usePinStore`                   | features | `features/pin-chat/pin-chat.model.ts`                               | —            |
+| `useCreateChatStore`            | features | `features/create-chat/create-chat.model.ts`                         | —            |
+| `useChatInfoStore`              | features | `features/chat-info/chat-info.model.ts`                             | —            |
+| `useManageFoldersStore`         | features | `features/manage-folders/manage-folders.model.ts`                   | —            |
+| `useUserProfileStore`           | features | `features/user-profile/user-profile.model.ts`                       | —            |
+| `useSettingsStore`              | features | `features/settings/settings.model.ts`                               | localStorage |
+| `useMediaViewerStore`           | features | `features/media-viewer/media-viewer.model.ts`                       | —            |
+| `useMentionSuggestStore`        | features | `features/mention-suggest/mention-suggest.model.ts`                 | —            |
+| `useMessageReadersStore`        | features | `features/message-readers/message-readers.model.ts`                 | —            |
+| `useTypingIndicatorStore`       | features | `features/typing-indicator/typing-indicator.model.ts`               | —            |
+| `useFolderSyncStore`            | features | `features/folder-sync/folder-sync.model.ts`                         | localStorage |
+| `useJitsiCallStore`             | features | `features/jitsi-call/jitsi-call.model.ts`                           | —            |
+| `useAddStreamMembersStore`      | features | `features/add-stream-members/add-stream-members.model.ts`           | —            |
+| `useRemoveStreamMembersStore`   | features | `features/remove-stream-members/remove-stream-members.model.ts`     | —            |
+| `useChatDmCallBridgeStore`      | features | `features/chat-dm-call-bridge/chat-dm-call-bridge.model.ts`         | —            |
+| `useSidebarConfigStore`         | widgets  | `widgets/sidebar/sidebar-config.model.ts`                           | localStorage |
+| `useRightDrawerStore`           | widgets  | `widgets/right-panel/right-drawer.model.ts`                         | —            |
+| `useSearchModalStore`           | widgets  | `widgets/search-modal/search-modal.model.ts`                        | —            |
+| `useComposerSavedSnippetsStore` | widgets  | `widgets/message-composer/message-composer-saved-snippets.model.ts` | localStorage |
 
 ## Dependency Graph
 
@@ -60,7 +73,7 @@ Persistence: none of the stores use Zustand `persist` middleware. All persistenc
 ## 1. useInstancesStore
 
 **Path**: `entities/instance/instance.model.ts`
-**Import**: `import { useInstancesStore } from '~/entities/instance'`
+**Import**: `import { useInstancesStore } from '~/entities/instance/instance.model'`
 
 Manages Zulip instances (servers). Persisted to `localStorage`.
 
@@ -104,7 +117,7 @@ interface InstancesState {
 ## 2. useChatListStore
 
 **Path**: `entities/chat-list/chat-list.model.ts`
-**Import**: `import { useChatListStore } from '~/entities/chat-list'`
+**Import**: `import { useChatListStore } from '~/entities/chat-list/chat-list.model'`
 
 Main store for the sidebar: streams, DMs, topics, unread counts. Built from messages.
 
@@ -161,7 +174,7 @@ Calls `useUsersStore.getState().getAvatarMap()` to obtain avatar URLs when build
 ## 3. useCurrentChatMessagesStore
 
 **Path**: `entities/message/message.model.ts`
-**Import**: `import { useCurrentChatMessagesStore } from '~/entities/message'`
+**Import**: `import { useCurrentChatMessagesStore } from '~/entities/message/message.model'`
 
 Messages for the currently open chat.
 
@@ -199,7 +212,7 @@ function contextFromMessage(msg, currentUserId): CurrentChatContext | null;
 ## 4. useUsersStore
 
 **Path**: `entities/user/user.model.ts`
-**Import**: `import { useUsersStore } from '~/entities/user'`
+**Import**: `import { useUsersStore } from '~/entities/user/user.model'`
 
 Users, avatars, presence.
 
@@ -243,7 +256,7 @@ interface UsersState {
 ## 5. useThemeStore
 
 **Path**: `entities/theme/theme.model.ts`
-**Import**: `import { useThemeStore } from '~/entities/theme'`
+**Import**: `import { useThemeStore } from '~/entities/theme/theme.model'`
 
 Appearance theme — palette + mode (light/dark/system).
 
@@ -266,7 +279,7 @@ On change, calls `applyTheme()` — sets 42 CSS variables on `<html>`.
 ## 6. useCallParticipantsStore
 
 **Path**: `entities/call/call.model.ts`
-**Import**: `import { useCallParticipantsStore } from '~/entities/call'`
+**Import**: `import { useCallParticipantsStore } from '~/entities/call/call.model'`
 
 Jitsi call participants.
 
@@ -288,7 +301,7 @@ interface CallParticipantsState {
 ## 7. useStickerStore
 
 **Path**: `entities/sticker/sticker.model.ts`
-**Import**: `import { useStickerStore } from '~/entities/sticker'`
+**Import**: `import { useStickerStore } from '~/entities/sticker/sticker.model'`
 
 Sticker packs, recently used stickers, and favorites. Persists recent + favorites to `localStorage`.
 
@@ -341,7 +354,7 @@ interface StickerState {
 ## 8. useDraftStore
 
 **Path**: `entities/draft/draft.model.ts`
-**Import**: `import { useDraftStore } from '~/entities/draft'`
+**Import**: `import { useDraftStore } from '~/entities/draft/draft.model'`
 
 Draft messages synced with Zulip Drafts API.
 
@@ -386,7 +399,7 @@ interface DraftState {
 ## 9. useInboxStore
 
 **Path**: `entities/inbox/inbox.model.ts`
-**Import**: `import { useInboxStore } from '~/entities/inbox'`
+**Import**: `import { useInboxStore } from '~/entities/inbox/inbox.model'`
 
 Inbox view — grouped unread conversations.
 
@@ -434,7 +447,7 @@ interface InboxState {
 ## 10. useFeedStore
 
 **Path**: `entities/feed/feed.model.ts`
-**Import**: `import { useFeedStore } from '~/entities/feed'`
+**Import**: `import { useFeedStore } from '~/entities/feed/feed.model'`
 
 Combined message feed across all channels.
 

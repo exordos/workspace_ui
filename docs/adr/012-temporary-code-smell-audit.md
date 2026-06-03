@@ -23,6 +23,7 @@ ESLint already runs SonarJS (`recommended`), `eslint-plugin-promise`, and curate
 | 2026-06-01 |            342 |     TBD |      16 | After `eslint --fix` autofix             |
 | 2026-06-01 |            208 |      57 |       0 | After CC ratchet + smell waves           |
 | 2026-06-01 |            189 |      50 |       0 | Final audit pass (`npm run check` green) |
+| 2026-06-04 |            TBD |     TBD |       1 | CC @ 20: one warning (`lint:cc`)         |
 
 ## Deferred react-hooks (case-by-case review)
 
@@ -54,7 +55,7 @@ npm run knip
 
 ## Exit criteria (temporary audit)
 
-- `npm run lint:cc` → 0 at threshold 20 (ADR 011)
+- `npm run lint:cc` → 0 at threshold 20 (see ADR-009 ratchet log)
 - `lint:smells` sonarjs total &lt; 50
 - Knip: no duplicate exports in `shared/config/*`
 

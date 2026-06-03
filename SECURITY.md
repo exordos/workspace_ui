@@ -13,11 +13,14 @@ Only the latest release receives security updates.
 
 **Do not open a public issue for security vulnerabilities.**
 
-Instead, please report security issues by emailing:
+Instead, report security issues through **GitHub**:
 
-**security@workspace.example.com**
+1. Open the repository on GitHub: [github.com/exordos/workspace_ui](https://github.com/exordos/workspace_ui)
+2. Go to **Security** → **Report a vulnerability** (private security advisory)
 
-Include:
+If private advisories are unavailable, contact maintainers via GitHub Issues only after coordinating privately (do not post exploit details publicly).
+
+Include in your report:
 
 - Description of the vulnerability
 - Steps to reproduce

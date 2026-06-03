@@ -126,13 +126,13 @@ codesign -d --entitlements :- "Workspace.app"
 
 ## Files
 
-| File                                          | Purpose                                                 |
-| --------------------------------------------- | ------------------------------------------------------- |
-| `resources/entitlements.mac.plist`            | Main process entitlements (camera, mic, network, files) |
-| `resources/entitlements.mac.inherit.plist`    | Child process entitlements (renderer, GPU)              |
-| `scripts/notarize.mjs`                        | afterSign hook — submits to Apple's notary service      |
-| `electron-builder.yml` → `mac:` section       | Signing configuration                                   |
-| `.github/workflows/ci.yml` → `build-electron` | CI job with secrets                                     |
+| File                                                         | Purpose                                                 |
+| ------------------------------------------------------------ | ------------------------------------------------------- |
+| `packages/electron/resources/entitlements.mac.plist`         | Main process entitlements (camera, mic, network, files) |
+| `packages/electron/resources/entitlements.mac.inherit.plist` | Child process entitlements (renderer, GPU)              |
+| `packages/electron/scripts/notarize.mjs`                     | afterSign hook — submits to Apple's notary service      |
+| `electron-builder.yml` → `mac:` section                      | Signing configuration                                   |
+| `.github/workflows/ci.yml` → `build-electron`                | CI job with secrets                                     |
 
 ## Troubleshooting
 

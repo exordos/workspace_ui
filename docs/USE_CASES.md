@@ -458,7 +458,7 @@ UC-AUTH-04:
 | UC-I18N-01 | Switch language (ru ↔ en)                           | User   | `[x]`  |
 | UC-I18N-02 | Pluralization (1 message / 2 messages / 5 messages) | System | `[x]`  |
 | UC-I18N-03 | Interpolation ({{ count }}, {{ name }})             | System | `[x]`  |
-| UC-I18N-04 | Fallback to ru when translation is missing          | System | `[x]`  |
+| UC-I18N-04 | Fallback to English when translation is missing     | System | `[x]`  |
 
 ---
 
@@ -536,6 +536,7 @@ Status at the use-case row level is the source of truth. This document is update
 
 ## Related Documents
 
+- `docs/PROJECT_FACTS.md` — canonical counts and paths
 - `docs/fsd-architecture.md` — FSD structure
 - `docs/INTEGRATION_GUIDE.md` — how to add new features
 - `docs/STORES_REFERENCE.md` — stores and domain data contracts

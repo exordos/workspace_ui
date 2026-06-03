@@ -2,30 +2,32 @@
 
 ## Project Overview
 
-Workspace UI is an open-source corporate messenger built on the Zulip API, shipping as a desktop app (Electron), web app (SPA), PWA, and native mobile WebView — all from a single React 19 codebase. The architecture follows Feature-Sliced Design (FSD) with strict 6-layer isolation, 48 Cursor rules governing code quality, and a defensive programming model using runtime guards, invariants, and exhaustive type checking. The project supports white-label rebranding via environment variables, full i18n (English default + Russian), and two theme palettes with dark/light modes.
+Workspace UI is an open-source corporate messenger built on the Zulip API, shipping as a desktop app (Electron), web app (SPA), PWA, and native mobile WebView — all from a single React 19 codebase. The architecture follows Feature-Sliced Design (FSD) with strict 6-layer isolation, 50 Cursor rules governing code quality, and a defensive programming model using runtime guards, invariants, and exhaustive type checking. The project supports white-label rebranding via environment variables, full i18n (English default + Russian), and two theme palettes with dark/light modes.
+
+> **Canonical counts and paths:** [docs/PROJECT_FACTS.md](docs/PROJECT_FACTS.md)
 
 ## Tech Stack
 
 | Layer             | Technology                 | Details                                                              |
 | ----------------- | -------------------------- | -------------------------------------------------------------------- |
-| Language          | TypeScript 5.6             | `strict`, `noUncheckedIndexedAccess`, `verbatimModuleSyntax`, ES2022 |
+| Language          | TypeScript 5.9             | `strict`, `noUncheckedIndexedAccess`, `verbatimModuleSyntax`, ES2022 |
 | Framework         | React 19                   | Functional components, hooks, Suspense, `React.lazy`                 |
-| Build             | Vite 6                     | SWC transpiler, tree-shaking, source maps, 400KB chunk budget        |
+| Build             | Vite 8                     | SWC transpiler, tree-shaking, source maps, 400KB chunk budget        |
 | Styling           | Tailwind CSS 3.4           | CSS custom properties, 42 semantic design tokens, 4px grid           |
-| State             | Zustand 4.5                | 11 entity stores with cached selectors                               |
+| State             | Zustand 4.5                | 17 entity stores + feature/widget stores, cached selectors           |
 | Routing           | react-router-dom 7         | Lazy-loaded routes, nested layouts                                   |
 | UI Primitives     | Radix UI                   | dialog, dropdown-menu, scroll-area, tabs, tooltip                    |
 | API               | Zulip REST + Workspace API | Middleware pipeline: auth → logging → retry → parse                  |
 | Real-time         | Long-polling event loop    | `shared/lib/event-loop.ts`, background-tab resilient                 |
 | Video Calls       | Jitsi Meet React SDK       | PiP mode, call participants store                                    |
 | Push              | Firebase Cloud Messaging   | `shared/lib/push/`, Zulip token sync                                 |
-| Desktop           | Electron 35                | electron-builder, macOS code signing + notarization                  |
+| Desktop           | Electron 42                | electron-builder, macOS code signing + notarization                  |
 | PWA               | vite-plugin-pwa + Workbox  | Install prompt, app badge, offline caching                           |
 | i18n              | Custom lightweight engine  | en (default) + ru, 3 Russian plural forms, interpolation             |
-| Unit Testing      | Vitest 4                   | 2100+ tests, 80+ files, Jest-compatible API                          |
+| Unit Testing      | Vitest 4                   | 3800+ tests, 380+ test files, Jest-compatible API                    |
 | Component Testing | @testing-library/react     | + user-event for realistic interactions                              |
 | API Mocking       | MSW 2                      | Service worker interceptors                                          |
-| E2E Testing       | Playwright 1.58            | 4 specs, Chromium                                                    |
+| E2E Testing       | Playwright 1.60            | 15 specs, Chromium                                                   |
 | Linting           | ESLint 9                   | Flat config, type-checked, jsx-a11y, import-x                        |
 | Formatting        | Prettier                   | Enforced via pre-commit hook                                         |
 | Commit Lint       | commitlint                 | Conventional Commits format                                          |
@@ -33,8 +35,8 @@ Workspace UI is an open-source corporate messenger built on the Zulip API, shipp
 | Analytics         | GA4 + Yandex Metrica       | Opt-in, PII auto-stripped                                            |
 | Logging           | Custom structured logger   | Scoped, 15 auto-redaction patterns                                   |
 | CI                | GitHub Actions + GitLab CI | Dual pipeline                                                        |
-| Monorepo          | Lerna 7 + npm workspaces   | 3 packages: web, electron, mock-server                               |
-| Icons             | vite-plugin-svgr           | 43 SVG icons as React components                                     |
+| Monorepo          | Lerna 9 + npm workspaces   | 4 packages: web, electron-app, mock-server, workspace-api            |
+| Icons             | vite-plugin-svgr           | 68 SVG icons as React components                                     |
 | Sanitization      | DOMPurify                  | HTML whitelist for Zulip content                                     |
 
 ## Architecture
@@ -50,95 +52,32 @@ app → pages → widgets → features → entities → shared
 ```
 workspace_ui/
 ├── packages/
-│   ├── web/              React SPA (Vite) — 289 source files, 75 test files
+│   ├── web/              React SPA (Vite)
 │   ├── electron/         Desktop shell (Windows, macOS, Linux)
-│   └── mock-server/      Express development API server
-├── e2e/                  Playwright E2E tests (4 specs)
-├── docs/                 8 technical references + 7 ADRs
+│   ├── mock-server/      Express development API server
+│   └── workspace-api/    Orval-generated @workspace/api client
+├── e2e/                  Playwright E2E tests (15 specs)
+├── docs/                 9 technical references + 13 ADR files
 ├── scripts/              Build utilities (licenses, versioning, design tokens)
-├── .cursor/rules/        48 AI agent rules
+├── .cursor/rules/        50 AI agent rules
 ├── .cursor/skills/       4 AI skills
 └── .cursor/prompts/      6 prompt templates
 ```
 
 ### Source Directory Structure
 
+See [docs/PROJECT_FACTS.md](docs/PROJECT_FACTS.md) for full slice lists and [docs/fsd-architecture.md](docs/fsd-architecture.md) for FSD conventions.
+
 ```
 packages/web/src/
-├── app/                              Entry, router, providers, event loop
-│   ├── app.tsx                       Root component + route definitions
-│   ├── shared/lib/event-loop.ts      Zulip long-poll event loop (via layout hook)
-│   ├── webview-shell.tsx             WebView mode (no sidebar/top-bar chrome)
-│   ├── app.styles.css                Global styles
-│   └── contexts/                     App-level contexts (search, right-drawer)
-│
-├── pages/                            9 route pages (all lazy-loaded)
-│   ├── activity/                     Starred messages, mentions, drafts
-│   ├── calendar/                     Calendar view
-│   ├── calls/                        Voice/video call history
-│   ├── chat/                         Stream/topic/DM chat (main view)
-│   ├── feed/                         Combined message feed
-│   ├── inbox/                        Unread inbox aggregation
-│   ├── licenses/                     OSS dependency license list
-│   ├── login/                        Authentication flow
-│   └── mail/                         Email integration
-│
-├── widgets/                          10 composite UI blocks
-│   ├── chat-view/                    Chat header with actions
-│   ├── folder-rail/                  Folder navigation rail
-│   ├── layout/                       App shell (sidebar + content + drawers)
-│   ├── message-composer/             Rich message input + file upload
-│   ├── message-list/                 Message list + message bubbles
-│   ├── profile-drawer/               User profile side panel
-│   ├── right-panel/                  Right drawer + detail panels
-│   ├── search-modal/                 Global search dialog
-│   ├── sidebar/                      Navigation sidebar + 5 sub-lists
-│   └── top-bar/                      Top navigation bar
-│
-├── features/                         16 user-facing scenarios
-│   ├── ai-reply/                     AI-generated reply suggestions (API + store + UI)
-│   ├── chat-info/                    Chat info panel (DM + channel details)
-│   ├── create-chat/                  Create DM / group / channel dialogs
-│   ├── instance-switch/              Multi-instance Zulip switcher UI
-│   ├── jitsi-call/                   Jitsi Meet video call modal + PiP
-│   ├── manage-folders/               Folder CRUD + chat assignment
-│   ├── media-viewer/                 Image/video viewer overlay
-│   ├── mention-suggest/              @mention autocomplete in composer
-│   ├── message-readers/              "Read by" list for messages
-│   ├── mute-chat/                    Mute/unmute streams + topics
-│   ├── pin-chat/                     Pin/unpin chats to sidebar
-│   ├── settings/                     User settings panel
-│   ├── sticker-picker/               Sticker pack selection + sending
-│   ├── theme-picker/                 Theme palette picker UI
-│   ├── typing-indicator/             Typing indicator in DMs
-│   └── user-profile/                 User profile page
-│
-├── entities/                         11 domain models (Zustand stores + API)
-│   ├── call/                         Call participants store
-│   ├── chat-list/                    Chat list, sorting, unread counts
-│   ├── draft/                        Message drafts store
-│   ├── feed/                         Activity feed store
-│   ├── folder/                       Folder API integration
-│   ├── inbox/                        Unread inbox aggregation
-│   ├── instance/                     Zulip instance management + persistence
-│   ├── message/                      Messages store + current chat state
-│   ├── sticker/                      Sticker packs, API, types
-│   ├── theme/                        Theme mode + palette store
-│   └── user/                         Users store + presence API
-│
-├── shared/                           Cross-cutting infrastructure
-│   ├── ui/                           10 files: Avatar, Badge, Button, CallBubble,
-│   │                                 ErrorBoundary, Icon, PresenceIndicator,
-│   │                                 ScrollArea, StickerMessage, index.ts
-│   ├── lib/                          36 utility modules + 4 subsystems (below)
-│   ├── api/                          client.ts, workspace-client.ts, index.ts
-│   ├── config/                       Constants
-│   └── assets/icons/                 43 SVG icons (via vite-plugin-svgr)
-│
-├── i18n/                             Internationalization
-│   └── locales/                      en.json, ru.json
-├── test/                             Test infra: setup, factories, MSW handlers, render helper
-└── generated/                        Auto-generated (licenses.json)
+├── app/           Router, providers, contexts, global styles
+├── pages/         14 lazy-loaded route pages
+├── widgets/       9 composite UI blocks (layout, sidebar, message-list, …)
+├── features/      22 user scenarios (folder-sync, jitsi-call, settings, …)
+├── entities/      17 domain stores + API (user, message, chat-list, activity, …)
+├── shared/        ui/, api/, lib/ (incl. event-loop.ts, brand.ts), config/
+├── i18n/          en + ru locales
+└── test/          Factories, MSW handlers, render helper
 ```
 
 ### Data Flow
@@ -516,8 +455,9 @@ npm run version:tag  # Push release tag only (after MR merge to master)
 
 | Document                        | Content                                          |
 | ------------------------------- | ------------------------------------------------ |
+| `docs/PROJECT_FACTS.md`         | Canonical counts, paths, stack versions          |
 | `docs/fsd-architecture.md`      | FSD layer mapping and conventions                |
-| `docs/STORES_REFERENCE.md`      | Zustand store APIs (all 11 entities)             |
+| `docs/STORES_REFERENCE.md`      | Zustand store APIs                               |
 | `docs/API_CLIENT_REFERENCE.md`  | API middleware pipeline + endpoints              |
 | `docs/COMPONENT_CATALOG.md`     | React component inventory                        |
 | `docs/INTEGRATION_GUIDE.md`     | How to add new features (step-by-step)           |
@@ -527,14 +467,18 @@ npm run version:tag  # Push release tag only (after MR merge to master)
 
 ### Architectural Decision Records (`docs/adr/`)
 
-| ADR                                            | Decision                                    |
-| ---------------------------------------------- | ------------------------------------------- |
-| `docs/adr/000-template.md`                     | ADR template                                |
-| `docs/adr/001-react-zustand-tailwind.md`       | React + Zustand + Tailwind stack choice     |
-| `docs/adr/002-electron-pwa-dual-target.md`     | Electron + PWA dual target                  |
-| `docs/adr/003-fsd-architecture.md`             | FSD architecture adoption                   |
-| `docs/adr/004-dual-ci.md`                      | Dual CI (GitHub Actions + GitLab)           |
-| `docs/adr/005-white-label.md`                  | White-label strategy                        |
-| `docs/adr/006-versioning.md`                   | Semantic Versioning with synced monorepo    |
-| `docs/adr/007-open-source.md`                  | Open source (Apache 2.0)                    |
-| `docs/adr/008-workspace-http-path-defaults.md` | Gateway vs vanilla Zulip HTTP path defaults |
+| ADR                                                    | Decision                                    |
+| ------------------------------------------------------ | ------------------------------------------- |
+| `docs/adr/000-template.md`                             | ADR template                                |
+| `docs/adr/001-react-zustand-tailwind.md`               | React + Zustand + Tailwind stack choice     |
+| `docs/adr/002-electron-pwa-dual-target.md`             | Electron + PWA dual target                  |
+| `docs/adr/003-fsd-architecture.md`                     | FSD architecture adoption                   |
+| `docs/adr/004-dual-ci.md`                              | Dual CI (GitHub Actions + GitLab)           |
+| `docs/adr/005-white-label.md`                          | White-label strategy                        |
+| `docs/adr/006-versioning.md`                           | Semantic Versioning with synced monorepo    |
+| `docs/adr/007-open-source.md`                          | Open source (Apache 2.0)                    |
+| `docs/adr/008-workspace-http-path-defaults.md`         | Gateway vs vanilla Zulip HTTP path defaults |
+| `docs/adr/009-internal-libraries-inventory.md`         | Internal lib extraction + CC ratchet log    |
+| `docs/adr/010-indexeddb-subsystem.md`                  | IndexedDB subsystem (deferred)              |
+| `docs/adr/012-temporary-code-smell-audit.md`           | ESLint smell ratchet baseline               |
+| `docs/adr/013-greenfield-drop-client-legacy-compat.md` | Drop client legacy compat                   |

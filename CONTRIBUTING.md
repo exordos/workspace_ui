@@ -83,12 +83,12 @@ npm run check                # typecheck + lint + test (must pass)
 ```
 1. Pick an issue (or create one for discussion)
 2. Fork the repository (external) or create a branch (team)
-3. Create a branch from develop
+3. Create a branch from `master`
 4. Write tests first (TDD)
 5. Implement the feature or fix
 6. Run npm run check — must pass
 7. Commit using Conventional Commits
-8. Push and open PR → develop
+8. Push and open PR → `master`
 9. Address review feedback
 10. Squash merge after approval
 ```
@@ -96,8 +96,8 @@ npm run check                # typecheck + lint + test (must pass)
 ### Step by Step
 
 ```bash
-# Start from latest develop
-git checkout develop && git pull origin develop
+# Start from latest master
+git checkout master && git pull origin master
 
 # Create your branch
 git checkout -b feature/my-feature
@@ -112,7 +112,7 @@ git commit -m "feat(chat): add message forwarding dialog"
 
 # Push and create PR
 git push -u origin feature/my-feature
-# → Open Pull Request targeting develop on GitHub
+# → Open Pull Request targeting master on GitHub
 ```
 
 ### PR Checklist
@@ -133,18 +133,17 @@ Every PR should meet these criteria before requesting review:
 ## Branch Strategy
 
 ```
-main        ← Production releases, protected, tagged
-develop     ← Integration branch, all PRs target here
-feature/*   ← New features (branched from develop)
-fix/*       ← Bug fixes (branched from develop)
-release/*   ← Release preparation (develop → main)
-hotfix/*    ← Emergency production fixes (main → fix → main + develop)
+master      ← Default branch; all PRs target here (protected)
+feature/*   ← New features (branched from master)
+fix/*       ← Bug fixes (branched from master)
+release/*   ← Release preparation
+hotfix/*    ← Emergency fixes (branched from master)
 ```
 
-| Merge Strategy   | When                               |
-| ---------------- | ---------------------------------- |
-| **Squash merge** | Feature and fix branches → develop |
-| **Merge commit** | Release and hotfix branches → main |
+| Merge Strategy   | When                              |
+| ---------------- | --------------------------------- |
+| **Squash merge** | Feature and fix branches → master |
+| **Merge commit** | Release branches when tagging     |
 
 ### Branch Naming
 
@@ -245,21 +244,21 @@ These run automatically — you don't need to invoke them manually.
 
 ## FSD Architecture Guide
 
-Workspace follows **[Feature-Sliced Design](https://feature-sliced.design/)** — a frontend architecture with strict layer isolation.
+Workspace follows **[Feature-Sliced Design](https://feature-sliced.design/)** — a frontend architecture with strict layer isolation. Current slice counts: [docs/PROJECT_FACTS.md](docs/PROJECT_FACTS.md).
 
 ### Layers (import direction: ONLY downward)
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  app         Entry point, router, providers, event loop       │
+│  app         Entry point, router, providers, contexts         │
 ├──────────────────────────────────────────────────────────────┤
-│  pages       9 route pages (lazy-loaded)                      │
+│  pages       14 route pages (lazy-loaded)                     │
 ├──────────────────────────────────────────────────────────────┤
-│  widgets     10 composite UI blocks                           │
+│  widgets     9 composite UI blocks                            │
 ├──────────────────────────────────────────────────────────────┤
-│  features    16 user-facing scenarios                         │
+│  features    22 user-facing scenarios                         │
 ├──────────────────────────────────────────────────────────────┤
-│  entities    11 domain models (stores + API + types)          │
+│  entities    17 domain models (stores + API + types)          │
 ├──────────────────────────────────────────────────────────────┤
 │  shared      UI primitives, utilities, API client, i18n       │
 └──────────────────────────────────────────────────────────────┘
@@ -270,7 +269,7 @@ Workspace follows **[Feature-Sliced Design](https://feature-sliced.design/)** �
 | What you're building              | Layer    | Path                              | Example                             |
 | --------------------------------- | -------- | --------------------------------- | ----------------------------------- |
 | Domain data model (Zustand store) | entities | `entities/<name>/`                | `entities/draft/draft.model.ts`     |
-| API functions (fetch/post)        | entities | `entities/<name>/<name>.api.ts`   | `entities/user/user.api.ts`         |
+| API functions (fetch/post)        | entities | `entities/<name>/<name>.api.ts`   | `entities/user/api/user.api.ts`     |
 | Domain types                      | entities | `entities/<name>/<name>.types.ts` | `entities/message/message.types.ts` |
 | User-facing scenario              | features | `features/<action>/`              | `features/create-chat/`             |
 | Composite UI block                | widgets  | `widgets/<name>/`                 | `widgets/message-list/`             |
@@ -283,13 +282,13 @@ Workspace follows **[Feature-Sliced Design](https://feature-sliced.design/)** �
 ### Import Rules
 
 ```typescript
-// ✅ CORRECT — import through barrel (index.ts)
-import { useMessageStore } from "~/entities/message";
-import { CreateChatDialog } from "~/features/create-chat";
-import { Button } from "~/shared/ui";
+// ✅ CORRECT — concrete segment imports
+import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
+import { CreateChatDialog } from "~/features/create-chat/create-chat-dialog.ui";
+import { Button } from "~/shared/ui/button";
 
-// ❌ WRONG — importing internal file directly
-import { useMessageStore } from "~/entities/message/message.model";
+// ❌ WRONG — barrel-only index.ts re-exports (not used in this repo)
+import { useCurrentChatMessagesStore } from "~/entities/message";
 ```
 
 ### Slice File Structure
@@ -304,10 +303,9 @@ slice-name/
   slice-name.lib.ts       # Pure utility functions
   slice-name.ui.tsx       # React component(s)
   slice-name.test.ts      # Tests (co-located!)
-  index.ts                # Public API — the ONLY valid import point
 ```
 
-Not every file is required — use only what the slice needs.
+Not every file is required — use only what the slice needs. Do not add barrel-only `index.ts` re-exports (see `.cursor/rules/no-barrel-index.mdc`).
 
 ---
 
@@ -454,7 +452,6 @@ features/create-chat/
   create-chat.model.ts
   create-chat.test.ts      ← Right here
   create-chat.ui.tsx
-  index.ts
 ```
 
 ### Test Factories
@@ -600,15 +597,16 @@ GitHub Actions builds desktop installers and publishes a GitHub Release when a s
 
 ## Where to Get Help
 
-| Channel                                                                     | What it's for                                                             |
-| --------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| [GitHub Issues](https://github.com/workspace/workspace-ui/issues)           | Bug reports, feature requests                                             |
-| [GitHub Discussions](https://github.com/workspace/workspace-ui/discussions) | Questions, ideas, design discussions                                      |
-| [`docs/`](docs/)                                                            | Technical references, architecture, integration guide                     |
-| [`AGENTS.md`](AGENTS.md)                                                    | Comprehensive architecture + coding standards for AI-assisted development |
-| [`docs/INTEGRATION_GUIDE.md`](docs/INTEGRATION_GUIDE.md)                    | Step-by-step guide for adding features                                    |
-| [`docs/STORES_REFERENCE.md`](docs/STORES_REFERENCE.md)                      | Zustand store API reference                                               |
-| [`docs/adr/`](docs/adr/)                                                    | 7 Architectural Decision Records explaining major choices                 |
+| Channel                                                                   | What it's for                                                             |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| [GitHub Issues](https://github.com/exordos/workspace_ui/issues)           | Bug reports, feature requests                                             |
+| [GitHub Discussions](https://github.com/exordos/workspace_ui/discussions) | Questions, ideas, design discussions                                      |
+| [`docs/PROJECT_FACTS.md`](docs/PROJECT_FACTS.md)                          | Canonical counts, paths, versions                                         |
+| [`docs/`](docs/)                                                          | Technical references, architecture, integration guide                     |
+| [`AGENTS.md`](AGENTS.md)                                                  | Comprehensive architecture + coding standards for AI-assisted development |
+| [`docs/INTEGRATION_GUIDE.md`](docs/INTEGRATION_GUIDE.md)                  | Step-by-step guide for adding features                                    |
+| [`docs/STORES_REFERENCE.md`](docs/STORES_REFERENCE.md)                    | Zustand store API reference                                               |
+| [`docs/adr/`](docs/adr/)                                                  | 13 ADR files (000 template + 001–010, 012–013)                            |
 
 ### For New Contributors
 
@@ -621,7 +619,7 @@ GitHub Actions builds desktop installers and publishes a GitHub Release when a s
 
 The project includes comprehensive AI agent guidance:
 
-- **48 Cursor rules** in `.cursor/rules/` covering every aspect of the codebase
+- **50 Cursor rules** in `.cursor/rules/` covering every aspect of the codebase
 - **4 skills** in `.cursor/skills/` for multi-phase workflows
 - **6 prompt templates** in `.cursor/prompts/` for common tasks
 - **`AGENTS.md`** as the machine-readable project overview

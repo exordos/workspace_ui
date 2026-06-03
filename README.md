@@ -11,12 +11,12 @@ Single React codebase, multiple targets:
 
 ## Highlights
 
-- React 19 + TypeScript 5.6 (`strict`, `noUncheckedIndexedAccess`)
+- React 19 + TypeScript 5.9 (`strict`, `noUncheckedIndexedAccess`)
 - Feature-Sliced Design (FSD): `app -> pages -> widgets -> features -> entities -> shared`
 - Zustand domain stores + API middleware pipeline
 - Tailwind design tokens (dark/light + multiple palettes)
 - i18n (English + Russian)
-- 2100+ tests (Vitest + Testing Library + MSW + Playwright)
+- 3800+ tests (Vitest + Testing Library + MSW + Playwright)
 - Security-focused defaults: CSP, sanitization, guarded APIs, secret checks in hooks
 
 ## Requirements
@@ -33,8 +33,8 @@ nvm use
 ## Quick Start
 
 ```bash
-git clone https://github.com/workspace/workspace-ui.git
-cd workspace-ui
+git clone https://github.com/exordos/workspace_ui.git
+cd workspace_ui
 npm install
 cp packages/web/.env.example packages/web/.env
 npm run dev:web
@@ -68,7 +68,7 @@ app -> pages -> widgets -> features -> entities -> shared
 Core flow:
 
 1. `main.tsx` mounts the app shell and routes
-2. `app/app.event-loop.ts` starts Zulip event queue polling
+2. `widgets/layout/layout-zulip-event-loop.hook.ts` + `shared/lib/event-loop.ts` start Zulip event queue polling
 3. `shared/api/client.ts` handles auth/logging/retry middleware
 4. Entity stores (`entities/*`) provide domain state
 5. UI subscribes through minimal selectors
@@ -78,9 +78,10 @@ Core flow:
 ```text
 workspace_ui/
 ├── packages/
-│   ├── web/          React SPA
-│   ├── electron/     Electron shell
-│   └── mock-server/  Local mock API
+│   ├── web/              React SPA
+│   ├── electron/         Electron shell
+│   ├── mock-server/      Local mock API
+│   └── workspace-api/    Orval-generated @workspace/api client
 ├── docs/             Technical docs + ADRs
 ├── e2e/              Playwright tests
 ├── scripts/          Tooling utilities
@@ -99,6 +100,7 @@ workspace_ui/
 
 ### Technical Docs
 
+- `docs/PROJECT_FACTS.md`
 - `docs/fsd-architecture.md`
 - `docs/STORES_REFERENCE.md`
 - `docs/API_CLIENT_REFERENCE.md`
@@ -110,7 +112,7 @@ workspace_ui/
 
 ## Development Rules (Short)
 
-- Use public slice APIs (`index.ts`) only
+- Import concrete segment files (`*.model.ts`, `*.api.ts`, `*.ui.tsx`) — no barrel-only `index.ts`
 - No hardcoded UI strings (`t("key")` for all user-facing text)
 - No hardcoded brand values (use `brand.*`)
 - No `console.log` in app code (use logger)

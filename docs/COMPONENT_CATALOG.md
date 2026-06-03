@@ -1,6 +1,6 @@
 # Component Catalog
 
-Catalog of all React components organized by FSD layer.
+Catalog of React components organized by FSD layer. See [PROJECT_FACTS.md](PROJECT_FACTS.md) for current slice counts (14 pages, 22 features, 9 widgets).
 
 ---
 
@@ -40,13 +40,15 @@ app/app.tsx (Router, ErrorBoundary, Suspense)
     │   ├── pages/calendar/CalendarPage (stub)
     │   ├── pages/mail/MailPage (stub)
     │   ├── pages/calls/CallsPage (stub)
+    │   ├── pages/inbox/InboxPage
+    │   ├── pages/feed/FeedPage
+    │   ├── pages/settings/SettingsPage
+    │   ├── pages/logs/LogsPage
     │   └── pages/licenses/LicensesPage (OSS licenses)
     ├── widgets/right-panel/RightDrawer
-    │   └── widgets/right-panel/RightPanel (user/channel info)
-    │       └── features/user-profile/ (detailed profile view)
+    │   └── widgets/right-panel/RightPanel (user/channel info, settings entry)
+    │       └── features/user-profile/ + features/settings/ + features/theme-picker/
     ├── widgets/search-modal/SearchModal
-    ├── widgets/profile-drawer/ProfileDrawer
-    │   └── features/settings/ + features/theme-picker/ (app settings)
     └── features/create-chat/ (new DM/group/channel dialog)
 ```
 
@@ -423,18 +425,11 @@ interface MessageComposerProps {
 
 ### widgets/search-modal
 
-**Import**: `import { SearchModal } from '~/widgets/search-modal'`
+**Import**: `import { SearchModal } from '~/widgets/search-modal/search-modal.ui'`
 
 **Props**: `{ open; onOpenChange; onSelectMessage }`
 **Features**: 300ms debounce, fulltext search via `fetchMessages`
 **Layout**: Radix Dialog `max-w-xl max-h-[60vh]`
-
-### widgets/profile-drawer
-
-**Import**: `import { ProfileDrawer } from '~/widgets/profile-drawer'`
-
-**Props**: `{ open; onOpenChange }`
-**Menu items**: add server, personal info, version, notifications, language, theme, sorting, logs, logout
 
 ---
 
@@ -442,15 +437,22 @@ interface MessageComposerProps {
 
 All pages are lazy-loaded via `React.lazy()` in `app/app.tsx`.
 
-| Page           | Path                                                | File                                  | Purpose                          |
-| -------------- | --------------------------------------------------- | ------------------------------------- | -------------------------------- |
-| `ChatPage`     | `/stream/:streamSlug/topic/:topicName`, `/dm/:dmId` | `pages/chat/chat-page.ui.tsx`         | Main chat — stream, topic, or DM |
-| `ActivityPage` | `/activity/:filter`                                 | `pages/activity/activity-page.ui.tsx` | Starred, mentions, reactions     |
-| `LoginPage`    | `/login`                                            | `pages/login/login-page.ui.tsx`       | Login form                       |
-| `CalendarPage` | `/calendar`                                         | `pages/calendar/calendar-page.ui.tsx` | Calendar stub                    |
-| `MailPage`     | `/mail`                                             | `pages/mail/mail-page.ui.tsx`         | Mail stub                        |
-| `CallsPage`    | `/calls`                                            | `pages/calls/calls-page.ui.tsx`       | Calls stub                       |
-| `LicensesPage` | `/licenses`                                         | `pages/licenses/licenses-page.ui.tsx` | OSS license list                 |
+| Page                  | Path                                                | File                                                  | Purpose                          |
+| --------------------- | --------------------------------------------------- | ----------------------------------------------------- | -------------------------------- |
+| `ChatPage`            | `/stream/:streamSlug/topic/:topicName`, `/dm/:dmId` | `pages/chat/chat-page.ui.tsx`                         | Main chat — stream, topic, or DM |
+| `ActivityPage`        | `/activity/:filter`                                 | `pages/activity/activity-page.ui.tsx`                 | Starred, mentions, reactions     |
+| `LoginPage`           | `/login`                                            | `pages/login/login-page.ui.tsx`                       | Login form                       |
+| `CalendarPage`        | `/calendar`                                         | `pages/calendar/calendar-page.ui.tsx`                 | Calendar stub                    |
+| `MailPage`            | `/mail`                                             | `pages/mail/mail-page.ui.tsx`                         | Mail stub                        |
+| `CallsPage`           | `/calls`                                            | `pages/calls/calls-page.ui.tsx`                       | Calls stub                       |
+| `LicensesPage`        | `/licenses`                                         | `pages/licenses/licenses-page.ui.tsx`                 | OSS license list                 |
+| `InboxPage`           | `/inbox`                                            | `pages/inbox/inbox-page.ui.tsx`                       | Unread inbox aggregation         |
+| `FeedPage`            | `/feed`                                             | `pages/feed/feed-page.ui.tsx`                         | Combined message feed            |
+| `SettingsPage`        | `/settings`                                         | `pages/settings/settings-page.ui.tsx`                 | App settings                     |
+| `LogsPage`            | `/logs`                                             | `pages/logs/logs-page.ui.tsx`                         | In-app log export                |
+| `ServicesPage`        | `/services`                                         | `pages/services/services-page.ui.tsx`                 | External services                |
+| `UpdatePage`          | `/update`                                           | `pages/update/update-page.ui.tsx`                     | App update status                |
+| `MessageRedirectPage` | `/message/:id`                                      | `pages/message-redirect/message-redirect-page.ui.tsx` | Deep link to message             |
 
 ### ChatPage
 

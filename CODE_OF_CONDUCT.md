@@ -26,7 +26,7 @@ We are committed to providing a friendly, safe, and welcoming environment for al
 
 Project maintainers are responsible for clarifying standards and taking corrective action in response to unacceptable behavior.
 
-Instances of unacceptable behavior may be reported to: **conduct@workspace.example.com**
+Instances of unacceptable behavior may be reported by opening a [GitHub Issue](https://github.com/exordos/workspace_ui/issues) with a clear description (use a private channel if the report contains sensitive personal information — e.g. direct message to a listed maintainer on GitHub).
 
 All complaints will be reviewed and investigated promptly and fairly.
 

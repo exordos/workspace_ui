@@ -2,27 +2,28 @@
 
 Step-by-step guide for integrating new functionality using Feature-Sliced Design (FSD).
 
+> **Canonical structure:** [PROJECT_FACTS.md](PROJECT_FACTS.md) · **Architecture:** [fsd-architecture.md](fsd-architecture.md)
+
 ---
 
 ## Project Structure (FSD)
 
 ```
 packages/web/src/
-├── app/                 ← Entry point, router, providers, event loop
-├── pages/               ← Route pages (lazy-loaded)
-├── widgets/             ← Composite UI blocks (sidebar, chat-view, layout)
-├── features/            ← User scenarios (15 features: ai-reply, chat-info, create-chat, etc.)
-├── entities/            ← Business entities with stores and API (11: user, message, draft, inbox, etc.)
+├── app/                 ← Entry point, router, providers, contexts
+├── pages/               ← 14 route pages (lazy-loaded)
+├── widgets/             ← 9 composite UI blocks
+├── features/            ← 22 user scenarios
+├── entities/            ← 17 business entities (stores + API)
 ├── shared/              ← Design system, utilities, API helpers, icons
-│   ├── ui/              ← Primitives (Avatar, Badge, Button, Icon, ScrollArea)
-│   ├── api/             ← Low-level fetch helpers (zulipFetch, workspaceRequest)
-│   ├── lib/             ← Utilities (format, html, logger, auth, validation)
-│   ├── config/          ← Constants (JITSI_MEET_DOMAIN, WORKSPACE_ORIGIN)
-│   └── assets/icons/    ← SVG icons
-└── i18n/                ← Internationalization (ru, en)
+│   ├── ui/
+│   ├── api/             ← client.ts, workspace-client.ts, zulip-*.ts
+│   ├── lib/             ← event-loop.ts, brand.ts, guards.ts, …
+│   └── config/
+└── i18n/
 ```
 
-Import rules: `shared → entities → features → widgets → pages → app` (only downward).
+Import rules: `shared → entities → features → widgets → pages → app` (only downward). Use **concrete segment imports** — no barrel-only `index.ts` (see `.cursor/rules/no-barrel-index.mdc`).
 
 ---
 
@@ -34,7 +35,7 @@ Import rules: `shared → entities → features → widgets → pages → app` (
 
 ```typescript
 // entities/draft/draft.api.ts
-import { zulipFetch, zulipPost, zulipDelete } from "~/shared/api";
+import { zulipFetch, zulipPost, zulipDelete } from "~/shared/api/client";
 import type { Draft, DraftInput } from "./draft.types";
 
 export async function fetchDrafts(): Promise<Draft[]> {
@@ -62,7 +63,7 @@ export async function deleteDraft(id: number): Promise<void> {
 
 ```typescript
 // entities/folder/folder.api.ts
-import { request } from "~/shared/api";
+import { request } from "~/shared/api/workspace-client";
 import type { WorkspaceFolder } from "./folder.types";
 
 export async function getFolders(): Promise<WorkspaceFolder[]> {
@@ -155,18 +156,7 @@ export const useDraftsStore = create<DraftsState>((set, get) => ({
 }));
 ```
 
-### 4. Slice Public API (index.ts)
-
-**Where**: `entities/<name>/index.ts`
-
-```typescript
-// entities/draft/index.ts
-export { useDraftsStore } from "./draft.model";
-export type { Draft, DraftInput } from "./draft.types";
-export { fetchDrafts, createDraft, deleteDraft } from "./draft.api";
-```
-
-### 5. Feature (user scenario)
+### 4. Feature (user scenario)
 
 If the feature has UI and its own logic beyond the entity, create a feature slice:
 
@@ -174,63 +164,44 @@ If the feature has UI and its own logic beyond the entity, create a feature slic
 
 ```typescript
 // features/manage-drafts/manage-drafts.ui.tsx
-import { useDraftsStore } from "~/entities/draft";
-import { ScrollArea, Icon } from "~/shared/ui";
+import { useDraftStore } from "~/entities/draft/draft.model";
+import { ScrollArea } from "~/shared/ui/scroll-area";
+import { Icon } from "~/shared/ui/icon";
 
 export const DraftList: React.FC = () => {
-  const drafts = useDraftsStore((s) => s.drafts);
-  const loading = useDraftsStore((s) => s.loading);
-  const deleteDraft = useDraftsStore((s) => s.deleteDraft);
-
-  return (
-    <ScrollArea className="flex-1">
-      {loading && <p className="text-text-muted p-4">{t("app.loading")}</p>}
-      {drafts.map((d) => (
-        <DraftItem key={d.id} draft={d} onDelete={() => deleteDraft(d.id)} />
-      ))}
-    </ScrollArea>
-  );
+  const drafts = useDraftStore((s) => s.drafts);
+  // ...
 };
 ```
 
-### 6. Page Component
+Import concrete segment files from other slices (example above).
+
+### 5. Page or activity tab
+
+Drafts are shown on the **activity** page, not a separate `/drafts` route. For a new dedicated route:
 
 **Where**: `pages/<name>/<name>-page.ui.tsx`
 
 ```typescript
-// pages/drafts/drafts-page.ui.tsx
-import { useEffect } from "react";
-import { useDraftsStore } from "~/entities/draft";
-import { DraftList } from "~/features/manage-drafts";
-import { ChatHeader } from "~/widgets/chat-view";
-import { useTranslation } from "~/i18n";
+// pages/logs/logs-page.ui.tsx
+import { useTranslation } from "~/i18n/i18n";
 
-export const DraftsPage: React.FC = () => {
+export const LogsPage: React.FC = () => {
   const { t } = useTranslation();
-  const loadDrafts = useDraftsStore((s) => s.loadDrafts);
-
-  useEffect(() => { loadDrafts(); }, [loadDrafts]);
-
-  return (
-    <div className="flex-1 flex flex-col max-w-[1199px] min-h-0">
-      <ChatHeader channelName={t("nav.drafts")} hideTopic hideParticipants />
-      <DraftList />
-    </div>
-  );
+  return <div>{t("nav.logs")}</div>;
 };
 ```
 
-### 7. Route
+### 6. Route
 
 **Where**: `app/app.tsx`
 
 ```tsx
-const DraftsPage = React.lazy(() =>
-  import("~/pages/drafts").then((m) => ({ default: m.DraftsPage })),
+const LogsPage = React.lazy(() =>
+  import("~/pages/logs/logs-page.ui").then((m) => ({ default: m.LogsPage })),
 );
 
-// Inside <Route element={<Layout />}>:
-<Route path="/drafts" element={<DraftsPage />} />;
+<Route path="/logs" element={<LogsPage />} />;
 ```
 
 ### 8. Navigation
@@ -243,19 +214,9 @@ Add a section button if a top-level tab is needed.
 
 ### 9. Real-time Events
 
-**Where**: `app/app.event-loop.ts` (or `widgets/layout/layout.ui.tsx` → onEvent callback)
+**Where**: `widgets/layout/layout-zulip-event-dispatch.lib.ts` (extend dispatch for new event types)
 
-```typescript
-if (event.type === "drafts") {
-  useDraftsStore.getState().loadDrafts();
-}
-```
-
-If a new event type is needed, add it to `eventTypes` when registering the queue:
-
-```typescript
-const EVENT_TYPES = [...DEFAULT_EVENT_TYPES, "drafts"];
-```
+The loop itself lives in `shared/lib/event-loop.ts` and is started from `widgets/layout/layout-zulip-event-loop.hook.ts`.
 
 ### 10. Theme / Styles
 
@@ -324,7 +285,7 @@ When implementing each feature, verify:
 [ ] Entity: API (entities/<name>/<name>.api.ts) or shared/api/
 [ ] Entity: Types (entities/<name>/<name>.types.ts) — no `any`
 [ ] Entity: Zustand store (entities/<name>/<name>.model.ts) with createLogger
-[ ] Entity: index.ts public API
+[ ] Imports: concrete segment paths only (no barrel index.ts)
 [ ] Feature: UI component (features/<action>/<action>.ui.tsx) if needed
 [ ] Page: lazy-loaded page (pages/<name>/<name>-page.ui.tsx) if new route
 [ ] Route in app/app.tsx (React.lazy + Suspense)
@@ -345,18 +306,18 @@ When implementing each feature, verify:
 
 ## React FSD: Quick Reference
 
-| Pattern               | Recommended approach                                       |
-| --------------------- | ---------------------------------------------------------- |
-| Read state in UI      | `const x = useStore((s) => s.x)`                           |
-| Trigger store action  | `useStore.getState().action()`                             |
-| React to state change | `useEffect(() => { ... }, [state])`                        |
-| Update state          | `set((s) => ({ field: next }))`                            |
-| Define domain store   | `create<State>(...)` in `entities/<name>/<name>.model.ts`  |
-| Add route             | `<Route path=\"...\" element={<.../>} />` in `app/app.tsx` |
-| Navigate              | `navigate(\"/path\")`                                      |
-| Component             | `const Component: React.FC = () => { ... }`                |
-| Resource cleanup      | `useEffect` cleanup function                               |
-| Async cancellation    | `AbortController` + cleanup                                |
-| API calls             | `zulipFetch/zulipPost` from `~/shared/api`                 |
-| Cross-slice usage     | Import only from public `index.ts`                         |
-| UI primitives         | Radix UI + Tailwind + `~/shared/ui`                        |
+| Pattern               | Recommended approach                                         |
+| --------------------- | ------------------------------------------------------------ |
+| Read state in UI      | `const x = useStore((s) => s.x)`                             |
+| Trigger store action  | `useStore.getState().action()`                               |
+| React to state change | `useEffect(() => { ... }, [state])`                          |
+| Update state          | `set((s) => ({ field: next }))`                              |
+| Define domain store   | `create<State>(...)` in `entities/<name>/<name>.model.ts`    |
+| Add route             | `<Route path=\"...\" element={<.../>} />` in `app/app.tsx`   |
+| Navigate              | `navigate(\"/path\")`                                        |
+| Component             | `const Component: React.FC = () => { ... }`                  |
+| Resource cleanup      | `useEffect` cleanup function                                 |
+| Async cancellation    | `AbortController` + cleanup                                  |
+| API calls             | `zulipFetch/zulipPost` from `~/shared/api`                   |
+| Cross-slice usage     | Import concrete `*.model.ts` / `*.api.ts` / `*.ui.tsx` paths |
+| UI primitives         | Radix UI + Tailwind + `~/shared/ui`                          |

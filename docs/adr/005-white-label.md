@@ -9,7 +9,7 @@ The product must be released under different brands (OEM/white-label) without fo
 
 ## Decision
 
-All brand-specific values are in env vars (`VITE_BRAND_*`), centralized in `lib/brand.ts`. Zero code changes for a new brand.
+All brand-specific values are in env vars (`VITE_BRAND_*`), centralized in `packages/web/src/shared/lib/brand.ts`. Zero code changes for a new brand.
 
 Customization points:
 

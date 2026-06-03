@@ -24,18 +24,16 @@ Phases (all complete):
 3. `features/` (scenarios) — **Done**
 4. `pages/` + `app/` (upper layers) — **Done**
 
-Current FSD structure:
+Current FSD structure (see [PROJECT_FACTS.md](../PROJECT_FACTS.md) for the authoritative list):
 
-- **11 entities**: call, chat-list, draft, feed, folder, inbox, instance, message, sticker, theme, user
-- **16 features**: ai-reply, chat-info, create-chat, instance-switch, jitsi-call, manage-folders, media-viewer, mention-suggest, message-readers, mute-chat, pin-chat, settings, sticker-picker, theme-picker, typing-indicator, user-profile
-- **10 widgets**: layout, sidebar, chat-view, message-list, message-composer, top-bar, folder-rail, right-panel, search-modal, profile-drawer
-- **9 pages**: activity, calendar, calls, chat, feed, inbox, licenses, login, mail
-- **shared**: UI primitives, API client, utility modules, config, icon set
+- **17 entities**, **22 features**, **9 widgets**, **14 pages**
+- **shared**: UI primitives, API client (`shared/api/`), utilities (`shared/lib/`), config, icons
+- **Imports**: concrete segment files only — no barrel-only `index.ts` (see ADR-009, `.cursor/rules/no-barrel-index.mdc`)
 
-Legacy directories (`components/`, `stores/`, `lib/`, `contexts/`) remain for backward compatibility and will be removed in a cleanup pass.
+Pre-FSD directories (`components/`, `stores/`, `lib/`, `contexts/`) are **removed**. Client-side legacy compatibility for old persisted state was dropped per [ADR-013](013-greenfield-drop-client-legacy-compat.md).
 
 ## Consequences
 
-- Positive: predictable structure, parallel team work, easy code review, new features (sticker, ai-reply) created directly in FSD
+- Positive: predictable structure, parallel team work, easy code review, new slices created directly in FSD
 - Negative: overhead when creating files (mitigation: code generation, AI agent, slice templates)
 - Risks: excessive structure for small features (mitigation: apply FSD to significant slices only)
