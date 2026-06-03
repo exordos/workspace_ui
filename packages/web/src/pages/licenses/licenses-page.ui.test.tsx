@@ -1,6 +1,22 @@
+import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "~/test/render";
 import { LicensesPage } from "./licenses-page.ui";
+
+const navigateMock = vi.fn();
+
+vi.mock("react-router-dom", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-router-dom")>();
+  return {
+    ...actual,
+    useNavigate: () => navigateMock,
+  };
+});
+
+vi.mock("~/shared/lib/navigation-history", () => ({
+  useNavigationHistory: () => ({ goBack: vi.fn(), canGoBack: false }),
+}));
 
 vi.mock("~/generated/licenses.json", () => ({
   default: [
@@ -22,6 +38,16 @@ vi.mock("~/generated/licenses.json", () => ({
 }));
 
 describe("LicensesPage", () => {
+  it("navigates to messenger when close is pressed without history", async () => {
+    const user = userEvent.setup();
+    navigateMock.mockClear();
+    renderWithProviders(<LicensesPage />, { route: "/licenses" });
+
+    await user.click(screen.getByRole("button", { name: /close/i }));
+
+    expect(navigateMock).toHaveBeenCalledWith("/stream/general");
+  });
+
   it("uses full-width layout container for licenses content", () => {
     const { container } = renderWithProviders(<LicensesPage />);
     const pageRoot = container.firstElementChild;

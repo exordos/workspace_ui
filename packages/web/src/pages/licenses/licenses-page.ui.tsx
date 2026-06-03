@@ -1,14 +1,35 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useInstancesStore } from "~/entities/instance/instance.model";
 import licensesData from "~/generated/licenses.json";
 import { t } from "~/i18n/i18n";
+import { DEFAULT_MESSENGER_STREAM_SLUG } from "~/shared/config/constants";
 import { brand } from "~/shared/lib/brand";
+import { resolveMessengerNavigationPath } from "~/shared/lib/last-messenger-route.lib";
+import { useNavigationHistory } from "~/shared/lib/navigation-history";
+import { withCurrentOrgRoute } from "~/shared/lib/org-route";
+import { Icon } from "~/shared/ui/icon";
 import type { LicenseEntry } from "./licenses-page.types";
 
 const licenses = licensesData as LicenseEntry[];
 
 export const LicensesPage: React.FC = () => {
+  const navigate = useNavigate();
+  const { goBack, canGoBack } = useNavigationHistory();
+  const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
   const [search, setSearch] = useState("");
   const [filterLicense, setFilterLicense] = useState("");
+
+  const handleClose = useCallback(() => {
+    if (canGoBack) {
+      goBack();
+      return;
+    }
+    const fallbackPath = withCurrentOrgRoute(
+      resolveMessengerNavigationPath(currentInstanceId, DEFAULT_MESSENGER_STREAM_SLUG),
+    );
+    void navigate(fallbackPath);
+  }, [canGoBack, currentInstanceId, goBack, navigate]);
 
   const licenseTypes = useMemo(() => {
     const counts = new Map<string, number>();
@@ -31,11 +52,21 @@ export const LicensesPage: React.FC = () => {
 
   return (
     <div className="flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden px-6 py-4">
-      <div className="mb-4">
-        <h1 className="text-xl font-semibold text-text-primary">{t("licenses.title")}</h1>
-        <p className="mt-1 text-sm text-text-muted">
-          {t("licenses.subtitle", { appName: brand.appName, count: licenses.length })}
-        </p>
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-xl font-semibold text-text-primary">{t("licenses.title")}</h1>
+          <p className="mt-1 text-sm text-text-muted">
+            {t("licenses.subtitle", { appName: brand.appName, count: licenses.length })}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={handleClose}
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-text-muted transition-colors hover:bg-card-bg-active hover:text-text-primary"
+          aria-label={t("common.close")}
+        >
+          <Icon name="close" size={18} />
+        </button>
       </div>
 
       <div className="mb-4 flex flex-wrap gap-2">
