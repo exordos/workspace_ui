@@ -11,7 +11,7 @@ export interface LayoutChatListActions {
   currentUserId: number | null;
   // Что делает: доступ к текущему stream metadata (нужен для partial update channel-level прав).
   streamsMap: Map<number, StreamEntryInternal>;
-  addMessage: (message: ZulipRawMessage) => void;
+  addMessage: (message: ZulipRawMessage, options?: { suppressUnreadBump?: boolean }) => void;
   // Что делает: добавляет/обновляет каналы из metadata и subscription-событий.
   upsertStreamMetadataRows: (rows: ChatListStreamMetadataRow[]) => void;
   // Что делает: переименовывает канал при subscription update(name).

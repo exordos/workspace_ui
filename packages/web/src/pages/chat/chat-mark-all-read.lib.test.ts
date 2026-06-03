@@ -1,10 +1,18 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { markMessagesAsRead } from "~/shared/api/zulip-read-state";
 import {
+  applyOpenChatMarkAllAsRead,
+  collectMarkAllAsReadMessageIds,
   collectUnreadMessageIds,
   filterMessageIdsStillUnreadForOptimisticApply,
   resolveMarkAllAsReadTarget,
   type MarkAllAsReadTarget,
 } from "./chat-mark-all-read.lib";
+
+vi.mock("~/shared/api/zulip-read-state", () => ({
+  markMessagesAsRead: vi.fn().mockResolvedValue(undefined),
+}));
 
 function expectTarget(
   actual: MarkAllAsReadTarget | null,
@@ -70,6 +78,43 @@ describe("chat-mark-all-read", () => {
         { id: 3, flags: undefined },
       ]),
     ).toEqual([2, 3]);
+  });
+
+  it("collectMarkAllAsReadMessageIds merges loaded and index ids", () => {
+    useChatListStore.getState().clear();
+    useChatListStore.setState({
+      messageIdToLocation: new Map([[99, { type: "stream", stream_id: 10, topic: "incident" }]]),
+    });
+    const target: MarkAllAsReadTarget = { type: "topic", streamId: 10, topic: "incident" };
+    expect(
+      collectMarkAllAsReadMessageIds(
+        [
+          { id: 1, flags: [] },
+          { id: 2, flags: ["read"] },
+        ],
+        useChatListStore.getState().messageIdToLocation,
+        target,
+        7,
+      ),
+    ).toEqual([1, 99]);
+  });
+
+  it("applyOpenChatMarkAllAsRead uses per-id flags API", async () => {
+    useChatListStore.getState().clear();
+    const applyOptimistic = vi.fn();
+    const target: MarkAllAsReadTarget = { type: "topic", streamId: 5, topic: "bugs" };
+    await applyOpenChatMarkAllAsRead({
+      target,
+      loadedMessages: [{ id: 10, flags: [] }],
+      currentUserId: 1,
+      applyOptimistic,
+    });
+    expect(markMessagesAsRead).toHaveBeenCalledWith([10]);
+    expect(applyOptimistic).toHaveBeenCalledWith([10], {
+      type: "stream",
+      streamId: 5,
+      topic: "bugs",
+    });
   });
 
   describe("filterMessageIdsStillUnreadForOptimisticApply", () => {

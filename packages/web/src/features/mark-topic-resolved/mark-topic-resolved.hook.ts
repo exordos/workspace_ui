@@ -15,35 +15,54 @@ import {
   toResolvedTopicName,
   toUnresolvedTopicName,
 } from "~/shared/lib/topic-resolve";
-import { resolveMarkTopicResolvedVisibility } from "./mark-topic-resolved.lib";
+import {
+  resolveMarkTopicResolvedVisibility,
+  resolveMarkTopicResolvedVisibilityForTopic,
+} from "./mark-topic-resolved.lib";
 import { isTopicRenameUnchanged, resolveRenamedTopicName } from "./rename-stream-topic.lib";
 
 const log = createLogger("mark-topic-resolved");
 
-export function useMarkTopicResolved() {
+export interface UseMarkTopicResolvedOptions {
+  streamId: number;
+  topic: string;
+  /** Canonical stream name for slug/API (not localized display label). */
+  streamName: string;
+}
+
+export function useMarkTopicResolved(explicitTarget?: UseMarkTopicResolvedOptions) {
   const navigate = useNavigate();
   const context = useCurrentChatMessagesStore((s) => s.context);
   const messages = useCurrentChatMessagesStore((s) => s.messages);
   const currentUserId = useChatListStore((s) => s.currentUserId);
   const streamIdFromContext = context?.type === "stream" ? context.streamId : null;
+  const streamIdForMap = explicitTarget?.streamId ?? streamIdFromContext;
   const streamNameFromMap = useChatListStore((s) =>
-    streamIdFromContext != null ? (s.streamsMap.get(streamIdFromContext)?.name ?? "") : "",
+    streamIdForMap != null ? (s.streamsMap.get(streamIdForMap)?.name ?? "") : "",
   );
   const [resolvePending, setResolvePending] = useState(false);
   const [renamePending, setRenamePending] = useState(false);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renameTopicDraft, setRenameTopicDraft] = useState("");
 
-  const visibility = useMemo(
-    () =>
-      resolveMarkTopicResolvedVisibility({
-        context,
+  const visibility = useMemo(() => {
+    if (explicitTarget != null) {
+      const nameFromMap = streamNameFromMap.trim();
+      return resolveMarkTopicResolvedVisibilityForTopic({
+        streamId: explicitTarget.streamId,
+        topic: explicitTarget.topic,
+        streamName: nameFromMap.length > 0 ? nameFromMap : explicitTarget.streamName,
         currentUserId,
-        streamNameFromMap,
         buildStreamSlug,
-      }),
-    [context, currentUserId, streamNameFromMap],
-  );
+      });
+    }
+    return resolveMarkTopicResolvedVisibility({
+      context,
+      currentUserId,
+      streamNameFromMap,
+      buildStreamSlug,
+    });
+  }, [context, currentUserId, streamNameFromMap, explicitTarget]);
 
   const { canToggle, streamSlug, streamId, topic } = {
     canToggle: visibility.canToggle,
@@ -90,6 +109,15 @@ export function useMarkTopicResolved() {
         void deleteChatListSnapshotRow(instanceId).catch(() => {});
       }
       if (newTopic === oldTopic) {
+        return;
+      }
+      const openContext = useCurrentChatMessagesStore.getState().context;
+      const isOpenTopic =
+        openContext?.type === "stream" &&
+        openContext.streamWideView !== true &&
+        openContext.streamId === streamId &&
+        normalizeTopicForIdentity(openContext.topic) === normalizeTopicForIdentity(oldTopic);
+      if (!isOpenTopic) {
         return;
       }
       void navigate(

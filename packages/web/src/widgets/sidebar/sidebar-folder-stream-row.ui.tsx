@@ -5,7 +5,7 @@ import { sidebarRowClass } from "~/shared/lib/format";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { SidebarChatBadges } from "./sidebar-chat-badges.ui";
-import { StreamContextMenu } from "./sidebar-chat-context-menu.ui";
+import { StreamContextMenu, TopicContextMenu } from "./sidebar-chat-context-menu.ui";
 import { sidebarStreamRoute, sidebarStreamTopicRoute } from "./sidebar-chat-routes.lib";
 import { TopicMuteButton } from "./sidebar-folder-topic-buttons.ui";
 import { SidebarStreamHydrateWrapper } from "./sidebar-stream-hydrate-wrapper.ui";
@@ -142,10 +142,20 @@ const SidebarFolderStreamTopicsList = React.memo(function SidebarFolderStreamTop
           const topicColor = TOPIC_BAR_COLORS[idx % TOPIC_BAR_COLORS.length];
           const isTopicActive = streamSlug === activeStreamSlug && activeTopic === topic.subject;
           return (
-            <div
+            <TopicContextMenu
               key={topic.subject}
-              className={`group/topic flex items-start rounded-r-lg border-l-4 transition-colors ${sidebarRowClass(isTopicActive)}`}
-              style={{ borderLeftColor: topicColor }}
+              streamId={chat.stream_id}
+              streamName={chat.name}
+              topic={topic.subject}
+              rowClassName={`group/topic flex w-full items-start rounded-r-lg border-l-4 transition-colors ${sidebarRowClass(isTopicActive)}`}
+              rowStyle={{ borderLeftColor: topicColor }}
+              sideActions={
+                <TopicMuteButton
+                  streamId={chat.stream_id}
+                  topic={topic.subject}
+                  onMuteError={onMuteError}
+                />
+              }
             >
               <Link
                 to={sidebarStreamTopicRoute(streamSlug, topic.subject)}
@@ -166,14 +176,7 @@ const SidebarFolderStreamTopicsList = React.memo(function SidebarFolderStreamTop
                 </div>
                 <SidebarChatBadges unreadCount={topic.badge} hasMention={topic.hasMention} />
               </Link>
-              <div className="flex shrink-0 flex-col items-end gap-1 py-2 pr-2">
-                <TopicMuteButton
-                  streamId={chat.stream_id}
-                  topic={topic.subject}
-                  onMuteError={onMuteError}
-                />
-              </div>
-            </div>
+            </TopicContextMenu>
           );
         })
       )}

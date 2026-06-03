@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildStreamSlug } from "~/shared/lib/stream-slug.lib";
 import {
   resolveMarkTopicResolvedVisibility,
+  resolveMarkTopicResolvedVisibilityForTopic,
   resolveTopicResolveTargetFromContext,
 } from "./mark-topic-resolved.lib";
 
@@ -71,6 +72,19 @@ describe("mark-topic-resolved.lib", () => {
 
     expect(visibility.canToggle).toBe(true);
     expect(visibility.blockers).toEqual([]);
+  });
+
+  it("allows toggle for explicit sidebar topic target", () => {
+    const visibility = resolveMarkTopicResolvedVisibilityForTopic({
+      streamId: 10,
+      topic: "incident",
+      streamName: "engineering",
+      currentUserId: 42,
+      buildStreamSlug,
+    });
+
+    expect(visibility.canToggle).toBe(true);
+    expect(visibility.streamSlug).toBe("10-engineering");
   });
 
   it("blocks toggle when current user is missing", () => {

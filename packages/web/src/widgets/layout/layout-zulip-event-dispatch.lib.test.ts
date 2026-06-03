@@ -771,5 +771,51 @@ describe("dispatchZulipEvent", () => {
 
       expect(useChatListStore.getState().dmsMap.get("10,20")?.unreadCount).toBe(0);
     });
+
+    it("decrements unread for read topic while a different chat is open", () => {
+      useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
+      useChatListStore.getState().reconcileUnreadFromSnapshot(
+        {
+          streams: [
+            { streamId: 5, topic: "topicA", unreadMessageIds: [1] },
+            { streamId: 5, topic: "topicB", unreadMessageIds: [10, 11] },
+          ],
+          dms: [],
+          totalCount: 3,
+          mentionMessageIds: [],
+        },
+        1,
+      );
+
+      const { ctx } = buildCtx();
+      ctx.currentChat.context = {
+        type: "stream",
+        streamId: 5,
+        streamName: "general",
+        topic: "topicA",
+        streamWideView: false,
+      };
+      expect(useChatListStore.getState().streamsMap.get(5)?.topics.get("topicB")?.unreadCount).toBe(
+        2,
+      );
+
+      dispatchZulipEvent(
+        {
+          id: 101,
+          type: "update_message_flags",
+          op: "add",
+          flag: "read",
+          messages: [10, 11],
+        },
+        ctx,
+      );
+
+      expect(useChatListStore.getState().streamsMap.get(5)?.topics.get("topicB")?.unreadCount).toBe(
+        0,
+      );
+      expect(useChatListStore.getState().streamsMap.get(5)?.topics.get("topicA")?.unreadCount).toBe(
+        1,
+      );
+    });
   });
 });

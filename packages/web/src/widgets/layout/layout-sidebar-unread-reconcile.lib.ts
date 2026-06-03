@@ -13,6 +13,28 @@ import {
   shouldPreserveLocalUnreadOnCachedReconcile,
 } from "./layout-instance-register-unread.lib";
 
+let lastReconciledSnapshotKey: string | null = null;
+
+function buildUnreadSnapshotDedupeKey(snapshot: ZulipUnreadMessagesSnapshot): string {
+  const streamPart = snapshot.streams
+    .map(
+      (bucket) => `${bucket.streamId}:${bucket.topic}:${(bucket.unreadMessageIds ?? []).join(",")}`,
+    )
+    .join("|");
+  const dmPart = snapshot.dms
+    .map(
+      (bucket) =>
+        `${(bucket.userIds ?? []).join("+")}:${(bucket.unreadMessageIds ?? []).join(",")}`,
+    )
+    .join("|");
+  return `${snapshot.totalCount}::${streamPart}::${dmPart}::${(snapshot.mentionMessageIds ?? []).join(",")}`;
+}
+
+/** Clears dedupe guard (e.g. after logout or instance switch). */
+export function resetSidebarUnreadReconcileDedupe(): void {
+  lastReconciledSnapshotKey = null;
+}
+
 export type SidebarUnreadReconcileSkippedReason =
   | "register_unread_unavailable"
   | "empty_cached_snapshot_preserves_local_unread";
@@ -52,6 +74,7 @@ export function reconcileSidebarUnreadAfterBootstrap(
         snapshot,
         chatListState.sidebarStreamsUnread,
         chatListState.sidebarDmsUnread,
+        chatListState.messageIdToLocation.size,
       )
     ) {
       logSidebarUnreadFlow(`bootstrap:${logScope}:skipped`, {
@@ -70,6 +93,17 @@ export function reconcileSidebarUnreadAfterBootstrap(
       });
       return;
     }
+
+    const dedupeKey = buildUnreadSnapshotDedupeKey(snapshot);
+    if (dedupeKey === lastReconciledSnapshotKey) {
+      logSidebarUnreadFlow(`bootstrap:${logScope}:skipped`, {
+        skippedReason: "duplicate_register_snapshot",
+        snapshotSource,
+      });
+      logChatListFlow(`${logScope}: reconcile skipped (duplicate snapshot)`, { snapshotSource });
+      return;
+    }
+    lastReconciledSnapshotKey = dedupeKey;
 
     logChatListFlow(`${logScope}: reconcileUnreadFromSnapshot`, {
       streamBuckets: snapshot.streams.length,

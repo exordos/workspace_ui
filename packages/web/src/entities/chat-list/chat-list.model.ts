@@ -760,7 +760,8 @@ export const useChatListStore = create<ChatListState>((set, get) => {
       });
     },
 
-    addMessage(message) {
+    addMessage(message, options) {
+      const suppressUnreadBump = options?.suppressUnreadBump === true;
       const currentUserId = get().currentUserId;
       patchSet((state) => {
         const mentionPatch = mergeMentionUnreadPatch(state, message, currentUserId, {});
@@ -786,7 +787,8 @@ export const useChatListStore = create<ChatListState>((set, get) => {
         if (!result) return;
         const { stream_id, name, lastMessage, lastMessageSenderName, time, ts } = result.stream;
         const topic = result.topic;
-        const topicUnreadDelta = isUnreadFromOthers(message, currentUserId) ? 1 : 0;
+        const topicUnreadDelta =
+          !suppressUnreadBump && isUnreadFromOthers(message, currentUserId) ? 1 : 0;
         if (topicUnreadDelta > 0) {
           logSidebarUnreadFlow("store:addMessage:stream", {
             messageId: message.id,
@@ -882,7 +884,8 @@ export const useChatListStore = create<ChatListState>((set, get) => {
         const dmEntry = messageToDmEntry(message, currentUserId, getAvatarMap());
         if (!dmEntry) return;
         const key = dmConversationKey(message.display_recipient, currentUserId);
-        const unreadDelta = isUnreadFromOthers(message, currentUserId) ? 1 : 0;
+        const unreadDelta =
+          !suppressUnreadBump && isUnreadFromOthers(message, currentUserId) ? 1 : 0;
         if (unreadDelta > 0) {
           logSidebarUnreadFlow("store:addMessage:dm", {
             messageId: message.id,

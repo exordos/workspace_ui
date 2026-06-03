@@ -1,4 +1,13 @@
+import {
+  clearRemainingContextUnread,
+  type ChatListReadFallbackContext,
+} from "~/entities/chat-list/chat-list-apply-read-decrement.lib";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import type { MessageLocation } from "~/entities/chat-list/chat-list.model.types";
+import { markMessagesAsRead } from "~/shared/api/zulip-read-state";
+import { dmRouteKey } from "~/shared/lib/dm-key";
 import { buildMessageIdMap } from "~/shared/lib/message-id-index.lib";
+import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 
 interface ResolveMarkAllAsReadTargetOptions {
   isDmView: boolean;
@@ -44,6 +53,84 @@ export function collectUnreadMessageIds(
   return messages
     .filter((message) => !(message.flags ?? []).includes("read"))
     .map((message) => message.id);
+}
+
+function messageLocationMatchesMarkAllTarget(
+  location: MessageLocation,
+  target: MarkAllAsReadTarget,
+  currentUserId: number | null,
+): boolean {
+  if (target.type === "dm") {
+    if (location.type !== "dm") return false;
+    return location.dmKey === dmRouteKey(target.userIds, currentUserId);
+  }
+  if (location.type !== "stream") return false;
+  if (location.stream_id !== target.streamId) return false;
+  return normalizeTopicForIdentity(location.topic) === normalizeTopicForIdentity(target.topic);
+}
+
+/** Loaded-window unread ids plus index ids for the current narrow (server unreads outside the window). */
+export function collectMarkAllAsReadMessageIds(
+  loadedMessages: readonly { id: number; flags?: string[] }[],
+  messageIdToLocation: ReadonlyMap<number, MessageLocation>,
+  target: MarkAllAsReadTarget,
+  currentUserId: number | null,
+): number[] {
+  const ids = new Set(collectUnreadMessageIds(loadedMessages));
+  for (const [messageId, location] of messageIdToLocation) {
+    if (messageLocationMatchesMarkAllTarget(location, target, currentUserId)) {
+      ids.add(messageId);
+    }
+  }
+  return Array.from(ids).sort((a, b) => a - b);
+}
+
+export function markAllAsReadFallbackContext(
+  target: MarkAllAsReadTarget,
+  currentUserId: number | null,
+): ChatListReadFallbackContext {
+  if (target.type === "dm") {
+    return { type: "dm", dmKey: dmRouteKey(target.userIds, currentUserId) };
+  }
+  return {
+    type: "stream",
+    streamId: target.streamId,
+    topic: normalizeTopicForIdentity(target.topic),
+  };
+}
+
+export interface ApplyOpenChatMarkAllAsReadOptions {
+  target: MarkAllAsReadTarget;
+  loadedMessages: readonly { id: number; flags?: string[] }[];
+  currentUserId: number | null;
+  applyOptimistic: (messageIds: number[], fallbackContext: ChatListReadFallbackContext) => void;
+}
+
+/** Marks all unread in the open chat via per-id flags API (never narrow). */
+export async function applyOpenChatMarkAllAsRead(
+  options: ApplyOpenChatMarkAllAsReadOptions,
+): Promise<boolean> {
+  const chatListState = useChatListStore.getState();
+  const messageIds = collectMarkAllAsReadMessageIds(
+    options.loadedMessages,
+    chatListState.messageIdToLocation,
+    options.target,
+    options.currentUserId,
+  );
+  const fallbackContext = markAllAsReadFallbackContext(options.target, options.currentUserId);
+
+  if (messageIds.length > 0) {
+    await markMessagesAsRead(messageIds);
+    options.applyOptimistic(messageIds, fallbackContext);
+  }
+
+  clearRemainingContextUnread(
+    () => useChatListStore.getState(),
+    chatListState,
+    fallbackContext,
+    "chat:markAllClearRemaining",
+  );
+  return true;
 }
 
 /** Message shape needed to decide if an id still counts as unread for optimistic read application. */

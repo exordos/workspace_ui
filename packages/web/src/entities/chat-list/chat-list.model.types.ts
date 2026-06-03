@@ -114,7 +114,7 @@ export interface ChatListState {
   /** Register fallback for mention ids until first API sync. */
   reconcileMentionsFromRegisterIds: (messageIds: readonly number[]) => void;
   decrementMentionsForReadMessages: (messageIds: readonly number[]) => void;
-  addMessage: (message: ZulipRawMessage) => void;
+  addMessage: (message: ZulipRawMessage, options?: { suppressUnreadBump?: boolean }) => void;
   addMessages: (messages: ZulipRawMessage[]) => void;
   /**
    * Adds `messageIdToLocation` entries for unread messages without touching previews/unread totals.

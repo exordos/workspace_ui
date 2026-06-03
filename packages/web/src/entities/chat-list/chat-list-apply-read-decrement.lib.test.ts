@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   applyChatListReadDecrement,
+  applyChatListReadDecrementGrouped,
   getContextUnreadCount,
+  groupMessageIdsByReadLocation,
   readFallbackContextFromCurrentChat,
 } from "./chat-list-apply-read-decrement.lib";
 import { useChatListStore } from "./chat-list.model";
@@ -178,6 +180,58 @@ describe("applyChatListReadDecrement", () => {
 
     expect(useChatListStore.getState().mentionsUnreadCount).toBe(2);
     expect([...useChatListStore.getState().mentionedUnreadMessageIds]).toEqual([11, 12]);
+  });
+});
+
+describe("applyChatListReadDecrementGrouped", () => {
+  afterEach(() => {
+    resetStore();
+  });
+
+  it("decrements each topic independently when batch spans multiple topics", () => {
+    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
+    useChatListStore.getState().reconcileUnreadFromSnapshot(
+      {
+        streams: [
+          { streamId: 5, topic: "alpha", unreadMessageIds: [1, 2] },
+          { streamId: 5, topic: "beta", unreadMessageIds: [10, 11] },
+        ],
+        dms: [],
+        totalCount: 4,
+        mentionMessageIds: [],
+      },
+      1,
+    );
+
+    const store = useChatListStore.getState();
+    applyChatListReadDecrementGrouped(() => useChatListStore.getState(), store, {
+      messageIds: [1, 2, 10, 11],
+      source: "test:multiTopic",
+    });
+
+    expect(useChatListStore.getState().streamsMap.get(5)?.topics.get("alpha")?.unreadCount).toBe(0);
+    expect(useChatListStore.getState().streamsMap.get(5)?.topics.get("beta")?.unreadCount).toBe(0);
+  });
+});
+
+describe("groupMessageIdsByReadLocation", () => {
+  afterEach(() => {
+    resetStore();
+  });
+
+  it("groups ids by stream topic location", () => {
+    useChatListStore.setState({
+      messageIdToLocation: new Map([
+        [1, { type: "stream", stream_id: 5, topic: "a" }],
+        [2, { type: "stream", stream_id: 5, topic: "b" }],
+      ]),
+    });
+    const { groups, unindexedIds } = groupMessageIdsByReadLocation(
+      useChatListStore.getState(),
+      [1, 2, 99],
+    );
+    expect(unindexedIds).toEqual([99]);
+    expect(groups).toHaveLength(2);
   });
 });
 

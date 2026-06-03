@@ -211,10 +211,6 @@ export function createLayoutBootstrapQueueRegisteredHandler(
         deps.persistDmIndexFromStore(deps.currentInstanceId);
       }
     }
-    deps.reconcileSidebarUnreadFromRegister(
-      registration,
-      useChatListStore.getState().currentUserId,
-    );
     deps.streamPreviewCoordinator.markRegisterHydrationReady();
     markReconnectStreamPreviewRegisterReady();
     deps.tryFlushMetadataStreamPreviews();

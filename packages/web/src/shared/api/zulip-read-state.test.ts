@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { updateMessageFlags } from "./zulip-messages";
 import {
   markDmAsRead,
+  MARK_READ_NARROW_NUM_AFTER,
   markMessagesAsRead,
   markStreamAsRead,
   markTopicAsRead,
@@ -58,11 +59,14 @@ describe("markDmAsRead", () => {
     const result = await markDmAsRead([42]);
     expect(result).toBe(true);
     expect(mockZulipApi.post).toHaveBeenCalledWith("/messages/flags/narrow", {
-      anchor: "newest",
+      anchor: "oldest",
       include_anchor: "false",
-      num_before: "5000",
-      num_after: "0",
-      narrow: JSON.stringify([{ operator: "dm", operand: [42] }]),
+      num_before: "0",
+      num_after: String(MARK_READ_NARROW_NUM_AFTER),
+      narrow: JSON.stringify([
+        { operator: "is", operand: "unread", negated: false },
+        { operator: "dm", operand: [42] },
+      ]),
       op: "add",
       flag: "read",
     });
@@ -103,11 +107,14 @@ describe("markStreamAsRead", () => {
     const result = await markStreamAsRead(10);
     expect(result).toBe(true);
     expect(mockZulipApi.post).toHaveBeenCalledWith("/messages/flags/narrow", {
-      anchor: "newest",
+      anchor: "oldest",
       include_anchor: "false",
-      num_before: "5000",
-      num_after: "0",
-      narrow: JSON.stringify([{ operator: "stream", operand: 10 }]),
+      num_before: "0",
+      num_after: String(MARK_READ_NARROW_NUM_AFTER),
+      narrow: JSON.stringify([
+        { operator: "is", operand: "unread", negated: false },
+        { operator: "channel", operand: 10 },
+      ]),
       op: "add",
       flag: "read",
     });
@@ -144,12 +151,13 @@ describe("markTopicAsRead", () => {
     const result = await markTopicAsRead(10, "bugs");
     expect(result).toBe(true);
     expect(mockZulipApi.post).toHaveBeenCalledWith("/messages/flags/narrow", {
-      anchor: "newest",
+      anchor: "oldest",
       include_anchor: "false",
-      num_before: "5000",
-      num_after: "0",
+      num_before: "0",
+      num_after: String(MARK_READ_NARROW_NUM_AFTER),
       narrow: JSON.stringify([
-        { operator: "stream", operand: 10 },
+        { operator: "is", operand: "unread", negated: false },
+        { operator: "channel", operand: 10 },
         { operator: "topic", operand: "bugs" },
       ]),
       op: "add",
@@ -173,7 +181,8 @@ describe("markTopicAsRead", () => {
       "/messages/flags/narrow",
       expect.objectContaining({
         narrow: JSON.stringify([
-          { operator: "stream", operand: 10 },
+          { operator: "is", operand: "unread", negated: false },
+          { operator: "channel", operand: 10 },
           { operator: "topic", operand: "" },
         ]),
       }),
@@ -192,7 +201,8 @@ describe("markTopicAsRead", () => {
       "/messages/flags/narrow",
       expect.objectContaining({
         narrow: JSON.stringify([
-          { operator: "stream", operand: 10 },
+          { operator: "is", operand: "unread", negated: false },
+          { operator: "channel", operand: 10 },
           { operator: "topic", operand: "general" },
         ]),
       }),

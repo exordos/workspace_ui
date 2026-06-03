@@ -216,6 +216,11 @@ describe("ChatPage mark-as-read batching", () => {
     act(() => {
       captured.messageListProps?.onUnreadMessagesVisible([MESSAGE_ID]);
     });
+    expect(useCurrentChatMessagesStore.getState().messages[0]?.flags).toContain("read");
+    expect(
+      useChatListStore.getState().streamsMap.get(STREAM_ID)?.topics.get(TOPIC)?.unreadCount,
+    ).toBe(0);
+
     act(() => {
       useCurrentChatMessagesStore.setState({ messages: [refreshedMessage] });
     });
@@ -225,9 +230,5 @@ describe("ChatPage mark-as-read batching", () => {
 
     expect(markMessagesAsRead).toHaveBeenCalledTimes(1);
     expect(markMessagesAsRead).toHaveBeenCalledWith([MESSAGE_ID]);
-    expect(useCurrentChatMessagesStore.getState().messages[0]?.flags).toContain("read");
-    expect(
-      useChatListStore.getState().streamsMap.get(STREAM_ID)?.topics.get(TOPIC)?.unreadCount,
-    ).toBe(0);
   });
 });

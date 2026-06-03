@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   applyChatListReadDecrement,
-  clearRemainingContextUnread,
   readFallbackContextFromCurrentChat,
 } from "~/entities/chat-list/chat-list-apply-read-decrement.lib";
 import { resolvePersonalDmSidebarTitle } from "~/entities/chat-list/chat-list-format.lib";
@@ -44,7 +43,7 @@ import {
   updateMessage,
   deleteMessage,
 } from "~/shared/api/zulip-messages";
-import { markMessagesAsRead, markDmAsRead, markTopicAsRead } from "~/shared/api/zulip-read-state";
+import { markMessagesAsRead } from "~/shared/api/zulip-read-state";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
@@ -87,7 +86,7 @@ import {
   setPendingForwardPrefill,
 } from "./chat-forward.lib";
 import {
-  collectUnreadMessageIds,
+  applyOpenChatMarkAllAsRead,
   filterMessageIdsStillUnreadForOptimisticApply,
   resolveMarkAllAsReadTarget,
 } from "./chat-mark-all-read.lib";
@@ -581,10 +580,14 @@ export const ChatPage: React.FC = () => {
     const batcher = createMarkAsReadBatcher({
       debounceMs: 250,
       markAsRead: markMessagesAsRead,
-      onMarked: (messageIds) => {
+      onSchedule: (messageIds) => {
         applyReadMessagesOptimistically(messageIds, batchFallbackContext);
       },
       onError: (error, messageIds) => {
+        if (messageIds.length > 0) {
+          updateMessageFlagsInStore(messageIds, "read", "remove");
+          useChatListStore.getState().incrementUnreadForMessages(messageIds);
+        }
         log.warn("markAsRead failed", {
           requestedCount: messageIds.length,
           error: error instanceof Error ? error.message : String(error),
@@ -608,6 +611,7 @@ export const ChatPage: React.FC = () => {
     activeStreamId,
     activeTopic,
     applyReadMessagesOptimistically,
+    updateMessageFlagsInStore,
   ]);
 
   const isTextInputFocused = useCallback((): boolean => {
@@ -651,34 +655,12 @@ export const ChatPage: React.FC = () => {
     });
     if (!target) return;
 
-    const unreadIds = collectUnreadMessageIds(messages);
-    const request =
-      target.type === "dm"
-        ? markDmAsRead(target.userIds)
-        : markTopicAsRead(target.streamId, target.topic);
-
-    const markFallbackContext: ReadFallbackContext | undefined =
-      target.type === "dm"
-        ? { type: "dm", dmKey: dmRouteKey(target.userIds, currentUserId) }
-        : { type: "stream", streamId: target.streamId, topic: target.topic };
-
-    request
-      .then((ok) => {
-        if (!ok || markFallbackContext == null) {
-          return;
-        }
-        if (unreadIds.length > 0) {
-          applyReadMessagesOptimistically(unreadIds, markFallbackContext);
-        }
-        const chatListState = useChatListStore.getState();
-        clearRemainingContextUnread(
-          () => useChatListStore.getState(),
-          chatListState,
-          markFallbackContext,
-          "chat:markAllClearRemaining",
-        );
-      })
-      .catch(() => {});
+    void applyOpenChatMarkAllAsRead({
+      target,
+      loadedMessages: messages,
+      currentUserId,
+      applyOptimistic: applyReadMessagesOptimistically,
+    }).catch(() => {});
   }, [
     isDmView,
     activeDmUserIds,

@@ -34,6 +34,21 @@ describe("createMarkAsReadBatcher", () => {
     isTabVisible.mockReturnValue(true);
   });
 
+  it("calls onSchedule when ids are newly queued", async () => {
+    const markAsRead = vi.fn().mockResolvedValue(true);
+    const onSchedule = vi.fn();
+    const batcher = createMarkAsReadBatcher({ markAsRead, onSchedule, debounceMs: 200 });
+
+    batcher.schedule([1, 2]);
+    batcher.schedule([2]);
+
+    expect(onSchedule).toHaveBeenCalledTimes(1);
+    expect(onSchedule).toHaveBeenCalledWith([1, 2]);
+
+    await vi.advanceTimersByTimeAsync(200);
+    expect(markAsRead).toHaveBeenCalledWith([1, 2]);
+  });
+
   it("debounces and deduplicates scheduled message ids", async () => {
     const markAsRead = vi.fn().mockResolvedValue(true);
     const onMarked = vi.fn();

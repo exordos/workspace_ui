@@ -4,11 +4,13 @@ import {
   type FolderAssignmentRow,
 } from "~/features/folder-sync/folder-sync-assignment.types";
 import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
+import { applySidebarMarkChatAsRead } from "~/features/mark-chat-read/sidebar-mark-chat-read.lib";
+import { useMarkTopicResolved } from "~/features/mark-topic-resolved/mark-topic-resolved.hook";
+import { RenameStreamTopicDialog } from "~/features/mark-topic-resolved/rename-stream-topic-dialog.ui";
 import { muteStream, unmuteStream } from "~/features/mute-chat/mute-chat.api";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { runOptimisticStreamMuteUpdate } from "~/features/mute-chat/mute-chat.optimistic.lib";
 import { t } from "~/i18n/i18n";
-import { markDmAsRead, markStreamAsRead } from "~/shared/api/zulip-read-state";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
 import { Icon } from "~/shared/ui/icon";
 import {
@@ -252,8 +254,8 @@ export const StreamContextMenu = React.memo(function StreamContextMenu({
   }, [mutePending, onMuteError, streamId]);
 
   const handleMarkAsRead = useCallback(() => {
-    void markStreamAsRead(streamId);
     setMenuOpen(false);
+    void applySidebarMarkChatAsRead({ type: "stream", streamId });
   }, [streamId]);
 
   const handlePinChat = useCallback(() => {
@@ -411,8 +413,8 @@ export const DmContextMenu = React.memo(function DmContextMenu({
         ? chat.userIds
         : parseDmSlugToUserIds(chat.slug);
     if (userIds.length === 0) return;
-    void markDmAsRead(userIds);
     setMenuOpen(false);
+    void applySidebarMarkChatAsRead({ type: "dm", userIds });
   }, [chat.slug, chat.userIds]);
 
   const handlePinChat = useCallback(() => {
@@ -512,6 +514,175 @@ export const DmContextMenu = React.memo(function DmContextMenu({
           align: "start",
         }}
       />
+    </div>
+  );
+});
+
+const TOPIC_MENU_TRIGGER_CLASS =
+  "flex h-6 w-6 items-center justify-center rounded text-text-muted opacity-0 transition-opacity hover:bg-sidebar-hover hover:text-text-primary focus-visible:opacity-100 group-focus-within/topic:opacity-100 group-hover/topic:opacity-100";
+
+export const TopicContextMenu = React.memo(function TopicContextMenu({
+  streamId,
+  streamName,
+  topic,
+  rowClassName,
+  rowStyle,
+  sideActions,
+  children,
+}: {
+  streamId: number;
+  streamName: string;
+  topic: string;
+  rowClassName: string;
+  rowStyle?: React.CSSProperties;
+  /** Mute and other controls rendered below the menu trigger in the right column. */
+  sideActions?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const {
+    canToggle: canManageTopic,
+    isResolved,
+    toggleTopicResolved,
+    pending: topicActionPending,
+    channelName,
+    renameDialogOpen,
+    setRenameDialogOpen,
+    renameTopicDraft,
+    setRenameTopicDraft,
+    openRenameDialog,
+    submitRename,
+    renamePending,
+  } = useMarkTopicResolved({ streamId, topic, streamName });
+
+  const resolveLabel = isResolved ? t("channel.markTopicAsNotDone") : t("channel.markTopicAsDone");
+
+  const handleMarkAsRead = useCallback(() => {
+    setMenuOpen(false);
+    void applySidebarMarkChatAsRead({ type: "topic", streamId, topic });
+  }, [streamId, topic]);
+
+  const handleResolveSelect = useCallback(() => {
+    toggleTopicResolved();
+    setMenuOpen(false);
+  }, [toggleTopicResolved]);
+
+  const handleRenameSelect = useCallback(() => {
+    openRenameDialog();
+    setMenuOpen(false);
+  }, [openRenameDialog]);
+
+  const openMenu = useCallback(() => {
+    setMenuOpen(true);
+  }, []);
+
+  const handleContextMenuCapture = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openMenu();
+    },
+    [openMenu],
+  );
+
+  const handleOpenMenuClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openMenu();
+    },
+    [openMenu],
+  );
+
+  const menuItems = useMemo<DropdownMenuItem[]>(() => {
+    const items: DropdownMenuItem[] = [
+      {
+        type: "action",
+        key: "mark-as-read",
+        icon: "check",
+        label: t("sidebar.markAsRead"),
+        onSelect: handleMarkAsRead,
+      },
+    ];
+    if (canManageTopic) {
+      items.push(
+        {
+          type: "action",
+          key: "rename-topic",
+          icon: "pen",
+          label: t("channel.renameTopic"),
+          disabled: topicActionPending,
+          onSelect: handleRenameSelect,
+        },
+        {
+          type: "action",
+          key: "resolve-topic",
+          icon: "check",
+          label: resolveLabel,
+          disabled: topicActionPending,
+          onSelect: handleResolveSelect,
+        },
+      );
+    }
+    return items;
+  }, [
+    canManageTopic,
+    handleMarkAsRead,
+    handleRenameSelect,
+    handleResolveSelect,
+    resolveLabel,
+    topicActionPending,
+  ]);
+
+  const contentWithContextMenu = useMemo(
+    (): React.ReactElement =>
+      wrapChildWithContextMenuHandlers(children, {
+        handleContextMenuCapture,
+        openMenu,
+      }),
+    [children, handleContextMenuCapture, openMenu],
+  );
+
+  return (
+    <div className={rowClassName} style={rowStyle}>
+      <div className="min-w-0 flex-1">{contentWithContextMenu}</div>
+      <div className="flex shrink-0 flex-col items-end justify-end gap-1 py-2 pr-2">
+        {sideActions}
+        <DropdownMenu
+          open={menuOpen}
+          onOpenChange={setMenuOpen}
+          trigger={
+            <button
+              type="button"
+              className={TOPIC_MENU_TRIGGER_CLASS}
+              aria-label={t("a11y.chatMenu")}
+              onClick={handleOpenMenuClick}
+            >
+              <Icon name="more" size={14} />
+            </button>
+          }
+          items={menuItems}
+          contentVariant="narrow"
+          itemClassName={SIDEBAR_MENU_ITEM_CLASS}
+          submenuTriggerClassName={SIDEBAR_MENU_ITEM_CLASS}
+          checkboxItemClassName={SIDEBAR_MENU_ITEM_CLASS}
+          contentProps={{
+            sideOffset: 4,
+            align: "end",
+          }}
+        />
+      </div>
+      {canManageTopic && (
+        <RenameStreamTopicDialog
+          open={renameDialogOpen}
+          channelName={channelName}
+          topicName={renameTopicDraft}
+          onTopicNameChange={setRenameTopicDraft}
+          pending={renamePending}
+          onOpenChange={setRenameDialogOpen}
+          onSubmit={submitRename}
+        />
+      )}
     </div>
   );
 });

@@ -98,6 +98,52 @@ export function resolveMarkTopicResolvedVisibility(options: {
   };
 }
 
+/** Sidebar topic row / explicit target — not tied to open chat context. */
+export function resolveMarkTopicResolvedVisibilityForTopic(options: {
+  streamId: number;
+  topic: string;
+  streamName: string;
+  currentUserId: number | null;
+  buildStreamSlug: (streamId: number, streamName: string) => string;
+}): MarkTopicResolvedVisibility {
+  const { streamId, topic, streamName, currentUserId, buildStreamSlug } = options;
+  const effectiveStreamName = streamName.trim();
+  const streamSlug =
+    effectiveStreamName.length > 0 ? buildStreamSlug(streamId, effectiveStreamName) : null;
+  const topicTrimmed = topic.trim();
+
+  const blockers: MarkTopicResolvedBlocker[] = [];
+  if (topicTrimmed.length === 0) {
+    blockers.push("empty_topic");
+  }
+  if (streamSlug == null) {
+    blockers.push("no_stream_slug");
+  }
+  if (currentUserId == null) {
+    blockers.push("no_current_user");
+  }
+
+  const hasTarget = topicTrimmed.length > 0;
+  const hasStreamSlug = streamSlug != null;
+  const canToggle = hasTarget && hasStreamSlug && currentUserId != null;
+
+  return {
+    canToggle,
+    blockers,
+    hasTarget,
+    hasStreamSlug,
+    currentUserId,
+    streamId,
+    streamNameFromMap: effectiveStreamName,
+    streamNameFromContext: "",
+    effectiveStreamName,
+    streamSlug,
+    contextType: "stream",
+    streamWideView: false,
+    topic: topicTrimmed.length > 0 ? topic : null,
+  };
+}
+
 export function resolveTopicResolveTargetFromContext(
   context: CurrentChatContext | null,
 ): TopicResolveTarget | null {

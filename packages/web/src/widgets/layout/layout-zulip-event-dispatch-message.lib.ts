@@ -1,11 +1,7 @@
 /**
  * Zulip realtime handlers: message, flags, reactions, delete, update.
  */
-import {
-  applyChatListReadDecrement,
-  getContextUnreadCount,
-  readFallbackContextFromCurrentChat,
-} from "~/entities/chat-list/chat-list-apply-read-decrement.lib";
+import { applyChatListReadDecrementGrouped } from "~/entities/chat-list/chat-list-apply-read-decrement.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { isMessageForContext } from "~/entities/message/message.model";
@@ -21,6 +17,7 @@ import {
   logSidebarUnreadFlow,
   summarizeMessageIdsForFlowDebug,
 } from "~/shared/lib/sidebar-unread-debug.lib";
+import { isTabVisible } from "~/shared/lib/visibility";
 import { closeReadMessageNotifications } from "./layout-notification-tags.lib";
 import { maybeNotifyNewMessage } from "./layout-zulip-event-notify.lib";
 import {
@@ -60,7 +57,13 @@ export function handleIncomingMessage(
   const raw = event.message as unknown as ZulipRawMessage;
   ctx.onMessage?.(raw);
   users.mergeFromMessage(raw);
-  chatList.addMessage(raw);
+  const currentUserId = chatList.currentUserId;
+  const isForCurrentChat =
+    currentChat.context != null &&
+    !currentChat.hasNewerMessages &&
+    isMessageForContext(raw, currentChat.context, currentUserId);
+  const suppressUnreadBump = isForCurrentChat && isTabVisible();
+  chatList.addMessage(raw, { suppressUnreadBump });
   // Что делает: fallback для серверов/сценариев, где rename канала приходит не отдельным stream-event,
   // а заметен только через новое display_recipient в message-событии.
   if (
@@ -75,11 +78,6 @@ export function handleIncomingMessage(
   ctx.updateLatestMessageId(raw.id);
   activity.markStale();
 
-  const currentUserId = chatList.currentUserId;
-  const isForCurrentChat =
-    currentChat.context != null &&
-    !currentChat.hasNewerMessages &&
-    isMessageForContext(raw, currentChat.context, currentUserId);
   if (isForCurrentChat) {
     currentChat.appendMessage(rawMessageToMockMessage(raw));
   }
@@ -127,23 +125,10 @@ export function handleUpdateMessageFlags(
   if (op === "add") {
     closeReadMessageNotifications(notifications.closeByTag, messageIds);
     const chatListStore = useChatListStore.getState();
-    const fallbackContext = readFallbackContextFromCurrentChat(currentChat.context);
-    const contextUnreadBefore =
-      fallbackContext != null ? getContextUnreadCount(chatListStore, fallbackContext) : 0;
-    if (contextUnreadBefore > 0) {
-      applyChatListReadDecrement(() => useChatListStore.getState(), chatListStore, {
-        messageIds,
-        fallbackContext,
-        source: "event:update_message_flags:read:add",
-      });
-    } else {
-      chatListStore.decrementMentionsForReadMessages(messageIds);
-      logSidebarUnreadFlow("event:update_message_flags:read:add:skip", {
-        reason: "context_already_zero",
-        ...summarizeMessageIdsForFlowDebug(messageIds),
-        fallbackContext,
-      });
-    }
+    applyChatListReadDecrementGrouped(() => useChatListStore.getState(), chatListStore, {
+      messageIds,
+      source: "event:update_message_flags:read:add",
+    });
     currentChat.updateMessageFlags(messageIds, "read", "add");
   } else {
     logSidebarUnreadFlow("event:update_message_flags:read:remove", {

@@ -319,12 +319,18 @@ These functions are still in `lib/zulipClient.ts` and will be migrated to entity
 
 ### Message Flags
 
-| Function                                   | Endpoint                                    | Returns |
-| ------------------------------------------ | ------------------------------------------- | ------- |
-| `updateMessageFlags(messageIds, op, flag)` | `POST /messages/flags`                      | `void`  |
-| `addMessageFlag(messageIds, flag)`         | → `updateMessageFlags(..., "add", flag)`    |         |
-| `removeMessageFlag(messageIds, flag)`      | → `updateMessageFlags(..., "remove", flag)` |         |
-| `markMessagesAsRead(messageIds)`           | `POST /messages/flags`                      | `void`  |
+| Function                                   | Endpoint                                    | Returns   |
+| ------------------------------------------ | ------------------------------------------- | --------- |
+| `updateMessageFlags(messageIds, op, flag)` | `POST /messages/flags`                      | `void`    |
+| `addMessageFlag(messageIds, flag)`         | → `updateMessageFlags(..., "add", flag)`    |           |
+| `removeMessageFlag(messageIds, flag)`      | → `updateMessageFlags(..., "remove", flag)` |           |
+| `markMessagesAsRead(messageIds)`           | `POST /messages/flags`                      | `void`    |
+| `markUnreadInNarrow(narrow)`               | `POST /messages/flags/narrow`               | `boolean` |
+| `markDmAsRead(userIds)`                    | → narrow: `is:unread` + `dm` (sidebar only) | `boolean` |
+| `markStreamAsRead(streamId)`               | → narrow: `is:unread` + `channel` (sidebar) | `boolean` |
+| `markTopicAsRead(streamId, topic)`         | → narrow: `is:unread` + `channel` + `topic` | `boolean` |
+
+**Read strategy:** Open chat uses per-id `markMessagesAsRead` (viewport, send/FAB tail, Mod+Shift+M). Sidebar context menu uses `flags/narrow` bulk mark-read only.
 
 ### Users
 

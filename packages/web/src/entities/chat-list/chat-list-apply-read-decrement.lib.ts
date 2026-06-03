@@ -64,6 +64,109 @@ export function readFallbackContextFromCurrentChat(
   return undefined;
 }
 
+function fallbackContextFromMessageLocation(
+  location: MessageLocation,
+): ChatListReadFallbackContext {
+  if (location.type === "stream") {
+    return {
+      type: "stream",
+      streamId: location.stream_id,
+      topic: location.topic,
+    };
+  }
+  return { type: "dm", dmKey: location.dmKey };
+}
+
+function readLocationGroupKey(location: MessageLocation): string {
+  if (location.type === "stream") {
+    return `stream:${location.stream_id}\t${normalizeTopicForIdentity(location.topic)}`;
+  }
+  return `dm:${location.dmKey.trim()}`;
+}
+
+/** Partitions read message ids by sidebar location for per-context fallback decrement. */
+export function groupMessageIdsByReadLocation(
+  state: ChatListUnreadDecrementState,
+  messageIds: readonly number[],
+): {
+  groups: { fallbackContext: ChatListReadFallbackContext; messageIds: number[] }[];
+  unindexedIds: number[];
+} {
+  const byKey = new Map<
+    string,
+    { fallbackContext: ChatListReadFallbackContext; messageIds: number[] }
+  >();
+  const unindexedIds: number[] = [];
+
+  for (const messageId of messageIds) {
+    const location = state.messageIdToLocation.get(messageId);
+    if (location == null) {
+      unindexedIds.push(messageId);
+      continue;
+    }
+    const key = readLocationGroupKey(location);
+    const fallbackContext = fallbackContextFromMessageLocation(location);
+    const existing = byKey.get(key);
+    if (existing != null) {
+      existing.messageIds.push(messageId);
+    } else {
+      byKey.set(key, { fallbackContext, messageIds: [messageId] });
+    }
+  }
+
+  return { groups: [...byKey.values()], unindexedIds };
+}
+
+/**
+ * Applies read decrement per location group so fallback never targets the wrong open chat.
+ */
+export function applyChatListReadDecrementGrouped(
+  getState: () => ChatListUnreadDecrementState,
+  actions: ChatListUnreadDecrementActions,
+  options: {
+    messageIds: readonly number[];
+    clampWhenAlreadyRead?: boolean;
+    source?: string;
+  },
+): void {
+  const {
+    messageIds,
+    clampWhenAlreadyRead = false,
+    source = "apply:readDecrementGrouped",
+  } = options;
+  if (messageIds.length === 0) {
+    return;
+  }
+
+  const stateBefore = getState();
+  const { groups, unindexedIds } = groupMessageIdsByReadLocation(stateBefore, messageIds);
+
+  logSidebarUnreadFlow(`${source}:start`, {
+    ...summarizeMessageIdsForFlowDebug(messageIds),
+    groupCount: groups.length,
+    unindexedCount: unindexedIds.length,
+    totalsBefore: summarizeSidebarUnreadTotals(stateBefore),
+  });
+
+  for (const group of groups) {
+    applyChatListReadDecrement(getState, actions, {
+      messageIds: group.messageIds,
+      fallbackContext: group.fallbackContext,
+      clampWhenAlreadyRead,
+      source: `${source}:loc`,
+    });
+  }
+
+  if (unindexedIds.length > 0) {
+    const soleGroupFallback = groups.length === 1 ? groups[0]!.fallbackContext : undefined;
+    applyChatListReadDecrement(getState, actions, {
+      messageIds: unindexedIds,
+      fallbackContext: soleGroupFallback,
+      source: `${source}:unindexed`,
+    });
+  }
+}
+
 export function getContextUnreadCount(
   state: ChatListUnreadDecrementState,
   context: ChatListReadFallbackContext,

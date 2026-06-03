@@ -16,13 +16,25 @@ describe("layout-instance-register-unread", () => {
     ).toBe(false);
   });
 
-  it("shouldPreserveLocalUnreadOnCachedReconcile when empty cache and local badges", () => {
+  it("shouldPreserveLocalUnreadOnCachedReconcile when empty cache and local badges match index", () => {
     expect(
       shouldPreserveLocalUnreadOnCachedReconcile(
         { streams: [], dms: [], totalCount: 0, mentionMessageIds: [] },
         2,
         0,
+        2,
       ),
     ).toBe(true);
+  });
+
+  it("shouldPreserveLocalUnreadOnCachedReconcile is false when local exceeds indexed unread", () => {
+    expect(
+      shouldPreserveLocalUnreadOnCachedReconcile(
+        { streams: [], dms: [], totalCount: 0, mentionMessageIds: [] },
+        5,
+        0,
+        2,
+      ),
+    ).toBe(false);
   });
 });

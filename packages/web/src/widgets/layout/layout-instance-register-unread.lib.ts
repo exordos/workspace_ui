@@ -71,14 +71,21 @@ export function isRegisterUnreadSnapshotEmpty(snapshot: ZulipUnreadMessagesSnaps
 /**
  * Reconnect reads a cached register snapshot; an empty cache must not wipe sidebar badges
  * rebuilt from IDB + realtime while the queue was offline.
+ *
+ * Preserves local counts only when they are grounded in the unread location index — avoids
+ * preserving phantom inflation from duplicate queue bumps indefinitely.
  */
 export function shouldPreserveLocalUnreadOnCachedReconcile(
   snapshot: ZulipUnreadMessagesSnapshot,
   localSidebarStreamsUnread: number,
   localSidebarDmsUnread: number,
+  indexedUnreadCount: number,
 ): boolean {
+  const localTotal = localSidebarStreamsUnread + localSidebarDmsUnread;
   return (
     isRegisterUnreadSnapshotEmpty(snapshot) &&
-    (localSidebarStreamsUnread > 0 || localSidebarDmsUnread > 0)
+    localTotal > 0 &&
+    indexedUnreadCount > 0 &&
+    localTotal <= indexedUnreadCount
   );
 }

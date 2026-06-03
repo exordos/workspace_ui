@@ -543,6 +543,8 @@ export const MessageList: React.FC<MessageListProps> = ({
     if (scrollToBottomAfterSendNonce === 0) return;
     const el = scrollRef.current;
     if (!el) return;
+    userScrollSeenRef.current = true;
+    bottomReadDispatchKeyRef.current = null;
     logScrollMetrics("scroll:toBottom", { reason: "afterSend" });
     runProgrammaticScroll(() => {
       scrollToBottom(el);
@@ -551,6 +553,7 @@ export const MessageList: React.FC<MessageListProps> = ({
     const rafId = requestAnimationFrame(() => {
       scrollToBottom(el);
       syncWasAtBottomFromElement(el);
+      dispatchUnreadAtBottom();
     });
     return () => cancelAnimationFrame(rafId);
   }, [
@@ -558,6 +561,7 @@ export const MessageList: React.FC<MessageListProps> = ({
     runProgrammaticScroll,
     logScrollMetrics,
     syncWasAtBottomFromElement,
+    dispatchUnreadAtBottom,
   ]);
 
   // Scroll down: after messages load on chat switch, or if user was already at the bottom (own message)
@@ -1102,8 +1106,22 @@ export const MessageList: React.FC<MessageListProps> = ({
   // Это единственный сценарий в message-list, где анимация нужна намеренно.
   const handleScrollToBottomClick = useCallback(() => {
     userScrollSeenRef.current = true;
-    scrollToBottom(scrollRef.current, "smooth");
-  }, []);
+    bottomReadDispatchKeyRef.current = null;
+    const el = scrollRef.current;
+    if (!el) return;
+    scrollToBottom(el, "smooth");
+    const dispatchAfterScroll = (): void => {
+      syncWasAtBottomFromElement(el);
+      dispatchUnreadAtBottom();
+    };
+    if ("onscrollend" in el) {
+      el.addEventListener("scrollend", dispatchAfterScroll, { once: true });
+      return;
+    }
+    requestAnimationFrame(() => {
+      requestAnimationFrame(dispatchAfterScroll);
+    });
+  }, [dispatchUnreadAtBottom, syncWasAtBottomFromElement]);
 
   const groups = useMemo(() => {
     const result: { dateKey: string; senderGroups: MockMessage[][] }[] = [];

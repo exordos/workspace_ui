@@ -5,71 +5,84 @@ import { guard } from "~/shared/lib/guards";
 import { logScrollReadFlow } from "~/shared/lib/message-flow-debug.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { toResolvedTopicName, toUnresolvedTopicName } from "~/shared/lib/topic-resolve";
-import { zulipTopicNarrowOperandForApi } from "~/shared/lib/zulip-topic-narrow.lib";
+import {
+  buildSidebarMarkReadNarrowForChannel,
+  buildSidebarMarkReadNarrowForDm,
+  buildSidebarMarkReadNarrowForTopic,
+} from "~/shared/lib/zulip-mark-read-narrow.lib";
+import {
+  normalizeZulipMessagesNarrowForApi,
+  type ZulipMessagesNarrowClause,
+  zulipTopicNarrowOperandForApi,
+} from "~/shared/lib/zulip-topic-narrow.lib";
 import { zulipPipelineGet, zulipPipelinePatch, zulipPipelinePost } from "./zulip-pipeline.internal";
 import { validateMessageIds } from "./zulip-validation.internal";
 
-/** Marks messages as read (POST /api/v1/messages/flags). Call when opening a chat. */
-export async function markMessagesAsRead(messageIds: number[]): Promise<void> {
-  if (messageIds.length === 0) return;
-  const validatedMessageIds = validateMessageIds(messageIds, "markMessagesAsRead.messageIds");
-  logScrollReadFlow("api:markMessagesAsRead", { count: validatedMessageIds.length });
-  await zulipPipelinePost("messages/flags", {
-    messages: JSON.stringify(validatedMessageIds),
-    op: "add",
-    flag: "read",
-  });
+/** Max unread messages marked per sidebar flags/narrow request. */
+export const MARK_READ_NARROW_NUM_AFTER = 5000;
+
+export interface MarkUnreadInNarrowOptions {
+  numAfter?: number;
 }
 
-/** Bulk-marks all messages in a DM chat as read (POST /api/v1/messages/flags/narrow). */
+/**
+ * Marks unread messages in a narrow as read (POST /api/v1/messages/flags/narrow).
+ * Sidebar context menu only — not for open-chat viewport read.
+ */
+export async function markUnreadInNarrow(
+  narrow: readonly ZulipMessagesNarrowClause[],
+  options?: MarkUnreadInNarrowOptions,
+): Promise<boolean> {
+  const numAfter = options?.numAfter ?? MARK_READ_NARROW_NUM_AFTER;
+  const normalizedNarrow = normalizeZulipMessagesNarrowForApi([...narrow]);
+  logScrollReadFlow("api:markUnreadInNarrow", {
+    numAfter,
+    narrow: normalizedNarrow,
+  });
+
+  const post = async (clauses: ZulipMessagesNarrowClause[]) => {
+    const res = await zulipPipelinePost("messages/flags/narrow", {
+      anchor: "oldest",
+      include_anchor: "false",
+      num_before: "0",
+      num_after: String(numAfter),
+      narrow: JSON.stringify(clauses),
+      op: "add",
+      flag: "read",
+    });
+    return res.ok;
+  };
+
+  if (await post(normalizedNarrow)) {
+    return true;
+  }
+
+  const hasChannel = normalizedNarrow.some((c) => c.operator === "channel");
+  if (!hasChannel) {
+    return false;
+  }
+
+  const streamNarrow = normalizedNarrow.map((clause) =>
+    clause.operator === "channel" ? { ...clause, operator: "stream" } : clause,
+  );
+  logScrollReadFlow("api:markUnreadInNarrow:retryStreamOperator", {});
+  return post(streamNarrow);
+}
+
+/** Bulk-marks all unread in a DM as read (sidebar context menu). */
 export async function markDmAsRead(userIds: number[]): Promise<boolean> {
-  const validatedUserIds = guard
-    .nonEmptyArray(userIds, "markDmAsRead.userIds")
-    .map((userId) => guard.userId(userId, "markDmAsRead.userIds"));
-  const res = await zulipPipelinePost("messages/flags/narrow", {
-    anchor: "newest",
-    include_anchor: "false",
-    num_before: "5000",
-    num_after: "0",
-    narrow: JSON.stringify([{ operator: "dm", operand: validatedUserIds }]),
-    op: "add",
-    flag: "read",
-  });
-  return res.ok;
+  return markUnreadInNarrow(buildSidebarMarkReadNarrowForDm(userIds));
 }
 
-/** Bulk-marks all messages in a stream as read (POST /api/v1/messages/flags/narrow). */
+/** Bulk-marks all unread in a stream as read (sidebar context menu). */
 export async function markStreamAsRead(streamId: number): Promise<boolean> {
-  guard.streamId(streamId, "markStreamAsRead");
-  const res = await zulipPipelinePost("messages/flags/narrow", {
-    anchor: "newest",
-    include_anchor: "false",
-    num_before: "5000",
-    num_after: "0",
-    narrow: JSON.stringify([{ operator: "stream", operand: streamId }]),
-    op: "add",
-    flag: "read",
-  });
-  return res.ok;
+  return markUnreadInNarrow(buildSidebarMarkReadNarrowForChannel(streamId));
 }
 
-/** Bulk-marks all messages in a stream topic as read (POST /api/v1/messages/flags/narrow). */
+/** Bulk-marks all unread in a stream topic as read (sidebar context menu). */
 export async function markTopicAsRead(streamId: number, topic: string): Promise<boolean> {
   guard.streamId(streamId, "markTopicAsRead");
-  const normalizedTopic = normalizeTopicForIdentity(topic);
-  const res = await zulipPipelinePost("messages/flags/narrow", {
-    anchor: "newest",
-    include_anchor: "false",
-    num_before: "5000",
-    num_after: "0",
-    narrow: JSON.stringify([
-      { operator: "stream", operand: streamId },
-      { operator: "topic", operand: zulipTopicNarrowOperandForApi(normalizedTopic) },
-    ]),
-    op: "add",
-    flag: "read",
-  });
-  return res.ok;
+  return markUnreadInNarrow(buildSidebarMarkReadNarrowForTopic(streamId, topic));
 }
 
 async function findTopicAnchorMessageId(streamId: number, topic: string): Promise<number | null> {
@@ -181,4 +194,16 @@ export async function setTopicResolvedState(
   }
 
   return patchStreamTopicForAllMessages(anchorMessageId, targetTopic);
+}
+
+/** Marks messages as read (POST /api/v1/messages/flags). Used for viewport/scroll read in open chat. */
+export async function markMessagesAsRead(messageIds: number[]): Promise<void> {
+  if (messageIds.length === 0) return;
+  const validatedMessageIds = validateMessageIds(messageIds, "markMessagesAsRead.messageIds");
+  logScrollReadFlow("api:markMessagesAsRead", { count: validatedMessageIds.length });
+  await zulipPipelinePost("messages/flags", {
+    messages: JSON.stringify(validatedMessageIds),
+    op: "add",
+    flag: "read",
+  });
 }

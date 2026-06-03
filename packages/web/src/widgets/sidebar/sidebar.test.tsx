@@ -26,6 +26,7 @@ import { Sidebar } from "./sidebar.ui";
 const createChannelMock = vi.fn();
 const unarchiveChannelMock = vi.fn();
 const markDmAsReadMock = vi.fn();
+const markTopicAsReadMock = vi.fn();
 const muteStreamMock = vi.fn();
 const unmuteStreamMock = vi.fn();
 const muteTopicMock = vi.fn();
@@ -51,6 +52,7 @@ vi.mock("~/shared/api/zulip-read-state", async (importOriginal) => {
   return {
     ...actual,
     markDmAsRead: (...args: unknown[]) => markDmAsReadMock(...args),
+    markTopicAsRead: (...args: unknown[]) => markTopicAsReadMock(...args),
   };
 });
 
@@ -167,6 +169,7 @@ describe("Sidebar", () => {
     createChannelMock.mockReset();
     unarchiveChannelMock.mockReset();
     markDmAsReadMock.mockReset();
+    markTopicAsReadMock.mockReset();
     muteStreamMock.mockReset();
     unmuteStreamMock.mockReset();
     muteTopicMock.mockReset();
@@ -768,6 +771,47 @@ describe("Sidebar", () => {
     await waitFor(() => {
       expect(markDmAsReadMock).toHaveBeenCalledWith([42]);
     });
+  });
+
+  it("marks topic as read from topic context menu via narrow API", async () => {
+    markTopicAsReadMock.mockResolvedValue(true);
+    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 11, name: "Engineering" }]);
+    useChatListStore.getState().reconcileUnreadFromSnapshot(
+      {
+        streams: [{ streamId: 11, topic: "incident", unreadMessageIds: [1, 2] }],
+        dms: [],
+        totalCount: 2,
+        mentionMessageIds: [],
+      },
+      1,
+    );
+    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
+    const streamWithTopics = {
+      ...STREAM_CHAT,
+      badge: 2,
+      topics: [{ subject: "incident", badge: 2, lastMessage: "Need fix" }],
+    };
+
+    renderWithProviders(
+      <Sidebar
+        streams={[{ stream_id: 11, name: "Engineering" }]}
+        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+        activeStreamSlug="11-engineering"
+        sidebarChats={[streamWithTopics]}
+        sidebarDms={[]}
+      />,
+    );
+
+    fireEvent.contextMenu(screen.getByText("incident"));
+    const markAsReadItem = await screen.findByRole("menuitem", { name: /mark as read/i });
+    fireEvent.click(markAsReadItem);
+
+    await waitFor(() => {
+      expect(markTopicAsReadMock).toHaveBeenCalledWith(11, "incident");
+    });
+    expect(
+      useChatListStore.getState().streamsMap.get(11)?.topics.get("incident")?.unreadCount,
+    ).toBe(0);
   });
 
   it("does not show pin action in personal system folder context menu", async () => {
