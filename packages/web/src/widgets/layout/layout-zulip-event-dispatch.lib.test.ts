@@ -88,6 +88,55 @@ function buildCtx(
   };
 }
 
+function buildIntegrationCtx(): LayoutZulipEventDispatchContext {
+  const noop = vi.fn();
+  return {
+    chatList: useChatListStore.getState(),
+    currentChat: useCurrentChatMessagesStore.getState(),
+    users: {
+      mergeFromMessage: noop,
+      setPresenceByEmail: noop,
+      setStatus: noop,
+    },
+    typing: { setTyping: noop },
+    mute: {
+      isEffectivelyMuted: () => false,
+      isTopicFollowed: () => false,
+      muteStream: noop,
+      unmuteStream: noop,
+      muteTopic: noop,
+      unmuteTopic: noop,
+      followTopic: noop,
+      clearTopicVisibilityOverride: noop,
+    },
+    activity: { markStale: noop, markStarredSummaryStale: noop },
+    inbox: { markStale: noop },
+    notifications: {
+      show: vi.fn().mockResolvedValue(undefined),
+      closeByTag: noop,
+      playSound: noop,
+      getSoundPreset: () => "none",
+      requestAttentionIfNotFocused: noop,
+    },
+    jitsiCall: { ingestIncomingInvite: noop },
+    updateLatestMessageId: noop,
+  };
+}
+
+function mockMsg(id: number, overrides: Partial<MockMessage> = {}): MockMessage {
+  return {
+    id,
+    sender_id: 99,
+    sender_full_name: "Alice",
+    stream_id: null,
+    subject: "",
+    content: "hi",
+    timestamp: id,
+    flags: [],
+    ...overrides,
+  };
+}
+
 describe("dispatchZulipEvent", () => {
   let getInstanceSpy: ReturnType<typeof vi.spyOn>;
 
@@ -816,6 +865,124 @@ describe("dispatchZulipEvent", () => {
       expect(useChatListStore.getState().streamsMap.get(5)?.topics.get("topicA")?.unreadCount).toBe(
         1,
       );
+    });
+
+    it("adds read flag to open chat messages when queue reports read ids", () => {
+      useCurrentChatMessagesStore.getState().setContext({
+        type: "stream",
+        streamId: 5,
+        streamName: "general",
+        topic: "topic1",
+        streamWideView: false,
+      });
+      useCurrentChatMessagesStore
+        .getState()
+        .setMessages([mockMsg(10, { flags: [] }), mockMsg(11, { flags: ["read"] })]);
+
+      dispatchZulipEvent(
+        {
+          id: 102,
+          type: "update_message_flags",
+          op: "add",
+          flag: "read",
+          messages: [10],
+        },
+        buildIntegrationCtx(),
+      );
+
+      const messages = useCurrentChatMessagesStore.getState().messages;
+      expect(messages.find((m) => m.id === 10)?.flags).toContain("read");
+      expect(messages.find((m) => m.id === 11)?.flags).toContain("read");
+    });
+
+    it("does not mutate open chat messages when read event targets another context", () => {
+      useCurrentChatMessagesStore.getState().setContext({
+        type: "stream",
+        streamId: 5,
+        streamName: "general",
+        topic: "topicA",
+        streamWideView: false,
+      });
+      useCurrentChatMessagesStore.getState().setMessages([mockMsg(50, { flags: [] })]);
+
+      useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
+      useChatListStore.getState().reconcileUnreadFromSnapshot(
+        {
+          streams: [{ streamId: 5, topic: "topicB", unreadMessageIds: [10] }],
+          dms: [],
+          totalCount: 1,
+          mentionMessageIds: [],
+        },
+        1,
+      );
+
+      dispatchZulipEvent(
+        {
+          id: 103,
+          type: "update_message_flags",
+          op: "add",
+          flag: "read",
+          messages: [10],
+        },
+        buildIntegrationCtx(),
+      );
+
+      expect(useCurrentChatMessagesStore.getState().messages[0]!.flags ?? []).not.toContain("read");
+      expect(useChatListStore.getState().streamsMap.get(5)?.topics.get("topicB")?.unreadCount).toBe(
+        0,
+      );
+    });
+
+    it("marks all read on markAllRead queue event (all: true, empty messages)", () => {
+      useChatListStore.getState().setCurrentUserId(10);
+      useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
+      useChatListStore.getState().reconcileUnreadFromSnapshot(
+        {
+          streams: [{ streamId: 5, topic: "topic1", unreadMessageIds: [1, 2] }],
+          dms: [],
+          totalCount: 2,
+          mentionMessageIds: [],
+        },
+        10,
+      );
+      useCurrentChatMessagesStore
+        .getState()
+        .setMessages([mockMsg(100, { flags: [] }), mockMsg(101, { flags: [] })]);
+
+      dispatchZulipEvent(
+        {
+          id: 104,
+          type: "update_message_flags",
+          op: "add",
+          flag: "read",
+          all: true,
+          messages: [],
+        },
+        buildIntegrationCtx(),
+      );
+
+      expect(useChatListStore.getState().sidebarStreamsUnread).toBe(0);
+      expect(useChatListStore.getState().sidebarDmsUnread).toBe(0);
+      for (const message of useCurrentChatMessagesStore.getState().messages) {
+        expect(message.flags).toContain("read");
+      }
+    });
+
+    it("uses operation field when op is missing", () => {
+      useCurrentChatMessagesStore.getState().setMessages([mockMsg(20, { flags: ["read"] })]);
+
+      dispatchZulipEvent(
+        {
+          id: 105,
+          type: "update_message_flags",
+          operation: "remove",
+          flag: "read",
+          messages: [20],
+        },
+        buildIntegrationCtx(),
+      );
+
+      expect(useCurrentChatMessagesStore.getState().messages[0]!.flags ?? []).not.toContain("read");
     });
   });
 });
