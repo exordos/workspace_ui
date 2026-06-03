@@ -4,7 +4,7 @@
 // - в живом DOM не остаются protected URL в `src`, `srcset`, `sizes`, `poster` или `style`
 // - кандидаты для авторизованной загрузки хранятся только в `data-auth-*`
 // - реальные URL для отображения назначаются только после авторизованного `fetch -> blob/data:`
-import { appendDevRealmMediaProxyHeaders } from "~/shared/api/client";
+import { appendDevRealmMediaProxyHeaders, getCurrentInstance } from "~/shared/api/client";
 import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
 import {
   appendUserUploadsPathPrefix,
@@ -115,6 +115,11 @@ function getProtectedSrcsetCandidate(srcset: string | null): string | null {
 }
 
 function getProtectedSrcCandidate(element: Element): string | null {
+  const originalUrl = element.getAttribute("data-original-url");
+  if (originalUrl != null && originalUrl.trim() !== "" && isProtectedMessageMediaUrl(originalUrl)) {
+    return collapseDuplicateWorkspaceV1InUrl(originalUrl);
+  }
+
   const src = element.getAttribute("src");
   if (src != null && src.trim() !== "") {
     if (isProtectedMessageMediaUrl(src)) {
@@ -308,14 +313,50 @@ export function resolveProtectedUploadFetchOptions(
   return { headers: withDevUploadProxy, credentials: "include" };
 }
 
+async function fetchElectronSessionProtectedMediaBlob(fetchUrl: string): Promise<Blob | null> {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const fetchProtectedMedia = window.electronAPI?.auth?.fetchProtectedMedia;
+  if (typeof fetchProtectedMedia !== "function") {
+    return null;
+  }
+  const realm = getRealmBaseUrl();
+  if (realm.trim() === "") {
+    return null;
+  }
+  const result = await fetchProtectedMedia({ realm, url: fetchUrl });
+  if (!result.ok || result.contentType.toLowerCase().includes("text/html")) {
+    return null;
+  }
+  return new Blob([result.data], { type: result.contentType });
+}
+
+function isHtmlResponse(response: Response): boolean {
+  return (response.headers?.get("content-type") ?? "").toLowerCase().includes("text/html");
+}
+
+function shouldUseElectronSessionProtectedMediaFetch(headers: Record<string, string>): boolean {
+  return headers.Authorization == null && getCurrentInstance()?.authType === "session";
+}
+
 export async function fetchProtectedUploadBlob(
   rawValue: string,
   headers: Record<string, string>,
 ): Promise<Blob | null> {
   const fetchUrl = buildProtectedUploadFetchUrl(rawValue);
+  if (shouldUseElectronSessionProtectedMediaFetch(headers)) {
+    const electronBlob = await fetchElectronSessionProtectedMediaBlob(fetchUrl);
+    if (electronBlob != null) {
+      return electronBlob;
+    }
+    if (typeof window !== "undefined" && window.electronAPI?.auth?.fetchProtectedMedia != null) {
+      return null;
+    }
+  }
   try {
     const response = await fetch(fetchUrl, resolveProtectedUploadFetchOptions(fetchUrl, headers));
-    if (!response.ok) return null;
+    if (!response.ok || isHtmlResponse(response)) return null;
     return await response.blob();
   } catch {
     return null;

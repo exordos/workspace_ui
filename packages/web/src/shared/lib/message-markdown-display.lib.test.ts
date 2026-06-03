@@ -193,8 +193,9 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
     );
     expect(html).toContain('<a href="/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png"><img');
     expect(html).toContain(
-      'src="/user_uploads/thumbnail/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png/840x560.webp"',
+      'data-original-url="/user_uploads/thumbnail/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png/840x560.webp"',
     );
+    expect(html).not.toContain('src="/user_uploads/');
   });
 
   it("keeps non-image user_upload links as regular links", () => {

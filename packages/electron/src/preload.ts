@@ -86,6 +86,22 @@ const electronAPI = {
   auth: {
     getCsrfToken: (payload: { realm: string }): Promise<string | null> =>
       ipcRenderer.invoke("auth:getCsrfToken", payload),
+    fetchProtectedMedia: (payload: {
+      realm: string;
+      url: string;
+    }): Promise<
+      | {
+          ok: true;
+          status: number;
+          contentType: string;
+          data: ArrayBuffer;
+        }
+      | {
+          ok: false;
+          status: number;
+          contentType?: string;
+        }
+    > => ipcRenderer.invoke("auth:fetchProtectedMedia", payload),
     // The renderer cannot access Electron session directly; it only asks the main process to exchange.
     exchangeDesktopFlowToken: (payload: {
       // Realm tells the main process which Zulip server should exchange the token.

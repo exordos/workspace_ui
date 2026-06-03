@@ -275,6 +275,36 @@ function getIconPath(name: string): string {
   return path.join(RESOURCES_PATH, name);
 }
 
+function normalizeRealmRootForProtectedMedia(realmInput: string): string {
+  return realmInput
+    .trim()
+    .replace(/\/+$/, "")
+    .replace(/\/api\/v1$/, "")
+    .replace(/\/json$/, "")
+    .replace(/\/api$/, "")
+    .replace(/\/+$/, "");
+}
+
+function isSafeProtectedMediaFetchUrl(realmInput: string, mediaUrlInput: string): boolean {
+  try {
+    const realmRoot = normalizeRealmRootForProtectedMedia(realmInput);
+    const realmUrl = new URL(/^https?:\/\//i.test(realmRoot) ? realmRoot : `https://${realmRoot}`);
+    const mediaUrl = new URL(mediaUrlInput);
+    if (mediaUrl.protocol !== "https:" || realmUrl.protocol !== "https:") {
+      return false;
+    }
+    if (mediaUrl.origin !== realmUrl.origin) {
+      return false;
+    }
+    return (
+      mediaUrl.pathname.includes("/user_uploads/") ||
+      mediaUrl.pathname.includes("/external_content/")
+    );
+  } catch {
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Window
 // ---------------------------------------------------------------------------
@@ -1098,6 +1128,38 @@ function registerIpcHandlers(): void {
       return await getSessionCsrfTokenForRealm(realm);
     } catch {
       return null;
+    }
+  });
+
+  ipcMain.handle("auth:fetchProtectedMedia", async (_event, payload: unknown) => {
+    if (typeof payload !== "object" || payload == null) {
+      return { ok: false as const, status: 0 };
+    }
+    const record = payload as Record<string, unknown>;
+    const realm = typeof record.realm === "string" ? record.realm.trim() : "";
+    const url = typeof record.url === "string" ? record.url.trim() : "";
+    if (realm.length === 0 || url.length === 0 || !isSafeProtectedMediaFetchUrl(realm, url)) {
+      return { ok: false as const, status: 0 };
+    }
+
+    try {
+      const response = await session.defaultSession.fetch(url, {
+        method: "GET",
+        credentials: "include",
+        redirect: "manual",
+      });
+      const contentType = response.headers.get("content-type") ?? "";
+      if (!response.ok || contentType.toLowerCase().includes("text/html")) {
+        return { ok: false as const, status: response.status, contentType };
+      }
+      return {
+        ok: true as const,
+        status: response.status,
+        contentType,
+        data: await response.arrayBuffer(),
+      };
+    } catch {
+      return { ok: false as const, status: 0 };
     }
   });
 }

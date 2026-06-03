@@ -4,6 +4,7 @@ import {
   AUTH_MEDIA_BACKGROUND_IMAGE_DATA_ATTR,
   buildProtectedUploadFetchUrl,
   createDisplayableBlobUrl,
+  fetchProtectedUploadBlob,
   isAuthMediaPlaceholderAttr,
   prepareProtectedMessageHtml,
   resolveProtectedUploadFetchOptions,
@@ -63,6 +64,16 @@ describe("prepareProtectedMessageHtml", () => {
     expect(out).toContain("data-auth-src=");
     expect(out).toContain("/user_uploads/thumbnail/");
     expect(out).toContain("840x560.webp");
+    expectNoLiveProtectedAttrs(out);
+  });
+
+  it("uses data-original-url for inline markdown image previews without live protected src", () => {
+    const html =
+      '<p><a href="/user_uploads/1/abc/t.png"><img data-original-url="/user_uploads/thumbnail/1/abc/t.png/840x560.webp" alt="x"></a></p>';
+    const out = prepareProtectedMessageHtml(html);
+    expect(out).toContain('width="240"');
+    expect(out).toContain('height="160"');
+    expect(out).toContain('data-auth-src="/user_uploads/thumbnail/1/abc/t.png/840x560.webp"');
     expectNoLiveProtectedAttrs(out);
   });
 
@@ -233,5 +244,26 @@ describe("resolveProtectedUploadFetchOptions", () => {
     const init = resolveProtectedUploadFetchOptions("/user_uploads/1/a.png", headers);
     expect(init.credentials).toBe("include");
     expect(init.headers).toEqual(headers);
+  });
+
+  it("rejects login HTML returned after a protected media redirect", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response("<html>login</html>", {
+          status: 200,
+          headers: { "content-type": "text/html; charset=utf-8" },
+        }),
+      ),
+    );
+    vi.stubGlobal("window", {
+      location: { origin: "https://app.example.com" },
+    });
+
+    const blob = await fetchProtectedUploadBlob("https://zulip.example.com/user_uploads/1/a.png", {
+      Authorization: "Basic abc",
+    });
+
+    expect(blob).toBeNull();
   });
 });

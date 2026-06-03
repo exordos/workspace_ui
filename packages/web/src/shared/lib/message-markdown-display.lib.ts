@@ -232,9 +232,10 @@ function inlineUserUploadImageLinks(html: string): string {
     const title = (link.textContent ?? "").trim();
     const fallbackLabel = title.length > 0 ? title : "image";
     const image = document.createElement("img");
-    // Используем thumbnail URL, чтобы остался действующий protected-media pipeline:
-    // `prepareProtectedMessageHtml` уберет реальный src из live DOM и загрузит blob через auth fetch.
-    image.setAttribute("src", toUserUploadThumbnailUrl(href));
+    // Не ставим protected URL в `src` даже во временном DOM:
+    // в Electron `file://` Chromium сразу пытается загрузить `/user_uploads/...`
+    // как `file:///user_uploads/...` до protected-media pipeline.
+    image.setAttribute("data-original-url", toUserUploadThumbnailUrl(href));
     image.setAttribute("alt", fallbackLabel);
     image.setAttribute("title", fallbackLabel);
     link.replaceChildren(image);
