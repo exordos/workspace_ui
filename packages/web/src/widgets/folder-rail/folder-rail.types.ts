@@ -1,27 +1,18 @@
-/**
- * Публичная модель папки для виджета FolderRail.
- * Используется как внешний контракт компонента и в интеграциях layout/sidebar.
- */
+/** Public folder model for FolderRail (layout/sidebar contract). */
 export interface FolderRailFolder {
-  /** Стабильный идентификатор папки (приходит из API и используется как React key). */
+  /** Stable folder id from API (React key). */
   id: string;
-  /** Отображаемое имя папки в rail и в quick-list. */
+  /** Label shown in rail and quick-list. */
   label: string;
-  /** Цвет папки в числовом формате (0xRRGGBB), который конвертируется в CSS-цвет. */
+  /** Folder color as 0xRRGGBB, converted to CSS. */
   backgroundColor: number;
-  /** Необязательный счетчик непрочитанного/активности для бейджа. */
+  /** Optional unread/activity badge count. */
   badge?: number;
-  /**
-   * Тип системной папки.
-   * Если поле отсутствует, тип может быть выведен по позиции (первый элемент считается "all").
-   */
+  /** System folder type; if omitted, inferred from position (first = "all"). */
   systemType?: "created" | "all" | "personal" | "channels";
 }
 
-/**
- * Режим отображения rail.
- * `vertical` и `horizontal` имеют разные UX-сценарии и разную внутреннюю реализацию.
- */
+/** Rail layout mode (vertical and horizontal differ in UX/implementation). */
 export type FolderRailLayout = "vertical" | "horizontal";
 
 /** Passed with `onFoldersChanged` after POST /folders so the shell can patch rail without a full snapshot. */

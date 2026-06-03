@@ -1,4 +1,4 @@
-// Оркестрация bootstrap + long-poll event loop для активного инстанса.
+// Bootstrap + long-poll event loop orchestration for the active instance.
 import { useEffect, useRef } from "react";
 import { useActivityStore } from "~/entities/activity/activity.model";
 import {
@@ -79,11 +79,10 @@ import type { LayoutUserConnectionStatus } from "./layout-user-connection-status
 // Increments on effect cleanup so superseded `runChatListBootstrap` runs skip hydrate/API (React Strict Mode).
 let chatListBootstrapEffectEpoch = 0;
 
-// Что делает: размер одной фоновой страницы DM-backfill.
+// DM backfill page size — caps background batch count to avoid network overload.
 const METADATA_DM_BACKFILL_PAGE_SIZE = 5000;
-// Зачем: ограничение числа фоновых батчей, чтобы не перегружать сеть.
 const METADATA_DM_BACKFILL_MAX_BATCHES = 3;
-// Что делает: останавливает backfill, если несколько батчей подряд не добавляют новые DM.
+// Stop backfill when consecutive batches add no new DMs.
 const METADATA_DM_BACKFILL_STAGNATION_LIMIT = 2;
 const log = createLogger("layout-zulip-event-loop");
 
@@ -121,7 +120,7 @@ function clearRefreshStaleCallback(ref: RefreshStaleCallbackRef | undefined): vo
   }
 }
 
-// Зачем: после merge metadata сохраняем итоговый DM-слепок, чтобы следующий старт был полнее.
+// Persist merged DM index so the next cold start has a fuller sidebar snapshot.
 function persistDmIndexFromStore(instanceId: string): void {
   const rows: DmIndexEntry[] = [];
   for (const [dmKey, entry] of useChatListStore.getState().dmsMap.entries()) {
@@ -170,8 +169,7 @@ function reconcileSidebarUnreadFromRegister(
   void hydrateStreamSidebarPreviewsFromUnreadSnapshot(registration?.unread_snapshot, () => false);
 }
 
-// Нормализует формат строки IDB к контракту, который ожидает mute-store.
-// Зачем: отделить структуру хранения от структуры применения в store.
+// Normalize IDB row shape to the mute-store contract (storage vs application layer).
 function toLayoutMuteSnapshotFromRow(row: {
   mutedStreamIds: number[];
   mutedTopics: { streamId: number; topic: string }[];
@@ -306,9 +304,9 @@ export function useLayoutZulipEventLoop(options: {
     const prevInstanceId = prevInstanceForBootstrapRef.current;
     const instanceSwitched = prevInstanceId != null && prevInstanceId !== currentInstanceId;
     prevInstanceForBootstrapRef.current = currentInstanceId;
-    // Флаг authoritative-применения из register; после него кэш больше не должен "переехать" состояние.
+    // Register response is authoritative; cache must not overwrite state after it applies.
     const registerMuteSnapshotAppliedRef = { registerMuteSnapshotApplied: false };
-    // Поднимаем кэш mute на cold start и при switch, чтобы unread/title могли сразу учитывать mutes.
+    // Hydrate mute cache on cold start / instance switch so unread titles respect mutes immediately.
     const shouldHydrateMuteFromCache = prevInstanceId == null || instanceSwitched;
     const cachedMuteSnapshotPromise = shouldHydrateMuteFromCache
       ? loadMuteSnapshotRow(currentInstanceId)

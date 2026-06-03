@@ -1,7 +1,7 @@
 import type { IndexedFolderEntry } from "./folder-rail.lib";
 import type { FolderRailFolder } from "./folder-rail.types";
 
-/** Пропсы только для horizontal-представления; бизнес-логика остается в контейнере `FolderRail`. */
+/** Horizontal view props; business logic stays in `FolderRail`. */
 export interface FolderRailHorizontalViewProps {
   indexedFolders: IndexedFolderEntry[];
   selectedFolderId: string;

@@ -29,7 +29,7 @@ describe("renderMarkdownFallbackHtml", () => {
   });
 
   it("renders inline spoiler syntax into dedicated spoiler span", () => {
-    // Проверяем именно формат разметки, который затем ожидает bubble click-handler.
+    // Assert markup format expected by the bubble click handler.
     const html = renderMarkdownFallbackHtml("Hello ||secret||");
     expect(html).toContain('class="inline-spoiler"');
     expect(html).toContain('data-inline-spoiler="true"');
@@ -167,8 +167,8 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
   });
 
   it("does not parse spoiler markers inside inline/fenced code", () => {
-    // Маркеры в code-сегментах должны остаться буквальным текстом.
-    // Спойлер должен сработать только для обычного текста вне code.
+    // Markers inside code segments must remain literal text.
+    // Spoiler conversion applies only to plain text outside code.
     const html = messageBodyToUnsanitizedDisplayHtml(
       "Inline `||keep||` and block:\n```txt\n||stay||\n```\nOutside ||reveal||",
     );

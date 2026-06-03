@@ -77,11 +77,9 @@ export interface CurrentChatMessagesState {
     context: CurrentChatContext;
     focusedMessageId: number | null;
     currentUserId: number | null;
-    // Что делает: сигнализирует UI, что cache-first payload уже применён в store.
-    // Зачем: отделить блокирующий loader (нет данных) от фонового refresh (данные уже есть).
+    /** Fired once cache-first payload is in store — use to hide blocking loader while API refresh runs. */
     onCacheHydrated?: () => void;
-    // Что делает: позволяет отменить in-flight initial загрузку при быстром route-switch.
-    // Зачем: старый запрос не должен продолжать сетевую работу и конкурировать с новым.
+    /** Aborts in-flight initial load on fast route switches so stale requests do not compete. */
     signal?: AbortSignal;
     /** After cache/API apply for a DM — sync sidebar preview from loaded messages (pages/widgets wire this). */
     onDmMessagesApplied?: (payload: OnDmMessagesAppliedPayload) => void;

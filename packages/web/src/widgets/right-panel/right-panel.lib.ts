@@ -8,8 +8,7 @@ import { parseRole, UserRole } from "~/shared/lib/roles";
 import { isValidEmail } from "~/shared/lib/validation";
 import type { RightPanelUserInfo } from "./right-panel.types";
 
-// View-model участника канала для правой панели.
-// Хранит все вычисленные UI-флаги и текстовые поля, чтобы компонент рендерил готовую структуру.
+// Channel member view-model for right panel — precomputed flags for thin UI render.
 export interface RightPanelStreamMemberViewModel {
   userId: number;
   name: string;
@@ -21,8 +20,7 @@ export interface RightPanelStreamMemberViewModel {
   avatarUrl: string | null;
 }
 
-// Входные параметры для сборки view-model участников канала.
-// Объединяет сырые members из chat-info, users directory и channel-level permission metadata.
+// Inputs: chat-info members, users directory, channel permission metadata.
 interface BuildRightPanelStreamMembersInput {
   members: readonly ChatInfoMember[];
   users: Map<number, UserRecord>;
@@ -34,8 +32,7 @@ interface BuildRightPanelStreamMembersInput {
   offlineLabel: string;
 }
 
-// Собирает список участников канала в формат, удобный для рендера правой панели.
-// Внутри вычисляет бейджи Creator/Channel admin и статус отображения на основе users store.
+// Build right-panel member rows with Creator/Channel admin badges from users store.
 export function buildRightPanelStreamMembers(
   input: BuildRightPanelStreamMembersInput,
 ): RightPanelStreamMemberViewModel[] {

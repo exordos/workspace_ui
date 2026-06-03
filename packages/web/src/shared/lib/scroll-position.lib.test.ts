@@ -1,13 +1,13 @@
-// Тесты для общего helper'а прокрутки вниз.
-// Проверяем оба режима: обычный instant для автоскроллов и smooth только для явного пользовательского действия.
+// Tests for shared scroll-to-bottom helper.
+// Covers instant mode for auto-scrolls and smooth mode for explicit user actions.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { scrollToBottom } from "./scroll-position.lib";
 
-// Сохраняем исходную реализацию matchMedia, чтобы после тестов вернуть окружение в исходное состояние.
+// Preserve original matchMedia so tests restore the environment afterward.
 const originalMatchMedia = typeof window === "undefined" ? undefined : window.matchMedia;
 
-// Создаёт тестовый DOM-элемент с заданной высотой содержимого.
-// Нужен, чтобы проверять, к какому значению top helper отправляет прокрутку.
+// Creates a test DOM element with a given content height.
+// Used to verify which scrollTop value the helper sets.
 function createScrollElement(scrollHeight: number): HTMLDivElement {
   const el = document.createElement("div");
   Object.defineProperty(el, "scrollHeight", {
@@ -24,7 +24,7 @@ describe("scrollToBottom", () => {
       return;
     }
 
-    // Возвращаем matchMedia после каждого теста, чтобы моки не протекали между кейсами.
+    // Restore matchMedia after each test so mocks do not leak between cases.
     if (typeof originalMatchMedia === "function") {
       window.matchMedia = originalMatchMedia;
       return;

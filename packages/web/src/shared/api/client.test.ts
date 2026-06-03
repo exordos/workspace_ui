@@ -1,9 +1,9 @@
-// Тесты для middleware-пайплайна API-клиента и singleton-экземпляров `ApiClient`.
+// Tests for API client middleware pipeline and `ApiClient` singleton instances.
 //
-// API-клиент использует onion-модель middleware, как в Express/Koa:
-// каждый middleware может изменить запрос, вызвать `next()` и затем изменить ответ.
-// Тесты покрывают композицию middleware, подстановку auth, retry-логику,
-// HTTP-методы, JSON-обработку и runtime-управление middleware.
+// The API client uses an onion middleware model like Express/Koa:
+// each middleware can modify the request, call `next()`, then modify the response.
+// Tests cover middleware composition, auth injection, retry logic,
+// HTTP methods, JSON handling, and runtime middleware management.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ZULIP_API_FETCH_TIMEOUT_MS } from "../config/constants";
 import { wipeCredentials } from "../lib/auth-guard";
@@ -63,14 +63,14 @@ function makeReq(overrides: Partial<ApiRequest> = {}): ApiRequest {
 }
 
 // ---------------------------------------------------------------------------
-// Пайплайн middleware: проверяем базовый механизм композиции
-// независимо от конкретных middleware. Каждый слой оборачивает следующий.
+// Middleware pipeline: verify core composition mechanism
+// independent of specific middleware. Each layer wraps the next.
 // ---------------------------------------------------------------------------
 
-// Проверяем базовое поведение chaining и композиции middleware.
+// Verify basic chaining and middleware composition.
 describe("Middleware pipeline", () => {
-  // Порядок важен: `mw1` оборачивает `mw2`,
-  // значит вызовы идут как `mw1:before → mw2:before → mw2:after → mw1:after`.
+  // Order matters: `mw1` wraps `mw2`,
+  // so calls run as `mw1:before → mw2:before → mw2:after → mw1:after`.
   it("executes middleware in order (onion model)", async () => {
     const order: string[] = [];
 
@@ -96,7 +96,7 @@ describe("Middleware pipeline", () => {
     expect(fetchFn).toHaveBeenCalledOnce();
   });
 
-  // Auth middleware должен прокинуть заголовки до слоя fetch.
+  // Auth middleware must pass headers through to the fetch layer.
   it("middleware can inject headers", async () => {
     const authMw: Middleware = async (req, next) => {
       req.headers.Authorization = "Basic abc";
@@ -114,7 +114,7 @@ describe("Middleware pipeline", () => {
     expect(captured[0]).toHaveProperty("Authorization", "Basic abc");
   });
 
-  // Short-circuit: middleware возвращается без `next()`, значит `fetch` не должен вызываться.
+  // Short-circuit: middleware returns without `next()`, so `fetch` must not run.
   it("middleware can short-circuit (cache hit)", async () => {
     const cached = createMockResponse({ data: { fromCache: true } });
 
@@ -127,7 +127,7 @@ describe("Middleware pipeline", () => {
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
-  // Post-processing: middleware может дополнить ответ после возврата из `next()`.
+  // Post-processing: middleware can augment the response after `next()` returns.
   it("middleware can transform response", async () => {
     const addFieldMw: Middleware = async (req, next) => {
       const res = await next(req);
@@ -146,7 +146,7 @@ describe("Middleware pipeline", () => {
     expect(data.enriched).toBe(true);
   });
 
-  // Error wrapping: middleware перехватывает нижележащую ошибку и пробрасывает ее с контекстом.
+  // Error wrapping: middleware catches downstream errors and rethrows with context.
   it("middleware can wrap errors", async () => {
     const errorMw: Middleware = async (req, next) => {
       try {
@@ -163,7 +163,7 @@ describe("Middleware pipeline", () => {
     );
   });
 
-  // Metadata bag позволяет передавать данные в downstream middleware.
+  // Metadata bag passes data to downstream middleware.
   it("supports request metadata", async () => {
     const tagMw: Middleware = async (req, next) => {
       req.meta.tagged = true;
@@ -181,8 +181,8 @@ describe("Middleware pipeline", () => {
     expect(capturedMeta.tagged).toBe(true);
   });
 
-  // Интеграция: три middleware, например header, timing и retry,
-  // должны собраться в единый пайплайн.
+  // Integration: three middleware (e.g. header, timing, retry)
+  // must compose into a single pipeline.
   it("three middleware compose correctly", async () => {
     const addHeader: Middleware = async (req, next) => {
       req.headers["X-Request-Id"] = "123";
@@ -218,11 +218,11 @@ describe("Middleware pipeline", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Интеграция ApiClient: тестируем экспортируемые singleton `zulipApi` и `workspaceApi`
-// с реальными middleware поверх stubbed fetch.
+// ApiClient integration: test exported singletons `zulipApi` and `workspaceApi`
+// with real middleware over stubbed fetch.
 // ---------------------------------------------------------------------------
 
-// Проверяем HTTP-методы, подстановку auth, retry-поведение и обработку ошибок.
+// Verify HTTP methods, auth injection, retry behavior, and error handling.
 describe("ApiClient (via zulipApi / workspaceApi)", () => {
   let mockFetch: ReturnType<typeof vi.fn>;
 
@@ -244,7 +244,7 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
     });
   }
 
-  // `GET` должен кодировать параметры в query string и парсить JSON-ответ.
+  // `GET` must encode params in the query string and parse the JSON response.
   it("GET sends method and URL, returns parsed JSON", async () => {
     const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
     setInstanceProvider(() => ({
@@ -273,7 +273,7 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
     expect(res.data).toEqual({ result: "success", messages: [] });
   });
 
-  // Подвисший ответ Zulip не должен бесконечно блокировать UI.
+  // A hung Zulip response must not block the UI indefinitely.
   it("zulipApi aborts a hung fetch after ZULIP_API_FETCH_TIMEOUT_MS", async () => {
     vi.useFakeTimers();
     try {
@@ -311,8 +311,8 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
     }
   });
 
-  // Long-poll `GET /events` держится сервером открытым,
-  // поэтому generic REST deadline сюда подмешивать нельзя.
+  // Long-poll `GET /events` stays open on the server,
+  // so a generic REST deadline must not apply here.
   it("zulipApi GET /events skips wall-clock fetch timeout", async () => {
     const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
     setInstanceProvider(() => ({
@@ -335,8 +335,7 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
     expect(initWithCaller.signal).toBe(user.signal);
   });
 
-  // `POST` должен использовать `application/x-www-form-urlencoded`,
-  // это соглашение Zulip API.
+  // `POST` must use `application/x-www-form-urlencoded` per Zulip API convention.
   it("POST sends form-encoded body", async () => {
     const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
     setInstanceProvider(() => ({
@@ -359,7 +358,7 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
     expect(res.data).toEqual({ result: "success", id: 42 });
   });
 
-  // `PATCH` использует тот же form-encoded формат, что и `POST`.
+  // `PATCH` uses the same form-encoded format as `POST`.
   it("PATCH sends form-encoded body", async () => {
     const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
     setInstanceProvider(() => ({
@@ -379,8 +378,7 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
     expect(init.body).toContain("full_name=Test");
   });
 
-  // `DELETE` без body не должен выставлять `Content-Type`,
-  // чтобы не путать сервер.
+  // `DELETE` without body must not set `Content-Type` to avoid confusing the server.
   it("DELETE without body sends no Content-Type", async () => {
     const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
     setInstanceProvider(() => ({
@@ -400,7 +398,7 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
     expect(init.body).toBeUndefined();
   });
 
-  // `DELETE` с body, например для `/drafts`, должен отправлять form-encoded данные.
+  // `DELETE` with body (e.g. `/drafts`) must send form-encoded data.
   it("DELETE with body sends form-encoded", async () => {
     const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
     setInstanceProvider(() => ({
@@ -420,7 +418,7 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
     expect(init.body).toContain("draft_id=1");
   });
 
-  // `postJson` нужен для endpoint'ов, которые ожидают JSON body.
+  // `postJson` is for endpoints that expect a JSON body.
   it("postJson sends JSON body with application/json content type", async () => {
     const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
     setInstanceProvider(() => ({
@@ -440,7 +438,7 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
     expect(init.body).toBe(JSON.stringify({ key: "value" }));
   });
 
-  // `putJson` используется для update-endpoint'ов с JSON request body.
+  // `putJson` is for update endpoints with a JSON request body.
   it("putJson sends JSON body with application/json content type", async () => {
     const { setInstanceProvider, workspaceApi } = await import("./client");
     setInstanceProvider(() => ({
@@ -481,7 +479,7 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
     expect(url).toBe("https://org.example.com/workspace/v1/folders/");
   });
 
-  // `postFormData` не должен ломать multipart-заголовки, которые выставляет браузер.
+  // `postFormData` must not break multipart headers set by the browser.
   it("postFormData sends FormData body without explicit Content-Type", async () => {
     const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
     setInstanceProvider(() => ({
@@ -509,7 +507,7 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
     expect(headers["Content-Type"]).toBeUndefined();
   });
 
-  // Auth middleware должен подставлять Basic credentials активного инстанса.
+  // Auth middleware must inject Basic credentials for the active instance.
   it("authMiddleware injects Basic auth header from current instance", async () => {
     const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
     setInstanceProvider(() => ({
@@ -529,7 +527,7 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
     expect(headers.Authorization).toMatch(/^Basic /);
   });
 
-  // Нет активного инстанса — нет auth header, чтобы не отправить креды не туда.
+  // No active instance — no auth header, to avoid sending credentials to the wrong target.
   it("authMiddleware does not inject header when no instance selected", async () => {
     const { setInstanceProvider, workspaceApi } = await import("./client");
     setInstanceProvider(() => null);
@@ -713,7 +711,7 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
     expect(init.credentials).toBe("include");
   });
 
-  // Retry middleware должен повторять запрос при 5xx и успешно завершаться после восстановления сервера.
+  // Retry middleware must retry on 5xx and succeed after the server recovers.
   it("retryMiddleware retries on 503 and eventually succeeds", async () => {
     const { retryMiddleware } = await import("./client");
 
@@ -775,7 +773,7 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
     expect(firstDelay).toBe(1000);
   });
 
-  // После достижения max retries middleware должен сдаться и бросить ошибку.
+  // After max retries, middleware must give up and throw.
   it("retryMiddleware throws after exhausting retries on persistent error", async () => {
     const { retryMiddleware } = await import("./client");
 
@@ -793,7 +791,7 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
     expect(fetchFn).toHaveBeenCalledTimes(3);
   });
 
-  // Ошибки 4xx — это client error, retry здесь не поможет, поэтому выходим сразу.
+  // 4xx errors are client errors — retry won't help, exit immediately.
   it("non-retryable 4xx status is returned immediately without retry", async () => {
     const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
     setInstanceProvider(() => ({
@@ -815,8 +813,8 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
     expect(mockFetch).toHaveBeenCalledOnce();
   });
 
-  // В dev-режиме Workspace API использует относительный base path `/workspace/...`.
-  // URL builder должен резолвить его через `window.location.origin`, а не падать с `Invalid URL`.
+  // In dev, Workspace API uses relative base path `/workspace/...`.
+  // URL builder must resolve via `window.location.origin`, not throw `Invalid URL`.
   it("resolves relative workspace base URLs against window origin", async () => {
     const { workspaceApi, setInstanceProvider } = await import("./client");
     setInstanceProvider(() => null);
@@ -830,15 +828,15 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
     expect(url).toContain("/workspace/v1/services/");
   });
 
-  // Лишние слэши в конце base URL приводят к двойным слэшам в пути, их нужно обрезать.
+  // Trailing slashes on base URL cause double slashes in the path — trim them.
   it("setBaseUrl trims trailing slashes", async () => {
     const { zulipApi } = await import("./client");
     zulipApi.setBaseUrl("https://example.com///");
     expect(zulipApi.getBaseUrl()).toBe("https://example.com");
   });
 
-  // Сетевые ошибки вроде `TypeError: Failed to fetch` считаем retryable,
-  // потому что они обычно временные.
+  // Network errors like `TypeError: Failed to fetch` are retryable —
+  // they are usually transient.
   it("retryMiddleware retries on network error and re-throws after exhausting retries", async () => {
     const { retryMiddleware } = await import("./client");
 
@@ -850,7 +848,7 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
     expect(fetchFn).toHaveBeenCalledTimes(3);
   });
 
-  // 4xx не должны ретраиться: это ошибка клиента, а не временный сбой.
+  // 4xx must not retry — client error, not a transient failure.
   it("retryMiddleware does not retry on 4xx errors", async () => {
     const { retryMiddleware } = await import("./client");
 
@@ -951,8 +949,7 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
     setAuthErrorHandler(null);
   });
 
-  // Некоторые endpoint'ы возвращают plain text, например `/health`,
-  // и это не должно ломаться на JSON parse.
+  // Some endpoints return plain text (e.g. `/health`) — must not break on JSON parse.
   it("does not wipe credentials on GET workspace folder items 401", async () => {
     const { setInstanceProvider, workspaceApi, setAuthErrorHandler } = await import("./client");
     const onAuthError = vi.fn();
@@ -1000,11 +997,11 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// API методов `ApiClient`: `use`, `useBefore`, `removeMiddleware`.
-// Это runtime-управление middleware для плагинов и feature flag.
+// `ApiClient` methods: `use`, `useBefore`, `removeMiddleware`.
+// Runtime middleware management for plugins and feature flags.
 // ---------------------------------------------------------------------------
 
-// Проверяем динамическую регистрацию и удаление middleware.
+// Verify dynamic middleware registration and removal.
 describe("ApiClient middleware management", () => {
   let mockFetch: ReturnType<typeof vi.fn>;
 
@@ -1017,8 +1014,8 @@ describe("ApiClient middleware management", () => {
     vi.restoreAllMocks();
   });
 
-  // `use()` позволяет плагинам добавлять middleware на лету,
-  // значит они должны реально перехватывать запросы.
+  // `use()` lets plugins add middleware at runtime —
+  // they must actually intercept requests.
   it("use() appends a custom middleware that intercepts requests", async () => {
     const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
     setInstanceProvider(() => ({
@@ -1052,7 +1049,7 @@ describe("ApiClient middleware management", () => {
     zulipApi.removeMiddleware(customMw);
   });
 
-  // После удаления middleware он больше не должен перехватывать следующие запросы.
+  // After removal, middleware must not intercept subsequent requests.
   it("removeMiddleware() removes a previously added middleware", async () => {
     const { zulipApi } = await import("./client");
 

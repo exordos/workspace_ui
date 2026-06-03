@@ -28,7 +28,7 @@ interface FolderSnapshotLike {
 }
 
 function isPersonalOrChannelsSystemFolder(folder: WorkspaceFolderForRail): boolean {
-  // Эти папки могут синтетически добавляться в UI и не должны дублироваться.
+  // Synthetic UI folders — must not duplicate API entries.
   return (
     folder.id === SYSTEM_PERSONAL_FOLDER_ID ||
     folder.id === SYSTEM_CHANNELS_FOLDER_ID ||
@@ -82,7 +82,7 @@ function resolveSelectedFolderSystemType(
   folders: readonly FolderLike[],
   selectedFolderId: string,
 ): NonNullable<FolderLike["systemType"]> | null {
-  // Тип важен, чтобы понять нужен ли сетевой load items для выбранной папки.
+  // System type decides whether the selected folder needs a network items fetch.
   const selectedFolder = folders.find((folder) => folder.id === selectedFolderId);
   if (!selectedFolder) {
     return null;
@@ -95,8 +95,8 @@ export function withDefaultSystemFolders(
   labels: FolderSyncSystemLabels,
   showSystemFolders = false,
 ): WorkspaceFolderForRail[] {
-  // Нормализуем "all" и при необходимости вставляем personal/channels сразу после all.
-  // Виртуальный id `system:all` всегда — папка «Все чаты» из API не подменяет rail (badge переносим).
+  // Normalize "all" and optionally inject personal/channels after it.
+  // Virtual `system:all` always wins — API "all" folder only contributes its badge.
   const baseFolders = folders.filter((folder) => !isPersonalOrChannelsSystemFolder(folder));
   const preferredAllFolder =
     baseFolders.find(
@@ -187,7 +187,7 @@ export function resolveSelectedFolderId(
   folders: readonly FolderLike[],
   selectedFolderId: string,
 ): string | null {
-  // Если выбранная папка исчезла — безопасно откатываемся на первую доступную.
+  // Selected folder gone — fall back to the first available folder.
   if (folders.length === 0) {
     return null;
   }
@@ -248,7 +248,7 @@ export function shouldLoadFolderItemsForSelection(
   folders: readonly FolderLike[],
   selectedFolderId: string,
 ): boolean {
-  // items загружаем только для created-папок; системные строятся без folder items.
+  // Fetch items only for user-created folders; system folders derive from chat-list.
   if (folders.length === 0) return false;
   if (!hasFolderId(folders, selectedFolderId)) return false;
   const selectedFolderType = resolveSelectedFolderSystemType(folders, selectedFolderId);
@@ -271,7 +271,7 @@ export function mergeFolderItemsSnapshot(
   previous: ReadonlyMap<string, FolderItemForClient[]>,
   snapshot: FolderSnapshotLike,
 ): Map<string, FolderItemForClient[]> {
-  // Оставляем только живые папки; при ошибке конкретной папки сохраняем stale-данные.
+  // Keep live folders only; on per-folder error retain stale items.
   const next = new Map<string, FolderItemForClient[]>();
   const liveFolderIds = new Set(
     snapshot.folders
@@ -334,7 +334,7 @@ export function resolveSelectedFolderChatIdsOnSelect(options: {
   if (options.cachedItemsForSelectedFolder != null) {
     return toChatIdSet(options.cachedItemsForSelectedFolder);
   }
-  // При cache miss сразу показываем "пустую папку", чтобы не светить чаты из all.
+  // Cache miss: show empty folder immediately so chats from "all" do not leak through.
   return new Set<string>();
 }
 

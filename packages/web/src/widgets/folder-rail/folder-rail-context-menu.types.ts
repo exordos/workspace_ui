@@ -1,13 +1,12 @@
 import type { FolderRailLayout } from "./folder-rail.types";
 
-/** Унифицированный контент меню папки для двух layout-режимов. */
+/** Folder context menu content shared by both layout modes. */
 export interface FolderContextMenuContentProps {
-  /** Флаг именно текущей папки в открытом меню: для системных item отключаем rename/delete. */
+  /** Current folder is system: disable rename/delete for that item. */
   isSystemFolder: boolean;
-  /** Нужен, чтобы показать корректный текст переключения layout. */
+  /** Current rail layout (toggle label copy). */
   layout: FolderRailLayout;
-  /** Глобальная настройка показа системных папок в rail (Show/Hide).
-   * Не дублирует `isSystemFolder`: это другой уровень состояния (весь список, а не текущий item).*/
+  /** Global show/hide system folders in rail (not the same as isSystemFolder). */
   showSystemFolders: boolean;
   onRename: () => void;
   onToggleLayout: () => void;

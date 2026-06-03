@@ -1,17 +1,12 @@
-// API-клиент с цепочкой промежуточных обработчиков.
-//
-// Промежуточные обработчики перехватывают запросы и ответы и дают:
-// - подстановку auth-заголовка
-// - логирование запроса и ответа с таймингом
-// - автоматические повторы на 429/5xx
-// - нормализацию ошибок
-// - кастомные перехватчики, например для CSRF, кэширования или ограничения частоты
-//
-// Использование:
-//   import { apiClient } from "~/lib/api/client";
-//   const res = await apiClient.get("/messages", { anchor: "newest" });
-//   const res = await apiClient.post("/messages", { type: "stream", content: "hi" });
-//   apiClient.use(myMiddleware);
+/**
+ * HTTP client with a middleware pipeline (auth, logging, retry, timeouts).
+ *
+ * Usage:
+ *   import { zulipApi, workspaceApi } from "~/shared/api/client";
+ *   const res = await zulipApi.get("/messages", { anchor: "newest" });
+ *   await zulipApi.post("/messages", { type: "stream", content: "hi" });
+ *   zulipApi.use(myMiddleware);
+ */
 
 import { ZULIP_API_FETCH_TIMEOUT_MS } from "~/shared/config/constants";
 import {
@@ -42,10 +37,9 @@ import {
   readSessionCsrfTokenFromDocument,
 } from "./zulip-session-csrf.internal";
 
-// ---------------------------------------------------------------------------
-// Провайдер текущего инстанса.
-// FSD: внедряется из слоя `app`, чтобы не тащить импорт `shared` → `entities`.
-// ---------------------------------------------------------------------------
+// ---
+// Instance credentials provider (injected from `app` to avoid shared → entities import)
+// ---
 
 export interface InstanceCredentials {
   id: string;
@@ -53,19 +47,17 @@ export interface InstanceCredentials {
   email: string;
   apiKey: string;
   authType?: "api_key" | "session";
-  // Origin Workspace REST для этой организации.
-  // Берется из server URL, который пользователь ввел на логине.
+  /** Workspace REST origin for this org (from the server URL entered at login). */
   workspaceOrgOrigin?: string;
 }
 
 let instanceProvider: (() => InstanceCredentials | null) | null = null;
 
-// Вызывается из слоя `app`, чтобы отдать текущие креды инстанса.
+/** Injected from `app` to supply active instance credentials. */
 export function setInstanceProvider(fn: () => InstanceCredentials | null): void {
   instanceProvider = fn;
 }
 
-// Возвращает текущие креды инстанса или null, если пользователь не залогинен.
 export function getCurrentInstance(): InstanceCredentials | null {
   return instanceProvider?.() ?? null;
 }
@@ -95,8 +87,7 @@ function workspaceOrgApiOriginForWorkspaceRest(instance: InstanceCredentials): s
   return workspaceOrgApiOriginFromZulipRealmRoot(normalizeInstanceRealmRoot(instance.realm));
 }
 
-// DEV: канонический origin realm Zulip, то есть тот хост, который реально отдает `/user_uploads`,
-// а не gateway Workspace.
+/** DEV: Zulip realm origin that serves `/user_uploads`, not the Workspace gateway. */
 function zulipRealmOriginForDevUserUploads(instance: InstanceCredentials): string {
   const root = normalizeInstanceRealmRoot(instance.realm);
   if (root === "") {
@@ -109,9 +100,7 @@ function zulipRealmOriginForDevUserUploads(instance: InstanceCredentials): strin
   }
 }
 
-// DEV: origin realm Zulip для Vite-proxy на `/user_uploads`
-// через `X-Workspace-Dev-Target-Origin`.
-// Использует именно realm-host инстанса, а не gateway.
+/** DEV: realm origin for Vite `/user_uploads` proxy via `X-Workspace-Dev-Target-Origin`. */
 export function getDevUserUploadsProxyTargetOrigin(): string | null {
   if (!import.meta.env.DEV) {
     return null;
@@ -143,8 +132,7 @@ function isRealmMessageMediaProxyPath(pathOnly: string): boolean {
   );
 }
 
-// DEV: добавляет `X-Workspace-Dev-Target-Origin` для same-origin-запроса к media-path от realm-root,
-// чтобы Vite middleware проксировал запрос в realm Zulip.
+/** DEV: adds `X-Workspace-Dev-Target-Origin` so Vite proxies realm media paths. */
 export function appendDevRealmMediaProxyHeaders(
   candidateUrl: string,
   headers: Record<string, string>,
@@ -174,8 +162,7 @@ export function appendDevRealmMediaProxyHeaders(
   }
 }
 
-// Обратная совместимость для старых вызовов, которые работают только с `/user_uploads`.
-// `/external_content` теперь проходит через тот же realm-target proxy flow.
+/** Back-compat alias; `/external_content` uses the same realm-target proxy flow. */
 export function appendDevUserUploadsProxyHeaders(
   candidateUrl: string,
   headers: Record<string, string>,
@@ -183,9 +170,9 @@ export function appendDevUserUploadsProxyHeaders(
   return appendDevRealmMediaProxyHeaders(candidateUrl, headers);
 }
 
-// ---------------------------------------------------------------------------
-// Типы
-// ---------------------------------------------------------------------------
+// ---
+// Types
+// ---
 
 export interface ApiRequest {
   method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
@@ -220,9 +207,9 @@ export function setAuthErrorHandler(handler: AuthErrorHandler | null): void {
   authErrorHandler = handler;
 }
 
-// ---------------------------------------------------------------------------
-// Встроенные промежуточные обработчики
-// ---------------------------------------------------------------------------
+// ---
+// Built-in middleware
+// ---
 
 const noCacheMiddleware: Middleware = async (req, next) => {
   req.cache = "no-store";
@@ -291,7 +278,7 @@ function workspaceDevHeaderTargetPathPrefixes(): readonly string[] {
   return /^https?:\/\//i.test(env.WORKSPACE_API_BASE) ? [escaped] : [mount];
 }
 
-// DEV: подсказывает Vite dev proxy, на какой org host нужно форвардить Workspace REST.
+/** DEV: tells Vite dev proxy which org host should receive Workspace REST. */
 const devWorkspaceOrgTargetHeaderMiddleware: Middleware = async (req, next) => {
   if (!import.meta.env.DEV) {
     return next(req);
@@ -442,8 +429,7 @@ function shouldSkipAuth401Handling(req: ApiRequest): boolean {
     ) {
       return true;
     }
-    // Для Workspace REST (`folders`, `services`) ответ 401 часто означает политику gateway
-    // или отключенную фичу Workspace API, а не невалидные Zulip credentials.
+    // Workspace REST 401 often means gateway policy or disabled feature, not bad Zulip creds.
     if (/\/v1\/(?:folders|services)(?:\/|$)/.test(path)) {
       return true;
     }
@@ -453,8 +439,7 @@ function shouldSkipAuth401Handling(req: ApiRequest): boolean {
   }
 }
 
-// Объединяет необязательный `signal` от вызывающего кода
-// с таймаутом по часам: срабатывает то, что случится раньше.
+/** Links caller `signal` with a timeout; whichever fires first wins. */
 function createLinkedAbortSignal(
   outer: AbortSignal | undefined,
   timeoutMs: number,
@@ -482,8 +467,7 @@ function createLinkedAbortSignal(
   };
 }
 
-// Долгий опрос очереди событий Zulip не должен использовать общий REST-timeout,
-// потому что сервер специально держит соединение открытым.
+/** Zulip event long-poll must not use the generic REST timeout (server holds the connection). */
 function isZulipEventsLongPollGet(req: ApiRequest): boolean {
   if (req.method !== "GET") {
     return false;
@@ -495,8 +479,7 @@ function isZulipEventsLongPollGet(req: ApiRequest): boolean {
   }
 }
 
-// Применяет `ZULIP_API_FETCH_TIMEOUT_MS` на каждую попытку.
-// Этот обработчик стоит после retry, чтобы у каждой попытки был свой дедлайн.
+/** Applies `ZULIP_API_FETCH_TIMEOUT_MS` per retry attempt (runs after retry middleware). */
 const zulipRequestTimeoutMiddleware: Middleware = async (req, next) => {
   if (isZulipEventsLongPollGet(req)) {
     return next(req);
@@ -532,9 +515,9 @@ const authErrorMiddleware: Middleware = async (req, next) => {
   return res;
 };
 
-// ---------------------------------------------------------------------------
-// Резолв URL: общий код для базового URL по умолчанию и переопределения на уровне запроса
-// ---------------------------------------------------------------------------
+// ---
+// URL resolution
+// ---
 
 function buildResolvedApiUrl(
   baseUrl: string,
@@ -554,9 +537,9 @@ function buildResolvedApiUrl(
   return url.toString();
 }
 
-// ---------------------------------------------------------------------------
-// Клиент
-// ---------------------------------------------------------------------------
+// ---
+// Client
+// ---
 
 class ApiClient {
   private middlewares: Middleware[] = [];
@@ -662,8 +645,7 @@ class ApiClient {
     });
   }
 
-  // `GET` с явным базовым URL.
-  // Это безопаснее для конкурентных запросов, чем мутировать `setBaseUrl`.
+  /** `GET` with explicit base URL (safer under concurrency than mutating `setBaseUrl`). */
   async getWithBase(
     baseUrl: string,
     path: string,
@@ -810,9 +792,9 @@ class ApiClient {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Singleton-экземпляры
-// ---------------------------------------------------------------------------
+// ---
+// Singleton instances
+// ---
 
 function workspaceRestPathSuffix(): string {
   return workspaceRestApiPathSuffix(env.WORKSPACE_REST_API_PATH);
@@ -822,8 +804,7 @@ function devWorkspaceMountPathOnLocalhost(): string {
   return devWorkspaceBrowserMountPath(env.WORKSPACE_REST_API_PATH);
 }
 
-// Same-origin-база для multi-org Workspace REST в dev.
-// Совпадает с путем Vite `server.proxy`, когда база относительная.
+/** Same-origin base for multi-org Workspace REST in dev (matches Vite `server.proxy`). */
 function getDevWorkspaceProxyBase(): string {
   const base = env.WORKSPACE_API_BASE;
   if (/^https?:\/\//i.test(base)) {
@@ -835,9 +816,7 @@ function getDevWorkspaceProxyBase(): string {
   return base.replace(/\/+$/, "");
 }
 
-// Базовый URL для Workspace REST `/v1/...`, привязанный к активной организации.
-// Это origin Workspace API, а не обязательно хост Zulip realm.
-// Нужен, чтобы multi-org и gateway-конфигурации ходили в правильный host.
+/** Workspace REST `/v1/...` base for the active org (Workspace API origin, not always Zulip realm). */
 export function getWorkspaceApiBaseForCurrentInstance(): string {
   const instance = getCurrentInstance();
 
@@ -875,8 +854,7 @@ export function refreshZulipApiBase(): void {
   zulipApi.setBaseUrl(getZulipBaseUrl());
 }
 
-// DEV: направляет Workspace REST в Vite-proxy с учетом организации,
-// когда выбран конкретный инстанс.
+/** DEV: routes Workspace REST through Vite proxy for the selected instance. */
 export function refreshWorkspaceApiBase(): void {
   if (!import.meta.env.DEV) {
     return;

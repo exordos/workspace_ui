@@ -1,7 +1,7 @@
-// Тесты общего starred-loader.
-// Проверяют, что loader:
-// 1) синхронно обновляет список starred и summary;
-// 2) дедуплицирует параллельные одинаковые загрузки.
+// Tests for shared starred loader.
+// Asserts that the loader:
+// 1) synchronously updates starred list and summary;
+// 2) deduplicates parallel identical loads.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useActivityStore } from "~/entities/activity/activity.model";
 import { createMessage } from "~/test/factories";
@@ -23,7 +23,7 @@ vi.mock("~/entities/activity/activity-cache.lib", () => {
 
 describe("ensureStarredLoaded", () => {
   beforeEach(() => {
-    // Изоляция состояния стора и моков между тестами.
+    // Isolate store state and mocks between tests.
     useActivityStore.getState().clear();
     fetchActivityMessagesPageWithPersist.mockReset();
     hydrateActivityMessagesFromCache.mockReset();
@@ -35,7 +35,7 @@ describe("ensureStarredLoaded", () => {
   });
 
   it("refreshes starred filter and summary from server", async () => {
-    // Проверяем базовый happy-path: cache-first + server refresh.
+    // Assert basic happy path: cache-first + server refresh.
     const cached = [
       createMessage({
         id: 10,
@@ -84,7 +84,7 @@ describe("ensureStarredLoaded", () => {
   });
 
   it("dedupes parallel starred loads by request key", async () => {
-    // Проверяем, что параллельные вызовы не делают двойной сетевой запрос.
+    // Assert parallel calls do not trigger duplicate network requests.
     interface FetchResult {
       messages: ReturnType<typeof createMessage>[];
       foundOldest: boolean;

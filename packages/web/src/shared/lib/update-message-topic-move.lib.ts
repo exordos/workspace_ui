@@ -25,7 +25,7 @@ export function resolveTopicMoveTargetMessageIds(options: {
   messageIds?: readonly number[];
   anchorMessageId?: number;
 }): number[] {
-  // Для rename переносим только явно целевые id (message_ids + anchor), без массового fallback по topic.
+  // Topic rename moves only explicit message_ids + anchor, not a whole-topic fallback.
   const targetIds = new Set<number>();
   const ids = parsePositiveIntegerArray(options.messageIds);
   if (ids != null) {

@@ -28,7 +28,7 @@ export function useLayoutInstanceBootstrap(options: {
   const starredBootstrapInstanceRef = useRef<string | null>(null);
   const mentionsBootstrapInstanceRef = useRef<string | null>(null);
 
-  // Загружает mute-снимок инстанса (muted streams/topics) для консистентной UI-модели.
+  // Load instance mute snapshot (muted streams/topics) for consistent UI.
   const loadMuteSnapshot = useCallback(
     (bootstrap?: LayoutMuteBootstrapData): Promise<LayoutMuteSnapshot> => {
       const subscriptions = bootstrap?.subscriptions ?? [];
@@ -52,8 +52,7 @@ export function useLayoutInstanceBootstrap(options: {
   );
 
   useEffect(() => {
-    // Единый bootstrap starred для общего activity-store.
-    // Срабатывает на смену инстанса и на явную invalidation (stale=true).
+    // Shared starred bootstrap for activity store — on instance switch or stale invalidation.
     if (!currentInstanceId || (currentUserStatus !== "ready" && currentUserStatus !== "degraded")) {
       starredBootstrapInstanceRef.current = null;
       return;

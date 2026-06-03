@@ -1,5 +1,4 @@
-// Типы Zustand-store для chat-list.
-// Здесь описаны состояние и публичные actions, которые используют layout/widgets.
+/** Types for the chat-list Zustand store — state and public actions consumed by layout/widgets. */
 import type { ZulipUnreadMessagesSnapshot } from "~/shared/api/zulip-unread.lib";
 import type {
   MockMessage,
@@ -15,33 +14,21 @@ import type {
 } from "~/shared/types/sidebar-chat";
 
 export interface ChatListStreamMetadataRow {
-  // Что делает: id канала из subscriptions/register metadata.
   streamId: number;
-  // Что делает: текущее имя канала.
   name: string;
-  // Что делает: признак архивированного канала.
   isArchived?: boolean;
-  // Что делает: id создателя канала (если сервер вернул creator_id).
   creatorId?: number;
-  // Что делает: признак приватности канала.
   inviteOnly?: boolean;
-  // Что делает: channel-level группа, которой разрешено добавлять участников.
   canAddSubscribersGroup?: ZulipGroupSettingValue;
-  // Что делает: channel-level группа, которой разрешено удалять участников.
   canRemoveSubscribersGroup?: ZulipGroupSettingValue;
-  // Что делает: channel-level группа администраторов канала.
   canAdministerChannelGroup?: ZulipGroupSettingValue;
   canResolveTopicsGroup?: ZulipGroupSettingValue;
 }
 
 export interface ChatListDmMetadataRow {
-  // Что делает: участники DM, по ним строится стабильный ключ диалога.
   userIds: number[];
-  // Что делает: время активности, нужно для сортировки диалогов.
   lastActivityTs?: number;
-  // Что делает: последний известный message id в диалоге.
   lastMessageId?: number | null;
-  // Что делает: количество непрочитанных сообщений, если оно известно.
   unreadCount?: number;
 }
 
@@ -128,13 +115,13 @@ export interface ChatListState {
   applyStreamSidebarPreviewsFromMessages: (messages: ZulipRawMessage[]) => void;
   /** Ensures topic shells exist for a stream (used when expanding channel in sidebar). */
   upsertStreamTopicShells: (streamId: number, topics: string[]) => void;
-  // Что делает: добавляет каналы в список из metadata, даже если сообщений по ним нет в памяти.
+  /** Adds channels from subscriptions metadata even when no messages for them are in memory. */
   upsertStreamMetadataRows: (rows: ChatListStreamMetadataRow[]) => void;
   /** Marks stream metadata readiness from authoritative subscriptions sources. */
   setStreamMetadataHydrated: (value: boolean) => void;
   /** Optimistically toggles archived state for a stream; `undefined` clears local override. */
   setStreamArchived: (streamId: number, isArchived: boolean | undefined) => void;
-  // Что делает: добавляет/обновляет DM-строки из metadata и локального DM-индекса.
+  /** Upserts DM rows from metadata and the local DM index (not only from loaded messages). */
   upsertDmMetadataRows: (rows: ChatListDmMetadataRow[]) => void;
   setCurrentUserId: (id: number | null) => void;
   renameStream: (streamId: number, nextName: string) => void;

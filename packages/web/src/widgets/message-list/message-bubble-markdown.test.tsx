@@ -214,7 +214,7 @@ describe("MessageBubble markdown body", () => {
   });
 
   it("renders markdown strikethrough as del tag in bubble body", () => {
-    // Регресс: раньше sanitize-path удалял `<del>`, и зачеркнутый текст терялся в bubble.
+    // Regression: sanitize path used to strip `<del>`, losing strikethrough in the bubble.
     useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
 
     const { container } = render(
@@ -227,7 +227,7 @@ describe("MessageBubble markdown body", () => {
   });
 
   it("toggles inline spoiler open class on click", () => {
-    // Проверяем пользовательское поведение: повторный клик открывает/закрывает один и тот же inline spoiler.
+    // User behavior: repeated click toggles the same inline spoiler.
     useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
 
     const { container } = render(

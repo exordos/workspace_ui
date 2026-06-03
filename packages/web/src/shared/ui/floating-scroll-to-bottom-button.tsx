@@ -1,15 +1,14 @@
-// Унифицированная floating-кнопка прокрутки вниз.
-// Нужна, чтобы feed и message-list использовали один и тот же UI и одно и то же поведение.
+// Shared floating scroll-to-bottom button so feed and message-list share the same UI and behavior.
 import React from "react";
 import { t } from "~/i18n/i18n";
 import { Icon } from "./icon";
 
-// Минимальный контракт кнопки: родитель решает, когда её показывать и что делать по клику.
+// Parent controls visibility and click handler.
 interface FloatingScrollToBottomButtonProps {
   onClick: () => void;
 }
 
-// Рендерит общую кнопку "прокрутить вниз" в стандартной позиции поверх списка.
+// Renders the scroll-to-bottom control in the standard overlay position.
 export const FloatingScrollToBottomButton: React.FC<FloatingScrollToBottomButtonProps> = ({
   onClick,
 }) => {

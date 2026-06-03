@@ -1,4 +1,4 @@
-// Тесты централизованного debounce-синка chat-list snapshot в IndexedDB.
+// Tests for centralized debounced chat-list snapshot sync to IndexedDB.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { startChatListSnapshotSync } from "./layout-chat-list-snapshot-sync.lib";

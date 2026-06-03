@@ -1,5 +1,5 @@
-// Тесты remove-stream-members store.
-// Проверяют pending/error state и успешный submit flow удаления участника.
+// Tests for remove-stream-members store.
+// Covers pending/error state and successful member removal submit flow.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { removeStreamMembers } from "./remove-stream-members.api";
 import { useRemoveStreamMembersStore } from "./remove-stream-members.model";

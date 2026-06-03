@@ -3,13 +3,13 @@
 @tailwind utilities;
 
 /*
- * CSS-переменные темы задаются динамически из lib/themes/engine.ts через applyTheme().
- * Палитры определены в lib/themes/orange-warm.ts, lib/themes/blue-cold.ts,
- * lib/themes/blue-mist.ts и lib/themes/emerald-chat.ts.
+ * CSS theme variables are set dynamically from lib/themes/engine.ts via applyTheme().
+ * Palettes are defined in lib/themes/orange-warm.ts, lib/themes/blue-cold.ts,
+ * lib/themes/blue-mist.ts and lib/themes/emerald-chat.ts.
  *
- * Значения ниже нужны как fallback, чтобы приложение корректно отрисовалось
- * до инициализации темы из JS.
- * Они соответствуют дефолтной продуктовой теме: Blue Cold light.
+ * The values below serve as fallbacks so the app renders correctly
+ * before theme initialization from JS.
+ * They match the default product theme: Blue Cold light.
  */
 :root {
   --color-bg: #e0ecf0;
@@ -82,7 +82,7 @@ body {
   height: 100%;
 }
 
-/* ── Спойлер-блоки Zulip ─────────────────────────────── */
+/* ── Zulip spoiler blocks ─────────────────────────────── */
 
 .message-body .spoiler-block {
   border: 1px solid var(--color-border-subtle);
@@ -140,7 +140,7 @@ body {
   user-select: text;
 }
 
-/* ── Видео в сообщениях ───────────────────────────────── */
+/* ── Video in messages ───────────────────────────────── */
 
 .message-body video {
   max-width: 100%;
@@ -161,7 +161,7 @@ body {
   pointer-events: none;
 }
 
-/* ── Превью ссылок Zulip ──────────────────────────────── */
+/* ── Zulip link previews ──────────────────────────────── */
 
 .message-body .message_embed {
   display: flex;
@@ -235,7 +235,7 @@ body {
   text-decoration: none;
 }
 
-/* ── Подсветка кода в bubble и preview composer ─────── */
+/* ── Code highlighting in bubble and composer preview ─────── */
 
 .message-body pre code {
   max-width: 100%;
@@ -248,8 +248,8 @@ body {
 }
 
 /*
- * Для fenced-code переносим визуальную оболочку на `pre`,
- * чтобы фон покрывал весь блок и не обрывался по границам `code`.
+ * For fenced code, move the visual wrapper to `pre`
+ * so the background covers the full block and does not clip at `code` boundaries.
  */
 .message-body pre:has(> code.hljs) {
   border: 1px solid var(--color-border-subtle);
@@ -327,9 +327,9 @@ body {
   color: var(--color-indicator-pink);
 }
 
-/* ── Поведение как у нативного приложения ────────────── */
+/* ── Native-app-like behavior ────────────── */
 
-/* Запрещаем выделение текста на UI-обвязке: кнопках, лейблах, навигации */
+/* Disable text selection on UI chrome: buttons, labels, navigation */
 button,
 [role="button"],
 nav,
@@ -339,7 +339,7 @@ aside {
   -webkit-user-select: none;
 }
 
-/* Разрешаем выделение текста только в контентных областях */
+/* Allow text selection only in content areas */
 [role="feed"],
 [role="main"],
 article,
@@ -348,7 +348,7 @@ article,
   -webkit-user-select: text;
 }
 
-/* macOS: область перетаскивания title bar */
+/* macOS: title bar drag region */
 .electron-drag {
   -webkit-app-region: drag;
   app-region: drag;
@@ -359,7 +359,7 @@ article,
   app-region: no-drag;
 }
 
-/* Убираем focus outline при клике мышью, но сохраняем для клавиатуры */
+/* Remove focus outline on mouse click, keep it for keyboard */
 :focus-visible {
   @apply outline-2 outline-offset-2 outline-accent;
 }
@@ -369,8 +369,8 @@ article,
 }
 
 /*
- * Единый hover/focus-контракт для action-кнопок только с иконками.
- * Делает поведение иконок одинаковым по всему интерфейсу.
+ * Shared hover/focus contract for icon-only action buttons.
+ * Keeps icon behavior consistent across the UI.
  */
 @media (hover: hover) {
   button:not(:disabled):not([data-icon-hover="custom"]):has(> svg):not(:has(> *:not(svg))):hover {
@@ -383,7 +383,7 @@ button:not(:disabled):not([data-icon-hover="custom"]):has(> svg):not(:has(> *:no
   @apply rounded-lg text-icon-base transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft;
 }
 
-/* Ссылка skip-to-content — видна только при фокусе с клавиатуры */
+/* Skip-to-content link — visible only on keyboard focus */
 .skip-link {
   position: absolute;
   top: -100px;
@@ -402,22 +402,22 @@ button:not(:disabled):not([data-icon-hover="custom"]):has(> svg):not(:has(> *:no
   @apply bg-accent text-on-accent;
 }
 
-/* Запрещаем перетаскивание картинок */
+/* Disable image dragging */
 img {
   -webkit-user-drag: none;
   user-select: none;
 }
 
-/* Убираем tap highlight на mobile/PWA */
+/* Remove tap highlight on mobile/PWA */
 * {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* ── Переопределения для touch-устройств ──────────────── */
+/* ── Touch device overrides ──────────────── */
 
 /*
- * Минимальные touch-target 44×44 px по WCAG 2.2 / Apple HIG.
- * Применяется только когда основной указатель coarse, то есть палец.
+ * Minimum 44×44 px touch targets per WCAG 2.2 / Apple HIG.
+ * Applied only when the primary pointer is coarse (finger).
  */
 @media (pointer: coarse) {
   button,
@@ -430,7 +430,7 @@ img {
     min-width: 44px;
   }
 
-  /* Элементы сайдбара и строки чата — комфортный размер для касания */
+  /* Sidebar items and chat rows — comfortable touch size */
   [role="listitem"],
   [role="option"],
   [role="treeitem"],
@@ -440,9 +440,9 @@ img {
 }
 
 /*
- * Hover-эффекты включаем только там, где устройство реально поддерживает fine pointer.
- * На touch-only устройствах `:hover` залипает после тапа, этот блок это устраняет.
- * Использование: `.hover-effect { ... }` → `@media (hover: hover) { ... }`
+ * Enable hover effects only where the device supports a fine pointer.
+ * On touch-only devices `:hover` sticks after tap; this block prevents that.
+ * Usage: `.hover-effect { ... }` → `@media (hover: hover) { ... }`
  */
 @media (hover: none) {
   .hover\:bg-sidebar-hover:hover,
@@ -454,7 +454,7 @@ img {
   }
 }
 
-/* Состояние touch-active, которое выставляется через JS из lib/touch.ts */
+/* touch-active state set via JS from lib/touch.ts */
 html.touch-active .touch-hide {
   display: none !important;
 }
@@ -463,11 +463,11 @@ html.pointer-active .pointer-hide {
   display: none !important;
 }
 
-/* ── Виртуальная клавиатура ───────────────────────────── */
+/* ── Virtual keyboard ───────────────────────────── */
 
 /*
- * Когда открыта виртуальная клавиатура, composer должен оставаться над ней.
- * `--keyboard-height` задается динамически из lib/touch.ts.
+ * When the virtual keyboard is open, the composer must stay above it.
+ * `--keyboard-height` is set dynamically from lib/touch.ts.
  */
 :root {
   --keyboard-height: 0px;
@@ -484,7 +484,7 @@ html.keyboard-open .keyboard-sticky {
   right: 0;
 }
 
-/* ── Отступы safe-area: вырезы и скругленные углы ─────── */
+/* ── Safe-area insets: notches and rounded corners ─────── */
 
 @supports (padding: env(safe-area-inset-top)) {
   .safe-area-top {
@@ -513,17 +513,17 @@ html.keyboard-open .keyboard-sticky {
   }
 }
 
-/* ── Прокрутка ─────────────────────────────────────────── */
+/* ── Scrolling ─────────────────────────────────────────── */
 
-/* Плавная инерционная прокрутка на iOS */
+/* Smooth momentum scrolling on iOS */
 .touch-scroll {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
 }
 
 /*
- * Единый кастомный scrollbar для меню, диалогов и панелей.
- * Применяется ко всем overflow-контейнерам, кроме явного `scrollbar-none`.
+ * Shared custom scrollbar for menus, dialogs, and panels.
+ * Applied to all overflow containers except explicit `scrollbar-none`.
  */
 .overflow-auto:not(.scrollbar-none),
 .overflow-x-auto:not(.scrollbar-none),
@@ -576,8 +576,8 @@ html.keyboard-open .keyboard-sticky {
 }
 
 /*
- * emoji-picker-react использует внутренние scroll-области без наших overflow utility-классов.
- * Держим scrollbar в одном стиле с остальным приложением.
+ * emoji-picker-react uses internal scroll areas without our overflow utility classes.
+ * Keep the scrollbar styled consistently with the rest of the app.
  */
 .composer-emoji-picker .epr-body,
 .composer-emoji-picker .epr-emoji-category-content {
@@ -608,15 +608,15 @@ html.keyboard-open .keyboard-sticky {
   background-color: color-mix(in srgb, var(--color-border-subtle) 70%, var(--color-icon-base) 30%);
 }
 
-/* Отключаем pull-to-refresh на основном shell в PWA / мобильном браузере */
+/* Disable pull-to-refresh on the main shell in PWA / mobile browser */
 html,
 body {
   overscroll-behavior-y: none;
 }
 
-/* ── Размер текста ─────────────────────────────────────── */
+/* ── Text size ─────────────────────────────────────── */
 
-/* Запрещаем iOS auto-zoom при фокусе на input */
+/* Prevent iOS auto-zoom on input focus */
 input,
 textarea,
 select {

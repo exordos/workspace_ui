@@ -1,4 +1,4 @@
-// Тесты парсинга unread-ответа Zulip: и total count, и подробный snapshot.
+// Tests for Zulip unread response parsing: total count and detailed snapshot.
 import { describe, expect, it } from "vitest";
 import {
   parseUnreadDmMessagesCount,

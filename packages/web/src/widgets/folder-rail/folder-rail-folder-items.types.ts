@@ -1,6 +1,6 @@
 import type { FolderRailFolder } from "./folder-rail.types";
 
-/** Общий контракт для horizontal/vertical item. */
+/** Shared props for horizontal/vertical folder items. */
 export interface FolderItemProps {
   folder: FolderRailFolder;
   index: number;
@@ -13,7 +13,7 @@ export interface FolderItemProps {
   onRequestDelete: (folder: FolderRailFolder) => void;
 }
 
-/** Аргументы общего хука интеракций папки. */
+/** Args for shared folder item interaction hook. */
 export interface UseFolderItemActionsArgs {
   folder: FolderRailFolder;
   onSelectFolder: (id: string) => void;

@@ -1,7 +1,7 @@
 import type { IndexedFolderEntry } from "./folder-rail.lib";
 import type { FolderRailFolder } from "./folder-rail.types";
 
-/** Пропсы vertical-представления; state/CRUD остаются в контейнере `FolderRail`. */
+/** Vertical view props; state/CRUD stays in `FolderRail`. */
 export interface FolderRailVerticalViewProps {
   indexedFolders: IndexedFolderEntry[];
   selectedFolderId: string;

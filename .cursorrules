@@ -52,6 +52,7 @@ app → pages → widgets → features → entities → shared
 - `sanitizeHtml()` before `dangerouslySetInnerHTML`
 - `useEffect` MUST return cleanup for subscriptions/timers
 - No `any`. No `@ts-ignore`. No `tabIndex > 0`.
+- **Comments in English only** — all `//`, `/* */`, JSDoc, CSS comments, and TODO/FIXME (see `.cursor/rules/comments.mdc`)
 
 ## Verification (run after every change)
 

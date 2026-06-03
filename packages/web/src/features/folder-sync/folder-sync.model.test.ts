@@ -227,7 +227,7 @@ describe("folder-sync model orchestration", () => {
   });
 
   it("selectFolder uses cached folder items and triggers no refresh", async () => {
-    // Cache-first: если items уже есть (даже если они старые), переключаемся без запроса.
+    // Cache-first: if items already exist (even stale), switch without a request.
     useFolderSyncStore.setState({
       instanceId: "inst-a",
       labels: { allChats: "All", personal: "Personal", channels: "Channels" },
@@ -264,7 +264,7 @@ describe("folder-sync model orchestration", () => {
   });
 
   it("selectFolder triggers refresh on cache miss and keeps loading disabled", async () => {
-    // Cache miss: отдельного запроса за items больше нет, запускаем refresh().
+    // Cache miss: no separate items request; trigger refresh().
     const snapshotDeferred = deferred<ReturnType<typeof makeFolderSnapshot>>();
     vi.mocked(loadFolderSyncSnapshot).mockReturnValue(snapshotDeferred.promise);
     useFolderSyncStore.setState({

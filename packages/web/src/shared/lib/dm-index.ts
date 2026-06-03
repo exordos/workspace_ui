@@ -1,9 +1,8 @@
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
 
-// Зачем: храним компактный индекс DM в localStorage, чтобы восстановить список диалогов без глубокой загрузки сообщений.
+/** Compact localStorage DM index to restore dialog list without deep message loads. */
 const DM_INDEX_STORAGE_PREFIX = "workspace-dm-index";
-// Зачем: ограничиваем размер кеша, чтобы он не рос бесконечно.
 const DM_INDEX_MAX_ENTRIES = 2000;
 
 export interface DmIndexEntry {
@@ -14,7 +13,6 @@ export interface DmIndexEntry {
   unreadCount?: number;
 }
 
-// Что делает: формирует ключ хранения индекса для конкретного инстанса.
 function storageKey(instanceId: string): string {
   return `${DM_INDEX_STORAGE_PREFIX}:${instanceId}`;
 }
@@ -23,7 +21,6 @@ function isPositiveInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value > 0;
 }
 
-// Что делает: проверяет и нормализует одну запись индекса, чтобы в хранилище не попадали битые данные.
 function normalizeEntry(entry: unknown): DmIndexEntry | null {
   if (entry == null || typeof entry !== "object" || Array.isArray(entry)) {
     return null;
@@ -77,7 +74,6 @@ export function loadDmIndexEntries(instanceId: string): DmIndexEntry[] {
   }
 }
 
-// Что делает: объединяет новые записи с текущим индексом и оставляет только самые свежие.
 export function upsertDmIndexEntries(instanceId: string, entries: readonly DmIndexEntry[]): void {
   if (typeof window === "undefined") return;
   const trimmedInstanceId = instanceId.trim();
@@ -104,7 +100,7 @@ export function upsertDmIndexEntries(instanceId: string, entries: readonly DmInd
       } else if (normalized.lastMessageId != null) {
         lastMessageId = Math.max(existing.lastMessageId, normalized.lastMessageId);
       }
-      // Если в новом источнике нет unreadCount, сохраняем старое значение.
+      // Preserve existing unreadCount when the incoming source omits it.
       const unreadCount = normalized.unreadCount ?? existing.unreadCount;
       next.set(normalized.dmKey, {
         dmKey: normalized.dmKey,
@@ -124,7 +120,7 @@ export function upsertDmIndexEntries(instanceId: string, entries: readonly DmInd
   }
 }
 
-// Что делает: достает DM-ключи из сообщений и обновляет индекс без полной перестройки списка чатов.
+/** Updates the index from message payloads without rebuilding the full chat list. */
 export function upsertDmIndexFromMessages(
   instanceId: string,
   messages: readonly ZulipRawMessage[],

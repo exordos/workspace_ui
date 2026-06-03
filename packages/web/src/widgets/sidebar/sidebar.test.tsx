@@ -237,7 +237,7 @@ describe("Sidebar", () => {
   });
 
   it("renders loading state for folder chat list", () => {
-    // При явной загрузке списка папки показываем явный loading-state (спиннер + подпись).
+    // When loading a folder list explicitly, show a loading state (spinner + label).
     renderWithProviders(
       <Sidebar
         streams={[]}

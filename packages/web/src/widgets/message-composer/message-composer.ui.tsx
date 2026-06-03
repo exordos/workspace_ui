@@ -234,7 +234,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
         setCustomEmojis(list);
       })
       .catch(() => {
-        // Игнорируем ошибку загрузки: picker продолжает работать с Unicode emoji.
+        // Custom emoji load failure is non-fatal; picker still uses Unicode.
       });
   }, []);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -355,7 +355,6 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
 
   const handleSend = async () => {
     if (isEditing) {
-      // В edit-mode "send" работает как "save" для уже существующего сообщения.
       if (disabled || editSession == null || onSubmitEdit == null) return;
       const trimmed = value.trim();
       if (trimmed.length === 0) return;
@@ -376,8 +375,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     setValue("");
     setFiles([]);
 
-    // После оптимистичной очистки сразу возвращаем фокус и каретку,
-    // чтобы пользователь мог продолжать печатать следующий месседж без ожидания сети.
+    // Restore focus/caret after optimistic clear so typing can continue before network.
     requestAnimationFrame(() => {
       const textarea = textareaRef.current;
       if (!textarea || disabled || mode !== "write") {

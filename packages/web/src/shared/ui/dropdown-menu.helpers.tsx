@@ -8,15 +8,11 @@ import type {
   DropdownMenuRenderStyles,
 } from "./dropdown-menu";
 
-/**
- * Базовые визуальные классы контейнера меню, общие для всех вариантов.
- */
+/** Base menu container classes shared by all variants. */
 const CONTENT_BASE_CLASS_NAME =
   "z-dropdown rounded-lg border border-border-subtle bg-bg-elevated shadow-lg";
 
-/**
- * Карта классов для семантических вариантов контейнера.
- */
+/** Semantic container width/padding variants. */
 const CONTENT_VARIANT_CLASS_NAMES: Record<DropdownMenuContentVariant, string> = {
   narrow: "min-w-context-menu-narrow py-1",
   default: "min-w-context-menu py-1",
@@ -24,43 +20,27 @@ const CONTENT_VARIANT_CLASS_NAMES: Record<DropdownMenuContentVariant, string> = 
   message: "min-w-context-menu-message py-1",
 };
 
-/**
- * Базовый hover/focus/disabled-контракт item-элемента меню.
- */
+/** Base hover/focus/disabled contract for menu items. */
 const DEFAULT_ITEM_CLASS_NAME =
   "data-[highlighted]:bg-sidebar-hover hover:bg-sidebar-hover flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-text-primary outline-none transition-colors focus-visible:outline-none focus-visible:outline-0 focus-visible:outline-offset-0 data-[disabled]:pointer-events-none data-[disabled]:opacity-50";
 
-/**
- * Базовый danger-контракт (подмешивается поверх базового item-контракта).
- */
+/** Danger styling layered on top of the base item contract. */
 const DEFAULT_DANGER_ITEM_CLASS_NAME =
   "text-notice-base data-[highlighted]:bg-notice-base/10 hover:bg-notice-base/10 data-[highlighted]:text-notice-base hover:text-notice-base";
 
-/**
- * Базовый separator-контракт.
- */
+/** Base separator styling. */
 const DEFAULT_SEPARATOR_CLASS_NAME = "mx-2 my-1 h-px bg-border-subtle";
 
-/**
- * Минимальный контракт данных, достаточный для вычисления классов item-элемента.
- */
+/** Minimal item data needed to resolve item class names. */
 interface MenuClassInput {
   danger?: boolean;
   className?: string;
 }
 
-/**
- * Допустимый источник иконки для рендера:
- * - имя из реестра `Icon`;
- * - готовый React-узел.
- */
+/** Icon source: registry `IconName` or a pre-built React node. */
 type MenuIconLike = IconName | React.ReactNode;
 
-/**
- * Нормализует иконку пункта меню:
- * - строковые значения резолвятся через `Icon`;
- * - готовый React-узел возвращается как есть.
- */
+/** Resolves string icons via `Icon`; passes through ready-made React nodes. */
 function resolveIconNode(icon: MenuIconLike | undefined): React.ReactElement | null {
   if (icon == null) {
     return null;
@@ -71,16 +51,12 @@ function resolveIconNode(icon: MenuIconLike | undefined): React.ReactElement | n
   return <>{icon}</>;
 }
 
-/**
- * Простой join для className с фильтрацией `undefined`/пустых строк.
- */
+/** Joins className parts, dropping undefined/empty segments. */
 function joinClassNames(...parts: (string | undefined)[]): string {
   return parts.filter((part) => part != null && part.length > 0).join(" ");
 }
 
-/**
- * Строит className для item-элемента с учетом override-ов и danger-состояния.
- */
+/** Builds item className from overrides and danger state. */
 function resolveItemClassName(
   item: MenuClassInput,
   classNameOverride: string | undefined,
@@ -100,14 +76,12 @@ function suppressContextMenuPointerUp(
   if (ctx.source !== "context") return;
   if (event.button !== 2 && !event.ctrlKey) return;
 
-  // Гасим только release от ПКМ-жеста, открывшего меню: Radix иначе может
-  // синтетически выбрать item под курсором. Обычный левый клик по меню не трогаем.
+  // Suppress only the pointer-up from the RMB gesture that opened the menu — Radix may
+  // otherwise synthetically select the item under the cursor. Left clicks are untouched.
   event.preventDefault();
 }
 
-/**
- * Строит полный className контейнера меню из variant + overrides.
- */
+/** Builds full menu container className from variant and overrides. */
 export function resolveContentClassName(
   variant: DropdownMenuContentVariant | undefined,
   className: string | undefined,
@@ -120,10 +94,7 @@ export function resolveContentClassName(
   );
 }
 
-/**
- * Рекурсивный renderer массива `DropdownMenuItem`.
- * Унифицирует поведение action/checkbox/submenu/separator/custom.
- */
+/** Recursively renders a `DropdownMenuItem` array (action/checkbox/submenu/separator/custom). */
 export function renderDropdownMenuItems(
   items: readonly DropdownMenuItem[],
   styles: DropdownMenuRenderStyles,

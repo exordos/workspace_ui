@@ -4,7 +4,7 @@ import { createLogger } from "./logger";
 const log = createLogger("clipboard");
 
 export async function writeText(text: string): Promise<boolean> {
-  // В Electron всегда пишем через IPC, чтобы не зависеть от Web Clipboard API.
+  // Electron: IPC avoids unreliable Web Clipboard API in the renderer.
   if (isElectron()) {
     const write = getElectronAPI()?.clipboard?.writeText;
     if (write == null) {
@@ -22,7 +22,6 @@ export async function writeText(text: string): Promise<boolean> {
     }
   }
 
-  // В браузере используем стандартный API `navigator.clipboard`.
   const clipboardApi = typeof navigator !== "undefined" ? navigator.clipboard : undefined;
   if (clipboardApi?.writeText == null) {
     log.warn("Clipboard write API unavailable in browser runtime", { valueLength: text.length });
@@ -42,7 +41,6 @@ export async function writeText(text: string): Promise<boolean> {
 }
 
 export async function readText(): Promise<string | null> {
-  // В Electron чтение буфера делаем через main-процесс.
   if (isElectron()) {
     const read = getElectronAPI()?.clipboard?.readText;
     if (read == null) {
@@ -57,7 +55,6 @@ export async function readText(): Promise<string | null> {
     }
   }
 
-  // В браузере читаем напрямую через `navigator.clipboard.readText`.
   const clipboardApi = typeof navigator !== "undefined" ? navigator.clipboard : undefined;
   if (clipboardApi?.readText == null) {
     log.warn("Clipboard read API unavailable in browser runtime");

@@ -1,23 +1,21 @@
-// Файл с типами для user API.
-// Здесь только контракты ответов и типы для оркестратора статусов.
+/**
+ * Types for user API responses and the status-load orchestrator.
+ */
 
 import type { UserStatus } from "../user.model";
 
-// Базовая обертка ответов Zulip: успех/ошибка.
 export interface ZulipApiResultEnvelope {
   result?: "success" | "error";
   msg?: string;
   code?: string;
 }
 
-// Поля emoji из ответа обновления статуса.
 export interface ZulipStatusEmojiDisplayInfo {
   emoji_name?: string;
   emoji_code?: string;
   reaction_type?: string;
 }
 
-// Строгий payload для GET /users/{id}/status.
 export interface ZulipGetUserStatusPayload {
   status_text?: string;
   emoji_name?: string;
@@ -26,12 +24,10 @@ export interface ZulipGetUserStatusPayload {
   away?: boolean;
 }
 
-// Строгий ответ для GET /users/{id}/status.
 export interface ZulipGetUserStatusResponse extends ZulipApiResultEnvelope {
   status?: ZulipGetUserStatusPayload | null;
 }
 
-// Ответ для POST /users/me/status.
 export interface ZulipUpdateOwnStatusResponse extends ZulipApiResultEnvelope {
   status_text?: string;
   status_emoji?: string;
@@ -39,7 +35,6 @@ export interface ZulipUpdateOwnStatusResponse extends ZulipApiResultEnvelope {
   status_emoji_display_info?: ZulipStatusEmojiDisplayInfo | ZulipStatusEmojiDisplayInfo[] | null;
 }
 
-// Результат низкоуровневой загрузки статуса.
 export type StatusFetchOutcome =
   | { kind: "ok"; status: UserStatus | null }
   | { kind: "invalid_user"; status: null }
@@ -55,13 +50,12 @@ export type UserStatusRequestReason =
 export type UserStatusRequestPriority = "high" | "low";
 
 export interface RequestUserStatusOptions {
-  // force=true игнорирует TTL/backoff и запускает запрос сразу.
+  /** Bypass TTL/backoff and enqueue immediately. */
   force?: boolean;
-  // reason нужен для диагностики источника запроса.
+  /** Diagnostic tag for the request source (logging / TTL tuning). */
   reason?: UserStatusRequestReason;
-  // priority управляет порядком в очереди.
+  /** High-priority requests drain before low-priority background loads. */
   priority?: UserStatusRequestPriority;
 }
 
-// Подпись функции, которая реально ходит в сеть за статусом.
 export type FetchUserStatusDetailed = (userId: number) => Promise<StatusFetchOutcome>;

@@ -6,15 +6,7 @@ import { buildFolderContextMenuItems } from "./folder-rail-context-menu.lib";
 import { getFolderItemVisualState, isContextMenuKeyboardTrigger } from "./folder-rail.lib";
 import type { FolderItemProps, UseFolderItemActionsArgs } from "./folder-rail-folder-items.types";
 
-/**
- * Общий обработчик действий item:
- * - открытие/закрытие контекстного меню;
- * - выбор папки;
- * - rename/delete;
- * - переключение layout.
- *
- * За счет этого и horizontal, и vertical item не дублируют обработчики.
- */
+/** Shared folder item actions for horizontal and vertical rail items. */
 function useFolderItemActions({
   folder,
   onSelectFolder,
@@ -39,7 +31,7 @@ function useFolderItemActions({
 
   const handleSelect = useCallback(
     (e: React.MouseEvent) => {
-      // Не отдаем click вверх, чтобы не конфликтовать с click-capture у горизонтального drag-контейнера.
+      // Avoid bubbling to horizontal rail click-capture after drag.
       e.stopPropagation();
       setMenuOpen(false);
       onSelectFolder(folder.id);
@@ -125,7 +117,6 @@ export const HorizontalFolderItem: React.FC<FolderItemProps> = React.memo(
           <div className="shrink-0">
             <button
               type="button"
-              // Гасим pointer-down, чтобы drag-контейнер не считал это началом перетаскивания.
               onPointerDown={(e) => e.stopPropagation()}
               onClick={handleSelect}
               onContextMenu={handleContextMenu}
@@ -217,7 +208,6 @@ export const VerticalFolderItem: React.FC<FolderItemProps> = React.memo(
             >
               <button
                 type="button"
-                // Аналогично horizontal: pointer-down не должен пробрасываться наружу.
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={handleSelect}
                 onContextMenu={handleContextMenu}
@@ -258,7 +248,6 @@ export const VerticalFolderItem: React.FC<FolderItemProps> = React.memo(
                     setMenuOpen(true);
                     return;
                   }
-                  // Поддерживаем клавиатурный выбор папки, чтобы label вел себя как интерактивная кнопка.
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
                     e.stopPropagation();

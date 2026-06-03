@@ -1,24 +1,23 @@
-// Контракты assignment-домена для folder-sync.
-// Файл задает типы и константы для загрузки/переключения назначения чатов в папки.
+// Assignment domain contracts for folder-sync (load/toggle chat-to-folder assignment).
 
-// Специальный UUID-заполнитель для оптимистичного состояния checkbox/assignment.
+/** Placeholder UUID for optimistic checkbox/assignment state before server confirm. */
 export const OPTIMISTIC_FOLDER_ASSIGNMENT_ITEM_UUID = "__folder_assignment_pending__";
 
-// Строка назначения чата для меню папок: какая папка и есть ли item UUID.
+/** Folder assignment row for folder menu: folder id and optional item UUID. */
 export interface FolderAssignmentRow {
   folderUuid: string;
   label: string;
   itemUuid: string | null;
 }
 
-// Входные параметры операции переключения назначения чата в папку.
+/** Input for toggling chat assignment to a folder. */
 export interface ToggleAssignmentInput {
   chatId: string;
   folderUuid: string;
   itemUuid: string | null;
 }
 
-// Результат переключения назначения: успех, финальный item UUID и факт rollback.
+/** Toggle result: success, final item UUID, and whether optimistic state was rolled back. */
 export interface ToggleAssignmentResult {
   ok: boolean;
   folderUuid: string;

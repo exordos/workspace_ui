@@ -51,8 +51,7 @@ export function applyMessageCacheIndexedDb(
 }
 
 // ---
-// Обработчики по типам событий.
-// Это держит cognitive complexity у `dispatchZulipEvent` на низком уровне.
+// Per-event-type handlers keep `dispatchZulipEvent` cognitive complexity low.
 // ---
 
 export function handleIncomingMessage(
@@ -71,8 +70,7 @@ export function handleIncomingMessage(
     isMessageForContext(raw, currentChat.context, currentUserId);
   const suppressUnreadBump = isForCurrentChat && isTabVisible();
   chatList.addMessage(raw, { suppressUnreadBump });
-  // Что делает: fallback для серверов/сценариев, где rename канала приходит не отдельным stream-event,
-  // а заметен только через новое display_recipient в message-событии.
+  // Fallback when channel rename arrives via message display_recipient instead of a stream event.
   if (
     raw.type === "stream" &&
     Number.isInteger(raw.stream_id) &&

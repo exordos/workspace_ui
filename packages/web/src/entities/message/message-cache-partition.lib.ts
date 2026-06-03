@@ -1,3 +1,8 @@
+/**
+ * Topic-partition helpers for wide-stream message cache writes.
+ *
+ * Wide API responses span multiple topics; IDB stores each topic under its own chat key.
+ */
 import type { MockMessage } from "~/shared/api/zulip.types";
 import {
   upsertChatMessages,
@@ -7,8 +12,6 @@ import {
 import { chatKeyFromMockMessage } from "~/shared/lib/message-cache-keys.lib";
 import { zulipMessageCacheWindowNForChatKey } from "~/shared/lib/zulip-message-window.lib";
 
-// Зачем: в wide-режиме сервер отдаёт сообщения из разных топиков,
-// а в кэше мы храним их по topic-partition key. Эта функция делает такую группировку.
 export function groupMessagesByChatKey(
   messages: readonly MockMessage[],
   currentUserId: number | null,
@@ -27,8 +30,7 @@ export function groupMessagesByChatKey(
   return grouped;
 }
 
-// Зачем: при boundary-событиях (дошли до oldest/newest) в wide-режиме нужно обновлять meta
-// не одного чата, а всех topic-partitions, куда попали сообщения.
+// Wide-mode boundary events may touch several topic partitions in one batch.
 export async function patchPartitionMetaByMessages(options: {
   instanceId: string;
   currentUserId: number | null;
@@ -55,8 +57,6 @@ export async function patchPartitionMetaByMessages(options: {
   );
 }
 
-// Зачем: единая запись набора сообщений по корректным topic-partitions.
-// Это предотвращает смешивание wide-ленты в один ключ default-topic partition.
 export async function upsertMessagesByChatPartitions(options: {
   instanceId: string;
   currentUserId: number | null;
@@ -68,8 +68,7 @@ export async function upsertMessagesByChatPartitions(options: {
 
   await Promise.all(
     Array.from(grouped.entries()).map(async ([chatKey, chatMessages]) => {
-      // Что делает: при full-refresh сбрасывает reached-флаги,
-      // чтобы boundary-пагинация после refresh работала корректно.
+      // Full refresh must clear reached flags so pagination can re-probe boundaries.
       if (options.resetBoundaries) {
         await updateChatMetaPatch(options.instanceId, chatKey, {
           reachedOldest: false,

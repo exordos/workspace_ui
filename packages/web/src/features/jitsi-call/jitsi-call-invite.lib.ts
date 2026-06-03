@@ -15,8 +15,8 @@ function isOneToOneDmForCurrentUser(message: ZulipRawMessage, currentUserId: num
 }
 
 /**
- * Извлекает входящее приглашение в звонок только для 1:1 DM.
- * Возвращает null, если событие не подходит под сценарий входящего звонка.
+ * Resolves an incoming call invite for 1:1 DMs only.
+ * Returns null when the event is not an incoming call scenario.
  */
 export function resolveIncomingDmCallInvite(
   message: ZulipRawMessage,

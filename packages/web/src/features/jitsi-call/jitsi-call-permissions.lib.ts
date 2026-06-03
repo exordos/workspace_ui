@@ -1,14 +1,9 @@
-// Этот файл централизует инвариантную настройку iframe для встроенного Jitsi.
-// Он отвечает только за постоянные разрешения и размеры embed-окна.
-// Используется при инициализации звонка, чтобы shell-состояние не влияло на lifecycle Jitsi.
+// Invariant Jitsi iframe setup — permissions and size must not depend on shell state.
 
-// Этот policy даёт iframe только те capability, которые нужны звонку: камера, микрофон,
-// fullscreen и захват экрана. Значение едино для всей сессии звонка.
+/** Capabilities required for the call session (camera, mic, fullscreen, screen share). */
 export const JITSI_IFRAME_ALLOW_POLICY = "camera; microphone; fullscreen; display-capture";
 
-// Настраивает iframe один раз инвариантным образом.
-// Функция не зависит от minimized/expanded состояния, чтобы изменения оболочки модалки
-// не выглядели для Jitsi как новый session lifecycle.
+/** One-time iframe setup — shell minimize/expand must not look like a new session to Jitsi. */
 export function configureJitsiIframe(iframeElement: HTMLElement | null): void {
   if (!iframeElement || !("style" in iframeElement)) return;
   iframeElement.style.width = "100%";

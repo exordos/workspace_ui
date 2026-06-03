@@ -2,19 +2,18 @@ import { buildFolderItemVisualState } from "./folder-rail-visual.lib";
 import type { FolderRailFolder } from "./folder-rail.types";
 import type { CSSProperties, KeyboardEvent } from "react";
 
-/** Глобальный shortcut открытия quick-list папок. */
+/** Global shortcut to open the folder quick-list. */
 export const FOLDER_QUICK_LIST_SHORTCUT = "mod+shift+f";
 
-/** Связка "папка + ее индекс", чтобы не терять порядок при вычислениях. */
+/** Folder plus index — preserves order in derived computations. */
 export interface IndexedFolderEntry {
   folder: FolderRailFolder;
   index: number;
 }
 
 /**
- * Порядок отображения rail: папка «Все» (или legacy-первый слот) всегда первая,
- * остальные — в исходном относительном порядке. Совпадает с vertical rail и
- * применяется в horizontal, чтобы оба режима совпадали.
+ * Rail display order: "All" (or legacy first slot) first, rest in relative order.
+ * Shared by vertical and horizontal rail modes.
  */
 export function orderedIndexedFoldersForRail(
   indexedFolders: readonly IndexedFolderEntry[],
@@ -36,19 +35,14 @@ export function orderedIndexedFoldersForRail(
   return [allFolderEntry, ...rest];
 }
 
-/**
- * Единая проверка клавиш вызова контекстного меню:
- * - отдельная клавиша ContextMenu;
- * - Shift+F10 как стандартный fallback для accessibility.
- */
+/** Context menu keyboard trigger: ContextMenu key or Shift+F10. */
 export function isContextMenuKeyboardTrigger(event: KeyboardEvent): boolean {
   return event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey);
 }
 
 /**
- * Нормализует тип папки.
- * Нужен для обратной совместимости, когда API не прислал `systemType`:
- * первый элемент считаем системной папкой "all".
+ * Normalize folder system type.
+ * When API omits systemType, treat index 0 as "all" for backward compatibility.
  */
 export function resolveFolderSystemType(
   folder: FolderRailFolder,
@@ -60,38 +54,31 @@ export function resolveFolderSystemType(
   return index === 0 ? "all" : "created";
 }
 
-/**
- * Производное визуальное состояние папки.
- * Содержит уже готовые цвета/классы, чтобы UI-компоненты были "тонкими"
- * и не дублировали ветвления по типу папки, hover и selected.
- */
+/** Derived folder visuals — thin UI components consume ready-made colors/classes. */
 export interface FolderItemVisualState {
-  /** true для `all/personal/channels`; влияет на доступность rename/delete и цветовую схему. */
+  /** System folder (all/personal/channels) — affects rename/delete and color scheme. */
   isSystemFolder: boolean;
-  /** HEX-цвет папки, рассчитанный из числового значения. */
+  /** Folder color as CSS hex from numeric value. */
   folderColor: string;
-  /** Имя иконки, которую нужно отрисовать в зависимости от типа/состояния папки. */
+  /** Icon name for folder type/state. */
   iconName: "folders" | "profile" | "channels" | "folder_open" | "folder";
-  /** Tailwind-класс цвета иконки. */
+  /** Tailwind icon color class. */
   iconTextColor: string;
-  /** Tailwind-класс цвета подписи папки. */
+  /** Tailwind label color class. */
   labelTextColor: string;
-  /** Inline-стили иконки (используются только для пользовательских папок). */
+  /** Inline icon styles (user folders only). */
   iconColorStyle: CSSProperties | undefined;
-  /** Inline-стили подписи (используются для пользовательских папок в активном/hover-состоянии). */
+  /** Inline label styles (user folders, active/hover). */
   labelColorStyle: CSSProperties | undefined;
-  /** Подсветка поверхности кнопки папки (мягкий фон + border) для пользовательских папок. */
+  /** Folder button surface highlight (user folders). */
   folderSurfaceStyle: CSSProperties | undefined;
-  /** Флаг, что подпись должна окрашиваться в пользовательский цвет. */
+  /** Label uses custom folder color. */
   labelUsesCustomColor: boolean;
-  /** Флаг, что подпись должна использовать accent-цвет системных папок. */
+  /** Label uses system-folder accent color. */
   labelUsesAccent: boolean;
 }
 
-/**
- * Центральный вычислитель визуального состояния FolderItem.
- * Благодаря этому и horizontal, и vertical item используют одинаковые правила цвета/иконки.
- */
+/** Shared visual state for horizontal and vertical folder items. */
 export function getFolderItemVisualState({
   folder,
   index,

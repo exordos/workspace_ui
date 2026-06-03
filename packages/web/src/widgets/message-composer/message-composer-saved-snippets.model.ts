@@ -1,10 +1,7 @@
-// Назначение:
-// - Единый model-слой для saved snippets в composer.
-// - Держит SWR+TTL политику, in-memory cache и in-flight dedupe вне UI.
-// Правила:
-// - UI только читает состояние и вызывает actions этого модуля.
-// - Данные кэшируются отдельно по instanceId.
-// - Ошибка refresh не очищает уже показанный список.
+/**
+ * Saved snippets store for the composer: SWR+TTL cache, in-flight dedupe, per-instance data.
+ * Refresh errors do not clear an already shown list.
+ */
 import { create } from "zustand";
 import { getCurrentInstance } from "~/shared/api/client";
 import { createSavedSnippet, fetchSavedSnippets } from "~/shared/api/zulip-messages";
@@ -13,68 +10,47 @@ import { logStoreAction } from "~/shared/lib/logger";
 
 export const SAVED_SNIPPETS_TTL_MS = 60_000;
 
-// Fallback-ключ на случай, если активный инстанс еще не выбран.
 const FALLBACK_INSTANCE_ID = "__no_instance__";
 
-// Коды ошибок model; UI сам маппит их в i18n-строки.
 type SavedSnippetsErrorCode = "load_failed" | "create_failed";
 
 interface SavedSnippetsCacheEntry {
-  // Последний успешный snapshot snippets.
   snippets: SavedSnippet[];
-  // Время получения snapshot (для TTL-проверки).
   fetchedAt: number;
 }
 
 interface RefreshOptions {
-  // Принудительный рефетч, даже если TTL не истек.
   force?: boolean;
 }
 
 interface SavedSnippetsModelState {
-  // Данные, которые UI показывает прямо сейчас.
   snippets: SavedSnippet[];
-  // True только для первой загрузки без локального кэша.
   loadingInitial: boolean;
-  // True для мягкого обновления, когда список уже есть.
   refreshing: boolean;
-  // Ошибка последней операции (load/create), если была.
   error: SavedSnippetsErrorCode | null;
-  // Флаг, что хотя бы один успешный load уже был.
   hasLoadedOnce: boolean;
-  // Версия запроса для защиты от гонок между ответами.
   requestVersion: number;
-  // Открытие меню: мгновенная гидрация из кэша + условный SWR-рефетч.
   openSavedSnippets: () => Promise<void>;
-  // Явное обновление списка, при force игнорирует TTL.
   refreshSavedSnippets: (options?: RefreshOptions) => Promise<void>;
-  // Создание сниппета + оптимистичное обновление + фоновая синхронизация.
   createSavedSnippetAndSync: (params: { title: string; content: string }) => Promise<void>;
-  // Сброс ошибки для повторных попыток в UI.
   clearSavedSnippetsError: () => void;
 }
 
-// In-memory cache по инстансам (без localStorage/IDB на этом этапе).
 const snippetsCacheByInstance = new Map<string, SavedSnippetsCacheEntry>();
-// In-flight dedupe по инстансу: параллельные fetch делят один Promise.
 const snippetsInFlightByInstance = new Map<string, Promise<SavedSnippet[]>>();
 
-// Возвращает id текущего инстанса или fallback.
 function resolveInstanceId(): string {
   return getCurrentInstance()?.id ?? FALLBACK_INSTANCE_ID;
 }
 
-// Клонируем массив, чтобы UI не получил мутабельную ссылку из кэша.
 function cloneSnippets(snippets: readonly SavedSnippet[]): SavedSnippet[] {
   return snippets.map((snippet) => ({ ...snippet }));
 }
 
-// Единая сортировка списка для стабильного рендера.
 function sortSnippetsByTitle(snippets: readonly SavedSnippet[]): SavedSnippet[] {
   return [...snippets].sort((left, right) => left.title.localeCompare(right.title));
 }
 
-// Проверка свежести записи по TTL.
 function isCacheFresh(entry: SavedSnippetsCacheEntry | undefined, now: number): boolean {
   return entry != null && now - entry.fetchedAt < SAVED_SNIPPETS_TTL_MS;
 }
@@ -84,7 +60,6 @@ function mergeSnippet(
   incoming: SavedSnippet,
   options?: { preferIncomingById?: boolean },
 ): SavedSnippet[] {
-  // При create сначала пытаемся матчить по id, иначе по title.
   const preferIncomingById = options?.preferIncomingById === true;
   const existingIndex = snippets.findIndex((snippet) =>
     preferIncomingById ? snippet.id === incoming.id : snippet.title === incoming.title,
@@ -98,7 +73,6 @@ function mergeSnippet(
 }
 
 async function fetchSavedSnippetsDeduped(instanceId: string): Promise<SavedSnippet[]> {
-  // Если запрос уже летит, переиспользуем его вместо нового fetch.
   const inFlight = snippetsInFlightByInstance.get(instanceId);
   if (inFlight != null) {
     return inFlight;
@@ -106,7 +80,6 @@ async function fetchSavedSnippetsDeduped(instanceId: string): Promise<SavedSnipp
   const request = fetchSavedSnippets()
     .then((snippets) => {
       const normalized = sortSnippetsByTitle(cloneSnippets(snippets));
-      // Обновляем кэш только успешным ответом.
       snippetsCacheByInstance.set(instanceId, {
         snippets: normalized,
         fetchedAt: Date.now(),
@@ -131,7 +104,6 @@ export const useComposerSavedSnippetsStore = create<SavedSnippetsModelState>((se
   requestVersion: 0,
 
   async openSavedSnippets() {
-    // Быстрый сценарий открытия: сначала отдаем кэш, потом SWR при необходимости.
     const instanceId = resolveInstanceId();
     const cached = snippetsCacheByInstance.get(instanceId);
     const now = Date.now();
@@ -162,7 +134,6 @@ export const useComposerSavedSnippetsStore = create<SavedSnippetsModelState>((se
   },
 
   async refreshSavedSnippets(options) {
-    // Отдельный action рефетча нужен для SWR и force-sync после create.
     const force = options?.force === true;
     const instanceId = resolveInstanceId();
     const cached = snippetsCacheByInstance.get(instanceId);
@@ -208,7 +179,6 @@ export const useComposerSavedSnippetsStore = create<SavedSnippetsModelState>((se
   },
 
   async createSavedSnippetAndSync(params) {
-    // Защита от пустых значений до похода в API.
     const title = params.title.trim();
     const content = params.content.trim();
     if (title.length === 0 || content.length === 0) {
@@ -223,7 +193,6 @@ export const useComposerSavedSnippetsStore = create<SavedSnippetsModelState>((se
     const instanceId = resolveInstanceId();
     try {
       const createdSnippetId = await createSavedSnippet({ title, content });
-      // Оптимистично добавляем/обновляем snippet в текущем списке.
       const optimisticSnippet: SavedSnippet = {
         id: createdSnippetId > 0 ? createdSnippetId : -Date.now(),
         title,
@@ -241,7 +210,6 @@ export const useComposerSavedSnippetsStore = create<SavedSnippetsModelState>((se
         hasLoadedOnce: true,
         error: null,
       });
-      // После optimistic update делаем force sync для консистентности.
       void get().refreshSavedSnippets({ force: true });
     } catch {
       set({ error: "create_failed" });
@@ -254,7 +222,6 @@ export const useComposerSavedSnippetsStore = create<SavedSnippetsModelState>((se
 }));
 
 export function resetComposerSavedSnippetsModelForTests(): void {
-  // Полный reset singleton-состояния для изоляции тестов.
   snippetsCacheByInstance.clear();
   snippetsInFlightByInstance.clear();
   useComposerSavedSnippetsStore.setState({

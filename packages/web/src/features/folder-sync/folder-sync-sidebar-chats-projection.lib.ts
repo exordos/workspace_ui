@@ -144,8 +144,7 @@ function buildDmFallbackFromFolderItem(
   return buildGroupDmFallback(dmUserIds, currentUserId, usersMapForChatInfo);
 }
 
-// Зачем: folder item может ссылаться на DM, которого ещё нет в matchedChats.
-// Что делает: строит fallback DM-чаты из folder items в порядке orderIndex.
+// Folder item may reference a DM missing from matchedChats — build fallbacks in orderIndex order.
 export function buildFallbackDmChatsFromFolderItems(
   orderedItems: readonly FolderItemForClient[],
   knownMatchedDmKeys: ReadonlySet<string>,
@@ -178,8 +177,7 @@ export function buildFallbackDmChatsFromFolderItems(
   return fallbackDmChats;
 }
 
-// Зачем: folder item может ссылаться на stream, которого ещё нет в matchedChats.
-// Что делает: строит fallback stream-чаты из folder items в порядке orderIndex.
+// Folder item may reference a stream missing from matchedChats — build fallbacks in orderIndex order.
 export function buildFallbackStreamChatsFromFolderItems(
   orderedItems: readonly FolderItemForClient[],
   knownMatchedStreamIds: ReadonlySet<number>,

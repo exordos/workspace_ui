@@ -1,6 +1,6 @@
 import type { IndexedFolderEntry } from "./folder-rail.lib";
 
-/** Quick-list для быстрого переключения между большим числом папок. */
+/** Quick list for switching among many folders. */
 export interface FolderQuickListProps {
   folders: IndexedFolderEntry[];
   selectedFolderId: string;

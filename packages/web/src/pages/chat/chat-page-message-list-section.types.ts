@@ -5,8 +5,7 @@ export type ChatMessagesLoadErrorKind = "initial" | "refresh";
 
 export interface ChatPageMessageListSectionProps {
   messagesLoading: boolean;
-  // Что делает: показывает, что для текущего route-контекста уже есть initial payload.
-  // Зачем: блокирующий loader должен зависеть от факта наличия данных, а не только от флага загрузки.
+  // True when initial payload exists for current route — blocking loader depends on data presence, not loading flag alone.
   hasInitialPayload: boolean;
   isDmView: boolean;
   activeDmUserIds: number[] | null;

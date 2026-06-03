@@ -1,10 +1,7 @@
-// Парсинг unread-данных Zulip.
-// Поддерживает 2 источника:
-// 1) legacy payload с unread_msgs (если где-то еще используется);
-// 2) payload GET /messages с narrow is:unread (основной путь для текущего startup reconcile).
-// Нужен для двух сценариев:
-// 1) получить общий unread count;
-// 2) получить подробный snapshot для reconcile chat-list unread.
+/**
+ * Parses Zulip unread payloads (legacy `unread_msgs` or GET /messages?narrow=is:unread)
+ * into total counts and sidebar reconciliation snapshots.
+ */
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import {
   isPositiveInteger,
@@ -18,7 +15,6 @@ import {
   parseUnreadMessageIds,
 } from "./zulip-unread-buckets.lib";
 
-// Безопасная нормализация числовых счетчиков.
 function toSafeCount(value: unknown): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return 0;
@@ -42,7 +38,6 @@ function resolveUnreadMsgsTotalCount(
   );
 }
 
-// Суммирует длины unread_message_ids по bucket-массиву.
 function sumUnreadMessageIds(entries: unknown): number {
   if (!Array.isArray(entries)) {
     return 0;
@@ -53,14 +48,12 @@ function sumUnreadMessageIds(entries: unknown): number {
   }, 0);
 }
 
-// Unread bucket для stream/topic.
 export interface ZulipUnreadStreamBucket {
   streamId: number;
   topic: string;
   unreadMessageIds: number[];
 }
 
-// Unread bucket для DM/группового DM.
 export interface ZulipUnreadDmBucket {
   userIds: number[];
   unreadMessageIds: number[];
@@ -68,7 +61,6 @@ export interface ZulipUnreadDmBucket {
   isGroup?: boolean;
 }
 
-// Полный unread snapshot для reconcile sidebar unread.
 export interface ZulipUnreadMessagesSnapshot {
   streams: ZulipUnreadStreamBucket[];
   dms: ZulipUnreadDmBucket[];
@@ -97,8 +89,6 @@ export function parseRegisterUnreadSnapshot(registerData: {
   return { ...snapshot, oldUnreadsMissing: true };
 }
 
-// Парсит полный unread snapshot из legacy unread_msgs payload.
-// Возвращает null, если payload не похож на ожидаемую структуру.
 function parseUnreadMessagesSnapshotFromUnreadMsgs(
   payload: unknown,
 ): ZulipUnreadMessagesSnapshot | null {
@@ -122,8 +112,7 @@ function parseUnreadMessagesSnapshotFromUnreadMsgs(
   const dms = [...parsePmUnreadBuckets(pmsRaw), ...parseHuddleUnreadBuckets(huddlesRaw)];
   const mentionMessageIds = parseMentionUnreadMessageIds(unreadMsgs.mentions);
 
-  // Если сервер дал прямой count, используем его как authoritative total.
-  // Иначе считаем fallback как сумму длин id-массивов.
+  // Prefer server-provided count; otherwise sum unread id array lengths.
   const totalCount = resolveUnreadMsgsTotalCount(unreadMsgs, streamsRaw, pmsRaw, huddlesRaw);
 
   return { streams, dms, totalCount, mentionMessageIds };
@@ -204,8 +193,6 @@ function accumulateUnreadDmMessage(
   });
 }
 
-// Парсит полный unread snapshot из payload GET /messages?narrow=is:unread.
-// Ожидает shape { messages: ZulipRawMessage[] }.
 function parseUnreadMessagesSnapshotFromMessages(
   payload: unknown,
 ): ZulipUnreadMessagesSnapshot | null {
@@ -236,8 +223,7 @@ const UNREAD_SNAPSHOT_PARSERS: readonly ((
   parseUnreadMessagesSnapshotFromMessages,
 ];
 
-// Парсит полный unread snapshot из поддерживаемых payload.
-// Приоритет: legacy unread_msgs -> messages payload.
+/** Tries legacy `unread_msgs` first, then GET /messages payload. */
 export function parseUnreadMessagesSnapshot(payload: unknown): ZulipUnreadMessagesSnapshot | null {
   for (const parse of UNREAD_SNAPSHOT_PARSERS) {
     const snapshot = parse(payload);
@@ -281,7 +267,6 @@ export function countPersonalDmUnreadFromSnapshot(snapshot: ZulipUnreadMessagesS
   return total;
 }
 
-// Лёгкий helper только для общего unread count.
 export function parseUnreadMessagesCount(payload: unknown): number | null {
   const snapshot = parseUnreadMessagesSnapshot(payload);
   if (snapshot == null) {

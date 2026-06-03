@@ -1,4 +1,3 @@
-// Zustand-store chat-list: формирует и обновляет sidebar-проекцию стримов/DM и unread-счетчики.
 /**
  * Chat list store — manages sidebar chat entries (streams, DMs, topics).
  *
@@ -316,7 +315,6 @@ function getAvatarMap() {
   return useUsersStore.getState().getAvatarMap();
 }
 
-// Что делает: сохраняет список последних личных DM-партнеров для быстрого доступа в UI.
 function persistRecentDmPartnersFromMap(map: Map<string, DmEntryInternal>): void {
   const partnerIds = Array.from(map.values())
     .filter((dm) => !dm.isGroup)
@@ -326,7 +324,7 @@ function persistRecentDmPartnersFromMap(map: Map<string, DmEntryInternal>): void
   saveRecentDmPartners(partnerIds);
 }
 
-// Что делает: нормализует набор участников DM и при необходимости добавляет currentUser для 1:1 ключа.
+// 1:1 DM keys require both participants; inject currentUser when register metadata lists only the peer.
 function normalizeDmUserIds(userIds: readonly number[], currentUserId: number | null): number[] {
   const uniqueSorted = Array.from(
     new Set(userIds.filter((id) => Number.isInteger(id) && id > 0)),
@@ -342,7 +340,6 @@ function normalizeDmUserIds(userIds: readonly number[], currentUserId: number | 
   return uniqueSorted;
 }
 
-// Что делает: получает понятное имя участника DM, даже если профиль еще не полностью загружен.
 function getDmParticipantDisplayName(userId: number): string {
   const usersStore = useUsersStore.getState();
   const displayName = usersStore.getDisplayName(userId);
@@ -357,7 +354,7 @@ function getDmParticipantDisplayName(userId: number): string {
   });
 }
 
-// Зачем: строит/обновляет DM-строку из metadata, чтобы диалог отображался даже без сообщений в памяти.
+// Metadata-only DMs must appear in the sidebar before any message window is loaded.
 function buildDmMetadataEntry(
   row: ChatListDmMetadataRow,
   currentUserId: number | null,
@@ -375,7 +372,7 @@ function buildDmMetadataEntry(
   const isGroup = participants.length > 1;
 
   if (isGroup) {
-    // Что делает: для группового DM создаем стабильный synthetic id и читаемое имя участников.
+    // Group DMs need a stable synthetic row id distinct from any single member user id.
     const names = participants.map((userId) => getDmParticipantDisplayName(userId));
     const groupName =
       names.filter((name) => name.trim().length > 0).join(", ") || t("dm.groupChat");
@@ -421,8 +418,7 @@ function buildDmMetadataEntry(
   };
 }
 
-// Что делает: определяет, изменились ли permission-связанные поля metadata канала.
-// Нужно, чтобы не триггерить лишние state-апдейты при неизменных данных.
+// Skip map copies when only display fields changed — permission metadata updates are rare.
 function hasStreamMetadataAccessChanged(
   existing: StreamEntryInternal,
   nextEntry: StreamEntryInternal,
@@ -486,8 +482,7 @@ function buildUnreadLocationMap(
   messages: readonly ZulipRawMessage[],
   currentUserId: number | null,
 ): Map<number, MessageLocation> {
-  // Что делает: строит authoritative-карту unread сообщений из серверного snapshot.
-  // Зачем: дальше reconcile работает по уже нормализованным stream/topic и DM ключам.
+  // Reconcile expects normalized stream/topic and DM keys from the server snapshot.
   const map = new Map<number, MessageLocation>();
   for (const message of messages) {
     if (!isUnreadFromOthers(message, currentUserId)) continue;
@@ -1123,7 +1118,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
             const existing = nextStreams.get(row.streamId);
             const nextEntry = buildStreamMetadataEntry(row, existing);
             if (existing === undefined) {
-              // Что делает: добавляем канал даже если в текущем message-window нет сообщений этого канала.
+              // Subscribed channels must appear even when the active message window has no rows for them.
               if (!changed) nextStreams = new Map(nextStreams);
               changed = true;
               nextStreams.set(row.streamId, nextEntry);
@@ -1187,7 +1182,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
           const normalized = buildDmMetadataEntry(row, currentUserId, undefined);
           if (normalized == null) continue;
           const existing = nextDms.get(normalized.key);
-          // Что делает: повторно собираем строку с existing, чтобы аккуратно слить unread/ts/lastMessageId.
+          // Re-merge with existing so unread/ts/lastMessageId accumulate instead of resetting.
           const merged = buildDmMetadataEntry(row, currentUserId, existing);
           if (merged == null) continue;
           sidebarDmsUnreadDelta += merged.entry.unreadCount - (existing?.unreadCount ?? 0);
@@ -1211,7 +1206,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
         invalidatePreviewResolveLifecycle();
       }
       patchSet({ currentUserId: id });
-      // Зачем: если user id пришел позже, пересобираем DM-ключи и заголовки, чтобы убрать кривые имена/ключи.
+      // Late currentUserId arrival: rebuild DM keys and titles that were built without the self participant.
       if (prev === null && id != null) {
         const { lastAppliedMessages, dmsMap } = get();
         if (lastAppliedMessages != null && lastAppliedMessages.length > 0) {
@@ -1219,7 +1214,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
           return;
         }
         if (dmsMap.size > 0) {
-          // Что делает: когда есть только metadata-DM, мягко пересобираем их с уже известным currentUserId.
+          // Metadata-only sidebar: soft rebuild now that currentUserId is known for DM keys.
           get().upsertDmMetadataRows(
             Array.from(dmsMap.values()).map((entry) => ({
               userIds: entry.userIds ?? [entry.id],

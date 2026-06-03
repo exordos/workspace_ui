@@ -1,5 +1,7 @@
-// Кэш клиента zulip-js и session-backed клиент.
-// Внутренний модуль для shared/api и файлов `zulip-*`.
+/**
+ * zulip-js client cache and session-backed client.
+ * Internal module for shared/api and `zulip-*` modules.
+ */
 import { Buffer } from "buffer";
 import zulipInitDefault from "zulip-js";
 import { t } from "~/i18n/i18n";
@@ -206,8 +208,7 @@ export function getClient(): Promise<ZulipClient> {
   return promise;
 }
 
-// Realm base URL без API path.
-// Используется для абсолютных URL, например для аватаров и uploads.
+/** Realm base URL without API path (avatars, uploads). */
 export function getRealmBaseUrl(): string {
   const instance = getCurrentInstance();
   if (!instance) return "";

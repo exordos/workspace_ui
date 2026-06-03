@@ -31,11 +31,11 @@ interface ChatInfoState {
   data: ChatInfoData | null;
   loading: boolean;
   error: string | null;
-  // Последний активный контекст chat-info (none/dm/stream).
+  // Last active chat-info context (none/dm/stream).
   context: ChatInfoContext;
-  // Последний загруженный server-список участников stream-контекста.
+  // Last server-fetched member ids for stream context.
   streamMemberIds: number[];
-  // Версия запроса для защиты от гонок (stale response).
+  // Request version for stale-response protection.
   requestVersion: number;
 
   setData: (data: ChatInfoData) => void;
@@ -53,7 +53,6 @@ const NONE_CONTEXT: ChatInfoContext = {
   instanceId: null,
 };
 
-// Преобразуем массив userId в загруженные user-records из users store.
 function resolveUsersById(userIds: number[]) {
   const usersState = useUsersStore.getState();
   return userIds
@@ -61,7 +60,6 @@ function resolveUsersById(userIds: number[]) {
     .filter((user): user is NonNullable<typeof user> => user != null);
 }
 
-// Проверяем, что ответ относится к актуальной версии запроса и тому же контексту.
 function isCurrentHydration(
   state: ChatInfoState,
   version: number,
@@ -97,7 +95,7 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
 
   setContext(context) {
     const previous = get().context;
-    // При смене инстанса сбрасываем API-кэши прошлого инстанса.
+    // Invalidate API caches when switching instances.
     if (
       previous.instanceId != null &&
       context.instanceId != null &&
@@ -122,7 +120,7 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
       error: null,
     });
 
-    // Ветка без активного чата.
+    // No active chat.
     if (context.kind === "none") {
       set({
         data: null,
@@ -133,12 +131,12 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
       return;
     }
 
-    // DM-контекст: сеть не нужна, собираем данные из users store.
+    // DM: no network — build from users store.
     if (context.kind === "dm") {
       const members = resolveUsersById(context.participantIds);
       const nextData = buildDmChatInfoData(context.dmName, members, context.participantIds.length);
       const state = get();
-      // Если контекст уже сменился, прекращаем обновление.
+      // Context changed mid-hydration — drop result.
       if (!isCurrentHydration(state, nextVersion, context)) return;
       if (isSameChatInfoData(state.data, nextData)) {
         set({ loading: false, error: null, streamMemberIds: [] });
@@ -154,13 +152,13 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
     }
 
     try {
-      // Stream-контекст: eager-загрузка участников и метадаты параллельно.
+      // Stream: fetch members and metadata in parallel.
       const [memberIds, metadata] = await Promise.all([
         loadStreamMembers(context.instanceId, context.streamId),
         loadStreamMetadata(context.instanceId, context.streamId),
       ]);
       const state = get();
-      // Anti-race guard: устаревший ответ не должен переписать актуальный контекст.
+      // Stale response must not overwrite current context.
       if (!isCurrentHydration(state, nextVersion, context)) return;
       const members = resolveUsersById(memberIds);
       const nextData = buildStreamChatInfoData(
@@ -185,7 +183,7 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
       });
     } catch {
       const state = get();
-      // Ошибку показываем только если это все еще актуальный запрос.
+      // Show error only for the still-current request.
       if (!isCurrentHydration(state, nextVersion, context)) return;
       set({
         error: "chat-info:hydrate_failed",
@@ -196,19 +194,19 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
 
   syncDerived(context) {
     const state = get();
-    // Derived-обновления применяем только к текущему активному контексту.
+    // Apply derived updates only to the active context.
     if (getChatInfoNetworkKey(state.context) !== getChatInfoNetworkKey(context)) {
       return;
     }
 
-    // Синхронный сброс для empty-контекста без сетевых вызовов.
+    // Sync reset for empty context — no network.
     if (context.kind === "none") {
       if (state.data == null) return;
       set({ data: null, loading: false, error: null, streamMemberIds: [] });
       return;
     }
 
-    // DM derived-пересчет делаем локально по users store.
+    // DM derived refresh from users store only.
     if (context.kind === "dm") {
       const members = resolveUsersById(context.participantIds);
       const nextData = buildDmChatInfoData(context.dmName, members, context.participantIds.length);
@@ -219,12 +217,12 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
       return;
     }
 
-    // Пока stream еще не догрузил участников, derived-пересчет пропускаем.
+    // Skip derived refresh until stream members are loaded.
     if (state.loading && state.streamMemberIds.length === 0) {
       return;
     }
 
-    // Stream derived-пересчет: topics/mute/presence без повторного HTTP.
+    // Stream derived refresh: topics/mute/presence without another HTTP round-trip.
     const members = resolveUsersById(state.streamMemberIds);
     const description = state.data?.type === "stream" ? state.data.description : null;
     const streamName = state.data?.type === "stream" ? state.data.name : context.streamName;
@@ -246,10 +244,10 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
 
   invalidateStream(instanceId, streamId) {
     logStoreAction("chatInfo", "invalidateStream", { instanceId, streamId });
-    // Чистим API-кэш целевого stream и snapshot инстанса.
+    // Clear stream API cache and instance snapshot.
     invalidateStreamCache(instanceId, streamId);
     const context = get().context;
-    // Если это текущий активный stream, сразу перезагружаем данные.
+    // Re-hydrate immediately when invalidating the active stream.
     if (
       context.kind === "stream" &&
       context.instanceId === instanceId &&

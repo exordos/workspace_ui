@@ -1,4 +1,4 @@
-// Тесты chat-list store: проверяем построение sidebar, unread-логику и reconcile с сервером.
+// Tests for chat-list store: sidebar building, unread logic, and server reconcile.
 /**
  * Tests for chatListStore — the central store that manages sidebar chat entries.
  *

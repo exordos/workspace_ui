@@ -1,13 +1,7 @@
-/** Статические Zulip overrides для emoji shortcodes (data-only, без runtime-логики). */
+/** Static Zulip emoji shortcode overrides (data-only, no runtime logic). */
 
 /**
- * Направление: `shortcode -> unicode`.
- *
- * Зачем нужна:
- * - поддерживает Zulip-алиасы и исторические имена (контракт Zulip), даже если в emojibase/emoji-picker имена другие;
- * - даёт предсказуемый символ для отображения и рендера по имени реакции.
- *
- * Пример: пришло `emoji_name` от Zulip -> по этой карте получаем корректный unicode.
+ * `shortcode → unicode` — Zulip aliases and legacy names for display and reaction render.
  */
 export const ZULIP_SHORTCODE_TO_UNIFIED_OVERRIDES: Readonly<Record<string, string>> = {
   working_on_it: "1F6E0",
@@ -697,15 +691,8 @@ export const ZULIP_SHORTCODE_TO_UNIFIED_OVERRIDES: Readonly<Record<string, strin
 };
 
 /**
- * Направление: `unicode -> canonical shortcode`.
- *
- * Зачем нужна:
- * - фиксирует, какое ИМЯ мы считаем каноническим для конкретного unicode;
- * - нужна для обратного пути: когда есть unicode (например из emoji picker), выбираем стабильный `emoji_name`
- *   для сохранения/отправки в Zulip-совместимом виде.
- *
- * Это не зеркало первой карты: первая решает "как показать по имени",
- * эта — "какое имя выбрать по unicode".
+ * `unicode → canonical shortcode` — stable `emoji_name` when sending from picker unicode.
+ * Not a mirror of the shortcode→unicode map (display vs canonical name selection).
  */
 export const ZULIP_CANONICAL_SHORTCODE_BY_UNIFIED_OVERRIDES: Readonly<Record<string, string>> = {
   "1f6e0": "working_on_it",

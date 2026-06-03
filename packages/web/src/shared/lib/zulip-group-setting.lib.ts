@@ -1,17 +1,16 @@
-// Утилиты нормализации/сравнения group-setting значений Zulip.
-// Нужны, чтобы API-слой и store работали с единым форматом прав канала
-// (`number | { direct_members, direct_subgroups }`) и не дублировали парсинг.
+/**
+ * Normalization and equality for Zulip channel group-setting values.
+ * Keeps API and store on one `{ number | direct_members/subgroups }` shape.
+ */
 import type {
   ZulipGroupSettingValue,
   ZulipGroupSettingValueObject,
 } from "~/shared/api/zulip.types";
 
-// Проверяет, что значение — положительный integer идентификатор пользователя/группы.
 function isPositiveInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value > 0;
 }
 
-// Нормализует массив id: фильтрует невалидные значения, удаляет дубли, сортирует.
 function normalizeIds(value: unknown): number[] {
   if (!Array.isArray(value)) {
     return [];
@@ -19,8 +18,6 @@ function normalizeIds(value: unknown): number[] {
   return Array.from(new Set(value.filter(isPositiveInteger))).sort((left, right) => left - right);
 }
 
-// Нормализует объектную форму group-setting значения Zulip.
-// Если структура невалидна, возвращает undefined.
 function normalizeGroupSettingObject(value: unknown): ZulipGroupSettingValueObject | undefined {
   if (value == null || typeof value !== "object" || Array.isArray(value)) {
     return undefined;
@@ -32,8 +29,6 @@ function normalizeGroupSettingObject(value: unknown): ZulipGroupSettingValueObje
   };
 }
 
-// Приводит raw значение group-setting из API к стабильному доменному формату.
-// Поддерживает обе формы Zulip: `group_id` (число) и `{ direct_members, direct_subgroups }`.
 export function normalizeGroupSettingValue(value: unknown): ZulipGroupSettingValue | undefined {
   const normalized: ZulipGroupSettingValue | undefined = isPositiveInteger(value)
     ? value
@@ -41,8 +36,7 @@ export function normalizeGroupSettingValue(value: unknown): ZulipGroupSettingVal
   return normalized;
 }
 
-// Сравнивает два group-setting значения с учетом формы и содержимого массивов.
-// Используется для точного detection изменений metadata в store.
+/** Detects metadata changes in the store (both Zulip shapes: group id or member/subgroup object). */
 export function areGroupSettingValuesEqual(
   left: ZulipGroupSettingValue | undefined,
   right: ZulipGroupSettingValue | undefined,

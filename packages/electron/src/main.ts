@@ -788,7 +788,6 @@ function shouldApplyShellContentSecurityPolicy(requestUrl: string): boolean {
 }
 
 function configureSecurityPolicy(): void {
-  // Разрешения, которые мы явно даем renderer-процессу.
   const allowedPermissions = new Set([
     "media",
     "notifications",
@@ -833,12 +832,10 @@ function configureSecurityPolicy(): void {
     });
   });
 
-  // Когда страница просит доступ (request), проверяем только наш allowlist.
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
     callback(allowedPermissions.has(permission));
   });
 
-  // Когда Chromium делает внутреннюю проверку (check), держим ту же логику.
   session.defaultSession.setPermissionCheckHandler((_webContents, permission) =>
     allowedPermissions.has(permission),
   );
@@ -855,7 +852,6 @@ function registerIpcHandlers(): void {
 
   // Clipboard
   ipcMain.handle("clipboard:writeText", (_event, text: unknown) => {
-    // Пишем в системный clipboard (Linux/Windows/macOS общий путь).
     if (typeof text !== "string") return false;
     try {
       clipboard.writeText(text, "clipboard");
@@ -865,7 +861,6 @@ function registerIpcHandlers(): void {
     }
   });
   ipcMain.handle("clipboard:readText", () => {
-    // Читаем из системного clipboard и отдаем renderer-процессу.
     try {
       const text = clipboard.readText("clipboard");
       return typeof text === "string" ? text : null;

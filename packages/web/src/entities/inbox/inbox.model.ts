@@ -1,6 +1,6 @@
-// Этот файл нужен как store для /inbox.
-// Здесь лежат сгруппированные unread entries и метаданные request lifecycle,
-// чтобы страница работала по схеме cache-first + background refresh.
+/**
+ * Inbox store — grouped unread entries and request lifecycle for cache-first + background refresh.
+ */
 
 import { create } from "zustand";
 import { logStoreAction } from "~/shared/lib/logger";
@@ -11,8 +11,6 @@ const EMPTY_ENTRIES: InboxEntry[] = [];
 
 let cachedEntriesRef: InboxEntry[] | null = null;
 let cachedSortedEntries: InboxEntry[] = EMPTY_ENTRIES;
-
-// Состояние inbox и действия для обновления/сортировки/mark-as-read.
 
 interface InboxState {
   entries: InboxEntry[];
@@ -47,7 +45,7 @@ export const useInboxStore = create<InboxState>((set, get) => ({
   stale: false,
 
   setEntries(entries, requestVersion) {
-    // Для newest-обновления делаем replace всего списка (authoritative reconcile).
+    // Authoritative newest refresh replaces the full list.
     logStoreAction("inbox", "setEntries", { count: entries.length });
     set((state) => {
       if (requestVersion != null && requestVersion !== state.requestVersion) return state;
@@ -66,7 +64,6 @@ export const useInboxStore = create<InboxState>((set, get) => ({
   markAsRead(messageIds) {
     logStoreAction("inbox", "markAsRead", { count: messageIds.length });
     set((state) => ({
-      // Локально выкидываем прочитанные сообщения из каждого entry.
       entries: applyMarkAsReadToInboxEntries(state.entries, messageIds),
     }));
   },
@@ -104,7 +101,6 @@ export const useInboxStore = create<InboxState>((set, get) => ({
   },
 
   startRequest(hasCachedData) {
-    // Если кэш уже есть, включаем мягкий refresh вместо блокирующего состояния.
     const requestVersion = get().requestVersion + 1;
     set({
       requestVersion,
@@ -123,7 +119,6 @@ export const useInboxStore = create<InboxState>((set, get) => ({
     const entries = get().entries;
     if (entries.length === 0) return EMPTY_ENTRIES;
     if (entries !== cachedEntriesRef) {
-      // Кешируем отсортированный массив по ссылке, чтобы не пересчитывать на каждый рендер.
       cachedEntriesRef = entries;
       cachedSortedEntries = [...entries].sort(
         (a, b) => b.lastMessageTimestamp - a.lastMessageTimestamp,

@@ -1102,8 +1102,7 @@ export const MessageList: React.FC<MessageListProps> = ({
     scheduleFlushSingleAnchorUnreadIfVisible,
   ]);
 
-  // По клику пользователя используем плавную прокрутку.
-  // Это единственный сценарий в message-list, где анимация нужна намеренно.
+  // User-initiated scroll-to-bottom uses smooth animation — the only intentional animation here.
   const handleScrollToBottomClick = useCallback(() => {
     userScrollSeenRef.current = true;
     bottomReadDispatchKeyRef.current = null;

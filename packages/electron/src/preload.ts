@@ -10,9 +10,7 @@ const electronAPI = {
   },
 
   clipboard: {
-    // Мост для записи в буфер обмена через main-процесс.
     writeText: (text: string): Promise<boolean> => ipcRenderer.invoke("clipboard:writeText", text),
-    // Мост для чтения буфера обмена через main-процесс.
     readText: (): Promise<string | null> => ipcRenderer.invoke("clipboard:readText"),
   },
 

@@ -74,16 +74,12 @@ function hydratedMessagesMatchContext(
   return messages.every((m) => chatKeyFromMockMessage(m, currentUserId) === expected);
 }
 
-// Что делает: хранит актуальный "поколенческий" номер initial-load запроса.
-// Зачем: чтобы поздние ответы старых запросов нельзя было применить в store.
+// Stale initial-load responses must not mutate store state after a newer chat is selected.
 let initialLoadGeneration = 0;
 
-// Что делает: хранит AbortController для текущей initial-load загрузки.
-// Зачем: при новом клике по чату немедленно отменять предыдущий network refresh.
+// Abort the in-flight refresh when the user switches chats before the network round-trip finishes.
 let initialLoadAbortController: AbortController | null = null;
 
-// Что делает: проверяет abort-ошибку единым образом.
-// Зачем: корректно отличать штатную отмену от реальной ошибки загрузки.
 function isAbortLikeError(error: unknown): boolean {
   return (
     (error instanceof DOMException && error.name === "AbortError") ||
@@ -91,8 +87,7 @@ function isAbortLikeError(error: unknown): boolean {
   );
 }
 
-// Что делает: подписывает внутренний controller на внешний signal (если он есть).
-// Зачем: cleanup эффекта в UI должен отменять тот же in-flight запрос, что контролирует store.
+// UI effect cleanup must abort the same in-flight request the store owns.
 function bindExternalAbortSignal(
   controller: AbortController,
   externalSignal?: AbortSignal,
@@ -133,16 +128,13 @@ function withPendingLinkPreviewsIfPersisted(message: MockMessage): MockMessage {
   return message.id > 0 ? applyPendingLinkPreviewsToMessage(message) : message;
 }
 
-// Что делает: синхронизирует текущий набор сообщений из store в IDB.
-// Зачем: после локальных мутаций (append/prepend/replace) держать cache-слой актуальным.
 function schedulePersistFullChatMessages(get: () => CurrentChatMessagesState): void {
   if (!persistChatMessagesToIndexedDb()) return;
   const inst = getCurrentInstance()?.id;
   const ctx = get().context;
   const msgs = get().messages;
   if (!inst || !ctx || msgs.length === 0) return;
-  // Что делает: в wide-контексте пишет сообщения по topic-partitions,
-  // чтобы не складывать всю stream-ленту в один topic-key.
+  // Wide stream view must not collapse all topics into one default partition key.
   if (ctx.type === "stream" && ctx.streamWideView) {
     void upsertMessagesByChatPartitions({
       instanceId: inst,
@@ -160,8 +152,7 @@ function schedulePersistFullChatMessages(get: () => CurrentChatMessagesState): v
   });
 }
 
-// Что делает: выбирает chat key для сохранения конкретного сообщения.
-// Зачем: даже при wide-контексте запись должна идти в key фактического topic.
+// Wide context still persists each message under its actual topic partition key.
 function resolvePersistChatKeyForMessage(
   context: CurrentChatContext,
   message: MockMessage,
@@ -563,8 +554,6 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     set({ hasNewerMessages: has });
   },
 
-  // Что делает: запускает route-driven initial loader и обновляет store в 2 фазы:
-  // cache-first (если есть) и затем authoritative API-снимок.
   async loadInitialMessagesForContext({
     context,
     focusedMessageId,
@@ -574,8 +563,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     onStreamMessagesApplied,
     signal,
   }) {
-    // Что делает: каждый новый initial-load инвалидирует предыдущий запрос.
-    // Зачем: убрать race-condition при быстром переключении между чатами.
+    // Bump generation so stale responses from a prior chat cannot apply after fast route switches.
     initialLoadGeneration += 1;
     const generation = initialLoadGeneration;
     initialLoadAbortController?.abort();
@@ -600,8 +588,6 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         persistToIndexedDb: persistChatMessagesToIndexedDb(),
         instanceId: getCurrentInstance()?.id ?? null,
         signal: effectiveSignal,
-        // Что делает: прокидывает кэшированный payload в store до завершения API.
-        // Зачем: UI может показать сообщения сразу и не держать blocking-loader.
         onCacheHydrated: ({ messages, hasOlderMessages, hasNewerMessages }) => {
           if (effectiveSignal.aborted || generation !== initialLoadGeneration) {
             return;

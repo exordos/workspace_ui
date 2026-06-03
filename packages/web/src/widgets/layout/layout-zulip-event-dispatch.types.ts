@@ -9,14 +9,14 @@ export type LayoutMessageFlagOp = "add" | "remove";
 
 export interface LayoutChatListActions {
   currentUserId: number | null;
-  // Что делает: доступ к текущему stream metadata (нужен для partial update channel-level прав).
+  // Current stream metadata map (partial channel-level permission updates).
   streamsMap: Map<number, StreamEntryInternal>;
   addMessage: (message: ZulipRawMessage, options?: { suppressUnreadBump?: boolean }) => void;
-  // Что делает: добавляет/обновляет каналы из metadata и subscription-событий.
+  // Upsert channels from metadata and subscription events.
   upsertStreamMetadataRows: (rows: ChatListStreamMetadataRow[]) => void;
-  // Что делает: переименовывает канал при subscription update(name).
+  // Rename channel on subscription update(name).
   renameStream: (streamId: number, nextName: string) => void;
-  // Что делает: переносит тему в пределах канала при update_message rename (resolved/unresolved).
+  // Move topic within channel on update_message rename (resolved/unresolved).
   moveStreamTopic: (params: {
     streamId: number;
     oldTopic: string;
@@ -24,7 +24,7 @@ export interface LayoutChatListActions {
     messageIds?: number[];
     anchorMessageId?: number;
   }) => void;
-  // Что делает: удаляет канал из sidebar при unsubscribe/remove.
+  // Remove channel from sidebar on unsubscribe/remove.
   removeStream: (streamId: number) => void;
   decrementUnreadForMessages: (messageIds: number[]) => void;
   incrementUnreadForMessages: (messageIds: number[]) => void;
@@ -126,8 +126,7 @@ export interface LayoutZulipEventDispatchContext {
   notifications: LayoutNotificationsActions;
   jitsiCall: LayoutJitsiCallActions;
   updateLatestMessageId: (id: number) => void;
-  // Что делает: сигнализирует об изменениях состава участников stream из peer_add/peer_remove.
+  // Notifies stream member changes from peer_add/peer_remove for external index updates.
   onStreamPeerMembersChanged?: (streamIds: number[]) => void;
-  // Зачем: позволяет снаружи обновлять дополнительные индексы на каждое message-событие.
   onMessage?: (message: ZulipRawMessage) => void;
 }

@@ -43,35 +43,24 @@ export interface ZulipUserTopic {
 }
 
 export interface ZulipRecentPrivateConversation {
-  // Что делает: список участников DM (включая текущего пользователя).
   user_ids: number[];
-  // Что делает: id последнего сообщения в этом DM, если сервер его знает.
   max_message_id: number | null;
-  // Что делает: список непрочитанных сообщений в DM для быстрого unread-индикатора.
   unread_message_ids: number[];
 }
 
 export interface ZulipGroupSettingValueObject {
-  // Что делает: явные пользователи, которым выдано право.
   direct_members: number[];
-  // Что делает: подгруппы, чьи участники наследуют право.
   direct_subgroups: number[];
 }
 
-// Что делает: универсальный формат group-setting значения Zulip.
-// Может быть ссылкой на одну группу (id) или объектом с direct members/subgroups.
+/** Zulip group-setting value: single group id or `{ direct_members, direct_subgroups }`. */
 export type ZulipGroupSettingValue = number | ZulipGroupSettingValueObject;
 
 export interface ZulipRealmUserGroup {
-  // Уникальный id группы в организации.
   id: number;
-  // Отображаемое имя группы.
   name: string;
-  // Прямые участники группы.
   members: number[];
-  // Вложенные подгруппы (наследуемое членство).
   direct_subgroup_ids: number[];
-  // Признак системной группы Zulip.
   is_system_group?: boolean;
 }
 
@@ -104,10 +93,9 @@ export interface RegisterQueueResult {
   event_queue_longpoll_timeout_seconds?: number;
   subscriptions?: ZulipSubscription[];
   user_topics?: ZulipUserTopic[];
-  // Зачем: metadata recent DM для первичного построения списка диалогов.
+  /** Recent DM metadata for initial sidebar dialog list. */
   recent_private_conversations?: Record<string, ZulipRecentPrivateConversation>;
-  // Все группы организации из register metadata.
-  // Используется для расчета channel-level прав через group-setting поля канала.
+  /** Org groups from register metadata (channel-level permission resolution). */
   realm_user_groups?: ZulipRealmUserGroup[];
   /** Present when `realm` is included in `fetch_event_types` (modern Zulip 10+). */
   realm_can_add_subscribers_group?: ZulipGroupSettingValue;
@@ -315,17 +303,11 @@ export interface ZulipSubscription {
   stream_id: number;
   name: string;
   is_muted: boolean;
-  // Что делает: признак архивированного канала в Zulip.
   is_archived?: boolean;
-  // Что делает: id пользователя, создавшего канал (если сервер его хранит).
   creator_id?: number;
-  // Что делает: приватность канала (true = private stream).
   invite_only?: boolean;
-  // Что делает: group-setting, определяющий кто может добавлять подписчиков.
   can_add_subscribers_group?: ZulipGroupSettingValue;
-  // Что делает: group-setting, определяющий кто может удалять (отписывать) подписчиков.
   can_remove_subscribers_group?: ZulipGroupSettingValue;
-  // Что делает: group-setting администраторов конкретного канала.
   can_administer_channel_group?: ZulipGroupSettingValue;
   can_resolve_topics_group?: ZulipGroupSettingValue;
 }

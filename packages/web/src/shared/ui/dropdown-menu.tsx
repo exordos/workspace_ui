@@ -4,37 +4,28 @@ import { renderDropdownMenuItems, resolveContentClassName } from "./dropdown-men
 import type { IconName } from "./icon";
 
 /**
- * Набор преднастроенных размеров/отступов контейнера меню.
- * Используется как семантический слой поверх tailwind-классов, чтобы потребители
- * задавали не конкретные классы, а типовую ширину меню.
+ * Preset menu container sizes/padding.
+ * Semantic layer over Tailwind so consumers pick a width variant, not raw classes.
  */
 export type DropdownMenuContentVariant = "narrow" | "default" | "wide" | "message";
 
 /**
- * Состояние checkbox-элемента меню в терминах Radix:
- * - `true`/`false` для обычного checked;
- * - `"indeterminate"` для промежуточного состояния.
+ * Radix checkbox state: `true`/`false` or `"indeterminate"`.
  */
 export type DropdownMenuCheckedState = boolean | "indeterminate";
 
 /**
- * Источник открытия меню:
- * - `trigger`: обычный клик по visible trigger.
- * - `context`: контекстное открытие по координатному якорю.
+ * Menu open source: `trigger` (visible trigger click) or `context` (coordinate anchor).
  */
 export type DropdownMenuSource = "trigger" | "context";
 
-/**
- * Координатный якорь для контекстного режима меню.
- */
+/** Coordinate anchor for context-menu mode. */
 export interface DropdownMenuContextAnchor {
   left: number;
   top: number;
 }
 
-/**
- * Контекст, который передается в custom-элемент меню.
- */
+/** Context passed to custom menu item renderers. */
 export interface DropdownMenuCustomRenderContext {
   close: () => void;
   setOpen: (open: boolean) => void;
@@ -42,15 +33,11 @@ export interface DropdownMenuCustomRenderContext {
 }
 
 /**
- * Допустимый источник иконки для пункта меню:
- * - имя из реестра `Icon`;
- * - готовый React-узел, если нужна кастомная иконка/бейдж.
+ * Item icon source: registry `IconName` or a custom React node (badge, etc.).
  */
 type MenuIcon = IconName | React.ReactNode;
 
-/**
- * Общие свойства для интерактивных пунктов меню.
- */
+/** Shared props for interactive menu items. */
 interface DropdownMenuBaseItem {
   key?: string;
   className?: string;
@@ -60,18 +47,14 @@ interface DropdownMenuBaseItem {
   icon?: MenuIcon;
 }
 
-/**
- * Обычный action-пункт меню (клик/enter выполняет действие).
- */
+/** Action item: click/Enter runs `onSelect`. */
 export interface DropdownMenuActionItem extends DropdownMenuBaseItem {
   type: "action";
   label: React.ReactNode;
   onSelect?: () => void;
 }
 
-/**
- * Checkbox-пункт меню с синхронизацией checked-состояния.
- */
+/** Checkbox item with synced checked state. */
 export interface DropdownMenuCheckboxItem extends DropdownMenuBaseItem {
   type: "checkbox";
   label: React.ReactNode;
@@ -80,9 +63,7 @@ export interface DropdownMenuCheckboxItem extends DropdownMenuBaseItem {
   onCheckedChange?: (checked: DropdownMenuCheckedState) => void;
 }
 
-/**
- * Подменю (submenu), открывающее вложенный список пунктов.
- */
+/** Submenu with nested items. */
 export interface DropdownMenuSubmenuItem extends DropdownMenuBaseItem {
   type: "submenu";
   label: React.ReactNode;
@@ -95,27 +76,21 @@ export interface DropdownMenuSubmenuItem extends DropdownMenuBaseItem {
   chevron?: MenuIcon;
 }
 
-/**
- * Разделитель между логическими группами пунктов меню.
- */
+/** Separator between logical item groups. */
 export interface DropdownMenuSeparatorItem {
   type: "separator";
   key?: string;
   className?: string;
 }
 
-/**
- * Произвольный кастомный блок в меню.
- */
+/** Arbitrary custom block in the menu. */
 export interface DropdownMenuCustomItem {
   type: "custom";
   key?: string;
   render: (ctx: DropdownMenuCustomRenderContext) => React.ReactNode;
 }
 
-/**
- * Дискриминированный union всех поддерживаемых типов пункта меню.
- */
+/** Discriminated union of all supported menu item types. */
 export type DropdownMenuItem =
   | DropdownMenuActionItem
   | DropdownMenuCheckboxItem
@@ -124,8 +99,8 @@ export type DropdownMenuItem =
   | DropdownMenuCustomItem;
 
 /**
- * Набор style-переопределений для renderer-а меню.
- * Позволяет централизованно менять визуальный контракт для item/submenu/checkbox.
+ * Style overrides for the menu renderer.
+ * Centralizes visual contract for item/submenu/checkbox variants.
  */
 export interface DropdownMenuRenderStyles {
   contentVariant?: DropdownMenuContentVariant;
@@ -139,9 +114,7 @@ export interface DropdownMenuRenderStyles {
   separatorClassName?: string;
 }
 
-/**
- * Позиционирование и lifecycle-хуки для `RadixDropdownMenu.Content`.
- */
+/** Positioning and lifecycle hooks for `RadixDropdownMenu.Content`. */
 export interface DropdownMenuContentProps {
   sideOffset?: number;
   alignOffset?: number;
@@ -155,9 +128,7 @@ export interface DropdownMenuContentProps {
   onFocusOutside?: RadixDropdownMenu.DropdownMenuContentProps["onFocusOutside"];
 }
 
-/**
- * High-level API единого меню.
- */
+/** High-level unified menu API props. */
 export interface DropdownMenuProps extends DropdownMenuRenderStyles {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -247,8 +218,8 @@ const DropdownMenuBody = React.memo(function DropdownMenuBody({
 });
 
 /**
- * Публичный единый компонент меню.
- * Снаружи не требует ручной сборки Root/Trigger/Portal/Content.
+ * Public unified menu component.
+ * No manual Root/Trigger/Portal/Content assembly required.
  */
 export const DropdownMenu: React.FC<DropdownMenuProps> = React.memo(function DropdownMenu({
   open,

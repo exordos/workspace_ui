@@ -1,20 +1,16 @@
-// Модуль состояния sidebar: хранит UI-настройки и состояние раскрытия каналов между сессиями.
 import { create } from "zustand";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { SYSTEM_ALL_FOLDER_ID } from "~/features/folder-sync/folder-sync-constants.lib";
 import { buildOrgScopedStorageKey } from "~/shared/lib/org-scoped-storage";
 import type { SidebarConfig, SidebarConfigState, SidebarUiState } from "./sidebar-config.types";
 
-// Базовый ключ localStorage; реальный ключ дополняется organization id.
 const SIDEBAR_CONFIG_STORAGE_KEY = "zulip-web-sidebar-config";
 
-// Дефолт именно для persist-полей sidebar.
 const DEFAULT_CONFIG: SidebarConfig = {
   activityOpen: false,
   expandedStreamSlugs: [],
 };
 
-// Дефолт для неперсистентных полей UI-состояния sidebar.
 const DEFAULT_UI_STATE: SidebarUiState = {
   selectedFolderId: SYSTEM_ALL_FOLDER_ID,
   searchQuery: "",
@@ -25,7 +21,6 @@ function getStorageKeyForOrganization(organizationId: string | null): string {
   return buildOrgScopedStorageKey(SIDEBAR_CONFIG_STORAGE_KEY, organizationId);
 }
 
-// Нормализует список раскрытых stream slug: отбрасывает мусор и дубликаты.
 function normalizeExpandedStreamSlugs(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   const unique = new Set<string>();
@@ -53,8 +48,7 @@ function loadConfig(
     const scopedKey = getStorageKeyForOrganization(organizationId);
     const raw = window.localStorage.getItem(scopedKey);
     if (!raw) return DEFAULT_CONFIG;
-    // Legacy single-slug формат намеренно игнорируем:
-    // читаем только expandedStreamSlugs и activityOpen.
+    // Ignore legacy single-slug format; read expandedStreamSlugs and activityOpen only.
     const parsed = JSON.parse(raw) as Partial<SidebarConfig>;
     return {
       activityOpen: parsed.activityOpen === true,
@@ -91,7 +85,6 @@ export const useSidebarConfigStore = create<SidebarConfigState>((set) => ({
 
   toggleExpandedStreamSlug: (slug) =>
     set((state) => {
-      // Тоггл ручного раскрытия/сворачивания по кнопке в sidebar.
       const streamSlug = slug.trim();
       if (streamSlug.length === 0) return state;
       const expandedStreamSlugs = state.expandedStreamSlugs.includes(streamSlug)
@@ -104,7 +97,6 @@ export const useSidebarConfigStore = create<SidebarConfigState>((set) => ({
 
   expandStreamSlug: (slug) =>
     set((state) => {
-      // Идемпотентное раскрытие: не дублируем slug, если уже раскрыт.
       const streamSlug = slug.trim();
       if (streamSlug.length === 0 || state.expandedStreamSlugs.includes(streamSlug)) {
         return state;
@@ -116,7 +108,7 @@ export const useSidebarConfigStore = create<SidebarConfigState>((set) => ({
 
   collapseExpandedStreamsExcept: (slug) =>
     set((state) => {
-      // Навигационный режим: оставляем раскрытым только целевой stream.
+      // Navigation: keep only the target stream expanded.
       const streamSlug = slug.trim();
       if (streamSlug.length === 0) {
         if (state.expandedStreamSlugs.length === 0) return state;
@@ -134,7 +126,6 @@ export const useSidebarConfigStore = create<SidebarConfigState>((set) => ({
 
   collapseAllExpandedStreams: () =>
     set((state) => {
-      // Полный сброс раскрытий при переходах в DM и не-чатовые роуты.
       if (state.expandedStreamSlugs.length === 0) return state;
       const next = { ...state, expandedStreamSlugs: [] };
       saveConfig(buildPersistedConfig(next));
@@ -171,7 +162,7 @@ if (typeof window !== "undefined") {
     }
 
     previousOrganizationId = nextOrganizationId;
-    // При переключении организации поднимаем scoped persist-данные и сбрасываем transient UI-флаги.
+    // On org switch: reload scoped persist and reset transient UI flags.
     useSidebarConfigStore.setState((prev) => ({
       ...DEFAULT_UI_STATE,
       ...loadConfig(nextOrganizationId),

@@ -1,8 +1,6 @@
-// Этот файл нужен для единого lifecycle сетевых запросов в cache-first страницах.
-// Что решает:
-// 1) Защита от гонок через requestVersion (старый ответ не перетирает новый).
-// 2) Dedupe одинаковых in-flight запросов по детерминированному ключу.
-
+/**
+ * Shared request lifecycle for cache-first pages: version guards and in-flight dedupe.
+ */
 const inFlightByKey = new Map<string, Promise<unknown>>();
 
 export interface RequestLifecycleMeta {
@@ -16,7 +14,6 @@ export function startRequest(
   currentRequestVersion: number,
   hasCachedData: boolean,
 ): Pick<RequestLifecycleMeta, "requestVersion" | "isInitialLoading" | "isRefreshing"> {
-  // Если уже есть кэш, не блокируем UI loader'ом, показываем мягкий refresh.
   return {
     requestVersion: currentRequestVersion + 1,
     isInitialLoading: !hasCachedData,
@@ -32,7 +29,6 @@ export function finishRequestSuccess(
   currentRequestVersion: number,
   requestVersion: number,
 ): Pick<RequestLifecycleMeta, "isInitialLoading" | "isRefreshing" | "lastLoadedAt"> | null {
-  // Применяем финал только для актуальной версии запроса.
   if (!isActualRequest(currentRequestVersion, requestVersion)) return null;
   return {
     isInitialLoading: false,
@@ -45,7 +41,6 @@ export function finishRequestError(
   currentRequestVersion: number,
   requestVersion: number,
 ): Pick<RequestLifecycleMeta, "isInitialLoading" | "isRefreshing"> | null {
-  // Ошибка старого запроса не должна трогать текущее состояние.
   if (!isActualRequest(currentRequestVersion, requestVersion)) return null;
   return {
     isInitialLoading: false,
@@ -53,8 +48,7 @@ export function finishRequestError(
   };
 }
 
-// Склеивает параллельные одинаковые запросы по ключу.
-// Первый вызов делает реальный fetch, остальные ждут тот же Promise.
+/** Coalesces parallel identical requests: first caller fetches, others await the same Promise. */
 export function runInFlightDeduped<T>(key: string, factory: () => Promise<T>): Promise<T> {
   const inFlight = inFlightByKey.get(key) as Promise<T> | undefined;
   if (inFlight) return inFlight;

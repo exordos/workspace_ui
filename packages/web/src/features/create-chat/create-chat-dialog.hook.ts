@@ -18,7 +18,7 @@ interface ArchivedChannelOption {
   time: string;
 }
 
-/** Состояние inline-ошибки разархивирования на вкладке «Архив». */
+/** Inline unarchive error state on the Archived tab. */
 export type UnarchiveInlineErrorState =
   | { kind: "unsupported" }
   | { kind: "failed"; message: string };
@@ -65,9 +65,9 @@ export interface UseCreateChatDialogResult {
   archivedSearch: string;
   setArchivedSearch: (v: string) => void;
   archivedChannels: ArchivedChannelOption[];
-  /** Асинхронное разархивирование; при успехе канал исчезает из списка после обновления store. */
+  /** Async unarchive; on success the channel drops from the list after store refresh. */
   onUnarchiveArchivedChannel: (streamId: number) => Promise<void>;
-  /** Id потоков, для которых сейчас выполняется запрос unarchive (кнопка в loading). */
+  /** Stream ids with in-flight unarchive (button shows loading). */
   unarchivePendingStreamIds: readonly number[];
   unarchiveInlineError: UnarchiveInlineErrorState | null;
 
@@ -127,17 +127,17 @@ export function useCreateChatDialog(options: {
   const userGroups = useUserGroupsStore((s) => s.groups);
   const currentUserId = useChatListStore((s) => s.currentUserId ?? null);
   const streamsMap = useChatListStore((s) => s.streamsMap);
-  // Инвариант: пока профиль автора не загружен, создание канала недоступно.
+  // Block channel create until author profile is loaded.
   const channelCreateBlocked = currentUserId == null || currentUserId <= 0;
   const channelCreateBlockedReasonKey = channelCreateBlocked
     ? "channel.creatorProfileLoading"
     : null;
-  // Дефолтная policy для announcement-only канала.
+  // Default posting policy for announcement-only channels.
   const announcementOnlyCanSendMessageGroup = useMemo(
     () => buildAnnouncementOnlyCanSendGroup({ userGroups, currentUserId }),
     [userGroups, currentUserId],
   );
-  // Без валидной policy блокируем переключатель announcement-only.
+  // Disable announcement-only toggle when no valid policy is available.
   const channelAnnouncementOnlyBlocked = announcementOnlyCanSendMessageGroup == null;
   const channelAnnouncementOnlyBlockedReasonKey = channelAnnouncementOnlyBlocked
     ? "channel.announcementOnlyUnsupported"
@@ -270,7 +270,7 @@ export function useCreateChatDialog(options: {
     tabRefs.current[nextTab]?.focus();
   }, []);
 
-  // Что делает: инкапсулирует мутацию ref внутри хука, чтобы UI не мутировал результат hook напрямую.
+  // Encapsulate tab ref mutation inside the hook.
   const setTabRef = useCallback((tab: CreateChatTab, node: HTMLButtonElement | null) => {
     tabRefs.current[tab] = node;
   }, []);
@@ -288,8 +288,7 @@ export function useCreateChatDialog(options: {
 
   const createChannelAction = useCallback(() => {
     if (!channelName.trim() || creating || currentUserId == null || currentUserId <= 0) return;
-    // Что делает: всегда включаем автора канала в principals,
-    // даже если он не выбран вручную в списке участников.
+    // Always include channel author in subscribers even if not manually selected.
     const subscribers = Array.from(new Set([...channelSelectedUserIds, currentUserId])).sort(
       (a, b) => a - b,
     );
@@ -302,7 +301,7 @@ export function useCreateChatDialog(options: {
           subscribers,
           inviteOnly: channelInviteOnly,
           announce: channelAnnounce,
-          // Передаем policy только при явном включении и валидном group-setting.
+          // Send posting policy only when announcement-only is enabled with a valid group setting.
           ...(effectiveChannelAnnouncementOnly && announcementOnlyCanSendMessageGroup != null
             ? { canSendMessageGroup: announcementOnlyCanSendMessageGroup }
             : {}),
@@ -316,7 +315,7 @@ export function useCreateChatDialog(options: {
         setChannelAnnouncementOnly(false);
         onChannelCreated();
       } catch {
-        // Ошибка уже логируется в API-слое; здесь не даем упасть UI-обработчику.
+        // API layer already logs errors — do not let the UI handler throw.
       } finally {
         setCreating(false);
       }

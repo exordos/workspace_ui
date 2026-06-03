@@ -119,7 +119,7 @@ export const useAddStreamMembersStore = create<AddStreamMembersState>((set, get)
 
     const selectedIds = normalizeUserIds(state.selectedIds);
     const existingSet = new Set(state.existingMemberIds);
-    // Что делает: исключает только уже подписанных участников; self-add разрешен Zulip API.
+    // Skip already-subscribed members only; Zulip API allows self-add.
     const filteredIds = selectedIds.filter((userId) => !existingSet.has(userId));
 
     if (filteredIds.length === 0) {

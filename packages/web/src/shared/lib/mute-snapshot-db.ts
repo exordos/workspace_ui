@@ -1,23 +1,18 @@
 /**
- * IndexedDB-слой для снимка mute-состояния.
- * Зачем нужен: при cold start дать UI мгновенное состояние mute до завершения register.
- * Что делает: сохраняет/читает/удаляет per-instance snapshot c muted streams и topic overrides.
+ * IndexedDB persistence for mute-state snapshots.
+ * Gives the UI instant mute state on cold start before register completes.
  */
 import { openMessageCacheDb } from "~/shared/lib/message-cache-db";
 
-// Имя objectStore в общей IndexedDB, где лежит снимок mute-состояния.
 const STORE_MUTE_SNAPSHOT = "muteSnapshot";
 
-// Версия формата строки mute-снапшота. Нужна для будущих миграций формата.
 export type MuteSnapshotRowVersion = 1;
 
-// Сериализуемая запись одного topic-override в снапшоте.
 export interface MuteSnapshotTopicRow {
   streamId: number;
   topic: string;
 }
 
-// Полный снимок mute-состояния для одного инстанса.
 export interface MuteSnapshotRow {
   instanceId: string;
   version: MuteSnapshotRowVersion;
@@ -28,14 +23,11 @@ export interface MuteSnapshotRow {
   followedTopics: MuteSnapshotTopicRow[];
 }
 
-// Приводит любую причину ошибки IndexedDB к объекту Error.
 function idbError(reason: unknown): Error {
   return reason instanceof Error ? reason : new Error("indexedDB error", { cause: reason });
 }
 
-// Сохраняет снимок mute-состояния в IDB.
-// Зачем нужен: write-through после локальных изменений/успешного register.
-// Поведение: best-effort, не должен ронять UI при ошибке IDB.
+/** Write-through after local changes or successful register; best-effort (must not crash UI). */
 export async function persistMuteSnapshotRow(row: MuteSnapshotRow): Promise<void> {
   if (typeof indexedDB === "undefined") return;
   try {
@@ -51,8 +43,6 @@ export async function persistMuteSnapshotRow(row: MuteSnapshotRow): Promise<void
   }
 }
 
-// Загружает снимок mute-состояния для конкретного инстанса.
-// Возвращает null, если запись отсутствует или IDB недоступна/ошиблась.
 export async function loadMuteSnapshotRow(instanceId: string): Promise<MuteSnapshotRow | null> {
   if (typeof indexedDB === "undefined") return null;
   try {
@@ -75,8 +65,7 @@ export async function loadMuteSnapshotRow(instanceId: string): Promise<MuteSnaps
   }
 }
 
-// Удаляет снимок mute-состояния инстанса из IDB.
-// Нужен для cleanup-сценариев; выполняется в best-effort режиме.
+/** Best-effort cleanup when an instance snapshot should be removed. */
 export async function deleteMuteSnapshotRow(instanceId: string): Promise<void> {
   if (typeof indexedDB === "undefined") return;
   try {

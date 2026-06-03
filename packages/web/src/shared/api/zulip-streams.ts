@@ -50,7 +50,7 @@ export interface DeleteTopicResult {
   errorCode?: string;
 }
 
-/** Ответ PATCH /streams/{id} с полями, важными для разархивирования и совместимости серверов. */
+/** PATCH /streams/{id} response fields relevant to unarchive and server compatibility. */
 interface StreamPatchResponsePayload {
   result?: string;
   msg?: string;
@@ -161,7 +161,7 @@ export async function fetchSubscriptions(): Promise<ZulipSubscription[]> {
       can_resolve_topics_group?: unknown;
     }[];
   };
-  // Что делает: нормализует channel-level поля прав из ответа /users/me/subscriptions.
+  // Normalizes channel-level permission fields from /users/me/subscriptions.
   return (data.subscriptions ?? []).map((subscription) => {
     const creatorId =
       typeof subscription.creator_id === "number" &&
@@ -275,7 +275,6 @@ export async function addMembersToStream(
 
     const alreadySubscribedUserIds = parseUserIdsFromPrincipalMap(payload.already_subscribed);
     const addedFromPayload = parseUserIdsFromPrincipalMap(payload.subscribed);
-    // Что делает: если сервер прислал subscribed, доверяем только ему.
     const addedUserIds = hasPrincipalMap(payload.subscribed)
       ? addedFromPayload
       : requestedUserIds.filter((userId) => !alreadySubscribedUserIds.includes(userId));
@@ -304,7 +303,7 @@ export async function addMembersToStream(
   }
 }
 
-/** Удаляет участников из существующего stream (DELETE /users/me/subscriptions с principals). */
+/** Removes members from a stream (DELETE /users/me/subscriptions with principals). */
 export async function removeMembersFromStream(
   params: RemoveStreamMembersParams,
 ): Promise<RemoveStreamMembersResult> {
@@ -377,8 +376,6 @@ export async function removeMembersFromStream(
         ...parseUserIdsFromPrincipalMap(payload.unsubscribed),
       ]),
     ).sort((a, b) => a - b);
-    // Что делает: если сервер явно прислал removed/unsubscribed, доверяем payload;
-    // иначе считаем removed как requested минус already-unsubscribed.
     const hasRemovedMap = hasPrincipalMap(payload.removed) || hasPrincipalMap(payload.unsubscribed);
     const removedUserIds = hasRemovedMap
       ? removedFromPayload
@@ -453,7 +450,7 @@ export async function updateStream(
     body.description = params.description.trim();
   }
   if (params.isArchived !== undefined) {
-    // Zulip принимает булев параметр как строку в form-encoded теле PATCH.
+    // Zulip expects boolean PATCH fields as strings in form-encoded bodies.
     body.is_archived = params.isArchived ? "true" : "false";
   }
   if (Object.keys(body).length === 0) {
@@ -471,8 +468,8 @@ export async function updateStream(
 }
 
 /**
- * Снимает архив с канала: PATCH streams/{id} с is_archived=false.
- * Старые серверы могут вернуть success, но положить `is_archived` в ignored_parameters_unsupported — трактуем как unsupported.
+ * Unarchives a channel: PATCH streams/{id} with is_archived=false.
+ * Older servers may succeed but list `is_archived` in ignored_parameters_unsupported — treat as unsupported.
  */
 export async function unarchiveStream(streamId: number): Promise<UnarchiveStreamResult> {
   guard.streamId(streamId, "unarchiveStream.streamId");

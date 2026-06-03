@@ -1,9 +1,6 @@
-// Этот файл нужен для данных страницы /inbox.
-// Что делает:
-// 1) загружает unread с сервера (источник финальной актуальности);
-// 2) строит локальный bootstrap из IDB, чтобы не показывать пустой loader.
-// 3) best-effort дописывает unread snapshot в message IDB после refresh,
-//    чтобы следующий cache-first bootstrap был свежим.
+/**
+ * Inbox data layer — server unread fetch, IDB bootstrap, and best-effort cache refresh after sync.
+ */
 
 import { persistChatMessagesToIndexedDb } from "~/entities/message/message-local-cache.lib";
 import { getCurrentInstance } from "~/shared/api/client";
@@ -23,13 +20,10 @@ async function persistUnreadMessagesToIdb(
   messages: readonly MockMessage[],
   currentUserId: number | null,
 ): Promise<void> {
-  // Персист не должен влиять на UX страницы: если недоступен — молча выходим.
   if (!persistChatMessagesToIndexedDb()) return;
   const instanceId = getCurrentInstance()?.id;
   if (!instanceId || messages.length === 0) return;
 
-  // Раскладываем unread по чатам (stream/topic или DM key),
-  // чтобы писать в IDB теми же chat partition, что и chat page.
   const messagesByChatKey = new Map<string, MockMessage[]>();
   for (const message of messages) {
     const chatKey = chatKeyFromMockMessage(message, currentUserId);
@@ -45,7 +39,6 @@ async function persistUnreadMessagesToIdb(
   if (messagesByChatKey.size === 0) return;
 
   const entries = Array.from(messagesByChatKey.entries());
-  // Пишем каждый chat-key независимо: частичная ошибка не должна ломать fetchInboxEntries.
   const results = await Promise.allSettled(
     entries.map(([chatKey, chatMessages]) =>
       upsertChatMessages({
@@ -67,7 +60,6 @@ async function persistUnreadMessagesToIdb(
   });
 }
 
-// Серверная загрузка unread по narrow is:unread с последующей группировкой.
 export async function fetchInboxEntries(
   currentUserId: number | null = null,
   options: InboxMuteFilterOptions = {},
@@ -80,7 +72,6 @@ export async function fetchInboxEntries(
       5000,
       0,
     );
-    // Обновляем IDB snapshot best-effort: ошибка персиста не должна ломать API-ответ inbox.
     await persistUnreadMessagesToIdb(messages, currentUserId);
     const durationMs = Math.round(performance.now() - start);
     logApiCall("GET", "/messages?narrow=is:unread", { status: 200, durationMs });
@@ -96,8 +87,7 @@ export async function fetchInboxEntries(
   }
 }
 
-// Локальный bootstrap inbox из текущего IDB-кэша сообщений.
-// unread определяем по отсутствию флага "read" (эквивалент is:unread для UI-старта).
+/** Local inbox bootstrap from message IDB; unread = messages without the `read` flag. */
 export async function hydrateInboxEntriesFromCache(
   instanceId: string | null,
   currentUserId: number | null = null,

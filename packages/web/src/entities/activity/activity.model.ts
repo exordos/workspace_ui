@@ -1,6 +1,6 @@
-// Этот файл нужен для состояния страницы /activity по фильтрам.
-// Для каждого фильтра (mentions/starred/reactions) хранится свой кэш,
-// метаданные загрузки и requestVersion для защиты от гонок.
+/**
+ * Activity store — per-filter message caches, starred summary, and requestVersion race guards.
+ */
 import { create } from "zustand";
 import type { ActivityFilter, ZulipRawMessage } from "~/shared/api/zulip.types";
 import { logStoreAction } from "~/shared/lib/logger";
@@ -40,7 +40,6 @@ function createInitialFilterState(): ActivityFilterState {
 }
 
 function createInitialStarredSummaryState(): StarredSummaryState {
-  // Начальное состояние summary-счетчика для starred.
   return {
     count: 0,
     isCapped: false,
@@ -98,7 +97,6 @@ export const useActivityStore = create<ActivityState>((set) => ({
   starredSummary: createInitialStarredSummaryState(),
 
   setFilterCache(filter, messages, hasMore) {
-    // Быстрый локальный hydrate (из IDB) без блокировки UI.
     logStoreAction("activity", "setFilterCache", { filter, count: messages.length });
     set((state) => ({
       filters: {
@@ -126,7 +124,6 @@ export const useActivityStore = create<ActivityState>((set) => ({
           [filter]: {
             ...state.filters[filter],
             requestVersion: nextRequestVersion,
-            // С кэшем показываем refresh, без кэша — initial loading.
             isInitialLoading: !hasCachedData,
             isRefreshing: hasCachedData,
           },
@@ -137,7 +134,6 @@ export const useActivityStore = create<ActivityState>((set) => ({
   },
 
   setFilterPageIfActual(filter, requestVersion, messages, hasMore) {
-    // authoritative replace для newest: список фильтра заменяется целиком.
     logStoreAction("activity", "setFilterPageIfActual", {
       filter,
       requestVersion,
@@ -170,7 +166,6 @@ export const useActivityStore = create<ActivityState>((set) => ({
     });
     set((state) => {
       if (state.filters[filter].requestVersion !== requestVersion) return state;
-      // Для "load more" дописываем старые элементы и удаляем дубликаты по id.
       const existingIds = new Set(state.filters[filter].messages.map((message) => message.id));
       const uniqueOlder = messages.filter((message) => !existingIds.has(message.id));
       return {
@@ -222,8 +217,6 @@ export const useActivityStore = create<ActivityState>((set) => ({
   },
 
   startStarredSummaryRequest(hasCachedData) {
-    // Начинает lifecycle загрузки summary.
-    // При наличии кэша избегаем блокирующего loading-режима.
     let nextRequestVersion = 0;
     set((state) => {
       nextRequestVersion = state.starredSummary.requestVersion + 1;
@@ -241,7 +234,6 @@ export const useActivityStore = create<ActivityState>((set) => ({
   },
 
   setStarredSummaryFromCache(count, isCapped) {
-    // Локальный bootstrap summary из cache-слоя.
     logStoreAction("activity", "setStarredSummaryFromCache", { count, isCapped });
     set((state) => ({
       starredSummary: {
@@ -257,7 +249,6 @@ export const useActivityStore = create<ActivityState>((set) => ({
   },
 
   setStarredSummaryFromServerIfActual(requestVersion, payload) {
-    // Применяет authoritative server-результат только для актуальной версии запроса.
     logStoreAction("activity", "setStarredSummaryFromServerIfActual", {
       requestVersion,
       count: payload.count,
@@ -280,7 +271,6 @@ export const useActivityStore = create<ActivityState>((set) => ({
   },
 
   setStarredSummaryErrorIfActual(requestVersion, error) {
-    // Ошибка старого запроса не должна перетирать более новый state.
     logStoreAction("activity", "setStarredSummaryErrorIfActual", { requestVersion, error });
     set((state) => {
       if (state.starredSummary.requestVersion !== requestVersion) return state;
@@ -296,8 +286,6 @@ export const useActivityStore = create<ActivityState>((set) => ({
   },
 
   markStarredSummaryStale() {
-    // Используется realtime-dispatch при изменениях starred,
-    // чтобы bootstrap-хук инициировал мягкий refresh summary.
     logStoreAction("activity", "markStarredSummaryStale", {});
     set((state) => ({
       starredSummary: {

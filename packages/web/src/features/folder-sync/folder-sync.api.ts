@@ -24,25 +24,25 @@ function buildFolderItemsResultsMap(
 }
 
 export interface FolderItemsLoadResult {
-  // true — items папки загружены успешно, false — сохраняем ошибку как best-effort.
+  // true when folder items loaded successfully; false keeps the error as best-effort.
   ok: boolean;
   items: FolderItemForClient[];
 }
 
 export interface FolderSyncSnapshot {
-  // Срез папок и items, собранный одним refresh-циклом.
+  // Folders + items slice assembled in one refresh cycle.
   folders: WorkspaceFolder[];
   itemsByFolderId: Map<string, FolderItemsLoadResult>;
   loadedAt: number;
 }
 
-// In-flight кэш нужен, чтобы параллельные вызовы refresh не дублировали сетевой батч.
+// Dedupe parallel refresh calls per instance so identical batches are not duplicated.
 const inFlightSnapshotsByInstance = new Map<string, Promise<FolderSyncSnapshot>>();
-// Последний успешный snapshot для текущего instanceId.
+// Last successful snapshot for the current instanceId.
 const latestSnapshotByInstance = new Map<string, FolderSyncSnapshot>();
 
 function cloneSnapshot(snapshot: FolderSyncSnapshot): FolderSyncSnapshot {
-  // Отдаем копию, чтобы внешние потребители не мутировали внутренний кэш.
+  // Return a clone so external consumers cannot mutate the internal cache.
   return {
     folders: [...snapshot.folders],
     itemsByFolderId: new Map(snapshot.itemsByFolderId),
@@ -71,7 +71,7 @@ export async function loadFolderSyncSnapshot(
   instanceId: string,
   options?: LoadFolderSyncSnapshotOptions,
 ): Promise<FolderSyncSnapshot> {
-  // Дедупликация параллельных refresh по инстансу, чтобы не плодить одинаковые батчи.
+  // Dedupe parallel refresh per instance.
   if (!options?.force) {
     const inFlight = inFlightSnapshotsByInstance.get(instanceId);
     if (inFlight) {
@@ -89,14 +89,14 @@ export async function loadFolderSyncSnapshot(
       itemsByFolderId,
       loadedAt: Date.now(),
     };
-    // Храним последний успешный snapshot для повторного использования внутри orchestrator.
+    // Cache latest snapshot for reuse inside the orchestrator.
     latestSnapshotByInstance.set(instanceId, snapshot);
     return snapshot;
   })();
 
   inFlightSnapshotsByInstance.set(instanceId, request);
   void request.finally(() => {
-    // Чистим in-flight только если там все еще тот же промис.
+    // Clear in-flight entry only if it still references this promise.
     if (inFlightSnapshotsByInstance.get(instanceId) === request) {
       inFlightSnapshotsByInstance.delete(instanceId);
     }
@@ -111,7 +111,7 @@ export function readLatestFolderSyncSnapshot(instanceId: string): FolderSyncSnap
 }
 
 export function resetFolderSyncApiCacheForTests(): void {
-  // Тестовая утилита: гарантирует чистое состояние между кейсами.
+  // Test helper: reset state between cases.
   inFlightSnapshotsByInstance.clear();
   latestSnapshotByInstance.clear();
 }

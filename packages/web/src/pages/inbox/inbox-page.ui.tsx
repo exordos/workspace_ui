@@ -1,8 +1,4 @@
-// Страница /inbox.
-// Паттерн работы:
-// 1) читаем локальный inbox bootstrap из IDB;
-// 2) применяем его только если он свежее текущих in-memory entries;
-// 3) всегда запускаем фоновый refresh unread с сервера без очистки UI.
+// /inbox — IDB bootstrap (apply if fresher than memory), then background unread refresh without clearing UI.
 import React, { useCallback, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
@@ -50,7 +46,7 @@ const InboxRow = React.memo<{ entry: InboxEntry; onClick: (entry: InboxEntry) =>
               {formatMessageTimeShort(entry.lastMessageTimestamp)}
             </p>
           </div>
-          <span className="text-badge-text flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full border border-border-subtle bg-badge-bg px-1 text-[11px] font-medium">
+          <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full border border-border-subtle bg-badge-bg px-1 text-[11px] font-medium text-badge-text">
             {entry.unreadCount}
           </span>
         </button>
@@ -96,7 +92,7 @@ export const InboxPage: React.FC = () => {
 
   const loadInbox = useCallback(
     (hasCachedData: boolean) => {
-      // Запускаем запрос с версионированием, чтобы закрыть гонки ответов.
+      // Versioned request to close response races.
       const requestVersion = startRequest(hasCachedData);
       const requestKey = `${currentInstanceId ?? "none"}:inbox:newest`;
       return runInFlightDeduped(requestKey, () =>
@@ -150,7 +146,7 @@ export const InboxPage: React.FC = () => {
   });
 
   useEffect(() => {
-    // markStale инициирует мягкий фоновый refresh, не очищая текущий список.
+    // markStale triggers soft background refresh without clearing the list.
     if (stale) void loadInbox(entries.length > 0);
   }, [stale, loadInbox, entries.length]);
 
@@ -219,7 +215,7 @@ export const InboxPage: React.FC = () => {
                             #{group.streamName}
                           </span>
                         </div>
-                        <span className="text-badge-text flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full border border-border-subtle bg-badge-bg px-1 text-[11px] font-medium">
+                        <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full border border-border-subtle bg-badge-bg px-1 text-[11px] font-medium text-badge-text">
                           {group.unreadCount}
                         </span>
                       </div>

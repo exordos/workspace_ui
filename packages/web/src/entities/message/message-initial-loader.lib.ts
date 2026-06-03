@@ -1,3 +1,8 @@
+/**
+ * Route-driven initial message load pipeline (dm / stream-topic / stream-wide).
+ *
+ * Orchestrates cache-first hydrate, network refresh, and IDB persist without UI business logic.
+ */
 import {
   fetchDmMessages,
   fetchMessages,
@@ -25,8 +30,6 @@ import { parseDmKeyToUserIds } from "./message-chat-context.lib";
 import { deriveFocusedPaginationFlags } from "./message-pagination-helpers.lib";
 import type { CurrentChatContext } from "./message.model.types";
 
-// Что делает: фиксирует три независимых сценария загрузки initial-ленты.
-// Зачем: чтобы route-driven поведение (dm/topic/wide) было явным и тестируемым.
 export type InitialLoadMode = "dm" | "stream-topic" | "stream-wide";
 
 interface CachedSnapshot {
@@ -41,11 +44,9 @@ export interface LoadInitialMessagesRouteDrivenOptions {
   currentUserId: number | null;
   persistToIndexedDb: boolean;
   instanceId: string | null;
-  // Что делает: прокидывает отмену во всю initial pipeline.
-  // Зачем: прерывать устаревший route-запрос до применения результатов.
+  /** Propagate abort through the pipeline so stale route requests stop before applying results. */
   signal?: AbortSignal;
-  // Что делает: сообщает вызывающему, что cache-first payload уже готов для UI.
-  // Зачем: отключать блокирующий loader до окончания сетевого refresh.
+  /** Notifies caller that cache-first payload is ready so UI can drop the blocking loader. */
   onCacheHydrated?: (snapshot: CachedSnapshot) => void;
 }
 
@@ -57,22 +58,17 @@ export interface LoadInitialMessagesRouteDrivenResult {
   hasNewerMessages: boolean;
 }
 
-// Что делает: синхронно проверяет отмену текущего запроса.
-// Зачем: не запускать следующую фазу пайплайна, если route уже сменился.
 function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted) {
     throw new DOMException("Aborted", "AbortError");
   }
 }
 
-// Что делает: определяет стратегию загрузки строго по route-контексту.
 export function resolveInitialLoadMode(context: CurrentChatContext): InitialLoadMode {
   if (context.type === "dm") return "dm";
   return context.streamWideView ? "stream-wide" : "stream-topic";
 }
 
-// Что делает: cache-first чтение для выбранного режима.
-// Зачем: отдать UI сообщения сразу, не дожидаясь сети.
 async function readCachedMessagesByMode(options: {
   mode: InitialLoadMode;
   context: CurrentChatContext;
@@ -80,11 +76,10 @@ async function readCachedMessagesByMode(options: {
 }): Promise<CachedSnapshot> {
   const { mode, context, instanceId } = options;
   if (mode === "stream-wide" && context.type === "stream") {
-    // Что делает: wide-кэш собирается merge'ем всех topic-partitions stream'а.
     const cached = await getStreamMessagesAscending(instanceId, context.streamId).catch(
       () => [] as MockMessage[],
     );
-    // Что делает: ограничивает bootstrap-окно wide до того же размера, что у API.
+    // Match API bootstrap window size so wide cache and network slices stay aligned.
     const sliced = cached.slice(-ZULIP_STREAM_ANCHOR_NUM_BEFORE);
     return {
       messages: sliced,
@@ -105,8 +100,6 @@ async function readCachedMessagesByMode(options: {
   };
 }
 
-// Что делает: выбирает корректный сетевой запрос для каждого route-режима.
-// Зачем: исключить смешение stream-wide и topic-narrow сценариев.
 async function fetchNetworkMessagesByMode(options: {
   mode: InitialLoadMode;
   context: CurrentChatContext;
@@ -147,15 +140,12 @@ async function fetchNetworkMessagesByMode(options: {
   }
 
   if (mode === "stream-wide") {
-    // Что делает: wide-mode всегда грузит stream-narrow без topic.
     return fetchMessages(context.streamName, undefined, undefined, { signal });
   }
-  // Что делает: explicit topic-route всегда грузит topic-narrow; empty topic мапится в пустой operand в API.
+  // Topic route always uses topic narrow; empty topic maps to an empty operand in the API layer.
   return fetchMessages(context.streamName, context.topic, undefined, { signal });
 }
 
-// Что делает: нормализует итоговый контекст после API-ответа.
-// Зачем: сохранить согласованность store-контекста с фактически полученными сообщениями.
 function resolveNextContextFromApi(options: {
   mode: InitialLoadMode;
   context: CurrentChatContext;
@@ -188,8 +178,6 @@ function resolveNextContextFromApi(options: {
   return { type: "dm", dmKey };
 }
 
-// Что делает: пишет API-результат в IDB по правильной стратегии (dm/topic/wide).
-// Зачем: wide не должен перетирать topic-партиции одним ключом.
 async function persistNetworkMessagesByMode(options: {
   mode: InitialLoadMode;
   context: CurrentChatContext;
@@ -205,7 +193,6 @@ async function persistNetworkMessagesByMode(options: {
 
   if (mode === "stream-wide" && context.type === "stream") {
     if (messages.length === 0) return;
-    // Что делает: wide-ответ раскладывается по фактическим topic keys.
     await upsertMessagesByChatPartitions({
       instanceId,
       currentUserId,
@@ -232,9 +219,6 @@ async function persistNetworkMessagesByMode(options: {
   });
 }
 
-// Что делает: полный route-driven initial pipeline:
-// mode -> cache-first -> network refresh -> persist.
-// Зачем: единая точка orchestration без бизнес-логики в UI.
 export async function loadInitialMessagesRouteDriven(
   options: LoadInitialMessagesRouteDrivenOptions,
 ): Promise<LoadInitialMessagesRouteDrivenResult> {
@@ -246,7 +230,6 @@ export async function loadInitialMessagesRouteDriven(
     options.instanceId != null &&
     options.focusedMessageId == null
   ) {
-    // Что делает: пытается прогреть UI кэшем ещё до сети.
     const cachedSnapshot = await readCachedMessagesByMode({
       mode,
       context: options.context,

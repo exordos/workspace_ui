@@ -1,8 +1,8 @@
-// Тесты для модуля обработки HTML: `stripHtml` и `sanitizeHtml`.
+// Tests for HTML processing module: `stripHtml` and `sanitizeHtml`.
 //
-// Эти тесты критичны для защиты от XSS. Любой HTML из Zulip API
-// проходит через `sanitizeHtml` перед рендером через `dangerouslySetInnerHTML`.
-// Если здесь будет ошибка, в сессии пользователя может выполниться произвольный JS.
+// These tests are critical for XSS protection. All HTML from the Zulip API
+// passes through `sanitizeHtml` before render via `dangerouslySetInnerHTML`.
+// A bug here could execute arbitrary JS in the user's session.
 import { describe, expect, it, vi } from "vitest";
 import { resolveMessageMediaUrl, stripHtml, sanitizeHtml } from "./html";
 
@@ -17,30 +17,29 @@ vi.mock("~/shared/lib/zulip-message-media-base.lib", () => ({
   getMessageRealmBaseUrl: vi.fn(() => "https://zulip.example.com"),
 }));
 
-// `stripHtml` используется для получения plain text из сообщений,
-// например для уведомлений и превью.
+// `stripHtml` extracts plain text from messages, e.g. for notifications and previews.
 describe("stripHtml", () => {
-  // Базовое удаление тегов — основное поведение для preview сообщений.
+  // Basic tag removal — core behavior for message previews.
   it("removes HTML tags", () => {
     expect(stripHtml("<p>Hello <strong>world</strong></p>")).toBe("Hello world");
   });
 
-  // Обрезка пробелов убирает лишние отступы в тексте уведомлений.
+  // Trimming removes extra whitespace in notification text.
   it("trims whitespace", () => {
     expect(stripHtml("  <p>text</p>  ")).toBe("text");
   });
 
-  // Пустые сообщения должны возвращать пустую строку, а не null/undefined.
+  // Empty messages must return an empty string, not null/undefined.
   it("handles empty string", () => {
     expect(stripHtml("")).toBe("");
   });
 
-  // Обычный текст без тегов должен проходить без изменений.
+  // Plain text without tags must pass through unchanged.
   it("handles string without tags", () => {
     expect(stripHtml("plain text")).toBe("plain text");
   });
 
-  // Самозакрывающиеся теги вроде `<br/>` тоже должны удаляться.
+  // Self-closing tags like `<br/>` must also be removed.
   it("handles self-closing tags", () => {
     expect(stripHtml("line<br/>break")).toBe("linebreak");
   });
@@ -73,28 +72,28 @@ describe("resolveMessageMediaUrl", () => {
   });
 });
 
-// `sanitizeHtml` — основной слой защиты от XSS и точка обработки всего HTML из Zulip.
+// `sanitizeHtml` — primary XSS protection layer for all HTML from Zulip.
 describe("sanitizeHtml", () => {
-  // Безопасные теги вроде `p`, `strong`, `em` должны сохраняться для форматирования.
+  // Safe tags like `p`, `strong`, `em` must be kept for formatting.
   it("allows safe tags", () => {
     const html = "<p>Hello <strong>world</strong></p>";
     expect(sanitizeHtml(html)).toBe(html);
   });
 
-  // Теги `<script>` — самый прямой XSS-вектор, их всегда нужно вырезать.
+  // `<script>` tags are the most direct XSS vector — always strip them.
   it("removes script tags (XSS protection)", () => {
     const html = '<p>text</p><script>alert("xss")</script>';
     expect(sanitizeHtml(html)).toBe("<p>text</p>");
   });
 
-  // Event handler-атрибуты вроде `onerror` и `onclick` тоже исполняют JS без `<script>`.
+  // Event handler attributes like `onerror` and `onclick` run JS without `<script>`.
   it("removes event handlers (XSS protection)", () => {
     const html = '<img src="x" onerror="alert(1)">';
     const result = sanitizeHtml(html);
     expect(result).not.toContain("onerror");
   });
 
-  // `javascript:` в `href` — классический XSS-обход через пользовательский клик.
+  // `javascript:` in `href` — classic XSS via user click.
   it("removes javascript: URLs (XSS protection)", () => {
     const scriptProtocol = "javascript";
     const html = `<a href="${scriptProtocol}:alert(1)">click</a>`;
@@ -110,7 +109,7 @@ describe("sanitizeHtml", () => {
     expect(result).toContain('href="https://example.com/path"');
   });
 
-  // `img src` должен сохраняться: в сообщениях Zulip часто есть inline-картинки.
+  // `img src` must be kept — Zulip messages often include inline images.
   it("keeps img src attribute", () => {
     const html = '<img src="https://example.com/img.png" alt="test">';
     expect(sanitizeHtml(html)).toContain('src="https://example.com/img.png"');
@@ -123,22 +122,22 @@ describe("sanitizeHtml", () => {
     expect(result).toContain('height="560"');
   });
 
-  // Zulip отдает user uploads по относительным путям, их нужно переписывать в абсолютные.
+  // Zulip serves user uploads as relative paths — rewrite to absolute URLs.
   it("rewrites relative img src when baseUrl provided", () => {
     const html = '<img src="/user_uploads/1/img.png">';
     const result = sanitizeHtml(html, "https://zulip.example.com/workspace/v1");
     expect(result).toContain('src="https://zulip.example.com/workspace/v1/user_uploads/1/img.png"');
   });
 
-  // В Electron shell на `file://` `sanitizeHtml` может вызываться без `baseUrl`,
-  // но `/user_uploads/` все равно должен резолвиться через realm.
+  // In Electron on `file://`, `sanitizeHtml` may run without `baseUrl`,
+  // but `/user_uploads/` must still resolve via realm.
   it("rewrites relative user_uploads when baseUrl omitted (realm media base fallback)", () => {
     const html = '<img src="/user_uploads/1/img.png" alt="">';
     const result = sanitizeHtml(html);
     expect(result).toContain('src="https://zulip.example.com/workspace/v1/user_uploads/1/img.png"');
   });
 
-  // Уже абсолютные URL внешних CDN не должны изменяться.
+  // Already-absolute external CDN URLs must not change.
   it("does not rewrite absolute img src", () => {
     const html = '<img src="https://cdn.example.com/img.png">';
     const result = sanitizeHtml(html, "https://zulip.example.com");
@@ -191,19 +190,19 @@ describe("sanitizeHtml", () => {
     expect(result).toContain('srcset="/external_content/a.webp 1x, /external_content/b.webp 2x"');
   });
 
-  // `iframe` может загружать произвольный контент и обходить CSP, поэтому всегда удаляем.
+  // `iframe` can load arbitrary content and bypass CSP — always remove.
   it("removes disallowed tags like iframe", () => {
     const html = '<iframe src="https://evil.com"></iframe><p>safe</p>';
     expect(sanitizeHtml(html)).toBe("<p>safe</p>");
   });
 
-  // Теги `<style>` могут скрывать контент или рисовать phishing-overlay, поэтому удаляем.
+  // `<style>` tags can hide content or draw phishing overlays — remove them.
   it("removes style tags", () => {
     const html = "<style>body{display:none}</style><p>safe</p>";
     expect(sanitizeHtml(html)).toBe("<p>safe</p>");
   });
 
-  // Zulip @mention-спаны несут `data-user-id`, он нужен для клиентского UX вокруг упоминаний.
+  // Zulip @mention spans carry `data-user-id` for client mention UX.
   it("preserves user-mention data-user-id on span", () => {
     const html = '<p><span class="user-mention" data-user-id="31">@Alice</span></p>';
     const result = sanitizeHtml(html);
@@ -212,7 +211,7 @@ describe("sanitizeHtml", () => {
   });
 
   it("preserves del tags for markdown strikethrough", () => {
-    // Защищаем поведение bubble markdown fallback: `<del>` не должен вырезаться санитайзером.
+    // Protect bubble markdown fallback: `<del>` must not be stripped by sanitizer.
     const html = "<p><del>obsolete</del> text</p>";
     const result = sanitizeHtml(html);
     expect(result).toContain("<del>obsolete</del>");

@@ -50,28 +50,28 @@ import {
 export type FolderRefreshReason = "bootstrap" | "polling" | "mutation" | "reconnect";
 
 const folderSyncLog = createLogger("folderSync");
-// Паузы между попытками reconcile после optimistic mutation.
+// Backoff delays between reconcile attempts after optimistic mutation.
 const ASSIGNMENT_RECONCILE_RETRY_DELAYS_MS = [0, 120, 360] as const;
 
-// Итог reconcile: удалось ли подтвердить сервером и какой item UUID найден.
+// Reconcile outcome: server confirmed and matched item UUID, if any.
 interface AssignmentReconcileOutcome {
   ok: boolean;
   items: FolderItemForClient[] | null;
   matchedItemUuid: string | null;
 }
 
-// Загружает кэш rail-папок из IndexedDB для быстрого старта без "мигания" UI.
+// Load rail folder cache from IndexedDB for a flicker-free cold start.
 async function loadFolderRailCache(instanceId: string): Promise<WorkspaceFolderForRail[]> {
   const row = await loadFoldersSnapshotRow(instanceId).catch(() => null);
   return row?.folders ?? [];
 }
 
-// Асинхронно сохраняет актуальный снимок папок в IndexedDB.
+// Persist current folder snapshot to IndexedDB asynchronously.
 function schedulePersistFolders(instanceId: string, folders: WorkspaceFolderForRail[]): void {
   void persistFoldersSnapshotRow({ instanceId, folders, version: 1 });
 }
 
-// Утилита для компактного логирования состояния выбранной папки.
+// Compact log label for selected-folder state.
 function describeFolderChatIds(value: Set<string> | null): "null" | "empty" | `size:${number}` {
   if (value === null) {
     return "null";
@@ -82,7 +82,7 @@ function describeFolderChatIds(value: Set<string> | null): "null" | "empty" | `s
   return `size:${value.size}`;
 }
 
-// Отбирает assignable папки из Workspace API (без системной `all` и без пустого uuid).
+// Assignable folders from Workspace API (exclude system `all` and empty uuid).
 function isAssignableWorkspaceFolder(
   folder: WorkspaceFolder,
 ): folder is WorkspaceFolder & { uuid: string } {
@@ -91,7 +91,7 @@ function isAssignableWorkspaceFolder(
   );
 }
 
-// Отбирает assignable папки из rail-состояния (исключая системные synthetic папки).
+// Assignable folders from rail state (exclude synthetic system folders).
 function isAssignableRailFolder(folder: WorkspaceFolderForRail): boolean {
   if (folder.id.trim().length === 0) return false;
   if (
@@ -104,13 +104,13 @@ function isAssignableRailFolder(folder: WorkspaceFolderForRail): boolean {
   return true;
 }
 
-// Генерирует технический UUID для оптимистичного item до подтверждения сервером.
+// Technical UUID for optimistic item before server confirmation.
 function buildOptimisticFolderItemUuid(folderUuid: string, chatId: string): string {
   const safeChatId = chatId.replace(/[^a-zA-Z0-9:_-]/g, "_");
   return `${OPTIMISTIC_FOLDER_ASSIGNMENT_ITEM_UUID}:${folderUuid}:${safeChatId}`;
 }
 
-// Строит оптимистичный item для мгновенного отображения чата в папке.
+// Optimistic item for instant chat visibility in a folder.
 function buildOptimisticFolderItem(folderUuid: string, chatId: string): FolderItemForClient {
   const now = new Date().toISOString();
   return {
@@ -124,7 +124,7 @@ function buildOptimisticFolderItem(folderUuid: string, chatId: string): FolderIt
   };
 }
 
-// Добавляет оптимистичный item, если такого чата в папке еще нет.
+// Add optimistic item when the chat is not yet in the folder.
 function upsertOptimisticFolderItem(
   previousItems: readonly FolderItemForClient[],
   folderUuid: string,
@@ -137,7 +137,7 @@ function upsertOptimisticFolderItem(
   return [...previousItems, { ...optimistic, orderIndex: previousItems.length }];
 }
 
-// Удаляет item назначения (по uuid и/или эквивалентному chat_id) и пересчитывает orderIndex.
+// Remove assignment item (by uuid and/or equivalent chat_id) and recompute orderIndex.
 function removeFolderAssignmentItem(
   previousItems: readonly FolderItemForClient[],
   chatId: string,
@@ -152,14 +152,14 @@ function removeFolderAssignmentItem(
   return withoutTarget.map((item, index) => ({ ...item, orderIndex: index }));
 }
 
-// Помечает папку как stale, чтобы следующий select/load сделал реальный fetch.
+// Mark folder stale so the next select/load triggers a real fetch.
 function markFolderAsStale(staleFolderIds: ReadonlySet<string>, folderUuid: string): Set<string> {
   const next = new Set(staleFolderIds);
   next.add(folderUuid);
   return next;
 }
 
-// Снимает stale-флаг после успешного fetch/reconcile.
+// Clear stale flag after successful fetch/reconcile.
 function unmarkFolderAsStale(staleFolderIds: ReadonlySet<string>, folderUuid: string): Set<string> {
   if (!staleFolderIds.has(folderUuid)) {
     return new Set(staleFolderIds);
@@ -169,7 +169,7 @@ function unmarkFolderAsStale(staleFolderIds: ReadonlySet<string>, folderUuid: st
   return next;
 }
 
-// Оставляет stale-флаги только для живых папок текущего rail-снимка.
+// Retain stale flags only for folders still present in the current rail snapshot.
 function filterStaleFolderIdsByFolders(
   staleFolderIds: ReadonlySet<string>,
   folders: readonly WorkspaceFolderForRail[],
@@ -187,7 +187,7 @@ function filterStaleFolderIdsByFolders(
   return next;
 }
 
-// Неблокирующая задержка между попытками reconcile.
+// Non-blocking delay between reconcile attempts.
 async function waitForDelay(ms: number): Promise<void> {
   if (ms <= 0) return;
   await new Promise<void>((resolve) => {
@@ -195,7 +195,7 @@ async function waitForDelay(ms: number): Promise<void> {
   });
 }
 
-// Подтверждает optimistic mutation фактическим server state с bounded retry.
+// Confirm optimistic mutation against server state with bounded retry.
 async function reconcileFolderAssignment(
   folderUuid: string,
   chatId: string,
@@ -229,24 +229,24 @@ interface FolderSyncBootstrapOptions {
 
 interface FolderSyncState {
   folders: WorkspaceFolderForRail[];
-  // Текущая выбранная папка в rail/sidebar.
+  // Currently selected rail/sidebar folder.
   selectedFolderId: string;
-  // Набор chat_id выбранной папки в нормализованном виде.
+  // Normalized chat_id set for the selected folder.
   selectedFolderChatIds: Set<string> | null;
-  // Готовая проекция чатов для рендера sidebar в выбранной папке.
+  // Ready sidebar chat projection for the selected folder.
   selectedFolderSidebarChats: SidebarChat[];
   loading: boolean;
   error: string | null;
-  // Версия запроса для anti-stale защиты (гонки async-ответов).
+  // Request version for anti-stale protection (async response races).
   requestVersion: number;
   instanceId: string | null;
   showSystemFolders: boolean;
   labels: FolderSyncSystemLabels;
-  // Кэш items по папкам (нужен для fallback и быстрого select).
+  // Per-folder items cache (fallback and fast folder select).
   folderItemsByFolderId: Map<string, FolderItemForClient[]>;
   /** Workspace API uuid for the «all chats» folder (pin/unpin endpoints). */
   allFolderApiUuid: string | null;
-  // Папки с потенциально устаревшим cache (после optimistic/error) — требуют ре-fetch.
+  // Folders with potentially stale cache after optimistic/error — need re-fetch.
   staleFolderIds: Set<string>;
   bootstrap: (options: FolderSyncBootstrapOptions) => Promise<void>;
   selectFolder: (folderId: string) => Promise<void>;
@@ -294,7 +294,7 @@ function isCurrentRequest(
   instanceId: string,
   requestVersion: number,
 ): boolean {
-  // Ответ применяем только если он относится к актуальному инстансу и версии запроса.
+  // Apply response only when instance and request version still match.
   return state.instanceId === instanceId && state.requestVersion === requestVersion;
 }
 
@@ -303,7 +303,7 @@ function normalizeFoldersForPresentation(
   labels: FolderSyncSystemLabels,
   showSystemFolders: boolean,
 ): WorkspaceFolderForRail[] {
-  // Приводим backend-папки к rail-модели и добавляем системные при необходимости.
+  // Map backend folders to rail model and inject system folders when needed.
   return withDefaultSystemFolders(
     mapWorkspaceFoldersToRail(snapshot.folders),
     labels,
@@ -560,7 +560,7 @@ async function runFolderSyncRefreshAttempt(
 }
 
 export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
-  // Не даем стартовать двум refresh одновременно для одного instanceId.
+  // Prevent two concurrent refreshes for the same instanceId.
   const inFlightRefreshByInstance = new Map<string, Promise<void>>();
   const inFlightAssignmentByFolder = new Map<string, Promise<ToggleAssignmentResult>>();
 
@@ -584,7 +584,7 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
       const previousInstanceId = get().instanceId;
       const isInstanceChanged = previousInstanceId !== instanceId;
       logFolderFlow("bootstrap:start", { instanceId, isInstanceChanged });
-      // Сначала поднимаем кеш из IndexedDB, чтобы UI не мигал.
+      // Hydrate from IndexedDB first to avoid UI flicker.
       const railFromCache = await loadFolderRailCache(instanceId);
       logFolderFlow("bootstrap:idb cache read", {
         instanceId,
@@ -611,7 +611,7 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
           : null,
         error: null,
         loading: state.loading && !isInstanceChanged,
-        // При смене инстанса очищаем кэш items, иначе переиспользуем текущий.
+        // On instance switch clear items cache; otherwise reuse current map.
         folderItemsByFolderId: isInstanceChanged ? new Map() : state.folderItemsByFolderId,
         allFolderApiUuid: isInstanceChanged ? null : state.allFolderApiUuid,
         staleFolderIds: isInstanceChanged ? new Set() : state.staleFolderIds,
@@ -630,7 +630,7 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
       });
 
       logFolderFlow("bootstrap:await refresh(api)", { instanceId, reason: "bootstrap" });
-      // После загрузки кэша всегда запускаем сетевой refresh для актуализации данных.
+      // After cache hydrate always run network refresh for authoritative data.
       await get().refresh("bootstrap");
       logFolderFlow("bootstrap:refresh finished", { instanceId });
     },
@@ -645,7 +645,7 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
         stateBeforeSelect.folders,
         nextFolderId,
       );
-      // Cache hit определяем через Map.has, чтобы отличать "нет данных" от "кэшировано пусто".
+      // Map.has distinguishes "no cache entry" from "cached empty folder".
       const hasCachedItemsForSelectedFolder =
         shouldLoadSelectedFolderItems && stateBeforeSelect.folderItemsByFolderId.has(nextFolderId);
       const selectedFolderCacheIsStale = stateBeforeSelect.staleFolderIds.has(nextFolderId);
@@ -661,20 +661,20 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
           shouldLoadSelectedFolderItems,
           cachedItemsForSelectedFolder,
         }),
-        // Переключение папки всегда без loader: сначала cache-first, затем best-effort fallback.
+        // Folder switch is cache-first without blocking loader, then best-effort fallback.
         loading: false,
       });
 
       if (!shouldLoadSelectedFolderItems) {
-        // Для системных папок items не нужны: список строится из общего chat-list.
+        // System folders need no items — list comes from global chat-list.
         return;
       }
-      // Для created-папки с валидным кэшем сеть не трогаем.
+      // Valid cache for created folder — skip network.
       if (canTrustCachedItems) {
         return;
       }
-      // Items приходят inline в `getFolders()`, поэтому отдельного запроса за items больше нет.
-      // При cache miss/stale просто запускаем refresh; membershipPending покажет loader в сайдбаре.
+      // Items arrive inline in `getFolders()` — no separate items request.
+      // On cache miss/stale trigger refresh; membershipPending shows sidebar loader.
       await get().refresh("mutation");
     },
 
@@ -686,7 +686,7 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
       const inFlight = inFlightRefreshByInstance.get(instanceId);
       if (inFlight) {
         logFolderFlow("refresh:coalesced (await in-flight)", { instanceId, reason });
-        // Anti-overlap для polling/mutation: возвращаем текущий in-flight промис.
+        // Anti-overlap for polling/mutation: return current in-flight promise.
         return inFlight;
       }
 
@@ -709,7 +709,7 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
 
       inFlightRefreshByInstance.set(instanceId, refreshPromise);
       void refreshPromise.finally(() => {
-        // Снимаем in-flight guard после завершения refresh.
+        // Release in-flight guard after refresh completes.
         if (inFlightRefreshByInstance.get(instanceId) === refreshPromise) {
           inFlightRefreshByInstance.delete(instanceId);
         }
@@ -803,7 +803,7 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
     },
 
     async loadAssignmentsForChat(chatId) {
-      // Загружает строки назначения чата для submenu: cache-first + stale-aware refetch.
+      // Load assignment rows for submenu: cache-first + stale-aware refetch.
       const safeChatId = chatId.trim();
       if (safeChatId.length === 0) {
         return [];
@@ -844,8 +844,8 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
           } satisfies FolderAssignmentRow;
         }
 
-        // Items приходят только через `getFolders()` — если кэш отсутствует или stale,
-        // освежаем его через `refreshFolderItemsCache` (best-effort), а строку строим по fallback.
+        // Items only via `getFolders()` — on missing/stale cache refresh best-effort,
+        // build row from fallback meanwhile.
         void get().refreshFolderItemsCache(folderId);
         failedFetchFolderIds.add(folderId);
         const fallback = syncState.folderItemsByFolderId.get(folderId) ?? [];
@@ -894,7 +894,7 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
     },
 
     async toggleAssignment(input) {
-      // Единая мутация add/remove assignment: optimistic patch -> server call -> reconcile/rollback.
+      // Single add/remove assignment mutation: optimistic patch → server → reconcile/rollback.
       const folderUuid = input.folderUuid.trim();
       const chatId = input.chatId.trim();
       const itemUuid = input.itemUuid?.trim() ?? null;
@@ -931,7 +931,7 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
           wasStaleBefore,
         };
         const rollbackToPrevious = (markStaleAfterRollback: boolean): void => {
-          // Откат в предыдущее состояние, если server call/reconcile не подтвердил mutation.
+          // Roll back if server call/reconcile did not confirm the mutation.
           set(
             sliceAfterFolderAssignmentRollback(
               get(),
@@ -941,7 +941,7 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
           );
         };
 
-        // Оптимистичный апдейт, чтобы чат сразу появился/исчез в выбранной папке.
+        // Optimistic update so chat appears/disappears immediately in the selected folder.
         set(
           sliceAfterOptimisticFolderAssignment(get(), {
             folderUuid,
@@ -1013,7 +1013,7 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
       });
 
       const previousMutation = inFlightAssignmentByFolder.get(folderUuid);
-      // Сериализуем операции в пределах одной папки, чтобы избежать гонок add/remove.
+      // Serialize operations per folder to avoid add/remove races.
       const queuedMutation =
         previousMutation != null
           ? previousMutation.catch(() => null).then(runMutation)
@@ -1159,7 +1159,7 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
     syncDerived(showSystemFolders, labels) {
       logStoreAction("folderSync", "syncDerived", { showSystemFolders });
       const state = get();
-      // Пересчитываем только presentation-часть без сетевых запросов.
+      // Recompute presentation only — no network.
       const nextFolders = withDefaultSystemFolders(state.folders, labels, showSystemFolders);
       const selectedFolderId =
         resolveSelectedFolderId(nextFolders, state.selectedFolderId) ?? state.selectedFolderId;
@@ -1195,7 +1195,7 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
         selectedFolderSidebarChats: [],
         loading: false,
         error: null,
-        // Инкремент версии блокирует применение уже летящих старых ответов.
+        // Version bump blocks stale in-flight responses from applying.
         requestVersion: state.requestVersion + 1,
         instanceId: null,
         folderItemsByFolderId: new Map(),

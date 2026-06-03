@@ -1,12 +1,7 @@
-// Dev-proxy для Vite с поддержкой multi-org через `X-Workspace-Dev-Target-Origin`.
-//
-// Работает в паре с `src/shared/config/dev-workspace-org-proxy.ts`.
-//
-// Подключается раньше статического `server.proxy` в Vite:
-// - `/workspace...` — проксирует Workspace REST, если выставлен заголовок;
-//   иначе передает обработку статическому `/workspace` proxy.
-// - `/(user_uploads|external_content|avatar|user_avatars)...` — по тому же заголовку проксирует путь как есть в realm;
-//   иначе передает обработку статическому proxy для этого пути.
+/**
+ * Vite dev proxy for multi-org via `X-Workspace-Dev-Target-Origin`.
+ * Runs before static `server.proxy`; pairs with `src/shared/config/dev-workspace-org-proxy.ts`.
+ */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import httpProxy from "http-proxy";
 import {
@@ -35,7 +30,6 @@ function sendText(res: ServerResponse, status: number, body: string): void {
   res.end(body);
 }
 
-// Регистрирует Connect middleware в dev-сервере Vite.
 type ConnectUse = (fn: (req: IncomingMessage, res: ServerResponse, next: () => void) => void) => void;
 
 export function installDevWorkspaceOrgProxyMiddleware(

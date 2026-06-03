@@ -33,7 +33,7 @@ import type { RightPanelInfoProps } from "./right-panel.types";
 
 const log = createLogger("right-panel");
 
-// TODO: разобраться почему тут.
+// Fallback edit seed: strip leading "#" from channel title when stream name isn't loaded yet.
 function stripSingleUiHashPrefix(value: string): string {
   const trimmed = value.trim();
   if (!trimmed.startsWith("#")) return trimmed;
@@ -219,7 +219,7 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
       existingMemberIds: streamMemberIds,
     });
   }, [canonicalStreamName, openAddMembers, streamId, streamMemberIds]);
-  // Что делает: после add/remove инвалидации состав участников канала подтягивается заново.
+  // Refetch channel members after add/remove invalidation.
   const handleStreamMembersChangedSuccess = useCallback(
     (updatedStreamId: number) => {
       if (currentInstanceId == null) return;
@@ -251,12 +251,12 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
   const memberFallbackLabel = t("roles.member");
   const onlineLabel = t("presence.online");
   const offlineLabel = t("presence.offline");
-  // Что делает: на touch-устройствах action всегда видим (нет hover), на pointer оставляем hover/focus поведение.
+  // Touch: actions always visible; pointer: hover/focus reveal.
   const removeMemberActionClassName =
     inputMode === "touch"
       ? "hover:bg-notice-base/10 flex h-6 w-6 shrink-0 items-center justify-center rounded text-notice-base opacity-100 transition-opacity focus-visible:opacity-100 disabled:opacity-40"
       : "hover:bg-notice-base/10 flex h-6 w-6 shrink-0 items-center justify-center rounded text-notice-base opacity-0 transition-opacity group-focus-within/member:opacity-100 group-hover/member:opacity-100 focus-visible:opacity-100 disabled:opacity-40";
-  // Что делает: мемоизирует view-model участников, чтобы не пересчитывать map при UI-only ререндерах.
+  // Memoize member view-model to avoid remapping on UI-only rerenders.
   const members = useMemo(
     () =>
       hasRealMembers && streamMembers != null

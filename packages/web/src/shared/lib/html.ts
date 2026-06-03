@@ -1,17 +1,12 @@
-// Санитизация HTML для содержимого сообщений Zulip.
-//
-// Использует DOMPurify со строгим allowlist по тегам и атрибутам.
-// Переписывает относительные `<img src>` в абсолютные URL на основе realm base URL.
-// Внешние и внутренние ссылки открываются в новом контексте
-// с `target="_blank"` и `rel="noopener noreferrer"`.
-//
-// Использование:
-//   import { sanitizeHtml, stripHtml } from "~/lib/html";
-//   const safe = sanitizeHtml(message.content, getRealmBaseUrl());
-//   const plain = stripHtml(message.content);
-//
-// Если `baseUrl` не передан, но HTML содержит `/user_uploads/`,
-// base для realm будет определена автоматически, что безопасно для Electron `file://`.
+/**
+ * Sanitizes Zulip message HTML (DOMPurify allowlist, realm media URL rewrite, safe link targets).
+ *
+ * Usage:
+ *   import { sanitizeHtml, stripHtml } from "~/shared/lib/html";
+ *   const safe = sanitizeHtml(message.content, getRealmBaseUrl());
+ *
+ * When `baseUrl` is omitted but HTML contains `/user_uploads/`, realm base is inferred (Electron `file://`).
+ */
 import DOMPurify from "dompurify";
 import { env } from "~/shared/lib/env";
 import {
@@ -50,9 +45,7 @@ function deriveRealmBaseFromMediaBase(baseUrl?: string): string | undefined {
   return normalizedBase;
 }
 
-// Если `baseUrl` не передан, например в Electron shell на `file://`,
-// нужно правильно резолвить `/user_uploads/` и `/external_content/`
-// через realm/static base, чтобы URL не превращались в `file:///...`.
+/** Infer realm/upload bases on `file://` when explicit `baseUrl` is missing. */
 function resolveSanitizeMediaBaseUrls(html: string, baseUrl?: string): MessageMediaBaseUrls {
   const explicitUploadsBase = normalizeMessageMediaBase(baseUrl);
   const uploadsBase =
@@ -74,8 +67,7 @@ function ensureMessageLinkTargetHooks(): void {
   if (messageSanitizeHooksInstalled) return;
   messageSanitizeHooksInstalled = true;
   DOMPurify.addHook("afterSanitizeAttributes", (node) => {
-    // Любые ссылки в сообщениях открываем безопасно в новом контексте.
-    // Это единое правило для внешних и внутренних ссылок из Zulip HTML.
+    // Open all message links in a new browsing context (external and internal).
     if (node.tagName !== "A" || !node.hasAttribute("href")) return;
     const href = node.getAttribute("href")?.trim() ?? "";
     if (href === "") return;
@@ -84,7 +76,6 @@ function ensureMessageLinkTargetHooks(): void {
   });
 }
 
-// Удаляет из строки все HTML-теги, например для копирования текста сообщения в буфер.
 export function stripHtml(html: string): string {
   return html.replace(/<[^>]+>/g, "").trim();
 }
@@ -94,7 +85,6 @@ const MESSAGE_ALLOWED_TAGS = [
   "br",
   "strong",
   "b",
-  // Нужен для markdown strikethrough (`~~text~~` -> `<del>`).
   "del",
   "em",
   "i",
@@ -122,8 +112,7 @@ const MESSAGE_ALLOWED_TAGS = [
   "td",
 ];
 
-// Разрешаем только нужные для контента атрибуты.
-// Важно: сюда не добавляем обработчики событий и style, чтобы не открыть XSS-вектор.
+// Omit event handlers and style — XSS vectors.
 const MESSAGE_ADD_ATTR = [
   "src",
   "alt",
@@ -140,14 +129,10 @@ const MESSAGE_ADD_ATTR = [
   "data-original-content-type",
   "colspan",
   "rowspan",
-  // Разметка упоминаний пользователей и групп в Zulip:
-  // `span.user-mention`, `span.user-group-mention`.
   "data-user-id",
   "data-user-group-id",
 ];
 
-// Резолвит относительный media URL сообщения (`img`, `video`, `poster`)
-// в абсолютный через realm base или uploads base.
 export function resolveMessageMediaUrl(src: string, baseUrl: string): string {
   const trimmedBase = baseUrl.trim();
   if (trimmedBase === "") return src;
@@ -178,8 +163,7 @@ function rewriteCanonicalMessageMediaUrl(url: string, bases: MessageMediaBaseUrl
   return url;
 }
 
-// Переписывает абсолютные protected media URL,
-// если они указывают на неправильный host, в canonical base.
+/** Rewrites wrong-host absolute protected media URLs to the canonical base. */
 function rewriteCanonicalProtectedMessageMediaAttrs(
   html: string,
   bases: MessageMediaBaseUrls,
@@ -220,8 +204,6 @@ function resolveRelativeProtectedMessageMediaUrl(src: string, bases: MessageMedi
   return fallbackBase != null ? resolveMessageMediaUrl(s, fallbackBase) : s;
 }
 
-// Переписывает относительные `src` / `poster` в абсолютные URL
-// через корректные Zulip media base.
 function rewriteRelativeMediaSrc(html: string, bases: MessageMediaBaseUrls): string {
   if (bases.uploadsBase == null && bases.realmBase == null) return html;
 
@@ -238,8 +220,6 @@ function rewriteRelativeMediaSrc(html: string, bases: MessageMediaBaseUrls): str
   return result;
 }
 
-// Санитизирует HTML сообщения Zulip для безопасного рендера:
-// удаляет опасные теги и переписывает относительные media URL.
 export function sanitizeHtml(html: string, baseUrl?: string): string {
   ensureMessageLinkTargetHooks();
   const effectiveBases = resolveSanitizeMediaBaseUrls(html, baseUrl);

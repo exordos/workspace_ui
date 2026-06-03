@@ -1,9 +1,9 @@
-// Общие хелперы для загрузки protected-медиа из Zulip с авторизацией.
-//
-// Контракт:
-// - в живом DOM не остаются protected URL в `src`, `srcset`, `sizes`, `poster` или `style`
-// - кандидаты для авторизованной загрузки хранятся только в `data-auth-*`
-// - реальные URL для отображения назначаются только после авторизованного `fetch -> blob/data:`
+/**
+ * Authorized fetch helpers for Zulip protected message media.
+ *
+ * Live DOM must not keep protected URLs in `src`/`poster`/etc.; candidates live in `data-auth-*`
+ * until `fetch → blob/data:` assigns display URLs.
+ */
 import { appendDevRealmMediaProxyHeaders } from "~/shared/api/client";
 import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
 import {
@@ -34,9 +34,7 @@ export const AUTH_MEDIA_SRC_DATA_ATTR = "data-auth-src";
 export const AUTH_MEDIA_POSTER_DATA_ATTR = "data-auth-poster";
 export const AUTH_MEDIA_BACKGROUND_IMAGE_DATA_ATTR = "data-auth-background-image";
 
-// Декоративный SVG-placeholder 160×160.
-// Встроенный `data:` позволяет не делать лишний запрос до авторизованного `fetch`,
-// а нейтральные цвета нормально смотрятся на темных bubble.
+/** Inline SVG placeholder until authorized fetch completes. */
 const AUTH_IMAGE_PLACEHOLDER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160" aria-hidden="true">
   <defs>
     <linearGradient id="ph" x1="0" y1="0" x2="160" y2="160" gradientUnits="userSpaceOnUse">
@@ -59,7 +57,6 @@ const AUTH_IMAGE_PLACEHOLDER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" widt
 
 export const AUTH_IMAGE_PLACEHOLDER_SRC = `data:image/svg+xml,${encodeURIComponent(AUTH_IMAGE_PLACEHOLDER_SVG)}`;
 
-// Проверяет, что `src` / `poster` все еще указывает на auth-placeholder.
 export function isAuthMediaPlaceholderAttr(value: string | null): boolean {
   if (value == null || value === "") return true;
   return value === AUTH_IMAGE_PLACEHOLDER_SRC;
@@ -165,12 +162,10 @@ function prepareProtectedGenericMediaElement(
   element.removeAttribute("src");
 }
 
-// Заменяет `<img src>` на встроенный placeholder и `data-auth-src`
-// с миниатюрой, когда это применимо.
-//
-// Используем это вместо прямого назначения `https://…/user_uploads/…` в `src`
-// на отсоединенном узле: если сначала поставить реальный URL, браузер может начать
-// запрашивать картинку уже на этапе `innerHTML` / разбора DOM до авторизованного `fetch`.
+/**
+ * Swaps `<img src>` for placeholder + `data-auth-src` so the browser does not fetch
+ * protected URLs during `innerHTML` parse before authorized fetch runs.
+ */
 export function prepareProtectedUserUploadImageElement(
   img: HTMLImageElement,
   srcAttrValue: string,
@@ -303,7 +298,7 @@ export function resolveProtectedUploadFetchOptions(
       return { headers: withDevUploadProxy, credentials: "omit" };
     }
   } catch {
-    // Игнорируем ошибки парсинга и используем дефолтные same-origin-опции.
+    // Fall back to same-origin defaults when URL parsing fails.
   }
   return { headers: withDevUploadProxy, credentials: "include" };
 }
@@ -322,14 +317,10 @@ export async function fetchProtectedUploadBlob(
   }
 }
 
-// Не кладем слишком большие `data:`-строки в DOM,
-// если на `file://` внезапно проскочила загрузка полного файла.
+/** Cap inline `data:` size when a full file slips through on `file://`. */
 const FILE_PROTOCOL_BLOB_AS_DATA_URL_MAX_BYTES = 15 * 1024 * 1024;
 
-// Строит значение для `<img src>` / `poster` после авторизованного `fetch` Blob.
-// На `file://` в собранном Electron `URL.createObjectURL` возвращает `blob:file:///…`,
-// который Chromium не всегда считает загружаемым media URL, поэтому для небольших blob
-// используем `data:`.
+/** Prefer `data:` over `blob:file:///` for small blobs in packaged Electron. */
 export async function createDisplayableBlobUrl(
   blob: Blob,
   revokeRegistry: string[],

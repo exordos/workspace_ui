@@ -4,7 +4,7 @@ import {
   ZULIP_SHORTCODE_TO_UNIFIED_OVERRIDES,
 } from "~/shared/lib/emoji-shortcodes-overrides.data";
 
-/** Runtime-логика резолва emoji shortcodes: нормализация, индексы и lookup. */
+/** Runtime emoji shortcode resolution: normalization, indices, and lookup. */
 interface ShortcodeIndices {
   unicodeByShortcode: ReadonlyMap<string, string>;
   canonicalShortcodeByUnified: ReadonlyMap<string, string>;

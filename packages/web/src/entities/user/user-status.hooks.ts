@@ -1,18 +1,17 @@
-// Файл отвечает за единое чтение статуса в UI.
-// UI получает простой контракт:
-// { statusLabel, fetchState, hasStatus }
-// и не делает прямой сетевой запрос сам.
+/**
+ * Hook for reading user custom status in UI.
+ *
+ * Exposes `{ statusLabel, fetchState, hasStatus }` and routes missing-status fetches
+ * through the centralized orchestrator — components never call the network directly.
+ */
 import { useEffect, useMemo } from "react";
 import { requestUserStatus, type RequestUserStatusOptions } from "./api/user.api";
 import { formatUserStatusLabel } from "./user-status.lib";
 import { useUsersStore, type UserRecord, type UserStatusFetchState } from "./user.model";
 
 export interface UserStatusSnapshot {
-  // Готовая строка для UI (текст + emoji, если есть).
   statusLabel?: string;
-  // Текущее состояние загрузки.
   fetchState: UserStatusFetchState;
-  // Быстрый флаг: есть ли что показать по статусу.
   hasStatus: boolean;
 }
 
@@ -20,7 +19,7 @@ export interface UseUserStatusOptions extends Pick<
   RequestUserStatusOptions,
   "reason" | "priority"
 > {
-  // Если true и статуса нет, хук попросит централизованный fallback.
+  /** When true and status is missing, triggers centralized fallback load. */
   requestOnMissing?: boolean;
 }
 
@@ -47,7 +46,6 @@ export function useUserStatus(
     if (snapshot.hasStatus || snapshot.fetchState === "loading") {
       return;
     }
-    // Просим статус только через общий центр загрузки.
     void requestUserStatus(userId, {
       reason: options.reason ?? "compat",
       priority: options.priority ?? "low",

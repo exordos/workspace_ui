@@ -283,12 +283,10 @@ export function handleStreamPropertyUpdate(
   streamId: number,
   property: string,
 ): void {
-  // Что делает: применяет точечный update полей канала из stream:update.
-  // Зачем: часть серверов шлет rename/ACL изменения именно stream-событием, не subscription.
+  // Apply targeted stream field updates from stream:update — some servers send rename/ACL via stream event, not subscription.
   const { chatList } = ctx;
   if (property === "name") {
-    // Что делает: поддерживает оба формата payload (name может прийти в value или в name).
-    // Зачем: разные версии/инсталляции Zulip могут отличаться по форме update payload.
+    // Support name in value or name field — Zulip payload shape varies by version.
     const nameFromValue = typeof event.value === "string" ? event.value : null;
     const nameFromField = typeof event.name === "string" ? event.name : null;
     const nextName = nameFromValue ?? nameFromField;
@@ -308,7 +306,7 @@ export function handleStreamPropertyUpdate(
     return;
   }
 
-  // Переиспользуем общий metadata-applier, чтобы не дублировать update-логику.
+  // Reuse shared metadata applier to avoid duplicating update logic.
   const existing = chatList.streamsMap.get(streamId);
   const row = buildStreamMetadataRowFromExisting(streamId, existing);
   if (row == null) return;
@@ -318,12 +316,10 @@ export function handleStreamPropertyUpdate(
 
 export function handleStream(event: ZulipEvent, ctx: LayoutZulipEventDispatchContext): void {
   if (event.type !== "stream") return;
-  // Что делает: централизованно обрабатывает stream create/update/delete.
-  // Зачем: без этого rename/create/delete канала может дойти до сети, но не попасть в sidebar state.
+  // Central stream create/update/delete — without this, sidebar state misses channel changes from the network.
   const op = event.op as "create" | "delete" | "update" | undefined;
   if (op === "create") {
-    // Что делает: добавляет каналы из stream:create payload.
-    // Зачем: канал должен появиться в sidebar даже без новых сообщений в message-window.
+    // stream:create — show channel in sidebar even when message-window has no messages yet.
     const rows = parseSubscriptionRows(event.streams);
     if (rows.length > 0) {
       ctx.chatList.upsertStreamMetadataRows(rows);
@@ -331,8 +327,7 @@ export function handleStream(event: ZulipEvent, ctx: LayoutZulipEventDispatchCon
     return;
   }
   if (op === "delete") {
-    // Что делает: удаляет канал по всем возможным полям (streams, stream_ids, stream_id).
-    // Зачем: payload удаления канала может приходить в разных форматах, нужно покрыть все.
+    // stream:delete — cover streams, stream_ids, and stream_id payload variants.
     const fromRows = parseSubscriptionRows(event.streams).map((row) => row.streamId);
     const fromIds = parseSubscriptionStreamIds(event.stream_ids);
     const fromSingle = parsePositiveInteger(event.stream_id);
@@ -349,13 +344,11 @@ export function handleStream(event: ZulipEvent, ctx: LayoutZulipEventDispatchCon
   if (streamId == null) return;
   const property = typeof event.property === "string" ? event.property : null;
   if (property != null) {
-    // Что делает: route для property-based update (name, invite_only, can_*_group).
-    // Зачем: держим ветвление в одном месте и упрощаем поддержку форматов событий.
+    // Property-based updates (name, invite_only, can_*_group) — keep format branching in one place.
     handleStreamPropertyUpdate(event, ctx, streamId, property);
     return;
   }
-  // Что делает: fallback для update без property, но с новым name.
-  // Зачем: часть серверов присылает rename в "плоском" формате.
+  // Fallback: flat rename payload without property field.
   const nextName = typeof event.name === "string" ? event.name : null;
   if (nextName != null && nextName.trim().length > 0) {
     ctx.chatList.renameStream(streamId, nextName);

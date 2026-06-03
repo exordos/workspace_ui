@@ -1,25 +1,25 @@
 /**
- * Тесты debounce-sync для mute snapshot.
- * Зачем нужны: фиксируют коалесцирование изменений, flush на cleanup и игнор untracked апдейтов.
+ * Tests for debounced mute snapshot sync.
+ * Covers change coalescing, flush on cleanup, and ignoring untracked updates.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { startMuteSnapshotSync } from "./layout-mute-snapshot-sync.lib";
 
 describe("startMuteSnapshotSync", () => {
-  // Подготавливает чистый store и фейковые таймеры для проверки debounce-логики.
+  // Prepare a clean store and fake timers for debounce logic.
   beforeEach(() => {
     useMuteStore.getState().clear();
     vi.useFakeTimers();
   });
 
-  // Возвращает окружение таймеров/стора к исходному состоянию.
+  // Restore timer/store environment after each test.
   afterEach(() => {
     vi.useRealTimers();
     useMuteStore.getState().clear();
   });
 
-  // Проверяет, что серия частых изменений приводит к одной записи после debounce-окна.
+  // Assert rapid changes coalesce into one persist call after the debounce window.
   it("coalesces frequent mute changes into one debounced persist call", async () => {
     const persistSnapshotRow = vi.fn(async () => {});
     const stop = startMuteSnapshotSync({
@@ -52,7 +52,7 @@ describe("startMuteSnapshotSync", () => {
     stop();
   });
 
-  // Проверяет, что cleanup не теряет последнее накопленное изменение.
+  // Assert cleanup flushes the last pending change.
   it("flushes pending changes on stop/cleanup", () => {
     const persistSnapshotRow = vi.fn(async () => {});
     const stop = startMuteSnapshotSync({
@@ -67,7 +67,7 @@ describe("startMuteSnapshotSync", () => {
     expect(persistSnapshotRow).toHaveBeenCalledTimes(1);
   });
 
-  // Проверяет, что отсутствие изменений tracked refs не вызывает запись.
+  // Assert unchanged tracked refs do not trigger a persist.
   it("does not persist when tracked refs are unchanged", async () => {
     const persistSnapshotRow = vi.fn(async () => {});
     const stop = startMuteSnapshotSync({

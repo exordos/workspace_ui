@@ -424,8 +424,8 @@ describe("dispatchZulipEvent", () => {
   });
 
   describe("stream", () => {
-    // Что проверяет: stream:create должен добавлять metadata канала в sidebar store.
-    // Зачем: новый канал должен появляться сразу, даже если в нем еще нет новых сообщений.
+    // Assert: stream:create must add channel metadata to the sidebar store.
+    // Why: new channels must appear immediately even without new messages.
     it("upserts stream metadata on stream create", () => {
       const { ctx } = buildCtx();
       const upsertSpy = vi.spyOn(ctx.chatList, "upsertStreamMetadataRows");
@@ -472,8 +472,8 @@ describe("dispatchZulipEvent", () => {
       ]);
     });
 
-    // Что проверяет: stream:update с property=name переименовывает канал.
-    // Зачем: регрессия для кейса, когда rename приходит stream-событием.
+    // Assert: stream:update with property=name renames the channel.
+    // Why: regression when rename arrives as a stream event.
     it("renames stream on stream update(name)", () => {
       const { ctx } = buildCtx();
       const renameSpy = vi.spyOn(ctx.chatList, "renameStream");
@@ -526,8 +526,8 @@ describe("dispatchZulipEvent", () => {
       ]);
     });
 
-    // Что проверяет: stream:delete удаляет канал из chat-list.
-    // Зачем: после удаления канала UI не должен показывать устаревшую запись.
+    // Assert: stream:delete removes the channel from chat-list.
+    // Why: UI must not show a stale entry after channel deletion.
     it("removes stream on stream delete", () => {
       const { ctx } = buildCtx();
       const removeSpy = vi.spyOn(ctx.chatList, "removeStream");
@@ -547,8 +547,8 @@ describe("dispatchZulipEvent", () => {
   });
 
   describe("message stream rename fallback", () => {
-    // Что проверяет: fallback-ветка переименовывает канал по message.display_recipient.
-    // Зачем: закрывает сценарий, где сервер не прислал stream:update, но в message уже новое имя канала.
+    // Assert: fallback renames channel from message.display_recipient.
+    // Why: server may omit stream:update while message already has the new name.
     it("renames stream from message display_recipient when stream event is absent", () => {
       const { ctx } = buildCtx();
       const renameSpy = vi.spyOn(ctx.chatList, "renameStream");

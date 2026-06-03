@@ -195,7 +195,7 @@ export const ChatPage: React.FC = () => {
   const chatContextForMessages = useCurrentChatMessagesStore((s) => s.context);
   const messages = useCurrentChatMessagesStore((s) => s.messages);
   const latestMessagesRef = useRef<MockMessage[]>([]);
-  // Держим свежие messages без пересоздания mark-as-read batcher при каждом refresh.
+  // Keep messages ref fresh without recreating the mark-as-read batcher on every refresh.
   useEffect(() => {
     latestMessagesRef.current = messages;
   }, [messages]);
@@ -299,8 +299,7 @@ export const ChatPage: React.FC = () => {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [readReceiptsOpen, setReadReceiptsOpen] = useState(false);
   const [messagesLoading, setMessagesLoading] = useState(false);
-  // Что делает: отделяет "данные уже есть" от "network refresh всё ещё идёт".
-  // Зачем: показывать blocking-loader только на реальном cold-start/cold-switch.
+  // Separate "data already present" from "network refresh in flight" — blocking loader only on cold start/switch.
   const [hasInitialMessagesPayload, setHasInitialMessagesPayload] = useState(false);
   const [messagesLoadError, setMessagesLoadError] = useState<"initial" | "refresh" | null>(null);
   const [messagesReloadNonce, setMessagesReloadNonce] = useState(0);
@@ -399,7 +398,7 @@ export const ChatPage: React.FC = () => {
   const draftTopic = activeTopic ?? "";
 
   useEffect(() => {
-    // При смене маршрута закрываем edit-сессию и инвалидируем незавершённые загрузки markdown.
+    // On route change close edit session and invalidate in-flight markdown loads.
     editRequestTokenRef.current += 1;
     setComposerEditSession(null);
   }, [location.pathname]);
@@ -727,8 +726,7 @@ export const ChatPage: React.FC = () => {
 
   const handleExpandCurrentStreamTopics = useCallback(() => {
     if (!streamSlug) return;
-    // Используется кнопкой "выбрать топик" в композере:
-    // раскрывает текущий stream в sidebar без дублирования slug в store.
+    // Composer "pick topic" — expand current stream in sidebar without duplicating slug in store.
     expandStreamSlug(streamSlug);
   }, [expandStreamSlug, streamSlug]);
 
@@ -738,7 +736,7 @@ export const ChatPage: React.FC = () => {
     timeoutMs: 2000,
   });
 
-  // Синхронизируем stream-контекст с маршрутом без загрузки сообщений.
+  // Sync stream context from route without loading messages.
   useEffect(() => {
     if (!streamSlug) {
       if (!dmIdParam || dmIdParam === "") {
@@ -777,7 +775,7 @@ export const ChatPage: React.FC = () => {
     topicName,
   ]);
 
-  // Загружаем стартовую порцию stream-сообщений только по параметрам маршрута и фокусу.
+  // Load initial stream messages from route params and focus only.
   useEffect(() => {
     if (!streamSlug) {
       setHasInitialMessagesPayload(false);
@@ -800,8 +798,7 @@ export const ChatPage: React.FC = () => {
       return;
     }
 
-    // Что делает: каждый route-switch стартует с чистого признака initial payload.
-    // Далее он поднимется через onCacheHydrated или после успешного API.
+    // Each route switch resets initial-payload flag — raised via onCacheHydrated or after API success.
     cacheHydratedBeforeApiRef.current = false;
     setMessagesLoadError(null);
     setHasInitialMessagesPayload(false);
@@ -827,7 +824,7 @@ export const ChatPage: React.FC = () => {
       currentUserId,
       signal: initialLoadController.signal,
       onStreamMessagesApplied,
-      // Что делает: фиксирует момент cache-first гидрации для UI-флагов.
+      // Cache-first hydration timestamp for UI flags.
       onCacheHydrated: () => {
         if (!initialLoadController.signal.aborted) {
           cacheHydratedBeforeApiRef.current = true;
@@ -886,7 +883,7 @@ export const ChatPage: React.FC = () => {
     t,
   ]);
 
-  // Синхронизируем контекст активного DM с маршрутом и текущим пользователем.
+  // Sync active DM context from route and current user.
   useEffect(() => {
     if (!dmIdParam || dmIdParam === "") {
       if (!streamSlug) {
@@ -906,7 +903,7 @@ export const ChatPage: React.FC = () => {
     setContext({ type: "dm", dmKey });
   }, [dmIdParam, streamSlug, currentUserId, setContext]);
 
-  // Загружаем сообщения DM при изменении маршрута или фокуса на сообщении.
+  // Load DM messages on route or focused-message change.
   useEffect(() => {
     if (!dmIdParam || dmIdParam === "") return;
 
@@ -921,7 +918,7 @@ export const ChatPage: React.FC = () => {
       return;
     }
 
-    // Что делает: для нового DM-роута заново ожидаем initial payload.
+    // New DM route — wait for initial payload again.
     cacheHydratedBeforeApiRef.current = false;
     setMessagesLoadError(null);
     setHasInitialMessagesPayload(false);
@@ -941,7 +938,7 @@ export const ChatPage: React.FC = () => {
       currentUserId,
       signal: initialLoadController.signal,
       onDmMessagesApplied,
-      // Что делает: фиксирует момент cache-first гидрации для UI-флагов.
+      // Cache-first hydration timestamp for UI flags.
       onCacheHydrated: () => {
         if (!initialLoadController.signal.aborted) {
           cacheHydratedBeforeApiRef.current = true;
@@ -1389,19 +1386,19 @@ export const ChatPage: React.FC = () => {
 
   const resolveEditableMessageMarkdown = useCallback(
     async (message: MockMessage): Promise<string> => {
-      // 1) Берём markdown из уже загруженного сообщения.
+      // Prefer markdown from the already-loaded message.
       const fromSource = message.markdown_source?.trim();
       if (fromSource != null && fromSource.length > 0) {
         return fromSource;
       }
 
-      // 2) Если контент выглядит как markdown, используем его без дополнительного запроса.
+      // If content looks like markdown, use it without an extra fetch.
       const body = message.content.trim();
       if (body.length > 0 && !isLikelyRenderedMessageHtml(body)) {
         return body;
       }
 
-      // 3) Fallback: догружаем сообщение с сервера, чтобы получить raw markdown.
+      // Fallback: fetch message from server for raw markdown.
       const fresh = await fetchMessageById(message.id);
       const freshSource = fresh?.markdown_source?.trim();
       if (freshSource != null && freshSource.length > 0) {
@@ -1421,7 +1418,7 @@ export const ChatPage: React.FC = () => {
   const requestMessageEdit = useCallback(
     (message: MockMessage) => {
       if (message.id <= 0) return;
-      // Токен защищает от race: применяем результат только последнего запроса на редактирование.
+      // Token prevents edit race — apply only the latest request result.
       const requestToken = editRequestTokenRef.current + 1;
       editRequestTokenRef.current = requestToken;
       setActionError(null);
@@ -1462,7 +1459,7 @@ export const ChatPage: React.FC = () => {
     async (messageId: number, markdown: string) => {
       setActionError(null);
       try {
-        // Сохраняем изменения на сервере и сразу синхронизируем локальный store.
+        // Persist to server and sync local store immediately.
         await updateMessage(messageId, { content: markdown });
         const fresh = await fetchMessageById(messageId);
         if (fresh) {
@@ -1548,8 +1545,7 @@ export const ChatPage: React.FC = () => {
   }, [rightDrawer]);
 
   const handleOpenRightPanel = useCallback(() => {
-    // Клик по шапке должен возвращать к инфо текущего чата и сбрасывать
-    // вложенный профиль пользователя, если он был открыт поверх.
+    // Header click returns to current chat info and clears nested user profile overlay.
     rightDrawer?.openInfo?.();
     if (rightDrawer?.openInfo == null) {
       rightDrawer?.setOpen(true);

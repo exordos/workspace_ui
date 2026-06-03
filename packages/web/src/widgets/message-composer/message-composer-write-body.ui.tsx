@@ -1,10 +1,3 @@
-// message-composer-write-body.ui.tsx
-// Назначение:
-// - Текстовый ввод composer: textarea, mention dropdown и keyboard-обработчики.
-// Правило приоритетов клавиш:
-// - formatting shortcuts -> mention navigation/select -> edit actions -> send/newline.
-// Важно:
-// - Режим send/newline берется из input-command resolver, а list continuation — из отдельного helper.
 import React from "react";
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
 import { ComposerMentionDropdown } from "./message-composer-mention-dropdown.ui";

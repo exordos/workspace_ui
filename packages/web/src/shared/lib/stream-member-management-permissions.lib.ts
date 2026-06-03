@@ -1,10 +1,10 @@
-// Единый helper runtime-capabilities для действий над каналом.
-// Нужен для консистентного поведения add/remove/edit/archive и устранения расхождений с Zulip.
+/**
+ * Runtime channel action capabilities aligned with Zulip group-setting semantics.
+ */
 import type { CurrentUserChannelCapabilities } from "~/entities/user/user.model";
 import type { ZulipGroupSettingValue } from "~/shared/api/zulip.types";
 import { UserRole } from "~/shared/lib/roles";
 
-// Входной контракт вычисления runtime-capabilities текущего пользователя для канала.
 export interface ResolveCurrentUserChannelCapabilitiesInput {
   currentUserId: number | null;
   orgRole: UserRole;
@@ -27,7 +27,6 @@ function isOrgAdminRole(role: UserRole): boolean {
   return role === UserRole.Owner || role === UserRole.Admin;
 }
 
-// Вычисляет runtime-capabilities текущего пользователя для действий в конкретном канале.
 export function resolveCurrentUserChannelCapabilities(
   input: ResolveCurrentUserChannelCapabilitiesInput,
 ): ChannelActionCapabilities {

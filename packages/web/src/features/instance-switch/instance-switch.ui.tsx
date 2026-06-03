@@ -114,14 +114,13 @@ export const InstanceSwitcher: React.FC = () => {
       if (id === currentInstanceId) return;
       const selectedInstance = instances.find((instance) => instance.id === id);
       if (selectedInstance == null) return;
-      // Контекст чата (DM / stream / topic) привязан к организации, после switch всегда уводим в inbox.
+      // Chat context (DM/stream/topic) is org-scoped — always navigate to inbox after switch.
       const inboxPath = withOrgRoutePrefix(
         "/inbox",
         buildOrgRouteIdForZulipInstance(selectedInstance),
       );
       const currentPath = `${location.pathname}${location.search}${location.hash}`;
-      // Route — источник истины для org-контекста.
-      // Если URL уже целевой, чиним рассинхрон instance напрямую; иначе сначала переключаем route.
+      // Route is the org-context source of truth: fix instance desync in place, or navigate first.
       if (inboxPath === currentPath) {
         setCurrentInstanceId(id);
         return;

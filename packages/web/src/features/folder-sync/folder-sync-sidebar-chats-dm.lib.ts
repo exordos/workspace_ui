@@ -1,7 +1,6 @@
 import type { SidebarChat } from "~/shared/types/sidebar-chat";
 
-// Зачем: self-DM должен быть доступен только из «Моя активность», а не в обычном списке чатов.
-// Что делает: определяет, является ли конкретный DM персональным чатом пользователя с самим собой.
+// Self-DM belongs in "My activity", not the regular chat list.
 function isSelfDmChat(chat: SidebarChat, currentUserId: number | null): boolean {
   if (chat.type !== "dm") return false;
   if (chat.isGroup === true) return false;
@@ -9,16 +8,14 @@ function isSelfDmChat(chat: SidebarChat, currentUserId: number | null): boolean 
   return chat.id === currentUserId;
 }
 
-// Зачем: групповые DM и self-DM не должны попадать в sidebar-проекцию чатов.
-// Что делает: возвращает true для DM-чатов, которые нужно скрыть из сайдбара.
+// Group DMs and self-DMs must not appear in sidebar chat projection.
 function shouldHideDmChat(chat: SidebarChat, currentUserId: number | null): boolean {
   if (chat.type !== "dm") return false;
   if (chat.isGroup === true) return true;
   return isSelfDmChat(chat, currentUserId);
 }
 
-// Зачем: правило скрытия должно применяться единообразно для всех путей построения списка чатов.
-// Что делает: удаляет из входного массива все DM, отмеченные как скрываемые.
+// Apply hide rules uniformly across all chat-list build paths.
 export function filterHiddenDmChats(
   chats: readonly SidebarChat[],
   currentUserId: number | null,

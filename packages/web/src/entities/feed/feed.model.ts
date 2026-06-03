@@ -1,14 +1,12 @@
-// Этот файл нужен как единый store для страницы /feed.
-// Хранит:
-// - список сообщений (newest-first для совместимости с остальным UI),
-// - метаданные запроса (isInitialLoading/isRefreshing/requestVersion),
-// - состояние пагинации (lastMessageId, isAllLoaded).
+/**
+ * Feed store — message list and SWR-style request/pagination lifecycle for /feed.
+ *
+ * Messages are newest-first for consistency with the rest of the UI.
+ */
 
 import { create } from "zustand";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { logStoreAction } from "~/shared/lib/logger";
-
-// Состояние feed + действия для SWR-подобного lifecycle.
 
 interface FeedState {
   instanceId: string | null;
@@ -47,8 +45,7 @@ function findOldestId(messages: MockMessage[]): number | null {
   return oldest.id;
 }
 
-// Сравниваем только id и порядок, чтобы понять, изменился ли фактический список.
-// Это позволяет не дергать лишние перерисовки при cache -> refresh с теми же сообщениями.
+// Preserve array reference when cache→refresh returns the same ids in the same order.
 function hasSameMessageOrder(left: MockMessage[], right: MockMessage[]): boolean {
   if (left.length !== right.length) return false;
   for (let i = 0; i < left.length; i++) {
@@ -70,7 +67,6 @@ export const useFeedStore = create<FeedState>((set, get) => ({
   error: null,
 
   setMessages(messages, isAllLoaded, instanceId) {
-    // authoritative replace: на свежем anchor="newest" полностью заменяем список.
     logStoreAction("feed", "setMessages", { count: messages.length });
     set({
       instanceId: instanceId ?? get().instanceId,
@@ -85,11 +81,9 @@ export const useFeedStore = create<FeedState>((set, get) => ({
   },
 
   setMessagesIfActual(messages, isAllLoaded, requestVersion, instanceId) {
-    // Защита от гонок: применяем ответ только для текущей версии запроса.
     logStoreAction("feed", "setMessagesIfActual", { count: messages.length, requestVersion });
     set((state) => {
       if (state.requestVersion !== requestVersion) return state;
-      // Если сервер вернул тот же набор id в том же порядке, сохраняем старую ссылку массива.
       const nextMessages = hasSameMessageOrder(state.messages, messages)
         ? state.messages
         : messages;
@@ -115,7 +109,6 @@ export const useFeedStore = create<FeedState>((set, get) => ({
 
     logStoreAction("feed", "appendOlder", { count: olderMessages.length });
     set((state) => {
-      // Для load more делаем merge с dedupe по message.id.
       const existingIds = new Set(state.messages.map((m) => m.id));
       const unique = olderMessages.filter((m) => !existingIds.has(m.id));
       const merged = [...unique, ...state.messages];
@@ -157,7 +150,6 @@ export const useFeedStore = create<FeedState>((set, get) => ({
   },
 
   startRequest(hasCachedData) {
-    // При наличии кэша стартуем в refresh-режиме без блокирующего loader.
     const requestVersion = get().requestVersion + 1;
     set({
       requestVersion,

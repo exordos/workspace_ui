@@ -60,7 +60,7 @@ function parseSubscriptionRow(row: unknown): ZulipSubscription | null {
   };
 }
 
-/** Normalizes subscription list from register-ответа. */
+/** Normalizes subscription list from register response. */
 export function parseSubscriptions(data: unknown): ZulipSubscription[] | null {
   if (!Array.isArray(data)) {
     return null;

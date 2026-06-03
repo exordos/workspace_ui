@@ -7,13 +7,12 @@ import type {
   ChatInfoTopic,
 } from "./chat-info.types";
 
-// Вспомогательная логика chat-info:
-// проверка контекста, построение payload и сравнение данных.
+// chat-info helpers: context keys, payload build, equality checks.
 export function hasChatInfoContext(context: ChatInfoContext): boolean {
   return context.kind !== "none";
 }
 
-// Стабильный ключ контекста для дедупа и контроля перезапросов.
+// Stable context key for dedupe and re-fetch control.
 export function getChatInfoNetworkKey(context: ChatInfoContext): string {
   if (context.kind === "none") {
     return `none:${context.instanceId ?? ""}`;
@@ -25,7 +24,6 @@ export function getChatInfoNetworkKey(context: ChatInfoContext): string {
   return `dm:${context.instanceId}:${participantKey}`;
 }
 
-// Нормализация пользователя в формат участника chat-info.
 function mapMember(user: UserRecord): ChatInfoMember {
   return {
     userId: user.user_id,
@@ -53,7 +51,7 @@ export function buildDmChatInfoData(
   participants: UserRecord[],
   memberCount = participants.length,
 ): ChatInfoData {
-  // Удаляем дубли участников и считаем online только по реально загруженным пользователям.
+  // Dedupe members; online count only from loaded user records.
   const uniqueParticipants = new Map<number, UserRecord>();
   for (const participant of participants) {
     uniqueParticipants.set(participant.user_id, participant);
@@ -80,7 +78,7 @@ export function buildStreamChatInfoData(
     topics?: ChatInfoTopic[];
   },
 ): ChatInfoData {
-  // Для stream учитываем server memberIds как источник total memberCount.
+  // Stream memberCount follows server memberIds, not loaded user subset.
   const members = users.map(mapStreamMember);
   const description = metadata?.description?.trim() ? metadata.description.trim() : null;
   const topics =
@@ -100,7 +98,7 @@ export function buildStreamChatInfoData(
   };
 }
 
-// Сравнение участников нужно, чтобы не делать лишний setState с теми же данными.
+// Skip setState when member lists are unchanged.
 function areMembersEqual(a: ChatInfoMember[], b: ChatInfoMember[]): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
@@ -120,7 +118,7 @@ function areMembersEqual(a: ChatInfoMember[], b: ChatInfoMember[]): boolean {
   return true;
 }
 
-// Сравнение топиков нужно для тихих локальных пересчетов без лишних перерисовок.
+// Topic equality for silent local derived updates.
 function areTopicsEqual(a: ChatInfoTopic[] | undefined, b: ChatInfoTopic[] | undefined): boolean {
   const left = a ?? [];
   const right = b ?? [];
@@ -135,7 +133,7 @@ function areTopicsEqual(a: ChatInfoTopic[] | undefined, b: ChatInfoTopic[] | und
   return true;
 }
 
-// Полное сравнение payload для защиты от избыточных обновлений стора.
+// Full payload equality to avoid redundant store writes.
 export function isSameChatInfoData(a: ChatInfoData | null, b: ChatInfoData): boolean {
   if (!a) return false;
   return (

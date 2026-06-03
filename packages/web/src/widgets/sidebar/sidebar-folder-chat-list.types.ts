@@ -1,6 +1,6 @@
 import type { SidebarChat } from "./sidebar.types";
 
-// Контракт folder-режима списка sidebar: чаты папки + управление раскрытием stream-топиков.
+/** Folder-mode sidebar chat list + stream topic expansion. */
 export interface SidebarFolderChatListProps {
   chats: SidebarChat[];
   selectedFolderId?: string;
@@ -16,7 +16,6 @@ export interface SidebarFolderChatListProps {
 }
 
 export interface NewTopicDialogState {
-  // Данные stream, для которого открыт диалог создания нового топика.
   streamId: number;
   streamSlug: string;
   streamName: string;

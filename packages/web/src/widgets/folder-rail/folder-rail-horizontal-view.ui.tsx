@@ -18,7 +18,7 @@ export const FolderRailHorizontalView: React.FC<FolderRailHorizontalViewProps> =
     onOpenCreateDialog,
   }) {
     const [isDragging, setIsDragging] = useState(false);
-    // Состояние drag храним в ref, чтобы не провоцировать лишние рендеры на каждом pointermove.
+    // Drag state in ref avoids re-renders on every pointermove.
     const horizontalDragStateRef = useRef<{
       active: boolean;
       pointerId: number | null;
@@ -32,7 +32,7 @@ export const FolderRailHorizontalView: React.FC<FolderRailHorizontalViewProps> =
       startScrollLeft: 0,
       moved: false,
     });
-    // После drag блокируем один следующий click, чтобы не срабатывать на "клик после протяжки".
+    // Suppress one click after drag (click-after-drag).
     const suppressHorizontalClickRef = useRef(false);
 
     const displayFolders = useMemo(
@@ -61,7 +61,7 @@ export const FolderRailHorizontalView: React.FC<FolderRailHorizontalViewProps> =
       if (!(target instanceof Node) || !e.currentTarget.contains(target)) {
         return;
       }
-      // Кнопка добавления папки должна всегда оставаться кликабельной, без drag-перехвата.
+      // Add-folder button must stay clickable (no drag capture).
       if (
         target instanceof Element &&
         target.closest("[data-folder-rail-action='add-folder']") != null
@@ -84,7 +84,6 @@ export const FolderRailHorizontalView: React.FC<FolderRailHorizontalViewProps> =
       const dragState = horizontalDragStateRef.current;
       if (!dragState.active || dragState.pointerId !== e.pointerId) return;
       const deltaX = e.clientX - dragState.startX;
-      // Небольшой порог защищает от ложного drag при обычном клике.
       if (!dragState.moved && Math.abs(deltaX) >= 3) {
         dragState.moved = true;
       }
@@ -116,7 +115,7 @@ export const FolderRailHorizontalView: React.FC<FolderRailHorizontalViewProps> =
         suppressHorizontalClickRef.current = false;
         return;
       }
-      // Не подавляем click по add-кнопке даже после drag.
+      // Never suppress add-folder click after drag.
       if (
         target instanceof Element &&
         target.closest("[data-folder-rail-action='add-folder']") != null

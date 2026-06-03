@@ -1,13 +1,13 @@
-// Этот файл проверяет, что Jitsi-модалка не ломает lifecycle embed при UI-переключениях.
-// Здесь нас интересует не внешний вид как таковой, а то, что minimize/expand/resize
-// не создают новый Jitsi session instance.
+// This file verifies the Jitsi modal does not break embed lifecycle on UI toggles.
+// Focus is not appearance but that minimize/expand/resize
+// do not create a new Jitsi session instance.
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React, { useEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { JitsiCallModal } from "./jitsi-call.ui";
 
-// Это минимальный shape props, который тесту нужен от mock-версии react-rnd.
+// Minimal props shape required by the react-rnd mock.
 interface MockRndProps {
   children: React.ReactNode;
   position?: { x: number; y: number };
@@ -25,7 +25,7 @@ interface MockRndProps {
   ) => void;
 }
 
-// Эти переменные позволяют проверить, что shell-переключения не создают новую Jitsi-сессию.
+// Track whether shell toggles create a new Jitsi session.
 let latestRndProps: MockRndProps | null = null;
 let latestJitsiIframe: HTMLIFrameElement | null = null;
 let latestJitsiConfigOverwrite: Record<string, unknown> | undefined;
@@ -34,8 +34,8 @@ let jitsiApiReadyCount = 0;
 let jitsiIframeReadyCount = 0;
 
 vi.mock("@jitsi/react-sdk", () => ({
-  // Этот mock моделирует жизненный цикл настоящего Jitsi embed.
-  // Нам важно считать mount/apiReady/iframeReady, чтобы ловить скрытый remount при смене режима окна.
+  // Mock models real Jitsi embed lifecycle.
+  // Count mount/apiReady/iframeReady to catch hidden remount on window mode change.
   JitsiMeeting: ({
     onApiReady,
     getIFrameRef,
@@ -52,7 +52,7 @@ vi.mock("@jitsi/react-sdk", () => ({
     latestJitsiConfigOverwrite = configOverwrite;
 
     useEffect(() => {
-      // Mount эффекта здесь моделирует создание новой Jitsi-сессии.
+      // Mount effect models creation of a new Jitsi session.
       jitsiMountCount += 1;
       jitsiApiReadyCount += 1;
       onApiReady?.({
@@ -69,7 +69,7 @@ vi.mock("@jitsi/react-sdk", () => ({
       return () => {
         getIFrameRef?.(null);
       };
-      // Этот mock должен реагировать только на mount/unmount, а не на обычные shell-ререндеры.
+      // Mock must react only to mount/unmount, not ordinary shell re-renders.
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -78,7 +78,7 @@ vi.mock("@jitsi/react-sdk", () => ({
 }));
 
 vi.mock("react-rnd", () => ({
-  // Mock Rnd даёт тесту контролируемый способ симулировать drag и resize без настоящего DOM layout engine.
+  // Mock Rnd lets the test simulate drag/resize without a real DOM layout engine.
   Rnd: (props: MockRndProps) => {
     latestRndProps = props;
     return (
@@ -111,7 +111,7 @@ vi.mock("react-rnd", () => ({
 
 describe("JitsiCallModal", () => {
   afterEach(() => {
-    // После каждого теста обнуляем счётчики, чтобы каждая проверка смотрела только на свой сценарий.
+    // Reset counters after each test so each case is isolated.
     latestRndProps = null;
     latestJitsiIframe = null;
     latestJitsiConfigOverwrite = undefined;
@@ -121,7 +121,7 @@ describe("JitsiCallModal", () => {
   });
 
   it("includes call name in the dialog header title", () => {
-    // Проверяем, что shell показывает понятный заголовок активного звонка.
+    // Assert shell shows a clear active-call title.
     render(
       <JitsiCallModal
         open
@@ -135,7 +135,7 @@ describe("JitsiCallModal", () => {
   });
 
   it("preserves pip position and size across minimize cycles", () => {
-    // PiP-окно должно помнить last known bounds, чтобы повторное сворачивание было предсказуемым.
+    // PiP window must remember last bounds for predictable re-minimize.
     render(
       <JitsiCallModal
         open
@@ -157,7 +157,7 @@ describe("JitsiCallModal", () => {
   });
 
   it("configures Jitsi iframe permissions for camera and microphone", async () => {
-    // iframe должен получать нужные allow permissions независимо от shell-состояния.
+    // iframe must get required allow permissions regardless of shell state.
     render(
       <JitsiCallModal
         open
@@ -192,7 +192,7 @@ describe("JitsiCallModal", () => {
   });
 
   it("uses element-based bounds for pip window and disables dragging in expanded mode", () => {
-    // В expanded режиме окно фиксированное, а в PiP режиме становится draggable/resizable.
+    // Expanded mode is fixed; PiP mode becomes draggable/resizable.
     render(
       <JitsiCallModal
         open
@@ -212,7 +212,7 @@ describe("JitsiCallModal", () => {
   });
 
   it("does not remount Jitsi when minimizing and expanding the same call", async () => {
-    // Это главный регрессионный тест: minimize/expand не должен создавать новый Jitsi instance.
+    // Main regression: minimize/expand must not create a new Jitsi instance.
     render(
       <JitsiCallModal
         open
@@ -242,7 +242,7 @@ describe("JitsiCallModal", () => {
   });
 
   it("does not remount Jitsi when pip window is dragged or resized", async () => {
-    // Drag и resize — это только shell-операции. Для embed они не должны выглядеть как новый mount.
+    // Drag and resize are shell-only — embed must not treat them as a new mount.
     render(
       <JitsiCallModal
         open

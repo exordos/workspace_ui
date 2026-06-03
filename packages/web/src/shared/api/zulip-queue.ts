@@ -1,5 +1,6 @@
-// Реалтайм-очередь событий Zulip:
-// register, poll, delete и загрузка unread count для credentials.
+/**
+ * Zulip realtime event queue: register, long-poll, delete, and unread counts for credentials.
+ */
 import { t } from "~/i18n/i18n";
 import { getBasicAuthValue } from "~/shared/lib/auth-guard";
 import { env } from "~/shared/lib/env";
@@ -38,8 +39,7 @@ import type {
 
 export { parseSubscriptions } from "./zulip-queue-parse-subscription.lib";
 
-// Зачем: просим у Zulip только те metadata-секции, которые нужны для sidebar без загрузки больших пачек сообщений.
-// `realm` — в т.ч. `server_thumbnail_formats` (размеры превью user_uploads), а `realm_user_groups` нужен для channel-level permission checks.
+/** Register metadata for sidebar bootstrap without loading large message batches. */
 export const DEFAULT_REGISTER_FETCH_EVENT_TYPES = [
   "subscription",
   "user_topic",
@@ -70,8 +70,7 @@ export function getCachedOwnAvatarCapabilities(): ZulipOwnAvatarCapabilities {
   return cachedOwnAvatarCapabilities;
 }
 
-// Регистрирует очередь событий и возвращает `queue_id`
-// для дальнейшего long-polling.
+/** Registers an event queue and returns `queue_id` for long-polling. */
 export async function registerQueue(
   eventTypes: string[],
   fetchEventTypes: string[] = [...DEFAULT_REGISTER_FETCH_EVENT_TYPES],
@@ -79,11 +78,9 @@ export async function registerQueue(
   const body: Record<string, string> = {
     event_types: JSON.stringify(eventTypes),
     apply_markdown: "false",
-    // Что делает: просит сервер включать archived channels в register/events payload.
     client_capabilities: JSON.stringify(REGISTER_CLIENT_CAPABILITIES),
   };
   if (fetchEventTypes.length > 0) {
-    // Зачем: Zulip вернет в register дополнительные metadata-блоки одним запросом.
     body.fetch_event_types = JSON.stringify(fetchEventTypes);
   }
   const res = await zulipPipelinePost("register", body);
@@ -134,8 +131,7 @@ export async function registerQueue(
   );
 }
 
-// Регистрирует очередь с явными credentials.
-// Используется для фоновых multi-org loop.
+/** Registers a queue with explicit credentials (background multi-org loops). */
 export async function registerQueueForCredentials(
   credentials: ZulipCredentials,
   eventTypes: string[],
@@ -157,8 +153,7 @@ export async function registerQueueForCredentials(
         event_types: JSON.stringify(eventTypes),
         apply_markdown: "false",
         client_capabilities: JSON.stringify(REGISTER_CLIENT_CAPABILITIES),
-        // Для фоновых инстансов payload сообщений не рендерится в UI,
-        // поэтому HTML от backend здесь не нужен.
+        // Background instances do not render message HTML in the UI.
         ...(fetchEventTypes.length > 0
           ? { fetch_event_types: JSON.stringify(fetchEventTypes) }
           : {}),
@@ -218,10 +213,10 @@ export async function registerQueueForCredentials(
   );
 }
 
-// Удаляет очередь событий.
-// Это best-effort cleanup при logout или переключении инстанса, поэтому ошибки глотаются.
-// Credentials нужно передавать явно при cleanup во время instance switch,
-// потому что `getCurrentInstance()` уже мог смениться.
+/**
+ * Best-effort queue cleanup on logout or instance switch.
+ * Pass credentials explicitly during switch — `getCurrentInstance()` may already point elsewhere.
+ */
 export async function deleteQueue(queueId: string, credentials?: ZulipCredentials): Promise<void> {
   try {
     const safeQueueId = queueId.trim();
@@ -257,7 +252,6 @@ const UNREAD_DM_NARROW = [
   { operator: "is", operand: "dm" },
 ] as const;
 
-// Читает число непрочитанных по заданному narrow для любых instance credentials.
 async function fetchUnreadMessagesCountForCredentialsWithNarrow(
   credentials: ZulipCredentials,
   narrow: readonly { operator: string; operand: string }[],
@@ -307,8 +301,6 @@ async function fetchUnreadMessagesCountForCredentialsWithNarrow(
   }
 }
 
-// Читает общее число непрочитанных сообщений для любых instance credentials.
-// Если запрос упал или payload не удалось распарсить, возвращает null.
 export async function fetchUnreadMessagesCountForCredentials(
   credentials: ZulipCredentials,
   options?: { signal?: AbortSignal },
@@ -335,8 +327,7 @@ export async function fetchUnreadDmMessagesCountForCredentials(
   );
 }
 
-// Делает long-poll за событиями.
-// Поддерживает timeout и `AbortSignal`.
+/** Long-polls for events; supports timeout and `AbortSignal`. */
 export async function getEvents(
   queueId: string,
   lastEventId: number,
@@ -372,8 +363,7 @@ export async function getEvents(
   }
 }
 
-// Делает long-poll за событиями с явными credentials.
-// Используется для фоновых multi-org loop.
+/** Long-polls with explicit credentials (background multi-org loops). */
 export async function getEventsForCredentials(
   credentials: ZulipCredentials,
   queueId: string,
@@ -427,9 +417,7 @@ export async function getEventsForCredentials(
   }
 }
 
-// Legacy accessor `user_topic` из in-memory register cache.
-// Нужен для обратной совместимости старых мест вызова,
-// которые еще не используют bootstrap-пайплайн.
+/** Legacy in-memory register cache accessor for callers not yet on the bootstrap pipeline. */
 export function fetchUserTopics(): Promise<ZulipUserTopic[]> {
   const cacheKey = getCurrentUserTopicsCacheKey();
   if (!cacheKey) {

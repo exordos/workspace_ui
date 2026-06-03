@@ -20,8 +20,8 @@ function seedUsers(): void {
 }
 
 function seedSystemGroups(): void {
-  // Что делает: эмулирует системные группы Zulip, которые используются
-  // для дефолтной политики "писать могут модераторы и администраторы".
+  // Setup: seed Zulip system groups used for the default
+  // "moderators and administrators can post" policy.
   useUserGroupsStore.getState().setGroups([
     {
       id: 11,
@@ -83,7 +83,7 @@ describe("useCreateChatDialog", () => {
       expect(createChannel).toHaveBeenCalledTimes(1);
     });
 
-    // Что проверяет: в запрос уходит и автор, и выбранные пользователи без дублей.
+    // Assert: request includes author and selected users without duplicates.
     expect(createChannel).toHaveBeenCalledWith(
       expect.objectContaining({
         name: "engineering",
@@ -114,7 +114,7 @@ describe("useCreateChatDialog", () => {
       result.current.createChannel();
     });
 
-    // Что проверяет: без currentUserId создание не должно стартовать.
+    // Assert: without currentUserId, creation must not start.
     expect(result.current.channelCreateBlocked).toBe(true);
     expect(result.current.channelCreateBlockedReasonKey).toBe("channel.creatorProfileLoading");
     expect(createChannel).not.toHaveBeenCalled();
@@ -147,8 +147,7 @@ describe("useCreateChatDialog", () => {
       expect(createChannel).toHaveBeenCalledTimes(1);
     });
 
-    // Что проверяет: при включении "Канал объявлений" в API уходит
-    // именно объединенный group-setting из двух системных групп.
+    // Assert: with announcement-only enabled, API receives merged group-setting from both system groups.
     expect(createChannel).toHaveBeenCalledWith(
       expect.objectContaining({
         canSendMessageGroup: {
@@ -171,7 +170,7 @@ describe("useCreateChatDialog", () => {
       }),
     );
 
-    // Что проверяет: без системных групп чекбокс блокируется и показывается reason key.
+    // Assert: without system groups, checkbox is blocked and shows reason key.
     expect(result.current.channelAnnouncementOnlyBlocked).toBe(true);
     expect(result.current.channelAnnouncementOnlyBlockedReasonKey).toBe(
       "channel.announcementOnlyUnsupported",

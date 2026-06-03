@@ -1,5 +1,4 @@
-// Zustand-store remove-stream-members.
-// Нужен для управления состоянием удаления участников в правой панели (pending/errors/submit).
+// remove-stream-members store — pending/errors/submit for right-panel member removal.
 import { create } from "zustand";
 import { guard } from "~/shared/lib/guards";
 import { logStoreAction } from "~/shared/lib/logger";
@@ -9,9 +8,7 @@ import type {
   RemoveStreamMembersResult,
 } from "./remove-stream-members.types";
 
-// Пустой список pending-id для стабильных reset-ов состояния.
 const EMPTY_PENDING_USER_IDS: number[] = [];
-// Пустая карта ошибок по пользователям.
 const EMPTY_ERRORS_BY_USER_ID: Record<number, string> = {};
 
 interface RemoveStreamMembersState {
@@ -22,7 +19,6 @@ interface RemoveStreamMembersState {
   clear: () => void;
 }
 
-// Удаляет ошибку конкретного пользователя из карты ошибок.
 function clearUserError(errors: Record<number, string>, userId: number): Record<number, string> {
   if (errors[userId] == null) {
     return errors;
@@ -37,8 +33,7 @@ export const useRemoveStreamMembersStore = create<RemoveStreamMembersState>((set
   errorByUserId: EMPTY_ERRORS_BY_USER_ID,
   lastError: null,
 
-  // Выполняет удаление одного участника из текущего канала.
-  // Поддерживает pending-state на user-id и синхронизирует last/errorByUserId.
+  // Remove one member — tracks per-user pending and errorByUserId.
   async submit(options) {
     const streamName = options.streamName.trim();
     if (streamName.length === 0) {
@@ -96,7 +91,7 @@ export const useRemoveStreamMembersStore = create<RemoveStreamMembersState>((set
     return result;
   },
 
-  // Сбрасывает state remove-flow (например, при переключении контекста).
+  // Reset remove-flow state (e.g. on context switch).
   clear() {
     logStoreAction("removeStreamMembers", "clear", {});
     set({

@@ -1,5 +1,6 @@
-// Файл с публичными API-методами user-слайса.
-// Здесь только вызовы endpoint'ов и связывание с оркестратором загрузки статусов.
+/**
+ * Public user API — endpoint calls and status-load orchestrator wiring.
+ */
 
 import {
   getCurrentInstance,
@@ -28,18 +29,14 @@ export type {
 } from "./user.api.types";
 
 export interface UpdateOwnStatusParams {
-  // Текст статуса (например "На встрече").
   text: string;
-  // Emoji-имя (например "calendar").
   emojiName?: string;
-  // away=true: пользователь помечен как "отошел".
   away?: boolean;
 }
 
 const log = createLogger("user:api");
 
-// Отправляем presence: active/idle.
-// pingOnly=true: только keep-alive без явной смены статуса активности.
+/** pingOnly=true sends keep-alive without changing the reported activity status. */
 export async function reportPresence(status: "active" | "idle", pingOnly = false): Promise<void> {
   const instance = getCurrentInstance();
   if (!instance?.realm || !instance.email || !instance.apiKey) {
@@ -59,7 +56,6 @@ export async function reportPresence(status: "active" | "idle", pingOnly = false
   }
 }
 
-// Низкоуровневый GET /users/{id}/status с классификацией ошибок.
 async function fetchUserStatusDetailed(userId: number): Promise<StatusFetchOutcome> {
   const instance = getCurrentInstance();
   if (!instance?.realm || !instance.email || !instance.apiKey) {
@@ -89,7 +85,7 @@ async function fetchUserStatusDetailed(userId: number): Promise<StatusFetchOutco
       return { kind: "transient_error", status: null };
     }
 
-    // Строгий контракт: статус должен приходить внутри поля "status".
+    // Zulip contract: payload lives under `status`, not at the top level.
     if (!("status" in data)) {
       log.warn("User status payload has unexpected shape", { userId });
       return { kind: "transient_error", status: null };
@@ -105,13 +101,12 @@ async function fetchUserStatusDetailed(userId: number): Promise<StatusFetchOutco
   }
 }
 
-// Прямой метод чтения статуса пользователя (без записи в store).
+/** Reads user status without writing to the store. */
 export async function fetchUserStatus(userId: number): Promise<UserStatus | null> {
   const outcome = await fetchUserStatusDetailed(userId);
   return outcome.kind === "ok" ? outcome.status : null;
 }
 
-// Обновляем собственный custom status через POST /users/me/status.
 export async function updateOwnStatus(params: UpdateOwnStatusParams): Promise<UserStatus | null> {
   const instance = getCurrentInstance();
   if (!instance?.realm || !instance.email || !instance.apiKey) {
@@ -138,7 +133,7 @@ export async function updateOwnStatus(params: UpdateOwnStatusParams): Promise<Us
       return normalized;
     }
 
-    // Если сервер ничего полезного не вернул, используем локально известные данные.
+    // Some Zulip versions return an empty body on success — fall back to the submitted values.
     if (!text && !emojiName && !away) {
       return null;
     }
@@ -153,7 +148,7 @@ export async function updateOwnStatus(params: UpdateOwnStatusParams): Promise<Us
   }
 }
 
-// Централизованный вход для fallback-загрузки статуса в store.
+/** Central entry for fallback status loads that write into the users store. */
 export async function requestUserStatus(
   userId: number,
   options?: RequestUserStatusOptions,
@@ -161,7 +156,7 @@ export async function requestUserStatus(
   await requestUserStatusWithPolicy(userId, options, fetchUserStatusDetailed);
 }
 
-// Совместимость со старым именем API.
+/** @deprecated Use `requestUserStatus` — kept for legacy call sites. */
 export async function ensureUserStatusLoaded(
   userId: number,
   options?: RequestUserStatusOptions,

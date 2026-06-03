@@ -1,7 +1,4 @@
-// Страница /activity/:filter.
-// Для mentions/starred/reactions используем cache-first паттерн:
-// локальный hydrate -> фоновый refresh -> authoritative replace на newest.
-// Для drafts берём уже гидрейтнутый global store без дополнительного initial fetch.
+// /activity/:filter — cache-first for mentions/starred/reactions (IDB hydrate → background refresh → newest replace); drafts use hydrated global store.
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
@@ -137,7 +134,7 @@ export const ActivityPage: React.FC = () => {
     let cancelled = false;
     void (async () => {
       const activityFilter = validFilter;
-      // 1) Локальный bootstrap фильтра из IDB.
+      // Local filter bootstrap from IDB.
       const cached = await hydrateActivityMessagesFromCache(
         currentInstanceId,
         activityFilter,
@@ -147,8 +144,7 @@ export const ActivityPage: React.FC = () => {
       if (cancelled) return;
 
       const currentMessages = useActivityStore.getState().filters[activityFilter].messages;
-      // Применяем cached snapshot только если он объективно свежее текущего in-memory состояния.
-      // Это защищает UI от отката на устаревший IDB-кэш.
+      // Apply cached snapshot only when objectively fresher than in-memory — avoids IDB rollback.
       const shouldApplyCached =
         cached.length > 0 &&
         (currentMessages.length === 0 ||
@@ -157,7 +153,7 @@ export const ActivityPage: React.FC = () => {
         setFilterCache(activityFilter, cached, true);
       }
 
-      // 2) Серверный refresh с защитой от гонок и dedupe одинаковых запросов.
+      // Server refresh with race protection and in-flight dedupe.
       const hasCachedData =
         shouldApplyCached ||
         useActivityStore.getState().filters[activityFilter].messages.length > 0;
@@ -165,7 +161,7 @@ export const ActivityPage: React.FC = () => {
       const requestKey = `${currentInstanceId ?? "none"}:activity:${activityFilter}:newest:${ACTIVITY_PAGE_SIZE}`;
 
       try {
-        // Используем fetch с best-effort persist, чтобы после refresh локальный IDB тоже обновлялся.
+        // Best-effort IDB persist after refresh.
         const page = await runInFlightDeduped(requestKey, () =>
           fetchActivityMessagesPageWithPersist(
             activityFilter,

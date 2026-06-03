@@ -1,6 +1,5 @@
 /**
- * Строит сегмент пути `/stream/:streamSlug` в формате Zulip-клиента: `{id}-{нормализованное-имя}`.
- * Используется сайдбаром, роутингом и ссылками на канал.
+ * Builds `/stream/:streamSlug` segment in Zulip client format: `{id}-{normalized-name}`.
  */
 export function buildStreamSlug(streamId: number, streamName: string): string {
   const lower = streamName.trim().toLowerCase();

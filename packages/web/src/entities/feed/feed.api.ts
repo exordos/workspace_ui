@@ -1,7 +1,6 @@
-// Этот файл нужен для загрузки данных страницы /feed.
-// Здесь есть два источника:
-// 1) локальный bootstrap из IDB (мгновенный старт UI);
-// 2) серверный refresh из Zulip (актуализация списка).
+/**
+ * Feed data layer — IDB bootstrap for instant UI and Zulip server refresh for authoritative data.
+ */
 
 import { fetchAllMessagesPage } from "~/shared/api/zulip-messages";
 import type { MessagesPageResult, MockMessage } from "~/shared/api/zulip.types";
@@ -10,8 +9,6 @@ import { getInstanceMessagesAscending } from "~/shared/lib/message-cache-db";
 
 const log = createLogger("feed:api");
 
-// Загружает страницу feed с сервера.
-// anchor="newest" используем как authoritative refresh.
 export async function fetchFeedMessages(
   anchor: number | "newest" = "newest",
   numBefore = 50,
@@ -36,8 +33,7 @@ export async function fetchFeedMessages(
   }
 }
 
-// Берём локальный bootstrap из IDB.
-// Важно: это best-effort кэш и он может быть неполным из-за retention.
+/** Best-effort IDB bootstrap; retention limits may make this slice incomplete. */
 export async function hydrateFeedMessagesFromCache(
   instanceId: string | null,
   limit = 200,

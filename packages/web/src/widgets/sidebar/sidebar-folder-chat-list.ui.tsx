@@ -48,7 +48,6 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
   const isCompactDensity = useSettingsStore((s) => s.chatListDensity === "compact");
   const mutedStreamIds = useMuteStore((s) => s.mutedStreamIds);
   const isStreamMuted = useMuteStore((s) => s.isStreamMuted);
-  // Защита для совместимости: если управление раскрытиями не передано, рендерим без topic-expand логики.
   const canExpandStreams = onToggleStream != null && expandedStreamSlugs !== undefined;
   const pinScopeFolderId = pinFolderId ?? selectedFolderId;
   const allFolderApiUuid = useFolderSyncStore((s) => s.allFolderApiUuid);
@@ -80,7 +79,7 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
 
   const openTopicDialogForStream = useCallback(
     ({ streamId, streamName, streamSlug }: NewTopicDialogState) => {
-      // Перед созданием топика принудительно раскрываем stream, чтобы пользователь видел контекст.
+      // Expand stream before new-topic dialog so context is visible.
       if (
         onToggleStream != null &&
         expandedStreamSlugs !== undefined &&
@@ -155,7 +154,6 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
   );
 
   if (loading) {
-    // Плейсхолдер списка чатов на время переключения/дозагрузки выбранной папки.
     return (
       <div className="px-3 py-4">
         <div

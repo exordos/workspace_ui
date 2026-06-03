@@ -279,8 +279,7 @@ export function addChatIdAliases(target: Set<string>, chatId: string): void {
   target.add(`dm:${dmUserIds.join(",")}`);
 }
 
-// Зачем: один и тот же чат может иметь несколько представлений chat_id (legacy/numeric/stream/dm).
-// Что делает: проверяет совпадение chat_id с учетом всех его alias-вариантов.
+// Same chat may appear under multiple chat_id aliases — match any alias variant.
 export function hasMatchingChatId(chatIdSet: ReadonlySet<string>, chatId: string): boolean {
   const aliases = new Set<string>();
   addChatIdAliases(aliases, chatId);

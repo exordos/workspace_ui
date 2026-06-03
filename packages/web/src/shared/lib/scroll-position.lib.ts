@@ -1,9 +1,6 @@
-// Общий helper для программной прокрутки списков вниз.
-// Нужен, чтобы централизованно различать мгновенный автоскролл и плавный скролл по клику на кнопку.
+/** Programmatic list scroll-to-bottom (instant auto-scroll vs smooth user-triggered). */
 export type ScrollToBottomBehavior = "instant" | "smooth";
 
-// Проверяет системную настройку уменьшения анимации.
-// Если пользователь отключил motion-эффекты, плавную прокрутку нужно деградировать до мгновенной.
 function prefersReducedMotion(): boolean {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
     return false;
@@ -12,8 +9,6 @@ function prefersReducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-// Нормализует режим прокрутки перед вызовом DOM API.
-// Это защищает от лишней анимации в accessibility-сценариях.
 function resolveScrollBehavior(behavior: ScrollToBottomBehavior): ScrollToBottomBehavior {
   if (behavior === "smooth" && prefersReducedMotion()) {
     return "instant";
@@ -22,9 +17,7 @@ function resolveScrollBehavior(behavior: ScrollToBottomBehavior): ScrollToBottom
   return behavior;
 }
 
-// Прокручивает контейнер к самому низу.
-// По умолчанию используется мгновенный режим для автоскроллов,
-// а плавный режим передаётся явно только для пользовательской кнопки "вниз".
+/** Default `instant` for auto-scroll; pass `smooth` only for explicit "scroll down" actions. */
 export function scrollToBottom(
   el: HTMLElement | null,
   behavior: ScrollToBottomBehavior = "instant",

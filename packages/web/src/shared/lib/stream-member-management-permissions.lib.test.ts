@@ -1,9 +1,9 @@
-// Тесты runtime-capabilities текущего пользователя для действий в канале.
+// Tests for current-user runtime capabilities for channel actions.
 import { describe, expect, it } from "vitest";
 import { UserRole } from "~/shared/lib/roles";
 import { resolveCurrentUserChannelCapabilities } from "./stream-member-management-permissions.lib";
 
-// Унифицированный stub membership-проверки для unit-тестов.
+// Shared membership-check stub for unit tests.
 const neverInGroup = () => false;
 
 describe("resolveCurrentUserChannelCapabilities", () => {

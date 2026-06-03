@@ -1,6 +1,4 @@
-// Страница /feed.
-// Паттерн работы: мгновенный hydrate из IDB -> фоновый refresh с сервера ->
-// authoritative replace для newest и append+dedupe для load more.
+// /feed — IDB hydrate → background refresh (newest replace, load-more append+dedupe).
 import React, { useEffect, useLayoutEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
@@ -50,7 +48,6 @@ const FEED_ROW_CLASS =
 const FEED_ACTION_BUTTON_CLASS =
   "rounded-md p-1.5 text-text-muted transition-colors hover:bg-card-bg-active hover:text-text-primary";
 
-// Проверяем, находится ли скролл около низа списка.
 function isNearBottom(el: HTMLElement, thresholdPx = FEED_BOTTOM_THRESHOLD_PX): boolean {
   return el.scrollHeight - el.scrollTop - el.clientHeight <= thresholdPx;
 }
@@ -74,11 +71,11 @@ export const FeedPage: React.FC = () => {
   const listRef = useRef<HTMLUListElement>(null);
   const initialScrollPositionKeyRef = useRef<string | null>(null);
   const pendingScrollRestoreRef = useRef<{ scrollTop: number; scrollHeight: number } | null>(null);
-  // Если refresh стартовал при "приклеенном" низе, после ответа оставляем пользователя внизу.
+  // If refresh started while pinned to bottom, stay at bottom after response.
   const shouldStickToBottomAfterRefreshRef = useRef(false);
-  // Защита от дребезга: автоподгрузка у верхней границы выполняется один раз до re-arm.
+  // Debounce top pagination — one auto-fetch until re-armed.
   const topPaginationArmedRef = useRef(true);
-  // Нужен для отображения кнопки "прокрутить вниз", как в обычном message-list.
+  // Scroll-to-bottom button visibility (same as message-list).
   const [isAtBottom, setIsAtBottom] = React.useState(true);
   const initialScrollPositionKey = currentInstanceId ?? null;
 
@@ -128,8 +125,7 @@ export const FeedPage: React.FC = () => {
   }, [initialScrollPositionKey, isInitialLoading, messages.length]);
 
   useEffect(() => {
-    // После завершения refresh мягко возвращаемся к последним сообщениям,
-    // только если пользователь не успел вручную уйти вверх.
+    // After refresh stick to bottom only if user has not scrolled up.
     if (isRefreshing || !shouldStickToBottomAfterRefreshRef.current || messages.length === 0)
       return;
     const el = listRef.current;
@@ -156,7 +152,7 @@ export const FeedPage: React.FC = () => {
       if (isLoadingMore || isAllLoaded || lastMessageId == null) return;
 
       if (preserveScroll && listRef.current) {
-        // Снимок нужен, чтобы после prepend старых сообщений сохранить позицию viewport.
+        // Snapshot scroll position before prepending older messages.
         pendingScrollRestoreRef.current = {
           scrollTop: listRef.current.scrollTop,
           scrollHeight: listRef.current.scrollHeight,
@@ -167,7 +163,7 @@ export const FeedPage: React.FC = () => {
       const requestKey = `${currentInstanceId ?? "none"}:feed:${lastMessageId}:${FEED_PAGE_SIZE}`;
       void runInFlightDeduped(requestKey, () => fetchFeedMessages(lastMessageId, FEED_PAGE_SIZE))
         .then((page) => {
-          // Убираем anchor-сообщение и безопасно дописываем только старые уникальные.
+          // Drop anchor message and append only unique older rows.
           const withoutAnchor = page.messages.filter((m) => m.id !== lastMessageId);
           for (const m of withoutAnchor) useUsersStore.getState().mergeFromMessage(m);
           useFeedStore.getState().appendOlder(withoutAnchor, page.foundOldest);
@@ -186,14 +182,14 @@ export const FeedPage: React.FC = () => {
       const currentScrollTop = event.currentTarget.scrollTop;
       setIsAtBottom(isNearBottom(event.currentTarget));
 
-      // Если пользователь вручную ушел от низа, отключаем автоприлипание после refresh.
+      // Manual scroll away from bottom disables post-refresh stickiness.
       if (isRefreshing && shouldStickToBottomAfterRefreshRef.current) {
         if (!isNearBottom(event.currentTarget)) {
           shouldStickToBottomAfterRefreshRef.current = false;
         }
       }
 
-      // Re-arm после заметного ухода от верхней границы.
+      // Re-arm top pagination after scrolling away from the top edge.
       if (currentScrollTop > FEED_TOP_PAGINATION_REARM_THRESHOLD_PX) {
         topPaginationArmedRef.current = true;
       }
@@ -207,7 +203,7 @@ export const FeedPage: React.FC = () => {
           lastMessageId,
         })
       ) {
-        // Пока снова не уйдем вниз от топа, повторный автозапрос не запускаем.
+        // No repeat auto-fetch until user scrolls down from top again.
         topPaginationArmedRef.current = false;
         handleLoadMore(true);
       }
@@ -215,8 +211,7 @@ export const FeedPage: React.FC = () => {
     [handleLoadMore, isLoadingMore, isAllLoaded, isRefreshing, lastMessageId],
   );
 
-  // Для кнопки "вниз" используем плавную прокрутку,
-  // но автоскроллы загрузки и refresh выше остаются мгновенными.
+  // Scroll-to-bottom button uses smooth scroll; load/refresh auto-scrolls stay instant.
   const handleScrollToBottomClick = React.useCallback(() => {
     scrollToBottom(listRef.current, "smooth");
     setIsAtBottom(true);

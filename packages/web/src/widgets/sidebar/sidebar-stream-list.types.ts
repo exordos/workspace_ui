@@ -1,6 +1,6 @@
 import type { SidebarChat } from "./sidebar.types";
 
-// Контракт legacy stream-list режима sidebar (когда нет folder sidebarChats).
+/** Legacy stream-list sidebar mode (no folder sidebarChats). */
 export interface SidebarStreamListProps {
   streamChats: SidebarChat[];
   activeStreamSlug: string | null;

@@ -1,9 +1,8 @@
-// Этот файл нужен для общего bootstrap/refresh данных starred в activity-домене.
-// Зачем: чтобы Sidebar и ActivityPage читали один источник и не делали дублирующие запросы.
-// Что делает:
-// 1) cache-first hydrate для starred;
-// 2) server refresh с dedupe по in-flight ключу;
-// 3) синхронно обновляет и список filters.starred, и summary-счетчик.
+/**
+ * Shared starred bootstrap/refresh for Sidebar and ActivityPage.
+ *
+ * Single source: cache-first hydrate, deduped server refresh, and synced list + summary updates.
+ */
 import {
   hydrateActivityMessagesFromCache,
   isActivityMessagesSnapshotFresher,
@@ -25,8 +24,6 @@ export interface EnsureStarredLoadedOptions {
   pageSize?: number;
 }
 
-// Загружает starred в общий activity-store.
-// Повторные параллельные вызовы склеиваются runInFlightDeduped по requestKey.
 export async function ensureStarredLoaded(options: EnsureStarredLoadedOptions): Promise<void> {
   const {
     currentInstanceId,
@@ -38,8 +35,6 @@ export async function ensureStarredLoaded(options: EnsureStarredLoadedOptions): 
   const instanceKey = currentInstanceId ?? "none";
   const requestKey = `${instanceKey}:activity:starred:newest:${pageSize}`;
   await runInFlightDeduped(requestKey, async () => {
-    // Быстрый short-circuit: если уже есть свежий in-memory снимок
-    // и refresh явно не форсирован, сетевой запрос не нужен.
     const beforeLoad = useActivityStore.getState();
     const hasFreshInMemoryData =
       !forceRefresh &&
@@ -52,8 +47,6 @@ export async function ensureStarredLoaded(options: EnsureStarredLoadedOptions): 
     let shouldApplyCached = false;
 
     if (!forceRefresh && currentInstanceId != null) {
-      // Cache-first bootstrap из IDB нужен для быстрого первого кадра
-      // до завершения authoritative server refresh.
       const cached = await hydrateActivityMessagesFromCache(
         currentInstanceId,
         "starred",
@@ -61,7 +54,6 @@ export async function ensureStarredLoaded(options: EnsureStarredLoadedOptions): 
         pageSize,
       );
       const currentMessages = useActivityStore.getState().filters.starred.messages;
-      // Применяем cached snapshot только если он объективно свежее текущего in-memory.
       shouldApplyCached =
         cached.length > 0 &&
         (currentMessages.length === 0 ||
@@ -79,7 +71,6 @@ export async function ensureStarredLoaded(options: EnsureStarredLoadedOptions): 
     const summaryRequestVersion = latest.startStarredSummaryRequest(hasSummaryData);
 
     try {
-      // Серверный refresh — источник финальной актуальности.
       const page = await fetchActivityMessagesPageWithPersist(
         "starred",
         currentUserId,
@@ -90,7 +81,6 @@ export async function ensureStarredLoaded(options: EnsureStarredLoadedOptions): 
         useUsersStore.getState().mergeFromMessage(message);
       }
       const hasMore = !page.foundOldest;
-      // Одним ответом обновляем и список страницы, и summary для sidebar.
       useActivityStore
         .getState()
         .setFilterPageIfActual("starred", filterRequestVersion, page.messages, hasMore);

@@ -298,6 +298,12 @@ Import rule: use **concrete segment files** (no barrel `index.ts` re-exports). E
 - NEVER log credentials, PII, message content, or request/response bodies
 - Auto-redaction catches: `apiKey`, `password`, `token`, `authorization`, `secret`, `csrf`, `session`
 
+### Comments
+
+- **English only** for all code comments: `//`, `/* */`, JSDoc, CSS blocks, `TODO`/`FIXME`
+- Comments explain **why**, not **what** — see `.cursor/rules/comments.mdc`
+- UI text in Russian/English belongs in `i18n/locales/`, not in comments
+
 ### Security
 
 - `sanitizeHtml()` before `dangerouslySetInnerHTML` (DOMPurify whitelist)

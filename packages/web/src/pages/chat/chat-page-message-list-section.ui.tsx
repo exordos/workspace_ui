@@ -44,9 +44,9 @@ export const ChatPageMessageListSection = React.memo(function ChatPageMessageLis
     onDismissBoundaryLoadFailed();
   }, [onDismissBoundaryLoadFailed]);
 
-  // Что делает: блокирует экран только пока нет ни кэшированных, ни серверных сообщений.
+  // Block screen only until neither cached nor server messages exist.
   const showBlockingLoader = messagesLoading && !hasInitialPayload;
-  // Что делает: когда данные уже есть, оставляет только неблокирующий overlay-индикатор.
+  // When data exists, show non-blocking overlay only.
   const showLoadingOverlay =
     !showBlockingLoader && messages.length > 0 && (messagesLoading || isLoadingMore);
 

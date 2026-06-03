@@ -38,15 +38,12 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   const canOpenDmPartner = onDmPartnerClick != null;
   const canOpenRightPanelFromHeader = onOpenRightPanel != null || onToggleRightPanel != null;
 
-  // Клик по блоку собеседника в DM (аватар + имя + статус) должен открывать
-  // профиль в правой панели, как и клик по аватару автора в списке сообщений.
+  // DM header click opens the partner profile in the right panel (same as message author avatar).
   const handleDmPartnerAvatarClick = useCallback(() => {
     onDmPartnerClick?.();
   }, [onDmPartnerClick]);
 
-  // Для каналов и групповых чатов клик по левому блоку должен открывать
-  // правую инфо-панель. Если специальный обработчик не передан,
-  // используем существующий toggle как fallback.
+  // Channel/group header opens chat info; fall back to toggle when no dedicated handler is passed.
   const handleOpenRightPanelFromHeaderBlock = useCallback(() => {
     if (onOpenRightPanel != null) {
       onOpenRightPanel();

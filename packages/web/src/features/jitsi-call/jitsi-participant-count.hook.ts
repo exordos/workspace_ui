@@ -1,18 +1,13 @@
-// Этот файл хранит небольшой хук для счётчика участников текущей Jitsi-сессии.
-// Он отвечает только за чтение participant count из external API и за сброс значения
-// при закрытии звонка. Используется внутри Jitsi-модалки как отдельный session-level слой.
+// Participant count for the active Jitsi session — independent of modal shell state.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-// Это минимальный контракт Jitsi External API, который нужен именно этому хуку.
-// Здесь оставлены только методы, без которых нельзя подписаться на изменения участников.
+/** Minimal Jitsi External API surface for join/leave participant subscriptions. */
 export interface JitsiExternalApi {
   getNumberOfParticipants: () => number;
   on: (event: string, callback: () => void) => void;
 }
 
-// Хук держит локальный счётчик участников и не знает ничего о shell-состоянии модалки.
-// Его задача — обновлять число участников только пока звонок открыт.
 export function useJitsiParticipantCount(open: boolean): {
   participantCount: number | null;
   onApiReady: (api: JitsiExternalApi) => void;
@@ -20,15 +15,12 @@ export function useJitsiParticipantCount(open: boolean): {
   const [participantCount, setParticipantCount] = useState<number | null>(null);
   const apiRef = useRef<JitsiExternalApi | null>(null);
 
-  // Берёт актуальное число участников из последнего api instance.
-  // Callback стабилен, чтобы повторные shell-ререндеры не пересоздавали подписки.
+  // Stable callback — shell re-renders must not recreate subscriptions.
   const updateCount = useCallback(() => {
     const n = apiRef.current?.getNumberOfParticipants?.();
     if (typeof n === "number") setParticipantCount(n);
   }, []);
 
-  // Вызывается один раз при готовности Jitsi API и регистрирует подписки на join/leave.
-  // После этого сам хук умеет поддерживать participantCount без участия оболочки модалки.
   const onApiReady = useCallback(
     (api: JitsiExternalApi) => {
       apiRef.current = api;
@@ -41,8 +33,7 @@ export function useJitsiParticipantCount(open: boolean): {
 
   useEffect(() => {
     if (open) return;
-    // При закрытии звонка обязательно обнуляем api reference и счётчик,
-    // чтобы следующее открытие начиналось с чистого session state.
+    // Reset on close so the next open starts with clean session state.
     apiRef.current = null;
     void Promise.resolve().then(() => {
       setParticipantCount(null);

@@ -1,16 +1,12 @@
-// Канонический URL для медиа из сообщений Zulip,
-// которые отдаются из static-path от realm-root, например `/user_uploads/` и `/external_content/`.
-//
-// В HTML сообщения могут встречаться абсолютные ссылки на gateway или legacy-host,
-// который не умеет отдавать файлы, например отвечает `501`.
-// Переписывание на корректную realm/static-базу выравнивает поведение
-// между SPA, Electron `file://` и Vite dev-proxy.
+/**
+ * Canonical base URLs for Zulip message media (`/user_uploads/`, `/external_content/`).
+ * Rewrites gateway/legacy hosts so SPA, Electron `file://`, and Vite dev-proxy behave the same.
+ */
 
 const USER_UPLOADS_SEGMENT = "/user_uploads/";
 const EXTERNAL_CONTENT_SEGMENT = "/external_content/";
 const PROTECTED_MESSAGE_MEDIA_SEGMENTS = [USER_UPLOADS_SEGMENT, EXTERNAL_CONTENT_SEGMENT] as const;
 
-// Схлопывает ошибочные повторения `/workspace/v1/workspace/v1/` в upload-URL.
 export function collapseDuplicateWorkspaceV1InUrl(raw: string): string {
   let s = raw.trim();
   while (s.includes("/workspace/v1/workspace/v1")) {
@@ -19,8 +15,6 @@ export function collapseDuplicateWorkspaceV1InUrl(raw: string): string {
   return s;
 }
 
-// Базовый URL для резолва относительных путей,
-// когда `window` недоступен.
 export function getDefaultUrlParseBase(): string {
   if (typeof window !== "undefined" && window.location?.origin) {
     return window.location.origin;
@@ -53,9 +47,6 @@ export function isProtectedMessageMediaPath(pathname: string): boolean {
   return isUserUploadsPath(pathname) || isExternalContentPath(pathname);
 }
 
-// Возвращает `/(user_uploads|external_content)/...` вместе с query string
-// из полного или относительного URL.
-// Если это не protected media-path из Zulip, возвращает null.
 export function extractProtectedMessageMediaPathAndQuery(
   raw: string,
   base: string = getDefaultUrlParseBase(),
@@ -93,8 +84,6 @@ export function extractProtectedMessageMediaPathAndQuery(
   return null;
 }
 
-// Возвращает `/user_uploads/...` вместе с query string из полного или относительного URL.
-// Если это не upload path, возвращает null.
 export function extractUserUploadsPathAndQuery(
   raw: string,
   base: string = getDefaultUrlParseBase(),
@@ -103,10 +92,6 @@ export function extractUserUploadsPathAndQuery(
   return pathAndQuery != null && isUserUploadsPath(pathAndQuery) ? pathAndQuery : null;
 }
 
-// Переписывает любой URL вида `.../(user_uploads|external_content)/...`
-// так, чтобы он жил под `canonicalBase`.
-// Относительные пути резолвятся через эту базу.
-// Абсолютные URL, которые не относятся к media из сообщений, остаются без изменений.
 export function rewriteProtectedMessageMediaUrlToCanonical(
   src: string,
   canonicalBase: string,
@@ -126,10 +111,6 @@ export function rewriteProtectedMessageMediaUrlToCanonical(
   return collapseDuplicateWorkspaceV1InUrl(`${base}${pathAndQuery}`);
 }
 
-// Переписывает любой `.../user_uploads/...` URL так,
-// чтобы он жил под `canonicalUploadsBase`, то есть realm плюс необязательный gateway-префикс.
-// Относительные пути резолвятся через эту базу.
-// Абсолютные URL, не относящиеся к upload, остаются без изменений.
 export function rewriteUserUploadMediaUrlToCanonical(
   src: string,
   canonicalUploadsBase: string,

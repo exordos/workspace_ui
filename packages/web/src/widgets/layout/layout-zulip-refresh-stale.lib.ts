@@ -1,5 +1,4 @@
-// Восстановительный refresh после reconnect/bad queue.
-// Обновляет sidebar (reconnect bootstrap), активный чат, presence и unread без сброса event loop.
+// Recovery refresh after reconnect/bad queue — sidebar, active chat, presence, unread; no event-loop reset.
 /**
  * Reconnect / bad-queue recovery used by `useLayoutZulipEventLoop` without resetting the long-poll loop.
  */

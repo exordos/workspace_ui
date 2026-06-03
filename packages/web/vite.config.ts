@@ -52,8 +52,7 @@ const BACKEND_NAVIGATE_FALLBACK_DENY_LIST: RegExp[] = [
   /^\/external_content(?:\/|$|[?#])/,
 ];
 
-// Логирует входящий dev-path и итоговый upstream URL после rewrite.
-// Включается только через `VITE_DEV_PROXY_DEBUG`.
+/** Logs dev proxy path → upstream URL when `VITE_DEV_PROXY_DEBUG` is set. */
 function withDevProxyRequestLog(
   routeLabel: string,
   targetBase: string,
@@ -89,8 +88,7 @@ function withDevProxyRequestLog(
         } catch {
           upstream = `${base}${path}`;
         }
-        // Это только dev-код; `vite.config.ts` исключен из ESLint.
-        // Намеренно не используем логгер приложения, потому что здесь Node-контекст и нет `~/shared`.
+        // Dev-only; vite.config.ts is ESLint-excluded — no app logger in Node context.
         console.info(`[vite-proxy:${routeLabel}] ${r.method ?? "?"} ${r.url ?? ""} → ${upstream}`);
       });
     },
@@ -183,8 +181,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [
-      // Multi-org Workspace REST: same-origin-путь `/workspace/...`
-      // плюс `X-Workspace-Dev-Target-Origin` до прохода через `server.proxy`.
+      // Multi-org Workspace REST: `/workspace/...` + `X-Workspace-Dev-Target-Origin` before static proxy.
       ...(mode === "development" && !isElectron
         ? [
             {

@@ -1,8 +1,6 @@
-// Этот файл нужен для локальной модели Inbox-агрегации.
-// Что делает:
-// 1) группирует unread-сообщения в inbox entries (stream/topic и DM);
-// 2) группирует entries по секциям для UI;
-// 3) сравнивает свежесть двух inbox snapshot (кэш vs текущее состояние).
+/**
+ * Inbox aggregation — group unread messages into entries, section grouping, and snapshot freshness checks.
+ */
 
 import type { MockMessage } from "~/shared/api/zulip.types";
 import type { InboxEntry } from "./inbox.types";
@@ -20,8 +18,6 @@ export interface GroupedInboxEntries {
   streams: GroupedInboxStream[];
 }
 
-// Находит самый новый timestamp среди inbox entries.
-// Это основной критерий "свежести" snapshot.
 function getInboxEntriesNewestTimestamp(entries: readonly InboxEntry[]): number {
   if (entries.length === 0) return 0;
   let newest = entries[0]?.lastMessageTimestamp ?? 0;
@@ -33,8 +29,6 @@ function getInboxEntriesNewestTimestamp(entries: readonly InboxEntry[]): number 
   return newest;
 }
 
-// Находит максимальный messageId внутри snapshot entries.
-// Используется как tie-breaker, когда newest timestamp у двух snapshot совпал.
 function getInboxEntriesMaxMessageId(entries: readonly InboxEntry[]): number {
   let maxId = 0;
   for (const entry of entries) {
@@ -48,11 +42,9 @@ function getInboxEntriesMaxMessageId(entries: readonly InboxEntry[]): number {
 }
 
 /**
- * Возвращает true, если `candidate` объективно свежее `current`.
- * Правила сравнения:
- * 1) сначала сравниваем максимальный `lastMessageTimestamp`;
- * 2) при равенстве сравниваем максимальный `messageId`.
- * Нужно, чтобы не откатывать UI на более старый кэш при повторном заходе в Inbox.
+ * Returns true when `candidate` is objectively fresher than `current`.
+ * Compares max `lastMessageTimestamp`, then max message id as tie-breaker,
+ * so re-entering Inbox does not regress to an older cache snapshot.
  */
 export function isInboxEntriesSnapshotFresher(
   candidate: readonly InboxEntry[],

@@ -1,6 +1,4 @@
-// Этот файл описывает основную UI-оболочку Jitsi-звонка.
-// Он отвечает за стабильный host для Jitsi, за переключение между expanded и PiP режимами
-// и за то, чтобы shell-ререндеры не пересоздавали саму Jitsi-сессию.
+// Jitsi call UI shell: stable embed host, expanded/PiP modes — shell re-renders must not remount the session.
 
 import { JitsiMeeting } from "@jitsi/react-sdk";
 import * as Dialog from "@radix-ui/react-dialog";
@@ -12,30 +10,25 @@ import { Icon } from "~/shared/ui/icon";
 import { useJitsiCallModalShell } from "./jitsi-call-modal-shell.hook";
 import type { JitsiCallModalProps, JitsiExternalApiWithParticipants } from "./jitsi-call.types";
 
-// Минимальная ширина floating PiP-окна, ниже которой звонком уже неудобно пользоваться.
 const MIN_WINDOW_WIDTH = 280;
-// Минимальная высота floating PiP-окна, чтобы embed не схлопывался в нечитаемый прямоугольник.
 const MIN_WINDOW_HEIGHT = 180;
-// Базовая конфигурация Jitsi, которая относится к самой сессии звонка.
-// Она должна оставаться стабильной и не зависеть от minimize/expand состояния.
+// Session-level Jitsi config — stable across minimize/expand.
 const JITSI_CONFIG_OVERWRITE_BASE = {
   startWithAudioMuted: true,
   prejoinConfig: { enabled: false },
 } as const;
-// Настройки интерфейса Jitsi, которые не должны меняться из-за оболочки модалки.
+// Jitsi UI settings independent of modal shell state.
 const JITSI_INTERFACE_CONFIG_OVERWRITE = {
   DISABLE_JOIN_LEAVE_NOTIFICATIONS: false,
 } as const;
-// Внешний контейнер Dialog.Content всегда занимает весь viewport,
-// а само окно внутри него уже управляется через Rnd.
+// Dialog.Content fills viewport; Rnd controls the inner window bounds.
 const OUTER_DIALOG_CLASS_NAME =
   "fixed inset-0 z-modal border-0 bg-transparent p-0 shadow-none outline-none pointer-events-none";
-// Это общий visual shell окна звонка. Он один и тот же и для expanded, и для PiP режима.
+// Shared visual shell for expanded and PiP modes.
 const WINDOW_CLASS_NAME =
   "pointer-events-auto flex h-full w-full min-h-0 flex-col overflow-hidden rounded-xl border border-border-subtle bg-bg-elevated shadow-xl";
 
-// Эти props описывают только session-level данные, необходимые самому embed-компоненту.
-// Shell-состояние вроде minimized, fullscreen или bounds сюда специально не попадает.
+// Session-level embed props only — shell state (minimized, bounds) stays outside.
 interface JitsiCallEmbedProps {
   displayName: string;
   domain: string | null;
@@ -46,8 +39,7 @@ interface JitsiCallEmbedProps {
   onReadyToClose: () => void;
 }
 
-// Этот memoized-компонент изолирует сам Jitsi embed от ререндеров оболочки.
-// Пока не меняются session-level props, minimize/expand и resize не должны создавать новый embed.
+// Isolates Jitsi embed from shell re-renders — minimize/expand/resize must not remount.
 const JitsiCallEmbed: React.FC<JitsiCallEmbedProps> = React.memo(function JitsiCallEmbed({
   displayName,
   domain,
@@ -87,9 +79,7 @@ const JitsiCallEmbed: React.FC<JitsiCallEmbedProps> = React.memo(function JitsiC
   );
 });
 
-// Главный shell-компонент звонка.
-// Он управляет только оболочкой окна и session lifecycle вокруг embed, но не должен заставлять
-// Jitsi пересоздаваться при обычных UI-переключениях.
+// Call window shell — manages layout around embed without remounting Jitsi on UI toggles.
 export const JitsiCallModal: React.FC<JitsiCallModalProps> = (props) => {
   const {
     open,
@@ -113,10 +103,7 @@ export const JitsiCallModal: React.FC<JitsiCallModalProps> = (props) => {
     handleReadyToClose,
   } = useJitsiCallModalShell(props);
 
-  // Dialog.Root держим в стабильном режиме, чтобы minimize/expand не менял внутренний lifecycle Radix
-  // и не создавал косвенный remount Jitsi subtree.
-  // Rnd тоже остаётся смонтированным всегда: окно меняет только bounds и интерактивность,
-  // а не host-контейнер Jitsi.
+  // Keep Dialog.Root and Rnd mounted — minimize/expand only change bounds, not the Jitsi host.
   return (
     <AppDialogShell
       open={open}

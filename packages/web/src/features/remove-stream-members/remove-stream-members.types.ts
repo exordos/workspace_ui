@@ -1,5 +1,4 @@
-// Типы remove-stream-members feature.
-// Нужны, чтобы UI и store работали с единым доменным контрактом удаления участников.
+// remove-stream-members domain types — shared contract for UI and store.
 import type {
   RemoveStreamMembersParams,
   RemoveStreamMembersResult,

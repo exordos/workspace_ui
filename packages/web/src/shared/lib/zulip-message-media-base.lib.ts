@@ -1,8 +1,7 @@
-// Базовые URL для резолва inline media из сообщений Zulip в абсолютные https URL.
-//
-// В Electron shell приложение может работать из `file://`,
-// и тогда root-relative пути `/user_uploads/...` или `/external_content/...`
-// иначе превратятся в `file:///...`.
+/**
+ * Base URLs for resolving Zulip inline message media to absolute https URLs.
+ * On Electron `file://`, root-relative `/user_uploads/` paths would otherwise become `file:///...`.
+ */
 import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
 import {
   appendUserUploadsPathPrefix,

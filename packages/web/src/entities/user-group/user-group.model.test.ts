@@ -1,10 +1,10 @@
-// Тесты store групп пользователей Zulip.
-// Проверяют корректность membership-логики для вложенных групп и group-setting значений.
+// Tests for Zulip user group store.
+// Covers membership logic for nested groups and group-setting values.
 import { afterEach, describe, expect, it } from "vitest";
 import { useUserGroupsStore } from "./user-group.model";
 
 describe("useUserGroupsStore", () => {
-  // После каждого теста очищаем глобальный Zustand store, чтобы не было протечек состояния.
+  // Reset global Zustand store after each test to prevent state leaks.
   afterEach(() => {
     useUserGroupsStore.getState().clear();
   });

@@ -1,8 +1,6 @@
-// Файл отвечает за users store:
-// - хранит профиль пользователя
-// - хранит presence (online/idle)
-// - хранит custom status и метаданные его загрузки
-// - держит индекс email -> userId для быстрых обновлений presence
+/**
+ * Users store — profiles, presence, custom status, and email→userId index for presence updates.
+ */
 import { create } from "zustand";
 import type {
   AvatarUrlByUserId,
@@ -22,21 +20,14 @@ export interface UserPresence {
 export type UserStatusReactionType = "unicode_emoji" | "realm_emoji" | "zulip_extra_emoji";
 
 export interface UserStatus {
-  // Обычный текстовый статус.
   text: string;
-  // Имя emoji (если есть).
   emojiName?: string;
-  // Код emoji от сервера (если есть).
   emojiCode?: string;
-  // Тип emoji в Zulip.
   reactionType?: UserStatusReactionType;
-  // Признак "отошел".
   away: boolean;
 }
 
-// Состояние загрузки custom status для конкретного пользователя.
 export type UserStatusFetchState = "idle" | "loading" | "ready" | "error" | "invalid_user";
-// Вид ошибки: временная или невалидный пользователь.
 export type UserStatusErrorKind = "transient" | "invalid_user";
 
 export interface UserRecord {
@@ -47,13 +38,10 @@ export interface UserRecord {
   role?: number;
   presence?: UserPresence;
   status?: UserStatus;
-  // Время последнего успешного получения статуса.
   statusFetchedAt?: number;
-  // Текущее состояние загрузки статуса.
   statusFetchState?: UserStatusFetchState;
-  // До какого времени не надо повторять запрос (backoff/negative cache).
+  /** Backoff / negative-cache window — skip network until this timestamp. */
   statusNextRetryAt?: number;
-  // Какая была последняя ошибка загрузки.
   statusErrorKind?: UserStatusErrorKind;
   /** Zulip directory: `false` when the account is deactivated. */
   is_active?: boolean;
@@ -84,9 +72,7 @@ interface UsersState {
   setCurrentUserChannelCapabilities: (capabilities: CurrentUserChannelCapabilities) => void;
   setPresenceByEmail: (email: string, presence: UserPresence) => void;
   setPresence: (userId: number, presence: UserPresence) => void;
-  // Сохраняет результат статуса и сбрасывает ошибку/backoff.
   setStatus: (userId: number, status: UserStatus | null, fetchedAt?: number) => void;
-  // Обновляет служебные поля загрузки статуса.
   setStatusFetchMeta: (userId: number, meta: UserStatusFetchMeta) => void;
   getUser: (userId: number) => UserRecord | undefined;
   getAvatarUrl: (userId: number) => string | undefined;

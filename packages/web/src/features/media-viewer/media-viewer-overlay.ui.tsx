@@ -51,7 +51,7 @@ export const MediaViewerOverlay: React.FC = () => {
         onClose={handleClose}
       />
       {item.type === "video" ? (
-        // eslint-disable-next-line jsx-a11y/media-has-caption -- пользовательское видео может быть без caption-треков
+        // eslint-disable-next-line jsx-a11y/media-has-caption -- user-uploaded video may lack caption tracks
         <video
           src={displayUrl}
           controls

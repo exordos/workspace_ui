@@ -119,7 +119,7 @@ export const FolderRail: React.FC<FolderRailProps> = ({
   }, [deletingFolder, isDeletingFolder, onFoldersChanged]);
 
   const handleToggleLayout = useCallback(() => {
-    // Приоритет у внешнего callback; fallback — локальная смена через settings store.
+    // Prefer external onToggleLayout; else toggle via settings store.
     if (onToggleLayout != null) {
       onToggleLayout();
       return;
@@ -131,7 +131,6 @@ export const FolderRail: React.FC<FolderRailProps> = ({
     setShowSystemFolders(!showSystemFolders);
   }, [setShowSystemFolders, showSystemFolders]);
 
-  // Единая структура для обоих view, чтобы не дублировать map + передачу индекса.
   const indexedFolders = useMemo<IndexedFolderEntry[]>(
     () => normalizedFolders.map((folder, index) => ({ folder, index })),
     [normalizedFolders],

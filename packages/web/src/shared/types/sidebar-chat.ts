@@ -53,7 +53,6 @@ export interface SidebarProps {
   activeDmIdParam?: string | null;
   sidebarDms?: Extract<SidebarChat, { type: "dm" }>[];
   sidebarChats?: SidebarChat[];
-  // Признак загрузки списка чатов выбранной папки.
   sidebarChatsLoading?: boolean;
 }
 
@@ -75,17 +74,11 @@ export interface StreamEntryInternal {
   lastMessageSenderName?: string;
   time: string;
   ts: number;
-  // Что делает: локальный признак архивированного канала для фильтрации sidebar.
   isArchived?: boolean;
-  // Что делает: id создателя канала (metadata из подписок/streams API).
   creatorId?: number;
-  // Что делает: флаг приватности канала из metadata подписок.
   inviteOnly?: boolean;
-  // Что делает: channel-level group-setting для добавления участников.
   canAddSubscribersGroup?: ZulipGroupSettingValue;
-  // Что делает: channel-level group-setting для удаления участников.
   canRemoveSubscribersGroup?: ZulipGroupSettingValue;
-  // Что делает: channel-level group-setting админов канала.
   canAdministerChannelGroup?: ZulipGroupSettingValue;
   canResolveTopicsGroup?: ZulipGroupSettingValue;
   topics: Map<

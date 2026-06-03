@@ -1,10 +1,9 @@
-// Файл с централизованной политикой загрузки статуса пользователей.
-// Простыми словами: сюда попадает любая попытка "подгрузить статус",
-// а дальше мы уже сами решаем:
-// - можно ли сейчас идти в сеть (TTL/backoff),
-// - не летит ли уже такой же запрос (dedup),
-// - в каком порядке запускать запросы (очередь + приоритет),
-// - как записать результат/ошибку в store.
+/**
+ * Central policy for on-demand user status loads.
+ *
+ * Every fallback status request flows here: TTL/backoff, in-flight dedup,
+ * priority queue, and store/IDB writes are applied in one place.
+ */
 
 import { getCurrentInstance } from "~/shared/api/client";
 import { getUserStatusCacheRow, putUserStatusCacheRow } from "~/shared/lib/user-status-cache-db";
@@ -21,49 +20,28 @@ function getSuccessTtlMs(reason: UserStatusRequestReason | undefined): number {
   if (reason === "dm_header") return 60_000;
   return 5 * 60_000;
 }
-// После 400 (невалидный пользователь) долго не повторяем запрос.
-// Это и есть negative cache.
 const STATUS_INVALID_USER_BACKOFF_MS = 24 * 60 * 60_000;
-// Для временной ошибки ставим короткий backoff и пробуем позже.
 const STATUS_TRANSIENT_ERROR_RETRY_MS = 5 * 60_000;
-// Сколько запросов к статусам можно выполнять одновременно.
 const STATUS_MAX_CONCURRENT_REQUESTS = 2;
 
-// Карта in-flight запросов:
-// key = instanceId:userId, value = Promise текущего запроса.
-// Нужна, чтобы не запускать дубликаты параллельно.
 const statusRequestCache = new Map<string, Promise<void>>();
 
-// Внутренняя структура одной задачи в очереди.
 interface StatusQueueItem {
-  // Тот же ключ, что и в statusRequestCache.
   key: string;
-  // Какому пользователю грузим статус.
   userId: number;
-  // Резолвим промис, когда задача завершилась успешно.
   resolve: () => void;
-  // Реджектим промис, если внутри была ошибка выполнения.
   reject: (error: unknown) => void;
 }
 
-// Две очереди: важные задачи и фоновые.
 const highPriorityQueue: StatusQueueItem[] = [];
 const lowPriorityQueue: StatusQueueItem[] = [];
-// Счетчик, сколько задач сейчас выполняется.
 let activeStatusRequests = 0;
 
-// Собираем ключ запроса с учетом инстанса, чтобы не смешивать данные
-// между разными организациями в мульти-аккаунт режиме.
 function getStatusRequestKey(userId: number): string {
   const instanceId = getCurrentInstance()?.id ?? "no-instance";
   return `${instanceId}:${userId}`;
 }
 
-// Решаем, можно ли пропустить запрос прямо сейчас.
-// Возвращает true, если:
-// - действует backoff после ошибки
-// - или статус еще свежий по TTL
-// force=true отключает эти ограничения.
 function shouldSkipRequest(
   user: UserRecord,
   now: number,
@@ -79,7 +57,6 @@ function shouldSkipRequest(
   return user.statusFetchedAt != null && now - user.statusFetchedAt < ttl;
 }
 
-// Кладем задачу в нужную очередь по приоритету.
 function enqueueStatusRequest(item: StatusQueueItem, options: RequestUserStatusOptions): void {
   if (options.priority === "high") {
     highPriorityQueue.push(item);
@@ -88,16 +65,10 @@ function enqueueStatusRequest(item: StatusQueueItem, options: RequestUserStatusO
   lowPriorityQueue.push(item);
 }
 
-// Берем следующую задачу:
-// сначала high-priority, потом low-priority.
 function nextStatusRequestItem(): StatusQueueItem | undefined {
   return highPriorityQueue.shift() ?? lowPriorityQueue.shift();
 }
 
-// Записываем результат запроса в store:
-// - успех => статус готов
-// - invalid_user => длинный backoff
-// - transient_error => короткий retry backoff
 function applyFetchOutcome(userId: number, outcome: StatusFetchOutcome): void {
   if (outcome.kind === "ok") {
     const fetchedAt = Date.now();
@@ -130,8 +101,6 @@ function applyFetchOutcome(userId: number, outcome: StatusFetchOutcome): void {
   });
 }
 
-// Запасная ветка для исключений (например, throw в fetch-функции).
-// Считаем это временной ошибкой и ставим retry окно.
 function applyTransientFailure(userId: number): void {
   useUsersStore.getState().setStatusFetchMeta(userId, {
     fetchState: "error",
@@ -141,11 +110,6 @@ function applyTransientFailure(userId: number): void {
   });
 }
 
-// Обрабатывает одну задачу из очереди:
-// 1) ставим loading
-// 2) выполняем реальный сетевой fetch
-// 3) применяем итог в store
-// 4) чистим in-flight cache и освобождаем слот параллелизма
 async function processStatusQueueItem(
   item: StatusQueueItem,
   fetchUserStatusDetailed: FetchUserStatusDetailed,
@@ -168,8 +132,6 @@ async function processStatusQueueItem(
   }
 }
 
-// "Двигатель" очереди.
-// Пока есть свободные слоты по параллелизму, запускаем следующие задачи.
 function pumpStatusRequestQueue(fetchUserStatusDetailed: FetchUserStatusDetailed): void {
   while (activeStatusRequests < STATUS_MAX_CONCURRENT_REQUESTS) {
     const nextItem = nextStatusRequestItem();
@@ -183,26 +145,20 @@ function pumpStatusRequestQueue(fetchUserStatusDetailed: FetchUserStatusDetailed
   }
 }
 
-// Главная публичная функция оркестратора.
-// Это единая точка, через которую надо запрашивать fallback-статус.
-// Здесь собрана вся политика: валидация -> skip -> dedup -> queue.
 export async function requestUserStatusWithPolicy(
   userId: number,
   options: RequestUserStatusOptions | undefined,
   fetchUserStatusDetailed: FetchUserStatusDetailed,
 ): Promise<void> {
-  // Защита от невалидного id.
   if (!Number.isFinite(userId) || userId <= 0) {
     return;
   }
 
-  // Без активного инстанса сеть не дергаем.
   const instance = getCurrentInstance();
   if (!instance?.realm || !instance.email || !instance.apiKey) {
     return;
   }
 
-  // Фоллбек работает только для пользователей, которые уже есть в store.
   let user = useUsersStore.getState().getUser(userId);
   if (!user) {
     return;
@@ -230,7 +186,6 @@ export async function requestUserStatusWithPolicy(
     return;
   }
 
-  // Если такой же запрос уже выполняется, просто ждем его.
   const key = getStatusRequestKey(userId);
   const inFlight = statusRequestCache.get(key);
   if (inFlight) {
@@ -243,7 +198,6 @@ export async function requestUserStatusWithPolicy(
     pumpStatusRequestQueue(fetchUserStatusDetailed);
   });
 
-  // Регистрируем in-flight, чтобы дубликаты не ушли в сеть.
   statusRequestCache.set(key, promise);
   await promise;
 }

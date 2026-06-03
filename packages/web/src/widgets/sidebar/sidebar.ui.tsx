@@ -19,12 +19,10 @@ import { SidebarStreamList } from "./sidebar-stream-list.ui";
 import { getStreamChats, isSidebarSystemFolderScope } from "./sidebar.lib";
 import type { SidebarChat, SidebarUiProps } from "./sidebar.types";
 
-// Убирает org-префикс, чтобы дальше одинаково разбирать пути с /org/:id и без него.
 function stripOrgPrefix(pathname: string): string {
   return pathname.replace(/^\/org\/[^/]+(?=\/|$)/, "");
 }
 
-// Безопасный decode сегмента пути: не роняем UI на битом %encoding.
 function decodePathSegment(value: string): string {
   try {
     return decodeURIComponent(value);
@@ -84,8 +82,7 @@ export const Sidebar: React.FC<SidebarUiProps> = ({
   const activeStreamSlug = activeStreamSlugProp ?? streamSlug ?? null;
   const activeTopic = activeTopicProp ?? topicName ?? null;
   const activeDmIdParam = activeDmIdParamProp ?? dmIdParamFromRoute ?? null;
-  // route* значения используются только для route-sync.
-  // Приоритет: явные пропсы -> parsed pathname.
+  // Route-sync: props override pathname parse.
   const routeStreamSlug = activeStreamSlug ?? extractStreamSlugFromPath(location.pathname);
   const routeDmIdParam = activeDmIdParam ?? extractDmIdFromPath(location.pathname);
   const activityOpen = useSidebarConfigStore((s) => s.activityOpen);
@@ -103,8 +100,7 @@ export const Sidebar: React.FC<SidebarUiProps> = ({
   const users = useUsersStore((s) => s.users);
 
   useEffect(() => {
-    // Route-sync раскрытий:
-    // stream -> оставить только целевой, dm/non-chat -> свернуть все.
+    // Route-sync expansions: stream -> target only; dm/other -> collapse all.
     if (routeStreamSlug != null && routeStreamSlug !== "") {
       collapseExpandedStreamsExcept(routeStreamSlug);
       return;

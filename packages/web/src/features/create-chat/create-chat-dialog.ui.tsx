@@ -8,23 +8,22 @@ import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { useCreateChatDialog } from "./create-chat-dialog.hook";
 import type { CreateChatDialogProps } from "./create-chat-dialog.types";
 
-// Единый стиль полей в диалоге: убираем глобальный focus-outline и подсвечиваем рамку аккуратно.
+// Dialog field styling: no global focus ring, accent border on focus.
 const CREATE_CHAT_TEXT_INPUT_CLASS =
   "w-full rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted transition-colors focus:border-accent focus-visible:outline-none focus-visible:ring-0";
 
-// Прокручиваемый список строк: общая рамка обёртки; без подложки и без линий между строками.
+// Scrollable list wrapper — bordered, no row dividers.
 const CREATE_CHAT_LIST_SCROLL_BASE_CLASS = "overflow-y-auto rounded-lg border border-border-subtle";
 
-// Интерактивная строка списка: тот же токен, что и строки сайдбара (`sidebarRowClass`).
-// Важно: фон модалки — bg-elevated; hover:bg-bg-elevated совпадал с подложкой и почти не был виден.
+// List row — same hover token as sidebar; modal bg is bg-elevated so hover must differ.
 const CREATE_CHAT_LIST_ROW_CLASS =
   "flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-sm text-text-primary transition-colors hover:bg-sidebar-hover";
 
-// Составная строка (архив и т.п.): подсветка всей полосы, не только левой кнопки.
+// Composite row (archive): highlight full strip, not just the left button.
 const CREATE_CHAT_LIST_COMPOSITE_ROW_CLASS =
   "flex w-full items-stretch gap-2 transition-colors hover:bg-sidebar-hover";
 
-// Нижняя панель: вне скролла, одна линия действий на всех вкладках.
+// Footer pinned below scroll area — shared actions across tabs.
 const CREATE_CHAT_FOOTER_CLASS =
   "border-border-subtle bg-bg-elevated flex shrink-0 justify-end gap-2 border-t px-4 py-3";
 
@@ -36,9 +35,7 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
   onChannelCreated,
 }) => {
   const vm = useCreateChatDialog({ open, onNavigateDm, onChannelCreated });
-  // Что делает: в разделе создания канала рендерим три независимых чекбокса:
-  // `inviteOnly` (приватность), `channelAnnounce` (только анонс ботом),
-  // `channelAnnouncementOnly` (реальное ограничение прав публикации).
+  // Three independent channel checkboxes: inviteOnly, channelAnnounce (bot notification), channelAnnouncementOnly (posting policy).
 
   const handleOpenArchivedChannel = useCallback(
     (streamId: number, streamName: string) => {
@@ -146,7 +143,7 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
         </button>
       </div>
 
-      {/* Скролл только у середины; нижняя полоса с действиями закреплена под всеми вкладками */}
+      {/* Middle scrolls; action footer pinned below all tabs */}
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-2 pt-4">
           {vm.tab === "dm" && (
@@ -460,7 +457,7 @@ interface ArchivedChannelRowProps {
   onUnarchive: (streamId: number) => Promise<void>;
 }
 
-/** Строка архивированного канала: клик по области открывает чат, отдельная кнопка — только разархивирование. */
+/** Archived channel row: row click opens chat; unarchive button is separate. */
 const ArchivedChannelRow = React.memo<ArchivedChannelRowProps>(function ArchivedChannelRow({
   streamId,
   name,
@@ -476,7 +473,7 @@ const ArchivedChannelRow = React.memo<ArchivedChannelRowProps>(function Archived
 
   const handleUnarchiveClick = useCallback(
     (event: React.MouseEvent<HTMLButtonElement>) => {
-      // Что делает: не даём клику «всплыть» до кнопки-строки, иначе уйдём в канал и стартанём unarchive одновременно.
+      // Stop propagation so row click and unarchive do not fire together.
       event.stopPropagation();
       void onUnarchive(streamId);
     },

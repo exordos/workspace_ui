@@ -1,5 +1,5 @@
-// Регрессия: overlay должен вызывать один и тот же набор хуков
-// и в закрытом, и в открытом состоянии, чтобы не нарушать Rules of Hooks.
+// Regression: overlay must call the same hook set
+// in both closed and open states to satisfy Rules of Hooks.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MediaViewerOverlay } from "./media-viewer-overlay.ui";

@@ -1,4 +1,4 @@
-// Корневой layout приложения: собирает shell, стор-оркестрацию и фоновые синки для активного инстанса.
+// Root app layout: shell, store orchestration, background syncs for the active instance.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { enrichSidebarChatsWithMentionFlags } from "~/entities/chat-list/chat-list-sidebar-mention-enrich.lib";
@@ -278,8 +278,8 @@ export const Layout: React.FC = () => {
     setCurrentUserStatus,
   });
 
-  // После zulip: clear/hydrate для нового instanceId уже отработали — не подписываемся на persist раньше,
-  // иначе в IDB уйдёт пустой снимок под ключ новой организации (см. layout-chat-list-snapshot-sync.lib).
+  // Subscribe to persist only after clear/hydrate for the new instanceId —
+  // otherwise an empty snapshot overwrites the org key in IDB (see layout-chat-list-snapshot-sync.lib).
   useLayoutChatListSnapshotSync(currentInstanceId);
   useLayoutMuteSnapshotSync(currentInstanceId);
   useLayoutResetRightDrawerOnInstanceChange({ currentInstanceId, closeRightDrawer });

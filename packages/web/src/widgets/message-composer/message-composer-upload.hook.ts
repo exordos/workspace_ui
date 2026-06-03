@@ -54,11 +54,9 @@ export function useMessageComposerUpload(options: {
 } {
   const { disabled, uploadProgress } = options;
 
-  // files — отдельное состояние вложений композера (не связано с текстом сообщения).
   const [files, setFiles] = useState<File[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
-  // Сессия выбора файла: 1 открытие picker = 1 сессия.
-  // В рамках одной сессии файлы должны добавиться ровно один раз.
+  // One picker open = one session; commit selected files at most once per session.
   const fileSelectionSessionRef = useRef<FileSelectionSessionState>({
     sessionId: 0,
     handled: false,
@@ -111,7 +109,6 @@ export function useMessageComposerUpload(options: {
     [disabled],
   );
 
-  // Вызывается перед showPicker/click: стартуем новую сессию выбора.
   const beginFileSelectionSession = useCallback(() => {
     fileSelectionSessionRef.current = {
       sessionId: fileSelectionSessionRef.current.sessionId + 1,
@@ -120,10 +117,7 @@ export function useMessageComposerUpload(options: {
     };
   }, []);
 
-  // Возвращает активную сессию для события.
-  // После завершенной сессии auto-create разрешаем только для change:
-  // это позволяет поддержать повторный выбор того же файла без явного клика в тестах/фолбэках,
-  // но не запускать новую сессию от "позднего" input-события.
+  // After a handled session, auto-start a new session only for `change` (re-select same file; ignore late `input`).
   const getSessionForEvent = useCallback((eventType: string): FileSelectionSessionState | null => {
     const currentSession = fileSelectionSessionRef.current;
     if (!currentSession.handled) {
@@ -141,7 +135,6 @@ export function useMessageComposerUpload(options: {
     return nextSession;
   }, []);
 
-  // Коммитит выбранные файлы только один раз для конкретной сессии.
   const commitSelectionForSession = useCallback(
     (sessionId: number, selectedFiles: File[]): boolean => {
       const currentSession = fileSelectionSessionRef.current;
@@ -175,14 +168,12 @@ export function useMessageComposerUpload(options: {
       }
       const sessionId = activeSession.sessionId;
       if (e.type === "input") {
-        // input сохраняем как pending: change считается основным сигналом,
-        // но на платформах без change мы все равно должны добавить файлы.
+        // Prefer `change`; platforms without it commit from `input` in a microtask.
         fileSelectionSessionRef.current = {
           sessionId,
           handled: false,
           pendingInputFiles: selectedFiles,
         };
-        // Даем change шанс сработать первым; если его нет, добавляем файлы из input в microtask.
         void Promise.resolve().then(() => {
           const currentSession = fileSelectionSessionRef.current;
           if (currentSession.sessionId !== sessionId || currentSession.handled) return;
@@ -193,7 +184,6 @@ export function useMessageComposerUpload(options: {
         });
         return;
       }
-      // change коммитим сразу: это финальный сигнал изменения input[type=file].
       commitSelectionForSession(sessionId, selectedFiles);
       inputElement.value = "";
     },

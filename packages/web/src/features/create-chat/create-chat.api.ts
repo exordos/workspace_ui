@@ -4,9 +4,8 @@
  * DM: just navigate to /dm/<userId> — no explicit "create" API needed.
  * Group: same — navigate to /dm/<id1>,<id2>,... with first message.
  * Channel: POST /channels/create to create and subscribe.
- * Разархивирование: PATCH /streams/{stream_id} с `is_archived=false` (делегирование в shared `unarchiveStream`).
- *
- * Также здесь же: списки каналов и unsubscribe для управляющих сценариев.
+ * Unarchive: PATCH /streams/{stream_id} with is_archived=false (delegates to shared unarchiveStream).
+ * Also: channel listing and unsubscribe for management flows.
  */
 
 import { zulipApi } from "~/shared/api/client";
@@ -37,33 +36,29 @@ export async function createChannel(params: {
   }
 
   try {
-    // Что делает: формирует payload строго под новый Zulip endpoint `/channels/create`.
-    // В отличие от старого `/users/me/subscriptions` тут передаются `name` и `description`
-    // на верхнем уровне, а не внутри массива `subscriptions`.
+    // `/channels/create` payload: name/description at top level (not inside subscriptions[]).
     const body: Record<string, string> = {
       name: params.name.trim(),
       description: params.description ?? "",
     };
 
     if (params.inviteOnly) {
-      // Что делает: включает private channel режим (invite-only).
+      // Invite-only private channel.
       body.invite_only = "true";
     }
 
     if (params.announce != null) {
-      // Что делает: управляет только уведомлением от notification bot о создании канала.
-      // Это НЕ настройка прав публикации.
+      // Notification-bot announce only — not posting policy.
       body.announce = String(params.announce);
     }
 
     if (params.subscribers.length > 0) {
-      // Что делает: передает initial список пользователей, которых подписываем при создании.
+      // Initial subscriber list at create time.
       body.subscribers = JSON.stringify(params.subscribers);
     }
 
     if (params.canSendMessageGroup != null) {
-      // Что делает: задает политику "кто может писать" через `can_send_message_group`.
-      // Zulip принимает либо id группы (integer), либо объект `{ direct_members, direct_subgroups }`.
+      // Posting policy via can_send_message_group (group id or direct_members/direct_subgroups object).
       body.can_send_message_group =
         typeof params.canSendMessageGroup === "number"
           ? String(params.canSendMessageGroup)
@@ -74,8 +69,7 @@ export async function createChannel(params: {
 
     if (res.ok) {
       log.info("Channel created", { name: params.name });
-      // Что делает: для `/channels/create` stream id приходит в поле `id`.
-      // Если сервер не вернул id, оставляем безопасный fallback `0`.
+      // `/channels/create` returns stream id in `id`; fallback 0 if missing.
       const data = res.data as { id?: unknown };
       const streamId = typeof data.id === "number" && Number.isInteger(data.id) ? data.id : 0;
       return { streamId };
@@ -89,12 +83,12 @@ export async function createChannel(params: {
   }
 }
 
-/** Результат операции разархивирования канала (тонкая обёртка над Zulip PATCH). */
+/** Unarchive channel result (thin wrapper over Zulip PATCH). */
 export type UnarchiveChannelResult = UnarchiveStreamResult;
 
 /**
- * Снимает архив с канала: PATCH /streams/{stream_id} с is_archived=false.
- * Ошибки совместимости (ignored_parameters_unsupported) классифицируются внутри unarchiveStream.
+ * Unarchive channel: PATCH /streams/{stream_id} with is_archived=false.
+ * Compatibility errors (ignored_parameters_unsupported) are classified inside unarchiveStream.
  */
 export async function unarchiveChannel(streamId: number): Promise<UnarchiveChannelResult> {
   guard.streamId(streamId, "unarchiveChannel.streamId");

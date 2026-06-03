@@ -1,11 +1,11 @@
 /**
- * Тесты для доменного модуля auth-idle-timeout.
+ * Tests for the auth-idle-timeout domain module.
  *
- * Проверяют корректность:
- * - конвертации пресетов в миллисекунды;
- * - обработки специального пресета `never`;
- * - runtime-валидации входных значений;
- * - fallback-логики при невалидных данных.
+ * Covers:
+ * - preset-to-milliseconds conversion;
+ * - special `never` preset handling;
+ * - runtime input validation;
+ * - fallback logic for invalid data.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -15,9 +15,9 @@ import {
   resolveAuthIdleTimeout,
 } from "./auth-idle-timeout.lib";
 
-/** Набор unit-тестов на единый источник истины для idle timeout пресетов. */
+/** Unit tests for the single source of truth for idle timeout presets. */
 describe("auth idle timeout lib", () => {
-  /** Каждый поддерживаемый пресет должен иметь предсказуемое значение в миллисекундах. */
+  /** Each supported preset maps to a predictable millisecond value. */
   it("converts each preset to expected milliseconds", () => {
     expect(authIdleTimeoutToMs("6h")).toBe(6 * 60 * 60 * 1000);
     expect(authIdleTimeoutToMs("12h")).toBe(12 * 60 * 60 * 1000);
@@ -26,17 +26,17 @@ describe("auth idle timeout lib", () => {
     expect(authIdleTimeoutToMs("7d")).toBe(7 * 24 * 60 * 60 * 1000);
   });
 
-  /** Специальный пресет `never` обязан отключать guard через null. */
+  /** The `never` preset must disable the guard via null. */
   it("returns null for never preset", () => {
     expect(authIdleTimeoutToMs("never")).toBeNull();
   });
 
-  /** Публичный список пресетов должен совпадать с поддерживаемым доменным набором. */
+  /** Public preset list must match the supported domain set. */
   it("contains all supported presets", () => {
     expect(AUTH_IDLE_TIMEOUT_PRESETS).toEqual(["6h", "12h", "24h", "3d", "7d", "never"]);
   });
 
-  /** Type guard должен принимать только допустимые строковые значения пресета. */
+  /** Type guard accepts only valid preset string values. */
   it("accepts only valid auth idle timeout values", () => {
     expect(isAuthIdleTimeout("6h")).toBe(true);
     expect(isAuthIdleTimeout("never")).toBe(true);
@@ -48,7 +48,7 @@ describe("auth idle timeout lib", () => {
     expect(isAuthIdleTimeout({})).toBe(false);
   });
 
-  /** Resolver должен возвращать fallback, если входное значение невалидно. */
+  /** Resolver returns fallback when input is invalid. */
   it("falls back when provided value is invalid", () => {
     expect(resolveAuthIdleTimeout("24h", "3d")).toBe("24h");
     expect(resolveAuthIdleTimeout("bad", "3d")).toBe("3d");

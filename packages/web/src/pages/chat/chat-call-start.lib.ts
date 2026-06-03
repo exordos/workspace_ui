@@ -37,9 +37,7 @@ export interface StartCallFromHeaderResult {
 }
 
 /**
- * Единый сценарий старта звонка из хедера:
- * 1) отправить call-сообщение в чат,
- * 2) для 1:1 DM сразу открыть модалку звонка после успешной отправки.
+ * Header call start: send call message, then auto-open modal for 1:1 DMs after success.
  */
 export async function startCallFromHeader(
   input: StartCallFromHeaderInput,
@@ -74,7 +72,7 @@ export async function startCallFromHeader(
     const newMessage = await input.sendMessage(payload);
     input.appendMessageToStore(newMessage);
 
-    // Важно: автооткрытие применяем строго к 1:1 DM.
+    // Auto-open strictly for 1:1 DMs only.
     if (input.isOneToOneDm) {
       input.openModal(url, input.callRoomChatLabel ?? input.fallbackDmPartnerLabel);
     }

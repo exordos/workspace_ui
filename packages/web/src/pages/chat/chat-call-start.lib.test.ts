@@ -45,7 +45,7 @@ describe("startCallFromHeader", () => {
 
     expect(result).toEqual({ ok: true, error: null });
     expect(input.sendMessage).toHaveBeenCalledTimes(1);
-    // Проверяем, что в чат сначала уходит call-сообщение, а затем открывается модалка.
+    // Assert: call message is sent first, then the modal opens.
     expect(input.appendMessageToStore).toHaveBeenCalledTimes(1);
     expect(input.openModal).toHaveBeenCalledWith("https://meet.jit.si/room-1", "Slon");
   });
@@ -58,7 +58,7 @@ describe("startCallFromHeader", () => {
 
     expect(result).toEqual({ ok: false, error: "network down" });
     expect(input.appendMessageToStore).not.toHaveBeenCalled();
-    // При ошибке отправки нельзя открывать модалку — иначе UX расходится с реальным состоянием.
+    // On send failure, do not open the modal — UX must match actual state.
     expect(input.openModal).not.toHaveBeenCalled();
   });
 

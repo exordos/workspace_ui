@@ -1,5 +1,6 @@
-// Файл с парсерами ответов user API.
-// Здесь только преобразование DTO -> доменная модель UserStatus.
+/**
+ * Parsers for user API responses — DTO to domain `UserStatus` only.
+ */
 
 import type { UserStatus, UserStatusReactionType } from "../user.model";
 import type {
@@ -8,17 +9,15 @@ import type {
   ZulipUpdateOwnStatusResponse,
 } from "./user.api.types";
 
-// Проверяем, что тип emoji поддерживается приложением.
 function isReactionType(value: string | undefined): value is UserStatusReactionType {
   return value === "unicode_emoji" || value === "realm_emoji" || value === "zulip_extra_emoji";
 }
 
-// true, если сервер вернул BAD_REQUEST для невалидного пользователя.
+/** True when Zulip returned BAD_REQUEST for an invalid/deactivated user id. */
 export function isBadRequestError(data: ZulipApiResultEnvelope): boolean {
   return data.code === "BAD_REQUEST";
 }
 
-// Строгий парсер payload из GET /users/{id}/status.
 export function normalizeGetUserStatusPayload(
   payload: ZulipGetUserStatusPayload | null | undefined,
 ): UserStatus | null {
@@ -45,7 +44,6 @@ export function normalizeGetUserStatusPayload(
   };
 }
 
-// Парсер ответа POST /users/me/status.
 export function normalizeOwnStatusResponse(data: ZulipUpdateOwnStatusResponse): UserStatus | null {
   if (data.result === "error") {
     return null;

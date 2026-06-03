@@ -41,7 +41,7 @@ describe("CreateChatDialog", () => {
       target: { value: "engineering" },
     });
 
-    // Что проверяет: UI явно блокирует создание до загрузки профиля автора.
+    // Assert: UI explicitly blocks creation until author profile loads.
     const createButton = screen.getByRole("button", { name: "Create" });
     expect(createButton).toBeDisabled();
     expect(

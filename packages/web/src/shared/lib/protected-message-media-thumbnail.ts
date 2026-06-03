@@ -1,7 +1,9 @@
-// URL миниатюры для Zulip user-upload, то есть preview, который сервер генерирует в WebP.
-//
-// Полный файл: `{optional prefix}/user_uploads/{id}/{shard}/{name}.png`
-// Миниатюра: `{same prefix}/user_uploads/thumbnail/{id}/{shard}/{name}.png/840x560.webp`
+/**
+ * Zulip user-upload thumbnail URLs (server-generated WebP previews).
+ *
+ * Full: `{prefix}/user_uploads/{id}/{shard}/{name}.png`
+ * Thumb: `{prefix}/user_uploads/thumbnail/{id}/{shard}/{name}.png/840x560.webp`
+ */
 
 import { collapseDuplicateWorkspaceV1InUrl } from "~/shared/lib/user-uploads-url.lib";
 
@@ -9,17 +11,13 @@ const USER_UPLOAD_IMAGE_EXT = /\.(apng|avif|bmp|gif|jpe?g|png|svg|webp)(\?|#|$)/
 
 export const USER_UPLOAD_THUMBNAIL_SIZE = "840x560.webp";
 
-// Исходный размер в пикселях у серверной миниатюры Zulip: `840x560.webp`.
 export const USER_UPLOAD_THUMBNAIL_INTRINSIC_WIDTH = 840;
 export const USER_UPLOAD_THUMBNAIL_INTRINSIC_HEIGHT = 560;
 
-// Резервируем `width`/`height` у встроенного `<img>` внутри bubble с тем же aspect ratio,
-// что и у миниатюры Zulip 840×560, но масштабируем под максимальную высоту 160px.
+/** Display dimensions scaled from 840×560 to max height 160px inside bubbles. */
 export const USER_UPLOAD_THUMBNAIL_DISPLAY_MAX_WIDTH = 240;
 export const USER_UPLOAD_THUMBNAIL_DISPLAY_MAX_HEIGHT = 160;
 
-// Проверяет, похож ли путь на image user-upload,
-// то есть можно ли для него строить URL серверной миниатюры.
 export function isUserUploadImagePath(src: string): boolean {
   const v = src.trim();
   if (!v.includes("/user_uploads/")) return false;
@@ -35,8 +33,6 @@ export function isUserUploadThumbnailUrl(url: string): boolean {
 
 const PATH_BEFORE_USER_UPLOADS = /^(.*?)\/user_uploads\/(?!thumbnail\/)(.+)$/;
 
-// Строит URL миниатюры для полного image URL из user-upload.
-// Если это уже миниатюра или путь не удалось распарсить, возвращает `fullUrl` как есть.
 export function toUserUploadThumbnailUrl(fullUrl: string): string {
   const trimmed = collapseDuplicateWorkspaceV1InUrl(fullUrl);
   if (trimmed.length === 0 || isUserUploadThumbnailUrl(trimmed)) {

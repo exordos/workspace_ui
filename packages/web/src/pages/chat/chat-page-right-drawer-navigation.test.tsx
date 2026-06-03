@@ -13,7 +13,7 @@ const RightDrawerHeaderHarness: React.FC = () => {
   const openRightDrawerUserProfile = useRightDrawerStore((s) => s.openUserProfile);
 
   const handleOpenRightPanel = useCallback(() => {
-    // Поведение ChatPage: клик по шапке всегда возвращает на инфо чата.
+    // ChatPage behavior: header click always returns to chat info.
     openRightDrawerInfo();
   }, [openRightDrawerInfo]);
 

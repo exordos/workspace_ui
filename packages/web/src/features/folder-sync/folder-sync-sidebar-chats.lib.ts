@@ -20,8 +20,7 @@ export interface SelectedFolderSidebarProjectionInput {
   isStreamMuted?: (streamId: number) => boolean;
 }
 
-// Зачем: из folder items приходит набор chat_id в разных форматах, который нужен для быстрого membership-check.
-// Что делает: нормализует все chat_id через alias-правила и складывает их в Set.
+// Normalize folder-item chat_ids (multiple formats) into a Set for fast membership checks.
 export function toChatIdSet(items: readonly FolderItemForClient[]): Set<string> {
   const chatIdSet = new Set<string>();
   for (const item of items) {
@@ -30,8 +29,7 @@ export function toChatIdSet(items: readonly FolderItemForClient[]): Set<string> 
   return chatIdSet;
 }
 
-// Зачем: sidebar рендерится из единой проекции выбранной папки, чтобы поиск/навигация/список были согласованы.
-// Что делает: строит итоговый список чатов для выбранной папки с учетом folder items, fallback и фильтрации DM.
+// Single projection for the selected folder keeps search, navigation, and list in sync.
 export function buildSelectedFolderSidebarChats(
   input: SelectedFolderSidebarProjectionInput,
 ): SidebarChat[] {
@@ -53,8 +51,7 @@ export function buildSelectedFolderSidebarChats(
   return buildCustomFolderSidebarChats(input);
 }
 
-// Зачем: системные папки рендерятся синтетически и не должны показывать loader при выборке items.
-// Что делает: возвращает флаг loading для sidebar в зависимости от типа выбранной папки.
+// System folders are synthetic — never show an items loader for them.
 export function resolveSelectedFolderSidebarLoading(
   selectedFolderId: string,
   loading: boolean,

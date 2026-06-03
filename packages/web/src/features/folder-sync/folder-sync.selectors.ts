@@ -10,7 +10,7 @@ interface FolderSyncSidebarLoadingState {
 }
 
 export function selectSidebarChatsLoading(state: FolderSyncSidebarLoadingState): boolean {
-  // Единая вычисляемая логика loading для списка чатов в выбранной папке.
+  // Shared loading logic for sidebar chats in the selected folder.
   if (resolveSelectedFolderSidebarLoading(state.selectedFolderId, state.loading)) {
     return true;
   }

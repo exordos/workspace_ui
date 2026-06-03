@@ -21,7 +21,7 @@ export const FolderQuickList: React.FC<FolderQuickListProps> = React.memo(functi
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [query, setQuery] = useState("");
-  // null означает "активный элемент не зафиксирован вручную", используем вычисление по selectedFolderId.
+  // null = keyboard highlight not pinned; derive from selectedFolderId.
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const activeItemRef = useRef<HTMLButtonElement | null>(null);
@@ -48,7 +48,6 @@ export const FolderQuickList: React.FC<FolderQuickListProps> = React.memo(functi
 
   const openQuickList = useCallback(() => {
     setMenuOpen(true);
-    // При открытии всегда сбрасываем ручной индекс, чтобы стартовать из актуального selected.
     setActiveIndex(null);
   }, []);
 
@@ -59,7 +58,7 @@ export const FolderQuickList: React.FC<FolderQuickListProps> = React.memo(functi
 
   useEffect(() => {
     if (!menuOpen) return;
-    // Фокус ставим в следующем кадре, чтобы контент меню успел смонтироваться.
+    // Defer focus until menu content mounts.
     const frameId = window.requestAnimationFrame(() => {
       searchInputRef.current?.focus();
       searchInputRef.current?.select();
@@ -73,10 +72,9 @@ export const FolderQuickList: React.FC<FolderQuickListProps> = React.memo(functi
       return -1;
     }
     if (activeIndex != null) {
-      // Защита от выхода индекса за границы после изменения фильтра.
       return Math.min(Math.max(activeIndex, 0), filteredFolders.length - 1);
     }
-    // Пока пользователь не двигал фокус стрелками, активируем текущую выбранную папку.
+    // Before arrow keys, highlight the selected folder.
     const selectedIndex = filteredFolders.findIndex(({ folder }) => folder.id === selectedFolderId);
     return selectedIndex >= 0 ? selectedIndex : 0;
   }, [activeIndex, filteredFolders, menuOpen, selectedFolderId]);
@@ -95,7 +93,7 @@ export const FolderQuickList: React.FC<FolderQuickListProps> = React.memo(functi
         setActiveIndex((currentIndex) => {
           if (filteredFolders.length === 0) return null;
           if (currentIndex == null || currentIndex < 0) {
-            // Первый ArrowDown двигает на следующий элемент относительно auto-выбранного.
+            // First ArrowDown steps from auto-selected index.
             return Math.min(Math.max(resolvedActiveIndex, 0) + 1, filteredFolders.length - 1);
           }
           return Math.min(currentIndex + 1, filteredFolders.length - 1);
@@ -107,7 +105,7 @@ export const FolderQuickList: React.FC<FolderQuickListProps> = React.memo(functi
         setActiveIndex((currentIndex) => {
           if (filteredFolders.length === 0) return null;
           if (currentIndex == null || currentIndex < 0) {
-            // Первый ArrowUp двигает на предыдущий элемент относительно auto-выбранного.
+            // First ArrowUp steps from auto-selected index.
             return Math.max(Math.max(resolvedActiveIndex, 0) - 1, 0);
           }
           return Math.max(currentIndex - 1, 0);
@@ -133,7 +131,6 @@ export const FolderQuickList: React.FC<FolderQuickListProps> = React.memo(functi
   const handleSearchChange = useCallback(
     (value: string) => {
       setQuery(value);
-      // При изменении запроса пересчитываем активный элемент заново из выбранной папки.
       setActiveIndex(null);
     },
     [setActiveIndex, setQuery],

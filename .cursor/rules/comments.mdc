@@ -106,8 +106,28 @@ One line if the function is simple. Multi-line JSDoc if:
 export function startZulipEventLoop(options: StartZulipEventLoopOptions): void {
 ```
 
-## Language
+## Language (mandatory)
 
-- Comments: **English** (for consistency with code, i18n keys, and the international team)
-- Exception: comments in i18n JSON files may be in Russian
-- TODO/FIXME: `// TODO: description` or `// FIXME: description`
+**All code comments must be in English.** This applies to every comment form:
+
+- `//` and `/* … */` inline/block comments
+- `/** … */` JSDoc and file/module headers
+- Section separators (`// Types`, `// ---`)
+- `// TODO:` / `// FIXME:` notes
+- CSS comment blocks in `*.css`
+
+```typescript
+// ❌ NEVER — non-English comment
+// Зачем: ограничиваем число батчей, чтобы не перегружать сеть
+
+// ✅ English, explains why
+// Cap batch count so background backfill does not saturate the network
+```
+
+**Exceptions (not code comments):**
+
+- User-facing UI strings — use `t("key")` in [`i18n/locales/`](packages/web/src/i18n/locales/) (Russian allowed in `ru.json`)
+- String literals that match external data (Zulip error messages, regex for locale-specific field names, test fixtures)
+- Optional translator notes in i18n JSON files
+
+When editing existing code, translate any non-English comment you touch or that remains in the file.

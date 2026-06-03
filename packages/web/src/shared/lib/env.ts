@@ -46,7 +46,7 @@ const avatarPersistIndexedDb = (() => {
 })();
 
 function parseBooleanEnvFlag(value: string, fallback: boolean): boolean {
-  // Что делает: единообразно парсит true/false и 1/0 из env, чтобы флаги не вели себя по-разному в разных местах.
+  // Consistent true/false and 1/0 parsing so feature flags behave the same everywhere.
   const normalized = value.trim().toLowerCase();
   if (normalized.length === 0) return fallback;
   if (normalized === "true" || normalized === "1") return true;

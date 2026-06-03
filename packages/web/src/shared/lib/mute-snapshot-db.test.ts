@@ -1,6 +1,6 @@
 /**
- * Тесты IndexedDB-слоя mute snapshot.
- * Зачем нужны: гарантируют корректный контракт persist/load/delete по ключу instanceId.
+ * Tests for the mute snapshot IndexedDB layer.
+ * Ensures the persist/load/delete contract keyed by instanceId.
  */
 import "fake-indexeddb/auto";
 import { afterEach, describe, expect, it } from "vitest";
@@ -14,10 +14,10 @@ import {
   persistMuteSnapshotRow,
 } from "~/shared/lib/mute-snapshot-db";
 
-// Тестовый ключ инстанса для проверки изоляции строк по instanceId.
+// Test instance key for verifying row isolation by instanceId.
 const INSTANCE = "inst-mute";
 
-// Очищает БД после каждого теста, чтобы сценарии не влияли друг на друга.
+// Clears the DB after each test so scenarios do not affect each other.
 afterEach(async () => {
   try {
     const db = await openMessageCacheDb();
@@ -34,7 +34,7 @@ afterEach(async () => {
 });
 
 describe("mute-snapshot-db", () => {
-  // Проверяет, что сохраненный snapshot читается обратно без потерь структуры/данных.
+  // Assert persisted snapshot round-trips without losing structure or data.
   it("persists and loads mute snapshot row by instance id", async () => {
     await openMessageCacheDb();
     await persistMuteSnapshotRow({
@@ -60,7 +60,7 @@ describe("mute-snapshot-db", () => {
     });
   });
 
-  // Проверяет, что delete действительно удаляет строку snapshot из objectStore.
+  // Assert delete removes the snapshot row from the object store.
   it("deletes snapshot row", async () => {
     await openMessageCacheDb();
     await persistMuteSnapshotRow({

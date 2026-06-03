@@ -1,8 +1,6 @@
-// Этот файл описывает работу с IndexedDB-кэшем сообщений.
-// Назначение:
-// - хранить сообщения локально для быстрого cold start;
-// - отдавать bootstrap-данные для UI до завершения серверного refresh;
-// - поддерживать retention по чатам, чтобы кэш не рос бесконечно.
+/**
+ * IndexedDB message cache for cold-start bootstrap and per-chat retention.
+ */
 import type { MockMessage, Reaction } from "~/shared/api/zulip.types";
 import { runMessageCacheDbUpgrade } from "~/shared/lib/message-cache-db-upgrade.lib";
 import { instanceChatKey } from "~/shared/lib/message-cache-keys.lib";
@@ -25,7 +23,6 @@ export const MESSAGE_CACHE_DB_VERSION = DB_VERSION;
 
 const IDB_DELETE_BLOCKED_TIMEOUT_MS = 3_000;
 
-// Размер retention по умолчанию, если caller явно не передал windowSizeN.
 export const MESSAGE_CACHE_DEFAULT_WINDOW_SIZE = ZULIP_DM_INITIAL_WINDOW_TOTAL;
 
 const STORE_MESSAGES = "messages";
@@ -34,10 +31,8 @@ const STORE_CHAT_META = "chatMeta";
 export const STORE_AVATAR_BLOBS = "avatarBlobs";
 
 export interface MessageCacheRow {
-  // Уникальный ключ строки сообщения.
   id: string;
   instanceId: string;
-  // Композитный ключ инстанса и чата.
   instanceChatKey: string;
   chatKey: string;
   messageId: number;
@@ -53,9 +48,7 @@ export interface ChatMetaRow {
   windowSizeN: number;
   lastEventIdApplied: number | null;
   lastSyncedAt: number | null;
-  // Для narrow больше нет старых сообщений на сервере.
   reachedOldest?: boolean;
-  // Для narrow больше нет новых сообщений на сервере.
   reachedNewest?: boolean;
 }
 
@@ -84,7 +77,7 @@ export function openMessageCacheDb(): Promise<IDBDatabase> {
   return dbPromise;
 }
 
-// Test helper: сбрасывает singleton после удаления БД.
+/** Test helper: resets singleton after database deletion. */
 export function resetMessageCacheDbSingletonForTests(): void {
   dbPromise = null;
 }
@@ -154,7 +147,6 @@ async function readAllMessagesInChat(
   });
 }
 
-// Возвращает сообщения чата в порядке возрастания message.id.
 export async function getChatMessagesAscending(
   instanceId: string,
   chatKey: string,
@@ -171,46 +163,25 @@ export async function getChatMessagesAscending(
   }
 }
 
-// Возвращает все кэшированные сообщения инстанса в порядке возрастания id.
-// Используется как best-effort bootstrap для страниц вне текущего чата.
+/** Best-effort bootstrap for pages outside the current chat. */
 export async function getInstanceMessagesAscending(instanceId: string): Promise<MockMessage[]> {
-  // В некоторых окружениях IndexedDB может быть недоступен
-  // (например, SSR, приватный режим браузера или отсутствие поддержки)
   if (!isIndexedDBAvailable()) return [];
 
   try {
     const db = await openMessageCacheDb();
 
     return await new Promise<MockMessage[]>((resolve, reject) => {
-      // Открываем store только для чтения
       const tx = db.transaction(STORE_MESSAGES, "readonly");
       const store = tx.objectStore(STORE_MESSAGES);
 
       /**
-       * Первичный ключ хранится в формате:
-       * `${instanceId}:${messageId}`
-       *
-       * Поэтому вместо полного сканирования всего store
-       * можно эффективно выбрать только сообщения
-       * нужного инстанса через диапазон ключей.
-       *
-       * Например для instanceId = "chat-1":
-       *
-       * Подойдут:
-       * chat-1:1
-       * chat-1:2
-       * chat-1:100
-       *
-       * Не подойдут:
-       * chat-2:1
+       * Primary keys are `${instanceId}:${messageId}` — range-scan by instance prefix
+       * avoids a full store scan. Lexicographic key order is not numeric message.id order
+       * (`1, 10, 100, 2`), so sort by id before returning for cache-first bootstrap.
        */
       const range = IDBKeyRange.bound(`${instanceId}:`, `${instanceId}:\uffff`);
 
-      // Открываем курсор только по сообщениям текущего инстанса
       const req = store.openCursor(range);
-
-      // Сразу собираем итоговый массив сообщений,
-      // чтобы избежать дополнительного map после чтения
       const messages: MockMessage[] = [];
 
       req.onerror = () => reject(idbError(req.error));
@@ -218,33 +189,24 @@ export async function getInstanceMessagesAscending(instanceId: string): Promise<
       req.onsuccess = () => {
         const cursor = req.result;
 
-        // Если записи закончились — нормализуем порядок по numeric message.id.
-        // Первичный ключ вида `${instanceId}:${messageId}` читается как строка,
-        // поэтому без явной сортировки курсор может вернуть лексикографический порядок
-        // (`1, 10, 100, 2`), что ломает cache-first bootstrap вне текущего чата.
         if (!cursor) {
           messages.sort((a, b) => a.id - b.id);
           resolve(messages);
           return;
         }
 
-        // Добавляем сообщение в результат
         const row = cursor.value as MessageCacheRow;
         messages.push(row.message);
 
-        // Переходим к следующей записи в диапазоне
         cursor.continue();
       };
     });
   } catch {
-    // Кэш используется как best-effort bootstrap,
-    // поэтому в случае ошибки просто возвращаем пустой массив
     return [];
   }
 }
 
-// Возвращает кэшированные сообщения по всем topic-partitions конкретного stream в рамках инстанса.
-// Используется для cache-first bootstrap stream-wide режима (`/stream/:slug`).
+/** Cache-first bootstrap for stream-wide mode (`/stream/:slug`). */
 export async function getStreamMessagesAscending(
   instanceId: string,
   streamId: number,
@@ -252,13 +214,11 @@ export async function getStreamMessagesAscending(
   if (!isIndexedDBAvailable()) return [];
   try {
     const db = await openMessageCacheDb();
-    // Что делает: формирует префикс диапазона для всех topic-partitions одного stream.
     const indexPrefix = instanceChatKey(instanceId, `stream:${streamId}:`);
     return await new Promise<MockMessage[]>((resolve, reject) => {
       const tx = db.transaction(STORE_MESSAGES, "readonly");
       const store = tx.objectStore(STORE_MESSAGES);
       const index = store.index("byChatOrder");
-      // Что делает: читает все записи вида `instance::stream:{id}:*` одним range-запросом.
       const range = IDBKeyRange.bound(
         [indexPrefix, 0],
         [`${indexPrefix}\uffff`, Number.MAX_SAFE_INTEGER],
@@ -283,7 +243,6 @@ export async function getStreamMessagesAscending(
   }
 }
 
-// Возвращает id сообщений, уже лежащих в кэше чата (нужно для dedupe пагинации).
 export async function getExistingMessageIdsInChat(
   instanceId: string,
   chatKey: string,
@@ -349,7 +308,6 @@ async function putChatMetaRow(db: IDBDatabase, row: ChatMetaRow): Promise<void> 
   });
 }
 
-// Применяет retention: удаляет самые старые сообщения сверх лимита.
 export async function applyRetentionForChat(
   instanceId: string,
   chatKey: string,
@@ -408,7 +366,6 @@ export interface UpsertChatMessagesResult {
   instanceChatKey: string;
 }
 
-// Upsert сообщений чата + применение retention.
 export async function upsertChatMessages(options: {
   instanceId: string;
   chatKey: string;

@@ -88,18 +88,15 @@ function renderZulipBlockSpoilerToken(this: MarkedSpoilerRendererContext, token:
   return `<div class="spoiler-block"><div class="spoiler-header">${headerHtml}</div><div class="spoiler-content">${blockHtml}</div></div>`;
 }
 
-// Расширение marked для локального fallback-рендера:
-// превращает `||secret||` в интерактивный inline-элемент спойлера для bubble.
+/** Bubble fallback: `||secret||` → inline spoiler element. */
 const INLINE_SPOILER_EXTENSION: TokenizerAndRendererExtension = {
   level: "inline",
   name: INLINE_SPOILER_TOKEN_TYPE,
   start(src) {
-    // Оптимизация: подсказываем marked, где потенциально начинается inline spoiler.
     const index = src.indexOf("||");
     return index >= 0 ? index : undefined;
   },
   tokenizer(src) {
-    // Поддерживаем только scoped-синтаксис `||...||` для bubble fallback-рендера.
     if (!src.startsWith("||")) return undefined;
     const match = /^\|\|([\s\S]+?)\|\|/.exec(src);
     if (match == null) return undefined;
@@ -115,12 +112,7 @@ const INLINE_SPOILER_EXTENSION: TokenizerAndRendererExtension = {
   renderer: renderInlineSpoilerToken,
 };
 
-// Поддержка Zulip markdown-синтаксиса блочного спойлера:
-// ```spoiler optional header
-// content
-// ```
-// Рендерим нативную для bubble структуру аккордеона:
-// `.spoiler-block > .spoiler-header + .spoiler-content`.
+/** Zulip block spoiler markdown → bubble accordion markup. */
 const ZULIP_BLOCK_SPOILER_EXTENSION: TokenizerAndRendererExtension = {
   level: "block",
   name: ZULIP_BLOCK_SPOILER_TOKEN_TYPE,
@@ -149,7 +141,6 @@ const ZULIP_BLOCK_SPOILER_EXTENSION: TokenizerAndRendererExtension = {
   renderer: renderZulipBlockSpoilerToken,
 };
 
-// Отдельный экземпляр marked, чтобы extension не влиял глобально на другие потребители.
 const markdownRenderer = new Marked({
   extensions: [ZULIP_BLOCK_SPOILER_EXTENSION, INLINE_SPOILER_EXTENSION],
 });
@@ -164,7 +155,6 @@ export function isLikelyRenderedMessageHtml(s: string): boolean {
 }
 
 export function renderMarkdownFallbackHtml(markdown: string): string {
-  // Здесь всегда синхронный рендер: это UI-путь пузыря/превью, без async-плагинов.
   const rendered = markdownRenderer.parse(markdown, {
     async: false,
     breaks: true,
@@ -208,9 +198,7 @@ export function applySyntaxHighlighting(html: string): string {
 }
 
 function inlineUserUploadImageLinks(html: string): string {
-  // Что делает: пост-обрабатывает уже срендеренный markdown HTML и
-  // превращает ссылки на image-файлы из `/user_uploads/...` во встроенные preview-картинки.
-  // Зачем: храним и редактируем сообщение как markdown, но в UI показываем inline image как в Zulip.
+  // Show inline images for `/user_uploads/` image links while keeping markdown as source of truth.
   if (typeof document === "undefined" || !html.includes("/user_uploads/")) {
     return html;
   }
@@ -222,17 +210,13 @@ function inlineUserUploadImageLinks(html: string): string {
   for (const link of links) {
     const href = link.getAttribute("href")?.trim();
     if (href == null || href.length === 0) continue;
-    // Обрабатываем только image-upload ссылки; не-image вложения (pdf/zip/...) остаются ссылками.
     if (!isUserUploadImagePath(href)) continue;
-    // Если внутри ссылки уже есть `<img>`, ничего не переписываем.
     if (link.querySelector("img") != null) continue;
 
     const title = (link.textContent ?? "").trim();
     const fallbackLabel = title.length > 0 ? title : "image";
     const image = document.createElement("img");
-    // Сразу кладем protected URL в data-auth-src, чтобы браузер не успел
-    // запросить `/user_uploads/...` до auth-loader.
-    prepareProtectedUserUploadImageElement(image, href);
+    image.setAttribute("src", toUserUploadThumbnailUrl(href));
     image.setAttribute("alt", fallbackLabel);
     image.setAttribute("title", fallbackLabel);
     link.replaceChildren(image);
@@ -242,7 +226,6 @@ function inlineUserUploadImageLinks(html: string): string {
 }
 
 function inlineUserUploadVideoLinks(html: string): string {
-  // Пост-обработка: ссылки на video user_upload → inline `<video>` (как image → `<img>`).
   if (typeof document === "undefined" || !html.includes("/user_uploads/")) {
     return html;
   }
@@ -268,8 +251,6 @@ function inlineUserUploadMediaLinks(html: string): string {
 }
 
 function normalizeZulipSpoilerBlocks(html: string): string {
-  // Что делает: мягко нормализует входящую Zulip spoiler-разметку,
-  // сохраняя block-аккордеон и добавляя fallback header, если он пустой/отсутствует.
   if (typeof document === "undefined" || !html.includes("spoiler-block")) {
     return html;
   }
@@ -281,7 +262,6 @@ function normalizeZulipSpoilerBlocks(html: string): string {
   for (const block of spoilerBlocks) {
     const header = block.querySelector<HTMLElement>(".spoiler-header");
     const content = block.querySelector<HTMLElement>(".spoiler-content");
-    // Если структура неожиданная, не ломаем сообщение и оставляем исходный HTML.
     if (content == null) continue;
 
     if (header == null) {
@@ -314,7 +294,6 @@ export function messageBodyToUnsanitizedDisplayHtml(
 ): string {
   const t = body.trim();
   if (t.length === 0) return "";
-  // Если пришел уже готовый HTML от Zulip, не прогоняем через markdown повторно.
   if (isLikelyRenderedMessageHtml(t)) {
     return inlineUserUploadMediaLinks(normalizeZulipSpoilerBlocks(t));
   }
@@ -328,8 +307,6 @@ export function messageBodyToUnsanitizedDisplayHtml(
     }
   }
   const mdHtml = renderMarkdownFallbackHtml(mdInput);
-  // Шаги post-processing разделены специально:
-  // 1) синтаксис кода, 2) упоминания, 3) emoji, 4) inline user_upload image-links.
   let html = applySyntaxHighlighting(mdHtml);
   if (mentionTokens != null && mentionTokens.length > 0) {
     html = restoreZulipMentionPlaceholders(html, mentionTokens);
