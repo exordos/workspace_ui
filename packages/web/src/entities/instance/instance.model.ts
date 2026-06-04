@@ -4,6 +4,7 @@
  * Persists realm URLs, credentials, and active instance selection to localStorage.
  */
 import { create } from "zustand";
+import { normalizeRealm } from "~/shared/api/zulip-realm.internal";
 import { clearAvatarBlobCacheForInstance } from "~/shared/lib/avatar-blob-cache-db";
 import { logAction, logStoreAction } from "~/shared/lib/logger";
 
@@ -161,13 +162,55 @@ function generateId(): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+export type AddInstanceResult =
+  | { status: "added"; id: string }
+  | { status: "duplicate"; id: string };
+
+function addInstanceDuplicateKey(keys: Set<string>, realmLike: string, email: string): void {
+  const normalizedRealm = normalizeRealm(realmLike).toLowerCase();
+  if (normalizedRealm.length === 0) {
+    return;
+  }
+  keys.add(`${normalizedRealm}::${email}`);
+}
+
+function getInstanceDuplicateKeys(
+  instance: Pick<ZulipInstance, "realm" | "email" | "workspaceOrgOrigin">,
+): Set<string> {
+  const email = instance.email.trim().toLowerCase();
+  const keys = new Set<string>();
+  addInstanceDuplicateKey(keys, instance.realm, email);
+
+  const workspaceOrgOrigin = instance.workspaceOrgOrigin?.trim() ?? "";
+  if (workspaceOrgOrigin.length > 0) {
+    addInstanceDuplicateKey(keys, workspaceOrgOrigin, email);
+  }
+  return keys;
+}
+
+function findDuplicateInstance(
+  instances: ZulipInstance[],
+  candidate: Pick<ZulipInstance, "realm" | "email" | "workspaceOrgOrigin">,
+): ZulipInstance | undefined {
+  const candidateKeys = getInstanceDuplicateKeys(candidate);
+  return instances.find((instance) => {
+    const instanceKeys = getInstanceDuplicateKeys(instance);
+    for (const key of candidateKeys) {
+      if (instanceKeys.has(key)) {
+        return true;
+      }
+    }
+    return false;
+  });
+}
+
 interface InstancesState extends StoredState {
   /** DM unread per instance (in-memory; used for dock/tray/favicon badges). */
   dmUnreadCountsByInstance: Record<string, number>;
   /** Effective Jitsi base URL from last Zulip register for the active instance (not persisted). */
   jitsiMeetBaseUrl: string | null;
   setJitsiMeetBaseUrl: (url: string | null) => void;
-  addInstance: (instance: Omit<ZulipInstance, "id">) => string;
+  addInstance: (instance: Omit<ZulipInstance, "id">) => AddInstanceResult;
   removeInstance: (id: string) => void;
   setCurrentInstanceId: (id: string | null) => void;
   getCurrentInstance: () => ZulipInstance | null;
@@ -189,12 +232,20 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
   },
 
   addInstance: (instance) => {
+    const duplicate = findDuplicateInstance(get().instances, instance);
+    if (duplicate) {
+      const duplicateResult: AddInstanceResult = { status: "duplicate", id: duplicate.id };
+      logStoreAction("instances", "addInstanceDuplicate", { instanceId: duplicateResult.id });
+      return duplicateResult;
+    }
+
     const id = generateId();
     const newInstance: ZulipInstance = {
       ...instance,
       id,
       authType: normalizeAuthType(instance.authType),
     };
+
     set((state) => {
       const instances = [...state.instances, newInstance];
       const currentInstanceId = state.currentInstanceId ?? id;
@@ -202,12 +253,14 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
       persist(instances, currentInstanceId, unreadCountsByInstance);
       return { instances, currentInstanceId, unreadCountsByInstance };
     });
-    logStoreAction("instances", "addInstance", { instanceId: id });
+
+    const addedResult: AddInstanceResult = { status: "added", id };
+    logStoreAction("instances", "addInstance", { instanceId: addedResult.id });
     logAction("instance_added", {
-      instanceId: id,
+      instanceId: addedResult.id,
       realmHost: realmHostFromRealm(newInstance.realm),
     });
-    return id;
+    return addedResult;
   },
 
   removeInstance: (id) => {

@@ -83,6 +83,7 @@ export const WebViewShell: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const addInstance = useInstancesStore((s) => s.addInstance);
+  const setCurrentInstanceId = useInstancesStore((s) => s.setCurrentInstanceId);
   const diagnosticsRouteElement = IS_CONNECTION_DIAGNOSTICS_ENABLED ? (
     <LogsPage />
   ) : (
@@ -92,15 +93,18 @@ export const WebViewShell: React.FC = () => {
   useEffect(() => {
     const unsub = onAuthFromNative(({ email, apiKey, realm }) => {
       const workspaceOrgOrigin = workspaceOrgOriginFromLoginServerUrlInput(realm);
-      addInstance({
+      const addInstanceResult = addInstance({
         realm,
         email,
         apiKey,
         ...(workspaceOrgOrigin !== "" ? { workspaceOrgOrigin } : {}),
       });
+      if (addInstanceResult.status === "duplicate") {
+        setCurrentInstanceId(addInstanceResult.id);
+      }
     });
     return unsub;
-  }, [addInstance]);
+  }, [addInstance, setCurrentInstanceId]);
 
   useEffect(() => {
     const bridge = getNativeBridge();

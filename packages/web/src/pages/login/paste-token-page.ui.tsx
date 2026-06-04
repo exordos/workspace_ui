@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { t } from "~/i18n/i18n";
 import { exchangeDesktopFlowToken } from "~/shared/api/zulip-auth";
+import { normalizeRealm } from "~/shared/api/zulip-realm.internal";
 import { readText } from "~/shared/lib/clipboard";
 import {
   clearDesktopFlowState,
@@ -16,14 +17,6 @@ import { workspaceOrgOriginFromLoginServerUrlInput } from "~/shared/lib/workspac
 import { Button } from "~/shared/ui/button";
 import { Icon } from "~/shared/ui/icon";
 import { sanitizeInternalRedirectTarget } from "./login-redirect.lib";
-
-function normalizeRealm(realm: string): string {
-  return realm
-    .trim()
-    .replace(/\/+$/, "")
-    .replace(/\/api\/v1$/, "")
-    .replace(/\/api$/, "");
-}
 
 export const PasteTokenPage: React.FC = () => {
   const navigate = useNavigate();
@@ -78,8 +71,9 @@ export const PasteTokenPage: React.FC = () => {
       const credentials = parseDesktopFlowCredentials(payload);
       const workspaceOrgOrigin = workspaceOrgOriginFromLoginServerUrlInput(realm);
       const orgFields = workspaceOrgOrigin !== "" ? { workspaceOrgOrigin } : {};
+      let addInstanceResult;
       if (credentials) {
-        addInstance({
+        addInstanceResult = addInstance({
           realm,
           email: credentials.email,
           apiKey: credentials.apiKey,
@@ -97,13 +91,17 @@ export const PasteTokenPage: React.FC = () => {
           return;
         }
         const exchanged = await exchangeDesktopFlowToken(realm, loginToken);
-        addInstance({
+        addInstanceResult = addInstance({
           realm,
           email: exchanged.email,
           apiKey: exchanged.authType === "api_key" ? (exchanged.apiKey ?? "") : "",
           authType: exchanged.authType,
           ...orgFields,
         });
+      }
+      if (addInstanceResult.status === "duplicate") {
+        setError(t("auth.duplicateAccount"));
+        return;
       }
       clearDesktopFlowState();
       void navigate(redirectTarget, { replace: true });

@@ -234,4 +234,74 @@ describe("PasteTokenPage", () => {
     });
     expect(navigateSpy).toHaveBeenCalledWith("/", { replace: true });
   });
+
+  it("shows duplicate account error and does not navigate after paste-token login", async () => {
+    useInstancesStore.getState().addInstance({
+      realm: "https://chat.example.com",
+      email: "user@example.com",
+      apiKey: "existing-key",
+    });
+    const otp = "0123456789abcdef".repeat(4);
+    saveDesktopFlowState({
+      realm: "https://chat.example.com",
+      otp,
+      createdAt: Date.now(),
+    });
+    const encrypted = await encryptDesktopFlowPayload(
+      JSON.stringify({ email: " USER@example.com ", api_key: "new-key" }),
+      otp,
+    );
+
+    renderWithProviders(<PasteTokenPage />, {
+      route: "/paste-token?realm=https%3A%2F%2Fchat.example.com%2Fapi%2Fv1",
+    });
+
+    fireEvent.change(screen.getByLabelText(/authentication code/i), {
+      target: { value: encrypted },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /login/i }));
+
+    expect(await screen.findByText(/this account has already been added/i)).toBeInTheDocument();
+    expect(navigateSpy).not.toHaveBeenCalled();
+    expect(useInstancesStore.getState().instances).toHaveLength(1);
+    expect(useInstancesStore.getState().instances[0]?.apiKey).toBe("existing-key");
+  });
+
+  it("treats OIDC gateway login as duplicate of an existing canonical realm account", async () => {
+    useInstancesStore.getState().addInstance({
+      realm: "https://canonical.example.com",
+      email: "user@example.com",
+      apiKey: "existing-key",
+      workspaceOrgOrigin: "https://gw.example.com",
+    });
+    const otp = "abcdef0123456789".repeat(4);
+    saveDesktopFlowState({
+      realm: "https://gw.example.com",
+      otp,
+      createdAt: Date.now(),
+    });
+    const encrypted = await encryptDesktopFlowPayload(
+      JSON.stringify({ email: "USER@example.com", api_key: "new-key" }),
+      otp,
+    );
+
+    renderWithProviders(<PasteTokenPage />, {
+      route: "/paste-token?realm=https%3A%2F%2Fgw.example.com",
+    });
+
+    fireEvent.change(screen.getByLabelText(/authentication code/i), {
+      target: { value: encrypted },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /login/i }));
+
+    expect(await screen.findByText(/this account has already been added/i)).toBeInTheDocument();
+    expect(navigateSpy).not.toHaveBeenCalled();
+    expect(useInstancesStore.getState().instances).toHaveLength(1);
+    expect(useInstancesStore.getState().instances[0]).toMatchObject({
+      realm: "https://canonical.example.com",
+      email: "user@example.com",
+      apiKey: "existing-key",
+      workspaceOrgOrigin: "https://gw.example.com",
+    });
+  });
 });

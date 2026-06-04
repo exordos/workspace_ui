@@ -35,6 +35,7 @@
     "logout": "Logout",
     "fillAllFields": "Please fill in all fields",
     "loginError": "Login failed",
+    "duplicateAccount": "This account has already been added",
     "showPassword": "Show password",
     "hidePassword": "Hide password",
     "connectToZulip": "Connect to Zulip",

@@ -35,6 +35,7 @@
     "logout": "Выйти",
     "fillAllFields": "Заполните все поля",
     "loginError": "Ошибка входа",
+    "duplicateAccount": "Этот аккаунт уже добавлен",
     "showPassword": "Показать пароль",
     "hidePassword": "Скрыть пароль",
     "invalidServerUrl": "Адрес сервера должен быть валидным HTTPS URL",

@@ -301,7 +301,7 @@ describe("RightPanel truthfulness", () => {
       realm: "https://chat.example.test",
       email: "qa-user@example.test",
       apiKey: "",
-    });
+    }).id;
     useInstancesStore.getState().setCurrentInstanceId(instanceId);
 
     renderWithProviders(<RightPanelShell mode="user-menu" title="Profile" />);

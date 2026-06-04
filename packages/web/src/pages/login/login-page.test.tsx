@@ -461,6 +461,46 @@ describe("LoginPage", () => {
     );
   });
 
+  it("shows duplicate account error and does not navigate after credential login", async () => {
+    useInstancesStore.getState().addInstance({
+      realm: "https://chat.example.com",
+      email: "user@example.com",
+      apiKey: "existing-key",
+    });
+    fetchServerSettings.mockResolvedValue(VALID_SERVER_SETTINGS);
+    fetchApiKey.mockResolvedValue({
+      api_key: "key-123",
+      email: "USER@example.com",
+      user_id: 7,
+    });
+
+    renderWithProviders(<LoginPage />, {
+      route: "/login?realm=https%3A%2F%2Fchat.example.com%2Fapi%2Fv1",
+    });
+
+    const realmInput = await screen.findByLabelText(/zulip server address/i);
+    fireEvent.blur(realmInput);
+    await waitFor(() => {
+      expect(fetchServerSettings).toHaveBeenCalledWith("https://chat.example.com/api/v1");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+    await screen.findByLabelText(/email/i);
+
+    fireEvent.change(screen.getByLabelText(/email/i), {
+      target: { value: "user@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText(/^password$/i), {
+      target: { value: "secret" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /login/i }));
+
+    expect(await screen.findByText(/this account has already been added/i)).toBeInTheDocument();
+    expect(navigateSpy).not.toHaveBeenCalled();
+    expect(useInstancesStore.getState().instances).toHaveLength(1);
+    expect(useInstancesStore.getState().instances[0]?.apiKey).toBe("existing-key");
+  });
+
   it("shows fallback organization logo when realm icon is absent", async () => {
     fetchServerSettings.mockResolvedValue({
       realm_name: "Example Zulip",

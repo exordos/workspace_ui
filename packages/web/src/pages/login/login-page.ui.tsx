@@ -278,13 +278,17 @@ export const LoginPage: React.FC = () => {
           ? rawRealmIcon
           : undefined;
       const workspaceOrgOrigin = workspaceOrgOriginFromLoginServerUrlInput(realmTrim);
-      addInstance({
+      const addInstanceResult = addInstance({
         realm: realmToStore,
         email: result.email,
         apiKey: result.api_key,
         realmIcon,
         ...(workspaceOrgOrigin !== "" ? { workspaceOrgOrigin } : {}),
       });
+      if (addInstanceResult.status === "duplicate") {
+        setError(t("auth.duplicateAccount"));
+        return;
+      }
       void navigate(redirectTarget ?? "/", { replace: true });
     } catch (err) {
       setError(err instanceof ZulipAuthError ? err.message : t("auth.loginError"));
