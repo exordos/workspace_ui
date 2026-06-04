@@ -3,7 +3,6 @@
  */
 
 import type { Draft } from "~/entities/draft/draft.types";
-import type { StreamWithLast } from "~/shared/types/sidebar-chat";
 
 export function buildMessageNavigateRoute(route: string, messageId: number, mode: string): string {
   if (mode !== "forward") {
@@ -69,7 +68,7 @@ export function resolveDraftDmDisplayName(options: {
 
 export function formatDraftMessageContext(options: {
   draft: Pick<Draft, "type" | "to" | "topic">;
-  streamsMap: Map<number, StreamWithLast>;
+  streamsMap: ReadonlyMap<number, { name: string }>;
   currentUserId: number | null;
   getUserDisplayName: (userId: number) => string;
   generalChatLabel: string;

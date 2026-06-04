@@ -1,16 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Draft } from "~/entities/draft/draft.types";
-import type { StreamWithLast } from "~/shared/types/sidebar-chat";
 import { formatDraftMessageContext, resolveDraftDmDisplayName } from "./activity-page.lib";
-
-const streamEntry = (streamId: number, name: string): StreamWithLast => ({
-  stream_id: streamId,
-  name,
-  lastMessage: "",
-  time: "",
-  ts: 0,
-  topics: new Map(),
-});
 
 describe("resolveDraftDmDisplayName", () => {
   it("returns partner name for a 1:1 DM draft", () => {
@@ -53,7 +43,7 @@ describe("formatDraftMessageContext", () => {
       to: [10],
       topic: "bugs",
     };
-    const streamsMap = new Map<number, StreamWithLast>([[10, streamEntry(10, "engineering")]]);
+    const streamsMap = new Map<number, { name: string }>([[10, { name: "engineering" }]]);
 
     expect(
       formatDraftMessageContext({
