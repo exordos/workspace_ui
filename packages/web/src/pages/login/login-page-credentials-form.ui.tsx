@@ -5,52 +5,31 @@ import { FormField } from "~/shared/ui/form-field.ui";
 import { Icon } from "~/shared/ui/icon";
 
 export interface LoginPageCredentialsFormProps {
-  realm: string;
   username: string;
   password: string;
   showPassword: boolean;
   loading: boolean;
   error: string | null;
-  onRealmChange: (value: string) => void;
   onUsernameChange: (value: string) => void;
   onPasswordChange: (value: string) => void;
-  onRealmBlur: () => void;
   onToggleShowPassword: () => void;
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
 }
 
 export const LoginPageCredentialsForm = React.memo<LoginPageCredentialsFormProps>(
   function LoginPageCredentialsForm({
-    realm,
     username,
     password,
     showPassword,
     loading,
     error,
-    onRealmChange,
     onUsernameChange,
     onPasswordChange,
-    onRealmBlur,
     onToggleShowPassword,
     onSubmit,
   }) {
     return (
       <form onSubmit={onSubmit} className="flex flex-col gap-4">
-        <FormField label={t("auth.zulipServerUrl")} htmlFor="realm">
-          <input
-            id="realm"
-            type="url"
-            inputMode="url"
-            autoComplete="url"
-            placeholder={t("auth.zulipServerUrlHint")}
-            value={realm}
-            onChange={(e) => onRealmChange(e.target.value)}
-            onBlur={onRealmBlur}
-            className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2.5 text-text-primary placeholder:text-text-muted focus:border-transparent focus:outline-none focus:ring-2 focus:ring-accent"
-            disabled={loading}
-          />
-        </FormField>
-
         <FormField label={t("auth.email")} htmlFor="username">
           <input
             id="username"

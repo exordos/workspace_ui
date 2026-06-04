@@ -14,12 +14,16 @@ import { extractOrgRouteFromPathname } from "~/shared/lib/org-route";
 import { getOrganizationFallbackLogoUrl } from "~/shared/lib/organization-branding";
 import { isValidRealmUrl, isValidUrl } from "~/shared/lib/validation";
 import { workspaceOrgOriginFromLoginServerUrlInput } from "~/shared/lib/workspace-org-origin.lib";
+import { Button } from "~/shared/ui/button";
+import { FormField } from "~/shared/ui/form-field.ui";
 import { Icon } from "~/shared/ui/icon";
 import { LoginPageCredentialsForm } from "./login-page-credentials-form.ui";
 import { LoginPageExternalAuth } from "./login-page-external-auth.ui";
 import { resolveLoginIconUrl } from "./login-page-icon-url.lib";
 import { LoginPageRealmPreview } from "./login-page-realm-preview.ui";
 import { sanitizeInternalRedirectTarget } from "./login-redirect.lib";
+
+type LoginStep = "organization" | "auth";
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
@@ -33,7 +37,10 @@ export const LoginPage: React.FC = () => {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [settingsLoading, setSettingsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [step, setStep] = useState<LoginStep>("organization");
+  const [checkedRealm, setCheckedRealm] = useState<string | null>(null);
   const [serverSettings, setServerSettings] = useState<{
     realm_base: string;
     realm_name: string;
@@ -68,6 +75,7 @@ export const LoginPage: React.FC = () => {
     }
     return sanitizeInternalRedirectTarget(`${location.pathname}${location.search}`);
   }, [location.pathname, location.search]);
+  const realmTrim = realm.trim();
 
   useEffect(() => {
     if (realmPrefill && realm.trim().length === 0) {
@@ -75,43 +83,59 @@ export const LoginPage: React.FC = () => {
     }
   }, [realmPrefill, realm]);
 
-  const fetchSettings = useCallback((realmTrim: string) => {
-    if (!isValidRealmUrl(realmTrim)) {
+  const fetchSettings = useCallback(async (nextRealm: string) => {
+    if (!isValidRealmUrl(nextRealm)) {
       setServerSettings(null);
-      return;
+      setCheckedRealm(null);
+      return false;
     }
+
     const id = ++fetchIdRef.current;
-    void fetchServerSettings(realmTrim)
-      .then((data) => {
-        if (id !== fetchIdRef.current) return;
-        if (data) {
-          const base = realmTrim
-            .replace(/\/+$/, "")
-            .replace(/\/api\/v1$/, "")
-            .replace(/\/api$/, "");
-          setServerSettings({
-            realm_base: base,
-            realm_name: data.realm_name,
-            realm_icon: resolveLoginIconUrl(base, data.realm_icon),
-            realm_icon_raw: (data.realm_icon ?? "").trim(),
-            realm_uri: data.realm_uri,
-            realm_url: data.realm_url,
-            external_authentication_methods: data.external_authentication_methods,
-          });
-        } else {
-          setServerSettings(null);
-        }
-      })
-      .catch(() => {
-        if (id === fetchIdRef.current) {
-          setServerSettings(null);
-        }
-      });
+    setSettingsLoading(true);
+
+    try {
+      const data = await fetchServerSettings(nextRealm);
+      if (id !== fetchIdRef.current) {
+        return false;
+      }
+
+      if (data) {
+        const base = nextRealm
+          .replace(/\/+$/, "")
+          .replace(/\/api\/v1$/, "")
+          .replace(/\/api$/, "");
+        setServerSettings({
+          realm_base: base,
+          realm_name: data.realm_name,
+          realm_icon: resolveLoginIconUrl(base, data.realm_icon),
+          realm_icon_raw: (data.realm_icon ?? "").trim(),
+          realm_uri: data.realm_uri,
+          realm_url: data.realm_url,
+          external_authentication_methods: data.external_authentication_methods,
+        });
+      } else {
+        setServerSettings(null);
+      }
+
+      setCheckedRealm(nextRealm);
+      return true;
+    } catch {
+      if (id !== fetchIdRef.current) {
+        return false;
+      }
+
+      setServerSettings(null);
+      setCheckedRealm(nextRealm);
+      return true;
+    } finally {
+      if (id === fetchIdRef.current) {
+        setSettingsLoading(false);
+      }
+    }
   }, []);
 
   useEffect(() => {
     const prefilledRealm = realmPrefill?.trim() ?? "";
-    const realmTrim = realm.trim();
     if (prefilledRealm.length === 0 || realmTrim !== prefilledRealm) {
       return;
     }
@@ -119,13 +143,56 @@ export const LoginPage: React.FC = () => {
       return;
     }
     prefillAutoFetchRef.current = prefilledRealm;
-    fetchSettings(realmTrim);
-  }, [fetchSettings, realm, realmPrefill]);
+    void fetchSettings(realmTrim);
+  }, [fetchSettings, realmPrefill, realmTrim]);
+
+  const handleRealmChange = useCallback(
+    (value: string) => {
+      const nextRealm = value.trim();
+      setRealm(value);
+      setError(null);
+
+      if (nextRealm !== checkedRealm) {
+        setCheckedRealm(null);
+        setServerSettings(null);
+        setStep("organization");
+      }
+    },
+    [checkedRealm],
+  );
 
   const handleRealmBlur = useCallback(() => {
-    const realmTrim = realm.trim();
-    if (realmTrim && isValidRealmUrl(realmTrim)) fetchSettings(realmTrim);
-  }, [realm, fetchSettings]);
+    if (realmTrim && isValidRealmUrl(realmTrim)) {
+      void fetchSettings(realmTrim);
+    }
+  }, [fetchSettings, realmTrim]);
+
+  const handleContinueToAuthStep = useCallback(
+    async (e: React.FormEvent<HTMLFormElement>) => {
+      e.preventDefault();
+      setError(null);
+
+      if (!realmTrim || !isValidRealmUrl(realmTrim)) {
+        setError(t("auth.invalidServerUrl"));
+        return;
+      }
+
+      if (checkedRealm !== realmTrim) {
+        const didCheckRealm = await fetchSettings(realmTrim);
+        if (!didCheckRealm) {
+          return;
+        }
+      }
+
+      setStep("auth");
+    },
+    [checkedRealm, fetchSettings, realmTrim],
+  );
+
+  const handleBackToOrganizationStep = useCallback(() => {
+    setError(null);
+    setStep("organization");
+  }, []);
 
   const handleRealmLogoError = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
     const currentSrc = e.currentTarget.getAttribute("src") ?? "";
@@ -136,7 +203,6 @@ export const LoginPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
-    const realmTrim = realm.trim();
     const usernameTrim = username.trim();
     if (!realmTrim || !usernameTrim || !password) {
       setError(t("auth.fillAllFields"));
@@ -191,7 +257,7 @@ export const LoginPage: React.FC = () => {
             .trim()
             .replace(/\/+$/, "")
             .replace(/\/api\/v1$/, "")
-            .replace(/\/api$/, "") || realm.trim();
+            .replace(/\/api$/, "") || realmTrim;
         if (!isValidRealmUrl(normalizedRealm)) {
           setError(t("auth.invalidServerUrl"));
           return;
@@ -230,12 +296,16 @@ export const LoginPage: React.FC = () => {
         setError(t("auth.loginError"));
       }
     },
-    [navigate, realm, redirectTarget, serverSettings?.realm_base],
+    [navigate, realm, realmTrim, redirectTarget, serverSettings?.realm_base],
   );
 
   const toggleShowPassword = useCallback(() => {
     setShowPassword((p) => !p);
   }, []);
+
+  const title = isAddServer ? t("auth.addServerZulip") : t("auth.connectToZulip");
+  const description =
+    step === "organization" ? t("auth.organizationStepHint") : t("auth.authStepHint");
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-bg p-4">
@@ -251,10 +321,8 @@ export const LoginPage: React.FC = () => {
           </button>
         )}
         <div className="text-center">
-          <h1 className="text-xl font-semibold text-text-primary">
-            {isAddServer ? t("auth.addServerZulip") : t("auth.connectToZulip")}
-          </h1>
-          <p className="mt-1 text-sm text-text-muted">{t("auth.serverHint")}</p>
+          <h1 className="text-xl font-semibold text-text-primary">{title}</h1>
+          <p className="mt-1 text-sm text-text-muted">{description}</p>
         </div>
 
         {serverSettings != null &&
@@ -266,28 +334,67 @@ export const LoginPage: React.FC = () => {
             />
           )}
 
-        {serverSettings != null && serverSettings.external_authentication_methods.length > 0 && (
-          <LoginPageExternalAuth
-            realmBase={serverSettings.realm_base}
-            methods={serverSettings.external_authentication_methods}
-            onSelectLoginPath={handleStartOidcFlow}
-          />
-        )}
+        {step === "organization" ? (
+          <form onSubmit={handleContinueToAuthStep} className="flex flex-col gap-4">
+            <FormField label={t("auth.zulipServerUrl")} htmlFor="realm">
+              <input
+                id="realm"
+                type="url"
+                inputMode="url"
+                autoComplete="url"
+                placeholder={t("auth.zulipServerUrlHint")}
+                value={realm}
+                onChange={(e) => handleRealmChange(e.target.value)}
+                onBlur={handleRealmBlur}
+                className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2.5 text-text-primary placeholder:text-text-muted focus:border-transparent focus:outline-none focus:ring-2 focus:ring-accent"
+                disabled={settingsLoading}
+              />
+            </FormField>
 
-        <LoginPageCredentialsForm
-          realm={realm}
-          username={username}
-          password={password}
-          showPassword={showPassword}
-          loading={loading}
-          error={error}
-          onRealmChange={setRealm}
-          onUsernameChange={setUsername}
-          onPasswordChange={setPassword}
-          onRealmBlur={handleRealmBlur}
-          onToggleShowPassword={toggleShowPassword}
-          onSubmit={handleSubmit}
-        />
+            {error != null && error.length > 0 && (
+              <div className="border-notice-base/20 bg-notice-base/10 rounded-lg border px-3 py-2 text-sm text-notice-base">
+                {error}
+              </div>
+            )}
+
+            <Button type="submit" disabled={settingsLoading} className="w-full">
+              {settingsLoading ? t("auth.organizationStepLoading") : t("common.next")}
+            </Button>
+          </form>
+        ) : (
+          <div className="flex flex-col gap-4">
+            {serverSettings != null &&
+              serverSettings.external_authentication_methods.length > 0 && (
+                <LoginPageExternalAuth
+                  realmBase={serverSettings.realm_base}
+                  methods={serverSettings.external_authentication_methods}
+                  onSelectLoginPath={handleStartOidcFlow}
+                />
+              )}
+
+            <LoginPageCredentialsForm
+              username={username}
+              password={password}
+              showPassword={showPassword}
+              loading={loading}
+              error={error}
+              onUsernameChange={setUsername}
+              onPasswordChange={setPassword}
+              onToggleShowPassword={toggleShowPassword}
+              onSubmit={handleSubmit}
+            />
+
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={handleBackToOrganizationStep}
+              disabled={loading}
+              className="w-full"
+            >
+              {t("common.back")}
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -68,7 +68,10 @@
     "pasteTokenPaste": "Paste from clipboard",
     "pasteTokenMissingFlow": "Login session expired. Start external login again.",
     "pasteTokenInvalid": "Invalid or expired code",
-    "pasteTokenUnsupported": "Unsupported authentication code format."
+    "pasteTokenUnsupported": "Unsupported authentication code format.",
+    "organizationStepHint": "Enter your organization address first.",
+    "organizationStepLoading": "Loading organization settings…",
+    "authStepHint": "Choose a sign-in method or enter your email and password."
   },
   "nav": {
     "messenger": "Messenger",

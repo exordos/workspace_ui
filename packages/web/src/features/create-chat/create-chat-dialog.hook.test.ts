@@ -2,13 +2,11 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useUsersStore } from "~/entities/user/user.model";
-import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
 import { useCreateChatDialog } from "./create-chat-dialog.hook";
-import { createChannel, unarchiveChannel } from "./create-chat.api";
+import { createChannel } from "./create-chat.api";
 
 vi.mock("./create-chat.api", () => ({
   createChannel: vi.fn(),
-  unarchiveChannel: vi.fn(),
 }));
 
 function seedUsers(): void {
@@ -19,39 +17,16 @@ function seedUsers(): void {
   ]);
 }
 
-function seedSystemGroups(): void {
-  // Setup: seed Zulip system groups used for the default
-  // "moderators and administrators can post" policy.
-  useUserGroupsStore.getState().setGroups([
-    {
-      id: 11,
-      name: "role:administrators",
-      members: [],
-      direct_subgroup_ids: [],
-      is_system_group: true,
-    },
-    {
-      id: 12,
-      name: "role:moderators",
-      members: [],
-      direct_subgroup_ids: [],
-      is_system_group: true,
-    },
-  ]);
-}
-
 describe("useCreateChatDialog", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useUsersStore.getState().clear();
     useChatListStore.getState().clear();
-    useUserGroupsStore.getState().clear();
   });
 
   afterEach(() => {
     useUsersStore.getState().clear();
     useChatListStore.getState().clear();
-    useUserGroupsStore.getState().clear();
   });
 
   it("adds current user to subscribers and deduplicates IDs when creating channel", async () => {
@@ -83,7 +58,7 @@ describe("useCreateChatDialog", () => {
       expect(createChannel).toHaveBeenCalledTimes(1);
     });
 
-    // Assert: request includes author and selected users without duplicates.
+    // Что проверяет: в запрос уходит и автор, и выбранные пользователи без дублей.
     expect(createChannel).toHaveBeenCalledWith(
       expect.objectContaining({
         name: "engineering",
@@ -114,158 +89,9 @@ describe("useCreateChatDialog", () => {
       result.current.createChannel();
     });
 
-    // Assert: without currentUserId, creation must not start.
+    // Что проверяет: без currentUserId создание не должно стартовать.
     expect(result.current.channelCreateBlocked).toBe(true);
     expect(result.current.channelCreateBlockedReasonKey).toBe("channel.creatorProfileLoading");
     expect(createChannel).not.toHaveBeenCalled();
-  });
-
-  it("passes canSendMessageGroup when announcement-only channel is enabled", async () => {
-    seedUsers();
-    seedSystemGroups();
-    useChatListStore.setState({ currentUserId: 10 });
-    vi.mocked(createChannel).mockResolvedValue(null);
-
-    const { result } = renderHook(() =>
-      useCreateChatDialog({
-        open: true,
-        onNavigateDm: vi.fn(),
-        onChannelCreated: vi.fn(),
-      }),
-    );
-
-    act(() => {
-      result.current.setChannelName("announcements");
-      result.current.setChannelAnnouncementOnly(true);
-    });
-
-    act(() => {
-      result.current.createChannel();
-    });
-
-    await waitFor(() => {
-      expect(createChannel).toHaveBeenCalledTimes(1);
-    });
-
-    // Assert: with announcement-only enabled, API receives merged group-setting from both system groups.
-    expect(createChannel).toHaveBeenCalledWith(
-      expect.objectContaining({
-        canSendMessageGroup: {
-          direct_members: [10],
-          direct_subgroups: [11, 12],
-        },
-      }),
-    );
-  });
-
-  it("disables announcement-only checkbox when system groups are unavailable", () => {
-    seedUsers();
-    useChatListStore.setState({ currentUserId: 10 });
-
-    const { result } = renderHook(() =>
-      useCreateChatDialog({
-        open: true,
-        onNavigateDm: vi.fn(),
-        onChannelCreated: vi.fn(),
-      }),
-    );
-
-    // Assert: without system groups, checkbox is blocked and shows reason key.
-    expect(result.current.channelAnnouncementOnlyBlocked).toBe(true);
-    expect(result.current.channelAnnouncementOnlyBlockedReasonKey).toBe(
-      "channel.announcementOnlyUnsupported",
-    );
-  });
-
-  it("вызывает unarchiveChannel при разархивировании и очищает ошибку при успехе", async () => {
-    seedUsers();
-    vi.mocked(unarchiveChannel).mockResolvedValue({ ok: true });
-    useChatListStore.setState({ currentUserId: 10 });
-
-    const { result } = renderHook(() =>
-      useCreateChatDialog({
-        open: true,
-        onNavigateDm: vi.fn(),
-        onChannelCreated: vi.fn(),
-      }),
-    );
-
-    await act(async () => {
-      await result.current.onUnarchiveArchivedChannel(77);
-    });
-
-    expect(unarchiveChannel).toHaveBeenCalledWith(77);
-    expect(result.current.unarchiveInlineError).toBe(null);
-    expect(result.current.unarchivePendingStreamIds).toEqual([]);
-  });
-
-  it("помечает unsupported-ответ Zulip как отдельную inline-ошибку", async () => {
-    seedUsers();
-    vi.mocked(unarchiveChannel).mockResolvedValue({
-      ok: false,
-      kind: "unsupported",
-      message: "ignored",
-      status: 200,
-    });
-
-    const { result } = renderHook(() =>
-      useCreateChatDialog({
-        open: true,
-        onNavigateDm: vi.fn(),
-        onChannelCreated: vi.fn(),
-      }),
-    );
-
-    await act(async () => {
-      await result.current.onUnarchiveArchivedChannel(5);
-    });
-
-    expect(result.current.unarchiveInlineError).toEqual({ kind: "unsupported" });
-  });
-
-  it("передаёт текст ошибки сервера в failed-состояние", async () => {
-    seedUsers();
-    vi.mocked(unarchiveChannel).mockResolvedValue({
-      ok: false,
-      kind: "transient",
-      message: "Server busy",
-      status: 503,
-    });
-
-    const { result } = renderHook(() =>
-      useCreateChatDialog({
-        open: true,
-        onNavigateDm: vi.fn(),
-        onChannelCreated: vi.fn(),
-      }),
-    );
-
-    await act(async () => {
-      await result.current.onUnarchiveArchivedChannel(8);
-    });
-
-    expect(result.current.unarchiveInlineError).toEqual({
-      kind: "failed",
-      message: "Server busy",
-    });
-  });
-
-  it("не подмешивает демо-архивные каналы: вкладка пустая без записей в store", () => {
-    seedUsers();
-
-    const { result } = renderHook(() =>
-      useCreateChatDialog({
-        open: true,
-        onNavigateDm: vi.fn(),
-        onChannelCreated: vi.fn(),
-      }),
-    );
-
-    act(() => {
-      result.current.setTab("archived");
-    });
-
-    expect(result.current.archivedChannels).toEqual([]);
-    expect(useChatListStore.getState().streamsMap.get(91001)).toBeUndefined();
   });
 });

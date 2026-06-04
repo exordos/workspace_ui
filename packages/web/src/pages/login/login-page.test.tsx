@@ -55,12 +55,32 @@ describe("LoginPage", () => {
     });
   });
 
-  it("renders localized input placeholders", () => {
+  it("renders only organization field on the first step", () => {
     renderWithProviders(<LoginPage />, { route: "/login" });
 
     expect(screen.getByPlaceholderText("https://chat.example.com")).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("email@example.com")).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("email@example.com")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("••••••••")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /next/i })).toBeInTheDocument();
+  });
+
+  it("shows credentials only after moving to the second step", async () => {
+    fetchServerSettings.mockResolvedValue(null);
+
+    renderWithProviders(<LoginPage />, { route: "/login" });
+
+    fireEvent.change(screen.getByLabelText(/zulip server address/i), {
+      target: { value: "https://chat.example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+
+    await waitFor(() => {
+      expect(fetchServerSettings).toHaveBeenCalledWith("https://chat.example.com");
+    });
+
+    expect(await screen.findByPlaceholderText("email@example.com")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("••••••••")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^login$/i })).toBeInTheDocument();
   });
 
   it("requests server settings only after realm input blur", async () => {
@@ -101,6 +121,9 @@ describe("LoginPage", () => {
       );
     });
 
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+    await screen.findByLabelText(/email/i);
+
     fireEvent.change(screen.getByLabelText(/email/i), {
       target: { value: "user@example.com" },
     });
@@ -136,6 +159,9 @@ describe("LoginPage", () => {
       );
     });
 
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+    await screen.findByLabelText(/email/i);
+
     fireEvent.change(screen.getByLabelText(/email/i), {
       target: { value: "user@example.com" },
     });
@@ -166,6 +192,9 @@ describe("LoginPage", () => {
         "https://chat.example.com",
       );
     });
+
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+    await screen.findByLabelText(/email/i);
 
     fireEvent.change(screen.getByLabelText(/email/i), {
       target: { value: "user@example.com" },
@@ -208,6 +237,9 @@ describe("LoginPage", () => {
       expect(screen.getByText("Example Zulip")).toBeInTheDocument();
     });
 
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+    await screen.findByLabelText(/email/i);
+
     fireEvent.change(screen.getByLabelText(/email/i), {
       target: { value: "user@example.com" },
     });
@@ -249,6 +281,9 @@ describe("LoginPage", () => {
       expect(screen.getByText("Example Zulip")).toBeInTheDocument();
     });
 
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+    await screen.findByLabelText(/email/i);
+
     fireEvent.change(screen.getByLabelText(/email/i), {
       target: { value: "user@example.com" },
     });
@@ -289,6 +324,9 @@ describe("LoginPage", () => {
     await waitFor(() => {
       expect(screen.getByText("Canonical Org")).toBeInTheDocument();
     });
+    await screen.findByRole("button", { name: /next/i });
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+    await screen.findByLabelText(/email/i);
 
     fireEvent.change(screen.getByLabelText(/email/i), {
       target: { value: "user@example.com" },
@@ -326,6 +364,7 @@ describe("LoginPage", () => {
     await waitFor(() => {
       expect(screen.getByText("Example Zulip")).toBeInTheDocument();
     });
+    await screen.findByRole("button", { name: /next/i });
 
     expect(screen.getByTestId("realm-logo-preview")).toHaveAttribute(
       "src",
@@ -352,6 +391,9 @@ describe("LoginPage", () => {
     renderWithProviders(<LoginPage />, {
       route: "/login?realm=https%3A%2F%2Fchat.example.com",
     });
+
+    await screen.findByRole("button", { name: /next/i });
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
 
     const button = await screen.findByRole("button", { name: "Google" }, { timeout: 4000 });
     fireEvent.click(button);
@@ -400,6 +442,8 @@ describe("LoginPage", () => {
 
     const realmInput = await screen.findByLabelText(/zulip server address/i);
     fireEvent.blur(realmInput);
+    await screen.findByRole("button", { name: /next/i });
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
 
     expect(
       await screen.findByRole("button", { name: "Google" }, { timeout: 4000 }),
@@ -429,6 +473,8 @@ describe("LoginPage", () => {
         "/login?realm=https%3A%2F%2Fchat.example.com&redirectTo=%2Fmessage%2F123%3Frealm%3Dhttps%253A%252F%252Fchat.example.com",
     });
 
+    await screen.findByRole("button", { name: /next/i });
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
     fireEvent.click(await screen.findByRole("button", { name: "Google" }, { timeout: 4000 }));
 
     await waitFor(() => {
@@ -463,6 +509,8 @@ describe("LoginPage", () => {
       route: "/login?realm=https%3A%2F%2Fchat.example.com",
     });
 
+    await screen.findByRole("button", { name: /next/i });
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
     fireEvent.click(await screen.findByRole("button", { name: "Google" }, { timeout: 4000 }));
 
     await waitFor(() => {
@@ -494,6 +542,8 @@ describe("LoginPage", () => {
       route: "/login?realm=https%3A%2F%2Fchat.example.com",
     });
 
+    await screen.findByRole("button", { name: /next/i });
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
     await screen.findByRole("button", { name: "Google" }, { timeout: 4000 });
 
     expect(screen.getByTestId("realm-logo-preview")).toHaveAttribute(
@@ -523,6 +573,8 @@ describe("LoginPage", () => {
       route: "/login?realm=https%3A%2F%2Fchat.example.com",
     });
 
+    await screen.findByRole("button", { name: /next/i });
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
     await screen.findByRole("button", { name: "Google" }, { timeout: 4000 });
 
     const fallbackLogo = screen.getByTestId("realm-logo-preview");

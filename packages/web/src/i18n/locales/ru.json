@@ -68,7 +68,10 @@
     "pasteTokenPaste": "Вставить из буфера",
     "pasteTokenMissingFlow": "Сессия входа истекла. Запустите вход через провайдера заново.",
     "pasteTokenInvalid": "Неверный или просроченный код",
-    "pasteTokenUnsupported": "Неподдерживаемый формат кода аутентификации."
+    "pasteTokenUnsupported": "Неподдерживаемый формат кода аутентификации.",
+    "organizationStepHint": "Сначала укажите адрес вашей организации.",
+    "organizationStepLoading": "Загружаем настройки организации…",
+    "authStepHint": "Выберите способ входа или введите email и пароль."
   },
   "nav": {
     "messenger": "Мессенджер",
