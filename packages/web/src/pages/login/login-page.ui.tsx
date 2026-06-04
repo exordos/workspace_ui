@@ -43,13 +43,6 @@ interface LoginServerSettings {
   }[];
 }
 
-function stripRealmBase(value: string): string {
-  return value
-    .replace(/\/+$/, "")
-    .replace(/\/api\/v1$/, "")
-    .replace(/\/api$/, "");
-}
-
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -89,6 +82,8 @@ export const LoginPage: React.FC = () => {
   const realmTrim = realm.trim();
   const canContinueToAuth = realmTrim.length > 0 && isValidRealmUrl(realmTrim);
   const defaultOrganizationUrl = env.DEFAULT_LOGIN_ORGANIZATION_URL.trim();
+  const defaultOrganizationName =
+    env.DEFAULT_LOGIN_ORGANIZATION_NAME.trim() || t("auth.defaultOrganizationName");
   const hasDefaultOrganizationButton = defaultOrganizationUrl.length > 0;
 
   const fetchSettings = useCallback(async (nextRealm: string) => {
@@ -106,14 +101,15 @@ export const LoginPage: React.FC = () => {
       if (id !== fetchIdRef.current) {
         return false;
       }
+      const realmBase = normalizeRealm(nextRealm);
 
       const nextSettings =
         data == null
           ? null
           : {
-              realm_base: stripRealmBase(nextRealm),
+              realm_base: realmBase,
               realm_name: data.realm_name,
-              realm_icon: resolveLoginIconUrl(stripRealmBase(nextRealm), data.realm_icon),
+              realm_icon: resolveLoginIconUrl(realmBase, data.realm_icon),
               realm_icon_raw: (data.realm_icon ?? "").trim(),
               realm_uri: data.realm_uri,
               realm_url: data.realm_url,
@@ -262,8 +258,7 @@ export const LoginPage: React.FC = () => {
     setLoading(true);
     try {
       const result = await fetchApiKey(realmTrim, usernameTrim, password);
-      const strippedRealm = stripRealmBase(realmTrim);
-      const normalizedFromInput = strippedRealm.length > 0 ? strippedRealm : realmTrim;
+      const normalizedFromInput = normalizeRealm(realmTrim);
       const canonicalFromServer =
         [serverSettings?.realm_url?.trim(), serverSettings?.realm_uri?.trim()].find(
           (part) => (part?.length ?? 0) > 0,
@@ -300,7 +295,7 @@ export const LoginPage: React.FC = () => {
   const handleStartOidcFlow = useCallback(
     (loginPath: string) => {
       try {
-        const normalizedRealm = stripRealmBase(serverSettings?.realm_base ?? realmTrim);
+        const normalizedRealm = normalizeRealm(serverSettings?.realm_base ?? realmTrim);
         if (!isValidRealmUrl(normalizedRealm)) {
           setError(t("auth.invalidServerUrl"));
           return;
@@ -408,7 +403,7 @@ export const LoginPage: React.FC = () => {
                     className="h-[18px] w-[18px] rounded object-contain"
                     aria-hidden="true"
                   />
-                  Genesis Core Public
+                  {defaultOrganizationName}
                 </button>
               </div>
             )}

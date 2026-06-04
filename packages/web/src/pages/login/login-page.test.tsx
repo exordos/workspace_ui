@@ -103,6 +103,15 @@ describe("LoginPage", () => {
     expect(screen.getByRole("button", { name: /next/i })).toBeEnabled();
   });
 
+  it("uses the configured default organization name", () => {
+    vi.stubEnv("VITE_DEFAULT_LOGIN_ORGANIZATION_URL", "https://public.example.com");
+    vi.stubEnv("VITE_DEFAULT_LOGIN_ORGANIZATION_NAME", "Public Example");
+
+    renderWithProviders(<LoginPage />, { route: "/login" });
+
+    expect(screen.getByRole("button", { name: /public example/i })).toBeInTheDocument();
+  });
+
   it("shows credentials only after organization settings are loaded", async () => {
     fetchServerSettings.mockResolvedValue(VALID_SERVER_SETTINGS);
 

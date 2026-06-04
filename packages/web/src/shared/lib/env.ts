@@ -183,6 +183,14 @@ export const env = {
   },
 
   /**
+   * Optional display name for the login page default organization quick-fill CTA.
+   * Read lazily so tests and runtime env injection can override it without reloading the module.
+   */
+  get DEFAULT_LOGIN_ORGANIZATION_NAME(): string {
+    return optional("VITE_DEFAULT_LOGIN_ORGANIZATION_NAME");
+  },
+
+  /**
    * When true, chat messages are written to IndexedDB (write-through cache). UI always uses Zustand.
    * Set `VITE_CHAT_MESSAGES_PERSIST_INDEXEDDB=false` to disable IDB (no disk cache for messages).
    * Legacy: `VITE_CHAT_MESSAGES_SOURCE_INDEXEDDB` is read if `VITE_CHAT_MESSAGES_PERSIST_INDEXEDDB` is unset.
