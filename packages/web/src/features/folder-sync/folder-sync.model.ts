@@ -29,6 +29,7 @@ import {
 } from "./folder-sync-assignment.types";
 import { areEquivalentChatIds, resolveFolderItemUuid } from "./folder-sync-chat-id.lib";
 import { SYSTEM_ALL_FOLDER_ID } from "./folder-sync-constants.lib";
+import { applyFolderUnreadBadges } from "./folder-sync-folder-badges.lib";
 import { buildSelectedFolderSidebarChats, toChatIdSet } from "./folder-sync-sidebar-chats.lib";
 import { loadFolderSyncSnapshot, type FolderSyncSnapshot } from "./folder-sync.api";
 import {
@@ -1130,8 +1131,18 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
         hideUnknownArchivedStreams: input.hideUnknownArchivedStreams,
         isStreamMuted: input.isStreamMuted,
       });
+      const nextFolders = applyFolderUnreadBadges(state.folders, {
+        folderItemsByFolderId: state.folderItemsByFolderId,
+        chatsSortedByLastMessage: input.chatsSortedByLastMessage,
+        streamsMap: input.streamsMap,
+        usersMapForChatInfo: input.usersMapForChatInfo,
+        currentUserId: input.currentUserId,
+        hideUnknownArchivedStreams: input.hideUnknownArchivedStreams,
+        isStreamMuted: input.isStreamMuted,
+      });
       set({
         selectedFolderSidebarChats: nextChats,
+        folders: nextFolders,
       });
 
       folderSyncLog.debug("sidebarProjection", {

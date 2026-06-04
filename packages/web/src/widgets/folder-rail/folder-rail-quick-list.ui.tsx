@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { folderColorValueToCssHex } from "~/features/manage-folders/folder-colors";
 import { t } from "~/i18n/i18n";
 import { useShortcut } from "~/shared/lib/shortcuts";
-import { Badge } from "~/shared/ui/badge";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
 import { Icon } from "~/shared/ui/icon";
 import { SearchInput } from "~/shared/ui/search-input";
@@ -11,6 +10,7 @@ import {
   resolveQuickListFolderIconName,
   resolveQuickListItemClassName,
 } from "./folder-rail-quick-list.lib";
+import { FolderRailUnreadBadge } from "./folder-rail-unread-badge.ui";
 import { FOLDER_QUICK_LIST_SHORTCUT, resolveFolderSystemType } from "./folder-rail.lib";
 import type { FolderQuickListProps } from "./folder-rail-quick-list.types";
 
@@ -187,7 +187,7 @@ export const FolderQuickList: React.FC<FolderQuickListProps> = React.memo(functi
                       <Icon name={iconName} size={18} />
                     </span>
                     <span className="flex-1 truncate">{folder.label}</span>
-                    {folder.badge !== undefined && <Badge count={folder.badge} variant="unread" />}
+                    {folder.badge !== undefined && <FolderRailUnreadBadge count={folder.badge} />}
                   </button>
                 );
               })}

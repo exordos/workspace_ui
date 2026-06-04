@@ -1,8 +1,8 @@
 import React, { useCallback, useState } from "react";
-import { Badge } from "~/shared/ui/badge";
 import { DropdownMenu } from "~/shared/ui/dropdown-menu";
 import { Icon } from "~/shared/ui/icon";
 import { buildFolderContextMenuItems } from "./folder-rail-context-menu.lib";
+import { FolderRailUnreadBadge } from "./folder-rail-unread-badge.ui";
 import { getFolderItemVisualState, isContextMenuKeyboardTrigger } from "./folder-rail.lib";
 import type { FolderItemProps, UseFolderItemActionsArgs } from "./folder-rail-folder-items.types";
 
@@ -114,7 +114,7 @@ export const HorizontalFolderItem: React.FC<FolderItemProps> = React.memo(
         open={menuOpen}
         onOpenChange={setMenuOpen}
         trigger={
-          <div className="shrink-0">
+          <div className="relative shrink-0">
             <button
               type="button"
               onPointerDown={(e) => e.stopPropagation()}
@@ -123,7 +123,7 @@ export const HorizontalFolderItem: React.FC<FolderItemProps> = React.memo(
               onKeyDown={handleKeyboardContextMenu}
               onMouseEnter={() => setIsHovered(true)}
               onMouseLeave={() => setIsHovered(false)}
-              className={`relative flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-transparent px-2.5 text-xs transition-colors ${buttonTextColor} ${
+              className={`flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-transparent px-2.5 text-xs transition-colors ${buttonTextColor} ${
                 isSelected ? "bg-bg-elevated" : "hover:bg-bg/60"
               }`}
               title={folder.label}
@@ -136,12 +136,12 @@ export const HorizontalFolderItem: React.FC<FolderItemProps> = React.memo(
                 <Icon name={visualState.iconName} size={18} className="shrink-0" />
               </span>
               <span className="max-w-[112px] truncate">{folder.label}</span>
-              {folder.badge !== undefined && (
-                <span className="absolute -right-1 -top-1">
-                  <Badge count={folder.badge} variant="unread" />
-                </span>
-              )}
             </button>
+            {folder.badge !== undefined && (
+              <span className="pointer-events-none absolute -right-1 -top-2.5 z-sticky">
+                <FolderRailUnreadBadge count={folder.badge} />
+              </span>
+            )}
           </div>
         }
         items={buildFolderContextMenuItems({
@@ -226,8 +226,8 @@ export const VerticalFolderItem: React.FC<FolderItemProps> = React.memo(
                 </span>
               </button>
               {folder.badge !== undefined && (
-                <span className="pointer-events-none absolute left-1/2 top-0 -translate-x-1/2">
-                  <Badge count={folder.badge} variant="unread" />
+                <span className="pointer-events-none absolute right-1 top-0 z-sticky">
+                  <FolderRailUnreadBadge count={folder.badge} />
                 </span>
               )}
               <span

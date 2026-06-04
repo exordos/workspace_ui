@@ -994,4 +994,45 @@ describe("syncDerived", () => {
 
     expect(useFolderSyncStore.getState().selectedFolderChatIds).toBeNull();
   });
+
+  it("syncSidebarProjection updates folder rail badges from chat-list unread", () => {
+    useFolderSyncStore.setState({
+      instanceId: "inst-1",
+      labels,
+      showSystemFolders: true,
+      folders: [
+        { id: SYSTEM_ALL_FOLDER_ID, label: "All", backgroundColor: 0, systemType: "all" },
+        { id: "system:personal", label: "Personal", backgroundColor: 0, systemType: "personal" },
+      ],
+      selectedFolderId: SYSTEM_ALL_FOLDER_ID,
+      selectedFolderChatIds: null,
+      folderItemsByFolderId: new Map(),
+    });
+
+    useFolderSyncStore.getState().syncSidebarProjection({
+      chatsSortedByLastMessage: [
+        {
+          type: "dm",
+          id: 42,
+          name: "Alice",
+          slug: "42-alice",
+          badge: 2,
+        },
+        {
+          type: "stream",
+          stream_id: 1,
+          name: "General",
+          badge: 3,
+        },
+      ],
+      streamsMap: new Map(),
+      usersMapForChatInfo: new Map(),
+      currentUserId: 10,
+      hideUnknownArchivedStreams: false,
+    });
+
+    const { folders } = useFolderSyncStore.getState();
+    expect(folders.find((f) => f.id === SYSTEM_ALL_FOLDER_ID)?.badge).toBe(5);
+    expect(folders.find((f) => f.id === "system:personal")?.badge).toBe(2);
+  });
 });
