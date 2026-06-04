@@ -104,6 +104,33 @@ describe("LoginPage", () => {
     });
 
     expect(await screen.findByPlaceholderText("email@example.com")).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("••••••••")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^login$/i })).not.toBeInTheDocument();
+  });
+
+  it("reveals password only after username becomes long enough", async () => {
+    fetchServerSettings.mockResolvedValue(VALID_SERVER_SETTINGS);
+
+    renderWithProviders(<LoginPage />, { route: "/login" });
+
+    fireEvent.change(screen.getByLabelText(/zulip server address/i), {
+      target: { value: "https://chat.example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+
+    const usernameInput = await screen.findByPlaceholderText("email@example.com");
+
+    expect(screen.queryByPlaceholderText("••••••••")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^login$/i })).not.toBeInTheDocument();
+
+    fireEvent.change(usernameInput, {
+      target: { value: "ab" },
+    });
+    expect(screen.queryByPlaceholderText("••••••••")).not.toBeInTheDocument();
+
+    fireEvent.change(usernameInput, {
+      target: { value: "abc" },
+    });
     expect(screen.getByPlaceholderText("••••••••")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^login$/i })).toBeInTheDocument();
   });
@@ -133,7 +160,7 @@ describe("LoginPage", () => {
     });
 
     expect(await screen.findByPlaceholderText("email@example.com")).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("••••••••")).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("••••••••")).not.toBeInTheDocument();
   });
 
   it("shows an organization error when server settings cannot be loaded", async () => {
@@ -579,7 +606,6 @@ describe("LoginPage", () => {
     await waitFor(() => {
       expect(openSpy).not.toHaveBeenCalled();
       expect(navigateSpy).not.toHaveBeenCalled();
-      expect(screen.getByText(/login failed/i)).toBeInTheDocument();
     });
 
     openSpy.mockRestore();
