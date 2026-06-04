@@ -1,3 +1,5 @@
+import type { Reaction } from "~/shared/api/zulip.types";
+
 /**
  * Test data factories — typed builders for domain objects.
  *
@@ -39,12 +41,7 @@ interface MessageOverrides {
   type?: "stream" | "private";
   display_recipient?: string | { id: number; full_name: string; email?: string }[];
   avatar_url?: string | null;
-  reactions?: {
-    emoji_name: string;
-    emoji_code: string;
-    reaction_type: string;
-    user_id: number;
-  }[];
+  reactions?: Reaction[];
 }
 
 export function createMessage(overrides: MessageOverrides = {}) {

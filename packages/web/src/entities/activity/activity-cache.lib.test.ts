@@ -1,10 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import { createMessage } from "~/test/factories";
 import { isActivityMessagesSnapshotFresher, matchesActivityFilter } from "./activity-cache.lib";
 
-function activityMessage(overrides: Partial<ZulipRawMessage> = {}): ZulipRawMessage {
-  return createMessage(overrides) as ZulipRawMessage;
+function activityMessage(overrides: Parameters<typeof createMessage>[0] = {}) {
+  return createMessage(overrides);
 }
 
 describe("isActivityMessagesSnapshotFresher", () => {

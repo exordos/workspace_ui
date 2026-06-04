@@ -1142,7 +1142,7 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
       });
       set({
         selectedFolderSidebarChats: nextChats,
-        folders: nextFolders,
+        folders: [...nextFolders],
       });
 
       folderSyncLog.debug("sidebarProjection", {

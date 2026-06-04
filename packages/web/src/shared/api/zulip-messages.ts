@@ -300,9 +300,10 @@ export async function fetchActivityMessagesPage(
     apply_markdown: "false",
   });
   if (!res?.ok) {
-    const errData = res.data as { msg?: string } | undefined;
-    const msg = errData?.msg ?? `Activity messages request failed (${res.status})`;
-    activityMessagesLog.warn("Activity messages fetch HTTP error", { filter, status: res.status });
+    const errData = res?.data as { msg?: string } | undefined;
+    const status = res?.status;
+    const msg = errData?.msg ?? `Activity messages request failed (${status ?? "unknown"})`;
+    activityMessagesLog.warn("Activity messages fetch HTTP error", { filter, status });
     throw new Error(msg);
   }
   const data = res.data as {
