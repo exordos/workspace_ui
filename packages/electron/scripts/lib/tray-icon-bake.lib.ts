@@ -20,8 +20,11 @@ export const MAC_TRAY_ICON_WHITE = 255;
 /** Smaller than Dock/favicon — menu bar dot must stay subtle at 32px. */
 export const TRAY_UNREAD_DOT_RADIUS_FRACTION = 42 / 680;
 
-/** Source alpha at or above this value becomes fully opaque white (Linux tray). */
-export const LINUX_TRAY_ALPHA_THRESHOLD = 48;
+/** Source alpha at or above this value becomes fully opaque white (binary tray silhouettes). */
+export const TRAY_BINARY_ALPHA_THRESHOLD = 48;
+
+/** @deprecated Use {@link TRAY_BINARY_ALPHA_THRESHOLD}. */
+export const LINUX_TRAY_ALPHA_THRESHOLD = TRAY_BINARY_ALPHA_THRESHOLD;
 
 export type TrayIconAlphaMode = "luminance" | "binary";
 
@@ -34,7 +37,7 @@ export function resolveTraySilhouetteAlpha(
 ): number {
   if (a === 0) return 0;
   if (mode === "binary") {
-    return a >= LINUX_TRAY_ALPHA_THRESHOLD ? 255 : 0;
+    return a >= TRAY_BINARY_ALPHA_THRESHOLD ? 255 : 0;
   }
   const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
   return Math.min(255, Math.round((a / 255) * (luminance / 255) * 255));
@@ -142,11 +145,12 @@ function buildTrayIconFromLogo(
   return nativeImage.createFromBitmap(out, { width: canvasPx, height: canvasPx });
 }
 
+/** macOS menu bar: solid white silhouette, no grayscale anti-aliasing. */
 export function buildMacTrayIconFromLogo(logo: NativeImage): NativeImage {
   return buildTrayIconFromLogo(logo, {
     canvasPx: MAC_TRAY_ICON_CANVAS_PX,
     logoSizeFraction: MAC_TRAY_LOGO_SIZE_FRACTION,
-    alphaMode: "luminance",
+    alphaMode: "binary",
   });
 }
 

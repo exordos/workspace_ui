@@ -30,14 +30,17 @@ describe("tray-icon-bake.lib", () => {
   });
 
   describe("resolveTraySilhouetteAlpha", () => {
-    it("uses binary alpha for linux tray (no halftones)", () => {
+    it("uses binary alpha for mac/linux tray (no halftones)", () => {
       assert.equal(trayBakeLib.resolveTraySilhouetteAlpha(0, 0, 0, 0, "binary"), 0);
       assert.equal(trayBakeLib.resolveTraySilhouetteAlpha(0, 0, 0, 47, "binary"), 0);
-      assert.equal(trayBakeLib.resolveTraySilhouetteAlpha(0, 0, 0, 48, "binary"), 255);
+      assert.equal(
+        trayBakeLib.resolveTraySilhouetteAlpha(0, 0, 0, trayBakeLib.TRAY_BINARY_ALPHA_THRESHOLD, "binary"),
+        255,
+      );
       assert.equal(trayBakeLib.resolveTraySilhouetteAlpha(128, 128, 128, 200, "binary"), 255);
     });
 
-    it("keeps luminance-weighted alpha for mac menu bar", () => {
+    it("keeps luminance mode for optional soft silhouettes", () => {
       assert.equal(trayBakeLib.resolveTraySilhouetteAlpha(0, 0, 0, 0, "luminance"), 0);
       const mid = trayBakeLib.resolveTraySilhouetteAlpha(128, 128, 128, 128, "luminance");
       assert.ok(mid > 0 && mid < 255);

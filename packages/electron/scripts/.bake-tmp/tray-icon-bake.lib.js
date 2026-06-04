@@ -26,6 +26,7 @@ __export(tray_icon_bake_lib_exports, {
   MAC_TRAY_ICON_CANVAS_PX: () => MAC_TRAY_ICON_CANVAS_PX,
   MAC_TRAY_ICON_WHITE: () => MAC_TRAY_ICON_WHITE,
   MAC_TRAY_LOGO_SIZE_FRACTION: () => MAC_TRAY_LOGO_SIZE_FRACTION,
+  TRAY_BINARY_ALPHA_THRESHOLD: () => TRAY_BINARY_ALPHA_THRESHOLD,
   TRAY_UNREAD_DOT_RADIUS_FRACTION: () => TRAY_UNREAD_DOT_RADIUS_FRACTION,
   buildLinuxTrayIconFromLogo: () => buildLinuxTrayIconFromLogo,
   buildMacTrayIconFromLogo: () => buildMacTrayIconFromLogo,
@@ -42,11 +43,12 @@ var MAC_TRAY_LOGO_SIZE_FRACTION = 0.62;
 var LINUX_TRAY_LOGO_SIZE_FRACTION = 0.78;
 var MAC_TRAY_ICON_WHITE = 255;
 var TRAY_UNREAD_DOT_RADIUS_FRACTION = 42 / 680;
-var LINUX_TRAY_ALPHA_THRESHOLD = 48;
+var TRAY_BINARY_ALPHA_THRESHOLD = 48;
+var LINUX_TRAY_ALPHA_THRESHOLD = TRAY_BINARY_ALPHA_THRESHOLD;
 function resolveTraySilhouetteAlpha(b, g, r, a, mode) {
   if (a === 0) return 0;
   if (mode === "binary") {
-    return a >= LINUX_TRAY_ALPHA_THRESHOLD ? 255 : 0;
+    return a >= TRAY_BINARY_ALPHA_THRESHOLD ? 255 : 0;
   }
   const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
   return Math.min(255, Math.round(a / 255 * (luminance / 255) * 255));
@@ -116,7 +118,7 @@ function buildMacTrayIconFromLogo(logo) {
   return buildTrayIconFromLogo(logo, {
     canvasPx: MAC_TRAY_ICON_CANVAS_PX,
     logoSizeFraction: MAC_TRAY_LOGO_SIZE_FRACTION,
-    alphaMode: "luminance"
+    alphaMode: "binary"
   });
 }
 function buildLinuxTrayIconFromLogo(logo) {
@@ -134,6 +136,7 @@ function buildLinuxTrayIconFromLogo(logo) {
   MAC_TRAY_ICON_CANVAS_PX,
   MAC_TRAY_ICON_WHITE,
   MAC_TRAY_LOGO_SIZE_FRACTION,
+  TRAY_BINARY_ALPHA_THRESHOLD,
   TRAY_UNREAD_DOT_RADIUS_FRACTION,
   buildLinuxTrayIconFromLogo,
   buildMacTrayIconFromLogo,

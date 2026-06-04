@@ -17,7 +17,7 @@ Place app icons here for electron-builder packaging:
 | `tray-icon-unread.png`       | Windows tray (small dot)         | PNG    | 32×32                    |
 | `tray-icon-linux.png`        | Linux StatusNotifier             | PNG    | 32×32 solid white        |
 | `tray-icon-linux-unread.png` | Linux tray (small dot)           | PNG    | 32×32                    |
-| `tray-icon-mac.png`          | macOS menu bar tray              | PNG    | 32×32 white + alpha      |
+| `tray-icon-mac.png`          | macOS menu bar tray              | PNG    | 32×32 solid white        |
 | `tray-icon-mac-unread.png`   | macOS tray (small dot)           | PNG    | 32×32                    |
 
 Runtime code only **loads** these PNGs (no bitmap compositing in main).
