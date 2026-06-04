@@ -151,8 +151,8 @@ export const InboxPage: React.FC = () => {
 
   useEffect(() => {
     // markStale инициирует мягкий фоновый refresh, не очищая текущий список.
-    if (stale) void loadInbox(visibleEntries.length > 0);
-  }, [stale, loadInbox, visibleEntries.length]);
+    if (stale) void loadInbox(entries.length > 0);
+  }, [stale, loadInbox, entries.length]);
 
   const handleEntryClick = useCallback(
     (entry: InboxEntry) => {
