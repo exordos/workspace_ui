@@ -791,9 +791,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         oldest.id,
         pageSize,
         0,
-        {
-          applyMarkdown: true,
-        },
+        { applyMarkdown: false },
       );
       const withoutAnchor = page.messages.filter((m) => m.id !== oldest.id);
       const existingIds = new Set(get().messages.map((m) => m.id));
@@ -908,9 +906,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         newest.id,
         0,
         pageSize,
-        {
-          applyMarkdown: true,
-        },
+        { applyMarkdown: false },
       );
       const withoutAnchor = page.messages.filter((m) => m.id !== newest.id);
       const existingIds = new Set(get().messages.map((m) => m.id));

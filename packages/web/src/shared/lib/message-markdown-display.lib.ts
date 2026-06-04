@@ -17,6 +17,10 @@ import hljs from "highlight.js/lib/common";
 import { Marked, type Token, type TokenizerAndRendererExtension, type Tokens } from "marked";
 import { stripHtml } from "~/shared/lib/html";
 import { renderEmojiShortcodesInHtml } from "~/shared/lib/message-emoji-shortcodes.lib";
+import {
+  collectMessageInlineImageIdentities,
+  shouldSkipInliningUserUploadImageLink,
+} from "~/shared/lib/message-inline-user-upload-image.lib";
 import { createInlineUserUploadVideoElement } from "~/shared/lib/message-inline-user-upload-video.lib";
 import {
   injectZulipMentionPlaceholders,
@@ -205,6 +209,7 @@ function inlineUserUploadImageLinks(html: string): string {
 
   const wrapper = document.createElement("div");
   wrapper.innerHTML = html;
+  const inlineIdentities = collectMessageInlineImageIdentities(html);
 
   const links = wrapper.querySelectorAll<HTMLAnchorElement>("a[href]");
   for (const link of links) {
@@ -212,12 +217,12 @@ function inlineUserUploadImageLinks(html: string): string {
     if (href == null || href.length === 0) continue;
     if (!isUserUploadImagePath(href)) continue;
     if (link.querySelector("img") != null) continue;
+    if (shouldSkipInliningUserUploadImageLink(href, inlineIdentities)) continue;
 
     const title = (link.textContent ?? "").trim();
     const fallbackLabel = title.length > 0 ? title : "image";
     const image = document.createElement("img");
-    // Сразу кладем protected URL в data-auth-src, чтобы браузер не успел
-    // запросить `/user_uploads/...` до auth-loader.
+    // Set data-auth-src immediately so the browser does not fetch `/user_uploads/...` before auth-loader.
     prepareProtectedUserUploadImageElement(image, href);
 
     image.setAttribute("alt", fallbackLabel);

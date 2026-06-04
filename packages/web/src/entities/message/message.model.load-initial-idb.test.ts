@@ -284,7 +284,7 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
       50,
       ZULIP_STREAM_ANCHOR_NUM_BEFORE,
       ZULIP_STREAM_ANCHOR_NUM_AFTER,
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      expect.objectContaining({ signal: expect.any(AbortSignal), applyMarkdown: false }),
     );
   });
 
@@ -307,7 +307,7 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
       50,
       ZULIP_DM_ANCHOR_NUM_BEFORE,
       ZULIP_DM_ANCHOR_NUM_AFTER,
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      expect.objectContaining({ signal: expect.any(AbortSignal), applyMarkdown: false }),
     );
   });
 

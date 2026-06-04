@@ -187,6 +187,21 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
     expect(html).toContain("😄");
   });
 
+  it("does not add a second img when Zulip HTML already has message_inline_image", () => {
+    const zulipHtml = [
+      '<p><a href="/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png">image.png</a></p>',
+      '<div class="message_inline_image">',
+      '<a href="/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png">',
+      '<img src="/user_uploads/thumbnail/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png/840x560.webp" alt="image.png">',
+      "</a></div>",
+    ].join("");
+    const html = messageBodyToUnsanitizedDisplayHtml(zulipHtml);
+    const imgCount = (html.match(/<img\b/gi) ?? []).length;
+    expect(imgCount).toBe(1);
+    expect(html).toContain("message_inline_image");
+    expect(html).toContain("image.png</a>");
+  });
+
   it("inlines user_upload image links as protected preview images", () => {
     const html = messageBodyToUnsanitizedDisplayHtml(
       "[image.png](/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png)",

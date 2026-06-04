@@ -33,4 +33,32 @@ describe("outgoingEchoContentMatches", () => {
       outgoingEchoContentMatches(msg({ content: "one" }), msg({ content: "<p>two</p>" })),
     ).toBe(false);
   });
+
+  it("matches optimistic markdown upload to server HTML inline image echo", () => {
+    const optimistic = msg({
+      content: "[image.png](/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png)",
+    });
+    const serverEcho = msg({
+      content: [
+        '<p>emoji <img class="emoji" alt=":smile:" src="/static/generated/emoji/smile.png"></p>',
+        '<div class="message_inline_image">',
+        '<a href="/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png">',
+        '<img src="/user_uploads/thumbnail/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png/840x560.webp">',
+        "</a></div>",
+      ].join(""),
+    });
+    expect(outgoingEchoContentMatches(optimistic, serverEcho)).toBe(true);
+  });
+
+  it("returns false when upload paths differ between markdown and HTML", () => {
+    expect(
+      outgoingEchoContentMatches(
+        msg({ content: "[a.png](/user_uploads/1/a.png)" }),
+        msg({
+          content:
+            '<div class="message_inline_image"><a href="/user_uploads/2/b.png"><img src="/user_uploads/2/b.png"></a></div>',
+        }),
+      ),
+    ).toBe(false);
+  });
 });

@@ -111,12 +111,13 @@ async function fetchNetworkMessagesByMode(options: {
   throwIfAborted(signal);
   if (context.type === "dm") {
     if (focusedMessageId != null) {
+      // Anchor window uses markdown bodies (apply_markdown=false) for consistent client rendering.
       return fetchMessagesWithNarrow(
         [{ operator: "dm", operand: parseDmKeyToUserIds(context.dmKey, currentUserId) }],
         focusedMessageId,
         ZULIP_DM_ANCHOR_NUM_BEFORE,
         ZULIP_DM_ANCHOR_NUM_AFTER,
-        { signal, applyMarkdown: true },
+        { signal, applyMarkdown: false },
       );
     }
     return fetchDmMessages(parseDmKeyToUserIds(context.dmKey, currentUserId), { signal });
@@ -135,7 +136,7 @@ async function fetchNetworkMessagesByMode(options: {
       focusedMessageId,
       ZULIP_STREAM_ANCHOR_NUM_BEFORE,
       ZULIP_STREAM_ANCHOR_NUM_AFTER,
-      { signal, applyMarkdown: true },
+      { signal, applyMarkdown: false },
     );
   }
 

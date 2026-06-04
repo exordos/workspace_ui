@@ -593,6 +593,26 @@ describe("MessageBubble edit/delete actions parity", () => {
     expect(image?.getAttribute("src")).not.toContain("/user_uploads/");
   });
 
+  it("renders a single inline image for Zulip HTML with message_inline_image and filename link", () => {
+    const { container } = render(
+      <MessageBubble
+        message={createMessage({
+          content: [
+            '<p><a href="/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png">image.png</a></p>',
+            '<div class="message_inline_image">',
+            '<a href="/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png">',
+            '<img src="/user_uploads/thumbnail/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png/840x560.webp" alt="image.png">',
+            "</a></div>",
+          ].join(""),
+        })}
+        isOwn={false}
+      />,
+    );
+
+    const images = container.querySelectorAll(".message-body img");
+    expect(images).toHaveLength(1);
+  });
+
   it("does not leave external_content preview URL in rendered img src", () => {
     const { container } = render(
       <MessageBubble
