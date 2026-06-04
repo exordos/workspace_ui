@@ -3,6 +3,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useCallParticipantsStore } from "~/entities/call/call.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { MockMessage } from "~/shared/api/zulip.types";
+import {
+  MESSAGE_BUBBLE_BODY_CLASS_NAME,
+  MESSAGE_MEDIA_PREVIEW_CLASS_NAME,
+} from "~/shared/lib/message-body-rich-text-classes";
 import { createUser } from "~/test/factories";
 import { MessageBubble } from "./message-bubble.ui";
 
@@ -570,6 +574,9 @@ describe("MessageBubble edit/delete actions parity", () => {
     expect(image).not.toBeNull();
     expect(image?.getAttribute("src")).not.toContain("/user_uploads/");
     expect(image?.getAttribute("data-auth-src")).toContain("/user_uploads/thumbnail/");
+    expect(image).toHaveClass(MESSAGE_MEDIA_PREVIEW_CLASS_NAME);
+    expect(container.querySelector(".message-body")?.className).toContain("h-40");
+    expect(MESSAGE_BUBBLE_BODY_CLASS_NAME).toContain("message-media-preview");
   });
 
   it("expands markdown user_upload image links into inline images", () => {
@@ -591,6 +598,7 @@ describe("MessageBubble edit/delete actions parity", () => {
     expect(image).not.toBeNull();
     expect(image?.getAttribute("data-auth-src")).toContain("/user_uploads/thumbnail/");
     expect(image?.getAttribute("src")).not.toContain("/user_uploads/");
+    expect(image).toHaveClass(MESSAGE_MEDIA_PREVIEW_CLASS_NAME);
   });
 
   it("renders a single inline image for Zulip HTML with message_inline_image and filename link", () => {
@@ -628,6 +636,7 @@ describe("MessageBubble edit/delete actions parity", () => {
     expect(image).not.toBeNull();
     expect(image?.getAttribute("src")).not.toContain("/external_content/");
     expect(image?.getAttribute("data-auth-src")).toContain("/external_content/preview.png");
+    expect(image).toHaveClass(MESSAGE_MEDIA_PREVIEW_CLASS_NAME);
   });
 
   it("strips protected srcset, sizes, poster, and style attrs from rendered message media", () => {

@@ -13,6 +13,7 @@ import {
 } from "~/shared/api/zulip-realm.internal";
 import { env } from "~/shared/lib/env";
 import { sanitizeHtml } from "~/shared/lib/html";
+import { MESSAGE_MEDIA_PREVIEW_CLASS_NAME } from "~/shared/lib/message-body-rich-text-classes";
 import {
   isUserUploadImagePath,
   isUserUploadThumbnailUrl,
@@ -34,26 +35,17 @@ export const AUTH_MEDIA_SRC_DATA_ATTR = "data-auth-src";
 export const AUTH_MEDIA_POSTER_DATA_ATTR = "data-auth-poster";
 export const AUTH_MEDIA_BACKGROUND_IMAGE_DATA_ATTR = "data-auth-background-image";
 
-/** Inline SVG placeholder until authorized fetch completes. */
-const AUTH_IMAGE_PLACEHOLDER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160" aria-hidden="true">
-  <defs>
-    <linearGradient id="ph" x1="0" y1="0" x2="160" y2="160" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#252528"/>
-      <stop offset="0.45" stop-color="#323238"/>
-      <stop offset="1" stop-color="#28282c"/>
-    </linearGradient>
-    <linearGradient id="phg" x1="32" y1="24" x2="128" y2="136" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#ffffff" stop-opacity="0.04"/>
-      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
-    </linearGradient>
-  </defs>
-  <rect width="160" height="160" rx="10" fill="url(#ph)"/>
-  <rect width="160" height="160" rx="10" fill="url(#phg)"/>
-  <rect x="52" y="48" width="56" height="44" rx="5" fill="none" stroke="#8b8b93" stroke-opacity="0.35" stroke-width="1.25"/>
-  <circle cx="64" cy="60" r="5" fill="#8b8b93" fill-opacity="0.35"/>
-  <path d="M56 84 L72 68 L84 80 L96 64 L104 84 Z" fill="#8b8b93" fill-opacity="0.22"/>
-  <line x1="48" y1="112" x2="112" y2="112" stroke="#6b6b72" stroke-opacity="0.2" stroke-width="2" stroke-linecap="round"/>
+/** Inline SVG placeholder icon only; box fill comes from `.message-media-preview` CSS. */
+const AUTH_IMAGE_PLACEHOLDER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="240" height="160" viewBox="0 0 240 160" aria-hidden="true">
+  <rect x="78" y="48" width="84" height="44" rx="5" fill="none" stroke="#8b8b93" stroke-opacity="0.4" stroke-width="1.25"/>
+  <circle cx="96" cy="60" r="5" fill="#8b8b93" fill-opacity="0.4"/>
+  <path d="M84 84 L108 68 L126 80 L144 64 L156 84 Z" fill="#8b8b93" fill-opacity="0.26"/>
+  <line x1="72" y1="112" x2="168" y2="112" stroke="#8b8b93" stroke-opacity="0.28" stroke-width="2" stroke-linecap="round"/>
 </svg>`;
+
+function markMessageMediaPreview(img: HTMLImageElement): void {
+  img.classList.add(MESSAGE_MEDIA_PREVIEW_CLASS_NAME);
+}
 
 export const AUTH_IMAGE_PLACEHOLDER_SRC = `data:image/svg+xml,${encodeURIComponent(AUTH_IMAGE_PLACEHOLDER_SVG)}`;
 
@@ -184,6 +176,7 @@ export function prepareProtectedUserUploadImageElement(
     img.setAttribute("width", String(USER_UPLOAD_THUMBNAIL_DISPLAY_MAX_WIDTH));
     img.setAttribute("height", String(USER_UPLOAD_THUMBNAIL_DISPLAY_MAX_HEIGHT));
   }
+  markMessageMediaPreview(img);
 }
 
 function prepareProtectedMessageImageElement(img: HTMLImageElement, srcAttrValue: string): void {
@@ -197,6 +190,9 @@ function prepareProtectedMessageImageElement(img: HTMLImageElement, srcAttrValue
   img.setAttribute(AUTH_MEDIA_SRC_DATA_ATTR, collapsedSrc);
   img.dataset.originalSrc = collapsedSrc;
   img.setAttribute("src", AUTH_IMAGE_PLACEHOLDER_SRC);
+  img.setAttribute("width", String(USER_UPLOAD_THUMBNAIL_DISPLAY_MAX_WIDTH));
+  img.setAttribute("height", String(USER_UPLOAD_THUMBNAIL_DISPLAY_MAX_HEIGHT));
+  markMessageMediaPreview(img);
 }
 
 function protectPictureElement(picture: HTMLPictureElement): void {

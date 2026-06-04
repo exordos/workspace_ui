@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as apiClient from "~/shared/api/client";
+import { MESSAGE_MEDIA_PREVIEW_CLASS_NAME } from "~/shared/lib/message-body-rich-text-classes";
 import {
   AUTH_IMAGE_PLACEHOLDER_SRC,
   AUTH_MEDIA_BACKGROUND_IMAGE_DATA_ATTR,
@@ -61,19 +62,21 @@ describe("prepareProtectedMessageHtml", () => {
     const out = prepareProtectedMessageHtml(html);
     expect(out).toContain('width="240"');
     expect(out).toContain('height="160"');
+    expect(out).toContain(MESSAGE_MEDIA_PREVIEW_CLASS_NAME);
     expect(out).toContain("data-auth-src=");
     expect(out).toContain("/user_uploads/thumbnail/");
     expect(out).toContain("840x560.webp");
     expectNoLiveProtectedAttrs(out);
   });
 
-  it("protects external_content preview images without forcing thumbnail dimensions", () => {
+  it("marks external_content preview images with fixed preview box attrs and class", () => {
     const html = '<p><img src="/external_content/preview.png?url=1" alt="preview" /></p>';
     const out = prepareProtectedMessageHtml(html);
     expect(out).toContain("data-auth-src=");
     expect(out).toContain("/external_content/preview.png?url=1");
-    expect(out).not.toContain('width="240"');
-    expect(out).not.toContain('height="160"');
+    expect(out).toContain('width="240"');
+    expect(out).toContain('height="160"');
+    expect(out).toContain(MESSAGE_MEDIA_PREVIEW_CLASS_NAME);
     expectNoLiveProtectedAttrs(out);
   });
 

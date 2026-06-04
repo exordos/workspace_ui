@@ -69,13 +69,22 @@ const MESSAGE_BODY_RICH_TEXT_BASE_SEGMENTS = [
 export const MESSAGE_BODY_RICH_TEXT_BASE_CLASS_NAME =
   MESSAGE_BODY_RICH_TEXT_BASE_SEGMENTS.join(" ");
 
+/** Applied to protected inline image previews in message bubbles (fixed 240×160 box). */
+export const MESSAGE_MEDIA_PREVIEW_CLASS_NAME = "message-media-preview";
+
 export const MESSAGE_BUBBLE_BODY_CLASS_NAME = [
   MESSAGE_BODY_RICH_TEXT_BASE_CLASS_NAME,
   "select-text",
-  "[&_img]:max-h-[160px]",
-  "[&_img]:w-auto",
-  "[&_img]:cursor-pointer",
-  "[&_img]:object-contain",
+  "[&_img:not(.message-media-preview)]:max-h-[160px]",
+  "[&_img:not(.message-media-preview)]:w-auto",
+  "[&_img:not(.message-media-preview)]:object-contain",
+  "[&_img.message-media-preview]:block",
+  "[&_img.message-media-preview]:h-40",
+  "[&_img.message-media-preview]:w-60",
+  "[&_img.message-media-preview]:max-w-full",
+  "[&_img.message-media-preview]:cursor-pointer",
+  "[&_img.message-media-preview]:object-contain",
+  "[&_img.message-media-preview]:object-center",
   "[&_span.user-mention]:cursor-pointer",
 ].join(" ");
 

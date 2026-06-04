@@ -161,6 +161,23 @@ body {
   pointer-events: none;
 }
 
+.message-body .message_inline_image {
+  display: block;
+  line-height: 0;
+}
+
+.message-body .message_inline_image > a {
+  display: inline-block;
+  line-height: 0;
+}
+
+/* Inline attachment preview — subtle fill so placeholder/load gap is not an empty hole */
+.message-body img.message-media-preview {
+  background-color: color-mix(in srgb, var(--color-bg-elevated) 82%, var(--color-border-subtle));
+  border: 1px solid color-mix(in srgb, var(--color-border-subtle) 38%, transparent);
+  box-sizing: border-box;
+}
+
 /* ── Zulip link previews ──────────────────────────────── */
 
 .message-body .message_embed {
