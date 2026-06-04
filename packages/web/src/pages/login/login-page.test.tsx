@@ -1,16 +1,23 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { renderWithProviders } from "~/test/render";
 import { LoginPage } from "./login-page.ui";
-import type * as ReactRouterDom from "react-router-dom";
 
 const navigateSpy = vi.hoisted(() => vi.fn());
 const fetchApiKey = vi.hoisted(() => vi.fn());
 const fetchServerSettings = vi.hoisted(() => vi.fn());
 
+const VALID_SERVER_SETTINGS = {
+  realm_name: "Example Zulip",
+  realm_uri: "https://chat.example.com",
+  realm_url: "https://chat.example.com",
+  realm_icon: "",
+  external_authentication_methods: [],
+};
+
 vi.mock("react-router-dom", async () => {
-  const actual = await vi.importActual<typeof ReactRouterDom>("react-router-dom");
+  const actual = await vi.importActual("react-router-dom");
   return {
     ...actual,
     useNavigate: () => navigateSpy,
@@ -18,8 +25,7 @@ vi.mock("react-router-dom", async () => {
 });
 
 vi.mock("~/shared/api/zulip-auth", async () => {
-  const actual =
-    await vi.importActual<typeof import("~/shared/api/zulip-auth")>("~/shared/api/zulip-auth");
+  const actual = await vi.importActual("~/shared/api/zulip-auth");
   return {
     ...actual,
     fetchApiKey,
@@ -64,8 +70,8 @@ describe("LoginPage", () => {
     expect(screen.getByRole("button", { name: /next/i })).toBeInTheDocument();
   });
 
-  it("shows credentials only after moving to the second step", async () => {
-    fetchServerSettings.mockResolvedValue(null);
+  it("shows credentials only after organization settings are loaded", async () => {
+    fetchServerSettings.mockResolvedValue(VALID_SERVER_SETTINGS);
 
     renderWithProviders(<LoginPage />, { route: "/login" });
 
@@ -81,6 +87,56 @@ describe("LoginPage", () => {
     expect(await screen.findByPlaceholderText("email@example.com")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("••••••••")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^login$/i })).toBeInTheDocument();
+  });
+
+  it("auto-advances to credentials after continue was requested during organization loading", async () => {
+    let resolveSettings: ((value: typeof VALID_SERVER_SETTINGS) => void) | null = null;
+    fetchServerSettings.mockImplementation(
+      () =>
+        new Promise<typeof VALID_SERVER_SETTINGS>((resolve) => {
+          resolveSettings = resolve;
+        }),
+    );
+
+    renderWithProviders(<LoginPage />, { route: "/login" });
+
+    const realmInput = screen.getByLabelText(/zulip server address/i);
+    fireEvent.change(realmInput, {
+      target: { value: "https://chat.example.com" },
+    });
+    fireEvent.blur(realmInput);
+    fireEvent.click(screen.getByRole("button"));
+
+    expect(resolveSettings).not.toBeNull();
+
+    act(() => {
+      resolveSettings?.(VALID_SERVER_SETTINGS);
+    });
+
+    expect(await screen.findByPlaceholderText("email@example.com")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("••••••••")).toBeInTheDocument();
+  });
+
+  it("shows an organization error when server settings cannot be loaded", async () => {
+    fetchServerSettings.mockResolvedValue(null);
+
+    renderWithProviders(<LoginPage />, { route: "/login" });
+
+    fireEvent.change(screen.getByLabelText(/zulip server address/i), {
+      target: { value: "https://chat.example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+
+    await waitFor(() => {
+      expect(fetchServerSettings).toHaveBeenCalledWith("https://chat.example.com");
+    });
+
+    expect(
+      await screen.findByText(
+        /could not load organization settings\. check the server address and try again\./i,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText(/email/i)).not.toBeInTheDocument();
   });
 
   it("requests server settings only after realm input blur", async () => {
@@ -103,7 +159,7 @@ describe("LoginPage", () => {
   });
 
   it("navigates to redirectTo after a successful login", async () => {
-    fetchServerSettings.mockResolvedValue(null);
+    fetchServerSettings.mockResolvedValue(VALID_SERVER_SETTINGS);
     fetchApiKey.mockResolvedValue({
       api_key: "key-123",
       email: "user@example.com",
@@ -141,7 +197,7 @@ describe("LoginPage", () => {
   });
 
   it("ignores external redirectTo values and falls back to root", async () => {
-    fetchServerSettings.mockResolvedValue(null);
+    fetchServerSettings.mockResolvedValue(VALID_SERVER_SETTINGS);
     fetchApiKey.mockResolvedValue({
       api_key: "key-123",
       email: "user@example.com",
@@ -176,7 +232,7 @@ describe("LoginPage", () => {
   });
 
   it("uses the current /message path as an implicit redirect target", async () => {
-    fetchServerSettings.mockResolvedValue(null);
+    fetchServerSettings.mockResolvedValue(VALID_SERVER_SETTINGS);
     fetchApiKey.mockResolvedValue({
       api_key: "key-123",
       email: "user@example.com",
@@ -375,10 +431,7 @@ describe("LoginPage", () => {
   it("starts desktop OIDC flow and navigates to paste-token page", async () => {
     const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
     fetchServerSettings.mockResolvedValue({
-      realm_name: "Example Zulip",
-      realm_uri: "",
-      realm_url: "",
-      realm_icon: "",
+      ...VALID_SERVER_SETTINGS,
       external_authentication_methods: [
         {
           name: "google",
@@ -413,10 +466,7 @@ describe("LoginPage", () => {
 
   it("renders multiple external auth providers from server settings", async () => {
     fetchServerSettings.mockResolvedValue({
-      realm_name: "Example Zulip",
-      realm_uri: "",
-      realm_url: "",
-      realm_icon: "",
+      ...VALID_SERVER_SETTINGS,
       external_authentication_methods: [
         {
           name: "google",
@@ -455,10 +505,7 @@ describe("LoginPage", () => {
   it("preserves redirect target when switching to desktop OIDC paste-token flow", async () => {
     const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
     fetchServerSettings.mockResolvedValue({
-      realm_name: "Example Zulip",
-      realm_uri: "",
-      realm_url: "",
-      realm_icon: "",
+      ...VALID_SERVER_SETTINGS,
       external_authentication_methods: [
         {
           name: "google",
@@ -492,10 +539,7 @@ describe("LoginPage", () => {
   it("blocks cross-origin desktop OIDC login urls", async () => {
     const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
     fetchServerSettings.mockResolvedValue({
-      realm_name: "Example Zulip",
-      realm_uri: "",
-      realm_url: "",
-      realm_icon: "",
+      ...VALID_SERVER_SETTINGS,
       external_authentication_methods: [
         {
           name: "google",
@@ -524,9 +568,7 @@ describe("LoginPage", () => {
 
   it("renders fallback realm logo and omits invalid provider icons", async () => {
     fetchServerSettings.mockResolvedValue({
-      realm_name: "Example Zulip",
-      realm_uri: "",
-      realm_url: "",
+      ...VALID_SERVER_SETTINGS,
       realm_icon: "mailto:icons@example.com",
       external_authentication_methods: [
         {
@@ -555,9 +597,7 @@ describe("LoginPage", () => {
 
   it("uses fallback realm logo and blocks same-origin icon urls before auth", async () => {
     fetchServerSettings.mockResolvedValue({
-      realm_name: "Example Zulip",
-      realm_uri: "",
-      realm_url: "",
+      ...VALID_SERVER_SETTINGS,
       realm_icon: "/user_avatars/1/realm/icon.png",
       external_authentication_methods: [
         {

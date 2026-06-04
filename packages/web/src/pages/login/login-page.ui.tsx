@@ -25,14 +25,42 @@ import { sanitizeInternalRedirectTarget } from "./login-redirect.lib";
 
 type LoginStep = "organization" | "auth";
 
+interface LoginServerSettings {
+  realm_base: string;
+  realm_name: string;
+  /** Resolved for login preview (may be empty when same-origin is blocked in the browser). */
+  realm_icon: string;
+  /** Raw `realm_icon` from Zulip server_settings (path or absolute URL). */
+  realm_icon_raw: string;
+  realm_uri: string;
+  realm_url: string;
+  external_authentication_methods: {
+    name: string;
+    display_name: string;
+    display_icon?: string;
+    login_url: string;
+  }[];
+}
+
+function stripRealmBase(value: string): string {
+  return value
+    .replace(/\/+$/, "")
+    .replace(/\/api\/v1$/, "")
+    .replace(/\/api$/, "");
+}
+
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const instances = useInstancesStore((s) => s.instances);
   const addInstance = useInstancesStore((s) => s.addInstance);
   const isAddServer = instances.length > 0;
+  const realmPrefill = useMemo(() => {
+    const raw = new URLSearchParams(location.search).get("realm");
+    return raw?.trim() ? raw : null;
+  }, [location.search]);
 
-  const [realm, setRealm] = useState("");
+  const [realm, setRealm] = useState(() => realmPrefill ?? "");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -41,28 +69,10 @@ export const LoginPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [step, setStep] = useState<LoginStep>("organization");
   const [checkedRealm, setCheckedRealm] = useState<string | null>(null);
-  const [serverSettings, setServerSettings] = useState<{
-    realm_base: string;
-    realm_name: string;
-    /** Resolved for login preview (may be empty when same-origin is blocked in the browser). */
-    realm_icon: string;
-    /** Raw `realm_icon` from Zulip server_settings (path or absolute URL). */
-    realm_icon_raw: string;
-    realm_uri: string;
-    realm_url: string;
-    external_authentication_methods: {
-      name: string;
-      display_name: string;
-      display_icon?: string;
-      login_url: string;
-    }[];
-  } | null>(null);
+  const [serverSettings, setServerSettings] = useState<LoginServerSettings | null>(null);
   const fetchIdRef = useRef(0);
+  const pendingAuthRealmRef = useRef<string | null>(null);
   const prefillAutoFetchRef = useRef<string | null>(null);
-  const realmPrefill = useMemo(() => {
-    const raw = new URLSearchParams(location.search).get("realm");
-    return raw?.trim() ? raw : null;
-  }, [location.search]);
   const redirectTarget = useMemo(() => {
     const searchParams = new URLSearchParams(location.search);
     const explicit = sanitizeInternalRedirectTarget(searchParams.get("redirectTo"));
@@ -76,12 +86,6 @@ export const LoginPage: React.FC = () => {
     return sanitizeInternalRedirectTarget(`${location.pathname}${location.search}`);
   }, [location.pathname, location.search]);
   const realmTrim = realm.trim();
-
-  useEffect(() => {
-    if (realmPrefill && realm.trim().length === 0) {
-      setRealm(realmPrefill);
-    }
-  }, [realmPrefill, realm]);
 
   const fetchSettings = useCallback(async (nextRealm: string) => {
     if (!isValidRealmUrl(nextRealm)) {
@@ -99,25 +103,32 @@ export const LoginPage: React.FC = () => {
         return false;
       }
 
-      if (data) {
-        const base = nextRealm
-          .replace(/\/+$/, "")
-          .replace(/\/api\/v1$/, "")
-          .replace(/\/api$/, "");
-        setServerSettings({
-          realm_base: base,
-          realm_name: data.realm_name,
-          realm_icon: resolveLoginIconUrl(base, data.realm_icon),
-          realm_icon_raw: (data.realm_icon ?? "").trim(),
-          realm_uri: data.realm_uri,
-          realm_url: data.realm_url,
-          external_authentication_methods: data.external_authentication_methods,
-        });
-      } else {
-        setServerSettings(null);
+      const nextSettings =
+        data == null
+          ? null
+          : {
+              realm_base: stripRealmBase(nextRealm),
+              realm_name: data.realm_name,
+              realm_icon: resolveLoginIconUrl(stripRealmBase(nextRealm), data.realm_icon),
+              realm_icon_raw: (data.realm_icon ?? "").trim(),
+              realm_uri: data.realm_uri,
+              realm_url: data.realm_url,
+              external_authentication_methods: data.external_authentication_methods,
+            };
+
+      setServerSettings(nextSettings);
+      setCheckedRealm(nextRealm);
+
+      if (pendingAuthRealmRef.current === nextRealm) {
+        pendingAuthRealmRef.current = null;
+
+        if (nextSettings != null) {
+          setStep("auth");
+        } else {
+          setError(t("auth.organizationSettingsLoadError"));
+        }
       }
 
-      setCheckedRealm(nextRealm);
       return true;
     } catch {
       if (id !== fetchIdRef.current) {
@@ -126,6 +137,12 @@ export const LoginPage: React.FC = () => {
 
       setServerSettings(null);
       setCheckedRealm(nextRealm);
+
+      if (pendingAuthRealmRef.current === nextRealm) {
+        pendingAuthRealmRef.current = null;
+        setError(t("auth.organizationSettingsLoadError"));
+      }
+
       return true;
     } finally {
       if (id === fetchIdRef.current) {
@@ -155,6 +172,7 @@ export const LoginPage: React.FC = () => {
       if (nextRealm !== checkedRealm) {
         setCheckedRealm(null);
         setServerSettings(null);
+        pendingAuthRealmRef.current = null;
         setStep("organization");
       }
     },
@@ -168,7 +186,7 @@ export const LoginPage: React.FC = () => {
   }, [fetchSettings, realmTrim]);
 
   const handleContinueToAuthStep = useCallback(
-    async (e: React.FormEvent<HTMLFormElement>) => {
+    (e: React.SyntheticEvent<HTMLFormElement>) => {
       e.preventDefault();
       setError(null);
 
@@ -177,19 +195,29 @@ export const LoginPage: React.FC = () => {
         return;
       }
 
-      if (checkedRealm !== realmTrim) {
-        const didCheckRealm = await fetchSettings(realmTrim);
-        if (!didCheckRealm) {
+      pendingAuthRealmRef.current = realmTrim;
+
+      if (checkedRealm === realmTrim) {
+        pendingAuthRealmRef.current = null;
+
+        if (serverSettings != null) {
+          setStep("auth");
           return;
         }
+
+        setError(t("auth.organizationSettingsLoadError"));
+        return;
       }
 
-      setStep("auth");
+      if (!settingsLoading) {
+        void fetchSettings(realmTrim);
+      }
     },
-    [checkedRealm, fetchSettings, realmTrim],
+    [checkedRealm, fetchSettings, realmTrim, serverSettings, settingsLoading],
   );
 
   const handleBackToOrganizationStep = useCallback(() => {
+    pendingAuthRealmRef.current = null;
     setError(null);
     setStep("organization");
   }, []);
@@ -200,7 +228,7 @@ export const LoginPage: React.FC = () => {
     e.currentTarget.src = getOrganizationFallbackLogoUrl();
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
     const usernameTrim = username.trim();
@@ -215,10 +243,7 @@ export const LoginPage: React.FC = () => {
     setLoading(true);
     try {
       const result = await fetchApiKey(realmTrim, usernameTrim, password);
-      const strippedRealm = realmTrim
-        .replace(/\/+$/, "")
-        .replace(/\/api\/v1$/, "")
-        .replace(/\/api$/, "");
+      const strippedRealm = stripRealmBase(realmTrim);
       const normalizedFromInput = strippedRealm.length > 0 ? strippedRealm : realmTrim;
       const canonicalFromServer =
         [serverSettings?.realm_url?.trim(), serverSettings?.realm_uri?.trim()].find(
@@ -252,12 +277,7 @@ export const LoginPage: React.FC = () => {
   const handleStartOidcFlow = useCallback(
     (loginPath: string) => {
       try {
-        const normalizedRealm =
-          (serverSettings?.realm_base ?? realm)
-            .trim()
-            .replace(/\/+$/, "")
-            .replace(/\/api\/v1$/, "")
-            .replace(/\/api$/, "") || realmTrim;
+        const normalizedRealm = stripRealmBase(serverSettings?.realm_base ?? realmTrim);
         if (!isValidRealmUrl(normalizedRealm)) {
           setError(t("auth.invalidServerUrl"));
           return;
@@ -296,7 +316,7 @@ export const LoginPage: React.FC = () => {
         setError(t("auth.loginError"));
       }
     },
-    [navigate, realm, realmTrim, redirectTarget, serverSettings?.realm_base],
+    [navigate, realmTrim, redirectTarget, serverSettings?.realm_base],
   );
 
   const toggleShowPassword = useCallback(() => {
@@ -347,7 +367,6 @@ export const LoginPage: React.FC = () => {
                 onChange={(e) => handleRealmChange(e.target.value)}
                 onBlur={handleRealmBlur}
                 className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2.5 text-text-primary placeholder:text-text-muted focus:border-transparent focus:outline-none focus:ring-2 focus:ring-accent"
-                disabled={settingsLoading}
               />
             </FormField>
 
@@ -357,7 +376,7 @@ export const LoginPage: React.FC = () => {
               </div>
             )}
 
-            <Button type="submit" disabled={settingsLoading} className="w-full">
+            <Button type="submit" disabled={realmTrim.length === 0} className="w-full">
               {settingsLoading ? t("auth.organizationStepLoading") : t("common.next")}
             </Button>
           </form>
