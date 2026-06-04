@@ -3,6 +3,13 @@ import { resolveCanonicalStreamName } from "~/shared/lib/stream-name.lib";
 import type { SidebarChat, StreamWithLast } from "~/shared/types/sidebar-chat";
 
 export { dmConversationKey } from "~/shared/lib/dm-key";
+import {
+  buildDmRouteSlugFromRecipients,
+  isDmRouteSlugActive,
+  parseDmRouteParticipantIds,
+} from "~/shared/lib/dm-route-slug.lib";
+
+export { buildDmRouteSlugFromRecipients, isDmRouteSlugActive, parseDmRouteParticipantIds };
 export {
   buildSidebarFromMessages,
   messageToStreamEntry,
@@ -67,9 +74,6 @@ export const MY_ACTIVITY = [
 ] as const;
 
 export const TOPIC_BAR_COLORS = ["var(--color-indicator-yellow)", "var(--color-indicator-pink)"];
-const DM_SLUG_CACHE_LIMIT = 500;
-const dmSlugUserIdsCache = new Map<string, number[]>();
-
 export const MOCK_DMS: SidebarChat[] = [
   {
     type: "dm",
@@ -193,30 +197,9 @@ export function resolveStreamRouteFromSlug(
   };
 }
 
-/** Parse DM slug from URL to user_id array for API: "422-vasya" -> [422], "422-vasya,507-petya" -> [422, 507]. */
+/** @deprecated Import `parseDmRouteParticipantIds` from `~/shared/lib/dm-route-slug.lib`. */
 export function parseDmSlugToUserIds(dmSlug: string): number[] {
-  const cached = dmSlugUserIdsCache.get(dmSlug);
-  if (cached != null) {
-    return cached;
-  }
-
-  const DECIMAL_INTEGER_RE = /^\d+$/;
-  const parsedUserIds = dmSlug
-    .split(",")
-    .map((part) => part.split("-")[0]?.trim() ?? "")
-    .map((rawUserId) => {
-      if (!DECIMAL_INTEGER_RE.test(rawUserId)) return null;
-      const parsed = Number(rawUserId);
-      if (!Number.isSafeInteger(parsed) || parsed <= 0) return null;
-      return parsed;
-    })
-    .filter((userId): userId is number => userId !== null);
-
-  if (dmSlugUserIdsCache.size >= DM_SLUG_CACHE_LIMIT) {
-    dmSlugUserIdsCache.clear();
-  }
-  dmSlugUserIdsCache.set(dmSlug, parsedUserIds);
-  return parsedUserIds;
+  return parseDmRouteParticipantIds(dmSlug);
 }
 
 /** Workspace API chat_id format: stream:${stream_id}:${topic} or dm:${userIds.join(",")}. */

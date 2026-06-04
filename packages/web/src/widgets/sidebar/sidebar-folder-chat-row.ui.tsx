@@ -1,9 +1,10 @@
 import React from "react";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { usePinStore } from "~/features/pin-chat/pin-chat.model";
 import { DmContextMenu } from "./sidebar-chat-context-menu.ui";
 import { DmChatRow } from "./sidebar-folder-dm-row.ui";
 import { SidebarFolderStreamRow } from "./sidebar-folder-stream-row.ui";
-import { chatToWorkspaceChatId } from "./sidebar.lib";
+import { chatToWorkspaceChatId, isDmRouteSlugActive } from "./sidebar.lib";
 import type { NewTopicDialogState } from "./sidebar-folder-chat-list.types";
 import type { SidebarChat } from "./sidebar.types";
 
@@ -40,6 +41,7 @@ export const SidebarFolderChatRow = React.memo(function SidebarFolderChatRow({
   openTopicDialogForStream,
   onMuteError,
 }: SidebarFolderChatRowProps): React.ReactElement {
+  const currentUserId = useChatListStore((s) => s.currentUserId ?? null);
   const chatWsId = chatToWorkspaceChatId(chat);
   const isPinnedChat =
     pinApiFolderUuid != null && usePinStore.getState().isPinned(pinApiFolderUuid, chatWsId);
@@ -73,7 +75,7 @@ export const SidebarFolderChatRow = React.memo(function SidebarFolderChatRow({
     >
       <DmChatRow
         chat={chat}
-        isActive={chat.slug === activeDmIdParam}
+        isActive={isDmRouteSlugActive(chat.slug, activeDmIdParam, currentUserId)}
         isPinned={isPinnedChat}
         compact={isCompactDensity}
       />

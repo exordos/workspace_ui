@@ -219,6 +219,21 @@ describe("Sidebar", () => {
     expect(screen.getByText("Alice")).toBeInTheDocument();
   });
 
+  it("highlights DM chat when route slug is numeric ids only", () => {
+    renderWithProviders(
+      <Sidebar
+        streams={[]}
+        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+        sidebarChats={[DM_CHAT]}
+        sidebarDms={[DM_CHAT]}
+        activeDmIdParam="42"
+      />,
+    );
+
+    const aliceLink = screen.getByRole("link", { name: /alice/i });
+    expect(aliceLink).toHaveClass("bg-sidebar-hover");
+  });
+
   it("закрывает модалку New chat и переходит в архивированный канал из вкладки Archived", async () => {
     useChatListStore.getState().clear();
     useChatListStore

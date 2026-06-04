@@ -1,4 +1,5 @@
 import type { MockMessage } from "~/shared/api/zulip.types";
+import { buildDmRouteSlugFromRecipients } from "~/shared/lib/dm-route-slug.lib";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { encodeTopicForRoute, normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import type { PushClickTargetInput, PushNotificationClickPayload } from "./push-click.types";
@@ -157,13 +158,9 @@ export function buildRouteFromMessage(
   }
 
   if (Array.isArray(message.display_recipient)) {
-    const recipients =
-      currentUserId != null
-        ? message.display_recipient.filter((r) => r.id !== currentUserId)
-        : message.display_recipient;
-    const ids = (recipients.length > 0 ? recipients : message.display_recipient).map((r) => r.id);
-    if (ids.length > 0) {
-      const base = withCurrentOrgRoute(`/dm/${ids.join(",")}`);
+    const dmSlug = buildDmRouteSlugFromRecipients(message.display_recipient, currentUserId);
+    if (dmSlug != null) {
+      const base = withCurrentOrgRoute(`/dm/${dmSlug}`);
       return `${base}?msg=${message.id}`;
     }
   }

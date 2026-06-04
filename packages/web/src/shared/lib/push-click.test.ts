@@ -144,7 +144,7 @@ describe("buildRouteFromMessage", () => {
       7,
     );
 
-    expect(route).toBe("/dm/42?msg=77");
+    expect(route).toBe("/dm/42-alice?msg=77");
   });
 
   it("builds a group-DM route from all non-self recipients", () => {
@@ -162,7 +162,7 @@ describe("buildRouteFromMessage", () => {
       7,
     );
 
-    expect(route).toBe("/dm/42,51?msg=99");
+    expect(route).toBe("/dm/42-alice,51-bob?msg=99");
   });
 });
 
