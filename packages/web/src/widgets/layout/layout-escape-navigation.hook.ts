@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import {
-  isComposerTextareaFocused,
+  isInteractiveElementFocused,
   isModalShortcutContextOpen,
   resolveLayoutEscapeKeyDown,
 } from "./layout-escape-navigation.lib";
@@ -22,7 +22,7 @@ export function useLayoutEscapeNavigation(options: {
         key: event.key,
         defaultPrevented: event.defaultPrevented,
         pathname,
-        composerFocused: isComposerTextareaFocused(),
+        interactiveElementFocused: isInteractiveElementFocused(),
         modalOpen: isModalShortcutContextOpen(),
       });
       if (action !== "navigate-inbox") return;

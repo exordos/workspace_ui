@@ -1,5 +1,6 @@
 /**
- * Escape navigation in messenger: blur composer, then return to inbox from an open chat.
+ * Escape navigation in messenger: return to inbox from an open chat unless focus is in a
+ * form control (input, textarea, select, contenteditable) or a modal is open.
  */
 
 import { extractOrgRouteFromPathname } from "~/shared/lib/org-route";
@@ -18,6 +19,28 @@ export function isComposerTextareaFocused(
   return activeElement.closest(COMPOSER_FOCUS_ZONE_SELECTOR) != null;
 }
 
+/** True when focus is in an input, textarea, select, or contenteditable element. */
+export function isInteractiveElementFocused(
+  activeElement: Element | null = document.activeElement,
+): boolean {
+  if (activeElement == null) return false;
+  if (
+    activeElement instanceof HTMLInputElement ||
+    activeElement instanceof HTMLTextAreaElement ||
+    activeElement instanceof HTMLSelectElement
+  ) {
+    return true;
+  }
+  if (activeElement instanceof HTMLElement) {
+    if (activeElement.isContentEditable) return true;
+    const mode = activeElement.contentEditable;
+    if (mode === "true" || mode === "plaintext-only") return true;
+    const attr = activeElement.getAttribute("contenteditable");
+    return attr != null && attr !== "false" && attr !== "off";
+  }
+  return false;
+}
+
 export function isInboxMessengerPathname(pathname: string): boolean {
   const { scopedPathname } = extractOrgRouteFromPathname(pathname);
   return scopedPathname === "/inbox";
@@ -29,13 +52,13 @@ export function resolveLayoutEscapeKeyDown(options: {
   key: string;
   defaultPrevented: boolean;
   pathname: string;
-  composerFocused: boolean;
+  interactiveElementFocused: boolean;
   modalOpen: boolean;
 }): LayoutEscapeKeyDownAction {
   if (options.key !== "Escape") return "none";
   if (options.defaultPrevented) return "none";
   if (options.modalOpen) return "none";
-  if (options.composerFocused) return "none";
+  if (options.interactiveElementFocused) return "none";
   if (!isMessengerChatPathname(options.pathname)) return "none";
   if (isInboxMessengerPathname(options.pathname)) return "none";
   return "navigate-inbox";

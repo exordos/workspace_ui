@@ -48,6 +48,15 @@ describe("matchesActivityFilter", () => {
     expect(matchesActivityFilter(message, "reactions", currentUserId)).toBe(true);
   });
 
+  it("excludes own messages with no reactions from reactions filter", () => {
+    const message = activityMessage({
+      sender_id: currentUserId,
+      reactions: [],
+    });
+
+    expect(matchesActivityFilter(message, "reactions", currentUserId)).toBe(false);
+  });
+
   it("excludes others' messages even when current user reacted", () => {
     const message = activityMessage({
       sender_id: 7,
