@@ -86,6 +86,7 @@ export const LoginPage: React.FC = () => {
     return sanitizeInternalRedirectTarget(`${location.pathname}${location.search}`);
   }, [location.pathname, location.search]);
   const realmTrim = realm.trim();
+  const canContinueToAuth = realmTrim.length > 0 && isValidRealmUrl(realmTrim);
 
   const fetchSettings = useCallback(async (nextRealm: string) => {
     if (!isValidRealmUrl(nextRealm)) {
@@ -189,6 +190,12 @@ export const LoginPage: React.FC = () => {
     (e: React.SyntheticEvent<HTMLFormElement>) => {
       e.preventDefault();
       setError(null);
+
+      const form = e.currentTarget;
+      if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+      }
 
       if (!realmTrim || !isValidRealmUrl(realmTrim)) {
         setError(t("auth.invalidServerUrl"));
@@ -362,6 +369,7 @@ export const LoginPage: React.FC = () => {
                 type="url"
                 inputMode="url"
                 autoComplete="url"
+                required
                 placeholder={t("auth.zulipServerUrlHint")}
                 value={realm}
                 onChange={(e) => handleRealmChange(e.target.value)}
@@ -376,7 +384,7 @@ export const LoginPage: React.FC = () => {
               </div>
             )}
 
-            <Button type="submit" disabled={realmTrim.length === 0} className="w-full">
+            <Button type="submit" disabled={!canContinueToAuth} className="w-full">
               {settingsLoading ? t("auth.organizationStepLoading") : t("common.next")}
             </Button>
           </form>

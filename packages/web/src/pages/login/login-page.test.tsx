@@ -70,6 +70,25 @@ describe("LoginPage", () => {
     expect(screen.getByRole("button", { name: /next/i })).toBeInTheDocument();
   });
 
+  it("enables the continue button only for a valid organization url", () => {
+    renderWithProviders(<LoginPage />, { route: "/login" });
+
+    const continueButton = screen.getByRole("button", { name: /next/i });
+    const realmInput = screen.getByLabelText(/zulip server address/i);
+
+    expect(continueButton).toBeDisabled();
+
+    fireEvent.change(realmInput, {
+      target: { value: "workspace" },
+    });
+    expect(continueButton).toBeDisabled();
+
+    fireEvent.change(realmInput, {
+      target: { value: "https://chat.example.com" },
+    });
+    expect(continueButton).toBeEnabled();
+  });
+
   it("shows credentials only after organization settings are loaded", async () => {
     fetchServerSettings.mockResolvedValue(VALID_SERVER_SETTINGS);
 
