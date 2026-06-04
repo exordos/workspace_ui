@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { fetchUnreadMentionsPage } from "~/shared/api/zulip-messages";
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/zulip.types";
 import { ensureMentionsUnreadSynced } from "./chat-list-mentions-sync.lib";
 
 vi.mock("~/shared/api/zulip-messages", () => ({
@@ -80,7 +80,7 @@ describe("ensureMentionsUnreadSynced", () => {
   });
 
   it("does not write mentions when active instance changed during fetch", async () => {
-    const mentionMessage: ZulipRawMessage = {
+    const mentionMessage: MockMessage = {
       id: 99,
       sender_id: 10,
       sender_full_name: "Alice",
