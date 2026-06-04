@@ -34,7 +34,11 @@ import { FloatingLoadingOverlay } from "~/shared/ui/floating-loading-overlay";
 import { Icon } from "~/shared/ui/icon";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
 import { MY_ACTIVITY, messageToDmEntry, slugForStream } from "~/widgets/sidebar/sidebar.lib";
-import { buildMessageNavigateRoute, formatActivityMessageContext } from "./activity-page.lib";
+import {
+  buildMessageNavigateRoute,
+  formatActivityMessageContext,
+  formatDraftMessageContext,
+} from "./activity-page.lib";
 import type { ActivityPageExtendedFilter } from "./activity-page.types";
 
 const log = createLogger("activity-page");
@@ -70,6 +74,27 @@ function ActivitySenderName({ senderId, fallback }: { senderId: number; fallback
   const displayName = useUsersStore((s) => s.getDisplayName(senderId));
   return <>{displayName !== "Unknown" ? displayName : fallback}</>;
 }
+
+const DraftChatContextLabel = React.memo<{ draft: Draft }>(({ draft }) => {
+  const streamsMap = useChatListStore((s) => s.streamsMap);
+  const currentUserId = useChatListStore((s) => s.currentUserId ?? null);
+  const context = useUsersStore((s) =>
+    formatDraftMessageContext({
+      draft,
+      streamsMap,
+      currentUserId,
+      getUserDisplayName: (userId) => {
+        const name = s.users.get(userId)?.full_name?.trim();
+        return name != null && name.length > 0 ? name : "Unknown";
+      },
+      generalChatLabel: t("chat.generalChat"),
+      privateLabel: t("dm.private"),
+      groupChatLabel: t("dm.groupChat"),
+    }),
+  );
+  return <>{context}</>;
+});
+DraftChatContextLabel.displayName = "DraftChatContextLabel";
 
 const ACTIVITY_PAGE_SIZE = STARRED_SUMMARY_PAGE_SIZE;
 
@@ -405,14 +430,9 @@ export const ActivityPage: React.FC = () => {
                         {formatItemTime(d.timestamp)}
                       </span>
                       <span className="truncate text-[11px] text-text-muted">
-                        {d.type === "stream" ? t("draft.streamDraft") : t("draft.privateDraft")}
+                        <DraftChatContextLabel draft={d} />
                       </span>
                     </div>
-                    {d.type === "stream" && d.topic && (
-                      <p className="mt-0.5 text-xs text-sidebar-sender">
-                        {t("draft.topic", { topic: d.topic })}
-                      </p>
-                    )}
                     <p className="mt-1 line-clamp-2 text-sm text-text-primary">
                       {truncateText(d.content)}
                     </p>

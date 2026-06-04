@@ -5,8 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useActivityStore } from "~/entities/activity/activity.model";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useDraftStore } from "~/entities/draft/draft.model";
+import { useUsersStore } from "~/entities/user/user.model";
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
-import { createMessage } from "~/test/factories";
+import { createMessage, createUser } from "~/test/factories";
 import { ActivityPage } from "./activity-page.ui";
 import type * as ReactRouterDom from "react-router-dom";
 
@@ -97,6 +98,7 @@ describe("ActivityPage drafts routing", () => {
     removeMessageFlag.mockReset();
     useDraftStore.getState().clear();
     useChatListStore.getState().clear();
+    useUsersStore.getState().clear();
     useActivityStore.getState().clear();
   });
 
@@ -138,11 +140,41 @@ describe("ActivityPage drafts routing", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Draft content")).toBeInTheDocument();
+      expect(screen.getByText("#engineering · general")).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByText("Draft content"));
 
     expect(navigateSpy).toHaveBeenCalledWith("/stream/10-engineering/topic/general");
+  });
+
+  it("shows DM partner name on private draft rows", async () => {
+    useUsersStore.getState().mergeUser(createUser({ user_id: 7, full_name: "Bob" }));
+    useChatListStore.setState({ currentUserId: 42 });
+
+    useDraftStore.getState().setDrafts([
+      {
+        id: 2,
+        type: "private",
+        to: [7, 42],
+        topic: "",
+        content: "DM draft text",
+        timestamp: 1710000001,
+      },
+    ]);
+
+    render(
+      <MemoryRouter initialEntries={["/activity/drafts"]}>
+        <Routes>
+          <Route path="/activity/:filter" element={<ActivityPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("DM draft text")).toBeInTheDocument();
+      expect(screen.getByText(/Bob/)).toBeInTheDocument();
+    });
   });
 
   it("opens activity message in chat from context action", async () => {
