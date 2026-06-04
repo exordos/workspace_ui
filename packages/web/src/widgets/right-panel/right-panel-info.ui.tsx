@@ -9,8 +9,11 @@ import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
 import { AddStreamMembersDialog } from "~/features/add-stream-members/add-stream-members-dialog.ui";
 import { useAddStreamMembersStore } from "~/features/add-stream-members/add-stream-members.model";
 import { useChatInfoStore } from "~/features/chat-info/chat-info.model";
-import { muteStream, unmuteStream } from "~/features/mute-chat/mute-chat.api";
+import { runOptimisticStreamNotificationLevelUpdate } from "~/features/mute-chat/mute-chat-notification.optimistic.lib";
+import { setStreamNotificationLevel } from "~/features/mute-chat/mute-chat.api";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
+import { StreamNotificationLevelSwitch } from "~/features/mute-chat/stream-notification-level-switch.ui";
+import type { StreamNotificationLevel } from "~/features/mute-chat/stream-notification-level.lib";
 import { useRemoveStreamMembersStore } from "~/features/remove-stream-members/remove-stream-members.model";
 import { t } from "~/i18n/i18n";
 import { deleteTopic, updateStream } from "~/shared/api/zulip-streams";
@@ -104,9 +107,11 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
   const canDeleteTopic = currentUserRole === UserRole.Owner || currentUserRole === UserRole.Admin;
   const canAddMembers = streamId != null && channelActionCapabilities.canAddSubscribers;
   const canRemoveMembers = streamId != null && channelActionCapabilities.canRemoveSubscribers;
-  const isStreamMuted = useMuteStore((s) => (streamId ? s.isStreamMuted(streamId) : false));
-  const [mutePending, setMutePending] = useState(false);
-  const [muteError, setMuteError] = useState<string | null>(null);
+  const notificationLevel = useMuteStore((s) =>
+    streamId != null ? s.getStreamNotificationLevel(streamId) : "default",
+  );
+  const [notificationPending, setNotificationPending] = useState(false);
+  const [notificationError, setNotificationError] = useState<string | null>(null);
   const [channelActionPending, setChannelActionPending] = useState(false);
   const [channelActionError, setChannelActionError] = useState<string | null>(null);
   const [topicDeletePendingName, setTopicDeletePendingName] = useState<string | null>(null);
@@ -121,33 +126,28 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
   const removeMemberLastError = useRemoveStreamMembersStore((s) => s.lastError);
   const clearRemoveMembersState = useRemoveStreamMembersStore((s) => s.clear);
 
-  const handleToggleMute = useCallback(async () => {
-    if (streamId == null || mutePending) return;
+  const handleSetNotificationLevel = useCallback(
+    async (level: StreamNotificationLevel) => {
+      if (streamId == null || notificationPending || notificationLevel === level) return;
 
-    setMutePending(true);
-    setMuteError(null);
-    try {
-      if (isStreamMuted) {
-        log.info("Unmuting stream from right panel", { streamId });
-        const ok = await unmuteStream(streamId);
-        if (ok) {
-          useMuteStore.getState().unmuteStream(streamId);
-        } else {
-          setMuteError(t("app.error"));
+      setNotificationPending(true);
+      setNotificationError(null);
+      try {
+        log.info("Setting stream notification level from right panel", { streamId, level });
+        const ok = await runOptimisticStreamNotificationLevelUpdate({
+          streamId,
+          level,
+          request: () => setStreamNotificationLevel(streamId, level),
+        });
+        if (!ok) {
+          setNotificationError(t("app.error"));
         }
-      } else {
-        log.info("Muting stream from right panel", { streamId });
-        const ok = await muteStream(streamId);
-        if (ok) {
-          useMuteStore.getState().muteStream(streamId);
-        } else {
-          setMuteError(t("app.error"));
-        }
+      } finally {
+        setNotificationPending(false);
       }
-    } finally {
-      setMutePending(false);
-    }
-  }, [streamId, isStreamMuted, mutePending]);
+    },
+    [notificationLevel, notificationPending, streamId],
+  );
 
   const handleOpenDirectMessage = useCallback(
     (userId: number) => {
@@ -470,25 +470,30 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
       <ScrollArea className="flex-1 space-y-4 px-4 py-3">
         {streamId != null && (
           <div>
-            <button
-              type="button"
-              onClick={handleToggleMute}
-              disabled={mutePending}
-              className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left text-sm text-text-secondary hover:bg-bg-elevated hover:text-text-primary"
-            >
-              <Icon
-                name="bell"
-                size={20}
-                className={`shrink-0 ${isStreamMuted ? "text-notice-base" : "text-current"}`}
-              />
-              <span>{isStreamMuted ? t("channel.unmuteChannel") : t("channel.muteChannel")}</span>
-            </button>
-            {muteError && (
+            <p className="px-2 pb-2 text-[11px] font-medium uppercase tracking-wide text-text-muted">
+              {t("channel.notifications")}
+            </p>
+            <StreamNotificationLevelSwitch
+              value={notificationLevel}
+              disabled={notificationPending}
+              onChange={(level) => {
+                void handleSetNotificationLevel(level);
+              }}
+              className="mx-2"
+            />
+            <p className="mx-2 mt-2 text-[11px] text-text-muted">
+              {notificationLevel === "default" && t("channel.notificationDefault")}
+              {notificationLevel === "muted" && t("channel.notificationMuted")}
+              {notificationLevel === "subscribed" && t("channel.notificationSubscribed")}
+            </p>
+            {notificationError && (
               <div className="mt-1 flex items-center justify-between gap-2 px-2 text-xs text-notice-base">
-                <span>{muteError}</span>
+                <span>{notificationError}</span>
                 <button
                   type="button"
-                  onClick={handleToggleMute}
+                  onClick={() => {
+                    void handleSetNotificationLevel(notificationLevel);
+                  }}
                   className="hover:bg-notice-base/20 rounded px-1.5 py-0.5 text-notice-base hover:text-notice-base"
                 >
                   {t("common.retry")}

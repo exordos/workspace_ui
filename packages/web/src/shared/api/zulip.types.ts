@@ -303,6 +303,9 @@ export interface ZulipSubscription {
   stream_id: number;
   name: string;
   is_muted: boolean;
+  /** Per-channel override; null/undefined inherits global stream notification settings. */
+  desktop_notifications?: boolean | null;
+  audible_notifications?: boolean | null;
   is_archived?: boolean;
   creator_id?: number;
   invite_only?: boolean;

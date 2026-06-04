@@ -304,7 +304,14 @@ describe("ActivityPage drafts routing", () => {
       display_recipient: "engineering",
     }) as ZulipRawMessage;
 
+    useChatListStore.setState({ currentUserId: 42 });
     useActivityStore.getState().setFilterCache("reactions", [freshReaction], true);
+    useActivityStore.setState((state) => ({
+      filters: {
+        ...state.filters,
+        reactions: { ...state.filters.reactions, lastLoadedAt: null },
+      },
+    }));
     hydrateActivityMessagesFromCache.mockResolvedValue([oldReaction]);
     fetchActivityMessagesPageWithPersist.mockResolvedValue({
       messages: [freshReaction],
@@ -351,7 +358,14 @@ describe("ActivityPage drafts routing", () => {
       display_recipient: "engineering",
     }) as ZulipRawMessage;
 
+    useChatListStore.setState({ currentUserId: 42 });
     useActivityStore.getState().setFilterCache("reactions", [oldReaction], true);
+    useActivityStore.setState((state) => ({
+      filters: {
+        ...state.filters,
+        reactions: { ...state.filters.reactions, lastLoadedAt: null },
+      },
+    }));
     hydrateActivityMessagesFromCache.mockResolvedValue([freshReaction]);
     fetchActivityMessagesPageWithPersist.mockResolvedValue({
       messages: [freshReaction],
@@ -455,11 +469,76 @@ describe("ActivityPage drafts routing", () => {
     expect(screen.getByText("Starred message persists")).toBeInTheDocument();
   });
 
+  it("does not fetch reactions until currentUserId is known", async () => {
+    useChatListStore.setState({ currentUserId: null });
+
+    render(
+      <MemoryRouter initialEntries={["/activity/reactions"]}>
+        <Routes>
+          <Route path="/activity/:filter" element={<ActivityPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(fetchActivityMessagesPageWithPersist).not.toHaveBeenCalled();
+    expect(screen.getByText(/loading/i)).toBeInTheDocument();
+
+    fetchActivityMessagesPageWithPersist.mockResolvedValue({
+      messages: [
+        createMessage({
+          id: 50,
+          sender_id: 42,
+          content: "My reacted message",
+          timestamp: 2,
+        }),
+      ],
+      foundOldest: true,
+    });
+
+    act(() => {
+      useChatListStore.getState().setCurrentUserId(42);
+    });
+
+    await waitFor(() => {
+      expect(fetchActivityMessagesPageWithPersist).toHaveBeenCalledWith(
+        "reactions",
+        42,
+        "newest",
+        expect.any(Number),
+      );
+    });
+  });
+
+  it("shows reactions-specific empty state copy", async () => {
+    useChatListStore.setState({ currentUserId: 42 });
+    fetchActivityMessagesPageWithPersist.mockResolvedValue({
+      messages: [],
+      foundOldest: true,
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/activity/reactions"]}>
+        <Routes>
+          <Route path="/activity/:filter" element={<ActivityPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Your messages that received emoji reactions will appear here/i),
+      ).toBeInTheDocument();
+    });
+  });
+
   it.each(["mentions", "reactions", "starred"] as const)(
     "initializes %s list at the latest messages",
     async (filter) => {
       const restoreScrollHeight = mockElementScrollHeight(1200);
       try {
+        if (filter === "reactions") {
+          useChatListStore.setState({ currentUserId: 42 });
+        }
         const page = [
           createMessage({
             id: 10,

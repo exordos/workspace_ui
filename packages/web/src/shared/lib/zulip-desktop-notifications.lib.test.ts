@@ -14,10 +14,25 @@ const baseViewport = {
   windowHidden: false,
 };
 
+const streamMessageDefaults = {
+  type: "stream" as const,
+  flags: [] as string[],
+  isTopicFollowed: false,
+  streamAllMessagesNotifyEnabled: false,
+  streamAllMessagesAudibleEnabled: false,
+};
+
 describe("zulip-desktop-notifications", () => {
   describe("classifyNotificationTrigger", () => {
     it("classifies DMs", () => {
-      expect(classifyNotificationTrigger({ type: "private", isTopicFollowed: false })).toBe("dm");
+      expect(
+        classifyNotificationTrigger({
+          type: "private",
+          isTopicFollowed: false,
+          streamAllMessagesNotifyEnabled: false,
+          streamAllMessagesAudibleEnabled: false,
+        }),
+      ).toBe("dm");
     });
 
     it("classifies mentions before stream", () => {
@@ -26,6 +41,8 @@ describe("zulip-desktop-notifications", () => {
           type: "stream",
           flags: ["mentioned"],
           isTopicFollowed: false,
+          streamAllMessagesNotifyEnabled: false,
+          streamAllMessagesAudibleEnabled: false,
         }),
       ).toBe("mention");
     });
@@ -36,6 +53,8 @@ describe("zulip-desktop-notifications", () => {
           type: "stream",
           flags: [],
           isTopicFollowed: true,
+          streamAllMessagesNotifyEnabled: false,
+          streamAllMessagesAudibleEnabled: false,
         }),
       ).toBe("followed_topic");
     });
@@ -68,9 +87,16 @@ describe("zulip-desktop-notifications", () => {
   });
 
   describe("shouldDesktopNotify", () => {
+    const dmMessage = {
+      type: "private" as const,
+      isTopicFollowed: false,
+      streamAllMessagesNotifyEnabled: false,
+      streamAllMessagesAudibleEnabled: false,
+    };
+
     it("skips on-screen messages in current chat when tab is focused", () => {
       const result = shouldDesktopNotify({
-        message: { type: "private", isTopicFollowed: false },
+        message: dmMessage,
         viewport: {
           ...baseViewport,
           isOnScreenInCurrentChat: true,
@@ -85,7 +111,7 @@ describe("zulip-desktop-notifications", () => {
 
     it("plays sound for DM in open chat when tab is hidden", () => {
       const result = shouldDesktopNotify({
-        message: { type: "private", isTopicFollowed: false },
+        message: dmMessage,
         viewport: {
           ...baseViewport,
           isOnScreenInCurrentChat: true,
@@ -100,7 +126,7 @@ describe("zulip-desktop-notifications", () => {
 
     it("plays sound for DM in open chat when window lost focus but tab visible", () => {
       const result = shouldDesktopNotify({
-        message: { type: "private", isTopicFollowed: false },
+        message: dmMessage,
         viewport: {
           ...baseViewport,
           isOnScreenInCurrentChat: true,
@@ -114,7 +140,7 @@ describe("zulip-desktop-notifications", () => {
 
     it("notifies for DMs when desktop notifications enabled", () => {
       const result = shouldDesktopNotify({
-        message: { type: "private", isTopicFollowed: false },
+        message: dmMessage,
         viewport: baseViewport,
         settings: DEFAULT_ZULIP_NOTIFICATION_SETTINGS,
       });
@@ -122,37 +148,69 @@ describe("zulip-desktop-notifications", () => {
       expect(result.playSound).toBe(true);
     });
 
-    it("skips stream messages when stream desktop disabled", () => {
+    it("skips plain stream messages when per-channel all-messages notify is off", () => {
       const result = shouldDesktopNotify({
-        message: { type: "stream", flags: [], isTopicFollowed: false },
+        message: streamMessageDefaults,
         viewport: baseViewport,
         settings: DEFAULT_ZULIP_NOTIFICATION_SETTINGS,
       });
       expect(result.notify).toBe(false);
     });
 
-    it("notifies for stream when stream desktop enabled", () => {
+    it("notifies for plain stream when per-channel all-messages notify is on", () => {
       const result = shouldDesktopNotify({
-        message: { type: "stream", flags: [], isTopicFollowed: false },
+        message: {
+          ...streamMessageDefaults,
+          streamAllMessagesNotifyEnabled: true,
+          streamAllMessagesAudibleEnabled: true,
+        },
+        viewport: baseViewport,
+        settings: DEFAULT_ZULIP_NOTIFICATION_SETTINGS,
+      });
+      expect(result.notify).toBe(true);
+      expect(result.playSound).toBe(true);
+    });
+
+    it("notifies for stream mention when all-messages notify is off", () => {
+      const result = shouldDesktopNotify({
+        message: {
+          ...streamMessageDefaults,
+          flags: ["mentioned"],
+        },
+        viewport: baseViewport,
+        settings: DEFAULT_ZULIP_NOTIFICATION_SETTINGS,
+      });
+      expect(result.notify).toBe(true);
+      expect(result.trigger).toBe("mention");
+    });
+
+    it("skips muted stream messages including mentions", () => {
+      const result = shouldDesktopNotify({
+        message: {
+          ...streamMessageDefaults,
+          flags: ["mentioned"],
+          streamAllMessagesNotifyEnabled: true,
+        },
+        viewport: { ...baseViewport, isMuted: true },
+        settings: DEFAULT_ZULIP_NOTIFICATION_SETTINGS,
+      });
+      expect(result.notify).toBe(false);
+    });
+
+    it("inherits global stream desktop via resolved flag", () => {
+      const result = shouldDesktopNotify({
+        message: {
+          ...streamMessageDefaults,
+          streamAllMessagesNotifyEnabled: true,
+          streamAllMessagesAudibleEnabled: true,
+        },
         viewport: baseViewport,
         settings: {
           ...DEFAULT_ZULIP_NOTIFICATION_SETTINGS,
-          enableStreamDesktopNotifications: true,
+          enableStreamDesktopNotifications: false,
         },
       });
       expect(result.notify).toBe(true);
-    });
-
-    it("skips muted stream messages", () => {
-      const result = shouldDesktopNotify({
-        message: { type: "stream", flags: [], isTopicFollowed: false },
-        viewport: { ...baseViewport, isMuted: true },
-        settings: {
-          ...DEFAULT_ZULIP_NOTIFICATION_SETTINGS,
-          enableStreamDesktopNotifications: true,
-        },
-      });
-      expect(result.notify).toBe(false);
     });
   });
 });

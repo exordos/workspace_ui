@@ -493,6 +493,22 @@ function filterByNarrow(
             (m.subject && m.subject.toLowerCase().includes(lower))
         );
       }
+    } else if (op === "has" && operand === "reaction") {
+      out = out.filter((m) => (m.reactions?.length ?? 0) > 0);
+    } else if (op === "sender") {
+      const senderId =
+        typeof operand === "number" ? operand : parseInt(String(operand), 10);
+      if (!Number.isNaN(senderId)) {
+        out = out.filter((m) => m.sender_id === senderId);
+      }
+    } else if (op === "is") {
+      const flag = typeof operand === "string" ? operand : String(operand);
+      if (flag === "starred" || flag === "mentioned") {
+        out = out.filter((m) => {
+          const flags = (m as MockMessage & { flags?: string[] }).flags ?? [];
+          return flags.includes(flag);
+        });
+      }
     }
   }
   return out;

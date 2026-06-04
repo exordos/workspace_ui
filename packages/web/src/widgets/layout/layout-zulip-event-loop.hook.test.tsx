@@ -81,19 +81,16 @@ function createHarnessProps() {
     loadBootstrapMessages: vi.fn<
       (signal: AbortSignal, isStale: () => boolean) => Promise<ChatListBootstrapResult>
     >(() => Promise.resolve({ mode: "none", latestMessageIdHint: null })),
-    loadMuteSnapshot: vi.fn<
-      () => Promise<{
-        mutedStreamIds: number[];
-        mutedTopics: { streamId: number; topic: string }[];
-        unmutedTopics: { streamId: number; topic: string }[];
-        followedTopics: { streamId: number; topic: string }[];
-      }>
-    >(() =>
+    loadMuteSnapshot: vi.fn(() =>
       Promise.resolve({
         mutedStreamIds: [],
         mutedTopics: [],
         unmutedTopics: [],
         followedTopics: [],
+        streamDesktopNotifyEnabledIds: [],
+        streamDesktopNotifyDisabledIds: [],
+        streamAudibleNotifyEnabledIds: [],
+        streamAudibleNotifyDisabledIds: [],
       }),
     ),
     setFromMessages: vi.fn(),

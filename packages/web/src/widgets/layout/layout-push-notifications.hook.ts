@@ -11,6 +11,7 @@ import { resolveNotificationSoundPreset } from "~/shared/lib/notification-sound-
 import { notificationService } from "~/shared/lib/notifications";
 import { shouldDesktopNotify } from "~/shared/lib/notifications-policy";
 import { pushService, type PushMessagePayload } from "~/shared/lib/push/push.service";
+import { buildStreamMessageNotificationFlags } from "~/shared/lib/stream-notification-notify.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 
@@ -49,11 +50,20 @@ function handleForegroundPush(payload: PushMessagePayload): void {
     localSound,
   );
 
+  const streamFlags =
+    message.type === "stream" && message.stream_id != null
+      ? buildStreamMessageNotificationFlags(message.stream_id, serverSettings, mute)
+      : {
+          streamAllMessagesNotifyEnabled: false,
+          streamAllMessagesAudibleEnabled: false,
+        };
+
   const decision = shouldDesktopNotify({
     message: {
       type: message.type,
       flags: message.flags,
       isTopicFollowed,
+      ...streamFlags,
     },
     viewport: {
       isFromSelf: false,

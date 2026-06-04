@@ -60,12 +60,16 @@ function buildCtx(
     mute: {
       isEffectivelyMuted: () => false,
       isTopicFollowed: () => false,
+      getStreamDesktopNotificationsOverride: () => null,
+      getStreamAudibleNotificationsOverride: () => null,
       muteStream: noop,
       unmuteStream: noop,
       muteTopic: noop,
       unmuteTopic: noop,
       followTopic: noop,
       clearTopicVisibilityOverride: noop,
+      setStreamDesktopNotifications: noop,
+      setStreamAudibleNotifications: noop,
     },
     activity: { markStale: noop, markStarredSummaryStale: noop },
     inbox: { markStale: noop },
@@ -102,12 +106,16 @@ function buildIntegrationCtx(): LayoutZulipEventDispatchContext {
     mute: {
       isEffectivelyMuted: () => false,
       isTopicFollowed: () => false,
+      getStreamDesktopNotificationsOverride: () => null,
+      getStreamAudibleNotificationsOverride: () => null,
       muteStream: noop,
       unmuteStream: noop,
       muteTopic: noop,
       unmuteTopic: noop,
       followTopic: noop,
       clearTopicVisibilityOverride: noop,
+      setStreamDesktopNotifications: noop,
+      setStreamAudibleNotifications: noop,
     },
     activity: { markStale: noop, markStarredSummaryStale: noop },
     inbox: { markStale: noop },
@@ -420,6 +428,46 @@ describe("dispatchZulipEvent", () => {
       );
 
       expect(followSpy).toHaveBeenCalledWith(42, "incidents");
+    });
+  });
+
+  describe("subscription notification properties", () => {
+    it("updates desktop_notifications on subscription update", () => {
+      const { ctx } = buildCtx();
+      const desktopSpy = vi.spyOn(ctx.mute, "setStreamDesktopNotifications");
+
+      dispatchZulipEvent(
+        {
+          id: 90,
+          type: "subscription",
+          op: "update",
+          stream_id: 42,
+          property: "desktop_notifications",
+          value: true,
+        },
+        ctx,
+      );
+
+      expect(desktopSpy).toHaveBeenCalledWith(42, true);
+    });
+
+    it("updates audible_notifications on subscription update", () => {
+      const { ctx } = buildCtx();
+      const audibleSpy = vi.spyOn(ctx.mute, "setStreamAudibleNotifications");
+
+      dispatchZulipEvent(
+        {
+          id: 91,
+          type: "subscription",
+          op: "update",
+          stream_id: 42,
+          property: "audible_notifications",
+          value: false,
+        },
+        ctx,
+      );
+
+      expect(audibleSpy).toHaveBeenCalledWith(42, false);
     });
   });
 

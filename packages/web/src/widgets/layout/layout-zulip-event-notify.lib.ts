@@ -8,6 +8,7 @@ import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-d
 import { registerNotifiedMessageId } from "~/shared/lib/notification-dedup.lib";
 import { resolveNotificationSoundPreset } from "~/shared/lib/notification-sound-preset.lib";
 import { shouldDesktopNotify } from "~/shared/lib/notifications-policy";
+import { buildStreamMessageNotificationFlags } from "~/shared/lib/stream-notification-notify.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import { readViewportState } from "./layout-zulip-event-viewport.lib";
@@ -69,11 +70,20 @@ export function maybeNotifyNewMessage(
     localSound,
   );
 
+  const streamFlags =
+    raw.type === "stream" && raw.stream_id != null
+      ? buildStreamMessageNotificationFlags(raw.stream_id, serverSettings, ctx.mute)
+      : {
+          streamAllMessagesNotifyEnabled: false,
+          streamAllMessagesAudibleEnabled: false,
+        };
+
   const decision = shouldDesktopNotify({
     message: {
       type: raw.type ?? "stream",
       flags: raw.flags,
       isTopicFollowed,
+      ...streamFlags,
     },
     viewport: {
       isFromSelf,

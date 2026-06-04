@@ -3,6 +3,7 @@ import { ensureStarredLoaded } from "~/entities/activity/activity-starred-loader
 import { useActivityStore } from "~/entities/activity/activity.model";
 import { ensureMentionsUnreadSynced } from "~/entities/chat-list/chat-list-mentions-sync.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { buildMuteSnapshotFromBootstrap } from "~/features/mute-chat/mute-chat.model";
 import type { ZulipSubscription, ZulipUserTopic } from "~/shared/api/zulip.types";
 
 export interface LayoutMuteSnapshot {
@@ -10,6 +11,10 @@ export interface LayoutMuteSnapshot {
   mutedTopics: { streamId: number; topic: string }[];
   unmutedTopics: { streamId: number; topic: string }[];
   followedTopics: { streamId: number; topic: string }[];
+  streamDesktopNotifyEnabledIds: number[];
+  streamDesktopNotifyDisabledIds: number[];
+  streamAudibleNotifyEnabledIds: number[];
+  streamAudibleNotifyDisabledIds: number[];
 }
 
 export interface LayoutMuteBootstrapData {
@@ -31,22 +36,12 @@ export function useLayoutInstanceBootstrap(options: {
   // Load instance mute snapshot (muted streams/topics) for consistent UI.
   const loadMuteSnapshot = useCallback(
     (bootstrap?: LayoutMuteBootstrapData): Promise<LayoutMuteSnapshot> => {
-      const subscriptions = bootstrap?.subscriptions ?? [];
-      const userTopics = bootstrap?.userTopics ?? [];
-      const mutedStreamIds = subscriptions.filter((s) => s.is_muted).map((s) => s.stream_id);
-      const mutedTopics: { streamId: number; topic: string }[] = [];
-      const unmutedTopics: { streamId: number; topic: string }[] = [];
-      const followedTopics: { streamId: number; topic: string }[] = [];
-      for (const ut of userTopics) {
-        if (ut.visibility_policy === 1) {
-          mutedTopics.push({ streamId: ut.stream_id, topic: ut.topic_name });
-        } else if (ut.visibility_policy === 2) {
-          unmutedTopics.push({ streamId: ut.stream_id, topic: ut.topic_name });
-        } else if (ut.visibility_policy === 3) {
-          followedTopics.push({ streamId: ut.stream_id, topic: ut.topic_name });
-        }
-      }
-      return Promise.resolve({ mutedStreamIds, mutedTopics, unmutedTopics, followedTopics });
+      return Promise.resolve(
+        buildMuteSnapshotFromBootstrap({
+          subscriptions: bootstrap?.subscriptions,
+          userTopics: bootstrap?.userTopics,
+        }),
+      );
     },
     [],
   );

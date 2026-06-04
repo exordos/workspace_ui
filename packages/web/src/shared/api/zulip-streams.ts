@@ -151,6 +151,8 @@ export async function fetchSubscriptions(): Promise<ZulipSubscription[]> {
       stream_id: number;
       name: string;
       is_muted?: boolean;
+      desktop_notifications?: boolean | null;
+      audible_notifications?: boolean | null;
       is_archived?: boolean;
       in_home_view?: boolean;
       creator_id?: unknown;
@@ -183,6 +185,14 @@ export async function fetchSubscriptions(): Promise<ZulipSubscription[]> {
       stream_id: subscription.stream_id,
       name: subscription.name,
       is_muted: subscription.is_muted ?? !(subscription.in_home_view ?? true),
+      ...(subscription.desktop_notifications === true ||
+      subscription.desktop_notifications === false
+        ? { desktop_notifications: subscription.desktop_notifications }
+        : {}),
+      ...(subscription.audible_notifications === true ||
+      subscription.audible_notifications === false
+        ? { audible_notifications: subscription.audible_notifications }
+        : {}),
       ...(typeof subscription.is_archived === "boolean"
         ? { is_archived: subscription.is_archived }
         : {}),

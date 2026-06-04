@@ -227,6 +227,18 @@ export function handleSubscriptionPropertyUpdate(
     }
     return;
   }
+  if (property === "desktop_notifications") {
+    const value = event.value as boolean | undefined;
+    if (typeof value !== "boolean") return;
+    mute.setStreamDesktopNotifications(streamId, value);
+    return;
+  }
+  if (property === "audible_notifications") {
+    const value = event.value as boolean | undefined;
+    if (typeof value !== "boolean") return;
+    mute.setStreamAudibleNotifications(streamId, value);
+    return;
+  }
   if (property === "name") {
     const value = event.value as string | undefined;
     if (typeof value === "string" && value.trim().length > 0) {

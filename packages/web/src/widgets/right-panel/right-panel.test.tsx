@@ -662,7 +662,7 @@ describe("RightPanel truthfulness", () => {
     expect(infoHeading.closest(".overflow-y-auto")).not.toBeNull();
   });
 
-  it("shows retry error and does not mutate local mute state when mute API fails", async () => {
+  it("shows retry error and does not mutate local notification state when API fails", async () => {
     useCurrentChatMessagesStore.setState({
       context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
       messages: [],
@@ -670,18 +670,18 @@ describe("RightPanel truthfulness", () => {
       hasOlderMessages: true,
       hasNewerMessages: false,
     });
-    vi.spyOn(muteChat, "muteStream").mockResolvedValue(false);
+    vi.spyOn(muteChat, "setStreamNotificationLevel").mockResolvedValue(false);
 
     renderWithProviders(
       <RightPanelShell title="engineering" participantsCount={3} onlineCount={1} />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /mute notifications/i }));
+    fireEvent.click(screen.getByRole("radio", { name: /muted/i }));
 
     await waitFor(() => {
       expect(screen.getByText(/something went wrong/i)).toBeInTheDocument();
     });
-    expect(useMuteStore.getState().isStreamMuted(10)).toBe(false);
+    expect(useMuteStore.getState().getStreamNotificationLevel(10)).toBe("default");
   });
 
   it("renders stream description and topic rows from chat info data", () => {

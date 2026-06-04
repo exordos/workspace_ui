@@ -293,14 +293,14 @@ describe("fetchActivityMessages", () => {
     );
   });
 
-  it("returns empty on error", async () => {
+  it("throws on API error result", async () => {
     mockZulipApi.get.mockResolvedValue({
       ok: true,
       status: 200,
-      data: { result: "error" },
+      data: { result: "error", msg: "invalid narrow" },
       raw: { statusText: "OK" },
     });
-    expect(await fetchActivityMessages("mentions")).toEqual([]);
+    await expect(fetchActivityMessages("mentions")).rejects.toThrow(/invalid narrow/i);
   });
 });
 
@@ -335,6 +335,45 @@ describe("fetchActivityMessagesPage", () => {
       /fetchActivityMessagesPage\.currentUserId/i,
     );
     expect(mockZulipApi.get).not.toHaveBeenCalled();
+  });
+
+  it("fails fast when reactions filter has no current user id", async () => {
+    await expect(fetchActivityMessagesPage("reactions", null)).rejects.toThrow(
+      /fetchActivityMessagesPage\.currentUserId/i,
+    );
+    expect(mockZulipApi.get).not.toHaveBeenCalled();
+  });
+
+  it("requests has:reaction and sender narrow for reactions filter", async () => {
+    mockZulipApi.get.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        messages: [{ id: 1, sender_id: 42, content: "x", timestamp: 1 }],
+        found_oldest: true,
+      },
+      raw: { statusText: "OK" },
+    });
+
+    await fetchActivityMessagesPage("reactions", 42);
+
+    expect(mockZulipApi.get).toHaveBeenCalledWith(
+      "/messages",
+      {
+        anchor: "newest",
+        num_before: "200",
+        num_after: "0",
+        narrow: JSON.stringify([
+          { negated: false, operator: "has", operand: "reaction" },
+          { negated: false, operator: "sender", operand: 42 },
+        ]),
+        allow_empty_topic_name: "true",
+        client_gravatar: "true",
+        apply_markdown: "false",
+      },
+      undefined,
+    );
   });
 });
 

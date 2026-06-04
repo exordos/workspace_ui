@@ -43,6 +43,8 @@ import type {
   ZulipRawMessage,
 } from "./zulip.types";
 
+const activityMessagesLog = createLogger("api:activity-messages");
+
 interface MessageWindowOptions {
   anchor: string | number;
   numBefore: number;
@@ -179,9 +181,6 @@ function getActivityNarrow(filter: ActivityFilter, currentUserId?: number | null
     case "mentions":
       return [{ negated: false, operator: "is", operand: "mentioned" }];
     case "reactions":
-      if (currentUserId == null) {
-        return [{ negated: false, operator: "has", operand: "reaction" }];
-      }
       return [
         { negated: false, operator: "has", operand: "reaction" },
         {
@@ -300,14 +299,24 @@ export async function fetchActivityMessagesPage(
     client_gravatar: "true",
     apply_markdown: "false",
   });
-  if (!res?.ok) return { messages: [], foundOldest: false };
+  if (!res?.ok) {
+    const errData = res.data as { msg?: string } | undefined;
+    const msg = errData?.msg ?? `Activity messages request failed (${res.status})`;
+    activityMessagesLog.warn("Activity messages fetch HTTP error", { filter, status: res.status });
+    throw new Error(msg);
+  }
   const data = res.data as {
     result?: string;
+    msg?: string;
     messages?: ZulipRawMessage[];
     found_oldest?: boolean;
     foundOldest?: boolean;
   };
-  if (!data || data.result === "error") return { messages: [], foundOldest: false };
+  if (!data || data.result === "error") {
+    const msg = data?.msg ?? "Activity messages fetch error";
+    activityMessagesLog.warn("Activity messages API error", { filter, msg });
+    throw new Error(msg);
+  }
   return {
     messages: data.messages ?? [],
     foundOldest: data.found_oldest ?? data.foundOldest ?? false,

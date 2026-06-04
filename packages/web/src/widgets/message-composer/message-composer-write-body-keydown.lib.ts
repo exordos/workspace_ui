@@ -112,6 +112,7 @@ function handleMentionNavigation(
 
   if (event.key === "Escape") {
     event.preventDefault();
+    event.stopPropagation();
     options.onHideMentionDropdown();
     return true;
   }
@@ -176,26 +177,30 @@ export function handleComposerWriteBodyKeyDown(
 
   if (handleMentionNavigation(event, options)) return;
 
-  if (!KEYBOARD_SHORTCUTS_ENABLED) return;
-
-  if (handleFormattingShortcuts(event, options.applyFormattingShortcut)) return;
-
-  if (
-    handleEditLastMessageShortcut(event, {
-      value: options.value,
-      showMentions: options.showMentions,
-      isEditing: options.isEditing,
-      onEditLastMessage: options.onEditLastMessage,
-    })
-  ) {
-    return;
-  }
-
   if (event.key === "Escape" && options.isEditing && options.onCancelEdit != null) {
     event.preventDefault();
+    event.stopPropagation();
     options.onCancelEdit();
     return;
   }
 
-  handleSendOrNewline(event, options);
+  if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    options.textareaRef.current?.blur();
+    return;
+  }
+
+  if (handleSendOrNewline(event, options)) return;
+
+  if (!KEYBOARD_SHORTCUTS_ENABLED) return;
+
+  if (handleFormattingShortcuts(event, options.applyFormattingShortcut)) return;
+
+  handleEditLastMessageShortcut(event, {
+    value: options.value,
+    showMentions: options.showMentions,
+    isEditing: options.isEditing,
+    onEditLastMessage: options.onEditLastMessage,
+  });
 }

@@ -5,6 +5,7 @@ import {
   hydrateActivityMessagesFromCache,
   isActivityMessagesSnapshotFresher,
 } from "~/entities/activity/activity-cache.lib";
+import { ensureReactionsLoaded } from "~/entities/activity/activity-reactions-loader.lib";
 import {
   ensureStarredLoaded,
   STARRED_SUMMARY_PAGE_SIZE,
@@ -151,6 +152,16 @@ export const ActivityPage: React.FC = () => {
         currentInstanceId,
         currentUserId,
         forceRefresh: false,
+        pageSize: ACTIVITY_PAGE_SIZE,
+      });
+      return;
+    }
+
+    if (validFilter === "reactions") {
+      void ensureReactionsLoaded({
+        currentInstanceId,
+        currentUserId,
+        forceRefresh: activityRefreshVersion > 0,
         pageSize: ACTIVITY_PAGE_SIZE,
       });
       return;
@@ -469,6 +480,14 @@ export const ActivityPage: React.FC = () => {
       );
     }
     if (messages.length === 0) {
+      if (validFilter === "reactions") {
+        return (
+          <div className="space-y-1 p-4 text-sm text-text-muted">
+            <p>{t("activity.reactionsEmpty")}</p>
+            <p className="text-xs">{t("activity.reactionsEmptyHint")}</p>
+          </div>
+        );
+      }
       return <div className="p-4 text-sm text-text-muted">{t("chat.noMessages")}</div>;
     }
     return (

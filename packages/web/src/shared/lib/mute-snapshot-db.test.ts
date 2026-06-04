@@ -14,10 +14,15 @@ import {
   persistMuteSnapshotRow,
 } from "~/shared/lib/mute-snapshot-db";
 
-// Test instance key for verifying row isolation by instanceId.
 const INSTANCE = "inst-mute";
 
-// Clears the DB after each test so scenarios do not affect each other.
+const EMPTY_STREAM_NOTIFICATION_FIELDS = {
+  streamDesktopNotifyEnabledIds: [] as number[],
+  streamDesktopNotifyDisabledIds: [] as number[],
+  streamAudibleNotifyEnabledIds: [] as number[],
+  streamAudibleNotifyDisabledIds: [] as number[],
+};
+
 afterEach(async () => {
   try {
     const db = await openMessageCacheDb();
@@ -34,43 +39,81 @@ afterEach(async () => {
 });
 
 describe("mute-snapshot-db", () => {
-  // Assert persisted snapshot round-trips without losing structure or data.
   it("persists and loads mute snapshot row by instance id", async () => {
     await openMessageCacheDb();
     await persistMuteSnapshotRow({
       instanceId: INSTANCE,
-      version: 1,
+      version: 2,
       savedAt: 1710000000000,
       mutedStreamIds: [10, 20],
       mutedTopics: [{ streamId: 10, topic: "news" }],
       unmutedTopics: [{ streamId: 20, topic: "important" }],
       followedTopics: [{ streamId: 20, topic: "incidents" }],
+      streamDesktopNotifyEnabledIds: [30],
+      streamDesktopNotifyDisabledIds: [],
+      streamAudibleNotifyEnabledIds: [30],
+      streamAudibleNotifyDisabledIds: [],
     });
 
     const row = await loadMuteSnapshotRow(INSTANCE);
     expect(row).not.toBeNull();
     expect(row).toEqual({
       instanceId: INSTANCE,
-      version: 1,
+      version: 2,
       savedAt: 1710000000000,
       mutedStreamIds: [10, 20],
       mutedTopics: [{ streamId: 10, topic: "news" }],
       unmutedTopics: [{ streamId: 20, topic: "important" }],
       followedTopics: [{ streamId: 20, topic: "incidents" }],
+      streamDesktopNotifyEnabledIds: [30],
+      streamDesktopNotifyDisabledIds: [],
+      streamAudibleNotifyEnabledIds: [30],
+      streamAudibleNotifyDisabledIds: [],
     });
   });
 
-  // Assert delete removes the snapshot row from the object store.
-  it("deletes snapshot row", async () => {
+  it("upgrades v1 rows on load with empty stream notification overrides", async () => {
     await openMessageCacheDb();
-    await persistMuteSnapshotRow({
+    const db = await openMessageCacheDb();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction("muteSnapshot", "readwrite");
+      tx.onerror = () => reject(tx.error ?? new Error("indexedDB transaction error"));
+      tx.oncomplete = () => resolve();
+      tx.objectStore("muteSnapshot").put({
+        instanceId: INSTANCE,
+        version: 1,
+        savedAt: 1,
+        mutedStreamIds: [1],
+        mutedTopics: [],
+        unmutedTopics: [],
+        followedTopics: [],
+      });
+    });
+
+    const row = await loadMuteSnapshotRow(INSTANCE);
+    expect(row).toEqual({
       instanceId: INSTANCE,
-      version: 1,
+      version: 2,
       savedAt: 1,
       mutedStreamIds: [1],
       mutedTopics: [],
       unmutedTopics: [],
       followedTopics: [],
+      ...EMPTY_STREAM_NOTIFICATION_FIELDS,
+    });
+  });
+
+  it("deletes snapshot row", async () => {
+    await openMessageCacheDb();
+    await persistMuteSnapshotRow({
+      instanceId: INSTANCE,
+      version: 2,
+      savedAt: 1,
+      mutedStreamIds: [1],
+      mutedTopics: [],
+      unmutedTopics: [],
+      followedTopics: [],
+      ...EMPTY_STREAM_NOTIFICATION_FIELDS,
     });
 
     await deleteMuteSnapshotRow(INSTANCE);

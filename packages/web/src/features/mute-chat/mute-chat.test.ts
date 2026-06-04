@@ -139,6 +139,33 @@ describe("useMuteStore", () => {
       expect(useMuteStore.getState().isEffectivelyMuted(20, "important")).toBe(false);
       expect(useMuteStore.getState().isTopicFollowed(20, "incidents")).toBe(true);
     });
+
+    it("sets per-channel desktop notification overrides", () => {
+      useMuteStore.getState().setFromServer({
+        mutedStreamIds: [],
+        mutedTopics: [],
+        unmutedTopics: [],
+        followedTopics: [],
+        streamDesktopNotifyEnabledIds: [42],
+        streamDesktopNotifyDisabledIds: [7],
+      });
+
+      expect(useMuteStore.getState().getStreamDesktopNotificationsOverride(42)).toBe(true);
+      expect(useMuteStore.getState().getStreamDesktopNotificationsOverride(7)).toBe(false);
+      expect(useMuteStore.getState().getStreamNotificationLevel(42)).toBe("subscribed");
+      expect(useMuteStore.getState().getStreamNotificationLevel(7)).toBe("default");
+    });
+  });
+
+  describe("getStreamNotificationLevel", () => {
+    it("reflects mute and subscribe state", () => {
+      useMuteStore.getState().muteStream(1);
+      expect(useMuteStore.getState().getStreamNotificationLevel(1)).toBe("muted");
+
+      useMuteStore.getState().unmuteStream(1);
+      useMuteStore.getState().setStreamDesktopNotifications(1, true);
+      expect(useMuteStore.getState().getStreamNotificationLevel(1)).toBe("subscribed");
+    });
   });
 
   // Clear resets everything
@@ -220,6 +247,22 @@ describe("mute-chat optimistic helpers", () => {
     expect(ok).toBe(false);
     expect(useMuteStore.getState().isTopicUnmuted(10, "announcements")).toBe(true);
     expect(useMuteStore.getState().isTopicMuted(10, "announcements")).toBe(false);
+  });
+
+  it("rolls back topic notification level when request returns false", async () => {
+    const { runOptimisticTopicNotificationLevelUpdate } =
+      await import("./mute-chat-topic-notification.optimistic.lib");
+
+    const ok = await runOptimisticTopicNotificationLevelUpdate({
+      streamId: 10,
+      topic: "incident",
+      level: "muted",
+      request: () => Promise.resolve(false),
+    });
+
+    expect(ok).toBe(false);
+    expect(useMuteStore.getState().isTopicMuted(10, "incident")).toBe(false);
+    expect(useMuteStore.getState().getTopicNotificationLevel(10, "incident")).toBe("default");
   });
 
   it("re-captures snapshot on each retry attempt", async () => {
@@ -436,6 +479,41 @@ describe("mute-chat API", () => {
     });
   });
 
+  describe("setStreamNotificationLevel", () => {
+    it("sends mute and desktop properties for subscribed level", async () => {
+      const { zulipApi } = await import("~/shared/api/client");
+      vi.mocked(zulipApi.post).mockClear();
+      vi.mocked(zulipApi.post).mockResolvedValue(mockOk);
+
+      const { setStreamNotificationLevel } = await import("./mute-chat.api");
+      const result = await setStreamNotificationLevel(10, "subscribed");
+
+      expect(result).toBe(true);
+      const body = vi.mocked(zulipApi.post).mock.calls.at(-1)![1];
+      const data = JSON.parse(body.subscription_data!) as { property: string; value: boolean }[];
+      expect(data).toEqual(
+        expect.arrayContaining([
+          { stream_id: 10, property: "is_muted", value: false },
+          { stream_id: 10, property: "desktop_notifications", value: true },
+          { stream_id: 10, property: "audible_notifications", value: true },
+        ]),
+      );
+    });
+
+    it("sends only is_muted for muted level", async () => {
+      const { zulipApi } = await import("~/shared/api/client");
+      vi.mocked(zulipApi.post).mockClear();
+      vi.mocked(zulipApi.post).mockResolvedValue(mockOk);
+
+      const { setStreamNotificationLevel } = await import("./mute-chat.api");
+      await setStreamNotificationLevel(10, "muted");
+
+      const body = vi.mocked(zulipApi.post).mock.calls.at(-1)![1];
+      const data = JSON.parse(body.subscription_data!) as { property: string }[];
+      expect(data).toEqual([{ stream_id: 10, property: "is_muted", value: true }]);
+    });
+  });
+
   describe("muteTopic / unmuteTopic", () => {
     it("muteTopic sends MUTED policy (1)", async () => {
       const { zulipApi } = await import("~/shared/api/client");
@@ -477,6 +555,117 @@ describe("mute-chat API", () => {
         topic: "off-topic",
         visibility_policy: "2",
       });
+    });
+  });
+
+  describe("setTopicNotificationLevel", () => {
+    it("maps muted, subscribed, and default in a normal stream", async () => {
+      const { zulipApi } = await import("~/shared/api/client");
+      vi.mocked(zulipApi.post).mockClear();
+      vi.mocked(zulipApi.post).mockResolvedValue(mockOk);
+
+      const { setTopicNotificationLevel } = await import("./mute-chat.api");
+
+      expect(await setTopicNotificationLevel(10, "general", "muted")).toBe(true);
+      expect(await setTopicNotificationLevel(10, "general", "subscribed")).toBe(true);
+      expect(await setTopicNotificationLevel(10, "general", "default")).toBe(true);
+
+      expect(zulipApi.post).toHaveBeenNthCalledWith(1, "/user_topics", {
+        stream_id: "10",
+        topic: "general",
+        visibility_policy: "1",
+      });
+      expect(zulipApi.post).toHaveBeenNthCalledWith(2, "/user_topics", {
+        stream_id: "10",
+        topic: "general",
+        visibility_policy: "3",
+      });
+      expect(zulipApi.post).toHaveBeenNthCalledWith(3, "/user_topics", {
+        stream_id: "10",
+        topic: "general",
+        visibility_policy: "0",
+      });
+    });
+
+    it("uses UNMUTED policy for default when stream is muted", async () => {
+      useMuteStore.getState().muteStream(10);
+      const { zulipApi } = await import("~/shared/api/client");
+      vi.mocked(zulipApi.post).mockResolvedValue(mockOk);
+
+      const { setTopicNotificationLevel } = await import("./mute-chat.api");
+      expect(await setTopicNotificationLevel(10, "general", "default")).toBe(true);
+
+      expect(zulipApi.post).toHaveBeenCalledWith("/user_topics", {
+        stream_id: "10",
+        topic: "general",
+        visibility_policy: "2",
+      });
+    });
+  });
+
+  describe("setTopicVisibilityLevel", () => {
+    it("maps each TopicVisibilityLevel to visibility_policy", async () => {
+      const { zulipApi } = await import("~/shared/api/client");
+      vi.mocked(zulipApi.post).mockClear();
+      vi.mocked(zulipApi.post).mockResolvedValue(mockOk);
+
+      const { setTopicVisibilityLevel } = await import("./mute-chat.api");
+
+      expect(await setTopicVisibilityLevel(10, "general", "muted")).toBe(true);
+      expect(await setTopicVisibilityLevel(10, "general", "inherit")).toBe(true);
+      expect(await setTopicVisibilityLevel(10, "general", "unmuted")).toBe(true);
+      expect(await setTopicVisibilityLevel(10, "general", "followed")).toBe(true);
+
+      expect(zulipApi.post).toHaveBeenNthCalledWith(1, "/user_topics", {
+        stream_id: "10",
+        topic: "general",
+        visibility_policy: "1",
+      });
+      expect(zulipApi.post).toHaveBeenNthCalledWith(2, "/user_topics", {
+        stream_id: "10",
+        topic: "general",
+        visibility_policy: "0",
+      });
+      expect(zulipApi.post).toHaveBeenNthCalledWith(3, "/user_topics", {
+        stream_id: "10",
+        topic: "general",
+        visibility_policy: "2",
+      });
+      expect(zulipApi.post).toHaveBeenNthCalledWith(4, "/user_topics", {
+        stream_id: "10",
+        topic: "general",
+        visibility_policy: "3",
+      });
+    });
+  });
+
+  describe("getTopicVisibilityLevel", () => {
+    it("reflects explicit visibility_policy overrides only", () => {
+      useMuteStore.getState().followTopic(10, "alerts");
+      expect(useMuteStore.getState().getTopicVisibilityLevel(10, "alerts")).toBe("followed");
+
+      useMuteStore.getState().muteTopic(10, "noise");
+      expect(useMuteStore.getState().getTopicVisibilityLevel(10, "noise")).toBe("muted");
+
+      useMuteStore.getState().muteStream(10);
+      useMuteStore.getState().unmuteTopic(10, "important");
+      expect(useMuteStore.getState().getTopicVisibilityLevel(10, "important")).toBe("unmuted");
+      expect(useMuteStore.getState().getTopicVisibilityLevel(10, "other")).toBe("inherit");
+    });
+  });
+
+  describe("getTopicNotificationLevel", () => {
+    it("reflects followed, muted, and unmuted-in-muted-stream overrides", () => {
+      useMuteStore.getState().followTopic(10, "alerts");
+      expect(useMuteStore.getState().getTopicNotificationLevel(10, "alerts")).toBe("subscribed");
+
+      useMuteStore.getState().muteTopic(10, "noise");
+      expect(useMuteStore.getState().getTopicNotificationLevel(10, "noise")).toBe("muted");
+
+      useMuteStore.getState().muteStream(10);
+      useMuteStore.getState().unmuteTopic(10, "important");
+      expect(useMuteStore.getState().getTopicNotificationLevel(10, "important")).toBe("default");
+      expect(useMuteStore.getState().getTopicNotificationLevel(10, "other")).toBe("muted");
     });
   });
 });

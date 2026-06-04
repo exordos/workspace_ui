@@ -5,6 +5,12 @@ function isPositiveInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value > 0;
 }
 
+function parseNullableBoolean(value: unknown): boolean | null | undefined {
+  if (value === true || value === false) return value;
+  if (value === null) return null;
+  return undefined;
+}
+
 function parseSubscriptionRow(row: unknown): ZulipSubscription | null {
   if (typeof row !== "object" || row == null || Array.isArray(row)) {
     return null;
@@ -13,6 +19,8 @@ function parseSubscriptionRow(row: unknown): ZulipSubscription | null {
     stream_id?: unknown;
     name?: unknown;
     is_muted?: unknown;
+    desktop_notifications?: unknown;
+    audible_notifications?: unknown;
     is_archived?: unknown;
     in_home_view?: unknown;
     creator_id?: unknown;
@@ -40,6 +48,14 @@ function parseSubscriptionRow(row: unknown): ZulipSubscription | null {
       typeof subscription.is_muted === "boolean"
         ? subscription.is_muted
         : subscription.in_home_view === false,
+    ...(() => {
+      const desktop = parseNullableBoolean(subscription.desktop_notifications);
+      return desktop !== undefined ? { desktop_notifications: desktop } : {};
+    })(),
+    ...(() => {
+      const audible = parseNullableBoolean(subscription.audible_notifications);
+      return audible !== undefined ? { audible_notifications: audible } : {};
+    })(),
     ...(typeof subscription.is_archived === "boolean"
       ? { is_archived: subscription.is_archived }
       : {}),

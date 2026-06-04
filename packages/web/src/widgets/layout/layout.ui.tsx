@@ -26,6 +26,7 @@ import { shouldRenderChatShell } from "./layout-chat-shell.lib";
 import { LayoutConnectionBanner } from "./layout-connection-banner.ui";
 import { useConnectionHealthSnapshot } from "./layout-connection-health.hook";
 import { useLayoutConnectionRecovery } from "./layout-connection-recovery.hook";
+import { useLayoutEscapeNavigation } from "./layout-escape-navigation.hook";
 import { useLayoutFolderSyncOrchestration } from "./layout-folder-sync-orchestration.hook";
 import { useInactiveInstancesBackgroundWork } from "./layout-inactive-instances-background-work.hook";
 import { useLayoutInstanceBootstrap } from "./layout-instance-bootstrap.hook";
@@ -343,6 +344,12 @@ export const Layout: React.FC = () => {
     sidebarChats: selectedFolderSidebarChats,
     activeStreamSlug: activeStreamSlug ?? null,
     activeDmIdParam: dmIdParam ?? null,
+    navigate,
+  });
+
+  useLayoutEscapeNavigation({
+    enabled: shouldShowChatShell,
+    pathname: location.pathname,
     navigate,
   });
 

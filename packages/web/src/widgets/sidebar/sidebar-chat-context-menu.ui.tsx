@@ -7,9 +7,12 @@ import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { applySidebarMarkChatAsRead } from "~/features/mark-chat-read/sidebar-mark-chat-read.lib";
 import { useMarkTopicResolved } from "~/features/mark-topic-resolved/mark-topic-resolved.hook";
 import { RenameStreamTopicDialog } from "~/features/mark-topic-resolved/rename-stream-topic-dialog.ui";
-import { muteStream, unmuteStream } from "~/features/mute-chat/mute-chat.api";
+import { runOptimisticStreamNotificationLevelUpdate } from "~/features/mute-chat/mute-chat-notification.optimistic.lib";
+import { setStreamNotificationLevel } from "~/features/mute-chat/mute-chat.api";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
-import { runOptimisticStreamMuteUpdate } from "~/features/mute-chat/mute-chat.optimistic.lib";
+import { StreamNotificationLevelSwitch } from "~/features/mute-chat/stream-notification-level-switch.ui";
+import type { StreamNotificationLevel } from "~/features/mute-chat/stream-notification-level.lib";
+import { TopicNotificationLevelMenuPicker } from "~/features/mute-chat/topic-notification-level-switch.ui";
 import { t } from "~/i18n/i18n";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
 import { Icon } from "~/shared/ui/icon";
@@ -191,8 +194,8 @@ export const StreamContextMenu = React.memo(function StreamContextMenu({
   children: React.ReactNode;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [mutePending, setMutePending] = useState(false);
-  const isMuted = useMuteStore((s) => s.isStreamMuted(streamId));
+  const [notificationPending, setNotificationPending] = useState(false);
+  const notificationLevel = useMuteStore((s) => s.getStreamNotificationLevel(streamId));
   const chatId = chatToWorkspaceChatId(chat);
   const { isPinned, showFolderPinAction, runPin, runUnpin } = useSidebarFolderPinMenu(
     folderId,
@@ -222,36 +225,32 @@ export const StreamContextMenu = React.memo(function StreamContextMenu({
     [openMenu],
   );
 
-  const handleToggleMute = useCallback((): void => {
-    if (mutePending) return;
-    setMenuOpen(false);
+  const handleSetNotificationLevel = useCallback(
+    (level: StreamNotificationLevel): void => {
+      if (notificationPending || notificationLevel === level) return;
+      setMenuOpen(false);
 
-    async function attemptToggleMute(): Promise<void> {
-      setMutePending(true);
-      try {
-        const ok = await runOptimisticStreamMuteUpdate({
-          streamId,
-          applyOptimistic: (wasMuted) => {
-            const muteStore = useMuteStore.getState();
-            if (wasMuted) {
-              muteStore.unmuteStream(streamId);
-              return;
-            }
-            muteStore.muteStream(streamId);
-          },
-          request: (wasMuted) => (wasMuted ? unmuteStream(streamId) : muteStream(streamId)),
-        });
-        if (ok) return;
-        onMuteError?.(() => {
-          void attemptToggleMute();
-        });
-      } finally {
-        setMutePending(false);
+      async function attemptSetLevel(): Promise<void> {
+        setNotificationPending(true);
+        try {
+          const ok = await runOptimisticStreamNotificationLevelUpdate({
+            streamId,
+            level,
+            request: () => setStreamNotificationLevel(streamId, level),
+          });
+          if (ok) return;
+          onMuteError?.(() => {
+            void attemptSetLevel();
+          });
+        } finally {
+          setNotificationPending(false);
+        }
       }
-    }
 
-    void attemptToggleMute();
-  }, [mutePending, onMuteError, streamId]);
+      void attemptSetLevel();
+    },
+    [notificationLevel, notificationPending, onMuteError, streamId],
+  );
 
   const handleMarkAsRead = useCallback(() => {
     setMenuOpen(false);
@@ -273,15 +272,30 @@ export const StreamContextMenu = React.memo(function StreamContextMenu({
     setMenuOpen(false);
   }, [onCreateTopic]);
 
+  const notificationPickerItem = useMemo<DropdownMenuItem>(
+    () => ({
+      type: "custom",
+      key: "notifications",
+      render: () => (
+        <div className="px-2 py-1">
+          <p className="mb-1 text-[10px] font-medium text-text-muted">
+            {t("channel.notifications")}
+          </p>
+          <StreamNotificationLevelSwitch
+            value={notificationLevel}
+            disabled={notificationPending}
+            size="menu"
+            onChange={handleSetNotificationLevel}
+          />
+        </div>
+      ),
+    }),
+    [handleSetNotificationLevel, notificationLevel, notificationPending],
+  );
+
   const menuItems = useMemo<DropdownMenuItem[]>(() => {
     const items: DropdownMenuItem[] = [
-      {
-        type: "action",
-        key: "mute",
-        icon: isMuted ? "bell_off" : "bell",
-        label: isMuted ? t("channel.unmuteChannel") : t("channel.muteChannel"),
-        onSelect: handleToggleMute,
-      },
+      notificationPickerItem,
       {
         type: "action",
         key: "mark-as-read",
@@ -318,9 +332,8 @@ export const StreamContextMenu = React.memo(function StreamContextMenu({
     handleCreateTopic,
     handleMarkAsRead,
     handlePinChat,
-    handleToggleMute,
     handleUnpinChat,
-    isMuted,
+    notificationPickerItem,
     isPinned,
     onCreateTopic,
     showFolderPinAction,
@@ -594,8 +607,18 @@ export const TopicContextMenu = React.memo(function TopicContextMenu({
     [openMenu],
   );
 
+  const topicNotificationPickerItem = useMemo<DropdownMenuItem>(
+    () => ({
+      type: "custom",
+      key: "topic-notifications",
+      render: () => <TopicNotificationLevelMenuPicker streamId={streamId} topic={topic} />,
+    }),
+    [streamId, topic],
+  );
+
   const menuItems = useMemo<DropdownMenuItem[]>(() => {
     const items: DropdownMenuItem[] = [
+      topicNotificationPickerItem,
       {
         type: "action",
         key: "mark-as-read",
@@ -632,6 +655,7 @@ export const TopicContextMenu = React.memo(function TopicContextMenu({
     handleResolveSelect,
     resolveLabel,
     topicActionPending,
+    topicNotificationPickerItem,
   ]);
 
   const contentWithContextMenu = useMemo(

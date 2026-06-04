@@ -74,7 +74,7 @@ import {
 } from "./layout-zulip-event-loop-register.lib";
 import { runLayoutReconnectRefresh } from "./layout-zulip-refresh-stale.lib";
 import type { ChatListBootstrapResult } from "./layout-chat-list-bootstrap.lib";
-import type { LayoutMuteBootstrapData } from "./layout-instance-bootstrap.hook";
+import type { LayoutMuteBootstrapData, LayoutMuteSnapshot } from "./layout-instance-bootstrap.hook";
 import type { StreamPreviewsBootstrapResult } from "./layout-metadata-stream-preview-coordinator.lib";
 import type { LayoutUserConnectionStatus } from "./layout-user-connection-status.types";
 
@@ -177,17 +177,29 @@ function toLayoutMuteSnapshotFromRow(row: {
   mutedTopics: { streamId: number; topic: string }[];
   unmutedTopics: { streamId: number; topic: string }[];
   followedTopics?: { streamId: number; topic: string }[];
+  streamDesktopNotifyEnabledIds?: number[];
+  streamDesktopNotifyDisabledIds?: number[];
+  streamAudibleNotifyEnabledIds?: number[];
+  streamAudibleNotifyDisabledIds?: number[];
 }): {
   mutedStreamIds: number[];
   mutedTopics: { streamId: number; topic: string }[];
   unmutedTopics: { streamId: number; topic: string }[];
   followedTopics: { streamId: number; topic: string }[];
+  streamDesktopNotifyEnabledIds: number[];
+  streamDesktopNotifyDisabledIds: number[];
+  streamAudibleNotifyEnabledIds: number[];
+  streamAudibleNotifyDisabledIds: number[];
 } {
   return {
     mutedStreamIds: row.mutedStreamIds,
     mutedTopics: row.mutedTopics,
     unmutedTopics: row.unmutedTopics,
     followedTopics: row.followedTopics ?? [],
+    streamDesktopNotifyEnabledIds: row.streamDesktopNotifyEnabledIds ?? [],
+    streamDesktopNotifyDisabledIds: row.streamDesktopNotifyDisabledIds ?? [],
+    streamAudibleNotifyEnabledIds: row.streamAudibleNotifyEnabledIds ?? [],
+    streamAudibleNotifyDisabledIds: row.streamAudibleNotifyDisabledIds ?? [],
   };
 }
 
@@ -223,12 +235,7 @@ export function useLayoutZulipEventLoop(options: {
     signal: AbortSignal,
     isStale: () => boolean,
   ) => Promise<ChatListBootstrapResult>;
-  loadMuteSnapshot: (bootstrap?: LayoutMuteBootstrapData) => Promise<{
-    mutedStreamIds: number[];
-    mutedTopics: { streamId: number; topic: string }[];
-    unmutedTopics: { streamId: number; topic: string }[];
-    followedTopics: { streamId: number; topic: string }[];
-  }>;
+  loadMuteSnapshot: (bootstrap?: LayoutMuteBootstrapData) => Promise<LayoutMuteSnapshot>;
   setFromMessages: (messages: ZulipRawMessage[], currentUserId: number | null) => void;
   setCurrentUserId: (id: number) => void;
   setCurrentUserStatus: (status: LayoutUserConnectionStatus) => void;

@@ -41,7 +41,11 @@ describe("startMuteSnapshotSync", () => {
     expect(persistSnapshotRow).toHaveBeenCalledWith(
       expect.objectContaining({
         instanceId: "inst-1",
-        version: 1,
+        version: 2,
+        streamDesktopNotifyEnabledIds: [],
+        streamDesktopNotifyDisabledIds: [],
+        streamAudibleNotifyEnabledIds: [],
+        streamAudibleNotifyDisabledIds: [],
         mutedStreamIds: [10],
         mutedTopics: [{ streamId: 10, topic: "news" }],
         unmutedTopics: [{ streamId: 20, topic: "important" }],

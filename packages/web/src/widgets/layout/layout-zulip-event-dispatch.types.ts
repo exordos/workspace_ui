@@ -86,12 +86,16 @@ export interface LayoutTypingActions {
 export interface LayoutMuteActions {
   isEffectivelyMuted: (streamId: number, topic: string) => boolean;
   isTopicFollowed: (streamId: number, topic: string) => boolean;
+  getStreamDesktopNotificationsOverride: (streamId: number) => boolean | null;
+  getStreamAudibleNotificationsOverride: (streamId: number) => boolean | null;
   muteStream: (streamId: number) => void;
   unmuteStream: (streamId: number) => void;
   muteTopic: (streamId: number, topic: string) => void;
   unmuteTopic: (streamId: number, topic: string) => void;
   followTopic: (streamId: number, topic: string) => void;
   clearTopicVisibilityOverride: (streamId: number, topic: string) => void;
+  setStreamDesktopNotifications: (streamId: number, enabled: boolean) => void;
+  setStreamAudibleNotifications: (streamId: number, enabled: boolean) => void;
 }
 
 export interface LayoutActivityActions {

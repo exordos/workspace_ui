@@ -6,16 +6,16 @@ import { openMessageCacheDb } from "~/shared/lib/message-cache-db";
 
 const STORE_MUTE_SNAPSHOT = "muteSnapshot";
 
-export type MuteSnapshotRowVersion = 1;
+export type MuteSnapshotRowVersion = 1 | 2;
 
 export interface MuteSnapshotTopicRow {
   streamId: number;
   topic: string;
 }
 
-export interface MuteSnapshotRow {
+export interface MuteSnapshotRowV1 {
   instanceId: string;
-  version: MuteSnapshotRowVersion;
+  version: 1;
   savedAt: number;
   mutedStreamIds: number[];
   mutedTopics: MuteSnapshotTopicRow[];
@@ -23,12 +23,36 @@ export interface MuteSnapshotRow {
   followedTopics: MuteSnapshotTopicRow[];
 }
 
+export interface MuteSnapshotRowV2 extends Omit<MuteSnapshotRowV1, "version"> {
+  version: 2;
+  streamDesktopNotifyEnabledIds: number[];
+  streamDesktopNotifyDisabledIds: number[];
+  streamAudibleNotifyEnabledIds: number[];
+  streamAudibleNotifyDisabledIds: number[];
+}
+
+export type MuteSnapshotRow = MuteSnapshotRowV1 | MuteSnapshotRowV2;
+
+function normalizeMuteSnapshotRow(row: MuteSnapshotRow): MuteSnapshotRowV2 {
+  if (row.version === 2) {
+    return row;
+  }
+  return {
+    ...row,
+    version: 2,
+    streamDesktopNotifyEnabledIds: [],
+    streamDesktopNotifyDisabledIds: [],
+    streamAudibleNotifyEnabledIds: [],
+    streamAudibleNotifyDisabledIds: [],
+  };
+}
+
 function idbError(reason: unknown): Error {
   return reason instanceof Error ? reason : new Error("indexedDB error", { cause: reason });
 }
 
 /** Write-through after local changes or successful register; best-effort (must not crash UI). */
-export async function persistMuteSnapshotRow(row: MuteSnapshotRow): Promise<void> {
+export async function persistMuteSnapshotRow(row: MuteSnapshotRowV2): Promise<void> {
   if (typeof indexedDB === "undefined") return;
   try {
     const db = await openMessageCacheDb();
@@ -43,11 +67,11 @@ export async function persistMuteSnapshotRow(row: MuteSnapshotRow): Promise<void
   }
 }
 
-export async function loadMuteSnapshotRow(instanceId: string): Promise<MuteSnapshotRow | null> {
+export async function loadMuteSnapshotRow(instanceId: string): Promise<MuteSnapshotRowV2 | null> {
   if (typeof indexedDB === "undefined") return null;
   try {
     const db = await openMessageCacheDb();
-    return await new Promise<MuteSnapshotRow | null>((resolve, reject) => {
+    return await new Promise<MuteSnapshotRowV2 | null>((resolve, reject) => {
       const tx = db.transaction(STORE_MUTE_SNAPSHOT, "readonly");
       const req = tx.objectStore(STORE_MUTE_SNAPSHOT).get(instanceId);
       req.onerror = () => reject(idbError(req.error));
@@ -57,7 +81,7 @@ export async function loadMuteSnapshotRow(instanceId: string): Promise<MuteSnaps
           resolve(null);
           return;
         }
-        resolve(row);
+        resolve(normalizeMuteSnapshotRow(row));
       };
     });
   } catch {

@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { resolvePinScopeFolderUuid } from "~/features/folder-sync/folder-sync.lib";
 import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
-import { muteTopic } from "~/features/mute-chat/mute-chat.api";
+import { runOptimisticTopicVisibilityLevelUpdate } from "~/features/mute-chat/mute-chat-topic-notification.optimistic.lib";
+import { setTopicVisibilityLevel } from "~/features/mute-chat/mute-chat.api";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
-import { runOptimisticTopicVisibilityUpdate } from "~/features/mute-chat/mute-chat.optimistic.lib";
+import type { TopicVisibilityLevel } from "~/features/mute-chat/notification-level.lib";
 import { orderChatsWithPinnedFirst } from "~/features/pin-chat/pin-chat-order.lib";
 import { usePinStore } from "~/features/pin-chat/pin-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
@@ -37,7 +38,8 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
   const activeDmIdParam = activeDmIdParamProp ?? null;
   const [topicDialogState, setTopicDialogState] = useState<NewTopicDialogState | null>(null);
   const [newTopicName, setNewTopicName] = useState("");
-  const [muteTopicOnCreate, setMuteTopicOnCreate] = useState(false);
+  const [topicVisibilityOnCreate, setTopicVisibilityOnCreate] =
+    useState<TopicVisibilityLevel>("inherit");
   const [muteErrorState, setMuteErrorState] = useState<{
     id: number;
     retry: (() => void) | null;
@@ -74,7 +76,7 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
   const closeTopicDialog = useCallback(() => {
     setTopicDialogState(null);
     setNewTopicName("");
-    setMuteTopicOnCreate(false);
+    setTopicVisibilityOnCreate("inherit");
   }, []);
 
   const openTopicDialogForStream = useCallback(
@@ -89,29 +91,29 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
       }
       setTopicDialogState({ streamId, streamName, streamSlug });
       setNewTopicName("");
-      setMuteTopicOnCreate(false);
+      setTopicVisibilityOnCreate("inherit");
     },
     [expandedStreamSlugs, onToggleStream],
   );
 
-  const runMuteTopicOnCreate = useCallback(
-    async (streamId: number, topicName: string) => {
-      async function attemptMuteTopicOnCreate(): Promise<void> {
-        const ok = await runOptimisticTopicVisibilityUpdate({
+  const runTopicVisibilityOnCreate = useCallback(
+    async (streamId: number, topicName: string, level: TopicVisibilityLevel) => {
+      if (level === "inherit") return;
+
+      async function attemptSetLevel(): Promise<void> {
+        const ok = await runOptimisticTopicVisibilityLevelUpdate({
           streamId,
           topic: topicName,
-          applyOptimistic: () => {
-            useMuteStore.getState().muteTopic(streamId, topicName);
-          },
-          request: () => muteTopic(streamId, topicName),
+          level,
+          request: () => setTopicVisibilityLevel(streamId, topicName, level),
         });
         if (ok) return;
         handleMuteError(() => {
-          void attemptMuteTopicOnCreate();
+          void attemptSetLevel();
         });
       }
 
-      await attemptMuteTopicOnCreate();
+      await attemptSetLevel();
     },
     [handleMuteError],
   );
@@ -124,18 +126,22 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
 
     onNewTopic(topicDialogState.streamSlug, topicName);
 
-    if (muteTopicOnCreate) {
-      void runMuteTopicOnCreate(topicDialogState.streamId, topicName);
+    if (topicVisibilityOnCreate !== "inherit") {
+      void runTopicVisibilityOnCreate(
+        topicDialogState.streamId,
+        topicName,
+        topicVisibilityOnCreate,
+      );
     }
 
     closeTopicDialog();
   }, [
     closeTopicDialog,
-    muteTopicOnCreate,
     newTopicName,
     onNewTopic,
-    runMuteTopicOnCreate,
+    runTopicVisibilityOnCreate,
     topicDialogState,
+    topicVisibilityOnCreate,
   ]);
 
   useEffect(() => {
@@ -228,10 +234,11 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
       <SidebarFolderNewTopicDialog
         open={topicDialogState != null}
         streamName={topicDialogState?.streamName ?? ""}
+        streamMuted={topicDialogState != null ? isStreamMuted(topicDialogState.streamId) : false}
         newTopicName={newTopicName}
         onNewTopicNameChange={setNewTopicName}
-        muteTopicOnCreate={muteTopicOnCreate}
-        onMuteTopicOnCreateChange={setMuteTopicOnCreate}
+        topicVisibilityOnCreate={topicVisibilityOnCreate}
+        onTopicVisibilityOnCreateChange={setTopicVisibilityOnCreate}
         onOpenChange={(open) => {
           if (!open) {
             closeTopicDialog();

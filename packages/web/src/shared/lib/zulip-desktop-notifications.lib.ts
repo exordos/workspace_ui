@@ -19,6 +19,10 @@ export interface DesktopNotificationMessageContext {
   type: string;
   flags?: string[];
   isTopicFollowed: boolean;
+  /** Resolved per-channel + global: notify for non-mention stream messages. */
+  streamAllMessagesNotifyEnabled: boolean;
+  /** Resolved per-channel + global: sound for non-mention stream messages. */
+  streamAllMessagesAudibleEnabled: boolean;
 }
 
 export interface DesktopNotificationViewportContext {
@@ -66,6 +70,7 @@ export function classifyNotificationTrigger(
 export function isDesktopEnabledForTrigger(
   settings: ZulipNotificationSettings,
   trigger: NotificationMessageTrigger,
+  message: DesktopNotificationMessageContext,
 ): boolean {
   switch (trigger) {
     case "dm":
@@ -76,7 +81,7 @@ export function isDesktopEnabledForTrigger(
     case "followed_topic":
       return settings.enableFollowedTopicDesktopNotifications;
     case "stream":
-      return settings.enableStreamDesktopNotifications;
+      return message.streamAllMessagesNotifyEnabled;
     default:
       return false;
   }
@@ -85,6 +90,7 @@ export function isDesktopEnabledForTrigger(
 export function isSoundEnabledForTrigger(
   settings: ZulipNotificationSettings,
   trigger: NotificationMessageTrigger,
+  message: DesktopNotificationMessageContext,
 ): boolean {
   switch (trigger) {
     case "dm":
@@ -95,7 +101,7 @@ export function isSoundEnabledForTrigger(
     case "followed_topic":
       return settings.enableFollowedTopicAudibleNotifications;
     case "stream":
-      return settings.enableStreamAudibleNotifications;
+      return message.streamAllMessagesAudibleEnabled;
     default:
       return false;
   }
@@ -124,13 +130,13 @@ export function shouldDesktopNotify(input: ShouldDesktopNotifyInput): ShouldDesk
   const blocked =
     input.viewport.isFromSelf ||
     input.viewport.isMuted ||
-    !isDesktopEnabledForTrigger(input.settings, trigger) ||
+    !isDesktopEnabledForTrigger(input.settings, trigger, input.message) ||
     !isMessageOffscreenOrAppUnfocused(input.viewport);
 
   if (blocked) {
     return { notify: false, playSound: false, trigger, soundPreset };
   }
 
-  const playSound = isSoundEnabledForTrigger(input.settings, trigger);
+  const playSound = isSoundEnabledForTrigger(input.settings, trigger, input.message);
   return { notify: true, playSound, trigger, soundPreset };
 }

@@ -1,14 +1,17 @@
 import React from "react";
+import type { TopicVisibilityLevel } from "~/features/mute-chat/notification-level.lib";
+import { TopicVisibilityLevelSwitch } from "~/features/mute-chat/topic-visibility-level-switch.ui";
 import { t } from "~/i18n/i18n";
 import { AppDialog, AppDialogFormFooter } from "~/shared/ui/app-dialog.ui";
 
 export interface SidebarFolderNewTopicDialogProps {
   open: boolean;
   streamName: string;
+  streamMuted: boolean;
   newTopicName: string;
   onNewTopicNameChange: (value: string) => void;
-  muteTopicOnCreate: boolean;
-  onMuteTopicOnCreateChange: (value: boolean) => void;
+  topicVisibilityOnCreate: TopicVisibilityLevel;
+  onTopicVisibilityOnCreateChange: (level: TopicVisibilityLevel) => void;
   onOpenChange: (open: boolean) => void;
   onSubmit: () => void;
 }
@@ -16,10 +19,11 @@ export interface SidebarFolderNewTopicDialogProps {
 export const SidebarFolderNewTopicDialog: React.FC<SidebarFolderNewTopicDialogProps> = ({
   open,
   streamName,
+  streamMuted,
   newTopicName,
   onNewTopicNameChange,
-  muteTopicOnCreate,
-  onMuteTopicOnCreateChange,
+  topicVisibilityOnCreate,
+  onTopicVisibilityOnCreateChange,
   onOpenChange,
   onSubmit,
 }) => {
@@ -59,15 +63,16 @@ export const SidebarFolderNewTopicDialog: React.FC<SidebarFolderNewTopicDialogPr
           placeholder={t("channel.topicName")}
         />
       </label>
-      <label className="mt-4 flex items-center gap-2 text-sm text-text-primary">
-        <input
-          type="checkbox"
-          checked={muteTopicOnCreate}
-          onChange={(e) => onMuteTopicOnCreateChange(e.target.checked)}
-          className="h-4 w-4 rounded border-border-subtle"
+      <div className="mt-4 flex flex-col gap-2">
+        <span className="text-sm text-text-muted">{t("channel.topicNotifications")}</span>
+        <TopicVisibilityLevelSwitch
+          value={topicVisibilityOnCreate}
+          streamMuted={streamMuted}
+          topicExplicitlyUnmuted={false}
+          size="default"
+          onChange={onTopicVisibilityOnCreateChange}
         />
-        <span>{t("channel.muteTopic")}</span>
-      </label>
+      </div>
     </AppDialog>
   );
 };

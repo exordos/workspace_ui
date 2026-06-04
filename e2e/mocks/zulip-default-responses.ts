@@ -60,6 +60,8 @@ export function subscriptionsSuccess() {
         name: "general",
         description: "General",
         is_muted: false,
+        desktop_notifications: false,
+        audible_notifications: false,
         is_archived: false,
         in_home_view: true,
       },

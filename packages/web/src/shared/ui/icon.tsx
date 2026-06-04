@@ -63,6 +63,10 @@ import SparklesIcon from "../assets/icons/sparkles.svg?react";
 import StarIcon from "../assets/icons/star.svg?react";
 import StarOutlineIcon from "../assets/icons/star_outline.svg?react";
 import ThumbsUpIcon from "../assets/icons/thumbs-up.svg?react";
+import TopicFollowIcon from "../assets/icons/topic_follow.svg?react";
+import TopicInheritIcon from "../assets/icons/topic_inherit.svg?react";
+import TopicMuteIcon from "../assets/icons/topic_mute.svg?react";
+import TopicUnmuteIcon from "../assets/icons/topic_unmute.svg?react";
 import VideosIcon from "../assets/icons/videos.svg?react";
 import VisibilityIcon from "../assets/icons/visibility.svg?react";
 import VolumeUpIcon from "../assets/icons/volume_up.svg?react";
@@ -77,6 +81,10 @@ const ICONS: Record<string, IconSvgComponent> = {
   attach: AttachIcon,
   search: SearchIcon,
   selected_bookmark_icon: SelectedBookmarkIcon,
+  topic_follow: TopicFollowIcon,
+  topic_inherit: TopicInheritIcon,
+  topic_mute: TopicMuteIcon,
+  topic_unmute: TopicUnmuteIcon,
   star: StarIcon,
   pin: PinIcon,
   at: AtIcon,

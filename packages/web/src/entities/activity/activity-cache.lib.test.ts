@@ -1,21 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
-import { isActivityMessagesSnapshotFresher } from "./activity-cache.lib";
+import { createMessage } from "~/test/factories";
+import { isActivityMessagesSnapshotFresher, matchesActivityFilter } from "./activity-cache.lib";
 
 function activityMessage(overrides: Partial<ZulipRawMessage> = {}): ZulipRawMessage {
-  return {
-    id: overrides.id ?? 1,
-    sender_id: overrides.sender_id ?? 42,
-    sender_full_name: overrides.sender_full_name ?? "Alice",
-    content: overrides.content ?? "message",
-    timestamp: overrides.timestamp ?? 100,
-    display_recipient: overrides.display_recipient ?? "engineering",
-    subject: overrides.subject ?? "general",
-    type: overrides.type ?? "stream",
-    stream_id: overrides.stream_id ?? 10,
-    flags: overrides.flags ?? [],
-    reactions: overrides.reactions ?? [],
-  };
+  return createMessage(overrides) as ZulipRawMessage;
 }
 
 describe("isActivityMessagesSnapshotFresher", () => {
@@ -38,5 +27,57 @@ describe("isActivityMessagesSnapshotFresher", () => {
     const candidate = [activityMessage({ id: 100, timestamp: 200 })];
 
     expect(isActivityMessagesSnapshotFresher(candidate, current)).toBe(false);
+  });
+});
+
+describe("matchesActivityFilter", () => {
+  const currentUserId = 42;
+
+  it("includes own message with reactions for reactions filter", () => {
+    const message = activityMessage({
+      sender_id: currentUserId,
+      reactions: [
+        {
+          emoji_name: "thumbs_up",
+          emoji_code: "1f44d",
+          reaction_type: "unicode_emoji",
+          user_id: 7,
+        },
+      ],
+    });
+
+    expect(matchesActivityFilter(message, "reactions", currentUserId)).toBe(true);
+  });
+
+  it("excludes others' messages even when current user reacted", () => {
+    const message = activityMessage({
+      sender_id: 7,
+      reactions: [
+        {
+          emoji_name: "thumbs_up",
+          emoji_code: "1f44d",
+          reaction_type: "unicode_emoji",
+          user_id: currentUserId,
+        },
+      ],
+    });
+
+    expect(matchesActivityFilter(message, "reactions", currentUserId)).toBe(false);
+  });
+
+  it("excludes reactions filter matches when current user id is unknown", () => {
+    const message = activityMessage({
+      sender_id: currentUserId,
+      reactions: [
+        {
+          emoji_name: "heart",
+          emoji_code: "2764",
+          reaction_type: "unicode_emoji",
+          user_id: 7,
+        },
+      ],
+    });
+
+    expect(matchesActivityFilter(message, "reactions", null)).toBe(false);
   });
 });

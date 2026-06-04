@@ -24,6 +24,12 @@ export function stripOrgSegmentFromPathname(pathname: string): string {
   return pathname;
 }
 
+/** True when the URL points at an open stream or DM chat (not inbox / activity / settings). */
+export function isMessengerChatPathname(pathname: string): boolean {
+  const scoped = stripOrgSegmentFromPathname(pathname);
+  return DM_PATH_SEGMENT.test(scoped) || STREAM_PATH_SEGMENT.test(scoped);
+}
+
 /** Result of parsing the chat segment of the URL for layout ↔ store sync. */
 export interface ParsedChatRoute {
   context: CurrentChatContext | null;

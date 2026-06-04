@@ -31,9 +31,11 @@ const setTopicResolvedStateMock = vi.fn();
 const renameStreamTopicMock = vi.fn();
 const muteStreamMock = vi.fn();
 const unmuteStreamMock = vi.fn();
+const setStreamNotificationLevelMock = vi.fn();
 const muteTopicMock = vi.fn();
 const unmuteTopicMock = vi.fn();
 const unmuteTopicInMutedStreamMock = vi.fn();
+const setTopicVisibilityLevelMock = vi.fn();
 const pinChatInFolderMock = vi.fn();
 const unpinChatInFolderMock = vi.fn();
 const getFoldersMock = vi.fn().mockResolvedValue([]);
@@ -66,9 +68,11 @@ vi.mock("~/features/mute-chat/mute-chat.api", async (importOriginal) => {
     ...actual,
     muteStream: (...args: unknown[]) => muteStreamMock(...args),
     unmuteStream: (...args: unknown[]) => unmuteStreamMock(...args),
+    setStreamNotificationLevel: (...args: unknown[]) => setStreamNotificationLevelMock(...args),
     muteTopic: (...args: unknown[]) => muteTopicMock(...args),
     unmuteTopic: (...args: unknown[]) => unmuteTopicMock(...args),
     unmuteTopicInMutedStream: (...args: unknown[]) => unmuteTopicInMutedStreamMock(...args),
+    setTopicVisibilityLevel: (...args: unknown[]) => setTopicVisibilityLevelMock(...args),
   };
 });
 
@@ -180,14 +184,18 @@ describe("Sidebar", () => {
     renameStreamTopicMock.mockResolvedValue(true);
     muteStreamMock.mockReset();
     unmuteStreamMock.mockReset();
+    setStreamNotificationLevelMock.mockReset();
     muteTopicMock.mockReset();
     unmuteTopicMock.mockReset();
     unmuteTopicInMutedStreamMock.mockReset();
+    setTopicVisibilityLevelMock.mockReset();
     muteStreamMock.mockResolvedValue(true);
     unmuteStreamMock.mockResolvedValue(true);
+    setStreamNotificationLevelMock.mockResolvedValue(true);
     muteTopicMock.mockResolvedValue(true);
     unmuteTopicMock.mockResolvedValue(true);
     unmuteTopicInMutedStreamMock.mockResolvedValue(true);
+    setTopicVisibilityLevelMock.mockResolvedValue(true);
     pinChatInFolderMock.mockReset();
     unpinChatInFolderMock.mockReset();
     getFoldersMock.mockReset();
@@ -1237,23 +1245,25 @@ describe("Sidebar", () => {
 
     const topicDialog = await screen.findByRole("dialog", { name: /create topic/i });
     const topicNameInput = within(topicDialog).getByRole("textbox", { name: /topic name/i });
-    const muteTopicToggle = within(topicDialog).getByRole("checkbox", { name: /mute topic/i });
+    const mutedNotificationOption = within(topicDialog).getByRole("radio", {
+      name: t("channel.topicVisibilityMuted"),
+    });
     const createButton = within(topicDialog).getByRole("button", { name: /create/i });
 
     await waitFor(() => {
       expect(topicNameInput).toBeInTheDocument();
-      expect(muteTopicToggle).toBeInTheDocument();
+      expect(mutedNotificationOption).toBeInTheDocument();
       expect(createButton).toBeDisabled();
     });
 
     fireEvent.change(topicNameInput, { target: { value: "platform updates" } });
-    fireEvent.click(muteTopicToggle);
-    expect(muteTopicToggle).toBeChecked();
+    fireEvent.click(mutedNotificationOption);
+    expect(mutedNotificationOption).toHaveAttribute("aria-checked", "true");
     expect(createButton).toBeEnabled();
   });
 
   it("rolls back optimistic mute when creating topic with mute enabled fails and retries", async () => {
-    muteTopicMock.mockResolvedValue(false);
+    setTopicVisibilityLevelMock.mockResolvedValue(false);
 
     renderWithProviders(
       <Sidebar
@@ -1269,15 +1279,17 @@ describe("Sidebar", () => {
 
     const topicDialog = await screen.findByRole("dialog", { name: /create topic/i });
     const topicNameInput = within(topicDialog).getByRole("textbox", { name: /topic name/i });
-    const muteTopicToggle = within(topicDialog).getByRole("checkbox", { name: /mute topic/i });
+    const mutedNotificationOption = within(topicDialog).getByRole("radio", {
+      name: t("channel.topicVisibilityMuted"),
+    });
     const createButton = within(topicDialog).getByRole("button", { name: /create/i });
 
     fireEvent.change(topicNameInput, { target: { value: "release" } });
-    fireEvent.click(muteTopicToggle);
+    fireEvent.click(mutedNotificationOption);
     fireEvent.click(createButton);
 
     await waitFor(() => {
-      expect(muteTopicMock).toHaveBeenCalledWith(11, "release");
+      expect(setTopicVisibilityLevelMock).toHaveBeenCalledWith(11, "release", "muted");
       expect(useMuteStore.getState().isTopicMuted(11, "release")).toBe(false);
       expect(screen.getByText(t("app.error"))).toBeInTheDocument();
     });
@@ -1285,7 +1297,7 @@ describe("Sidebar", () => {
     fireEvent.click(screen.getByRole("button", { name: /retry/i }));
 
     await waitFor(() => {
-      expect(muteTopicMock).toHaveBeenCalledTimes(2);
+      expect(setTopicVisibilityLevelMock).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -1306,8 +1318,8 @@ describe("Sidebar", () => {
     expect(await screen.findByRole("menuitem", { name: /mark as read/i })).toBeInTheDocument();
   });
 
-  it("rolls back stream mute and shows retry feedback when API call fails", async () => {
-    muteStreamMock.mockResolvedValue(false);
+  it("rolls back stream notification level and shows retry feedback when API call fails", async () => {
+    setStreamNotificationLevelMock.mockResolvedValue(false);
 
     renderWithProviders(
       <Sidebar
@@ -1321,18 +1333,18 @@ describe("Sidebar", () => {
     const streamLink = screen.getByRole("link", { name: /engineering/i });
     fireEvent.contextMenu(streamLink);
 
-    const muteItem = await screen.findByRole("menuitem", { name: /mute notifications/i });
-    fireEvent.click(muteItem);
+    const mutedOption = await screen.findByRole("radio", { name: /muted/i });
+    fireEvent.click(mutedOption);
 
     await waitFor(() => {
-      expect(muteStreamMock).toHaveBeenCalledWith(11);
-      expect(useMuteStore.getState().isStreamMuted(11)).toBe(false);
+      expect(setStreamNotificationLevelMock).toHaveBeenCalledWith(11, "muted");
+      expect(useMuteStore.getState().getStreamNotificationLevel(11)).toBe("default");
       expect(screen.getByText(t("app.error"))).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole("button", { name: /retry/i }));
     await waitFor(() => {
-      expect(muteStreamMock).toHaveBeenCalledTimes(2);
+      expect(setStreamNotificationLevelMock).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -1822,7 +1834,7 @@ describe("Sidebar", () => {
     expect(chatMenuButton).not.toHaveClass("top-1");
   });
 
-  it("places topic mute control under topic unread badge", () => {
+  it("places topic notification cycle button under topic unread badge", () => {
     const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
       ...STREAM_CHAT,
       topics: [{ subject: "incident", badge: 2, lastMessage: "Topic update" }],
@@ -1839,9 +1851,12 @@ describe("Sidebar", () => {
       />,
     );
 
-    const topicMuteButton = screen.getByRole("button", { name: /mute topic/i });
-    const actionsContainer = topicMuteButton.parentElement;
     const topicLink = screen.getByRole("link", { name: /incident/i });
+    const topicRow = topicLink.parentElement!.parentElement as HTMLElement;
+    const notificationButton = within(topicRow).getByRole("button", {
+      name: t("channel.topicVisibilityDefault"),
+    });
+    const actionsContainer = notificationButton.closest(".flex-col");
 
     expect(actionsContainer).toBeTruthy();
     expect(actionsContainer).toHaveClass("flex-col");
@@ -1850,7 +1865,7 @@ describe("Sidebar", () => {
     expect(within(actionsContainer as HTMLElement).queryByText("2")).toBeNull();
   });
 
-  it("uses effective mute state for topic action label when stream is muted", () => {
+  it("shows inherit (default) visibility for topic when stream is muted", () => {
     useMuteStore.getState().muteStream(11);
     const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
       ...STREAM_CHAT,
@@ -1862,16 +1877,20 @@ describe("Sidebar", () => {
       <Sidebar
         streams={[]}
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+        activeStreamSlug="11-engineering"
         sidebarChats={[streamWithTopics]}
         sidebarDms={[]}
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /expand topics/i }));
-    expect(screen.getByRole("button", { name: /unmute topic/i })).toBeInTheDocument();
+    const topicLink = screen.getByRole("link", { name: /incident/i });
+    const topicRow = topicLink.parentElement!.parentElement as HTMLElement;
+    expect(
+      within(topicRow).getByRole("button", { name: t("channel.topicVisibilityDefault") }),
+    ).toBeInTheDocument();
   });
 
-  it("uses visibility_policy=2 endpoint when unmuting topic in muted stream", async () => {
+  it("sets unmuted visibility when cycling topic in muted stream", async () => {
     useMuteStore.getState().muteStream(11);
     const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
       ...STREAM_CHAT,
@@ -1883,22 +1902,26 @@ describe("Sidebar", () => {
       <Sidebar
         streams={[]}
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+        activeStreamSlug="11-engineering"
         sidebarChats={[streamWithTopics]}
         sidebarDms={[]}
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /expand topics/i }));
-    fireEvent.click(screen.getByRole("button", { name: /unmute topic/i }));
+    const topicLink = await screen.findByRole("link", { name: /incident/i });
+    const topicRow = topicLink.parentElement!.parentElement as HTMLElement;
+    fireEvent.click(
+      within(topicRow).getByRole("button", { name: t("channel.topicVisibilityDefault") }),
+    );
 
     await waitFor(() => {
-      expect(unmuteTopicInMutedStreamMock).toHaveBeenCalledWith(11, "incident");
+      expect(setTopicVisibilityLevelMock).toHaveBeenCalledWith(11, "incident", "unmuted");
       expect(useMuteStore.getState().isTopicUnmuted(11, "incident")).toBe(true);
     });
   });
 
-  it("rolls back topic mute and retries from inline error feedback when topic API fails", async () => {
-    muteTopicMock.mockResolvedValue(false);
+  it("rolls back topic visibility level and retries from inline error feedback when topic API fails", async () => {
+    setTopicVisibilityLevelMock.mockResolvedValue(false);
     const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
       ...STREAM_CHAT,
       topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
@@ -1909,23 +1932,27 @@ describe("Sidebar", () => {
       <Sidebar
         streams={[]}
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+        activeStreamSlug="11-engineering"
         sidebarChats={[streamWithTopics]}
         sidebarDms={[]}
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /expand topics/i }));
-    fireEvent.click(screen.getByRole("button", { name: /mute topic/i }));
+    const topicLink = await screen.findByRole("link", { name: /incident/i });
+    const topicRow = topicLink.parentElement!.parentElement as HTMLElement;
+    fireEvent.click(
+      within(topicRow).getByRole("button", { name: t("channel.topicVisibilityDefault") }),
+    );
 
     await waitFor(() => {
-      expect(muteTopicMock).toHaveBeenCalledWith(11, "incident");
-      expect(useMuteStore.getState().isTopicMuted(11, "incident")).toBe(false);
-      expect(screen.getByText(t("app.error"))).toBeInTheDocument();
+      expect(setTopicVisibilityLevelMock).toHaveBeenCalledWith(11, "incident", "followed");
+      expect(useMuteStore.getState().getTopicVisibilityLevel(11, "incident")).toBe("inherit");
     });
+    expect(screen.getByText(t("app.error"))).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /retry/i }));
     await waitFor(() => {
-      expect(muteTopicMock).toHaveBeenCalledTimes(2);
+      expect(setTopicVisibilityLevelMock).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -1957,7 +1984,7 @@ describe("Sidebar", () => {
     );
   });
 
-  it("does not navigate when topic mute action is clicked", () => {
+  it("does not navigate when topic notification switch is clicked", async () => {
     useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
 
     renderWithProviders(
@@ -1980,7 +2007,11 @@ describe("Sidebar", () => {
       </>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /mute topic/i }));
+    const topicLink = await screen.findByRole("link", { name: /incident/i });
+    const topicRow = topicLink.parentElement!.parentElement as HTMLElement;
+    fireEvent.click(
+      within(topicRow).getByRole("button", { name: t("channel.topicVisibilityDefault") }),
+    );
 
     expect(screen.getByTestId("route-path")).toHaveTextContent("/");
   });
