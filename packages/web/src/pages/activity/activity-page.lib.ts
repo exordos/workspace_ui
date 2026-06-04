@@ -3,6 +3,11 @@
  */
 
 import type { Draft } from "~/entities/draft/draft.types";
+import type { Reaction } from "~/shared/api/zulip.types";
+import {
+  groupReactions,
+  type GroupedReaction,
+} from "~/widgets/message-list/message-bubble-emoji.lib";
 
 export function buildMessageNavigateRoute(route: string, messageId: number, mode: string): string {
   if (mode !== "forward") {
@@ -116,4 +121,23 @@ export function formatDraftMessageContext(options: {
   }
 
   return privateLabel;
+}
+
+/** Reactions from others on the current user's message (excludes self). */
+export function filterPeerReactions(
+  reactions: readonly Reaction[],
+  currentUserId: number | null,
+): Reaction[] {
+  if (currentUserId == null) return [];
+  return reactions.filter((reaction) => reaction.user_id !== currentUserId);
+}
+
+export function getActivityPeerReactionGroups(
+  reactions: readonly Reaction[],
+  currentUserId: number | null,
+  resolveCustomEmojiImageUrl?: (reaction: Reaction) => string | undefined,
+): GroupedReaction[] {
+  const peerReactions = filterPeerReactions(reactions, currentUserId);
+  if (peerReactions.length === 0) return [];
+  return groupReactions(peerReactions, resolveCustomEmojiImageUrl);
 }

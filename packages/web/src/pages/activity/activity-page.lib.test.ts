@@ -1,6 +1,80 @@
 import { describe, expect, it } from "vitest";
 import type { Draft } from "~/entities/draft/draft.types";
-import { formatDraftMessageContext, resolveDraftDmDisplayName } from "./activity-page.lib";
+import {
+  filterPeerReactions,
+  formatDraftMessageContext,
+  getActivityPeerReactionGroups,
+  resolveDraftDmDisplayName,
+} from "./activity-page.lib";
+
+describe("filterPeerReactions", () => {
+  it("excludes reactions from the current user", () => {
+    const reactions = [
+      {
+        emoji_name: "thumbs_up",
+        emoji_code: "1f44d",
+        reaction_type: "unicode_emoji" as const,
+        user_id: 42,
+      },
+      {
+        emoji_name: "heart",
+        emoji_code: "2764",
+        reaction_type: "unicode_emoji" as const,
+        user_id: 7,
+      },
+    ];
+
+    expect(filterPeerReactions(reactions, 42)).toEqual([reactions[1]]);
+  });
+
+  it("returns empty when current user id is unknown", () => {
+    expect(
+      filterPeerReactions(
+        [
+          {
+            emoji_name: "heart",
+            emoji_code: "2764",
+            reaction_type: "unicode_emoji",
+            user_id: 7,
+          },
+        ],
+        null,
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe("getActivityPeerReactionGroups", () => {
+  it("groups peer reactions by emoji", () => {
+    const groups = getActivityPeerReactionGroups(
+      [
+        {
+          emoji_name: "thumbs_up",
+          emoji_code: "1f44d",
+          reaction_type: "unicode_emoji",
+          user_id: 42,
+        },
+        {
+          emoji_name: "thumbs_up",
+          emoji_code: "1f44d",
+          reaction_type: "unicode_emoji",
+          user_id: 7,
+        },
+        {
+          emoji_name: "heart",
+          emoji_code: "2764",
+          reaction_type: "unicode_emoji",
+          user_id: 8,
+        },
+      ],
+      42,
+    );
+
+    expect(groups).toHaveLength(2);
+    expect(groups.map((group) => group.emojiName).sort()).toEqual(["heart", "thumbs_up"]);
+    expect(groups.find((group) => group.emojiName === "thumbs_up")?.userIds).toEqual([7]);
+  });
+});
 
 describe("resolveDraftDmDisplayName", () => {
   it("returns partner name for a 1:1 DM draft", () => {

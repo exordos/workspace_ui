@@ -35,6 +35,7 @@ import { FloatingLoadingOverlay } from "~/shared/ui/floating-loading-overlay";
 import { Icon } from "~/shared/ui/icon";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
 import { MY_ACTIVITY, messageToDmEntry, slugForStream } from "~/widgets/sidebar/sidebar.lib";
+import { ActivityPeerReactionsRow } from "./activity-page-peer-reactions.ui";
 import {
   buildMessageNavigateRoute,
   formatActivityMessageContext,
@@ -539,6 +540,9 @@ export const ActivityPage: React.FC = () => {
                     <p className="mt-1 line-clamp-2 text-sm text-text-primary">
                       {truncateText(plainTextPreviewFromMessageBody(m.content))}
                     </p>
+                    {validFilter === "reactions" && (
+                      <ActivityPeerReactionsRow message={m} currentUserId={currentUserId} />
+                    )}
                   </button>
                   <div className="mt-0.5 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                     {validFilter === "starred" && (

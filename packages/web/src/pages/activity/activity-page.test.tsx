@@ -531,6 +531,58 @@ describe("ActivityPage drafts routing", () => {
     });
   });
 
+  it("shows peer emoji reactions on the reactions activity list", async () => {
+    useChatListStore.setState({ currentUserId: 42 });
+    useUsersStore
+      .getState()
+      .mergeUsers([
+        createUser({ user_id: 7, full_name: "Bob" }),
+        createUser({ user_id: 42, full_name: "Me" }),
+      ]);
+    fetchActivityMessagesPageWithPersist.mockResolvedValue({
+      messages: [
+        createMessage({
+          id: 50,
+          sender_id: 42,
+          content: "My reacted message",
+          timestamp: 2,
+          reactions: [
+            {
+              emoji_name: "thumbs_up",
+              emoji_code: "1f44d",
+              reaction_type: "unicode_emoji",
+              user_id: 42,
+            },
+            {
+              emoji_name: "thumbs_up",
+              emoji_code: "1f44d",
+              reaction_type: "unicode_emoji",
+              user_id: 7,
+            },
+          ],
+        }),
+      ],
+      foundOldest: true,
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/activity/reactions"]}>
+        <Routes>
+          <Route path="/activity/:filter" element={<ActivityPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("My reacted message")).toBeInTheDocument();
+    });
+
+    const reactionsRow = screen.getByTestId("activity-peer-reactions-50");
+    expect(reactionsRow).toHaveTextContent("Bob");
+    expect(reactionsRow).toHaveTextContent("👍");
+    expect(reactionsRow).not.toHaveTextContent("Me");
+  });
+
   it.each(["mentions", "reactions", "starred"] as const)(
     "initializes %s list at the latest messages",
     async (filter) => {
