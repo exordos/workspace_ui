@@ -29,6 +29,7 @@ import {
 import { attachEventLoopLifecycle } from "~/shared/lib/event-loop-lifecycle.lib";
 import { createLogger } from "~/shared/lib/logger";
 import { isOnline, waitForOnline } from "~/shared/lib/network";
+import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import {
   clearZulipEventQueueId,
   setZulipEventQueueId,
@@ -171,7 +172,7 @@ function startZulipEventLoopWithTransport(
       nudgeEventLoopAfterNetworkRestore("reconnect");
     },
     onOnline: () => {
-      nudgeEventLoopAfterNetworkRestore("online");
+      // onReconnect already nudges after offline→online; skip duplicate wake.
     },
     onOffline: () => {
       pauseEventLoopForOffline();
@@ -308,7 +309,9 @@ function startZulipEventLoopWithTransport(
   }
 
   void runLoop()
-    .catch(() => {})
+    .catch((err) => {
+      reportUnexpectedError("realtime", err, { phase: "event-loop-exit" });
+    })
     .finally(() => {
       cleanupLoop();
     });

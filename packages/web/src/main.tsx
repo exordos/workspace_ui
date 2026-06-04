@@ -1,6 +1,5 @@
-import { ensureJitsiExternalApiLoaded } from "~/shared/lib/jitsi-external-api.loader";
+void import("./main-app").then(({ mountApplication }) => {
+  mountApplication();
+});
 
-await ensureJitsiExternalApiLoaded();
-
-const { mountApplication } = await import("./main-app");
-mountApplication();
+export {};

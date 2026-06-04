@@ -4,6 +4,7 @@ import { useSettingsStore } from "~/features/settings/settings.model";
 import { initAuthGuard } from "~/shared/lib/auth-guard";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { pushService } from "~/shared/lib/push/push.service";
+import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import type { NavigateFunction } from "react-router-dom";
 
 export function useLayoutAuthGuard(options: {
@@ -24,7 +25,9 @@ export function useLayoutAuthGuard(options: {
     const cleanup = initAuthGuard({
       timeoutMs,
       onBeforeSessionExpired: () => {
-        void pushService.unregister().catch(() => {});
+        void pushService.unregister().catch((err) => {
+          reportUnexpectedError("push", err, { phase: "session-expired-unregister" });
+        });
       },
       onSessionExpired: () => {
         void navigate(withCurrentOrgRoute("/login"));

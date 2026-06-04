@@ -3,6 +3,7 @@
     "name": "Exordos Workspace",
     "loading": "Loading…",
     "error": "Something went wrong",
+    "loadFailed": "Failed to load data",
     "retry": "Try again",
     "reload": "Reload",
     "pageLoadError": "Failed to load page",
@@ -257,6 +258,8 @@
     "callWithParticipants_other": "Call ({{count}} participants)",
     "calling": "Calling, trying to connect…",
     "createFailed": "Failed to create call",
+    "apiLoading": "Loading call client…",
+    "apiLoadFailed": "Could not load call client",
     "withVideo": "With video",
     "cancel": "Cancel",
     "createCall": "Create call",
@@ -638,7 +641,9 @@
     "recent": "Recent",
     "recentAriaLabel": "Recent stickers",
     "noSearchResults": "No stickers found",
-    "noRecentStickers": "No recent stickers"
+    "noRecentStickers": "No recent stickers",
+    "loadError": "Could not load sticker packs",
+    "retryLoad": "Try again"
   },
   "composer": {
     "bold": "Bold",

@@ -21,7 +21,7 @@ export const ChatPageDeleteConfirmBar = React.memo(function ChatPageDeleteConfir
       </span>
       <button
         type="button"
-        className="hover:bg-notice-base/90 text-badge-text rounded-lg bg-notice-base px-3 py-1 text-sm"
+        className="hover:bg-notice-base/90 rounded-lg bg-notice-base px-3 py-1 text-sm text-badge-text"
         onClick={onConfirm}
       >
         {t("message.delete")}

@@ -34,6 +34,21 @@ describe("StickerPicker", () => {
     localStorage.removeItem("sticker_favorites");
   });
 
+  it("shows load error state with retry when sticker fetch failed", () => {
+    useStickerStore.setState({
+      packs: [],
+      recent: [],
+      favorites: [],
+      loading: false,
+      error: "Network error",
+    });
+    renderWithProviders(<StickerPicker onSelect={vi.fn()} />);
+
+    expect(screen.getByText("Could not load sticker packs")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(useStickerStore.getState().error).toBeNull();
+  });
+
   it("renders localized empty state when no packs are available", () => {
     renderWithProviders(<StickerPicker onSelect={vi.fn()} />);
 

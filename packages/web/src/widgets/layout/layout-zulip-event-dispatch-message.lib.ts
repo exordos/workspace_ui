@@ -17,6 +17,7 @@ import {
   logSidebarUnreadFlow,
   summarizeMessageIdsForFlowDebug,
 } from "~/shared/lib/sidebar-unread-debug.lib";
+import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import { isTabVisible } from "~/shared/lib/visibility";
 import { closeReadMessageNotifications } from "./layout-notification-tags.lib";
 import { maybeNotifyNewMessage } from "./layout-zulip-event-notify.lib";
@@ -47,7 +48,9 @@ export function applyMessageCacheIndexedDb(
     instanceId: instance.id,
     currentUserId: ctx.chatList.currentUserId,
     event,
-  }).catch(() => {});
+  }).catch((err) => {
+    reportUnexpectedError("message-idb", err, { eventType: event.type });
+  });
 }
 
 // ---

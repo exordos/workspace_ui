@@ -41,6 +41,7 @@ import { logSidebarUnreadFlow } from "~/shared/lib/sidebar-unread-debug.lib";
 import { isTabVisible, onVisibilityChange } from "~/shared/lib/visibility";
 import { FloatingLoadingOverlay } from "~/shared/ui/floating-loading-overlay";
 import { FloatingScrollToBottomButton } from "~/shared/ui/floating-scroll-to-bottom-button";
+import { WidgetErrorBoundary } from "~/shared/ui/widget-error-boundary.ui";
 import { MessageBubble, type MessageBubbleCallbacks } from "./message-bubble.ui";
 import { getSenderGroups } from "./message-list-grouping.lib";
 import { buildMessageMediaGallery } from "./message-list-media.lib";
@@ -85,7 +86,7 @@ const INITIAL_READ_SUPPRESS_MS = 400;
 
 const messageListLog = createLogger("ui:message-list");
 
-export const MessageList: React.FC<MessageListProps> = ({
+export const MessageListInner: React.FC<MessageListProps> = ({
   messages,
   currentUserId,
   scrollToBottomKey,
@@ -1277,3 +1278,9 @@ export const MessageList: React.FC<MessageListProps> = ({
     </div>
   );
 };
+
+export const MessageList: React.FC<MessageListProps> = (props) => (
+  <WidgetErrorBoundary sectionLabel={t("nav.messenger")}>
+    <MessageListInner {...props} />
+  </WidgetErrorBoundary>
+);

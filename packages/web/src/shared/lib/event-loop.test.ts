@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { startZulipEventLoop, startZulipEventLoopForCredentials } from "./event-loop";
+import { reportUnexpectedError } from "./unexpected-error.lib";
 import * as zulipEventQueueRegistry from "./zulip-event-queue-registry.lib";
 
 const registerQueueMock = vi.fn();
@@ -42,6 +43,10 @@ vi.mock("~/shared/lib/connection-health", async (importOriginal) => {
     noteApiTransportSuccess: vi.fn(),
   };
 });
+
+vi.mock("~/shared/lib/unexpected-error.lib", () => ({
+  reportUnexpectedError: vi.fn(),
+}));
 
 describe("startZulipEventLoop", () => {
   afterEach(() => {
@@ -394,6 +399,139 @@ describe("startZulipEventLoop", () => {
     await vi.waitFor(() => {
       expect(registerQueueMock).toHaveBeenCalledTimes(2);
     });
+    expect(getEventsMock).toHaveBeenCalledTimes(2);
+    expect(getEventsMock).toHaveBeenLastCalledWith(
+      "q-2",
+      0,
+      expect.objectContaining({ timeoutSec: expect.any(Number) }),
+    );
+
+    controller.abort();
+    await Promise.resolve();
+  });
+
+  it("handles BAD_EVENT_QUEUE_ID by re-registering without crashing the event loop", async () => {
+    const onBadQueue = vi.fn();
+    const onEvent = vi.fn();
+    const recoveredEvent = { id: 7, type: "subscription" };
+
+    registerQueueMock
+      .mockResolvedValueOnce({ queue_id: "q-stale", last_event_id: 0 })
+      .mockResolvedValueOnce({ queue_id: "q-fresh", last_event_id: 4 });
+    getEventsMock
+      .mockResolvedValueOnce({
+        result: "error",
+        code: "BAD_EVENT_QUEUE_ID",
+        msg: "Invalid event queue ID: q-stale",
+        queue_id: "q-stale",
+      })
+      .mockResolvedValueOnce({ result: "success", events: [recoveredEvent] })
+      .mockImplementation(
+        () =>
+          new Promise(() => {
+            /* block after recovery so the loop does not spin */
+          }),
+      );
+
+    onTabResumeMock.mockReturnValue(unsubResumeMock);
+    onReconnectMock.mockReturnValue(unsubReconnectMock);
+    onStatusChangeMock.mockReturnValue(unsubStatusMock);
+    waitForOnlineMock.mockResolvedValue(undefined);
+    isOnlineMock.mockReturnValue(true);
+
+    const controller = new AbortController();
+    startZulipEventLoop({
+      signal: controller.signal,
+      onEvent,
+      onBadQueue,
+    });
+
+    await vi.waitFor(() => {
+      expect(registerQueueMock).toHaveBeenCalledTimes(2);
+    });
+    await vi.waitFor(() => {
+      expect(onEvent).toHaveBeenCalledWith(recoveredEvent);
+    });
+
+    expect(onBadQueue).toHaveBeenCalledTimes(1);
+    expect(reportUnexpectedError).not.toHaveBeenCalled();
+    expect(getEventsMock).toHaveBeenNthCalledWith(
+      1,
+      "q-stale",
+      0,
+      expect.objectContaining({ timeoutSec: expect.any(Number) }),
+    );
+    expect(getEventsMock).toHaveBeenNthCalledWith(
+      2,
+      "q-fresh",
+      4,
+      expect.objectContaining({ timeoutSec: expect.any(Number) }),
+    );
+
+    controller.abort();
+    await Promise.resolve();
+  });
+
+  it("deduplicates reconnect nudge when online status and reconnect fire together", async () => {
+    let reconnectCb: (() => void) | undefined;
+    let statusCb: ((online: boolean) => void) | undefined;
+
+    onTabResumeMock.mockReturnValue(unsubResumeMock);
+    onReconnectMock.mockImplementation((cb: () => void) => {
+      reconnectCb = cb;
+      return unsubReconnectMock;
+    });
+    onStatusChangeMock.mockImplementation((cb: (online: boolean) => void) => {
+      statusCb = cb;
+      return unsubStatusMock;
+    });
+    waitForOnlineMock.mockResolvedValue(undefined);
+    isOnlineMock.mockReturnValue(true);
+
+    registerQueueMock
+      .mockResolvedValueOnce({ queue_id: "q-1", last_event_id: 0 })
+      .mockResolvedValueOnce({ queue_id: "q-2", last_event_id: 0 });
+    getEventsMock
+      .mockImplementationOnce(
+        (_queueId: string, _lastEventId: number, options?: { signal?: AbortSignal }) =>
+          new Promise((_resolve, reject) => {
+            options?.signal?.addEventListener(
+              "abort",
+              () => reject(new DOMException("Aborted", "AbortError")),
+              { once: true },
+            );
+          }),
+      )
+      .mockImplementation(
+        () =>
+          new Promise(() => {
+            /* block after single recovery re-register */
+          }),
+      );
+
+    const controller = new AbortController();
+    startZulipEventLoop({
+      signal: controller.signal,
+      onEvent: vi.fn(),
+    });
+
+    await vi.waitFor(() => {
+      expect(registerQueueMock).toHaveBeenCalledTimes(1);
+      expect(getEventsMock).toHaveBeenCalledTimes(1);
+    });
+
+    // Real browser order: status online first, then reconnect callback.
+    statusCb?.(true);
+    reconnectCb?.();
+
+    await vi.waitFor(() => {
+      expect(registerQueueMock).toHaveBeenCalledTimes(2);
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(registerQueueMock).toHaveBeenCalledTimes(2);
     expect(getEventsMock).toHaveBeenCalledTimes(2);
     expect(getEventsMock).toHaveBeenLastCalledWith(
       "q-2",

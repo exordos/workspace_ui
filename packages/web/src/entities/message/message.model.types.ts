@@ -47,7 +47,10 @@ export interface CurrentChatMessagesState {
   hasNewerMessages: boolean;
   /** True after loadOlder/loadNewer network failure until cleared from UI. */
   boundaryLoadFailed: boolean;
+  /** Set when initial message load fails for the active chat context. */
+  initialLoadError: string | null;
   clearBoundaryLoadFailed: () => void;
+  clearInitialLoadError: () => void;
   setContext: (context: CurrentChatContext | null) => void;
   setMessages: (messages: MockMessage[]) => void;
   prependMessages: (msgs: MockMessage[]) => void;

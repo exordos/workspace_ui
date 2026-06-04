@@ -9,6 +9,7 @@ import { registerNotifiedMessageId } from "~/shared/lib/notification-dedup.lib";
 import { resolveNotificationSoundPreset } from "~/shared/lib/notification-sound-preset.lib";
 import { shouldDesktopNotify } from "~/shared/lib/notifications-policy";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import { readViewportState } from "./layout-zulip-event-viewport.lib";
 import type { LayoutZulipEventDispatchContext } from "./layout-zulip-event-dispatch.types";
 
@@ -44,7 +45,7 @@ export function deliverDesktopNotificationForMessage(
       tag: `msg-${raw.id}`,
       silent: true,
     })
-    .catch(() => {});
+    .catch((err) => reportUnexpectedError("layout:notification", err, { messageId: raw.id }));
 
   if (playSound && soundPreset !== "none") {
     notifications.playSound(soundPreset);

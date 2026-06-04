@@ -1,9 +1,10 @@
 import { useEffect } from "react";
 import { pushService } from "~/shared/lib/push/push.service";
+import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 
 function tryRegisterPushIfGranted(): void {
   if (pushService.getPermission() === "granted") {
-    void pushService.register().catch(() => {});
+    void pushService.register().catch((err) => reportUnexpectedError("push:register", err));
   }
 }
 

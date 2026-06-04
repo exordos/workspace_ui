@@ -3,8 +3,7 @@
  * before the app bundle runs, so `window.JitsiMeetExternalAPI` exists when `@jitsi/react-sdk`
  * calls `fetchExternalApi` (which otherwise injects a remote `<script>` and breaks strict CSP).
  *
- * Usage: call `await ensureJitsiExternalApiLoaded()` at the top of `main.tsx` before importing
- * the rest of the application (top-level await).
+ * Usage: call `ensureJitsiExternalApiLoaded()` before opening a Jitsi call (lazy load).
  */
 
 export function ensureJitsiExternalApiLoaded(): Promise<void> {

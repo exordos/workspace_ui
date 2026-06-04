@@ -3,6 +3,7 @@
  */
 import type { ZulipEvent } from "~/shared/api/zulip.types";
 import { getElectronAPI } from "~/shared/lib/electron";
+import { safeCatch } from "~/shared/lib/guards";
 import {
   applyMessageCacheIndexedDb,
   handleDeleteMessage,
@@ -27,66 +28,70 @@ import type {
   LayoutZulipEventDispatchContext,
 } from "./layout-zulip-event-dispatch.types";
 
+function runDispatchHandler(label: string, handler: () => void): void {
+  safeCatch(handler, label)();
+}
+
 export function dispatchZulipEvent(event: ZulipEvent, ctx: LayoutZulipEventDispatchContext): void {
   applyMessageCacheIndexedDb(event, ctx);
 
   if (event.type === "message" && event.message) {
-    handleIncomingMessage(event, ctx);
+    runDispatchHandler("dispatch:message", () => handleIncomingMessage(event, ctx));
     return;
   }
 
   if (event.type === "update_message_flags") {
-    handleUpdateMessageFlags(event, ctx);
+    runDispatchHandler("dispatch:update_message_flags", () => handleUpdateMessageFlags(event, ctx));
     return;
   }
 
   if (event.type === "reaction") {
-    handleReaction(event, ctx);
+    runDispatchHandler("dispatch:reaction", () => handleReaction(event, ctx));
     return;
   }
 
   if (event.type === "delete_message") {
-    handleDeleteMessage(event, ctx);
+    runDispatchHandler("dispatch:delete_message", () => handleDeleteMessage(event, ctx));
     return;
   }
 
   if (event.type === "typing") {
-    handleTyping(event, ctx);
+    runDispatchHandler("dispatch:typing", () => handleTyping(event, ctx));
     return;
   }
 
   if (event.type === "update_message") {
-    handleUpdateMessage(event, ctx);
+    runDispatchHandler("dispatch:update_message", () => handleUpdateMessage(event, ctx));
     return;
   }
 
   if (event.type === "presence") {
-    handlePresence(event, ctx);
+    runDispatchHandler("dispatch:presence", () => handlePresence(event, ctx));
     return;
   }
 
   if (event.type === "user_status") {
-    handleUserStatus(event, ctx);
+    runDispatchHandler("dispatch:user_status", () => handleUserStatus(event, ctx));
     return;
   }
 
   if (event.type === "subscription") {
-    handleSubscription(event, ctx);
+    runDispatchHandler("dispatch:subscription", () => handleSubscription(event, ctx));
     return;
   }
 
   if (event.type === "stream") {
-    handleStream(event, ctx);
+    runDispatchHandler("dispatch:stream", () => handleStream(event, ctx));
     return;
   }
 
   if (event.type === "user_topic") {
-    handleUserTopic(event, ctx);
+    runDispatchHandler("dispatch:user_topic", () => handleUserTopic(event, ctx));
     return;
   }
 
   if (event.type === "user_settings") {
-    handleUserSettings(event);
+    runDispatchHandler("dispatch:user_settings", () => handleUserSettings(event));
   }
 }
 

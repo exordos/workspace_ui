@@ -5,6 +5,7 @@
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import type { MuteSnapshotRow } from "~/shared/lib/mute-snapshot-db";
 import { persistMuteSnapshotRow } from "~/shared/lib/mute-snapshot-db";
+import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 
 const MUTE_SNAPSHOT_SYNC_DEBOUNCE_MS = 750;
 
@@ -86,7 +87,7 @@ export function startMuteSnapshotSync(options: StartMuteSnapshotSyncOptions): ()
     queued = false;
     inFlight = true;
     void persistSnapshotRow(buildMuteSnapshotRow(instanceId))
-      .catch(() => {})
+      .catch((err) => reportUnexpectedError("layout:muteSnapshot", err, { instanceId }))
       .finally(() => {
         inFlight = false;
         if (queued) {

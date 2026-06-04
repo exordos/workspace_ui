@@ -1,6 +1,7 @@
 import type { ZulipInstance } from "~/entities/instance/instance.model";
 import { deleteQueue } from "~/shared/api/zulip-queue";
 import type { RegisterQueueResult, ZulipCredentials } from "~/shared/api/zulip.types";
+import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import {
   applyInstanceUnreadCountsFromRegisterSnapshot,
   isRegisterUnreadSnapshotUsable,
@@ -33,7 +34,9 @@ export function handleInactiveInstanceQueueRegistered(
     onQueueRegistered,
   } = params;
   if (stopped) {
-    void deleteQueue(queueId, credentials).catch(() => {});
+    void deleteQueue(queueId, credentials).catch((err) =>
+      reportUnexpectedError("layout:inactiveQueue", err, { phase: "stoppedCleanup", queueId }),
+    );
     return null;
   }
   if (instance != null && registration?.unread_snapshot != null) {
@@ -57,7 +60,9 @@ export function abortInactiveInstanceQueueOnTeardown(
   controller: AbortController,
 ): void {
   if (queueId != null) {
-    void deleteQueue(queueId, credentials).catch(() => {});
+    void deleteQueue(queueId, credentials).catch((err) =>
+      reportUnexpectedError("layout:inactiveQueue", err, { phase: "teardown", queueId }),
+    );
   }
   controller.abort();
 }

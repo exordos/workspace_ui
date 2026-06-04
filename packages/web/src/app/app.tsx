@@ -230,9 +230,11 @@ const App: React.FC = () => {
   if (instances.length === 0) {
     return (
       <div ref={rootRef} className="h-full">
-        <Suspense fallback={<PageLoader />}>
-          <LoginAppRoutes />
-        </Suspense>
+        <ErrorBoundary fallback={(api) => <PageErrorFallback onRetry={api.resetErrorBoundary} />}>
+          <Suspense fallback={<PageLoader />}>
+            <LoginAppRoutes />
+          </Suspense>
+        </ErrorBoundary>
       </div>
     );
   }

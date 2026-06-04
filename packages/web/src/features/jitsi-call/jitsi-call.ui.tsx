@@ -7,6 +7,8 @@ import { Rnd } from "react-rnd";
 import { t } from "~/i18n/i18n";
 import { AppDialogShell, APP_DIALOG_OVERLAY_CLASS } from "~/shared/ui/app-dialog.ui";
 import { Icon } from "~/shared/ui/icon";
+import { Spinner } from "~/shared/ui/spinner.ui";
+import { useJitsiExternalApiLoader } from "./jitsi-call-api-loader.hook";
 import { useJitsiCallModalShell } from "./jitsi-call-modal-shell.hook";
 import type { JitsiCallModalProps, JitsiExternalApiWithParticipants } from "./jitsi-call.types";
 
@@ -102,6 +104,8 @@ export const JitsiCallModal: React.FC<JitsiCallModalProps> = (props) => {
     handleIframeReady,
     handleReadyToClose,
   } = useJitsiCallModalShell(props);
+  const { loadState: jitsiApiLoadState, retry: retryJitsiApiLoad } =
+    useJitsiExternalApiLoader(open);
 
   // Keep Dialog.Root and Rnd mounted — minimize/expand only change bounds, not the Jitsi host.
   return (
@@ -215,15 +219,38 @@ export const JitsiCallModal: React.FC<JitsiCallModalProps> = (props) => {
             </div>
           </div>
           <div className="relative min-h-0 flex-1 overflow-hidden">
-            <JitsiCallEmbed
-              displayName={displayName}
-              domain={parsedDomain}
-              roomName={parsedRoomName}
-              startWithVideoMuted={startWithVideoMuted}
-              onApiReady={handleApiReady}
-              onIframeReady={handleIframeReady}
-              onReadyToClose={handleReadyToClose}
-            />
+            {jitsiApiLoadState === "loading" ? (
+              <div
+                className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-sm text-text-muted"
+                aria-busy="true"
+              >
+                <Spinner size="lg" />
+                <span>{t("call.apiLoading")}</span>
+              </div>
+            ) : null}
+            {jitsiApiLoadState === "error" ? (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-4 text-center">
+                <p className="text-sm text-notice-base">{t("call.apiLoadFailed")}</p>
+                <button
+                  type="button"
+                  onClick={retryJitsiApiLoad}
+                  className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-black"
+                >
+                  {t("app.retry")}
+                </button>
+              </div>
+            ) : null}
+            {jitsiApiLoadState === "ready" ? (
+              <JitsiCallEmbed
+                displayName={displayName}
+                domain={parsedDomain}
+                roomName={parsedRoomName}
+                startWithVideoMuted={startWithVideoMuted}
+                onApiReady={handleApiReady}
+                onIframeReady={handleIframeReady}
+                onReadyToClose={handleReadyToClose}
+              />
+            ) : null}
           </div>
         </div>
       </Rnd>

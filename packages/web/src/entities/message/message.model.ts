@@ -176,9 +176,14 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
   hasOlderMessages: true,
   hasNewerMessages: false,
   boundaryLoadFailed: false,
+  initialLoadError: null,
 
   clearBoundaryLoadFailed() {
     set({ boundaryLoadFailed: false });
+  },
+
+  clearInitialLoadError() {
+    set({ initialLoadError: null });
   },
 
   setContext(context) {
@@ -212,6 +217,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       hasOlderMessages: true,
       hasNewerMessages: false,
       boundaryLoadFailed: false,
+      initialLoadError: null,
     });
   },
 
@@ -578,6 +584,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       hasCurrentUserId: currentUserId != null,
       persistIdb: persistChatMessagesToIndexedDb(),
     });
+    set({ initialLoadError: null });
 
     let loadResult: Awaited<ReturnType<typeof loadInitialMessagesRouteDriven>>;
     try {
@@ -639,7 +646,8 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         context: summarizeChatContextForLog(context),
         error: String(e),
       });
-      throw e;
+      set({ initialLoadError: String(e) });
+      return;
     } finally {
       cleanupExternalAbort();
       if (initialLoadAbortController?.signal === effectiveSignal) {

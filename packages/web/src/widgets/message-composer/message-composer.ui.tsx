@@ -7,6 +7,7 @@ import { ensureRealmEmojisLoaded, getCachedRealmEmojis } from "~/shared/lib/real
 import { useViewportKeyboard } from "~/shared/lib/touch";
 import { isWebView } from "~/shared/lib/webview";
 import { Icon } from "~/shared/ui/icon";
+import { WidgetErrorBoundary } from "~/shared/ui/widget-error-boundary.ui";
 import {
   MessageComposerAiActionMenuLayer,
   MessageComposerSmartReplyStrip,
@@ -62,7 +63,7 @@ export type { ReplyQuote } from "./message-composer.types";
 // TODO: Re-enable after scheduled send uses Zulip's server API and persists the target chat.
 const ENABLE_SCHEDULED_SEND_UI = false;
 
-export const MessageComposer: React.FC<MessageComposerProps> = ({
+export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   onSend,
   onSubmitEdit,
   onCancelEdit,
@@ -141,7 +142,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   const scheduleButtonRef = useRef<HTMLButtonElement>(null);
   const savedSnippetsButtonRef = useRef<HTMLButtonElement>(null);
   const aiButtonAnchorRef = useRef<HTMLSpanElement>(null);
-  const scheduledSendInFlightRef = useRef(false);
+  const scheduledSendInFlightRef = useRef<symbol | null>(null);
   const isWebViewMode = useMemo(() => isWebView(), []);
   const viewportKeyboard = useViewportKeyboard();
   const composerKeyboardInset = useMemo(
@@ -323,7 +324,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   }, []);
 
   const processDueScheduledMessage = useCallback(async () => {
-    if (disabled || scheduledSendInFlightRef.current || onSend == null) return;
+    if (disabled || scheduledSendInFlightRef.current != null || onSend == null) return;
 
     const now = Date.now();
     const dueMessage = [...scheduledMessages]
@@ -332,7 +333,8 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
 
     if (dueMessage == null) return;
 
-    scheduledSendInFlightRef.current = true;
+    const sendToken = Symbol("scheduled-send");
+    scheduledSendInFlightRef.current = sendToken;
     try {
       await onSend(
         dueMessage.content,
@@ -349,7 +351,9 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
         ),
       );
     } finally {
-      scheduledSendInFlightRef.current = false;
+      if (scheduledSendInFlightRef.current === sendToken) {
+        scheduledSendInFlightRef.current = null;
+      }
     }
   }, [disabled, onSend, scheduledMessages]);
 
@@ -1000,3 +1004,9 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     </div>
   );
 };
+
+export const MessageComposer: React.FC<MessageComposerProps> = (props) => (
+  <WidgetErrorBoundary sectionLabel={t("chat.sendPlaceholder")}>
+    <MessageComposerInner {...props} />
+  </WidgetErrorBoundary>
+);

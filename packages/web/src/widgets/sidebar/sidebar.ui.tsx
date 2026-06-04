@@ -9,6 +9,7 @@ import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { buildStreamSlug } from "~/shared/lib/stream-slug.lib";
 import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
 import { ScrollArea } from "~/shared/ui/scroll-area";
+import { WidgetErrorBoundary } from "~/shared/ui/widget-error-boundary.ui";
 import { SidebarActivity } from "./sidebar-activity.ui";
 import { useSidebarConfigStore } from "./sidebar-config.model";
 import { SidebarDmList } from "./sidebar-dm-list.ui";
@@ -43,7 +44,7 @@ function extractDmIdFromPath(pathname: string): string | null {
   return match?.[1] ? decodePathSegment(match[1]) : null;
 }
 
-export const Sidebar: React.FC<SidebarUiProps> = ({
+export const SidebarInner: React.FC<SidebarUiProps> = ({
   streams: streamsProp,
   selectedFolderId: selectedFolderIdProp,
   pinFolderId: pinFolderIdProp,
@@ -250,3 +251,9 @@ export const Sidebar: React.FC<SidebarUiProps> = ({
     </aside>
   );
 };
+
+export const Sidebar: React.FC<SidebarUiProps> = (props) => (
+  <WidgetErrorBoundary sectionLabel={t("nav.messenger")}>
+    <SidebarInner {...props} />
+  </WidgetErrorBoundary>
+);

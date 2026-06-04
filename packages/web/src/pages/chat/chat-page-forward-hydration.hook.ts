@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { fetchMessageById } from "~/shared/api/zulip-messages";
 import type { MockMessage } from "~/shared/api/zulip.types";
+import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 
 export function useChatForwardHydration(options: {
   forwardMessageId: number | null;
@@ -43,7 +44,12 @@ export function useChatForwardHydration(options: {
         setForwardMessages([message]);
         setForwardSelectedText(undefined);
       })
-      .catch(() => {});
+      .catch((err) => {
+        reportUnexpectedError("chat-page", err, {
+          phase: "forward-hydration",
+          messageId: forwardMessageId,
+        });
+      });
 
     return () => {
       cancelled = true;

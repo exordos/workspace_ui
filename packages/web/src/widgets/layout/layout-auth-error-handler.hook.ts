@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { setAuthErrorHandler } from "~/shared/api/client";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { pushService } from "~/shared/lib/push/push.service";
+import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import type { NavigateFunction } from "react-router-dom";
 
 export function useLayoutAuthErrorHandler(options: {
@@ -18,7 +19,7 @@ export function useLayoutAuthErrorHandler(options: {
       return;
     }
     setAuthErrorHandler(() => {
-      void pushService.unregister().catch(() => {});
+      void pushService.unregister().catch((err) => reportUnexpectedError("push:unregister", err));
       void navigate(withCurrentOrgRoute("/login"));
     });
     return () => {

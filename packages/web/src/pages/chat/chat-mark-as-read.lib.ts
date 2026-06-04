@@ -77,6 +77,8 @@ export function createMarkAsReadBatcher(options: MarkAsReadBatcherOptions): Mark
     }, debounceMs);
   };
 
+  let activeFlushId = 0;
+
   const flushInternal = async () => {
     if (inFlight || queued.size === 0) return;
     if (respectTabVisibility && !isTabVisible()) {
@@ -85,6 +87,7 @@ export function createMarkAsReadBatcher(options: MarkAsReadBatcherOptions): Mark
     }
     const batch = Array.from(queued);
     queued.clear();
+    const flushId = ++activeFlushId;
     inFlight = true;
     logScrollReadFlow("read:batcherFlush", summarizeMessageIdsForFlowDebug(batch));
     logSidebarUnreadFlow("chat:markAsReadBatcher:flush", summarizeMessageIdsForFlowDebug(batch));
@@ -96,7 +99,9 @@ export function createMarkAsReadBatcher(options: MarkAsReadBatcherOptions): Mark
     } catch (error) {
       onError?.(error, batch);
     } finally {
-      inFlight = false;
+      if (flushId === activeFlushId) {
+        inFlight = false;
+      }
       if (queued.size === 0) {
         clearVisibilityWait();
       }

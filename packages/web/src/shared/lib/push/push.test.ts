@@ -58,6 +58,7 @@ describe("push notification types", () => {
       token: null,
       registered: false,
       provider: null,
+      registrationError: null,
     };
     expect(state.permission).toBe("default");
     expect(state.registered).toBe(false);
@@ -90,6 +91,7 @@ describe("pushService", () => {
     expect(state).toHaveProperty("token");
     expect(state).toHaveProperty("registered");
     expect(state).toHaveProperty("provider");
+    expect(state).toHaveProperty("registrationError");
   });
 
   // Permission must be one of the four valid values.

@@ -217,14 +217,13 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
     mockFetchDmMessages.mockRejectedValue(new Error("network down"));
 
     useCurrentChatMessagesStore.getState().setContext(ctx);
-    await expect(
-      useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
-        context: ctx,
-        focusedMessageId: null,
-        currentUserId: 7,
-      }),
-    ).rejects.toThrow("network down");
+    await useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
+      context: ctx,
+      focusedMessageId: null,
+      currentUserId: 7,
+    });
 
+    expect(useCurrentChatMessagesStore.getState().initialLoadError).toContain("network down");
     expect(useCurrentChatMessagesStore.getState().messages).toEqual(cached);
     expect(useCurrentChatMessagesStore.getState().hasOlderMessages).toBe(true);
     expect(useCurrentChatMessagesStore.getState().hasNewerMessages).toBe(false);

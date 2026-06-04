@@ -6,6 +6,7 @@ import { t } from "~/i18n/i18n";
 import { JITSI_PARTICIPANTS_POLL_MS } from "~/shared/config/constants";
 import { callState } from "~/shared/lib/call-state";
 import { parseJitsiUrl } from "~/shared/lib/jitsi";
+import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import {
   resolveJitsiCallHeaderSubtitle,
   resolveJitsiCallHeaderTitle,
@@ -136,7 +137,9 @@ export function useJitsiCallModalShell({
     if (document.fullscreenElement === fullscreenRef.current) {
       const fullscreenExitPromise = document.exitFullscreen?.();
       if (fullscreenExitPromise != null) {
-        void fullscreenExitPromise.catch(() => {});
+        void fullscreenExitPromise.catch((err) =>
+          reportUnexpectedError("jitsi:fullscreenExit", err),
+        );
       }
     }
     return undefined;
@@ -229,7 +232,9 @@ export function useJitsiCallModalShell({
     if (document.fullscreenElement === fullscreenRef.current) {
       const fullscreenExitPromise = document.exitFullscreen?.();
       if (fullscreenExitPromise != null) {
-        void fullscreenExitPromise.catch(() => {});
+        void fullscreenExitPromise.catch((err) =>
+          reportUnexpectedError("jitsi:fullscreenExit", err),
+        );
       }
     }
   }, [isMinimized]);

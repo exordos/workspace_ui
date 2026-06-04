@@ -11,6 +11,7 @@
     "name": "Exordos Workspace",
     "loading": "Загрузка…",
     "error": "Что-то пошло не так",
+    "loadFailed": "Не удалось загрузить данные",
     "retry": "Попробовать снова",
     "reload": "Перезагрузить",
     "pageLoadError": "Не удалось загрузить страницу",
@@ -248,6 +249,8 @@
     "callMessage": "Звонок",
     "callName": "Название звонка",
     "createFailed": "Не удалось создать звонок",
+    "apiLoading": "Загрузка клиента звонков…",
+    "apiLoadFailed": "Не удалось загрузить клиент звонков",
     "participant": "Участник",
     "participants_one": "{{count}} участник",
     "participants_few": "{{count}} участника",
@@ -643,7 +646,9 @@
     "recent": "Недавние",
     "recentAriaLabel": "Недавние стикеры",
     "noSearchResults": "Стикеры не найдены",
-    "noRecentStickers": "Нет недавних стикеров"
+    "noRecentStickers": "Нет недавних стикеров",
+    "loadError": "Не удалось загрузить пакеты стикеров",
+    "retryLoad": "Повторить"
   },
   "composer": {
     "bold": "Жирный",

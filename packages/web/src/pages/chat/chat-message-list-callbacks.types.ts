@@ -1,4 +1,4 @@
-import type { MockMessage, Reaction } from "~/shared/api/zulip.types";
+import type { MessageReactionPayload, MockMessage } from "~/shared/api/zulip.types";
 import type { Dispatch, SetStateAction } from "react";
 import type { NavigateFunction } from "react-router-dom";
 
@@ -33,11 +33,8 @@ export interface UseChatMessageListCallbacksParams {
   setSelectedMessageIds: Dispatch<SetStateAction<Set<number>>>;
   setSelectionMode: Dispatch<SetStateAction<boolean>>;
   updateMessageFlagsInStore: (ids: number[], flag: string, op: "add" | "remove") => void;
-  updateMessageReactionInStore: (
-    messageId: number,
-    reaction: Reaction,
-    op: "add" | "remove",
-  ) => void;
+  onMessageAddReaction: (messageId: number, payload: MessageReactionPayload) => void;
+  onMessageRemoveReaction: (messageId: number, payload: MessageReactionPayload) => void;
   openJitsiCall: (url: string, locationName: string) => void;
   setReadReceiptsOpen: Dispatch<SetStateAction<boolean>>;
   onRetryFailedOutgoing: (message: MockMessage) => void;

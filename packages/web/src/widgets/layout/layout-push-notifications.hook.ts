@@ -12,6 +12,7 @@ import { notificationService } from "~/shared/lib/notifications";
 import { shouldDesktopNotify } from "~/shared/lib/notifications-policy";
 import { pushService, type PushMessagePayload } from "~/shared/lib/push/push.service";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 
 function readViewportState(): { windowFocused: boolean; windowHidden: boolean } {
   if (typeof document === "undefined") {
@@ -80,7 +81,9 @@ function handleForegroundPush(payload: PushMessagePayload): void {
       tag: messageId != null ? `msg-${messageId}` : `push-${Date.now()}`,
       silent: true,
     })
-    .catch(() => {});
+    .catch((err) => {
+      reportUnexpectedError("notifications", err, { phase: "foreground-push-show" });
+    });
 
   if (playSound) {
     playNotificationSound(resolvedPreset);

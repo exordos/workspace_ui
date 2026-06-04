@@ -23,6 +23,7 @@ import { isElectron } from "../electron";
 import { createLogger, logAction } from "../logger";
 import { createFcmProvider } from "./fcm";
 import { installDefaultMiddlewares } from "./middleware";
+import { registerPushTokenWithRetry } from "./push-register-retry.lib";
 import { registerPushToken, unregisterPushToken } from "./zulip";
 import type { PushMessagePayload, PushProvider, PushState, PushPermission } from "./types";
 
@@ -43,6 +44,7 @@ let state: PushState = {
   token: null,
   registered: false,
   provider: null,
+  registrationError: null,
 };
 
 const listeners = new Set<() => void>();
@@ -57,6 +59,7 @@ function setState(patch: Partial<PushState>): void {
 }
 
 let provider: PushProvider | null = null;
+let registerInFlight: Promise<boolean> | null = null;
 
 // ---------------------------------------------------------------------------
 // Core API
@@ -85,7 +88,7 @@ async function requestPermission(): Promise<PushPermission> {
   return perm;
 }
 
-async function register(): Promise<boolean> {
+async function performRegister(): Promise<boolean> {
   if (!provider) {
     log.info("Push provider unavailable, skipping registration");
     return false;
@@ -97,12 +100,16 @@ async function register(): Promise<boolean> {
     return false;
   }
 
+  setState({ registrationError: null });
+
   try {
     await provider.init();
 
     const token = await provider.getToken();
     if (!token) {
-      log.warn("Failed to acquire push token");
+      const error = "Failed to acquire push token";
+      log.warn(error);
+      setState({ registrationError: error, registered: false });
       return false;
     }
 
@@ -111,10 +118,10 @@ async function register(): Promise<boolean> {
       await unregisterPushToken(oldToken);
     }
 
-    const registered = await registerPushToken(token);
-    if (registered) {
+    const { ok, lastError } = await registerPushTokenWithRetry(registerPushToken, token);
+    if (ok) {
       storeToken(token);
-      setState({ token, registered: true, provider: provider.name });
+      setState({ token, registered: true, provider: provider.name, registrationError: null });
       log.info("Push notifications registered", { provider: provider.name });
       logAction("push_register", {
         provider: provider.name,
@@ -123,11 +130,24 @@ async function register(): Promise<boolean> {
       return true;
     }
 
+    setState({ registered: false, registrationError: lastError });
     return false;
   } catch (err) {
-    log.error("Push registration failed", { error: String(err) });
+    const message = err instanceof Error ? err.message : String(err);
+    log.error("Push registration failed", { error: message });
+    setState({ registered: false, registrationError: message });
     return false;
   }
+}
+
+async function register(): Promise<boolean> {
+  if (registerInFlight) {
+    return registerInFlight;
+  }
+  registerInFlight = performRegister().finally(() => {
+    registerInFlight = null;
+  });
+  return registerInFlight;
 }
 
 async function unregister(): Promise<void> {
@@ -136,7 +156,7 @@ async function unregister(): Promise<void> {
     await unregisterPushToken(token);
     clearStoredToken();
   }
-  setState({ token: null, registered: false });
+  setState({ token: null, registered: false, registrationError: null });
   log.info("Push notifications unregistered");
   if (token) {
     logAction("push_unregister", { tokenPrefix: `${token.slice(0, 8)}…` });

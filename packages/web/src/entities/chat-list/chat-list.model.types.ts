@@ -80,6 +80,10 @@ export interface ChatListState {
   mentionsUnreadCapped: boolean;
   /** After authoritative GET is:mentioned+is:unread sync, register mention ids are not applied. */
   mentionsUnreadApiSynced: boolean;
+  /** Last sidebar bootstrap failure message, cleared on successful rebuild. */
+  bootstrapError: string | null;
+  setBootstrapError: (error: string | null) => void;
+  clearBootstrapError: () => void;
   setFromMessages: (messages: ZulipRawMessage[], currentUserId: number | null) => void;
   /** Restore sidebar maps from IndexedDB snapshot (no raw `lastAppliedMessages`). */
   hydrateFromIndexedDbSnapshot: (snapshot: ChatListSnapshotSerialized) => void;

@@ -23,10 +23,7 @@ import {
   restoreZulipMentionPlaceholders,
 } from "~/shared/lib/message-zulip-mentions.lib";
 import { prepareProtectedUserUploadImageElement } from "~/shared/lib/protected-message-media";
-import {
-  isUserUploadImagePath,
-  toUserUploadThumbnailUrl,
-} from "~/shared/lib/protected-message-media-thumbnail";
+import { isUserUploadImagePath } from "~/shared/lib/protected-message-media-thumbnail";
 import { isUserUploadVideoPath } from "~/shared/lib/user-upload-media-path.lib";
 
 const LANGUAGE_CLASS_PATTERN = /\b(?:language|lang)-([a-z0-9#+-]+)\b/i;

@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { fetchUser } from "~/shared/api/zulip-users";
+import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 
 export function useChatPartnerProfileHydration(options: {
   partnerUserId: number | null;
@@ -27,7 +28,7 @@ export function useChatPartnerProfileHydration(options: {
           useChatListStore.getState().patchPersonalDmRowLabelsForUser(user.user_id);
         }
       })
-      .catch(() => {});
+      .catch((err) => reportUnexpectedError("chat:partnerProfile", err, { partnerUserId }));
     return () => {
       cancelled = true;
     };

@@ -393,5 +393,35 @@ describe("auth-guard", () => {
       expect(onExpired2).toHaveBeenCalledTimes(1);
       cleanup2();
     });
+
+    it("does not expire session while tab is hidden longer than timeout", async () => {
+      vi.resetModules();
+      mockInstance = { realm: "https://z.com", email: "u@t.com", apiKey: "k" };
+      const { initAuthGuard, setAuthInstanceGetter } = await import("./auth-guard");
+      setAuthInstanceGetter(() => mockInstance);
+
+      const onExpired = vi.fn();
+      const cleanup = initAuthGuard({ timeoutMs: 5000, onSessionExpired: onExpired });
+
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => "hidden",
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+
+      vi.advanceTimersByTime(20_000);
+      expect(onExpired).not.toHaveBeenCalled();
+
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => "visible",
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+
+      vi.advanceTimersByTime(5000);
+      expect(onExpired).toHaveBeenCalledTimes(1);
+
+      cleanup();
+    });
   });
 });

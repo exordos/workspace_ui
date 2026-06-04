@@ -8,6 +8,7 @@
  *   import { canInstallPwa, promptInstallPwa, getRuntime } from "~/lib/pwa";
  */
 import { isElectron } from "./electron";
+import { reportUnexpectedError } from "./unexpected-error.lib";
 
 let deferredInstallPrompt: BeforeInstallPromptEvent | null = null;
 const listeners = new Set<() => void>();
@@ -71,7 +72,7 @@ export function cleanupDevServiceWorkers(): void {
           .map((registration) => registration.unregister()),
       ),
     )
-    .catch(() => {});
+    .catch((err) => reportUnexpectedError("pwa:devSwCleanup", err));
 }
 
 export function initPwaListeners(): () => void {

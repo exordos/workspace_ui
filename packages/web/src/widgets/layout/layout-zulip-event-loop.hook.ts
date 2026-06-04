@@ -19,6 +19,7 @@ import { useUsersStore } from "~/entities/user/user.model";
 import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
 import { useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
+import { t } from "~/i18n/i18n";
 import { deleteQueue, DEFAULT_REGISTER_FETCH_EVENT_TYPES } from "~/shared/api/zulip-queue";
 import { fetchSubscriptions } from "~/shared/api/zulip-streams";
 import type { ZulipUnreadMessagesSnapshot } from "~/shared/api/zulip-unread.lib";
@@ -43,6 +44,7 @@ import { startZulipEventLoop } from "~/shared/lib/event-loop";
 import { createLogger } from "~/shared/lib/logger";
 import { logChatListFlow, logMessageFlow } from "~/shared/lib/message-flow-debug.lib";
 import { loadMuteSnapshotRow } from "~/shared/lib/mute-snapshot-db";
+import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import { loadUsersDirectoryRow } from "~/shared/lib/users-directory-snapshot-db";
 import { getNewestMessageId } from "./layout-chat-history-sync.lib";
 import {
@@ -521,6 +523,7 @@ export function useLayoutZulipEventLoop(options: {
         }
 
         if (uid != null) {
+          useChatListStore.getState().clearBootstrapError();
           setBootstrapStatus("ready");
           reportSuccess();
           startEventLoopFn?.();
@@ -528,6 +531,7 @@ export function useLayoutZulipEventLoop(options: {
         }
 
         const hasCache = chatListHasCachedRowsInStore();
+        useChatListStore.getState().setBootstrapError(t("app.networkError"));
         setBootstrapStatus(hasCache ? "degraded" : "blocked");
         reportFailure({ reason: "server", phase: hasCache ? "degraded" : "blocked" });
         scheduleCurrentUserRetry();
@@ -643,7 +647,11 @@ export function useLayoutZulipEventLoop(options: {
             pageSize: METADATA_DM_BACKFILL_PAGE_SIZE,
             stagnationLimit: METADATA_DM_BACKFILL_STAGNATION_LIMIT,
             isCancelled: () => cancelled,
-          }).catch(() => {});
+          }).catch((err) =>
+            reportUnexpectedError("layout:metadataDmBackfill", err, {
+              instanceId: currentInstanceId,
+            }),
+          );
         }
 
         const instanceIdPersist = useInstancesStore.getState().currentInstanceId;
@@ -733,6 +741,9 @@ export function useLayoutZulipEventLoop(options: {
     })().catch((error) => {
       if (cancelled || isBootstrapStale()) return;
       const hasCache = chatListHasCachedRowsInStore();
+      useChatListStore
+        .getState()
+        .setBootstrapError(error instanceof Error ? error.message : String(error));
       setBootstrapStatus(hasCache ? "degraded" : "blocked");
       reportFailure({ reason: "unknown", phase: hasCache ? "degraded" : "blocked" });
       log.error("Unhandled bootstrap orchestration failure", {
@@ -753,7 +764,12 @@ export function useLayoutZulipEventLoop(options: {
       const qid = queueIdRef.current;
       const creds = instanceAtLoopStartRef.current;
       if (qid && creds) {
-        deleteQueue(qid, creds).catch(() => {});
+        deleteQueue(qid, creds).catch((err) =>
+          reportUnexpectedError("layout:eventLoop", err, {
+            phase: "deleteQueueOnCleanup",
+            queueId: qid,
+          }),
+        );
       }
       eventLoopAbortRef.current?.abort();
       eventLoopAbortRef.current = null;

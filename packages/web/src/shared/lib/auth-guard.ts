@@ -119,9 +119,76 @@ interface AuthGuardOptions {
 
 let timeoutTimer: ReturnType<typeof setTimeout> | null = null;
 let initialized = false;
+let sessionExpiresAtMs = 0;
+
+function isDocumentHidden(): boolean {
+  return typeof document !== "undefined" && document.visibilityState === "hidden";
+}
 
 function isPromiseLike(value: unknown): value is PromiseLike<void> {
   return typeof value === "object" && value !== null && "then" in value;
+}
+
+function fireSessionExpired(
+  timeoutMs: number,
+  onExpired: () => void,
+  onBeforeExpired?: () => Promise<void> | void,
+): void {
+  log.warn("Session expired due to inactivity", { timeoutMs });
+  logAction("session_expired", { timeoutMs });
+  if (onBeforeExpired == null) {
+    wipeCredentials();
+    onExpired();
+    return;
+  }
+
+  let beforeResult: Promise<void> | void;
+  try {
+    beforeResult = onBeforeExpired();
+  } catch (err) {
+    log.warn("Pre-expiry hook failed", { error: String(err) });
+    wipeCredentials();
+    onExpired();
+    return;
+  }
+
+  if (!isPromiseLike(beforeResult)) {
+    wipeCredentials();
+    onExpired();
+    return;
+  }
+
+  void Promise.resolve(beforeResult)
+    .catch((err) => {
+      log.warn("Pre-expiry hook failed", { error: String(err) });
+    })
+    .finally(() => {
+      wipeCredentials();
+      onExpired();
+    });
+}
+
+function scheduleSessionExpiryTimer(
+  timeoutMs: number,
+  onExpired: () => void,
+  onBeforeExpired?: () => Promise<void> | void,
+): void {
+  if (timeoutTimer) clearTimeout(timeoutTimer);
+  timeoutTimer = null;
+
+  if (isDocumentHidden()) {
+    return;
+  }
+
+  const remainingMs = sessionExpiresAtMs - Date.now();
+  if (remainingMs <= 0) {
+    fireSessionExpired(timeoutMs, onExpired, onBeforeExpired);
+    return;
+  }
+
+  timeoutTimer = setTimeout(() => {
+    fireSessionExpired(timeoutMs, onExpired, onBeforeExpired);
+  }, remainingMs);
 }
 
 function resetTimer(
@@ -129,41 +196,21 @@ function resetTimer(
   onExpired: () => void,
   onBeforeExpired?: () => Promise<void> | void,
 ): void {
-  if (timeoutTimer) clearTimeout(timeoutTimer);
-  timeoutTimer = setTimeout(() => {
-    log.warn("Session expired due to inactivity", { timeoutMs });
-    logAction("session_expired", { timeoutMs });
-    if (onBeforeExpired == null) {
-      wipeCredentials();
-      onExpired();
-      return;
-    }
+  sessionExpiresAtMs = Date.now() + timeoutMs;
+  scheduleSessionExpiryTimer(timeoutMs, onExpired, onBeforeExpired);
+}
 
-    let beforeResult: Promise<void> | void;
-    try {
-      beforeResult = onBeforeExpired();
-    } catch (err) {
-      log.warn("Pre-expiry hook failed", { error: String(err) });
-      wipeCredentials();
-      onExpired();
-      return;
-    }
-
-    if (!isPromiseLike(beforeResult)) {
-      wipeCredentials();
-      onExpired();
-      return;
-    }
-
-    void Promise.resolve(beforeResult)
-      .catch((err) => {
-        log.warn("Pre-expiry hook failed", { error: String(err) });
-      })
-      .finally(() => {
-        wipeCredentials();
-        onExpired();
-      });
-  }, timeoutMs);
+function handleVisibilityChange(
+  timeoutMs: number,
+  onExpired: () => void,
+  onBeforeExpired?: () => Promise<void> | void,
+): void {
+  if (!isDocumentHidden()) {
+    scheduleSessionExpiryTimer(timeoutMs, onExpired, onBeforeExpired);
+  } else if (timeoutTimer) {
+    clearTimeout(timeoutTimer);
+    timeoutTimer = null;
+  }
 }
 
 export function initAuthGuard(options: AuthGuardOptions): () => void {
@@ -180,9 +227,13 @@ export function initAuthGuard(options: AuthGuardOptions): () => void {
 
   const handleActivity = () => resetTimer(timeoutMs, onSessionExpired, onBeforeSessionExpired);
 
+  const handleVisibility = () =>
+    handleVisibilityChange(timeoutMs, onSessionExpired, onBeforeSessionExpired);
+
   for (const event of ACTIVITY_EVENTS) {
     window.addEventListener(event, handleActivity, { passive: true });
   }
+  document.addEventListener("visibilitychange", handleVisibility);
 
   resetTimer(timeoutMs, onSessionExpired, onBeforeSessionExpired);
 
@@ -194,5 +245,6 @@ export function initAuthGuard(options: AuthGuardOptions): () => void {
     for (const event of ACTIVITY_EVENTS) {
       window.removeEventListener(event, handleActivity);
     }
+    document.removeEventListener("visibilitychange", handleVisibility);
   };
 }

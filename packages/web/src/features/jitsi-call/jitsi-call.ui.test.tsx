@@ -7,6 +7,10 @@ import React, { useEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { JitsiCallModal } from "./jitsi-call.ui";
 
+vi.mock("./jitsi-call-api-loader.hook", () => ({
+  useJitsiExternalApiLoader: () => ({ loadState: "ready" as const, retry: vi.fn() }),
+}));
+
 // Minimal props shape required by the react-rnd mock.
 interface MockRndProps {
   children: React.ReactNode;

@@ -32,6 +32,7 @@ let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingMode: LayoutReconnectRefreshMode = "light";
 let pendingParams: LayoutReconnectRefreshParams | null = null;
 let inFlight = false;
+let activeFlightId = 0;
 let rerunAfterFlight: LayoutReconnectRefreshParams | null = null;
 let rerunMode: LayoutReconnectRefreshMode = "light";
 
@@ -106,6 +107,7 @@ async function executeLayoutReconnectRefresh(
     return;
   }
 
+  const flightId = ++activeFlightId;
   inFlight = true;
   try {
     if (mode === "full") {
@@ -114,7 +116,9 @@ async function executeLayoutReconnectRefresh(
       refreshLayoutReconnectLightPass(params);
     }
   } finally {
-    inFlight = false;
+    if (flightId === activeFlightId) {
+      inFlight = false;
+    }
     const rerunParams = rerunAfterFlight;
     const rerun = rerunMode;
     rerunAfterFlight = null;

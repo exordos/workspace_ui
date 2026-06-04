@@ -64,4 +64,6 @@ export interface PushState {
   token: string | null;
   registered: boolean;
   provider: string | null;
+  /** Last server registration failure (cleared on success). */
+  registrationError: string | null;
 }

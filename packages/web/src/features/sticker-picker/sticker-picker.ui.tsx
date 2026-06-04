@@ -93,6 +93,22 @@ const EmptyState: React.FC = () => (
   </div>
 );
 
+const StickerLoadErrorState: React.FC<{ onRetry: () => void }> = ({ onRetry }) => (
+  <div
+    className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center"
+    role="alert"
+  >
+    <p className="text-sm text-notice-base">{t("sticker.loadError")}</p>
+    <button
+      type="button"
+      onClick={onRetry}
+      className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-black"
+    >
+      {t("sticker.retryLoad")}
+    </button>
+  </div>
+);
+
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
@@ -104,6 +120,8 @@ export const StickerPicker: React.FC<StickerPickerProps> = ({
 }) => {
   const packs = useStickerStore((s) => s.packs);
   const recent = useStickerStore((s) => s.recent);
+  const stickerError = useStickerStore((s) => s.error);
+  const setStickerError = useStickerStore((s) => s.setError);
   const addRecent = useStickerStore((s) => s.addRecent);
   const searchByEmoji = useStickerStore((s) => s.searchByEmoji);
 
@@ -151,6 +169,10 @@ export const StickerPicker: React.FC<StickerPickerProps> = ({
     }
   };
 
+  const handleRetryLoad = () => {
+    setStickerError(null);
+  };
+
   return (
     <div
       className={`flex flex-col overflow-hidden ${
@@ -181,7 +203,9 @@ export const StickerPicker: React.FC<StickerPickerProps> = ({
         )}
       </div>
 
-      {packs.length === 0 && !recentStickers.length ? (
+      {stickerError != null ? (
+        <StickerLoadErrorState onRetry={handleRetryLoad} />
+      ) : packs.length === 0 && !recentStickers.length ? (
         <EmptyState />
       ) : (
         <>

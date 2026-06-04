@@ -8,11 +8,9 @@ import { create } from "zustand";
 import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
-import {
-  deserializeStreamEntry,
-  type ChatListSnapshotSerialized,
-} from "~/shared/lib/chat-list-snapshot-serialize.lib";
+import type { ChatListSnapshotSerialized } from "~/shared/lib/chat-list-snapshot-serialize.lib";
 import { dmConversationKey } from "~/shared/lib/dm-key";
+import { logStoreAction } from "~/shared/lib/logger";
 import {
   logChatListFlow,
   summarizeZulipMessagesForFlowDebug,
@@ -38,20 +36,22 @@ import {
   buildStreamTopicLatestMap,
 } from "./chat-list-add-messages-batch.lib";
 import {
+  buildChatListHydrateFromSnapshotState,
+  buildDmMetadataRowsFromDmsMap,
+  buildDmMetadataUpsertPatch,
+  buildSetFromMessagesBootstrapState,
+  buildUnreadLocationMap,
+  clearBootstrapErrorPatch,
+  type ChatListDmBootstrapDisplayContext,
+} from "./chat-list-bootstrap.lib";
+import {
   applyHandleDeleteMessagesStatePatch,
   buildResolvedDmPreviewFromMessage,
   buildResolvedPreviewFromMessage,
   fetchReplacementMessageForDeletedPreview,
   type DeletedPreviewContext,
 } from "./chat-list-delete-messages.lib";
-import {
-  formatMessageTime,
-  GROUP_DM_ID_OFFSET,
-  getDmPartnerName,
-  hashKey,
-  resolvePersonalDmSidebarTitle,
-  slugify,
-} from "./chat-list-format.lib";
+import { getDmPartnerName, resolvePersonalDmSidebarTitle } from "./chat-list-format.lib";
 import {
   buildMentionLocationFlags,
   buildTopicMentionKey,
@@ -98,18 +98,9 @@ import {
   buildLatestUnreadStreamMessageMap,
 } from "./chat-list-unread-reconcile-apply.lib";
 import { buildUnreadReconcileMapsFromRegisterSnapshot } from "./chat-list-unread-reconcile.lib";
-import {
-  buildSidebarFromMessages,
-  messageToStreamEntry,
-  messageToDmEntry,
-  isUnreadFromOthers,
-} from "./chat-list.lib";
+import { messageToStreamEntry, messageToDmEntry, isUnreadFromOthers } from "./chat-list.lib";
 import type { ChatListPatchMeta } from "./chat-list-patch-meta.types";
-import type {
-  ChatListDmMetadataRow,
-  ChatListState,
-  MessageLocation,
-} from "./chat-list.model.types";
+import type { ChatListState, MessageLocation } from "./chat-list.model.types";
 
 type StreamTopicEntryInternal =
   StreamEntryInternal["topics"] extends Map<string, infer TopicEntry> ? TopicEntry : never;
@@ -245,40 +236,6 @@ function dmsMapToSortedDms(
     }));
 }
 
-function mergeStreamAccessMetadata(
-  stream: StreamEntryInternal,
-  existing: StreamEntryInternal | undefined,
-): StreamEntryInternal {
-  if (existing == null) return stream;
-  const hasMetadata =
-    existing.isArchived != null ||
-    existing.creatorId != null ||
-    existing.inviteOnly != null ||
-    existing.canAddSubscribersGroup != null ||
-    existing.canRemoveSubscribersGroup != null ||
-    existing.canAdministerChannelGroup != null ||
-    existing.canResolveTopicsGroup != null;
-  if (!hasMetadata) return stream;
-  return {
-    ...stream,
-    ...(existing.isArchived != null ? { isArchived: existing.isArchived } : {}),
-    ...(existing.creatorId != null ? { creatorId: existing.creatorId } : {}),
-    ...(existing.inviteOnly != null ? { inviteOnly: existing.inviteOnly } : {}),
-    ...(existing.canAddSubscribersGroup != null
-      ? { canAddSubscribersGroup: existing.canAddSubscribersGroup }
-      : {}),
-    ...(existing.canRemoveSubscribersGroup != null
-      ? { canRemoveSubscribersGroup: existing.canRemoveSubscribersGroup }
-      : {}),
-    ...(existing.canAdministerChannelGroup != null
-      ? { canAdministerChannelGroup: existing.canAdministerChannelGroup }
-      : {}),
-    ...(existing.canResolveTopicsGroup != null
-      ? { canResolveTopicsGroup: existing.canResolveTopicsGroup }
-      : {}),
-  };
-}
-
 function mergeTopicsForMove(
   oldTopic: StreamTopicEntryInternal,
   nextTopicName: string,
@@ -324,97 +281,23 @@ function persistRecentDmPartnersFromMap(map: Map<string, DmEntryInternal>): void
   saveRecentDmPartners(partnerIds);
 }
 
-// 1:1 DM keys require both participants; inject currentUser when register metadata lists only the peer.
-function normalizeDmUserIds(userIds: readonly number[], currentUserId: number | null): number[] {
-  const uniqueSorted = Array.from(
-    new Set(userIds.filter((id) => Number.isInteger(id) && id > 0)),
-  ).sort((left, right) => left - right);
-  if (
-    currentUserId != null &&
-    uniqueSorted.length === 1 &&
-    uniqueSorted[0] != null &&
-    uniqueSorted[0] !== currentUserId
-  ) {
-    return [currentUserId, uniqueSorted[0]].sort((left, right) => left - right);
-  }
-  return uniqueSorted;
-}
-
-function getDmParticipantDisplayName(userId: number): string {
+function createDmBootstrapDisplayContext(): ChatListDmBootstrapDisplayContext {
   const usersStore = useUsersStore.getState();
-  const displayName = usersStore.getDisplayName(userId);
-  if (displayName !== "Unknown") {
-    return displayName;
-  }
-  const user = usersStore.getUser(userId);
-  return getDmPartnerName({
-    id: userId,
-    full_name: user?.full_name,
-    email: user?.email,
-  });
-}
-
-// Metadata-only DMs must appear in the sidebar before any message window is loaded.
-function buildDmMetadataEntry(
-  row: ChatListDmMetadataRow,
-  currentUserId: number | null,
-  existing: DmEntryInternal | undefined,
-): { key: string; entry: DmEntryInternal } | null {
-  const userIds = normalizeDmUserIds(row.userIds, currentUserId);
-  if (userIds.length === 0) return null;
-  const key = userIds.join(",");
-  const participants =
-    currentUserId != null ? userIds.filter((userId) => userId !== currentUserId) : userIds;
-  const ts = Math.max(existing?.ts ?? 0, row.lastActivityTs ?? 0);
-  const time = ts > 0 ? formatMessageTime(ts) : (existing?.time ?? "");
-  const lastMessageId = row.lastMessageId ?? existing?.lastMessageId;
-  const unreadCount = row.unreadCount ?? existing?.unreadCount ?? 0;
-  const isGroup = participants.length > 1;
-
-  if (isGroup) {
-    // Group DMs need a stable synthetic row id distinct from any single member user id.
-    const names = participants.map((userId) => getDmParticipantDisplayName(userId));
-    const groupName =
-      names.filter((name) => name.trim().length > 0).join(", ") || t("dm.groupChat");
-    const slug = userIds
-      .map((userId) => `${userId}-${slugify(getDmParticipantDisplayName(userId))}`)
-      .join(",");
-    return {
-      key,
-      entry: {
-        id: GROUP_DM_ID_OFFSET + hashKey(key),
-        name: groupName,
-        slug,
-        isGroup: true,
-        lastMessage: existing?.lastMessage ?? "",
-        time,
-        ts,
-        userIds,
-        unreadCount,
-        avatar_url: existing?.avatar_url,
-        lastMessageId,
-      },
-    };
-  }
-
-  const partnerId = participants[0] ?? userIds[0];
-  if (partnerId == null) return null;
-  const name = getDmParticipantDisplayName(partnerId);
   return {
-    key,
-    entry: {
-      id: partnerId,
-      name,
-      slug: `${partnerId}-${slugify(name)}`,
-      isGroup: false,
-      lastMessage: existing?.lastMessage ?? "",
-      time,
-      ts,
-      userIds,
-      unreadCount,
-      avatar_url: useUsersStore.getState().getAvatarUrl(partnerId) ?? existing?.avatar_url,
-      lastMessageId,
+    getParticipantDisplayName(userId) {
+      const displayName = usersStore.getDisplayName(userId);
+      if (displayName !== "Unknown") {
+        return displayName;
+      }
+      const user = usersStore.getUser(userId);
+      return getDmPartnerName({
+        id: userId,
+        full_name: user?.full_name,
+        email: user?.email,
+      });
     },
+    getAvatarUrl: (userId) => usersStore.getAvatarUrl(userId),
+    groupChatFallbackLabel: t("dm.groupChat"),
   };
 }
 
@@ -459,44 +342,6 @@ function hasStreamMetadataAccessChanged(
     return true;
   }
   return false;
-}
-
-function buildMessageIdToLocation(
-  messages: ZulipRawMessage[],
-  currentUserId: number | null,
-): Map<number, MessageLocation> {
-  const map = new Map<number, MessageLocation>();
-  for (const m of messages) {
-    if (m.type === "stream" && m.stream_id != null) {
-      const topic = normalizeTopicForIdentity(m.subject ?? "");
-      map.set(m.id, { type: "stream", stream_id: m.stream_id, topic });
-    } else if (m.type === "private" && Array.isArray(m.display_recipient)) {
-      const dmKey = dmConversationKey(m.display_recipient, currentUserId);
-      map.set(m.id, { type: "dm", dmKey });
-    }
-  }
-  return map;
-}
-
-function buildUnreadLocationMap(
-  messages: readonly ZulipRawMessage[],
-  currentUserId: number | null,
-): Map<number, MessageLocation> {
-  // Reconcile expects normalized stream/topic and DM keys from the server snapshot.
-  const map = new Map<number, MessageLocation>();
-  for (const message of messages) {
-    if (!isUnreadFromOthers(message, currentUserId)) continue;
-    if (message.type === "stream" && message.stream_id != null) {
-      const topic = normalizeTopicForIdentity(message.subject ?? "");
-      map.set(message.id, { type: "stream", stream_id: message.stream_id, topic });
-      continue;
-    }
-    if (message.type === "private" && Array.isArray(message.display_recipient)) {
-      const dmKey = dmConversationKey(message.display_recipient, currentUserId);
-      map.set(message.id, { type: "dm", dmKey });
-    }
-  }
-  return map;
 }
 
 export const useChatListStore = create<ChatListState>((set, get) => {
@@ -571,53 +416,41 @@ export const useChatListStore = create<ChatListState>((set, get) => {
     mentionedUnreadMessageIds: new Set<number>(),
     mentionsUnreadCapped: false,
     mentionsUnreadApiSynced: false,
+    bootstrapError: null,
+
+    setBootstrapError(error) {
+      logStoreAction("chatList", "setBootstrapError", { hasError: error != null });
+      set({ bootstrapError: error });
+    },
+
+    clearBootstrapError() {
+      logStoreAction("chatList", "clearBootstrapError");
+      set(clearBootstrapErrorPatch());
+    },
 
     setFromMessages(messages, currentUserId) {
       invalidatePreviewResolveLifecycle();
       const effectiveUserId = currentUserId ?? get().currentUserId;
-      const avatarMap = getAvatarMap();
-      const previousStreamsMap = get().streamsMap;
-      const { streamsMap, dmsMap } = buildSidebarFromMessages(messages, effectiveUserId, avatarMap);
-      if (previousStreamsMap.size > 0 && streamsMap.size > 0) {
-        for (const [streamId, stream] of streamsMap.entries()) {
-          streamsMap.set(
-            streamId,
-            mergeStreamAccessMetadata(stream, previousStreamsMap.get(streamId)),
-          );
-        }
-      }
-      const messageIdToLocation = buildMessageIdToLocation(messages, effectiveUserId);
+      const bootstrapState = buildSetFromMessagesBootstrapState(
+        messages,
+        effectiveUserId,
+        get().streamsMap,
+        getAvatarMap(),
+      );
       logChatListFlow("store: setFromMessages (full rebuild from messages)", {
         ...summarizeZulipMessagesForFlowDebug(messages),
         currentUserId: effectiveUserId,
-        streamsMapSize: streamsMap.size,
-        dmsMapSize: dmsMap.size,
-        messageIdToLocationSize: messageIdToLocation.size,
+        streamsMapSize: bootstrapState.streamsMap.size,
+        dmsMapSize: bootstrapState.dmsMap.size,
+        messageIdToLocationSize: bootstrapState.messageIdToLocation.size,
       });
-      patchSet(
-        {
-          streamsMap,
-          dmsMap,
-          sidebarDataHydrated: true,
-          currentUserId: effectiveUserId,
-          lastAppliedMessages: messages,
-          messageIdToLocation,
-        },
-        { recomputeSidebarTotals: true, rebuildStreamTopicIndex: true },
-      );
-      persistRecentDmPartnersFromMap(dmsMap);
+      patchSet(bootstrapState, { recomputeSidebarTotals: true, rebuildStreamTopicIndex: true });
+      persistRecentDmPartnersFromMap(bootstrapState.dmsMap);
     },
 
     hydrateFromIndexedDbSnapshot(snapshot: ChatListSnapshotSerialized) {
       invalidatePreviewResolveLifecycle();
-      const streamsMap = new Map<number, StreamEntryInternal>();
-      for (const [id, s] of snapshot.streamsEntries) {
-        streamsMap.set(id, deserializeStreamEntry(s));
-      }
-      const dmsMap = new Map(snapshot.dmsEntries);
-      const messageIdToLocation = new Map<number, MessageLocation>(
-        snapshot.messageIdToLocationEntries as [number, MessageLocation][],
-      );
+      const hydrateState = buildChatListHydrateFromSnapshotState(snapshot, get().currentUserId);
       _cachedStreams = null;
       _cachedStreamsMapRef = null;
       _cachedStreamsMentionIdsRef = null;
@@ -626,27 +459,15 @@ export const useChatListStore = create<ChatListState>((set, get) => {
       _cachedDmsMapRef = null;
       _cachedDmsMentionIdsRef = null;
       _cachedDmsLocationsRef = null;
-      const sidebarDataHydrated = streamsMap.size > 0 || dmsMap.size > 0;
-      patchSet(
-        {
-          streamsMap,
-          dmsMap,
-          sidebarDataHydrated,
-          streamMetadataHydrated: false,
-          messageIdToLocation,
-          currentUserId: snapshot.currentUserId ?? get().currentUserId,
-          lastAppliedMessages: null,
-        },
-        { recomputeSidebarTotals: true, rebuildStreamTopicIndex: true },
-      );
+      patchSet(hydrateState, { recomputeSidebarTotals: true, rebuildStreamTopicIndex: true });
       logChatListFlow("store: hydrateFromIndexedDbSnapshot", {
-        streamsMapSize: streamsMap.size,
-        dmsMapSize: dmsMap.size,
-        messageIdToLocationSize: messageIdToLocation.size,
+        streamsMapSize: hydrateState.streamsMap.size,
+        dmsMapSize: hydrateState.dmsMap.size,
+        messageIdToLocationSize: hydrateState.messageIdToLocation.size,
         lastMessageId: snapshot.lastMessageId,
-        currentUserId: snapshot.currentUserId ?? get().currentUserId,
+        currentUserId: hydrateState.currentUserId,
       });
-      persistRecentDmPartnersFromMap(dmsMap);
+      persistRecentDmPartnersFromMap(hydrateState.dmsMap);
     },
 
     reconcileUnreadFromMessages(messages, currentUserId) {
@@ -1174,27 +995,14 @@ export const useChatListStore = create<ChatListState>((set, get) => {
       if (rows.length === 0) return;
       logChatListFlow("store: upsertDmMetadataRows", { rowCount: rows.length });
       const currentUserId = get().currentUserId;
+      const display = createDmBootstrapDisplayContext();
       patchSet((state) => {
-        let changed = false;
-        let nextDms = state.dmsMap;
-        let sidebarDmsUnreadDelta = 0;
-        for (const row of rows) {
-          const normalized = buildDmMetadataEntry(row, currentUserId, undefined);
-          if (normalized == null) continue;
-          const existing = nextDms.get(normalized.key);
-          // Re-merge with existing so unread/ts/lastMessageId accumulate instead of resetting.
-          const merged = buildDmMetadataEntry(row, currentUserId, existing);
-          if (merged == null) continue;
-          sidebarDmsUnreadDelta += merged.entry.unreadCount - (existing?.unreadCount ?? 0);
-          if (!changed) nextDms = new Map(nextDms);
-          changed = true;
-          nextDms.set(merged.key, merged.entry);
-        }
-        if (!changed) return state;
+        const upsertPatch = buildDmMetadataUpsertPatch(rows, currentUserId, state.dmsMap, display);
+        if (upsertPatch == null) return state;
         return {
-          dmsMap: nextDms,
+          dmsMap: upsertPatch.dmsMap,
           sidebarDataHydrated: true,
-          sidebarDmsUnread: state.sidebarDmsUnread + sidebarDmsUnreadDelta,
+          sidebarDmsUnread: state.sidebarDmsUnread + upsertPatch.sidebarDmsUnreadDelta,
         };
       });
       persistRecentDmPartnersFromMap(get().dmsMap);
@@ -1215,14 +1023,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
         }
         if (dmsMap.size > 0) {
           // Metadata-only sidebar: soft rebuild now that currentUserId is known for DM keys.
-          get().upsertDmMetadataRows(
-            Array.from(dmsMap.values()).map((entry) => ({
-              userIds: entry.userIds ?? [entry.id],
-              lastActivityTs: entry.ts,
-              lastMessageId: entry.lastMessageId ?? null,
-              unreadCount: entry.unreadCount,
-            })),
-          );
+          get().upsertDmMetadataRows(buildDmMetadataRowsFromDmsMap(dmsMap));
         }
       }
     },

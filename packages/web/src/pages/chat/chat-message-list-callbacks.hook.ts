@@ -4,12 +4,7 @@
 import { useMemo } from "react";
 import { useMessageReadersStore } from "~/features/message-readers/message-readers.model";
 import { t } from "~/i18n/i18n";
-import {
-  addMessageFlag,
-  addReaction,
-  removeMessageFlag,
-  removeReaction,
-} from "~/shared/api/zulip-messages";
+import { addMessageFlag, removeMessageFlag } from "~/shared/api/zulip-messages";
 import { writeText } from "~/shared/lib/clipboard";
 import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
@@ -43,7 +38,8 @@ export function useChatMessageListCallbacks(
     setSelectedMessageIds,
     setSelectionMode,
     updateMessageFlagsInStore,
-    updateMessageReactionInStore,
+    onMessageAddReaction,
+    onMessageRemoveReaction,
     openJitsiCall,
     setReadReceiptsOpen,
     onRetryFailedOutgoing: retryFailedOutgoing,
@@ -109,50 +105,8 @@ export function useChatMessageListCallbacks(
         });
         if (!selectionMode) setSelectionMode(true);
       },
-      onMessageAddReaction(messageId, payload) {
-        setActionError(null);
-        addReaction(messageId, payload.emojiName, {
-          reactionType: payload.reactionType,
-          emojiCode: payload.emojiCode,
-        })
-          .then(() => {
-            updateMessageReactionInStore(
-              messageId,
-              {
-                emoji_name: payload.emojiName,
-                emoji_code: payload.emojiCode ?? "",
-                reaction_type: payload.reactionType,
-                user_id: currentUserId ?? 0,
-              },
-              "add",
-            );
-          })
-          .catch((err) =>
-            setActionError(err instanceof Error ? err.message : t("message.reactionError")),
-          );
-      },
-      onMessageRemoveReaction(messageId, payload) {
-        setActionError(null);
-        removeReaction(messageId, payload.emojiName, {
-          reactionType: payload.reactionType,
-          emojiCode: payload.emojiCode,
-        })
-          .then(() => {
-            updateMessageReactionInStore(
-              messageId,
-              {
-                emoji_name: payload.emojiName,
-                emoji_code: payload.emojiCode ?? "",
-                reaction_type: payload.reactionType,
-                user_id: currentUserId ?? 0,
-              },
-              "remove",
-            );
-          })
-          .catch((err) =>
-            setActionError(err instanceof Error ? err.message : t("message.reactionError")),
-          );
-      },
+      onMessageAddReaction,
+      onMessageRemoveReaction,
       onOpenJitsiCall(url: string, locationName?: string) {
         openJitsiCall(url, locationName?.trim() ?? "");
       },
@@ -198,7 +152,8 @@ export function useChatMessageListCallbacks(
       currentUserId,
       realmBaseUrl,
       updateMessageFlagsInStore,
-      updateMessageReactionInStore,
+      onMessageAddReaction,
+      onMessageRemoveReaction,
       resolveStreamNameForPermalink,
       locationPathname,
       navigate,

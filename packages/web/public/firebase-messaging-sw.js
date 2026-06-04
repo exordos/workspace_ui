@@ -34,9 +34,27 @@ function buildMessageRedirectRoute(messageId, realmUri) {
   return realmUri ? `${base}?realm=${encodeURIComponent(realmUri)}` : base;
 }
 
+/** Keep in sync with push-payload-validate.lib.ts */
+function isValidPushEnvelopeData(data) {
+  const event = data.event || data.type || "message";
+  if (event === "remove" || event === "test") {
+    return true;
+  }
+  if (data.encrypted_payload && !data.event && !data.type) {
+    return false;
+  }
+  const messageId = Number(data.message_id);
+  const senderId = Number(data.sender_id);
+  return Number.isFinite(messageId) && messageId > 0 && Number.isFinite(senderId) && senderId > 0;
+}
+
 messaging.onBackgroundMessage((payload) => {
   const data = payload.data || {};
   const notification = payload.notification || {};
+
+  if (!isValidPushEnvelopeData(data)) {
+    return;
+  }
 
   const event = data.event || data.type || "message";
 

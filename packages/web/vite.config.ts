@@ -351,6 +351,12 @@ export default defineConfig(({ mode }) => {
           "src/main.tsx",
           "src/main-app.tsx",
         ],
+        thresholds: {
+          lines: 46,
+          statements: 46,
+          functions: 46,
+          branches: 40,
+        },
       },
     },
 

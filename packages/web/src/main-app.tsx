@@ -26,6 +26,7 @@ import { initPush } from "~/shared/lib/push/push.service";
 import { cleanupDevServiceWorkers, initPwaListeners } from "~/shared/lib/pwa";
 import { initSentry } from "~/shared/lib/sentry";
 import { initTouchTracking } from "~/shared/lib/touch";
+import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import { initVisibilityTracking } from "~/shared/lib/visibility";
 import { initWebViewBridge } from "~/shared/lib/webview";
 import { AppRoot } from "./app/app-root";
@@ -118,7 +119,9 @@ export function mountApplication(): void {
   initWebViewBridge();
   installAiContext();
   installDevTools();
-  void initPlugins().catch(() => {});
+  void initPlugins().catch((err) => {
+    reportUnexpectedError("plugins", err, { phase: "init" });
+  });
   perf.reportWebVitals();
 
   ReactDOM.createRoot(document.getElementById("root")!).render(React.createElement(AppRoot));

@@ -31,6 +31,7 @@
 
 import { createLogger } from "../logger";
 import { buildPushPayloadFromEnvelopeData } from "./push-payload-parse.lib";
+import { isValidPushMessagePayload } from "./push-payload-validate.lib";
 import type { PushMessagePayload } from "./types";
 
 const log = createLogger("push:middleware");
@@ -221,13 +222,10 @@ export const validationMiddleware: PushMiddleware = async (ctx, next) => {
     return;
   }
 
-  if (ctx.payload.event === "message" && ctx.payload.message) {
-    const msg = ctx.payload.message;
-    if (!msg.id || !msg.sender_id) {
-      ctx.dropped = true;
-      ctx.dropReason = "Message missing id or sender_id";
-      return;
-    }
+  if (!isValidPushMessagePayload(ctx.payload)) {
+    ctx.dropped = true;
+    ctx.dropReason = "Invalid push payload";
+    return;
   }
 
   await next();

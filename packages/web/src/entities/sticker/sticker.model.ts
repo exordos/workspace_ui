@@ -49,6 +49,8 @@ interface StickerState {
   favorites: string[];
   /** Currently loading packs from server. */
   loading: boolean;
+  /** Last sticker pack fetch error. */
+  error: string | null;
 
   // Actions
   setPacks: (packs: StickerPack[]) => void;
@@ -58,6 +60,7 @@ interface StickerState {
   toggleFavorite: (stickerId: string) => void;
   isFavorite: (stickerId: string) => boolean;
   setLoading: (loading: boolean) => void;
+  setError: (error: string | null) => void;
 
   // Queries
   getSticker: (stickerId: string) => Sticker | undefined;
@@ -87,11 +90,12 @@ export const useStickerStore = create<StickerState>((set, get) => ({
   recent: loadJson<RecentSticker[]>(RECENT_KEY, []),
   favorites: loadJson<string[]>(FAVORITES_KEY, []),
   loading: false,
+  error: null,
 
   setPacks(packs) {
     logStoreAction("sticker", "setPacks", { count: packs.length });
     invalidateStickerLookupCache();
-    set({ packs });
+    set({ packs, error: null });
   },
 
   addPack(pack) {
@@ -148,6 +152,11 @@ export const useStickerStore = create<StickerState>((set, get) => ({
   setLoading(loading) {
     logStoreAction("sticker", "setLoading", { loading });
     set({ loading });
+  },
+
+  setError(error) {
+    logStoreAction("sticker", "setError", { hasError: error != null });
+    set({ error });
   },
 
   getSticker(stickerId) {

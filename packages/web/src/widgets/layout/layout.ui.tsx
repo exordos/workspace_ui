@@ -18,6 +18,7 @@ import { useLayoutAppIconBadge } from "./layout-app-icon-badge.hook";
 import { LayoutAppShell } from "./layout-app-shell.ui";
 import { useLayoutAuthErrorHandler } from "./layout-auth-error-handler.hook";
 import { useLayoutAuthGuard } from "./layout-auth-guard.hook";
+import { LayoutBootstrapErrorBanner } from "./layout-bootstrap-error-banner.ui";
 import { runChatListBootstrap } from "./layout-chat-list-bootstrap.lib";
 import { useLayoutChatListSnapshotSync } from "./layout-chat-list-snapshot-sync.hook";
 import { parseFocusedMessageIdFromSearch } from "./layout-chat-route.lib";
@@ -75,6 +76,8 @@ export const Layout: React.FC = () => {
   const activeTopic = topicName ?? null;
 
   const setFromMessages = useChatListStore((s) => s.setFromMessages);
+  const bootstrapError = useChatListStore((s) => s.bootstrapError);
+  const clearBootstrapError = useChatListStore((s) => s.clearBootstrapError);
   const setCurrentUserId = useChatListStore((s) => s.setCurrentUserId);
   const currentUserId = useChatListStore((s) => s.currentUserId);
   const streamMetadataHydrated = useChatListStore((s) => s.streamMetadataHydrated);
@@ -362,6 +365,11 @@ export const Layout: React.FC = () => {
       usersMapForChatInfo,
     });
 
+  const handleRetryBootstrap = useCallback(() => {
+    clearBootstrapError();
+    refreshStaleRef.current?.();
+  }, [clearBootstrapError]);
+
   return (
     <div className="flex h-screen max-h-[100dvh] min-h-app-shell w-full min-w-app-shell-min flex-col overflow-hidden bg-bg text-text-primary">
       <LayoutConnectionBanner
@@ -369,6 +377,7 @@ export const Layout: React.FC = () => {
         health={connectionHealth}
         rateLimitSeconds={rateLimitSeconds}
       />
+      <LayoutBootstrapErrorBanner error={bootstrapError} onRetry={handleRetryBootstrap} />
       {notificationPermission.visible ? (
         <LayoutNotificationPermissionBanner
           enabling={notificationPermission.enabling}
