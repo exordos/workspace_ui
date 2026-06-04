@@ -66,7 +66,7 @@ export function matchesActivityFilter(
     return false;
   }
   // Zulip reactions view: own messages that have at least one emoji reaction.
-  return message.sender_id === currentUserId;
+  return message.sender_id === currentUserId && (message.reactions?.length ?? 0) > 0;
 }
 
 /** Oldest→newest slice aligned with server pagination shape to avoid UI jumps after hydrate. */
