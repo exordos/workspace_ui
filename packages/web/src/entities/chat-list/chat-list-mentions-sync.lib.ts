@@ -2,6 +2,7 @@
  * Authoritative sync of unread @mentions count via GET /messages (is:mentioned + is:unread).
  */
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import {
   fetchUnreadMentionsPage,
@@ -43,6 +44,9 @@ export async function ensureMentionsUnreadSynced(
 
     try {
       const page = await fetchUnreadMentionsPage(pageSize);
+      if (useInstancesStore.getState().currentInstanceId !== currentInstanceId) {
+        return;
+      }
       for (const message of page.messages) {
         useUsersStore.getState().mergeFromMessage({
           id: message.id,

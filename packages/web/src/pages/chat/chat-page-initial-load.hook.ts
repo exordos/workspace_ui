@@ -7,6 +7,7 @@ import { t } from "~/i18n/i18n";
 import { getCurrentInstance } from "~/shared/api/client";
 import { dmRouteKey } from "~/shared/lib/dm-key";
 import { normalizeDmRouteUserIds } from "~/shared/lib/dm-route.lib";
+import { createLogger } from "~/shared/lib/logger";
 import { logMessageFlow } from "~/shared/lib/message-flow-debug.lib";
 import { parseDmSlugToUserIds } from "~/widgets/sidebar/sidebar.lib";
 import { isAbortLikeError } from "./chat-page-ai.lib";
@@ -15,6 +16,7 @@ import { shouldLoadBoundaryPage } from "./chat-pagination.lib";
 import type { ChatMessagesLoadErrorKind } from "./chat-page-message-list-section.types";
 
 const PAGE_SIZE = 50;
+const log = createLogger("chat-page:initial-load");
 
 export interface UseChatPageInitialLoadOptions {
   streamSlug: string | undefined;
@@ -181,17 +183,11 @@ export function useChatPageInitialLoad(
         }
       })
       .catch((e) => {
-        if (isAbortLikeError(e) || initialLoadController.signal.aborted) {
-          return;
+        if (!isAbortLikeError(e) && !initialLoadController.signal.aborted) {
+          log.error("Initial stream load failed unexpectedly", {
+            error: e instanceof Error ? e.message : String(e),
+          });
         }
-        if (focusedMessageId != null) {
-          setActionError(t("message.anchorAccessDenied"));
-        }
-        const hadCachedMessages = useCurrentChatMessagesStore.getState().messages.length > 0;
-        setMessagesLoadError(
-          cacheHydratedBeforeApiRef.current && hadCachedMessages ? "refresh" : "initial",
-        );
-        setMessagesLoading(false);
       });
     return () => {
       initialLoadController.abort();
@@ -285,17 +281,11 @@ export function useChatPageInitialLoad(
         }
       })
       .catch((e) => {
-        if (isAbortLikeError(e) || initialLoadController.signal.aborted) {
-          return;
+        if (!isAbortLikeError(e) && !initialLoadController.signal.aborted) {
+          log.error("Initial DM load failed unexpectedly", {
+            error: e instanceof Error ? e.message : String(e),
+          });
         }
-        if (focusedMessageId != null) {
-          setActionError(t("message.anchorAccessDenied"));
-        }
-        const hadCachedMessages = useCurrentChatMessagesStore.getState().messages.length > 0;
-        setMessagesLoadError(
-          cacheHydratedBeforeApiRef.current && hadCachedMessages ? "refresh" : "initial",
-        );
-        setMessagesLoading(false);
       });
     return () => {
       initialLoadController.abort();

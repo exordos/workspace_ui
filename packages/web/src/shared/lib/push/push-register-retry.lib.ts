@@ -25,11 +25,15 @@ export async function registerPushTokenWithRetry(
   let lastError: string | null = null;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const ok = await registerFn(token);
-    if (ok) {
-      return { ok: true, lastError: null, attempts: attempt + 1 };
+    try {
+      const ok = await registerFn(token);
+      if (ok) {
+        return { ok: true, lastError: null, attempts: attempt + 1 };
+      }
+      lastError = "Push token registration rejected by server";
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
     }
-    lastError = "Push token registration rejected by server";
     const delay = delaysMs[attempt];
     if (delay != null) {
       await sleepMs(delay);

@@ -138,6 +138,45 @@ describe("useChatPageSendMessage", () => {
     });
   });
 
+  it("marks retried stream message failed and removes optimistic row on send error", async () => {
+    vi.mocked(sendMessage).mockRejectedValueOnce(new Error("network"));
+    const params = defaultParams({
+      isDmView: false,
+      activeDmUserIds: null,
+      activeStream: "Engineering",
+      activeStreamCanonicalName: "engineering",
+      activeStreamId: 5,
+      activeTopic: "general",
+    });
+    const { result } = renderHook(() => useChatPageSendMessage(params));
+
+    await act(async () => {
+      await result.current.handleRetryFailedOutgoing(
+        failedOutgoing({
+          stream_id: 5,
+          subject: "general",
+          display_recipient: "engineering",
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          stream: "engineering",
+          streamId: 5,
+          subject: "general",
+          local_id: "-1",
+        }),
+      );
+      expect(params.removeMessage).toHaveBeenCalledWith(-3);
+      expect(params.removeMessage).toHaveBeenCalledWith(-1);
+      expect(params.appendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ id: -1, delivery_status: "failed" }),
+      );
+    });
+  });
+
   it("marks retried message failed when sendMessage rejects", async () => {
     vi.mocked(sendMessage).mockRejectedValueOnce(new Error("network"));
     const params = defaultParams();
@@ -148,9 +187,11 @@ describe("useChatPageSendMessage", () => {
     });
 
     await waitFor(() => {
+      expect(params.removeMessage).toHaveBeenCalledWith(-3);
+      expect(params.removeMessage).toHaveBeenCalledWith(-1);
       expect(params.setSendError).toHaveBeenCalledWith("network");
       expect(params.appendMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ delivery_status: "failed" }),
+        expect.objectContaining({ id: -1, delivery_status: "failed" }),
       );
     });
   });

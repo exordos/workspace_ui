@@ -64,24 +64,19 @@ export function incrementMentionUnreadFromBatch(
   messages: readonly MentionFlagMessage[],
   currentUserId: number | null,
 ): { mentionedUnreadMessageIds: Set<number>; mentionsUnreadCount: number } | null {
-  let next = mentionedUnreadMessageIds;
-  let changed = false;
+  let next: Set<number> | null = null;
   for (const message of messages) {
-    if (next instanceof Set && next === mentionedUnreadMessageIds && !changed) {
-      const increment = tryIncrementMentionUnread(next, message, currentUserId);
-      if (increment != null) {
-        next = increment.mentionedUnreadMessageIds;
-        changed = true;
+    if (isUnreadMentionFromOthers(message, currentUserId)) {
+      if (next === null) {
+        if (mentionedUnreadMessageIds.has(message.id)) continue;
+        next = new Set(mentionedUnreadMessageIds);
+      } else if (next.has(message.id)) {
+        continue;
       }
-      continue;
-    }
-    const increment = tryIncrementMentionUnread(next, message, currentUserId);
-    if (increment != null) {
-      next = increment.mentionedUnreadMessageIds;
-      changed = true;
+      next.add(message.id);
     }
   }
-  if (!changed || !(next instanceof Set)) return null;
+  if (next === null) return null;
   return { mentionedUnreadMessageIds: next, mentionsUnreadCount: next.size };
 }
 

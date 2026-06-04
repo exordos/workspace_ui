@@ -27,6 +27,40 @@ describe("registerPushTokenWithRetry", () => {
     vi.useRealTimers();
   });
 
+  it("retries when registerFn throws a transient error", async () => {
+    vi.useFakeTimers();
+    const registerFn = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Network error"))
+      .mockResolvedValueOnce(true);
+
+    const promise = registerPushTokenWithRetry(registerFn, "token-abc", [100]);
+    await vi.advanceTimersByTimeAsync(100);
+    const result = await promise;
+
+    expect(result).toEqual({ ok: true, lastError: null, attempts: 2 });
+    expect(registerFn).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+
+  it("returns failure with thrown error message after exhausting retries", async () => {
+    vi.useFakeTimers();
+    const registerFn = vi.fn().mockRejectedValue(new Error("Network error"));
+
+    const promise = registerPushTokenWithRetry(registerFn, "token-abc", [10, 20]);
+    await vi.advanceTimersByTimeAsync(10);
+    await vi.advanceTimersByTimeAsync(20);
+    const result = await promise;
+
+    expect(result).toEqual({
+      ok: false,
+      lastError: "Network error",
+      attempts: 3,
+    });
+    expect(registerFn).toHaveBeenCalledTimes(3);
+    vi.useRealTimers();
+  });
+
   it("returns failure after exhausting retries", async () => {
     vi.useFakeTimers();
     const registerFn = vi.fn().mockResolvedValue(false);

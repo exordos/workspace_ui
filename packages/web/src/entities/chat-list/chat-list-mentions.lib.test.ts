@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   collectUnreadMentionIdsFromMessages,
   decrementMentionUnreadForMessageIds,
+  incrementMentionUnreadFromBatch,
   isUnreadMentionFromOthers,
   tryIncrementMentionUnread,
 } from "./chat-list-mentions.lib";
@@ -43,6 +44,38 @@ describe("chat-list-mentions.lib", () => {
       7,
     );
     expect(second).toBeNull();
+  });
+
+  it("incrementMentionUnreadFromBatch returns null when nothing new to add", () => {
+    expect(
+      incrementMentionUnreadFromBatch(
+        new Set([1]),
+        [{ id: 1, sender_id: 10, flags: ["mentioned"] }],
+        7,
+      ),
+    ).toBeNull();
+    expect(
+      incrementMentionUnreadFromBatch(
+        new Set(),
+        [{ id: 2, sender_id: 10, flags: ["mentioned", "read"] }],
+        7,
+      ),
+    ).toBeNull();
+  });
+
+  it("incrementMentionUnreadFromBatch adds multiple unread mentions in one pass", () => {
+    const result = incrementMentionUnreadFromBatch(
+      new Set([1]),
+      [
+        { id: 1, sender_id: 10, flags: ["mentioned"] },
+        { id: 2, sender_id: 11, flags: ["mentioned"] },
+        { id: 3, sender_id: 11, flags: ["mentioned"] },
+        { id: 2, sender_id: 11, flags: ["mentioned"] },
+      ],
+      7,
+    );
+    expect(result?.mentionsUnreadCount).toBe(3);
+    expect([...result!.mentionedUnreadMessageIds].sort((a, b) => a - b)).toEqual([1, 2, 3]);
   });
 
   it("decrementMentionUnreadForMessageIds removes only tracked ids", () => {

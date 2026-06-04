@@ -171,6 +171,7 @@ export function useChatPageSendMessage(
           clearReplyQuote();
           stopTypingAfterSend();
         } catch (err) {
+          removeMessage(optimisticMessageId);
           appendMessage(markOutgoingMessageFailed(optimisticMessage));
           setSendError(err instanceof Error ? err.message : t("message.sendFailed"));
         } finally {
@@ -219,6 +220,7 @@ export function useChatPageSendMessage(
           clearReplyQuote();
           stopTypingAfterSend();
         } catch (err) {
+          removeMessage(optimisticMessageId);
           appendMessage(markOutgoingMessageFailed(optimisticMessage));
           setSendError(err instanceof Error ? err.message : t("message.sendFailed"));
         } finally {
