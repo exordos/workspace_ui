@@ -1,6 +1,6 @@
 {
   "name": "electron-app",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "description": "Exordos Workspace desktop app",
   "author": "Exordos <info@genesis-corporation.ru>",
