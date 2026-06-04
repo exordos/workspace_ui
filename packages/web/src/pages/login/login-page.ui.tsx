@@ -5,6 +5,7 @@ import { t } from "~/i18n/i18n";
 import { fetchApiKey, fetchServerSettings } from "~/shared/api/zulip-auth";
 import { normalizeRealm } from "~/shared/api/zulip-realm.internal";
 import { ZulipAuthError } from "~/shared/api/zulip.types";
+import { env } from "~/shared/lib/env";
 import {
   buildDesktopFlowLoginUrl,
   generateDesktopFlowOtp,
@@ -87,6 +88,8 @@ export const LoginPage: React.FC = () => {
   }, [location.pathname, location.search]);
   const realmTrim = realm.trim();
   const canContinueToAuth = realmTrim.length > 0 && isValidRealmUrl(realmTrim);
+  const defaultOrganizationUrl = env.DEFAULT_LOGIN_ORGANIZATION_URL.trim();
+  const hasDefaultOrganizationButton = defaultOrganizationUrl.length > 0;
 
   const fetchSettings = useCallback(async (nextRealm: string) => {
     if (!isValidRealmUrl(nextRealm)) {
@@ -185,6 +188,15 @@ export const LoginPage: React.FC = () => {
       void fetchSettings(realmTrim);
     }
   }, [fetchSettings, realmTrim]);
+
+  const handleSelectDefaultOrganization = useCallback(() => {
+    setRealm(defaultOrganizationUrl);
+    setError(null);
+    setCheckedRealm(null);
+    setServerSettings(null);
+    pendingAuthRealmRef.current = null;
+    setStep("organization");
+  }, [defaultOrganizationUrl]);
 
   const handleContinueToAuthStep = useCallback(
     (e: React.SyntheticEvent<HTMLFormElement>) => {
@@ -377,6 +389,25 @@ export const LoginPage: React.FC = () => {
                 className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2.5 text-text-primary placeholder:text-text-muted focus:border-transparent focus:outline-none focus:ring-2 focus:ring-accent"
               />
             </FormField>
+
+            {hasDefaultOrganizationButton && (
+              <div className="flex flex-col gap-2 rounded-lg border border-border-subtle bg-bg-elevated px-4 py-3">
+                <p className="text-sm text-text-muted">{t("auth.defaultOrganizationHint")}</p>
+                <button
+                  type="button"
+                  onClick={handleSelectDefaultOrganization}
+                  className="hover:bg-bg-elevated/60 flex items-center justify-center gap-2 rounded-lg border border-border-subtle bg-bg px-4 py-2.5 text-sm font-medium text-text-primary transition-colors"
+                >
+                  <img
+                    src={getOrganizationFallbackLogoUrl()}
+                    alt=""
+                    className="h-[18px] w-[18px] rounded object-contain"
+                    aria-hidden="true"
+                  />
+                  Genesis Core Public
+                </button>
+              </div>
+            )}
 
             {error != null && error.length > 0 && (
               <div className="border-notice-base/20 bg-notice-base/10 rounded-lg border px-3 py-2 text-sm text-notice-base">

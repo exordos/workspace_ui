@@ -36,6 +36,7 @@ vi.mock("~/shared/api/zulip-auth", async () => {
 describe("LoginPage", () => {
   beforeEach(() => {
     fetchServerSettings.mockResolvedValue(null);
+    vi.unstubAllEnvs();
   });
 
   afterEach(() => {
@@ -87,6 +88,19 @@ describe("LoginPage", () => {
       target: { value: "https://chat.example.com" },
     });
     expect(continueButton).toBeEnabled();
+  });
+
+  it("fills the organization field from the default organization button", () => {
+    vi.stubEnv("VITE_DEFAULT_LOGIN_ORGANIZATION_URL", "https://public.genesis.example.com");
+
+    renderWithProviders(<LoginPage />, { route: "/login" });
+
+    fireEvent.click(screen.getByRole("button", { name: /genesis core public/i }));
+
+    expect(screen.getByLabelText(/zulip server address/i)).toHaveValue(
+      "https://public.genesis.example.com",
+    );
+    expect(screen.getByRole("button", { name: /next/i })).toBeEnabled();
   });
 
   it("shows credentials only after organization settings are loaded", async () => {
@@ -151,7 +165,7 @@ describe("LoginPage", () => {
       target: { value: "https://chat.example.com" },
     });
     fireEvent.blur(realmInput);
-    fireEvent.click(screen.getByRole("button"));
+    fireEvent.click(screen.getByRole("button", { name: /loading organization settings|next/i }));
 
     expect(resolveSettings).not.toBeNull();
 

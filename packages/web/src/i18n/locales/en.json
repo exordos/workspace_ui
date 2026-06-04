@@ -72,7 +72,8 @@
     "organizationStepHint": "Enter your organization address first.",
     "organizationStepLoading": "Loading organization settings…",
     "authStepHint": "Choose a sign-in method or enter your email and password.",
-    "organizationSettingsLoadError": "Could not load organization settings. Check the server address and try again."
+    "organizationSettingsLoadError": "Could not load organization settings. Check the server address and try again.",
+    "defaultOrganizationHint": "Or connect to our public service."
   },
   "nav": {
     "messenger": "Messenger",
