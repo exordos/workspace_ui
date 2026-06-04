@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as apiClient from "~/shared/api/client";
 import {
   AUTH_IMAGE_PLACEHOLDER_SRC,
   AUTH_MEDIA_BACKGROUND_IMAGE_DATA_ATTR,
@@ -210,9 +211,17 @@ describe("createDisplayableBlobUrl", () => {
 describe("resolveProtectedUploadFetchOptions", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it("sends Authorization on cross-origin candidate (credentials omit, headers kept)", () => {
+    vi.spyOn(apiClient, "getCurrentInstance").mockReturnValue({
+      id: "api-key",
+      realm: "https://zulip.example.com",
+      email: "user@example.com",
+      apiKey: "key",
+      authType: "api_key",
+    });
     vi.stubGlobal("window", {
       location: { origin: "https://app.example.com" },
     });
@@ -225,7 +234,44 @@ describe("resolveProtectedUploadFetchOptions", () => {
     expect(init.headers).toEqual(headers);
   });
 
+  it("uses include credentials for cross-origin session auth without Basic header", () => {
+    vi.spyOn(apiClient, "getCurrentInstance").mockReturnValue({
+      id: "session",
+      realm: "https://zulip.example.com",
+      email: "user@example.com",
+      apiKey: "",
+      authType: "session",
+    });
+    vi.stubGlobal("window", {
+      location: { origin: "file://" },
+    });
+    const init = resolveProtectedUploadFetchOptions(
+      "https://zulip.example.com/user_uploads/thumbnail/1/a.png/840x560.webp",
+      {},
+    );
+    expect(init.credentials).toBe("include");
+    expect(init.headers).toEqual({});
+  });
+
+  it("uses include credentials for cross-origin when Authorization header is empty", () => {
+    vi.spyOn(apiClient, "getCurrentInstance").mockReturnValue(null);
+    vi.stubGlobal("window", {
+      location: { origin: "https://app.example.com" },
+    });
+    const init = resolveProtectedUploadFetchOptions(
+      "https://zulip.example.com/user_uploads/1/a.png",
+      {},
+    );
+    expect(init.credentials).toBe("include");
+  });
+
   it("uses include credentials for same-origin candidate", () => {
+    vi.spyOn(apiClient, "getCurrentInstance").mockReturnValue({
+      id: "api-key",
+      realm: "https://zulip.example.com",
+      email: "user@example.com",
+      apiKey: "key",
+    });
     vi.stubGlobal("window", {
       location: { origin: "https://zulip.example.com" },
     });
@@ -233,5 +279,20 @@ describe("resolveProtectedUploadFetchOptions", () => {
     const init = resolveProtectedUploadFetchOptions("/user_uploads/1/a.png", headers);
     expect(init.credentials).toBe("include");
     expect(init.headers).toEqual(headers);
+  });
+
+  it("uses include credentials for same-origin session auth", () => {
+    vi.spyOn(apiClient, "getCurrentInstance").mockReturnValue({
+      id: "session",
+      realm: "https://zulip.example.com",
+      email: "user@example.com",
+      apiKey: "",
+      authType: "session",
+    });
+    vi.stubGlobal("window", {
+      location: { origin: "https://zulip.example.com" },
+    });
+    const init = resolveProtectedUploadFetchOptions("/user_uploads/1/a.png", {});
+    expect(init.credentials).toBe("include");
   });
 });

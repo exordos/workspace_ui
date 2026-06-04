@@ -4,7 +4,7 @@
  * Live DOM must not keep protected URLs in `src`/`poster`/etc.; candidates live in `data-auth-*`
  * until `fetch → blob/data:` assigns display URLs.
  */
-import { appendDevRealmMediaProxyHeaders } from "~/shared/api/client";
+import { appendDevRealmMediaProxyHeaders, getCurrentInstance } from "~/shared/api/client";
 import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
 import {
   appendUserUploadsPathPrefix,
@@ -285,6 +285,20 @@ export function buildProtectedUploadFetchUrl(url: string): string {
   return value.length > 0 ? value : collapseDuplicateWorkspaceV1InUrl(normalizedPath);
 }
 
+/** Cross-origin protected media: cookies for OIDC session; Basic auth header for API key. */
+function resolveCrossOriginProtectedUploadCredentials(
+  headers: Record<string, string>,
+): RequestCredentials {
+  if (getCurrentInstance()?.authType === "session") {
+    return "include";
+  }
+  const authorization = headers.Authorization?.trim() ?? "";
+  if (authorization.length === 0) {
+    return "include";
+  }
+  return "omit";
+}
+
 export function resolveProtectedUploadFetchOptions(
   candidate: string,
   headers: Record<string, string>,
@@ -295,7 +309,10 @@ export function resolveProtectedUploadFetchOptions(
     const parsed = new URL(candidate, base);
     const isCrossOrigin = typeof window !== "undefined" && parsed.origin !== window.location.origin;
     if (isCrossOrigin) {
-      return { headers: withDevUploadProxy, credentials: "omit" };
+      return {
+        headers: withDevUploadProxy,
+        credentials: resolveCrossOriginProtectedUploadCredentials(headers),
+      };
     }
   } catch {
     // Fall back to same-origin defaults when URL parsing fails.
