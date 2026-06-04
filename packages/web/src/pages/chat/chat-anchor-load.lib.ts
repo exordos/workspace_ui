@@ -46,3 +46,21 @@ export function isFocusedMessageLoadedInRoute(
   if (topicName == null) return true;
   return normalizeStreamTopicForMessageCache(focusedMessage.subject ?? "") === streamRouteTopic;
 }
+
+/** Skip anchor API reload only when the focused id is in-route and the store already has an anchor window. */
+export function shouldSkipFocusedAnchorInitialLoad(options: {
+  focusedMessageId: number | null;
+  isFocusedMessageLoadedInCurrentRoute: boolean;
+  hasOlderMessages: boolean;
+  hasNewerMessages: boolean;
+}): boolean {
+  const {
+    focusedMessageId,
+    isFocusedMessageLoadedInCurrentRoute,
+    hasOlderMessages,
+    hasNewerMessages,
+  } = options;
+  if (focusedMessageId == null) return false;
+  if (!isFocusedMessageLoadedInCurrentRoute) return false;
+  return hasOlderMessages || hasNewerMessages;
+}

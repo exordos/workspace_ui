@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { MockMessage } from "~/shared/api/zulip.types";
-import { isFocusedMessageLoadedInRoute } from "./chat-anchor-load.lib";
+import {
+  isFocusedMessageLoadedInRoute,
+  shouldSkipFocusedAnchorInitialLoad,
+} from "./chat-anchor-load.lib";
 
 function message(overrides: Partial<MockMessage>): MockMessage {
   return {
@@ -66,6 +69,60 @@ describe("isFocusedMessageLoadedInRoute", () => {
         resolvedStreamId: null,
         topicName: undefined,
         streamRouteTopic: "general",
+      }),
+    ).toBe(true);
+  });
+});
+
+describe("shouldSkipFocusedAnchorInitialLoad", () => {
+  it("returns false when there is no focused message", () => {
+    expect(
+      shouldSkipFocusedAnchorInitialLoad({
+        focusedMessageId: null,
+        isFocusedMessageLoadedInCurrentRoute: true,
+        hasOlderMessages: true,
+        hasNewerMessages: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false when focused message is not in the loaded route window", () => {
+    expect(
+      shouldSkipFocusedAnchorInitialLoad({
+        focusedMessageId: 55,
+        isFocusedMessageLoadedInCurrentRoute: false,
+        hasOlderMessages: true,
+        hasNewerMessages: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false when focused message is in route but store only has tail window", () => {
+    expect(
+      shouldSkipFocusedAnchorInitialLoad({
+        focusedMessageId: 55,
+        isFocusedMessageLoadedInCurrentRoute: true,
+        hasOlderMessages: false,
+        hasNewerMessages: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns true when focused message is in route with anchor pagination flags", () => {
+    expect(
+      shouldSkipFocusedAnchorInitialLoad({
+        focusedMessageId: 55,
+        isFocusedMessageLoadedInCurrentRoute: true,
+        hasOlderMessages: true,
+        hasNewerMessages: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldSkipFocusedAnchorInitialLoad({
+        focusedMessageId: 55,
+        isFocusedMessageLoadedInCurrentRoute: true,
+        hasOlderMessages: false,
+        hasNewerMessages: true,
       }),
     ).toBe(true);
   });

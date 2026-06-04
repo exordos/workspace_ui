@@ -518,7 +518,10 @@ describe("MessageList unread anchor scroll", () => {
 });
 
 describe("MessageList chat open scroll to bottom", () => {
-  const scrollIntoView = vi.fn();
+  const scrollTargets: string[] = [];
+  const scrollIntoView = vi.fn(function (this: HTMLElement) {
+    scrollTargets.push(this.getAttribute("data-message-id") ?? "");
+  });
   const originalIntersectionObserver = globalThis.IntersectionObserver;
 
   class IntersectionObserverMock implements IntersectionObserver {
@@ -537,6 +540,7 @@ describe("MessageList chat open scroll to bottom", () => {
 
   beforeEach(() => {
     resetRealmEmojisCacheForTests();
+    scrollTargets.length = 0;
     scrollIntoView.mockReset();
     scrollToBottomMock.mockReset();
     fetchRealmEmojisMock.mockReset();
@@ -627,5 +631,29 @@ describe("MessageList chat open scroll to bottom", () => {
     await flushOpenScroll();
 
     expect(scrollToBottomMock.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("scrolls focused message into view on chat open without pinning tail", async () => {
+    const base = Array.from({ length: 50 }, (_, index) =>
+      msg(index + 1, {
+        sender_id: index % 2 === 0 ? 99 : 43,
+        flags: ["read"],
+      }),
+    );
+
+    render(
+      <MessageList
+        messages={base}
+        currentUserId={7}
+        scrollToBottomKey="anchor-open"
+        focusedMessageId={25}
+      />,
+    );
+
+    await flushOpenScroll();
+
+    expect(scrollIntoView).toHaveBeenCalled();
+    expect(scrollTargets).toContain("25");
+    expect(scrollToBottomMock).not.toHaveBeenCalled();
   });
 });

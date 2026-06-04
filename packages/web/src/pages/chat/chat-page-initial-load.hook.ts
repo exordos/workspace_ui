@@ -10,6 +10,7 @@ import { normalizeDmRouteUserIds } from "~/shared/lib/dm-route.lib";
 import { createLogger } from "~/shared/lib/logger";
 import { logMessageFlow } from "~/shared/lib/message-flow-debug.lib";
 import { parseDmSlugToUserIds } from "~/widgets/sidebar/sidebar.lib";
+import { shouldSkipFocusedAnchorInitialLoad } from "./chat-anchor-load.lib";
 import { isAbortLikeError } from "./chat-page-ai.lib";
 import { resolveMessagesLoadErrorAfterInitialLoad } from "./chat-page-initial-load-outcome.lib";
 import { shouldLoadBoundaryPage } from "./chat-pagination.lib";
@@ -57,6 +58,8 @@ export function useChatPageInitialLoad(
   } = options;
 
   const setContext = useCurrentChatMessagesStore((s) => s.setContext);
+  const hasOlderMessages = useCurrentChatMessagesStore((s) => s.hasOlderMessages);
+  const hasNewerMessages = useCurrentChatMessagesStore((s) => s.hasNewerMessages);
   const loadInitialMessagesForContext = useCurrentChatMessagesStore(
     (s) => s.loadInitialMessagesForContext,
   );
@@ -131,7 +134,14 @@ export function useChatPageInitialLoad(
       setMessagesLoading(false);
       return;
     }
-    if (focusedMessageId != null && isFocusedMessageLoadedInCurrentRoute) {
+    if (
+      shouldSkipFocusedAnchorInitialLoad({
+        focusedMessageId,
+        isFocusedMessageLoadedInCurrentRoute,
+        hasOlderMessages,
+        hasNewerMessages,
+      })
+    ) {
       setHasInitialMessagesPayload(true);
       setMessagesLoading(false);
       return;
@@ -203,6 +213,8 @@ export function useChatPageInitialLoad(
     loadInitialMessagesForContext,
     onStreamMessagesApplied,
     isFocusedMessageLoadedInCurrentRoute,
+    hasOlderMessages,
+    hasNewerMessages,
     messagesReloadNonce,
     setActionError,
   ]);
@@ -234,7 +246,14 @@ export function useChatPageInitialLoad(
       (userId) => Number.isSafeInteger(userId) && userId > 0,
     );
     if (userIds.length === 0) return;
-    if (focusedMessageId != null && isFocusedMessageLoadedInCurrentRoute) {
+    if (
+      shouldSkipFocusedAnchorInitialLoad({
+        focusedMessageId,
+        isFocusedMessageLoadedInCurrentRoute,
+        hasOlderMessages,
+        hasNewerMessages,
+      })
+    ) {
       setHasInitialMessagesPayload(true);
       setMessagesLoading(false);
       return;
@@ -297,6 +316,8 @@ export function useChatPageInitialLoad(
     loadInitialMessagesForContext,
     onDmMessagesApplied,
     isFocusedMessageLoadedInCurrentRoute,
+    hasOlderMessages,
+    hasNewerMessages,
     messagesReloadNonce,
     setActionError,
   ]);

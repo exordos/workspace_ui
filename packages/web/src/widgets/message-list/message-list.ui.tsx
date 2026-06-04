@@ -533,11 +533,15 @@ export const MessageListInner: React.FC<MessageListProps> = ({
     lastUnreadId,
   ]);
 
-  // On chat/topic switch, remember to scroll down after messages load
+  // On chat/topic switch, remember to scroll down after messages load (?msg= uses anchor scroll instead)
   useEffect(() => {
     if (scrollToBottomKey === undefined) return;
+    if (focusedMessageId != null) {
+      pendingScrollToBottomKeyRef.current = null;
+      return;
+    }
     pendingScrollToBottomKeyRef.current = scrollToBottomKey;
-  }, [scrollToBottomKey]);
+  }, [scrollToBottomKey, focusedMessageId]);
 
   // After the user sends a message, always reveal the new tail (even with unread anchor or off-bottom scroll).
   useLayoutEffect(() => {
@@ -572,6 +576,10 @@ export const MessageListInner: React.FC<MessageListProps> = ({
     const pending = pendingScrollToBottomKeyRef.current;
     if (pending !== null && scrollToBottomKey !== undefined && pending === scrollToBottomKey) {
       pendingScrollToBottomKeyRef.current = null;
+      if (focusedMessageId != null) {
+        logScrollMetrics("scroll:openSkipBottom", { reason: "focusedMessage" });
+        return;
+      }
       if (focusedMessageId == null && firstUnreadId != null && unreadCount > 0) {
         wasAtBottomRef.current = false;
         logScrollMetrics("scroll:openSkipBottom");
@@ -582,6 +590,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
       return;
     }
     if (messages.length === 0) return;
+    if (focusedMessageId != null) return;
     if (pendingPrependScrollRef.current != null) {
       logScrollMetrics("scroll:skipBottomForPendingPrepend", { reason: "messagesLengthChange" });
       syncWasAtBottomFromElement(el);
@@ -1019,31 +1028,39 @@ export const MessageListInner: React.FC<MessageListProps> = ({
     };
   }, [processIntersectionEntries, dispatchUnreadAtBottom]);
 
-  useEffect(() => {
+  const scrollFocusedMessageIntoView = useCallback(() => {
     if (focusedMessageId == null) return;
     const el = scrollRef.current;
     if (!el) return;
     const target = el.querySelector<HTMLElement>(`[data-message-id="${focusedMessageId}"]`);
-    if (target) {
-      runProgrammaticScroll(() => {
-        target.scrollIntoView({ block: "center", behavior: "instant" });
-      });
-      if (highlightedFocusedMessageRef.current !== focusedMessageId) {
-        highlightedFocusedMessageRef.current = focusedMessageId;
-        scheduleFlashFocusedMessageId(focusedMessageId);
-        if (focusedHighlightTimerRef.current != null) {
-          clearTimeout(focusedHighlightTimerRef.current);
-        }
-        focusedHighlightTimerRef.current = setTimeout(() => {
-          setFlashFocusedMessageId((current) => (current === focusedMessageId ? null : current));
-          if (highlightedFocusedMessageRef.current === focusedMessageId) {
-            highlightedFocusedMessageRef.current = null;
-          }
-          focusedHighlightTimerRef.current = null;
-        }, FOCUSED_MESSAGE_HIGHLIGHT_DURATION_MS);
+    if (target == null) return;
+
+    runProgrammaticScroll(() => {
+      target.scrollIntoView({ block: "center", behavior: "instant" });
+    });
+    if (highlightedFocusedMessageRef.current !== focusedMessageId) {
+      highlightedFocusedMessageRef.current = focusedMessageId;
+      scheduleFlashFocusedMessageId(focusedMessageId);
+      if (focusedHighlightTimerRef.current != null) {
+        clearTimeout(focusedHighlightTimerRef.current);
       }
+      focusedHighlightTimerRef.current = setTimeout(() => {
+        setFlashFocusedMessageId((current) => (current === focusedMessageId ? null : current));
+        if (highlightedFocusedMessageRef.current === focusedMessageId) {
+          highlightedFocusedMessageRef.current = null;
+        }
+        focusedHighlightTimerRef.current = null;
+      }, FOCUSED_MESSAGE_HIGHLIGHT_DURATION_MS);
     }
-  }, [focusedMessageId, messages.length, scheduleFlashFocusedMessageId, runProgrammaticScroll]);
+  }, [focusedMessageId, runProgrammaticScroll, scheduleFlashFocusedMessageId]);
+
+  useLayoutEffect(() => {
+    scrollFocusedMessageIntoView();
+    const rafId = requestAnimationFrame(() => {
+      scrollFocusedMessageIntoView();
+    });
+    return () => cancelAnimationFrame(rafId);
+  }, [scrollFocusedMessageIntoView, messages.length]);
 
   useEffect(() => {
     if (focusedMessageId == null) {
