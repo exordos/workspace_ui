@@ -1,3 +1,7 @@
+/**
+ * Renders the message bubble context menu and reaction picker controls.
+ * Keeps message actions, quick reactions, and the emoji picker wired to menu state.
+ */
 import EmojiPicker, { EmojiStyle, Theme } from "emoji-picker-react";
 import React from "react";
 import { createPortal } from "react-dom";
@@ -35,40 +39,50 @@ interface MessageReactionEmojiPickerProps {
   customEmojis: MessageBubbleContextMenuProps["customEmojis"];
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(min, value), max);
+}
+
 function getReactionEmojiPickerStyle(anchor: HTMLElement | null): React.CSSProperties {
   if (typeof window === "undefined") return {};
   const anchorRect = anchor?.getBoundingClientRect();
-  const width = Math.min(
-    REACTION_EMOJI_PICKER_WIDTH,
-    Math.max(160, window.innerWidth - REACTION_EMOJI_PICKER_MARGIN * 2),
-  );
+  const availableWidth = Math.max(0, window.innerWidth - REACTION_EMOJI_PICKER_MARGIN * 2);
+  const availableHeight = Math.max(0, window.innerHeight - REACTION_EMOJI_PICKER_MARGIN * 2);
+  const width = Math.min(REACTION_EMOJI_PICKER_WIDTH, availableWidth);
+  const height = Math.min(REACTION_EMOJI_PICKER_HEIGHT, availableHeight);
   const maxLeft = Math.max(
     REACTION_EMOJI_PICKER_MARGIN,
     window.innerWidth - width - REACTION_EMOJI_PICKER_MARGIN,
   );
-  const fallbackTop = Math.max(
+  const maxTop = Math.max(
     REACTION_EMOJI_PICKER_MARGIN,
-    window.innerHeight - REACTION_EMOJI_PICKER_HEIGHT - REACTION_EMOJI_PICKER_MARGIN,
+    window.innerHeight - height - REACTION_EMOJI_PICKER_MARGIN,
   );
+  const fallbackTop = maxTop;
   if (anchorRect == null) {
-    return { left: REACTION_EMOJI_PICKER_MARGIN, top: fallbackTop, width };
+    return {
+      left: REACTION_EMOJI_PICKER_MARGIN,
+      top: clamp(fallbackTop, REACTION_EMOJI_PICKER_MARGIN, maxTop),
+      width,
+      height,
+    };
   }
 
   const rightLeft = anchorRect.right + REACTION_EMOJI_PICKER_GAP;
   const leftLeft = anchorRect.left - width - REACTION_EMOJI_PICKER_GAP;
-  let left = Math.min(Math.max(REACTION_EMOJI_PICKER_MARGIN, rightLeft), maxLeft);
+  let left = rightLeft;
   if (rightLeft + width <= window.innerWidth - REACTION_EMOJI_PICKER_MARGIN) {
     left = rightLeft;
   } else if (leftLeft >= REACTION_EMOJI_PICKER_MARGIN) {
     left = leftLeft;
   }
-  const maxTop = Math.max(
-    REACTION_EMOJI_PICKER_MARGIN,
-    window.innerHeight - REACTION_EMOJI_PICKER_HEIGHT - REACTION_EMOJI_PICKER_MARGIN,
-  );
-  const top = Math.min(Math.max(REACTION_EMOJI_PICKER_MARGIN, anchorRect.top), maxTop);
 
-  return { left, top, width };
+  return {
+    left: clamp(left, REACTION_EMOJI_PICKER_MARGIN, maxLeft),
+    top: clamp(anchorRect.top, REACTION_EMOJI_PICKER_MARGIN, maxTop),
+    width,
+    height,
+  };
 }
 
 const MessageReactionEmojiPicker = React.memo(function MessageReactionEmojiPicker({
@@ -131,8 +145,8 @@ const MessageReactionEmojiPicker = React.memo(function MessageReactionEmojiPicke
                 customEmojis={customEmojis}
                 emojiStyle={EmojiStyle.NATIVE}
                 theme={theme}
-                width={REACTION_EMOJI_PICKER_WIDTH}
-                height={REACTION_EMOJI_PICKER_HEIGHT}
+                width="100%"
+                height="100%"
                 searchDisabled={false}
                 previewConfig={{ showPreview: false }}
               />
