@@ -19,6 +19,7 @@ import { stripHtml } from "~/shared/lib/html";
 import { renderEmojiShortcodesInHtml } from "~/shared/lib/message-emoji-shortcodes.lib";
 import {
   collectMessageInlineImageIdentities,
+  normalizeUserUploadImageIdentity,
   shouldSkipInliningUserUploadImageLink,
 } from "~/shared/lib/message-inline-user-upload-image.lib";
 import { createInlineUserUploadVideoElement } from "~/shared/lib/message-inline-user-upload-video.lib";
@@ -218,7 +219,8 @@ function inlineUserUploadImageLinks(html: string): string {
     if (href == null || href.length === 0) continue;
     if (!isUserUploadImagePath(href)) continue;
     if (link.querySelector("img") != null) continue;
-    if (shouldSkipInliningUserUploadImageLink(href, inlineIdentities)) continue;
+    const inQuoteBody = link.closest(".zulip-quote-body") != null;
+    if (!inQuoteBody && shouldSkipInliningUserUploadImageLink(href, inlineIdentities)) continue;
 
     const title = (link.textContent ?? "").trim();
     const fallbackLabel = title.length > 0 ? title : "image";
@@ -231,7 +233,65 @@ function inlineUserUploadImageLinks(html: string): string {
     link.replaceChildren(image);
   }
 
+  removeDuplicateQuoteBlockInlineImages(wrapper);
+
   return wrapper.innerHTML;
+}
+
+function collectInlineImageIdentityFromElement(element: Element): string | null {
+  if (element instanceof HTMLAnchorElement) {
+    return normalizeUserUploadImageIdentity(element.getAttribute("href") ?? "");
+  }
+  if (element instanceof HTMLImageElement) {
+    const authSrc = element.getAttribute("data-auth-src");
+    if (authSrc != null && authSrc.length > 0) {
+      return normalizeUserUploadImageIdentity(authSrc);
+    }
+    return normalizeUserUploadImageIdentity(element.getAttribute("src") ?? "");
+  }
+  return null;
+}
+
+function resolveMessageInlineImageBlockIdentity(block: Element): string | null {
+  for (const anchor of block.querySelectorAll<HTMLAnchorElement>("a[href]")) {
+    const identity = collectInlineImageIdentityFromElement(anchor);
+    if (identity != null) {
+      return identity;
+    }
+  }
+  for (const image of block.querySelectorAll<HTMLImageElement>("img[src], img[data-auth-src]")) {
+    const identity = collectInlineImageIdentityFromElement(image);
+    if (identity != null) {
+      return identity;
+    }
+  }
+  return null;
+}
+
+/** Removes Zulip `.message_inline_image` duplicates after the same file was inlined in `.zulip-quote-body`. */
+function removeDuplicateQuoteBlockInlineImages(wrapper: ParentNode): void {
+  for (const quoteBlock of wrapper.querySelectorAll<HTMLElement>(".zulip-quote-block")) {
+    const quoteBody = quoteBlock.querySelector(".zulip-quote-body");
+    if (quoteBody == null) continue;
+
+    const inlinedIdentities = new Set<string>();
+    for (const image of quoteBody.querySelectorAll<HTMLImageElement>(
+      "img[data-auth-src], img.message-media-preview",
+    )) {
+      const identity = collectInlineImageIdentityFromElement(image);
+      if (identity != null) {
+        inlinedIdentities.add(identity);
+      }
+    }
+    if (inlinedIdentities.size === 0) continue;
+
+    for (const inlineBlock of quoteBlock.querySelectorAll(".message_inline_image")) {
+      const blockIdentity = resolveMessageInlineImageBlockIdentity(inlineBlock);
+      if (blockIdentity != null && inlinedIdentities.has(blockIdentity)) {
+        inlineBlock.remove();
+      }
+    }
+  }
 }
 
 function inlineUserUploadVideoLinks(html: string): string {
@@ -326,6 +386,13 @@ function normalizeZulipQuoteBlocksInHtml(html: string): string {
     previous.replaceWith(quoteBlock);
     quoteBlock.appendChild(header);
     quoteBlock.appendChild(blockquote);
+
+    let next = quoteBlock.nextElementSibling;
+    while (next instanceof HTMLElement && next.classList.contains("message_inline_image")) {
+      const toMove = next;
+      next = next.nextElementSibling;
+      quoteBlock.appendChild(toMove);
+    }
   }
 
   return wrapper.innerHTML;

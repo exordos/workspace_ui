@@ -269,6 +269,46 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
     expect(html).toContain("Quoted text");
   });
 
+  it("inlines user_upload image inside server-rendered quote block instead of URL text", () => {
+    const uploadPath = "/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png";
+    const uploadUrl = `https://sys.example.com${uploadPath}`;
+    const html = messageBodyToUnsanitizedDisplayHtml(
+      [
+        '<p><span class="user-mention" data-user-id="42">@Alice</span>',
+        ' <a href="https://z.example.com/near/1">wrote</a>:</p>',
+        `<blockquote><p><a href="${uploadPath}">${uploadUrl}</a></p></blockquote>`,
+        '<div class="message_inline_image">',
+        `<a href="${uploadPath}">`,
+        `<img src="/user_uploads/thumbnail/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png/840x560.webp" alt="image.png">`,
+        "</a></div>",
+        "<p>Reply</p>",
+      ].join(""),
+    );
+
+    expect(html).toContain('class="zulip-quote-block"');
+    expect(html).toContain('class="zulip-quote-body"');
+    expect(html).toContain('data-auth-src="/user_uploads/thumbnail/');
+    expect(html).toContain('class="message-media-preview"');
+    expect(html).not.toMatch(new RegExp(`>${uploadUrl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}<`));
+    expect((html.match(/<img\b/gi) ?? []).length).toBe(1);
+    expect(html).toMatch(/zulip-quote-body[\s\S]*message-media-preview/);
+    expect(html).not.toMatch(/zulip-quote-block[\s\S]*message_inline_image/);
+  });
+
+  it("inlines user_upload image link inside markdown quote fence", () => {
+    const uploadPath = "/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png";
+    const html = messageBodyToUnsanitizedDisplayHtml(
+      `@_**Alice|42** [wrote](https://z.example.com/near/1):\n\`\`\`quote\n[image.png](${uploadPath})\n\`\`\`\n\nMy reply`,
+      { resolveUserMention: () => null },
+    );
+
+    expect(html).toContain('class="zulip-quote-body"');
+    expect(html).toContain('class="message-media-preview"');
+    expect(html).toContain('data-auth-src="/user_uploads/thumbnail/');
+    expect(html).toMatch(/zulip-quote-body[\s\S]*<img[^>]*message-media-preview/);
+    expect((html.match(/<img\b/gi) ?? []).length).toBe(1);
+  });
+
   it("keeps inline video through sanitize and protected-media preparation", () => {
     const raw = messageBodyToUnsanitizedDisplayHtml(
       "[Screencast.webm](/user_uploads/2/52/zVGJf8gDr9qR_a5GJff5PZS7/Screencast.webm)",
