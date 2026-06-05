@@ -804,22 +804,13 @@ describe("MessageComposer mode tabs", () => {
     const toolbarRow = screen.getByTestId("composer-toolbar-row");
     expect(toolbarRow).toHaveClass("transition-[max-height,opacity,transform,padding]");
     expect(toolbarRow).toHaveClass("duration-200");
-    expect(toolbarRow).toHaveClass("max-h-0");
-    expect(toolbarRow).toHaveClass("opacity-0");
-
-    focusComposerInput();
-
     expect(toolbarRow).toHaveClass("max-h-12");
     expect(toolbarRow).toHaveClass("opacity-100");
     expect(toolbarRow).toHaveClass("translate-y-0");
   });
 
-  it("shows mode tabs row when composer input gets focus", () => {
+  it("shows mode tabs row without requiring composer focus", () => {
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
-
-    expect(screen.queryByRole("toolbar", { name: /message composer/i })).not.toBeInTheDocument();
-
-    focusComposerInput();
 
     expect(screen.getByRole("toolbar", { name: /message composer/i })).toBeInTheDocument();
   });

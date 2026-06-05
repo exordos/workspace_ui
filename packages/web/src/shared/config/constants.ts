@@ -90,6 +90,13 @@ export const TOAST_DEDUP_WINDOW_MS = 2000;
 export const TOAST_MAX_VISIBLE = 3;
 
 // ---
+// Message composer
+// ---
+
+/** When true, Write/Preview tabs and the formatting toolbar stay visible without composer focus. */
+export const COMPOSER_FORMATTING_TOOLBAR_ALWAYS_VISIBLE = true;
+
+// ---
 // Keyboard shortcuts
 // ---
 

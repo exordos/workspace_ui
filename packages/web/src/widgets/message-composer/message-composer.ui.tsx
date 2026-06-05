@@ -3,6 +3,7 @@ import { AiComposerButton } from "~/features/ai-reply/ai-reply.ui";
 import type { MentionSuggestion } from "~/features/mention-suggest/mention-suggest.types";
 import { t } from "~/i18n/i18n";
 import type { SavedSnippet } from "~/shared/api/zulip.types";
+import { COMPOSER_FORMATTING_TOOLBAR_ALWAYS_VISIBLE } from "~/shared/config/constants";
 import { ensureRealmEmojisLoaded, getCachedRealmEmojis } from "~/shared/lib/realm-emojis-cache";
 import { useViewportKeyboard } from "~/shared/lib/touch";
 import { isWebView } from "~/shared/lib/webview";
@@ -721,7 +722,11 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     };
   }, [processDueScheduledMessage, scheduledMessages.length]);
 
-  const isToolbarVisible = isComposerFocusWithin || value.length > 0 || mode === "preview";
+  const isToolbarVisible =
+    COMPOSER_FORMATTING_TOOLBAR_ALWAYS_VISIBLE ||
+    isComposerFocusWithin ||
+    value.length > 0 ||
+    mode === "preview";
 
   const handleComposerFocusCapture = useCallback(() => {
     setIsComposerFocusWithin(true);
