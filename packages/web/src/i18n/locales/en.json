@@ -704,6 +704,8 @@
     "expandTopics": "Expand topics",
     "addFolder": "Add folder",
     "scrollToBottom": "Scroll to bottom",
+    "scrollToBottomWithUnread_one": "Scroll to bottom, {{count}} unread message",
+    "scrollToBottomWithUnread_other": "Scroll to bottom, {{count}} unread messages",
     "messageMenu": "Message menu",
     "attachFile": "Attach file",
     "emoji": "Emoji",
