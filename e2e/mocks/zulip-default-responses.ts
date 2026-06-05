@@ -27,6 +27,16 @@ export function usersMeSuccess() {
   };
 }
 
+export function serverSettingsSuccess() {
+  return {
+    realm_name: "E2E Zulip",
+    realm_uri: E2E_REALM,
+    realm_url: E2E_REALM,
+    realm_icon: "",
+    external_authentication_methods: [],
+  };
+}
+
 export function usersSuccess() {
   return {
     result: "success",

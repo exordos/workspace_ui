@@ -1,9 +1,9 @@
-import { test, expect, LOGIN_BUTTON } from "./fixtures";
+import { test, expect, expectLoginOrganizationStep } from "./fixtures";
 
 test.describe("Navigation", () => {
   test("redirects to login when not authenticated", async ({ guestPage }) => {
     await guestPage.goto("/stream/general");
-    await expect(guestPage.getByRole("button", { name: LOGIN_BUTTON })).toBeVisible();
+    await expectLoginOrganizationStep(guestPage);
   });
 
   test("shows sidebar when authenticated", async ({ authenticated }) => {

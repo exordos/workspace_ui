@@ -1,4 +1,4 @@
-import { test, expect, LOGIN_BUTTON } from "./fixtures";
+import { test, expect, expectLoginOrganizationStep } from "./fixtures";
 
 test.describe("Accessibility", () => {
   test("login page has a non-empty document title", async ({ guestPage }) => {
@@ -17,10 +17,10 @@ test.describe("Accessibility", () => {
 
   test("login form fields have labels or placeholders", async ({ guestPage }) => {
     await guestPage.goto("/");
-    await expect(guestPage.getByRole("button", { name: LOGIN_BUTTON })).toBeVisible();
+    await expectLoginOrganizationStep(guestPage);
     const inputs = guestPage.locator("input");
     const count = await inputs.count();
-    expect(count).toBeGreaterThanOrEqual(2);
+    expect(count).toBeGreaterThanOrEqual(1);
 
     for (let i = 0; i < count; i++) {
       const input = inputs.nth(i);

@@ -10,7 +10,7 @@
  *   });
  */
 
-import { test as base, type Page } from "@playwright/test";
+import { test as base, expect as baseExpect, type Page } from "@playwright/test";
 import { clearAppStorage } from "./helpers/clear-app-storage";
 import { openStreamChatWithComposer } from "./helpers/navigate-messenger";
 import { WorkspaceApiMock } from "./helpers/workspace-api-mock";
@@ -26,7 +26,17 @@ interface TestFixtures {
 }
 
 const LOGIN_BUTTON = /login|log in|войти/i;
-export { LOGIN_BUTTON };
+const LOGIN_NEXT_BUTTON = /next|далее/i;
+const LOGIN_SERVER_FIELD = /адрес сервера|server url|zulip/i;
+export { LOGIN_BUTTON, LOGIN_NEXT_BUTTON, LOGIN_SERVER_FIELD };
+
+export async function expectLoginOrganizationStep(
+  page: Page,
+  options: { timeout?: number } = {},
+): Promise<void> {
+  await baseExpect(page.getByLabel(LOGIN_SERVER_FIELD)).toBeVisible(options);
+  await baseExpect(page.getByRole("button", { name: LOGIN_NEXT_BUTTON })).toBeVisible(options);
+}
 
 async function openAuthenticatedShell(page: Page): Promise<void> {
   await page.reload();
@@ -45,7 +55,10 @@ export const test = base.extend<TestFixtures>({
     const fn = async (email: string, password: string, realm: string) => {
       await page.goto("/");
       await page.locator("#realm").fill(realm);
+      await page.getByRole("button", { name: LOGIN_NEXT_BUTTON }).click();
+      await baseExpect(page.locator("#username")).toBeVisible({ timeout: 30_000 });
       await page.locator("#username").fill(email);
+      await baseExpect(page.locator("#password")).toBeVisible({ timeout: 30_000 });
       await page.locator("#password").fill(password);
       await page.locator("form button[type='submit']").click();
       await page.waitForFunction(

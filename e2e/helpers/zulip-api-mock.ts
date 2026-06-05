@@ -10,6 +10,7 @@ import {
   messagesSuccess,
   registerSuccess,
   resetE2eQueueIdSequence,
+  serverSettingsSuccess,
   subscriptionsSuccess,
   usersMeSuccess,
   usersSuccess,
@@ -134,10 +135,23 @@ export class ZulipApiMock {
     const path = new URL(url).pathname;
     const method = request.method();
 
+    if (path.endsWith("/server_settings") && method === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(serverSettingsSuccess()),
+      });
+      return;
+    }
+
     if (path.endsWith("/register") && method === "POST") {
       this.registerCount += 1;
       const body = registerSuccess(this.fixedQueueId ?? undefined);
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(body),
+      });
       return;
     }
 
