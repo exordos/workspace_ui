@@ -128,9 +128,19 @@ interface ElectronAPI {
     show: (
       title: string,
       body: string,
-      options?: { tag?: string; silent?: boolean },
+      options?: { tag?: string; silent?: boolean; clickRoute?: string },
     ) => Promise<boolean>;
     closeByTag: (tag: string) => Promise<void>;
+    diagnostics?: () => Promise<{
+      platform: string;
+      isPackaged: boolean;
+      appName: string;
+      appVersion: string;
+      appPath: string;
+      exePath: string;
+      userDataPath: string;
+      notificationSupported: boolean;
+    }>;
   };
   os: {
     setBadgeCount: (count: number) => void;

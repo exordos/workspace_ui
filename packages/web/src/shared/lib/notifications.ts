@@ -17,11 +17,14 @@ import { getRuntime } from "./pwa";
 
 export type NotificationPermissionStatus = "granted" | "denied" | "default" | "unsupported";
 
+const ELECTRON_NOTIFICATION_PERMISSION_KEY = "workspace-electron-notifications-enabled";
+
 export interface NotificationOptions {
   title: string;
   body: string;
   icon?: string;
   tag?: string;
+  clickRoute?: string;
   data?: Record<string, unknown>;
   silent?: boolean;
   onClick?: () => void;
@@ -38,15 +41,47 @@ export interface NotificationService {
 }
 
 function createElectronNotificationService(): NotificationService {
+  function readLocalPermission(): NotificationPermissionStatus {
+    try {
+      return localStorage.getItem(ELECTRON_NOTIFICATION_PERMISSION_KEY) === "1"
+        ? "granted"
+        : "default";
+    } catch {
+      return "default";
+    }
+  }
+
+  function writeLocalPermissionGranted(): void {
+    try {
+      localStorage.setItem(ELECTRON_NOTIFICATION_PERMISSION_KEY, "1");
+    } catch {
+      /* ignore */
+    }
+  }
+
   return {
-    getPermission: () => "granted",
+    getPermission: readLocalPermission,
 
-    requestPermission: () => Promise.resolve("granted" as const),
+    async requestPermission() {
+      const api = getElectronAPI();
+      if (api == null) return "unsupported";
+      const shown = await api?.notifications.show(
+        "Notifications enabled",
+        "Workspace can now show desktop notifications.",
+        {
+          tag: "notification-permission-check",
+          silent: false,
+        },
+      );
+      if (shown === false) return "default";
+      writeLocalPermissionGranted();
+      return "granted";
+    },
 
-    async show({ title, body, tag, silent }) {
+    async show({ title, body, tag, silent, clickRoute }) {
       const api = getElectronAPI();
       if (api) {
-        await api.notifications.show(title, body, { tag, silent });
+        await api.notifications.show(title, body, { tag, silent, clickRoute });
       }
     },
 

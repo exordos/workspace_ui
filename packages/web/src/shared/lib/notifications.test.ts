@@ -288,8 +288,7 @@ describe("notificationService (web runtime)", () => {
 
 // Tests the Electron IPC notification implementation (native desktop notifications)
 describe("notificationService (electron runtime)", () => {
-  // Electron always has permission — OS handles notification permissions separately
-  it("always returns 'granted' for getPermission", async () => {
+  it("returns 'default' until the user enables Electron notifications locally", async () => {
     vi.resetModules();
 
     const electronMod = await import("./electron");
@@ -301,24 +300,59 @@ describe("notificationService (electron runtime)", () => {
     const mod = await import("./notifications");
     const svc = mod.getNotificationService();
 
-    expect(svc.getPermission()).toBe("granted");
+    expect(svc.getPermission()).toBe("default");
     expect(svc.isSupported()).toBe(true);
   });
 
-  // No permission prompt needed in Electron — always resolves immediately
-  it("requestPermission resolves to 'granted'", async () => {
+  it("requestPermission shows a native test notification and stores local Electron consent", async () => {
     vi.resetModules();
 
+    const showFn = vi.fn().mockResolvedValue(true);
     const electronMod = await import("./electron");
     (electronMod.isElectron as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    (electronMod.getElectronAPI as ReturnType<typeof vi.fn>).mockReturnValue({
+      notifications: { show: showFn },
+    });
 
     const pwaMod = await import("./pwa");
     (pwaMod.getRuntime as ReturnType<typeof vi.fn>).mockReturnValue("electron");
 
     const mod = await import("./notifications");
     const svc = mod.getNotificationService();
+
+    expect(svc.getPermission()).toBe("default");
     const result = await svc.requestPermission();
+
     expect(result).toBe("granted");
+    expect(svc.getPermission()).toBe("granted");
+    expect(showFn).toHaveBeenCalledWith(
+      "Notifications enabled",
+      "Workspace can now show desktop notifications.",
+      {
+        tag: "notification-permission-check",
+        silent: false,
+      },
+    );
+  });
+
+  it("keeps Electron permission as 'default' when native test notification fails", async () => {
+    vi.resetModules();
+
+    const showFn = vi.fn().mockResolvedValue(false);
+    const electronMod = await import("./electron");
+    (electronMod.isElectron as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    (electronMod.getElectronAPI as ReturnType<typeof vi.fn>).mockReturnValue({
+      notifications: { show: showFn },
+    });
+
+    const pwaMod = await import("./pwa");
+    (pwaMod.getRuntime as ReturnType<typeof vi.fn>).mockReturnValue("electron");
+
+    const mod = await import("./notifications");
+    const svc = mod.getNotificationService();
+
+    await expect(svc.requestPermission()).resolves.toBe("default");
+    expect(svc.getPermission()).toBe("default");
   });
 
   // Notifications are sent through IPC to the main process for native display
@@ -342,6 +376,37 @@ describe("notificationService (electron runtime)", () => {
     expect(showFn).toHaveBeenCalledWith("Title", "Body", {
       tag: undefined,
       silent: undefined,
+      clickRoute: undefined,
+    });
+  });
+
+  it("forwards clickRoute through electron notification IPC", async () => {
+    vi.resetModules();
+
+    const showFn = vi.fn().mockResolvedValue(undefined);
+    const electronMod = await import("./electron");
+    (electronMod.isElectron as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    (electronMod.getElectronAPI as ReturnType<typeof vi.fn>).mockReturnValue({
+      notifications: { show: showFn },
+    });
+
+    const pwaMod = await import("./pwa");
+    (pwaMod.getRuntime as ReturnType<typeof vi.fn>).mockReturnValue("electron");
+
+    const mod = await import("./notifications");
+    const svc = mod.getNotificationService();
+    await svc.show({
+      title: "Title",
+      body: "Body",
+      tag: "msg-42",
+      silent: true,
+      clickRoute: "/dm/42-alice?msg=42",
+    });
+
+    expect(showFn).toHaveBeenCalledWith("Title", "Body", {
+      tag: "msg-42",
+      silent: true,
+      clickRoute: "/dm/42-alice?msg=42",
     });
   });
 

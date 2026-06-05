@@ -7,6 +7,7 @@ import {
   Tray,
   nativeImage,
   nativeTheme,
+  Notification,
   session,
   shell,
   ipcMain,
@@ -17,6 +18,7 @@ import {
   exchangeDesktopFlowToken as exchangeDesktopFlowTokenInMain,
   getSessionCsrfTokenForRealm,
 } from "./desktop-auth";
+import { isSafeDeeplinkRoute, resolveNotificationClickRoute } from "./deeplink-route.lib";
 import { createUnreadDotOverlaySvg } from "./unread-indicator.lib";
 import {
   getTrayMenuLabels,
@@ -247,17 +249,6 @@ function isSafeExternalUrl(url: string): boolean {
   } catch {
     return false;
   }
-}
-
-/** Rejects routes that could be used for script injection or external navigation. */
-function isSafeDeeplinkRoute(route: string): boolean {
-  const trimmed = route.trim();
-  if (trimmed.length === 0 || trimmed.length > 512) return false;
-  const lower = trimmed.toLowerCase();
-  if (lower.startsWith("javascript:") || lower.startsWith("data:") || lower.startsWith("vbscript:"))
-    return false;
-  if (trimmed.includes("//")) return false;
-  return true;
 }
 
 function getWebRoot(): string {
@@ -894,6 +885,17 @@ function registerIpcHandlers(): void {
   const MAX_NOTIFICATION_LENGTH = 200;
   const activeNotificationsByTag = new Map<string, { close: () => void }>();
 
+  ipcMain.handle("notifications:diagnostics", () => ({
+    platform: process.platform,
+    isPackaged: app.isPackaged,
+    appName: app.getName(),
+    appVersion: app.getVersion(),
+    appPath: app.getAppPath(),
+    exePath: app.getPath("exe"),
+    userDataPath: app.getPath("userData"),
+    notificationSupported: Notification.isSupported(),
+  }));
+
   ipcMain.handle(
     "notifications:show",
     async (_event, title: unknown, body: unknown, options: unknown) => {
@@ -906,12 +908,28 @@ function registerIpcHandlers(): void {
           : {};
       const tag = typeof opts.tag === "string" && opts.tag.length > 0 ? opts.tag : undefined;
       const silent = opts.silent === true;
+      const clickRoute = resolveNotificationClickRoute(options);
       try {
-        const { Notification } = await import("electron");
+        const supported = Notification.isSupported();
+        appendLogsLine(
+          `[notifications] show requested supported=${String(supported)} packaged=${String(
+            app.isPackaged,
+          )} tag=${tag ?? "none"} titleLength=${String(t.length)} bodyLength=${String(
+            b.length,
+          )} silent=${String(silent)}`,
+        );
+        if (!supported) return false;
+
         if (tag != null) {
           activeNotificationsByTag.get(tag)?.close();
         }
         const notification = new Notification({ title: t, body: b, silent });
+        notification.on("show", () => {
+          appendLogsLine(`[notifications] shown tag=${tag ?? "none"}`);
+        });
+        notification.on("failed", (_event, error) => {
+          appendLogsLine(`[notifications] failed tag=${tag ?? "none"} error=${String(error)}`);
+        });
         if (tag != null) {
           activeNotificationsByTag.set(tag, notification);
           notification.on("close", () => {
@@ -921,11 +939,20 @@ function registerIpcHandlers(): void {
           });
         }
         notification.on("click", () => {
+          if (clickRoute != null) {
+            dispatchInternalNavigation(clickRoute);
+            return;
+          }
           showMainWindow();
         });
         notification.show();
         return true;
       } catch (err) {
+        appendLogsLine(
+          `[notifications] show error tag=${tag ?? "none"} error=${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
         console.error("[electron] Notification failed:", err);
         return false;
       }
