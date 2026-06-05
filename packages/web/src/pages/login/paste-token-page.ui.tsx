@@ -1,8 +1,8 @@
 import React, { useCallback, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useInstancesStore } from "~/entities/instance/instance.model";
+import { useInstancesStore, type AddInstanceResult } from "~/entities/instance/instance.model";
 import { t } from "~/i18n/i18n";
-import { exchangeDesktopFlowToken } from "~/shared/api/zulip-auth";
+import { exchangeDesktopFlowToken, fetchServerSettings } from "~/shared/api/zulip-auth";
 import { normalizeRealm } from "~/shared/api/zulip-realm.internal";
 import { readText } from "~/shared/lib/clipboard";
 import {
@@ -17,6 +17,12 @@ import { workspaceOrgOriginFromLoginServerUrlInput } from "~/shared/lib/workspac
 import { Button } from "~/shared/ui/button";
 import { Icon } from "~/shared/ui/icon";
 import { sanitizeInternalRedirectTarget } from "./login-redirect.lib";
+
+async function loadOidcOrganizationIcon(realm: string): Promise<string | undefined> {
+  const serverSettings = await Promise.resolve(fetchServerSettings(realm)).catch(() => null);
+  const rawRealmIcon = serverSettings?.realm_icon.trim() ?? "";
+  return rawRealmIcon.length > 0 ? rawRealmIcon : undefined;
+}
 
 export const PasteTokenPage: React.FC = () => {
   const navigate = useNavigate();
@@ -71,7 +77,9 @@ export const PasteTokenPage: React.FC = () => {
       const credentials = parseDesktopFlowCredentials(payload);
       const workspaceOrgOrigin = workspaceOrgOriginFromLoginServerUrlInput(realm);
       const orgFields = workspaceOrgOrigin !== "" ? { workspaceOrgOrigin } : {};
-      let addInstanceResult;
+      const realmIcon = await loadOidcOrganizationIcon(realm);
+      const iconFields = realmIcon != null ? { realmIcon } : {};
+      let addInstanceResult: AddInstanceResult;
       if (credentials) {
         addInstanceResult = addInstance({
           realm,
@@ -79,6 +87,7 @@ export const PasteTokenPage: React.FC = () => {
           apiKey: credentials.apiKey,
           authType: "api_key",
           ...orgFields,
+          ...iconFields,
         });
       } else {
         const loginToken = parseDesktopFlowLoginToken(payload);
@@ -97,6 +106,7 @@ export const PasteTokenPage: React.FC = () => {
           apiKey: exchanged.authType === "api_key" ? (exchanged.apiKey ?? "") : "",
           authType: exchanged.authType,
           ...orgFields,
+          ...iconFields,
         });
       }
       if (addInstanceResult.status === "duplicate") {

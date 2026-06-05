@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useInstancesStore } from "~/entities/instance/instance.model";
+import type * as ZulipAuthModule from "~/shared/api/zulip-auth";
 import { saveDesktopFlowState } from "~/shared/lib/oidc-desktop";
 import { renderWithProviders } from "~/test/render";
 import { PasteTokenPage } from "./paste-token-page.ui";
@@ -8,6 +9,7 @@ import type * as ReactRouterDom from "react-router-dom";
 
 const navigateSpy = vi.hoisted(() => vi.fn());
 const exchangeDesktopFlowToken = vi.hoisted(() => vi.fn());
+const fetchServerSettings = vi.hoisted(() => vi.fn());
 
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual<typeof ReactRouterDom>("react-router-dom");
@@ -18,11 +20,11 @@ vi.mock("react-router-dom", async () => {
 });
 
 vi.mock("~/shared/api/zulip-auth", async () => {
-  const actual =
-    await vi.importActual<typeof import("~/shared/api/zulip-auth")>("~/shared/api/zulip-auth");
+  const actual = await vi.importActual<typeof ZulipAuthModule>("~/shared/api/zulip-auth");
   return {
     ...actual,
     exchangeDesktopFlowToken,
+    fetchServerSettings,
   };
 });
 
@@ -78,6 +80,7 @@ describe("PasteTokenPage", () => {
   afterEach(() => {
     navigateSpy.mockReset();
     exchangeDesktopFlowToken.mockReset();
+    fetchServerSettings.mockReset();
     useInstancesStore.setState({ instances: [], currentInstanceId: null });
     localStorage.removeItem("zulip-web-instances");
     localStorage.removeItem("zulip-web-current-instance");
@@ -115,6 +118,45 @@ describe("PasteTokenPage", () => {
     });
     expect(navigateSpy).toHaveBeenCalledWith("/", { replace: true });
     expect(exchangeDesktopFlowToken).not.toHaveBeenCalled();
+  });
+
+  it("stores input realm and organization icon when server settings return another canonical realm", async () => {
+    const otp = "abcdef0123456789".repeat(4);
+    fetchServerSettings.mockResolvedValue({
+      realm_name: "Canonical Org",
+      realm_uri: "https://canonical.example.com",
+      realm_url: "https://canonical.example.com",
+      realm_icon: "/user_avatars/1/realm/icon.png",
+      external_authentication_methods: [],
+    });
+    saveDesktopFlowState({
+      realm: "https://gw.example.com",
+      otp,
+      createdAt: Date.now(),
+    });
+    const encrypted = await encryptDesktopFlowPayload(
+      JSON.stringify({ email: "user@example.com", api_key: "key-123" }),
+      otp,
+    );
+
+    renderWithProviders(<PasteTokenPage />, {
+      route: "/paste-token?realm=https%3A%2F%2Fgw.example.com",
+    });
+
+    fireEvent.change(screen.getByLabelText(/authentication code/i), {
+      target: { value: encrypted },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /login/i }));
+
+    await waitFor(() => {
+      expect(useInstancesStore.getState().instances[0]).toMatchObject({
+        realm: "https://gw.example.com",
+        email: "user@example.com",
+        apiKey: "key-123",
+        realmIcon: "/user_avatars/1/realm/icon.png",
+        workspaceOrgOrigin: "https://gw.example.com",
+      });
+    });
   });
 
   it("shows validation error for invalid token payload", async () => {
