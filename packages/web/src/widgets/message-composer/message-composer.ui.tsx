@@ -15,6 +15,8 @@ import {
 } from "./message-composer-ai-surfaces.ui";
 import {
   buildOutgoingMessageBody,
+  isLikelyImageAttachment,
+  normalizeImageAttachmentFile,
   resolveTomorrowMorningTimestamp,
 } from "./message-composer-body.lib";
 import {
@@ -258,8 +260,6 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     [setValue],
   );
 
-  void filePreviewUrls;
-
   const previewHtml = preview.html;
   const previewLoading = preview.loading;
   const previewError = preview.error;
@@ -436,9 +436,12 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
 
       const imageFiles: File[] = [];
       for (const item of Array.from(items)) {
-        if (item.type.startsWith("image/")) {
-          const file = item.getAsFile();
-          if (file) imageFiles.push(file);
+        if (item.kind !== "file") continue;
+        const file = item.getAsFile();
+        if (file == null) continue;
+        const normalized = normalizeImageAttachmentFile(file, item.type);
+        if (isLikelyImageAttachment(normalized)) {
+          imageFiles.push(normalized);
         }
       }
 

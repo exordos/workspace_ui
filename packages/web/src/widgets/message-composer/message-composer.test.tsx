@@ -1046,6 +1046,42 @@ describe("MessageComposer file attachments", () => {
       revokeObjectURLMock.mockRestore();
     }
   });
+
+  it("renders image preview thumbnail when pasting clipboard image with empty File.type", async () => {
+    const createObjectURLMock = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:test-paste-image");
+    const revokeObjectURLMock = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+
+    try {
+      renderWithProviders(<MessageComposer onSend={vi.fn()} />);
+      const textbox = screen.getByRole("textbox");
+      const imageFile = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "image.png", {
+        type: "",
+      });
+
+      fireEvent.paste(textbox, {
+        clipboardData: {
+          items: [
+            {
+              kind: "file",
+              type: "image/png",
+              getAsFile: () => imageFile,
+            },
+          ],
+        },
+      });
+
+      const thumbnail = await screen.findByRole("img", { name: "image.png" });
+      expect(thumbnail).toHaveAttribute("src", "blob:test-paste-image");
+      expect(createObjectURLMock).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "image.png", type: "image/png" }),
+      );
+    } finally {
+      createObjectURLMock.mockRestore();
+      revokeObjectURLMock.mockRestore();
+    }
+  });
 });
 
 describe("MessageComposer upload progress", () => {

@@ -4,6 +4,8 @@ import {
   formatAttachmentSize,
   formatScheduledTimestamp,
   getAttachmentExtensionLabel,
+  isLikelyImageAttachment,
+  normalizeImageAttachmentFile,
   resolveTomorrowMorningTimestamp,
 } from "./message-composer-body.lib";
 
@@ -101,6 +103,45 @@ describe("message-composer-body.lib", () => {
       const s = formatScheduledTimestamp(Date.now());
       expect(typeof s).toBe("string");
       expect(s.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe("isLikelyImageAttachment", () => {
+    it("returns true when file type is image/*", () => {
+      const file = new File(["x"], "photo.png", { type: "image/png" });
+      expect(isLikelyImageAttachment(file)).toBe(true);
+    });
+
+    it("returns true for empty type with image extension", () => {
+      const file = new File(["x"], "image.png", { type: "" });
+      expect(isLikelyImageAttachment(file)).toBe(true);
+    });
+
+    it("returns false for non-image files", () => {
+      const file = new File(["x"], "readme.txt", { type: "text/plain" });
+      expect(isLikelyImageAttachment(file)).toBe(false);
+    });
+  });
+
+  describe("normalizeImageAttachmentFile", () => {
+    it("uses fallbackMime when File.type is empty", () => {
+      const file = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "image.png", {
+        type: "",
+      });
+      const normalized = normalizeImageAttachmentFile(file, "image/png");
+      expect(normalized.type).toBe("image/png");
+      expect(normalized.name).toBe("image.png");
+    });
+
+    it("returns the same file when type is already set", () => {
+      const file = new File(["x"], "photo.jpg", { type: "image/jpeg" });
+      expect(normalizeImageAttachmentFile(file, "image/png")).toBe(file);
+    });
+
+    it("infers mime from extension when type and fallback are empty", () => {
+      const file = new File(["x"], "screenshot.webp", { type: "" });
+      const normalized = normalizeImageAttachmentFile(file);
+      expect(normalized.type).toBe("image/webp");
     });
   });
 });
