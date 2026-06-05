@@ -16,6 +16,17 @@ const VALID_SERVER_SETTINGS = {
   external_authentication_methods: [],
 };
 
+const getPasswordStepContainer = (): HTMLElement => {
+  const passwordField = screen.getByPlaceholderText("••••••••").closest("label");
+  const passwordStep = passwordField?.parentElement;
+
+  if (!(passwordStep instanceof HTMLElement)) {
+    throw new Error("Password step container not found");
+  }
+
+  return passwordStep;
+};
+
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual("react-router-dom");
   return {
@@ -127,11 +138,10 @@ describe("LoginPage", () => {
     });
 
     expect(await screen.findByPlaceholderText("email@example.com")).toBeInTheDocument();
-    expect(screen.queryByPlaceholderText("••••••••")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^login$/i })).not.toBeInTheDocument();
+    expect(getPasswordStepContainer()).toHaveClass("hidden");
   });
 
-  it("reveals password only after username becomes long enough", async () => {
+  it("reveals password only after username becomes a valid email", async () => {
     fetchServerSettings.mockResolvedValue(VALID_SERVER_SETTINGS);
 
     renderWithProviders(<LoginPage />, { route: "/login" });
@@ -143,18 +153,18 @@ describe("LoginPage", () => {
 
     const usernameInput = await screen.findByPlaceholderText("email@example.com");
 
-    expect(screen.queryByPlaceholderText("••••••••")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^login$/i })).not.toBeInTheDocument();
+    expect(getPasswordStepContainer()).toHaveClass("hidden");
 
     fireEvent.change(usernameInput, {
       target: { value: "ab" },
     });
-    expect(screen.queryByPlaceholderText("••••••••")).not.toBeInTheDocument();
+    expect(getPasswordStepContainer()).toHaveClass("hidden");
 
     fireEvent.change(usernameInput, {
-      target: { value: "abc" },
+      target: { value: "user@example.com" },
     });
     expect(screen.getByPlaceholderText("••••••••")).toBeInTheDocument();
+    expect(getPasswordStepContainer()).not.toHaveClass("hidden");
     expect(screen.getByRole("button", { name: /^login$/i })).toBeInTheDocument();
   });
 
@@ -183,7 +193,7 @@ describe("LoginPage", () => {
     });
 
     expect(await screen.findByPlaceholderText("email@example.com")).toBeInTheDocument();
-    expect(screen.queryByPlaceholderText("••••••••")).not.toBeInTheDocument();
+    expect(getPasswordStepContainer()).toHaveClass("hidden");
   });
 
   it("shows an organization error when server settings cannot be loaded", async () => {
