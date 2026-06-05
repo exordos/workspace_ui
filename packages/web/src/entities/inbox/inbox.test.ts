@@ -65,7 +65,7 @@ describe("useInboxStore", () => {
       requestVersion: 0,
       lastLoadedAt: null,
       error: null,
-      stale: false,
+      staleVersion: 0,
     });
   });
 

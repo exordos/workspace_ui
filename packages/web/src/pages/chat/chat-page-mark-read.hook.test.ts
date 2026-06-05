@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useInboxStore } from "~/entities/inbox/inbox.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import type { CurrentChatContext } from "~/entities/message/message.model.types";
 import { markMessagesAsRead } from "~/shared/api/zulip-read-state";
@@ -41,7 +42,7 @@ function streamTopicMessage(overrides: Partial<MockMessage> = {}): MockMessage {
     flags: [],
     type: "stream",
     ...overrides,
-  }) as MockMessage;
+  });
 }
 
 function defaultParams(overrides: Partial<Parameters<typeof useChatPageMarkRead>[0]> = {}) {
@@ -63,6 +64,7 @@ function defaultParams(overrides: Partial<Parameters<typeof useChatPageMarkRead>
 describe("useChatPageMarkRead", () => {
   beforeEach(() => {
     useChatListStore.getState().clear();
+    useInboxStore.getState().clear();
     useCurrentChatMessagesStore.getState().setContext(null);
     vi.mocked(markMessagesAsRead).mockResolvedValue(undefined);
     vi.mocked(applyOpenChatMarkAllAsRead).mockResolvedValue(true);
@@ -98,6 +100,37 @@ describe("useChatPageMarkRead", () => {
     expect(
       useChatListStore.getState().streamsMap.get(STREAM_ID)?.topics.get(TOPIC)?.unreadCount,
     ).toBe(0);
+  });
+
+  it("incrementally updates inbox store on optimistic read", () => {
+    useInboxStore.getState().setEntries([
+      {
+        key: `stream:${STREAM_ID}:${TOPIC}`,
+        streamId: STREAM_ID,
+        streamName: "engineering",
+        topic: TOPIC,
+        senderId: null,
+        senderName: null,
+        dmSlug: null,
+        unreadCount: 2,
+        lastMessageTimestamp: 100,
+        messageIds: [MESSAGE_ID, 502],
+      },
+    ]);
+
+    const message = streamTopicMessage();
+    const { result } = renderHook(() =>
+      useChatPageMarkRead(defaultParams({ messages: [message] })),
+    );
+
+    act(() => {
+      result.current.handleUnreadMessagesVisible([MESSAGE_ID]);
+    });
+
+    const entries = useInboxStore.getState().entries;
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.unreadCount).toBe(1);
+    expect(entries[0]!.messageIds).toEqual([502]);
   });
 
   it("skips scheduling when stream route has no active topic", () => {

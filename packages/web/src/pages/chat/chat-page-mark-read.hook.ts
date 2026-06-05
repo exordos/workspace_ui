@@ -10,6 +10,7 @@ import {
   readFallbackContextFromCurrentChat,
 } from "~/entities/chat-list/chat-list-apply-read-decrement.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useInboxStore } from "~/entities/inbox/inbox.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { markMessagesAsRead } from "~/shared/api/zulip-read-state";
 import type { MockMessage } from "~/shared/api/zulip.types";
@@ -106,6 +107,10 @@ export function useChatPageMarkRead({
         clampWhenAlreadyRead: unreadMessageIds.length === 0,
         source: "chat:optimisticMarkRead",
       });
+
+      if (unreadMessageIds.length > 0) {
+        useInboxStore.getState().markAsRead(unreadMessageIds);
+      }
     },
     [updateMessageFlagsInStore],
   );

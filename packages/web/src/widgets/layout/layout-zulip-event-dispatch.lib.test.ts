@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { applyChatListReadDecrement } from "~/entities/chat-list/chat-list-apply-read-decrement.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useInboxStore } from "~/entities/inbox/inbox.model";
+import type { InboxEntry } from "~/entities/inbox/inbox.types";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import * as client from "~/shared/api/client";
 import type { MockMessage } from "~/shared/api/zulip.types";
@@ -72,7 +74,7 @@ function buildCtx(
       setStreamAudibleNotifications: noop,
     },
     activity: { markStale: noop, markStarredSummaryStale: noop },
-    inbox: { markStale: noop },
+    inbox: { markStale: noop, markAsRead: noop, clearEntries: noop },
     notifications: {
       show: vi.fn().mockResolvedValue(undefined),
       closeByTag: noop,
@@ -118,7 +120,7 @@ function buildIntegrationCtx(): LayoutZulipEventDispatchContext {
       setStreamAudibleNotifications: noop,
     },
     activity: { markStale: noop, markStarredSummaryStale: noop },
-    inbox: { markStale: noop },
+    inbox: useInboxStore.getState(),
     notifications: {
       show: vi.fn().mockResolvedValue(undefined),
       closeByTag: noop,
@@ -155,6 +157,7 @@ describe("dispatchZulipEvent", () => {
   afterEach(() => {
     getInstanceSpy.mockRestore();
     useChatListStore.getState().clear();
+    useInboxStore.getState().clear();
     useCurrentChatMessagesStore.setState({
       context: null,
       messages: [],
@@ -1031,6 +1034,72 @@ describe("dispatchZulipEvent", () => {
       );
 
       expect(useCurrentChatMessagesStore.getState().messages[0]!.flags ?? []).not.toContain("read");
+    });
+
+    it("incrementally updates inbox entries on read:add without markStale refetch", () => {
+      const inboxEntry: InboxEntry = {
+        key: "stream:5:topic1",
+        streamId: 5,
+        streamName: "general",
+        topic: "topic1",
+        senderId: null,
+        senderName: null,
+        dmSlug: null,
+        unreadCount: 3,
+        lastMessageTimestamp: 100,
+        messageIds: [1, 2, 3],
+      };
+      useInboxStore.getState().setEntries([inboxEntry]);
+      const markStaleSpy = vi.spyOn(useInboxStore.getState(), "markStale");
+
+      dispatchZulipEvent(
+        {
+          id: 106,
+          type: "update_message_flags",
+          op: "add",
+          flag: "read",
+          messages: [1, 2],
+        },
+        buildIntegrationCtx(),
+      );
+
+      const entries = useInboxStore.getState().entries;
+      expect(entries).toHaveLength(1);
+      expect(entries[0]!.unreadCount).toBe(1);
+      expect(entries[0]!.messageIds).toEqual([3]);
+      expect(markStaleSpy).not.toHaveBeenCalled();
+      markStaleSpy.mockRestore();
+    });
+
+    it("clears inbox entries on mark all read", () => {
+      useInboxStore.getState().setEntries([
+        {
+          key: "dm:42",
+          streamId: null,
+          streamName: null,
+          topic: null,
+          senderId: 42,
+          senderName: "Alice",
+          dmSlug: "42",
+          unreadCount: 1,
+          lastMessageTimestamp: 10,
+          messageIds: [1],
+        },
+      ]);
+
+      dispatchZulipEvent(
+        {
+          id: 107,
+          type: "update_message_flags",
+          op: "add",
+          flag: "read",
+          all: true,
+          messages: [],
+        },
+        buildIntegrationCtx(),
+      );
+
+      expect(useInboxStore.getState().entries).toHaveLength(0);
     });
   });
 });

@@ -3,7 +3,9 @@
  */
 
 import type { MockMessage } from "~/shared/api/zulip.types";
-import type { InboxEntry } from "./inbox.types";
+import { dmRouteKey } from "~/shared/lib/dm-key";
+import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import type { InboxEntry, InboxMarkReadTarget } from "./inbox.types";
 
 export interface GroupedInboxStream {
   streamId: number;
@@ -237,4 +239,32 @@ export function groupInboxEntries(entries: InboxEntry[]): GroupedInboxEntries {
     .sort((a, b) => b.lastMessageTimestamp - a.lastMessageTimestamp);
 
   return { dms, streams };
+}
+
+function inboxEntryMatchesMarkReadTarget(
+  entry: InboxEntry,
+  target: InboxMarkReadTarget,
+  currentUserId: number | null,
+): boolean {
+  if (target.type === "dm") {
+    if (entry.streamId != null || entry.dmSlug == null) return false;
+    const entryUserIds = entry.dmSlug.split(",").map((id) => Number(id));
+    const entryKey = dmRouteKey(entryUserIds, currentUserId);
+    const targetKey = dmRouteKey(target.userIds, currentUserId);
+    return entryKey === targetKey;
+  }
+  if (target.type === "stream") {
+    return entry.streamId === target.streamId;
+  }
+  if (entry.streamId !== target.streamId || entry.topic == null) return false;
+  return normalizeTopicForIdentity(entry.topic) === normalizeTopicForIdentity(target.topic);
+}
+
+/** Drops inbox rows covered by a sidebar/context mark-as-read action. */
+export function removeInboxEntriesForMarkReadTarget(
+  entries: InboxEntry[],
+  target: InboxMarkReadTarget,
+  currentUserId: number | null,
+): InboxEntry[] {
+  return entries.filter((entry) => !inboxEntryMatchesMarkReadTarget(entry, target, currentUserId));
 }

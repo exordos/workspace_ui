@@ -31,3 +31,9 @@ export interface InboxEntry {
 }
 
 export type InboxGroupType = "stream" | "dm";
+
+/** Target for removing inbox rows after sidebar/context mark-as-read. */
+export type InboxMarkReadTarget =
+  | { type: "dm"; userIds: number[] }
+  | { type: "stream"; streamId: number }
+  | { type: "topic"; streamId: number; topic: string };
