@@ -1099,6 +1099,39 @@ describe("MessageComposer edit-last shortcut", () => {
   });
 });
 
+describe("MessageComposer reply quote", () => {
+  const sampleReplyQuote = {
+    id: 101,
+    content: "Original message",
+    sender_full_name: "Alice",
+    sender_id: 42,
+    permalinkUrl: null,
+  };
+
+  it("focuses the textarea when replyQuote is set", () => {
+    const { rerender } = renderWithProviders(<MessageComposer onSend={vi.fn()} />);
+    const textbox = screen.getByRole("textbox");
+    expect(textbox).not.toHaveFocus();
+
+    rerender(<MessageComposer onSend={vi.fn()} replyQuote={sampleReplyQuote} />);
+
+    expect(textbox).toHaveFocus();
+  });
+
+  it("does not steal focus when replyQuote id is unchanged", () => {
+    const { rerender } = renderWithProviders(
+      <MessageComposer onSend={vi.fn()} replyQuote={sampleReplyQuote} />,
+    );
+    const textbox = screen.getByRole("textbox");
+    textbox.blur();
+    expect(textbox).not.toHaveFocus();
+
+    rerender(<MessageComposer onSend={vi.fn()} replyQuote={sampleReplyQuote} />);
+
+    expect(textbox).not.toHaveFocus();
+  });
+});
+
 describe("MessageComposer edit session", () => {
   it("submits edited content and restores previous draft after session closes", async () => {
     const onSubmitEdit = vi.fn().mockResolvedValue(undefined);

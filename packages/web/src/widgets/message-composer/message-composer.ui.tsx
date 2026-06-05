@@ -133,12 +133,21 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   const effectiveReplyQuote = isEditing ? null : replyQuote;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const prevDisabledRef = useRef(disabled);
+  const prevReplyQuoteIdRef = useRef<number | null>(null);
   useLayoutEffect(() => {
     if (prevDisabledRef.current && !disabled && mode === "write") {
       textareaRef.current?.focus();
     }
     prevDisabledRef.current = disabled;
   }, [disabled, mode]);
+  useLayoutEffect(() => {
+    const replyId = effectiveReplyQuote?.id ?? null;
+    const prevReplyId = prevReplyQuoteIdRef.current;
+    prevReplyQuoteIdRef.current = replyId;
+    if (replyId != null && replyId !== prevReplyId && !disabled && mode === "write") {
+      textareaRef.current?.focus();
+    }
+  }, [effectiveReplyQuote, disabled, mode]);
   const emojiButtonRef = useRef<HTMLButtonElement>(null);
   const scheduleButtonRef = useRef<HTMLButtonElement>(null);
   const savedSnippetsButtonRef = useRef<HTMLButtonElement>(null);
