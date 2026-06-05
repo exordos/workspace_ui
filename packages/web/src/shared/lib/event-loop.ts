@@ -21,6 +21,7 @@ import {
   noteApiTransportFailure,
   noteApiTransportSuccess,
 } from "~/shared/lib/connection-health";
+import { recordDiagnosticRealtimeEvent } from "~/shared/lib/diagnostics-realtime.lib";
 import {
   runEventLoopPollCycle,
   shouldExitEventLoop,
@@ -130,6 +131,7 @@ function startZulipEventLoopWithTransport(
   function handleEvent(event: ZulipEvent): void {
     lastEventId = Math.max(lastEventId, event.id);
     if (event.type === "heartbeat") return;
+    recordDiagnosticRealtimeEvent(event.type);
     onEvent(event);
   }
 

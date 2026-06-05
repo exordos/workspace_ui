@@ -980,6 +980,31 @@ function registerIpcHandlers(): void {
     return appendLogsLine(line);
   });
 
+  ipcMain.handle("diagnostics:getMemorySnapshot", () => {
+    const metrics = app.getAppMetrics();
+    const processes = metrics.map((metric) => ({
+      pid: metric.pid,
+      type: metric.type,
+      memory: {
+        workingSetSize: metric.memory.workingSetSize,
+        peakWorkingSetSize: metric.memory.peakWorkingSetSize,
+      },
+      cpu: metric.cpu != null ? { percentCPUUsage: metric.cpu.percentCPUUsage } : undefined,
+    }));
+    const totalWorkingSetKb = processes.reduce(
+      (sum, processMetric) => sum + processMetric.memory.workingSetSize,
+      0,
+    );
+
+    return {
+      collectedAt: new Date().toISOString(),
+      main: process.memoryUsage(),
+      system: process.getSystemMemoryInfo(),
+      processes,
+      totalWorkingSetKb,
+    };
+  });
+
   // Call state — OS awareness
   const MAX_ROOM_LENGTH = 128;
   ipcMain.on("call:start", (_event, data?: { room?: string; participants?: number }) => {

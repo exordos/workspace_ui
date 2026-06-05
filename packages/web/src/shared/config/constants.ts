@@ -18,7 +18,8 @@ export const JITSI_MEET_BASE_URL = env.JITSI_MEET_BASE_URL;
 export const CALL_INCOMING_MODAL_VARIANT = env.CALL_INCOMING_MODAL_VARIANT;
 export const WORKSPACE_ORIGIN = env.WORKSPACE_API_ORIGIN;
 export const WORKSPACE_UPLOADS_ORIGIN = env.WORKSPACE_UPLOADS_ORIGIN;
-export const IS_CONNECTION_DIAGNOSTICS_ENABLED = env.DEV;
+/** Connection diagnostics page, routes, and navigation entries (all build modes). */
+export const IS_CONNECTION_DIAGNOSTICS_ENABLED = true;
 
 // ---
 // Timing

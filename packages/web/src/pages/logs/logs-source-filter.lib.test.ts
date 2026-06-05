@@ -25,8 +25,14 @@ describe("matchesLogSourceFilter", () => {
     expect(matchesLogSourceFilter(entry("store:chatList"), "actions")).toBe(false);
   });
 
-  it("filters app as non-api non-console non-action", () => {
+  it("filters app as non-api non-console non-action non-trace", () => {
     expect(matchesLogSourceFilter(entry("store:chatList"), "app")).toBe(true);
     expect(matchesLogSourceFilter(entry("api"), "app")).toBe(false);
+    expect(matchesLogSourceFilter(entry("trace:messages"), "app")).toBe(false);
+  });
+
+  it("filters trace scopes", () => {
+    expect(matchesLogSourceFilter(entry("trace:chat-list"), "trace")).toBe(true);
+    expect(matchesLogSourceFilter(entry("store:chatList"), "trace")).toBe(false);
   });
 });

@@ -15,7 +15,9 @@ import { clearInFlightWorkspaceFolderRequests } from "~/shared/api/workspace-cli
 import { registerWorkspaceOrvalMutator } from "~/shared/api/workspace-orval-mutator";
 import { initAnalytics } from "~/shared/lib/analytics/setup";
 import { setStoreWiper, setAuthInstanceGetter } from "~/shared/lib/auth-guard";
+import { brand } from "~/shared/lib/brand";
 import { initConnectionHealth } from "~/shared/lib/connection-health";
+import { createLogger } from "~/shared/lib/logger";
 import { initNetworkTracking } from "~/shared/lib/network";
 import { attachNotificationAudioUnlock } from "~/shared/lib/notification-sound";
 import { perf } from "~/shared/lib/perf";
@@ -23,7 +25,7 @@ import { setPluginDataProvider } from "~/shared/lib/plugins/api";
 import { initPlugins } from "~/shared/lib/plugins/setup";
 import { initPresenceTracker, setPresenceReporter } from "~/shared/lib/presence";
 import { initPush } from "~/shared/lib/push/push.service";
-import { cleanupDevServiceWorkers, initPwaListeners } from "~/shared/lib/pwa";
+import { cleanupDevServiceWorkers, initPwaListeners, getRuntime } from "~/shared/lib/pwa";
 import { initSentry } from "~/shared/lib/sentry";
 import { initTouchTracking } from "~/shared/lib/touch";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
@@ -123,6 +125,13 @@ export function mountApplication(): void {
     reportUnexpectedError("plugins", err, { phase: "init" });
   });
   perf.reportWebVitals();
+
+  createLogger("app").info("Application started", {
+    runtime: getRuntime(),
+    version: import.meta.env.VITE_APP_VERSION ?? "unknown",
+    brand: brand.appName,
+    instanceCount: useInstancesStore.getState().instances.length,
+  });
 
   ReactDOM.createRoot(document.getElementById("root")!).render(React.createElement(AppRoot));
 

@@ -2,15 +2,10 @@
  * Development tools — exposed on window.__dev__ in dev mode.
  *
  * Access from browser console:
- *   __dev__.stores.chatList.getState()
- *   __dev__.stores.users.getState().getUser(42)
- *   __dev__.logs()
+ *   __dev__.help()
+ *   __dev__.setPipelineTrace("chat-list")
+ *   __dev__.setLogLevel("debug")
  *   __dev__.logs("error")
- *   __dev__.clearLogs()
- *   __dev__.env
- *   __dev__.perf.startTimer("test")
- *   __dev__.setLocale("en")
- *   __dev__.theme.setPalette("blue-cold")
  */
 
 import { useCallParticipantsStore } from "~/entities/call/call.model";
@@ -30,6 +25,11 @@ import {
   type LogEntry,
 } from "~/shared/lib/logger";
 import { perf } from "~/shared/lib/perf";
+import {
+  getPipelineTrace,
+  setPipelineTrace,
+  type PipelineTraceChannel,
+} from "~/shared/lib/pipeline-trace.lib";
 import { useSidebarConfigStore } from "~/widgets/sidebar/sidebar-config.model";
 
 interface DevTools {
@@ -59,6 +59,10 @@ interface DevTools {
   logs: (level?: LogLevel) => readonly LogEntry[];
   clearLogs: typeof clearLogHistory;
   setLogLevel: typeof setMinLevel;
+  setPipelineTrace: (
+    channels: "off" | "all" | PipelineTraceChannel | PipelineTraceChannel[],
+  ) => void;
+  getPipelineTrace: typeof getPipelineTrace;
   help: () => void;
 }
 
@@ -109,30 +113,25 @@ export function installDevTools(): void {
     },
     clearLogs: clearLogHistory,
     setLogLevel: setMinLevel,
+    setPipelineTrace,
+    getPipelineTrace,
 
     help: () => {
       /* eslint-disable no-console */
       console.log("%c🔧 Workspace DevTools", "font-size: 16px; font-weight: bold; color: #ff8438");
       console.log(`
-Available commands:
+Log scopes: app, api, realtime, connection-health, action, store:<name>, trace:*, perf, console
 
-  __dev__.stores.<name>.getState()   — inspect any Zustand store
-  __dev__.stores.users.getState().getUser(42)
+  __dev__.setLogLevel("debug")       — show debug in console (store, API, traces)
+  __dev__.setPipelineTrace("all")    — pipeline traces: messages | chat-list | sidebar-unread | folders | link-preview
+  __dev__.getPipelineTrace()         — current trace channels
+  __dev__.logs() / __dev__.logs("error")
+  __dev__.clearLogs()
 
-  __dev__.logs()                     — last 500 log entries
-  __dev__.logs("error")              — only errors
-  __dev__.clearLogs()                — clear log buffer
-  __dev__.setLogLevel("debug")       — change min log level
-
-  __dev__.theme.toggle()             — switch dark/light
-  __dev__.theme.setPalette("blue-cold")
-  __dev__.theme.current()
-
-  __dev__.i18n.setLocale("en")       — switch language
-  __dev__.i18n.t("auth.login")       — test translation key
-
-  __dev__.env                        — all environment variables
-  __dev__.perf.startTimer("label")   — start performance timer
+  __dev__.stores.<name>.getState()   — Zustand store snapshot
+  __dev__.theme.toggle() / __dev__.theme.setPalette("blue-cold")
+  __dev__.i18n.setLocale("en")
+  __dev__.perf.startTimer("label")
 
 Stores: chatList, messages, users, instances, theme, sidebar, callParticipants
       `);
@@ -144,7 +143,7 @@ Stores: chatList, messages, users, instances, theme, sidebar, callParticipants
 
   /* eslint-disable no-console */
   console.log(
-    "%c🔧 DevTools ready — type __dev__.help() for commands",
+    "%c🔧 DevTools — type __dev__.help() for commands",
     "color: #ff8438; font-weight: bold",
   );
   /* eslint-enable no-console */

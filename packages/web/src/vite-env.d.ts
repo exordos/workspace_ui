@@ -48,12 +48,6 @@ interface ImportMetaEnv {
   readonly VITE_CHAT_MESSAGES_SOURCE_INDEXEDDB?: string;
   /** Persist avatar blobs to IndexedDB. Optional; default on. */
   readonly VITE_AVATAR_PERSIST_INDEXEDDB?: string;
-  /** Verbose `[message-flow]` logs in console. */
-  readonly VITE_MESSAGE_FLOW_DEBUG?: string;
-  /** Verbose `[chat-list-flow]` logs in console. */
-  readonly VITE_CHAT_LIST_FLOW_DEBUG?: string;
-  /** Verbose `[sidebar-unread]` logs (badge bootstrap, queue, mark-read). */
-  readonly VITE_SIDEBAR_UNREAD_DEBUG?: string;
   /** Top bar: show Calls nav. */
   readonly VITE_TOP_BAR_CALLS_NAV?: string;
   /** Top bar: show Services nav. */
@@ -95,6 +89,41 @@ interface ImportMetaEnv {
 
 interface ImportMeta {
   readonly env: ImportMetaEnv;
+}
+
+interface ElectronMainMemorySnapshot {
+  collectedAt: string;
+  main: NodeJS.MemoryUsage;
+  system: {
+    total: number;
+    free: number;
+    swapTotal?: number;
+    swapFree?: number;
+    fileBacked?: number;
+    purgeable?: number;
+  };
+  processes: {
+    pid: number;
+    type: string;
+    memory: { workingSetSize: number; peakWorkingSetSize: number };
+    cpu?: { percentCPUUsage: number };
+  }[];
+  totalWorkingSetKb: number;
+}
+
+interface ElectronRendererMemorySnapshot {
+  processMemory: {
+    private?: number;
+    residentSet?: number;
+    shared?: number;
+  };
+  heapStatistics: {
+    usedHeapSize?: number;
+  };
+  blinkMemoryInfo: {
+    allocated?: number;
+    total?: number;
+  };
 }
 
 declare module "zulip-js" {
@@ -155,6 +184,10 @@ interface ElectronAPI {
   logs: {
     append: (line: string) => Promise<boolean>;
     getFilePath: () => Promise<string | null>;
+  };
+  diagnostics?: {
+    getMemorySnapshot: () => Promise<ElectronMainMemorySnapshot>;
+    getRendererMemory: () => Promise<ElectronRendererMemorySnapshot>;
   };
   auth?: {
     // Electron-only bridge: read the CSRF cookie for the current Zulip realm from Chromium session.

@@ -1,5 +1,24 @@
 import { contextBridge, ipcRenderer } from "electron";
 
+export interface ElectronMainMemorySnapshot {
+  collectedAt: string;
+  main: NodeJS.MemoryUsage;
+  system: Electron.SystemMemoryInfo;
+  processes: Array<{
+    pid: number;
+    type: string;
+    memory: { workingSetSize: number; peakWorkingSetSize: number };
+    cpu?: { percentCPUUsage: number };
+  }>;
+  totalWorkingSetKb: number;
+}
+
+export interface ElectronRendererMemorySnapshot {
+  processMemory: Electron.ProcessMemoryInfo;
+  heapStatistics: Electron.HeapStatistics;
+  blinkMemoryInfo: Electron.BlinkMemoryInfo;
+}
+
 const electronAPI = {
   /** Sync OS id for renderer (e.g. macOS title bar inset). Same as `app.getPlatform()`. */
   platform: process.platform,
@@ -79,6 +98,21 @@ const electronAPI = {
   logs: {
     append: (line: string): Promise<boolean> => ipcRenderer.invoke("logs:append", line),
     getFilePath: (): Promise<string | null> => ipcRenderer.invoke("logs:getFilePath"),
+  },
+
+  diagnostics: {
+    getMemorySnapshot: (): Promise<ElectronMainMemorySnapshot> =>
+      ipcRenderer.invoke("diagnostics:getMemorySnapshot"),
+    getRendererMemory: (): Promise<ElectronRendererMemorySnapshot> =>
+      Promise.all([
+        process.getProcessMemoryInfo(),
+        Promise.resolve(process.getHeapStatistics()),
+        Promise.resolve(process.getBlinkMemoryInfo()),
+      ]).then(([processMemory, heapStatistics, blinkMemoryInfo]) => ({
+        processMemory,
+        heapStatistics,
+        blinkMemoryInfo,
+      })),
   },
 
   auth: {
