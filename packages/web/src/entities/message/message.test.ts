@@ -141,6 +141,50 @@ describe("currentChatMessagesStore", () => {
       expect(useCurrentChatMessagesStore.getState().context).toEqual(second);
     });
 
+    it("does not clear messages when setContext targets the same stream-wide location", () => {
+      const ctx: CurrentChatContext = {
+        type: "stream",
+        streamId: 5,
+        streamName: "general",
+        topic: "",
+        streamWideView: true,
+      };
+      useCurrentChatMessagesStore.getState().setContext(ctx);
+      useCurrentChatMessagesStore
+        .getState()
+        .setMessages([mockMsg({ id: 1, stream_id: 5, subject: "bugs" })]);
+
+      useCurrentChatMessagesStore.getState().setContext({ ...ctx });
+
+      expect(useCurrentChatMessagesStore.getState().messages).toHaveLength(1);
+    });
+
+    it("updates streamName on same location without clearing messages", () => {
+      const ctx: CurrentChatContext = {
+        type: "stream",
+        streamId: 5,
+        streamName: "old-name",
+        topic: "",
+        streamWideView: true,
+      };
+      useCurrentChatMessagesStore.getState().setContext(ctx);
+      useCurrentChatMessagesStore
+        .getState()
+        .setMessages([mockMsg({ id: 1, stream_id: 5, subject: "bugs" })]);
+
+      useCurrentChatMessagesStore.getState().setContext({
+        ...ctx,
+        streamName: "general",
+      });
+
+      expect(useCurrentChatMessagesStore.getState().messages).toHaveLength(1);
+      const state = useCurrentChatMessagesStore.getState();
+      expect(state.context?.type).toBe("stream");
+      if (state.context?.type === "stream") {
+        expect(state.context.streamName).toBe("general");
+      }
+    });
+
     it("does not restore a trimmed slice when revisiting a DM context", () => {
       const dmContext: CurrentChatContext = { type: "dm", dmKey: "10,20" };
       const anotherDmContext: CurrentChatContext = { type: "dm", dmKey: "10,30" };

@@ -41,7 +41,7 @@ import {
   patchPartitionMetaByMessages,
   upsertMessagesByChatPartitions,
 } from "./message-cache-partition.lib";
-import { buildMessageFetchNarrow } from "./message-chat-context.lib";
+import { buildMessageFetchNarrow, isSameChatLocation } from "./message-chat-context.lib";
 import { loadInitialMessagesRouteDriven } from "./message-initial-loader.lib";
 import { persistChatMessagesToIndexedDb } from "./message-local-cache.lib";
 import { patchMessageAtId, patchMessagesFlags } from "./message-patch.lib";
@@ -199,6 +199,19 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         topic: context.topic,
         streamWideView: context.streamWideView ?? prev.streamWideView,
       };
+    }
+
+    if (isSameChatLocation(prev, nextContext)) {
+      if (
+        prev != null &&
+        nextContext != null &&
+        prev.type === "stream" &&
+        nextContext.type === "stream" &&
+        prev.streamName !== nextContext.streamName
+      ) {
+        set({ context: { ...prev, streamName: nextContext.streamName } });
+      }
+      return;
     }
 
     logMessageFlow("store:setContext", {
