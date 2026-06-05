@@ -42,6 +42,19 @@ describe("message-composer-body.lib", () => {
       expect(body).toContain("```quote");
     });
 
+    it("uses longer quote fences when quoted content already contains fences", () => {
+      const body = buildOutgoingMessageBody("reply", {
+        id: 1,
+        content: "@_**Bob|3**:\n```quote\ninner\n```",
+        sender_full_name: "Alice",
+        sender_id: 42,
+        permalinkUrl: null,
+      });
+      expect(body).toContain("````quote");
+      expect(body).toContain("````\n\nreply");
+      expect(body).toMatch(/^@_\*\*Alice\|42\*\*:\n````quote\n/s);
+    });
+
     it("keeps multiline content inside the quote fence", () => {
       const body = buildOutgoingMessageBody("reply", {
         id: 1,

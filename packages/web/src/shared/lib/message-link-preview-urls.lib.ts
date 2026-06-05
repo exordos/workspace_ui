@@ -11,6 +11,7 @@
  */
 import { getJitsiMeetingUrl } from "~/shared/lib/jitsi";
 import { MAX_LINK_PREVIEWS_PER_MESSAGE } from "~/shared/lib/message-link-preview-url-match.lib";
+import { ZULIP_QUOTE_FENCE_STRIP_PATTERN } from "~/shared/lib/message-zulip-quote.lib";
 import { isValidUrl } from "~/shared/lib/validation";
 
 const ANGLE_BRACKET_URL_PATTERN = /<(https?:\/\/[^>\s]+)>/gi;
@@ -20,9 +21,6 @@ const PLAIN_URL_PATTERN = /https?:\/\/[^\s<>"\]]+/gi;
 const IMAGE_FILE_EXTENSION_PATTERN = /\.(avif|gif|jpe?g|png|svg|webp)(\?|#|$)/i;
 
 const ZULIP_PERMALINK_PATH_PATTERN = /#narrow\b|#compose\b/i;
-
-/** Zulip reply/forward fenced quote blocks (` ```quote ` … ` ``` `). */
-const ZULIP_QUOTE_FENCE_PATTERN = /```quote\s*\r?\n[\s\S]*?\r?\n```/gi;
 
 const TRAILING_SENTENCE_PUNCTUATION_PATTERN = /[,.!?;:]+$/u;
 
@@ -161,7 +159,7 @@ function collectUrlsFromMarkdown(markdown: string): string[] {
 
 /** Removes Zulip quote fences so URLs inside cited text are not previewed. */
 export function stripQuotedMarkdownRegions(markdown: string): string {
-  return markdown.replace(ZULIP_QUOTE_FENCE_PATTERN, "");
+  return markdown.replace(ZULIP_QUOTE_FENCE_STRIP_PATTERN, "");
 }
 
 /** Returns previewable URLs in markdown (outside quote fences), in discovery order. */

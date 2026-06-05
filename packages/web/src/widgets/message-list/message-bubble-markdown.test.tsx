@@ -301,6 +301,24 @@ describe("MessageBubble markdown body", () => {
     expect(spoilerBlock?.classList.contains("open")).toBe(true);
   });
 
+  it("renders Zulip reply quote as nested quote block instead of code fence", () => {
+    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+
+    const markdown =
+      "@_**Alice|77** [wrote](https://zulip.example.com/#narrow/dm/near/1):\n```quote\nQuoted text\n```\n\nMy reply";
+    const { container } = render(
+      <MessageBubble message={createMessage({ content: markdown })} isOwn={false} />,
+    );
+
+    const body = container.querySelector(".message-body");
+    expect(body?.querySelector(".zulip-quote-block")).toBeTruthy();
+    expect(body?.querySelector(".zulip-quote-header")).toBeTruthy();
+    expect(body?.querySelector(".zulip-quote-body")).toBeTruthy();
+    expect(body?.textContent).toContain("Quoted text");
+    expect(body?.textContent).toContain("My reply");
+    expect(body?.innerHTML).not.toContain("language-quote");
+  });
+
   it("uses default header for fenced spoiler without explicit heading", () => {
     useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
 

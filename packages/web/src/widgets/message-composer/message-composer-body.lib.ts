@@ -2,6 +2,7 @@
  * Outgoing message body and attachment label helpers for the composer.
  */
 import { t } from "~/i18n/i18n";
+import { wrapWithZulipQuoteFence } from "~/shared/lib/message-zulip-quote.lib";
 import { buildZulipQuoteHeader } from "~/shared/lib/zulip-quote-header.lib";
 import type { ReplyQuote } from "./message-composer.types";
 
@@ -15,7 +16,8 @@ export function buildOutgoingMessageBody(value: string, replyQuote?: ReplyQuote 
       wroteLabel: t("message.replyQuoteWrote"),
       permalinkUrl: replyQuote.permalinkUrl,
     });
-    const quoteBlock = `${header}\n\`\`\`quote\n${replyQuote.content}\n\`\`\`\n\n`;
+    const quoteFence = wrapWithZulipQuoteFence(replyQuote.content);
+    const quoteBlock = `${header}\n${quoteFence.wrap(replyQuote.content)}\n\n`;
     body = quoteBlock + body;
   }
   return body;

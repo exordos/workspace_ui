@@ -97,6 +97,26 @@ describe("buildForwardQuote", () => {
     );
   });
 
+  it("uses longer quote fences when forwarded content already contains quote fences", () => {
+    expect(
+      buildForwardQuote(
+        [
+          {
+            id: 20,
+            sender_full_name: "Alice",
+            sender_id: 42,
+            content: "Original body",
+            stream_id: null,
+            subject: "",
+            display_recipient: [{ id: 42, full_name: "Alice" }],
+          },
+        ],
+        "@_**Bob|55**:\n```quote\nnested\n```",
+        permalinkOptions,
+      ),
+    ).toContain("````quote\n@_**Bob|55**:\n```quote\nnested\n```\n````");
+  });
+
   it("strips html tags from forwarded content payload", () => {
     expect(
       buildForwardQuote(

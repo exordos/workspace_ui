@@ -1,5 +1,6 @@
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
+import { wrapWithZulipQuoteFence } from "~/shared/lib/message-zulip-quote.lib";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { encodeTopicForRoute, normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { buildZulipQuoteHeader } from "~/shared/lib/zulip-quote-header.lib";
@@ -55,7 +56,8 @@ function buildSingleForwardQuote(
     wroteLabel: permalinkOptions?.wroteLabel ?? "wrote",
     permalinkUrl,
   });
-  return `${header}\n\`\`\`quote\n${content}\n\`\`\``;
+  const quoteFence = wrapWithZulipQuoteFence(content);
+  return `${header}\n${quoteFence.wrap(content)}`;
 }
 
 function normalizeForwardPayloadContent(content: string): string {
