@@ -39,11 +39,7 @@ export function parseSessionCsrfTokenFromHtml(html: string): string | null {
   return token.length > 0 ? token : null;
 }
 
-export async function getOrFetchWebSessionCsrfToken(realm: string): Promise<string | null> {
-  const cachedToken = getCachedSessionCsrfToken(realm);
-  if (cachedToken != null) {
-    return cachedToken;
-  }
+export async function refreshWebSessionCsrfTokenFromLegacy(realm: string): Promise<string | null> {
   if (typeof window === "undefined" || typeof fetch === "undefined") {
     return null;
   }
@@ -55,7 +51,7 @@ export async function getOrFetchWebSessionCsrfToken(realm: string): Promise<stri
 
   const fetchPromise = (async (): Promise<string | null> => {
     try {
-      const res = await fetch(`${window.location.origin}/legacy`, {
+      const res = await fetch(new URL("/legacy", window.location.origin).toString(), {
         method: "GET",
         credentials: "include",
         cache: "no-store",
@@ -77,6 +73,14 @@ export async function getOrFetchWebSessionCsrfToken(realm: string): Promise<stri
   })();
   activeCsrfTokenFetchesByRealm.set(cacheKey, fetchPromise);
   return fetchPromise;
+}
+
+export async function getOrFetchWebSessionCsrfToken(realm: string): Promise<string | null> {
+  const cachedToken = getCachedSessionCsrfToken(realm);
+  if (cachedToken != null) {
+    return cachedToken;
+  }
+  return refreshWebSessionCsrfTokenFromLegacy(realm);
 }
 
 function readCookieValue(name: string): string | null {

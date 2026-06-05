@@ -10,6 +10,7 @@ import { isValidEmail, isValidRealmUrl } from "~/shared/lib/validation";
 import { normalizeRealm } from "./zulip-realm.internal";
 import {
   readSessionCsrfTokenFromDocument,
+  refreshWebSessionCsrfTokenFromLegacy,
   setCachedSessionCsrfToken,
 } from "./zulip-session-csrf.internal";
 import { ZulipAuthError } from "./zulip.types";
@@ -246,7 +247,8 @@ async function exchangeDesktopFlowTokenInRenderer(
     log.error("Renderer desktop token exchange failed during session verification");
     throw new ZulipAuthError(t("auth.pasteTokenInvalid"));
   }
-  const csrfToken = readSessionCsrfTokenFromDocument();
+  const csrfToken =
+    (await refreshWebSessionCsrfTokenFromLegacy(base)) ?? readSessionCsrfTokenFromDocument();
   if (csrfToken != null) {
     setCachedSessionCsrfToken(base, csrfToken);
   }

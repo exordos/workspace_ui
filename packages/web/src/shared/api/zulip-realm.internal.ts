@@ -10,6 +10,8 @@ export function normalizeRealm(realm: string): string {
     r = r.slice(0, -apiPath.length);
   } else if (r.endsWith("/api/v1")) {
     r = r.slice(0, -"/api/v1".length);
+  } else if (r.endsWith("/json")) {
+    r = r.slice(0, -"/json".length);
   } else if (r.endsWith("/api")) {
     r = r.slice(0, -"/api".length);
   }
