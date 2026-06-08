@@ -84,6 +84,7 @@ export interface LayoutTypingActions {
 }
 
 export interface LayoutMuteActions {
+  isStreamMuted: (streamId: number) => boolean;
   isEffectivelyMuted: (streamId: number, topic: string) => boolean;
   isTopicFollowed: (streamId: number, topic: string) => boolean;
   getStreamDesktopNotificationsOverride: (streamId: number) => boolean | null;

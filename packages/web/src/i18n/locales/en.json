@@ -507,6 +507,10 @@
   "notifications": {
     "notifications": "Notifications",
     "newMessage": "New message",
+    "messageCount_one": "{{count}} message",
+    "messageCount_other": "{{count}} messages",
+    "messagesFromSender_one": "{{count}} message from {{sender}}",
+    "messagesFromSender_other": "{{count}} messages from {{sender}}",
     "permissionBannerTitle": "Enable desktop notifications?",
     "permissionBannerBody": "Get alerts for new messages and mentions when this tab is in the background.",
     "permissionBannerEnable": "Enable notifications",

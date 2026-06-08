@@ -12,7 +12,12 @@ import { buildRouteFromMessage } from "~/shared/lib/push-click";
 import { buildStreamMessageNotificationFlags } from "~/shared/lib/stream-notification-notify.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
+import {
+  buildNotificationTitleContextFromMessage,
+  formatNotificationTitle,
+} from "./layout-notification-title.lib";
 import { readViewportState } from "./layout-zulip-event-viewport.lib";
+import { upsertNotificationAggregate } from "./notification-aggregate-registry.lib";
 import type { LayoutZulipEventDispatchContext } from "./layout-zulip-event-dispatch.types";
 
 export function resolveStreamMessageMuteState(
@@ -23,8 +28,9 @@ export function resolveStreamMessageMuteState(
     return { isMuted: false, isTopicFollowed: false };
   }
   const topic = normalizeTopicForIdentity(raw.subject ?? "");
+  const isStreamMuted = mute.isStreamMuted(raw.stream_id);
   return {
-    isMuted: mute.isEffectivelyMuted(raw.stream_id, topic),
+    isMuted: isStreamMuted || mute.isEffectivelyMuted(raw.stream_id, topic),
     isTopicFollowed: mute.isTopicFollowed(raw.stream_id, topic),
   };
 }
@@ -38,7 +44,6 @@ export function deliverDesktopNotificationForMessage(
 ): void {
   registerNotifiedMessageId(raw.id);
 
-  const senderName = raw.sender_full_name ?? "New message";
   const contentPreview = plainTextPreviewFromMessageBody(raw.content ?? "").slice(0, 100);
   const clickRoute =
     buildRouteFromMessage(
@@ -50,12 +55,25 @@ export function deliverDesktopNotificationForMessage(
       },
       currentUserId,
     ) ?? undefined;
+  const titleContext = buildNotificationTitleContextFromMessage(raw, currentUserId);
+  const aggregate = upsertNotificationAggregate({
+    message: raw,
+    currentUserId,
+    body: contentPreview,
+    clickRoute,
+    titleContext,
+  });
+  const notificationTitle =
+    aggregate != null
+      ? formatNotificationTitle(aggregate.titleContext, aggregate.count)
+      : formatNotificationTitle(titleContext);
+  const notificationTag = aggregate?.tag ?? `msg-${raw.id}`;
 
   notifications
     .show({
-      title: senderName,
+      title: notificationTitle,
       body: contentPreview,
-      tag: `msg-${raw.id}`,
+      tag: notificationTag,
       silent: true,
       ...(clickRoute != null ? { clickRoute } : {}),
     })

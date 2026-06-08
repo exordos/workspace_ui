@@ -19,7 +19,10 @@ import {
 } from "~/shared/lib/sidebar-unread-debug.lib";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import { isTabVisible } from "~/shared/lib/visibility";
-import { closeReadMessageNotifications } from "./layout-notification-tags.lib";
+import {
+  closeAllActiveMessageNotifications,
+  closeReadMessageNotifications,
+} from "./layout-notification-tags.lib";
 import { maybeNotifyNewMessage } from "./layout-zulip-event-notify.lib";
 import {
   collectUnreadLoadedMessageIds,
@@ -128,7 +131,7 @@ function applyMarkAllReadFromQueueEvent(
   }
 
   const indexedIds = [...chatListStore.messageIdToLocation.keys()];
-  closeReadMessageNotifications(notifications.closeByTag, indexedIds);
+  closeAllActiveMessageNotifications(notifications);
 
   logSidebarUnreadFlow("event:update_message_flags:read:markAll", {
     markAllRead: true,
@@ -174,7 +177,7 @@ export function handleUpdateMessageFlags(
   });
 
   if (op === "add") {
-    closeReadMessageNotifications(notifications.closeByTag, messageIds);
+    closeReadMessageNotifications(notifications, messageIds);
     const chatListStore = useChatListStore.getState();
     applyChatListReadDecrementGrouped(() => useChatListStore.getState(), chatListStore, {
       messageIds,

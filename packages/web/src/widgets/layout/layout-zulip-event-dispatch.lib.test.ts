@@ -58,6 +58,7 @@ function buildCtx(
     },
     typing: { setTyping: noop },
     mute: {
+      isStreamMuted: () => false,
       isEffectivelyMuted: () => false,
       isTopicFollowed: () => false,
       getStreamDesktopNotificationsOverride: () => null,
@@ -104,6 +105,7 @@ function buildIntegrationCtx(): LayoutZulipEventDispatchContext {
     },
     typing: { setTyping: noop },
     mute: {
+      isStreamMuted: () => false,
       isEffectivelyMuted: () => false,
       isTopicFollowed: () => false,
       getStreamDesktopNotificationsOverride: () => null,

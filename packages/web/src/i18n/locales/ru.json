@@ -515,6 +515,12 @@
   "notifications": {
     "notifications": "Уведомления",
     "newMessage": "Новое сообщение",
+    "messageCount_one": "{{count}} сообщение",
+    "messageCount_few": "{{count}} сообщения",
+    "messageCount_many": "{{count}} сообщений",
+    "messagesFromSender_one": "{{count}} сообщение от {{sender}}",
+    "messagesFromSender_few": "{{count}} сообщения от {{sender}}",
+    "messagesFromSender_many": "{{count}} сообщений от {{sender}}",
     "permissionBannerTitle": "Включить уведомления на рабочем столе?",
     "permissionBannerBody": "Получайте оповещения о новых сообщениях и упоминаниях, когда вкладка в фоне.",
     "permissionBannerEnable": "Включить уведомления",
