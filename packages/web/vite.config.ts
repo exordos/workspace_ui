@@ -124,7 +124,10 @@ export default defineConfig(({ mode }) => {
   const isElectron = !!env.ELECTRON;
   const isPwaDevEnabled = env.VITE_PWA_DEV === "true";
   const cdnUrl = env.VITE_CDN_URL?.replace(/\/+$/, "");
-  const permissionsPolicyHeader = buildPermissionsPolicyHeader(env.VITE_JITSI_MEET_DOMAIN);
+  const permissionsPolicyHeader = buildPermissionsPolicyHeader(
+    env.VITE_JITSI_MEET_DOMAIN,
+    env.VITE_JITSI_ALLOWED_DOMAINS,
+  );
 
   const base = isElectron ? "./" : cdnUrl ? `${cdnUrl}/` : "/";
 

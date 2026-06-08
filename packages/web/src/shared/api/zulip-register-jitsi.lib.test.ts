@@ -1,5 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { parseRegisterResponseJitsiServerUrl } from "./zulip-register-jitsi.lib";
+
+vi.mock("~/shared/lib/env", () => ({
+  env: {
+    JITSI_MEET_DOMAIN: "calls.example.com",
+    JITSI_ALLOWED_DOMAINS: "realm.example.com, https://server.example.com",
+  },
+}));
 
 describe("parseRegisterResponseJitsiServerUrl", () => {
   it("returns null for non-object input", () => {
@@ -9,7 +16,7 @@ describe("parseRegisterResponseJitsiServerUrl", () => {
     expect(parseRegisterResponseJitsiServerUrl([])).toBeNull();
   });
 
-  it("uses jitsi_server_url when present", () => {
+  it("uses allowlisted jitsi_server_url when present", () => {
     expect(
       parseRegisterResponseJitsiServerUrl({
         jitsi_server_url: "https://calls.example.com/",
@@ -17,17 +24,17 @@ describe("parseRegisterResponseJitsiServerUrl", () => {
     ).toBe("https://calls.example.com");
   });
 
-  it("prefers jitsi_server_url over realm and server fields", () => {
+  it("prefers allowlisted jitsi_server_url over realm and server fields", () => {
     expect(
       parseRegisterResponseJitsiServerUrl({
-        jitsi_server_url: "https://legacy.example.com",
+        jitsi_server_url: "https://calls.example.com",
         realm_jitsi_server_url: "https://realm.example.com",
         server_jitsi_server_url: "https://server.example.com",
       }),
-    ).toBe("https://legacy.example.com");
+    ).toBe("https://calls.example.com");
   });
 
-  it("uses realm_jitsi_server_url when legacy is empty", () => {
+  it("uses allowlisted realm_jitsi_server_url when legacy is empty", () => {
     expect(
       parseRegisterResponseJitsiServerUrl({
         jitsi_server_url: "",
@@ -37,13 +44,13 @@ describe("parseRegisterResponseJitsiServerUrl", () => {
     ).toBe("https://realm.example.com");
   });
 
-  it("falls back to server_jitsi_server_url", () => {
+  it("falls back to allowlisted server_jitsi_server_url", () => {
     expect(
       parseRegisterResponseJitsiServerUrl({
         realm_jitsi_server_url: null,
-        server_jitsi_server_url: "http://jitsi.internal:8443/",
+        server_jitsi_server_url: "https://server.example.com/",
       }),
-    ).toBe("http://jitsi.internal:8443");
+    ).toBe("https://server.example.com");
   });
 
   it("treats default as unset for realm", () => {
@@ -51,9 +58,25 @@ describe("parseRegisterResponseJitsiServerUrl", () => {
       parseRegisterResponseJitsiServerUrl({
         jitsi_server_url: "",
         realm_jitsi_server_url: "default",
-        server_jitsi_server_url: "https://meet.jit.si",
+        server_jitsi_server_url: "https://server.example.com",
       }),
-    ).toBe("https://meet.jit.si");
+    ).toBe("https://server.example.com");
+  });
+
+  it("rejects register hosts that are not operator allowlisted", () => {
+    expect(
+      parseRegisterResponseJitsiServerUrl({
+        jitsi_server_url: "https://attacker-jitsi.example",
+      }),
+    ).toBeNull();
+  });
+
+  it("rejects non-HTTPS register hosts even when the host is allowlisted", () => {
+    expect(
+      parseRegisterResponseJitsiServerUrl({
+        jitsi_server_url: "http://calls.example.com",
+      }),
+    ).toBeNull();
   });
 
   it("returns null when all fields missing or invalid", () => {
@@ -65,7 +88,7 @@ describe("parseRegisterResponseJitsiServerUrl", () => {
     ).toBeNull();
     expect(
       parseRegisterResponseJitsiServerUrl({
-        jitsi_server_url: "ftp://meet.example.com",
+        jitsi_server_url: "ftp://calls.example.com",
       }),
     ).toBeNull();
   });

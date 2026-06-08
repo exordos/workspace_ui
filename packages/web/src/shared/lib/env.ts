@@ -141,6 +141,12 @@ export const env = {
   })(),
 
   /**
+   * Comma-separated HTTPS Jitsi hosts/origins trusted for Zulip register overrides.
+   * `VITE_JITSI_MEET_DOMAIN` is always included in the allowlist when set.
+   */
+  JITSI_ALLOWED_DOMAINS: optional("VITE_JITSI_ALLOWED_DOMAINS"),
+
+  /**
    * Incoming call modal visual variant.
    * `large` renders centered modal, `compact` keeps top-right toast-like popup.
    * Invalid values fallback to `large`.

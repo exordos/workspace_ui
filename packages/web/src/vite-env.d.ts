@@ -22,6 +22,8 @@ interface ImportMetaEnv {
   readonly VITE_PWA_DEV?: string;
   /** Jitsi Meet domain without protocol (e.g. meet.example.com). Optional. */
   readonly VITE_JITSI_MEET_DOMAIN?: string;
+  /** Comma-separated HTTPS Jitsi hosts/origins trusted for Zulip register overrides. */
+  readonly VITE_JITSI_ALLOWED_DOMAINS?: string;
   /** `large` | `compact` — incoming call modal layout. */
   readonly VITE_CALL_INCOMING_MODAL_VARIANT?: string;
   /** Override for Workspace API base URL. Optional. */

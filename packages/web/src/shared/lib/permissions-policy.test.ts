@@ -11,10 +11,15 @@ describe("buildPermissionsPolicyHeader", () => {
     expect(header).toContain("geolocation=()");
   });
 
-  it("adds configured Jitsi domain to media allowlist", () => {
-    const header = buildPermissionsPolicyHeader("meet.genesis-core.tech");
+  it("adds configured Jitsi domains to media allowlist", () => {
+    const header = buildPermissionsPolicyHeader(
+      "meet.genesis-core.tech",
+      "realm-jitsi.example.com, https://server-jitsi.example.com",
+    );
 
     expect(header).toContain('"https://meet.genesis-core.tech"');
+    expect(header).toContain('"https://realm-jitsi.example.com"');
+    expect(header).toContain('"https://server-jitsi.example.com"');
     expect(header).toContain('"https://meet.jit.si"');
   });
 
@@ -26,5 +31,12 @@ describe("buildPermissionsPolicyHeader", () => {
     expect(validHeader).toContain('"https://meet.genesis-core.tech"');
     expect(validHeader).not.toContain("/rooms");
     expect(invalidHeader).not.toContain("javascript");
+  });
+
+  it("drops non-HTTPS configured Jitsi origins", () => {
+    const header = buildPermissionsPolicyHeader("http://meet.genesis-core.tech");
+
+    expect(header).not.toContain('"http://meet.genesis-core.tech"');
+    expect(header).not.toContain('"https://meet.genesis-core.tech"');
   });
 });

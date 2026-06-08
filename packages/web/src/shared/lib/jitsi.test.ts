@@ -15,6 +15,13 @@ vi.mock("../config/constants", () => ({
   JITSI_MEET_BASE_URL: "https://meet.example.com",
 }));
 
+vi.mock("~/shared/lib/env", () => ({
+  env: {
+    JITSI_MEET_DOMAIN: "meet.example.com",
+    JITSI_ALLOWED_DOMAINS: "realm-jitsi.example.com",
+  },
+}));
+
 // getJitsiMeetingUrl scans message text to find and extract Jitsi meeting links
 describe("getJitsiMeetingUrl", () => {
   // Exact match — the simplest case when message is just the URL
@@ -57,10 +64,9 @@ describe("getJitsiMeetingUrl", () => {
     );
   });
 
-  // HTTP scheme (non-HTTPS) should also be detected — some internal deployments use it
-  it("handles http scheme", () => {
+  it("rejects http scheme even on the configured host", () => {
     const text = "Link: http://meet.example.com/test-room end";
-    expect(getJitsiMeetingUrl(text)).toBe("http://meet.example.com/test-room");
+    expect(getJitsiMeetingUrl(text)).toBeNull();
   });
 
   // Whitespace around the URL should be trimmed
@@ -86,11 +92,18 @@ describe("getJitsiMeetingUrl", () => {
     expect(getJitsiMeetingUrl("https://other.example.com/room")).toBeNull();
   });
 
-  it("detects meeting URL on serverBaseUrl host from Zulip register", () => {
-    const text = "Join https://corp-jitsi.example.com/standup";
-    expect(getJitsiMeetingUrl(text, { serverBaseUrl: "https://corp-jitsi.example.com" })).toBe(
-      "https://corp-jitsi.example.com/standup",
+  it("detects meeting URL on an allowlisted serverBaseUrl host from Zulip register", () => {
+    const text = "Join https://realm-jitsi.example.com/standup";
+    expect(getJitsiMeetingUrl(text, { serverBaseUrl: "https://realm-jitsi.example.com" })).toBe(
+      "https://realm-jitsi.example.com/standup",
     );
+  });
+
+  it("ignores a serverBaseUrl host that is not allowlisted", () => {
+    const text = "Join https://attacker-jitsi.example/standup";
+    expect(
+      getJitsiMeetingUrl(text, { serverBaseUrl: "https://attacker-jitsi.example" }),
+    ).toBeNull();
   });
 
   // Domain matching should be case-insensitive per URL spec
@@ -160,11 +173,8 @@ describe("parseJitsiUrl", () => {
     });
   });
 
-  it("handles http scheme", () => {
-    expect(parseJitsiUrl("http://meet.example.com/test")).toEqual({
-      domain: "meet.example.com",
-      roomName: "test",
-    });
+  it("rejects http scheme", () => {
+    expect(parseJitsiUrl("http://meet.example.com/test")).toBeNull();
   });
 
   // Non-web schemes must be rejected even on allowed hosts
@@ -220,9 +230,15 @@ describe("buildJitsiMeetingUrl", () => {
     expect(url).toBe(`https://meet.example.com/${encodeURIComponent(roomName)}`);
   });
 
-  it("uses serverBaseUrl when provided", () => {
+  it("uses allowlisted serverBaseUrl when provided", () => {
+    expect(
+      buildJitsiMeetingUrl("room-1", { serverBaseUrl: "https://realm-jitsi.example.com" }),
+    ).toBe("https://realm-jitsi.example.com/room-1");
+  });
+
+  it("falls back to configured base URL when serverBaseUrl is not allowlisted", () => {
     expect(buildJitsiMeetingUrl("room-1", { serverBaseUrl: "https://custom.example.com" })).toBe(
-      "https://custom.example.com/room-1",
+      "https://meet.example.com/room-1",
     );
   });
 });

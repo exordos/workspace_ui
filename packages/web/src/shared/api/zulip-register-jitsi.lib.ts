@@ -5,6 +5,7 @@
  * `realm_jitsi_server_url` / `server_jitsi_server_url` (realm overrides server default).
  * Special string `"default"` means inherit server default (treated as unset here).
  */
+import { normalizeTrustedJitsiOrigin } from "~/shared/lib/jitsi-allowlist";
 
 function trimString(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -12,17 +13,9 @@ function trimString(value: unknown): string | null {
   return t.length > 0 ? t : null;
 }
 
-/** Returns canonical origin (e.g. https://meet.example.com) or null if invalid / unset. */
+/** Returns an allowlisted HTTPS origin (e.g. https://meet.example.com) or null if invalid / unset. */
 function normalizeJitsiServerBaseUrl(raw: string): string | null {
-  const t = raw.trim();
-  if (t.length === 0 || t.toLowerCase() === "default") return null;
-  try {
-    const u = new URL(t);
-    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
-    return u.origin.replace(/\/+$/, "");
-  } catch {
-    return null;
-  }
+  return normalizeTrustedJitsiOrigin(raw);
 }
 
 /**

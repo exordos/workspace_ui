@@ -20,7 +20,7 @@ function normalizeOrigin(value: string): string | null {
         ? trimmed
         : `https://${trimmed}`;
     const parsed = new URL(candidate);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    if (parsed.protocol !== "https:") {
       return null;
     }
     if (!parsed.hostname) {
@@ -32,7 +32,10 @@ function normalizeOrigin(value: string): string | null {
   }
 }
 
-function buildMediaAllowList(configuredJitsiDomain?: string): string {
+function buildMediaAllowList(
+  configuredJitsiDomain?: string,
+  configuredAllowedJitsiDomains?: string,
+): string {
   const origins = new Set<string>();
   for (const origin of DEFAULT_MEDIA_EMBED_ORIGINS) {
     const normalized = normalizeOrigin(origin);
@@ -41,8 +44,12 @@ function buildMediaAllowList(configuredJitsiDomain?: string): string {
     }
   }
 
-  if (configuredJitsiDomain != null && configuredJitsiDomain.trim().length > 0) {
-    const normalizedConfigured = normalizeOrigin(configuredJitsiDomain);
+  const configuredValues = [
+    configuredJitsiDomain ?? "",
+    ...(configuredAllowedJitsiDomains ?? "").split(","),
+  ];
+  for (const configuredValue of configuredValues) {
+    const normalizedConfigured = normalizeOrigin(configuredValue);
     if (normalizedConfigured != null) {
       origins.add(normalizedConfigured);
     }
@@ -53,8 +60,11 @@ function buildMediaAllowList(configuredJitsiDomain?: string): string {
 }
 
 /** Builds a Permissions-Policy header string used by Vite dev/preview servers. */
-export function buildPermissionsPolicyHeader(configuredJitsiDomain?: string): string {
-  const mediaAllowList = buildMediaAllowList(configuredJitsiDomain);
+export function buildPermissionsPolicyHeader(
+  configuredJitsiDomain?: string,
+  configuredAllowedJitsiDomains?: string,
+): string {
+  const mediaAllowList = buildMediaAllowList(configuredJitsiDomain, configuredAllowedJitsiDomains);
   return [
     `camera=(${mediaAllowList})`,
     `microphone=(${mediaAllowList})`,

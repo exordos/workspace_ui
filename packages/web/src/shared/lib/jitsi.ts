@@ -2,14 +2,15 @@
  * Jitsi Meet URL helpers.
  *
  * Extracts, parses, and builds Jitsi meeting URLs.
- * Resolution order for "this organization's" Jitsi host: optional {@link JitsiLinkOptions.serverBaseUrl}
- * (from Zulip `POST /register`) then `VITE_JITSI_MEET_DOMAIN` via constants; public `meet.jit.si` is always
- * accepted for link detection and parsing.
+ * Resolution order for "this organization's" Jitsi host: optional trusted
+ * {@link JitsiLinkOptions.serverBaseUrl} (from Zulip `POST /register`) then
+ * `VITE_JITSI_MEET_DOMAIN` via constants; public `meet.jit.si` is always accepted for link detection and parsing.
  *
  * Usage:
  *   import { getJitsiMeetingUrl, parseJitsiUrl, buildJitsiMeetingUrl } from "~/shared/lib/jitsi";
  */
 import { JITSI_MEET_BASE_URL, JITSI_MEET_DOMAIN } from "~/shared/config/constants";
+import { isTrustedJitsiHost, normalizeTrustedJitsiOrigin } from "~/shared/lib/jitsi-allowlist";
 
 /** Optional overrides from Zulip register (per realm), see module header. */
 export interface JitsiLinkOptions {
@@ -17,14 +18,8 @@ export interface JitsiLinkOptions {
   serverBaseUrl?: string | null;
 }
 
-function normalizeHttpOrigin(raw: string): string | null {
-  try {
-    const u = new URL(raw.trim());
-    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
-    return u.origin.replace(/\/+$/, "");
-  } catch {
-    return null;
-  }
+function normalizeHttpsTrustedOrigin(raw: string): string | null {
+  return normalizeTrustedJitsiOrigin(raw);
 }
 
 function getEffectiveJitsiBaseAndDomain(options?: JitsiLinkOptions): {
@@ -33,12 +28,12 @@ function getEffectiveJitsiBaseAndDomain(options?: JitsiLinkOptions): {
 } {
   const fromRegister =
     options?.serverBaseUrl != null && String(options.serverBaseUrl).trim() !== ""
-      ? normalizeHttpOrigin(String(options.serverBaseUrl))
+      ? normalizeHttpsTrustedOrigin(String(options.serverBaseUrl))
       : null;
   if (fromRegister) {
     return {
       baseUrl: fromRegister,
-      domain: new URL(fromRegister).hostname.toLowerCase(),
+      domain: new URL(fromRegister).host.toLowerCase(),
     };
   }
   const base = JITSI_MEET_BASE_URL.replace(/\/+$/, "");
@@ -49,7 +44,7 @@ function getEffectiveJitsiBaseAndDomain(options?: JitsiLinkOptions): {
   return { baseUrl: "", domain: "" };
 }
 
-/** Extracts the first Jitsi meeting URL from text (configured host, Zulip register host, or meet.jit.si). */
+/** Extracts the first Jitsi meeting URL from text (configured host, trusted Zulip register host, or meet.jit.si). */
 export function getJitsiMeetingUrl(content: string, options?: JitsiLinkOptions): string | null {
   const { baseUrl, domain } = getEffectiveJitsiBaseAndDomain(options);
   const trimmed = content.trim();
@@ -59,7 +54,7 @@ export function getJitsiMeetingUrl(content: string, options?: JitsiLinkOptions):
   }
   const hostsPattern =
     domain.length > 0 ? `(?:${escapeRegex(domain)}|meet\\.jit\\.si)` : `meet\\.jit\\.si`;
-  const pattern = new RegExp(`https?://${hostsPattern}/([^\\s<>"']+)`, "i");
+  const pattern = new RegExp(`https://${hostsPattern}/([^\\s<>"']+)`, "i");
   const match = trimmed.match(pattern);
   return match ? match[0] : null;
 }
@@ -77,14 +72,14 @@ export interface JitsiUrlParts {
 export function parseJitsiUrl(url: string, options?: JitsiLinkOptions): JitsiUrlParts | null {
   try {
     const u = new URL(url);
-    if (u.protocol !== "https:" && u.protocol !== "http:") {
+    if (u.protocol !== "https:") {
       return null;
     }
-    const host = u.hostname.toLowerCase();
+    const host = u.host.toLowerCase();
     const path = u.pathname.replace(/^\/+/, "").split("/")[0];
     if (!path) return null;
     const { domain: effectiveDomain } = getEffectiveJitsiBaseAndDomain(options);
-    if (host === "meet.jit.si" || (effectiveDomain.length > 0 && host === effectiveDomain)) {
+    if (isTrustedJitsiHost(host) || (effectiveDomain.length > 0 && host === effectiveDomain)) {
       return {
         domain: host,
         roomName: decodeURIComponent(path),

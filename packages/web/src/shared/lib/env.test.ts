@@ -38,6 +38,7 @@ describe("env", () => {
     expect(env).toHaveProperty("WORKSPACE_UPLOADS_ORIGIN");
     expect(env).toHaveProperty("JITSI_MEET_DOMAIN");
     expect(env).toHaveProperty("JITSI_MEET_BASE_URL");
+    expect(env).toHaveProperty("JITSI_ALLOWED_DOMAINS");
     expect(env).toHaveProperty("CDN_URL");
     expect(env).toHaveProperty("BASE_URL");
     expect(env).toHaveProperty("CALENDAR_EMBED_URL");
@@ -113,6 +114,7 @@ describe("env", () => {
       "WORKSPACE_UPLOADS_ORIGIN",
       "JITSI_MEET_DOMAIN",
       "JITSI_MEET_BASE_URL",
+      "JITSI_ALLOWED_DOMAINS",
       "CDN_URL",
       "BASE_URL",
       "CALENDAR_EMBED_URL",

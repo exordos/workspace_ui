@@ -64,7 +64,11 @@ vi.mock("~/i18n/i18n", () => ({
 }));
 
 vi.mock("~/shared/lib/env", () => ({
-  env: { ZULIP_API_PATH: "/api/v1" },
+  env: {
+    ZULIP_API_PATH: "/api/v1",
+    JITSI_MEET_DOMAIN: "calls.example.com",
+    JITSI_ALLOWED_DOMAINS: "",
+  },
 }));
 
 vi.mock("~/shared/lib/logger", async (importOriginal) => {

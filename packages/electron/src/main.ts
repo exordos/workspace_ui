@@ -787,14 +787,86 @@ function shouldApplyShellContentSecurityPolicy(requestUrl: string): boolean {
   }
 }
 
+function normalizeHttpsHost(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+
+  try {
+    const withProtocol = /^[a-z][a-z0-9+.-]*:/i.test(trimmed) ? trimmed : `https://${trimmed}`;
+    const parsed = new URL(withProtocol);
+    if (parsed.protocol !== "https:") return null;
+    return parsed.host.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function getAllowedJitsiPermissionHosts(): ReadonlySet<string> {
+  const hosts = new Set<string>(["meet.jit.si"]);
+  const configured = normalizeHttpsHost(process.env.VITE_JITSI_MEET_DOMAIN ?? "");
+  if (configured) hosts.add(configured);
+
+  for (const entry of (process.env.VITE_JITSI_ALLOWED_DOMAINS ?? "").split(",")) {
+    const host = normalizeHttpsHost(entry);
+    if (host) hosts.add(host);
+  }
+
+  return hosts;
+}
+
+function isAppPermissionOrigin(url: string): boolean {
+  if (IS_DEV) {
+    return url.startsWith(DEV_SERVER_URL);
+  }
+  try {
+    return new URL(url).protocol === "file:";
+  } catch {
+    return false;
+  }
+}
+
+function isAllowedJitsiPermissionOrigin(
+  url: string,
+  allowedJitsiHosts: ReadonlySet<string>,
+): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" && allowedJitsiHosts.has(parsed.host.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+interface PermissionRequestOriginDetails {
+  requestingUrl?: string;
+  embeddingOrigin?: string;
+  securityOrigin?: string;
+}
+
+function getPermissionRequestOrigin(details?: PermissionRequestOriginDetails): string {
+  return details?.requestingUrl || details?.embeddingOrigin || details?.securityOrigin || "";
+}
+
+function canApprovePermissionRequest(
+  permission: string,
+  origin: string,
+  allowedJitsiHosts: ReadonlySet<string>,
+): boolean {
+  if (permission === "media") {
+    return isAllowedJitsiPermissionOrigin(origin, allowedJitsiHosts);
+  }
+
+  if (permission === "notifications" || permission === "fullscreen") {
+    return (
+      isAppPermissionOrigin(origin) || isAllowedJitsiPermissionOrigin(origin, allowedJitsiHosts)
+    );
+  }
+
+  return permission === "clipboard-read" || permission === "clipboard-sanitized-write";
+}
+
 function configureSecurityPolicy(): void {
-  const allowedPermissions = new Set([
-    "media",
-    "notifications",
-    "fullscreen",
-    "clipboard-read",
-    "clipboard-sanitized-write",
-  ]);
+  const allowedJitsiPermissionHosts = getAllowedJitsiPermissionHosts();
 
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     if (!shouldApplyShellContentSecurityPolicy(details.url)) {
@@ -832,12 +904,24 @@ function configureSecurityPolicy(): void {
     });
   });
 
-  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
-    callback(allowedPermissions.has(permission));
-  });
+  session.defaultSession.setPermissionRequestHandler(
+    (_webContents, permission, callback, details) => {
+      callback(
+        canApprovePermissionRequest(
+          permission,
+          getPermissionRequestOrigin(details),
+          allowedJitsiPermissionHosts,
+        ),
+      );
+    },
+  );
 
-  session.defaultSession.setPermissionCheckHandler((_webContents, permission) =>
-    allowedPermissions.has(permission),
+  session.defaultSession.setPermissionCheckHandler((_webContents, permission, requestingOrigin) =>
+    canApprovePermissionRequest(
+      permission,
+      typeof requestingOrigin === "string" ? requestingOrigin : "",
+      allowedJitsiPermissionHosts,
+    ),
   );
 }
 
