@@ -142,8 +142,51 @@ def _reload_nginx() -> None:
 # GitLab API
 # ---------------------------------------------------------------------------
 
+TRUSTED_PIPELINE_SOURCES = {"push", "schedule", "web"}
+
+
+def _protected_branch_head_sha(
+    session: requests.Session,
+    base_url: str,
+    project_id: str,
+    ref: str,
+) -> str:
+    """Return the protected branch HEAD SHA for *ref*."""
+    encoded_project = urllib.parse.quote(project_id, safe="")
+    encoded_ref = urllib.parse.quote(ref, safe="")
+    url = f"{base_url}/api/v4/projects/{encoded_project}/repository/branches/{encoded_ref}"
+    resp = session.get(url, timeout=30)
+    resp.raise_for_status()
+    branch = resp.json()
+
+    if branch.get("protected") is not True:
+        raise RuntimeError(f"Ref '{ref}' is not a protected GitLab branch")
+
+    commit = branch.get("commit")
+    if not isinstance(commit, dict) or not commit.get("id"):
+        raise RuntimeError(f"Protected branch '{ref}' does not expose a HEAD commit")
+
+    return str(commit["id"])
+
+
+def _pipeline_source(
+    session: requests.Session,
+    base_url: str,
+    project_id: str,
+    pipeline_id: int,
+) -> str:
+    """Return the source for a GitLab pipeline."""
+    encoded_project = urllib.parse.quote(project_id, safe="")
+    url = f"{base_url}/api/v4/projects/{encoded_project}/pipelines/{pipeline_id}"
+    resp = session.get(url, timeout=30)
+    resp.raise_for_status()
+    pipeline = resp.json()
+    return str(pipeline.get("source", ""))
+
+
 def _latest_job_id(session: requests.Session, base_url: str, project_id: str, ref: str) -> int:
-    """Return the job ID of the latest successful build-web job on *ref*."""
+    """Return the latest trusted successful build-web job on protected branch *ref*."""
+    branch_head_sha = _protected_branch_head_sha(session, base_url, project_id, ref)
     encoded = urllib.parse.quote(project_id, safe="")
     url = f"{base_url}/api/v4/projects/{encoded}/jobs"
     params: dict = {"scope[]": "success", "per_page": 100}
@@ -156,12 +199,41 @@ def _latest_job_id(session: requests.Session, base_url: str, project_id: str, re
         if not jobs:
             break
         for job in jobs:
-            if job.get("name") == "build-web" and job.get("ref") == ref:
-                log.info("Found job id=%s  pipeline=%s  created=%s",
-                         job["id"], job.get("pipeline", {}).get("id"), job.get("created_at"))
-                return int(job["id"])
+            if job.get("name") != "build-web" or job.get("ref") != ref:
+                continue
+            if job.get("tag") is not False:
+                log.warning("Skipping build-web job id=%s for non-branch ref", job.get("id"))
+                continue
+
+            commit = job.get("commit")
+            if not isinstance(commit, dict) or commit.get("id") != branch_head_sha:
+                log.warning("Skipping build-web job id=%s because it is not branch HEAD", job.get("id"))
+                continue
+
+            pipeline_id = job.get("pipeline", {}).get("id")
+            if pipeline_id is None:
+                log.warning("Skipping build-web job id=%s without pipeline id", job.get("id"))
+                continue
+
+            source = _pipeline_source(session, base_url, project_id, int(pipeline_id))
+            if source not in TRUSTED_PIPELINE_SOURCES:
+                log.warning(
+                    "Skipping build-web job id=%s from untrusted pipeline source=%s",
+                    job.get("id"),
+                    source or "<missing>",
+                )
+                continue
+
+            log.info(
+                "Found job id=%s  pipeline=%s  source=%s  created=%s",
+                job["id"],
+                pipeline_id,
+                source,
+                job.get("created_at"),
+            )
+            return int(job["id"])
         page += 1
-    raise RuntimeError(f"No successful 'build-web' job found for ref='{ref}'")
+    raise RuntimeError(f"No trusted successful 'build-web' job found for protected branch ref='{ref}'")
 
 
 def _download_artifact(
