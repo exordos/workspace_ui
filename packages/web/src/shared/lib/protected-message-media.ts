@@ -54,28 +54,67 @@ export function isAuthMediaPlaceholderAttr(value: string | null): boolean {
   return value === AUTH_IMAGE_PLACEHOLDER_SRC;
 }
 
-export function isProtectedUserUploadUrl(url: string): boolean {
+function getWindowOrigin(): string | null {
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  if (origin === "" || origin === "null") {
+    return null;
+  }
+  return origin;
+}
+
+function getTrustedProtectedMediaOrigins(): Set<string> {
+  const origins = new Set<string>();
+  const windowOrigin = getWindowOrigin();
+  if (windowOrigin != null) {
+    origins.add(windowOrigin);
+  }
+
+  const site = normalizeRealmSiteOriginForUploads(getRealmBaseUrl()).trim().replace(/\/+$/, "");
+  if (site !== "") {
+    try {
+      origins.add(new URL(site).origin);
+    } catch {
+      // Ignore invalid realm configuration; relative media paths still use same-origin handling.
+    }
+  }
+
+  return origins;
+}
+
+function parseProtectedMessageMediaUrl(url: string): URL | null {
   const value = url.trim();
-  if (value.length === 0) return false;
-  if (isUserUploadsPath(value)) return true;
+  if (value.length === 0) return null;
+  const base = getWindowOrigin() ?? "https://localhost";
   try {
-    const base = typeof window !== "undefined" ? window.location.origin : "https://localhost";
-    return isUserUploadsPath(new URL(value, base).pathname);
+    const parsed = new URL(value, base);
+    return isProtectedMessageMediaPath(parsed.pathname) ? parsed : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
-export function isProtectedMessageMediaUrl(url: string): boolean {
+function isAbsoluteUrlLike(value: string): boolean {
+  return /^[a-z][a-z0-9+.-]*:/i.test(value) || value.startsWith("//");
+}
+
+function isTrustedProtectedMessageMediaUrl(url: string): boolean {
   const value = url.trim();
   if (value.length === 0) return false;
-  if (isProtectedMessageMediaPath(value)) return true;
-  try {
-    const base = typeof window !== "undefined" ? window.location.origin : "https://localhost";
-    return isProtectedMessageMediaPath(new URL(value, base).pathname);
-  } catch {
-    return false;
-  }
+  if (!isAbsoluteUrlLike(value) && isProtectedMessageMediaPath(value)) return true;
+
+  const parsed = parseProtectedMessageMediaUrl(value);
+  if (parsed == null) return false;
+  return getTrustedProtectedMediaOrigins().has(parsed.origin);
+}
+
+export function isProtectedUserUploadUrl(url: string): boolean {
+  if (!isTrustedProtectedMessageMediaUrl(url)) return false;
+  const parsed = parseProtectedMessageMediaUrl(url);
+  return parsed != null ? isUserUploadsPath(parsed.pathname) : isUserUploadsPath(url.trim());
+}
+
+export function isProtectedMessageMediaUrl(url: string): boolean {
+  return isTrustedProtectedMessageMediaUrl(url);
 }
 
 export function normalizeProtectedUploadPath(url: string): string | null {
@@ -281,7 +320,17 @@ export function buildProtectedUploadFetchUrl(url: string): string {
   return value.length > 0 ? value : collapseDuplicateWorkspaceV1InUrl(normalizedPath);
 }
 
-/** Cross-origin protected media: cookies for OIDC session; Basic auth header for API key. */
+function omitAuthorizationHeader(headers: Record<string, string>): Record<string, string> {
+  const next: Record<string, string> = {};
+  for (const [key, value] of Object.entries(headers)) {
+    if (key.toLowerCase() !== "authorization") {
+      next[key] = value;
+    }
+  }
+  return next;
+}
+
+/** Cross-origin protected media: cookies for OIDC session; Basic auth header for the trusted realm. */
 function resolveCrossOriginProtectedUploadCredentials(
   headers: Record<string, string>,
 ): RequestCredentials {
@@ -305,6 +354,9 @@ export function resolveProtectedUploadFetchOptions(
     const parsed = new URL(candidate, base);
     const isCrossOrigin = typeof window !== "undefined" && parsed.origin !== window.location.origin;
     if (isCrossOrigin) {
+      if (!isTrustedProtectedMessageMediaUrl(candidate)) {
+        return { headers: omitAuthorizationHeader(withDevUploadProxy), credentials: "omit" };
+      }
       return {
         headers: withDevUploadProxy,
         credentials: resolveCrossOriginProtectedUploadCredentials(headers),

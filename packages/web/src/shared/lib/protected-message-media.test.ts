@@ -7,6 +7,8 @@ import {
   buildProtectedUploadFetchUrl,
   createDisplayableBlobUrl,
   isAuthMediaPlaceholderAttr,
+  isProtectedMessageMediaUrl,
+  isProtectedUserUploadUrl,
   prepareProtectedMessageHtml,
   resolveProtectedUploadFetchOptions,
 } from "~/shared/lib/protected-message-media";
@@ -56,7 +58,46 @@ describe("isAuthMediaPlaceholderAttr", () => {
   });
 });
 
+describe("protected media URL trust", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("does not classify attacker-controlled absolute upload URLs as protected", () => {
+    vi.stubGlobal("window", {
+      location: { origin: "https://app.example.com" },
+    });
+
+    expect(isProtectedUserUploadUrl("https://attacker.example/user_uploads/x.png")).toBe(false);
+    expect(isProtectedMessageMediaUrl("https://attacker.example/external_content/x.png")).toBe(
+      false,
+    );
+  });
+
+  it("allows relative and configured realm protected media URLs", () => {
+    vi.stubGlobal("window", {
+      location: { origin: "https://app.example.com" },
+    });
+
+    expect(isProtectedUserUploadUrl("/user_uploads/1/a.png")).toBe(true);
+    expect(isProtectedUserUploadUrl("https://zulip.example.com/user_uploads/1/a.png")).toBe(
+      true,
+    );
+  });
+});
+
 describe("prepareProtectedMessageHtml", () => {
+  it("does not rewrite attacker-controlled absolute upload URLs for authenticated fetch", () => {
+    const html = '<p><img src="https://attacker.example/user_uploads/x.png" alt="x" /></p>';
+    const out = prepareProtectedMessageHtml(html);
+    const template = document.createElement("template");
+    template.innerHTML = out;
+    const image = template.content.querySelector("img");
+
+    expect(image?.getAttribute("data-auth-src")).toBeNull();
+    expect(image?.getAttribute("src")).toBe("https://attacker.example/user_uploads/x.png");
+  });
+
   it("sets width and height on protected user-upload images fetched via thumbnail URL", () => {
     const html = '<p><img src="/user_uploads/1/abc/t.png" alt="x" /></p>';
     const out = prepareProtectedMessageHtml(html);
@@ -254,6 +295,29 @@ describe("resolveProtectedUploadFetchOptions", () => {
     );
     expect(init.credentials).toBe("include");
     expect(init.headers).toEqual({});
+  });
+
+  it("omits Authorization for untrusted cross-origin candidates", () => {
+    vi.spyOn(apiClient, "getCurrentInstance").mockReturnValue({
+      id: "api-key",
+      realm: "https://zulip.example.com",
+      email: "user@example.com",
+      apiKey: "key",
+      authType: "api_key",
+    });
+    vi.stubGlobal("window", {
+      location: { origin: "https://app.example.com" },
+    });
+    const init = resolveProtectedUploadFetchOptions(
+      "https://attacker.example/user_uploads/x.png",
+      {
+        Authorization: "Basic abc",
+        "X-Other": "kept",
+      },
+    );
+
+    expect(init.credentials).toBe("omit");
+    expect(init.headers).toEqual({ "X-Other": "kept" });
   });
 
   it("uses include credentials for cross-origin when Authorization header is empty", () => {

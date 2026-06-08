@@ -149,7 +149,39 @@ export function resolveMessageMediaUrl(src: string, baseUrl: string): string {
   return s.startsWith("/") ? `${base}${s}` : `${base}/${s}`;
 }
 
+function getUrlOrigin(value: string): string | null {
+  try {
+    return new URL(value).origin;
+  } catch {
+    return null;
+  }
+}
+
+function getTrustedMediaRewriteOrigins(bases: MessageMediaBaseUrls): Set<string> {
+  const origins = new Set<string>();
+  for (const base of [bases.uploadsBase, bases.realmBase]) {
+    if (base == null) continue;
+    const origin = getUrlOrigin(base);
+    if (origin != null) {
+      origins.add(origin);
+    }
+  }
+  const windowOrigin = typeof window !== "undefined" ? window.location.origin : "";
+  if (windowOrigin !== "" && windowOrigin !== "null") {
+    origins.add(windowOrigin);
+  }
+  return origins;
+}
+
+function shouldRewriteCanonicalMessageMediaUrl(url: string, bases: MessageMediaBaseUrls): boolean {
+  const trimmed = url.trim();
+  if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) return true;
+  const origin = getUrlOrigin(trimmed);
+  return origin != null && getTrustedMediaRewriteOrigins(bases).has(origin);
+}
+
 function rewriteCanonicalMessageMediaUrl(url: string, bases: MessageMediaBaseUrls): string {
+  if (!shouldRewriteCanonicalMessageMediaUrl(url, bases)) return url;
   if (isUserUploadsPath(url)) {
     return bases.uploadsBase != null
       ? rewriteProtectedMessageMediaUrlToCanonical(url, bases.uploadsBase)
