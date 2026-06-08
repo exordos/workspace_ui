@@ -590,7 +590,7 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
     const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
     setInstanceProvider(() => ({
       id: "i-session",
-      realm: "https://zulip-web-legacy.test",
+      realm: "https://zulip-web-legacy.test/json",
       email: "session-user@example.com",
       apiKey: "",
       authType: "session",
@@ -609,7 +609,7 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
     await zulipApi.post("/register", { event_types: JSON.stringify(["message"]) });
 
     const [legacyUrl, legacyInit] = mockFetch.mock.calls[0] as [string, RequestInit];
-    expect(legacyUrl).toBe(`${window.location.origin}/legacy`);
+    expect(legacyUrl).toBe("https://zulip-web-legacy.test/legacy");
     expect(legacyInit).toEqual(
       expect.objectContaining({
         method: "GET",
@@ -646,11 +646,16 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
     }));
     refreshZulipApiBase();
 
-    mockFetch.mockResolvedValueOnce(mockJsonResponse({ result: "success" }));
+    mockFetch
+      .mockResolvedValueOnce(new Response("<html></html>", { status: 200 }))
+      .mockResolvedValueOnce(mockJsonResponse({ result: "success" }));
 
     await zulipApi.post("/register", { event_types: JSON.stringify(["message"]) });
 
-    const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+    const [legacyUrl, legacyInit] = mockFetch.mock.calls[0] as [string, RequestInit];
+    expect(legacyUrl).toBe("https://electron-zulip.test/legacy");
+    expect(legacyInit.credentials).toBe("include");
+    const [, init] = mockFetch.mock.calls[1] as [string, RequestInit];
     const headers = init.headers as Record<string, string>;
     expect(electronApi.auth.getCsrfToken).toHaveBeenCalledWith({
       realm: "https://electron-zulip.test",

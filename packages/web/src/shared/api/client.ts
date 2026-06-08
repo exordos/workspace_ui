@@ -22,7 +22,6 @@ import {
   noteApiTransportSuccess,
   reportFailure,
 } from "~/shared/lib/connection-health";
-import { isElectron } from "~/shared/lib/electron";
 import { env } from "~/shared/lib/env";
 import { logApiCall } from "~/shared/lib/logger";
 import { extractLoggableRequestParams } from "~/shared/lib/logger-request-params.lib";
@@ -250,9 +249,7 @@ const zulipSessionCsrfMiddleware: Middleware = async (req, next) => {
   }
   const csrfToken =
     (instance != null ? getCachedSessionCsrfToken(instance.realm) : null) ??
-    (instance != null && !isElectron()
-      ? await getOrFetchWebSessionCsrfToken(instance.realm)
-      : null) ??
+    (instance != null ? await getOrFetchWebSessionCsrfToken(instance.realm) : null) ??
     readSessionCsrfTokenFromDocument() ??
     (instance != null ? await readElectronCsrfToken(instance.realm) : null);
   if (csrfToken && csrfToken.length > 0) {

@@ -39,8 +39,33 @@ export function parseSessionCsrfTokenFromHtml(html: string): string | null {
   return token.length > 0 ? token : null;
 }
 
+function buildLegacyUrlForRealm(realm: string): string | null {
+  try {
+    const legacyUrl = new URL("/legacy", normalizeRealm(realm));
+    if (legacyUrl.protocol === "http:" || legacyUrl.protocol === "https:") {
+      return legacyUrl.toString();
+    }
+  } catch {
+    // Fall back to browser origin below for web builds with a relative/missing realm.
+  }
+
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const legacyUrl = new URL("/legacy", window.location.origin);
+    if (legacyUrl.protocol === "http:" || legacyUrl.protocol === "https:") {
+      return legacyUrl.toString();
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 export async function refreshWebSessionCsrfTokenFromLegacy(realm: string): Promise<string | null> {
-  if (typeof window === "undefined" || typeof fetch === "undefined") {
+  if (typeof fetch === "undefined") {
     return null;
   }
   const cacheKey = cacheKeyForRealm(realm);
@@ -51,7 +76,11 @@ export async function refreshWebSessionCsrfTokenFromLegacy(realm: string): Promi
 
   const fetchPromise = (async (): Promise<string | null> => {
     try {
-      const res = await fetch(new URL("/legacy", window.location.origin).toString(), {
+      const legacyUrl = buildLegacyUrlForRealm(realm);
+      if (legacyUrl == null) {
+        return null;
+      }
+      const res = await fetch(legacyUrl, {
         method: "GET",
         credentials: "include",
         cache: "no-store",
