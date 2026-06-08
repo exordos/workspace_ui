@@ -228,5 +228,10 @@ export function sanitizeHtml(html: string, baseUrl?: string): string {
   return DOMPurify.sanitize(toSanitize, {
     ALLOWED_TAGS: MESSAGE_ALLOWED_TAGS,
     ADD_ATTR: MESSAGE_ADD_ATTR,
+    FORBID_ATTR: [
+      "data-auth-src",
+      "data-auth-poster",
+      "data-auth-background-image",
+    ],
   });
 }

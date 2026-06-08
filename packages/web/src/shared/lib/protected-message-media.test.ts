@@ -6,6 +6,7 @@ import {
   AUTH_MEDIA_BACKGROUND_IMAGE_DATA_ATTR,
   buildProtectedUploadFetchUrl,
   createDisplayableBlobUrl,
+  fetchProtectedUploadBlob,
   isAuthMediaPlaceholderAttr,
   prepareProtectedMessageHtml,
   resolveProtectedUploadFetchOptions,
@@ -297,5 +298,28 @@ describe("resolveProtectedUploadFetchOptions", () => {
     });
     const init = resolveProtectedUploadFetchOptions("/user_uploads/1/a.png", {});
     expect(init.credentials).toBe("include");
+  });
+
+  it("drops Authorization headers for non-protected cross-origin candidates", () => {
+    vi.stubGlobal("window", {
+      location: { origin: "https://app.example.com" },
+    });
+    const init = resolveProtectedUploadFetchOptions("https://attacker.example/collect", {
+      Authorization: "Basic abc",
+    });
+    expect(init.credentials).toBe("omit");
+    expect(init.headers).toEqual({});
+  });
+
+  it("does not fetch non-protected raw media values", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      fetchProtectedUploadBlob("https://attacker.example/collect", {
+        Authorization: "Basic abc",
+      }),
+    ).resolves.toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

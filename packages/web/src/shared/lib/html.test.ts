@@ -210,6 +210,13 @@ describe("sanitizeHtml", () => {
     expect(result).toContain('data-user-id="31"');
   });
 
+  it("strips internal protected-media data attributes from message HTML", () => {
+    const html =
+      '<div data-auth-src="https://attacker.example/src" data-auth-poster="https://attacker.example/poster" data-auth-background-image="https://attacker.example/bg">x</div>';
+    const result = sanitizeHtml(html);
+    expect(result).toBe("<div>x</div>");
+  });
+
   it("preserves del tags for markdown strikethrough", () => {
     // Protect bubble markdown fallback: `<del>` must not be stripped by sanitizer.
     const html = "<p><del>obsolete</del> text</p>";

@@ -299,27 +299,36 @@ export function resolveProtectedUploadFetchOptions(
   candidate: string,
   headers: Record<string, string>,
 ): RequestInit {
-  const withDevUploadProxy = appendDevRealmMediaProxyHeaders(candidate, headers);
+  const isProtectedCandidate = normalizeProtectedUploadPath(candidate) != null;
+  const requestHeaders = isProtectedCandidate
+    ? appendDevRealmMediaProxyHeaders(candidate, headers)
+    : {};
   try {
     const base = typeof window !== "undefined" ? window.location.origin : "https://localhost";
     const parsed = new URL(candidate, base);
     const isCrossOrigin = typeof window !== "undefined" && parsed.origin !== window.location.origin;
     if (isCrossOrigin) {
       return {
-        headers: withDevUploadProxy,
-        credentials: resolveCrossOriginProtectedUploadCredentials(headers),
+        headers: requestHeaders,
+        credentials: isProtectedCandidate
+          ? resolveCrossOriginProtectedUploadCredentials(requestHeaders)
+          : "omit",
       };
     }
   } catch {
     // Fall back to same-origin defaults when URL parsing fails.
   }
-  return { headers: withDevUploadProxy, credentials: "include" };
+  return { headers: requestHeaders, credentials: "include" };
 }
 
 export async function fetchProtectedUploadBlob(
   rawValue: string,
   headers: Record<string, string>,
 ): Promise<Blob | null> {
+  if (normalizeProtectedUploadPath(rawValue) == null) {
+    return null;
+  }
+
   const fetchUrl = buildProtectedUploadFetchUrl(rawValue);
   try {
     const response = await fetch(fetchUrl, resolveProtectedUploadFetchOptions(fetchUrl, headers));
