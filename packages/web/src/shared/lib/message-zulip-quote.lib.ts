@@ -7,6 +7,7 @@
  *
  * Usage:
  *   import {
+ *     buildZulipQuoteBlock,
  *     renderZulipQuoteBlocksInMarkdown,
  *     wrapWithZulipQuoteFence,
  *   } from "~/shared/lib/message-zulip-quote.lib";
@@ -99,6 +100,12 @@ export function wrapWithZulipQuoteFence(content: string): ZulipQuoteFenceWrapper
     close,
     wrap: (inner: string) => `${open}\n${inner}\n${close}`,
   };
+}
+
+/** Zulip quote block for compose/forward: header line, fenced content, trailing blank line. */
+export function buildZulipQuoteBlock(headerLine: string, content: string): string {
+  const quoteFence = wrapWithZulipQuoteFence(content);
+  return `${headerLine}\n${quoteFence.wrap(content)}\n\n`;
 }
 
 function buildQuoteBlockHtml(
