@@ -24,6 +24,7 @@ function buildCtx(
   const moveStreamTopicMock = overrides.moveStreamTopicMock ?? vi.fn();
   const moveStreamTopicMessagesMock = overrides.moveStreamTopicMessagesMock ?? vi.fn();
   const ctx: LayoutZulipEventDispatchContext = {
+    currentInstanceId: "inst-1",
     chatList: {
       currentUserId: 1,
       streamsMap: new Map(),
@@ -96,6 +97,7 @@ function buildCtx(
 function buildIntegrationCtx(): LayoutZulipEventDispatchContext {
   const noop = vi.fn();
   return {
+    currentInstanceId: "inst-1",
     chatList: useChatListStore.getState(),
     currentChat: useCurrentChatMessagesStore.getState(),
     users: {

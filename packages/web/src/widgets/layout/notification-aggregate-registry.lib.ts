@@ -1,6 +1,13 @@
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import { chatKeyFromRawMessage } from "~/shared/lib/message-cache-keys.lib";
+import {
+  buildNotificationAggregateTag,
+  buildNotificationMessageScopeKey,
+  buildScopedNotificationKey,
+} from "./layout-notification-tag.lib";
 import type { NotificationTitleContext } from "./layout-notification-title.lib";
+
+export { buildNotificationAggregateTag } from "./layout-notification-tag.lib";
 
 export interface NotificationAggregateSnapshot {
   tag: string;
@@ -22,29 +29,29 @@ interface NotificationAggregateEntry {
 }
 
 const aggregatesByTag = new Map<string, NotificationAggregateEntry>();
-const messageIdToAggregateTag = new Map<number, string>();
+const messageIdToAggregateTag = new Map<string, string>();
 
 export function buildNotificationBucketKeyFromMessage(
   message: ZulipRawMessage,
   currentUserId: number | null,
+  currentInstanceId: string | null,
 ): string | null {
   const chatKey = chatKeyFromRawMessage(message, currentUserId);
   if (chatKey == null) {
     return null;
   }
 
-  if (message.type === "stream" && message.stream_id != null) {
-    if (!Number.isInteger(message.sender_id) || message.sender_id <= 0) {
-      return null;
-    }
-    return `${chatKey}:sender:${message.sender_id}`;
+  const baseKey =
+    message.type === "stream" && message.stream_id != null
+      ? Number.isInteger(message.sender_id) && message.sender_id > 0
+        ? `${chatKey}:sender:${message.sender_id}`
+        : null
+      : chatKey;
+  if (baseKey == null) {
+    return null;
   }
 
-  return chatKey;
-}
-
-export function buildNotificationAggregateTag(bucketKey: string): string {
-  return `bucket:${bucketKey}`;
+  return buildScopedNotificationKey(baseKey, currentInstanceId);
 }
 
 function buildSnapshot(
@@ -78,22 +85,28 @@ function buildSnapshot(
 export function upsertNotificationAggregate(input: {
   message: ZulipRawMessage;
   currentUserId: number | null;
+  currentInstanceId: string | null;
   body: string;
   clickRoute?: string;
   titleContext: NotificationTitleContext;
 }): NotificationAggregateSnapshot | null {
-  const { message, currentUserId, body, clickRoute, titleContext } = input;
+  const { message, currentUserId, currentInstanceId, body, clickRoute, titleContext } = input;
   if (!Number.isInteger(message.id) || message.id <= 0) {
     return null;
   }
 
-  const bucketKey = buildNotificationBucketKeyFromMessage(message, currentUserId);
+  const bucketKey = buildNotificationBucketKeyFromMessage(
+    message,
+    currentUserId,
+    currentInstanceId,
+  );
   if (bucketKey == null) {
     return null;
   }
 
-  const tag = buildNotificationAggregateTag(bucketKey);
-  const existingTag = messageIdToAggregateTag.get(message.id);
+  const tag = buildNotificationAggregateTag(bucketKey, null);
+  const messageScopeKey = buildNotificationMessageScopeKey(message.id, currentInstanceId);
+  const existingTag = messageIdToAggregateTag.get(messageScopeKey);
   if (existingTag != null && existingTag !== tag) {
     return null;
   }
@@ -103,12 +116,15 @@ export function upsertNotificationAggregate(input: {
   };
   entry.messages.set(message.id, { body, clickRoute, titleContext });
   aggregatesByTag.set(tag, entry);
-  messageIdToAggregateTag.set(message.id, tag);
+  messageIdToAggregateTag.set(messageScopeKey, tag);
 
   return buildSnapshot(tag, entry);
 }
 
-export function consumeReadMessagesFromNotificationAggregates(messageIds: number[]): {
+export function consumeReadMessagesFromNotificationAggregates(
+  messageIds: number[],
+  currentInstanceId: string | null,
+): {
   closedTags: string[];
   updatedSnapshots: NotificationAggregateSnapshot[];
   untrackedMessageIds: number[];
@@ -125,7 +141,8 @@ export function consumeReadMessagesFromNotificationAggregates(messageIds: number
   }
 
   for (const messageId of uniqueValidIds) {
-    const tag = messageIdToAggregateTag.get(messageId);
+    const messageScopeKey = buildNotificationMessageScopeKey(messageId, currentInstanceId);
+    const tag = messageIdToAggregateTag.get(messageScopeKey);
     if (tag == null) {
       untrackedMessageIds.push(messageId);
       continue;
@@ -133,13 +150,13 @@ export function consumeReadMessagesFromNotificationAggregates(messageIds: number
 
     const entry = aggregatesByTag.get(tag);
     if (entry == null) {
-      messageIdToAggregateTag.delete(messageId);
+      messageIdToAggregateTag.delete(messageScopeKey);
       untrackedMessageIds.push(messageId);
       continue;
     }
 
     entry.messages.delete(messageId);
-    messageIdToAggregateTag.delete(messageId);
+    messageIdToAggregateTag.delete(messageScopeKey);
     affectedTags.add(tag);
   }
 
@@ -167,10 +184,23 @@ export function consumeReadMessagesFromNotificationAggregates(messageIds: number
   return { closedTags, updatedSnapshots, untrackedMessageIds };
 }
 
-export function drainAllNotificationAggregateTags(): string[] {
-  const tags = [...aggregatesByTag.keys()];
-  aggregatesByTag.clear();
-  messageIdToAggregateTag.clear();
+export function drainNotificationAggregateTagsForInstance(
+  currentInstanceId: string | null,
+): string[] {
+  const scopedPrefix =
+    currentInstanceId == null ? "bucket:" : buildNotificationAggregateTag("", currentInstanceId);
+  const tags = [...aggregatesByTag.keys()].filter((tag) => tag.startsWith(scopedPrefix));
+
+  for (const tag of tags) {
+    aggregatesByTag.delete(tag);
+  }
+
+  for (const [messageScopeKey, tag] of messageIdToAggregateTag) {
+    if (tags.includes(tag)) {
+      messageIdToAggregateTag.delete(messageScopeKey);
+    }
+  }
+
   return tags;
 }
 

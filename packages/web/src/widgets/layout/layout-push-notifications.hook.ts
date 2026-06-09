@@ -1,7 +1,9 @@
 import { useEffect } from "react";
+import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useNotificationSettingsStore } from "~/entities/notification-settings/notification-settings.model";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
+import { normalizeRealm } from "~/shared/api/zulip-realm.internal";
 import {
   registerNotifiedMessageId,
   wasRecentlyNotified,
@@ -14,6 +16,7 @@ import { pushService, type PushMessagePayload } from "~/shared/lib/push/push.ser
 import { buildStreamMessageNotificationFlags } from "~/shared/lib/stream-notification-notify.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
+import { buildNotificationFallbackTag } from "./layout-notification-tag.lib";
 
 function readViewportState(): { windowFocused: boolean; windowHidden: boolean } {
   if (typeof document === "undefined") {
@@ -23,6 +26,25 @@ function readViewportState(): { windowFocused: boolean; windowHidden: boolean } 
     windowFocused: document.hasFocus(),
     windowHidden: document.hidden,
   };
+}
+
+function resolvePushNotificationInstanceId(payload: PushMessagePayload): string | null {
+  const store = useInstancesStore.getState();
+  const currentInstanceId = store.currentInstanceId;
+  const realmUri = payload.realm_uri?.trim() ?? "";
+  if (realmUri.length === 0) {
+    return currentInstanceId;
+  }
+
+  const normalizedRealm = normalizeRealm(realmUri).toLowerCase();
+  if (normalizedRealm.length === 0) {
+    return currentInstanceId;
+  }
+
+  const matchedInstance = store.instances.find(
+    (instance) => normalizeRealm(instance.realm).toLowerCase() === normalizedRealm,
+  );
+  return matchedInstance?.id ?? currentInstanceId;
 }
 
 function handleForegroundPush(payload: PushMessagePayload): void {
@@ -83,12 +105,16 @@ function handleForegroundPush(payload: PushMessagePayload): void {
   const title = message.sender_full_name ?? "New message";
   const body = (message.content ?? "").slice(0, 100);
   const playSound = decision.playSound && resolvedPreset !== "none";
+  const instanceId = resolvePushNotificationInstanceId(payload);
 
   void notificationService
     .show({
       title,
       body,
-      tag: messageId != null ? `msg-${messageId}` : `push-${Date.now()}`,
+      tag:
+        messageId != null
+          ? buildNotificationFallbackTag(messageId, instanceId)
+          : `push-${Date.now()}`,
       silent: true,
     })
     .catch((err) => {

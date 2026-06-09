@@ -65,21 +65,21 @@ describe("closeReadMessageNotifications", () => {
   it("closes fallback message notifications for untracked read message ids", () => {
     const notifications = createNotifications();
 
-    closeReadMessageNotifications(notifications, [101, 202, 303]);
+    closeReadMessageNotifications(notifications, [101, 202, 303], "inst-1");
 
     expect(notifications.closeByTag).toHaveBeenCalledTimes(3);
-    expect(notifications.closeByTag).toHaveBeenNthCalledWith(1, "msg-101");
-    expect(notifications.closeByTag).toHaveBeenNthCalledWith(2, "msg-202");
-    expect(notifications.closeByTag).toHaveBeenNthCalledWith(3, "msg-303");
+    expect(notifications.closeByTag).toHaveBeenNthCalledWith(1, "msg:inst-1::101");
+    expect(notifications.closeByTag).toHaveBeenNthCalledWith(2, "msg:inst-1::202");
+    expect(notifications.closeByTag).toHaveBeenNthCalledWith(3, "msg:inst-1::303");
   });
 
   it("deduplicates IDs and ignores invalid values", () => {
     const notifications = createNotifications();
 
-    closeReadMessageNotifications(notifications, [101, 101, 0, -1, Number.NaN]);
+    closeReadMessageNotifications(notifications, [101, 101, 0, -1, Number.NaN], "inst-1");
 
     expect(notifications.closeByTag).toHaveBeenCalledTimes(1);
-    expect(notifications.closeByTag).toHaveBeenCalledWith("msg-101");
+    expect(notifications.closeByTag).toHaveBeenCalledWith("msg:inst-1::101");
   });
 
   it("updates the bucket notification when only part of it is read", async () => {
@@ -90,6 +90,7 @@ describe("closeReadMessageNotifications", () => {
     upsertNotificationAggregate({
       message: first,
       currentUserId: 7,
+      currentInstanceId: "inst-1",
       body: "Hello",
       clickRoute: "/stream/10-general-discussion/topic/Bugs?msg=55",
       titleContext: buildNotificationTitleContextFromMessage(first, 7),
@@ -97,19 +98,20 @@ describe("closeReadMessageNotifications", () => {
     upsertNotificationAggregate({
       message: second,
       currentUserId: 7,
+      currentInstanceId: "inst-1",
       body: "Latest",
       clickRoute: "/stream/10-general-discussion/topic/Bugs?msg=56",
       titleContext: buildNotificationTitleContextFromMessage(second, 7),
     });
 
-    closeReadMessageNotifications(notifications, [56]);
+    closeReadMessageNotifications(notifications, [56], "inst-1");
 
     expect(notifications.closeByTag).not.toHaveBeenCalled();
     await vi.waitFor(() => {
       expect(notifications.show).toHaveBeenCalledWith({
         title: "Alice · General Discussion · Bugs",
         body: "Hello",
-        tag: "bucket:stream:10:Bugs:sender:42",
+        tag: "bucket:inst-1::stream:10:Bugs:sender:42",
         silent: true,
         clickRoute: "/stream/10-general-discussion/topic/Bugs?msg=55",
       });
@@ -123,15 +125,18 @@ describe("closeReadMessageNotifications", () => {
     upsertNotificationAggregate({
       message,
       currentUserId: 7,
+      currentInstanceId: "inst-1",
       body: "Hello",
       clickRoute: "/stream/10-general-discussion/topic/Bugs?msg=55",
       titleContext: buildNotificationTitleContextFromMessage(message, 7),
     });
 
-    closeReadMessageNotifications(notifications, [55]);
+    closeReadMessageNotifications(notifications, [55], "inst-1");
 
     expect(notifications.closeByTag).toHaveBeenCalledTimes(1);
-    expect(notifications.closeByTag).toHaveBeenCalledWith("bucket:stream:10:Bugs:sender:42");
+    expect(notifications.closeByTag).toHaveBeenCalledWith(
+      "bucket:inst-1::stream:10:Bugs:sender:42",
+    );
     expect(notifications.show).not.toHaveBeenCalled();
   });
 
@@ -144,6 +149,7 @@ describe("closeReadMessageNotifications", () => {
     upsertNotificationAggregate({
       message: first,
       currentUserId: 7,
+      currentInstanceId: "inst-1",
       body: "Hello",
       clickRoute: "/stream/10-general-discussion/topic/Bugs?msg=55",
       titleContext: buildNotificationTitleContextFromMessage(first, 7),
@@ -151,15 +157,28 @@ describe("closeReadMessageNotifications", () => {
     upsertNotificationAggregate({
       message: second,
       currentUserId: 7,
+      currentInstanceId: "inst-1",
       body: "Other",
       clickRoute: "/stream/10-general-discussion/topic/Bugs?msg=56",
       titleContext: buildNotificationTitleContextFromMessage(second, 7),
     });
 
-    closeAllActiveMessageNotifications(notifications);
+    closeAllActiveMessageNotifications(notifications, "inst-1");
 
     expect(notifications.closeByTag).toHaveBeenCalledTimes(2);
-    expect(notifications.closeByTag).toHaveBeenCalledWith("bucket:stream:10:Bugs:sender:42");
-    expect(notifications.closeByTag).toHaveBeenCalledWith("bucket:stream:10:Bugs:sender:99");
+    expect(notifications.closeByTag).toHaveBeenCalledWith(
+      "bucket:inst-1::stream:10:Bugs:sender:42",
+    );
+    expect(notifications.closeByTag).toHaveBeenCalledWith(
+      "bucket:inst-1::stream:10:Bugs:sender:99",
+    );
+  });
+
+  it("does not close fallback tags for another instance", () => {
+    const notifications = createNotifications();
+
+    closeReadMessageNotifications(notifications, [101], "inst-2");
+
+    expect(notifications.closeByTag).toHaveBeenCalledWith("msg:inst-2::101");
   });
 });

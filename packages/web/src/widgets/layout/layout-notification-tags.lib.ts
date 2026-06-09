@@ -1,8 +1,9 @@
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
+import { buildNotificationFallbackTag } from "./layout-notification-tag.lib";
 import { formatNotificationTitle } from "./layout-notification-title.lib";
 import {
   consumeReadMessagesFromNotificationAggregates,
-  drainAllNotificationAggregateTags,
+  drainNotificationAggregateTagsForInstance,
 } from "./notification-aggregate-registry.lib";
 
 interface NotificationTagActions {
@@ -26,9 +27,10 @@ function closeTag(closeByTag: NotificationTagActions["closeByTag"], tag: string)
 function closeMessageTags(
   closeByTag: NotificationTagActions["closeByTag"],
   messageIds: number[],
+  currentInstanceId: string | null,
 ): void {
   for (const messageId of messageIds) {
-    closeTag(closeByTag, `msg-${messageId}`);
+    closeTag(closeByTag, buildNotificationFallbackTag(messageId, currentInstanceId));
   }
 }
 
@@ -47,8 +49,11 @@ async function showUpdatedAggregateNotification(
   });
 }
 
-export function closeAllActiveMessageNotifications(notifications: NotificationTagActions): void {
-  for (const tag of drainAllNotificationAggregateTags()) {
+export function closeAllActiveMessageNotifications(
+  notifications: NotificationTagActions,
+  currentInstanceId: string | null,
+): void {
+  for (const tag of drainNotificationAggregateTagsForInstance(currentInstanceId)) {
     closeTag(notifications.closeByTag, tag);
   }
 }
@@ -56,15 +61,16 @@ export function closeAllActiveMessageNotifications(notifications: NotificationTa
 export function closeReadMessageNotifications(
   notifications: NotificationTagActions,
   messageIds: number[],
+  currentInstanceId: string | null,
 ): void {
   const { closedTags, updatedSnapshots, untrackedMessageIds } =
-    consumeReadMessagesFromNotificationAggregates(messageIds);
+    consumeReadMessagesFromNotificationAggregates(messageIds, currentInstanceId);
 
   for (const tag of closedTags) {
     closeTag(notifications.closeByTag, tag);
   }
 
-  closeMessageTags(notifications.closeByTag, untrackedMessageIds);
+  closeMessageTags(notifications.closeByTag, untrackedMessageIds, currentInstanceId);
 
   for (const snapshot of updatedSnapshots) {
     void showUpdatedAggregateNotification(notifications, snapshot).catch((err) => {

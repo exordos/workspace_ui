@@ -131,7 +131,7 @@ function applyMarkAllReadFromQueueEvent(
   }
 
   const indexedIds = [...chatListStore.messageIdToLocation.keys()];
-  closeAllActiveMessageNotifications(notifications);
+  closeAllActiveMessageNotifications(notifications, ctx.currentInstanceId);
 
   logSidebarUnreadFlow("event:update_message_flags:read:markAll", {
     markAllRead: true,
@@ -177,7 +177,7 @@ export function handleUpdateMessageFlags(
   });
 
   if (op === "add") {
-    closeReadMessageNotifications(notifications, messageIds);
+    closeReadMessageNotifications(notifications, messageIds, ctx.currentInstanceId);
     const chatListStore = useChatListStore.getState();
     applyChatListReadDecrementGrouped(() => useChatListStore.getState(), chatListStore, {
       messageIds,

@@ -127,6 +127,7 @@ export interface LayoutJitsiCallActions {
 }
 
 export interface LayoutZulipEventDispatchContext {
+  currentInstanceId: string | null;
   chatList: LayoutChatListActions;
   currentChat: LayoutCurrentChatActions;
   users: LayoutUsersActions;

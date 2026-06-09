@@ -55,6 +55,7 @@ function setMuteSnapshot(overrides: Partial<MuteSnapshotInput> = {}): void {
 
 function createContext(notifications = createNotifications()): LayoutZulipEventDispatchContext {
   return {
+    currentInstanceId: "inst-1",
     chatList: {
       currentUserId: 7,
       streamsMap: new Map(),
@@ -104,12 +105,19 @@ describe("deliverDesktopNotificationForMessage", () => {
   it("passes a focused stream topic route to native notification options", () => {
     const notifications = createNotifications();
 
-    deliverDesktopNotificationForMessage(createRawMessage(), notifications, false, "default", 7);
+    deliverDesktopNotificationForMessage(
+      createRawMessage(),
+      notifications,
+      false,
+      "default",
+      7,
+      "inst-1",
+    );
 
     expect(notifications.show).toHaveBeenCalledWith({
       title: "Alice · General Discussion · Bugs",
       body: "Hello",
-      tag: "bucket:stream:10:Bugs:sender:42",
+      tag: "bucket:inst-1::stream:10:Bugs:sender:42",
       silent: true,
       clickRoute: "/stream/10-general-discussion/topic/Bugs?msg=55",
     });
@@ -133,12 +141,13 @@ describe("deliverDesktopNotificationForMessage", () => {
       false,
       "default",
       7,
+      "inst-1",
     );
 
     expect(notifications.show).toHaveBeenCalledWith({
       title: "Alice",
       body: "Hello",
-      tag: "bucket:dm:7,42",
+      tag: "bucket:inst-1::dm:7,42",
       silent: true,
       clickRoute: "/dm/42-alice?msg=77",
     });
@@ -158,12 +167,13 @@ describe("deliverDesktopNotificationForMessage", () => {
       false,
       "default",
       7,
+      "inst-1",
     );
 
     expect(notifications.show).toHaveBeenCalledWith({
       title: "Alice",
       body: "Hello",
-      tag: "msg-55",
+      tag: "msg:inst-1::55",
       silent: true,
     });
   });
@@ -244,7 +254,7 @@ describe("maybeNotifyNewMessage", () => {
     expect(notifications.show).toHaveBeenCalledWith({
       title: "Alice · General Discussion · Bugs",
       body: "Hello",
-      tag: "bucket:stream:10:Bugs:sender:42",
+      tag: "bucket:inst-1::stream:10:Bugs:sender:42",
       silent: true,
       clickRoute: "/stream/10-general-discussion/topic/Bugs?msg=55",
     });
@@ -262,7 +272,7 @@ describe("maybeNotifyNewMessage", () => {
     expect(notifications.show).toHaveBeenCalledWith({
       title: "Alice · General Discussion · Bugs",
       body: "Hello",
-      tag: "bucket:stream:10:Bugs:sender:42",
+      tag: "bucket:inst-1::stream:10:Bugs:sender:42",
       silent: true,
       clickRoute: "/stream/10-general-discussion/topic/Bugs?msg=55",
     });
@@ -289,7 +299,7 @@ describe("maybeNotifyNewMessage", () => {
 
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({
-        tag: "bucket:stream:10:Bugs:sender:42",
+        tag: "bucket:inst-1::stream:10:Bugs:sender:42",
         clickRoute: "/stream/10-general-discussion/topic/Bugs?msg=55",
       }),
     );
@@ -319,14 +329,14 @@ describe("maybeNotifyNewMessage", () => {
     expect(notifications.show).toHaveBeenNthCalledWith(1, {
       title: "Alice · General Discussion · Bugs",
       body: "Hello",
-      tag: "bucket:stream:10:Bugs:sender:42",
+      tag: "bucket:inst-1::stream:10:Bugs:sender:42",
       silent: true,
       clickRoute: "/stream/10-general-discussion/topic/Bugs?msg=55",
     });
     expect(notifications.show).toHaveBeenNthCalledWith(2, {
       title: "2 messages from Alice · General Discussion · Bugs",
       body: "Latest",
-      tag: "bucket:stream:10:Bugs:sender:42",
+      tag: "bucket:inst-1::stream:10:Bugs:sender:42",
       silent: true,
       clickRoute: "/stream/10-general-discussion/topic/Bugs?msg=56",
     });
@@ -356,13 +366,13 @@ describe("maybeNotifyNewMessage", () => {
     expect(notifications.show).toHaveBeenCalledTimes(2);
     expect(notifications.show).toHaveBeenNthCalledWith(
       1,
-      expect.objectContaining({ tag: "bucket:stream:10:Bugs:sender:42" }),
+      expect.objectContaining({ tag: "bucket:inst-1::stream:10:Bugs:sender:42" }),
     );
     expect(notifications.show).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
         title: "Bob · General Discussion · Bugs",
-        tag: "bucket:stream:10:Bugs:sender:99",
+        tag: "bucket:inst-1::stream:10:Bugs:sender:99",
       }),
     );
   });
@@ -390,7 +400,7 @@ describe("maybeNotifyNewMessage", () => {
     expect(notifications.show).toHaveBeenCalledWith({
       title: "Alice",
       body: "Hello",
-      tag: "bucket:dm:7,42",
+      tag: "bucket:inst-1::dm:7,42",
       silent: true,
       clickRoute: "/dm/42-alice?msg=77",
     });
@@ -417,5 +427,30 @@ describe("maybeNotifyNewMessage", () => {
     );
 
     expect(notifications.show).not.toHaveBeenCalled();
+  });
+
+  it("keeps identical notifications isolated across instances", () => {
+    setMuteSnapshot({
+      streamDesktopNotifyEnabledIds: [10],
+      streamAudibleNotifyEnabledIds: [10],
+    });
+    const notificationsA = createNotifications();
+    const notificationsB = createNotifications();
+
+    maybeNotifyNewMessage(createContext(notificationsA), createRawMessage(), 7, false, false);
+    maybeNotifyNewMessage(
+      { ...createContext(notificationsB), currentInstanceId: "inst-2" },
+      createRawMessage(),
+      7,
+      false,
+      false,
+    );
+
+    expect(notificationsA.show).toHaveBeenCalledWith(
+      expect.objectContaining({ tag: "bucket:inst-1::stream:10:Bugs:sender:42" }),
+    );
+    expect(notificationsB.show).toHaveBeenCalledWith(
+      expect.objectContaining({ tag: "bucket:inst-2::stream:10:Bugs:sender:42" }),
+    );
   });
 });

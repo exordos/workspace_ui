@@ -78,6 +78,7 @@ export function handleLayoutZulipEventLoopQueueEvent(
   const jitsiCall = useJitsiCallStore.getState();
 
   dispatchZulipEvent(event, {
+    currentInstanceId: options.currentInstanceId,
     chatList,
     currentChat,
     users,

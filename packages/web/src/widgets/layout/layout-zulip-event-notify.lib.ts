@@ -12,6 +12,7 @@ import { buildRouteFromMessage } from "~/shared/lib/push-click";
 import { buildStreamMessageNotificationFlags } from "~/shared/lib/stream-notification-notify.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
+import { buildNotificationFallbackTag } from "./layout-notification-tag.lib";
 import {
   buildNotificationTitleContextFromMessage,
   formatNotificationTitle,
@@ -41,6 +42,7 @@ export function deliverDesktopNotificationForMessage(
   playSound: boolean,
   soundPreset: ReturnType<typeof resolveNotificationSoundPreset>,
   currentUserId: number | null,
+  currentInstanceId: string | null,
 ): void {
   registerNotifiedMessageId(raw.id);
 
@@ -59,6 +61,7 @@ export function deliverDesktopNotificationForMessage(
   const aggregate = upsertNotificationAggregate({
     message: raw,
     currentUserId,
+    currentInstanceId,
     body: contentPreview,
     clickRoute,
     titleContext,
@@ -67,7 +70,7 @@ export function deliverDesktopNotificationForMessage(
     aggregate != null
       ? formatNotificationTitle(aggregate.titleContext, aggregate.count)
       : formatNotificationTitle(titleContext);
-  const notificationTag = aggregate?.tag ?? `msg-${raw.id}`;
+  const notificationTag = aggregate?.tag ?? buildNotificationFallbackTag(raw.id, currentInstanceId);
 
   notifications
     .show({
@@ -133,5 +136,6 @@ export function maybeNotifyNewMessage(
     decision.playSound,
     resolvedPreset,
     currentUserId,
+    ctx.currentInstanceId,
   );
 }
