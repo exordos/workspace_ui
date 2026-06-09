@@ -97,10 +97,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     const { safeMessageHtml, displayHtmlForJitsi } = useMemo(() => {
       const rawHtml = messageBodyToUnsanitizedDisplayHtml(message.content, {
         resolveUserMention,
-        resolveCustomEmojiShortcodeImageUrl,
       });
       return {
-        safeMessageHtml: prepareProtectedMessageHtml(rawHtml, imagesBase),
+        safeMessageHtml: prepareProtectedMessageHtml(rawHtml, imagesBase, {
+          resolveCustomEmojiShortcodeImageUrl,
+        }),
         displayHtmlForJitsi: rawHtml,
       };
     }, [message.content, imagesBase, resolveUserMention, resolveCustomEmojiShortcodeImageUrl]);

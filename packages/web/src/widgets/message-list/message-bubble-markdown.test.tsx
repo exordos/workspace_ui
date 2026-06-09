@@ -66,6 +66,21 @@ describe("MessageBubble markdown body", () => {
     expect(body?.innerHTML).toContain("<em>Hi</em>");
   });
 
+  it("removes inline event handlers from markdown HTML before DOM insertion", () => {
+    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+
+    const { container } = render(
+      <MessageBubble
+        message={createMessage({ content: 'hi <img src="x" onerror="alert(1)">' })}
+        isOwn={false}
+      />,
+    );
+
+    const body = container.querySelector(".message-body");
+    expect(body?.innerHTML).toContain("<img");
+    expect(body?.innerHTML).not.toContain("onerror");
+  });
+
   it("styles pre blocks to wrap long unbroken text inside the bubble", () => {
     useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
 

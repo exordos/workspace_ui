@@ -61,6 +61,21 @@ function addIdentityFromHref(identities: Set<string>, href: string | null | unde
   }
 }
 
+export function collectMessageInlineImageIdentitiesFromContainer(
+  container: ParentNode,
+): Set<string> {
+  const identities = new Set<string>();
+  for (const block of container.querySelectorAll(".message_inline_image")) {
+    for (const anchor of block.querySelectorAll<HTMLAnchorElement>("a[href]")) {
+      addIdentityFromHref(identities, anchor.getAttribute("href"));
+    }
+    for (const image of block.querySelectorAll<HTMLImageElement>("img[src]")) {
+      addIdentityFromHref(identities, image.getAttribute("src"));
+    }
+  }
+  return identities;
+}
+
 /** Collects upload image identities already rendered inside Zulip `.message_inline_image` blocks. */
 export function collectMessageInlineImageIdentities(html: string): Set<string> {
   const identities = new Set<string>();
@@ -70,17 +85,7 @@ export function collectMessageInlineImageIdentities(html: string): Set<string> {
 
   const wrapper = document.createElement("div");
   wrapper.innerHTML = html;
-
-  for (const block of wrapper.querySelectorAll(".message_inline_image")) {
-    for (const anchor of block.querySelectorAll<HTMLAnchorElement>("a[href]")) {
-      addIdentityFromHref(identities, anchor.getAttribute("href"));
-    }
-    for (const image of block.querySelectorAll<HTMLImageElement>("img[src]")) {
-      addIdentityFromHref(identities, image.getAttribute("src"));
-    }
-  }
-
-  return identities;
+  return collectMessageInlineImageIdentitiesFromContainer(wrapper);
 }
 
 /** True when the link should stay text — the same file is already inlined in `.message_inline_image`. */

@@ -1,10 +1,7 @@
 import { useEffect, useState } from "react";
 import { t } from "~/i18n/i18n";
 import { renderMessageContent } from "~/shared/api/zulip-messages";
-import {
-  applySyntaxHighlighting,
-  messageBodyToUnsanitizedDisplayHtml,
-} from "~/shared/lib/message-markdown-display.lib";
+import { messageBodyToUnsanitizedDisplayHtml } from "~/shared/lib/message-markdown-display.lib";
 
 export function useMessageComposerPreview(options: {
   mode: "write" | "preview";
@@ -31,7 +28,7 @@ export function useMessageComposerPreview(options: {
     void renderMessageContent(outgoingBody)
       .then((rendered) => {
         if (cancelled) return;
-        setHtml(applySyntaxHighlighting(rendered));
+        setHtml(rendered);
       })
       .catch(() => {
         if (cancelled) return;

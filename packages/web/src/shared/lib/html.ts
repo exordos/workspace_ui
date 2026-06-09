@@ -112,7 +112,7 @@ const MESSAGE_ALLOWED_TAGS = [
   "td",
 ];
 
-// Omit event handlers and style — XSS vectors.
+// Event handlers are never allowlisted; message rendering also depends on selected data attrs.
 const MESSAGE_ADD_ATTR = [
   "src",
   "alt",
@@ -228,5 +228,20 @@ export function sanitizeHtml(html: string, baseUrl?: string): string {
   return DOMPurify.sanitize(toSanitize, {
     ALLOWED_TAGS: MESSAGE_ALLOWED_TAGS,
     ADD_ATTR: MESSAGE_ADD_ATTR,
+  });
+}
+
+export function sanitizeHtmlToFragment(html: string, baseUrl?: string): DocumentFragment | null {
+  if (typeof document === "undefined") {
+    return null;
+  }
+  ensureMessageLinkTargetHooks();
+  const effectiveBases = resolveSanitizeMediaBaseUrls(html, baseUrl);
+  const withCanonicalMedia = rewriteCanonicalProtectedMessageMediaAttrs(html, effectiveBases);
+  const toSanitize = rewriteRelativeMediaSrc(withCanonicalMedia, effectiveBases);
+  return DOMPurify.sanitize(toSanitize, {
+    ALLOWED_TAGS: MESSAGE_ALLOWED_TAGS,
+    ADD_ATTR: MESSAGE_ADD_ATTR,
+    RETURN_DOM_FRAGMENT: true,
   });
 }

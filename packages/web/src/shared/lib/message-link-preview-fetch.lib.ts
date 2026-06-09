@@ -12,6 +12,7 @@
  */
 import { fetchMessageRenderedHtmlById, renderMessageContent } from "~/shared/api/zulip-messages";
 import { guard } from "~/shared/lib/guards";
+import { sanitizeHtmlToFragment } from "~/shared/lib/html";
 import { createLogger } from "~/shared/lib/logger";
 import { traceLinkPreview } from "~/shared/lib/message-link-preview-trace.lib";
 import {
@@ -92,9 +93,11 @@ export function parseAllMessageEmbedsFromRenderedHtml(html: string): LinkPreview
     return [];
   }
 
-  const template = document.createElement("template");
-  template.innerHTML = trimmed;
-  const embeds = template.content.querySelectorAll(".message_embed");
+  const fragment = sanitizeHtmlToFragment(trimmed);
+  if (fragment == null) {
+    return [];
+  }
+  const embeds = fragment.querySelectorAll(".message_embed");
   const result: LinkPreviewData[] = [];
   const seen = new Set<string>();
   for (const embed of embeds) {

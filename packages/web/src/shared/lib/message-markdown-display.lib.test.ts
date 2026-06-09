@@ -99,7 +99,7 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
     expect(html).toContain("Top Secret Header");
   });
 
-  it("fills missing/empty spoiler header with default label", () => {
+  it("does not normalize pre-rendered HTML before the sanitize boundary", () => {
     const html = messageBodyToUnsanitizedDisplayHtml(
       [
         '<div class="spoiler-block">',
@@ -107,8 +107,7 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
         "</div>",
       ].join(""),
     );
-    expect(html).toContain('class="spoiler-header"');
-    expect(html).toContain("Spoiler");
+    expect(html).not.toContain('class="spoiler-header"');
   });
 
   it("injects user-mention from reply silent @_**Name|id** without resolver", () => {
@@ -119,15 +118,32 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
     expect(html).toContain(">@Doublek<");
     expect(html).not.toContain("**");
   });
+});
 
+function renderPreparedMessageHtml(
+  body: string,
+  options?: {
+    resolveUserMention?: (displayName: string) => number | null;
+    resolveCustomEmojiShortcodeImageUrl?: (shortcode: string) => string | undefined;
+  },
+): string {
+  const raw = messageBodyToUnsanitizedDisplayHtml(body, {
+    resolveUserMention: options?.resolveUserMention,
+  });
+  return prepareProtectedMessageHtml(raw, "https://sys.example.com/workspace/v1", {
+    resolveCustomEmojiShortcodeImageUrl: options?.resolveCustomEmojiShortcodeImageUrl,
+  });
+}
+
+describe("prepareProtectedMessageHtml message rendering pipeline", () => {
   it("renders unicode emoji from shortcode", () => {
-    const html = messageBodyToUnsanitizedDisplayHtml("Hi :smile:");
+    const html = renderPreparedMessageHtml("Hi :smile:");
     expect(html).toContain("😄");
     expect(html).not.toContain(":smile:");
   });
 
   it("resolves frequently used zulip-style shortcodes from emojibase dataset", () => {
-    const html = messageBodyToUnsanitizedDisplayHtml("A :open_mouth: B :+1:");
+    const html = renderPreparedMessageHtml("A :open_mouth: B :+1:");
     expect(html).toContain("😮");
     expect(html).toContain("👍");
     expect(html).not.toContain(":open_mouth:");
@@ -135,14 +151,14 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
   });
 
   it("resolves zulip alias overrides for unicode emoji shortcodes", () => {
-    const html = messageBodyToUnsanitizedDisplayHtml("A :working_on_it: B :hammer_and_wrench:");
+    const html = renderPreparedMessageHtml("A :working_on_it: B :hammer_and_wrench:");
     expect(html).toContain("🛠");
     expect(html).not.toContain(":working_on_it:");
     expect(html).not.toContain(":hammer_and_wrench:");
   });
 
   it("renders custom emoji shortcode as inline image when resolver returns URL", () => {
-    const html = messageBodyToUnsanitizedDisplayHtml("Hi :party_parrot:", {
+    const html = renderPreparedMessageHtml("Hi :party_parrot:", {
       resolveCustomEmojiShortcodeImageUrl: (shortcode) =>
         shortcode === "party_parrot" ? "https://cdn.example.com/parrot.png" : undefined,
     });
@@ -153,12 +169,12 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
   });
 
   it("leaves unknown emoji shortcode as plain text", () => {
-    const html = messageBodyToUnsanitizedDisplayHtml("Hi :definitely_unknown_shortcode:");
+    const html = renderPreparedMessageHtml("Hi :definitely_unknown_shortcode:");
     expect(html).toContain(":definitely_unknown_shortcode:");
   });
 
   it("does not replace shortcode inside inline code or fenced code", () => {
-    const html = messageBodyToUnsanitizedDisplayHtml(
+    const html = renderPreparedMessageHtml(
       "Inline `:smile:` and block:\n```txt\n:smile:\n```\nOutside :smile:",
     );
     expect(html).toContain("<code>:smile:</code>");
@@ -169,7 +185,7 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
   it("does not parse spoiler markers inside inline/fenced code", () => {
     // Markers inside code segments must remain literal text.
     // Spoiler conversion applies only to plain text outside code.
-    const html = messageBodyToUnsanitizedDisplayHtml(
+    const html = renderPreparedMessageHtml(
       "Inline `||keep||` and block:\n```txt\n||stay||\n```\nOutside ||reveal||",
     );
     expect(html).toContain("<code>||keep||</code>");
@@ -179,7 +195,7 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
   });
 
   it("renders mentions and emoji shortcodes together", () => {
-    const html = messageBodyToUnsanitizedDisplayHtml("Hello @**John** :smile:", {
+    const html = renderPreparedMessageHtml("Hello @**John** :smile:", {
       resolveUserMention: (name) => (name === "John" ? 99 : null),
     });
     expect(html).toContain('class="user-mention"');
@@ -195,7 +211,7 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
       '<img src="/user_uploads/thumbnail/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png/840x560.webp" alt="image.png">',
       "</a></div>",
     ].join("");
-    const html = messageBodyToUnsanitizedDisplayHtml(zulipHtml);
+    const html = renderPreparedMessageHtml(zulipHtml);
     const imgCount = (html.match(/<img\b/gi) ?? []).length;
     expect(imgCount).toBe(1);
     expect(html).toContain("message_inline_image");
@@ -203,25 +219,31 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
   });
 
   it("inlines user_upload image links as protected preview images", () => {
-    const html = messageBodyToUnsanitizedDisplayHtml(
+    const html = renderPreparedMessageHtml(
       "[image.png](/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png)",
     );
-    expect(html).toContain('<a href="/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png"><img');
     expect(html).toContain(
-      'data-auth-src="/user_uploads/thumbnail/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png/840x560.webp"',
+      '<a href="https://sys.example.com/workspace/v1/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png"',
+    );
+    expect(html).toContain(
+      'data-auth-src="https://sys.example.com/workspace/v1/user_uploads/thumbnail/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png/840x560.webp"',
     );
     expect(html).toContain('src="data:image/svg+xml');
-    expect(html).not.toMatch(/<img[^>]*\ssrc="\/user_uploads\//);
+    expect(html).not.toMatch(
+      /<img[^>]*\ssrc="https:\/\/sys\.example\.com\/workspace\/v1\/user_uploads\//,
+    );
   });
 
   it("keeps non-image user_upload links as regular links", () => {
-    const html = messageBodyToUnsanitizedDisplayHtml("[report.pdf](/user_uploads/2/ff/report.pdf)");
-    expect(html).toContain('<a href="/user_uploads/2/ff/report.pdf">report.pdf</a>');
+    const html = renderPreparedMessageHtml("[report.pdf](/user_uploads/2/ff/report.pdf)");
+    expect(html).toContain(
+      '<a href="https://sys.example.com/workspace/v1/user_uploads/2/ff/report.pdf" target="_blank" rel="noopener noreferrer">report.pdf</a>',
+    );
     expect(html).not.toContain("<img");
   });
 
   it("inlines user_upload video links into preview video elements", () => {
-    const html = messageBodyToUnsanitizedDisplayHtml(
+    const html = renderPreparedMessageHtml(
       "[clip.webm](/user_uploads/2/52/zVGJf8gDr9qR_a5GJff5PZS7/Screencast.webm)",
     );
     expect(html).toContain("<video");
@@ -230,7 +252,7 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
   });
 
   it("inlines video links in pre-rendered Zulip HTML bodies", () => {
-    const html = messageBodyToUnsanitizedDisplayHtml(
+    const html = renderPreparedMessageHtml(
       '<p><a href="https://sys.example.com/user_uploads/2/52/id/file.webm" target="_blank">file.webm</a></p>',
     );
     expect(html).toContain("<video");
@@ -255,7 +277,7 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
   });
 
   it("wraps server-rendered blockquote after wrote header in zulip-quote-block", () => {
-    const html = messageBodyToUnsanitizedDisplayHtml(
+    const html = renderPreparedMessageHtml(
       [
         '<p><span class="user-mention" data-user-id="42">@Alice</span>',
         ' <a href="https://z.example.com/near/1">wrote</a>:</p>',
@@ -272,7 +294,7 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
   it("inlines user_upload image inside server-rendered quote block instead of URL text", () => {
     const uploadPath = "/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png";
     const uploadUrl = `https://sys.example.com${uploadPath}`;
-    const html = messageBodyToUnsanitizedDisplayHtml(
+    const html = renderPreparedMessageHtml(
       [
         '<p><span class="user-mention" data-user-id="42">@Alice</span>',
         ' <a href="https://z.example.com/near/1">wrote</a>:</p>',
@@ -287,7 +309,9 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
 
     expect(html).toContain('class="zulip-quote-block"');
     expect(html).toContain('class="zulip-quote-body"');
-    expect(html).toContain('data-auth-src="/user_uploads/thumbnail/');
+    expect(html).toContain(
+      'data-auth-src="https://sys.example.com/workspace/v1/user_uploads/thumbnail/',
+    );
     expect(html).toContain('class="message-media-preview"');
     expect(html).not.toMatch(new RegExp(`>${uploadUrl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}<`));
     expect((html.match(/<img\b/gi) ?? []).length).toBe(1);
@@ -297,26 +321,51 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
 
   it("inlines user_upload image link inside markdown quote fence", () => {
     const uploadPath = "/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png";
-    const html = messageBodyToUnsanitizedDisplayHtml(
+    const html = renderPreparedMessageHtml(
       `@_**Alice|42** [wrote](https://z.example.com/near/1):\n\`\`\`quote\n[image.png](${uploadPath})\n\`\`\`\n\nMy reply`,
       { resolveUserMention: () => null },
     );
 
     expect(html).toContain('class="zulip-quote-body"');
     expect(html).toContain('class="message-media-preview"');
-    expect(html).toContain('data-auth-src="/user_uploads/thumbnail/');
+    expect(html).toContain(
+      'data-auth-src="https://sys.example.com/workspace/v1/user_uploads/thumbnail/',
+    );
     expect(html).toMatch(/zulip-quote-body[\s\S]*<img[^>]*message-media-preview/);
     expect((html.match(/<img\b/gi) ?? []).length).toBe(1);
   });
 
+  it("fills missing/empty spoiler header with default label after sanitization", () => {
+    const html = renderPreparedMessageHtml(
+      [
+        '<div class="spoiler-block">',
+        '<div class="spoiler-content"><p>Hidden payload</p></div>',
+        "</div>",
+      ].join(""),
+    );
+    expect(html).toContain('class="spoiler-header"');
+    expect(html).toContain("Spoiler");
+  });
+
   it("keeps inline video through sanitize and protected-media preparation", () => {
-    const raw = messageBodyToUnsanitizedDisplayHtml(
+    const safe = renderPreparedMessageHtml(
       "[Screencast.webm](/user_uploads/2/52/zVGJf8gDr9qR_a5GJff5PZS7/Screencast.webm)",
     );
-    const safe = prepareProtectedMessageHtml(raw, "https://sys.example.com/workspace/v1");
     expect(safe).toContain("<video");
     expect(safe).toContain("data-auth-src");
     expect(safe).not.toContain('src="/user_uploads/');
+  });
+
+  it("strips dangerous attributes from inline HTML inside markdown", () => {
+    const safe = renderPreparedMessageHtml('hi <img src=x onerror="alert(1)">');
+    expect(safe).not.toContain("onerror");
+    expect(safe).toContain("<img");
+  });
+
+  it("strips dangerous attributes from pre-rendered HTML bodies", () => {
+    const safe = renderPreparedMessageHtml('<img src="x" onerror="alert(1)">');
+    expect(safe).not.toContain("onerror");
+    expect(safe).toContain("<img");
   });
 });
 

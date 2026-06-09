@@ -2,6 +2,7 @@ import {
   normalizeEmojiShortcodeName,
   resolveShortcodeToUnicode,
 } from "~/shared/lib/emoji-shortcodes.lib";
+import { sanitizeHtmlToFragment } from "~/shared/lib/html";
 
 const EMOJI_SHORTCODE_PATTERN = /:([\p{L}\p{N}+-][\p{L}\p{N}\p{M}_+\s-]{0,62}):/gu;
 const EMOJI_SHORTCODE_PATTERN_SOURCE = EMOJI_SHORTCODE_PATTERN.source;
@@ -112,6 +113,25 @@ function shouldSkipEmojiReplacementInTextNode(node: Text): boolean {
   return parent.closest("code,pre") != null;
 }
 
+export function renderEmojiShortcodesInContainer(
+  container: ParentNode,
+  options?: RenderEmojiShortcodesOptions,
+): void {
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  const textNodesToUpdate: Text[] = [];
+  let current: Node | null;
+  while ((current = walker.nextNode()) != null) {
+    const textNode = current as Text;
+    if (shouldSkipEmojiReplacementInTextNode(textNode)) continue;
+    if (!containsEmojiShortcode(textNode.data)) continue;
+    textNodesToUpdate.push(textNode);
+  }
+
+  for (const textNode of textNodesToUpdate) {
+    replaceEmojiShortcodesInTextNode(textNode, options?.resolveCustomEmojiShortcodeImageUrl);
+  }
+}
+
 function replaceEmojiShortcodesInPlainText(text: string): string {
   if (!containsEmojiShortcode(text)) {
     return text;
@@ -157,25 +177,12 @@ export function renderEmojiShortcodesInHtml(
     });
   }
 
-  const template = document.createElement("template");
-  template.innerHTML = html;
-  const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_TEXT);
-  const textNodesToUpdate: Text[] = [];
-  let current: Node | null;
-  while ((current = walker.nextNode()) != null) {
-    const textNode = current as Text;
-    if (shouldSkipEmojiReplacementInTextNode(textNode)) continue;
-    if (!containsEmojiShortcode(textNode.data)) continue;
-    textNodesToUpdate.push(textNode);
-  }
-
-  if (textNodesToUpdate.length === 0) {
+  const fragment = sanitizeHtmlToFragment(html);
+  if (fragment == null) {
     return html;
   }
-
-  for (const textNode of textNodesToUpdate) {
-    replaceEmojiShortcodesInTextNode(textNode, options?.resolveCustomEmojiShortcodeImageUrl);
-  }
-
+  renderEmojiShortcodesInContainer(fragment, options);
+  const template = document.createElement("template");
+  template.content.append(fragment);
   return template.innerHTML;
 }

@@ -4,6 +4,7 @@
  * Live DOM must not keep protected URLs in `src`/`poster`/etc.; candidates live in `data-auth-*`
  * until `fetch → blob/data:` assigns display URLs.
  */
+import hljs from "highlight.js/lib/common";
 import { appendDevRealmMediaProxyHeaders, getCurrentInstance } from "~/shared/api/client";
 import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
 import {
@@ -14,6 +15,13 @@ import {
 import { env } from "~/shared/lib/env";
 import { sanitizeHtml } from "~/shared/lib/html";
 import { MESSAGE_MEDIA_PREVIEW_CLASS_NAME } from "~/shared/lib/message-body-rich-text-classes";
+import { renderEmojiShortcodesInContainer } from "~/shared/lib/message-emoji-shortcodes.lib";
+import {
+  collectMessageInlineImageIdentitiesFromContainer,
+  normalizeUserUploadImageIdentity,
+  shouldSkipInliningUserUploadImageLink,
+} from "~/shared/lib/message-inline-user-upload-image.lib";
+import { upgradeUserUploadVideoLinksInContainer } from "~/shared/lib/message-inline-user-upload-video.lib";
 import {
   isUserUploadImagePath,
   isUserUploadThumbnailUrl,
@@ -34,6 +42,34 @@ export { collapseDuplicateWorkspaceV1InUrl };
 export const AUTH_MEDIA_SRC_DATA_ATTR = "data-auth-src";
 export const AUTH_MEDIA_POSTER_DATA_ATTR = "data-auth-poster";
 export const AUTH_MEDIA_BACKGROUND_IMAGE_DATA_ATTR = "data-auth-background-image";
+
+export interface PrepareProtectedMessageHtmlOptions {
+  resolveCustomEmojiShortcodeImageUrl?: (shortcode: string) => string | undefined;
+}
+
+const LANGUAGE_CLASS_PATTERN = /\b(?:language|lang)-([a-z0-9#+-]+)\b/i;
+const LANGUAGE_ALIASES: Record<string, string> = {
+  cjs: "javascript",
+  jsx: "javascript",
+  py: "python",
+  sh: "bash",
+  ts: "typescript",
+  tsx: "typescript",
+};
+const DEFAULT_ZULIP_SPOILER_HEADER = "Spoiler";
+
+function resolveLanguageFromClassName(className: string): string | null {
+  const match = LANGUAGE_CLASS_PATTERN.exec(className);
+  if (match == null) {
+    return null;
+  }
+  const rawLanguage = match[1]?.toLowerCase();
+  if (rawLanguage == null || rawLanguage.length === 0) {
+    return null;
+  }
+  const normalizedLanguage = LANGUAGE_ALIASES[rawLanguage] ?? rawLanguage;
+  return hljs.getLanguage(normalizedLanguage) ? normalizedLanguage : null;
+}
 
 /** Inline SVG placeholder icon only; box fill comes from `.message-media-preview` CSS. */
 const AUTH_IMAGE_PLACEHOLDER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="240" height="160" viewBox="0 0 240 160" aria-hidden="true">
@@ -380,6 +416,179 @@ export async function fetchProtectedUploadDisplayUrl(
   }
 }
 
+function applySyntaxHighlightingInContainer(container: ParentNode): void {
+  const codeBlocks = container.querySelectorAll("pre code");
+  for (const codeBlock of codeBlocks) {
+    const sourceCode = codeBlock.textContent ?? "";
+    if (sourceCode.trim().length === 0) {
+      continue;
+    }
+
+    try {
+      const language = resolveLanguageFromClassName(codeBlock.className);
+      const highlighted = language
+        ? hljs.highlight(sourceCode, { ignoreIllegals: true, language }).value
+        : hljs.highlightAuto(sourceCode).value;
+
+      codeBlock.innerHTML = highlighted;
+      codeBlock.classList.add("hljs");
+      if (language != null) {
+        codeBlock.classList.add(`language-${language}`);
+      }
+    } catch {
+      continue;
+    }
+  }
+}
+
+function normalizeZulipSpoilerBlocksInContainer(container: ParentNode): void {
+  const spoilerBlocks = container.querySelectorAll<HTMLElement>(".spoiler-block");
+  for (const block of spoilerBlocks) {
+    const header = block.querySelector<HTMLElement>(".spoiler-header");
+    const content = block.querySelector<HTMLElement>(".spoiler-content");
+    if (content == null) continue;
+
+    if (header == null) {
+      const fallbackHeader = document.createElement("div");
+      fallbackHeader.classList.add("spoiler-header");
+      fallbackHeader.textContent = DEFAULT_ZULIP_SPOILER_HEADER;
+      block.insertBefore(fallbackHeader, content);
+      continue;
+    }
+
+    if ((header.textContent ?? "").trim().length === 0) {
+      header.textContent = DEFAULT_ZULIP_SPOILER_HEADER;
+    }
+  }
+}
+
+function normalizeZulipQuoteBlocksInContainer(container: ParentNode): void {
+  const blockquotes = container.querySelectorAll<HTMLElement>("blockquote");
+  for (const blockquote of blockquotes) {
+    if (blockquote.classList.contains("zulip-quote-body")) continue;
+    if (blockquote.closest(".zulip-quote-block") != null) continue;
+
+    const previous = blockquote.previousElementSibling;
+    if (previous == null) continue;
+
+    const hasMention = previous.querySelector(".user-mention") != null;
+    const wroteLink = previous.querySelector("a[href]");
+    if (!hasMention && wroteLink == null) continue;
+
+    const quoteBlock = document.createElement("div");
+    quoteBlock.className = "zulip-quote-block";
+
+    const header = document.createElement("div");
+    header.className = "zulip-quote-header";
+    header.innerHTML = previous.innerHTML;
+
+    blockquote.classList.add("zulip-quote-body");
+    previous.replaceWith(quoteBlock);
+    quoteBlock.appendChild(header);
+    quoteBlock.appendChild(blockquote);
+
+    let next = quoteBlock.nextElementSibling;
+    while (next instanceof HTMLElement && next.classList.contains("message_inline_image")) {
+      const toMove = next;
+      next = next.nextElementSibling;
+      quoteBlock.appendChild(toMove);
+    }
+  }
+}
+
+function collectInlineImageIdentityFromElement(element: Element): string | null {
+  if (element instanceof HTMLAnchorElement) {
+    return normalizeUserUploadImageIdentity(element.getAttribute("href") ?? "");
+  }
+  if (element instanceof HTMLImageElement) {
+    const authSrc = element.getAttribute(AUTH_MEDIA_SRC_DATA_ATTR);
+    if (authSrc != null && authSrc.length > 0) {
+      return normalizeUserUploadImageIdentity(authSrc);
+    }
+    return normalizeUserUploadImageIdentity(element.getAttribute("src") ?? "");
+  }
+  return null;
+}
+
+function resolveMessageInlineImageBlockIdentity(block: Element): string | null {
+  for (const anchor of block.querySelectorAll<HTMLAnchorElement>("a[href]")) {
+    const identity = collectInlineImageIdentityFromElement(anchor);
+    if (identity != null) {
+      return identity;
+    }
+  }
+  for (const image of block.querySelectorAll<HTMLImageElement>("img[src], img[data-auth-src]")) {
+    const identity = collectInlineImageIdentityFromElement(image);
+    if (identity != null) {
+      return identity;
+    }
+  }
+  return null;
+}
+
+function removeDuplicateQuoteBlockInlineImages(container: ParentNode): void {
+  for (const quoteBlock of container.querySelectorAll<HTMLElement>(".zulip-quote-block")) {
+    const quoteBody = quoteBlock.querySelector(".zulip-quote-body");
+    if (quoteBody == null) continue;
+
+    const inlinedIdentities = new Set<string>();
+    for (const image of quoteBody.querySelectorAll<HTMLImageElement>(
+      "img[data-auth-src], img.message-media-preview",
+    )) {
+      const identity = collectInlineImageIdentityFromElement(image);
+      if (identity != null) {
+        inlinedIdentities.add(identity);
+      }
+    }
+    if (inlinedIdentities.size === 0) continue;
+
+    for (const inlineBlock of quoteBlock.querySelectorAll(".message_inline_image")) {
+      const blockIdentity = resolveMessageInlineImageBlockIdentity(inlineBlock);
+      if (blockIdentity != null && inlinedIdentities.has(blockIdentity)) {
+        inlineBlock.remove();
+      }
+    }
+  }
+}
+
+function inlineUserUploadImageLinksInContainer(container: ParentNode): void {
+  const inlineIdentities = collectMessageInlineImageIdentitiesFromContainer(container);
+  const links = container.querySelectorAll<HTMLAnchorElement>("a[href]");
+  for (const link of links) {
+    const href = link.getAttribute("href")?.trim();
+    if (href == null || href.length === 0) continue;
+    if (!isUserUploadImagePath(href)) continue;
+    if (link.querySelector("img") != null) continue;
+    const inQuoteBody = link.closest(".zulip-quote-body") != null;
+    if (!inQuoteBody && shouldSkipInliningUserUploadImageLink(href, inlineIdentities)) continue;
+
+    const title = (link.textContent ?? "").trim();
+    const fallbackLabel = title.length > 0 ? title : "image";
+    const image = document.createElement("img");
+    // Use an auth placeholder immediately so later DOM insertion cannot trigger unauthenticated loads.
+    prepareProtectedUserUploadImageElement(image, href);
+    image.setAttribute("alt", fallbackLabel);
+    image.setAttribute("title", fallbackLabel);
+    link.replaceChildren(image);
+  }
+
+  removeDuplicateQuoteBlockInlineImages(container);
+}
+
+function enrichSanitizedMessageHtml(
+  container: ParentNode,
+  options?: PrepareProtectedMessageHtmlOptions,
+): void {
+  applySyntaxHighlightingInContainer(container);
+  renderEmojiShortcodesInContainer(container, {
+    resolveCustomEmojiShortcodeImageUrl: options?.resolveCustomEmojiShortcodeImageUrl,
+  });
+  normalizeZulipSpoilerBlocksInContainer(container);
+  normalizeZulipQuoteBlocksInContainer(container);
+  inlineUserUploadImageLinksInContainer(container);
+  upgradeUserUploadVideoLinksInContainer(container);
+}
+
 export function protectMessageMediaElementsInContainer(container: ParentNode): void {
   for (const element of container.querySelectorAll<HTMLElement>("[style]")) {
     protectStyleAttr(element);
@@ -433,13 +642,11 @@ export function protectMessageMediaElementsInContainer(container: ParentNode): v
   }
 }
 
-export function prepareProtectedSanitizedHtml(html: string): string {
-  if (
-    typeof document === "undefined" ||
-    (!html.includes("/user_uploads/") &&
-      !html.includes("/external_content/") &&
-      !/\bstyle\s*=/.test(html))
-  ) {
+export function prepareProtectedSanitizedHtml(
+  html: string,
+  options?: PrepareProtectedMessageHtmlOptions,
+): string {
+  if (typeof document === "undefined" || html.trim().length === 0) {
     return html;
   }
 
@@ -447,12 +654,17 @@ export function prepareProtectedSanitizedHtml(html: string): string {
   template.innerHTML = html;
   const container = template.content;
 
+  enrichSanitizedMessageHtml(container, options);
   protectMessageMediaElementsInContainer(container);
 
   return template.innerHTML;
 }
 
-export function prepareProtectedMessageHtml(rawHtml: string, baseUrl?: string): string {
+export function prepareProtectedMessageHtml(
+  rawHtml: string,
+  baseUrl?: string,
+  options?: PrepareProtectedMessageHtmlOptions,
+): string {
   const html = sanitizeHtml(rawHtml, baseUrl);
-  return prepareProtectedSanitizedHtml(html);
+  return prepareProtectedSanitizedHtml(html, options);
 }
