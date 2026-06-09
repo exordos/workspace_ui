@@ -22,11 +22,14 @@ const bumpAvatarVersionMock = vi.hoisted(() => vi.fn());
 vi.mock("~/features/user-profile/user-profile.api", () => ({
   fetchUserProfile: fetchUserProfileMock,
   updateOwnProfile: updateOwnProfileMock,
-  fetchOwnStatus: fetchOwnStatusMock,
-  updateOwnStatus: updateOwnStatusMock,
   getOwnAvatarCapabilities: getOwnAvatarCapabilitiesMock,
   uploadOwnAvatar: uploadOwnAvatarMock,
   removeOwnAvatar: removeOwnAvatarMock,
+}));
+
+vi.mock("~/entities/user/api/user.api", () => ({
+  fetchOwnStatus: (...args: unknown[]) => fetchOwnStatusMock(...args),
+  updateOwnStatus: (...args: unknown[]) => updateOwnStatusMock(...args),
 }));
 
 vi.mock("~/shared/api/zulip-client.internal", () => ({
@@ -55,7 +58,7 @@ describe("SettingsPersonalInfoPage", () => {
     fetchOwnStatusMock.mockReset();
     fetchOwnStatusMock.mockResolvedValue(null);
     updateOwnStatusMock.mockReset();
-    updateOwnStatusMock.mockResolvedValue(true);
+    updateOwnStatusMock.mockResolvedValue(null);
     getOwnAvatarCapabilitiesMock.mockReset();
     getOwnAvatarCapabilitiesMock.mockReturnValue({
       maxAvatarFileSizeMib: 25,
@@ -288,7 +291,8 @@ describe("SettingsPersonalInfoPage", () => {
       });
     });
     expect(updateOwnStatusMock).toHaveBeenCalledWith({
-      statusText: "",
+      text: "",
+      emojiName: undefined,
       away: false,
     });
     await waitFor(() => {
@@ -317,11 +321,20 @@ describe("SettingsPersonalInfoPage", () => {
       manager: undefined,
     });
     fetchOwnStatusMock.mockResolvedValue({
-      statusText: "Heads down",
+      text: "Heads down",
+      emojiName: "speech_balloon",
+      emojiCode: "1f4ac",
+      reactionType: "unicode_emoji",
       away: false,
     });
     updateOwnProfileMock.mockResolvedValue({ ok: true });
-    updateOwnStatusMock.mockResolvedValue(true);
+    updateOwnStatusMock.mockResolvedValue({
+      text: "Reviewing PRs",
+      emojiName: "speech_balloon",
+      emojiCode: "1f4ac",
+      reactionType: "unicode_emoji",
+      away: true,
+    });
 
     renderWithProviders(<SettingsPersonalInfoPage />);
     await waitFor(() => expect(fetchUserProfileMock).toHaveBeenCalledWith(42));
@@ -334,11 +347,19 @@ describe("SettingsPersonalInfoPage", () => {
 
     await waitFor(() => {
       expect(updateOwnStatusMock).toHaveBeenCalledWith({
-        statusText: "Reviewing PRs",
+        text: "Reviewing PRs",
+        emojiName: "speech_balloon",
         away: true,
       });
     });
     expect(screen.getAllByText(/Reviewing PRs/).length).toBeGreaterThan(0);
+    expect(useUsersStore.getState().getUser(42)?.status).toEqual({
+      text: "Reviewing PRs",
+      emojiName: "speech_balloon",
+      emojiCode: "1f4ac",
+      reactionType: "unicode_emoji",
+      away: true,
+    });
   });
 
   it("shows timezone input only in edit mode", async () => {
@@ -381,7 +402,7 @@ describe("SettingsPersonalInfoPage", () => {
       timezone: "Europe/Moscow",
     });
     updateOwnProfileMock.mockResolvedValue({ ok: true });
-    updateOwnStatusMock.mockResolvedValue(true);
+    updateOwnStatusMock.mockResolvedValue(null);
 
     renderWithProviders(<SettingsPersonalInfoPage />);
     await waitFor(() => expect(fetchUserProfileMock).toHaveBeenCalledWith(42));
@@ -702,7 +723,7 @@ describe("SettingsPersonalInfoPage", () => {
         }),
     );
     updateOwnProfileMock.mockResolvedValue({ ok: true });
-    updateOwnStatusMock.mockResolvedValue(true);
+    updateOwnStatusMock.mockResolvedValue(null);
 
     renderWithProviders(<SettingsPersonalInfoPage />);
     await waitFor(() => expect(fetchUserProfileMock).toHaveBeenCalledWith(42));
@@ -736,7 +757,8 @@ describe("SettingsPersonalInfoPage", () => {
         timezone: "Europe/Moscow",
       });
       expect(updateOwnStatusMock).toHaveBeenCalledWith({
-        statusText: "",
+        text: "",
+        emojiName: undefined,
         away: false,
       });
     });
@@ -766,7 +788,7 @@ describe("SettingsPersonalInfoPage", () => {
       timezone: "Europe/Moscow",
     });
     updateOwnProfileMock.mockResolvedValue({ ok: true });
-    updateOwnStatusMock.mockResolvedValue(true);
+    updateOwnStatusMock.mockResolvedValue(null);
 
     renderWithProviders(<SettingsPersonalInfoPage />);
     await waitFor(() => expect(fetchUserProfileMock).toHaveBeenCalledWith(42));
@@ -851,7 +873,7 @@ describe("SettingsPersonalInfoPage", () => {
       kind: "transient",
       message: "Failed to update profile",
     });
-    updateOwnStatusMock.mockResolvedValue(true);
+    updateOwnStatusMock.mockResolvedValue(null);
 
     renderWithProviders(<SettingsPersonalInfoPage />);
     await waitFor(() => expect(fetchUserProfileMock).toHaveBeenCalledWith(42));

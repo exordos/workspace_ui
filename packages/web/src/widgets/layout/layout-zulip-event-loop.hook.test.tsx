@@ -18,6 +18,18 @@ const fetchDirectMessagesPageMock = vi.hoisted(() =>
   vi.fn(() => Promise.resolve({ messages: [], foundOldest: true })),
 );
 const hydrateDmSidebarPreviewsMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+const requestUserStatusMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+const loadDmIndexEntriesMock = vi.hoisted(() =>
+  vi.fn<
+    () => {
+      dmKey: string;
+      userIds: number[];
+      lastActivityTs: number;
+      lastMessageId: number;
+      unreadCount: number;
+    }[]
+  >(() => []),
+);
 
 vi.mock("~/shared/lib/event-loop", () => ({
   startZulipEventLoop: startZulipEventLoopMock,
@@ -53,6 +65,10 @@ vi.mock("~/shared/api/zulip-users", () => ({
   getCurrentUser: getCurrentUserMock,
 }));
 
+vi.mock("~/entities/user/api/user.api", () => ({
+  requestUserStatus: requestUserStatusMock,
+}));
+
 vi.mock("~/entities/chat-list/chat-list-dm-preview-hydrate.lib", () => ({
   hydrateDmSidebarPreviewsFromRecentConversations: hydrateDmSidebarPreviewsMock,
 }));
@@ -71,7 +87,7 @@ vi.mock("~/entities/user/user-directory-snapshot-persist.lib", () => ({
 }));
 
 vi.mock("~/shared/lib/dm-index", () => ({
-  loadDmIndexEntries: vi.fn(() => []),
+  loadDmIndexEntries: loadDmIndexEntriesMock,
   upsertDmIndexEntries: vi.fn(),
   upsertDmIndexFromMessages: vi.fn(),
 }));
@@ -128,6 +144,9 @@ function Harness({
 describe("useLayoutZulipEventLoop", () => {
   beforeEach(() => {
     hydrateDmSidebarPreviewsMock.mockClear();
+    requestUserStatusMock.mockClear();
+    loadDmIndexEntriesMock.mockReset();
+    loadDmIndexEntriesMock.mockReturnValue([]);
     useChatListStore.getState().clear();
     useUsersStore.getState().clear();
     useUserGroupsStore.getState().clear();
@@ -402,6 +421,40 @@ describe("useLayoutZulipEventLoop", () => {
     expect(props.setCurrentUserId).toHaveBeenCalledWith(7);
     await waitFor(() => {
       expect(startZulipEventLoopMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("preloads bootstrap statuses for current user, DM sidebar users, and remaining directory users", async () => {
+    fetchUsersMock.mockResolvedValueOnce([
+      { user_id: 7, full_name: "Current User", email: "test@example.com" },
+      { user_id: 20, full_name: "Partner", email: "partner@example.com" },
+      { user_id: 30, full_name: "Teammate", email: "teammate@example.com" },
+    ] as never);
+    loadDmIndexEntriesMock.mockReturnValueOnce([
+      {
+        dmKey: "7,20",
+        userIds: [7, 20],
+        lastActivityTs: 100,
+        lastMessageId: 55,
+        unreadCount: 0,
+      },
+    ]);
+
+    render(<Harness currentInstanceId="inst-1" />);
+
+    await waitFor(() => {
+      expect(requestUserStatusMock).toHaveBeenCalledWith(7, {
+        reason: "bootstrap",
+        priority: "high",
+      });
+    });
+    expect(requestUserStatusMock).toHaveBeenCalledWith(20, {
+      reason: "bootstrap",
+      priority: "high",
+    });
+    expect(requestUserStatusMock).toHaveBeenCalledWith(30, {
+      reason: "bootstrap",
+      priority: "high",
     });
   });
 

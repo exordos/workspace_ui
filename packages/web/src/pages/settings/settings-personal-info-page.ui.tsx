@@ -2,20 +2,18 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
-import { useUsersStore } from "~/entities/user/user.model";
+import { applyUserStatusSnapshot } from "~/entities/user/api/user-status-write.lib";
+import { fetchOwnStatus, updateOwnStatus } from "~/entities/user/api/user.api";
+import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
+import { useUsersStore, type UserStatus } from "~/entities/user/user.model";
 import {
-  fetchOwnStatus,
   fetchUserProfile,
   getOwnAvatarCapabilities,
   removeOwnAvatar,
   uploadOwnAvatar,
   updateOwnProfile,
-  updateOwnStatus,
 } from "~/features/user-profile/user-profile.api";
-import {
-  type OwnStatusData,
-  type UserProfileData,
-} from "~/features/user-profile/user-profile.types";
+import { type UserProfileData } from "~/features/user-profile/user-profile.types";
 import { t } from "~/i18n/i18n";
 import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
 import { bumpAvatarVersion, resolveAvatarUrl } from "~/shared/lib/avatar";
@@ -66,6 +64,14 @@ type PendingAvatarAction =
 
 const EMPTY_PENDING_AVATAR_ACTION: PendingAvatarAction = { kind: "none" };
 
+function buildProfileStatusLabel(status: UserStatus | null | undefined): string {
+  const label = formatUserStatusLabel(status);
+  if (label != null && label.length > 0) {
+    return status?.away ? `${label} • ${t("presence.away")}` : label;
+  }
+  return status?.away ? t("presence.away") : t("presence.online");
+}
+
 export const SettingsPersonalInfoPage: React.FC = () => {
   const navigate = useNavigate();
   const [profile, setProfile] = useState<UserProfileData | null>(null);
@@ -73,7 +79,7 @@ export const SettingsPersonalInfoPage: React.FC = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [editableFullName, setEditableFullName] = useState("");
   const [editableTimezone, setEditableTimezone] = useState("");
-  const [ownStatus, setOwnStatus] = useState<OwnStatusData | null>(null);
+  const [ownStatus, setOwnStatus] = useState<UserStatus | null>(null);
   const [editableStatusText, setEditableStatusText] = useState("");
   const [editableStatusAway, setEditableStatusAway] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
@@ -93,6 +99,13 @@ export const SettingsPersonalInfoPage: React.FC = () => {
   const supportedTimezoneSet = useMemo(() => new Set(supportedTimezones), [supportedTimezones]);
 
   useEffect(() => {
+    if (isEditing) {
+      return;
+    }
+    setOwnStatus(user?.status ?? null);
+  }, [isEditing, user?.status]);
+
+  useEffect(() => {
     let cancelled = false;
     if (currentUserId == null) {
       void Promise.resolve().then(() => {
@@ -109,13 +122,15 @@ export const SettingsPersonalInfoPage: React.FC = () => {
       .then(([nextProfile, nextOwnStatus]) => {
         if (!cancelled) {
           setProfile(nextProfile);
-          setOwnStatus(nextOwnStatus);
+          setOwnStatus(
+            nextOwnStatus ?? useUsersStore.getState().getUser(currentUserId)?.status ?? null,
+          );
         }
       })
       .catch(() => {
         if (!cancelled) {
           setProfile(null);
-          setOwnStatus(null);
+          setOwnStatus(useUsersStore.getState().getUser(currentUserId)?.status ?? null);
         }
       });
     return () => {
@@ -134,9 +149,9 @@ export const SettingsPersonalInfoPage: React.FC = () => {
     if (isEditing) return;
     setEditableFullName(fullName === "-" ? "" : fullName);
     setEditableTimezone(profile?.timezone?.trim() ?? "");
-    setEditableStatusText(ownStatus?.statusText ?? "");
+    setEditableStatusText(ownStatus?.text ?? "");
     setEditableStatusAway(ownStatus?.away ?? false);
-  }, [fullName, isEditing, ownStatus?.away, ownStatus?.statusText, profile?.timezone]);
+  }, [fullName, isEditing, ownStatus?.away, ownStatus?.text, profile?.timezone]);
 
   const email = useMemo(() => {
     const profileEmail = profile?.email?.trim();
@@ -215,34 +230,28 @@ export const SettingsPersonalInfoPage: React.FC = () => {
   const handleStartProfileEdit = useCallback(() => {
     setEditableFullName(fullName === "-" ? "" : fullName);
     setEditableTimezone(profile?.timezone?.trim() ?? "");
-    setEditableStatusText(ownStatus?.statusText ?? "");
+    setEditableStatusText(ownStatus?.text ?? "");
     setEditableStatusAway(ownStatus?.away ?? false);
     setPendingAvatarAction(EMPTY_PENDING_AVATAR_ACTION);
     setAvatarDraftError(null);
     setTimezoneDraftError(null);
     setProfileSaveError(null);
     setIsEditing(true);
-  }, [fullName, ownStatus?.away, ownStatus?.statusText, profile?.timezone]);
+  }, [fullName, ownStatus?.away, ownStatus?.text, profile?.timezone]);
 
   const handleCancelProfileEdit = useCallback(() => {
     setEditableFullName(fullName === "-" ? "" : fullName);
     setEditableTimezone(profile?.timezone?.trim() ?? "");
-    setEditableStatusText(ownStatus?.statusText ?? "");
+    setEditableStatusText(ownStatus?.text ?? "");
     setEditableStatusAway(ownStatus?.away ?? false);
     setPendingAvatarAction(EMPTY_PENDING_AVATAR_ACTION);
     setAvatarDraftError(null);
     setTimezoneDraftError(null);
     setProfileSaveError(null);
     setIsEditing(false);
-  }, [fullName, ownStatus?.away, ownStatus?.statusText, profile?.timezone]);
+  }, [fullName, ownStatus?.away, ownStatus?.text, profile?.timezone]);
 
-  const profileStatus = useMemo(() => {
-    const trimmedStatus = ownStatus?.statusText?.trim() ?? "";
-    if (trimmedStatus.length === 0) {
-      return ownStatus?.away ? t("presence.away") : t("presence.online");
-    }
-    return ownStatus?.away ? `${trimmedStatus} • ${t("presence.away")}` : trimmedStatus;
-  }, [ownStatus?.away, ownStatus?.statusText]);
+  const profileStatus = useMemo(() => buildProfileStatusLabel(ownStatus), [ownStatus]);
 
   const mapAvatarErrorMessage = useCallback(
     (kind: "forbidden" | "invalid" | "unsupported" | "transient", fallbackMessage?: string) => {
@@ -353,8 +362,16 @@ export const SettingsPersonalInfoPage: React.FC = () => {
 
       const [profileUpdated, statusUpdated] = await Promise.all([
         updateOwnProfile({ fullName: trimmedFullName, timezone: canonicalTimezone }),
-        updateOwnStatus({ statusText: trimmedStatusText, away: editableStatusAway }),
+        updateOwnStatus({
+          text: trimmedStatusText,
+          emojiName: ownStatus?.emojiName,
+          away: editableStatusAway,
+        }),
       ]);
+      const isClearStatusRequest =
+        trimmedStatusText.length === 0 &&
+        (ownStatus?.emojiName?.trim() ?? "").length === 0 &&
+        editableStatusAway === false;
 
       if (!profileUpdated.ok) {
         if (profileUpdated.kind === "unsupported") {
@@ -367,7 +384,7 @@ export const SettingsPersonalInfoPage: React.FC = () => {
         return;
       }
 
-      if (!statusUpdated) {
+      if (statusUpdated == null && !isClearStatusRequest) {
         // Avatar mutation has already been committed by server, keep it as-is.
         if (avatarMutationCommitted) {
           mergeUser({
@@ -382,7 +399,9 @@ export const SettingsPersonalInfoPage: React.FC = () => {
       setProfile((prev) =>
         prev ? { ...prev, fullName: trimmedFullName, timezone: canonicalTimezone } : prev,
       );
-      setOwnStatus({ statusText: trimmedStatusText, away: editableStatusAway });
+      const fetchedAt = Date.now();
+      setOwnStatus(statusUpdated);
+      applyUserStatusSnapshot(currentUserId, statusUpdated, fetchedAt);
       mergeUser({ user_id: currentUserId, full_name: trimmedFullName });
       setIsEditing(false);
       setPendingAvatarAction(EMPTY_PENDING_AVATAR_ACTION);
@@ -404,6 +423,7 @@ export const SettingsPersonalInfoPage: React.FC = () => {
     isSavingProfile,
     mapAvatarErrorMessage,
     mergeUser,
+    ownStatus?.emojiName,
     pendingAvatarAction,
     profile?.timezone,
     supportedTimezoneSet,

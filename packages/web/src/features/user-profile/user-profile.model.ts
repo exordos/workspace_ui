@@ -3,6 +3,7 @@
  */
 
 import { create } from "zustand";
+import { requestUserStatus } from "~/entities/user/api/user.api";
 import { useUsersStore } from "~/entities/user/user.model";
 import { logStoreAction } from "~/shared/lib/logger";
 import { fetchUserProfile as apiFetchUserProfile } from "./user-profile.api";
@@ -42,6 +43,7 @@ export const useUserProfileStore = create<UserProfileState>((set) => ({
         role: result.role,
         is_active: result.isActive,
       });
+      void requestUserStatus(result.userId, { reason: "right_panel", priority: "high" });
       set({ profile: result, status: "done" });
     } else {
       set({ status: "error", error: "Failed to load user profile" });

@@ -9,6 +9,73 @@ import {
 import type { ChatListBootstrapResult } from "./layout-chat-list-bootstrap.lib";
 import type { StreamPreviewsBootstrapResult } from "./layout-metadata-stream-preview-coordinator.lib";
 
+const BOOTSTRAP_STATUS_HIGH_PRIORITY_COUNT = 24;
+
+interface BootstrapDmStatusTarget {
+  id: number;
+  isGroup?: boolean;
+  userIds?: number[];
+}
+
+function appendBootstrapStatusUserIds(
+  target: number[],
+  seen: Set<number>,
+  userIds: readonly number[],
+): void {
+  for (const userId of userIds) {
+    if (!Number.isInteger(userId) || userId <= 0 || seen.has(userId)) {
+      continue;
+    }
+    seen.add(userId);
+    target.push(userId);
+  }
+}
+
+export function collectBootstrapStatusUserIds(options: {
+  currentUserId: number | null;
+  members: readonly Pick<ZulipUserMember, "user_id">[];
+  dms: readonly BootstrapDmStatusTarget[];
+}): number[] {
+  const ids: number[] = [];
+  const seen = new Set<number>();
+
+  if (options.currentUserId != null) {
+    appendBootstrapStatusUserIds(ids, seen, [options.currentUserId]);
+  }
+
+  for (const dm of options.dms) {
+    const dmUserIds =
+      Array.isArray(dm.userIds) && dm.userIds.length > 0 ? dm.userIds : dm.isGroup ? [] : [dm.id];
+    appendBootstrapStatusUserIds(ids, seen, dmUserIds);
+  }
+
+  const remainingDirectoryIds = options.members
+    .map((member) => member.user_id)
+    .filter((userId) => Number.isInteger(userId) && userId > 0)
+    .sort((left, right) => left - right);
+  appendBootstrapStatusUserIds(ids, seen, remainingDirectoryIds);
+  return ids;
+}
+
+export function scheduleBootstrapStatusPreload(options: {
+  currentUserId: number | null;
+  members: readonly Pick<ZulipUserMember, "user_id">[];
+  dms: readonly BootstrapDmStatusTarget[];
+  requestUserStatus: (
+    userId: number,
+    options?: { reason?: "bootstrap"; priority?: "high" | "low" },
+  ) => Promise<void>;
+}): number[] {
+  const ids = collectBootstrapStatusUserIds(options);
+  ids.forEach((userId, index) => {
+    void options.requestUserStatus(userId, {
+      reason: "bootstrap",
+      priority: index < BOOTSTRAP_STATUS_HIGH_PRIORITY_COUNT ? "high" : "low",
+    });
+  });
+  return ids;
+}
+
 export function createDmPreviewHydrateSettledHandler(options: {
   getCancelled: () => boolean;
   instanceId: string | null;

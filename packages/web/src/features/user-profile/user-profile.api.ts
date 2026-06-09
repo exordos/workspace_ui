@@ -4,6 +4,10 @@
  * Zulip API: GET /users/{user_id}
  */
 
+import {
+  fetchOwnStatus as fetchOwnStatusFromUsersApi,
+  updateOwnStatus as updateOwnStatusFromUsersApi,
+} from "~/entities/user/api/user.api";
 import { zulipApi } from "~/shared/api/client";
 import {
   getOwnAvatarCapabilities as getOwnAvatarCapabilitiesFromApi,
@@ -43,12 +47,6 @@ interface ZulipUserResponse {
     timezone?: string;
     profile_data?: Record<string, { value?: string; rendered_value?: string }>;
   };
-}
-
-interface OwnStatusResponse {
-  result?: string;
-  status_text?: string;
-  away?: boolean | string;
 }
 
 export async function fetchUserProfile(userId: number): Promise<UserProfileData | null> {
@@ -100,33 +98,8 @@ export async function fetchUserProfile(userId: number): Promise<UserProfileData 
   }
 }
 
-function parseAwayFlag(value: OwnStatusResponse["away"]): boolean {
-  if (value === true) return true;
-  if (typeof value === "string") {
-    return value.toLowerCase() === "true";
-  }
-  return false;
-}
-
 export async function fetchOwnStatus(): Promise<OwnStatusData | null> {
-  try {
-    const res = await zulipApi.get("/users/me/status");
-    if (!res.ok) {
-      log.warn("Failed to fetch own status", { status: res.status });
-      return null;
-    }
-    const data = res.data as OwnStatusResponse;
-    if (data.result === "error") {
-      return null;
-    }
-    return {
-      statusText: typeof data.status_text === "string" ? data.status_text : "",
-      away: parseAwayFlag(data.away),
-    };
-  } catch (err) {
-    log.error("Error fetching own status", { error: String(err) });
-    return null;
-  }
+  return fetchOwnStatusFromUsersApi();
 }
 
 export interface UpdateOwnProfileParams {
@@ -162,21 +135,12 @@ export interface UpdateOwnStatusParams {
 }
 
 export async function updateOwnStatus(params: UpdateOwnStatusParams): Promise<boolean> {
-  const statusText = params.statusText.trim();
-  try {
-    const res = await zulipApi.post("/users/me/status", {
-      status_text: statusText,
-      away: params.away ? "true" : "false",
-    });
-    if (!res.ok) {
-      log.warn("Failed to update own status", { status: res.status });
-      return false;
-    }
-    return true;
-  } catch (err) {
-    log.error("Error updating own status", { error: String(err) });
-    return false;
-  }
+  const nextStatus = await updateOwnStatusFromUsersApi({
+    text: params.statusText,
+    away: params.away,
+  });
+  const isClearRequest = params.statusText.trim().length === 0 && params.away === false;
+  return nextStatus != null || isClearRequest;
 }
 
 export function getOwnAvatarCapabilities(): OwnAvatarCapabilities {

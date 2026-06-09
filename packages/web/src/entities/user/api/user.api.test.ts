@@ -192,6 +192,35 @@ describe("user presence api", () => {
     });
   });
 
+  it("fetches own status with emoji and away flag", async () => {
+    const { fetchOwnStatus } = await import("./user.api");
+    mockGet.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        status_text: "Deep work",
+        status_emoji: "speech_balloon",
+        away: true,
+        status_emoji_display_info: {
+          emoji_name: "speech_balloon",
+          emoji_code: "1f4ac",
+          reaction_type: "unicode_emoji",
+        },
+      },
+    });
+
+    const result = await fetchOwnStatus();
+
+    expect(mockGet).toHaveBeenCalledWith("/users/me/status");
+    expect(result).toEqual({
+      text: "Deep work",
+      emojiName: "speech_balloon",
+      emojiCode: "1f4ac",
+      reactionType: "unicode_emoji",
+      away: true,
+    });
+  });
+
   it("returns null for fully cleared own status payload", async () => {
     const { updateOwnStatus } = await import("./user.api");
     mockPost.mockResolvedValue({ data: { status_text: "", status_emoji: "", away: false } });
@@ -349,6 +378,53 @@ describe("user presence api", () => {
 
     expect(mockGet).toHaveBeenCalledTimes(1);
     expect(useUsersStore.getState().getUser(9)?.status?.text).toBe("Fresh");
+    vi.useRealTimers();
+  });
+
+  it("hydrates from IndexedDB and skips network when row is within bootstrap TTL", async () => {
+    const t0 = 1_700_000_000_000;
+    vi.useFakeTimers();
+    vi.setSystemTime(t0);
+    mockGetUserStatusCacheRow.mockResolvedValue({
+      id: "instance-1:10",
+      instanceId: "instance-1",
+      userId: 10,
+      status: { text: "Cached bootstrap", away: false },
+      fetchedAt: t0 - 9 * 60_000,
+    });
+    const { requestUserStatus } = await import("./user.api");
+    useUsersStore.getState().mergeUser({ user_id: 10, full_name: "Bootstrap User" });
+
+    await requestUserStatus(10, { reason: "bootstrap" });
+
+    expect(mockGet).not.toHaveBeenCalled();
+    expect(useUsersStore.getState().getUser(10)?.status?.text).toBe("Cached bootstrap");
+    vi.useRealTimers();
+  });
+
+  it("refetches during bootstrap when cached row is older than bootstrap TTL", async () => {
+    const t0 = 1_700_000_000_000;
+    vi.useFakeTimers();
+    vi.setSystemTime(t0);
+    mockGetUserStatusCacheRow.mockResolvedValue({
+      id: "instance-1:11",
+      instanceId: "instance-1",
+      userId: 11,
+      status: { text: "Cached bootstrap", away: false },
+      fetchedAt: t0 - 11 * 60_000,
+    });
+    mockGet.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { result: "success", status: { status_text: "Fresh bootstrap", away: false } },
+    });
+    const { requestUserStatus } = await import("./user.api");
+    useUsersStore.getState().mergeUser({ user_id: 11, full_name: "Bootstrap Refresh" });
+
+    await requestUserStatus(11, { reason: "bootstrap" });
+
+    expect(mockGet).toHaveBeenCalledTimes(1);
+    expect(useUsersStore.getState().getUser(11)?.status?.text).toBe("Fresh bootstrap");
     vi.useRealTimers();
   });
 });

@@ -6,8 +6,9 @@
  */
 
 import { getCurrentInstance } from "~/shared/api/client";
-import { getUserStatusCacheRow, putUserStatusCacheRow } from "~/shared/lib/user-status-cache-db";
+import { getUserStatusCacheRow } from "~/shared/lib/user-status-cache-db";
 import { useUsersStore, type UserRecord } from "../user.model";
+import { applyUserStatusSnapshot } from "./user-status-write.lib";
 import type {
   FetchUserStatusDetailed,
   RequestUserStatusOptions,
@@ -18,6 +19,7 @@ import type {
 /** Success response considered fresh for this long (default); DM header uses 1 min. */
 function getSuccessTtlMs(reason: UserStatusRequestReason | undefined): number {
   if (reason === "dm_header") return 60_000;
+  if (reason === "bootstrap") return 10 * 60_000;
   return 5 * 60_000;
 }
 const STATUS_INVALID_USER_BACKOFF_MS = 24 * 60 * 60_000;
@@ -72,16 +74,7 @@ function nextStatusRequestItem(): StatusQueueItem | undefined {
 function applyFetchOutcome(userId: number, outcome: StatusFetchOutcome): void {
   if (outcome.kind === "ok") {
     const fetchedAt = Date.now();
-    useUsersStore.getState().setStatus(userId, outcome.status, fetchedAt);
-    const inst = getCurrentInstance();
-    if (inst?.id) {
-      void putUserStatusCacheRow({
-        instanceId: inst.id,
-        userId,
-        status: outcome.status,
-        fetchedAt,
-      });
-    }
+    applyUserStatusSnapshot(userId, outcome.status, fetchedAt);
     return;
   }
   if (outcome.kind === "invalid_user") {

@@ -6,11 +6,17 @@ import { useUsersStore } from "~/entities/user/user.model";
 import { clearRealmProfileFieldsCache } from "~/shared/api/zulip-realm-profile-fields";
 import { useUserProfileStore } from "./user-profile.model";
 
+const requestUserStatusMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+
 vi.mock("~/shared/api/client", () => ({
   zulipApi: {
     get: vi.fn(),
   },
   getCurrentInstance: vi.fn(() => null),
+}));
+
+vi.mock("~/entities/user/api/user.api", () => ({
+  requestUserStatus: requestUserStatusMock,
 }));
 
 const MOCK_ZULIP_USER = {
@@ -36,6 +42,7 @@ describe("useUserProfileStore", () => {
     useUserProfileStore.getState().clear();
     useUsersStore.getState().clear();
     clearRealmProfileFieldsCache();
+    requestUserStatusMock.mockReset();
     vi.restoreAllMocks();
   });
 
@@ -86,6 +93,10 @@ describe("useUserProfileStore", () => {
       expect(merged?.avatar_url).toBe("https://example.com/avatar.png");
       expect(merged?.role).toBe(400);
       expect(merged?.is_active).toBe(true);
+      expect(requestUserStatusMock).toHaveBeenCalledWith(42, {
+        reason: "right_panel",
+        priority: "high",
+      });
     });
 
     it("maps profile_data using realm field definitions when instance is active", async () => {

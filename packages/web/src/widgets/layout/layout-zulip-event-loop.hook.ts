@@ -14,6 +14,7 @@ import { useInboxStore } from "~/entities/inbox/inbox.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { useNotificationSettingsStore } from "~/entities/notification-settings/notification-settings.model";
+import { requestUserStatus } from "~/entities/user/api/user.api";
 import { persistUsersDirectoryToIndexedDb } from "~/entities/user/user-directory-snapshot-persist.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
@@ -61,6 +62,7 @@ import {
   createDmPreviewHydrateRejectedHandler,
   createDmPreviewHydrateSettledHandler,
   createManualReconnectBootstrapHandler,
+  scheduleBootstrapStatusPreload,
   createStreamPreviewBootstrapRejectedHandler,
   createStreamPreviewBootstrapSettledHandler,
   findZulipMemberByUserId,
@@ -607,6 +609,12 @@ export function useLayoutZulipEventLoop(options: {
         });
 
         hydrateChatListDmIndexForInstance(currentInstanceId);
+        scheduleBootstrapStatusPreload({
+          currentUserId: uid,
+          members: apiMembers,
+          dms: useChatListStore.getState().dms(),
+          requestUserStatus,
+        });
 
         const applyBootstrapFromEventLoop = (
           result: ChatListBootstrapResult,

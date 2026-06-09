@@ -107,6 +107,29 @@ export async function fetchUserStatus(userId: number): Promise<UserStatus | null
   return outcome.kind === "ok" ? outcome.status : null;
 }
 
+/** Reads the authenticated user's status using the full custom-status model. */
+export async function fetchOwnStatus(): Promise<UserStatus | null> {
+  const instance = getCurrentInstance();
+  if (!instance?.realm || !instance.email || !instance.apiKey) {
+    return null;
+  }
+
+  try {
+    refreshZulipApiBase();
+    refreshWorkspaceApiBase();
+    const response = await zulipApi.get("/users/me/status");
+    if (!response.ok) {
+      log.warn("Own status request failed", { status: response.status });
+      return null;
+    }
+
+    return normalizeOwnStatusResponse(response.data ?? {});
+  } catch (err) {
+    log.warn("Failed to fetch own status", { error: String(err) });
+    return null;
+  }
+}
+
 export async function updateOwnStatus(params: UpdateOwnStatusParams): Promise<UserStatus | null> {
   const instance = getCurrentInstance();
   if (!instance?.realm || !instance.email || !instance.apiKey) {

@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useThemeStore } from "~/entities/theme/theme.model";
+import { applyUserStatusSnapshot } from "~/entities/user/api/user-status-write.lib";
 import { updateOwnStatus } from "~/entities/user/api/user.api";
 import { useUserStatus } from "~/entities/user/user-status.hooks";
 import {
@@ -215,7 +216,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
         });
         return;
       }
-      useUsersStore.getState().setStatus(currentUserId, nextStatus, Date.now());
+      applyUserStatusSnapshot(currentUserId, nextStatus, Date.now());
       setStatusDialogOpen(false);
     } finally {
       setStatusSubmitting(false);

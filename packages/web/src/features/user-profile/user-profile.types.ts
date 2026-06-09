@@ -5,6 +5,8 @@
  * fields for job title, manager, birthday, local time, phone, and timezone.
  */
 
+import type { UserStatus } from "~/entities/user/user.model";
+
 export interface UserProfileData {
   userId: number;
   fullName: string;
@@ -22,10 +24,7 @@ export interface UserProfileData {
   timezone?: string;
 }
 
-export interface OwnStatusData {
-  statusText: string;
-  away: boolean;
-}
+export type OwnStatusData = UserStatus;
 
 export type OwnProfileUpdateErrorKind = "forbidden" | "invalid" | "unsupported" | "transient";
 

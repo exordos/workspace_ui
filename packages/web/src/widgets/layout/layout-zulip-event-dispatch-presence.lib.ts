@@ -2,6 +2,7 @@
  * Zulip realtime handlers: presence, user status, typing, user settings.
  */
 import { useNotificationSettingsStore } from "~/entities/notification-settings/notification-settings.model";
+import { applyUserStatusSnapshot } from "~/entities/user/api/user-status-write.lib";
 import { resolveTypingEventRoute } from "~/features/typing-indicator/typing-event-routing";
 import type { ZulipEvent } from "~/shared/api/zulip.types";
 import type { LayoutZulipEventDispatchContext } from "./layout-zulip-event-dispatch.types";
@@ -32,9 +33,8 @@ export function handlePresence(event: ZulipEvent, ctx: LayoutZulipEventDispatchC
   });
 }
 
-export function handleUserStatus(event: ZulipEvent, ctx: LayoutZulipEventDispatchContext): void {
+export function handleUserStatus(event: ZulipEvent, _ctx: LayoutZulipEventDispatchContext): void {
   if (event.type !== "user_status") return;
-  const { users } = ctx;
   const userId = event.user_id as number | undefined;
   if (userId == null) return;
   const statusText = typeof event.status_text === "string" ? event.status_text.trim() : "";
@@ -49,7 +49,7 @@ export function handleUserStatus(event: ZulipEvent, ctx: LayoutZulipEventDispatc
       : undefined;
   const away = event.away === true;
   const hasStatus = statusText.length > 0 || emojiName.length > 0 || away;
-  users.setStatus(
+  applyUserStatusSnapshot(
     userId,
     hasStatus
       ? {
