@@ -301,6 +301,51 @@ describe("MessageBubble markdown body", () => {
     expect(spoilerBlock?.classList.contains("open")).toBe(true);
   });
 
+  it("renders Zulip reply quote as nested quote block instead of code fence", () => {
+    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+
+    const markdown =
+      "@_**Alice|77** [wrote](https://zulip.example.com/#narrow/dm/near/1):\n```quote\nQuoted text\n```\n\nMy reply";
+    const { container } = render(
+      <MessageBubble message={createMessage({ content: markdown })} isOwn={false} />,
+    );
+
+    const body = container.querySelector(".message-body");
+    expect(body?.querySelector(".zulip-quote-block")).toBeTruthy();
+    expect(body?.querySelector(".zulip-quote-header")).toBeTruthy();
+    expect(body?.querySelector(".zulip-quote-body")).toBeTruthy();
+    expect(body?.textContent).toContain("Quoted text");
+    expect(body?.textContent).toContain("My reply");
+    expect(body?.innerHTML).not.toContain("language-quote");
+  });
+
+  it("renders user_upload image inside server-rendered quote block instead of URL text", () => {
+    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+
+    const uploadPath = "/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png";
+    const uploadUrl = `https://sys.example.com${uploadPath}`;
+    const zulipHtml = [
+      '<p><span class="user-mention" data-user-id="77">@Alice</span>',
+      ' <a href="https://zulip.example.com/near/1">wrote</a>:</p>',
+      `<blockquote><p><a href="${uploadPath}">${uploadUrl}</a></p></blockquote>`,
+      '<div class="message_inline_image">',
+      `<a href="${uploadPath}">`,
+      `<img src="/user_uploads/thumbnail/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png/840x560.webp" alt="image.png">`,
+      "</a></div>",
+      "<p>My reply</p>",
+    ].join("");
+
+    const { container } = render(
+      <MessageBubble message={createMessage({ content: zulipHtml })} isOwn={false} />,
+    );
+
+    const quoteBody = container.querySelector(".zulip-quote-body");
+    expect(quoteBody).toBeTruthy();
+    expect(quoteBody?.querySelector("img.message-media-preview")).toBeTruthy();
+    expect(quoteBody?.textContent).not.toContain(uploadUrl);
+    expect(container.querySelectorAll(".message-body img")).toHaveLength(1);
+  });
+
   it("uses default header for fenced spoiler without explicit heading", () => {
     useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
 

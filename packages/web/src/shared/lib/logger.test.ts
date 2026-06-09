@@ -301,13 +301,13 @@ describe("logApiCall", () => {
     setMinLevel("debug");
   });
 
-  // Successful API calls are logged at info level with method + path
-  it("logs info for a normal API call", () => {
+  // Successful API calls are logged at debug level with method + path
+  it("logs debug for a normal API call", () => {
     logApiCall("GET", "/messages", { status: 200, durationMs: 150 });
 
     const entry = getLogHistory().find((e) => e.scope === "api");
     expect(entry).toBeDefined();
-    expect(entry!.level).toBe("info");
+    expect(entry!.level).toBe("debug");
     expect(entry!.message).toBe("GET /messages");
   });
 

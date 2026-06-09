@@ -16,6 +16,7 @@
  *   perf.measure("app:startup", "app:init", "app:ready");
  */
 
+import { recordDiagnosticVital } from "./diagnostics-vitals.lib";
 import { createLogger } from "./logger";
 
 const log = createLogger("perf");
@@ -45,7 +46,7 @@ function startTimer(label: string): PerfTimer {
     if (duration > 1000) {
       log.warn(`Slow: ${label}`, { durationMs: duration });
     } else if (IS_DEV) {
-      log.info(label, { durationMs: duration });
+      log.debug(label, { durationMs: duration });
     }
 
     return duration;
@@ -63,7 +64,7 @@ function measure(name: string, startMark: string, endMark: string): number | nul
   try {
     const entry = performance.measure(name, startMark, endMark);
     const duration = Math.round(entry.duration);
-    log.info(name, { durationMs: duration });
+    log.debug(name, { durationMs: duration });
     return duration;
   } catch {
     return null;
@@ -107,6 +108,7 @@ function reportWebVitals(): () => void {
         value,
         entryType: entry.entryType,
       });
+      recordDiagnosticVital(entry.name, value);
     }
   });
 

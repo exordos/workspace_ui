@@ -204,46 +204,6 @@ export const env = {
   AVATAR_PERSIST_INDEXEDDB: avatarPersistIndexedDb,
 
   /**
-   * When true, `[message-flow]` and `[scroll-read]` traces appear in the browser console (chat store,
-   * IDB, chat page merge, scroll offsets, mark-as-read). Default: on in dev. Set `false` to silence.
-   */
-  MESSAGE_FLOW_DEBUG: (() => {
-    if (import.meta.env.MODE === "test") return false;
-    const v = optional(
-      "VITE_MESSAGE_FLOW_DEBUG",
-      import.meta.env.DEV ? "true" : "false",
-    ).toLowerCase();
-    return v === "true" || v === "1";
-  })(),
-
-  /**
-   * When true, `[chat-list-flow]` traces appear in the browser console (IndexedDB snapshot, GET /messages
-   * for sidebar bootstrap, Zustand chat-list updates, IDB persist debounce).
-   * Default: on in development, off in production. Set `VITE_CHAT_LIST_FLOW_DEBUG=false` to silence in dev.
-   */
-  CHAT_LIST_FLOW_DEBUG: (() => {
-    if (import.meta.env.MODE === "test") return false;
-    const v = optional(
-      "VITE_CHAT_LIST_FLOW_DEBUG",
-      import.meta.env.DEV ? "true" : "false",
-    ).toLowerCase();
-    return v === "true" || v === "1";
-  })(),
-
-  /**
-   * When true, `[sidebar-unread]` traces appear in the console (register reconcile, realtime bumps,
-   * mark-as-read decrements, MessageList dispatch). Default: on in dev.
-   */
-  SIDEBAR_UNREAD_DEBUG: (() => {
-    if (import.meta.env.MODE === "test") return false;
-    const v = optional(
-      "VITE_SIDEBAR_UNREAD_DEBUG",
-      import.meta.env.DEV ? "true" : "false",
-    ).toLowerCase();
-    return v === "true" || v === "1";
-  })(),
-
-  /**
    * When true, top bar shows the Calls section shortcut.
    * Build-time — `VITE_TOP_BAR_CALLS_NAV=true` (default: hidden).
    */

@@ -9,6 +9,12 @@ export interface UseChatMessageListCallbacksParams {
   realmBaseUrl: string;
   streams: { stream_id: number; name: string }[];
   locationPathname: string;
+  locationSearch: string;
+  isDmView: boolean;
+  dmRecipientIds: number[];
+  resolvedStreamId: number | null;
+  topicName: string | undefined;
+  streamRouteTopic: string;
   navigate: NavigateFunction;
   rightDrawer: { openUserProfile?: (userId: number) => void } | null;
   setReplyQuote: Dispatch<

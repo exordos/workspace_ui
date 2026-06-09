@@ -665,6 +665,12 @@ export const ChatPage: React.FC = () => {
     realmBaseUrl,
     streams,
     locationPathname: location.pathname,
+    locationSearch: location.search,
+    isDmView,
+    dmRecipientIds,
+    resolvedStreamId,
+    topicName,
+    streamRouteTopic,
     navigate,
     rightDrawer,
     setReplyQuote,
@@ -745,6 +751,7 @@ export const ChatPage: React.FC = () => {
 
       setForwardMessages([]);
       setForwardSelectedText(undefined);
+      setReplyQuote(null);
       if (selectionMode) {
         setSelectionMode(false);
         setSelectedMessageIds(new Set());

@@ -329,14 +329,17 @@ export function subscribeConnectionHealth(listener: HealthListener): () => void 
 
 export function setConnectionPhase(phase: ConnectionHealthPhase): void {
   if (snapshot.phase === phase) return;
+  const previousPhase = snapshot.phase;
   snapshot = { ...snapshot, phase };
   syncRateLimitFromGate();
+  log.info("Connection phase changed", { from: previousPhase, to: phase });
   notify();
 }
 
 export function reportSuccess(): void {
   stopScheduledReconnect();
   transportFailureActive = false;
+  const previousPhase = snapshot.phase;
   snapshot = {
     phase: isOnline() ? "ready" : "offline",
     retryAfterMs: 0,
@@ -346,6 +349,9 @@ export function reportSuccess(): void {
     isReconnecting: false,
   };
   syncRateLimitFromGate();
+  if (previousPhase !== snapshot.phase) {
+    log.info("Connection restored", { from: previousPhase, to: snapshot.phase });
+  }
   notify();
 }
 

@@ -799,7 +799,7 @@ function configureSecurityPolicy(): void {
           "script-src 'self' 'unsafe-inline'",
           "style-src 'self' 'unsafe-inline'",
           "connect-src 'self' ws://localhost:* http://localhost:* https: wss:",
-          "img-src 'self' data: https:",
+          "img-src 'self' data: blob: https:",
           "font-src 'self' data:",
           "media-src 'self' https:",
           "frame-src https:",
@@ -809,7 +809,7 @@ function configureSecurityPolicy(): void {
           "script-src 'self'",
           "style-src 'self' 'unsafe-inline'",
           "connect-src 'self' https: wss:",
-          "img-src 'self' data: https:",
+          "img-src 'self' data: blob: https:",
           "font-src 'self'",
           "media-src 'self' https:",
           "frame-src https:",
@@ -1005,6 +1005,31 @@ function registerIpcHandlers(): void {
   ipcMain.handle("logs:append", (_event, line: unknown) => {
     if (typeof line !== "string") return false;
     return appendLogsLine(line);
+  });
+
+  ipcMain.handle("diagnostics:getMemorySnapshot", () => {
+    const metrics = app.getAppMetrics();
+    const processes = metrics.map((metric) => ({
+      pid: metric.pid,
+      type: metric.type,
+      memory: {
+        workingSetSize: metric.memory.workingSetSize,
+        peakWorkingSetSize: metric.memory.peakWorkingSetSize,
+      },
+      cpu: metric.cpu != null ? { percentCPUUsage: metric.cpu.percentCPUUsage } : undefined,
+    }));
+    const totalWorkingSetKb = processes.reduce(
+      (sum, processMetric) => sum + processMetric.memory.workingSetSize,
+      0,
+    );
+
+    return {
+      collectedAt: new Date().toISOString(),
+      main: process.memoryUsage(),
+      system: process.getSystemMemoryInfo(),
+      processes,
+      totalWorkingSetKb,
+    };
   });
 
   // Call state — OS awareness

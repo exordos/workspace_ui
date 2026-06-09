@@ -1,10 +1,11 @@
 import type { MockMessage } from "~/shared/api/zulip.types";
-import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
+import { buildZulipQuoteBlock } from "~/shared/lib/message-zulip-quote.lib";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { encodeTopicForRoute, normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { buildZulipQuoteHeader } from "~/shared/lib/zulip-quote-header.lib";
 import { buildZulipMessageWebPermalink } from "~/shared/lib/zulip-web-permalink.lib";
 import { slugForStream } from "~/widgets/sidebar/sidebar.lib";
+import { resolveReplyQuoteContent } from "./chat-reply-quote.lib";
 
 export type ForwardableMessage = Pick<
   MockMessage,
@@ -12,6 +13,7 @@ export type ForwardableMessage = Pick<
   | "sender_full_name"
   | "sender_id"
   | "content"
+  | "markdown_source"
   | "stream_id"
   | "subject"
   | "display_recipient"
@@ -55,11 +57,7 @@ function buildSingleForwardQuote(
     wroteLabel: permalinkOptions?.wroteLabel ?? "wrote",
     permalinkUrl,
   });
-  return `${header}\n\`\`\`quote\n${content}\n\`\`\``;
-}
-
-function normalizeForwardPayloadContent(content: string): string {
-  return plainTextPreviewFromMessageBody(content).trim();
+  return buildZulipQuoteBlock(header, content);
 }
 
 export function buildForwardQuote(
@@ -76,13 +74,14 @@ export function buildForwardQuote(
     .map((message, index) =>
       buildSingleForwardQuote(
         message,
-        messages.length === 1 && index === 0 && singleMessageQuote != null
-          ? singleMessageQuote
-          : normalizeForwardPayloadContent(message.content),
+        resolveReplyQuoteContent(
+          message,
+          messages.length === 1 && index === 0 ? singleMessageQuote : undefined,
+        ),
         permalinkOptions,
       ),
     )
-    .join("\n");
+    .join("\n\n");
 }
 
 export function toggleForwardRecipient(selectedUserIds: number[], userId: number): number[] {
@@ -134,7 +133,7 @@ export function mergeForwardDraftContent(
   if (normalizedExisting == null || normalizedExisting.length === 0) {
     return forwardedContent;
   }
-  return `${forwardedContent}\n${normalizedExisting}`;
+  return `${forwardedContent}\n\n${normalizedExisting}`;
 }
 
 export function setPendingForwardPrefill(route: string, content: string): void {

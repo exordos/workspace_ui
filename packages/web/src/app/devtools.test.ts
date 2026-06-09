@@ -107,6 +107,8 @@ interface DevToolsShape {
   logs: (level?: string) => unknown[];
   clearLogs: () => void;
   setLogLevel: (level: string) => void;
+  setPipelineTrace: (channels: string | string[]) => void;
+  getPipelineTrace: () => string | string[];
   help: () => void;
 }
 
@@ -150,7 +152,7 @@ describe("devtools", () => {
       installDevTools();
       expect(initConsoleCaptureMock).toHaveBeenCalled();
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining("DevTools ready"),
+        expect.stringContaining("DevTools — type __dev__.help()"),
         expect.any(String),
       );
       consoleSpy.mockRestore();
@@ -286,6 +288,14 @@ describe("devtools", () => {
     it("setLogLevel is a function", () => {
       installDevTools();
       expect(typeof getDev()!.setLogLevel).toBe("function");
+    });
+
+    it("exposes pipeline trace controls", () => {
+      installDevTools();
+      expect(typeof getDev()!.setPipelineTrace).toBe("function");
+      expect(typeof getDev()!.getPipelineTrace).toBe("function");
+      getDev()!.setPipelineTrace("chat-list");
+      expect(getDev()!.getPipelineTrace()).toEqual(["chat-list"]);
     });
   });
 

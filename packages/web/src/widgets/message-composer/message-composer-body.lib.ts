@@ -2,6 +2,7 @@
  * Outgoing message body and attachment label helpers for the composer.
  */
 import { t } from "~/i18n/i18n";
+import { buildZulipQuoteBlock } from "~/shared/lib/message-zulip-quote.lib";
 import { buildZulipQuoteHeader } from "~/shared/lib/zulip-quote-header.lib";
 import type { ReplyQuote } from "./message-composer.types";
 
@@ -15,10 +16,64 @@ export function buildOutgoingMessageBody(value: string, replyQuote?: ReplyQuote 
       wroteLabel: t("message.replyQuoteWrote"),
       permalinkUrl: replyQuote.permalinkUrl,
     });
-    const quoteBlock = `${header}\n\`\`\`quote\n${replyQuote.content}\n\`\`\`\n\n`;
-    body = quoteBlock + body;
+    body = buildZulipQuoteBlock(header, replyQuote.content) + body;
   }
   return body;
+}
+
+const IMAGE_ATTACHMENT_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp"]);
+
+const EXTENSION_TO_IMAGE_MIME: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  bmp: "image/bmp",
+};
+
+function normalizeImageMime(mime: string): string {
+  const normalized = mime.trim().toLowerCase();
+  return normalized === "image/jpg" ? "image/jpeg" : normalized;
+}
+
+function imageMimeFromFileName(fileName: string): string | null {
+  const parts = fileName.split(".");
+  const extension = parts.length > 1 ? (parts.at(-1) ?? "").trim().toLowerCase() : "";
+  if (extension.length === 0) return null;
+  return EXTENSION_TO_IMAGE_MIME[extension] ?? null;
+}
+
+function defaultFileNameForImageMime(mime: string): string {
+  const subtype = normalizeImageMime(mime).split("/")[1] ?? "png";
+  return `pasted-image.${subtype}`;
+}
+
+/** True when the file is an image by MIME type or by common image extension. */
+export function isLikelyImageAttachment(file: File): boolean {
+  if (file.type.startsWith("image/")) return true;
+  const extension = file.name.split(".").pop()?.trim().toLowerCase() ?? "";
+  return IMAGE_ATTACHMENT_EXTENSIONS.has(extension);
+}
+
+/** Ensures clipboard/dropped image files have a usable MIME type for preview and upload. */
+export function normalizeImageAttachmentFile(file: File, fallbackMime?: string): File {
+  const currentType = normalizeImageMime(file.type);
+  if (currentType.startsWith("image/")) {
+    if (file.type === currentType) return file;
+    return new File([file], file.name, { type: currentType });
+  }
+
+  const fallback = fallbackMime != null ? normalizeImageMime(fallbackMime) : "";
+  const resolvedMime = fallback.startsWith("image/")
+    ? fallback
+    : (imageMimeFromFileName(file.name) ?? "");
+  if (!resolvedMime.startsWith("image/")) {
+    return file;
+  }
+
+  const name = file.name.trim().length > 0 ? file.name : defaultFileNameForImageMime(resolvedMime);
+  return new File([file], name, { type: resolvedMime });
 }
 
 export function getAttachmentExtensionLabel(fileName: string): string {

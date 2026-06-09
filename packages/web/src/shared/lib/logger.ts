@@ -8,6 +8,17 @@
  * - In-memory ring buffer for debug UI
  * - Transport abstraction (console, future: remote)
  *
+ * Scope taxonomy:
+ * - `app` — startup, global lifecycle
+ * - `api` — HTTP middleware
+ * - `realtime` — event loop, queue, reconnect
+ * - `connection-health` — online/offline, degraded
+ * - `action` — user actions (`logAction`)
+ * - `store:<name>` — Zustand mutations (`logStoreAction`)
+ * - `trace:messages` | `trace:chat-list` | `trace:sidebar-unread` | `trace:folders` | `trace:link-preview` — pipeline traces
+ * - `perf` — timers and web vitals
+ * - `console` — captured raw console output
+ *
  * Usage:
  *   import { logger, createLogger } from "~/lib/logger";
  *
@@ -22,6 +33,7 @@
  *   logApiCall("GET", "/messages", { status: 200, params: { anchor: "newest" } });
  *
  * Dev-only console capture: initConsoleCapture() in installDevTools().
+ * Pipeline traces: `__dev__.setPipelineTrace("chat-list")` + `__dev__.setLogLevel("debug")`.
  */
 
 import { safeCatch } from "./guards";
@@ -179,7 +191,7 @@ const LOG_LEVEL_PRIORITY: Record<LogLevel, number> = {
   error: 3,
 };
 
-let minLevel: LogLevel = import.meta.env?.DEV ? "debug" : "warn";
+let minLevel: LogLevel = import.meta.env?.DEV ? "info" : "warn";
 
 export function setMinLevel(level: LogLevel): void {
   minLevel = level;
@@ -311,7 +323,7 @@ export function logApiCall(
   } else if (options?.durationMs && options.durationMs > 3000) {
     apiLog.warn(`${method} ${path} slow`, data);
   } else {
-    apiLog.info(`${method} ${path}`, data);
+    apiLog.debug(`${method} ${path}`, data);
   }
 }
 

@@ -804,22 +804,13 @@ describe("MessageComposer mode tabs", () => {
     const toolbarRow = screen.getByTestId("composer-toolbar-row");
     expect(toolbarRow).toHaveClass("transition-[max-height,opacity,transform,padding]");
     expect(toolbarRow).toHaveClass("duration-200");
-    expect(toolbarRow).toHaveClass("max-h-0");
-    expect(toolbarRow).toHaveClass("opacity-0");
-
-    focusComposerInput();
-
     expect(toolbarRow).toHaveClass("max-h-12");
     expect(toolbarRow).toHaveClass("opacity-100");
     expect(toolbarRow).toHaveClass("translate-y-0");
   });
 
-  it("shows mode tabs row when composer input gets focus", () => {
+  it("shows mode tabs row without requiring composer focus", () => {
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
-
-    expect(screen.queryByRole("toolbar", { name: /message composer/i })).not.toBeInTheDocument();
-
-    focusComposerInput();
 
     expect(screen.getByRole("toolbar", { name: /message composer/i })).toBeInTheDocument();
   });
@@ -1055,6 +1046,42 @@ describe("MessageComposer file attachments", () => {
       revokeObjectURLMock.mockRestore();
     }
   });
+
+  it("renders image preview thumbnail when pasting clipboard image with empty File.type", async () => {
+    const createObjectURLMock = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:test-paste-image");
+    const revokeObjectURLMock = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+
+    try {
+      renderWithProviders(<MessageComposer onSend={vi.fn()} />);
+      const textbox = screen.getByRole("textbox");
+      const imageFile = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "image.png", {
+        type: "",
+      });
+
+      fireEvent.paste(textbox, {
+        clipboardData: {
+          items: [
+            {
+              kind: "file",
+              type: "image/png",
+              getAsFile: () => imageFile,
+            },
+          ],
+        },
+      });
+
+      const thumbnail = await screen.findByRole("img", { name: "image.png" });
+      expect(thumbnail).toHaveAttribute("src", "blob:test-paste-image");
+      expect(createObjectURLMock).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "image.png", type: "image/png" }),
+      );
+    } finally {
+      createObjectURLMock.mockRestore();
+      revokeObjectURLMock.mockRestore();
+    }
+  });
 });
 
 describe("MessageComposer upload progress", () => {
@@ -1105,6 +1132,39 @@ describe("MessageComposer edit-last shortcut", () => {
     fireEvent.keyDown(textbox, { key: "ArrowUp", shiftKey: true });
 
     expect(onEditLastMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe("MessageComposer reply quote", () => {
+  const sampleReplyQuote = {
+    id: 101,
+    content: "Original message",
+    sender_full_name: "Alice",
+    sender_id: 42,
+    permalinkUrl: null,
+  };
+
+  it("focuses the textarea when replyQuote is set", () => {
+    const { rerender } = renderWithProviders(<MessageComposer onSend={vi.fn()} />);
+    const textbox = screen.getByRole("textbox");
+    expect(textbox).not.toHaveFocus();
+
+    rerender(<MessageComposer onSend={vi.fn()} replyQuote={sampleReplyQuote} />);
+
+    expect(textbox).toHaveFocus();
+  });
+
+  it("does not steal focus when replyQuote id is unchanged", () => {
+    const { rerender } = renderWithProviders(
+      <MessageComposer onSend={vi.fn()} replyQuote={sampleReplyQuote} />,
+    );
+    const textbox = screen.getByRole("textbox");
+    textbox.blur();
+    expect(textbox).not.toHaveFocus();
+
+    rerender(<MessageComposer onSend={vi.fn()} replyQuote={sampleReplyQuote} />);
+
+    expect(textbox).not.toHaveFocus();
   });
 });
 

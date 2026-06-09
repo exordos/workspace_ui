@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallba
 import { t } from "~/i18n/i18n";
 import type { MockMessage, Reaction, RealmEmoji } from "~/shared/api/zulip.types";
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
+import { countUnreadMessagesBelowViewport } from "~/shared/lib/count-unread-below-viewport.lib";
 import { normalizeEmojiShortcodeName } from "~/shared/lib/emoji-shortcodes.lib";
 import { createLogger } from "~/shared/lib/logger";
 import { normalizeStreamTopicForMessageCache } from "~/shared/lib/message-cache-keys.lib";
@@ -136,6 +137,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
   const scrollRef = useRef<HTMLDivElement>(null);
   const pendingPrependScrollRef = useRef<PendingPrependScrollSnapshot | null>(null);
   const wasAtBottomRef = useRef(true);
+  const userScrolledAwayFromBottomRef = useRef(false);
   const userScrollSeenRef = useRef(false);
   const programmaticScrollRef = useRef(false);
   const pendingScrollToBottomKeyRef = useRef<string | null>(null);
@@ -157,6 +159,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
     focusedMessageId,
   );
   const [isAtBottom, setIsAtBottom] = useState(true);
+  const [belowViewportUnreadCount, setBelowViewportUnreadCount] = useState(0);
   const [customEmojis, setCustomEmojis] = useState<RealmEmoji[]>(() => getCachedRealmEmojis());
 
   const ensureCustomEmojisLoaded = useCallback(() => {
@@ -215,6 +218,18 @@ export const MessageListInner: React.FC<MessageListProps> = ({
   const messageById = useMemo(() => buildMessageIdMap(messages), [messages]);
   const lastUnreadId = useMemo(
     () => resolveLastUnreadBoundaryMessageId(messages, currentUserId),
+    [messages, currentUserId],
+  );
+
+  const syncBelowViewportUnreadCount = useCallback(
+    (atBottom: boolean) => {
+      const el = scrollRef.current;
+      if (!el || atBottom) {
+        setBelowViewportUnreadCount(0);
+        return;
+      }
+      setBelowViewportUnreadCount(countUnreadMessagesBelowViewport(el, messages, currentUserId));
+    },
     [messages, currentUserId],
   );
 
@@ -390,12 +405,15 @@ export const MessageListInner: React.FC<MessageListProps> = ({
     viewportUnreadIdsRef.current.clear();
     bottomReadDispatchKeyRef.current = null;
     userScrollSeenRef.current = false;
+    wasAtBottomRef.current = true;
+    userScrolledAwayFromBottomRef.current = false;
     programmaticScrollRef.current = false;
     pendingPrependScrollRef.current = null;
     unreadScrollKeyRef.current = null;
     suppressReadUntilMsRef.current = 0;
     prevMessagesLengthForReanchorRef.current = null;
     setUnreadAnchorId(null);
+    setBelowViewportUnreadCount(0);
     if (scrollToBottomKey !== undefined && focusedMessageId == null) {
       openAtBottomIntentKeyRef.current = scrollToBottomKey;
     } else {
@@ -596,7 +614,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
       syncWasAtBottomFromElement(el);
       return;
     }
-    if (wasAtBottomRef.current) {
+    if (wasAtBottomRef.current && !userScrolledAwayFromBottomRef.current) {
       if (deferAutoMarkUnreadUntilUserScroll()) {
         logScrollMetrics("scroll:skipBottomForUnreadAnchor", { reason: "messagesLengthChange" });
         syncWasAtBottomFromElement(el);
@@ -647,9 +665,22 @@ export const MessageListInner: React.FC<MessageListProps> = ({
     pinTailToBottom,
   ]);
 
-  const markUserScrollIntent = useCallback(() => {
-    userScrollSeenRef.current = true;
-  }, []);
+  const markUserScrollIntent = useCallback(
+    (event: React.WheelEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
+      userScrollSeenRef.current = true;
+      const el = scrollRef.current;
+      if (!el) return;
+      if ("deltaY" in event && event.deltaY < 0) {
+        userScrolledAwayFromBottomRef.current = true;
+        wasAtBottomRef.current = false;
+        setIsAtBottom(false);
+        return;
+      }
+      const atBottom = syncWasAtBottomFromElement(el);
+      userScrolledAwayFromBottomRef.current = !atBottom;
+    },
+    [syncWasAtBottomFromElement],
+  );
 
   const flushSingleAnchorUnreadIfVisible = useCallback(() => {
     if (unreadCount !== 1) return;
@@ -735,6 +766,9 @@ export const MessageListInner: React.FC<MessageListProps> = ({
         userScrollSeenRef.current = true;
       }
       const atBottom = syncWasAtBottomFromElement(el);
+      if (event.isTrusted && !programmaticScrollRef.current) {
+        userScrolledAwayFromBottomRef.current = !atBottom;
+      }
 
       if (
         userScrollSeenRef.current &&
@@ -798,6 +832,8 @@ export const MessageListInner: React.FC<MessageListProps> = ({
       if (atBottom) {
         dispatchUnreadAtBottom();
       }
+
+      syncBelowViewportUnreadCount(atBottom);
     },
     [
       isLoadingMore,
@@ -809,6 +845,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
       capturePrependScrollSnapshot,
       logScrollMetrics,
       syncWasAtBottomFromElement,
+      syncBelowViewportUnreadCount,
     ],
   );
 
@@ -933,8 +970,17 @@ export const MessageListInner: React.FC<MessageListProps> = ({
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    syncWasAtBottomFromElement(el);
-  }, [messages.length, syncWasAtBottomFromElement]);
+    const atBottom = syncWasAtBottomFromElement(el);
+    syncBelowViewportUnreadCount(atBottom);
+  }, [messages.length, syncWasAtBottomFromElement, syncBelowViewportUnreadCount]);
+
+  useEffect(() => {
+    if (isAtBottom) {
+      setBelowViewportUnreadCount(0);
+      return;
+    }
+    syncBelowViewportUnreadCount(false);
+  }, [messages, isAtBottom, syncBelowViewportUnreadCount]);
 
   useEffect(() => {
     if (typeof IntersectionObserver === "undefined") return;
@@ -1286,7 +1332,12 @@ export const MessageListInner: React.FC<MessageListProps> = ({
         )}
         <div className="h-2 shrink-0" aria-hidden />
       </div>
-      {!isAtBottom && <FloatingScrollToBottomButton onClick={handleScrollToBottomClick} />}
+      {!isAtBottom && (
+        <FloatingScrollToBottomButton
+          onClick={handleScrollToBottomClick}
+          unreadCount={belowViewportUnreadCount}
+        />
+      )}
       <FloatingLoadingOverlay
         visible={showLoadingOverlay}
         label={t("chat.loadingMessages")}

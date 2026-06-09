@@ -8,6 +8,8 @@ export interface UseCacheFirstPageLoadConfig {
   instanceId: string | null;
   /** Dedupe key for `runInFlightDeduped` (include instance + resource). */
   dedupeKey: string;
+  /** Increment to re-run hydrate + network refresh (e.g. inbox/activity stale signals). */
+  refreshVersion?: number;
   onInstanceChange?: (instanceId: string) => void;
   hydrate: (instanceId: string) => Promise<void>;
   hasCachedData: () => boolean;
@@ -50,5 +52,5 @@ export function useCacheFirstPageLoad(config: UseCacheFirstPageLoadConfig): void
     return () => {
       cancelled = true;
     };
-  }, [config.instanceId, config.dedupeKey]);
+  }, [config.instanceId, config.dedupeKey, config.refreshVersion ?? 0]);
 }

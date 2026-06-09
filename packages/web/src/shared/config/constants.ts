@@ -18,7 +18,8 @@ export const JITSI_MEET_BASE_URL = env.JITSI_MEET_BASE_URL;
 export const CALL_INCOMING_MODAL_VARIANT = env.CALL_INCOMING_MODAL_VARIANT;
 export const WORKSPACE_ORIGIN = env.WORKSPACE_API_ORIGIN;
 export const WORKSPACE_UPLOADS_ORIGIN = env.WORKSPACE_UPLOADS_ORIGIN;
-export const IS_CONNECTION_DIAGNOSTICS_ENABLED = env.DEV;
+/** Connection diagnostics page, routes, and navigation entries (all build modes). */
+export const IS_CONNECTION_DIAGNOSTICS_ENABLED = true;
 
 // ---
 // Timing
@@ -88,6 +89,13 @@ export const TOAST_DEDUP_WINDOW_MS = 2000;
 
 /** Maximum visible in-app toasts at once. */
 export const TOAST_MAX_VISIBLE = 3;
+
+// ---
+// Message composer
+// ---
+
+/** When true, Write/Preview tabs and the formatting toolbar stay visible without composer focus. */
+export const COMPOSER_FORMATTING_TOOLBAR_ALWAYS_VISIBLE = true;
 
 // ---
 // Keyboard shortcuts

@@ -1,5 +1,5 @@
 // /inbox — IDB bootstrap (apply if fresher than memory), then background unread refresh without clearing UI.
-import React, { useCallback, useEffect, useMemo } from "react";
+import React, { useCallback, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { fetchInboxEntries, hydrateInboxEntriesFromCache } from "~/entities/inbox/inbox.api";
@@ -12,7 +12,6 @@ import { t } from "~/i18n/i18n";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { formatMessageTimeShort } from "~/shared/lib/datetime.lib";
 import { createLogger } from "~/shared/lib/logger";
-import { runInFlightDeduped } from "~/shared/lib/request-lifecycle.lib";
 import { useCacheFirstPageLoad } from "~/shared/lib/use-cache-first-page.hook";
 import { FloatingLoadingOverlay } from "~/shared/ui/floating-loading-overlay";
 import { Icon } from "~/shared/ui/icon";
@@ -64,7 +63,7 @@ export const InboxPage: React.FC = () => {
   const loading = useInboxStore((s) => s.isInitialLoading);
   const isRefreshing = useInboxStore((s) => s.isRefreshing);
   const error = useInboxStore((s) => s.error);
-  const stale = useInboxStore((s) => s.stale);
+  const staleVersion = useInboxStore((s) => s.staleVersion);
   const setEntries = useInboxStore((s) => s.setEntries);
   const startRequest = useInboxStore((s) => s.startRequest);
   const setError = useInboxStore((s) => s.setError);
@@ -89,37 +88,18 @@ export const InboxPage: React.FC = () => {
     [entries, followedTopicKeys, mutedStreamIds, mutedTopicKeys, unmutedTopicKeys],
   );
   const grouped = useMemo(() => groupInboxEntries(visibleEntries), [visibleEntries]);
-
-  const loadInbox = useCallback(
-    (hasCachedData: boolean) => {
-      // Versioned request to close response races.
-      const requestVersion = startRequest(hasCachedData);
-      const requestKey = `${currentInstanceId ?? "none"}:inbox:newest`;
-      return runInFlightDeduped(requestKey, () =>
-        fetchInboxEntries(currentUserId, { isStreamMuted, isEffectivelyMuted }),
-      )
-        .then((data) => {
-          setEntries(data, requestVersion);
-        })
-        .catch((err) => {
-          setError(String(err), requestVersion);
-          log.error("Failed to load inbox", { error: String(err) });
-        });
-    },
-    [
-      currentInstanceId,
-      currentUserId,
-      isEffectivelyMuted,
-      isStreamMuted,
-      setEntries,
-      setError,
-      startRequest,
-    ],
-  );
+  const lastInstanceIdRef = useRef<string | null>(null);
 
   useCacheFirstPageLoad({
     instanceId: currentInstanceId,
     dedupeKey: `${currentInstanceId ?? "none"}:inbox:newest`,
+    refreshVersion: staleVersion,
+    onInstanceChange: (instanceId) => {
+      if (lastInstanceIdRef.current != null && lastInstanceIdRef.current !== instanceId) {
+        useInboxStore.getState().clear();
+      }
+      lastInstanceIdRef.current = instanceId;
+    },
     hydrate: async (instanceId) => {
       const cached = await hydrateInboxEntriesFromCache(instanceId, currentUserId, {
         isStreamMuted,
@@ -144,11 +124,6 @@ export const InboxPage: React.FC = () => {
       log.error("Failed to load inbox", { error: String(err) });
     },
   });
-
-  useEffect(() => {
-    // markStale triggers soft background refresh without clearing the list.
-    if (stale) void loadInbox(entries.length > 0);
-  }, [stale, loadInbox, entries.length]);
 
   const handleEntryClick = useCallback(
     (entry: InboxEntry) => {

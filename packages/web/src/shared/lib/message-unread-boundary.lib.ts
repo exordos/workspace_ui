@@ -1,6 +1,7 @@
 import type { MockMessage } from "~/shared/api/zulip.types";
 
-function isUnreadFromOthers(
+/** True when the message is unread and not sent by the current user. */
+export function isUnreadMessageFromOthers(
   message: MockMessage,
   currentUserId: number | null | undefined,
 ): boolean {
@@ -19,7 +20,7 @@ export function resolveFirstUnreadBoundaryMessageId(
   currentUserId: number | null | undefined,
 ): number | undefined {
   for (const message of messages) {
-    if (isUnreadFromOthers(message, currentUserId)) {
+    if (isUnreadMessageFromOthers(message, currentUserId)) {
       return message.id;
     }
   }
@@ -33,7 +34,7 @@ export function resolveLastUnreadBoundaryMessageId(
 ): number | undefined {
   for (let i = messages.length - 1; i >= 0; i--) {
     const message = messages[i]!;
-    if (isUnreadFromOthers(message, currentUserId)) {
+    if (isUnreadMessageFromOthers(message, currentUserId)) {
       return message.id;
     }
   }

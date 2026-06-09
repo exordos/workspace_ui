@@ -515,6 +515,89 @@ describe("MessageList unread anchor scroll", () => {
 
     expect(scrollToBottomMock.mock.calls.length).toBeGreaterThanOrEqual(1);
   });
+
+  it("does not auto-scroll when user scrolled up before incoming message", async () => {
+    const base = [
+      msg(1, { sender_id: 99, flags: ["read"] }),
+      msg(2, { sender_id: 43, flags: ["read"] }),
+      msg(3, { sender_id: 43, flags: ["read"] }),
+    ];
+
+    const { rerender } = render(
+      <MessageList messages={base} currentUserId={7} scrollToBottomKey="tail-follow-no-scroll" />,
+    );
+
+    const feed = document.querySelector('[role="feed"]') as HTMLDivElement;
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 2000 });
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 400 });
+    Object.defineProperty(feed, "scrollTop", { configurable: true, writable: true, value: 200 });
+    fireEvent.scroll(feed);
+
+    await act(async () => {
+      await flushProgrammaticScrollFrames();
+    });
+
+    scrollToBottomMock.mockClear();
+
+    rerender(
+      <MessageList
+        messages={[...base, msg(4, { sender_id: 99, flags: [] })]}
+        currentUserId={7}
+        scrollToBottomKey="tail-follow-no-scroll"
+      />,
+    );
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 2400 });
+
+    await act(async () => {
+      await flushProgrammaticScrollFrames();
+    });
+
+    expect(scrollToBottomMock).not.toHaveBeenCalled();
+  });
+
+  it("does not auto-scroll on wheel-up before incoming message", async () => {
+    const base = [
+      msg(1, { sender_id: 99, flags: ["read"] }),
+      msg(2, { sender_id: 43, flags: ["read"] }),
+      msg(3, { sender_id: 43, flags: ["read"] }),
+    ];
+
+    const { rerender } = render(
+      <MessageList messages={base} currentUserId={7} scrollToBottomKey="tail-follow-wheel-up" />,
+    );
+
+    const feed = document.querySelector('[role="feed"]') as HTMLDivElement;
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 2000 });
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 400 });
+    Object.defineProperty(feed, "scrollTop", { configurable: true, writable: true, value: 1600 });
+
+    await act(async () => {
+      await flushProgrammaticScrollFrames();
+    });
+
+    fireEvent.wheel(feed, { deltaY: -50 });
+
+    await act(async () => {
+      await flushProgrammaticScrollFrames();
+    });
+
+    scrollToBottomMock.mockClear();
+
+    rerender(
+      <MessageList
+        messages={[...base, msg(4, { sender_id: 99, flags: [] })]}
+        currentUserId={7}
+        scrollToBottomKey="tail-follow-wheel-up"
+      />,
+    );
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 2400 });
+
+    await act(async () => {
+      await flushProgrammaticScrollFrames();
+    });
+
+    expect(scrollToBottomMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("MessageList chat open scroll to bottom", () => {

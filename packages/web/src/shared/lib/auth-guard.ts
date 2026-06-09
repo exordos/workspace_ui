@@ -213,6 +213,19 @@ function handleVisibilityChange(
   }
 }
 
+/** Read-only session expiry timestamp (ms since epoch), or null when guard is inactive. */
+export function getSessionExpiresAtMs(): number | null {
+  if (!initialized || sessionExpiresAtMs <= 0) return null;
+  return sessionExpiresAtMs;
+}
+
+/** Milliseconds until inactivity logout, or null when guard is inactive. */
+export function getSessionRemainingMs(): number | null {
+  const expiresAtMs = getSessionExpiresAtMs();
+  if (expiresAtMs == null) return null;
+  return Math.max(0, expiresAtMs - Date.now());
+}
+
 export function initAuthGuard(options: AuthGuardOptions): () => void {
   if (typeof window === "undefined") return () => {};
   if (initialized) return () => {};

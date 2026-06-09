@@ -3,6 +3,7 @@ import { AiComposerButton } from "~/features/ai-reply/ai-reply.ui";
 import type { MentionSuggestion } from "~/features/mention-suggest/mention-suggest.types";
 import { t } from "~/i18n/i18n";
 import type { SavedSnippet } from "~/shared/api/zulip.types";
+import { COMPOSER_FORMATTING_TOOLBAR_ALWAYS_VISIBLE } from "~/shared/config/constants";
 import { ensureRealmEmojisLoaded, getCachedRealmEmojis } from "~/shared/lib/realm-emojis-cache";
 import { useViewportKeyboard } from "~/shared/lib/touch";
 import { isWebView } from "~/shared/lib/webview";
@@ -14,6 +15,8 @@ import {
 } from "./message-composer-ai-surfaces.ui";
 import {
   buildOutgoingMessageBody,
+  isLikelyImageAttachment,
+  normalizeImageAttachmentFile,
   resolveTomorrowMorningTimestamp,
 } from "./message-composer-body.lib";
 import {
@@ -132,12 +135,21 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   const effectiveReplyQuote = isEditing ? null : replyQuote;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const prevDisabledRef = useRef(disabled);
+  const prevReplyQuoteIdRef = useRef<number | null>(null);
   useLayoutEffect(() => {
     if (prevDisabledRef.current && !disabled && mode === "write") {
       textareaRef.current?.focus();
     }
     prevDisabledRef.current = disabled;
   }, [disabled, mode]);
+  useLayoutEffect(() => {
+    const replyId = effectiveReplyQuote?.id ?? null;
+    const prevReplyId = prevReplyQuoteIdRef.current;
+    prevReplyQuoteIdRef.current = replyId;
+    if (replyId != null && replyId !== prevReplyId && !disabled && mode === "write") {
+      textareaRef.current?.focus();
+    }
+  }, [effectiveReplyQuote, disabled, mode]);
   const emojiButtonRef = useRef<HTMLButtonElement>(null);
   const scheduleButtonRef = useRef<HTMLButtonElement>(null);
   const savedSnippetsButtonRef = useRef<HTMLButtonElement>(null);
@@ -247,8 +259,6 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     },
     [setValue],
   );
-
-  void filePreviewUrls;
 
   const previewHtml = preview.html;
   const previewLoading = preview.loading;
@@ -426,9 +436,12 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
 
       const imageFiles: File[] = [];
       for (const item of Array.from(items)) {
-        if (item.type.startsWith("image/")) {
-          const file = item.getAsFile();
-          if (file) imageFiles.push(file);
+        if (item.kind !== "file") continue;
+        const file = item.getAsFile();
+        if (file == null) continue;
+        const normalized = normalizeImageAttachmentFile(file, item.type);
+        if (isLikelyImageAttachment(normalized)) {
+          imageFiles.push(normalized);
         }
       }
 
@@ -721,7 +734,11 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     };
   }, [processDueScheduledMessage, scheduledMessages.length]);
 
-  const isToolbarVisible = isComposerFocusWithin || value.length > 0 || mode === "preview";
+  const isToolbarVisible =
+    COMPOSER_FORMATTING_TOOLBAR_ALWAYS_VISIBLE ||
+    isComposerFocusWithin ||
+    value.length > 0 ||
+    mode === "preview";
 
   const handleComposerFocusCapture = useCallback(() => {
     setIsComposerFocusWithin(true);

@@ -215,7 +215,7 @@ describe("MessageList focused message behavior", () => {
     fireEvent.click(screen.getByText("@Bob"));
     expect(await screen.findByRole("dialog", { name: /user mention/i })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /open direct messages/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^message$/i }));
     expect(onOpenDirectMessage).toHaveBeenCalledTimes(1);
     expect(onOpenDirectMessage).toHaveBeenCalledWith(99);
   });

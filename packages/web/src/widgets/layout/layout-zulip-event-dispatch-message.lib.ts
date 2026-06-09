@@ -161,9 +161,8 @@ export function handleUpdateMessageFlags(
   }
   if (flag !== "read") return;
 
-  inbox.markStale();
-
   if (markAllRead) {
+    inbox.clearEntries();
     applyMarkAllReadFromQueueEvent(ctx, notifications);
     return;
   }
@@ -177,6 +176,7 @@ export function handleUpdateMessageFlags(
   });
 
   if (op === "add") {
+    inbox.markAsRead(messageIds);
     closeReadMessageNotifications(notifications, messageIds, ctx.currentInstanceId);
     const chatListStore = useChatListStore.getState();
     applyChatListReadDecrementGrouped(() => useChatListStore.getState(), chatListStore, {
@@ -186,6 +186,8 @@ export function handleUpdateMessageFlags(
     currentChat.updateMessageFlags(messageIds, "read", "add");
     return;
   }
+
+  inbox.markStale();
 
   const messageDetails = event.message_details as
     | Record<string, ZulipMarkUnreadMessageDetail>

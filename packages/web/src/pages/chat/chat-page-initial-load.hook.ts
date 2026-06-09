@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createOnDmMessagesAppliedHandler } from "~/entities/chat-list/chat-list-sync-dm-from-window.lib";
 import { createOnStreamMessagesAppliedHandler } from "~/entities/chat-list/chat-list-sync-stream-from-window.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { isSameChatLocation } from "~/entities/message/message-chat-context.lib";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
+import type { CurrentChatContext } from "~/entities/message/message.model.types";
 import { t } from "~/i18n/i18n";
 import { getCurrentInstance } from "~/shared/api/client";
 import { dmRouteKey } from "~/shared/lib/dm-key";
@@ -58,8 +60,6 @@ export function useChatPageInitialLoad(
   } = options;
 
   const setContext = useCurrentChatMessagesStore((s) => s.setContext);
-  const hasOlderMessages = useCurrentChatMessagesStore((s) => s.hasOlderMessages);
-  const hasNewerMessages = useCurrentChatMessagesStore((s) => s.hasNewerMessages);
   const loadInitialMessagesForContext = useCurrentChatMessagesStore(
     (s) => s.loadInitialMessagesForContext,
   );
@@ -101,18 +101,22 @@ export function useChatPageInitialLoad(
       return;
     }
     const streamWideView = topicName == null;
-    logMessageFlow("ui:stream route effect → setContext(stream)", {
-      streamId: resolvedStreamId,
-      topic: streamRouteTopic,
-      streamWideView,
-    });
-    setContext({
+    const nextContext: CurrentChatContext = {
       type: "stream",
       streamId: resolvedStreamId,
       streamName: activeStreamCanonicalName,
       topic: streamRouteTopic,
       streamWideView,
+    };
+    if (isSameChatLocation(useCurrentChatMessagesStore.getState().context, nextContext)) {
+      return;
+    }
+    logMessageFlow("ui:stream route effect → setContext(stream)", {
+      streamId: resolvedStreamId,
+      topic: streamRouteTopic,
+      streamWideView,
     });
+    setContext(nextContext);
   }, [
     dmIdParam,
     streamSlug,
@@ -134,6 +138,7 @@ export function useChatPageInitialLoad(
       setMessagesLoading(false);
       return;
     }
+    const { hasOlderMessages, hasNewerMessages } = useCurrentChatMessagesStore.getState();
     if (
       shouldSkipFocusedAnchorInitialLoad({
         focusedMessageId,
@@ -213,8 +218,6 @@ export function useChatPageInitialLoad(
     loadInitialMessagesForContext,
     onStreamMessagesApplied,
     isFocusedMessageLoadedInCurrentRoute,
-    hasOlderMessages,
-    hasNewerMessages,
     messagesReloadNonce,
     setActionError,
   ]);
@@ -246,6 +249,7 @@ export function useChatPageInitialLoad(
       (userId) => Number.isSafeInteger(userId) && userId > 0,
     );
     if (userIds.length === 0) return;
+    const { hasOlderMessages, hasNewerMessages } = useCurrentChatMessagesStore.getState();
     if (
       shouldSkipFocusedAnchorInitialLoad({
         focusedMessageId,
@@ -316,8 +320,6 @@ export function useChatPageInitialLoad(
     loadInitialMessagesForContext,
     onDmMessagesApplied,
     isFocusedMessageLoadedInCurrentRoute,
-    hasOlderMessages,
-    hasNewerMessages,
     messagesReloadNonce,
     setActionError,
   ]);

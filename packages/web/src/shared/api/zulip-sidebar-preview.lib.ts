@@ -28,7 +28,7 @@ interface MessageWindowOptions {
   narrow?: { operator: string; operand: string | number | number[] }[];
   applyMarkdown?: boolean;
   signal?: AbortSignal;
-  /** When set and `CHAT_LIST_FLOW_DEBUG` is on, logs GET /messages for sidebar bootstrap. */
+  /** When set and chat-list pipeline trace is enabled, logs GET /messages for sidebar bootstrap. */
   flowDebugLabel?: string;
 }
 

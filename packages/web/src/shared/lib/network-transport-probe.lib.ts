@@ -13,9 +13,23 @@ const PROBE_TIMEOUT_MS = 8_000;
 
 /** Returns true when the realm responds (any sub-500 status, including 401). */
 export async function probeApiTransport(signal?: AbortSignal): Promise<boolean> {
+  const result = await probeApiTransportWithLatency(signal);
+  return result.ok;
+}
+
+export interface ApiTransportProbeResult {
+  ok: boolean;
+  latencyMs: number;
+}
+
+/** Transport probe with round-trip latency for diagnostics UI. */
+export async function probeApiTransportWithLatency(
+  signal?: AbortSignal,
+): Promise<ApiTransportProbeResult> {
+  const startedAt = performance.now();
   const instance = getCurrentInstance();
   if (instance == null) {
-    return true;
+    return { ok: true, latencyMs: 0 };
   }
 
   const base = instance.realm.replace(/\/$/, "");
@@ -30,12 +44,14 @@ export async function probeApiTransport(signal?: AbortSignal): Promise<boolean> 
       method: "HEAD",
       signal: controller.signal,
     });
-    const reachable = res.status < 500;
-    log.debug("Transport probe finished", { status: res.status, reachable });
-    return reachable;
+    const latencyMs = Math.round(performance.now() - startedAt);
+    const ok = res.status < 500;
+    log.debug("Transport probe finished", { status: res.status, ok, latencyMs });
+    return { ok, latencyMs };
   } catch (err) {
-    log.warn("Transport probe failed", { error: String(err) });
-    return false;
+    const latencyMs = Math.round(performance.now() - startedAt);
+    log.warn("Transport probe failed", { error: String(err), latencyMs });
+    return { ok: false, latencyMs };
   } finally {
     clearTimeout(timeoutId);
     linkedSignal?.removeEventListener("abort", onLinkedAbort);

@@ -8,12 +8,12 @@ import { addMessageFlag, removeMessageFlag } from "~/shared/api/zulip-messages";
 import { writeText } from "~/shared/lib/clipboard";
 import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
-import { buildMessageRedirectRouteFromZulipPermalink } from "~/shared/lib/push-click";
 import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
 import { buildZulipMessageWebPermalink } from "~/shared/lib/zulip-web-permalink.lib";
 import type { MessageListCallbacks } from "~/widgets/message-list/message-list.types";
 import { slugForStream } from "~/widgets/sidebar/sidebar.lib";
 import { buildReplyPermalinkStreamNameResolver } from "./chat-message-list-stream-name.lib";
+import { resolveQuotePermalinkNavigation } from "./chat-message-permalink-navigation.lib";
 import { resolveReplyQuoteContent } from "./chat-reply-quote.lib";
 import type { UseChatMessageListCallbacksParams } from "./chat-message-list-callbacks.types";
 
@@ -26,6 +26,12 @@ export function useChatMessageListCallbacks(
     realmBaseUrl,
     streams,
     locationPathname,
+    locationSearch,
+    isDmView,
+    dmRecipientIds,
+    resolvedStreamId,
+    topicName,
+    streamRouteTopic,
     navigate,
     rightDrawer,
     setReplyQuote,
@@ -111,9 +117,25 @@ export function useChatMessageListCallbacks(
         openJitsiCall(url, locationName?.trim() ?? "");
       },
       onMessagePermalinkClick(href) {
-        const redirectRoute = buildMessageRedirectRouteFromZulipPermalink(href);
-        if (redirectRoute == null) return false;
-        void navigate(redirectRoute);
+        const target = resolveQuotePermalinkNavigation({
+          href,
+          realmBaseUrl,
+          locationPathname,
+          locationSearch,
+          isDmView,
+          currentUserId,
+          dmRecipientIds,
+          resolvedStreamId,
+          topicName,
+          streamRouteTopic,
+          resolveStreamName: resolveStreamNameForPermalink,
+        });
+        if (target == null) return false;
+        if (target.kind === "inPlace") {
+          void navigate({ pathname: target.pathname, search: target.search }, { replace: true });
+          return true;
+        }
+        void navigate(target.path, target.replace ? { replace: true } : undefined);
         return true;
       },
       onMessageViews(msg) {
@@ -156,6 +178,12 @@ export function useChatMessageListCallbacks(
       onMessageRemoveReaction,
       resolveStreamNameForPermalink,
       locationPathname,
+      locationSearch,
+      isDmView,
+      dmRecipientIds,
+      resolvedStreamId,
+      topicName,
+      streamRouteTopic,
       navigate,
       rightDrawer,
       setReplyQuote,

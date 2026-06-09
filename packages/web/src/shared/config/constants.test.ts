@@ -10,6 +10,7 @@
 import { describe, expect, it } from "vitest";
 import {
   APP_SHELL_MIN_WIDTH_PX,
+  COMPOSER_FORMATTING_TOOLBAR_ALWAYS_VISIBLE,
   SCROLL_AREA_CLASS,
   DESKTOP_MIN_VIEWPORT_WIDTH_PX,
   JITSI_MEET_DOMAIN,
@@ -78,6 +79,10 @@ describe("constants", () => {
     expect(SEARCH_INPUT_DEBOUNCE_MS).toBeGreaterThan(0);
     expect(MULTI_ORG_UNREAD_REFRESH_DEBOUNCE_MS).toBe(SEARCH_INPUT_DEBOUNCE_MS);
     expect(JITSI_PARTICIPANTS_POLL_MS).toBeGreaterThan(0);
+  });
+
+  it("COMPOSER_FORMATTING_TOOLBAR_ALWAYS_VISIBLE is a boolean", () => {
+    expect(typeof COMPOSER_FORMATTING_TOOLBAR_ALWAYS_VISIBLE).toBe("boolean");
   });
 
   it("layout constants match narrow-page = desktop reference width - 1", () => {

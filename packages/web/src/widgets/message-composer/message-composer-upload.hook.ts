@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { isLikelyImageAttachment, normalizeImageAttachmentFile } from "./message-composer-body.lib";
 
 interface ComposerUploadProgressLike {
   completed: number;
@@ -24,9 +25,10 @@ function hasFileDragPayload(dataTransfer: DataTransfer): boolean {
 
 function createAttachmentPreviewUrl(file: File): string | null {
   try {
-    if (!file.type.startsWith("image/")) return null;
+    if (!isLikelyImageAttachment(file)) return null;
+    const normalized = normalizeImageAttachmentFile(file);
     if (typeof URL === "undefined" || typeof URL.createObjectURL !== "function") return null;
-    return URL.createObjectURL(file);
+    return URL.createObjectURL(normalized);
   } catch {
     return null;
   }
@@ -101,7 +103,9 @@ export function useMessageComposerUpload(options: {
       e.preventDefault();
       setIsDragOver(false);
       if (disabled) return;
-      const droppedFiles = Array.from(e.dataTransfer.files);
+      const droppedFiles = Array.from(e.dataTransfer.files).map((file) =>
+        normalizeImageAttachmentFile(file),
+      );
       if (droppedFiles.length > 0) {
         setFiles((prev) => [...prev, ...droppedFiles]);
       }

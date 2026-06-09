@@ -5,7 +5,8 @@
 import { create } from "zustand";
 import { logStoreAction } from "~/shared/lib/logger";
 import { applyMarkAsReadToInboxEntries } from "./inbox-mark-read.lib";
-import type { InboxEntry } from "./inbox.types";
+import { removeInboxEntriesForMarkReadTarget } from "./inbox.lib";
+import type { InboxEntry, InboxMarkReadTarget } from "./inbox.types";
 
 const EMPTY_ENTRIES: InboxEntry[] = [];
 
@@ -20,10 +21,12 @@ interface InboxState {
   requestVersion: number;
   lastLoadedAt: number | null;
   error: string | null;
-  stale: boolean;
+  staleVersion: number;
 
   setEntries: (entries: InboxEntry[], requestVersion?: number) => void;
   markAsRead: (messageIds: number[]) => void;
+  removeEntriesForTarget: (target: InboxMarkReadTarget, currentUserId: number | null) => void;
+  clearEntries: () => void;
   markStale: () => void;
   clear: () => void;
   setLoading: (loading: boolean) => void;
@@ -42,7 +45,7 @@ export const useInboxStore = create<InboxState>((set, get) => ({
   requestVersion: 0,
   lastLoadedAt: null,
   error: null,
-  stale: false,
+  staleVersion: 0,
 
   setEntries(entries, requestVersion) {
     // Authoritative newest refresh replaces the full list.
@@ -56,7 +59,6 @@ export const useInboxStore = create<InboxState>((set, get) => ({
         isRefreshing: false,
         lastLoadedAt: Date.now(),
         error: null,
-        stale: false,
       };
     });
   },
@@ -68,9 +70,21 @@ export const useInboxStore = create<InboxState>((set, get) => ({
     }));
   },
 
+  removeEntriesForTarget(target, currentUserId) {
+    logStoreAction("inbox", "removeEntriesForTarget", { targetType: target.type });
+    set((state) => ({
+      entries: removeInboxEntriesForMarkReadTarget(state.entries, target, currentUserId),
+    }));
+  },
+
+  clearEntries() {
+    logStoreAction("inbox", "clearEntries");
+    set({ entries: [] });
+  },
+
   markStale() {
     logStoreAction("inbox", "markStale");
-    set({ stale: true });
+    set((state) => ({ staleVersion: state.staleVersion + 1 }));
   },
 
   clear() {
@@ -83,7 +97,7 @@ export const useInboxStore = create<InboxState>((set, get) => ({
       requestVersion: 0,
       lastLoadedAt: null,
       error: null,
-      stale: false,
+      staleVersion: 0,
     });
   },
 

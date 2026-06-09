@@ -532,7 +532,7 @@ describe("RightPanel truthfulness", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /open direct messages/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^message$/i }));
     expect(onOpenDirectMessage).toHaveBeenCalledWith(42);
   });
 

@@ -37,7 +37,7 @@ describe("buildForwardQuote", () => {
         permalinkOptions,
       ),
     ).toBe(
-      "@_**Alice|42** [wrote](https://zulip.example.com/#narrow/dm/7,42-dm/near/1):\n```quote\nHello\n```",
+      "@_**Alice|42** [wrote](https://zulip.example.com/#narrow/dm/7,42-dm/near/1):\n```quote\nHello\n```\n\n",
     );
   });
 
@@ -71,7 +71,7 @@ describe("buildForwardQuote", () => {
         permalinkOptions,
       ),
     ).toBe(
-      "@_**Alice|42** [wrote](https://zulip.example.com/#narrow/dm/7,42-dm/near/10):\n```quote\nFirst\n```\n@_**Bob|55** [wrote](https://zulip.example.com/#narrow/channel/33-InternalServicesDev/topic/Workspace/near/11):\n```quote\nSecond\n```",
+      "@_**Alice|42** [wrote](https://zulip.example.com/#narrow/dm/7,42-dm/near/10):\n```quote\nFirst\n```\n\n\n\n@_**Bob|55** [wrote](https://zulip.example.com/#narrow/channel/33-InternalServicesDev/topic/Workspace/near/11):\n```quote\nSecond\n```\n\n",
     );
   });
 
@@ -93,11 +93,31 @@ describe("buildForwardQuote", () => {
         permalinkOptions,
       ),
     ).toBe(
-      "@_**Alice|42** [wrote](https://zulip.example.com/#narrow/dm/42-dm/near/1):\n```quote\nSelected excerpt\n```",
+      "@_**Alice|42** [wrote](https://zulip.example.com/#narrow/dm/42-dm/near/1):\n```quote\nSelected excerpt\n```\n\n",
     );
   });
 
-  it("strips html tags from forwarded content payload", () => {
+  it("uses longer quote fences when forwarded content already contains quote fences", () => {
+    expect(
+      buildForwardQuote(
+        [
+          {
+            id: 20,
+            sender_full_name: "Alice",
+            sender_id: 42,
+            content: "Original body",
+            stream_id: null,
+            subject: "",
+            display_recipient: [{ id: 42, full_name: "Alice" }],
+          },
+        ],
+        "@_**Bob|55**:\n```quote\nnested\n```",
+        permalinkOptions,
+      ),
+    ).toContain("````quote\n@_**Bob|55**:\n```quote\nnested\n```\n````\n\n");
+  });
+
+  it("strips html tags from forwarded content payload when markdown_source is missing", () => {
     expect(
       buildForwardQuote(
         [
@@ -115,7 +135,62 @@ describe("buildForwardQuote", () => {
         permalinkOptions,
       ),
     ).toBe(
-      "@_**Alice|42** [wrote](https://zulip.example.com/#narrow/dm/42-dm/near/1):\n```quote\nHello world\n```",
+      "@_**Alice|42** [wrote](https://zulip.example.com/#narrow/dm/42-dm/near/1):\n```quote\nHello world\n```\n\n",
+    );
+  });
+
+  it("preserves nested reply quote inside forward payload from markdown_source", () => {
+    const nestedMarkdown = `@_**corle|21** [wrote](https://zulip.example.com/#narrow/dm/21-dm/near/1000):
+\`\`\`quote
+и тут тоже
+
+дай ссылку на то как приложуху поставить
+\`\`\``;
+
+    const result = buildForwardQuote(
+      [
+        {
+          id: 2275,
+          sender_full_name: "user",
+          sender_id: 9,
+          content: "<p>rendered html</p>",
+          markdown_source: nestedMarkdown,
+          stream_id: 2,
+          subject: "general",
+          display_recipient: "sandbox",
+        },
+      ],
+      undefined,
+      permalinkOptions,
+    );
+
+    expect(result).toContain("@_**corle|21**");
+    expect(result).toContain("[wrote](https://zulip.example.com/#narrow/dm/21-dm/near/1000)");
+    expect(result).toContain("````quote\n@_**corle|21**");
+    expect(result).toContain("```quote\nи тут тоже");
+    expect(result).toContain("дай ссылку на то как приложуху поставить");
+  });
+
+  it("prefers markdown_source over rendered html for forward payload", () => {
+    expect(
+      buildForwardQuote(
+        [
+          {
+            id: 1,
+            sender_full_name: "Alice",
+            sender_id: 42,
+            content: "<p><strong>Hi</strong></p>",
+            markdown_source: "**Hi**",
+            stream_id: null,
+            subject: "",
+            display_recipient: [{ id: 42, full_name: "Alice" }],
+          },
+        ],
+        undefined,
+        permalinkOptions,
+      ),
+    ).toBe(
+      "@_**Alice|42** [wrote](https://zulip.example.com/#narrow/dm/42-dm/near/1):\n```quote\n**Hi**\n```\n\n",
     );
   });
 
@@ -149,7 +224,7 @@ describe("buildForwardQuote", () => {
         permalinkOptions,
       ),
     ).toBe(
-      "@_**Alice|42** [wrote](https://zulip.example.com/#narrow/dm/7,42-dm/near/10):\n```quote\nFirst\n```\n@_**Bob|55** [wrote](https://zulip.example.com/#narrow/channel/33-InternalServicesDev/topic/Workspace/near/11):\n```quote\nSecond\n```",
+      "@_**Alice|42** [wrote](https://zulip.example.com/#narrow/dm/7,42-dm/near/10):\n```quote\nFirst\n```\n\n\n\n@_**Bob|55** [wrote](https://zulip.example.com/#narrow/channel/33-InternalServicesDev/topic/Workspace/near/11):\n```quote\nSecond\n```\n\n",
     );
   });
 
@@ -228,14 +303,14 @@ describe("resolveForwardDraftTarget", () => {
 
 describe("mergeForwardDraftContent", () => {
   it("returns only forwarded content when target draft is empty", () => {
-    expect(mergeForwardDraftContent("@_**Alice**\n```quote\nHi\n```", undefined)).toBe(
-      "@_**Alice**\n```quote\nHi\n```",
+    expect(mergeForwardDraftContent("@_**Alice**\n```quote\nHi\n```\n\n", undefined)).toBe(
+      "@_**Alice**\n```quote\nHi\n```\n\n",
     );
   });
 
   it("prepends forwarded quote to existing draft content", () => {
-    expect(mergeForwardDraftContent("@_**Alice**\n```quote\nHi\n```", "Existing text")).toBe(
-      "@_**Alice**\n```quote\nHi\n```\nExisting text",
+    expect(mergeForwardDraftContent("@_**Alice**\n```quote\nHi\n```\n\n", "Existing text")).toBe(
+      "@_**Alice**\n```quote\nHi\n```\n\n\n\nExisting text",
     );
   });
 });

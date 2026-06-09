@@ -97,7 +97,7 @@ describe("shouldSkipFocusedAnchorInitialLoad", () => {
     ).toBe(false);
   });
 
-  it("returns false when focused message is in route but store only has tail window", () => {
+  it("returns true when focused message is already loaded in the current route", () => {
     expect(
       shouldSkipFocusedAnchorInitialLoad({
         focusedMessageId: 55,
@@ -105,7 +105,7 @@ describe("shouldSkipFocusedAnchorInitialLoad", () => {
         hasOlderMessages: false,
         hasNewerMessages: false,
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("returns true when focused message is in route with anchor pagination flags", () => {

@@ -6,6 +6,7 @@ import {
   type ChatListReadFallbackContext,
 } from "~/entities/chat-list/chat-list-apply-read-decrement.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useInboxStore } from "~/entities/inbox/inbox.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { markDmAsRead, markStreamAsRead, markTopicAsRead } from "~/shared/api/zulip-read-state";
 import { dmConversationKey } from "~/shared/lib/dm-key";
@@ -123,6 +124,10 @@ export async function applySidebarMarkChatAsRead(target: SidebarMarkReadTarget):
       }
     }
   }
+
+  useInboxStore
+    .getState()
+    .removeEntriesForTarget(target, useChatListStore.getState().currentUserId);
 
   logSidebarUnreadFlow("sidebar:markAsRead:done", {
     target,

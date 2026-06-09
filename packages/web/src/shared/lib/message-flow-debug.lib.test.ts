@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { summarizeMessageIdsForFlowDebug, summarizeScrollElement } from "./message-flow-debug.lib";
+import { summarizeMessageIdsForFlowDebug, summarizeScrollElement } from "./pipeline-trace.lib";
 
-describe("message-flow-debug scroll helpers", () => {
+describe("pipeline-trace scroll helpers", () => {
   it("summarizeScrollElement computes distance from bottom and atBottom", () => {
     const el = document.createElement("div");
     Object.defineProperty(el, "scrollTop", { value: 100, configurable: true });
