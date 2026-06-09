@@ -27,6 +27,7 @@ describe("buildOptimisticOutgoingMessage", () => {
       ],
       subject: "",
       content: "hello",
+      markdown_source: "hello",
       timestamp: 123,
       delivery_status: "sending",
       local_echo_key: -1,
@@ -52,10 +53,29 @@ describe("buildOptimisticOutgoingMessage", () => {
       channel: "engineering",
       subject: "general",
       content: "hello stream",
+      markdown_source: "hello stream",
       timestamp: 456,
       delivery_status: "sending",
       local_echo_key: -2,
     });
+  });
+
+  it("stores composer text as markdown_source for optimistic HTML-like bodies", () => {
+    expect(
+      buildOptimisticOutgoingMessage({
+        id: -5,
+        senderId: 42,
+        senderFullName: "You",
+        content: '<img src="x" onerror="alert(1)">',
+        target: { mode: "dm", recipientIds: [7] },
+        nowSec: 111,
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        content: '<img src="x" onerror="alert(1)">',
+        markdown_source: '<img src="x" onerror="alert(1)">',
+      }),
+    );
   });
 });
 

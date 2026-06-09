@@ -159,6 +159,7 @@ export function renderZulipQuoteBlocksInMarkdown(
   markdown: string,
   renderInner: (innerMarkdown: string) => string,
   renderHeader?: (headerMarkdown: string) => string,
+  renderBlock?: (options: { headerLine: string | null; bodyHtml: string }) => string,
 ): string {
   let result = "";
   let cursor = 0;
@@ -190,7 +191,8 @@ export function renderZulipQuoteBlocksInMarkdown(
 
     result += markdown.slice(cursor, segmentEnd);
     const innerHtml = renderInner(match.innerContent);
-    result += buildQuoteBlockHtml(headerLine, innerHtml, renderHeader);
+    const quoteBlockHtml = buildQuoteBlockHtml(headerLine, innerHtml, renderHeader);
+    result += renderBlock?.({ headerLine, bodyHtml: innerHtml }) ?? quoteBlockHtml;
     cursor = match.endIndex;
   }
 

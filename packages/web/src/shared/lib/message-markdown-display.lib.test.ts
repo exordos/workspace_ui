@@ -125,10 +125,12 @@ function renderPreparedMessageHtml(
   options?: {
     resolveUserMention?: (displayName: string) => number | null;
     resolveCustomEmojiShortcodeImageUrl?: (shortcode: string) => string | undefined;
+    treatAsMarkdown?: boolean;
   },
 ): string {
   const raw = messageBodyToUnsanitizedDisplayHtml(body, {
     resolveUserMention: options?.resolveUserMention,
+    treatAsMarkdown: options?.treatAsMarkdown,
   });
   return prepareProtectedMessageHtml(raw, "https://sys.example.com/workspace/v1", {
     resolveCustomEmojiShortcodeImageUrl: options?.resolveCustomEmojiShortcodeImageUrl,
@@ -356,13 +358,23 @@ describe("prepareProtectedMessageHtml message rendering pipeline", () => {
     expect(safe).not.toContain('src="/user_uploads/');
   });
 
-  it("strips dangerous attributes from inline HTML inside markdown", () => {
-    const safe = renderPreparedMessageHtml('hi <img src=x onerror="alert(1)">');
-    expect(safe).not.toContain("onerror");
-    expect(safe).toContain("<img");
+  it("renders raw markdown html tags as text instead of DOM elements", () => {
+    const safe = renderPreparedMessageHtml('hi <img src=x onerror="alert(1)">', {
+      treatAsMarkdown: true,
+    });
+    expect(safe).not.toContain("<img");
+    expect(safe).toContain("&lt;img src=x onerror=");
   });
 
-  it("strips dangerous attributes from pre-rendered HTML bodies", () => {
+  it("renders leading raw html tags as text in markdown mode", () => {
+    const safe = renderPreparedMessageHtml('<img src="x" onerror="alert(1)">', {
+      treatAsMarkdown: true,
+    });
+    expect(safe).not.toContain("<img");
+    expect(safe).toContain("&lt;img src=");
+  });
+
+  it("still sanitizes pre-rendered HTML bodies", () => {
     const safe = renderPreparedMessageHtml('<img src="x" onerror="alert(1)">');
     expect(safe).not.toContain("onerror");
     expect(safe).toContain("<img");

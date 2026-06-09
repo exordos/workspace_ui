@@ -38,6 +38,12 @@ interface ZulipBlockSpoilerToken extends Tokens.Generic {
 const INLINE_SPOILER_TOKEN_TYPE = "inline_spoiler";
 const ZULIP_BLOCK_SPOILER_TOKEN_TYPE = "zulip_block_spoiler";
 const DEFAULT_ZULIP_SPOILER_HEADER = "Spoiler";
+const QUOTE_PLACEHOLDER_START = "\uE100";
+const QUOTE_PLACEHOLDER_END = "\uE101";
+
+function escapeInlineHtmlText(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
 
 interface MarkedSpoilerRendererContext {
   parser: {
@@ -114,6 +120,11 @@ const ZULIP_BLOCK_SPOILER_EXTENSION: TokenizerAndRendererExtension = {
 
 const markdownRenderer = new Marked({
   extensions: [ZULIP_BLOCK_SPOILER_EXTENSION, INLINE_SPOILER_EXTENSION],
+  renderer: {
+    html({ text }) {
+      return escapeInlineHtmlText(text);
+    },
+  },
 });
 
 /** True when the string looks like HTML from Zulip, not raw `<https://…>` autolink markdown. */
@@ -139,9 +150,26 @@ function unwrapSingleParagraph(html: string): string {
   return match?.[1] ?? html;
 }
 
+function buildQuotePlaceholder(index: number): string {
+  return `${QUOTE_PLACEHOLDER_START}${index}${QUOTE_PLACEHOLDER_END}`;
+}
+
+function restoreQuotePlaceholders(html: string, renderedQuotes: readonly string[]): string {
+  let result = html;
+  renderedQuotes.forEach((quoteHtml, index) => {
+    const placeholder = buildQuotePlaceholder(index);
+    result = result
+      .replace(new RegExp(`<p>${placeholder}</p>`, "g"), quoteHtml)
+      .replace(new RegExp(placeholder, "g"), quoteHtml);
+  });
+  return result;
+}
+
 export interface MessageBodyDisplayOptions {
   /** Resolves `@**DisplayName**` to a user id for client-side mention spans. Wildcards (`@**all**`, …) do not use this. */
   resolveUserMention?: (displayName: string) => number | null;
+  /** True when the body definitely came from Zulip markdown mode (`apply_markdown=false`). */
+  treatAsMarkdown?: boolean;
 }
 
 /** Markdown → HTML (marked + GFM + highlight). Caller must `sanitizeHtml` before DOM insertion. */
@@ -151,11 +179,12 @@ export function messageBodyToUnsanitizedDisplayHtml(
 ): string {
   const t = body.trim();
   if (t.length === 0) return "";
-  if (isLikelyRenderedMessageHtml(t)) {
+  if (!options?.treatAsMarkdown && isLikelyRenderedMessageHtml(t)) {
     return t;
   }
   let mdInput = t;
   let mentionTokens: ReturnType<typeof injectZulipMentionPlaceholders>["tokens"] | undefined;
+  const renderedQuotes: string[] = [];
   if (options?.resolveUserMention != null) {
     const prepared = injectZulipMentionPlaceholders(t, options.resolveUserMention);
     if (prepared.tokens.length > 0) {
@@ -177,13 +206,40 @@ export function messageBodyToUnsanitizedDisplayHtml(
       inner,
       renderQuoteInner,
       renderQuoteHeader,
+      ({ headerLine, bodyHtml }) => {
+        const quoteHtml = `<div class="zulip-quote-block">${
+          headerLine != null && headerLine.length > 0
+            ? `<div class="zulip-quote-header">${renderQuoteHeader(headerLine)}</div>`
+            : ""
+        }<blockquote class="zulip-quote-body">${bodyHtml}</blockquote></div>`;
+        const placeholder = buildQuotePlaceholder(renderedQuotes.length);
+        renderedQuotes.push(quoteHtml);
+        return placeholder;
+      },
     );
-    return restoreMentions(renderMarkdownFallbackHtml(withNestedQuotes));
+    return restoreQuotePlaceholders(
+      restoreMentions(renderMarkdownFallbackHtml(withNestedQuotes)),
+      renderedQuotes,
+    );
   };
 
-  const withQuotes = renderZulipQuoteBlocksInMarkdown(mdInput, renderQuoteInner, renderQuoteHeader);
+  const withQuotes = renderZulipQuoteBlocksInMarkdown(
+    mdInput,
+    renderQuoteInner,
+    renderQuoteHeader,
+    ({ headerLine, bodyHtml }) => {
+      const quoteHtml = `<div class="zulip-quote-block">${
+        headerLine != null && headerLine.length > 0
+          ? `<div class="zulip-quote-header">${renderQuoteHeader(headerLine)}</div>`
+          : ""
+      }<blockquote class="zulip-quote-body">${bodyHtml}</blockquote></div>`;
+      const placeholder = buildQuotePlaceholder(renderedQuotes.length);
+      renderedQuotes.push(quoteHtml);
+      return placeholder;
+    },
+  );
   const mdHtml = renderMarkdownFallbackHtml(withQuotes);
-  return restoreMentions(mdHtml);
+  return restoreQuotePlaceholders(restoreMentions(mdHtml), renderedQuotes);
 }
 
 /** One-line / list previews: strip tags; Markdown is converted via marked first. */

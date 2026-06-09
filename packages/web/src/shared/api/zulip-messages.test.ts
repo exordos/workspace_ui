@@ -626,6 +626,37 @@ describe("fetchMessagesWithNarrow", () => {
     );
   });
 
+  it("preserves markdown_source for html-like text in markdown mode", async () => {
+    mockZulipClient.messages.retrieve.mockResolvedValue({
+      messages: [
+        {
+          id: 1,
+          sender_id: 42,
+          content: '<img src="x" onerror="alert(1)">',
+          timestamp: 1710000000,
+          display_recipient: "general",
+          subject: "test",
+          type: "stream",
+          stream_id: 10,
+        },
+      ],
+      found_oldest: true,
+      found_newest: true,
+    });
+
+    const result = await fetchMessagesWithNarrow(
+      [{ operator: "stream", operand: "general" }],
+      "newest",
+      200,
+      0,
+      { applyMarkdown: false },
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.content).toBe('<img src="x" onerror="alert(1)">');
+    expect(result[0]?.markdown_source).toBe('<img src="x" onerror="alert(1)">');
+  });
+
   it("throws for unsupported anchor string", async () => {
     await expect(
       fetchMessagesWithNarrow([{ operator: "is", operand: "unread" }], "invalid_anchor"),
@@ -728,6 +759,37 @@ describe("fetchAllMessagesPage", () => {
     );
   });
 
+  it("preserves markdown_source for raw markdown bodies that start with html-like text", async () => {
+    mockZulipApi.get.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        messages: [
+          {
+            id: 1,
+            sender_id: 42,
+            content: 'hi <img src="x" onerror="alert(1)">',
+            timestamp: 1710000000,
+            display_recipient: "general",
+            subject: "test",
+            type: "stream",
+            stream_id: 10,
+          },
+        ],
+        found_oldest: false,
+        found_newest: false,
+      },
+      raw: { statusText: "OK" },
+    });
+
+    const result = await fetchAllMessagesPage("newest", 25);
+
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]?.content).toBe('hi <img src="x" onerror="alert(1)">');
+    expect(result.messages[0]?.markdown_source).toBe('hi <img src="x" onerror="alert(1)">');
+  });
+
   it("throws for unsupported anchor string", async () => {
     await expect(fetchAllMessagesPage("invalid_anchor")).rejects.toThrow(/anchor must be one of/i);
     expect(mockZulipApi.get).not.toHaveBeenCalled();
@@ -777,6 +839,25 @@ describe("fetchDmMessages", () => {
   it("returns empty on exception", async () => {
     mockZulipClient.messages.retrieve.mockRejectedValue(new Error("fail"));
     expect(await fetchDmMessages(42)).toEqual([]);
+  });
+
+  it("does not synthesize markdown_source for rendered html bodies", async () => {
+    mockZulipClient.messages.retrieve.mockResolvedValue({
+      messages: [
+        {
+          id: 1,
+          sender_id: 42,
+          content: "<p>dm</p>",
+          timestamp: 100,
+          type: "private",
+          stream_id: null,
+        },
+      ],
+    });
+
+    const result = await fetchDmMessages(42);
+    expect(result[0]?.content).toBe("<p>dm</p>");
+    expect(result[0]?.markdown_source).toBeUndefined();
   });
 
   it("throws for invalid user id", async () => {

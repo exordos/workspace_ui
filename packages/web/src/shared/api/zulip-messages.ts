@@ -345,6 +345,13 @@ function mapZulipMessage(m: RawMessageToMockInput): MockMessage {
   return rawMessageToMockMessage(m);
 }
 
+function mapMarkdownModeZulipMessage(m: RawMessageToMockInput): MockMessage {
+  return rawMessageToMockMessage({
+    ...m,
+    markdown_source: m.markdown_source ?? m.content,
+  });
+}
+
 export async function fetchMessages(
   stream?: string,
   topic?: string,
@@ -409,7 +416,10 @@ async function fetchMessagesWithNarrowPageViaPipeline(args: {
   if (args.signal.aborted) {
     throw new DOMException("Aborted", "AbortError");
   }
-  return mapMessagesPageFromApiData(data, mapZulipMessage);
+  return mapMessagesPageFromApiData(
+    data,
+    args.applyMarkdown ? mapZulipMessage : mapMarkdownModeZulipMessage,
+  );
 }
 
 async function fetchMessagesWithNarrowPageViaClient(args: {
@@ -427,7 +437,10 @@ async function fetchMessagesWithNarrowPageViaClient(args: {
     num_after: args.validatedNumAfter,
     apply_markdown: args.applyMarkdown,
   })) as Parameters<typeof mapMessagesPageFromApiData>[0];
-  return mapMessagesPageFromApiData(data, mapZulipMessage);
+  return mapMessagesPageFromApiData(
+    data,
+    args.applyMarkdown ? mapZulipMessage : mapMarkdownModeZulipMessage,
+  );
 }
 
 /** Loads a narrow message page including pagination metadata. */
@@ -514,7 +527,14 @@ export async function fetchAllMessagesPage(
   }
 
   return {
-    messages: (data.messages ?? []).map(rawMessageToMockMessage),
+    messages: (data.messages ?? []).map((message) =>
+      options?.applyMarkdown
+        ? rawMessageToMockMessage(message)
+        : rawMessageToMockMessage({
+            ...message,
+            markdown_source: message.markdown_source ?? message.content,
+          }),
+    ),
     foundOldest: data.found_oldest ?? data.foundOldest ?? false,
     foundNewest: data.found_newest ?? data.foundNewest ?? false,
   };
@@ -572,7 +592,7 @@ export async function fetchDmMessages(
       if (options.signal.aborted) {
         throw new DOMException("Aborted", "AbortError");
       }
-      return (data.messages ?? []).map(mapZulipMessage);
+      return (data.messages ?? []).map(rawMessageToMockMessage);
     }
 
     const client = await getClient();
@@ -580,7 +600,7 @@ export async function fetchDmMessages(
     const raw = data as { result?: string; messages?: RawMessageToMockInput[] };
     if (raw.result === "error") return [];
     const list = raw.messages ?? [];
-    return list.map(mapZulipMessage);
+    return list.map(rawMessageToMockMessage);
   } catch (error) {
     if (isAbortError(error) || options?.signal?.aborted) {
       throw error;

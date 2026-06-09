@@ -214,6 +214,8 @@ export interface ZulipRawMessage {
   /** Sender avatar (relative path), present in GET /messages response. */
   avatar_url?: string | null;
   content: string;
+  /** Present when the server returns original markdown alongside rendered content. */
+  markdown_source?: string;
   timestamp: number;
   display_recipient?:
     | string

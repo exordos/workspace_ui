@@ -33,7 +33,7 @@ export function useMessageComposerPreview(options: {
       .catch(() => {
         if (cancelled) return;
         try {
-          setHtml(messageBodyToUnsanitizedDisplayHtml(outgoingBody));
+          setHtml(messageBodyToUnsanitizedDisplayHtml(outgoingBody, { treatAsMarkdown: true }));
           setError(null);
         } catch {
           setHtml("");
