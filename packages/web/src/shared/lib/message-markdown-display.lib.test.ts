@@ -278,6 +278,17 @@ describe("prepareProtectedMessageHtml message rendering pipeline", () => {
     expect(html).not.toContain("```quote");
   });
 
+  it("preserves literal dollar replacement patterns inside markdown quote fences", () => {
+    const html = messageBodyToUnsanitizedDisplayHtml(
+      "@_**Alice|42** [wrote](https://z.example.com/near/1):\n```quote\n$& $` $' $$ $1\n```\n\nTail",
+      { resolveUserMention: () => null },
+    );
+
+    expect(html).toContain('class="zulip-quote-body"');
+    expect(html).toContain("<p>$&amp; $` $&#39; $$ $1</p>");
+    expect(html).toContain("<br>Tail</p>");
+  });
+
   it("wraps server-rendered blockquote after wrote header in zulip-quote-block", () => {
     const html = renderPreparedMessageHtml(
       [

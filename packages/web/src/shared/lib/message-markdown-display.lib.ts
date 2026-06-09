@@ -159,8 +159,8 @@ function restoreQuotePlaceholders(html: string, renderedQuotes: readonly string[
   renderedQuotes.forEach((quoteHtml, index) => {
     const placeholder = buildQuotePlaceholder(index);
     result = result
-      .replace(new RegExp(`<p>${placeholder}</p>`, "g"), quoteHtml)
-      .replace(new RegExp(placeholder, "g"), quoteHtml);
+      .replace(new RegExp(`<p>${placeholder}</p>`, "g"), () => quoteHtml)
+      .replace(new RegExp(placeholder, "g"), () => quoteHtml);
   });
   return result;
 }
