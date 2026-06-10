@@ -2948,7 +2948,7 @@
   },
   {
     "name": "buffer",
-    "version": "5.7.1",
+    "version": "6.0.3",
     "license": "MIT",
     "repository": "https://github.com/feross/buffer",
     "publisher": "Feross Aboukhadijeh"

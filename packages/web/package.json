@@ -30,7 +30,7 @@
     "@radix-ui/react-dropdown-menu": "2.1.17",
     "@sentry/react": "10.57.0",
     "@workspace/api": "file:../workspace-api",
-    "buffer": "5.7.1",
+    "buffer": "6.0.3",
     "dompurify": "3.4.9",
     "emoji-picker-react": "4.19.1",
     "emojibase-data": "17.0.0",
@@ -43,7 +43,7 @@
     "react-router-dom": "7.17.0",
     "tinyexec": "1.2.4",
     "zulip-js": "2.1.0",
-    "zustand": "4.5.7"
+    "zustand": "5.0.14"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
