@@ -36,9 +36,12 @@ export const UpdatePage: React.FC<UpdatePageProps> = ({ forceMode = false }) => 
     if (autoCheckTriggeredRef.current) {
       return;
     }
+    if (forceMode) {
+      return;
+    }
     autoCheckTriggeredRef.current = true;
     update.check();
-  }, [update]);
+  }, [update, forceMode]);
 
   return (
     <div className="flex max-h-full min-h-0 min-w-0 max-w-narrow-page flex-1 flex-col overflow-hidden">

@@ -73,4 +73,18 @@ describe("UpdatePage", () => {
       screen.getByText("Install the required update to continue using Workspace."),
     ).toBeInTheDocument();
   });
+
+  it("does not auto-check in force mode when update is ready", () => {
+    useAppUpdateMock.mockReturnValue({
+      status: "ready",
+      version: "2.1.0",
+      check: checkSpy,
+      install: installSpy,
+    });
+
+    renderWithProviders(<UpdatePage forceMode />);
+
+    expect(checkSpy).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: /^update$/i })).toBeInTheDocument();
+  });
 });

@@ -261,15 +261,58 @@ function usePwaUpdate(): UpdateState {
     return () => {
       cancelled = true;
       currentReg?.removeEventListener("updatefound", onUpdateFound);
-      navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange);
+      navigator.serviceWorker?.removeEventListener("controllerchange", onControllerChange);
     };
   }, []);
+
+  const applyPwaCheckResult = (reg: ServiceWorkerRegistration) => {
+    if (reg.waiting) {
+      setState({ status: "ready" });
+      return;
+    }
+
+    setState({ status: "checking" });
+    void reg
+      .update()
+      .then(() => {
+        if (reg.waiting) {
+          setState({ status: "ready" });
+        } else if (!reg.installing) {
+          setState({ status: "up-to-date" });
+        }
+      })
+      .catch(() => {
+        setState({ status: "error" });
+      });
+  };
 
   return {
     ...state,
     check: () => {
-      registration?.update().catch(() => {});
+      if (registration) {
+        applyPwaCheckResult(registration);
+        return;
+      }
+
       setState({ status: "checking" });
+      void navigator.serviceWorker.ready
+        .then((reg) => {
+          setRegistration(reg);
+          if (reg.waiting) {
+            setState({ status: "ready" });
+            return;
+          }
+          return reg.update().then(() => {
+            if (reg.waiting) {
+              setState({ status: "ready" });
+            } else if (!reg.installing) {
+              setState({ status: "up-to-date" });
+            }
+          });
+        })
+        .catch(() => {
+          setState({ status: "error" });
+        });
     },
     install: () => {
       if (registration?.waiting) {

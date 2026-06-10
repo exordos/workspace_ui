@@ -31,6 +31,7 @@ export const TopicNotificationLevelCycleButton = React.memo<TopicNotificationLev
         icon={option.icon}
         label={label}
         disabled={pending}
+        size="sm"
         showOnRowHover
         inactiveOnRowHover="inherit"
         className={className}

@@ -8,6 +8,7 @@ export interface NotificationLevelCycleButtonProps {
   label: string;
   disabled?: boolean;
   className?: string;
+  size?: "sm" | "md";
   /** Shown on hover in sidebar rows. */
   showOnRowHover?: boolean;
   /** Row-hover hide when value matches (topics: inherit). */
@@ -22,9 +23,12 @@ export const NotificationLevelCycleButton = React.memo<NotificationLevelCycleBut
     label,
     disabled = false,
     className,
+    size = "md",
     showOnRowHover = false,
     inactiveOnRowHover = "default",
   }) => {
+    const sizeClass = size === "sm" ? "h-5 w-5" : "h-6 w-6";
+    const iconSize = size === "sm" ? 12 : 14;
     const handleClick = useCallback(
       (e: React.MouseEvent) => {
         e.preventDefault();
@@ -46,9 +50,9 @@ export const NotificationLevelCycleButton = React.memo<NotificationLevelCycleBut
         onClick={handleClick}
         aria-label={label}
         title={label}
-        className={`focus-visible:ring-accent/40 flex h-6 w-6 shrink-0 items-center justify-center rounded text-text-muted transition-colors hover:bg-sidebar-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-50 ${hoverClass} ${className ?? ""}`}
+        className={`focus-visible:ring-accent/40 flex ${sizeClass} shrink-0 items-center justify-center rounded text-text-muted transition-colors hover:bg-sidebar-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-50 ${hoverClass} ${className ?? ""}`}
       >
-        <Icon name={icon} size={14} className="shrink-0 text-current" />
+        <Icon name={icon} size={iconSize} className="shrink-0 text-current" />
       </button>
     );
   },

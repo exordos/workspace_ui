@@ -294,4 +294,140 @@ describe("updater", () => {
       unmount();
     });
   });
+
+  describe("PWA check()", () => {
+    afterEach(() => {
+      if ("serviceWorker" in navigator) {
+        delete (navigator as unknown as Record<string, unknown>).serviceWorker;
+      }
+      vi.resetModules();
+    });
+
+    async function loadPwaUpdaterModule() {
+      vi.resetModules();
+      vi.doMock("./electron", () => ({
+        isElectron: vi.fn(() => false),
+        getElectronAPI: vi.fn(() => null),
+      }));
+      vi.doMock("./logger", () => ({
+        createLogger: () => ({
+          info: vi.fn(),
+          warn: vi.fn(),
+          error: vi.fn(),
+          debug: vi.fn(),
+        }),
+      }));
+      return import("./updater");
+    }
+
+    function mockServiceWorkerRegistration(options: {
+      waiting?: ServiceWorker | null;
+      installing?: ServiceWorker | null;
+      update?: () => Promise<void>;
+      ready?: Promise<ServiceWorkerRegistration>;
+    }) {
+      const registration = {
+        waiting: options.waiting ?? null,
+        installing: options.installing ?? null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        update: options.update ?? vi.fn().mockResolvedValue(undefined),
+      } as unknown as ServiceWorkerRegistration;
+
+      Object.defineProperty(navigator, "serviceWorker", {
+        value: {
+          ready: options.ready ?? Promise.resolve(registration),
+          controller: {},
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+        },
+        configurable: true,
+      });
+
+      return registration;
+    }
+
+    it("check() keeps ready when a waiting worker already exists", async () => {
+      const updateMock = vi.fn().mockResolvedValue(undefined);
+      mockServiceWorkerRegistration({
+        waiting: { postMessage: vi.fn(), state: "installed" } as unknown as ServiceWorker,
+        update: updateMock,
+      });
+
+      const { useAppUpdate } = await loadPwaUpdaterModule();
+      const { result, unmount } = renderHook(() => useAppUpdate());
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(result.current.status).toBe("ready");
+
+      act(() => {
+        result.current.check();
+      });
+
+      expect(result.current.status).toBe("ready");
+      expect(updateMock).not.toHaveBeenCalled();
+
+      unmount();
+    });
+
+    it("check() transitions to up-to-date when update() finds no new worker", async () => {
+      const updateMock = vi.fn().mockResolvedValue(undefined);
+      mockServiceWorkerRegistration({ update: updateMock });
+
+      const { useAppUpdate } = await loadPwaUpdaterModule();
+      const { result, unmount } = renderHook(() => useAppUpdate());
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      act(() => {
+        result.current.check();
+      });
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(updateMock).toHaveBeenCalledTimes(1);
+      expect(result.current.status).toBe("up-to-date");
+
+      unmount();
+    });
+
+    it("check() before registration is ready resolves to up-to-date", async () => {
+      const updateMock = vi.fn().mockResolvedValue(undefined);
+      let resolveReady: (registration: ServiceWorkerRegistration) => void = () => {};
+      const readyPromise = new Promise<ServiceWorkerRegistration>((resolve) => {
+        resolveReady = resolve;
+      });
+
+      const registration = mockServiceWorkerRegistration({
+        update: updateMock,
+        ready: readyPromise,
+      });
+
+      const { useAppUpdate } = await loadPwaUpdaterModule();
+      const { result, unmount } = renderHook(() => useAppUpdate());
+
+      act(() => {
+        result.current.check();
+      });
+
+      expect(result.current.status).toBe("checking");
+
+      await act(async () => {
+        resolveReady(registration);
+        await Promise.resolve();
+      });
+
+      expect(updateMock).toHaveBeenCalledTimes(1);
+      expect(result.current.status).toBe("up-to-date");
+
+      unmount();
+    });
+  });
 });
