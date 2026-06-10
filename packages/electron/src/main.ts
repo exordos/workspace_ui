@@ -278,7 +278,7 @@ function createWindow(): void {
     width: saved.width,
     height: saved.height,
     ...(saved.x != null && saved.y != null && { x: saved.x, y: saved.y }),
-    minWidth: 960,
+    minWidth: 700,
     minHeight: 600,
     title: app.getName(),
     backgroundColor: "#1B1B1D",
