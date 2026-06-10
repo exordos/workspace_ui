@@ -23,6 +23,7 @@ export interface ChatListStreamMetadataRow {
   canRemoveSubscribersGroup?: ZulipGroupSettingValue;
   canAdministerChannelGroup?: ZulipGroupSettingValue;
   canResolveTopicsGroup?: ZulipGroupSettingValue;
+  canMoveMessagesOutOfChannelGroup?: ZulipGroupSettingValue;
 }
 
 export interface ChatListDmMetadataRow {
@@ -131,6 +132,14 @@ export interface ChatListState {
   renameStream: (streamId: number, nextName: string) => void;
   moveStreamTopic: (params: {
     streamId: number;
+    oldTopic: string;
+    newTopic: string;
+    messageIds?: number[];
+    anchorMessageId?: number;
+  }) => void;
+  moveTopicToStream: (params: {
+    sourceStreamId: number;
+    targetStreamId: number;
     oldTopic: string;
     newTopic: string;
     messageIds?: number[];

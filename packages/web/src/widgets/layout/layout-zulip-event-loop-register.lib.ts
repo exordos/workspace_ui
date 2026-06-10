@@ -69,6 +69,11 @@ export function toStreamMetadataRows(
         ...(subscription.can_resolve_topics_group != null
           ? { canResolveTopicsGroup: subscription.can_resolve_topics_group }
           : {}),
+        ...(subscription.can_move_messages_out_of_channel_group != null
+          ? {
+              canMoveMessagesOutOfChannelGroup: subscription.can_move_messages_out_of_channel_group,
+            }
+          : {}),
       };
     });
 }
@@ -203,6 +208,12 @@ export function createLayoutBootstrapQueueRegisteredHandler(
       ...(registration?.realm_can_resolve_topics_group != null
         ? {
             realmCanResolveTopicsGroup: registration.realm_can_resolve_topics_group,
+          }
+        : {}),
+      ...(registration?.realm_can_move_messages_between_channels_group != null
+        ? {
+            realmCanMoveMessagesBetweenChannelsGroup:
+              registration.realm_can_move_messages_between_channels_group,
           }
         : {}),
     });

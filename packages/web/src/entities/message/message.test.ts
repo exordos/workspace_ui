@@ -852,6 +852,31 @@ describe("currentChatMessagesStore", () => {
       ]);
     });
   });
+
+  describe("moveTopicToStreamMessages", () => {
+    it("updates stream_id and subject for targeted messages", () => {
+      useCurrentChatMessagesStore
+        .getState()
+        .setMessages([
+          mockMsg({ id: 1, stream_id: 5, subject: "incident", channel: "eng" }),
+          mockMsg({ id: 2, stream_id: 5, subject: "incident", channel: "eng" }),
+        ]);
+
+      useCurrentChatMessagesStore.getState().moveTopicToStreamMessages({
+        sourceStreamId: 5,
+        targetStreamId: 9,
+        targetStreamName: "dev",
+        oldTopic: "incident",
+        newTopic: "incident",
+        messageIds: [1, 2],
+        anchorMessageId: 1,
+      });
+
+      const messages = useCurrentChatMessagesStore.getState().messages;
+      expect(messages.every((message) => message.stream_id === 9)).toBe(true);
+      expect(messages.every((message) => message.channel === "dev")).toBe(true);
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

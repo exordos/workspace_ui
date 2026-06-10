@@ -17,14 +17,18 @@ function buildCtx(
     updateMessageContentMock?: ReturnType<typeof vi.fn>;
     updateMessageLinkPreviewMock?: ReturnType<typeof vi.fn>;
     moveStreamTopicMock?: ReturnType<typeof vi.fn>;
+    moveTopicToStreamMock?: ReturnType<typeof vi.fn>;
     moveStreamTopicMessagesMock?: ReturnType<typeof vi.fn>;
+    moveTopicToStreamMessagesMock?: ReturnType<typeof vi.fn>;
   } = {},
 ) {
   const noop = vi.fn();
   const updateMessageContentMock = overrides.updateMessageContentMock ?? vi.fn();
   const updateMessageLinkPreviewMock = overrides.updateMessageLinkPreviewMock ?? vi.fn();
   const moveStreamTopicMock = overrides.moveStreamTopicMock ?? vi.fn();
+  const moveTopicToStreamMock = overrides.moveTopicToStreamMock ?? vi.fn();
   const moveStreamTopicMessagesMock = overrides.moveStreamTopicMessagesMock ?? vi.fn();
+  const moveTopicToStreamMessagesMock = overrides.moveTopicToStreamMessagesMock ?? vi.fn();
   const ctx: LayoutZulipEventDispatchContext = {
     currentInstanceId: "inst-1",
     chatList: {
@@ -35,6 +39,8 @@ function buildCtx(
       renameStream: noop,
       moveStreamTopic:
         moveStreamTopicMock as LayoutZulipEventDispatchContext["chatList"]["moveStreamTopic"],
+      moveTopicToStream:
+        moveTopicToStreamMock as LayoutZulipEventDispatchContext["chatList"]["moveTopicToStream"],
       removeStream: noop,
       decrementUnreadForMessages: noop,
       incrementUnreadForMessages: noop,
@@ -53,6 +59,8 @@ function buildCtx(
         updateMessageLinkPreviewMock as LayoutCurrentChatActions["updateMessageLinkPreview"],
       moveStreamTopicMessages:
         moveStreamTopicMessagesMock as LayoutCurrentChatActions["moveStreamTopicMessages"],
+      moveTopicToStreamMessages:
+        moveTopicToStreamMessagesMock as LayoutCurrentChatActions["moveTopicToStreamMessages"],
     },
     users: {
       mergeFromMessage: noop,
@@ -92,7 +100,9 @@ function buildCtx(
     updateMessageContentMock,
     updateMessageLinkPreviewMock,
     moveStreamTopicMock,
+    moveTopicToStreamMock,
     moveStreamTopicMessagesMock,
+    moveTopicToStreamMessagesMock,
   };
 }
 
@@ -306,6 +316,64 @@ describe("dispatchZulipEvent", () => {
         messageIds: [1, 2, 3],
         anchorMessageId: 99,
       });
+    });
+
+    it("moves stream topic to another channel when new_stream_id is present", () => {
+      const {
+        ctx,
+        moveStreamTopicMock,
+        moveTopicToStreamMock,
+        moveStreamTopicMessagesMock,
+        moveTopicToStreamMessagesMock,
+      } = buildCtx({
+        moveTopicToStreamMock: vi.fn(),
+        moveTopicToStreamMessagesMock: vi.fn(),
+      });
+      ctx.chatList.streamsMap = new Map([
+        [
+          20,
+          {
+            stream_id: 20,
+            name: "dev",
+            lastMessage: "",
+            time: "",
+            ts: 0,
+            topics: new Map(),
+          },
+        ],
+      ]);
+      dispatchZulipEvent(
+        {
+          id: 4,
+          type: "update_message",
+          message_id: 99,
+          stream_id: 10,
+          new_stream_id: 20,
+          orig_subject: "incident",
+          subject: "incident",
+          message_ids: [1, 2],
+        },
+        ctx,
+      );
+      expect(moveTopicToStreamMock).toHaveBeenCalledWith({
+        sourceStreamId: 10,
+        targetStreamId: 20,
+        oldTopic: "incident",
+        newTopic: "incident",
+        messageIds: [1, 2],
+        anchorMessageId: 99,
+      });
+      expect(moveTopicToStreamMessagesMock).toHaveBeenCalledWith({
+        sourceStreamId: 10,
+        targetStreamId: 20,
+        oldTopic: "incident",
+        newTopic: "incident",
+        messageIds: [1, 2],
+        anchorMessageId: 99,
+        targetStreamName: "dev",
+      });
+      expect(moveStreamTopicMock).not.toHaveBeenCalled();
+      expect(moveStreamTopicMessagesMock).not.toHaveBeenCalled();
     });
 
     it("does not move topic when update_message lacks topic rename payload", () => {

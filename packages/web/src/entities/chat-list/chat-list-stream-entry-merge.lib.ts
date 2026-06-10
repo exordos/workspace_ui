@@ -58,6 +58,7 @@ export function mergeStreamEntry(
     canRemoveSubscribersGroup: existing.canRemoveSubscribersGroup,
     canAdministerChannelGroup: existing.canAdministerChannelGroup,
     canResolveTopicsGroup: existing.canResolveTopicsGroup,
+    canMoveMessagesOutOfChannelGroup: existing.canMoveMessagesOutOfChannelGroup,
     topics: nextTopics,
   };
 }

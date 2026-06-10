@@ -742,6 +742,129 @@ export async function moveTopicMessagesInCache(options: {
   });
 }
 
+export async function moveTopicToStreamInCache(options: {
+  instanceId: string;
+  sourceStreamId: number;
+  targetStreamId: number;
+  oldTopic: string;
+  newTopic: string;
+  messageIds?: readonly number[];
+  anchorMessageId?: number;
+}): Promise<void> {
+  const {
+    instanceId,
+    sourceStreamId,
+    targetStreamId,
+    oldTopic,
+    newTopic,
+    messageIds,
+    anchorMessageId,
+  } = options;
+  if (!isIndexedDBAvailable()) return;
+  if (!Number.isInteger(sourceStreamId) || sourceStreamId <= 0) return;
+  if (!Number.isInteger(targetStreamId) || targetStreamId <= 0) return;
+  if (sourceStreamId === targetStreamId) return;
+  const oldTopicKey = normalizeTopicForIdentity(oldTopic);
+  const newTopicKey = normalizeTopicForIdentity(newTopic);
+
+  const oldChatKey = `stream:${sourceStreamId}:${oldTopicKey}`;
+  const newChatKey = `stream:${targetStreamId}:${newTopicKey}`;
+  const oldInstanceChatKey = instanceChatKey(instanceId, oldChatKey);
+  const newInstanceChatKey = instanceChatKey(instanceId, newChatKey);
+
+  const normalizedTopicFromMessage = (message: MockMessage): string =>
+    normalizeTopicForIdentity(message.subject ?? "");
+
+  const targetMessageIds = new Set(
+    resolveTopicMoveTargetMessageIds({
+      messageIds,
+      anchorMessageId,
+    }),
+  );
+  if (targetMessageIds.size === 0) return;
+
+  const db = await openMessageCacheDb();
+  const oldMetaBefore = await getChatMeta(instanceId, oldChatKey).catch(() => null);
+  const newMetaBefore = await getChatMeta(instanceId, newChatKey).catch(() => null);
+  const rowsInOldPartition = await readAllMessagesInChat(db, oldInstanceChatKey);
+
+  const byIdCandidates = new Map<number, MessageCacheRow>();
+  for (const messageId of targetMessageIds) {
+    const row = await getMessageRow(db, instanceId, messageId);
+    if (!row) continue;
+    if (row.message.stream_id !== sourceStreamId) continue;
+    if (normalizedTopicFromMessage(row.message) !== oldTopicKey) continue;
+    byIdCandidates.set(messageId, row);
+  }
+
+  const effectiveRowsToMoveMap = new Map<number, MessageCacheRow>();
+  for (const row of rowsInOldPartition) {
+    if (!targetMessageIds.has(row.messageId)) continue;
+    effectiveRowsToMoveMap.set(row.messageId, row);
+  }
+  for (const row of byIdCandidates.values()) {
+    effectiveRowsToMoveMap.set(row.messageId, row);
+  }
+  const effectiveRowsToMove = Array.from(effectiveRowsToMoveMap.values());
+  if (effectiveRowsToMove.length === 0) return;
+
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE_MESSAGES, "readwrite");
+    tx.onerror = () => reject(idbError(tx.error));
+    tx.oncomplete = () => resolve();
+    const store = tx.objectStore(STORE_MESSAGES);
+    for (const row of effectiveRowsToMove) {
+      const nextMessage = {
+        ...row.message,
+        stream_id: targetStreamId,
+        subject: newTopicKey,
+      };
+      store.put({
+        ...row,
+        chatKey: newChatKey,
+        instanceChatKey: newInstanceChatKey,
+        message: nextMessage,
+        version: row.version + 1,
+      } satisfies MessageCacheRow);
+    }
+  });
+
+  const rowsInOldAfter = await readAllMessagesInChat(db, oldInstanceChatKey);
+  const rowsInNewAfter = await readAllMessagesInChat(db, newInstanceChatKey);
+  const oldMetaSeed = deriveChatMetaSeed(oldMetaBefore);
+  const newMetaSeed = mergeChatMetaSeeds(
+    deriveChatMetaSeed(newMetaBefore),
+    deriveChatMetaSeed(oldMetaBefore),
+  );
+  const oldMetaAfter = buildChatMetaRowFromRows({
+    instanceChatKeyValue: oldInstanceChatKey,
+    rows: rowsInOldAfter,
+    seed: oldMetaSeed,
+  });
+  const newMetaAfter = buildChatMetaRowFromRows({
+    instanceChatKeyValue: newInstanceChatKey,
+    rows: rowsInNewAfter,
+    seed: newMetaSeed,
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE_CHAT_META, "readwrite");
+    tx.onerror = () => reject(idbError(tx.error));
+    tx.oncomplete = () => resolve();
+    const store = tx.objectStore(STORE_CHAT_META);
+    if (oldMetaAfter == null) {
+      store.delete(oldInstanceChatKey);
+    } else {
+      store.put(oldMetaAfter);
+    }
+    if (newMetaAfter == null) {
+      store.delete(newInstanceChatKey);
+    } else {
+      store.put(newMetaAfter);
+    }
+  });
+}
+
 export async function putSingleMessage(options: {
   instanceId: string;
   chatKey: string;

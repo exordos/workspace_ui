@@ -59,6 +59,7 @@ export interface UserStatusFetchMeta {
 export interface CurrentUserChannelCapabilities {
   realmCanAddSubscribersGroup?: ZulipGroupSettingValue;
   realmCanResolveTopicsGroup?: ZulipGroupSettingValue;
+  realmCanMoveMessagesBetweenChannelsGroup?: ZulipGroupSettingValue;
 }
 
 interface UsersState {

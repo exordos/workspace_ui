@@ -254,7 +254,11 @@
     "markTopicAsDone": "Отметить тему как выполненную",
     "markTopicAsNotDone": "Снять отметку выполнения темы",
     "renameTopic": "Переименовать тему",
-    "renameTopicTitle": "Переименовать тему"
+    "renameTopicTitle": "Переименовать тему",
+    "moveTopicToChannel": "Перенести в канал",
+    "moveTopicToChannelTitle": "Перенести тему в канал",
+    "moveTopicToChannelError": "Не удалось перенести тему в канал",
+    "selectTargetChannel": "Целевой канал"
   },
   "dm": {
     "groupChat": "Групповой чат",

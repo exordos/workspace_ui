@@ -81,6 +81,7 @@ export interface StreamEntryInternal {
   canRemoveSubscribersGroup?: ZulipGroupSettingValue;
   canAdministerChannelGroup?: ZulipGroupSettingValue;
   canResolveTopicsGroup?: ZulipGroupSettingValue;
+  canMoveMessagesOutOfChannelGroup?: ZulipGroupSettingValue;
   topics: Map<
     string,
     {

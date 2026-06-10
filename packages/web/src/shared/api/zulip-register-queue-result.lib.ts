@@ -133,6 +133,7 @@ export interface RegisterQueueRawData {
   recent_private_conversations?: unknown;
   realm_can_add_subscribers_group?: unknown;
   realm_can_resolve_topics_group?: unknown;
+  realm_can_move_messages_between_channels_group?: unknown;
   realm_user_groups?: unknown;
   server_thumbnail_formats?: unknown;
   max_avatar_file_size_mib?: unknown;
@@ -151,6 +152,7 @@ export interface RegisterQueueParsedMetadata {
   recentPrivateConversations: ReturnType<typeof parseRecentPrivateConversations>;
   realmCanAddSubscribersGroup: ReturnType<typeof normalizeGroupSettingValue>;
   realmCanResolveTopicsGroup: ReturnType<typeof normalizeGroupSettingValue>;
+  realmCanMoveMessagesBetweenChannelsGroup: ReturnType<typeof normalizeGroupSettingValue>;
   realmUserGroups: ZulipRealmUserGroup[] | null;
   serverThumbnailFormats: ReturnType<typeof parseServerThumbnailFormats>;
   maxAvatarFileSizeMib: ReturnType<typeof parseMaxAvatarFileSizeMib>;
@@ -171,6 +173,9 @@ export function parseRegisterQueueMetadata(
     recentPrivateConversations: parseRecentPrivateConversations(data.recent_private_conversations),
     realmCanAddSubscribersGroup: normalizeGroupSettingValue(data.realm_can_add_subscribers_group),
     realmCanResolveTopicsGroup: normalizeGroupSettingValue(data.realm_can_resolve_topics_group),
+    realmCanMoveMessagesBetweenChannelsGroup: normalizeGroupSettingValue(
+      data.realm_can_move_messages_between_channels_group,
+    ),
     realmUserGroups: parseRealmUserGroups(data.realm_user_groups),
     serverThumbnailFormats: parseServerThumbnailFormats(data.server_thumbnail_formats),
     maxAvatarFileSizeMib: parseMaxAvatarFileSizeMib(data.max_avatar_file_size_mib),
@@ -217,6 +222,12 @@ export function buildRegisterQueueResult(
       : {}),
     ...(metadata.realmCanResolveTopicsGroup != null
       ? { realm_can_resolve_topics_group: metadata.realmCanResolveTopicsGroup }
+      : {}),
+    ...(metadata.realmCanMoveMessagesBetweenChannelsGroup != null
+      ? {
+          realm_can_move_messages_between_channels_group:
+            metadata.realmCanMoveMessagesBetweenChannelsGroup,
+        }
       : {}),
     ...(metadata.realmUserGroups ? { realm_user_groups: metadata.realmUserGroups } : {}),
     ...(metadata.serverThumbnailFormats

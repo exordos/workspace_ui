@@ -6,12 +6,14 @@ import type { ZulipEvent, ZulipRawMessage } from "~/shared/api/zulip.types";
 import {
   deleteMessagesByIds,
   moveTopicMessagesInCache,
+  moveTopicToStreamInCache,
   patchMessageContentInCache,
   patchMessageFlagsInCache,
   patchMessageReactionInCache,
   putSingleMessage,
 } from "~/shared/lib/message-cache-db";
 import { chatKeyFromRawMessage } from "~/shared/lib/message-cache-keys.lib";
+import { extractStreamMoveFromUpdateEvent } from "~/shared/lib/update-message-stream-move.lib";
 import { extractTopicMoveFromUpdateEvent } from "~/shared/lib/update-message-topic-move.lib";
 import { zulipMessageCacheWindowNForChatKey } from "~/shared/lib/zulip-message-window.lib";
 
@@ -96,6 +98,15 @@ export async function mirrorZulipUpdateMessageToIndexedDb(options: {
       content: newMarkdown,
       ...(trimmed.length > 0 ? { markdown_source: newMarkdown } : {}),
     });
+  }
+
+  const streamMovePayload = extractStreamMoveFromUpdateEvent(options.event);
+  if (streamMovePayload != null) {
+    await moveTopicToStreamInCache({
+      instanceId: options.instanceId,
+      ...streamMovePayload,
+    });
+    return;
   }
 
   const topicMovePayload = extractTopicMoveFromUpdateEvent(options.event);

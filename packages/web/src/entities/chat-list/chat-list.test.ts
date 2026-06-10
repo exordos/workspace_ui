@@ -2183,5 +2183,53 @@ describe("chatListStore", () => {
       expect(stream?.topics.has("\u2714 incident")).toBe(true);
       expect(stream?.topics.size).toBe(1);
     });
+
+    it("moves topic to another stream and removes old topic key", () => {
+      useChatListStore.getState().upsertStreamMetadataRows([
+        { streamId: 10, name: "engineering" },
+        { streamId: 20, name: "dev" },
+      ]);
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: 1,
+            stream_id: 10,
+            display_recipient: "engineering",
+            subject: "incident",
+            timestamp: 1000,
+            sender_full_name: "Alice",
+          }),
+          streamMsg({
+            id: 2,
+            stream_id: 20,
+            display_recipient: "dev",
+            subject: "release",
+            timestamp: 2000,
+            sender_full_name: "Bob",
+          }),
+        ],
+        10,
+      );
+
+      useChatListStore.getState().moveTopicToStream({
+        sourceStreamId: 10,
+        targetStreamId: 20,
+        oldTopic: "incident",
+        newTopic: "incident",
+        messageIds: [1],
+        anchorMessageId: 1,
+      });
+
+      const source = useChatListStore.getState().streamsMap.get(10);
+      const target = useChatListStore.getState().streamsMap.get(20);
+      expect(source).toBeDefined();
+      expect(source?.topics.has("incident")).toBe(false);
+      expect(target?.topics.has("incident")).toBe(true);
+      expect(useChatListStore.getState().messageIdToLocation.get(1)).toEqual({
+        type: "stream",
+        stream_id: 20,
+        topic: "incident",
+      });
+    });
   });
 });

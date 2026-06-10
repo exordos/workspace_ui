@@ -9,6 +9,7 @@ interface StreamMetadataAccessFields {
   canRemoveSubscribersGroup?: StreamEntryInternal["canRemoveSubscribersGroup"];
   canAdministerChannelGroup?: StreamEntryInternal["canAdministerChannelGroup"];
   canResolveTopicsGroup?: StreamEntryInternal["canResolveTopicsGroup"];
+  canMoveMessagesOutOfChannelGroup?: StreamEntryInternal["canMoveMessagesOutOfChannelGroup"];
 }
 
 function resolveStreamMetadataAccessFields(
@@ -23,6 +24,8 @@ function resolveStreamMetadataAccessFields(
     canRemoveSubscribersGroup: row.canRemoveSubscribersGroup ?? existing?.canRemoveSubscribersGroup,
     canAdministerChannelGroup: row.canAdministerChannelGroup ?? existing?.canAdministerChannelGroup,
     canResolveTopicsGroup: row.canResolveTopicsGroup ?? existing?.canResolveTopicsGroup,
+    canMoveMessagesOutOfChannelGroup:
+      row.canMoveMessagesOutOfChannelGroup ?? existing?.canMoveMessagesOutOfChannelGroup,
   };
 }
 
@@ -44,6 +47,9 @@ function spreadStreamMetadataAccessFields(
       : {}),
     ...(fields.canResolveTopicsGroup != null
       ? { canResolveTopicsGroup: fields.canResolveTopicsGroup }
+      : {}),
+    ...(fields.canMoveMessagesOutOfChannelGroup != null
+      ? { canMoveMessagesOutOfChannelGroup: fields.canMoveMessagesOutOfChannelGroup }
       : {}),
   };
 }

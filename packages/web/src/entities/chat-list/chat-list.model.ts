@@ -353,6 +353,14 @@ function hasStreamMetadataAccessChanged(
   ) {
     return true;
   }
+  if (
+    !areGroupSettingValuesEqual(
+      existing.canMoveMessagesOutOfChannelGroup,
+      nextEntry.canMoveMessagesOutOfChannelGroup,
+    )
+  ) {
+    return true;
+  }
   return false;
 }
 
@@ -1124,6 +1132,130 @@ export const useChatListStore = create<ChatListState>((set, get) => {
                       lastMessageSenderName: newestTopic.lastMessageSenderName,
                       time: newestTopic.time,
                       ts: newestTopic.ts,
+                    }
+                  : {}),
+              });
+              streamsChanged = true;
+            }
+          }
+
+          if (!locationsChanged && !streamsChanged) return state;
+
+          let streamTopicMessageIds = state.streamTopicMessageIds;
+          if (locationsChanged) {
+            streamTopicMessageIds = patchStreamTopicMessageIndex(
+              state.streamTopicMessageIds,
+              state.messageIdToLocation,
+              nextLocations,
+            );
+          }
+
+          return {
+            ...(streamsChanged ? { streamsMap: nextStreams } : {}),
+            ...(locationsChanged ? { messageIdToLocation: nextLocations } : {}),
+            ...(locationsChanged || streamsChanged ? { streamTopicMessageIds } : {}),
+          };
+        },
+        { preserveSidebarTotals: true },
+      );
+    },
+
+    moveTopicToStream({
+      sourceStreamId,
+      targetStreamId,
+      oldTopic,
+      newTopic,
+      messageIds,
+      anchorMessageId,
+    }) {
+      if (!Number.isInteger(sourceStreamId) || sourceStreamId <= 0) return;
+      if (!Number.isInteger(targetStreamId) || targetStreamId <= 0) return;
+      if (sourceStreamId === targetStreamId) return;
+      const oldTopicKey = normalizeTopicForIdentity(oldTopic);
+      const nextTopicKey = normalizeTopicForIdentity(newTopic);
+      const targetMessageIds = resolveTopicMoveTargetMessageIds({ messageIds, anchorMessageId });
+      if (targetMessageIds.length === 0) return;
+      const affectedMessageIds = new Set(targetMessageIds);
+
+      patchSet(
+        (state) => {
+          const sourceStream = state.streamsMap.get(sourceStreamId);
+          const targetStream = state.streamsMap.get(targetStreamId);
+          if (!sourceStream || !targetStream) return state;
+
+          let nextLocations = state.messageIdToLocation;
+          let locationsChanged = false;
+          const ensureMutableLocations = () => {
+            if (!locationsChanged) {
+              nextLocations = new Map(nextLocations);
+              locationsChanged = true;
+            }
+          };
+          const assignStreamTopicForLocation = (messageId: number) => {
+            const location = nextLocations.get(messageId);
+            if (location?.type !== "stream" || location.stream_id !== sourceStreamId) return;
+            if (location.stream_id === targetStreamId && location.topic === nextTopicKey) return;
+            ensureMutableLocations();
+            nextLocations.set(messageId, {
+              type: "stream",
+              stream_id: targetStreamId,
+              topic: nextTopicKey,
+            });
+          };
+
+          for (const messageId of affectedMessageIds) {
+            assignStreamTopicForLocation(messageId);
+          }
+
+          const knownOldTopicMessageIds = [
+            ...getStreamTopicMessageIds(state.streamTopicMessageIds, sourceStreamId, oldTopicKey),
+          ];
+          const canMoveTopicEntry =
+            knownOldTopicMessageIds.length > 0 &&
+            knownOldTopicMessageIds.every((messageId) => affectedMessageIds.has(messageId));
+
+          let streamsChanged = false;
+          let nextStreams = state.streamsMap;
+          if (canMoveTopicEntry) {
+            const oldTopicEntry = sourceStream.topics.get(oldTopicKey);
+            if (oldTopicEntry) {
+              const sourceTopics = new Map(sourceStream.topics);
+              sourceTopics.delete(oldTopicKey);
+              const sourceNewestTopic = getNewestTopicEntry(sourceTopics);
+
+              const targetTopics = new Map(targetStream.topics);
+              const targetTopicEntry = targetTopics.get(nextTopicKey);
+              const mergedTopic = mergeTopicsForMove(oldTopicEntry, nextTopicKey, targetTopicEntry);
+              targetTopics.set(nextTopicKey, mergedTopic);
+              const targetNewestTopic = getNewestTopicEntry(targetTopics);
+
+              nextStreams = new Map(state.streamsMap);
+              nextStreams.set(sourceStreamId, {
+                ...sourceStream,
+                topics: sourceTopics,
+                ...(sourceNewestTopic != null
+                  ? {
+                      lastMessage: sourceNewestTopic.lastMessage,
+                      lastMessageSenderName: sourceNewestTopic.lastMessageSenderName,
+                      time: sourceNewestTopic.time,
+                      ts: sourceNewestTopic.ts,
+                    }
+                  : {
+                      lastMessage: "",
+                      lastMessageSenderName: undefined,
+                      time: "",
+                      ts: 0,
+                    }),
+              });
+              nextStreams.set(targetStreamId, {
+                ...targetStream,
+                topics: targetTopics,
+                ...(targetNewestTopic != null
+                  ? {
+                      lastMessage: targetNewestTopic.lastMessage,
+                      lastMessageSenderName: targetNewestTopic.lastMessageSenderName,
+                      time: targetNewestTopic.time,
+                      ts: targetNewestTopic.ts,
                     }
                   : {}),
               });

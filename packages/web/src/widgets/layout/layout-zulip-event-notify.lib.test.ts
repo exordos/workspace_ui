@@ -63,6 +63,7 @@ function createContext(notifications = createNotifications()): LayoutZulipEventD
       upsertStreamMetadataRows: vi.fn(),
       renameStream: vi.fn(),
       moveStreamTopic: vi.fn(),
+      moveTopicToStream: vi.fn(),
       removeStream: vi.fn(),
       decrementUnreadForMessages: vi.fn(),
       incrementUnreadForMessages: vi.fn(),
@@ -78,6 +79,7 @@ function createContext(notifications = createNotifications()): LayoutZulipEventD
       updateMessageContent: vi.fn(),
       updateMessageLinkPreview: vi.fn(),
       moveStreamTopicMessages: vi.fn(),
+      moveTopicToStreamMessages: vi.fn(),
     },
     users: {
       mergeFromMessage: vi.fn(),

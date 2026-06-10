@@ -11,6 +11,7 @@ import {
   markStreamAsRead,
   markTopicAsRead,
   renameStreamTopic,
+  moveStreamTopicToChannel,
   setTopicResolvedState,
 } from "./zulip-read-state";
 import { getMockZulipApi } from "./zulip.test.setup";
@@ -240,6 +241,66 @@ describe("renameStreamTopic", () => {
       send_notification_to_new_thread: "false",
       send_webhook_notifications: "false",
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// moveStreamTopicToChannel
+// ---------------------------------------------------------------------------
+
+describe("moveStreamTopicToChannel", () => {
+  it("moves topic to another channel via anchor message patch", async () => {
+    mockZulipApi.get.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        messages: [{ id: 901 }],
+      },
+      raw: { statusText: "OK" },
+    });
+    mockZulipApi.patch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { result: "success" },
+      raw: { statusText: "OK" },
+    });
+
+    await expect(moveStreamTopicToChannel(10, "incident", 20, "incident")).resolves.toBe(true);
+    expect(mockZulipApi.patch).toHaveBeenCalledWith("/messages/901", {
+      stream_id: "20",
+      topic: "incident",
+      propagate_mode: "change_all",
+      send_notification_to_old_thread: "false",
+      send_notification_to_new_thread: "false",
+      send_webhook_notifications: "false",
+    });
+  });
+
+  it("returns false when source and target stream are the same", async () => {
+    await expect(moveStreamTopicToChannel(10, "incident", 10, "incident")).resolves.toBe(false);
+    expect(mockZulipApi.get).not.toHaveBeenCalled();
+    expect(mockZulipApi.patch).not.toHaveBeenCalled();
+  });
+
+  it("returns false when time limit exceeded", async () => {
+    mockZulipApi.get.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        messages: [{ id: 901 }],
+      },
+      raw: { statusText: "OK" },
+    });
+    mockZulipApi.patch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { result: "error", code: "MOVE_MESSAGES_TIME_LIMIT_EXCEEDED" },
+      raw: { statusText: "OK" },
+    });
+
+    await expect(moveStreamTopicToChannel(10, "incident", 20, "incident")).resolves.toBe(false);
   });
 });
 

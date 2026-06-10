@@ -250,7 +250,11 @@
     "markTopicAsDone": "Mark topic as done",
     "markTopicAsNotDone": "Mark topic as not done",
     "renameTopic": "Rename topic",
-    "renameTopicTitle": "Rename topic"
+    "renameTopicTitle": "Rename topic",
+    "moveTopicToChannel": "Move to channel",
+    "moveTopicToChannelTitle": "Move topic to channel",
+    "moveTopicToChannelError": "Could not move topic to channel",
+    "selectTargetChannel": "Target channel"
   },
   "dm": {
     "groupChat": "Group chat",

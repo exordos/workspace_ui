@@ -4,6 +4,7 @@ import { parseAllMessageEmbedsFromRenderedHtml } from "~/shared/lib/message-link
 import { enqueuePendingLinkPreview } from "~/shared/lib/message-link-preview-pending.lib";
 import { linkPreviewUrlsMatch } from "~/shared/lib/message-link-preview-url-match.lib";
 import { extractLinkPreviewUrls } from "~/shared/lib/message-link-preview-urls.lib";
+import { extractStreamMoveFromUpdateEvent } from "~/shared/lib/update-message-stream-move.lib";
 import { extractTopicMoveFromUpdateEvent } from "~/shared/lib/update-message-topic-move.lib";
 import type { LayoutZulipEventDispatchContext } from "./layout-zulip-event-dispatch.types";
 
@@ -62,6 +63,18 @@ export function applyTopicMoveFromUpdateMessage(
   event: ZulipEvent,
   ctx: LayoutZulipEventDispatchContext,
 ): void {
+  const streamMovePayload = extractStreamMoveFromUpdateEvent(event);
+  if (streamMovePayload != null) {
+    const targetStreamName =
+      ctx.chatList.streamsMap.get(streamMovePayload.targetStreamId)?.name ?? "";
+    ctx.chatList.moveTopicToStream(streamMovePayload);
+    ctx.currentChat.moveTopicToStreamMessages({
+      ...streamMovePayload,
+      targetStreamName,
+    });
+    return;
+  }
+
   const topicMovePayload = extractTopicMoveFromUpdateEvent(event);
   if (topicMovePayload == null) return;
   ctx.chatList.moveStreamTopic(topicMovePayload);

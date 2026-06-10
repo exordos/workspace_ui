@@ -562,6 +562,68 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     });
   },
 
+  moveTopicToStreamMessages({
+    sourceStreamId,
+    targetStreamId,
+    targetStreamName,
+    oldTopic,
+    newTopic,
+    messageIds,
+    anchorMessageId,
+  }) {
+    if (!Number.isInteger(sourceStreamId) || sourceStreamId <= 0) return;
+    if (!Number.isInteger(targetStreamId) || targetStreamId <= 0) return;
+    const oldTopicKey = normalizeTopicForIdentity(oldTopic);
+    const newTopicKey = normalizeTopicForIdentity(newTopic);
+    const targetMessageIds = resolveTopicMoveTargetMessageIds({ messageIds, anchorMessageId });
+    if (targetMessageIds.length === 0) return;
+    const targetedIds = new Set(targetMessageIds);
+
+    set((state) => {
+      let changed = false;
+      const nextMessages = state.messages.slice();
+      for (let i = 0; i < nextMessages.length; i++) {
+        const message = nextMessages[i]!;
+        if (!targetedIds.has(message.id)) continue;
+        if (message.stream_id !== sourceStreamId) continue;
+        const topic = normalizeTopicForIdentity(message.subject ?? "");
+        if (topic !== oldTopicKey) continue;
+        nextMessages[i] = {
+          ...message,
+          stream_id: targetStreamId,
+          subject: newTopicKey,
+          channel: targetStreamName,
+        };
+        changed = true;
+      }
+
+      let nextContext = state.context;
+      let contextChanged = false;
+      if (
+        state.context?.type === "stream" &&
+        state.context.streamId === sourceStreamId &&
+        state.context.streamWideView !== true
+      ) {
+        const activeTopic = normalizeTopicForIdentity(state.context.topic);
+        if (activeTopic === oldTopicKey) {
+          nextContext = {
+            ...state.context,
+            streamId: targetStreamId,
+            streamName: targetStreamName,
+            topic: newTopicKey,
+          };
+          contextChanged = true;
+        }
+      }
+
+      if (!changed && !contextChanged) return state;
+      return {
+        ...(changed ? { messages: nextMessages } : {}),
+        ...(contextChanged ? { context: nextContext } : {}),
+      };
+    });
+  },
+
   setIsLoadingMore(loading) {
     set({ isLoadingMore: loading });
   },

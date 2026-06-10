@@ -24,6 +24,15 @@ export interface LayoutChatListActions {
     messageIds?: number[];
     anchorMessageId?: number;
   }) => void;
+  // Move topic to another channel on update_message with new_stream_id.
+  moveTopicToStream: (params: {
+    sourceStreamId: number;
+    targetStreamId: number;
+    oldTopic: string;
+    newTopic: string;
+    messageIds?: number[];
+    anchorMessageId?: number;
+  }) => void;
   // Remove channel from sidebar on unsubscribe/remove.
   removeStream: (streamId: number) => void;
   decrementUnreadForMessages: (messageIds: number[]) => void;
@@ -53,6 +62,15 @@ export interface LayoutCurrentChatActions {
   updateMessageLinkPreview: (messageId: number, linkPreview: LinkPreviewData | null) => void;
   moveStreamTopicMessages: (params: {
     streamId: number;
+    oldTopic: string;
+    newTopic: string;
+    messageIds?: number[];
+    anchorMessageId?: number;
+  }) => void;
+  moveTopicToStreamMessages: (params: {
+    sourceStreamId: number;
+    targetStreamId: number;
+    targetStreamName: string;
     oldTopic: string;
     newTopic: string;
     messageIds?: number[];

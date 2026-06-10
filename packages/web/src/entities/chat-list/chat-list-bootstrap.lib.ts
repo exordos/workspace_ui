@@ -77,7 +77,8 @@ export function mergeStreamAccessMetadata(
     existing.canAddSubscribersGroup != null ||
     existing.canRemoveSubscribersGroup != null ||
     existing.canAdministerChannelGroup != null ||
-    existing.canResolveTopicsGroup != null;
+    existing.canResolveTopicsGroup != null ||
+    existing.canMoveMessagesOutOfChannelGroup != null;
   if (!hasMetadata) return stream;
   return {
     ...stream,
@@ -95,6 +96,9 @@ export function mergeStreamAccessMetadata(
       : {}),
     ...(existing.canResolveTopicsGroup != null
       ? { canResolveTopicsGroup: existing.canResolveTopicsGroup }
+      : {}),
+    ...(existing.canMoveMessagesOutOfChannelGroup != null
+      ? { canMoveMessagesOutOfChannelGroup: existing.canMoveMessagesOutOfChannelGroup }
       : {}),
   };
 }

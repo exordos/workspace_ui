@@ -71,6 +71,15 @@ export interface CurrentChatMessagesState {
     messageIds?: number[];
     anchorMessageId?: number;
   }) => void;
+  moveTopicToStreamMessages: (params: {
+    sourceStreamId: number;
+    targetStreamId: number;
+    targetStreamName: string;
+    oldTopic: string;
+    newTopic: string;
+    messageIds?: number[];
+    anchorMessageId?: number;
+  }) => void;
   setIsLoadingMore: (loading: boolean) => void;
   setHasOlderMessages: (has: boolean) => void;
   setHasNewerMessages: (has: boolean) => void;

@@ -29,6 +29,7 @@ function parseSubscriptionRow(row: unknown): ZulipSubscription | null {
     can_remove_subscribers_group?: unknown;
     can_administer_channel_group?: unknown;
     can_resolve_topics_group?: unknown;
+    can_move_messages_out_of_channel_group?: unknown;
   };
   if (!isPositiveInteger(subscription.stream_id) || typeof subscription.name !== "string") {
     return null;
@@ -41,6 +42,9 @@ function parseSubscriptionRow(row: unknown): ZulipSubscription | null {
     subscription.can_administer_channel_group,
   );
   const canResolveTopicsGroup = normalizeGroupSettingValue(subscription.can_resolve_topics_group);
+  const canMoveMessagesOutOfChannelGroup = normalizeGroupSettingValue(
+    subscription.can_move_messages_out_of_channel_group,
+  );
   return {
     stream_id: subscription.stream_id,
     name: subscription.name,
@@ -73,6 +77,9 @@ function parseSubscriptionRow(row: unknown): ZulipSubscription | null {
       ? { can_administer_channel_group: canAdministerChannelGroup }
       : {}),
     ...(canResolveTopicsGroup != null ? { can_resolve_topics_group: canResolveTopicsGroup } : {}),
+    ...(canMoveMessagesOutOfChannelGroup != null
+      ? { can_move_messages_out_of_channel_group: canMoveMessagesOutOfChannelGroup }
+      : {}),
   };
 }
 

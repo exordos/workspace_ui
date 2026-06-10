@@ -7,6 +7,8 @@ import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { applySidebarMarkChatAsRead } from "~/features/mark-chat-read/sidebar-mark-chat-read.lib";
 import { useMarkTopicResolved } from "~/features/mark-topic-resolved/mark-topic-resolved.hook";
 import { RenameStreamTopicDialog } from "~/features/mark-topic-resolved/rename-stream-topic-dialog.ui";
+import { MoveTopicToStreamDialog } from "~/features/move-topic-to-stream/move-topic-to-stream-dialog.ui";
+import { useMoveTopicToStream } from "~/features/move-topic-to-stream/move-topic-to-stream.hook";
 import { runOptimisticStreamNotificationLevelUpdate } from "~/features/mute-chat/mute-chat-notification.optimistic.lib";
 import { setStreamNotificationLevel } from "~/features/mute-chat/mute-chat.api";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
@@ -568,7 +570,28 @@ export const TopicContextMenu = React.memo(function TopicContextMenu({
     renamePending,
   } = useMarkTopicResolved({ streamId, topic, streamName });
 
+  const {
+    canMove: canMoveTopicToChannel,
+    movePending,
+    moveDialogOpen,
+    setMoveDialogOpen,
+    targetStreamIdRaw,
+    setTargetStreamIdRaw,
+    moveTopicDraft,
+    setMoveTopicDraft,
+    targetStreamOptions,
+    openMoveDialog,
+    submitMove,
+    channelName: moveChannelName,
+  } = useMoveTopicToStream({ streamId, topic, streamName });
+
+  const topicActionsPending = topicActionPending || movePending;
   const resolveLabel = isResolved ? t("channel.markTopicAsNotDone") : t("channel.markTopicAsDone");
+
+  const handleMoveSelect = useCallback(() => {
+    openMoveDialog();
+    setMenuOpen(false);
+  }, [openMoveDialog]);
 
   const handleMarkAsRead = useCallback(() => {
     setMenuOpen(false);
@@ -634,7 +657,7 @@ export const TopicContextMenu = React.memo(function TopicContextMenu({
           key: "rename-topic",
           icon: "pen",
           label: t("channel.renameTopic"),
-          disabled: topicActionPending,
+          disabled: topicActionsPending,
           onSelect: handleRenameSelect,
         },
         {
@@ -642,19 +665,31 @@ export const TopicContextMenu = React.memo(function TopicContextMenu({
           key: "resolve-topic",
           icon: "check",
           label: resolveLabel,
-          disabled: topicActionPending,
+          disabled: topicActionsPending,
           onSelect: handleResolveSelect,
         },
       );
     }
+    if (canMoveTopicToChannel) {
+      items.push({
+        type: "action",
+        key: "move-topic-to-channel",
+        icon: "forward",
+        label: t("channel.moveTopicToChannel"),
+        disabled: topicActionsPending,
+        onSelect: handleMoveSelect,
+      });
+    }
     return items;
   }, [
     canManageTopic,
+    canMoveTopicToChannel,
     handleMarkAsRead,
+    handleMoveSelect,
     handleRenameSelect,
     handleResolveSelect,
     resolveLabel,
-    topicActionPending,
+    topicActionsPending,
     topicNotificationPickerItem,
   ]);
 
@@ -705,6 +740,20 @@ export const TopicContextMenu = React.memo(function TopicContextMenu({
           pending={renamePending}
           onOpenChange={setRenameDialogOpen}
           onSubmit={submitRename}
+        />
+      )}
+      {canMoveTopicToChannel && (
+        <MoveTopicToStreamDialog
+          open={moveDialogOpen}
+          sourceChannelName={moveChannelName}
+          targetStreamId={targetStreamIdRaw}
+          onTargetStreamIdChange={setTargetStreamIdRaw}
+          targetStreamOptions={targetStreamOptions}
+          topicName={moveTopicDraft}
+          onTopicNameChange={setMoveTopicDraft}
+          pending={movePending}
+          onOpenChange={setMoveDialogOpen}
+          onSubmit={submitMove}
         />
       )}
     </div>
