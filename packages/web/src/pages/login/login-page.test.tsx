@@ -106,10 +106,10 @@ describe("LoginPage", () => {
 
     renderWithProviders(<LoginPage />, { route: "/login" });
 
-    fireEvent.click(screen.getByRole("button", { name: /genesis core public/i }));
+    fireEvent.click(screen.getByRole("button", { name: /exordos core public/i }));
 
     expect(screen.getByLabelText(/zulip server address/i)).toHaveValue(
-      "https://public.exordos.example.com",
+      "https://public.Exordos.example.com",
     );
     expect(screen.getByRole("button", { name: /next/i })).toBeEnabled();
   });
