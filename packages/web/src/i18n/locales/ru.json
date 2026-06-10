@@ -674,7 +674,11 @@
   },
   "mediaViewer": {
     "openInNewTab": "Открыть в новой вкладке",
-    "download": "Скачать"
+    "download": "Скачать",
+    "prev": "Предыдущее",
+    "next": "Следующее",
+    "position": "{{current}} / {{total}}",
+    "thumbnail": "Медиа {{index}}"
   },
   "chatInfo": {
     "title": "Информация о чате",

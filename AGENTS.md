@@ -35,7 +35,7 @@ Workspace UI is an open-source corporate messenger built on the Zulip API, shipp
 | Analytics         | GA4 + Yandex Metrica       | Opt-in, PII auto-stripped                                            |
 | Logging           | Custom structured logger   | Scoped, 15 auto-redaction patterns                                   |
 | CI                | GitHub Actions + GitLab CI | Dual pipeline                                                        |
-| Monorepo          | Lerna 9 + npm workspaces   | 4 packages: web, electron-app, mock-server, workspace-api            |
+| Monorepo          | Lerna 9 + npm workspaces   | 3 packages: web, electron-app, workspace-api                         |
 | Icons             | vite-plugin-svgr           | 68 SVG icons as React components                                     |
 | Sanitization      | DOMPurify                  | HTML whitelist for Zulip content                                     |
 
@@ -54,7 +54,6 @@ workspace_ui/
 ├── packages/
 │   ├── web/              React SPA (Vite)
 │   ├── electron/         Desktop shell (Windows, macOS, Linux)
-│   ├── mock-server/      Express development API server
 │   └── workspace-api/    Orval-generated @workspace/api client
 ├── e2e/                  Playwright E2E tests (15 specs)
 ├── docs/                 9 technical references + 13 ADR files
@@ -397,7 +396,6 @@ npm install
 npm run dev:web              # Vite → http://localhost:5173
 npm run dev:electron         # Web + Electron desktop window
 npm run dev                  # All packages in parallel
-npm run dev:mock             # Mock API server only
 
 # Quality (CI gate)
 npm run check                # typecheck + lint + test (all-in-one)

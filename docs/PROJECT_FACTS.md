@@ -10,7 +10,6 @@ Single source of truth for volatile counts, paths, and workflow. Other docs shou
 | --------------- | ------------------------- | --------------------------------------- |
 | `web`           | `packages/web/`           | React SPA (Vite)                        |
 | `electron-app`  | `packages/electron/`      | Desktop shell                           |
-| `mock-server`   | `packages/mock-server/`   | Express dev API                         |
 | `workspace-api` | `packages/workspace-api/` | Orval-generated `@workspace/api` client |
 
 ## Stack versions

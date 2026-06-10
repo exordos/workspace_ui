@@ -667,7 +667,11 @@
   },
   "mediaViewer": {
     "openInNewTab": "Open in new tab",
-    "download": "Download"
+    "download": "Download",
+    "prev": "Previous",
+    "next": "Next",
+    "position": "{{current}} / {{total}}",
+    "thumbnail": "Media {{index}}"
   },
   "chatInfo": {
     "title": "Chat info",

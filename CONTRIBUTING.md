@@ -67,12 +67,11 @@ npm run check                # typecheck + lint + test (must pass)
 
 ### Other Development Modes
 
-| Command                | What it runs                                 |
-| ---------------------- | -------------------------------------------- |
-| `npm run dev:web`      | Vite dev server only                         |
-| `npm run dev:electron` | Web + Electron desktop window                |
-| `npm run dev`          | All packages in parallel (web + mock server) |
-| `npm run dev:mock`     | Express mock API server only                 |
+| Command                | What it runs                              |
+| ---------------------- | ----------------------------------------- |
+| `npm run dev:web`      | Vite dev server only                      |
+| `npm run dev:electron` | Web + Electron desktop window             |
+| `npm run dev`          | All packages in parallel (web + electron) |
 
 ---
 

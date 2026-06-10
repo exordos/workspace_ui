@@ -1,7 +1,7 @@
 // Regression: overlay must call the same hook set
 // in both closed and open states to satisfy Rules of Hooks.
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MediaViewerOverlay } from "./media-viewer-overlay.ui";
 import { useMediaViewerStore } from "./media-viewer.model";
 
@@ -24,7 +24,17 @@ vi.mock("~/shared/lib/auth-guard", () => ({
   buildAuthHeader: () => ({ Authorization: "Basic test" }),
 }));
 
+const GALLERY_ITEMS = [
+  { url: "https://example.com/a.png", type: "image" as const },
+  { url: "https://example.com/b.png", type: "image" as const },
+  { url: "https://example.com/c.png", type: "image" as const },
+];
+
 describe("MediaViewerOverlay", () => {
+  beforeEach(() => {
+    Element.prototype.scrollIntoView = vi.fn();
+  });
+
   afterEach(() => {
     useMediaViewerStore.getState().close();
     vi.unstubAllGlobals();
@@ -240,5 +250,80 @@ describe("MediaViewerOverlay", () => {
       "_blank",
       "noopener,noreferrer",
     );
+  });
+
+  it("navigates to next and previous items with ArrowRight and ArrowLeft", () => {
+    useMediaViewerStore.getState().open(GALLERY_ITEMS, 0);
+
+    render(<MediaViewerOverlay />);
+    expect(useMediaViewerStore.getState().currentIndex).toBe(0);
+
+    act(() => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }),
+      );
+    });
+    expect(useMediaViewerStore.getState().currentIndex).toBe(1);
+
+    act(() => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, cancelable: true }),
+      );
+    });
+    expect(useMediaViewerStore.getState().currentIndex).toBe(0);
+  });
+
+  it("does not navigate past gallery boundaries with keyboard arrows", () => {
+    useMediaViewerStore.getState().open(GALLERY_ITEMS, 0);
+
+    render(<MediaViewerOverlay />);
+
+    act(() => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, cancelable: true }),
+      );
+    });
+    expect(useMediaViewerStore.getState().currentIndex).toBe(0);
+
+    useMediaViewerStore.getState().goTo(2);
+    act(() => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }),
+      );
+    });
+    expect(useMediaViewerStore.getState().currentIndex).toBe(2);
+  });
+
+  it("navigates when gallery prev and next buttons are clicked", () => {
+    useMediaViewerStore.getState().open(GALLERY_ITEMS, 1);
+
+    render(<MediaViewerOverlay />);
+
+    fireEvent.click(screen.getByRole("button", { name: /previous/i }));
+    expect(useMediaViewerStore.getState().currentIndex).toBe(0);
+
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+    expect(useMediaViewerStore.getState().currentIndex).toBe(1);
+  });
+
+  it("jumps to selected item when a thumbnail is clicked", () => {
+    useMediaViewerStore.getState().open(GALLERY_ITEMS, 0);
+
+    render(<MediaViewerOverlay />);
+
+    fireEvent.click(screen.getByRole("tab", { name: /media 3/i }));
+    expect(useMediaViewerStore.getState().currentIndex).toBe(2);
+  });
+
+  it("hides navigation controls and thumbnails for a single item", () => {
+    useMediaViewerStore
+      .getState()
+      .open([{ url: "https://example.com/photo.png", type: "image" }], 0);
+
+    render(<MediaViewerOverlay />);
+
+    expect(screen.queryByRole("button", { name: /previous/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /next/i })).toBeNull();
+    expect(screen.queryByRole("tablist")).toBeNull();
   });
 });

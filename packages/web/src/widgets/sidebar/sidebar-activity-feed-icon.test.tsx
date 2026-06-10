@@ -39,7 +39,7 @@ describe("SidebarActivity feed icon sizing", () => {
     const feedLink = screen.getByRole("link", { name: /feed/i });
     const feedIcon = feedLink.querySelector("svg");
 
-    expect(feedIcon).toHaveAttribute("width", "18");
-    expect(feedIcon).toHaveAttribute("height", "18");
+    expect(feedIcon).toHaveAttribute("width", "16");
+    expect(feedIcon).toHaveAttribute("height", "16");
   });
 });

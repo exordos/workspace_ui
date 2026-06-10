@@ -11,7 +11,10 @@ import type { TypingUser } from "./typing-indicator.types";
 
 export const TYPING_EXPIRY_MS = 15_000;
 
-const EMPTY_USERS: TypingUser[] = [];
+/** Stable fallback for selectors when no chat key is active (never inline `[]`). */
+export const EMPTY_TYPING_USERS: TypingUser[] = [];
+
+const EMPTY_USERS = EMPTY_TYPING_USERS;
 
 interface TypingIndicatorState {
   /** chatKey → list of currently-typing users */
@@ -44,7 +47,7 @@ export const useTypingIndicatorStore = create<TypingIndicatorState>((set, get) =
       const nextTimers = new Map(state.timers);
       nextTimers.delete(tk);
 
-      const current = state.typingMap.get(chatKey) ?? [];
+      const current = state.typingMap.get(chatKey) ?? EMPTY_USERS;
       const filtered = current.filter((u) => u.userId !== userId);
       const nextMap = new Map(state.typingMap);
       if (filtered.length === 0) {
@@ -64,7 +67,7 @@ export const useTypingIndicatorStore = create<TypingIndicatorState>((set, get) =
     const nextTimers = new Map(state.timers);
     nextTimers.set(tk, expiryTimer);
 
-    const current = state.typingMap.get(chatKey) ?? [];
+    const current = state.typingMap.get(chatKey) ?? EMPTY_USERS;
     const existing = current.find((u) => u.userId === userId);
     const nextMap = new Map(state.typingMap);
     if (existing) {

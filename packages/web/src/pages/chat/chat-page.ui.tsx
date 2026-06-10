@@ -20,7 +20,10 @@ import { useChatInfoStore } from "~/features/chat-info/chat-info.model";
 import { useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { useMessageReadersStore } from "~/features/message-readers/message-readers.model";
 import { useComposerTypingController } from "~/features/typing-indicator/composer-typing-controller.hook";
-import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indicator.model";
+import {
+  EMPTY_TYPING_USERS,
+  useTypingIndicatorStore,
+} from "~/features/typing-indicator/typing-indicator.model";
 import {
   buildDmTypingChatKey,
   buildStreamTypingChatKey,
@@ -807,7 +810,7 @@ export const ChatPage: React.FC = () => {
   }, [isDmView, activeDmUserIds, currentUserId, activeStreamId, activeTopic]);
 
   const typingUsers = useTypingIndicatorStore((s) =>
-    typingChatKey ? s.getTypingUsers(typingChatKey) : [],
+    typingChatKey ? s.getTypingUsers(typingChatKey) : EMPTY_TYPING_USERS,
   );
   const dmPartnerIsTyping = useMemo(
     () =>

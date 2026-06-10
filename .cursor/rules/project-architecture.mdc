@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Project Architecture
 
-Lerna monorepo: `packages/web` (Vite React SPA) + `packages/electron` (desktop shell) + `packages/mock-server` (Express).
+Lerna monorepo: `packages/web` (Vite React SPA) + `packages/electron` (desktop shell) + `packages/workspace-api` (Orval client).
 
 Architecture follows **Feature-Sliced Design** (FSD): `app → pages → widgets → features → entities → shared`.
 

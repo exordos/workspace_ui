@@ -18,15 +18,15 @@ const compactRowClass =
 const compactRowActiveClass = "border border-border-subtle bg-card-bg-active text-text-primary";
 const compactBadgeClass = "absolute -right-1 -top-1";
 const expandedRowBaseClass =
-  "group flex w-full items-center gap-3 rounded-xl bg-bg-elevated/60 px-3 py-2.5 text-left text-sm text-text-primary transition-colors hover:bg-card-bg";
+  "group flex w-full items-center gap-2 rounded-lg bg-bg-elevated/60 px-2.5 py-2 text-left text-sm text-text-primary transition-colors hover:bg-card-bg";
 const expandedRowCompactClass =
-  "group flex w-full items-center gap-2 rounded-lg bg-bg-elevated/50 px-2.5 py-1.5 text-left text-sm text-text-primary transition-colors hover:bg-card-bg";
+  "group flex w-full items-center gap-1.5 rounded-lg bg-bg-elevated/50 px-2 py-1 text-left text-sm text-text-primary transition-colors hover:bg-card-bg";
 const expandedRowActiveClass = "bg-card-bg";
 const expandedIconChipClass =
-  "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-on-accent";
+  "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-on-accent";
 const expandedIconChipCompactClass =
-  "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-on-accent";
-const expandedLabelClass = "min-w-0 flex-1 truncate text-base font-medium";
+  "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-on-accent";
+const expandedLabelClass = "min-w-0 flex-1 truncate text-sm font-medium";
 const expandedLabelCompactClass = "min-w-0 flex-1 truncate text-sm font-medium";
 
 function getCompactActivityIconSize(key: string): number {
@@ -34,7 +34,7 @@ function getCompactActivityIconSize(key: string): number {
 }
 
 function getExpandedActivityIconSize(key: string): number {
-  return key === "favorites" || key === "feed" ? 18 : 20;
+  return key === "favorites" || key === "feed" ? 16 : 18;
 }
 
 export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle }) => {
@@ -72,7 +72,7 @@ export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle
   const favoritesCount = useActivityStore((s) => s.starredSummary.count);
   const favoritesError = useActivityStore((s) => s.starredSummary.error);
   const isPrivateNotesActive = currentUserId != null && scopedPathname === `/dm/${currentUserId}`;
-  const expandedListClass = isCompactDensity ? "mt-2 space-y-1" : "mt-2 space-y-1.5";
+  const expandedListClass = "mt-2 space-y-1";
   const expandedRowClass = isCompactDensity ? expandedRowCompactClass : expandedRowBaseClass;
   const expandedIconClass = isCompactDensity ? expandedIconChipCompactClass : expandedIconChipClass;
   const expandedLabel = isCompactDensity ? expandedLabelCompactClass : expandedLabelClass;
@@ -83,12 +83,12 @@ export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle
         <button
           type="button"
           onClick={onToggle}
-          className="hover:bg-sidebar-hover/60 flex w-full items-center justify-between rounded-lg px-1 py-1 text-left text-base font-semibold text-text-primary transition-colors"
+          className="flex w-full items-center justify-between rounded-lg px-1 py-1 text-left text-base font-semibold text-text-primary"
           aria-expanded={open}
           aria-controls={activityListId}
         >
           {t("nav.activity")}
-          <span className="rounded-md p-1 text-text-muted transition-colors hover:bg-bg hover:text-text-primary">
+          <span className="rounded-md p-1 text-text-muted">
             <Icon name="chevron-up" size={14} className="text-current" />
           </span>
         </button>
@@ -198,7 +198,7 @@ export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle
                   className={`${expandedIconClass} bg-accent`}
                   data-testid="activity-icon-bg-home"
                 >
-                  <Icon name="accountCircle" size={20} className="shrink-0 text-on-accent" />
+                  <Icon name="accountCircle" size={18} className="shrink-0 text-on-accent" />
                 </span>
                 <span className={expandedLabel}>{t("activity.home")}</span>
               </Link>

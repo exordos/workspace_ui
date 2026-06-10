@@ -1,6 +1,5 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@config "../../tailwind.config.ts";
 
 /*
  * CSS theme variables are set dynamically from lib/themes/engine.ts via applyTheme().

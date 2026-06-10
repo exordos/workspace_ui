@@ -49,7 +49,6 @@ Default app URL: `http://localhost:5173`
 | `npm run dev:web`          | Web app in Vite dev mode           |
 | `npm run dev:electron`     | Web + Electron desktop shell       |
 | `npm run dev`              | Monorepo dev mode (parallel)       |
-| `npm run dev:mock`         | Mock backend only                  |
 | `npm run check`            | Typecheck + lint + tests           |
 | `npm run test`             | Unit/integration tests             |
 | `npm run e2e`              | Playwright E2E                     |
@@ -80,7 +79,6 @@ workspace_ui/
 ├── packages/
 │   ├── web/              React SPA
 │   ├── electron/         Electron shell
-│   ├── mock-server/      Local mock API
 │   └── workspace-api/    Orval-generated @workspace/api client
 ├── docs/             Technical docs + ADRs
 ├── e2e/              Playwright tests

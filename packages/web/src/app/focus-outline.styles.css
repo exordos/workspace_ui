@@ -1,3 +1,5 @@
+@reference "./app.styles.css";
+
 /*
  * Focus-outline polish across interaction variants.
  * Keeps keyboard accessibility while reducing aggressive field outlines.

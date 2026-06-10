@@ -5,7 +5,7 @@
 
 ## Context
 
-Monorepo with multiple packages (web, electron, workspace-api, mock-server). Electron auto-updater and Sentry releases depend on consistent version numbers. Need a clear versioning policy.
+Monorepo with multiple packages (web, electron, workspace-api). Electron auto-updater and Sentry releases depend on consistent version numbers. Need a clear versioning policy.
 
 ## Decision
 

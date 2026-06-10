@@ -337,13 +337,13 @@ describe("SidebarActivity", () => {
 
     const mentionsLink = screen.getByRole("link", { name: /mentions/i });
     expect(mentionsLink).toHaveClass("rounded-lg");
-    expect(mentionsLink).toHaveClass("px-2.5");
-    expect(mentionsLink).toHaveClass("py-1.5");
+    expect(mentionsLink).toHaveClass("px-2");
+    expect(mentionsLink).toHaveClass("py-1");
     expect(mentionsLink).not.toHaveClass("rounded-xl");
 
     const mentionsChip = screen.getByTestId("activity-icon-bg-mentions");
-    expect(mentionsChip).toHaveClass("h-8");
-    expect(mentionsChip).toHaveClass("w-8");
+    expect(mentionsChip).toHaveClass("h-7");
+    expect(mentionsChip).toHaveClass("w-7");
   });
 
   it("highlights active collapsed shortcut with header-like active styling", () => {
@@ -416,8 +416,8 @@ describe("SidebarActivity", () => {
 
     const favoritesChip = screen.getByTestId("activity-icon-bg-favorites");
     const favoritesIcon = favoritesChip.querySelector("svg");
-    expect(favoritesIcon).toHaveAttribute("width", "18");
-    expect(favoritesIcon).toHaveAttribute("height", "18");
+    expect(favoritesIcon).toHaveAttribute("width", "16");
+    expect(favoritesIcon).toHaveAttribute("height", "16");
   });
 
   it("uses updated icon set for My Activity shortcuts", () => {
@@ -441,7 +441,7 @@ describe("SidebarActivity", () => {
     );
 
     const mentionsLink = screen.getByRole("link", { name: /mentions/i });
-    expect(mentionsLink).toHaveClass("rounded-xl");
+    expect(mentionsLink).toHaveClass("rounded-lg");
     expect(mentionsLink).not.toHaveClass("border");
     expect(mentionsLink).not.toHaveClass("border-border-subtle");
     expect(mentionsLink).not.toHaveClass("border-accent-soft/60");

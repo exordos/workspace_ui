@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { resolveTypingEventRoute } from "./typing-event-routing";
-import { useTypingIndicatorStore, TYPING_EXPIRY_MS } from "./typing-indicator.model";
+import {
+  EMPTY_TYPING_USERS,
+  useTypingIndicatorStore,
+  TYPING_EXPIRY_MS,
+} from "./typing-indicator.model";
 import { buildDmTypingChatKey, buildStreamTypingChatKey } from "./typing-key";
 
 vi.mock("~/shared/api/client", () => ({
@@ -89,10 +93,11 @@ describe("typing-indicator store", () => {
     expect(useTypingIndicatorStore.getState().timers.size).toBe(0);
   });
 
-  it("returns stable EMPTY_USERS reference for unknown keys", () => {
+  it("returns stable EMPTY_TYPING_USERS reference for unknown keys", () => {
     const a = useTypingIndicatorStore.getState().getTypingUsers("x");
     const b = useTypingIndicatorStore.getState().getTypingUsers("y");
     expect(a).toBe(b);
+    expect(a).toBe(EMPTY_TYPING_USERS);
   });
 
   it("setTyping(false) for non-existent user is a safe no-op", () => {

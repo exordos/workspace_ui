@@ -178,9 +178,6 @@ export const SidebarInner: React.FC<SidebarUiProps> = ({
             onSearchQueryChange={setSearchQuery}
             onOpenCreateChat={() => setCreateChatOpen(true)}
           />
-          <div className="px-3">
-            <div className="bg-border-subtle/70 h-px" />
-          </div>
           <SidebarActivity open={activityOpen} onToggle={handleToggleActivity} />
           {activityPanelBottomSlot != null && (
             <>
