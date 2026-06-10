@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MockMessage } from "~/shared/api/zulip.types";
-import { buildMessageMediaGallery } from "./message-list-media.lib";
+import { buildMessageMediaGallery, resolveGalleryMediaIndex } from "./message-list-media.lib";
 
 function msg(id: number, content: string): MockMessage {
   return {
@@ -47,7 +47,29 @@ describe("buildMessageMediaGallery", () => {
     ]);
 
     expect(gallery.items[0]?.url).toMatch(/\/user_uploads\/1\/a\.png$/);
-    expect(gallery.indexByUrl.size).toBe(1);
+    expect(gallery.items).toHaveLength(1);
+    expect(gallery.indexByUrl.get("/user_uploads/1/a.png")).toBe(0);
+  });
+
+  it("indexes thumbnail and full-resolution user upload URLs to the same item", () => {
+    const gallery = buildMessageMediaGallery([
+      msg(1, '<p><img src="/user_uploads/1/a.png" /></p>'),
+    ]);
+    const lookupKey = "/user_uploads/1/a.png";
+    const thumbKey = "/user_uploads/thumbnail/1/a.png/840x560.webp";
+
+    expect(resolveGalleryMediaIndex(gallery, lookupKey)).toBe(0);
+    expect(resolveGalleryMediaIndex(gallery, thumbKey)).toBe(0);
+    expect(gallery.indexByUrl.get(lookupKey)).toBe(0);
+  });
+
+  it("deduplicates thumbnail and full-resolution references to the same image", () => {
+    const gallery = buildMessageMediaGallery([
+      msg(1, '<p><img src="/user_uploads/1/a.png" /></p>'),
+      msg(2, '<p><img src="/user_uploads/thumbnail/1/a.png/840x560.webp" alt="a.png" /></p>'),
+    ]);
+
+    expect(gallery.items).toHaveLength(1);
   });
 
   it("includes user_upload image links as gallery items", () => {
@@ -120,5 +142,16 @@ describe("buildMessageMediaGallery", () => {
 
     expect(gallery.items).toHaveLength(1);
     expect(gallery.items[0]?.type).toBe("video");
+  });
+
+  it("extracts user upload images from markdown message bodies", () => {
+    const gallery = buildMessageMediaGallery([
+      msg(1, "[a.png](/user_uploads/1/a.png)"),
+      msg(2, "[b.png](/user_uploads/1/b.png)"),
+    ]);
+
+    expect(gallery.items).toHaveLength(2);
+    expect(gallery.indexByUrl.get("/user_uploads/1/a.png")).toBe(0);
+    expect(gallery.indexByUrl.get("/user_uploads/1/b.png")).toBe(1);
   });
 });

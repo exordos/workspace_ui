@@ -30,6 +30,44 @@ export function isUserUploadThumbnailUrl(url: string): boolean {
 
 const PATH_BEFORE_USER_UPLOADS = /^(.*?)\/user_uploads\/(?!thumbnail\/)(.+)$/;
 
+const THUMBNAIL_PATH_WITH_SIZE = /^(.*?)\/user_uploads\/thumbnail\/(.+)\/840x560\.webp$/;
+
+export function fromUserUploadThumbnailUrl(url: string): string {
+  const trimmed = collapseDuplicateWorkspaceV1InUrl(url.trim());
+  if (trimmed.length === 0 || !isUserUploadThumbnailUrl(trimmed)) {
+    return trimmed;
+  }
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const u = new URL(trimmed);
+      const m = THUMBNAIL_PATH_WITH_SIZE.exec(u.pathname);
+      if (m?.[2] == null || m[2] === "") {
+        return trimmed;
+      }
+      const before = m[1] ?? "";
+      u.pathname = `${before}/user_uploads/${m[2]}`;
+      return u.toString();
+    } catch {
+      return trimmed;
+    }
+  }
+
+  const q = trimmed.indexOf("?");
+  const hash = trimmed.indexOf("#");
+  let cut = trimmed.length;
+  if (q >= 0) cut = Math.min(cut, q);
+  if (hash >= 0) cut = Math.min(cut, hash);
+  const basePart = trimmed.slice(0, cut);
+  const tail = trimmed.slice(cut);
+  const m = THUMBNAIL_PATH_WITH_SIZE.exec(basePart);
+  if (m?.[2] == null || m[2] === "") {
+    return trimmed;
+  }
+  const before = m[1] ?? "";
+  return `${before}/user_uploads/${m[2]}${tail}`;
+}
+
 export function toUserUploadThumbnailUrl(fullUrl: string): string {
   const trimmed = collapseDuplicateWorkspaceV1InUrl(fullUrl);
   if (trimmed.length === 0 || isUserUploadThumbnailUrl(trimmed)) {

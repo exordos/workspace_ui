@@ -4,7 +4,7 @@ import { Icon } from "~/shared/ui/icon";
 import type { MediaViewerControlsProps } from "./media-viewer-controls.types";
 
 const NAV_BUTTON_CLASS =
-  "absolute top-1/2 z-float flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-lg bg-bg-elevated/80 text-text-primary transition-colors hover:bg-bg-elevated";
+  "fixed top-1/2 z-modal flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white transition-colors hover:bg-black/70";
 
 export const MediaViewerControls: React.FC<MediaViewerControlsProps> = ({
   show,

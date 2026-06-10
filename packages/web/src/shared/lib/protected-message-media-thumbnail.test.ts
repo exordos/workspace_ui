@@ -1,11 +1,26 @@
 import { describe, expect, it } from "vitest";
 import {
+  fromUserUploadThumbnailUrl,
   isUserUploadThumbnailUrl,
   isUserUploadImagePath,
   toUserUploadOriginalUrl,
   toUserUploadThumbnailUrl,
   USER_UPLOAD_THUMBNAIL_SIZE,
 } from "./protected-message-media-thumbnail";
+
+describe("fromUserUploadThumbnailUrl", () => {
+  it("strips thumbnail path segment and size suffix", () => {
+    expect(
+      fromUserUploadThumbnailUrl(
+        "/user_uploads/thumbnail/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png/840x560.webp",
+      ),
+    ).toBe("/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png");
+  });
+
+  it("returns unchanged when not a thumbnail URL", () => {
+    expect(fromUserUploadThumbnailUrl("/user_uploads/1/a.png")).toBe("/user_uploads/1/a.png");
+  });
+});
 
 describe("toUserUploadThumbnailUrl", () => {
   it("inserts /user_uploads/thumbnail/… and size suffix", () => {

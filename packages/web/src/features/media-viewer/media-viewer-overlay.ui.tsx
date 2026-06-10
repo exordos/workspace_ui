@@ -57,36 +57,38 @@ export const MediaViewerOverlay: React.FC = () => {
 
   return (
     <MediaViewerBackdrop onClose={close} onPrev={backdropPrev} onNext={backdropNext}>
-      <MediaViewerToolbar
-        actionsEnabled={actionsEnabled}
-        onOpenInNewTab={handleOpenInNewTab}
-        onDownload={handleDownload}
-        onClose={handleClose}
-      />
-      <div className="relative flex min-h-0 flex-1 items-center justify-center">
-        {item.type === "video" ? (
-          // eslint-disable-next-line jsx-a11y/media-has-caption -- user-uploaded video may lack caption tracks
-          <video
-            src={displayUrl}
-            controls
-            autoPlay
-            className="max-h-[calc(100vh-12rem)] max-w-[90vw]"
-            onClick={(e) => e.stopPropagation()}
-          />
-        ) : (
-          <img
-            src={imageSrc}
-            alt={item.alt ?? ""}
-            role="presentation"
-            className="max-h-[calc(100vh-12rem)] max-w-[90vw] object-contain transition-transform"
-            style={{ transform: `scale(${zoom})` }}
-            onClick={(e) => e.stopPropagation()}
-            onWheel={onWheel}
-          />
-        )}
-        <MediaViewerControls show={hasMultipleItems} onPrev={handlePrev} onNext={handleNext} />
+      <div className="relative flex min-h-0 w-full flex-1 flex-col">
+        <MediaViewerToolbar
+          actionsEnabled={actionsEnabled}
+          onOpenInNewTab={handleOpenInNewTab}
+          onDownload={handleDownload}
+          onClose={handleClose}
+        />
+        <div className="relative flex min-h-0 w-full flex-1 items-center justify-center px-16 pb-28 pt-14">
+          {item.type === "video" ? (
+            // eslint-disable-next-line jsx-a11y/media-has-caption -- user-uploaded video may lack caption tracks
+            <video
+              src={displayUrl}
+              controls
+              autoPlay
+              className="max-h-[calc(100vh-12rem)] max-w-full object-contain"
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <img
+              src={imageSrc}
+              alt={item.alt ?? ""}
+              role="presentation"
+              className="max-h-[calc(100vh-12rem)] max-w-full object-contain transition-transform"
+              style={{ transform: `scale(${zoom})` }}
+              onClick={(e) => e.stopPropagation()}
+              onWheel={onWheel}
+            />
+          )}
+          <MediaViewerControls show={hasMultipleItems} onPrev={handlePrev} onNext={handleNext} />
+        </div>
+        <MediaViewerThumbnails items={items} currentIndex={currentIndex} onSelect={handleSelect} />
       </div>
-      <MediaViewerThumbnails items={items} currentIndex={currentIndex} onSelect={handleSelect} />
     </MediaViewerBackdrop>
   );
 };

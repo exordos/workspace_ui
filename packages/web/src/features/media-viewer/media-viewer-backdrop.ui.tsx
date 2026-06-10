@@ -49,7 +49,7 @@ export const MediaViewerBackdrop: React.FC<MediaViewerBackdropProps> = ({
   return (
     // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- backdrop click-to-dismiss is standard dialog UX
     <div
-      className="fixed inset-0 z-modal flex flex-col items-center justify-center bg-black/90"
+      className="fixed inset-0 z-modal flex flex-col bg-black/90"
       data-shortcut-context="modal"
       onClick={onClose}
       role="dialog"

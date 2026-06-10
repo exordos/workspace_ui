@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useCallParticipantsStore } from "~/entities/call/call.model";
 import { useUsersStore } from "~/entities/user/user.model";
+import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import {
   MESSAGE_BUBBLE_BODY_CLASS_NAME,
@@ -9,6 +10,7 @@ import {
 } from "~/shared/lib/message-body-rich-text-classes";
 import { createUser } from "~/test/factories";
 import { MessageBubble } from "./message-bubble.ui";
+import { buildMessageMediaGallery } from "./message-list-media.lib";
 
 const buildAuthHeaderMock = vi.fn(() => ({}));
 const emojiPickerMock = vi.hoisted(() => vi.fn());
@@ -743,6 +745,59 @@ describe("MessageBubble edit/delete actions parity", () => {
         headers: { Authorization: "Basic test" },
       }),
     );
+  });
+
+  it("opens full chat gallery when clicking a blob-backed protected image preview", async () => {
+    const fetchMock = vi.fn((input: string | URL) => {
+      const s = String(input);
+      if (s.includes("/user_uploads/thumbnail/")) {
+        return Promise.resolve({
+          ok: true,
+          blob: () => Promise.resolve(new Blob(["ok"])),
+        });
+      }
+      return Promise.resolve({
+        ok: false,
+        blob: () => Promise.resolve(new Blob([])),
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test-image");
+    buildAuthHeaderMock.mockReturnValue({ Authorization: "Basic test" });
+
+    const contentA = '<p>a</p><img src="/user_uploads/1/a.png" alt="a" />';
+    const contentB = '<p>b</p><img src="/user_uploads/1/b.png" alt="b" />';
+    const gallery = buildMessageMediaGallery([
+      createMessage({ id: 1, content: contentA }),
+      createMessage({ id: 2, content: contentB }),
+    ]);
+    const mediaViewerOpenSpy = vi.spyOn(useMediaViewerStore.getState(), "open");
+
+    const { container } = render(
+      <MessageBubble
+        message={createMessage({ id: 2, content: contentB })}
+        isOwn={false}
+        mediaGallery={gallery}
+      />,
+    );
+
+    const image = container.querySelector("img");
+    expect(image).not.toBeNull();
+
+    await waitFor(() => {
+      expect(image?.getAttribute("src")).toBe("blob:test-image");
+    });
+
+    fireEvent.click(image as HTMLImageElement);
+
+    expect(mediaViewerOpenSpy).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "image" }),
+        expect.objectContaining({ type: "image" }),
+      ]),
+      1,
+    );
+    mediaViewerOpenSpy.mockRestore();
   });
 
   it("loads external_content preview through authenticated fetch without thumbnail rewrite", async () => {

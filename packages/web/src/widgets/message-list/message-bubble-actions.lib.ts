@@ -3,14 +3,21 @@ import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model"
 import type { MediaItem } from "~/features/media-viewer/media-viewer.types";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { buildAuthHeader } from "~/shared/lib/auth-guard";
-import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/protected-message-media";
+import {
+  AUTH_IMAGE_PLACEHOLDER_SRC,
+  AUTH_MEDIA_SRC_DATA_ATTR,
+} from "~/shared/lib/protected-message-media";
 import {
   deriveAttachmentFileName,
   downloadUserUploadAttachment,
   extractUserUploadPath,
 } from "./message-attachment-download.lib";
 import { LABEL_TO_ACTION } from "./message-bubble-context.lib";
-import { normalizeMediaUrl, resolveVideoElementMediaUrl } from "./message-list-media.lib";
+import {
+  normalizeMediaUrl,
+  resolveGalleryMediaIndexFromCandidates,
+  resolveVideoElementMediaUrl,
+} from "./message-list-media.lib";
 import type { ContextItemLabel } from "./message-bubble-context.lib";
 import type {
   MessageBubbleAttachmentDownloadStatus,
@@ -61,10 +68,10 @@ function openSingleMediaItem(item: MediaItem): void {
 
 function openGalleryMedia(
   gallery: MessageMediaGallery,
-  lookupUrl: string,
+  lookupCandidates: readonly string[],
   fallback: MediaItem,
 ): void {
-  const galleryIndex = gallery.indexByUrl.get(lookupUrl);
+  const galleryIndex = resolveGalleryMediaIndexFromCandidates(gallery, lookupCandidates);
   if (galleryIndex != null && gallery.items.length > 0) {
     const currentItem = gallery.items[galleryIndex];
     if (
@@ -103,25 +110,31 @@ function handleImageBodyClick(
   }
   event.preventDefault();
   event.stopPropagation();
-  const originalUrl = normalizeMediaUrl(image.dataset.originalSrc ?? image.currentSrc ?? image.src);
-  if (originalUrl === "") {
+  const src = image.currentSrc || image.src;
+  if (src === "") {
     return true;
   }
+  const originalSrc = image.dataset.originalSrc?.trim() ?? "";
+  const authSrc = image.getAttribute(AUTH_MEDIA_SRC_DATA_ATTR)?.trim() ?? "";
   const imageItem: MediaItem = {
-    url: originalUrl,
+    url: originalSrc !== "" ? normalizeMediaUrl(originalSrc) : normalizeMediaUrl(src),
     type: "image",
     previewUrl: resolveImagePreviewUrl(image),
   };
   const gallery = deps.mediaGallery;
   if (gallery != null) {
-    openGalleryMedia(gallery, originalUrl, imageItem);
+    openGalleryMedia(gallery, [originalSrc, authSrc, src], imageItem);
   } else {
     openSingleMediaItem(imageItem);
   }
   return true;
 }
 
-function handleVideoBodyClick(event: MouseEvent, videoElement: HTMLVideoElement): boolean {
+function handleVideoBodyClick(
+  event: MouseEvent,
+  videoElement: HTMLVideoElement,
+  deps: MessageBodyClickDeps,
+): boolean {
   const clickTarget = event.target;
   if (
     clickTarget instanceof Element &&
@@ -130,30 +143,21 @@ function handleVideoBodyClick(event: MouseEvent, videoElement: HTMLVideoElement)
   ) {
     return false;
   }
-  return false;
-}
-
-function openVideoBodyInViewer(
-  event: MouseEvent,
-  videoElement: HTMLVideoElement,
-  deps: MessageBodyClickDeps,
-): boolean {
   event.preventDefault();
   event.stopPropagation();
   const rawSrc = resolveVideoElementMediaUrl(videoElement);
   if (rawSrc === "") {
     return true;
   }
-  if (rawSrc.startsWith("blob:")) {
-    openSingleMediaItem({ url: rawSrc, type: "video" });
-    return true;
-  }
   const lookupUrl = normalizeMediaUrl(rawSrc);
+  const videoItem: MediaItem = { url: lookupUrl, type: "video" };
   const gallery = deps.mediaGallery;
   if (gallery != null) {
-    openGalleryMedia(gallery, lookupUrl, { url: lookupUrl, type: "video" });
+    openGalleryMedia(gallery, [rawSrc, lookupUrl], videoItem);
+  } else if (rawSrc.startsWith("blob:")) {
+    openSingleMediaItem({ url: rawSrc, type: "video" });
   } else {
-    openSingleMediaItem({ url: lookupUrl, type: "video" });
+    openSingleMediaItem(videoItem);
   }
   return true;
 }
@@ -271,7 +275,7 @@ export function handleMessageBodyClick(
 
   const videoElement = hit.closest("video");
   if (videoElement instanceof HTMLVideoElement) {
-    handleVideoBodyClick(event, videoElement);
+    handleVideoBodyClick(event, videoElement, deps);
     return;
   }
 
@@ -303,18 +307,6 @@ export function handleMessageBodyClick(
 
   const href = clickedLink.getAttribute("href") ?? "";
   handlePermalinkClick(event, href, deps);
-}
-
-export function handleMessageBodyDoubleClick(
-  event: MouseEvent,
-  hit: HTMLElement,
-  deps: MessageBodyClickDeps,
-): void {
-  const videoElement = hit.closest("video");
-  if (videoElement == null) {
-    return;
-  }
-  openVideoBodyInViewer(event, videoElement, deps);
 }
 
 export function captureReplySelectionForContextMenu(
