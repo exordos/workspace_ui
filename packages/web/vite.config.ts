@@ -1,4 +1,5 @@
 /// <reference types="vitest/config" />
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import react from "@vitejs/plugin-react-swc";
 import { defineConfig, loadEnv } from "vite";
@@ -12,6 +13,18 @@ import {
 import { buildPermissionsPolicyHeader } from "./src/shared/lib/permissions-policy";
 import { workspaceOrgApiOriginFromZulipRealmRoot } from "./src/shared/lib/workspace-org-origin.lib";
 import { installDevWorkspaceOrgProxyMiddleware } from "./vite-dev-workspace-org-proxy";
+
+const webPackageVersion = (
+  JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf-8")) as {
+    version: string;
+  }
+).version;
+
+function resolveAppVersion(mode: string, env: Record<string, string>): string {
+  const explicit = env.VITE_APP_VERSION?.trim();
+  if (explicit) return explicit;
+  return mode === "production" ? webPackageVersion : "dev";
+}
 
 function normalizeUserUploadsPathPrefix(raw: string | undefined): string {
   if (!raw?.trim()) return "";
@@ -179,7 +192,13 @@ export default defineConfig(({ mode }) => {
       }),
     } satisfies Record<string, ViteProxyEntry>);
 
+  const appVersion = resolveAppVersion(mode, env);
+
   return {
+    define: {
+      "import.meta.env.VITE_APP_VERSION": JSON.stringify(appVersion),
+    },
+
     plugins: [
       // Multi-org Workspace REST: `/workspace/...` + `X-Workspace-Dev-Target-Origin` before static proxy.
       ...(mode === "development" && !isElectron
