@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { t } from "~/i18n/i18n";
 import { sidebarRowClass } from "~/shared/lib/format";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
+import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
 import { Icon } from "~/shared/ui/icon";
 import { SidebarChatBadges } from "./sidebar-chat-badges.ui";
 import { sidebarStreamTopicRoute } from "./sidebar-chat-routes.lib";
@@ -115,7 +116,7 @@ export const SidebarStreamListTopics = React.memo<SidebarStreamListTopicsProps>(
               const topicDisplay = resolveTopicDisplayInfo(topic.subject);
               return (
                 <div
-                  key={topic.subject}
+                  key={encodeTopicForRoute(topic.subject)}
                   className={`group/topic relative rounded-r-lg border-l-4 transition-colors ${sidebarRowClass(isTopicActive)}`}
                   style={{ borderLeftColor: topicColor }}
                 >

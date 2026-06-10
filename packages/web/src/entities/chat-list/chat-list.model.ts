@@ -908,10 +908,9 @@ export const useChatListStore = create<ChatListState>((set, get) => {
 
     upsertStreamTopicShells(streamId, topics) {
       if (!Number.isInteger(streamId) || streamId <= 0) return;
-      const normalizedTopics = topics
-        .map((t) => normalizeTopicForIdentity(t))
-        .map((t) => t.trim())
-        .filter((t) => t.length > 0);
+      const normalizedTopics = [
+        ...new Set(topics.map((topicName) => normalizeTopicForIdentity(topicName))),
+      ];
       if (normalizedTopics.length === 0) return;
 
       patchSet(

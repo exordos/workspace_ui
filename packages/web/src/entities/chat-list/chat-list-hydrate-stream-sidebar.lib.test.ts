@@ -179,6 +179,64 @@ describe("requestStreamSidebarTopicListHydrate", () => {
     await Promise.all([first, second]);
     expect(fetchStreamTopicNamesMock).toHaveBeenCalledTimes(1);
   });
+
+  it("inserts empty default topic shell and hydrates preview from messages", async () => {
+    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "engineering" }]);
+    fetchStreamTopicNamesMock.mockResolvedValue(["", "alpha"]);
+    fetchStreamChannelMock.mockResolvedValue([
+      streamMsg({ stream_id: 5, subject: "", content: "no topic preview" }),
+    ]);
+
+    await requestStreamSidebarTopicListHydrate(5);
+
+    const stream = useChatListStore.getState().streamsMap.get(5);
+    expect(stream?.topics.has("")).toBe(true);
+    expect(stream?.topics.get("")?.lastMessage).toContain("no topic preview");
+    expect(fetchStreamChannelMock).toHaveBeenCalledWith(5);
+  });
+
+  it("hydrates message previews after topic list shells are inserted", async () => {
+    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "engineering" }]);
+    fetchStreamTopicNamesMock.mockResolvedValue(["alpha"]);
+    fetchStreamChannelMock.mockResolvedValue([
+      streamMsg({ stream_id: 5, subject: "alpha", content: "preview text" }),
+    ]);
+
+    await requestStreamSidebarTopicListHydrate(5);
+
+    expect(
+      useChatListStore.getState().streamsMap.get(5)?.topics.get("alpha")?.lastMessage,
+    ).toContain("preview text");
+    expect(fetchStreamChannelMock).toHaveBeenCalledWith(5);
+  });
+});
+
+describe("requestStreamSidebarTopicsHydrate preview backfill", () => {
+  beforeEach(() => {
+    clearStreamSidebarHydrateState();
+    useChatListStore.getState().clear();
+    fetchStreamChannelMock.mockReset();
+  });
+
+  afterEach(() => {
+    clearStreamSidebarHydrateState();
+    useChatListStore.getState().clear();
+  });
+
+  it("fetches messages when topic shells exist without preview text", async () => {
+    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "engineering" }]);
+    useChatListStore.getState().upsertStreamTopicShells(5, ["shell-only"]);
+    fetchStreamChannelMock.mockResolvedValue([
+      streamMsg({ stream_id: 5, subject: "shell-only", content: "filled preview" }),
+    ]);
+
+    await requestStreamSidebarTopicsHydrate(5, "expand");
+
+    expect(fetchStreamChannelMock).toHaveBeenCalledWith(5);
+    expect(
+      useChatListStore.getState().streamsMap.get(5)?.topics.get("shell-only")?.lastMessage,
+    ).toContain("filled preview");
+  });
 });
 
 describe("requestStreamSidebarTopicPreviewBackfill", () => {

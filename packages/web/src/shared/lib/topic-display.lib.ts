@@ -37,3 +37,11 @@ export function topicMatchesDisplayQuery(topic: string, normalizedQuery: string)
     display.label.toLowerCase().includes(normalizedQuery)
   );
 }
+
+/** Nullable topic variant for activity/inbox-style formatters. */
+export function formatStreamTopicLabel(topic: string | null, generalChatLabel: string): string {
+  if ((topic?.length ?? 0) > 0) {
+    return topic!;
+  }
+  return generalChatLabel;
+}

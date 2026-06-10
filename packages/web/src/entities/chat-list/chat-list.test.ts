@@ -976,6 +976,26 @@ describe("chatListStore", () => {
       expect(dm?.ts).toBe(1_700_000_000);
     });
 
+    it("upsertStreamTopicShells inserts empty default topic shell", () => {
+      useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "engineering" }]);
+      useChatListStore.getState().upsertStreamTopicShells(5, ["", "release"]);
+
+      const stream = useChatListStore.getState().streamsMap.get(5);
+      expect(stream?.topics.has("")).toBe(true);
+      expect(stream?.topics.has("release")).toBe(true);
+      expect(stream?.topics.get("")?.lastMessage).toBe("");
+    });
+
+    it("upsertStreamTopicShells normalizes legacy general chat alias to empty topic", () => {
+      useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "engineering" }]);
+      useChatListStore.getState().upsertStreamTopicShells(5, ["general chat", "release"]);
+
+      const stream = useChatListStore.getState().streamsMap.get(5);
+      expect(stream?.topics.has("")).toBe(true);
+      expect(stream?.topics.has("general chat")).toBe(false);
+      expect(stream?.topics.has("release")).toBe(true);
+    });
+
     it("applyStreamSidebarPreviewsFromMessages updates streams only, not DM metadata preview", () => {
       useUsersStore.getState().mergeUser({ user_id: 10, full_name: "Alice", email: "a@x.test" });
       useUsersStore.getState().mergeUser({ user_id: 20, full_name: "Bob", email: "b@x.test" });

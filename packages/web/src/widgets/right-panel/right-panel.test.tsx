@@ -735,6 +735,64 @@ describe("RightPanel truthfulness", () => {
     expect(useMuteStore.getState().getStreamNotificationLevel(10)).toBe("default");
   });
 
+  it("renders default topic label for legacy general chat alias in chat info data", () => {
+    act(() => {
+      useCurrentChatMessagesStore.setState({
+        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "" },
+        messages: [],
+        isLoadingMore: false,
+        hasOlderMessages: true,
+        hasNewerMessages: false,
+      });
+      useChatInfoStore.getState().setData({
+        type: "stream",
+        name: "engineering",
+        memberCount: 3,
+        onlineCount: 1,
+        members: [],
+        description: null,
+        isMuted: false,
+        topics: [{ name: "general chat", unreadCount: 0 }],
+      });
+    });
+
+    renderWithProviders(
+      <RightPanelShell title="engineering" participantsCount={3} onlineCount={1} />,
+    );
+
+    expect(screen.getByText(t("channel.defaultTopic"))).toBeInTheDocument();
+    expect(screen.queryByText("general chat")).not.toBeInTheDocument();
+  });
+
+  it("renders default topic label for empty topic name in chat info data", () => {
+    act(() => {
+      useCurrentChatMessagesStore.setState({
+        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "" },
+        messages: [],
+        isLoadingMore: false,
+        hasOlderMessages: true,
+        hasNewerMessages: false,
+      });
+      useChatInfoStore.getState().setData({
+        type: "stream",
+        name: "engineering",
+        memberCount: 3,
+        onlineCount: 1,
+        members: [],
+        description: null,
+        isMuted: false,
+        topics: [{ name: "", unreadCount: 1 }],
+      });
+    });
+
+    renderWithProviders(
+      <RightPanelShell title="engineering" participantsCount={3} onlineCount={1} />,
+    );
+
+    expect(screen.getByText(t("channel.defaultTopic"))).toBeInTheDocument();
+    expect(screen.queryByText(t("chat.generalChat"))).not.toBeInTheDocument();
+  });
+
   it("renders stream description and topic rows from chat info data", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({

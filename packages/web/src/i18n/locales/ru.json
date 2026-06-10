@@ -238,6 +238,8 @@
     "topicVisibilityUnmuted": "Включить",
     "topicVisibilityFollowed": "Отслеживать",
     "topics": "Темы",
+    "defaultTopic": "Общий",
+    "defaultTopicHint": "Сообщения без названия темы",
     "noTopics": "Нет тем",
     "newTopic": "Новая тема",
     "showMoreTopics": "Показать ещё темы",

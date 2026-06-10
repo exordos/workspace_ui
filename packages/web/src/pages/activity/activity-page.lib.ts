@@ -4,6 +4,7 @@
 
 import type { Draft } from "~/entities/draft/draft.types";
 import type { Reaction } from "~/shared/api/zulip.types";
+import { formatStreamTopicLabel } from "~/shared/lib/topic-display.lib";
 import {
   groupReactions,
   type GroupedReaction,
@@ -15,13 +16,6 @@ export function buildMessageNavigateRoute(route: string, messageId: number, mode
   }
   const separator = route.includes("?") ? "&" : "?";
   return `${route}${separator}forward=${messageId}`;
-}
-
-export function formatStreamTopicLabel(topic: string | null, generalChatLabel: string): string {
-  if ((topic?.length ?? 0) > 0) {
-    return topic!;
-  }
-  return generalChatLabel;
 }
 
 export function formatActivityMessageContext(options: {

@@ -234,6 +234,8 @@
     "topicVisibilityUnmuted": "Unmute",
     "topicVisibilityFollowed": "Follow",
     "topics": "Topics",
+    "defaultTopic": "General",
+    "defaultTopicHint": "Messages without a topic name",
     "noTopics": "No topics",
     "newTopic": "New topic",
     "showMoreTopics": "Show more topics",

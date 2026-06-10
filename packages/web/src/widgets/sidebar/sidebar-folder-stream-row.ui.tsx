@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { t } from "~/i18n/i18n";
 import { sidebarRowClass } from "~/shared/lib/format";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
+import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { SidebarChatBadges } from "./sidebar-chat-badges.ui";
@@ -153,7 +154,7 @@ const SidebarFolderStreamTopicsList = React.memo(function SidebarFolderStreamTop
             const topicDisplay = resolveTopicDisplayInfo(topic.subject);
             return (
               <TopicContextMenu
-                key={topic.subject}
+                key={encodeTopicForRoute(topic.subject)}
                 streamId={chat.stream_id}
                 streamName={chat.name}
                 topic={topic.subject}

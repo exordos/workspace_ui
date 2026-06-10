@@ -72,6 +72,29 @@ function collectStreamTopicsMissingPreview(
     .map((topic) => topic.subject);
 }
 
+function hasNonEmptyPreviewText(value: string | undefined): boolean {
+  return (value?.trim() ?? "").length > 0;
+}
+
+/** Topic rows from API shells or unread without a message preview yet. */
+function streamHasTopicsNeedingPreview(streamId: number): boolean {
+  const entry = useChatListStore.getState().streamsMap.get(streamId);
+  if (entry == null) return false;
+  if (entry.topics.size === 0) return true;
+  for (const topic of entry.topics.values()) {
+    if (!hasNonEmptyPreviewText(topic.lastMessage)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function shouldHydrateStreamSidebarTopics(streamId: number): boolean {
+  if (streamHasTopicsNeedingPreview(streamId)) return true;
+  if (streamHasSidebarTopics(streamId)) return false;
+  return !hydratedStreamIds.has(streamId);
+}
+
 export function isStreamSidebarTopicsHydrateInFlight(streamId: number): boolean {
   return inFlight.has(streamId);
 }
@@ -150,6 +173,15 @@ export function requestStreamSidebarTopicListHydrate(streamId: number): Promise<
       const topics = await fetchStreamTopicNames(streamId);
       useChatListStore.getState().upsertStreamTopicShells(streamId, topics);
       hydratedStreamTopicLists.add(streamId);
+      if (streamHasTopicsNeedingPreview(streamId)) {
+        const messages = await fetchStreamChannelMessagesForSidebarTopics(streamId);
+        if (messages.length > 0) {
+          useChatListStore.getState().applyStreamSidebarPreviewsFromMessages(messages);
+          if (streamHasSidebarTopics(streamId)) {
+            hydratedStreamIds.add(streamId);
+          }
+        }
+      }
     } catch (error) {
       logChatListFlow("chatList: stream sidebar topic list hydrate failed", {
         streamId,
@@ -199,10 +231,7 @@ export function requestStreamSidebarTopicsHydrate(
   reason: StreamSidebarTopicsHydrateReason,
 ): Promise<void> {
   guard.streamId(streamId, "requestStreamSidebarTopicsHydrate");
-  if (streamHasSidebarTopics(streamId)) {
-    return Promise.resolve();
-  }
-  if (hydratedStreamIds.has(streamId)) {
+  if (!shouldHydrateStreamSidebarTopics(streamId)) {
     return Promise.resolve();
   }
   const existing = inFlight.get(streamId);
@@ -215,7 +244,7 @@ export function requestStreamSidebarTopicsHydrate(
   const promise = (async () => {
     await acquireHydrateSlot(priority);
     try {
-      if (streamHasSidebarTopics(streamId) || hydratedStreamIds.has(streamId)) {
+      if (!shouldHydrateStreamSidebarTopics(streamId)) {
         return;
       }
 

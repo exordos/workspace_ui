@@ -10,6 +10,7 @@ describe("zulipTopicNarrowOperandForApi", () => {
     expect(zulipTopicNarrowOperandForApi("   ")).toBe("");
     expect(zulipTopicNarrowOperandForApi("general")).toBe("general");
     expect(zulipTopicNarrowOperandForApi("General")).toBe("General");
+    expect(zulipTopicNarrowOperandForApi("general chat")).toBe("");
   });
 
   it("preserves other topic names", () => {
