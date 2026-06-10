@@ -10,6 +10,7 @@ import {
   WORKSPACE_GATEWAY_V1_PATH,
   WORKSPACE_REST_API_PATH,
 } from "./src/shared/config/workspace-api-layout";
+import { applyBrandEnvDefaults } from "./src/shared/lib/brand-defaults.lib";
 import { buildPermissionsPolicyHeader } from "./src/shared/lib/permissions-policy";
 import { workspaceOrgApiOriginFromZulipRealmRoot } from "./src/shared/lib/workspace-org-origin.lib";
 import { installDevWorkspaceOrgProxyMiddleware } from "./vite-dev-workspace-org-proxy";
@@ -123,6 +124,7 @@ function deriveLegacyWorkspaceOrigin(
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, import.meta.dirname, "");
+  applyBrandEnvDefaults(env);
   const workspaceOrigin = env.VITE_WORKSPACE_API_ORIGIN?.replace(/\/+$/, "");
   const workspaceRestPath = normalizeWorkspaceRestPath(WORKSPACE_REST_API_PATH);
   const uploadsAtRealmRootFlag = env.VITE_USER_UPLOADS_AT_REALM_ROOT?.trim().toLowerCase();
@@ -224,12 +226,11 @@ export default defineConfig(({ mode }) => {
               registerType: "prompt",
               includeAssets: ["favicon.ico", "apple-touch-icon.png"],
               manifest: {
-                name: env.VITE_BRAND_APP_NAME || "Exordos Workspace",
-                short_name: env.VITE_BRAND_SHORT_NAME || "Workspace",
-                description:
-                  env.VITE_BRAND_DESCRIPTION || "Exordos Workspace — smart corporate messenger",
-                theme_color: env.VITE_BRAND_THEME_COLOR || "#1B1B1D",
-                background_color: env.VITE_BRAND_BG_COLOR || "#1B1B1D",
+                name: env.VITE_BRAND_APP_NAME,
+                short_name: env.VITE_BRAND_SHORT_NAME,
+                description: env.VITE_BRAND_DESCRIPTION,
+                theme_color: env.VITE_BRAND_THEME_COLOR,
+                background_color: env.VITE_BRAND_BG_COLOR,
                 display: "standalone",
                 scope: "/",
                 start_url: "/",

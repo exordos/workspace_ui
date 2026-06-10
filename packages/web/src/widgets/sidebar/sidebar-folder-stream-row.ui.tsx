@@ -99,6 +99,7 @@ const SidebarFolderStreamTopicsList = React.memo(function SidebarFolderStreamTop
   openTopicDialogForStream,
   displayName,
   onMuteError,
+  isCompactDensity,
 }: {
   chat: StreamChat;
   streamSlug: string;
@@ -110,6 +111,7 @@ const SidebarFolderStreamTopicsList = React.memo(function SidebarFolderStreamTop
   openTopicDialogForStream: SidebarFolderStreamRowProps["openTopicDialogForStream"];
   displayName: string;
   onMuteError: SidebarFolderStreamRowProps["onMuteError"];
+  isCompactDensity: boolean;
 }): React.ReactElement {
   const { allTopicsVisible, hiddenCount, showToggle, visibleCount, toggleAllTopics } =
     useSidebarTopicCollapse(topics.length);
@@ -171,10 +173,12 @@ const SidebarFolderStreamTopicsList = React.memo(function SidebarFolderStreamTop
                     <div className="truncate text-sm font-medium text-text-primary">
                       {topic.subject}
                     </div>
-                    <SidebarMessagePreview
-                      senderName={topic.lastMessageSenderName}
-                      message={topic.lastMessage}
-                    />
+                    {!isCompactDensity && (
+                      <SidebarMessagePreview
+                        senderName={topic.lastMessageSenderName}
+                        message={topic.lastMessage}
+                      />
+                    )}
                   </div>
                   <SidebarChatBadges unreadCount={topic.badge} hasMention={topic.hasMention} />
                 </Link>
@@ -334,6 +338,7 @@ export const SidebarFolderStreamRow = React.memo(function SidebarFolderStreamRow
                 openTopicDialogForStream={openTopicDialogForStream}
                 displayName={displayName}
                 onMuteError={onMuteError}
+                isCompactDensity={isCompactDensity}
               />
             )}
           </>

@@ -36,7 +36,7 @@ export const UpdatePage: React.FC<UpdatePageProps> = ({ forceMode = false }) => 
     if (autoCheckTriggeredRef.current) {
       return;
     }
-    if (forceMode) {
+    if (forceMode && update.status === "ready") {
       return;
     }
     autoCheckTriggeredRef.current = true;

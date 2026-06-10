@@ -19,6 +19,10 @@ describe("brand", () => {
     expect(brand.appName.length).toBeGreaterThan(0);
   });
 
+  it("defaults appName to Exordos Workspace when VITE_BRAND_APP_NAME is unset", () => {
+    expect(brand.appName).toBe("Exordos Workspace");
+  });
+
   // App ID is used for Electron packaging and PWA scope — must be a valid identifier
   it("has non-empty appId", () => {
     expect(brand.appId).toMatch(/^[\w.]+$/);

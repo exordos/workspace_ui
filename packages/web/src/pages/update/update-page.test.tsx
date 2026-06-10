@@ -87,4 +87,29 @@ describe("UpdatePage", () => {
     expect(checkSpy).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: /^update$/i })).toBeInTheDocument();
   });
+
+  it("auto-checks in force mode when update is not ready yet", () => {
+    useAppUpdateMock.mockReturnValue({
+      status: "idle",
+      check: checkSpy,
+      install: installSpy,
+    });
+
+    renderWithProviders(<UpdatePage forceMode />);
+
+    expect(checkSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("auto-checks in force mode when update is available", () => {
+    useAppUpdateMock.mockReturnValue({
+      status: "available",
+      version: "2.1.0",
+      check: checkSpy,
+      install: installSpy,
+    });
+
+    renderWithProviders(<UpdatePage forceMode />);
+
+    expect(checkSpy).toHaveBeenCalledTimes(1);
+  });
 });

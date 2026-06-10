@@ -119,7 +119,7 @@ export const SidebarStreamListTopics = React.memo<SidebarStreamListTopicsProps>(
                 >
                   <Link
                     to={sidebarStreamTopicRoute(streamSlug, topic.subject)}
-                    className="flex w-full min-w-0 items-start gap-3 py-2 pl-3 pr-6"
+                    className="flex w-full min-w-0 items-start gap-3 py-2 pl-3 pr-8"
                   >
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-medium text-text-primary">

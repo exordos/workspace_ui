@@ -102,14 +102,14 @@ describe("LoginPage", () => {
   });
 
   it("fills the organization field from the default organization button", () => {
-    vi.stubEnv("VITE_DEFAULT_LOGIN_ORGANIZATION_URL", "https://public.genesis.example.com");
+    vi.stubEnv("VITE_DEFAULT_LOGIN_ORGANIZATION_URL", "https://public.Exordos.example.com");
 
     renderWithProviders(<LoginPage />, { route: "/login" });
 
     fireEvent.click(screen.getByRole("button", { name: /genesis core public/i }));
 
     expect(screen.getByLabelText(/zulip server address/i)).toHaveValue(
-      "https://public.genesis.example.com",
+      "https://public.exordos.example.com",
     );
     expect(screen.getByRole("button", { name: /next/i })).toBeEnabled();
   });

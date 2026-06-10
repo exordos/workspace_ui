@@ -1,6 +1,6 @@
 appId: com.exordos.workspace
 productName: Exordos Workspace
-copyright: Copyright © 2026 Genesis Corporation JSC
+copyright: Copyright © 2026 Exordos Corporation JSC
 
 directories:
   buildResources: resources

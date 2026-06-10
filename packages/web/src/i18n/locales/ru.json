@@ -75,7 +75,7 @@
     "authStepHint": "Выберите способ входа или введите email и пароль.",
     "organizationSettingsLoadError": "Не удалось загрузить настройки организации. Проверьте адрес сервера и попробуйте ещё раз.",
     "defaultOrganizationHint": "Или можете подключиться к нашему публичному сервису.",
-    "defaultOrganizationName": "Genesis Core Public"
+    "defaultOrganizationName": "Exordos Core Public"
   },
   "nav": {
     "messenger": "Мессенджер",
