@@ -1,6 +1,6 @@
 // Regression: overlay must call the same hook set
 // in both closed and open states to satisfy Rules of Hooks.
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MediaViewerOverlay } from "./media-viewer-overlay.ui";
 import { useMediaViewerStore } from "./media-viewer.model";
@@ -123,6 +123,24 @@ describe("MediaViewerOverlay", () => {
 
     render(<MediaViewerOverlay />);
     fireEvent.click(screen.getByRole("button", { name: /^close$/i }));
+
+    expect(useMediaViewerStore.getState().isOpen).toBe(false);
+  });
+
+  it("closes viewer on Escape before chat navigation shortcuts", () => {
+    useMediaViewerStore
+      .getState()
+      .open([{ url: "https://example.com/photo.png", type: "image" }], 0);
+
+    render(<MediaViewerOverlay />);
+
+    expect(document.querySelector("[data-shortcut-context='modal']")).not.toBeNull();
+
+    act(() => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+      );
+    });
 
     expect(useMediaViewerStore.getState().isOpen).toBe(false);
   });
