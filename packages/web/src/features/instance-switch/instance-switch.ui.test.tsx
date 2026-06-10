@@ -438,7 +438,7 @@ describe("InstanceSwitcher", () => {
     expect(quickIds).toEqual(["inst-4", "inst-1", "inst-2"]);
   });
 
-  it("keeps active quick logo without filled background or outline and keeps chevron trigger borderless", () => {
+  it("highlights the active organization with an outline in header and dropdown", async () => {
     useInstancesStore.setState({
       instances: [
         { id: "inst-1", realm: "https://a.example.com", email: "a@example.com", apiKey: "k1" },
@@ -451,16 +451,29 @@ describe("InstanceSwitcher", () => {
     renderInstanceSwitcher();
 
     const activeButton = screen.getByRole("button", { name: /current server: a.example.com/i });
-    expect(activeButton).toHaveClass("h-9");
-    expect(activeButton).toHaveClass("w-9");
-    expect(activeButton).not.toHaveClass("bg-card-bg-active");
-    expect(activeButton).not.toHaveClass("ring-1");
-    expect(activeButton).not.toHaveClass("ring-accent-soft");
-    expect(activeButton).not.toHaveClass("border");
+    expect(activeButton).toHaveClass("h-10");
+    expect(activeButton).toHaveClass("w-10");
+    expect(activeButton).toHaveClass("bg-card-bg-active");
+    expect(screen.getByTestId("instance-frame-inst-1")).toHaveClass("ring-2");
+    expect(screen.getByTestId("instance-frame-inst-1")).toHaveClass("ring-inset");
 
     const selectorButton = screen.getByRole("button", { name: /select zulip server/i });
     expect(selectorButton).toBeInTheDocument();
     expect(selectorButton).not.toHaveClass("border");
+
+    fireEvent.pointerDown(selectorButton, {
+      button: 0,
+      ctrlKey: false,
+    });
+
+    const activeDropdownItem = (await screen.findByText("a.example.com")).closest(
+      '[role="menuitem"]',
+    );
+
+    expect(activeDropdownItem).toHaveClass("bg-card-bg-active");
+    expect(screen.getByTestId("instance-logo-inst-1")).toHaveClass("ring-2");
+    expect(screen.getByTestId("instance-logo-inst-1")).toHaveClass("ring-inset");
+    expect(screen.getByTestId("instance-logo-inst-2")).not.toHaveClass("ring-2");
   });
 
   it("shows unread badge for the current instance item when unread > 0", async () => {

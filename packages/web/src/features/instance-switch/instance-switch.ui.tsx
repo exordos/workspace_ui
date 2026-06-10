@@ -71,19 +71,26 @@ const InstanceQuickButton = React.memo(function InstanceQuickButton({
       type="button"
       onClick={() => onSelect(instanceId)}
       data-testid={`instance-quick-${instanceId}`}
-      className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors ${
+      className={`focus-visible:ring-accent/40 relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 ${
         isActive
-          ? "bg-transparent text-text-primary"
+          ? "bg-card-bg-active text-text-primary"
           : "hover:bg-bg/50 bg-transparent text-text-muted hover:text-text-primary"
       }`}
       aria-label={isActive ? `${t("auth.currentServer")}: ${label}` : label}
       title={label}
     >
-      <OrganizationLogo
-        realmIcon={realmIcon}
-        realmBaseUrl={realmBaseUrl}
-        className="h-9 w-9 object-contain"
-      />
+      <span
+        data-testid={`instance-frame-${instanceId}`}
+        className={`relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-md bg-bg ${
+          isActive ? "ring-2 ring-inset ring-border-subtle" : ""
+        }`}
+      >
+        <OrganizationLogo
+          realmIcon={realmIcon}
+          realmBaseUrl={realmBaseUrl}
+          className="h-9 w-9 object-contain"
+        />
+      </span>
       {unreadCount > 0 && (
         <span
           className="absolute right-0 top-0 h-2.5 w-2.5 rounded-full border border-bg-elevated bg-badge-bg"
@@ -147,11 +154,14 @@ export const InstanceSwitcher: React.FC = () => {
           type: "action" as const,
           key: `instance-${inst.id}`,
           onSelect: () => handleSelectInstance(inst.id),
+          className: inst.id === currentInstanceId ? "rounded-lg bg-card-bg-active" : undefined,
           label: (
             <>
               <span
                 data-testid={`instance-logo-${inst.id}`}
-                className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-visible rounded-full bg-bg"
+                className={`relative flex h-10 w-10 shrink-0 items-center justify-center overflow-visible rounded-lg bg-bg ${
+                  inst.id === currentInstanceId ? "ring-2 ring-inset ring-border-subtle" : ""
+                }`}
               >
                 <OrganizationLogo
                   realmIcon={inst.realmIcon}
@@ -207,7 +217,14 @@ export const InstanceSwitcher: React.FC = () => {
         ),
       },
     ],
-    [handleSelectInstance, instances, navigate, removeInstance, unreadCountsByInstance],
+    [
+      currentInstanceId,
+      handleSelectInstance,
+      instances,
+      navigate,
+      removeInstance,
+      unreadCountsByInstance,
+    ],
   );
 
   return (
