@@ -145,6 +145,102 @@ describe("MessageList boundary pagination guards", () => {
     expect(onLoadMore).toHaveBeenCalledTimes(1);
   });
 
+  it("calls onLoadMore once for repeated scroll events at top until re-armed", async () => {
+    const onLoadMore = vi.fn();
+    const messages = [msg(1), msg(2), msg(3)];
+
+    render(
+      <MessageList
+        messages={messages}
+        scrollToBottomKey="chat-b-repeat"
+        onLoadMore={onLoadMore}
+        isLoadingMore={false}
+      />,
+    );
+
+    const feed = document.querySelector('[role="feed"]') as HTMLDivElement;
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 1000 });
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 400 });
+
+    await act(async () => {
+      await flushProgrammaticScrollFrames();
+    });
+
+    Object.defineProperty(feed, "scrollTop", { configurable: true, writable: true, value: 50 });
+
+    act(() => {
+      dispatchUserScroll(feed);
+    });
+    expect(onLoadMore).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      fireEvent.scroll(feed);
+      fireEvent.scroll(feed);
+      fireEvent.scroll(feed);
+    });
+    expect(onLoadMore).toHaveBeenCalledTimes(1);
+
+    feed.scrollTop = 200;
+    act(() => {
+      fireEvent.scroll(feed);
+    });
+
+    feed.scrollTop = 40;
+    act(() => {
+      dispatchUserScroll(feed);
+    });
+    expect(onLoadMore).toHaveBeenCalledTimes(2);
+  });
+
+  it("re-arms load older after older messages prepend", async () => {
+    const onLoadMore = vi.fn();
+    const initial = [msg(1), msg(2), msg(3)];
+
+    const { rerender } = render(
+      <MessageList
+        messages={initial}
+        scrollToBottomKey="chat-b-prepend"
+        onLoadMore={onLoadMore}
+        isLoadingMore={false}
+      />,
+    );
+
+    const feed = document.querySelector('[role="feed"]') as HTMLDivElement;
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 1000 });
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 400 });
+
+    await act(async () => {
+      await flushProgrammaticScrollFrames();
+    });
+
+    Object.defineProperty(feed, "scrollTop", { configurable: true, writable: true, value: 50 });
+
+    act(() => {
+      dispatchUserScroll(feed);
+    });
+    expect(onLoadMore).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      rerender(
+        <MessageList
+          messages={[msg(0), ...initial]}
+          scrollToBottomKey="chat-b-prepend"
+          onLoadMore={onLoadMore}
+          isLoadingMore={false}
+        />,
+      );
+    });
+
+    await act(async () => {
+      await flushProgrammaticScrollFrames();
+    });
+
+    act(() => {
+      dispatchUserScroll(feed);
+    });
+    expect(onLoadMore).toHaveBeenCalledTimes(2);
+  });
+
   it("does not call onLoadNewer on mount when hasNewerMessages and list fits viewport", async () => {
     const onLoadNewer = vi.fn();
     const messages = [

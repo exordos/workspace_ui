@@ -28,7 +28,8 @@ import { applyPendingLinkPreviewsToMessage } from "~/shared/lib/message-link-pre
 import { traceLinkPreview } from "~/shared/lib/message-link-preview-trace.lib";
 import {
   computeHasNewerAfterLoadNewerIdbPage,
-  computeHasOlderAfterLoadOlderIdbPage,
+  resolveHasOlderAfterLoadOlderPage,
+  resolveOldestMessageId,
 } from "~/shared/lib/message-pagination-boundary.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { resolveTopicMoveTargetMessageIds } from "~/shared/lib/update-message-topic-move.lib";
@@ -785,8 +786,8 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       loadOlderLog.debug("loadOlder abort: empty store");
       return;
     }
-    const oldest = state.messages[0];
-    if (!oldest) return;
+    const anchorOldestId = resolveOldestMessageId(state.messages);
+    if (anchorOldestId == null) return;
 
     const inst = getCurrentInstance()?.id;
     const chatKey = chatKeyFromContext(ctx);
@@ -794,28 +795,41 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
 
     logMessageFlow("store:loadOlder start", {
       context: summarizeChatContextForLog(ctx),
-      anchorOldestId: oldest.id,
+      anchorOldestId,
       pageSize,
     });
     set({ isLoadingMore: true });
     try {
       const page = await fetchMessagesWithNarrowPage(
         buildMessageFetchNarrow(ctx, currentUserId),
-        oldest.id,
+        anchorOldestId,
         pageSize,
         0,
         { applyMarkdown: false },
       );
-      const withoutAnchor = page.messages.filter((m) => m.id !== oldest.id);
+      const withoutAnchor = page.messages.filter((m) => m.id !== anchorOldestId);
       const existingIds = new Set(get().messages.map((m) => m.id));
       const fresh = withoutAnchor.filter((m) => !existingIds.has(m.id));
 
       loadOlderLog.debug("loadOlder page", {
-        anchorOldest: oldest.id,
+        anchorOldest: anchorOldestId,
         apiRows: page.messages.length,
         withoutAnchor: withoutAnchor.length,
         freshCount: fresh.length,
       });
+
+      const hasOlderMessages = resolveHasOlderAfterLoadOlderPage({
+        foundOldest: page.foundOldest,
+        withoutAnchorCount: withoutAnchor.length,
+        pageSize,
+        toUpsertCount: fresh.length,
+      });
+      if (!hasOlderMessages && fresh.length === 0 && withoutAnchor.length >= pageSize) {
+        loadOlderLog.warn("loadOlder stopped: full duplicate page with no store progress", {
+          anchorOldestId,
+          pageSize,
+        });
+      }
 
       if (page.foundOldest && persistChatMessagesToIndexedDb() && inst) {
         if (isStreamWide) {
@@ -830,20 +844,13 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         }
       }
 
-      set({
-        hasOlderMessages: computeHasOlderAfterLoadOlderIdbPage({
-          foundOldest: page.foundOldest,
-          withoutAnchorCount: withoutAnchor.length,
-          pageSize,
-          toUpsertCount: fresh.length,
-        }),
-      });
+      set({ hasOlderMessages });
 
       if (fresh.length > 0) {
         mergeUsersFromMessages(fresh);
         set((s) => ({ messages: [...fresh, ...s.messages] }));
         loadOlderLog.info("loadOlder prepended", {
-          anchorOldest: oldest.id,
+          anchorOldest: anchorOldestId,
           prepended: fresh.length,
           storeMessagesAfter: get().messages.length,
         });

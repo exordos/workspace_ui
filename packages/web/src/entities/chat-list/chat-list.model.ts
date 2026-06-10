@@ -43,6 +43,8 @@ import {
   buildUnreadLocationMap,
   clearBootstrapErrorPatch,
   type ChatListDmBootstrapDisplayContext,
+  type ChatListHydrateFromSnapshotState,
+  type SetFromMessagesBootstrapState,
 } from "./chat-list-bootstrap.lib";
 import {
   applyHandleDeleteMessagesStatePatch,
@@ -104,6 +106,16 @@ import type { ChatListState, MessageLocation } from "./chat-list.model.types";
 
 type StreamTopicEntryInternal =
   StreamEntryInternal["topics"] extends Map<string, infer TopicEntry> ? TopicEntry : never;
+
+/** Writable store fields accepted by patchSet (Zustand v5 setState is stricter than v4). */
+type ChatListStateDataPatch =
+  | Partial<ChatListState>
+  | SetFromMessagesBootstrapState
+  | ChatListHydrateFromSnapshotState;
+
+type ChatListStateUpdater = (state: ChatListState) => ChatListState | ChatListStateDataPatch;
+
+type ChatListPatchInput = ChatListStateDataPatch | ChatListStateUpdater;
 
 function finalizeChatListPatch(
   state: ChatListState,
@@ -355,16 +367,22 @@ export const useChatListStore = create<ChatListState>((set, get) => {
     previewResolveAbortControllers.clear();
   };
 
-  const patchSet = (update: Parameters<typeof set>[0], meta: ChatListPatchMeta = {}) => {
+  const patchSet = (update: ChatListPatchInput, meta: ChatListPatchMeta = {}) => {
     if (typeof update === "function") {
       set((state) => {
         const patch = update(state);
         if (patch === state) return state;
-        return { ...state, ...finalizeChatListPatch(state, patch, meta) };
+        return {
+          ...state,
+          ...finalizeChatListPatch(state, patch, meta),
+        };
       });
       return;
     }
-    set({ ...get(), ...finalizeChatListPatch(get(), update, meta) });
+    set((state) => ({
+      ...state,
+      ...finalizeChatListPatch(state, update, meta),
+    }));
   };
 
   const reconcileUnreadMaps = (

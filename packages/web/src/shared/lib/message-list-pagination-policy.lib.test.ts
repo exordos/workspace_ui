@@ -11,6 +11,7 @@ describe("canAutoLoadOlder", () => {
     loadMoreThreshold: 100,
     isLoadingMore: false,
     hasOnLoadMore: true,
+    topPaginationArmed: true,
   };
 
   it("returns false until user has scrolled", () => {
@@ -50,6 +51,17 @@ describe("canAutoLoadOlder", () => {
         scrollTop: 150,
         userScrollSeen: true,
         programmaticScroll: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false when top pagination is not armed", () => {
+    expect(
+      canAutoLoadOlder({
+        ...base,
+        userScrollSeen: true,
+        programmaticScroll: false,
+        topPaginationArmed: false,
       }),
     ).toBe(false);
   });

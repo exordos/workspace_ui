@@ -20,6 +20,34 @@ export function computeHasOlderAfterLoadOlderIdbPage(input: {
   return true;
 }
 
+/**
+ * Resolves hasOlderMessages for the in-memory chat store after load-older.
+ * Stops when the API page adds no new rows (same anchor would repeat forever).
+ */
+export function resolveHasOlderAfterLoadOlderPage(input: {
+  foundOldest: boolean;
+  withoutAnchorCount: number;
+  pageSize: number;
+  toUpsertCount: number;
+}): boolean {
+  const { foundOldest, withoutAnchorCount, pageSize, toUpsertCount } = input;
+  if (foundOldest) return false;
+  if (withoutAnchorCount < pageSize) return false;
+  if (toUpsertCount > 0) return true;
+  return false;
+}
+
+/** Minimum message id in the store — safe anchor when list order may drift. */
+export function resolveOldestMessageId(messages: readonly { id: number }[]): number | null {
+  if (messages.length === 0) return null;
+  let minId = messages[0]!.id;
+  for (let i = 1; i < messages.length; i++) {
+    const id = messages[i]!.id;
+    if (id < minId) minId = id;
+  }
+  return minId;
+}
+
 /** After loading newer messages (anchor = newest in cache, num_after = pageSize). */
 export function computeHasNewerAfterLoadNewerIdbPage(input: {
   foundNewest: boolean;

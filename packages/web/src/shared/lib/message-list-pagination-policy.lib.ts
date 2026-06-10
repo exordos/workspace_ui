@@ -11,6 +11,8 @@ export interface CanAutoLoadOlderInput {
   loadMoreThreshold: number;
   isLoadingMore: boolean;
   hasOnLoadMore: boolean;
+  /** When false, top auto-load was already triggered for this top visit (Feed-style debounce). */
+  topPaginationArmed: boolean;
 }
 
 export function canAutoLoadOlder(input: CanAutoLoadOlderInput): boolean {
@@ -18,6 +20,9 @@ export function canAutoLoadOlder(input: CanAutoLoadOlderInput): boolean {
     return false;
   }
   if (!input.userScrollSeen || input.programmaticScroll) {
+    return false;
+  }
+  if (!input.topPaginationArmed) {
     return false;
   }
   return input.scrollTop < input.loadMoreThreshold;

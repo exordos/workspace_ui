@@ -5,6 +5,8 @@ import {
   computeHasOlderAfterLoadOlderIdbPage,
   computeHasOlderAfterLoadOlderMemoryPage,
   mergeOlderLoadAnchor,
+  resolveHasOlderAfterLoadOlderPage,
+  resolveOldestMessageId,
 } from "./message-pagination-boundary.lib";
 
 describe("computeHasOlderAfterLoadOlderIdbPage", () => {
@@ -50,6 +52,62 @@ describe("computeHasOlderAfterLoadOlderIdbPage", () => {
         toUpsertCount: 50,
       }),
     ).toBe(true);
+  });
+});
+
+describe("resolveHasOlderAfterLoadOlderPage", () => {
+  it("returns false when foundOldest", () => {
+    expect(
+      resolveHasOlderAfterLoadOlderPage({
+        foundOldest: true,
+        withoutAnchorCount: 50,
+        pageSize: 50,
+        toUpsertCount: 0,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false on full duplicate page with no store progress", () => {
+    expect(
+      resolveHasOlderAfterLoadOlderPage({
+        foundOldest: false,
+        withoutAnchorCount: 50,
+        pageSize: 50,
+        toUpsertCount: 0,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns true when fresh rows were prepended", () => {
+    expect(
+      resolveHasOlderAfterLoadOlderPage({
+        foundOldest: false,
+        withoutAnchorCount: 50,
+        pageSize: 50,
+        toUpsertCount: 50,
+      }),
+    ).toBe(true);
+  });
+
+  it("returns false on partial page without foundOldest", () => {
+    expect(
+      resolveHasOlderAfterLoadOlderPage({
+        foundOldest: false,
+        withoutAnchorCount: 12,
+        pageSize: 50,
+        toUpsertCount: 12,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("resolveOldestMessageId", () => {
+  it("returns minimum id when messages are not sorted", () => {
+    expect(resolveOldestMessageId([{ id: 105 }, { id: 100 }, { id: 102 }])).toBe(100);
+  });
+
+  it("returns null for empty list", () => {
+    expect(resolveOldestMessageId([])).toBe(null);
   });
 });
 

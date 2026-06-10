@@ -141,6 +141,8 @@ export const MessageListInner: React.FC<MessageListProps> = ({
   const userScrolledAwayFromBottomRef = useRef(false);
   const userScrollSeenRef = useRef(false);
   const programmaticScrollRef = useRef(false);
+  const topPaginationArmedRef = useRef(true);
+  const prevFirstMessageIdForTopPaginationRef = useRef<number | undefined>(undefined);
   const pendingScrollToBottomKeyRef = useRef<string | null>(null);
   const openAtBottomIntentKeyRef = useRef<string | null>(null);
   const unreadScrollKeyRef = useRef<string | null>(null);
@@ -410,6 +412,8 @@ export const MessageListInner: React.FC<MessageListProps> = ({
     userScrolledAwayFromBottomRef.current = false;
     programmaticScrollRef.current = false;
     pendingPrependScrollRef.current = null;
+    topPaginationArmedRef.current = true;
+    prevFirstMessageIdForTopPaginationRef.current = undefined;
     unreadScrollKeyRef.current = null;
     suppressReadUntilMsRef.current = 0;
     prevMessagesLengthForReanchorRef.current = null;
@@ -421,6 +425,14 @@ export const MessageListInner: React.FC<MessageListProps> = ({
       openAtBottomIntentKeyRef.current = null;
     }
   }, [scrollToBottomKey, focusedMessageId]);
+
+  useEffect(() => {
+    const prev = prevFirstMessageIdForTopPaginationRef.current;
+    if (prev !== undefined && prev !== messageFirstId) {
+      topPaginationArmedRef.current = true;
+    }
+    prevFirstMessageIdForTopPaginationRef.current = messageFirstId;
+  }, [messageFirstId]);
 
   useEffect(() => {
     if (firstUnreadId == null || unreadCount === 0) {
@@ -771,6 +783,10 @@ export const MessageListInner: React.FC<MessageListProps> = ({
         userScrolledAwayFromBottomRef.current = !atBottom;
       }
 
+      if (el.scrollTop >= LOAD_MORE_THRESHOLD) {
+        topPaginationArmedRef.current = true;
+      }
+
       if (
         userScrollSeenRef.current &&
         !programmaticScrollRef.current &&
@@ -801,6 +817,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
           loadMoreThreshold: LOAD_MORE_THRESHOLD,
           isLoadingMore,
           hasOnLoadMore: onLoadMore != null,
+          topPaginationArmed: topPaginationArmedRef.current,
         })
       ) {
         const snap = capturePrependScrollSnapshot(el);
@@ -809,6 +826,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
           ...snap,
           clientHeight: el.clientHeight,
         });
+        topPaginationArmedRef.current = false;
         onLoadMore?.();
       }
 
