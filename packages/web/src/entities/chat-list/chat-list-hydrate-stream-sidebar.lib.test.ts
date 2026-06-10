@@ -1,11 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchStreamChannelMessagesForSidebarTopics } from "~/shared/api/zulip-sidebar-preview.lib";
+import {
+  fetchLatestMessagesForSidebarTopics,
+  fetchStreamChannelMessagesForSidebarTopics,
+} from "~/shared/api/zulip-sidebar-preview.lib";
 import { fetchStreamTopicNames } from "~/shared/api/zulip-streams";
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import {
   clearStreamSidebarHydrateState,
   isStreamSidebarTopicsHydrateInFlight,
   queuePriorityStreamSidebarTopicsHydrate,
+  requestStreamSidebarTopicPreviewBackfill,
   requestStreamSidebarTopicListHydrate,
   requestStreamSidebarTopicsHydrate,
 } from "./chat-list-hydrate-stream-sidebar.lib";
@@ -15,6 +19,7 @@ vi.mock("~/shared/api/zulip-sidebar-preview.lib", async (importOriginal) => {
   const actual = await importOriginal<typeof import("~/shared/api/zulip-sidebar-preview.lib")>();
   return {
     ...actual,
+    fetchLatestMessagesForSidebarTopics: vi.fn(),
     fetchStreamChannelMessagesForSidebarTopics: vi.fn(),
   };
 });
@@ -28,6 +33,7 @@ vi.mock("~/shared/api/zulip-streams", async (importOriginal) => {
 });
 
 const fetchStreamChannelMock = vi.mocked(fetchStreamChannelMessagesForSidebarTopics);
+const fetchLatestTopicMessagesMock = vi.mocked(fetchLatestMessagesForSidebarTopics);
 const fetchStreamTopicNamesMock = vi.mocked(fetchStreamTopicNames);
 
 async function flushMicrotasks(turns = 5): Promise<void> {
@@ -57,6 +63,7 @@ describe("requestStreamSidebarTopicsHydrate", () => {
     clearStreamSidebarHydrateState();
     useChatListStore.getState().clear();
     fetchStreamChannelMock.mockReset();
+    fetchLatestTopicMessagesMock.mockReset();
     fetchStreamTopicNamesMock.mockReset();
   });
 
@@ -171,5 +178,51 @@ describe("requestStreamSidebarTopicListHydrate", () => {
     resolveFetch(["alpha"]);
     await Promise.all([first, second]);
     expect(fetchStreamTopicNamesMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("requestStreamSidebarTopicPreviewBackfill", () => {
+  beforeEach(() => {
+    clearStreamSidebarHydrateState();
+    useChatListStore.getState().clear();
+    fetchLatestTopicMessagesMock.mockReset();
+  });
+
+  afterEach(() => {
+    clearStreamSidebarHydrateState();
+    useChatListStore.getState().clear();
+  });
+
+  it("hydrates preview text for topic shells without last message", async () => {
+    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
+    useChatListStore.getState().upsertStreamTopicShells(5, ["alpha", "beta"]);
+    fetchLatestTopicMessagesMock.mockResolvedValue([
+      streamMsg({
+        id: 10,
+        stream_id: 5,
+        subject: "alpha",
+        content: "alpha preview",
+        timestamp: 10,
+      }),
+      streamMsg({ id: 11, stream_id: 5, subject: "beta", content: "beta preview", timestamp: 11 }),
+    ]);
+
+    await requestStreamSidebarTopicPreviewBackfill(5);
+
+    const stream = useChatListStore.getState().streamsMap.get(5);
+    expect(fetchLatestTopicMessagesMock).toHaveBeenCalledWith(5, ["alpha", "beta"]);
+    expect(stream?.topics.get("alpha")?.lastMessage).toContain("alpha preview");
+    expect(stream?.topics.get("beta")?.lastMessage).toContain("beta preview");
+  });
+
+  it("skips fetch when stream topics already have previews", async () => {
+    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
+    useChatListStore
+      .getState()
+      .applyStreamSidebarPreviewsFromMessages([streamMsg({ stream_id: 5, subject: "alpha" })]);
+
+    await requestStreamSidebarTopicPreviewBackfill(5);
+
+    expect(fetchLatestTopicMessagesMock).not.toHaveBeenCalled();
   });
 });

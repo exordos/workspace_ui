@@ -32,6 +32,8 @@ interface MessageWindowOptions {
   flowDebugLabel?: string;
 }
 
+const SIDEBAR_TOPIC_PREVIEW_BACKFILL_CONCURRENCY = 6;
+
 // `zulipPipelineGet` returns null on network failure unless aborted.
 // Message loaders must throw so callers surface errors instead of treating [] as success.
 function throwIfZulipPipelineGetNull(
@@ -151,6 +153,54 @@ export async function fetchStreamChannelMessagesForSidebarTopics(
     signal,
     flowDebugLabel: "fetchStreamChannelMessagesForSidebarTopics (sidebar topic hydrate)",
   });
+}
+
+/** Latest message per topic for expanded sidebar rows that only have topic-name shells. */
+export async function fetchLatestMessagesForSidebarTopics(
+  streamId: number,
+  topics: readonly string[],
+  signal?: AbortSignal,
+): Promise<ZulipRawMessage[]> {
+  guard.streamId(streamId, "fetchLatestMessagesForSidebarTopics.streamId");
+  const uniqueTopics = Array.from(new Set(topics));
+  if (uniqueTopics.length === 0) {
+    return [];
+  }
+
+  const results: ZulipRawMessage[] = [];
+  let nextIndex = 0;
+  const workerCount = Math.min(SIDEBAR_TOPIC_PREVIEW_BACKFILL_CONCURRENCY, uniqueTopics.length);
+
+  const workers = Array.from({ length: workerCount }, async () => {
+    for (;;) {
+      const index = nextIndex;
+      nextIndex += 1;
+      if (index >= uniqueTopics.length) {
+        return;
+      }
+
+      const topic = uniqueTopics[index] ?? "";
+      const messages = await fetchMessageWindow({
+        anchor: "newest",
+        numBefore: 1,
+        numAfter: 0,
+        narrow: normalizeZulipMessagesNarrowForApi([
+          { operator: "stream", operand: streamId },
+          { operator: "topic", operand: topic },
+        ]),
+        applyMarkdown: false,
+        signal,
+        flowDebugLabel: "fetchLatestMessagesForSidebarTopics (topic preview backfill)",
+      });
+      const latest = messages[messages.length - 1];
+      if (latest != null) {
+        results.push(latest);
+      }
+    }
+  });
+
+  await Promise.all(workers);
+  return results;
 }
 
 /** Unread channel messages only (`is:unread` + `-is:dm`) for metadata-first stream sidebar preview. */

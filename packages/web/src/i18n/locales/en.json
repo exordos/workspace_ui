@@ -236,6 +236,7 @@
     "topics": "Topics",
     "noTopics": "No topics",
     "newTopic": "New topic",
+    "emptyTopic": "Untitled topic",
     "showMoreTopics": "Show more topics",
     "showMoreTopicsWithCount": "Show more topics ({{count}})",
     "hideExtraTopics": "Hide extra topics",

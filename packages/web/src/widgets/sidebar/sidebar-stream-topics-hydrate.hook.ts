@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import {
   isStreamSidebarTopicsHydrateInFlight,
+  requestStreamSidebarTopicPreviewBackfill,
   requestStreamSidebarTopicListHydrate,
   requestStreamSidebarTopicsHydrate,
 } from "~/entities/chat-list/chat-list-hydrate-stream-sidebar.lib";
@@ -52,7 +53,18 @@ export function useStreamSidebarTopicsHydrate({
       messagePromise = requestStreamSidebarTopicsHydrate(streamId, expanded ? "expand" : "visible");
     }
 
-    void Promise.all([listPromise.catch(() => {}), messagePromise.catch(() => {})]).finally(() => {
+    let previewBackfillPromise: Promise<unknown> = Promise.resolve();
+    if (expanded) {
+      previewBackfillPromise = listPromise.then(() =>
+        requestStreamSidebarTopicPreviewBackfill(streamId),
+      );
+    }
+
+    void Promise.all([
+      listPromise.catch(() => {}),
+      messagePromise.catch(() => {}),
+      previewBackfillPromise.catch(() => {}),
+    ]).finally(() => {
       setTopicsLoading(false);
     });
   }, [expanded, visible, streamId, topicsCount]);

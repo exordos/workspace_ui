@@ -8,6 +8,7 @@ import { sidebarStreamTopicRoute } from "./sidebar-chat-routes.lib";
 import { TopicMuteButton } from "./sidebar-folder-topic-buttons.ui";
 import { SidebarMessagePreview } from "./sidebar-message-preview.ui";
 import { useSidebarTopicCollapse } from "./sidebar-topic-collapse.hook";
+import { resolveSidebarTopicLabel } from "./sidebar-topic-label.lib";
 import { SidebarTopicShowMoreButton } from "./sidebar-topic-show-more.ui";
 import { TOPIC_BAR_COLORS } from "./sidebar.lib";
 import type { SidebarChat } from "./sidebar.types";
@@ -111,6 +112,7 @@ export const SidebarStreamListTopics = React.memo<SidebarStreamListTopicsProps>(
               const topicColor = TOPIC_BAR_COLORS[idx % TOPIC_BAR_COLORS.length];
               const isTopicActive =
                 streamSlug === activeStreamSlug && activeTopic === topic.subject;
+              const topicLabel = resolveSidebarTopicLabel(topic.subject);
               return (
                 <div
                   key={topic.subject}
@@ -123,7 +125,7 @@ export const SidebarStreamListTopics = React.memo<SidebarStreamListTopicsProps>(
                   >
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-medium text-text-primary">
-                        {topic.subject}
+                        {topicLabel}
                       </div>
                       {!isCompactDensity && (
                         <SidebarMessagePreview

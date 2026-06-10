@@ -2,7 +2,10 @@
  * Lazy per-channel sidebar topic hydrate: fetch recent stream messages and merge previews only.
  */
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
-import { fetchStreamChannelMessagesForSidebarTopics } from "~/shared/api/zulip-sidebar-preview.lib";
+import {
+  fetchLatestMessagesForSidebarTopics,
+  fetchStreamChannelMessagesForSidebarTopics,
+} from "~/shared/api/zulip-sidebar-preview.lib";
 import { fetchStreamTopicNames } from "~/shared/api/zulip-streams";
 import type { ZulipUnreadMessagesSnapshot } from "~/shared/api/zulip-unread.lib";
 import { guard } from "~/shared/lib/guards";
@@ -11,11 +14,14 @@ import { logChatListFlow } from "~/shared/lib/message-flow-debug.lib";
 export type StreamSidebarTopicsHydrateReason = "expand" | "visible" | "unread-register";
 
 const MAX_CONCURRENT_HYDRATES = 3;
+const TOPIC_PREVIEW_BACKFILL_LIMIT = 24;
+const MAX_TOPIC_PREVIEW_BACKFILL_BATCHES = 3;
 
 const hydratedStreamIds = new Set<number>();
 const hydratedStreamTopicLists = new Set<number>();
 const inFlight = new Map<number, Promise<void>>();
 const inFlightTopicList = new Map<number, Promise<void>>();
+const inFlightTopicPreviewBackfill = new Map<number, Promise<void>>();
 const waitQueue: (() => void)[] = [];
 const priorityWaitQueue: (() => void)[] = [];
 let activeHydrates = 0;
@@ -51,6 +57,21 @@ function streamHasSidebarTopics(streamId: number): boolean {
   return (entry?.topics.size ?? 0) > 0;
 }
 
+function collectStreamTopicsMissingPreview(
+  streamId: number,
+  limit = TOPIC_PREVIEW_BACKFILL_LIMIT,
+): string[] {
+  const entry = useChatListStore.getState().streamsMap.get(streamId);
+  if (entry == null) {
+    return [];
+  }
+
+  return Array.from(entry.topics.values())
+    .filter((topic) => topic.ts <= 0 || topic.lastMessage.trim().length === 0)
+    .slice(0, limit)
+    .map((topic) => topic.subject);
+}
+
 export function isStreamSidebarTopicsHydrateInFlight(streamId: number): boolean {
   return inFlight.has(streamId);
 }
@@ -61,9 +82,53 @@ export function clearStreamSidebarHydrateState(): void {
   hydratedStreamTopicLists.clear();
   inFlight.clear();
   inFlightTopicList.clear();
+  inFlightTopicPreviewBackfill.clear();
   waitQueue.length = 0;
   priorityWaitQueue.length = 0;
   activeHydrates = 0;
+}
+
+/** Backfills latest message preview for topic shells discovered from the topic-name API. */
+export function requestStreamSidebarTopicPreviewBackfill(streamId: number): Promise<void> {
+  guard.streamId(streamId, "requestStreamSidebarTopicPreviewBackfill");
+  const topicNames = collectStreamTopicsMissingPreview(streamId);
+  if (topicNames.length === 0) {
+    return Promise.resolve();
+  }
+
+  const existing = inFlightTopicPreviewBackfill.get(streamId);
+  if (existing != null) {
+    return existing;
+  }
+
+  const promise = (async () => {
+    try {
+      let batchTopics = topicNames;
+      for (let batch = 0; batch < MAX_TOPIC_PREVIEW_BACKFILL_BATCHES; batch += 1) {
+        const messages = await fetchLatestMessagesForSidebarTopics(streamId, batchTopics);
+        if (messages.length === 0) {
+          return;
+        }
+        useChatListStore.getState().applyStreamSidebarPreviewsFromMessages(messages);
+
+        const remaining = collectStreamTopicsMissingPreview(streamId);
+        if (remaining.length === 0 || remaining.length >= batchTopics.length) {
+          return;
+        }
+        batchTopics = remaining;
+      }
+    } catch (error) {
+      logChatListFlow("chatList: stream sidebar topic preview backfill failed", {
+        streamId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      inFlightTopicPreviewBackfill.delete(streamId);
+    }
+  })();
+
+  inFlightTopicPreviewBackfill.set(streamId, promise);
+  return promise;
 }
 
 /**

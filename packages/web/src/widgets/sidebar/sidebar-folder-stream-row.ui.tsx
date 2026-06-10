@@ -11,6 +11,7 @@ import { TopicMuteButton } from "./sidebar-folder-topic-buttons.ui";
 import { SidebarMessagePreview } from "./sidebar-message-preview.ui";
 import { SidebarStreamHydrateWrapper } from "./sidebar-stream-hydrate-wrapper.ui";
 import { useSidebarTopicCollapse } from "./sidebar-topic-collapse.hook";
+import { resolveSidebarTopicLabel } from "./sidebar-topic-label.lib";
 import { SidebarTopicShowMoreButton } from "./sidebar-topic-show-more.ui";
 import { slugForStream, TOPIC_BAR_COLORS } from "./sidebar.lib";
 import type { NewTopicDialogState } from "./sidebar-folder-chat-list.types";
@@ -149,6 +150,7 @@ const SidebarFolderStreamTopicsList = React.memo(function SidebarFolderStreamTop
           visibleTopics.map((topic, idx) => {
             const topicColor = TOPIC_BAR_COLORS[idx % TOPIC_BAR_COLORS.length];
             const isTopicActive = streamSlug === activeStreamSlug && activeTopic === topic.subject;
+            const topicLabel = resolveSidebarTopicLabel(topic.subject);
             return (
               <TopicContextMenu
                 key={topic.subject}
@@ -171,7 +173,7 @@ const SidebarFolderStreamTopicsList = React.memo(function SidebarFolderStreamTop
                 >
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium text-text-primary">
-                      {topic.subject}
+                      {topicLabel}
                     </div>
                     {!isCompactDensity && (
                       <SidebarMessagePreview

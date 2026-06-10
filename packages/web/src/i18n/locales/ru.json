@@ -240,6 +240,7 @@
     "topics": "Темы",
     "noTopics": "Нет тем",
     "newTopic": "Новая тема",
+    "emptyTopic": "Без темы",
     "showMoreTopics": "Показать ещё темы",
     "showMoreTopicsWithCount": "Показать ещё темы ({{count}})",
     "hideExtraTopics": "Скрыть лишние темы",
