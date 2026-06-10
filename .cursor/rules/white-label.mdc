@@ -24,7 +24,7 @@ document.title = brand.appName;           // "Workspace" or "Acme Chat"
 
 | Category | Env var | Default |
 |----------|---------|---------|
-| **Name** | `VITE_BRAND_APP_NAME` | Workspace |
+| **Name** | `VITE_BRAND_APP_NAME` | Exordos Workspace |
 | **Short name** | `VITE_BRAND_SHORT_NAME` | Workspace |
 | **Description** | `VITE_BRAND_DESCRIPTION` | Corporate messenger |
 | **Copyright** | `VITE_BRAND_COPYRIGHT` | © 2025 Workspace Team |
