@@ -6,6 +6,7 @@ import { Icon } from "~/shared/ui/icon";
 import { SidebarChatBadges } from "./sidebar-chat-badges.ui";
 import { sidebarStreamTopicRoute } from "./sidebar-chat-routes.lib";
 import { TopicMuteButton } from "./sidebar-folder-topic-buttons.ui";
+import { SidebarMessagePreview } from "./sidebar-message-preview.ui";
 import { useSidebarTopicCollapse } from "./sidebar-topic-collapse.hook";
 import { SidebarTopicShowMoreButton } from "./sidebar-topic-show-more.ui";
 import { TOPIC_BAR_COLORS } from "./sidebar.lib";
@@ -113,33 +114,27 @@ export const SidebarStreamListTopics = React.memo<SidebarStreamListTopicsProps>(
               return (
                 <div
                   key={topic.subject}
-                  className={`group/topic flex items-start rounded-r-lg border-l-4 transition-colors ${sidebarRowClass(isTopicActive)}`}
+                  className={`group/topic relative rounded-r-lg border-l-4 transition-colors ${sidebarRowClass(isTopicActive)}`}
                   style={{ borderLeftColor: topicColor }}
                 >
                   <Link
                     to={sidebarStreamTopicRoute(streamSlug, topic.subject)}
-                    className="flex min-w-0 flex-1 items-start gap-3 py-2 pl-3 pr-2"
+                    className="flex w-full min-w-0 items-start gap-3 py-2 pl-3 pr-6"
                   >
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-medium text-text-primary">
                         {topic.subject}
                       </div>
                       {!isCompactDensity && (
-                        <>
-                          {topic.lastMessageSenderName && (
-                            <div className="mt-0.5 truncate text-xs text-sidebar-sender">
-                              {topic.lastMessageSenderName}
-                            </div>
-                          )}
-                          <div className="mt-0.5 truncate text-xs text-text-muted">
-                            {topic.lastMessage ?? ""}
-                          </div>
-                        </>
+                        <SidebarMessagePreview
+                          senderName={topic.lastMessageSenderName}
+                          message={topic.lastMessage}
+                        />
                       )}
                     </div>
                     <SidebarChatBadges unreadCount={topic.badge} hasMention={topic.hasMention} />
                   </Link>
-                  <div className="flex shrink-0 items-center py-2 pr-2">
+                  <div className="absolute inset-y-1 right-1 flex items-center">
                     <TopicMuteButton
                       streamId={stream.stream_id}
                       topic={topic.subject}

@@ -8,6 +8,7 @@ import { SidebarChatBadges } from "./sidebar-chat-badges.ui";
 import { StreamContextMenu, TopicContextMenu } from "./sidebar-chat-context-menu.ui";
 import { sidebarStreamRoute, sidebarStreamTopicRoute } from "./sidebar-chat-routes.lib";
 import { TopicMuteButton } from "./sidebar-folder-topic-buttons.ui";
+import { SidebarMessagePreview } from "./sidebar-message-preview.ui";
 import { SidebarStreamHydrateWrapper } from "./sidebar-stream-hydrate-wrapper.ui";
 import { useSidebarTopicCollapse } from "./sidebar-topic-collapse.hook";
 import { SidebarTopicShowMoreButton } from "./sidebar-topic-show-more.ui";
@@ -68,14 +69,10 @@ function StreamRowLinkContent({
           #{displayName}
         </div>
         {!isCompactDensity && (
-          <>
-            {showLastMessageSender && chat.lastMessageSenderName && (
-              <div className="mt-0.5 truncate text-xs text-sidebar-sender">
-                {chat.lastMessageSenderName}
-              </div>
-            )}
-            <div className="mt-0.5 truncate text-xs text-text-muted">{chat.lastMessage ?? ""}</div>
-          </>
+          <SidebarMessagePreview
+            senderName={showLastMessageSender ? chat.lastMessageSenderName : undefined}
+            message={chat.lastMessage}
+          />
         )}
       </div>
       <div className="flex flex-shrink-0 flex-col items-end gap-1">
@@ -156,7 +153,7 @@ const SidebarFolderStreamTopicsList = React.memo(function SidebarFolderStreamTop
                 streamId={chat.stream_id}
                 streamName={chat.name}
                 topic={topic.subject}
-                rowClassName={`group/topic flex w-full items-start rounded-r-lg border-l-4 transition-colors ${sidebarRowClass(isTopicActive)}`}
+                rowClassName={`group/topic relative w-full rounded-r-lg border-l-4 transition-colors ${sidebarRowClass(isTopicActive)}`}
                 rowStyle={{ borderLeftColor: topicColor }}
                 sideActions={
                   <TopicMuteButton
@@ -168,20 +165,16 @@ const SidebarFolderStreamTopicsList = React.memo(function SidebarFolderStreamTop
               >
                 <Link
                   to={sidebarStreamTopicRoute(streamSlug, topic.subject)}
-                  className="flex min-w-0 flex-1 items-start gap-3 py-2 pl-3 pr-2"
+                  className="flex w-full min-w-0 items-start gap-3 py-2 pl-3 pr-12"
                 >
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium text-text-primary">
                       {topic.subject}
                     </div>
-                    {topic.lastMessageSenderName && (
-                      <div className="mt-0.5 truncate text-xs text-sidebar-sender">
-                        {topic.lastMessageSenderName}
-                      </div>
-                    )}
-                    <div className="mt-0.5 truncate text-xs text-text-muted">
-                      {topic.lastMessage ?? ""}
-                    </div>
+                    <SidebarMessagePreview
+                      senderName={topic.lastMessageSenderName}
+                      message={topic.lastMessage}
+                    />
                   </div>
                   <SidebarChatBadges unreadCount={topic.badge} hasMention={topic.hasMention} />
                 </Link>
