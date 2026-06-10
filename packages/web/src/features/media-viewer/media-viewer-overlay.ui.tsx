@@ -24,6 +24,12 @@ export const MediaViewerOverlay: React.FC = () => {
   const displayUrl = useProtectedMediaDisplayUrl(item?.url ?? "", item?.type ?? "image");
 
   const actionsEnabled = useMemo(() => canUseMediaViewerDisplayUrl(displayUrl), [displayUrl]);
+  const imageSrc = useMemo(() => {
+    if (canUseMediaViewerDisplayUrl(displayUrl)) {
+      return displayUrl;
+    }
+    return item?.previewUrl ?? AUTH_IMAGE_PLACEHOLDER_SRC;
+  }, [displayUrl, item?.previewUrl]);
 
   const handlePrev = useCallback(() => prev(), [prev]);
   const handleNext = useCallback(() => next(), [next]);
@@ -61,7 +67,7 @@ export const MediaViewerOverlay: React.FC = () => {
         />
       ) : (
         <img
-          src={displayUrl ?? AUTH_IMAGE_PLACEHOLDER_SRC}
+          src={imageSrc}
           alt={item.alt ?? ""}
           role="presentation"
           className="max-h-[90vh] max-w-[90vw] object-contain transition-transform"

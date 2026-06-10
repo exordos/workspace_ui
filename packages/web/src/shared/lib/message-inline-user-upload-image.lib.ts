@@ -2,10 +2,10 @@
  * Dedupes Zulip rendered HTML where the same user-upload image appears as a text link and
  * inside `.message_inline_image`. Client markdown inlining must not add a second preview.
  */
-import { isUserUploadImagePath } from "~/shared/lib/protected-message-media-thumbnail";
 
 const USER_UPLOADS_SEGMENT = "/user_uploads/";
-const THUMBNAIL_SIZE_SUFFIX_PATTERN = /^\d+x\d+\.webp$/i;
+const USER_UPLOAD_IMAGE_EXT = /\.(apng|avif|bmp|gif|jpe?g|png|svg|webp)(\?|#|$)/i;
+const THUMBNAIL_SIZE_SUFFIX_PATTERN = /^\d+x\d+\.[a-z0-9]+$/i;
 
 const MARKDOWN_USER_UPLOAD_IMAGE_LINK_PATTERN = /\[[^\]]*\]\(([^)\s]+)\)/g;
 
@@ -17,14 +17,15 @@ function safeDecodeUriComponent(value: string): string {
   }
 }
 
-/** Canonical key for comparing full-res and thumbnail paths to the same upload file. */
-export function normalizeUserUploadImageIdentity(rawHref: string): string | null {
-  const trimmed = rawHref.trim();
-  if (!isUserUploadImagePath(trimmed)) {
-    return null;
-  }
+export function isUserUploadImagePath(src: string): boolean {
+  const v = src.trim();
+  if (!v.includes(USER_UPLOADS_SEGMENT)) return false;
+  const pathOnly = v.split("?")[0]?.split("#")[0] ?? "";
+  return USER_UPLOAD_IMAGE_EXT.test(pathOnly);
+}
 
-  let pathOnly = trimmed.split("?")[0]?.split("#")[0] ?? "";
+function pathOnlyFromUserUploadHref(rawHref: string): string | null {
+  let pathOnly = rawHref.split("?")[0]?.split("#")[0] ?? "";
   try {
     if (pathOnly.startsWith("http://") || pathOnly.startsWith("https://")) {
       pathOnly = new URL(pathOnly).pathname;
@@ -33,21 +34,58 @@ export function normalizeUserUploadImageIdentity(rawHref: string): string | null
     // keep pathOnly as-is
   }
 
+  return pathOnly.length > 0 ? pathOnly : null;
+}
+
+/** Canonical user_upload image path: strips `thumbnail/` and trailing size segment from thumbnails. */
+export function canonicalizeUserUploadImagePath(rawHref: string): string | null {
+  const trimmed = rawHref.trim();
+  if (!isUserUploadImagePath(trimmed)) {
+    return null;
+  }
+
+  const pathOnly = pathOnlyFromUserUploadHref(trimmed);
+  if (pathOnly == null) {
+    return null;
+  }
+
   const uploadsIndex = pathOnly.indexOf(USER_UPLOADS_SEGMENT);
   if (uploadsIndex < 0) {
     return null;
   }
 
+  const beforeUploads = pathOnly.slice(0, uploadsIndex);
   let relative = pathOnly.slice(uploadsIndex + USER_UPLOADS_SEGMENT.length);
   if (relative.startsWith("thumbnail/")) {
     relative = relative.slice("thumbnail/".length);
   }
+
   const segments = relative.split("/");
   const lastSegment = segments[segments.length - 1] ?? "";
   if (THUMBNAIL_SIZE_SUFFIX_PATTERN.test(lastSegment)) {
     segments.pop();
     relative = segments.join("/");
   }
+
+  if (relative.length === 0) {
+    return null;
+  }
+
+  return `${beforeUploads}${USER_UPLOADS_SEGMENT}${relative}`;
+}
+
+/** Canonical key for comparing full-res and thumbnail paths to the same upload file. */
+export function normalizeUserUploadImageIdentity(rawHref: string): string | null {
+  const canonicalPath = canonicalizeUserUploadImagePath(rawHref);
+  if (canonicalPath == null) {
+    return null;
+  }
+
+  const uploadsIndex = canonicalPath.indexOf(USER_UPLOADS_SEGMENT);
+  if (uploadsIndex < 0) {
+    return null;
+  }
+  const relative = canonicalPath.slice(uploadsIndex + USER_UPLOADS_SEGMENT.length);
 
   const decoded = safeDecodeUriComponent(relative).toLowerCase();
   return decoded.length > 0 ? decoded : null;

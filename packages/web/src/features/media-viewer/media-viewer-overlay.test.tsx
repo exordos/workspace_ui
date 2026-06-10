@@ -78,6 +78,44 @@ describe("MediaViewerOverlay", () => {
     );
   });
 
+  it("shows previewUrl immediately and then swaps to the full protected image", async () => {
+    let resolveFetch: ((value: { ok: boolean; blob: () => Promise<Blob> }) => void) | undefined;
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<{ ok: boolean; blob: () => Promise<Blob> }>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test-viewer-full");
+
+    useMediaViewerStore.getState().open(
+      [
+        {
+          url: "https://zulip.example.com/user_uploads/1/private.png",
+          type: "image",
+          previewUrl: "blob:test-viewer-preview",
+        },
+      ],
+      0,
+    );
+
+    const { container } = render(<MediaViewerOverlay />);
+    const image = container.querySelector("img");
+
+    expect(image).not.toBeNull();
+    expect(image?.getAttribute("src")).toBe("blob:test-viewer-preview");
+
+    resolveFetch?.({
+      ok: true,
+      blob: () => Promise.resolve(new Blob(["ok"])),
+    });
+
+    await waitFor(() => {
+      expect(image?.getAttribute("src")).toBe("blob:test-viewer-full");
+    });
+  });
+
   it("keeps protected video src unset when authenticated fetch fails", async () => {
     const fetchMock = vi.fn(() =>
       Promise.resolve({

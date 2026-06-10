@@ -1,6 +1,10 @@
 import type { MediaItem } from "~/features/media-viewer/media-viewer.types";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { AUTH_MEDIA_SRC_DATA_ATTR } from "~/shared/lib/protected-message-media";
+import {
+  isUserUploadImagePath,
+  toUserUploadOriginalUrl,
+} from "~/shared/lib/protected-message-media-thumbnail";
 import { isUserUploadVideoPath, isVideoFileHref } from "~/shared/lib/user-upload-media-path.lib";
 
 const IMG_SRC_REGEX = /<img\b[^>]*\bsrc\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/gi;
@@ -24,6 +28,14 @@ export function normalizeMediaUrl(url: string): string {
   } catch {
     return trimmed;
   }
+}
+
+function normalizeGalleryImageUrl(url: string): string {
+  const normalized = normalizeMediaUrl(url);
+  if (normalized === "" || !isUserUploadImagePath(normalized)) {
+    return normalized;
+  }
+  return normalizeMediaUrl(toUserUploadOriginalUrl(normalized));
 }
 
 function isUserUploadImageHref(href: string): boolean {
@@ -78,9 +90,10 @@ function appendUniqueMedia(
   url: string,
   type: MediaItem["type"],
 ): void {
-  if (indexByUrl.has(url)) return;
-  indexByUrl.set(url, items.length);
-  items.push({ url, type });
+  const normalizedUrl = type === "image" ? normalizeGalleryImageUrl(url) : url;
+  if (normalizedUrl === "" || indexByUrl.has(normalizedUrl)) return;
+  indexByUrl.set(normalizedUrl, items.length);
+  items.push({ url: normalizedUrl, type });
 }
 
 /** Resolves canonical media URL from an inline `<video>` (auth attr, then src, then child `<source>`). */

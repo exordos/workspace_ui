@@ -5,9 +5,13 @@
  * Thumb: `{prefix}/user_uploads/thumbnail/{id}/{shard}/{name}.png/840x560.webp`
  */
 
+import {
+  canonicalizeUserUploadImagePath,
+  isUserUploadImagePath,
+} from "~/shared/lib/message-inline-user-upload-image.lib";
 import { collapseDuplicateWorkspaceV1InUrl } from "~/shared/lib/user-uploads-url.lib";
 
-const USER_UPLOAD_IMAGE_EXT = /\.(apng|avif|bmp|gif|jpe?g|png|svg|webp)(\?|#|$)/i;
+export { canonicalizeUserUploadImagePath, isUserUploadImagePath };
 
 export const USER_UPLOAD_THUMBNAIL_SIZE = "840x560.webp";
 
@@ -17,13 +21,6 @@ export const USER_UPLOAD_THUMBNAIL_INTRINSIC_HEIGHT = 560;
 /** Display dimensions scaled from 840×560 to max height 160px inside bubbles. */
 export const USER_UPLOAD_THUMBNAIL_DISPLAY_MAX_WIDTH = 240;
 export const USER_UPLOAD_THUMBNAIL_DISPLAY_MAX_HEIGHT = 160;
-
-export function isUserUploadImagePath(src: string): boolean {
-  const v = src.trim();
-  if (!v.includes("/user_uploads/")) return false;
-  const pathOnly = v.split("?")[0]?.split("#")[0] ?? "";
-  return USER_UPLOAD_IMAGE_EXT.test(pathOnly);
-}
 
 export function isUserUploadThumbnailUrl(url: string): boolean {
   const v = url.trim();
@@ -69,4 +66,38 @@ export function toUserUploadThumbnailUrl(fullUrl: string): string {
   const before = m[1] ?? "";
   const rest = m[2];
   return `${before}/user_uploads/thumbnail/${rest}/${USER_UPLOAD_THUMBNAIL_SIZE}${tail}`;
+}
+
+export function toUserUploadOriginalUrl(url: string): string {
+  const trimmed = collapseDuplicateWorkspaceV1InUrl(url);
+  if (trimmed.length === 0 || !isUserUploadThumbnailUrl(trimmed)) {
+    return trimmed;
+  }
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const u = new URL(trimmed);
+      const canonicalPath = canonicalizeUserUploadImagePath(u.pathname);
+      if (canonicalPath == null) {
+        return trimmed;
+      }
+      u.pathname = canonicalPath;
+      return u.toString();
+    } catch {
+      return trimmed;
+    }
+  }
+
+  const q = trimmed.indexOf("?");
+  const hash = trimmed.indexOf("#");
+  let cut = trimmed.length;
+  if (q >= 0) cut = Math.min(cut, q);
+  if (hash >= 0) cut = Math.min(cut, hash);
+  const basePart = trimmed.slice(0, cut);
+  const tail = trimmed.slice(cut);
+  const canonicalPath = canonicalizeUserUploadImagePath(basePart);
+  if (canonicalPath == null) {
+    return trimmed;
+  }
+  return `${canonicalPath}${tail}`;
 }

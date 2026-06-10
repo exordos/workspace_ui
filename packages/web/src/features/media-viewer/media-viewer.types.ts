@@ -10,6 +10,7 @@ export type MediaType = "image" | "video";
 export interface MediaItem {
   url: string;
   type: MediaType;
+  previewUrl?: string;
   alt?: string;
   width?: number;
   height?: number;

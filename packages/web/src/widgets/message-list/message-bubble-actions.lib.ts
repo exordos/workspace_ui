@@ -1,7 +1,9 @@
 import type { DownloadProgress } from "~/entities/download/download.types";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
+import type { MediaItem } from "~/features/media-viewer/media-viewer.types";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { buildAuthHeader } from "~/shared/lib/auth-guard";
+import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/protected-message-media";
 import {
   deriveAttachmentFileName,
   downloadUserUploadAttachment,
@@ -53,21 +55,42 @@ export function resolveMessageBodyClickHit(rawTarget: EventTarget | null): HTMLE
   return null;
 }
 
-function openSingleMediaItem(url: string, type: "image" | "video"): void {
-  useMediaViewerStore.getState().open([{ url, type }], 0);
+function openSingleMediaItem(item: MediaItem): void {
+  useMediaViewerStore.getState().open([item], 0);
 }
 
 function openGalleryMedia(
   gallery: MessageMediaGallery,
   lookupUrl: string,
-  fallback: { url: string; type: "image" | "video" },
+  fallback: MediaItem,
 ): void {
   const galleryIndex = gallery.indexByUrl.get(lookupUrl);
   if (galleryIndex != null && gallery.items.length > 0) {
+    const currentItem = gallery.items[galleryIndex];
+    if (
+      currentItem?.type === "image" &&
+      fallback.type === "image" &&
+      fallback.previewUrl != null &&
+      fallback.previewUrl !== ""
+    ) {
+      const nextItems = gallery.items.map((item, index) =>
+        index === galleryIndex ? { ...item, previewUrl: fallback.previewUrl } : item,
+      );
+      useMediaViewerStore.getState().open(nextItems, galleryIndex);
+      return;
+    }
     useMediaViewerStore.getState().open(gallery.items, galleryIndex);
     return;
   }
-  openSingleMediaItem(fallback.url, fallback.type);
+  openSingleMediaItem(fallback);
+}
+
+function resolveImagePreviewUrl(image: HTMLImageElement): string | undefined {
+  const src = image.currentSrc || image.src;
+  if (src === "" || src === AUTH_IMAGE_PLACEHOLDER_SRC) {
+    return undefined;
+  }
+  return src;
 }
 
 function handleImageBodyClick(
@@ -80,20 +103,20 @@ function handleImageBodyClick(
   }
   event.preventDefault();
   event.stopPropagation();
-  const src = image.currentSrc || image.src;
-  if (src === "") {
+  const originalUrl = normalizeMediaUrl(image.dataset.originalSrc ?? image.currentSrc ?? image.src);
+  if (originalUrl === "") {
     return true;
   }
-  if (src.startsWith("blob:")) {
-    openSingleMediaItem(src, "image");
-    return true;
-  }
-  const lookupUrl = normalizeMediaUrl(image.dataset.originalSrc ?? src);
+  const imageItem: MediaItem = {
+    url: originalUrl,
+    type: "image",
+    previewUrl: resolveImagePreviewUrl(image),
+  };
   const gallery = deps.mediaGallery;
   if (gallery != null) {
-    openGalleryMedia(gallery, lookupUrl, { url: src, type: "image" });
+    openGalleryMedia(gallery, originalUrl, imageItem);
   } else {
-    openSingleMediaItem(src, "image");
+    openSingleMediaItem(imageItem);
   }
   return true;
 }
@@ -118,7 +141,7 @@ function handleVideoBodyClick(
     return true;
   }
   if (rawSrc.startsWith("blob:")) {
-    openSingleMediaItem(rawSrc, "video");
+    openSingleMediaItem({ url: rawSrc, type: "video" });
     return true;
   }
   const lookupUrl = normalizeMediaUrl(rawSrc);
@@ -126,7 +149,7 @@ function handleVideoBodyClick(
   if (gallery != null) {
     openGalleryMedia(gallery, lookupUrl, { url: lookupUrl, type: "video" });
   } else {
-    openSingleMediaItem(lookupUrl, "video");
+    openSingleMediaItem({ url: lookupUrl, type: "video" });
   }
   return true;
 }

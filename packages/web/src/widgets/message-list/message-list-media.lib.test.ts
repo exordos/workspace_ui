@@ -64,6 +64,27 @@ describe("buildMessageMediaGallery", () => {
     );
   });
 
+  it("prefers original user_upload path over thumbnail img src", () => {
+    const gallery = buildMessageMediaGallery([
+      msg(
+        1,
+        [
+          '<p><a href="/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png">image.png</a></p>',
+          '<div class="message_inline_image">',
+          '<a href="/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png">',
+          '<img src="/user_uploads/thumbnail/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png/840x560.webp" alt="image.png">',
+          "</a></div>",
+        ].join(""),
+      ),
+    ]);
+
+    expect(gallery.items).toHaveLength(1);
+    expect(gallery.items[0]?.url).toMatch(
+      /\/user_uploads\/2\/ff\/aP3oHiNs40xdmpUNVol7Z5ga\/image\.png$/,
+    );
+    expect(gallery.items[0]?.url).not.toContain("/thumbnail/");
+  });
+
   it("extracts video urls from video source and user_upload links", () => {
     const gallery = buildMessageMediaGallery([
       msg(

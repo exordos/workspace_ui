@@ -25,6 +25,7 @@ import { upgradeUserUploadVideoLinksInContainer } from "~/shared/lib/message-inl
 import {
   isUserUploadImagePath,
   isUserUploadThumbnailUrl,
+  toUserUploadOriginalUrl,
   toUserUploadThumbnailUrl,
   USER_UPLOAD_THUMBNAIL_DISPLAY_MAX_HEIGHT,
   USER_UPLOAD_THUMBNAIL_DISPLAY_MAX_WIDTH,
@@ -199,7 +200,7 @@ export function prepareProtectedUserUploadImageElement(
   srcAttrValue: string,
 ): void {
   const collapsedSrc = collapseDuplicateWorkspaceV1InUrl(srcAttrValue);
-  const fullResolutionSrc = collapsedSrc;
+  const fullResolutionSrc = toUserUploadOriginalUrl(collapsedSrc);
   const useThumb = isUserUploadImagePath(collapsedSrc) && !isUserUploadThumbnailUrl(collapsedSrc);
   const authFetchSrc = useThumb ? toUserUploadThumbnailUrl(collapsedSrc) : collapsedSrc;
 
