@@ -23,6 +23,7 @@ import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { parseRole, UserRole } from "~/shared/lib/roles";
 import { resolveCurrentUserChannelCapabilities } from "~/shared/lib/stream-member-management-permissions.lib";
 import { resolveCanonicalStreamName } from "~/shared/lib/stream-name.lib";
+import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
 import { encodeTopicForRoute, normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { useInputMode } from "~/shared/lib/touch";
 import { Avatar } from "~/shared/ui/avatar";
@@ -410,7 +411,7 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
   };
   const handleDeleteTopic = async (topicName: string) => {
     if (streamId == null || topicDeletePendingName != null) return;
-    const topicLabel = topicName.trim().length > 0 ? topicName : t("chat.generalChat");
+    const topicLabel = resolveTopicDisplayInfo(topicName).label;
     if (!window.confirm(t("channel.deleteTopicConfirm", { topic: topicLabel }))) return;
 
     setTopicDeletePendingName(topicName);
@@ -595,45 +596,48 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
             <p className="px-2 py-2 text-sm text-text-muted">{t("channel.noTopics")}</p>
           ) : (
             <ul className="space-y-1.5">
-              {channelTopics.map((topic) => (
-                <li key={topic.name}>
-                  <div className="flex items-center gap-2 rounded-lg px-2 py-1 text-left text-sm text-text-primary transition-colors hover:bg-bg-elevated">
-                    <button
-                      type="button"
-                      className="flex min-w-0 flex-1 items-center justify-between gap-2 py-0.5 text-left"
-                      onClick={() => handleOpenTopic(topic.name)}
-                      disabled={topicDeletePendingName === topic.name}
-                    >
-                      <span className="truncate">
-                        {topic.name.trim().length > 0 ? topic.name : t("chat.generalChat")}
-                      </span>
-                      {topic.unreadCount > 0 && (
-                        <span className="flex h-5 min-w-5 flex-shrink-0 items-center justify-center rounded-full bg-accent px-1.5 text-[11px] font-medium text-on-accent">
-                          {topic.unreadCount}
-                        </span>
-                      )}
-                    </button>
-                    {canDeleteTopic && (
+              {channelTopics.map((topic) => {
+                const topicDisplay = resolveTopicDisplayInfo(topic.name);
+                return (
+                  <li key={topic.name}>
+                    <div className="flex items-center gap-2 rounded-lg px-2 py-1 text-left text-sm text-text-primary transition-colors hover:bg-bg-elevated">
                       <button
                         type="button"
-                        className="hover:bg-notice-base/10 flex h-6 w-6 shrink-0 items-center justify-center rounded text-notice-base transition-colors disabled:opacity-40"
-                        onClick={() => {
-                          void handleDeleteTopic(topic.name);
-                        }}
-                        disabled={topicDeletePendingName != null}
-                        aria-label={t("channel.deleteTopic")}
-                        title={
-                          topicDeletePendingName === topic.name
-                            ? t("channel.deleteTopicInProgress")
-                            : t("channel.deleteTopic")
-                        }
+                        className="flex min-w-0 flex-1 items-center justify-between gap-2 py-0.5 text-left"
+                        onClick={() => handleOpenTopic(topic.name)}
+                        disabled={topicDeletePendingName === topic.name}
                       >
-                        <Icon name="close" size={14} className="text-current" />
+                        <span className={`truncate ${topicDisplay.isSystem ? "italic" : ""}`}>
+                          {topicDisplay.label}
+                        </span>
+                        {topic.unreadCount > 0 && (
+                          <span className="flex h-5 min-w-5 flex-shrink-0 items-center justify-center rounded-full bg-accent px-1.5 text-[11px] font-medium text-on-accent">
+                            {topic.unreadCount}
+                          </span>
+                        )}
                       </button>
-                    )}
-                  </div>
-                </li>
-              ))}
+                      {canDeleteTopic && (
+                        <button
+                          type="button"
+                          className="hover:bg-notice-base/10 flex h-6 w-6 shrink-0 items-center justify-center rounded text-notice-base transition-colors disabled:opacity-40"
+                          onClick={() => {
+                            void handleDeleteTopic(topic.name);
+                          }}
+                          disabled={topicDeletePendingName != null}
+                          aria-label={t("channel.deleteTopic")}
+                          title={
+                            topicDeletePendingName === topic.name
+                              ? t("channel.deleteTopicInProgress")
+                              : t("channel.deleteTopic")
+                          }
+                        >
+                          <Icon name="close" size={14} className="text-current" />
+                        </button>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
           {topicDeleteError && (

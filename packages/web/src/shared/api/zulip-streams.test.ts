@@ -11,6 +11,7 @@ import {
   deleteTopic,
   deleteStream,
   fetchStreamMembers,
+  fetchStreamTopicNames,
   fetchStreams,
   fetchSubscriptions,
   fetchTopics,
@@ -410,12 +411,65 @@ describe("fetchTopics", () => {
     mockZulipClient.streams.retrieve.mockResolvedValue({
       streams: [{ stream_id: 10, name: "engineering" }],
     });
-    mockZulipClient.streams.topics.retrieve.mockResolvedValue({
-      topics: [{ name: "planning" }, { name: "release" }],
+    mockZulipApi.get.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        topics: [{ name: "planning" }, { name: "release" }],
+      },
+      raw: { statusText: "OK" },
     });
 
     await expect(fetchTopics("engineering")).resolves.toEqual(["planning", "release"]);
-    expect(mockZulipClient.streams.topics.retrieve).toHaveBeenCalledWith({ stream_id: 10 });
+    expect(mockZulipApi.get).toHaveBeenCalledWith(
+      "/users/me/10/topics",
+      { allow_empty_topic_name: "true" },
+      undefined,
+    );
+  });
+
+  it("returns raw empty topic name when server supports allow_empty_topic_name", async () => {
+    mockZulipApi.get.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        topics: [{ name: "" }, { name: "release" }],
+      },
+      raw: { statusText: "OK" },
+    });
+
+    await expect(fetchStreamTopicNames(10)).resolves.toEqual(["", "release"]);
+    expect(mockZulipApi.get).toHaveBeenCalledWith(
+      "/users/me/10/topics",
+      { allow_empty_topic_name: "true" },
+      undefined,
+    );
+  });
+
+  it("returns empty array when topics endpoint is not ok", async () => {
+    mockZulipApi.get.mockResolvedValue({
+      ok: false,
+      status: 500,
+      data: { result: "error" },
+      raw: { statusText: "Server Error" },
+    });
+
+    await expect(fetchStreamTopicNames(10)).resolves.toEqual([]);
+  });
+
+  it("returns empty array when topics endpoint responds with error result", async () => {
+    mockZulipApi.get.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "error",
+      },
+      raw: { statusText: "OK" },
+    });
+
+    await expect(fetchStreamTopicNames(10)).resolves.toEqual([]);
   });
 
   it("returns empty array when stream is not found", async () => {
@@ -424,7 +478,7 @@ describe("fetchTopics", () => {
     });
 
     await expect(fetchTopics("design")).resolves.toEqual([]);
-    expect(mockZulipClient.streams.topics.retrieve).not.toHaveBeenCalled();
+    expect(mockZulipApi.get).not.toHaveBeenCalled();
   });
 
   it("throws when stream name is blank", async () => {

@@ -23,6 +23,7 @@ export interface ChatHeaderDmGroup {
 export interface ChatHeaderProps {
   channelName: string;
   topic?: string;
+  systemTopic?: boolean;
   participantsCount?: number;
   onlineCount?: number;
   onOpenSearch?: () => void;

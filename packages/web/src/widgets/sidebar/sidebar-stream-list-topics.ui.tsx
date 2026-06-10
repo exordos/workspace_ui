@@ -2,13 +2,13 @@ import React, { type RefObject } from "react";
 import { Link } from "react-router-dom";
 import { t } from "~/i18n/i18n";
 import { sidebarRowClass } from "~/shared/lib/format";
+import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
 import { Icon } from "~/shared/ui/icon";
 import { SidebarChatBadges } from "./sidebar-chat-badges.ui";
 import { sidebarStreamTopicRoute } from "./sidebar-chat-routes.lib";
 import { TopicMuteButton } from "./sidebar-folder-topic-buttons.ui";
 import { SidebarMessagePreview } from "./sidebar-message-preview.ui";
 import { useSidebarTopicCollapse } from "./sidebar-topic-collapse.hook";
-import { resolveSidebarTopicLabel } from "./sidebar-topic-label.lib";
 import { SidebarTopicShowMoreButton } from "./sidebar-topic-show-more.ui";
 import { TOPIC_BAR_COLORS } from "./sidebar.lib";
 import type { SidebarChat } from "./sidebar.types";
@@ -112,7 +112,7 @@ export const SidebarStreamListTopics = React.memo<SidebarStreamListTopicsProps>(
               const topicColor = TOPIC_BAR_COLORS[idx % TOPIC_BAR_COLORS.length];
               const isTopicActive =
                 streamSlug === activeStreamSlug && activeTopic === topic.subject;
-              const topicLabel = resolveSidebarTopicLabel(topic.subject);
+              const topicDisplay = resolveTopicDisplayInfo(topic.subject);
               return (
                 <div
                   key={topic.subject}
@@ -124,8 +124,12 @@ export const SidebarStreamListTopics = React.memo<SidebarStreamListTopicsProps>(
                     className="flex w-full min-w-0 items-start gap-3 py-2 pl-3 pr-8"
                   >
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium text-text-primary">
-                        {topicLabel}
+                      <div
+                        className={`truncate text-sm font-medium text-text-primary ${
+                          topicDisplay.isSystem ? "italic" : ""
+                        }`}
+                      >
+                        {topicDisplay.label}
                       </div>
                       {!isCompactDensity && (
                         <SidebarMessagePreview

@@ -140,12 +140,60 @@ describe("ActivityPage drafts routing", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Draft content")).toBeInTheDocument();
-      expect(screen.getByText("#engineering · general")).toBeInTheDocument();
+      expect(
+        screen.getByText((_, element) => element?.textContent === "#engineering · general"),
+      ).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByText("Draft content"));
 
     expect(navigateSpy).toHaveBeenCalledWith("/stream/10-engineering/topic/general");
+  });
+
+  it("renders empty-topic drafts as the system general chat and routes them to __empty__", async () => {
+    useChatListStore.setState({
+      streamsMap: new Map([
+        [
+          10,
+          {
+            stream_id: 10,
+            name: "engineering",
+            lastMessage: "",
+            time: "",
+            ts: 0,
+            topics: new Map(),
+          },
+        ],
+      ]),
+    });
+
+    useDraftStore.getState().setDrafts([
+      {
+        id: 1,
+        type: "stream",
+        to: [10],
+        topic: "",
+        content: "Draft content",
+        timestamp: 1710000000,
+      },
+    ]);
+
+    render(
+      <MemoryRouter initialEntries={["/activity/drafts"]}>
+        <Routes>
+          <Route path="/activity/:filter" element={<ActivityPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Draft content")).toBeInTheDocument();
+      expect(screen.getByText("General Chat")).toHaveClass("italic");
+    });
+
+    fireEvent.click(screen.getByText("Draft content"));
+
+    expect(navigateSpy).toHaveBeenCalledWith("/stream/10-engineering/topic/__empty__");
   });
 
   it("shows DM partner name on private draft rows", async () => {

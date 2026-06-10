@@ -42,6 +42,7 @@ import { isLikelyRenderedMessageHtml } from "~/shared/lib/message-markdown-displ
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { useShortcut } from "~/shared/lib/shortcuts";
 import { resolveCanonicalStreamName } from "~/shared/lib/stream-name.lib";
+import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import { AppDialogShell, APP_DIALOG_CONTENT_BASE_CLASS } from "~/shared/ui/app-dialog.ui";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
@@ -199,6 +200,7 @@ export const ChatPage: React.FC = () => {
     () => countUnreadMessages(messages, currentUserId),
     [messages, currentUserId],
   );
+  const activeTopicDisplay = activeTopic != null ? resolveTopicDisplayInfo(activeTopic) : null;
 
   useEffect(() => {
     logScrollReadFlow("read:firstUnreadChange", {
@@ -980,8 +982,9 @@ export const ChatPage: React.FC = () => {
 
       <ChatHeader
         channelName={activeStream ? `#${activeStream}` : t("channel.channelName")}
-        topic={activeTopic}
-        hideTopic={activeTopic == null || activeTopic.trim() === ""}
+        topic={activeTopicDisplay?.label}
+        systemTopic={activeTopicDisplay?.isSystem ?? false}
+        hideTopic={activeTopic == null}
         participantsCount={chatInfo?.memberCount ?? 0}
         onlineCount={chatInfo?.onlineCount ?? 0}
         onOpenSearch={openSearch ?? undefined}
@@ -1053,7 +1056,7 @@ export const ChatPage: React.FC = () => {
           activeDmUserIds={activeDmUserIds}
           dmPartnerDeactivated={partnerDeactivated}
           activeStream={activeStream}
-          showTopicPrompt={!isDmView && !activeTopic}
+          showTopicPrompt={!isDmView && activeTopic == null}
           streamSlug={streamSlug}
           onExpandStreamTopics={handleExpandCurrentStreamTopics}
           uploadProgress={uploadProgress}

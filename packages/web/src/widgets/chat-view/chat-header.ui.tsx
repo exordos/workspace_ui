@@ -18,6 +18,7 @@ const TITLE_ACTION_BUTTON_CLASS =
 export const ChatHeader: React.FC<ChatHeaderProps> = ({
   channelName,
   topic = t("chat.generalChat"),
+  systemTopic = false,
   participantsCount = 5,
   onlineCount = 2,
   onOpenSearch,
@@ -119,7 +120,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         <h1 className="truncate text-sm text-text-primary">
           {!hideTopic && topic ? (
             <>
-              <span className="font-semibold">{topic}</span>
+              <span className={`font-semibold ${systemTopic ? "italic" : ""}`}>{topic}</span>
               <span className="font-normal text-text-muted"> · {channelName}</span>
             </>
           ) : (

@@ -106,7 +106,7 @@ describe("resolveDraftDmDisplayName", () => {
 
 describe("formatDraftMessageContext", () => {
   const labels = {
-    generalChatLabel: "General chat",
+    generalChatLabel: "General Chat",
     privateLabel: "DM",
     groupChatLabel: "Group chat",
   };

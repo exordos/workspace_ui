@@ -433,16 +433,23 @@ export async function fetchTopics(stream: string): Promise<string[]> {
   const streamsData = await client.streams.retrieve();
   const streamObj = (streamsData.streams ?? []).find((s) => s.name === streamName);
   if (!streamObj) return [];
-  const data = await client.streams.topics.retrieve({ stream_id: streamObj.stream_id });
-  return (data.topics ?? []).map((topic) => topic.name);
+  return fetchStreamTopicNames(streamObj.stream_id);
 }
 
 /** Loads topic names for a stream id (used for sidebar expand topic list). */
 export async function fetchStreamTopicNames(streamId: number): Promise<string[]> {
   guard.streamId(streamId, "fetchStreamTopicNames.streamId");
-  const client = await getClient();
-  const data = await client.streams.topics.retrieve({ stream_id: streamId });
-  return (data.topics ?? []).map((topic) => topic.name);
+  const res = await zulipPipelineGet(`/users/me/${streamId}/topics`, {
+    allow_empty_topic_name: "true",
+  });
+  if (!res?.ok) {
+    return [];
+  }
+  const data = res.data as { result?: string; topics?: { name?: string }[] };
+  if (data.result === "error") {
+    return [];
+  }
+  return (data.topics ?? []).map((topic) => topic.name ?? "");
 }
 
 /** Updates stream metadata (PATCH /api/v1/streams/{stream_id}). */

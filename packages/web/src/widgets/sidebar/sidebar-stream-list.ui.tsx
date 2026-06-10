@@ -6,6 +6,7 @@ import { t } from "~/i18n/i18n";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { SidebarChatBadges } from "./sidebar-chat-badges.ui";
+import { SidebarMessagePreview } from "./sidebar-message-preview.ui";
 import { useSidebarNewTopicInputFocus } from "./sidebar-new-topic-input-focus.hook";
 import { SidebarStreamHydrateWrapper } from "./sidebar-stream-hydrate-wrapper.ui";
 import { SidebarStreamListTopics } from "./sidebar-stream-list-topics.ui";
@@ -111,9 +112,10 @@ export const SidebarStreamList: React.FC<SidebarStreamListProps> = ({
                           #{displayName}
                         </div>
                         {!isCompactDensity && (
-                          <div className="mt-0.5 truncate text-xs text-text-muted">
-                            {stream.lastMessage ?? ""}
-                          </div>
+                          <SidebarMessagePreview
+                            senderName={stream.lastMessageSenderName}
+                            message={stream.lastMessage}
+                          />
                         )}
                       </div>
                       <div className="flex flex-shrink-0 flex-col items-end gap-1">

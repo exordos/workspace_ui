@@ -4,6 +4,7 @@ import type { UserRecord } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { getPresenceState } from "~/shared/lib/format";
+import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
@@ -25,17 +26,21 @@ export const MessageBubbleSenderMeta = React.memo<MessageBubbleSenderMetaProps>(
     subject,
     isOwn,
   }) {
+    const topicDisplay =
+      showTopicInSenderName && subject != null ? resolveTopicDisplayInfo(subject) : null;
     return (
       <div className="flex flex-wrap items-baseline gap-2">
         <span className="text-sm font-semibold text-text-primary">{displayName}</span>
         {senderStatusLabel != null && senderStatusLabel.length > 0 && (
           <span className="truncate text-[11px] text-text-secondary">{senderStatusLabel}</span>
         )}
-        {showTopicInSenderName && subject != null && subject.length > 0 && (
+        {topicDisplay != null && (
           <span
-            className={`text-[11px] font-medium ${isOwn ? "text-call-green" : "text-accent-soft"}`}
+            className={`text-[11px] font-medium ${
+              isOwn ? "text-call-green" : "text-accent-soft"
+            } ${topicDisplay.isSystem ? "italic" : ""}`}
           >
-            {subject}
+            {topicDisplay.label}
           </span>
         )}
       </div>

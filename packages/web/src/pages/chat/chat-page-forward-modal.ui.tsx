@@ -4,6 +4,7 @@ import { ensureUserStatusLoaded } from "~/entities/user/api/user.api";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
+import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
 import { Icon } from "~/shared/ui/icon";
 import { toggleForwardRecipient } from "./chat-forward.lib";
 import type { ForwardMessageModalBodyProps } from "./chat-page.types";
@@ -16,7 +17,7 @@ export const ForwardMessageModalBody = React.memo<ForwardMessageModalBodyProps>(
     const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
     const [dmSearch, setDmSearch] = useState("");
     const stream = streams.find((s) => s.name === selectedStream);
-    const topics = stream?.topics?.map((tp) => tp.subject) ?? [];
+    const topics = stream?.topics ?? [];
     const allUsers = useUsersStore((s) => s.users);
     const userList = useMemo(() => {
       const list = Array.from(allUsers.values());
@@ -108,9 +109,18 @@ export const ForwardMessageModalBody = React.memo<ForwardMessageModalBodyProps>(
               />
               {topics.length > 0 && (
                 <datalist id="forward-topics">
-                  {topics.map((subj) => (
-                    <option key={subj} value={subj} />
-                  ))}
+                  {topics.map((topicOption) => {
+                    const topicDisplay = resolveTopicDisplayInfo(topicOption.subject);
+                    return (
+                      <option
+                        key={`${topicOption.subject.length}:${topicOption.subject}`}
+                        value={topicOption.subject}
+                        label={topicDisplay.label}
+                      >
+                        {topicDisplay.label}
+                      </option>
+                    );
+                  })}
                 </datalist>
               )}
             </>

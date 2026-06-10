@@ -149,6 +149,22 @@ describe("ChatHeader", () => {
     expect(heading.closest("button")).toBeNull();
   });
 
+  it("renders the system general-chat topic in italic", () => {
+    renderWithProviders(
+      <ChatHeader
+        channelName="#engineering"
+        topic="General Chat"
+        systemTopic
+        hideTopic={false}
+        hideParticipants
+      />,
+    );
+
+    const heading = screen.getByRole("heading", { level: 1 });
+    expect(heading).toHaveTextContent("General Chat · #engineering");
+    expect(heading.querySelector(".font-semibold")).toHaveClass("italic");
+  });
+
   it("does not expose channel title or right panel controls without panel handlers", () => {
     renderWithProviders(<ChatHeader channelName="general" hideTopic hideParticipants />);
 

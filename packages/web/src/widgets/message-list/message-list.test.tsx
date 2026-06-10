@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useUsersStore } from "~/entities/user/user.model";
@@ -179,6 +179,18 @@ describe("MessageList focused message behavior", () => {
 
     expect(screen.getByRole("button", { name: "support" })).toBeInTheDocument();
     vi.useRealTimers();
+  });
+
+  it("shows the system general-chat separator in italic for empty-topic messages", () => {
+    render(
+      <MessageList
+        messages={[msg(1, { subject: "bugs" }), msg(2, { subject: "", sender_id: 43 })]}
+      />,
+    );
+
+    const separator = screen.getByRole("button", { name: "General Chat" });
+    expect(separator).toBeInTheDocument();
+    expect(within(separator).getByText("General Chat")).toHaveClass("italic");
   });
 
   it("calls author callback when message avatar is clicked", () => {

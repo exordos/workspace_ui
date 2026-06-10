@@ -1,5 +1,6 @@
 import { parseDmSlugToUserIds } from "./sidebar.lib";
 import type { SidebarChat } from "./sidebar.types";
+import { topicMatchesDisplayQuery } from "~/shared/lib/topic-display.lib";
 
 export function normalizeSidebarSearchQuery(query: string): string {
   return query.trim().toLowerCase();
@@ -16,7 +17,7 @@ export function doesSidebarChatMatchQuery(options: {
   if (chat.type === "stream") {
     const nameMatch = chat.name.toLowerCase().includes(normalizedQuery);
     const topicMatch = chat.topics?.some((topic) =>
-      topic.subject.toLowerCase().includes(normalizedQuery),
+      topicMatchesDisplayQuery(topic.subject, normalizedQuery),
     );
     return nameMatch || (topicMatch ?? false);
   }

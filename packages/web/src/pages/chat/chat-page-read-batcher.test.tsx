@@ -12,9 +12,11 @@ import type * as ZulipUploadApi from "~/shared/api/zulip-upload";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { createMessage } from "~/test/factories";
 import { ChatPage } from "./chat-page.ui";
+import type { ChatPageComposerSectionProps } from "./chat-page-composer-section.types";
 import type { ChatPageMessageListSectionProps } from "./chat-page-message-list-section.types";
 
 const captured = vi.hoisted(() => ({
+  composerProps: null as ChatPageComposerSectionProps | null,
   messageListProps: null as ChatPageMessageListSectionProps | null,
 }));
 
@@ -92,7 +94,10 @@ vi.mock("~/widgets/chat-view/chat-header.ui", () => ({
 }));
 
 vi.mock("./chat-page-composer-section.ui", () => ({
-  ChatPageComposerSection: () => null,
+  ChatPageComposerSection: (props: ChatPageComposerSectionProps) => {
+    captured.composerProps = props;
+    return null;
+  },
 }));
 
 vi.mock("./chat-page-delete-confirm-bar.ui", () => ({
@@ -161,11 +166,22 @@ function renderTopicChat(): void {
   );
 }
 
+function renderSystemTopicChat(): void {
+  render(
+    <MemoryRouter initialEntries={[`/stream/${STREAM_ID}-${STREAM_NAME}/topic/__empty__`]}>
+      <Routes>
+        <Route path="/stream/:streamSlug/topic/:topicName" element={<ChatPage />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
 describe("ChatPage mark-as-read batching", () => {
   const originalLoadInitialMessagesForContext =
     useCurrentChatMessagesStore.getState().loadInitialMessagesForContext;
 
   beforeEach(() => {
+    captured.composerProps = null;
     captured.messageListProps = null;
     vi.mocked(markMessagesAsRead).mockResolvedValue(undefined);
     useChatListStore.getState().clear();
@@ -230,5 +246,37 @@ describe("ChatPage mark-as-read batching", () => {
 
     expect(markMessagesAsRead).toHaveBeenCalledTimes(1);
     expect(markMessagesAsRead).toHaveBeenCalledWith([MESSAGE_ID]);
+  });
+
+  it("treats /topic/__empty__ as an explicit topic view and keeps the composer enabled", async () => {
+    const loadInitialMessagesForContext = vi.fn(() => Promise.resolve());
+
+    useChatListStore.getState().setFromMessages(
+      [
+        streamTopicMessage({
+          subject: "",
+          content: "system general chat",
+        }),
+      ],
+      CURRENT_USER_ID,
+    );
+    useCurrentChatMessagesStore.setState({ loadInitialMessagesForContext });
+
+    renderSystemTopicChat();
+
+    await waitFor(() => {
+      expect(loadInitialMessagesForContext).toHaveBeenCalledWith(
+        expect.objectContaining({
+          context: expect.objectContaining({
+            type: "stream",
+            streamId: STREAM_ID,
+            topic: "",
+            streamWideView: false,
+          }),
+        }),
+      );
+    });
+    expect(captured.composerProps?.activeTopic).toBe("");
+    expect(captured.composerProps?.showTopicPrompt).toBe(false);
   });
 });

@@ -39,6 +39,7 @@ import {
   type ScrollPrependSnapshot,
 } from "~/shared/lib/scroll-prepend-anchor.lib";
 import { logSidebarUnreadFlow } from "~/shared/lib/sidebar-unread-debug.lib";
+import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
 import { isTabVisible, onVisibilityChange } from "~/shared/lib/visibility";
 import { FloatingLoadingOverlay } from "~/shared/ui/floating-loading-overlay";
 import { FloatingScrollToBottomButton } from "~/shared/ui/floating-scroll-to-bottom-button";
@@ -1239,7 +1240,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
               const first = senderMessages[0]!;
               const isStream = first.stream_id != null;
               const topicKey = normalizeStreamTopicForMessageCache(first.subject ?? "");
-              const topicLabel = topicKey.length > 0 ? topicKey : t("chat.generalChat");
+              const topicDisplay = resolveTopicDisplayInfo(topicKey);
               const showTopicSeparator =
                 isStream && lastStreamTopicKey !== undefined && lastStreamTopicKey !== topicKey;
               if (isStream) {
@@ -1257,7 +1258,13 @@ export const MessageListInner: React.FC<MessageListProps> = ({
                         className="my-3 flex w-full items-center gap-3 px-4 text-left"
                       >
                         <div className="h-px flex-1 bg-border-subtle" />
-                        <span className="text-xs font-medium text-text-muted">{topicLabel}</span>
+                        <span
+                          className={`text-xs font-medium text-text-muted ${
+                            topicDisplay.isSystem ? "italic" : ""
+                          }`}
+                        >
+                          {topicDisplay.label}
+                        </span>
                         <div className="h-px flex-1 bg-border-subtle" />
                       </button>
                     )}
@@ -1295,7 +1302,13 @@ export const MessageListInner: React.FC<MessageListProps> = ({
                       className="my-3 flex w-full items-center gap-3 px-4 text-left"
                     >
                       <div className="h-px flex-1 bg-border-subtle" />
-                      <span className="text-xs font-medium text-text-muted">{topicLabel}</span>
+                      <span
+                        className={`text-xs font-medium text-text-muted ${
+                          topicDisplay.isSystem ? "italic" : ""
+                        }`}
+                      >
+                        {topicDisplay.label}
+                      </span>
                       <div className="h-px flex-1 bg-border-subtle" />
                     </button>
                   )}

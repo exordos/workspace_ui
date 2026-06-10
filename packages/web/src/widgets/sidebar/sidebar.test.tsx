@@ -493,6 +493,29 @@ describe("Sidebar", () => {
     expect(screen.queryByText("Alice")).not.toBeInTheDocument();
   });
 
+  it("matches the system general-chat topic by its localized label in sidebar search", () => {
+    const streamWithTopic: Extract<SidebarChat, { type: "stream" }> = {
+      ...STREAM_CHAT,
+      topics: [{ subject: "", badge: 0 }],
+    };
+
+    renderWithProviders(
+      <Sidebar
+        streams={[]}
+        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+        sidebarChats={[streamWithTopic, DM_CHAT]}
+        sidebarDms={[DM_CHAT]}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText(/find/i), {
+      target: { value: t("chat.generalChat") },
+    });
+
+    expect(screen.getByText("#Engineering")).toBeInTheDocument();
+    expect(screen.queryByText("Alice")).not.toBeInTheDocument();
+  });
+
   it("matches group dm chats by member email in sidebar search", () => {
     useUsersStore
       .getState()
@@ -1471,6 +1494,38 @@ describe("Sidebar", () => {
     expect(screen.getByText("incident")).toBeInTheDocument();
   });
 
+  it("renders the system general-chat topic separately and highlights only it in italic", () => {
+    const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
+      ...STREAM_CHAT,
+      topics: [
+        { subject: "", badge: 1, lastMessage: "System topic" },
+        { subject: t("chat.generalChat"), badge: 0, lastMessage: "User topic" },
+      ],
+    };
+    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
+
+    renderWithProviders(
+      <Sidebar
+        streams={[]}
+        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+        activeStreamSlug="11-engineering"
+        sidebarChats={[streamWithTopics]}
+        sidebarDms={[]}
+      />,
+    );
+
+    const topicLabels = screen.getAllByText(t("chat.generalChat"));
+    const systemTopicLabel = topicLabels[0]!;
+    const userTopicLabel = topicLabels[1]!;
+    expect(topicLabels).toHaveLength(2);
+    expect(systemTopicLabel).toHaveClass("italic");
+    expect(userTopicLabel).not.toHaveClass("italic");
+    expect(systemTopicLabel.closest("a")).toHaveAttribute(
+      "href",
+      expect.stringContaining("/topic/__empty__"),
+    );
+  });
+
   it("shows only three topics and expands the rest via show-more button", () => {
     const streamWithManyTopics: Extract<SidebarChat, { type: "stream" }> = {
       ...STREAM_CHAT,
@@ -1513,6 +1568,7 @@ describe("Sidebar", () => {
   it("shows topic last message sender name in folder stream list", async () => {
     const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
       ...STREAM_CHAT,
+      lastMessageSenderName: "Stream Sender",
       topics: [
         {
           subject: "incident",
@@ -1536,6 +1592,7 @@ describe("Sidebar", () => {
 
     await waitFor(() => {
       expect(screen.getByText("incident")).toBeInTheDocument();
+      expect(screen.getByText("Stream Sender")).toBeInTheDocument();
       expect(screen.getByText("Topic Sender")).toBeInTheDocument();
     });
   });

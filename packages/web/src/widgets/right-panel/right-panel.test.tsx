@@ -14,7 +14,7 @@ import * as muteChat from "~/features/mute-chat/mute-chat.api";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { useRemoveStreamMembersStore } from "~/features/remove-stream-members/remove-stream-members.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
-import { setLocale } from "~/i18n/i18n";
+import { setLocale, t } from "~/i18n/i18n";
 import * as zulipStreams from "~/shared/api/zulip-streams";
 import { RightDrawerContext } from "~/shared/contexts/right-drawer";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
@@ -716,6 +716,40 @@ describe("RightPanel truthfulness", () => {
     expect(screen.getByText("release")).toBeInTheDocument();
     expect(screen.getByText("infra")).toBeInTheDocument();
     expect(screen.getByText("2")).toBeInTheDocument();
+  });
+
+  it("renders the system general-chat topic separately and only it in italic", () => {
+    act(() => {
+      useCurrentChatMessagesStore.setState({
+        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "" },
+        messages: [],
+        isLoadingMore: false,
+        hasOlderMessages: true,
+        hasNewerMessages: false,
+      });
+      useChatInfoStore.getState().setData({
+        type: "stream",
+        name: "engineering",
+        memberCount: 3,
+        onlineCount: 1,
+        members: [],
+        description: "Engineering stream for product delivery",
+        isMuted: false,
+        topics: [
+          { name: "", unreadCount: 2 },
+          { name: t("chat.generalChat"), unreadCount: 0 },
+        ],
+      });
+    });
+
+    renderWithProviders(
+      <RightPanelShell title="engineering" participantsCount={3} onlineCount={1} />,
+    );
+
+    const topicLabels = screen.getAllByText(t("chat.generalChat"));
+    expect(topicLabels).toHaveLength(2);
+    expect(topicLabels[0]).toHaveClass("italic");
+    expect(topicLabels[1]).not.toHaveClass("italic");
   });
 
   it("navigates to the selected stream topic from right-panel topic list", () => {

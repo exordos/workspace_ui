@@ -2,6 +2,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { t } from "~/i18n/i18n";
 import { sidebarRowClass } from "~/shared/lib/format";
+import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { SidebarChatBadges } from "./sidebar-chat-badges.ui";
@@ -11,7 +12,6 @@ import { TopicMuteButton } from "./sidebar-folder-topic-buttons.ui";
 import { SidebarMessagePreview } from "./sidebar-message-preview.ui";
 import { SidebarStreamHydrateWrapper } from "./sidebar-stream-hydrate-wrapper.ui";
 import { useSidebarTopicCollapse } from "./sidebar-topic-collapse.hook";
-import { resolveSidebarTopicLabel } from "./sidebar-topic-label.lib";
 import { SidebarTopicShowMoreButton } from "./sidebar-topic-show-more.ui";
 import { slugForStream, TOPIC_BAR_COLORS } from "./sidebar.lib";
 import type { NewTopicDialogState } from "./sidebar-folder-chat-list.types";
@@ -150,7 +150,7 @@ const SidebarFolderStreamTopicsList = React.memo(function SidebarFolderStreamTop
           visibleTopics.map((topic, idx) => {
             const topicColor = TOPIC_BAR_COLORS[idx % TOPIC_BAR_COLORS.length];
             const isTopicActive = streamSlug === activeStreamSlug && activeTopic === topic.subject;
-            const topicLabel = resolveSidebarTopicLabel(topic.subject);
+            const topicDisplay = resolveTopicDisplayInfo(topic.subject);
             return (
               <TopicContextMenu
                 key={topic.subject}
@@ -172,8 +172,12 @@ const SidebarFolderStreamTopicsList = React.memo(function SidebarFolderStreamTop
                   className="flex w-full min-w-0 items-start gap-3 py-2 pl-3 pr-12"
                 >
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium text-text-primary">
-                      {topicLabel}
+                    <div
+                      className={`truncate text-sm font-medium text-text-primary ${
+                        topicDisplay.isSystem ? "italic" : ""
+                      }`}
+                    >
+                      {topicDisplay.label}
                     </div>
                     {!isCompactDensity && (
                       <SidebarMessagePreview
@@ -308,7 +312,7 @@ export const SidebarFolderStreamRow = React.memo(function SidebarFolderStreamRow
                   isCompactDensity={isCompactDensity}
                   isPinnedChat={isPinnedChat}
                   streamAvatarSize={streamAvatarSize}
-                  showLastMessageSender={false}
+                  showLastMessageSender
                 />
               </Link>
               <button

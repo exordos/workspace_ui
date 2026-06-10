@@ -88,7 +88,7 @@ export const ChatPageMessageListSection = React.memo(function ChatPageMessageLis
     activeTopic,
   });
 
-  const showTopicInSenderName = activeTopic == null || activeTopic.trim() === "";
+  const showTopicInSenderName = activeTopic == null;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">

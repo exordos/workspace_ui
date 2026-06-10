@@ -29,6 +29,7 @@ import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { buildNavigableRouteFromMessage } from "~/shared/lib/push-click";
 import { runInFlightDeduped } from "~/shared/lib/request-lifecycle.lib";
 import { scrollToBottom } from "~/shared/lib/scroll-position.lib";
+import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
 import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
 import { AppDialog, DialogCancelButton, DialogPrimaryButton } from "~/shared/ui/app-dialog.ui";
 import { FloatingLoadingOverlay } from "~/shared/ui/floating-loading-overlay";
@@ -94,6 +95,17 @@ const DraftChatContextLabel = React.memo<{ draft: Draft }>(({ draft }) => {
       groupChatLabel: t("dm.groupChat"),
     }),
   );
+  if (draft.type === "stream" && draft.to.length > 0) {
+    const streamId = draft.to[0]!;
+    const streamName = streamsMap.get(streamId)?.name ?? String(streamId);
+    const topicDisplay = resolveTopicDisplayInfo(draft.topic ?? "");
+    return (
+      <>
+        <span>{`#${streamName} · `}</span>
+        <span className={topicDisplay.isSystem ? "italic" : ""}>{topicDisplay.label}</span>
+      </>
+    );
+  }
   return <>{context}</>;
 });
 DraftChatContextLabel.displayName = "DraftChatContextLabel";
@@ -502,6 +514,7 @@ export const ActivityPage: React.FC = () => {
             const streamName =
               isStream && typeof m.display_recipient === "string" ? m.display_recipient : null;
             const topic = isStream ? (m.subject ?? "").trim() : null;
+            const topicDisplay = isStream ? resolveTopicDisplayInfo(topic ?? "") : null;
             let dmName: string | null = null;
             if (m.type === "private" && Array.isArray(m.display_recipient)) {
               const entry = messageToDmEntry(m, currentUserId);
@@ -529,7 +542,18 @@ export const ActivityPage: React.FC = () => {
                       <span className="shrink-0 text-[11px] text-text-muted">
                         {formatItemTime(m.timestamp)}
                       </span>
-                      <span className="truncate text-[11px] text-text-muted">{context}</span>
+                      <span className="truncate text-[11px] text-text-muted">
+                        {isStream && streamName != null && topicDisplay != null ? (
+                          <>
+                            <span>{`#${streamName} · `}</span>
+                            <span className={topicDisplay.isSystem ? "italic" : ""}>
+                              {topicDisplay.label}
+                            </span>
+                          </>
+                        ) : (
+                          context
+                        )}
+                      </span>
                     </div>
                     <p className="mt-0.5 text-xs text-sidebar-sender">
                       <ActivitySenderName
