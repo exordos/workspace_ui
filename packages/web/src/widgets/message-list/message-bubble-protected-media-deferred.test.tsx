@@ -33,7 +33,15 @@ function createProtectedImageMessage(): MockMessage {
   return createMessage({
     id: 501,
     content: '<p>image</p><img src="/user_uploads/1/private.png" alt="private image" />',
-  }) as MockMessage;
+  });
+}
+
+function createProtectedVideoMessage(): MockMessage {
+  return createMessage({
+    id: 502,
+    content:
+      '<p>video</p><video controls><source src="/user_uploads/1/private.mp4" type="video/mp4" /></video>',
+  });
 }
 
 interface IoInstance {
@@ -43,6 +51,7 @@ interface IoInstance {
 
 describe("MessageBubble deferred protected media (IntersectionObserver)", () => {
   const originalIntersectionObserver = globalThis.IntersectionObserver;
+  const originalMediaLoad = HTMLMediaElement.prototype.load;
   let ioInstances: IoInstance[] = [];
   let lastObserverRoot: Element | Document | null = null;
 
@@ -94,12 +103,14 @@ describe("MessageBubble deferred protected media (IntersectionObserver)", () => 
     lastObserverRoot = null;
     buildAuthHeaderMock.mockReset();
     globalThis.IntersectionObserver = IntersectionObserverDeferredMock;
+    HTMLMediaElement.prototype.load = vi.fn();
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
     globalThis.IntersectionObserver = originalIntersectionObserver;
+    HTMLMediaElement.prototype.load = originalMediaLoad;
   });
 
   it("does not fetch protected image until IO reports intersecting inside role=feed", async () => {
@@ -183,5 +194,74 @@ describe("MessageBubble deferred protected media (IntersectionObserver)", () => 
       setTimeout(r, 30);
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("loads protected video when the visible video enters the viewport", async () => {
+    const fetchMock = vi.fn((input: string | URL) => {
+      const s = String(input);
+      if (s.includes("/user_uploads/1/private.mp4")) {
+        return Promise.resolve({
+          ok: true,
+          blob: () => Promise.resolve(new Blob(["video"], { type: "video/mp4" })),
+        });
+      }
+      return Promise.resolve({
+        ok: false,
+        blob: () => Promise.resolve(new Blob([])),
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:deferred-video");
+    buildAuthHeaderMock.mockReturnValue({ Authorization: "Basic test" });
+
+    const { container } = render(
+      <div role="feed" className="h-40 overflow-y-auto">
+        <MessageBubble message={createProtectedVideoMessage()} isOwn={false} />
+      </div>,
+    );
+
+    const video = container.querySelector("video");
+    const source = container.querySelector("video source");
+    expect(video).not.toBeNull();
+    expect(source).not.toBeNull();
+    expect(lastObserverRoot).toBe(container.firstChild);
+    expect(ioInstances.some((inst) => inst.observed.includes(video!))).toBe(true);
+    expect(ioInstances.some((inst) => inst.observed.includes(source!))).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    fireIntersection(video!, true);
+
+    await waitFor(() => {
+      expect(video?.getAttribute("src")).toBe("blob:deferred-video");
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(HTMLMediaElement.prototype.load).toHaveBeenCalled();
+  });
+
+  it("keeps protected video inactive when authenticated fetch fails", async () => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve({
+        ok: false,
+        blob: () => Promise.resolve(new Blob([])),
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    buildAuthHeaderMock.mockReturnValue({ Authorization: "Basic test" });
+
+    const { container } = render(
+      <div role="feed" className="h-40 overflow-y-auto">
+        <MessageBubble message={createProtectedVideoMessage()} isOwn={false} />
+      </div>,
+    );
+
+    const video = container.querySelector("video");
+    expect(video).not.toBeNull();
+
+    fireIntersection(video!, true);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    expect(video?.getAttribute("src")).toBeNull();
   });
 });

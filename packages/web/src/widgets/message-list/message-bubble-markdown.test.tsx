@@ -189,7 +189,7 @@ describe("MessageBubble markdown body", () => {
     expect(emojiImage).toHaveAttribute("title", ":party_parrot:");
   });
 
-  it("opens media viewer when clicking inline video", () => {
+  it("does not open media viewer on a regular inline video click", () => {
     useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
     const mediaViewerOpenSpy = vi.spyOn(useMediaViewerStore.getState(), "open");
     const content =
@@ -202,7 +202,28 @@ describe("MessageBubble markdown body", () => {
 
     const video = container.querySelector("video");
     expect(video).toBeTruthy();
-    fireEvent.click(video as HTMLVideoElement);
+    const clickEvent = new MouseEvent("click", { bubbles: true, cancelable: true });
+    (video as HTMLVideoElement).dispatchEvent(clickEvent);
+
+    expect(clickEvent.defaultPrevented).toBe(false);
+    expect(mediaViewerOpenSpy).not.toHaveBeenCalled();
+    mediaViewerOpenSpy.mockRestore();
+  });
+
+  it("opens media viewer on inline video double click", () => {
+    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+    const mediaViewerOpenSpy = vi.spyOn(useMediaViewerStore.getState(), "open");
+    const content =
+      '<video controls><source src="/user_uploads/1/private.mp4" type="video/mp4" /></video>';
+    const gallery = buildMessageMediaGallery([createMessage({ content })]);
+
+    const { container } = render(
+      <MessageBubble message={createMessage({ content })} isOwn={false} mediaGallery={gallery} />,
+    );
+
+    const video = container.querySelector("video");
+    expect(video).toBeTruthy();
+    fireEvent.doubleClick(video as HTMLVideoElement);
 
     expect(mediaViewerOpenSpy).toHaveBeenCalledWith(
       expect.arrayContaining([expect.objectContaining({ type: "video" })]),

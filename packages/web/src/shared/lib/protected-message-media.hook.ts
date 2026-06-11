@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { buildAuthHeader } from "~/shared/lib/auth-guard";
 import { upgradeUserUploadVideoLinksInContainer } from "~/shared/lib/message-inline-user-upload-video.lib";
+import { useInlineVideoPosters } from "~/shared/lib/message-inline-video-poster.hook";
 import {
   AUTH_IMAGE_PLACEHOLDER_SRC,
   AUTH_MEDIA_BACKGROUND_IMAGE_DATA_ATTR,
@@ -45,6 +46,7 @@ export function useProtectedMessageHtml(
   });
 
   useProtectedMediaLoader(containerRef, html, options);
+  useInlineVideoPosters(containerRef, html, options);
 }
 
 function loadProtectedMediaIntoElement(
@@ -79,6 +81,41 @@ function loadProtectedMediaIntoElement(
   });
 }
 
+function resolveProtectedMediaSourceValue(mediaElement: HTMLMediaElement): string | null {
+  const ownValue = mediaElement.getAttribute(AUTH_MEDIA_SRC_DATA_ATTR)?.trim();
+  if (ownValue != null && ownValue !== "") {
+    return ownValue;
+  }
+
+  const source = mediaElement.querySelector<HTMLSourceElement>(
+    `source[${AUTH_MEDIA_SRC_DATA_ATTR}]`,
+  );
+  const sourceValue = source?.getAttribute(AUTH_MEDIA_SRC_DATA_ATTR)?.trim();
+  if (sourceValue != null && sourceValue !== "") {
+    return sourceValue;
+  }
+
+  return null;
+}
+
+function loadProtectedMediaIntoHtmlMediaElement(
+  mediaElement: HTMLMediaElement,
+  headers: Record<string, string>,
+  blobUrls: string[],
+  isCancelled: () => boolean,
+): void {
+  const rawValue = resolveProtectedMediaSourceValue(mediaElement);
+  if (!rawValue || !isAuthMediaPlaceholderAttr(mediaElement.getAttribute("src"))) {
+    return;
+  }
+
+  void fetchProtectedUploadDisplayUrl(rawValue, headers, blobUrls).then((displayUrl) => {
+    if (isCancelled() || displayUrl == null) return;
+    mediaElement.setAttribute("src", displayUrl);
+    mediaElement.load();
+  });
+}
+
 function loadProtectedBackgroundImageIntoElement(
   element: HTMLElement,
   headers: Record<string, string>,
@@ -96,6 +133,36 @@ function loadProtectedBackgroundImageIntoElement(
   });
 }
 
+function resolveProtectedMediaLoadTarget(element: HTMLElement): HTMLElement {
+  if (element instanceof HTMLSourceElement) {
+    const mediaElement = element.closest("audio,video");
+    if (mediaElement instanceof HTMLMediaElement) {
+      return mediaElement;
+    }
+  }
+
+  return element;
+}
+
+function collectProtectedMediaLoadTargets(container: HTMLElement): HTMLElement[] {
+  const candidates = container.querySelectorAll<HTMLElement>(
+    `[${AUTH_MEDIA_SRC_DATA_ATTR}], [${AUTH_MEDIA_POSTER_DATA_ATTR}], [${AUTH_MEDIA_BACKGROUND_IMAGE_DATA_ATTR}]`,
+  );
+  const targets: HTMLElement[] = [];
+  const seen = new Set<HTMLElement>();
+
+  for (const candidate of candidates) {
+    const target = resolveProtectedMediaLoadTarget(candidate);
+    if (seen.has(target)) {
+      continue;
+    }
+    seen.add(target);
+    targets.push(target);
+  }
+
+  return targets;
+}
+
 function useProtectedMediaLoader(
   containerRef: RefObject<HTMLElement | null>,
   html: string,
@@ -105,11 +172,7 @@ function useProtectedMediaLoader(
     const container = containerRef.current;
     if (container == null) return;
 
-    const protectedMediaElements = Array.from(
-      container.querySelectorAll<HTMLElement>(
-        `[${AUTH_MEDIA_SRC_DATA_ATTR}], [${AUTH_MEDIA_POSTER_DATA_ATTR}], [${AUTH_MEDIA_BACKGROUND_IMAGE_DATA_ATTR}]`,
-      ),
-    );
+    const protectedMediaElements = collectProtectedMediaLoadTargets(container);
     if (protectedMediaElements.length === 0) return;
 
     const headers = buildAuthHeader();
@@ -120,7 +183,9 @@ function useProtectedMediaLoader(
     let cancelled = false;
 
     const startFetchForElement = (element: HTMLElement) => {
-      if (element.hasAttribute(AUTH_MEDIA_SRC_DATA_ATTR)) {
+      if (element instanceof HTMLVideoElement || element instanceof HTMLAudioElement) {
+        loadProtectedMediaIntoHtmlMediaElement(element, headers, blobUrls, () => cancelled);
+      } else if (element.hasAttribute(AUTH_MEDIA_SRC_DATA_ATTR)) {
         loadProtectedMediaIntoElement(
           element,
           AUTH_MEDIA_SRC_DATA_ATTR,

@@ -6,6 +6,7 @@ import {
   captureReplySelectionForContextMenu,
   executeMessageBubbleMenuAction,
   handleMessageBodyClick,
+  handleMessageBodyDoubleClick,
   resolveMessageBodyClickHit,
   type MessageBubbleMentionPopoverState,
 } from "./message-bubble-actions.lib";
@@ -302,6 +303,34 @@ export function useMessageBubbleInteractions({
     ],
   );
 
+  const handleMessageBodyDoubleClickEvent = useCallback(
+    (event: MouseEvent) => {
+      const hit = resolveMessageBodyClickHit(event.target);
+      if (hit == null) {
+        return;
+      }
+      handleMessageBodyDoubleClick(event, hit, {
+        mediaGallery,
+        callbacks,
+        startDownload,
+        setDownloadProgress,
+        finishDownload,
+        setAttachmentStatus,
+        scheduleAttachmentStatusClear,
+        onMentionPopoverOpen: setMentionPopover,
+      });
+    },
+    [
+      callbacks,
+      finishDownload,
+      mediaGallery,
+      scheduleAttachmentStatusClear,
+      setAttachmentStatus,
+      setDownloadProgress,
+      startDownload,
+    ],
+  );
+
   useEffect(() => {
     const attachmentTimers = attachmentTimersRef.current;
     const attachmentStatuses = attachmentStatusRef.current;
@@ -398,10 +427,12 @@ export function useMessageBubbleInteractions({
       return;
     }
     messageBodyElement.addEventListener("click", handleMessageBodyClickEvent);
+    messageBodyElement.addEventListener("dblclick", handleMessageBodyDoubleClickEvent);
     return () => {
       messageBodyElement.removeEventListener("click", handleMessageBodyClickEvent);
+      messageBodyElement.removeEventListener("dblclick", handleMessageBodyDoubleClickEvent);
     };
-  }, [handleMessageBodyClickEvent, messageBodyRef]);
+  }, [handleMessageBodyClickEvent, handleMessageBodyDoubleClickEvent, messageBodyRef]);
 
   return {
     messageBodyRef,

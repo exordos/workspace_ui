@@ -121,11 +121,7 @@ function handleImageBodyClick(
   return true;
 }
 
-function handleVideoBodyClick(
-  event: MouseEvent,
-  videoElement: HTMLVideoElement,
-  deps: MessageBodyClickDeps,
-): boolean {
+function handleVideoBodyClick(event: MouseEvent, videoElement: HTMLVideoElement): boolean {
   const clickTarget = event.target;
   if (
     clickTarget instanceof Element &&
@@ -134,6 +130,14 @@ function handleVideoBodyClick(
   ) {
     return false;
   }
+  return false;
+}
+
+function openVideoBodyInViewer(
+  event: MouseEvent,
+  videoElement: HTMLVideoElement,
+  deps: MessageBodyClickDeps,
+): boolean {
   event.preventDefault();
   event.stopPropagation();
   const rawSrc = resolveVideoElementMediaUrl(videoElement);
@@ -267,7 +271,7 @@ export function handleMessageBodyClick(
 
   const videoElement = hit.closest("video");
   if (videoElement instanceof HTMLVideoElement) {
-    handleVideoBodyClick(event, videoElement, deps);
+    handleVideoBodyClick(event, videoElement);
     return;
   }
 
@@ -299,6 +303,18 @@ export function handleMessageBodyClick(
 
   const href = clickedLink.getAttribute("href") ?? "";
   handlePermalinkClick(event, href, deps);
+}
+
+export function handleMessageBodyDoubleClick(
+  event: MouseEvent,
+  hit: HTMLElement,
+  deps: MessageBodyClickDeps,
+): void {
+  const videoElement = hit.closest("video");
+  if (videoElement == null) {
+    return;
+  }
+  openVideoBodyInViewer(event, videoElement, deps);
 }
 
 export function captureReplySelectionForContextMenu(
