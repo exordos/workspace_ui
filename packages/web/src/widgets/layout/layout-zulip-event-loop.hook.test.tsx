@@ -424,7 +424,7 @@ describe("useLayoutZulipEventLoop", () => {
     });
   });
 
-  it("preloads bootstrap statuses for current user, DM sidebar users, and remaining directory users", async () => {
+  it("does not preload bootstrap statuses for users directory members", async () => {
     fetchUsersMock.mockResolvedValueOnce([
       { user_id: 7, full_name: "Current User", email: "test@example.com" },
       { user_id: 20, full_name: "Partner", email: "partner@example.com" },
@@ -443,19 +443,9 @@ describe("useLayoutZulipEventLoop", () => {
     render(<Harness currentInstanceId="inst-1" />);
 
     await waitFor(() => {
-      expect(requestUserStatusMock).toHaveBeenCalledWith(7, {
-        reason: "bootstrap",
-        priority: "high",
-      });
+      expect(startZulipEventLoopMock).toHaveBeenCalledTimes(1);
     });
-    expect(requestUserStatusMock).toHaveBeenCalledWith(20, {
-      reason: "bootstrap",
-      priority: "high",
-    });
-    expect(requestUserStatusMock).toHaveBeenCalledWith(30, {
-      reason: "bootstrap",
-      priority: "high",
-    });
+    expect(requestUserStatusMock).not.toHaveBeenCalled();
   });
 
   it("does not let a superseded bootstrap run set blocked after ready", async () => {

@@ -1,6 +1,5 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import React, { useEffect, useMemo, useState } from "react";
-import { ensureUserStatusLoaded } from "~/entities/user/api/user.api";
+import React, { useMemo, useState } from "react";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
@@ -28,15 +27,6 @@ export const ForwardMessageModalBody = React.memo<ForwardMessageModalBodyProps>(
           u.full_name.toLowerCase().includes(q) || (u.email?.toLowerCase().includes(q) ?? false),
       );
     }, [allUsers, dmSearch]);
-
-    useEffect(() => {
-      if (tab !== "dm") {
-        return;
-      }
-      for (const user of userList) {
-        void ensureUserStatusLoaded(user.user_id);
-      }
-    }, [tab, userList]);
 
     return (
       <>

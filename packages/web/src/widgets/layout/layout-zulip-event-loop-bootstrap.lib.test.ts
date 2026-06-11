@@ -1,24 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  collectBootstrapStatusUserIds,
-  onStreamPreviewBootstrapSettled,
-} from "./layout-zulip-event-loop-bootstrap.lib";
+import { onStreamPreviewBootstrapSettled } from "./layout-zulip-event-loop-bootstrap.lib";
 import type { ChatListBootstrapResult } from "./layout-chat-list-bootstrap.lib";
-
-describe("collectBootstrapStatusUserIds", () => {
-  it("prioritizes current user and DM participants before the rest of the directory", () => {
-    const ids = collectBootstrapStatusUserIds({
-      currentUserId: 7,
-      dms: [
-        { id: 20, isGroup: false },
-        { id: 99, isGroup: true, userIds: [7, 40, 41] },
-      ],
-      members: [{ user_id: 41 }, { user_id: 30 }, { user_id: 20 }, { user_id: 50 }],
-    });
-
-    expect(ids).toEqual([7, 20, 40, 41, 30, 50]);
-  });
-});
 
 describe("onStreamPreviewBootstrapSettled", () => {
   it("skips bootstrap apply when getCancelled reads true after handler was created", () => {
