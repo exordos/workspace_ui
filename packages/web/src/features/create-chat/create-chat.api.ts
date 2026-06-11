@@ -146,6 +146,53 @@ export async function fetchSubscribedChannels(): Promise<SubscribedChannel[]> {
 }
 
 // ---------------------------------------------------------------------------
+// Channel subscription (browse tab)
+// ---------------------------------------------------------------------------
+
+export interface SubscribeCurrentUserToStreamResult {
+  ok: boolean;
+  errorCode?: string;
+}
+
+/**
+ * Subscribes the current user to an existing channel.
+ *
+ * Zulip API: POST /users/me/subscriptions (no principals — caller is subscribed).
+ */
+export async function subscribeCurrentUserToStream(
+  streamName: string,
+  userId: number,
+): Promise<SubscribeCurrentUserToStreamResult> {
+  const normalizedName = guard
+    .nonEmpty(streamName, "subscribeCurrentUserToStream.streamName")
+    .trim();
+  guard.userId(userId, "subscribeCurrentUserToStream.userId");
+
+  try {
+    const res = await zulipApi.post("/users/me/subscriptions", {
+      subscriptions: JSON.stringify([{ name: normalizedName }]),
+    });
+
+    if (!res.ok) {
+      log.warn("Subscribe to channel failed", { status: res.status });
+      return { ok: false, errorCode: `http_${res.status}` };
+    }
+
+    const payload = res.data as { result?: string; code?: string };
+    if (payload.result === "error") {
+      log.warn("Subscribe to channel rejected", { code: payload.code });
+      return { ok: false, errorCode: payload.code ?? "unknown_error" };
+    }
+
+    log.info("Subscribed to channel", { streamNameLength: normalizedName.length });
+    return { ok: true };
+  } catch (err) {
+    log.error("Subscribe to channel error", { error: String(err) });
+    return { ok: false, errorCode: "network_error" };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Channel unsubscription
 // ---------------------------------------------------------------------------
 

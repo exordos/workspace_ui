@@ -3,13 +3,36 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
+import { fetchStreams, fetchSubscriptions } from "~/shared/api/zulip-streams";
 import { useCreateChatDialog } from "./create-chat-dialog.hook";
-import { createChannel, unarchiveChannel } from "./create-chat.api";
+import {
+  createChannel,
+  subscribeCurrentUserToStream,
+  unarchiveChannel,
+  unsubscribeChannel,
+} from "./create-chat.api";
 
 vi.mock("./create-chat.api", () => ({
   createChannel: vi.fn(),
   unarchiveChannel: vi.fn(),
+  subscribeCurrentUserToStream: vi.fn(),
+  unsubscribeChannel: vi.fn(),
 }));
+
+vi.mock("~/shared/api/zulip-streams", () => ({
+  fetchStreams: vi.fn(),
+  fetchSubscriptions: vi.fn(),
+}));
+
+function defaultHookOptions(overrides: Partial<Parameters<typeof useCreateChatDialog>[0]> = {}) {
+  return {
+    open: true,
+    onNavigateDm: vi.fn(),
+    onNavigateStream: vi.fn(),
+    onChannelCreated: vi.fn(),
+    ...overrides,
+  };
+}
 
 function seedUsers(): void {
   useUsersStore.getState().mergeUsers([
@@ -59,11 +82,7 @@ describe("useCreateChatDialog", () => {
     const onChannelCreated = vi.fn();
 
     const { result } = renderHook(() =>
-      useCreateChatDialog({
-        open: true,
-        onNavigateDm: vi.fn(),
-        onChannelCreated,
-      }),
+      useCreateChatDialog(defaultHookOptions({ onChannelCreated })),
     );
 
     act(() => {
@@ -98,13 +117,7 @@ describe("useCreateChatDialog", () => {
     seedUsers();
     useChatListStore.setState({ currentUserId: null });
 
-    const { result } = renderHook(() =>
-      useCreateChatDialog({
-        open: true,
-        onNavigateDm: vi.fn(),
-        onChannelCreated: vi.fn(),
-      }),
-    );
+    const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
 
     act(() => {
       result.current.setChannelName("engineering");
@@ -124,13 +137,7 @@ describe("useCreateChatDialog", () => {
     useChatListStore.setState({ currentUserId: 10 });
     vi.mocked(createChannel).mockResolvedValue(null);
 
-    const { result } = renderHook(() =>
-      useCreateChatDialog({
-        open: true,
-        onNavigateDm: vi.fn(),
-        onChannelCreated: vi.fn(),
-      }),
-    );
+    const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
 
     act(() => {
       result.current.setChannelName("announcements");
@@ -159,13 +166,7 @@ describe("useCreateChatDialog", () => {
     seedUsers();
     useChatListStore.setState({ currentUserId: 10 });
 
-    const { result } = renderHook(() =>
-      useCreateChatDialog({
-        open: true,
-        onNavigateDm: vi.fn(),
-        onChannelCreated: vi.fn(),
-      }),
-    );
+    const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
 
     expect(result.current.channelAnnouncementOnlyBlocked).toBe(true);
     expect(result.current.channelAnnouncementOnlyBlockedReasonKey).toBe(
@@ -182,13 +183,7 @@ describe("useCreateChatDialog", () => {
       status: 200,
     });
 
-    const { result } = renderHook(() =>
-      useCreateChatDialog({
-        open: true,
-        onNavigateDm: vi.fn(),
-        onChannelCreated: vi.fn(),
-      }),
-    );
+    const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
 
     await act(async () => {
       await result.current.onUnarchiveArchivedChannel(5);
@@ -196,5 +191,152 @@ describe("useCreateChatDialog", () => {
 
     expect(unarchiveChannel).toHaveBeenCalledWith(5);
     expect(result.current.unarchiveInlineError).toEqual({ kind: "unsupported" });
+  });
+
+  it("loads browse channels when the channels tab is opened", async () => {
+    seedUsers();
+    vi.mocked(fetchStreams).mockResolvedValue([
+      {
+        stream_id: 5,
+        name: "engineering",
+        description: "Eng",
+        is_announcement_only: false,
+      },
+      {
+        stream_id: 6,
+        name: "design",
+        description: "Design",
+        is_announcement_only: false,
+      },
+    ]);
+    vi.mocked(fetchSubscriptions).mockResolvedValue([
+      { stream_id: 5, name: "engineering", is_muted: false },
+    ]);
+
+    const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
+
+    act(() => {
+      result.current.setTab("channels");
+    });
+
+    await waitFor(() => {
+      expect(result.current.channelsLoading).toBe(false);
+    });
+
+    expect(fetchStreams).toHaveBeenCalledTimes(1);
+    expect(fetchSubscriptions).toHaveBeenCalledTimes(1);
+    expect(result.current.browseChannels).toEqual([
+      {
+        streamId: 6,
+        name: "design",
+        description: "Design",
+        isSubscribed: false,
+        isMuted: false,
+        inviteOnly: null,
+        historyPublicToSubscribers: null,
+        isAnnouncementOnly: false,
+        isWebPublic: false,
+        streamPostPolicy: null,
+        subscriberCount: null,
+        weeklyMessageCount: null,
+        creatorId: null,
+        dateCreated: null,
+        folderId: null,
+        isDefault: null,
+        isRecentlyActive: null,
+        messageRetentionDays: null,
+        desktopNotifications: null,
+        audibleNotifications: null,
+      },
+    ]);
+    expect(result.current.selectedBrowseChannelId).toBe(6);
+    expect(result.current.channelsSubscriptionFilter).toBe("unsubscribed");
+  });
+
+  it("subscribes to a channel without navigating away from the dialog", async () => {
+    seedUsers();
+    useChatListStore.setState({ currentUserId: 10 });
+    vi.mocked(fetchStreams).mockResolvedValue([
+      {
+        stream_id: 7,
+        name: "design",
+        description: "",
+        is_announcement_only: false,
+      },
+    ]);
+    vi.mocked(fetchSubscriptions).mockResolvedValue([]);
+    vi.mocked(subscribeCurrentUserToStream).mockResolvedValue({ ok: true });
+    const onNavigateStream = vi.fn();
+
+    const { result } = renderHook(() =>
+      useCreateChatDialog(defaultHookOptions({ onNavigateStream })),
+    );
+
+    act(() => {
+      result.current.setTab("channels");
+    });
+
+    await waitFor(() => {
+      expect(result.current.browseChannels).toHaveLength(1);
+    });
+
+    await act(async () => {
+      await result.current.onSubscribeToChannel(7, "design");
+    });
+
+    expect(subscribeCurrentUserToStream).toHaveBeenCalledWith("design", 10);
+    expect(onNavigateStream).not.toHaveBeenCalled();
+    expect(useChatListStore.getState().streamsMap.get(7)?.name).toBe("design");
+
+    act(() => {
+      result.current.setChannelsSubscriptionFilter("subscribed");
+    });
+
+    await waitFor(() => {
+      expect(result.current.browseChannels[0]?.isSubscribed).toBe(true);
+    });
+  });
+
+  it("unsubscribes from a channel and removes it from the sidebar store", async () => {
+    seedUsers();
+    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 7, name: "design" }]);
+    vi.mocked(fetchStreams).mockResolvedValue([
+      {
+        stream_id: 7,
+        name: "design",
+        description: "Design team",
+        is_announcement_only: false,
+      },
+    ]);
+    vi.mocked(fetchSubscriptions).mockResolvedValue([
+      { stream_id: 7, name: "design", is_muted: false, invite_only: false },
+    ]);
+    vi.mocked(unsubscribeChannel).mockResolvedValue(true);
+
+    const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
+
+    act(() => {
+      result.current.setTab("channels");
+    });
+
+    await waitFor(() => {
+      expect(result.current.channelsLoading).toBe(false);
+    });
+
+    act(() => {
+      result.current.setChannelsSubscriptionFilter("subscribed");
+    });
+
+    await waitFor(() => {
+      expect(result.current.browseChannels[0]?.isSubscribed).toBe(true);
+    });
+
+    await act(async () => {
+      await result.current.onUnsubscribeFromChannel(7, "design");
+    });
+
+    expect(unsubscribeChannel).toHaveBeenCalledWith("design");
+    expect(useChatListStore.getState().streamsMap.has(7)).toBe(false);
+    expect(result.current.browseChannels).toHaveLength(0);
   });
 });

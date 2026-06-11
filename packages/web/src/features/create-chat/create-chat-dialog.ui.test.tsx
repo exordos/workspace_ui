@@ -8,7 +8,16 @@ import { createChannel, unarchiveChannel } from "./create-chat.api";
 vi.mock("./create-chat.api", () => ({
   createChannel: vi.fn(),
   unarchiveChannel: vi.fn(),
+  subscribeCurrentUserToStream: vi.fn(),
+  unsubscribeChannel: vi.fn(),
 }));
+
+vi.mock("~/shared/api/zulip-streams", () => ({
+  fetchStreams: vi.fn(),
+  fetchSubscriptions: vi.fn(),
+}));
+
+import { fetchStreams, fetchSubscriptions } from "~/shared/api/zulip-streams";
 
 describe("CreateChatDialog", () => {
   beforeEach(() => {
@@ -16,6 +25,8 @@ describe("CreateChatDialog", () => {
     useUsersStore.getState().clear();
     useChatListStore.getState().clear();
     useUsersStore.getState().mergeUsers([{ user_id: 1, full_name: "Alice", email: "a@a.test" }]);
+    vi.mocked(fetchStreams).mockResolvedValue([]);
+    vi.mocked(fetchSubscriptions).mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -50,6 +61,78 @@ describe("CreateChatDialog", () => {
 
     fireEvent.click(createButton);
     expect(createChannel).not.toHaveBeenCalled();
+  });
+
+  it("renders channels tab with subscribe action in the detail panel", async () => {
+    useChatListStore.setState({ currentUserId: 10 });
+    vi.mocked(fetchStreams).mockResolvedValue([
+      {
+        stream_id: 42,
+        name: "engineering",
+        description: "Team channel",
+        is_announcement_only: false,
+        subscriber_count: 15,
+        stream_weekly_traffic: 30,
+      },
+    ]);
+    vi.mocked(fetchSubscriptions).mockResolvedValue([]);
+
+    render(
+      <CreateChatDialog
+        open
+        onOpenChange={vi.fn()}
+        onNavigateDm={vi.fn()}
+        onNavigateStream={vi.fn()}
+        onChannelCreated={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: "Channels" }));
+
+    expect(await screen.findByText("Team channel")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "#engineering" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Subscribe" })).toBeEnabled();
+    expect(screen.getByLabelText("15 subscribers")).toBeInTheDocument();
+    expect(screen.getByLabelText("30 messages per week")).toBeInTheDocument();
+    expect(screen.getByText("Activity")).toBeInTheDocument();
+    expect(screen.getByText("General")).toBeInTheDocument();
+  });
+
+  it("shows unsubscribe and channel settings for subscribed channels", async () => {
+    useChatListStore.setState({ currentUserId: 10 });
+    vi.mocked(fetchStreams).mockResolvedValue([
+      {
+        stream_id: 42,
+        name: "engineering",
+        description: "Team channel",
+        is_announcement_only: false,
+        invite_only: true,
+        history_public_to_subscribers: true,
+        subscriber_count: 8,
+        stream_weekly_traffic: 12,
+      },
+    ]);
+    vi.mocked(fetchSubscriptions).mockResolvedValue([
+      { stream_id: 42, name: "engineering", is_muted: false, invite_only: true },
+    ]);
+
+    render(
+      <CreateChatDialog
+        open
+        onOpenChange={vi.fn()}
+        onNavigateDm={vi.fn()}
+        onNavigateStream={vi.fn()}
+        onChannelCreated={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: "Channels" }));
+    fireEvent.click(screen.getByRole("button", { name: "Subscribed" }));
+
+    expect(await screen.findByText("Closed, open history")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open channel" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Unsubscribe" })).toBeEnabled();
+    expect(screen.getByRole("group", { name: "Show channels" })).toBeInTheDocument();
   });
 
   it("renders archived channels tab and linked tabpanel", () => {

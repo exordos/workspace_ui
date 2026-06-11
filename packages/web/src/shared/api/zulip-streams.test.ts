@@ -494,10 +494,21 @@ describe("fetchTopics", () => {
 // ---------------------------------------------------------------------------
 
 describe("fetchStreams", () => {
-  it("returns mapped streams", async () => {
+  it("returns mapped streams with optional metadata fields", async () => {
     mockZulipClient.streams.retrieve.mockResolvedValue({
       streams: [
-        { stream_id: 1, name: "general", description: "Main" },
+        {
+          stream_id: 1,
+          name: "general",
+          description: "Main",
+          invite_only: false,
+          is_announcement_only: true,
+          history_public_to_subscribers: true,
+          is_web_public: false,
+          subscriber_count: 12,
+          stream_weekly_traffic: 40,
+          stream_post_policy: 2,
+        },
         { stream_id: 2, name: "dev" },
       ],
     });
@@ -508,9 +519,29 @@ describe("fetchStreams", () => {
       stream_id: 1,
       name: "general",
       description: "Main",
-      is_announcement_only: false,
+      is_announcement_only: true,
+      invite_only: false,
+      history_public_to_subscribers: true,
+      is_web_public: false,
+      subscriber_count: 12,
+      stream_weekly_traffic: 40,
+      stream_post_policy: 2,
+      date_created: null,
+      folder_id: null,
+      message_retention_days: null,
     });
-    expect(result[1]!.description).toBe("");
+    expect(result[1]).toEqual({
+      stream_id: 2,
+      name: "dev",
+      description: "",
+      is_announcement_only: false,
+      subscriber_count: null,
+      stream_weekly_traffic: null,
+      stream_post_policy: null,
+      date_created: null,
+      folder_id: null,
+      message_retention_days: null,
+    });
   });
 });
 

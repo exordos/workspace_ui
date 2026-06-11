@@ -263,6 +263,24 @@ export interface MockStream {
   name: string;
   description: string;
   is_announcement_only: boolean;
+  invite_only?: boolean;
+  history_public_to_subscribers?: boolean;
+  is_web_public?: boolean;
+  subscriber_count?: number | null;
+  stream_weekly_traffic?: number | null;
+  stream_post_policy?: number | null;
+  creator_id?: number | null;
+  date_created?: number | null;
+  folder_id?: number | null;
+  is_default?: boolean;
+  is_recently_active?: boolean;
+  message_retention_days?: number | null;
+  can_subscribe_group?: ZulipGroupSettingValue;
+  can_add_subscribers_group?: ZulipGroupSettingValue;
+  can_remove_subscribers_group?: ZulipGroupSettingValue;
+  can_administer_channel_group?: ZulipGroupSettingValue;
+  can_resolve_topics_group?: ZulipGroupSettingValue;
+  can_move_messages_out_of_channel_group?: ZulipGroupSettingValue;
 }
 
 export type MockMessageDeliveryStatus = "sending" | "failed" | "sent";
