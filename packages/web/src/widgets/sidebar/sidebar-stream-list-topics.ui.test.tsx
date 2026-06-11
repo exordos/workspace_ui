@@ -34,7 +34,7 @@ describe("SidebarStreamListTopics", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText(t("channel.defaultTopic"))).toBeInTheDocument();
+    expect(screen.getByText(t("chat.generalChat"))).toBeInTheDocument();
   });
 
   it("renders default topic label for legacy general chat alias", () => {
@@ -66,7 +66,7 @@ describe("SidebarStreamListTopics", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText(t("channel.defaultTopic"))).toBeInTheDocument();
+    expect(screen.getByText(t("chat.generalChat"))).toBeInTheDocument();
     expect(screen.queryByText("general chat")).not.toBeInTheDocument();
   });
 
@@ -100,6 +100,6 @@ describe("SidebarStreamListTopics", () => {
     );
 
     expect(screen.getByText("release")).toBeInTheDocument();
-    expect(screen.queryByText(t("channel.defaultTopic"))).not.toBeInTheDocument();
+    expect(screen.queryByText(t("chat.generalChat"))).not.toBeInTheDocument();
   });
 });

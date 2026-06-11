@@ -760,7 +760,7 @@ describe("RightPanel truthfulness", () => {
       <RightPanelShell title="engineering" participantsCount={3} onlineCount={1} />,
     );
 
-    expect(screen.getByText(t("channel.defaultTopic"))).toBeInTheDocument();
+    expect(screen.getByText(t("chat.generalChat"))).toBeInTheDocument();
     expect(screen.queryByText("general chat")).not.toBeInTheDocument();
   });
 
@@ -789,8 +789,7 @@ describe("RightPanel truthfulness", () => {
       <RightPanelShell title="engineering" participantsCount={3} onlineCount={1} />,
     );
 
-    expect(screen.getByText(t("channel.defaultTopic"))).toBeInTheDocument();
-    expect(screen.queryByText(t("chat.generalChat"))).not.toBeInTheDocument();
+    expect(screen.getByText(t("chat.generalChat"))).toBeInTheDocument();
   });
 
   it("renders stream description and topic rows from chat info data", () => {
@@ -846,7 +845,7 @@ describe("RightPanel truthfulness", () => {
         isMuted: false,
         topics: [
           { name: "", unreadCount: 2 },
-          { name: t("chat.generalChat"), unreadCount: 0 },
+          { name: "general", unreadCount: 0 },
         ],
       });
     });
@@ -855,10 +854,8 @@ describe("RightPanel truthfulness", () => {
       <RightPanelShell title="engineering" participantsCount={3} onlineCount={1} />,
     );
 
-    const topicLabels = screen.getAllByText(t("chat.generalChat"));
-    expect(topicLabels).toHaveLength(2);
-    expect(topicLabels[0]).toHaveClass("italic");
-    expect(topicLabels[1]).not.toHaveClass("italic");
+    expect(screen.getByText(t("chat.generalChat"))).toHaveClass("italic");
+    expect(screen.getByText("general")).not.toHaveClass("italic");
   });
 
   it("navigates to the selected stream topic from right-panel topic list", () => {

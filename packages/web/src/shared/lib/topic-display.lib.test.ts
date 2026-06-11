@@ -7,9 +7,10 @@ import {
 } from "./topic-display.lib";
 
 describe("topic display helpers", () => {
-  it("treats only empty normalized topic names as the system topic", () => {
+  it("treats empty and legacy default-topic aliases as the system topic", () => {
     expect(isEmptyTopicName("   ")).toBe(true);
-    expect(isEmptyTopicName("General Chat")).toBe(false);
+    expect(isEmptyTopicName("general chat")).toBe(true);
+    expect(isEmptyTopicName("release")).toBe(false);
   });
 
   it("resolves the system topic to the localized general-chat label", () => {
