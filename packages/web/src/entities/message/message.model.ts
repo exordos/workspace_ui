@@ -5,6 +5,10 @@
  * for reactions, flags, content edits, and deletions.
  */
 import { create } from "zustand";
+import {
+  captureActiveOrgRequestContext,
+  isActiveOrgRequestContextCurrent,
+} from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { getCurrentInstance } from "~/shared/api/client";
 import { fetchMessagesWithNarrowPage } from "~/shared/api/zulip-messages";
@@ -80,6 +84,7 @@ let initialLoadGeneration = 0;
 
 // Abort the in-flight refresh when the user switches chats before the network round-trip finishes.
 let initialLoadAbortController: AbortController | null = null;
+let boundaryLoadAbortController: AbortController | null = null;
 
 function isAbortLikeError(error: unknown): boolean {
   return (
@@ -106,6 +111,18 @@ function bindExternalAbortSignal(
   return () => {
     externalSignal.removeEventListener("abort", onExternalAbort);
   };
+}
+
+function abortBoundaryLoad(): void {
+  boundaryLoadAbortController?.abort();
+  boundaryLoadAbortController = null;
+}
+
+function isCurrentChatRequest(
+  get: () => CurrentChatMessagesState,
+  context: CurrentChatContext,
+): boolean {
+  return isSameChatLocation(get().context, context);
 }
 
 function mergeUsersFromMessages(messages: readonly MockMessage[]): void {
@@ -214,6 +231,8 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       }
       return;
     }
+
+    abortBoundaryLoad();
 
     logMessageFlow("store:setContext", {
       prev: summarizeChatContextForLog(prev),
@@ -851,9 +870,17 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     const anchorOldestId = resolveOldestMessageId(state.messages);
     if (anchorOldestId == null) return;
 
+    abortBoundaryLoad();
+    const controller = new AbortController();
+    boundaryLoadAbortController = controller;
+    const orgContext = captureActiveOrgRequestContext();
     const inst = getCurrentInstance()?.id;
     const chatKey = chatKeyFromContext(ctx);
     const isStreamWide = ctx.type === "stream" && ctx.streamWideView === true;
+    const isRequestCurrent = () =>
+      boundaryLoadAbortController === controller &&
+      isActiveOrgRequestContextCurrent(orgContext) &&
+      isCurrentChatRequest(get, ctx);
 
     logMessageFlow("store:loadOlder start", {
       context: summarizeChatContextForLog(ctx),
@@ -867,8 +894,11 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         anchorOldestId,
         pageSize,
         0,
-        { applyMarkdown: false },
+        { applyMarkdown: false, signal: controller.signal },
       );
+      if (!isRequestCurrent()) {
+        return;
+      }
       const withoutAnchor = page.messages.filter((m) => m.id !== anchorOldestId);
       const existingIds = new Set(get().messages.map((m) => m.id));
       const fresh = withoutAnchor.filter((m) => !existingIds.has(m.id));
@@ -893,7 +923,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         });
       }
 
-      if (page.foundOldest && persistChatMessagesToIndexedDb() && inst) {
+      if (page.foundOldest && persistChatMessagesToIndexedDb() && inst && isRequestCurrent()) {
         if (isStreamWide) {
           await patchPartitionMetaByMessages({
             instanceId: inst,
@@ -904,6 +934,9 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         } else {
           await updateChatMetaPatch(inst, chatKey, { reachedOldest: true });
         }
+      }
+      if (!isRequestCurrent()) {
+        return;
       }
 
       set({ hasOlderMessages });
@@ -918,7 +951,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         });
       }
 
-      if (persistChatMessagesToIndexedDb() && inst && fresh.length > 0) {
+      if (persistChatMessagesToIndexedDb() && inst && fresh.length > 0 && isRequestCurrent()) {
         if (isStreamWide) {
           await upsertMessagesByChatPartitions({
             instanceId: inst,
@@ -935,6 +968,9 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
           });
         }
       }
+      if (!isRequestCurrent()) {
+        return;
+      }
       logMessageFlow("store:loadOlder done", {
         context: summarizeChatContextForLog(ctx),
         freshCount: fresh.length,
@@ -942,11 +978,17 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         storeLenAfter: get().messages.length,
       });
     } catch (e) {
+      if (isAbortLikeError(e) || controller.signal.aborted || !isRequestCurrent()) {
+        return;
+      }
       logMessageFlow("store:loadOlder failed", { error: String(e) });
       loadOlderLog.warn("loadOlder failed", { error: String(e) });
       set({ boundaryLoadFailed: true });
     } finally {
-      set({ isLoadingMore: false });
+      if (boundaryLoadAbortController === controller) {
+        boundaryLoadAbortController = null;
+        set({ isLoadingMore: false });
+      }
     }
   },
 
@@ -972,9 +1014,17 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     const newest = state.messages[state.messages.length - 1];
     if (!newest) return;
 
+    abortBoundaryLoad();
+    const controller = new AbortController();
+    boundaryLoadAbortController = controller;
+    const orgContext = captureActiveOrgRequestContext();
     const inst = getCurrentInstance()?.id;
     const chatKey = chatKeyFromContext(ctx);
     const isStreamWide = ctx.type === "stream" && ctx.streamWideView === true;
+    const isRequestCurrent = () =>
+      boundaryLoadAbortController === controller &&
+      isActiveOrgRequestContextCurrent(orgContext) &&
+      isCurrentChatRequest(get, ctx);
 
     logMessageFlow("store:loadNewer start", {
       context: summarizeChatContextForLog(ctx),
@@ -988,13 +1038,16 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         newest.id,
         0,
         pageSize,
-        { applyMarkdown: false },
+        { applyMarkdown: false, signal: controller.signal },
       );
+      if (!isRequestCurrent()) {
+        return;
+      }
       const withoutAnchor = page.messages.filter((m) => m.id !== newest.id);
       const existingIds = new Set(get().messages.map((m) => m.id));
       const fresh = withoutAnchor.filter((m) => !existingIds.has(m.id));
 
-      if (page.foundNewest && persistChatMessagesToIndexedDb() && inst) {
+      if (page.foundNewest && persistChatMessagesToIndexedDb() && inst && isRequestCurrent()) {
         if (isStreamWide) {
           await patchPartitionMetaByMessages({
             instanceId: inst,
@@ -1005,6 +1058,9 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         } else {
           await updateChatMetaPatch(inst, chatKey, { reachedNewest: true });
         }
+      }
+      if (!isRequestCurrent()) {
+        return;
       }
 
       set({
@@ -1021,7 +1077,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         set((s) => ({ messages: [...s.messages, ...fresh] }));
       }
 
-      if (persistChatMessagesToIndexedDb() && inst && fresh.length > 0) {
+      if (persistChatMessagesToIndexedDb() && inst && fresh.length > 0 && isRequestCurrent()) {
         if (isStreamWide) {
           await upsertMessagesByChatPartitions({
             instanceId: inst,
@@ -1038,6 +1094,9 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
           });
         }
       }
+      if (!isRequestCurrent()) {
+        return;
+      }
       logMessageFlow("store:loadNewer done", {
         context: summarizeChatContextForLog(ctx),
         freshCount: fresh.length,
@@ -1045,10 +1104,16 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         storeLenAfter: get().messages.length,
       });
     } catch (e) {
+      if (isAbortLikeError(e) || controller.signal.aborted || !isRequestCurrent()) {
+        return;
+      }
       logMessageFlow("store:loadNewer failed", { error: String(e) });
       set({ boundaryLoadFailed: true });
     } finally {
-      set({ isLoadingMore: false, isLoadingNewer: false });
+      if (boundaryLoadAbortController === controller) {
+        boundaryLoadAbortController = null;
+        set({ isLoadingMore: false, isLoadingNewer: false });
+      }
     }
   },
 }));

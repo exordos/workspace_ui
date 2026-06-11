@@ -6,7 +6,11 @@
  * because a bug means users lose access to their accounts or leak credentials.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { useInstancesStore } from "./instance.model";
+import {
+  captureActiveOrgRequestContext,
+  isActiveOrgRequestContextCurrent,
+  useInstancesStore,
+} from "./instance.model";
 
 const INSTANCES_KEY = "zulip-web-instances";
 const CURRENT_KEY = "zulip-web-current-instance";
@@ -16,6 +20,7 @@ function resetStore() {
   useInstancesStore.setState({
     instances: [],
     currentInstanceId: null,
+    activeOrgEpoch: 0,
     unreadCountsByInstance: {},
     jitsiMeetBaseUrl: null,
   });
@@ -268,6 +273,73 @@ describe("instancesStore", () => {
         idA,
       ]);
     });
+
+    it("increments activeOrgEpoch when the active instance changes", () => {
+      const idA = useInstancesStore
+        .getState()
+        .addInstance({ realm: "https://a.test", email: "a@a.com", apiKey: "k1" }).id;
+      const idB = useInstancesStore
+        .getState()
+        .addInstance({ realm: "https://b.test", email: "b@b.com", apiKey: "k2" }).id;
+      const epochAfterAdd = useInstancesStore.getState().activeOrgEpoch;
+
+      useInstancesStore.getState().setCurrentInstanceId(idB);
+      expect(useInstancesStore.getState().activeOrgEpoch).toBe(epochAfterAdd + 1);
+
+      useInstancesStore.getState().setCurrentInstanceId(idA);
+      expect(useInstancesStore.getState().activeOrgEpoch).toBe(epochAfterAdd + 2);
+    });
+
+    it("does not increment activeOrgEpoch when current instance does not change", () => {
+      const id = useInstancesStore
+        .getState()
+        .addInstance({ realm: "https://a.test", email: "a@a.com", apiKey: "k1" }).id;
+      const epochBefore = useInstancesStore.getState().activeOrgEpoch;
+
+      useInstancesStore.getState().setCurrentInstanceId(id);
+
+      expect(useInstancesStore.getState().activeOrgEpoch).toBe(epochBefore);
+    });
+
+    it("increments activeOrgEpoch when switching to null", () => {
+      useInstancesStore
+        .getState()
+        .addInstance({ realm: "https://a.test", email: "a@a.com", apiKey: "k1" });
+      const epochBefore = useInstancesStore.getState().activeOrgEpoch;
+
+      useInstancesStore.getState().setCurrentInstanceId(null);
+
+      expect(useInstancesStore.getState().activeOrgEpoch).toBe(epochBefore + 1);
+    });
+  });
+
+  describe("active organization request context", () => {
+    it("captures the current instance id and epoch", () => {
+      const id = useInstancesStore
+        .getState()
+        .addInstance({ realm: "https://a.test", email: "a@a.com", apiKey: "k1" }).id;
+
+      expect(captureActiveOrgRequestContext()).toEqual({
+        instanceId: id,
+        epoch: useInstancesStore.getState().activeOrgEpoch,
+      });
+    });
+
+    it("reports a captured context as stale after switching instances", () => {
+      useInstancesStore
+        .getState()
+        .addInstance({ realm: "https://a.test", email: "a@a.com", apiKey: "k1" });
+      const idB = useInstancesStore
+        .getState()
+        .addInstance({ realm: "https://b.test", email: "b@b.com", apiKey: "k2" }).id;
+      const context = captureActiveOrgRequestContext();
+
+      expect(isActiveOrgRequestContextCurrent(context)).toBe(true);
+
+      useInstancesStore.getState().setCurrentInstanceId(idB);
+
+      expect(isActiveOrgRequestContextCurrent(context)).toBe(false);
+    });
   });
 
   // getCurrentInstance is used by API client and auth middleware.
@@ -295,6 +367,7 @@ describe("instancesStore", () => {
       useInstancesStore.setState({
         instances: [],
         currentInstanceId: "ghost",
+        activeOrgEpoch: 0,
         jitsiMeetBaseUrl: null,
       });
 

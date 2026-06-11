@@ -8,6 +8,10 @@
  * This module batch-fetches the latest unread message per stream/topic via Zulip 10+ `message_ids`
  * and merges preview metadata without affecting unread totals.
  */
+import {
+  captureActiveOrgRequestContext,
+  isActiveOrgRequestContextCurrent,
+} from "~/entities/instance/instance.model";
 import { fetchMessagesByIds } from "~/shared/api/zulip-messages";
 import type { ZulipUnreadMessagesSnapshot } from "~/shared/api/zulip-unread.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
@@ -67,7 +71,14 @@ export function resolveLatestUnreadMessageIdsForMissingPreviews(
   return [...ids];
 }
 
-let inFlight: Promise<void> | null = null;
+const inFlightByInstanceId = new Map<string, Promise<void>>();
+
+function isCancelledOrStale(
+  orgContext: ReturnType<typeof captureActiveOrgRequestContext>,
+  cancelled?: () => boolean,
+): boolean {
+  return cancelled?.() === true || !isActiveOrgRequestContextCurrent(orgContext);
+}
 
 /**
  * Best-effort hydrate: if request fails, sidebar still functions (counts are already correct).
@@ -78,27 +89,33 @@ export function hydrateStreamSidebarPreviewsFromUnreadSnapshot(
   cancelled?: () => boolean,
 ): Promise<void> {
   if (snapshot == null) return Promise.resolve();
-  if (cancelled?.() === true) return Promise.resolve();
-  if (inFlight != null) return inFlight;
+  const orgContext = captureActiveOrgRequestContext();
+  if (orgContext.instanceId == null || isCancelledOrStale(orgContext, cancelled)) {
+    return Promise.resolve();
+  }
+  const instanceId = orgContext.instanceId;
+  const existing = inFlightByInstanceId.get(instanceId);
+  if (existing != null) return existing;
 
-  inFlight = (async () => {
+  const promise = (async () => {
     try {
       const { streamsMap } = useChatListStore.getState();
       const messageIds = resolveLatestUnreadMessageIdsForMissingPreviews(snapshot, streamsMap);
       if (messageIds.length === 0) return;
-      if (cancelled?.() === true) return;
+      if (isCancelledOrStale(orgContext, cancelled)) return;
 
       const messages = await fetchMessagesByIds(messageIds);
-      if (cancelled?.() === true) return;
+      if (isCancelledOrStale(orgContext, cancelled)) return;
 
       const streamOnly = filterStreamMessagesForSidebar(messages);
       if (streamOnly.length === 0) return;
 
       useChatListStore.getState().applyStreamSidebarPreviewsFromMessages(streamOnly);
     } finally {
-      inFlight = null;
+      inFlightByInstanceId.delete(instanceId);
     }
   })();
 
-  return inFlight;
+  inFlightByInstanceId.set(instanceId, promise);
+  return promise;
 }

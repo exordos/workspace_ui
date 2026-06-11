@@ -1,6 +1,11 @@
 /**
  * Lazy per-channel sidebar topic hydrate: fetch recent stream messages and merge previews only.
  */
+import {
+  captureActiveOrgRequestContext,
+  isActiveOrgRequestContextCurrent,
+  type ActiveOrgRequestContext,
+} from "~/entities/instance/instance.model";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import {
   fetchLatestMessagesForSidebarTopics,
@@ -17,14 +22,55 @@ const MAX_CONCURRENT_HYDRATES = 3;
 const TOPIC_PREVIEW_BACKFILL_LIMIT = 24;
 const MAX_TOPIC_PREVIEW_BACKFILL_BATCHES = 3;
 
-const hydratedStreamIds = new Set<number>();
-const hydratedStreamTopicLists = new Set<number>();
-const inFlight = new Map<number, Promise<void>>();
-const inFlightTopicList = new Map<number, Promise<void>>();
-const inFlightTopicPreviewBackfill = new Map<number, Promise<void>>();
+const hydratedStreamIds = new Set<string>();
+const hydratedStreamTopicLists = new Set<string>();
+const inFlight = new Map<string, Promise<void>>();
+const inFlightTopicList = new Map<string, Promise<void>>();
+const inFlightTopicPreviewBackfill = new Map<string, Promise<void>>();
+const inFlightControllers = new Map<string, AbortController>();
+const inFlightTopicListControllers = new Map<string, AbortController>();
+const inFlightTopicPreviewBackfillControllers = new Map<string, AbortController>();
 const waitQueue: (() => void)[] = [];
 const priorityWaitQueue: (() => void)[] = [];
 let activeHydrates = 0;
+
+function isAbortLikeError(error: unknown): boolean {
+  return (
+    (error instanceof DOMException && error.name === "AbortError") ||
+    (error instanceof Error && error.name === "AbortError")
+  );
+}
+
+function buildScopedStreamKey(instanceId: string, streamId: number): string {
+  return `${instanceId}::${streamId}`;
+}
+
+function getActiveScopedStreamContext(
+  streamId: number,
+): { key: string; orgContext: ActiveOrgRequestContext } | null {
+  const orgContext = captureActiveOrgRequestContext();
+  if (orgContext.instanceId == null) {
+    return null;
+  }
+  return {
+    key: buildScopedStreamKey(orgContext.instanceId, streamId),
+    orgContext,
+  };
+}
+
+function isScopedRequestCurrent(
+  orgContext: ActiveOrgRequestContext,
+  controller?: AbortController,
+): boolean {
+  return !controller?.signal.aborted && isActiveOrgRequestContextCurrent(orgContext);
+}
+
+function abortControllers(map: Map<string, AbortController>): void {
+  for (const controller of map.values()) {
+    controller.abort();
+  }
+  map.clear();
+}
 
 function releaseHydrateSlot(): void {
   activeHydrates = Math.max(0, activeHydrates - 1);
@@ -89,18 +135,25 @@ function streamHasTopicsNeedingPreview(streamId: number): boolean {
   return false;
 }
 
-function shouldHydrateStreamSidebarTopics(streamId: number): boolean {
+function shouldHydrateStreamSidebarTopics(streamId: number, key: string): boolean {
   if (streamHasTopicsNeedingPreview(streamId)) return true;
   if (streamHasSidebarTopics(streamId)) return false;
-  return !hydratedStreamIds.has(streamId);
+  return !hydratedStreamIds.has(key);
 }
 
 export function isStreamSidebarTopicsHydrateInFlight(streamId: number): boolean {
-  return inFlight.has(streamId);
+  const scoped = getActiveScopedStreamContext(streamId);
+  if (scoped == null) {
+    return false;
+  }
+  return inFlight.has(scoped.key);
 }
 
 /** Resets lazy-hydrate dedupe state (instance switch / logout). */
 export function clearStreamSidebarHydrateState(): void {
+  abortControllers(inFlightControllers);
+  abortControllers(inFlightTopicListControllers);
+  abortControllers(inFlightTopicPreviewBackfillControllers);
   hydratedStreamIds.clear();
   hydratedStreamTopicLists.clear();
   inFlight.clear();
@@ -114,21 +167,34 @@ export function clearStreamSidebarHydrateState(): void {
 /** Backfills latest message preview for topic shells discovered from the topic-name API. */
 export function requestStreamSidebarTopicPreviewBackfill(streamId: number): Promise<void> {
   guard.streamId(streamId, "requestStreamSidebarTopicPreviewBackfill");
+  const scoped = getActiveScopedStreamContext(streamId);
+  if (scoped == null) {
+    return Promise.resolve();
+  }
   const topicNames = collectStreamTopicsMissingPreview(streamId);
   if (topicNames.length === 0) {
     return Promise.resolve();
   }
 
-  const existing = inFlightTopicPreviewBackfill.get(streamId);
+  const existing = inFlightTopicPreviewBackfill.get(scoped.key);
   if (existing != null) {
     return existing;
   }
 
+  const controller = new AbortController();
+  inFlightTopicPreviewBackfillControllers.set(scoped.key, controller);
   const promise = (async () => {
     try {
       let batchTopics = topicNames;
       for (let batch = 0; batch < MAX_TOPIC_PREVIEW_BACKFILL_BATCHES; batch += 1) {
-        const messages = await fetchLatestMessagesForSidebarTopics(streamId, batchTopics);
+        const messages = await fetchLatestMessagesForSidebarTopics(
+          streamId,
+          batchTopics,
+          controller.signal,
+        );
+        if (!isScopedRequestCurrent(scoped.orgContext, controller)) {
+          return;
+        }
         if (messages.length === 0) {
           return;
         }
@@ -141,16 +207,20 @@ export function requestStreamSidebarTopicPreviewBackfill(streamId: number): Prom
         batchTopics = remaining;
       }
     } catch (error) {
+      if (isAbortLikeError(error)) {
+        return;
+      }
       logChatListFlow("chatList: stream sidebar topic preview backfill failed", {
         streamId,
         error: error instanceof Error ? error.message : String(error),
       });
     } finally {
-      inFlightTopicPreviewBackfill.delete(streamId);
+      inFlightTopicPreviewBackfill.delete(scoped.key);
+      inFlightTopicPreviewBackfillControllers.delete(scoped.key);
     }
   })();
 
-  inFlightTopicPreviewBackfill.set(streamId, promise);
+  inFlightTopicPreviewBackfill.set(scoped.key, promise);
   return promise;
 }
 
@@ -160,39 +230,59 @@ export function requestStreamSidebarTopicPreviewBackfill(streamId: number): Prom
  */
 export function requestStreamSidebarTopicListHydrate(streamId: number): Promise<void> {
   guard.streamId(streamId, "requestStreamSidebarTopicListHydrate");
-  if (hydratedStreamTopicLists.has(streamId)) {
+  const scoped = getActiveScopedStreamContext(streamId);
+  if (scoped == null) {
     return Promise.resolve();
   }
-  const existing = inFlightTopicList.get(streamId);
+  if (hydratedStreamTopicLists.has(scoped.key)) {
+    return Promise.resolve();
+  }
+  const existing = inFlightTopicList.get(scoped.key);
   if (existing != null) {
     return existing;
   }
 
+  const controller = new AbortController();
+  inFlightTopicListControllers.set(scoped.key, controller);
   const promise = (async () => {
     try {
-      const topics = await fetchStreamTopicNames(streamId);
+      const topics = await fetchStreamTopicNames(streamId, controller.signal);
+      if (!isScopedRequestCurrent(scoped.orgContext, controller)) {
+        return;
+      }
       useChatListStore.getState().upsertStreamTopicShells(streamId, topics);
-      hydratedStreamTopicLists.add(streamId);
+      hydratedStreamTopicLists.add(scoped.key);
       if (streamHasTopicsNeedingPreview(streamId)) {
-        const messages = await fetchStreamChannelMessagesForSidebarTopics(streamId);
+        const messages = await fetchStreamChannelMessagesForSidebarTopics(
+          streamId,
+          undefined,
+          controller.signal,
+        );
+        if (!isScopedRequestCurrent(scoped.orgContext, controller)) {
+          return;
+        }
         if (messages.length > 0) {
           useChatListStore.getState().applyStreamSidebarPreviewsFromMessages(messages);
           if (streamHasSidebarTopics(streamId)) {
-            hydratedStreamIds.add(streamId);
+            hydratedStreamIds.add(scoped.key);
           }
         }
       }
     } catch (error) {
+      if (isAbortLikeError(error)) {
+        return;
+      }
       logChatListFlow("chatList: stream sidebar topic list hydrate failed", {
         streamId,
         error: error instanceof Error ? error.message : String(error),
       });
     } finally {
-      inFlightTopicList.delete(streamId);
+      inFlightTopicList.delete(scoped.key);
+      inFlightTopicListControllers.delete(scoped.key);
     }
   })();
 
-  inFlightTopicList.set(streamId, promise);
+  inFlightTopicList.set(scoped.key, promise);
   return promise;
 }
 
@@ -231,25 +321,35 @@ export function requestStreamSidebarTopicsHydrate(
   reason: StreamSidebarTopicsHydrateReason,
 ): Promise<void> {
   guard.streamId(streamId, "requestStreamSidebarTopicsHydrate");
-  if (!shouldHydrateStreamSidebarTopics(streamId)) {
+  const scoped = getActiveScopedStreamContext(streamId);
+  if (scoped == null || !shouldHydrateStreamSidebarTopics(streamId, scoped.key)) {
     return Promise.resolve();
   }
-  const existing = inFlight.get(streamId);
+  const existing = inFlight.get(scoped.key);
   if (existing != null) {
     return existing;
   }
 
   const priority = reason === "unread-register";
+  const controller = new AbortController();
+  inFlightControllers.set(scoped.key, controller);
 
   const promise = (async () => {
     await acquireHydrateSlot(priority);
     try {
-      if (!shouldHydrateStreamSidebarTopics(streamId)) {
+      if (!shouldHydrateStreamSidebarTopics(streamId, scoped.key)) {
         return;
       }
 
       logChatListFlow("chatList: stream sidebar topics hydrate start", { streamId, reason });
-      const messages = await fetchStreamChannelMessagesForSidebarTopics(streamId);
+      const messages = await fetchStreamChannelMessagesForSidebarTopics(
+        streamId,
+        undefined,
+        controller.signal,
+      );
+      if (!isScopedRequestCurrent(scoped.orgContext, controller)) {
+        return;
+      }
       if (messages.length === 0) {
         logChatListFlow("chatList: stream sidebar topics hydrate empty", { streamId, reason });
         return;
@@ -257,7 +357,7 @@ export function requestStreamSidebarTopicsHydrate(
 
       useChatListStore.getState().applyStreamSidebarPreviewsFromMessages(messages);
       if (streamHasSidebarTopics(streamId)) {
-        hydratedStreamIds.add(streamId);
+        hydratedStreamIds.add(scoped.key);
         logChatListFlow("chatList: stream sidebar topics hydrate done", {
           streamId,
           reason,
@@ -265,17 +365,21 @@ export function requestStreamSidebarTopicsHydrate(
         });
       }
     } catch (error) {
+      if (isAbortLikeError(error)) {
+        return;
+      }
       logChatListFlow("chatList: stream sidebar topics hydrate failed", {
         streamId,
         reason,
         error: error instanceof Error ? error.message : String(error),
       });
     } finally {
-      inFlight.delete(streamId);
+      inFlight.delete(scoped.key);
+      inFlightControllers.delete(scoped.key);
       releaseHydrateSlot();
     }
   })();
 
-  inFlight.set(streamId, promise);
+  inFlight.set(scoped.key, promise);
   return promise;
 }

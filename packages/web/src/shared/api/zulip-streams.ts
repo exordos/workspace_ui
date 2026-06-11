@@ -568,11 +568,20 @@ export async function fetchTopics(stream: string): Promise<string[]> {
 }
 
 /** Loads topic names for a stream id (used for sidebar expand topic list). */
-export async function fetchStreamTopicNames(streamId: number): Promise<string[]> {
+export async function fetchStreamTopicNames(
+  streamId: number,
+  signal?: AbortSignal,
+): Promise<string[]> {
   guard.streamId(streamId, "fetchStreamTopicNames.streamId");
+  if (signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
   const res = await zulipPipelineGet(`/users/me/${streamId}/topics`, {
     allow_empty_topic_name: "true",
-  });
+  }, signal);
+  if (signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
   if (!res?.ok) {
     return [];
   }

@@ -9,6 +9,10 @@ import {
 } from "~/entities/chat-list/chat-list-dm-preview-hydrate-trace.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import type { ChatListDmMetadataRow } from "~/entities/chat-list/chat-list.model.types";
+import {
+  captureActiveOrgRequestContext,
+  isActiveOrgRequestContextCurrent,
+} from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { fetchMessagesByIds } from "~/shared/api/zulip-messages";
 import type { ZulipRecentPrivateConversation } from "~/shared/api/zulip.types";
@@ -45,10 +49,18 @@ export interface HydrateDmSidebarPreviewsOptions {
   cancelled?: () => boolean;
 }
 
+function isCancelledOrStale(
+  orgContext: ReturnType<typeof captureActiveOrgRequestContext>,
+  cancelled?: () => boolean,
+): boolean {
+  return cancelled?.() === true || !isActiveOrgRequestContextCurrent(orgContext);
+}
+
 /** Loads last DM messages from register metadata and merges them into the chat list store. */
 export async function hydrateDmSidebarPreviewsFromRecentConversations(
   options: HydrateDmSidebarPreviewsOptions,
 ): Promise<void> {
+  const orgContext = captureActiveOrgRequestContext();
   traceDmPreviewHydrate("hydrate:start", {
     instanceId: options.instanceId ?? null,
     currentUserId: options.currentUserId,
@@ -67,6 +79,10 @@ export async function hydrateDmSidebarPreviewsFromRecentConversations(
     messageIdSample: messageIds.slice(0, 12),
   });
 
+  if (orgContext.instanceId == null || isCancelledOrStale(orgContext, options.cancelled)) {
+    traceDmPreviewHydrate("hydrate:skip", { reason: "stale_org_context_before_fetch" });
+    return;
+  }
   if (messageIds.length === 0) {
     logChatListFlow("chatList: skip DM preview hydrate (no last message ids)", {
       hasConversations: options.conversations != null,
@@ -110,8 +126,8 @@ export async function hydrateDmSidebarPreviewsFromRecentConversations(
     cancelled: options.cancelled?.() ?? false,
   });
 
-  if (options.cancelled?.()) {
-    traceDmPreviewHydrate("hydrate:skip", { reason: "cancelled_after_fetch" });
+  if (isCancelledOrStale(orgContext, options.cancelled)) {
+    traceDmPreviewHydrate("hydrate:skip", { reason: "stale_org_context_after_fetch" });
     return;
   }
   if (messages.length === 0) {

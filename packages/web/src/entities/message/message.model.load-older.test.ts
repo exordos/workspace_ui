@@ -2,17 +2,38 @@
  * loadOlderBoundaryPage — stops pagination when API returns duplicates with no store progress.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useInstancesStore } from "~/entities/instance/instance.model";
 import { setInstanceProvider } from "~/shared/api/client";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { useCurrentChatMessagesStore, type CurrentChatContext } from "./message.model";
 
 const mockFetchMessagesWithNarrowPage = vi.hoisted(() => vi.fn());
+const mockUpdateChatMetaPatch = vi.hoisted(() => vi.fn());
+const mockUpsertChatMessages = vi.hoisted(() => vi.fn());
+const mockPersistChatMessagesToIndexedDb = vi.hoisted(() => vi.fn(() => false));
 
 vi.mock("~/shared/api/zulip-messages", async (importOriginal) => {
   const actual = await importOriginal<typeof import("~/shared/api/zulip-messages")>();
   return {
     ...actual,
     fetchMessagesWithNarrowPage: mockFetchMessagesWithNarrowPage,
+  };
+});
+
+vi.mock("~/shared/lib/message-cache-db", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("~/shared/lib/message-cache-db")>();
+  return {
+    ...actual,
+    updateChatMetaPatch: mockUpdateChatMetaPatch,
+    upsertChatMessages: mockUpsertChatMessages,
+  };
+});
+
+vi.mock("./message-local-cache.lib", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./message-local-cache.lib")>();
+  return {
+    ...actual,
+    persistChatMessagesToIndexedDb: mockPersistChatMessagesToIndexedDb,
   };
 });
 
@@ -36,20 +57,32 @@ const streamCtx: CurrentChatContext = {
   topic: "topic1",
 };
 
+function resetInstancesStore(): void {
+  useInstancesStore.setState({
+    instances: [],
+    currentInstanceId: null,
+    activeOrgEpoch: 0,
+    unreadCountsByInstance: {},
+    dmUnreadCountsByInstance: {},
+    jitsiMeetBaseUrl: null,
+  });
+}
+
 describe("loadOlderBoundaryPage", () => {
   beforeEach(() => {
-    const runtimeTestApiKey = `runtime-test-key-${Date.now()}`;
-    setInstanceProvider(() => ({
-      id: "test-instance",
+    resetInstancesStore();
+    useInstancesStore.getState().addInstance({
       realm: "https://zulip.test",
       email: "test@zulip.test",
-      apiKey: runtimeTestApiKey,
-    }));
+      apiKey: `runtime-test-key-${Date.now()}`,
+    });
+    setInstanceProvider(() => useInstancesStore.getState().getCurrentInstance());
     vi.clearAllMocks();
   });
 
   afterEach(() => {
     setInstanceProvider(() => null);
+    resetInstancesStore();
     useCurrentChatMessagesStore.setState({
       context: null,
       messages: [],
@@ -99,7 +132,10 @@ describe("loadOlderBoundaryPage", () => {
       anchorId,
       pageSize,
       0,
-      { applyMarkdown: false },
+      expect.objectContaining({
+        applyMarkdown: false,
+        signal: expect.any(AbortSignal),
+      }),
     );
   });
 
@@ -155,7 +191,100 @@ describe("loadOlderBoundaryPage", () => {
       100,
       pageSize,
       0,
-      { applyMarkdown: false },
+      expect.objectContaining({
+        applyMarkdown: false,
+        signal: expect.any(AbortSignal),
+      }),
     );
+  });
+
+  it("drops stale older-page results after organization switch", async () => {
+    const deferred = Promise.withResolvers<{
+      messages: MockMessage[];
+      foundOldest: boolean;
+      foundNewest: boolean;
+    }>();
+    const firstInstanceId = useInstancesStore.getState().currentInstanceId;
+    const secondInstanceId = useInstancesStore.getState().addInstance({
+      realm: "https://zulip-2.test",
+      email: "two@zulip.test",
+      apiKey: "k2",
+    }).id;
+
+    mockPersistChatMessagesToIndexedDb.mockReturnValue(true);
+    mockFetchMessagesWithNarrowPage.mockReturnValue(deferred.promise);
+
+    useCurrentChatMessagesStore.setState({
+      context: streamCtx,
+      messages: [mockMsg({ id: 100 }), mockMsg({ id: 101 })],
+      hasOlderMessages: true,
+      isLoadingMore: false,
+    });
+
+    const loadPromise = useCurrentChatMessagesStore
+      .getState()
+      .loadOlderBoundaryPage({ pageSize: 10, currentUserId: 10 });
+
+    expect(firstInstanceId).not.toBeNull();
+    useInstancesStore.getState().setCurrentInstanceId(secondInstanceId);
+    useCurrentChatMessagesStore.getState().setContext(null);
+
+    deferred.resolve({
+      messages: [mockMsg({ id: 100 }), mockMsg({ id: 90 })],
+      foundOldest: true,
+      foundNewest: true,
+    });
+    await loadPromise;
+
+    expect(useCurrentChatMessagesStore.getState().context).toBeNull();
+    expect(useCurrentChatMessagesStore.getState().messages).toEqual([]);
+    expect(mockUpdateChatMetaPatch).not.toHaveBeenCalled();
+    expect(mockUpsertChatMessages).not.toHaveBeenCalled();
+    expect(useCurrentChatMessagesStore.getState().boundaryLoadFailed).toBe(false);
+  });
+
+  it("drops stale newer-page results after organization switch", async () => {
+    const deferred = Promise.withResolvers<{
+      messages: MockMessage[];
+      foundOldest: boolean;
+      foundNewest: boolean;
+    }>();
+    const secondInstanceId = useInstancesStore.getState().addInstance({
+      realm: "https://zulip-2.test",
+      email: "two@zulip.test",
+      apiKey: "k2",
+    }).id;
+
+    mockPersistChatMessagesToIndexedDb.mockReturnValue(true);
+    mockFetchMessagesWithNarrowPage.mockReturnValue(deferred.promise);
+
+    useCurrentChatMessagesStore.setState({
+      context: streamCtx,
+      messages: [mockMsg({ id: 100 }), mockMsg({ id: 101 })],
+      hasOlderMessages: true,
+      hasNewerMessages: true,
+      isLoadingMore: false,
+      isLoadingNewer: false,
+    });
+
+    const loadPromise = useCurrentChatMessagesStore
+      .getState()
+      .loadNewerBoundaryPage({ pageSize: 10, currentUserId: 10 });
+
+    useInstancesStore.getState().setCurrentInstanceId(secondInstanceId);
+    useCurrentChatMessagesStore.getState().setContext(null);
+
+    deferred.resolve({
+      messages: [mockMsg({ id: 101 }), mockMsg({ id: 102 })],
+      foundOldest: false,
+      foundNewest: true,
+    });
+    await loadPromise;
+
+    expect(useCurrentChatMessagesStore.getState().context).toBeNull();
+    expect(useCurrentChatMessagesStore.getState().messages).toEqual([]);
+    expect(mockUpdateChatMetaPatch).not.toHaveBeenCalled();
+    expect(mockUpsertChatMessages).not.toHaveBeenCalled();
+    expect(useCurrentChatMessagesStore.getState().boundaryLoadFailed).toBe(false);
   });
 });
