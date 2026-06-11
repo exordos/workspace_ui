@@ -98,6 +98,7 @@ function prepareInlineVideoPoster(video: HTMLVideoElement): () => void {
   const handleLoadedData = () => {
     const posterUrl = captureInlineVideoPoster(video);
     if (posterUrl == null) {
+      finalize("failed");
       return;
     }
     finalize("ready", posterUrl);

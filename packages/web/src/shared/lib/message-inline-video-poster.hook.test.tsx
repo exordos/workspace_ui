@@ -61,6 +61,29 @@ describe("useInlineVideoPosters", () => {
     expect(video?.getAttribute("data-inline-poster-state")).toBe("ready");
   });
 
+  it("marks poster generation as failed when capture returns null", async () => {
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+
+    const html =
+      '<video controls preload="metadata"><source src="https://cdn.example.com/clip.mp4" type="video/mp4"></video>';
+
+    const { container } = render(<TestInlineVideoPosters html={html} />);
+    const video = container.querySelector("video");
+    expect(video).not.toBeNull();
+    expect(video?.getAttribute("preload")).toBe("auto");
+
+    Object.defineProperty(video, "videoWidth", { configurable: true, value: 1280 });
+    Object.defineProperty(video, "videoHeight", { configurable: true, value: 720 });
+
+    video?.dispatchEvent(new Event("loadeddata"));
+
+    await waitFor(() => {
+      expect(video?.getAttribute("data-inline-poster-state")).toBe("failed");
+    });
+    expect(video?.getAttribute("poster")).toBeNull();
+    expect(video?.getAttribute("preload")).toBe("metadata");
+  });
+
   it("keeps an existing poster intact", async () => {
     const html =
       '<video controls preload="metadata" poster="https://cdn.example.com/poster.jpg"><source src="https://cdn.example.com/clip.mp4" type="video/mp4"></video>';
