@@ -19,6 +19,7 @@ import {
   getSessionCsrfTokenForRealm,
 } from "./desktop-auth";
 import { isSafeDeeplinkRoute, resolveNotificationClickRoute } from "./deeplink-route.lib";
+import { getShellContentSecurityPolicy } from "./security-policy.lib";
 import { createUnreadDotOverlaySvg } from "./unread-indicator.lib";
 import {
   getTrayMenuLabels,
@@ -793,27 +794,7 @@ function configureSecurityPolicy(): void {
       return;
     }
 
-    const csp = IS_DEV
-      ? [
-          "default-src 'self'",
-          "script-src 'self' 'unsafe-inline'",
-          "style-src 'self' 'unsafe-inline'",
-          "connect-src 'self' ws://localhost:* http://localhost:* https: wss:",
-          "img-src 'self' data: blob: https:",
-          "font-src 'self' data:",
-          "media-src 'self' https:",
-          "frame-src https:",
-        ]
-      : [
-          "default-src 'self'",
-          "script-src 'self'",
-          "style-src 'self' 'unsafe-inline'",
-          "connect-src 'self' https: wss:",
-          "img-src 'self' data: blob: https:",
-          "font-src 'self'",
-          "media-src 'self' https:",
-          "frame-src https:",
-        ];
+    const csp = getShellContentSecurityPolicy(IS_DEV);
 
     callback({
       responseHeaders: {
