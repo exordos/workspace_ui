@@ -65,7 +65,7 @@ describe("layout-instance-unread", () => {
     ).toBe(2);
   });
 
-  it("sums only personal (1:1) DM unread badges for app icon indicator", () => {
+  it("sums 1:1 and group DM unread badges for app icon indicator", () => {
     expect(
       computeInstanceDmUnreadCount({
         dms: [
@@ -74,7 +74,7 @@ describe("layout-instance-unread", () => {
         ],
         currentUserId: 7,
       }),
-    ).toBe(3);
+    ).toBe(4);
     expect(
       computeInstanceDmUnreadCount({
         dms: [{ badge: 2 }],
@@ -82,10 +82,10 @@ describe("layout-instance-unread", () => {
     ).toBe(2);
   });
 
-  it("excludes huddle unread when isGroup and slug both imply a group DM", () => {
+  it("includes huddle unread when isGroup and slug imply a group DM", () => {
     expect(
       isPersonalDmUnreadEntry({ isGroup: true, slug: "7-alice,42-bob,51-carol", badge: 2 }, 7),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       computeInstanceDmUnreadCount({
         currentUserId: 7,
@@ -94,7 +94,7 @@ describe("layout-instance-unread", () => {
           { badge: 2, isGroup: true, slug: "7-alice,42-bob,51-carol" },
         ],
       }),
-    ).toBe(4);
+    ).toBe(6);
   });
 
   it("hasPersonalDmUnreadForActiveInstance reflects only current org sidebar DM unread", () => {

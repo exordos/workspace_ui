@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { DmEntryInternal, StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import { sortChatsByLastMessage } from "./chat-sorting";
+import { saveRecentDmPartners } from "./recent-dms";
 
 function createStreamEntry(
   stream_id: number,
@@ -110,6 +111,41 @@ describe("sortChatsByLastMessage", () => {
     expect(stream?.badge).toBe(2);
     expect(stream?.type === "stream" ? stream.topics?.[0]?.badge : undefined).toBeUndefined();
     expect(stream?.type === "stream" ? stream.topics?.[1]?.badge : undefined).toBe(2);
+  });
+
+  describe("group DM activity sorting", () => {
+    const RECENT_DM_KEY = "recent_dm_partners";
+
+    afterEach(() => {
+      localStorage.removeItem(RECENT_DM_KEY);
+    });
+
+    it("sorts group DMs by last message above older pinned recent 1:1 DMs", () => {
+      saveRecentDmPartners([42]);
+      const dmsMap = new Map<string, DmEntryInternal>([
+        ["10,20", createDmEntry(20, "Bob", 1000, 0, false)],
+        ["10,30,40", createDmEntry(9001, "Design Squad", 8000, 0, true)],
+      ]);
+
+      const sorted = sortChatsByLastMessage(new Map(), dmsMap, new Set());
+
+      expect(sorted[0]).toMatchObject({ type: "dm", isGroup: true, name: "Design Squad" });
+      expect(sorted[1]).toMatchObject({ type: "dm", id: 20, isGroup: false });
+    });
+
+    it("sorts group DMs among streams by last activity timestamp", () => {
+      const streamsMap = new Map<number, StreamEntryInternal>([
+        [1, createStreamEntry(1, "General", 5000, 0)],
+      ]);
+      const dmsMap = new Map<string, DmEntryInternal>([
+        ["10,30,40", createDmEntry(9001, "Design Squad", 9000, 0, true)],
+      ]);
+
+      const sorted = sortChatsByLastMessage(streamsMap, dmsMap, new Set());
+
+      expect(sorted[0]).toMatchObject({ type: "dm", isGroup: true });
+      expect(sorted[1]).toMatchObject({ type: "stream", stream_id: 1 });
+    });
   });
 
   it("prioritizes unread personal DMs above other unread chats when enabled", () => {

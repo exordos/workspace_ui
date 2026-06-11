@@ -65,7 +65,7 @@ describe("parseUnreadMessagesCount", () => {
 });
 
 describe("parseUnreadDmMessagesCount", () => {
-  it("returns 1 when personal DMs have unread, ignoring streams/huddles", () => {
+  it("returns 1 when personal or group DMs have unread, ignoring streams", () => {
     const result = parseUnreadDmMessagesCount({
       unread_msgs: {
         count: 99,
@@ -92,7 +92,7 @@ describe("parseUnreadDmMessagesCount", () => {
     expect(result).toBe(0);
   });
 
-  it("ignores three-person huddles in /messages payload even when isGroup is not set", () => {
+  it("counts three-person huddles in /messages payload as personal DM unread", () => {
     const result = parseUnreadDmMessagesCount({
       messages: [
         {
@@ -106,7 +106,7 @@ describe("parseUnreadDmMessagesCount", () => {
         },
       ],
     });
-    expect(result).toBe(0);
+    expect(result).toBe(1);
   });
 
   it("returns 1 when register mentions bucket has unread ids", () => {
@@ -121,7 +121,7 @@ describe("parseUnreadDmMessagesCount", () => {
     expect(result).toBe(1);
   });
 
-  it("ignores stream and group DM messages in /messages payload", () => {
+  it("ignores stream messages but counts 1:1 and group DM in /messages payload", () => {
     const result = parseUnreadDmMessagesCount({
       messages: [
         { id: 1, type: "stream", stream_id: 10, subject: "bugs" },

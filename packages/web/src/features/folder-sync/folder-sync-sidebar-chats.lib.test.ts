@@ -16,7 +16,7 @@ function folderItem(chatId: string, orderIndex: number): FolderItemForClient {
 }
 
 describe("buildSelectedFolderSidebarChats", () => {
-  it("filters self DM and group DM in personal system folder", () => {
+  it("filters self DM but keeps group DM in personal system folder", () => {
     const result = buildSelectedFolderSidebarChats({
       selectedFolderId: SYSTEM_PERSONAL_FOLDER_ID,
       folderChatIds: null,
@@ -56,12 +56,12 @@ describe("buildSelectedFolderSidebarChats", () => {
       currentUserId: 10,
     });
 
-    expect(result).toHaveLength(1);
+    expect(result).toHaveLength(2);
     expect(
       result.some((chat) => chat.type === "dm" && chat.id === 10 && chat.isGroup !== true),
     ).toBe(false);
     expect(result.some((chat) => chat.type === "dm" && chat.id === 20)).toBe(true);
-    expect(result.some((chat) => chat.type === "dm" && chat.isGroup === true)).toBe(false);
+    expect(result.some((chat) => chat.type === "dm" && chat.isGroup === true)).toBe(true);
   });
 
   it("filters self DM from fallback folder item dm:{currentUserId}", () => {
@@ -153,6 +153,54 @@ describe("buildSelectedFolderSidebarChats", () => {
     expect(
       result.map((chat) => (chat.type === "dm" ? `dm:${chat.id}` : `stream:${chat.stream_id}`)),
     ).toEqual(["stream:1", "dm:20", "stream:2"]);
+  });
+
+  it("keeps group DM in all folder while hiding self DM", () => {
+    const result = buildSelectedFolderSidebarChats({
+      selectedFolderId: "system:all",
+      folderChatIds: null,
+      folderItemsByFolderId: new Map(),
+      chatsSortedByLastMessage: [
+        {
+          type: "stream",
+          stream_id: 1,
+          name: "engineering",
+          topics: [],
+          lastMessage: "",
+          time: "",
+        },
+        {
+          type: "dm",
+          id: 10,
+          name: "Me",
+          slug: "10-me",
+          isGroup: false,
+          lastMessage: "",
+          time: "",
+        },
+        {
+          type: "dm",
+          id: 999,
+          name: "Design Squad",
+          slug: "10-me,30-alice",
+          isGroup: true,
+          userIds: [10, 30],
+          lastMessage: "",
+          time: "",
+        },
+      ],
+      streamsMap: new Map(),
+      usersMapForChatInfo: new Map(),
+      currentUserId: 10,
+    });
+
+    expect(
+      result.map((chat) =>
+        chat.type === "dm"
+          ? `dm:${chat.isGroup === true ? "group" : chat.id}`
+          : `stream:${chat.stream_id}`,
+      ),
+    ).toEqual(["stream:1", "dm:group"]);
   });
 
   it("treats workspace dm: with two user ids as 1:1 personal (not group)", () => {
@@ -249,7 +297,7 @@ describe("buildSelectedFolderSidebarChats", () => {
     });
   });
 
-  it("filters group DM built from folder chatId with three or more users", () => {
+  it("shows group DM built from folder chatId with three or more users", () => {
     const folderId = "folder-1";
     const result = buildSelectedFolderSidebarChats({
       selectedFolderId: folderId,
@@ -264,7 +312,9 @@ describe("buildSelectedFolderSidebarChats", () => {
       ]),
       currentUserId: 10,
     });
-    expect(result.filter((chat) => chat.type === "dm")).toHaveLength(0);
+    const groupDms = result.filter((chat) => chat.type === "dm");
+    expect(groupDms).toHaveLength(1);
+    expect(groupDms[0]).toMatchObject({ type: "dm", isGroup: true });
   });
 
   it("treats bare numeric folder chat ids as streams", () => {

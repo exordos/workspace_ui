@@ -1,5 +1,3 @@
-import { effectiveDmIsGroupFromSlug } from "~/shared/lib/dm-route.lib";
-import { parseDmSlugToUserIds } from "~/widgets/sidebar/sidebar.lib";
 import {
   computeInstanceStreamUnreadCountWithMute,
   toSafeUnreadCount,
@@ -34,25 +32,15 @@ export function computeInstanceUnreadCount({
   return streamUnread + dmUnread;
 }
 
-function resolveDmSlugUserIds(dm: LayoutDmBadgeHolder): number[] {
-  if (Array.isArray(dm.userIds) && dm.userIds.length > 0) {
-    return [...dm.userIds];
-  }
-  if (typeof dm.slug === "string" && dm.slug.length > 0) {
-    return parseDmSlugToUserIds(dm.slug);
-  }
-  return [];
-}
-
-/** Same personal-DM rule as sidebar DM list (`effectiveDmIsGroupFromSlug`). */
+/** 1:1 and group/huddle DM unread both count toward personal indicators. */
 export function isPersonalDmUnreadEntry(
-  dm: LayoutDmBadgeHolder,
-  currentUserId: number | null,
+  _dm: LayoutDmBadgeHolder,
+  _currentUserId: number | null,
 ): boolean {
-  return !effectiveDmIsGroupFromSlug(dm.isGroup, resolveDmSlugUserIds(dm), currentUserId);
+  return true;
 }
 
-/** Sums 1:1 DM unread badges for one instance (excludes group / huddle DMs). */
+/** Sums DM unread badges for one instance (1:1 and group/huddle). */
 export function computeInstanceDmUnreadCount({
   dms,
   currentUserId = null,

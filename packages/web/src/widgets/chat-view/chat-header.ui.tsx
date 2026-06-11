@@ -96,7 +96,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
             size="md"
             className="shrink-0 border border-border-subtle bg-bg-elevated text-text-muted"
           >
-            {dmGroup.name.slice(0, 1).toUpperCase()}
+            <Icon name="group" size={16} className="text-text-primary" />
           </Avatar>
           <div className="flex min-w-0 flex-1 flex-col">
             <h1 className="truncate text-sm font-semibold text-text-primary">{dmGroup.name}</h1>

@@ -7,7 +7,7 @@ import {
   deserializeStreamEntry,
   type ChatListSnapshotSerialized,
 } from "~/shared/lib/chat-list-snapshot-serialize.lib";
-import { dmConversationKey } from "~/shared/lib/dm-key";
+import { dmConversationKey, dmRouteKey } from "~/shared/lib/dm-key";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import type { DmEntryInternal, StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import { formatMessageTime, GROUP_DM_ID_OFFSET, hashKey, slugify } from "./chat-list-format.lib";
@@ -126,15 +126,11 @@ export function normalizeDmUserIds(
   const uniqueSorted = Array.from(
     new Set(userIds.filter((id) => Number.isInteger(id) && id > 0)),
   ).sort((left, right) => left - right);
-  if (
-    currentUserId != null &&
-    uniqueSorted.length === 1 &&
-    uniqueSorted[0] != null &&
-    uniqueSorted[0] !== currentUserId
-  ) {
-    return [currentUserId, uniqueSorted[0]].sort((left, right) => left - right);
+  if (currentUserId == null || uniqueSorted.includes(currentUserId)) {
+    return uniqueSorted;
   }
-  return uniqueSorted;
+  // Register metadata may omit the current user for 1:1 rows (peer id only) and huddles.
+  return [...uniqueSorted, currentUserId].sort((left, right) => left - right);
 }
 
 /** Builds or merges a metadata-only DM sidebar row (register / DM index bootstrap). */
@@ -207,6 +203,42 @@ export interface ChatListDmMetadataUpsertPatch {
   changed: true;
 }
 
+function collectAliasDmKeys(
+  dmsMap: Map<string, DmEntryInternal>,
+  canonicalKey: string,
+  userIds: readonly number[],
+  currentUserId: number | null,
+): string[] {
+  const target = dmRouteKey([...userIds], currentUserId);
+  const aliases: string[] = [];
+  for (const [key, entry] of dmsMap) {
+    if (key === canonicalKey) continue;
+    const entryUserIds = entry.userIds ?? [];
+    if (entryUserIds.length === 0) continue;
+    if (dmRouteKey(entryUserIds, currentUserId) === target) {
+      aliases.push(key);
+    }
+  }
+  return aliases;
+}
+
+function mergeDmEntryPreferRicher(left: DmEntryInternal, right: DmEntryInternal): DmEntryInternal {
+  const leftTs = left.ts ?? 0;
+  const rightTs = right.ts ?? 0;
+  const newer = leftTs >= rightTs ? left : right;
+  const older = newer === left ? right : left;
+  const newerUserIds = newer.userIds ?? [];
+  const olderUserIds = older.userIds ?? [];
+  return {
+    ...newer,
+    unreadCount: Math.max(left.unreadCount, right.unreadCount),
+    avatar_url: newer.avatar_url ?? older.avatar_url,
+    userIds: newerUserIds.length >= olderUserIds.length ? newer.userIds : older.userIds,
+    lastMessage: newer.lastMessage || older.lastMessage,
+    lastMessageId: newer.lastMessageId ?? older.lastMessageId,
+  };
+}
+
 /** Pure upsert for metadata-only DM rows; returns null when maps are unchanged. */
 export function buildDmMetadataUpsertPatch(
   rows: readonly ChatListDmMetadataRow[],
@@ -226,10 +258,29 @@ export function buildDmMetadataUpsertPatch(
     const existing = nextDms.get(normalized.key);
     const merged = buildDmMetadataEntry(row, currentUserId, existing, display);
     if (merged == null) continue;
-    sidebarDmsUnreadDelta += merged.entry.unreadCount - (existing?.unreadCount ?? 0);
     if (!changed) nextDms = new Map(nextDms);
     changed = true;
-    nextDms.set(merged.key, merged.entry);
+
+    const aliasKeys = collectAliasDmKeys(
+      nextDms,
+      merged.key,
+      merged.entry.userIds ?? [],
+      currentUserId,
+    );
+    let previousAliasUnread = 0;
+    let entryToStore = merged.entry;
+    for (const aliasKey of aliasKeys) {
+      const aliasEntry = nextDms.get(aliasKey);
+      if (aliasEntry == null) continue;
+      previousAliasUnread += aliasEntry.unreadCount;
+      entryToStore = mergeDmEntryPreferRicher(entryToStore, aliasEntry);
+      nextDms.delete(aliasKey);
+    }
+
+    const previousUnread = existing?.unreadCount ?? 0;
+    sidebarDmsUnreadDelta += entryToStore.unreadCount - previousUnread - previousAliasUnread;
+
+    nextDms.set(merged.key, entryToStore);
   }
 
   if (!changed) return null;

@@ -6,6 +6,15 @@ import type { MockMessage } from "~/shared/api/zulip.types";
 import { createMessage } from "~/test/factories";
 import { ChatPageMessageListSection } from "./chat-page-message-list-section.ui";
 
+let capturedShowTopicInSenderName: boolean | undefined;
+
+vi.mock("~/widgets/message-list/message-list.ui", () => ({
+  MessageList: (props: { showTopicInSenderName?: boolean }) => {
+    capturedShowTopicInSenderName = props.showTopicInSenderName;
+    return <div data-testid="message-list" />;
+  },
+}));
+
 const noop = () => {};
 
 const baseProps = {
@@ -88,6 +97,21 @@ describe("ChatPageMessageListSection", () => {
     expect(screen.getByText(t("chat.messagesRefreshError"))).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: t("chat.retryLoadMessages") }));
     expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not show topic labels next to sender names in DM view", () => {
+    const msg = createMessage({ id: 1, type: "private", subject: "" }) as MockMessage;
+    render(
+      <ChatPageMessageListSection
+        {...baseProps}
+        isDmView
+        activeDmUserIds={[42]}
+        activeStream={undefined}
+        activeTopic={undefined}
+        messages={[msg]}
+      />,
+    );
+    expect(capturedShowTopicInSenderName).toBe(false);
   });
 
   it("shows boundary pagination error with dismiss", async () => {

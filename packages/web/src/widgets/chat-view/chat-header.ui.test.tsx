@@ -101,8 +101,8 @@ describe("ChatHeader", () => {
     expect(onDmPartnerClick).toHaveBeenCalledTimes(1);
   });
 
-  it("shows group dm title and participant count", () => {
-    renderWithProviders(
+  it("shows group dm title, group icon avatar, and participant count", () => {
+    const { container } = renderWithProviders(
       <ChatHeader
         channelName="unused"
         dmGroup={{ name: "Alice, Bob, Me", participantsCount: 3 }}
@@ -113,6 +113,9 @@ describe("ChatHeader", () => {
 
     expect(screen.getByText("Alice, Bob, Me")).toBeInTheDocument();
     expect(screen.getByText(/3 (members?|участник|участника|участников)/i)).toBeInTheDocument();
+    const header = screen.getByText("Alice, Bob, Me").closest("header");
+    expect(header?.querySelector("svg")).toBeInTheDocument();
+    expect(container).not.toHaveTextContent(/^A$/);
   });
 
   it("uses flat shell, compact metadata typography and topbar-aligned height", () => {

@@ -56,7 +56,7 @@ function dmRecentRank(
   ts: number,
   recentDmIds: readonly number[],
 ): [number, number] {
-  if (c.type !== "dm" || c.isGroup) return [9999, -ts];
+  if (c.type !== "dm") return [9999, -ts];
   const idx = recentDmIds.indexOf(c.id);
   return [idx >= 0 ? idx : 9999, -ts];
 }
@@ -66,6 +66,13 @@ function compareDmChatsByRecentActivity(
   b: TimestampedChat,
   recentDmIds: readonly number[],
 ): number {
+  const aIsGroup = a.c.type === "dm" && a.c.isGroup === true;
+  const bIsGroup = b.c.type === "dm" && b.c.isGroup === true;
+  // Huddles use synthetic ids — sort by last activity like streams and other DMs.
+  if (aIsGroup || bIsGroup) {
+    return b.ts - a.ts;
+  }
+
   const [aR, aT] = dmRecentRank(a.c, a.ts, recentDmIds);
   const [bR, bT] = dmRecentRank(b.c, b.ts, recentDmIds);
   if (aR !== bR) return aR - bR;

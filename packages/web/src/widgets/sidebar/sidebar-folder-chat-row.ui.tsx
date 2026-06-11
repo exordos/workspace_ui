@@ -1,6 +1,8 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { usePinStore } from "~/features/pin-chat/pin-chat.model";
+import { parseDmRouteParticipantIds } from "~/shared/lib/dm-route-slug.lib";
+import { computeIsGroupDmView } from "~/shared/lib/dm-route.lib";
 import { DmContextMenu } from "./sidebar-chat-context-menu.ui";
 import { DmChatRow } from "./sidebar-folder-dm-row.ui";
 import { SidebarFolderStreamRow } from "./sidebar-folder-stream-row.ui";
@@ -46,6 +48,14 @@ export const SidebarFolderChatRow = React.memo(function SidebarFolderChatRow({
   const isPinnedChat =
     pinApiFolderUuid != null && usePinStore.getState().isPinned(pinApiFolderUuid, chatWsId);
   const dmTriggerOffsetClassName = isCompactDensity ? "right-1 top-6" : "right-1 top-8";
+  const isGroupDmRow = useMemo(() => {
+    if (chat.type !== "dm") return false;
+    return computeIsGroupDmView(
+      { isGroup: chat.isGroup },
+      parseDmRouteParticipantIds(chat.slug),
+      currentUserId,
+    );
+  }, [chat, currentUserId]);
 
   if (chat.type === "stream") {
     return (
@@ -67,18 +77,26 @@ export const SidebarFolderChatRow = React.memo(function SidebarFolderChatRow({
     );
   }
 
+  const dmRow = (
+    <DmChatRow
+      chat={chat}
+      isActive={isDmRouteSlugActive(chat.slug, activeDmIdParam, currentUserId)}
+      isPinned={isPinnedChat}
+      compact={isCompactDensity}
+    />
+  );
+
+  if (isGroupDmRow) {
+    return dmRow;
+  }
+
   return (
     <DmContextMenu
       chat={chat}
       folderId={pinScopeFolderId}
       triggerOffsetClassName={dmTriggerOffsetClassName}
     >
-      <DmChatRow
-        chat={chat}
-        isActive={isDmRouteSlugActive(chat.slug, activeDmIdParam, currentUserId)}
-        isPinned={isPinnedChat}
-        compact={isCompactDensity}
-      />
+      {dmRow}
     </DmContextMenu>
   );
 });

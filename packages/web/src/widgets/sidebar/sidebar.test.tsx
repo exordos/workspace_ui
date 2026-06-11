@@ -802,6 +802,23 @@ describe("Sidebar", () => {
     expect(screen.getByTestId("group-avatar-icon-201,202,203")).toBeInTheDocument();
   });
 
+  it("does not open context menu for group dm chats", async () => {
+    renderWithProviders(
+      <Sidebar
+        streams={[]}
+        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+        sidebarChats={[GROUP_DM_CHAT]}
+        sidebarDms={[GROUP_DM_CHAT]}
+      />,
+    );
+
+    fireEvent.contextMenu(screen.getByText("Design Squad"));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("menuitem")).not.toBeInTheDocument();
+    });
+  });
+
   it("shows mark-as-read action in dm context menu and triggers dm narrow API", async () => {
     markDmAsReadMock.mockResolvedValue(true);
     renderWithProviders(

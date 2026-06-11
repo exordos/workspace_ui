@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import type { ChatListSnapshotSerialized } from "~/shared/lib/chat-list-snapshot-serialize.lib";
 import { serializeStreamEntry } from "~/shared/lib/chat-list-snapshot-serialize.lib";
-import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
+import type { DmEntryInternal, StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import {
   buildChatListHydrateFromSnapshotState,
   buildDmMetadataEntry,
@@ -155,6 +155,14 @@ describe("normalizeDmUserIds", () => {
   it("injects current user into single-peer metadata rows", () => {
     expect(normalizeDmUserIds([20], CURRENT_USER_ID)).toEqual([10, 20]);
   });
+
+  it("injects current user into huddle metadata rows missing self", () => {
+    expect(normalizeDmUserIds([20, 30], CURRENT_USER_ID)).toEqual([10, 20, 30]);
+  });
+
+  it("keeps full participant list when current user is already included", () => {
+    expect(normalizeDmUserIds([10, 20, 30], CURRENT_USER_ID)).toEqual([10, 20, 30]);
+  });
 });
 
 describe("buildDmMetadataEntry", () => {
@@ -218,6 +226,30 @@ describe("buildDmMetadataUpsertPatch", () => {
     expect(patch?.changed).toBe(true);
     expect(patch?.sidebarDmsUnreadDelta).toBe(4);
     expect(patch?.dmsMap.get("10,20")?.unreadCount).toBe(4);
+  });
+
+  it("merges alias huddle keys into canonical participant key", () => {
+    const aliasEntry = buildDmMetadataEntry(
+      { userIds: [20, 30], unreadCount: 2, lastActivityTs: 1000 },
+      CURRENT_USER_ID,
+      undefined,
+      displayContext(),
+    )!.entry;
+    // Legacy rows could be stored under a key that omits the current user.
+    const existingMap = new Map<string, DmEntryInternal>([
+      ["20,30", { ...aliasEntry, userIds: [20, 30] }],
+    ]);
+
+    const patch = buildDmMetadataUpsertPatch(
+      [{ userIds: [10, 20, 30], unreadCount: 1, lastActivityTs: 2000 }],
+      CURRENT_USER_ID,
+      existingMap,
+      displayContext(),
+    );
+
+    expect(patch?.dmsMap.has("20,30")).toBe(false);
+    expect(patch?.dmsMap.get("10,20,30")?.unreadCount).toBe(2);
+    expect(patch?.dmsMap.get("10,20,30")?.ts).toBe(2000);
   });
 });
 
