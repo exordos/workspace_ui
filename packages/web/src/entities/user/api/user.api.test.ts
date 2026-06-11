@@ -159,6 +159,8 @@ describe("user presence api", () => {
   it("updates own status with emoji and away flag", async () => {
     const { updateOwnStatus } = await import("./user.api");
     mockPost.mockResolvedValue({
+      ok: true,
+      status: 200,
       data: {
         status_text: "Lunch",
         status_emoji: "plate_with_cutlery",
@@ -184,11 +186,14 @@ describe("user presence api", () => {
       away: "false",
     });
     expect(result).toEqual({
-      text: "Lunch",
-      emojiName: "plate_with_cutlery",
-      emojiCode: "1f37d-fe0f",
-      reactionType: "unicode_emoji",
-      away: false,
+      ok: true,
+      status: {
+        text: "Lunch",
+        emojiName: "plate_with_cutlery",
+        emojiCode: "1f37d-fe0f",
+        reactionType: "unicode_emoji",
+        away: false,
+      },
     });
   });
 
@@ -221,13 +226,75 @@ describe("user presence api", () => {
     });
   });
 
-  it("returns null for fully cleared own status payload", async () => {
+  it("returns success with null status for fully cleared own status payload", async () => {
     const { updateOwnStatus } = await import("./user.api");
-    mockPost.mockResolvedValue({ data: { status_text: "", status_emoji: "", away: false } });
+    mockPost.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { status_text: "", status_emoji: "", away: false },
+    });
 
     const result = await updateOwnStatus({ text: "", emojiName: "", away: false });
 
-    expect(result).toBeNull();
+    expect(result).toEqual({ ok: true, status: null });
+  });
+
+  it("returns explicit failure for non-ok response", async () => {
+    const { updateOwnStatus } = await import("./user.api");
+    mockPost.mockResolvedValue({
+      ok: false,
+      status: 403,
+      data: {
+        result: "error",
+        msg: "Not allowed",
+        code: "BAD_PERMISSIONS",
+      },
+    });
+
+    const result = await updateOwnStatus({ text: "Busy", away: false });
+
+    expect(result).toEqual({
+      ok: false,
+      status: 403,
+      kind: "forbidden",
+      message: "Not allowed",
+      code: "BAD_PERMISSIONS",
+    });
+  });
+
+  it("returns explicit failure on network error", async () => {
+    const { updateOwnStatus } = await import("./user.api");
+    mockPost.mockRejectedValue(new Error("offline"));
+
+    const result = await updateOwnStatus({ text: "Busy", away: false });
+
+    expect(result).toEqual({
+      ok: false,
+      status: 0,
+      kind: "transient",
+      message: "Error: offline",
+    });
+  });
+
+  it("does not treat failed clear request as success", async () => {
+    const { updateOwnStatus } = await import("./user.api");
+    mockPost.mockResolvedValue({
+      ok: false,
+      status: 503,
+      data: {
+        result: "error",
+        msg: "Server error",
+      },
+    });
+
+    const result = await updateOwnStatus({ text: "", emojiName: "", away: false });
+
+    expect(result).toEqual({
+      ok: false,
+      status: 503,
+      kind: "transient",
+      message: "Server error",
+    });
   });
 
   it("loads status into store and reuses cache window", async () => {

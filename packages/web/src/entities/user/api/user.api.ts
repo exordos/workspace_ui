@@ -17,12 +17,16 @@ import {
 } from "./user.api.parsers";
 import type { UserStatus } from "../user.model";
 import type {
+  OwnStatusMutationErrorKind,
+  OwnStatusMutationResult,
   RequestUserStatusOptions,
   StatusFetchOutcome,
   ZulipGetUserStatusResponse,
+  ZulipUpdateOwnStatusResponse,
 } from "./user.api.types";
 
 export type {
+  OwnStatusMutationResult,
   RequestUserStatusOptions,
   UserStatusRequestPriority,
   UserStatusRequestReason,
@@ -35,6 +39,30 @@ export interface UpdateOwnStatusParams {
 }
 
 const log = createLogger("user:api");
+
+function mapStatusMutationError(status: number): OwnStatusMutationErrorKind {
+  if (status === 403) return "forbidden";
+  if (status === 400) return "invalid";
+  if (status === 404 || status === 405) return "unsupported";
+  return "transient";
+}
+
+function readStatusMutationErrorMessage(
+  data: ZulipUpdateOwnStatusResponse,
+  status: number,
+  fallback: string,
+): string {
+  if (typeof data.msg === "string" && data.msg.trim().length > 0) {
+    return data.msg;
+  }
+  if (typeof data.code === "string" && data.code.trim().length > 0) {
+    return data.code;
+  }
+  if (status > 0) {
+    return `${fallback} (HTTP ${status})`;
+  }
+  return fallback;
+}
 
 /** pingOnly=true sends keep-alive without changing the reported activity status. */
 export async function reportPresence(status: "active" | "idle", pingOnly = false): Promise<void> {
@@ -130,10 +158,17 @@ export async function fetchOwnStatus(): Promise<UserStatus | null> {
   }
 }
 
-export async function updateOwnStatus(params: UpdateOwnStatusParams): Promise<UserStatus | null> {
+export async function updateOwnStatus(
+  params: UpdateOwnStatusParams,
+): Promise<OwnStatusMutationResult> {
   const instance = getCurrentInstance();
   if (!instance?.realm || !instance.email || !instance.apiKey) {
-    return null;
+    return {
+      ok: false,
+      status: 0,
+      kind: "transient",
+      message: "No active instance",
+    };
   }
 
   const text = params.text.trim();
@@ -150,24 +185,44 @@ export async function updateOwnStatus(params: UpdateOwnStatusParams): Promise<Us
       away: String(away),
     };
     const response = await zulipApi.post("/users/me/status", payload);
-    const normalized = normalizeOwnStatusResponse(response.data ?? {});
+    const data = (response.data ?? {}) as ZulipUpdateOwnStatusResponse;
+
+    if (!response.ok || data.result === "error") {
+      return {
+        ok: false,
+        status: response.status,
+        kind: mapStatusMutationError(response.status),
+        message: readStatusMutationErrorMessage(data, response.status, "Failed to update status"),
+        ...(typeof data.code === "string" ? { code: data.code } : {}),
+      };
+    }
+
+    const normalized = normalizeOwnStatusResponse(data);
 
     if (normalized != null) {
-      return normalized;
+      return { ok: true, status: normalized };
     }
 
     // Some Zulip versions return an empty body on success — fall back to the submitted values.
     if (!text && !emojiName && !away) {
-      return null;
+      return { ok: true, status: null };
     }
     return {
-      text,
-      emojiName: emojiName || undefined,
-      away,
+      ok: true,
+      status: {
+        text,
+        emojiName: emojiName || undefined,
+        away,
+      },
     };
   } catch (err) {
     log.warn("Failed to update own status", { error: String(err) });
-    return null;
+    return {
+      ok: false,
+      status: 0,
+      kind: "transient",
+      message: String(err),
+    };
   }
 }
 

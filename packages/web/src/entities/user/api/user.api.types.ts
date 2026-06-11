@@ -35,6 +35,18 @@ export interface ZulipUpdateOwnStatusResponse extends ZulipApiResultEnvelope {
   status_emoji_display_info?: ZulipStatusEmojiDisplayInfo | ZulipStatusEmojiDisplayInfo[] | null;
 }
 
+export type OwnStatusMutationErrorKind = "forbidden" | "invalid" | "unsupported" | "transient";
+
+export type OwnStatusMutationResult =
+  | { ok: true; status: UserStatus | null }
+  | {
+      ok: false;
+      status: number;
+      kind: OwnStatusMutationErrorKind;
+      message: string;
+      code?: string;
+    };
+
 export type StatusFetchOutcome =
   | { kind: "ok"; status: UserStatus | null }
   | { kind: "invalid_user"; status: null }

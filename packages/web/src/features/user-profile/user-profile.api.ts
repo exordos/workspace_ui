@@ -8,6 +8,7 @@ import {
   fetchOwnStatus as fetchOwnStatusFromUsersApi,
   updateOwnStatus as updateOwnStatusFromUsersApi,
 } from "~/entities/user/api/user.api";
+import type { OwnStatusMutationResult } from "~/entities/user/api/user.api.types";
 import { zulipApi } from "~/shared/api/client";
 import {
   getOwnAvatarCapabilities as getOwnAvatarCapabilitiesFromApi,
@@ -134,13 +135,13 @@ export interface UpdateOwnStatusParams {
   away: boolean;
 }
 
-export async function updateOwnStatus(params: UpdateOwnStatusParams): Promise<boolean> {
-  const nextStatus = await updateOwnStatusFromUsersApi({
+export async function updateOwnStatus(
+  params: UpdateOwnStatusParams,
+): Promise<OwnStatusMutationResult> {
+  return updateOwnStatusFromUsersApi({
     text: params.statusText,
     away: params.away,
   });
-  const isClearRequest = params.statusText.trim().length === 0 && params.away === false;
-  return nextStatus != null || isClearRequest;
 }
 
 export function getOwnAvatarCapabilities(): OwnAvatarCapabilities {

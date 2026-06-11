@@ -199,24 +199,22 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
     }
     setStatusSubmitting(true);
     try {
-      const nextStatus = await updateOwnStatus({
+      const result = await updateOwnStatus({
         text: statusTextDraft,
         emojiName: statusEmojiNameDraft || undefined,
         away: statusAwayDraft,
       });
-      const isClearRequest =
-        statusTextDraft.trim().length === 0 &&
-        statusEmojiNameDraft.trim().length === 0 &&
-        statusAwayDraft === false;
-      if (nextStatus == null && !isClearRequest) {
-        log.warn("Status update returned empty payload for non-empty draft", {
+      if (!result.ok) {
+        log.warn("Status update failed", {
+          kind: result.kind,
+          status: result.status,
           hasText: statusTextDraft.trim().length > 0,
           hasEmoji: statusEmojiNameDraft.trim().length > 0,
           away: statusAwayDraft,
         });
         return;
       }
-      applyUserStatusSnapshot(currentUserId, nextStatus, Date.now());
+      applyUserStatusSnapshot(currentUserId, result.status, Date.now());
       setStatusDialogOpen(false);
     } finally {
       setStatusSubmitting(false);

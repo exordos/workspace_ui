@@ -360,7 +360,7 @@ export const SettingsPersonalInfoPage: React.FC = () => {
         setPendingAvatarAction(EMPTY_PENDING_AVATAR_ACTION);
       }
 
-      const [profileUpdated, statusUpdated] = await Promise.all([
+      const [profileUpdated, statusResult] = await Promise.all([
         updateOwnProfile({ fullName: trimmedFullName, timezone: canonicalTimezone }),
         updateOwnStatus({
           text: trimmedStatusText,
@@ -368,10 +368,6 @@ export const SettingsPersonalInfoPage: React.FC = () => {
           away: editableStatusAway,
         }),
       ]);
-      const isClearStatusRequest =
-        trimmedStatusText.length === 0 &&
-        (ownStatus?.emojiName?.trim() ?? "").length === 0 &&
-        editableStatusAway === false;
 
       if (!profileUpdated.ok) {
         if (profileUpdated.kind === "unsupported") {
@@ -384,7 +380,7 @@ export const SettingsPersonalInfoPage: React.FC = () => {
         return;
       }
 
-      if (statusUpdated == null && !isClearStatusRequest) {
+      if (!statusResult.ok) {
         // Avatar mutation has already been committed by server, keep it as-is.
         if (avatarMutationCommitted) {
           mergeUser({
@@ -400,8 +396,8 @@ export const SettingsPersonalInfoPage: React.FC = () => {
         prev ? { ...prev, fullName: trimmedFullName, timezone: canonicalTimezone } : prev,
       );
       const fetchedAt = Date.now();
-      setOwnStatus(statusUpdated);
-      applyUserStatusSnapshot(currentUserId, statusUpdated, fetchedAt);
+      setOwnStatus(statusResult.status);
+      applyUserStatusSnapshot(currentUserId, statusResult.status, fetchedAt);
       mergeUser({ user_id: currentUserId, full_name: trimmedFullName });
       setIsEditing(false);
       setPendingAvatarAction(EMPTY_PENDING_AVATAR_ACTION);

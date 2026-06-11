@@ -58,7 +58,7 @@ describe("SettingsPersonalInfoPage", () => {
     fetchOwnStatusMock.mockReset();
     fetchOwnStatusMock.mockResolvedValue(null);
     updateOwnStatusMock.mockReset();
-    updateOwnStatusMock.mockResolvedValue(null);
+    updateOwnStatusMock.mockResolvedValue({ ok: true, status: null });
     getOwnAvatarCapabilitiesMock.mockReset();
     getOwnAvatarCapabilitiesMock.mockReturnValue({
       maxAvatarFileSizeMib: 25,
@@ -329,11 +329,14 @@ describe("SettingsPersonalInfoPage", () => {
     });
     updateOwnProfileMock.mockResolvedValue({ ok: true });
     updateOwnStatusMock.mockResolvedValue({
-      text: "Reviewing PRs",
-      emojiName: "speech_balloon",
-      emojiCode: "1f4ac",
-      reactionType: "unicode_emoji",
-      away: true,
+      ok: true,
+      status: {
+        text: "Reviewing PRs",
+        emojiName: "speech_balloon",
+        emojiCode: "1f4ac",
+        reactionType: "unicode_emoji",
+        away: true,
+      },
     });
 
     renderWithProviders(<SettingsPersonalInfoPage />);
@@ -359,6 +362,65 @@ describe("SettingsPersonalInfoPage", () => {
       emojiCode: "1f4ac",
       reactionType: "unicode_emoji",
       away: true,
+    });
+  });
+
+  it("keeps existing status and edit mode when clear request fails", async () => {
+    useChatListStore.setState({ currentUserId: 42 });
+    useUsersStore.getState().mergeUser({
+      user_id: 42,
+      full_name: "Alice Doe",
+      email: "alice@example.com",
+      status: {
+        text: "Heads down",
+        away: false,
+      },
+      statusFetchedAt: Date.now(),
+    });
+    fetchUserProfileMock.mockResolvedValue({
+      userId: 42,
+      fullName: "Alice Doe",
+      email: "alice@example.com",
+      avatarUrl: "",
+      role: 400,
+      timezone: "Europe/Moscow",
+      phone: undefined,
+      birthday: undefined,
+      jobTitle: undefined,
+      manager: undefined,
+    });
+    fetchOwnStatusMock.mockResolvedValue({
+      text: "Heads down",
+      away: false,
+    });
+    updateOwnProfileMock.mockResolvedValue({ ok: true });
+    updateOwnStatusMock.mockResolvedValue({
+      ok: false,
+      status: 503,
+      kind: "transient",
+      message: "Server error",
+    });
+
+    renderWithProviders(<SettingsPersonalInfoPage />);
+    await waitFor(() => expect(fetchUserProfileMock).toHaveBeenCalledWith(42));
+
+    fireEvent.click(screen.getByRole("button", { name: /edit profile/i }));
+    const statusInput = screen.getByRole("textbox", { name: /status/i });
+    fireEvent.change(statusInput, { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(updateOwnStatusMock).toHaveBeenCalledWith({
+        text: "",
+        emojiName: undefined,
+        away: false,
+      });
+    });
+    expect(screen.getByText(/failed to update profile/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^save$/i })).toBeInTheDocument();
+    expect(useUsersStore.getState().getUser(42)?.status).toEqual({
+      text: "Heads down",
+      away: false,
     });
   });
 
@@ -402,7 +464,7 @@ describe("SettingsPersonalInfoPage", () => {
       timezone: "Europe/Moscow",
     });
     updateOwnProfileMock.mockResolvedValue({ ok: true });
-    updateOwnStatusMock.mockResolvedValue(null);
+    updateOwnStatusMock.mockResolvedValue({ ok: true, status: null });
 
     renderWithProviders(<SettingsPersonalInfoPage />);
     await waitFor(() => expect(fetchUserProfileMock).toHaveBeenCalledWith(42));
@@ -723,7 +785,7 @@ describe("SettingsPersonalInfoPage", () => {
         }),
     );
     updateOwnProfileMock.mockResolvedValue({ ok: true });
-    updateOwnStatusMock.mockResolvedValue(null);
+    updateOwnStatusMock.mockResolvedValue({ ok: true, status: null });
 
     renderWithProviders(<SettingsPersonalInfoPage />);
     await waitFor(() => expect(fetchUserProfileMock).toHaveBeenCalledWith(42));
@@ -788,7 +850,7 @@ describe("SettingsPersonalInfoPage", () => {
       timezone: "Europe/Moscow",
     });
     updateOwnProfileMock.mockResolvedValue({ ok: true });
-    updateOwnStatusMock.mockResolvedValue(null);
+    updateOwnStatusMock.mockResolvedValue({ ok: true, status: null });
 
     renderWithProviders(<SettingsPersonalInfoPage />);
     await waitFor(() => expect(fetchUserProfileMock).toHaveBeenCalledWith(42));
@@ -873,7 +935,7 @@ describe("SettingsPersonalInfoPage", () => {
       kind: "transient",
       message: "Failed to update profile",
     });
-    updateOwnStatusMock.mockResolvedValue(null);
+    updateOwnStatusMock.mockResolvedValue({ ok: true, status: null });
 
     renderWithProviders(<SettingsPersonalInfoPage />);
     await waitFor(() => expect(fetchUserProfileMock).toHaveBeenCalledWith(42));

@@ -28,6 +28,7 @@ const useAppUpdateMock = vi.hoisted(() => vi.fn());
 const navigateMock = vi.hoisted(() => vi.fn());
 const statusEmojiPickerMock = vi.hoisted(() => vi.fn());
 const fetchRealmEmojisMock = vi.hoisted(() => vi.fn());
+const updateOwnStatusMock = vi.hoisted(() => vi.fn());
 
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual<typeof ReactRouterDom>("react-router-dom");
@@ -47,6 +48,14 @@ vi.mock("~/shared/api/zulip-users", async () => {
   return {
     ...actual,
     fetchRealmEmojis: (...args: unknown[]) => fetchRealmEmojisMock(...args),
+  };
+});
+
+vi.mock("~/entities/user/api/user.api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("~/entities/user/api/user.api")>();
+  return {
+    ...actual,
+    updateOwnStatus: (...args: unknown[]) => updateOwnStatusMock(...args),
   };
 });
 
@@ -123,6 +132,8 @@ describe("RightPanel truthfulness", () => {
     statusEmojiPickerMock.mockReset();
     fetchRealmEmojisMock.mockReset();
     fetchRealmEmojisMock.mockResolvedValue([]);
+    updateOwnStatusMock.mockReset();
+    updateOwnStatusMock.mockResolvedValue({ ok: true, status: null });
     act(() => {
       setLocale("en");
     });
@@ -294,6 +305,46 @@ describe("RightPanel truthfulness", () => {
     fireEvent.click(within(statusDialog).getByRole("button", { name: /pick status emoji/i }));
 
     expect(within(statusDialog).getByText("🧪")).toBeInTheDocument();
+  });
+
+  it("keeps status dialog open and preserves store status when clear fails", async () => {
+    useChatListStore.setState({ currentUserId: 42 });
+    useUsersStore.getState().mergeUser({
+      user_id: 42,
+      full_name: "Alice Doe",
+      status: {
+        text: "Busy",
+        away: false,
+      },
+      statusFetchedAt: Date.now(),
+    });
+    updateOwnStatusMock.mockResolvedValue({
+      ok: false,
+      status: 503,
+      kind: "transient",
+      message: "Server error",
+    });
+
+    renderWithProviders(<RightPanelShell mode="user-menu" title="Profile" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^status/i }));
+
+    const statusDialog = screen.getByRole("dialog", { name: /^status$/i });
+    fireEvent.click(within(statusDialog).getByRole("button", { name: /clear/i }));
+    fireEvent.click(within(statusDialog).getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(updateOwnStatusMock).toHaveBeenCalledWith({
+        text: "",
+        emojiName: undefined,
+        away: false,
+      });
+    });
+    expect(screen.getByRole("dialog", { name: /^status$/i })).toBeInTheDocument();
+    expect(useUsersStore.getState().getUser(42)?.status).toEqual({
+      text: "Busy",
+      away: false,
+    });
   });
 
   it("renders current server as a regular scrollable menu item", () => {
