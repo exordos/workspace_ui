@@ -6,12 +6,6 @@ import type { NotificationLevel, TopicVisibilityLevel } from "./notification-lev
  * 1 muted → 0 inherit → 2 unmuted (only if stream muted or topic unmuted) → 3 followed
  */
 
-export const NOTIFICATION_LEVEL_CYCLE_ORDER: readonly NotificationLevel[] = [
-  "default",
-  "muted",
-  "subscribed",
-];
-
 type StreamNotificationLabelKey =
   | "channel.notificationDefault"
   | "channel.notificationMuted"
@@ -72,12 +66,6 @@ export function getTopicVisibilityLevelOptions(
   return levels.map((level) => TOPIC_VISIBILITY_OPTION_BY_LEVEL[level]);
 }
 
-export function getNextNotificationLevel(current: NotificationLevel): NotificationLevel {
-  const index = NOTIFICATION_LEVEL_CYCLE_ORDER.indexOf(current);
-  const nextIndex = index < 0 ? 0 : (index + 1) % NOTIFICATION_LEVEL_CYCLE_ORDER.length;
-  return NOTIFICATION_LEVEL_CYCLE_ORDER[nextIndex]!;
-}
-
 export function getNextTopicVisibilityLevel(
   current: TopicVisibilityLevel,
   streamMuted: boolean,
@@ -90,28 +78,8 @@ export function getNextTopicVisibilityLevel(
   return levels[nextIndex]!;
 }
 
-export function getStreamNotificationLevelOption(
-  level: NotificationLevel,
-): NotificationLevelOption {
-  const option = STREAM_NOTIFICATION_LEVEL_OPTIONS.find((entry) => entry.level === level);
-  return option ?? STREAM_NOTIFICATION_LEVEL_OPTIONS[0]!;
-}
-
 export function getTopicVisibilityLevelOption(
   level: TopicVisibilityLevel,
 ): TopicVisibilityLevelOption {
   return TOPIC_VISIBILITY_OPTION_BY_LEVEL[level];
 }
-
-/** @deprecated Use getStreamNotificationLevelOption or getTopicVisibilityLevelOption. */
-export function getTopicNotificationLevelOption(level: NotificationLevel): NotificationLevelOption {
-  return getStreamNotificationLevelOption(level);
-}
-
-/** @deprecated Use getStreamNotificationLevelOption. */
-export function getNotificationLevelOption(level: NotificationLevel): NotificationLevelOption {
-  return getStreamNotificationLevelOption(level);
-}
-
-/** @deprecated Use TOPIC_VISIBILITY_OPTION_BY_LEVEL via getTopicVisibilityLevelOption. */
-export const TOPIC_NOTIFICATION_LEVEL_OPTIONS = STREAM_NOTIFICATION_LEVEL_OPTIONS;

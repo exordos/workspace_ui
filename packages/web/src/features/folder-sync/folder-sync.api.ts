@@ -41,15 +41,6 @@ const inFlightSnapshotsByInstance = new Map<string, Promise<FolderSyncSnapshot>>
 // Last successful snapshot for the current instanceId.
 const latestSnapshotByInstance = new Map<string, FolderSyncSnapshot>();
 
-function cloneSnapshot(snapshot: FolderSyncSnapshot): FolderSyncSnapshot {
-  // Return a clone so external consumers cannot mutate the internal cache.
-  return {
-    folders: [...snapshot.folders],
-    itemsByFolderId: new Map(snapshot.itemsByFolderId),
-    loadedAt: snapshot.loadedAt,
-  };
-}
-
 export type FolderSyncItemsLoadScope = "all" | "selective";
 
 export interface LoadFolderSyncSnapshotOptions {
@@ -103,11 +94,6 @@ export async function loadFolderSyncSnapshot(
   });
 
   return request;
-}
-
-export function readLatestFolderSyncSnapshot(instanceId: string): FolderSyncSnapshot | null {
-  const snapshot = latestSnapshotByInstance.get(instanceId);
-  return snapshot ? cloneSnapshot(snapshot) : null;
 }
 
 export function resetFolderSyncApiCacheForTests(): void {

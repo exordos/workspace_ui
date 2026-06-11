@@ -1,5 +1,4 @@
 import { resolveRenamedTopicName } from "~/features/mark-topic-resolved/rename-stream-topic.lib";
-import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 
 export interface MoveTopicTargetStream {
   streamId: number;
@@ -12,25 +11,6 @@ export function resolveMoveTopicTargetName(
   nextNameInput: string,
 ): string | null {
   return resolveRenamedTopicName(currentTopic, nextNameInput);
-}
-
-export function isMoveTopicTargetUnchanged(
-  sourceStreamId: number,
-  targetStreamId: number,
-  currentTopic: string,
-  nextNameInput: string,
-): boolean {
-  if (sourceStreamId === targetStreamId) {
-    return true;
-  }
-  const nextTopic = resolveMoveTopicTargetName(currentTopic, nextNameInput);
-  if (nextTopic == null) {
-    return true;
-  }
-  return (
-    normalizeTopicForIdentity(nextTopic) === normalizeTopicForIdentity(currentTopic) &&
-    sourceStreamId === targetStreamId
-  );
 }
 
 export function buildMoveTopicTargetStreamOptions(

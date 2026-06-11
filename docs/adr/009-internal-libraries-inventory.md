@@ -60,6 +60,7 @@ Ratchet policy: thresholds **25 → 20 → 15** (steady-state target 15). Do not
 | 2026-06-01 | 20        |       16 | Threshold lowered after 0 @ 25                     |
 | 2026-06-01 | 20        |        0 | CC ratchet complete (see ADR-012)                  |
 | 2026-06-04 | 20        |        1 | `chat-list-apply-read-decrement.lib.ts` CC 23      |
+| 2026-06-11 | 20        |        0 | create-chat, zulip-streams, subscription dispatch  |
 
 Count command (from repo root):
 

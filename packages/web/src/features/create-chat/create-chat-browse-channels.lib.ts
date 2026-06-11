@@ -129,6 +129,106 @@ function pickGroupField(
   return subscriptionValue ?? streamValue;
 }
 
+type BrowseChannelGroupFieldKey =
+  | "canSubscribeGroup"
+  | "canAddSubscribersGroup"
+  | "canRemoveSubscribersGroup"
+  | "canAdministerChannelGroup"
+  | "canResolveTopicsGroup"
+  | "canMoveMessagesOutOfChannelGroup";
+
+const BROWSE_CHANNEL_GROUP_FIELDS: readonly {
+  rowKey: BrowseChannelGroupFieldKey;
+  streamKey: keyof BrowseChannelStreamLike;
+  subscriptionKey?: keyof BrowseChannelSubscriptionLike;
+}[] = [
+  { rowKey: "canSubscribeGroup", streamKey: "can_subscribe_group" },
+  {
+    rowKey: "canAddSubscribersGroup",
+    streamKey: "can_add_subscribers_group",
+    subscriptionKey: "can_add_subscribers_group",
+  },
+  {
+    rowKey: "canRemoveSubscribersGroup",
+    streamKey: "can_remove_subscribers_group",
+    subscriptionKey: "can_remove_subscribers_group",
+  },
+  {
+    rowKey: "canAdministerChannelGroup",
+    streamKey: "can_administer_channel_group",
+    subscriptionKey: "can_administer_channel_group",
+  },
+  {
+    rowKey: "canResolveTopicsGroup",
+    streamKey: "can_resolve_topics_group",
+    subscriptionKey: "can_resolve_topics_group",
+  },
+  {
+    rowKey: "canMoveMessagesOutOfChannelGroup",
+    streamKey: "can_move_messages_out_of_channel_group",
+    subscriptionKey: "can_move_messages_out_of_channel_group",
+  },
+];
+
+function appendBrowseChannelGroupFields(
+  row: BrowseChannelRow,
+  stream: BrowseChannelStreamLike,
+  subscription: BrowseChannelSubscriptionLike | undefined,
+): BrowseChannelRow {
+  let result = row;
+  for (const field of BROWSE_CHANNEL_GROUP_FIELDS) {
+    const subscriptionValue = field.subscriptionKey
+      ? (subscription?.[field.subscriptionKey] as ZulipGroupSettingValue | undefined)
+      : undefined;
+    const streamValue = stream[field.streamKey] as ZulipGroupSettingValue | undefined;
+    const merged = pickGroupField(subscriptionValue, streamValue);
+    if (merged != null) {
+      result = { ...result, [field.rowKey]: merged };
+    }
+  }
+  return result;
+}
+
+function buildBrowseChannelRowCore(
+  stream: BrowseChannelStreamLike,
+  subscription: BrowseChannelSubscriptionLike | undefined,
+): BrowseChannelRow {
+  const isSubscribed = subscription != null;
+  return {
+    streamId: stream.stream_id,
+    name: stream.name,
+    description: stream.description,
+    isSubscribed,
+    isMuted: subscription?.is_muted === true,
+    inviteOnly: mergeOptionalBoolean(subscription?.invite_only, stream.invite_only),
+    historyPublicToSubscribers: mergeOptionalBoolean(
+      undefined,
+      stream.history_public_to_subscribers,
+    ),
+    isAnnouncementOnly: stream.is_announcement_only === true,
+    isWebPublic: stream.is_web_public === true,
+    streamPostPolicy:
+      typeof stream.stream_post_policy === "number" ? stream.stream_post_policy : null,
+    subscriberCount: normalizeCount(stream.subscriber_count),
+    weeklyMessageCount: normalizeCount(stream.stream_weekly_traffic),
+    creatorId: mergeCreatorId(subscription, stream.creator_id),
+    dateCreated:
+      typeof stream.date_created === "number" && stream.date_created > 0
+        ? stream.date_created
+        : null,
+    folderId: normalizeCount(stream.folder_id),
+    isDefault: mergeOptionalBoolean(undefined, stream.is_default),
+    isRecentlyActive: mergeOptionalBoolean(undefined, stream.is_recently_active),
+    messageRetentionDays: normalizeCount(stream.message_retention_days),
+    desktopNotifications: isSubscribed
+      ? mergeNotificationOverride(subscription?.desktop_notifications)
+      : null,
+    audibleNotifications: isSubscribed
+      ? mergeNotificationOverride(subscription?.audible_notifications)
+      : null,
+  };
+}
+
 function compareByName(left: BrowseChannelRow, right: BrowseChannelRow): number {
   return left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
 }
@@ -179,98 +279,8 @@ export function buildBrowseChannelRows(input: BuildBrowseChannelRowsInput): Brow
       continue;
     }
 
-    const isSubscribed = subscription != null;
-    const inviteOnly = mergeOptionalBoolean(subscription?.invite_only, stream.invite_only);
-
-    rows.push({
-      streamId: stream.stream_id,
-      name: stream.name,
-      description: stream.description,
-      isSubscribed,
-      isMuted: subscription?.is_muted === true,
-      inviteOnly,
-      historyPublicToSubscribers: mergeOptionalBoolean(
-        undefined,
-        stream.history_public_to_subscribers,
-      ),
-      isAnnouncementOnly: stream.is_announcement_only === true,
-      isWebPublic: stream.is_web_public === true,
-      streamPostPolicy:
-        typeof stream.stream_post_policy === "number" ? stream.stream_post_policy : null,
-      subscriberCount: normalizeCount(stream.subscriber_count),
-      weeklyMessageCount: normalizeCount(stream.stream_weekly_traffic),
-      creatorId: mergeCreatorId(subscription, stream.creator_id),
-      dateCreated:
-        typeof stream.date_created === "number" && stream.date_created > 0
-          ? stream.date_created
-          : null,
-      folderId: normalizeCount(stream.folder_id),
-      isDefault: mergeOptionalBoolean(undefined, stream.is_default),
-      isRecentlyActive: mergeOptionalBoolean(undefined, stream.is_recently_active),
-      messageRetentionDays: normalizeCount(stream.message_retention_days),
-      desktopNotifications: isSubscribed
-        ? mergeNotificationOverride(subscription?.desktop_notifications)
-        : null,
-      audibleNotifications: isSubscribed
-        ? mergeNotificationOverride(subscription?.audible_notifications)
-        : null,
-      ...(pickGroupField(undefined, stream.can_subscribe_group) != null
-        ? { canSubscribeGroup: pickGroupField(undefined, stream.can_subscribe_group)! }
-        : {}),
-      ...(pickGroupField(
-        subscription?.can_add_subscribers_group,
-        stream.can_add_subscribers_group,
-      ) != null
-        ? {
-            canAddSubscribersGroup: pickGroupField(
-              subscription?.can_add_subscribers_group,
-              stream.can_add_subscribers_group,
-            )!,
-          }
-        : {}),
-      ...(pickGroupField(
-        subscription?.can_remove_subscribers_group,
-        stream.can_remove_subscribers_group,
-      ) != null
-        ? {
-            canRemoveSubscribersGroup: pickGroupField(
-              subscription?.can_remove_subscribers_group,
-              stream.can_remove_subscribers_group,
-            )!,
-          }
-        : {}),
-      ...(pickGroupField(
-        subscription?.can_administer_channel_group,
-        stream.can_administer_channel_group,
-      ) != null
-        ? {
-            canAdministerChannelGroup: pickGroupField(
-              subscription?.can_administer_channel_group,
-              stream.can_administer_channel_group,
-            )!,
-          }
-        : {}),
-      ...(pickGroupField(subscription?.can_resolve_topics_group, stream.can_resolve_topics_group) !=
-      null
-        ? {
-            canResolveTopicsGroup: pickGroupField(
-              subscription?.can_resolve_topics_group,
-              stream.can_resolve_topics_group,
-            )!,
-          }
-        : {}),
-      ...(pickGroupField(
-        subscription?.can_move_messages_out_of_channel_group,
-        stream.can_move_messages_out_of_channel_group,
-      ) != null
-        ? {
-            canMoveMessagesOutOfChannelGroup: pickGroupField(
-              subscription?.can_move_messages_out_of_channel_group,
-              stream.can_move_messages_out_of_channel_group,
-            )!,
-          }
-        : {}),
-    });
+    const coreRow = buildBrowseChannelRowCore(stream, subscription);
+    rows.push(appendBrowseChannelGroupFields(coreRow, stream, subscription));
   }
 
   const filtered = filterBrowseChannelRows(rows, subscriptionFilter);

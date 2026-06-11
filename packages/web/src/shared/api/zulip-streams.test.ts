@@ -543,6 +543,36 @@ describe("fetchStreams", () => {
       message_retention_days: null,
     });
   });
+
+  it("maps optional group settings from stream payload", async () => {
+    mockZulipClient.streams.retrieve.mockResolvedValue({
+      streams: [
+        {
+          stream_id: 3,
+          name: "restricted",
+          can_subscribe_group: 9,
+          can_add_subscribers_group: { direct_members: [1], direct_subgroups: [] },
+        },
+      ],
+    });
+
+    await expect(fetchStreams()).resolves.toEqual([
+      {
+        stream_id: 3,
+        name: "restricted",
+        description: "",
+        is_announcement_only: false,
+        subscriber_count: null,
+        stream_weekly_traffic: null,
+        stream_post_policy: null,
+        date_created: null,
+        folder_id: null,
+        message_retention_days: null,
+        can_subscribe_group: 9,
+        can_add_subscribers_group: { direct_members: [1], direct_subgroups: [] },
+      },
+    ]);
+  });
 });
 
 // ---------------------------------------------------------------------------

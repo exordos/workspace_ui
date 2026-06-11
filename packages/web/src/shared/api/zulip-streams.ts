@@ -259,97 +259,102 @@ function readOptionalGroupSetting(value: unknown): ZulipGroupSettingValue | unde
   return normalizeGroupSettingValue(value);
 }
 
+interface RawStreamPayload {
+  stream_id: number;
+  name: string;
+  description?: string;
+  invite_only?: unknown;
+  is_announcement_only?: unknown;
+  history_public_to_subscribers?: unknown;
+  is_web_public?: unknown;
+  subscriber_count?: unknown;
+  stream_weekly_traffic?: unknown;
+  stream_post_policy?: unknown;
+  creator_id?: unknown;
+  date_created?: unknown;
+  folder_id?: unknown;
+  is_default?: unknown;
+  is_recently_active?: unknown;
+  message_retention_days?: unknown;
+  can_subscribe_group?: unknown;
+  can_add_subscribers_group?: unknown;
+  can_remove_subscribers_group?: unknown;
+  can_administer_channel_group?: unknown;
+  can_resolve_topics_group?: unknown;
+  can_move_messages_out_of_channel_group?: unknown;
+}
+
+function readOptionalCreatorId(value: unknown): number | null | undefined {
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
+    return value;
+  }
+  if (value === null) {
+    return null;
+  }
+  return undefined;
+}
+
+function parseRawStream(raw: unknown): MockStream {
+  const stream = raw as RawStreamPayload;
+  const inviteOnly = readOptionalBoolean(stream.invite_only);
+  const historyPublic = readOptionalBoolean(stream.history_public_to_subscribers);
+  const isWebPublic = readOptionalBoolean(stream.is_web_public);
+  const isDefault = readOptionalBoolean(stream.is_default);
+  const isRecentlyActive = readOptionalBoolean(stream.is_recently_active);
+  const subscriberCount = readOptionalCount(stream.subscriber_count);
+  const weeklyTraffic = readOptionalCount(stream.stream_weekly_traffic);
+  const postPolicy = readOptionalPolicy(stream.stream_post_policy);
+  const creatorId = readOptionalCreatorId(stream.creator_id);
+  const dateCreated = readOptionalUnixTimestamp(stream.date_created);
+  const folderId = readOptionalCount(stream.folder_id);
+  const messageRetentionDays = readOptionalCount(stream.message_retention_days);
+  const canSubscribeGroup = readOptionalGroupSetting(stream.can_subscribe_group);
+  const canAddSubscribersGroup = readOptionalGroupSetting(stream.can_add_subscribers_group);
+  const canRemoveSubscribersGroup = readOptionalGroupSetting(stream.can_remove_subscribers_group);
+  const canAdministerChannelGroup = readOptionalGroupSetting(stream.can_administer_channel_group);
+  const canResolveTopicsGroup = readOptionalGroupSetting(stream.can_resolve_topics_group);
+  const canMoveMessagesOutOfChannelGroup = readOptionalGroupSetting(
+    stream.can_move_messages_out_of_channel_group,
+  );
+  return {
+    stream_id: stream.stream_id,
+    name: stream.name,
+    description: stream.description ?? "",
+    is_announcement_only: stream.is_announcement_only === true,
+    ...(inviteOnly != null ? { invite_only: inviteOnly } : {}),
+    ...(historyPublic != null ? { history_public_to_subscribers: historyPublic } : {}),
+    ...(isWebPublic != null ? { is_web_public: isWebPublic } : {}),
+    ...(subscriberCount !== undefined ? { subscriber_count: subscriberCount } : {}),
+    ...(weeklyTraffic !== undefined ? { stream_weekly_traffic: weeklyTraffic } : {}),
+    ...(postPolicy !== undefined ? { stream_post_policy: postPolicy } : {}),
+    ...(creatorId !== undefined ? { creator_id: creatorId } : {}),
+    ...(dateCreated !== undefined ? { date_created: dateCreated } : {}),
+    ...(folderId !== undefined ? { folder_id: folderId } : {}),
+    ...(isDefault != null ? { is_default: isDefault } : {}),
+    ...(isRecentlyActive != null ? { is_recently_active: isRecentlyActive } : {}),
+    ...(messageRetentionDays !== undefined ? { message_retention_days: messageRetentionDays } : {}),
+    ...(canSubscribeGroup != null ? { can_subscribe_group: canSubscribeGroup } : {}),
+    ...(canAddSubscribersGroup != null
+      ? { can_add_subscribers_group: canAddSubscribersGroup }
+      : {}),
+    ...(canRemoveSubscribersGroup != null
+      ? { can_remove_subscribers_group: canRemoveSubscribersGroup }
+      : {}),
+    ...(canAdministerChannelGroup != null
+      ? { can_administer_channel_group: canAdministerChannelGroup }
+      : {}),
+    ...(canResolveTopicsGroup != null ? { can_resolve_topics_group: canResolveTopicsGroup } : {}),
+    ...(canMoveMessagesOutOfChannelGroup != null
+      ? { can_move_messages_out_of_channel_group: canMoveMessagesOutOfChannelGroup }
+      : {}),
+  };
+}
+
 export async function fetchStreams(): Promise<MockStream[]> {
   const client = await getClient();
   const data = await client.streams.retrieve();
   const list = data.streams ?? [];
-  return list.map((raw) => {
-    const stream = raw as {
-      stream_id: number;
-      name: string;
-      description?: string;
-      invite_only?: unknown;
-      is_announcement_only?: unknown;
-      history_public_to_subscribers?: unknown;
-      is_web_public?: unknown;
-      subscriber_count?: unknown;
-      stream_weekly_traffic?: unknown;
-      stream_post_policy?: unknown;
-      creator_id?: unknown;
-      date_created?: unknown;
-      folder_id?: unknown;
-      is_default?: unknown;
-      is_recently_active?: unknown;
-      message_retention_days?: unknown;
-      can_subscribe_group?: unknown;
-      can_add_subscribers_group?: unknown;
-      can_remove_subscribers_group?: unknown;
-      can_administer_channel_group?: unknown;
-      can_resolve_topics_group?: unknown;
-      can_move_messages_out_of_channel_group?: unknown;
-    };
-    const inviteOnly = readOptionalBoolean(stream.invite_only);
-    const historyPublic = readOptionalBoolean(stream.history_public_to_subscribers);
-    const isWebPublic = readOptionalBoolean(stream.is_web_public);
-    const isDefault = readOptionalBoolean(stream.is_default);
-    const isRecentlyActive = readOptionalBoolean(stream.is_recently_active);
-    const subscriberCount = readOptionalCount(stream.subscriber_count);
-    const weeklyTraffic = readOptionalCount(stream.stream_weekly_traffic);
-    const postPolicy = readOptionalPolicy(stream.stream_post_policy);
-    const creatorId =
-      typeof stream.creator_id === "number" &&
-      Number.isInteger(stream.creator_id) &&
-      stream.creator_id > 0
-        ? stream.creator_id
-        : stream.creator_id === null
-          ? null
-          : undefined;
-    const dateCreated = readOptionalUnixTimestamp(stream.date_created);
-    const folderId = readOptionalCount(stream.folder_id);
-    const messageRetentionDays = readOptionalCount(stream.message_retention_days);
-    const canSubscribeGroup = readOptionalGroupSetting(stream.can_subscribe_group);
-    const canAddSubscribersGroup = readOptionalGroupSetting(stream.can_add_subscribers_group);
-    const canRemoveSubscribersGroup = readOptionalGroupSetting(stream.can_remove_subscribers_group);
-    const canAdministerChannelGroup = readOptionalGroupSetting(stream.can_administer_channel_group);
-    const canResolveTopicsGroup = readOptionalGroupSetting(stream.can_resolve_topics_group);
-    const canMoveMessagesOutOfChannelGroup = readOptionalGroupSetting(
-      stream.can_move_messages_out_of_channel_group,
-    );
-    return {
-      stream_id: stream.stream_id,
-      name: stream.name,
-      description: stream.description ?? "",
-      is_announcement_only: stream.is_announcement_only === true,
-      ...(inviteOnly != null ? { invite_only: inviteOnly } : {}),
-      ...(historyPublic != null ? { history_public_to_subscribers: historyPublic } : {}),
-      ...(isWebPublic != null ? { is_web_public: isWebPublic } : {}),
-      ...(subscriberCount !== undefined ? { subscriber_count: subscriberCount } : {}),
-      ...(weeklyTraffic !== undefined ? { stream_weekly_traffic: weeklyTraffic } : {}),
-      ...(postPolicy !== undefined ? { stream_post_policy: postPolicy } : {}),
-      ...(creatorId !== undefined ? { creator_id: creatorId } : {}),
-      ...(dateCreated !== undefined ? { date_created: dateCreated } : {}),
-      ...(folderId !== undefined ? { folder_id: folderId } : {}),
-      ...(isDefault != null ? { is_default: isDefault } : {}),
-      ...(isRecentlyActive != null ? { is_recently_active: isRecentlyActive } : {}),
-      ...(messageRetentionDays !== undefined
-        ? { message_retention_days: messageRetentionDays }
-        : {}),
-      ...(canSubscribeGroup != null ? { can_subscribe_group: canSubscribeGroup } : {}),
-      ...(canAddSubscribersGroup != null
-        ? { can_add_subscribers_group: canAddSubscribersGroup }
-        : {}),
-      ...(canRemoveSubscribersGroup != null
-        ? { can_remove_subscribers_group: canRemoveSubscribersGroup }
-        : {}),
-      ...(canAdministerChannelGroup != null
-        ? { can_administer_channel_group: canAdministerChannelGroup }
-        : {}),
-      ...(canResolveTopicsGroup != null ? { can_resolve_topics_group: canResolveTopicsGroup } : {}),
-      ...(canMoveMessagesOutOfChannelGroup != null
-        ? { can_move_messages_out_of_channel_group: canMoveMessagesOutOfChannelGroup }
-        : {}),
-    };
-  });
+  return list.map(parseRawStream);
 }
 
 /** Adds users to an existing stream (POST /users/me/subscriptions with principals). */

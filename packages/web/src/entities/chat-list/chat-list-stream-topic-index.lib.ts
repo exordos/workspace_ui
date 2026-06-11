@@ -96,18 +96,6 @@ export function removeMessageIdFromStreamTopicIndex(
   return next;
 }
 
-export function moveMessageIdBetweenStreamTopics(
-  index: ReadonlyMap<string, readonly number[]>,
-  messageId: number,
-  streamId: number,
-  oldTopicKey: string,
-  newTopicKey: string,
-): Map<string, number[]> {
-  let next = removeMessageIdFromStreamTopicIndex(index, messageId, streamId, oldTopicKey);
-  next = addMessageIdToStreamTopicIndex(next, messageId, streamId, newTopicKey);
-  return next;
-}
-
 export function removeStreamTopicKeyFromIndex(
   index: ReadonlyMap<string, readonly number[]>,
   streamId: number,

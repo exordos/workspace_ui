@@ -1,10 +1,6 @@
 const CREATE_CHAT_TABS = ["dm", "group", "channels", "channel", "archived"] as const;
 export type CreateChatTab = (typeof CREATE_CHAT_TABS)[number];
 
-export function getCreateChatTabs(): readonly CreateChatTab[] {
-  return CREATE_CHAT_TABS;
-}
-
 export function slugifyUserNameForDm(name: string): string {
   return name
     .trim()

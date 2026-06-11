@@ -58,6 +58,3 @@ export function useTopicVisibilityLevelControl({
     cycleLevel,
   };
 }
-
-/** @deprecated Use useTopicVisibilityLevelControl */
-export const useTopicNotificationLevelControl = useTopicVisibilityLevelControl;

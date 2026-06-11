@@ -80,6 +80,3 @@ export const TopicNotificationLevelMenuPicker = React.memo<TopicNotificationLeve
 );
 
 TopicNotificationLevelMenuPicker.displayName = "TopicNotificationLevelMenuPicker";
-
-/** @deprecated Use TopicNotificationLevelCycleButton or TopicNotificationLevelMenuPicker. */
-export const TopicNotificationLevelSwitch = TopicNotificationLevelCycleButton;

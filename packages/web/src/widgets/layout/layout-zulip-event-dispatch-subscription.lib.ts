@@ -164,67 +164,68 @@ export function buildStreamMetadataRowFromExisting(
   };
 }
 
+interface SubscriptionMetadataRow {
+  streamId: number;
+  name: string;
+  isArchived?: boolean;
+  inviteOnly?: boolean;
+  canAddSubscribersGroup?: ZulipGroupSettingValue;
+  canRemoveSubscribersGroup?: ZulipGroupSettingValue;
+  canAdministerChannelGroup?: ZulipGroupSettingValue;
+  canResolveTopicsGroup?: ZulipGroupSettingValue;
+  canMoveMessagesOutOfChannelGroup?: ZulipGroupSettingValue;
+}
+
+function applyBooleanSubscriptionMetadataField(
+  row: SubscriptionMetadataRow,
+  event: ZulipEvent,
+  field: "isArchived" | "inviteOnly",
+): void {
+  if (typeof event.value === "boolean") {
+    row[field] = event.value;
+  }
+}
+
+function applyGroupSubscriptionMetadataField(
+  row: SubscriptionMetadataRow,
+  event: ZulipEvent,
+  field:
+    | "canAddSubscribersGroup"
+    | "canRemoveSubscribersGroup"
+    | "canAdministerChannelGroup"
+    | "canResolveTopicsGroup"
+    | "canMoveMessagesOutOfChannelGroup",
+): void {
+  const parsed = normalizeGroupSettingValue(event.value);
+  if (parsed != null) {
+    row[field] = parsed;
+  }
+}
+
+const SUBSCRIPTION_METADATA_FIELD_HANDLERS: Record<
+  string,
+  (row: SubscriptionMetadataRow, event: ZulipEvent) => void
+> = {
+  is_archived: (row, event) => applyBooleanSubscriptionMetadataField(row, event, "isArchived"),
+  invite_only: (row, event) => applyBooleanSubscriptionMetadataField(row, event, "inviteOnly"),
+  can_add_subscribers_group: (row, event) =>
+    applyGroupSubscriptionMetadataField(row, event, "canAddSubscribersGroup"),
+  can_remove_subscribers_group: (row, event) =>
+    applyGroupSubscriptionMetadataField(row, event, "canRemoveSubscribersGroup"),
+  can_administer_channel_group: (row, event) =>
+    applyGroupSubscriptionMetadataField(row, event, "canAdministerChannelGroup"),
+  can_resolve_topics_group: (row, event) =>
+    applyGroupSubscriptionMetadataField(row, event, "canResolveTopicsGroup"),
+  can_move_messages_out_of_channel_group: (row, event) =>
+    applyGroupSubscriptionMetadataField(row, event, "canMoveMessagesOutOfChannelGroup"),
+};
+
 export function applySubscriptionMetadataField(
-  row: {
-    streamId: number;
-    name: string;
-    isArchived?: boolean;
-    inviteOnly?: boolean;
-    canAddSubscribersGroup?: ZulipGroupSettingValue;
-    canRemoveSubscribersGroup?: ZulipGroupSettingValue;
-    canAdministerChannelGroup?: ZulipGroupSettingValue;
-    canResolveTopicsGroup?: ZulipGroupSettingValue;
-    canMoveMessagesOutOfChannelGroup?: ZulipGroupSettingValue;
-  },
+  row: SubscriptionMetadataRow,
   property: string,
   event: ZulipEvent,
 ): void {
-  if (property === "is_archived") {
-    if (typeof event.value === "boolean") {
-      row.isArchived = event.value;
-    }
-    return;
-  }
-  if (property === "invite_only") {
-    if (typeof event.value === "boolean") {
-      row.inviteOnly = event.value;
-    }
-    return;
-  }
-  if (property === "can_add_subscribers_group") {
-    const parsed = normalizeGroupSettingValue(event.value);
-    if (parsed != null) {
-      row.canAddSubscribersGroup = parsed;
-    }
-    return;
-  }
-  if (property === "can_remove_subscribers_group") {
-    const parsed = normalizeGroupSettingValue(event.value);
-    if (parsed != null) {
-      row.canRemoveSubscribersGroup = parsed;
-    }
-    return;
-  }
-  if (property === "can_administer_channel_group") {
-    const parsed = normalizeGroupSettingValue(event.value);
-    if (parsed != null) {
-      row.canAdministerChannelGroup = parsed;
-    }
-    return;
-  }
-  if (property === "can_resolve_topics_group") {
-    const parsed = normalizeGroupSettingValue(event.value);
-    if (parsed != null) {
-      row.canResolveTopicsGroup = parsed;
-    }
-    return;
-  }
-  if (property === "can_move_messages_out_of_channel_group") {
-    const parsed = normalizeGroupSettingValue(event.value);
-    if (parsed != null) {
-      row.canMoveMessagesOutOfChannelGroup = parsed;
-    }
-  }
+  SUBSCRIPTION_METADATA_FIELD_HANDLERS[property]?.(row, event);
 }
 
 export function handleSubscriptionPropertyUpdate(
