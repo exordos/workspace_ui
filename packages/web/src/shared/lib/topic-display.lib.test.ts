@@ -21,6 +21,19 @@ describe("topic display helpers", () => {
     });
   });
 
+  it("does not mark legacy alias or user-named general-chat topics as system styling", () => {
+    expect(resolveTopicDisplayInfo("general chat")).toEqual({
+      label: t("chat.generalChat"),
+      normalized: "",
+      isSystem: false,
+    });
+    expect(resolveTopicDisplayInfo(t("chat.generalChat"))).toEqual({
+      label: t("chat.generalChat"),
+      normalized: "",
+      isSystem: false,
+    });
+  });
+
   it("matches the system topic by its localized display label in search", () => {
     expect(topicMatchesDisplayQuery("", t("chat.generalChat").toLowerCase())).toBe(true);
   });

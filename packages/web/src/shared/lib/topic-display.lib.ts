@@ -12,12 +12,13 @@ export function isEmptyTopicName(topic: string): boolean {
 }
 
 export function resolveTopicDisplayInfo(topic: string): TopicDisplayInfo {
+  const trimmed = topic.trim();
   const normalized = normalizeTopicForIdentity(topic);
   if (normalized.length === 0) {
     return {
       label: t("chat.generalChat"),
       normalized,
-      isSystem: true,
+      isSystem: trimmed.length === 0,
     };
   }
   return {
