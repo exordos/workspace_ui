@@ -80,7 +80,7 @@ function hasNonEmptyPreviewText(value: string | undefined): boolean {
 function streamHasTopicsNeedingPreview(streamId: number): boolean {
   const entry = useChatListStore.getState().streamsMap.get(streamId);
   if (entry == null) return false;
-  if (entry.topics.size === 0) return true;
+  if (entry.topics.size === 0) return false;
   for (const topic of entry.topics.values()) {
     if (!hasNonEmptyPreviewText(topic.lastMessage)) {
       return true;

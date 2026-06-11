@@ -326,4 +326,31 @@ describe("MediaViewerOverlay", () => {
     expect(screen.queryByRole("button", { name: /next/i })).toBeNull();
     expect(screen.queryByRole("tablist")).toBeNull();
   });
+
+  it("does not intercept arrow keys when gallery navigation is unavailable", () => {
+    useMediaViewerStore
+      .getState()
+      .open([{ url: "https://example.com/photo.png", type: "image" }], 0);
+
+    render(<MediaViewerOverlay />);
+
+    const leftEvent = new KeyboardEvent("keydown", {
+      key: "ArrowLeft",
+      bubbles: true,
+      cancelable: true,
+    });
+    const rightEvent = new KeyboardEvent("keydown", {
+      key: "ArrowRight",
+      bubbles: true,
+      cancelable: true,
+    });
+
+    act(() => {
+      document.dispatchEvent(leftEvent);
+      document.dispatchEvent(rightEvent);
+    });
+
+    expect(leftEvent.defaultPrevented).toBe(false);
+    expect(rightEvent.defaultPrevented).toBe(false);
+  });
 });

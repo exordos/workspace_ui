@@ -32,13 +32,17 @@ export const MediaViewerBackdrop: React.FC<MediaViewerBackdropProps> = ({
         return;
       }
       if (event.key === "ArrowLeft") {
+        const handlePrev = onPrevRef.current;
+        if (handlePrev == null) return;
         event.preventDefault();
-        onPrevRef.current?.();
+        handlePrev();
         return;
       }
       if (event.key === "ArrowRight") {
+        const handleNext = onNextRef.current;
+        if (handleNext == null) return;
         event.preventDefault();
-        onNextRef.current?.();
+        handleNext();
       }
     };
 

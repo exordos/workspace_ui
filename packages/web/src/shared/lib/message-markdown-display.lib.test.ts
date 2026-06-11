@@ -83,6 +83,15 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
     expect(html).toContain('data-user-id="1"');
   });
 
+  it("uses renderedContent instead of compiling markdown_source when content is already HTML", () => {
+    const rendered = "<p><strong>Hello</strong></p>";
+    const html = messageBodyToUnsanitizedDisplayHtml("**Hello**", {
+      treatAsMarkdown: true,
+      renderedContent: rendered,
+    });
+    expect(html).toBe(rendered);
+  });
+
   it("keeps zulip spoiler block structure for bubble accordion UI", () => {
     const html = messageBodyToUnsanitizedDisplayHtml(
       [

@@ -210,8 +210,16 @@ function resolveMessageGalleryExtractionSource(message: MockMessage): string {
   const trimmed = body.trim();
   if (trimmed === "") return "";
 
+  const renderedContent = message.content.trim();
+  if (treatAsMarkdown && isLikelyRenderedMessageHtml(renderedContent)) {
+    return message.content;
+  }
+
   if (treatAsMarkdown || !isLikelyRenderedMessageHtml(trimmed)) {
-    const renderedHtml = messageBodyToUnsanitizedDisplayHtml(body, { treatAsMarkdown });
+    const renderedHtml = messageBodyToUnsanitizedDisplayHtml(body, {
+      treatAsMarkdown,
+      renderedContent: message.content,
+    });
     return `${body}\n${renderedHtml}`;
   }
 

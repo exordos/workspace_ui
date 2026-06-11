@@ -170,6 +170,10 @@ export interface MessageBodyDisplayOptions {
   resolveUserMention?: (displayName: string) => number | null;
   /** True when the body definitely came from Zulip markdown mode (`apply_markdown=false`). */
   treatAsMarkdown?: boolean;
+  /**
+   * Server-rendered HTML paired with `markdown_source`. When present and HTML-like, skips markdown compile.
+   */
+  renderedContent?: string;
 }
 
 /** Markdown → HTML (marked + GFM + highlight). Caller must `sanitizeHtml` before DOM insertion. */
@@ -177,6 +181,15 @@ export function messageBodyToUnsanitizedDisplayHtml(
   body: string,
   options?: MessageBodyDisplayOptions,
 ): string {
+  const renderedContent = options?.renderedContent?.trim();
+  if (
+    options?.treatAsMarkdown &&
+    renderedContent != null &&
+    renderedContent.length > 0 &&
+    isLikelyRenderedMessageHtml(renderedContent)
+  ) {
+    return renderedContent;
+  }
   const t = body.trim();
   if (t.length === 0) return "";
   if (!options?.treatAsMarkdown && isLikelyRenderedMessageHtml(t)) {

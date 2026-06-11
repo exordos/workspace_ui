@@ -99,6 +99,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       const rawHtml = messageBodyToUnsanitizedDisplayHtml(displaySourceBody, {
         resolveUserMention,
         treatAsMarkdown: message.markdown_source != null,
+        renderedContent: message.content,
       });
       return {
         safeMessageHtml: prepareProtectedMessageHtml(rawHtml, imagesBase, {
