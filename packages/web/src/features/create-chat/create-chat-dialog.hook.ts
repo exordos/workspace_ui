@@ -108,7 +108,7 @@ export function useCreateChatDialog(options: {
   onNavigateStream: (streamId: number, streamName: string) => void;
   onChannelCreated: () => void;
 }): UseCreateChatDialogResult {
-  const { open, onNavigateDm, onNavigateStream, onChannelCreated } = options;
+  const { open, onNavigateDm, onChannelCreated } = options;
 
   const [tab, setTab] = useState<CreateChatTab>("dm");
   const tabBaseId = useId();
@@ -508,7 +508,16 @@ export function useCreateChatDialog(options: {
           if (prev.some((subscription) => subscription.stream_id === streamId)) {
             return prev;
           }
-          return [...prev, { stream_id: streamId, is_archived: false, invite_only: false }];
+          return [
+            ...prev,
+            {
+              stream_id: streamId,
+              name: streamName,
+              is_muted: false,
+              is_archived: false,
+              invite_only: false,
+            },
+          ];
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

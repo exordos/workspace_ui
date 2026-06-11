@@ -51,6 +51,7 @@ describe("MessageList focused message behavior", () => {
   class IntersectionObserverMock implements IntersectionObserver {
     readonly root = null;
     readonly rootMargin = "0px";
+    readonly scrollMargin = "0px";
     readonly thresholds = [0.5];
     disconnect = vi.fn();
     observe = vi.fn();

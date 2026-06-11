@@ -58,6 +58,7 @@ describe("MessageBubble deferred protected media (IntersectionObserver)", () => 
   class IntersectionObserverDeferredMock implements IntersectionObserver {
     readonly root: Element | Document | null;
     readonly rootMargin: string;
+    readonly scrollMargin: string;
     readonly thresholds: readonly number[];
     disconnect = vi.fn();
     observe = vi.fn();
@@ -74,6 +75,7 @@ describe("MessageBubble deferred protected media (IntersectionObserver)", () => 
       this.root = options?.root ?? null;
       lastObserverRoot = this.root;
       this.rootMargin = options?.rootMargin ?? "";
+      this.scrollMargin = options?.scrollMargin ?? "";
       this.thresholds = options?.threshold != null ? [options.threshold as number] : [0];
       this.observe = vi.fn((element: Element) => {
         this.instance.observed.push(element);

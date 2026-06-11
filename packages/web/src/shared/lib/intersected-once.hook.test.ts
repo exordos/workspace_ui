@@ -12,6 +12,7 @@ describe("useIntersectedOnce", () => {
   class IoMock implements IntersectionObserver {
     readonly root: Element | Document | null = null;
     readonly rootMargin = "";
+    readonly scrollMargin = "";
     readonly thresholds: readonly number[] = [0];
     disconnect = vi.fn();
     observe = vi.fn();

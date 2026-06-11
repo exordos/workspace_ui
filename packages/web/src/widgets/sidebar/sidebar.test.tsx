@@ -722,9 +722,10 @@ describe("Sidebar", () => {
 
     const startChatTab = screen.getByRole("tab", { name: /start chat/i });
     const groupChatTab = screen.getByRole("tab", { name: /group chat/i });
+    const browseChannelsTab = screen.getByRole("tab", { name: /^channels$/i });
     const createChannelTab = screen.getByRole("tab", { name: /create channel/i });
     const archivedChannelsTab = screen.getByRole("tab", { name: /archived channels/i });
-    expect(screen.getAllByRole("tab")).toHaveLength(4);
+    expect(screen.getAllByRole("tab")).toHaveLength(5);
 
     const startPanelId = startChatTab.getAttribute("aria-controls");
     expect(startPanelId).toBeTruthy();
@@ -747,6 +748,7 @@ describe("Sidebar", () => {
     expect(groupPanel).toHaveAttribute("aria-labelledby", groupChatTab.id);
 
     expect(createChannelTab).toHaveAttribute("aria-selected", "false");
+    expect(browseChannelsTab).toHaveAttribute("aria-selected", "false");
     expect(archivedChannelsTab).toHaveAttribute("aria-selected", "false");
   });
 
