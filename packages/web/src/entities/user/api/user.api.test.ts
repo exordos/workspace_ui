@@ -381,6 +381,60 @@ describe("user presence api", () => {
     vi.useRealTimers();
   });
 
+  it("skips top_bar request when register-hydrated status is fresh", async () => {
+    const t0 = 1_700_000_000_000;
+    vi.useFakeTimers();
+    vi.setSystemTime(t0);
+    const { requestUserStatus } = await import("./user.api");
+    const { applyUserStatusSnapshot } = await import("./user-status-write.lib");
+    useUsersStore.getState().mergeUser({ user_id: 12, full_name: "Top Bar User" });
+    applyUserStatusSnapshot(12, { text: "At desk", away: false }, t0);
+
+    await requestUserStatus(12, { reason: "top_bar" });
+
+    expect(mockGet).not.toHaveBeenCalled();
+    expect(useUsersStore.getState().getUser(12)?.status?.text).toBe("At desk");
+    vi.useRealTimers();
+  });
+
+  it("skips right_panel request when register-hydrated status is fresh", async () => {
+    const t0 = 1_700_000_000_000;
+    vi.useFakeTimers();
+    vi.setSystemTime(t0);
+    const { requestUserStatus } = await import("./user.api");
+    const { applyUserStatusSnapshot } = await import("./user-status-write.lib");
+    useUsersStore.getState().mergeUser({ user_id: 13, full_name: "Right Panel User" });
+    applyUserStatusSnapshot(13, { text: "Reviewing", away: false }, t0);
+
+    await requestUserStatus(13, { reason: "right_panel" });
+
+    expect(mockGet).not.toHaveBeenCalled();
+    expect(useUsersStore.getState().getUser(13)?.status?.text).toBe("Reviewing");
+    vi.useRealTimers();
+  });
+
+  it("refetches dm_header after register-hydrated status ages past its short TTL", async () => {
+    const t0 = 1_700_000_000_000;
+    vi.useFakeTimers();
+    vi.setSystemTime(t0);
+    const { requestUserStatus } = await import("./user.api");
+    const { applyUserStatusSnapshot } = await import("./user-status-write.lib");
+    useUsersStore.getState().mergeUser({ user_id: 14, full_name: "DM Header User" });
+    applyUserStatusSnapshot(14, { text: "Fresh from register", away: false }, t0);
+    mockGet.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { result: "success", status: { status_text: "Fetched later", away: false } },
+    });
+
+    vi.advanceTimersByTime(60_000 + 1);
+    await requestUserStatus(14, { reason: "dm_header" });
+
+    expect(mockGet).toHaveBeenCalledTimes(1);
+    expect(useUsersStore.getState().getUser(14)?.status?.text).toBe("Fetched later");
+    vi.useRealTimers();
+  });
+
   it("hydrates from IndexedDB and skips network when row is within bootstrap TTL", async () => {
     const t0 = 1_700_000_000_000;
     vi.useFakeTimers();

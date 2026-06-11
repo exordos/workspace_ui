@@ -47,6 +47,7 @@ export const DEFAULT_REGISTER_FETCH_EVENT_TYPES = [
   "realm",
   "realm_user_groups",
   "user_settings",
+  "user_status",
   "message",
   "update_message_flags",
 ] as const;
@@ -102,6 +103,7 @@ export async function registerQueue(
     realm_avatar_changes_disabled?: unknown;
     server_avatar_changes_disabled?: unknown;
     user_settings?: unknown;
+    user_status?: unknown;
     unread_msgs?: unknown;
   } | null;
   if (data == null || typeof data !== "object") {
@@ -181,6 +183,7 @@ export async function registerQueueForCredentials(
     realm_avatar_changes_disabled?: unknown;
     server_avatar_changes_disabled?: unknown;
     user_settings?: unknown;
+    user_status?: unknown;
     unread_msgs?: unknown;
   };
   try {

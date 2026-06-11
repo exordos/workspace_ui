@@ -149,6 +149,80 @@ describe("registerQueue", () => {
     });
   });
 
+  it("parses user_status snapshot from register payload", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        queue_id: "q-status",
+        last_event_id: -1,
+        user_status: {
+          "10": {
+            status_text: "Heads down",
+            emoji_name: "speech_balloon",
+            emoji_code: "1f4ac",
+            reaction_type: "unicode_emoji",
+            away: true,
+          },
+          "11": {
+            status_text: "",
+            emoji_name: "",
+            away: false,
+          },
+        },
+      },
+      raw: { statusText: "OK" },
+    });
+
+    const result = await registerQueue(["message"]);
+    expect(result.userStatusSnapshot).toEqual([
+      {
+        userId: 10,
+        status: {
+          text: "Heads down",
+          emojiName: "speech_balloon",
+          emojiCode: "1f4ac",
+          reactionType: "unicode_emoji",
+          away: true,
+        },
+      },
+    ]);
+  });
+
+  it("keeps empty user_status snapshot when register field is present but empty", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        queue_id: "q-empty-status",
+        last_event_id: -1,
+        user_status: {},
+      },
+      raw: { statusText: "OK" },
+    });
+
+    const result = await registerQueue(["message"]);
+    expect(result.userStatusSnapshot).toEqual([]);
+  });
+
+  it("leaves userStatusSnapshot undefined when register field is absent", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        queue_id: "q-no-status",
+        last_event_id: -1,
+      },
+      raw: { statusText: "OK" },
+    });
+
+    const result = await registerQueue(["message"]);
+    expect(result).not.toHaveProperty("userStatusSnapshot");
+  });
+
   it("parses subscriptions from register payload", async () => {
     mockZulipApi.post.mockResolvedValue({
       ok: true,

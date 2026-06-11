@@ -87,6 +87,21 @@ export interface ZulipOwnAvatarCapabilities {
   server_avatar_changes_disabled?: boolean;
 }
 
+export type ZulipUserStatusReactionType = "unicode_emoji" | "realm_emoji" | "zulip_extra_emoji";
+
+export interface ZulipUserStatusSnapshot {
+  text: string;
+  emojiName?: string;
+  emojiCode?: string;
+  reactionType?: ZulipUserStatusReactionType;
+  away: boolean;
+}
+
+export interface ZulipUserStatusSnapshotEntry {
+  userId: number;
+  status: ZulipUserStatusSnapshot;
+}
+
 export interface RegisterQueueResult {
   queue_id: string;
   last_event_id: number;
@@ -116,6 +131,8 @@ export interface RegisterQueueResult {
   jitsi_server_url_effective?: string;
   /** Present when `user_settings_object` client capability is set. */
   user_settings?: Record<string, unknown>;
+  /** Present when `user_status` is included in `fetch_event_types`. */
+  userStatusSnapshot?: ZulipUserStatusSnapshotEntry[];
   /**
    * Authoritative unread buckets from register `unread_msgs`
    * (when `message` and `update_message_flags` are in `event_types`).

@@ -16,6 +16,9 @@ import type {
   ZulipRealmUserGroup,
   ZulipSubscription,
   ZulipUserTopic,
+  ZulipUserStatusReactionType,
+  ZulipUserStatusSnapshot,
+  ZulipUserStatusSnapshotEntry,
 } from "./zulip.types";
 
 function isPositiveInteger(value: unknown): value is number {
@@ -60,6 +63,67 @@ function parseRealmUserGroups(data: unknown): ZulipRealmUserGroup[] | null {
   return parsed;
 }
 
+function isReactionType(value: unknown): value is ZulipUserStatusReactionType {
+  return value === "unicode_emoji" || value === "realm_emoji" || value === "zulip_extra_emoji";
+}
+
+function normalizeRegisterUserStatus(
+  data: Record<string, unknown>,
+): ZulipUserStatusSnapshot | null {
+  const text = typeof data.status_text === "string" ? data.status_text.trim() : "";
+  const emojiName = typeof data.emoji_name === "string" ? data.emoji_name.trim() : "";
+  const emojiCode = typeof data.emoji_code === "string" ? data.emoji_code : undefined;
+  const reactionType = isReactionType(data.reaction_type) ? data.reaction_type : undefined;
+  const away = data.away === true;
+
+  if (!text && !emojiName && !away) {
+    return null;
+  }
+
+  return {
+    text,
+    emojiName: emojiName || undefined,
+    emojiCode,
+    reactionType,
+    away,
+  };
+}
+
+function parseUserStatusSnapshot(
+  data: RegisterQueueRawData,
+): ZulipUserStatusSnapshotEntry[] | undefined {
+  if (!Object.prototype.hasOwnProperty.call(data, "user_status")) {
+    return undefined;
+  }
+  if (
+    data.user_status == null ||
+    typeof data.user_status !== "object" ||
+    Array.isArray(data.user_status)
+  ) {
+    return [];
+  }
+
+  const parsed: ZulipUserStatusSnapshotEntry[] = [];
+  for (const [userIdKey, value] of Object.entries(data.user_status)) {
+    const userId = Number(userIdKey);
+    if (
+      !isPositiveInteger(userId) ||
+      value == null ||
+      typeof value !== "object" ||
+      Array.isArray(value)
+    ) {
+      continue;
+    }
+    const status = normalizeRegisterUserStatus(value as Record<string, unknown>);
+    if (status == null) {
+      continue;
+    }
+    parsed.push({ userId, status });
+  }
+
+  return parsed.sort((left, right) => left.userId - right.userId);
+}
+
 export interface RegisterQueueRawData {
   queue_id?: string;
   last_event_id?: number;
@@ -75,6 +139,7 @@ export interface RegisterQueueRawData {
   realm_avatar_changes_disabled?: unknown;
   server_avatar_changes_disabled?: unknown;
   user_settings?: unknown;
+  user_status?: unknown;
   unread_msgs?: unknown;
 }
 
@@ -92,6 +157,7 @@ export interface RegisterQueueParsedMetadata {
   realmAvatarChangesDisabled: ReturnType<typeof parseAvatarChangesDisabledFlag>;
   serverAvatarChangesDisabled: ReturnType<typeof parseAvatarChangesDisabledFlag>;
   jitsiServerUrlEffective: ReturnType<typeof parseRegisterResponseJitsiServerUrl>;
+  userStatusSnapshot: ReturnType<typeof parseUserStatusSnapshot>;
 }
 
 export function parseRegisterQueueMetadata(
@@ -113,6 +179,7 @@ export function parseRegisterQueueMetadata(
       data.server_avatar_changes_disabled,
     ),
     jitsiServerUrlEffective: parseRegisterResponseJitsiServerUrl(data),
+    userStatusSnapshot: parseUserStatusSnapshot(data),
   };
 }
 
@@ -168,6 +235,9 @@ export function buildRegisterQueueResult(
       ? { jitsi_server_url_effective: metadata.jitsiServerUrlEffective }
       : {}),
     ...(metadata.userSettings ? { user_settings: metadata.userSettings } : {}),
+    ...(metadata.userStatusSnapshot !== undefined
+      ? { userStatusSnapshot: metadata.userStatusSnapshot }
+      : {}),
     ...(metadata.unreadSnapshot ? { unread_snapshot: metadata.unreadSnapshot } : {}),
   };
 }

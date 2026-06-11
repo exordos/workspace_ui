@@ -10,6 +10,7 @@ import type {
 } from "~/entities/chat-list/chat-list.model.types";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useNotificationSettingsStore } from "~/entities/notification-settings/notification-settings.model";
+import { applyUserStatusSnapshot } from "~/entities/user/api/user-status-write.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
 import type { ZulipUnreadMessagesSnapshot } from "~/shared/api/zulip-unread.lib";
@@ -107,6 +108,32 @@ function applyReconnectStreamPreviewBootstrap(
   applyChatListBootstrapResult(streamResult, applyOptions);
 }
 
+function applyRegisterUserStatusSnapshot(
+  snapshot: RegisterQueueResult["userStatusSnapshot"],
+): void {
+  if (snapshot === undefined) {
+    return;
+  }
+
+  const fetchedAt = Date.now();
+  const snapshotUserIds = new Set<number>();
+
+  for (const entry of snapshot) {
+    if (useUsersStore.getState().getUser(entry.userId) == null) {
+      continue;
+    }
+    snapshotUserIds.add(entry.userId);
+    applyUserStatusSnapshot(entry.userId, entry.status, fetchedAt);
+  }
+
+  for (const user of useUsersStore.getState().users.values()) {
+    if (user.status == null || snapshotUserIds.has(user.user_id)) {
+      continue;
+    }
+    applyUserStatusSnapshot(user.user_id, null, fetchedAt);
+  }
+}
+
 export interface LayoutBootstrapQueueRegisteredDeps {
   isCancelled: () => boolean;
   currentInstanceId: string | null;
@@ -198,6 +225,7 @@ export function createLayoutBootstrapQueueRegisteredHandler(
     if (registration?.user_settings != null) {
       useNotificationSettingsStore.getState().setFromServer(registration.user_settings);
     }
+    applyRegisterUserStatusSnapshot(registration?.userStatusSnapshot);
     const conversations = registration?.recent_private_conversations;
     const rows = toDmMetadataRowsFromRecentConversations(conversations);
     if (rows.length > 0) {
