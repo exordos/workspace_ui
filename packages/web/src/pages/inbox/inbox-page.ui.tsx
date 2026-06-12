@@ -6,7 +6,7 @@ import { fetchInboxEntries, hydrateInboxEntriesFromCache } from "~/entities/inbo
 import { groupInboxEntries, isInboxEntriesSnapshotFresher } from "~/entities/inbox/inbox.lib";
 import { useInboxStore } from "~/entities/inbox/inbox.model";
 import type { InboxEntry } from "~/entities/inbox/inbox.types";
-import { useInstancesStore } from "~/entities/instance/instance.model";
+import { isActiveOrgRequestContextCurrent, useInstancesStore } from "~/entities/instance/instance.model";
 import { topicKey, useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { t } from "~/i18n/i18n";
 import { useOpenSearch } from "~/shared/contexts/open-search";
@@ -100,11 +100,12 @@ export const InboxPage: React.FC = () => {
       }
       lastInstanceIdRef.current = instanceId;
     },
-    hydrate: async (instanceId) => {
+    hydrate: async ({ instanceId, signal, orgContext }) => {
       const cached = await hydrateInboxEntriesFromCache(instanceId, currentUserId, {
         isStreamMuted,
         isEffectivelyMuted,
       });
+      if (signal.aborted || !isActiveOrgRequestContextCurrent(orgContext)) return;
       const currentEntries = useInboxStore.getState().entries;
       const shouldApplyCached =
         cached.length > 0 &&
@@ -115,8 +116,13 @@ export const InboxPage: React.FC = () => {
     },
     hasCachedData: () => useInboxStore.getState().entries.length > 0,
     startRequest: (hasCached) => startRequest(hasCached),
-    fetch: async (_instanceId, requestVersion) => {
-      const data = await fetchInboxEntries(currentUserId, { isStreamMuted, isEffectivelyMuted });
+    fetch: async ({ orgContext, requestVersion, signal }) => {
+      const data = await fetchInboxEntries(
+        currentUserId,
+        { isStreamMuted, isEffectivelyMuted },
+        { signal },
+      );
+      if (signal.aborted || !isActiveOrgRequestContextCurrent(orgContext)) return;
       setEntries(data, requestVersion);
     },
     onFetchError: (err, requestVersion) => {

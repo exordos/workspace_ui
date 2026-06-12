@@ -2,7 +2,7 @@
 
 Step-by-step guide for integrating new functionality using Feature-Sliced Design (FSD).
 
-> **Canonical structure:** [PROJECT_FACTS.md](PROJECT_FACTS.md) · **Architecture:** [fsd-architecture.md](fsd-architecture.md)
+> **Canonical structure:** [PROJECT_FACTS.md](PROJECT_FACTS.md) · **Architecture:** [fsd-architecture.md](fsd-architecture.md) · **Async org safety:** [ORG_SCOPED_ASYNC_SAFETY.md](ORG_SCOPED_ASYNC_SAFETY.md)
 
 ---
 
@@ -28,6 +28,8 @@ Import rules: `shared → entities → features → widgets → pages → app` (
 ---
 
 ## Checklist for Adding a New Feature
+
+Before adding any organization-scoped async loader or mutation, read [ORG_SCOPED_ASYNC_SAFETY.md](ORG_SCOPED_ASYNC_SAFETY.md). Active-organization validation is mandatory for async work that can outlive organization switch and later write into store state or IndexedDB.
 
 ### 1. Entity API (if new data source)
 

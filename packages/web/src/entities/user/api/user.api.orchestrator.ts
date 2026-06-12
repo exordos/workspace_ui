@@ -5,6 +5,10 @@
  * priority queue, and store/IDB writes are applied in one place.
  */
 
+import {
+  captureActiveOrgRequestContext,
+  isActiveOrgRequestContextCurrent,
+} from "~/entities/instance/instance.model";
 import { getCurrentInstance } from "~/shared/api/client";
 import { getUserStatusCacheRow } from "~/shared/lib/user-status-cache-db";
 import { useUsersStore, type UserRecord } from "../user.model";
@@ -31,6 +35,7 @@ const statusRequestCache = new Map<string, Promise<void>>();
 interface StatusQueueItem {
   key: string;
   userId: number;
+  options: RequestUserStatusOptions;
   resolve: () => void;
   reject: (error: unknown) => void;
 }
@@ -39,9 +44,17 @@ const highPriorityQueue: StatusQueueItem[] = [];
 const lowPriorityQueue: StatusQueueItem[] = [];
 let activeStatusRequests = 0;
 
-function getStatusRequestKey(userId: number): string {
-  const instanceId = getCurrentInstance()?.id ?? "no-instance";
+function getStatusRequestKey(userId: number, instanceId: string): string {
   return `${instanceId}:${userId}`;
+}
+
+function isStatusRequestCurrent(options: RequestUserStatusOptions | undefined): boolean {
+  const orgContext = options?.orgContext;
+  const instanceId = options?.instanceId;
+  if (orgContext == null || instanceId == null) {
+    return false;
+  }
+  return orgContext.instanceId === instanceId && isActiveOrgRequestContextCurrent(orgContext);
 }
 
 function shouldSkipRequest(
@@ -71,10 +84,17 @@ function nextStatusRequestItem(): StatusQueueItem | undefined {
   return highPriorityQueue.shift() ?? lowPriorityQueue.shift();
 }
 
-function applyFetchOutcome(userId: number, outcome: StatusFetchOutcome): void {
+function applyFetchOutcome(
+  userId: number,
+  outcome: StatusFetchOutcome,
+  options: RequestUserStatusOptions,
+): void {
+  if (!isStatusRequestCurrent(options)) {
+    return;
+  }
   if (outcome.kind === "ok") {
     const fetchedAt = Date.now();
-    applyUserStatusSnapshot(userId, outcome.status, fetchedAt);
+    applyUserStatusSnapshot(userId, outcome.status, fetchedAt, options.instanceId);
     return;
   }
   if (outcome.kind === "invalid_user") {
@@ -94,7 +114,10 @@ function applyFetchOutcome(userId: number, outcome: StatusFetchOutcome): void {
   });
 }
 
-function applyTransientFailure(userId: number): void {
+function applyTransientFailure(userId: number, options: RequestUserStatusOptions): void {
+  if (!isStatusRequestCurrent(options)) {
+    return;
+  }
   useUsersStore.getState().setStatusFetchMeta(userId, {
     fetchState: "error",
     errorKind: "transient",
@@ -107,6 +130,10 @@ async function processStatusQueueItem(
   item: StatusQueueItem,
   fetchUserStatusDetailed: FetchUserStatusDetailed,
 ): Promise<void> {
+  if (!isStatusRequestCurrent(item.options)) {
+    item.resolve();
+    return;
+  }
   useUsersStore.getState().setStatusFetchMeta(item.userId, {
     fetchState: "loading",
     fetchedAt: Date.now(),
@@ -114,10 +141,18 @@ async function processStatusQueueItem(
 
   try {
     const outcome = await fetchUserStatusDetailed(item.userId);
-    applyFetchOutcome(item.userId, outcome);
+    if (!isStatusRequestCurrent(item.options)) {
+      item.resolve();
+      return;
+    }
+    applyFetchOutcome(item.userId, outcome, item.options);
     item.resolve();
   } catch (error) {
-    applyTransientFailure(item.userId);
+    if (!isStatusRequestCurrent(item.options)) {
+      item.resolve();
+      return;
+    }
+    applyTransientFailure(item.userId, item.options);
     item.reject(error);
   } finally {
     statusRequestCache.delete(item.key);
@@ -152,19 +187,32 @@ export async function requestUserStatusWithPolicy(
     return;
   }
 
+  const orgContext = options?.orgContext ?? captureActiveOrgRequestContext();
+  const normalizedOptions: RequestUserStatusOptions = {
+    ...options,
+    reason: options?.reason ?? "compat",
+    priority: options?.priority ?? "low",
+    orgContext,
+    instanceId: options?.instanceId ?? instance.id,
+  };
+  if (!isStatusRequestCurrent(normalizedOptions)) {
+    return;
+  }
+  const { instanceId: capturedInstanceId } = normalizedOptions;
+  if (capturedInstanceId == null) {
+    return;
+  }
+
   let user = useUsersStore.getState().getUser(userId);
   if (!user) {
     return;
   }
 
-  const normalizedOptions: RequestUserStatusOptions = {
-    ...options,
-    reason: options?.reason ?? "compat",
-    priority: options?.priority ?? "low",
-  };
-
-  if (user.statusFetchedAt == null && instance.id) {
-    const row = await getUserStatusCacheRow(instance.id, userId);
+  if (user.statusFetchedAt == null) {
+    const row = await getUserStatusCacheRow(capturedInstanceId, userId);
+    if (!isStatusRequestCurrent(normalizedOptions)) {
+      return;
+    }
     if (row != null) {
       useUsersStore.getState().setStatus(userId, row.status, row.fetchedAt);
       user = useUsersStore.getState().getUser(userId);
@@ -179,7 +227,7 @@ export async function requestUserStatusWithPolicy(
     return;
   }
 
-  const key = getStatusRequestKey(userId);
+  const key = getStatusRequestKey(userId, capturedInstanceId);
   const inFlight = statusRequestCache.get(key);
   if (inFlight) {
     await inFlight;
@@ -187,7 +235,10 @@ export async function requestUserStatusWithPolicy(
   }
 
   const promise = new Promise<void>((resolve, reject) => {
-    enqueueStatusRequest({ key, userId, resolve, reject }, normalizedOptions);
+    enqueueStatusRequest(
+      { key, userId, options: normalizedOptions, resolve, reject },
+      normalizedOptions,
+    );
     pumpStatusRequestQueue(fetchUserStatusDetailed);
   });
 

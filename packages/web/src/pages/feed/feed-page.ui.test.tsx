@@ -10,6 +10,7 @@ import type * as ReactRouterDom from "react-router-dom";
 
 const navigateSpy = vi.hoisted(() => vi.fn());
 const fetchFeedMessages = vi.hoisted(() => vi.fn());
+const hydrateFeedMessagesFromCache = vi.hoisted(() => vi.fn().mockResolvedValue([]));
 
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual<typeof ReactRouterDom>("react-router-dom");
@@ -26,6 +27,7 @@ vi.mock("~/entities/feed/feed.api", async () => {
   return {
     ...actual,
     fetchFeedMessages,
+    hydrateFeedMessagesFromCache,
   };
 });
 
@@ -73,11 +75,14 @@ describe("FeedPage forward action", () => {
   afterEach(() => {
     navigateSpy.mockReset();
     fetchFeedMessages.mockReset();
+    hydrateFeedMessagesFromCache.mockReset();
+    hydrateFeedMessagesFromCache.mockResolvedValue([]);
     useFeedStore.getState().clear();
     useInstancesStore.setState({
       instances: [],
       currentInstanceId: null,
       unreadCountsByInstance: {},
+      activeOrgEpoch: 0,
     });
   });
 
@@ -231,7 +236,11 @@ describe("FeedPage forward action", () => {
     });
 
     await waitFor(() => {
-      expect(fetchFeedMessages).toHaveBeenCalledWith("newest", 50);
+      expect(fetchFeedMessages).toHaveBeenCalledWith(
+        "newest",
+        50,
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
     });
     await waitFor(() => {
       expect(screen.getByText("Deferred feed load")).toBeInTheDocument();
@@ -503,5 +512,326 @@ describe("FeedPage forward action", () => {
     } finally {
       restoreScrollTo();
     }
+  });
+
+  it("does not apply cached feed from the previous organization after switch", async () => {
+    let resolveHydrate!: (messages: MockMessage[]) => void;
+    const staleHydrate = new Promise<MockMessage[]>((resolve) => {
+      resolveHydrate = resolve;
+    });
+
+    hydrateFeedMessagesFromCache
+      .mockReturnValueOnce(staleHydrate)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    let resolveNextOrgFetch!: (value: {
+      messages: MockMessage[];
+      foundOldest: boolean;
+    }) => void;
+    const nextOrgFetch = new Promise<{ messages: MockMessage[]; foundOldest: boolean }>(
+      (resolve) => {
+        resolveNextOrgFetch = resolve;
+      },
+    );
+    fetchFeedMessages.mockReturnValue(nextOrgFetch);
+
+    useInstancesStore.setState({
+      instances: [
+        {
+          id: "instance-1",
+          realm: "https://one.example.com",
+          email: "one@example.com",
+          apiKey: "api-key",
+        },
+        {
+          id: "instance-2",
+          realm: "https://two.example.com",
+          email: "two@example.com",
+          apiKey: "api-key",
+        },
+      ],
+      currentInstanceId: "instance-1",
+      unreadCountsByInstance: {},
+      activeOrgEpoch: 0,
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/feed"]}>
+        <Routes>
+          <Route path="/feed" element={<FeedPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    act(() => {
+      useInstancesStore.getState().setCurrentInstanceId("instance-2");
+    });
+
+    await act(async () => {
+      resolveHydrate([
+        createMessage({
+          id: 500,
+          sender_id: 42,
+          sender_full_name: "Alice",
+          stream_id: 10,
+          subject: "cache",
+          content: "Old org cached feed item",
+          timestamp: 1,
+          type: "stream",
+          display_recipient: "engineering",
+          channel: "engineering",
+        }) as MockMessage,
+      ]);
+      await staleHydrate;
+    });
+
+    expect(useFeedStore.getState().messages).toEqual([]);
+
+    await act(async () => {
+      resolveNextOrgFetch({
+        messages: [
+          createMessage({
+            id: 600,
+            sender_id: 99,
+            sender_full_name: "Bob",
+            stream_id: 20,
+            subject: "fresh",
+            content: "Current org feed item",
+            timestamp: 2,
+            type: "stream",
+            display_recipient: "support",
+            channel: "support",
+          }) as MockMessage,
+        ],
+        foundOldest: true,
+      });
+      await nextOrgFetch;
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Current org feed item")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Old org cached feed item")).not.toBeInTheDocument();
+  });
+
+  it("does not apply stale newest feed refresh after organization switch", async () => {
+    let resolveOldFetch!: (value: { messages: MockMessage[]; foundOldest: boolean }) => void;
+    const oldFetch = new Promise<{ messages: MockMessage[]; foundOldest: boolean }>((resolve) => {
+      resolveOldFetch = resolve;
+    });
+
+    let resolveNewFetch!: (value: { messages: MockMessage[]; foundOldest: boolean }) => void;
+    const newFetch = new Promise<{ messages: MockMessage[]; foundOldest: boolean }>((resolve) => {
+      resolveNewFetch = resolve;
+    });
+
+    hydrateFeedMessagesFromCache.mockResolvedValue([]);
+    fetchFeedMessages.mockReturnValueOnce(oldFetch).mockReturnValueOnce(newFetch);
+
+    useInstancesStore.setState({
+      instances: [
+        {
+          id: "instance-1",
+          realm: "https://one.example.com",
+          email: "one@example.com",
+          apiKey: "api-key",
+        },
+        {
+          id: "instance-2",
+          realm: "https://two.example.com",
+          email: "two@example.com",
+          apiKey: "api-key",
+        },
+      ],
+      currentInstanceId: "instance-1",
+      unreadCountsByInstance: {},
+      activeOrgEpoch: 0,
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/feed"]}>
+        <Routes>
+          <Route path="/feed" element={<FeedPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(fetchFeedMessages).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      useInstancesStore.getState().setCurrentInstanceId("instance-2");
+    });
+
+    await waitFor(() => {
+      expect(fetchFeedMessages).toHaveBeenCalledTimes(2);
+    });
+
+    await act(async () => {
+      resolveOldFetch({
+        messages: [
+          createMessage({
+            id: 700,
+            sender_id: 42,
+            sender_full_name: "Alice",
+            stream_id: 10,
+            subject: "old",
+            content: "Old org newest feed item",
+            timestamp: 1,
+            type: "stream",
+            display_recipient: "engineering",
+            channel: "engineering",
+          }) as MockMessage,
+        ],
+        foundOldest: true,
+      });
+      await oldFetch;
+    });
+
+    expect(useFeedStore.getState().messages).toEqual([]);
+
+    await act(async () => {
+      resolveNewFetch({
+        messages: [
+          createMessage({
+            id: 800,
+            sender_id: 99,
+            sender_full_name: "Bob",
+            stream_id: 20,
+            subject: "new",
+            content: "Current org newest feed item",
+            timestamp: 2,
+            type: "stream",
+            display_recipient: "support",
+            channel: "support",
+          }) as MockMessage,
+        ],
+        foundOldest: true,
+      });
+      await newFetch;
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Current org newest feed item")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Old org newest feed item")).not.toBeInTheDocument();
+  });
+
+  it("does not append stale older feed page after organization switch", async () => {
+    let resolveOlderPage!: (value: { messages: MockMessage[]; foundOldest: boolean }) => void;
+    const olderPage = new Promise<{ messages: MockMessage[]; foundOldest: boolean }>((resolve) => {
+      resolveOlderPage = resolve;
+    });
+
+    hydrateFeedMessagesFromCache.mockReturnValue(new Promise(() => {}));
+    fetchFeedMessages.mockReturnValue(olderPage);
+
+    useInstancesStore.setState({
+      instances: [
+        {
+          id: "instance-1",
+          realm: "https://one.example.com",
+          email: "one@example.com",
+          apiKey: "api-key",
+        },
+        {
+          id: "instance-2",
+          realm: "https://two.example.com",
+          email: "two@example.com",
+          apiKey: "api-key",
+        },
+      ],
+      currentInstanceId: "instance-1",
+      unreadCountsByInstance: {},
+      activeOrgEpoch: 0,
+    });
+
+    useFeedStore.setState({
+      instanceId: "instance-1",
+      messages: [
+        createMessage({
+          id: 100,
+          sender_id: 42,
+          sender_full_name: "Alice",
+          stream_id: 10,
+          subject: "base",
+          content: "Base feed item",
+          timestamp: 10,
+          type: "stream",
+          display_recipient: "engineering",
+          channel: "engineering",
+        }) as MockMessage,
+      ],
+      isInitialLoading: false,
+      isRefreshing: false,
+      isLoadingMore: false,
+      isAllLoaded: false,
+      lastMessageId: 100,
+      requestVersion: 0,
+      lastLoadedAt: Date.now(),
+      error: null,
+    });
+
+    const { container } = render(
+      <MemoryRouter initialEntries={["/feed"]}>
+        <Routes>
+          <Route path="/feed" element={<FeedPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Base feed item")).toBeInTheDocument();
+    });
+
+    const list = container.querySelector("ul") as HTMLUListElement;
+    Object.defineProperty(list, "scrollTop", { configurable: true, writable: true, value: 0 });
+
+    fireEvent.scroll(list);
+
+    await waitFor(() => {
+      expect(fetchFeedMessages).toHaveBeenCalledWith(100, 50);
+    });
+
+    act(() => {
+      useInstancesStore.getState().setCurrentInstanceId("instance-2");
+    });
+
+    await act(async () => {
+      resolveOlderPage({
+        messages: [
+          createMessage({
+            id: 90,
+            sender_id: 42,
+            sender_full_name: "Alice",
+            stream_id: 10,
+            subject: "old",
+            content: "Old org older page item",
+            timestamp: 5,
+            type: "stream",
+            display_recipient: "engineering",
+            channel: "engineering",
+          }) as MockMessage,
+          createMessage({
+            id: 100,
+            sender_id: 42,
+            sender_full_name: "Alice",
+            stream_id: 10,
+            subject: "base",
+            content: "Base feed item",
+            timestamp: 10,
+            type: "stream",
+            display_recipient: "engineering",
+            channel: "engineering",
+          }) as MockMessage,
+        ],
+        foundOldest: true,
+      });
+      await olderPage;
+    });
+
+    expect(useFeedStore.getState().messages).toEqual([]);
   });
 });

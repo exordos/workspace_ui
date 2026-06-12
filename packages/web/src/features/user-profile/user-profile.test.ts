@@ -2,6 +2,7 @@
  * Tests for user profile feature — loading, caching, clearing, and error handling.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { clearRealmProfileFieldsCache } from "~/shared/api/zulip-realm-profile-fields";
 import { useUserProfileStore } from "./user-profile.model";
@@ -41,6 +42,7 @@ describe("useUserProfileStore", () => {
   afterEach(() => {
     useUserProfileStore.getState().clear();
     useUsersStore.getState().clear();
+    useInstancesStore.setState({ instances: [], currentInstanceId: null, activeOrgEpoch: 0 });
     clearRealmProfileFieldsCache();
     requestUserStatusMock.mockReset();
     vi.restoreAllMocks();
@@ -69,10 +71,14 @@ describe("useUserProfileStore", () => {
 
       await useUserProfileStore.getState().loadProfile(42);
 
-      expect(zulipApi.get).toHaveBeenCalledWith("/users/42", {
-        client_gravatar: "false",
-        include_custom_profile_fields: "true",
-      });
+      expect(zulipApi.get).toHaveBeenCalledWith(
+        "/users/42",
+        {
+          client_gravatar: "false",
+          include_custom_profile_fields: "true",
+        },
+        undefined,
+      );
 
       const state = useUserProfileStore.getState();
       expect(state.status).toBe("done");
@@ -211,6 +217,61 @@ describe("useUserProfileStore", () => {
       expect(state.profile!.isBot).toBeUndefined();
       expect(state.profile!.isActive).toBeUndefined();
       expect(state.profile!.dateJoined).toBeUndefined();
+    });
+
+    it("does not apply stale profile after organization switch and clear", async () => {
+      const { zulipApi, getCurrentInstance } = await import("~/shared/api/client");
+      vi.mocked(getCurrentInstance).mockReturnValue(null);
+      useInstancesStore.setState({
+        instances: [
+          { id: "inst-a", realm: "https://a.test", email: "a@test.com", apiKey: "a-key" },
+          { id: "inst-b", realm: "https://b.test", email: "b@test.com", apiKey: "b-key" },
+        ],
+        currentInstanceId: "inst-a",
+        activeOrgEpoch: 0,
+      });
+
+      let resolveResponse:
+        | ((
+            value: {
+              ok: true;
+              status: number;
+              data: typeof MOCK_ZULIP_USER;
+              headers: Headers;
+              raw: Response;
+              durationMs: number;
+            },
+          ) => void)
+        | undefined;
+      vi.mocked(zulipApi.get).mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveResponse = resolve;
+          }),
+      );
+
+      const pending = useUserProfileStore.getState().loadProfile(42);
+      useInstancesStore.getState().setCurrentInstanceId("inst-b");
+      useUserProfileStore.getState().clear();
+
+      expect(resolveResponse).toBeTypeOf("function");
+      resolveResponse!({
+        ok: true,
+        status: 200,
+        data: MOCK_ZULIP_USER,
+        headers: new Headers(),
+        raw: new Response(),
+        durationMs: 50,
+      });
+
+      await pending;
+
+      const state = useUserProfileStore.getState();
+      expect(state.status).toBe("idle");
+      expect(state.profile).toBeNull();
+      expect(state.error).toBeNull();
+      expect(useUsersStore.getState().getUser(42)).toBeUndefined();
+      expect(requestUserStatusMock).not.toHaveBeenCalled();
     });
   });
 

@@ -12,10 +12,11 @@ const log = createLogger("feed:api");
 export async function fetchFeedMessages(
   anchor: number | "newest" = "newest",
   numBefore = 50,
+  options?: { signal?: AbortSignal },
 ): Promise<MessagesPageResult> {
   const start = performance.now();
   try {
-    const page = await fetchAllMessagesPage(anchor, numBefore);
+    const page = await fetchAllMessagesPage(anchor, numBefore, options);
     const durationMs = Math.round(performance.now() - start);
     logApiCall("GET", "/messages?narrow=all", {
       status: 200,

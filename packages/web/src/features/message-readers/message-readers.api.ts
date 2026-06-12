@@ -11,10 +11,13 @@ import type { ReadReceiptsResponse } from "./message-readers.types";
 
 const log = createLogger("message-readers:api");
 
-export async function fetchReadReceipts(messageId: number): Promise<ReadReceiptsResponse> {
+export async function fetchReadReceipts(
+  messageId: number,
+  options?: { signal?: AbortSignal },
+): Promise<ReadReceiptsResponse> {
   guard.messageId(messageId, "fetchReadReceipts");
 
-  const res = await zulipApi.get(`/messages/${messageId}/read_receipts`);
+  const res = await zulipApi.get(`/messages/${messageId}/read_receipts`, undefined, options?.signal);
 
   if (!res.ok) {
     const msg = `Failed to fetch read receipts for message ${messageId}: HTTP ${res.status}`;

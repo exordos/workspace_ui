@@ -14,6 +14,7 @@ export interface MessageReadersState {
   userIds: number[];
   error: string | null;
   messageId: number | null;
+  requestVersion: number;
 
   fetchReadReceipts: (messageId: number) => Promise<void>;
   clear: () => void;

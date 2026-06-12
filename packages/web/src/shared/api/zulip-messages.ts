@@ -276,8 +276,9 @@ export async function fetchActivityMessages(
   currentUserId?: number | null,
   anchor: number | "newest" = "newest",
   numBefore = 200,
+  options?: { signal?: AbortSignal },
 ): Promise<ZulipRawMessage[]> {
-  const page = await fetchActivityMessagesPage(filter, currentUserId, anchor, numBefore);
+  const page = await fetchActivityMessagesPage(filter, currentUserId, anchor, numBefore, options);
   return page.messages;
 }
 
@@ -286,42 +287,61 @@ export async function fetchActivityMessagesPage(
   currentUserId?: number | null,
   anchor: number | "newest" = "newest",
   numBefore = 200,
+  options?: { signal?: AbortSignal },
 ): Promise<ActivityMessagesPageResult> {
   const normalizedAnchor =
     anchor === "newest" ? anchor : guard.messageId(anchor, "fetchActivityMessagesPage.anchor");
   const narrow = getActivityNarrow(filter, currentUserId);
-  const res = await zulipPipelineGet("/messages", {
-    anchor: String(normalizedAnchor),
-    num_before: String(numBefore),
-    num_after: "0",
-    narrow: JSON.stringify(narrow),
-    allow_empty_topic_name: "true",
-    client_gravatar: "true",
-    apply_markdown: "false",
-  });
-  if (!res?.ok) {
-    const errData = res?.data as { msg?: string } | undefined;
-    const status = res?.status;
-    const msg = errData?.msg ?? `Activity messages request failed (${status ?? "unknown"})`;
-    activityMessagesLog.warn("Activity messages fetch HTTP error", { filter, status });
-    throw new Error(msg);
+  if (options?.signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
   }
-  const data = res.data as {
-    result?: string;
-    msg?: string;
-    messages?: ZulipRawMessage[];
-    found_oldest?: boolean;
-    foundOldest?: boolean;
-  };
-  if (!data || data.result === "error") {
-    const msg = data?.msg ?? "Activity messages fetch error";
-    activityMessagesLog.warn("Activity messages API error", { filter, msg });
-    throw new Error(msg);
+  try {
+    const res = await zulipPipelineGet(
+      "/messages",
+      {
+        anchor: String(normalizedAnchor),
+        num_before: String(numBefore),
+        num_after: "0",
+        narrow: JSON.stringify(narrow),
+        allow_empty_topic_name: "true",
+        client_gravatar: "true",
+        apply_markdown: "false",
+      },
+      options?.signal,
+    );
+    throwIfZulipPipelineGetNull(res, options?.signal);
+    if (!res.ok) {
+      const errData = res.data as { msg?: string } | undefined;
+      const status = res.status;
+      const msg = errData?.msg ?? `Activity messages request failed (${status ?? "unknown"})`;
+      activityMessagesLog.warn("Activity messages fetch HTTP error", { filter, status });
+      throw new Error(msg);
+    }
+    const data = res.data as {
+      result?: string;
+      msg?: string;
+      messages?: ZulipRawMessage[];
+      found_oldest?: boolean;
+      foundOldest?: boolean;
+    };
+    if (options?.signal?.aborted) {
+      throw new DOMException("Aborted", "AbortError");
+    }
+    if (!data || data.result === "error") {
+      const msg = data?.msg ?? "Activity messages fetch error";
+      activityMessagesLog.warn("Activity messages API error", { filter, msg });
+      throw new Error(msg);
+    }
+    return {
+      messages: data.messages ?? [],
+      foundOldest: data.found_oldest ?? data.foundOldest ?? false,
+    };
+  } catch (error) {
+    if (isAbortError(error) || options?.signal?.aborted) {
+      throw error;
+    }
+    throw error instanceof Error ? error : new Error(t("app.networkError"));
   }
-  return {
-    messages: data.messages ?? [],
-    foundOldest: data.found_oldest ?? data.foundOldest ?? false,
-  };
 }
 
 export { rawMessageToMockMessage };
@@ -493,51 +513,72 @@ export async function fetchMessagesWithNarrowPage(
 export async function fetchAllMessagesPage(
   anchor: string | number = "newest",
   numBefore = 100,
-  options?: { applyMarkdown?: boolean },
+  options?: { applyMarkdown?: boolean; signal?: AbortSignal },
 ): Promise<MessagesPageResult> {
   const validatedAnchor = validateMessagesApiAnchor(anchor, "fetchAllMessagesPage");
   const validatedNumBefore = validateNonNegativeInteger(numBefore, "numBefore");
   const applyMarkdown = options?.applyMarkdown ?? false;
-  const res = await zulipPipelineGet("/messages", {
-    anchor: String(validatedAnchor),
-    num_before: String(validatedNumBefore),
-    num_after: "0",
-    narrow: "[]",
-    allow_empty_topic_name: "true",
-    client_gravatar: "true",
-    apply_markdown: applyMarkdown ? "true" : "false",
-  });
+  if (options?.signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
+  try {
+    const res = await zulipPipelineGet(
+      "/messages",
+      {
+        anchor: String(validatedAnchor),
+        num_before: String(validatedNumBefore),
+        num_after: "0",
+        narrow: "[]",
+        allow_empty_topic_name: "true",
+        client_gravatar: "true",
+        apply_markdown: applyMarkdown ? "true" : "false",
+      },
+      options?.signal,
+    );
+    throwIfZulipPipelineGetNull(res, options?.signal);
 
-  if (!res?.ok) {
+    if (!res.ok) {
+      return { messages: [], foundOldest: false, foundNewest: false };
+    }
+
+    const data = res.data as {
+      result?: string;
+      msg?: string;
+      messages?: ZulipRawMessage[];
+      found_oldest?: boolean;
+      foundOldest?: boolean;
+      found_newest?: boolean;
+      foundNewest?: boolean;
+    };
+
+    if (options?.signal?.aborted) {
+      throw new DOMException("Aborted", "AbortError");
+    }
+    if (!data || data.result === "error") {
+      return { messages: [], foundOldest: false, foundNewest: false };
+    }
+
+    return {
+      messages: (data.messages ?? []).map((message) =>
+        options?.applyMarkdown
+          ? rawMessageToMockMessage(message)
+          : rawMessageToMockMessage({
+              ...message,
+              markdown_source: message.markdown_source ?? message.content,
+            }),
+      ),
+      foundOldest: data.found_oldest ?? data.foundOldest ?? false,
+      foundNewest: data.found_newest ?? data.foundNewest ?? false,
+    };
+  } catch (error) {
+    if (isAbortError(error) || options?.signal?.aborted) {
+      throw error;
+    }
+    if (options?.signal) {
+      throw error instanceof Error ? error : new Error(t("app.networkError"));
+    }
     return { messages: [], foundOldest: false, foundNewest: false };
   }
-
-  const data = res.data as {
-    result?: string;
-    msg?: string;
-    messages?: ZulipRawMessage[];
-    found_oldest?: boolean;
-    foundOldest?: boolean;
-    found_newest?: boolean;
-    foundNewest?: boolean;
-  };
-
-  if (!data || data.result === "error") {
-    return { messages: [], foundOldest: false, foundNewest: false };
-  }
-
-  return {
-    messages: (data.messages ?? []).map((message) =>
-      options?.applyMarkdown
-        ? rawMessageToMockMessage(message)
-        : rawMessageToMockMessage({
-            ...message,
-            markdown_source: message.markdown_source ?? message.content,
-          }),
-    ),
-    foundOldest: data.found_oldest ?? data.foundOldest ?? false,
-    foundNewest: data.found_newest ?? data.foundNewest ?? false,
-  };
 }
 
 interface DmNarrow {

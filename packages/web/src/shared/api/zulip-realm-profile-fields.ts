@@ -12,6 +12,13 @@ const log = createLogger("api:realm-profile-fields");
 
 const realmProfileFieldsByInstanceId = new Map<string, RealmProfileFieldDefinition[]>();
 
+function isAbortError(error: unknown): boolean {
+  return (
+    (error instanceof DOMException && error.name === "AbortError") ||
+    (error instanceof Error && error.name === "AbortError")
+  );
+}
+
 function parseRealmProfileFields(data: unknown): RealmProfileFieldDefinition[] | null {
   if (data == null || typeof data !== "object") return null;
   const body = data as { result?: string; custom_fields?: unknown };
@@ -45,6 +52,12 @@ function parseRealmProfileFields(data: unknown): RealmProfileFieldDefinition[] |
 export async function fetchRealmProfileFieldDefinitions(): Promise<
   RealmProfileFieldDefinition[] | null
 > {
+  return fetchRealmProfileFieldDefinitionsWithSignal();
+}
+
+export async function fetchRealmProfileFieldDefinitionsWithSignal(
+  signal?: AbortSignal,
+): Promise<RealmProfileFieldDefinition[] | null> {
   const inst = getCurrentInstance();
   if (inst == null) return null;
 
@@ -53,7 +66,7 @@ export async function fetchRealmProfileFieldDefinitions(): Promise<
   }
 
   try {
-    const res = await zulipApi.get("/realm/profile_fields");
+    const res = await zulipApi.get("/realm/profile_fields", undefined, signal);
     if (!res.ok) {
       log.warn("Failed to fetch realm profile fields", { status: res.status });
       return null;
@@ -65,6 +78,9 @@ export async function fetchRealmProfileFieldDefinitions(): Promise<
     realmProfileFieldsByInstanceId.set(inst.id, parsed);
     return parsed;
   } catch (err) {
+    if (isAbortError(err) || signal?.aborted) {
+      throw err;
+    }
     log.warn("Error fetching realm profile fields", { error: String(err) });
     return null;
   }

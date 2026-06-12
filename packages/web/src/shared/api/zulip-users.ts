@@ -46,12 +46,15 @@ export async function fetchUsers(): Promise<ZulipUserMember[]> {
 }
 
 /** Fetches a single user by ID (GET /users/{user_id}). Used for DM profile panel. */
-export async function fetchUser(userId: number): Promise<ZulipUserMember | null> {
+export async function fetchUser(
+  userId: number,
+  options?: { signal?: AbortSignal },
+): Promise<ZulipUserMember | null> {
   guard.userId(userId, "fetchUser");
   const res = await zulipPipelineGet(`/users/${userId}`, {
     client_gravatar: "false",
     include_custom_profile_fields: "true",
-  });
+  }, options?.signal);
   if (!res?.ok) {
     return null;
   }

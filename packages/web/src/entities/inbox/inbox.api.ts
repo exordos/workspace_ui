@@ -16,13 +16,21 @@ import type { InboxEntry } from "./inbox.types";
 
 const log = createLogger("inbox:api");
 
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
+}
+
 async function persistUnreadMessagesToIdb(
+  instanceId: string | null,
   messages: readonly MockMessage[],
   currentUserId: number | null,
+  signal?: AbortSignal,
 ): Promise<void> {
   if (!persistChatMessagesToIndexedDb()) return;
-  const instanceId = getCurrentInstance()?.id;
   if (!instanceId || messages.length === 0) return;
+  throwIfAborted(signal);
 
   const messagesByChatKey = new Map<string, MockMessage[]>();
   for (const message of messages) {
@@ -39,16 +47,20 @@ async function persistUnreadMessagesToIdb(
   if (messagesByChatKey.size === 0) return;
 
   const entries = Array.from(messagesByChatKey.entries());
-  const results = await Promise.allSettled(
-    entries.map(([chatKey, chatMessages]) =>
-      upsertChatMessages({
-        instanceId,
-        chatKey,
-        messages: chatMessages,
-        windowSizeN: zulipMessageCacheWindowNForChatKey(chatKey),
-      }),
-    ),
-  );
+  const results: PromiseSettledResult<unknown>[] = [];
+  for (const [chatKey, chatMessages] of entries) {
+    if (signal?.aborted) break;
+    results.push(
+      await Promise.allSettled([
+        upsertChatMessages({
+          instanceId,
+          chatKey,
+          messages: chatMessages,
+          windowSizeN: zulipMessageCacheWindowNForChatKey(chatKey),
+        }),
+      ]).then(([result]) => result),
+    );
+  }
 
   results.forEach((result, index) => {
     if (result.status === "fulfilled") return;
@@ -63,16 +75,26 @@ async function persistUnreadMessagesToIdb(
 export async function fetchInboxEntries(
   currentUserId: number | null = null,
   options: InboxMuteFilterOptions = {},
+  requestOptions?: { signal?: AbortSignal },
 ): Promise<InboxEntry[]> {
   const start = performance.now();
   try {
+    const instanceId = getCurrentInstance()?.id ?? null;
     const messages = await fetchMessagesWithNarrow(
       [{ operator: "is", operand: "unread" }],
       "newest",
       5000,
       0,
+      { signal: requestOptions?.signal },
     );
-    await persistUnreadMessagesToIdb(messages, currentUserId);
+    throwIfAborted(requestOptions?.signal);
+    await persistUnreadMessagesToIdb(
+      instanceId,
+      messages,
+      currentUserId,
+      requestOptions?.signal,
+    );
+    throwIfAborted(requestOptions?.signal);
     const durationMs = Math.round(performance.now() - start);
     logApiCall("GET", "/messages?narrow=is:unread", { status: 200, durationMs });
     return buildInboxEntries(messages, currentUserId, options);

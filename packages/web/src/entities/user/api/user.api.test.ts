@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useUsersStore } from "../user.model";
 
 const {
@@ -36,6 +37,8 @@ vi.mock("~/shared/lib/logger", () => ({
     error: vi.fn(),
     debug: vi.fn(),
   }),
+  logStoreAction: vi.fn(),
+  logAction: vi.fn(),
 }));
 
 vi.mock("~/shared/lib/user-status-cache-db", () => ({
@@ -46,6 +49,19 @@ vi.mock("~/shared/lib/user-status-cache-db", () => ({
 describe("user presence api", () => {
   beforeEach(() => {
     useUsersStore.getState().clear();
+    useInstancesStore.setState({
+      instances: [
+        {
+          id: "instance-1",
+          realm: "https://zulip.example.com",
+          email: "user@example.com",
+          apiKey: "api-key",
+        },
+      ],
+      currentInstanceId: "instance-1",
+      unreadCountsByInstance: {},
+      activeOrgEpoch: 0,
+    });
     mockGet.mockReset();
     mockPost.mockReset();
     getCurrentInstance.mockReset();
@@ -54,11 +70,12 @@ describe("user presence api", () => {
     mockGetUserStatusCacheRow.mockResolvedValue(null);
     mockPutUserStatusCacheRow.mockReset();
     mockPutUserStatusCacheRow.mockResolvedValue(undefined);
-    getCurrentInstance.mockReturnValue({
-      id: "instance-1",
-      realm: "https://zulip.example.com",
-      email: "user@example.com",
-      apiKey: "api-key",
+    getCurrentInstance.mockImplementation(() => {
+      const { instances, currentInstanceId } = useInstancesStore.getState();
+      if (currentInstanceId == null) {
+        return null;
+      }
+      return instances.find((instance) => instance.id === currentInstanceId) ?? null;
     });
   });
 
@@ -547,5 +564,71 @@ describe("user presence api", () => {
     expect(mockGet).toHaveBeenCalledTimes(1);
     expect(useUsersStore.getState().getUser(11)?.status?.text).toBe("Fresh bootstrap");
     vi.useRealTimers();
+  });
+
+  it("drops stale right-panel status after organization switch", async () => {
+    const { requestUserStatus } = await import("./user.api");
+    useInstancesStore.setState({
+      instances: [
+        {
+          id: "instance-1",
+          realm: "https://one.example.com",
+          email: "one@example.com",
+          apiKey: "api-key",
+        },
+        {
+          id: "instance-2",
+          realm: "https://two.example.com",
+          email: "two@example.com",
+          apiKey: "api-key",
+        },
+      ],
+      currentInstanceId: "instance-1",
+      unreadCountsByInstance: {},
+      activeOrgEpoch: 0,
+    });
+    useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Alice A" });
+    useUsersStore.getState().setStatus(42, { text: "Stale status", away: false }, 0);
+
+    let resolveStatusResponse:
+      | ((value: {
+          ok: true;
+          status: 200;
+          data: {
+            result: "success";
+            status: { status_text: string; away: boolean };
+          };
+        }) => void)
+      | undefined;
+    mockGet.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveStatusResponse = resolve;
+        }),
+    );
+
+    const pending = requestUserStatus(42, { reason: "right_panel", priority: "high" });
+
+    useInstancesStore.getState().setCurrentInstanceId("instance-2");
+    useUsersStore.getState().clear();
+    useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Alice B" });
+
+    expect(resolveStatusResponse).toBeTypeOf("function");
+    resolveStatusResponse!({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        status: {
+          status_text: "Status from org A",
+          away: false,
+        },
+      },
+    });
+
+    await pending;
+
+    expect(useUsersStore.getState().getUser(42)?.status).toBeUndefined();
+    expect(mockPutUserStatusCacheRow).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,10 @@
 import { useEffect } from "react";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import {
+  captureActiveOrgRequestContext,
+  isActiveOrgRequestInvalidated,
+  useInstancesStore,
+} from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { fetchUser } from "~/shared/api/zulip-users";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
@@ -10,14 +15,16 @@ export function useChatPartnerProfileHydration(options: {
   isGroupDmView: boolean;
 }): void {
   const { partnerUserId, isDmView, isGroupDmView } = options;
+  const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
 
   // Load partner profile in DM (avatar, name, presence)
   useEffect(() => {
     if (!partnerUserId || !isDmView || isGroupDmView) return;
-    let cancelled = false;
-    fetchUser(partnerUserId)
+    const controller = new AbortController();
+    const orgContext = captureActiveOrgRequestContext();
+    fetchUser(partnerUserId, { signal: controller.signal })
       .then((user) => {
-        if (!cancelled && user) {
+        if (!isActiveOrgRequestInvalidated(orgContext, controller.signal) && user) {
           useUsersStore.getState().mergeUser({
             user_id: user.user_id,
             full_name: user.full_name ?? "",
@@ -28,9 +35,14 @@ export function useChatPartnerProfileHydration(options: {
           useChatListStore.getState().patchPersonalDmRowLabelsForUser(user.user_id);
         }
       })
-      .catch((err) => reportUnexpectedError("chat:partnerProfile", err, { partnerUserId }));
+      .catch((err) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+        reportUnexpectedError("chat:partnerProfile", err, { partnerUserId });
+      });
     return () => {
-      cancelled = true;
+      controller.abort();
     };
-  }, [partnerUserId, isDmView, isGroupDmView]);
+  }, [partnerUserId, isDmView, isGroupDmView, currentInstanceId]);
 }

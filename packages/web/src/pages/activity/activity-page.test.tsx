@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useActivityStore } from "~/entities/activity/activity.model";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useDraftStore } from "~/entities/draft/draft.model";
+import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import { createMessage, createUser } from "~/test/factories";
@@ -86,6 +87,12 @@ function mockElementScrollHeight(value: number): () => void {
 describe("ActivityPage drafts routing", () => {
   beforeEach(() => {
     useActivityStore.getState().clear();
+    useInstancesStore.setState({
+      instances: [],
+      currentInstanceId: null,
+      unreadCountsByInstance: {},
+      activeOrgEpoch: 0,
+    });
   });
 
   afterEach(() => {
@@ -100,6 +107,12 @@ describe("ActivityPage drafts routing", () => {
     useChatListStore.getState().clear();
     useUsersStore.getState().clear();
     useActivityStore.getState().clear();
+    useInstancesStore.setState({
+      instances: [],
+      currentInstanceId: null,
+      unreadCountsByInstance: {},
+      activeOrgEpoch: 0,
+    });
   });
 
   it("navigates stream drafts using the canonical stream slug from the store", async () => {
@@ -517,6 +530,102 @@ describe("ActivityPage drafts routing", () => {
     expect(screen.getByText("Starred message persists")).toBeInTheDocument();
   });
 
+  it("does not remove a new-organization starred row when stale unstar resolves", async () => {
+    let resolveUnstar: (() => void) | undefined;
+    removeMessageFlag.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveUnstar = resolve;
+        }),
+    );
+    fetchActivityMessagesPageWithPersist.mockResolvedValue({
+      messages: [
+        createMessage({
+          id: 55,
+          sender_id: 42,
+          sender_full_name: "Alice",
+          stream_id: 10,
+          subject: "bugs",
+          content: "Org A starred message",
+          timestamp: 1,
+          type: "stream",
+          display_recipient: "engineering",
+        }),
+      ],
+      foundOldest: true,
+    });
+    useInstancesStore.setState({
+      instances: [
+        {
+          id: "instance-1",
+          realm: "https://one.example.com",
+          email: "one@example.com",
+          apiKey: "a",
+        },
+        {
+          id: "instance-2",
+          realm: "https://two.example.com",
+          email: "two@example.com",
+          apiKey: "b",
+        },
+      ],
+      currentInstanceId: "instance-1",
+      unreadCountsByInstance: {},
+      activeOrgEpoch: 0,
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/activity/starred"]}>
+        <Routes>
+          <Route path="/activity/:filter" element={<ActivityPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Org A starred message")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /unstar/i }));
+
+    await waitFor(() => {
+      expect(removeMessageFlag).toHaveBeenCalledWith([55], "starred");
+    });
+
+    act(() => {
+      useInstancesStore.getState().setCurrentInstanceId("instance-2");
+      useActivityStore.setState((state) => ({
+        filters: {
+          ...state.filters,
+          starred: {
+            ...state.filters.starred,
+            messages: [
+              createMessage({
+                id: 55,
+                sender_id: 99,
+                sender_full_name: "Bob",
+                stream_id: 20,
+                subject: "support",
+                content: "Org B starred message",
+                timestamp: 2,
+                type: "stream",
+                display_recipient: "support",
+              }),
+            ],
+          },
+        },
+      }));
+    });
+
+    act(() => {
+      resolveUnstar?.();
+    });
+
+    expect(useActivityStore.getState().filters.starred.messages[0]?.content).toBe(
+      "Org B starred message",
+    );
+  });
+
   it("does not fetch reactions until currentUserId is known", async () => {
     useChatListStore.setState({ currentUserId: null });
 
@@ -528,6 +637,7 @@ describe("ActivityPage drafts routing", () => {
       </MemoryRouter>,
     );
 
+    fetchActivityMessagesPageWithPersist.mockClear();
     expect(fetchActivityMessagesPageWithPersist).not.toHaveBeenCalled();
     expect(screen.getByText(/loading/i)).toBeInTheDocument();
 
@@ -553,6 +663,7 @@ describe("ActivityPage drafts routing", () => {
         42,
         "newest",
         expect.any(Number),
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
       );
     });
   });
@@ -733,7 +844,7 @@ describe("ActivityPage drafts routing", () => {
   });
 
   it("keeps a draft row visible while server deletion is pending", async () => {
-    let resolveDelete: (value: boolean) => void = () => {
+    let resolveDelete: (value: boolean) => void = (_value: boolean) => {
       throw new Error("Expected delete resolver to be assigned");
     };
     deleteDraftOnServer.mockReturnValue(
@@ -812,6 +923,80 @@ describe("ActivityPage drafts routing", () => {
     expect(screen.getByText("Failed delete draft")).toBeInTheDocument();
   });
 
+  it("does not delete a new-organization draft when stale delete resolves", async () => {
+    let resolveDelete: ((value: boolean) => void) | undefined;
+    deleteDraftOnServer.mockImplementationOnce(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveDelete = resolve;
+        }),
+    );
+    useInstancesStore.setState({
+      instances: [
+        {
+          id: "instance-1",
+          realm: "https://one.example.com",
+          email: "one@example.com",
+          apiKey: "a",
+        },
+        {
+          id: "instance-2",
+          realm: "https://two.example.com",
+          email: "two@example.com",
+          apiKey: "b",
+        },
+      ],
+      currentInstanceId: "instance-1",
+      unreadCountsByInstance: {},
+      activeOrgEpoch: 0,
+    });
+    useDraftStore.getState().setDrafts([
+      {
+        id: 7,
+        type: "stream",
+        to: [10],
+        topic: "general",
+        content: "Org A draft",
+        timestamp: 1710000000,
+      },
+    ]);
+
+    render(
+      <MemoryRouter initialEntries={["/activity/drafts"]}>
+        <Routes>
+          <Route path="/activity/:filter" element={<ActivityPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Org A draft")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTitle("Delete draft"));
+    expect(deleteDraftOnServer).toHaveBeenCalledWith(7);
+
+    act(() => {
+      useInstancesStore.getState().setCurrentInstanceId("instance-2");
+      useDraftStore.getState().setDrafts([
+        {
+          id: 7,
+          type: "stream",
+          to: [20],
+          topic: "triage",
+          content: "Org B draft",
+          timestamp: 1710000200,
+        },
+      ]);
+    });
+
+    act(() => {
+      resolveDelete?.(true);
+    });
+
+    expect(useDraftStore.getState().drafts[0]?.content).toBe("Org B draft");
+  });
+
   it("edits a server-backed draft from the drafts list", async () => {
     updateDraftOnServer.mockResolvedValue(true);
     useDraftStore.getState().setDrafts([
@@ -851,6 +1036,90 @@ describe("ActivityPage drafts routing", () => {
     });
 
     expect(screen.getByText("Edited draft content")).toBeInTheDocument();
+  });
+
+  it("does not edit a new-organization draft when stale save resolves", async () => {
+    let resolveUpdate: ((value: boolean) => void) | undefined;
+    updateDraftOnServer.mockImplementationOnce(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveUpdate = resolve;
+        }),
+    );
+    useInstancesStore.setState({
+      instances: [
+        {
+          id: "instance-1",
+          realm: "https://one.example.com",
+          email: "one@example.com",
+          apiKey: "a",
+        },
+        {
+          id: "instance-2",
+          realm: "https://two.example.com",
+          email: "two@example.com",
+          apiKey: "b",
+        },
+      ],
+      currentInstanceId: "instance-1",
+      unreadCountsByInstance: {},
+      activeOrgEpoch: 0,
+    });
+    useDraftStore.getState().setDrafts([
+      {
+        id: 8,
+        type: "stream",
+        to: [10],
+        topic: "general",
+        content: "Org A draft",
+        timestamp: 1710000000,
+      },
+    ]);
+
+    render(
+      <MemoryRouter initialEntries={["/activity/drafts"]}>
+        <Routes>
+          <Route path="/activity/:filter" element={<ActivityPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Org A draft")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTitle("Edit draft"));
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Edited in org A" } });
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => {
+      expect(updateDraftOnServer).toHaveBeenCalledWith(8, {
+        type: "stream",
+        to: [10],
+        topic: "general",
+        content: "Edited in org A",
+      });
+    });
+
+    act(() => {
+      useInstancesStore.getState().setCurrentInstanceId("instance-2");
+      useDraftStore.getState().setDrafts([
+        {
+          id: 8,
+          type: "stream",
+          to: [20],
+          topic: "triage",
+          content: "Org B draft",
+          timestamp: 1710000200,
+        },
+      ]);
+    });
+
+    act(() => {
+      resolveUpdate?.(true);
+    });
+
+    expect(useDraftStore.getState().drafts[0]?.content).toBe("Org B draft");
   });
 
   it("treats empty edited draft content as delete", async () => {
@@ -945,5 +1214,214 @@ describe("ActivityPage drafts routing", () => {
     });
 
     expect(fetchActivityMessagesPageWithPersist).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not apply cached mentions from the previous organization after switch", async () => {
+    let resolveHydrate!: (messages: ZulipRawMessage[]) => void;
+    const staleHydrate = new Promise<ZulipRawMessage[]>((resolve) => {
+      resolveHydrate = resolve;
+    });
+
+    let resolveNextOrgFetch!: (value: {
+      messages: ZulipRawMessage[];
+      foundOldest: boolean;
+    }) => void;
+    const nextOrgFetch = new Promise<{ messages: ZulipRawMessage[]; foundOldest: boolean }>(
+      (resolve) => {
+        resolveNextOrgFetch = resolve;
+      },
+    );
+
+    hydrateActivityMessagesFromCache
+      .mockReturnValueOnce(staleHydrate)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    fetchActivityMessagesPageWithPersist.mockReturnValue(nextOrgFetch);
+
+    useInstancesStore.setState({
+      instances: [
+        {
+          id: "instance-1",
+          realm: "https://one.example.com",
+          email: "one@example.com",
+          apiKey: "api-key",
+        },
+        {
+          id: "instance-2",
+          realm: "https://two.example.com",
+          email: "two@example.com",
+          apiKey: "api-key",
+        },
+      ],
+      currentInstanceId: "instance-1",
+      unreadCountsByInstance: {},
+      activeOrgEpoch: 0,
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/activity/mentions"]}>
+        <Routes>
+          <Route path="/activity/:filter" element={<ActivityPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    act(() => {
+      useInstancesStore.getState().setCurrentInstanceId("instance-2");
+      useActivityStore.getState().clear();
+    });
+
+    await act(async () => {
+      resolveHydrate([
+        createMessage({
+          id: 901,
+          sender_id: 42,
+          sender_full_name: "Alice",
+          stream_id: 10,
+          subject: "bugs",
+          content: "Old org cached mention",
+          timestamp: 1,
+          type: "stream",
+          display_recipient: "engineering",
+        }),
+      ]);
+      await staleHydrate;
+    });
+
+    expect(useActivityStore.getState().filters.mentions.messages).toEqual([]);
+
+    await act(async () => {
+      resolveNextOrgFetch({
+        messages: [
+          createMessage({
+            id: 902,
+            sender_id: 99,
+            sender_full_name: "Bob",
+            stream_id: 20,
+            subject: "support",
+            content: "Current org mention",
+            timestamp: 2,
+            type: "stream",
+            display_recipient: "support",
+          }),
+        ],
+        foundOldest: true,
+      });
+      await nextOrgFetch;
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Current org mention")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Old org cached mention")).not.toBeInTheDocument();
+  });
+
+  it("does not apply stale mentions refresh after organization switch", async () => {
+    let resolveOldFetch!: (value: { messages: ZulipRawMessage[]; foundOldest: boolean }) => void;
+    const oldFetch = new Promise<{ messages: ZulipRawMessage[]; foundOldest: boolean }>(
+      (resolve) => {
+        resolveOldFetch = resolve;
+      },
+    );
+
+    let resolveNewFetch!: (value: { messages: ZulipRawMessage[]; foundOldest: boolean }) => void;
+    const newFetch = new Promise<{ messages: ZulipRawMessage[]; foundOldest: boolean }>(
+      (resolve) => {
+        resolveNewFetch = resolve;
+      },
+    );
+
+    hydrateActivityMessagesFromCache.mockResolvedValue([]);
+    fetchActivityMessagesPageWithPersist
+      .mockReturnValueOnce(oldFetch)
+      .mockReturnValueOnce(newFetch);
+
+    useInstancesStore.setState({
+      instances: [
+        {
+          id: "instance-1",
+          realm: "https://one.example.com",
+          email: "one@example.com",
+          apiKey: "api-key",
+        },
+        {
+          id: "instance-2",
+          realm: "https://two.example.com",
+          email: "two@example.com",
+          apiKey: "api-key",
+        },
+      ],
+      currentInstanceId: "instance-1",
+      unreadCountsByInstance: {},
+      activeOrgEpoch: 0,
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/activity/mentions"]}>
+        <Routes>
+          <Route path="/activity/:filter" element={<ActivityPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(fetchActivityMessagesPageWithPersist).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      useInstancesStore.getState().setCurrentInstanceId("instance-2");
+      useActivityStore.getState().clear();
+    });
+
+    await waitFor(() => {
+      expect(fetchActivityMessagesPageWithPersist).toHaveBeenCalledTimes(2);
+    });
+
+    await act(async () => {
+      resolveOldFetch({
+        messages: [
+          createMessage({
+            id: 903,
+            sender_id: 42,
+            sender_full_name: "Alice",
+            stream_id: 10,
+            subject: "bugs",
+            content: "Old org refreshed mention",
+            timestamp: 1,
+            type: "stream",
+            display_recipient: "engineering",
+          }),
+        ],
+        foundOldest: true,
+      });
+      await oldFetch;
+    });
+
+    expect(useActivityStore.getState().filters.mentions.messages).toEqual([]);
+
+    await act(async () => {
+      resolveNewFetch({
+        messages: [
+          createMessage({
+            id: 904,
+            sender_id: 99,
+            sender_full_name: "Bob",
+            stream_id: 20,
+            subject: "support",
+            content: "Current org refreshed mention",
+            timestamp: 2,
+            type: "stream",
+            display_recipient: "support",
+          }),
+        ],
+        foundOldest: true,
+      });
+      await newFetch;
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Current org refreshed mention")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Old org refreshed mention")).not.toBeInTheDocument();
   });
 });

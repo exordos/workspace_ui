@@ -18,7 +18,9 @@ import { persistUsersDirectoryToIndexedDb } from "~/entities/user/user-directory
 import { useUsersStore } from "~/entities/user/user.model";
 import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
 import { useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
+import { useMessageReadersStore } from "~/features/message-readers/message-readers.model";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
+import { useUserProfileStore } from "~/features/user-profile/user-profile.model";
 import { t } from "~/i18n/i18n";
 import { deleteQueue, DEFAULT_REGISTER_FETCH_EVENT_TYPES } from "~/shared/api/zulip-queue";
 import { fetchSubscriptions } from "~/shared/api/zulip-streams";
@@ -286,11 +288,37 @@ export function useLayoutZulipEventLoop(options: {
     Record<string, ZulipRecentPrivateConversation> | undefined
   >(undefined);
 
+  const clearMessengerShellState = (
+    reason: "instance switched" | "active instance cleared",
+  ): void => {
+    registerUnreadSnapshotRef.current = null;
+    recentPrivateConversationsRef.current = undefined;
+    logMessageFlow(`eventLoop:clear stores (${reason})`, {
+      instanceId: currentInstanceId,
+    });
+    useUsersStore.getState().clear();
+    useUserGroupsStore.getState().clear();
+    useActivityStore.getState().clear();
+    useInboxStore.getState().clear();
+    useChatListStore.getState().clear();
+    clearStreamSidebarHydrateState();
+    resetReconnectStreamPreviewStaging();
+    useCurrentChatMessagesStore.getState().setContext(null);
+    useCurrentChatMessagesStore.getState().setMessages([]);
+    useJitsiCallStore.getState().clear();
+    useMessageReadersStore.getState().clear();
+    useMuteStore.getState().clear();
+    useNotificationSettingsStore.getState().clear();
+    useUserProfileStore.getState().clear();
+    resetLatestMessageIdRef(
+      resolveLatestMessageIdRef(latestMessageIdRefProp, internalLatestMessageIdRef),
+    );
+  };
+
   useEffect(() => {
     if (!currentInstanceId) {
       prevInstanceForBootstrapRef.current = null;
-      useUsersStore.getState().setCurrentUserChannelCapabilities({});
-      useUserGroupsStore.getState().clear();
+      clearMessengerShellState("active instance cleared");
       cancelScheduledReconnect();
       return;
     }
@@ -325,26 +353,7 @@ export function useLayoutZulipEventLoop(options: {
     const streamPreviewCoordinator = createMetadataStreamPreviewCoordinator();
 
     if (instanceSwitched) {
-      registerUnreadSnapshotRef.current = null;
-      recentPrivateConversationsRef.current = undefined;
-      logMessageFlow("eventLoop:clear stores (instance switched)", {
-        instanceId: currentInstanceId,
-      });
-      useUsersStore.getState().clear();
-      useUserGroupsStore.getState().clear();
-      useActivityStore.getState().clear();
-      useInboxStore.getState().clear();
-      useChatListStore.getState().clear();
-      clearStreamSidebarHydrateState();
-      resetReconnectStreamPreviewStaging();
-      useCurrentChatMessagesStore.getState().setContext(null);
-      useCurrentChatMessagesStore.getState().setMessages([]);
-      useJitsiCallStore.getState().clear();
-      useMuteStore.getState().clear();
-      useNotificationSettingsStore.getState().clear();
-      resetLatestMessageIdRef(
-        resolveLatestMessageIdRef(latestMessageIdRefProp, internalLatestMessageIdRef),
-      );
+      clearMessengerShellState("instance switched");
     }
 
     void (async () => {

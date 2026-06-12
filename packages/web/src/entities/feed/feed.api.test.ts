@@ -52,7 +52,7 @@ describe("fetchFeedMessages", () => {
       foundNewest: false,
     });
     await fetchFeedMessages();
-    expect(fetchAllMessagesPage).toHaveBeenCalledWith("newest", 50);
+    expect(fetchAllMessagesPage).toHaveBeenCalledWith("newest", 50, undefined);
   });
 
   it("forwards custom anchor and numBefore", async () => {
@@ -62,7 +62,7 @@ describe("fetchFeedMessages", () => {
       foundNewest: false,
     });
     await fetchFeedMessages(42, 100);
-    expect(fetchAllMessagesPage).toHaveBeenCalledWith(42, 100);
+    expect(fetchAllMessagesPage).toHaveBeenCalledWith(42, 100, undefined);
   });
 
   it("propagates errors from the page fetch", async () => {
@@ -89,7 +89,7 @@ describe("fetchFeedMessages", () => {
     });
     const result = await fetchFeedMessages(500, 25);
     expect(result).toEqual({ messages: [msg], foundOldest: true, foundNewest: false });
-    expect(fetchAllMessagesPage).toHaveBeenCalledWith(500, 25);
+    expect(fetchAllMessagesPage).toHaveBeenCalledWith(500, 25, undefined);
   });
 
   it("preserves the foundOldest metadata from the server", async () => {

@@ -10,9 +10,9 @@ export function applyUserStatusSnapshot(
   userId: number,
   status: UserStatus | null,
   fetchedAt = Date.now(),
+  instanceId = getCurrentInstance()?.id,
 ): void {
   useUsersStore.getState().setStatus(userId, status, fetchedAt);
-  const instanceId = getCurrentInstance()?.id;
   if (instanceId == null) {
     return;
   }

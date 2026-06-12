@@ -46,6 +46,7 @@ describe("InboxPage styling contract", () => {
       ],
       currentInstanceId: TEST_INSTANCE_ID,
       unreadCountsByInstance: {},
+      activeOrgEpoch: 0,
     });
   });
 
@@ -61,6 +62,7 @@ describe("InboxPage styling contract", () => {
       instances: [],
       currentInstanceId: null,
       unreadCountsByInstance: {},
+      activeOrgEpoch: 0,
     });
   });
 
@@ -467,5 +469,196 @@ describe("InboxPage styling contract", () => {
     });
 
     expect(fetchInboxEntries).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not apply cached inbox entries from the previous organization after switch", async () => {
+    let resolveHydrate!: (entries: InboxEntry[]) => void;
+    const staleHydrate = new Promise<InboxEntry[]>((resolve) => {
+      resolveHydrate = resolve;
+    });
+
+    hydrateInboxEntriesFromCache
+      .mockReturnValueOnce(staleHydrate)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    let resolveNextOrgFetch!: (entries: InboxEntry[]) => void;
+    const nextOrgFetch = new Promise<InboxEntry[]>((resolve) => {
+      resolveNextOrgFetch = resolve;
+    });
+    fetchInboxEntries.mockReturnValue(nextOrgFetch);
+
+    useInstancesStore.setState({
+      instances: [
+        {
+          id: "instance-1",
+          realm: "https://one.example.com",
+          email: "one@example.com",
+          apiKey: "api-key",
+        },
+        {
+          id: "instance-2",
+          realm: "https://two.example.com",
+          email: "two@example.com",
+          apiKey: "api-key",
+        },
+      ],
+      currentInstanceId: "instance-1",
+      unreadCountsByInstance: {},
+      activeOrgEpoch: 0,
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/inbox"]}>
+        <Routes>
+          <Route path="/inbox" element={<InboxPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    act(() => {
+      useInstancesStore.getState().setCurrentInstanceId("instance-2");
+    });
+
+    await act(async () => {
+      resolveHydrate([
+        {
+          key: "dm:42",
+          streamId: null,
+          streamName: null,
+          topic: null,
+          senderId: 42,
+          senderName: "Old org cached inbox row",
+          dmSlug: "42",
+          unreadCount: 1,
+          lastMessageTimestamp: 10,
+          messageIds: [1],
+        },
+      ]);
+      await staleHydrate;
+    });
+
+    expect(useInboxStore.getState().entries).toEqual([]);
+
+    await act(async () => {
+      resolveNextOrgFetch([
+        {
+          key: "dm:99",
+          streamId: null,
+          streamName: null,
+          topic: null,
+          senderId: 99,
+          senderName: "Current org inbox row",
+          dmSlug: "99",
+          unreadCount: 2,
+          lastMessageTimestamp: 20,
+          messageIds: [2],
+        },
+      ]);
+      await nextOrgFetch;
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Current org inbox row")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Old org cached inbox row")).not.toBeInTheDocument();
+  });
+
+  it("does not apply stale inbox refresh after organization switch", async () => {
+    let resolveOldFetch!: (entries: InboxEntry[]) => void;
+    const oldFetch = new Promise<InboxEntry[]>((resolve) => {
+      resolveOldFetch = resolve;
+    });
+
+    let resolveNewFetch!: (entries: InboxEntry[]) => void;
+    const newFetch = new Promise<InboxEntry[]>((resolve) => {
+      resolveNewFetch = resolve;
+    });
+
+    hydrateInboxEntriesFromCache.mockResolvedValue([]);
+    fetchInboxEntries.mockReturnValueOnce(oldFetch).mockReturnValueOnce(newFetch);
+
+    useInstancesStore.setState({
+      instances: [
+        {
+          id: "instance-1",
+          realm: "https://one.example.com",
+          email: "one@example.com",
+          apiKey: "api-key",
+        },
+        {
+          id: "instance-2",
+          realm: "https://two.example.com",
+          email: "two@example.com",
+          apiKey: "api-key",
+        },
+      ],
+      currentInstanceId: "instance-1",
+      unreadCountsByInstance: {},
+      activeOrgEpoch: 0,
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/inbox"]}>
+        <Routes>
+          <Route path="/inbox" element={<InboxPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(fetchInboxEntries).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      useInstancesStore.getState().setCurrentInstanceId("instance-2");
+    });
+
+    await waitFor(() => {
+      expect(fetchInboxEntries).toHaveBeenCalledTimes(2);
+    });
+
+    await act(async () => {
+      resolveOldFetch([
+        {
+          key: "dm:42",
+          streamId: null,
+          streamName: null,
+          topic: null,
+          senderId: 42,
+          senderName: "Old org inbox refresh row",
+          dmSlug: "42",
+          unreadCount: 1,
+          lastMessageTimestamp: 10,
+          messageIds: [1],
+        },
+      ]);
+      await oldFetch;
+    });
+
+    expect(useInboxStore.getState().entries).toEqual([]);
+
+    await act(async () => {
+      resolveNewFetch([
+        {
+          key: "dm:99",
+          streamId: null,
+          streamName: null,
+          topic: null,
+          senderId: 99,
+          senderName: "Current org refreshed inbox row",
+          dmSlug: "99",
+          unreadCount: 2,
+          lastMessageTimestamp: 20,
+          messageIds: [2],
+        },
+      ]);
+      await newFetch;
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Current org refreshed inbox row")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Old org inbox refresh row")).not.toBeInTheDocument();
   });
 });

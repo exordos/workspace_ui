@@ -22,8 +22,12 @@ export function useLayoutUserProfileAutoload(options: {
       return;
     }
 
-    void useUserProfileStore.getState().loadProfile(rightDrawerTargetUserId);
+    const controller = new AbortController();
+    void useUserProfileStore.getState().loadProfile(rightDrawerTargetUserId, {
+      signal: controller.signal,
+    });
     return () => {
+      controller.abort();
       useUserProfileStore.getState().clear();
     };
   }, [currentInstanceId, rightDrawerMode, rightDrawerTargetUserId, rightDrawerOpen]);

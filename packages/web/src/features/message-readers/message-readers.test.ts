@@ -6,6 +6,7 @@
  * and state cleanup.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useMessageReadersStore } from "./message-readers.model";
 
 vi.mock("~/shared/api/client", () => {
@@ -30,6 +31,7 @@ async function getZulipMock() {
 describe("useMessageReadersStore", () => {
   afterEach(async () => {
     useMessageReadersStore.getState().clear();
+    useInstancesStore.setState({ instances: [], currentInstanceId: null, activeOrgEpoch: 0 });
     const mock = await getZulipMock();
     mock.mockReset();
   });
@@ -116,6 +118,47 @@ describe("useMessageReadersStore", () => {
 
     expect(useMessageReadersStore.getState().userIds).toEqual([30, 40]);
     expect(useMessageReadersStore.getState().messageId).toBe(2);
+  });
+
+  it("does not apply stale read receipts after organization switch and clear", async () => {
+    useInstancesStore.setState({
+      instances: [
+        { id: "inst-a", realm: "https://a.test", email: "a@test.com", apiKey: "a-key" },
+        { id: "inst-b", realm: "https://b.test", email: "b@test.com", apiKey: "b-key" },
+      ],
+      currentInstanceId: "inst-a",
+      activeOrgEpoch: 0,
+    });
+
+    const mock = await getZulipMock();
+    let resolveResponse:
+      | ((value: { ok: true; status: number; data: { user_ids: number[] } }) => void)
+      | undefined;
+    mock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveResponse = resolve;
+        }),
+    );
+
+    const pending = useMessageReadersStore.getState().fetchReadReceipts(42);
+    useInstancesStore.getState().setCurrentInstanceId("inst-b");
+    useMessageReadersStore.getState().clear();
+
+    expect(resolveResponse).toBeTypeOf("function");
+    resolveResponse!({
+      ok: true,
+      status: 200,
+      data: { user_ids: [1, 2, 3] },
+    });
+
+    await pending;
+
+    const state = useMessageReadersStore.getState();
+    expect(state.loading).toBe(false);
+    expect(state.userIds).toEqual([]);
+    expect(state.error).toBeNull();
+    expect(state.messageId).toBeNull();
   });
 });
 

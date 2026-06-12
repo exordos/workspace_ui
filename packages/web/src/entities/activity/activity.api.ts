@@ -16,13 +16,21 @@ import { zulipMessageCacheWindowNForChatKey } from "~/shared/lib/zulip-message-w
 
 const log = createLogger("activity:api");
 
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
+}
+
 async function persistActivityMessagesToIdb(
+  instanceId: string | null,
   messages: readonly ZulipRawMessage[],
   currentUserId: number | null,
+  signal?: AbortSignal,
 ): Promise<void> {
   if (!persistChatMessagesToIndexedDb()) return;
-  const instanceId = getCurrentInstance()?.id;
   if (!instanceId || messages.length === 0) return;
+  throwIfAborted(signal);
 
   const messagesByChatKey = new Map<string, ReturnType<typeof rawMessageToMockMessage>[]>();
   for (const message of messages) {
@@ -39,16 +47,20 @@ async function persistActivityMessagesToIdb(
 
   if (messagesByChatKey.size === 0) return;
   const entries = Array.from(messagesByChatKey.entries());
-  const results = await Promise.allSettled(
-    entries.map(([chatKey, chatMessages]) =>
-      upsertChatMessages({
-        instanceId,
-        chatKey,
-        messages: chatMessages,
-        windowSizeN: zulipMessageCacheWindowNForChatKey(chatKey),
-      }),
-    ),
-  );
+  const results: PromiseSettledResult<unknown>[] = [];
+  for (const [chatKey, chatMessages] of entries) {
+    if (signal?.aborted) break;
+    results.push(
+      await Promise.allSettled([
+        upsertChatMessages({
+          instanceId,
+          chatKey,
+          messages: chatMessages,
+          windowSizeN: zulipMessageCacheWindowNForChatKey(chatKey),
+        }),
+      ]).then(([result]) => result),
+    );
+  }
 
   results.forEach((result, index) => {
     if (result.status === "fulfilled") return;
@@ -65,9 +77,24 @@ export async function fetchActivityMessagesPageWithPersist(
   currentUserId?: number | null,
   anchor: number | "newest" = "newest",
   numBefore = 200,
+  options?: { signal?: AbortSignal },
 ): Promise<ActivityMessagesPageResult> {
   const normalizedCurrentUserId = currentUserId ?? null;
-  const page = await fetchActivityMessagesPage(filter, normalizedCurrentUserId, anchor, numBefore);
-  await persistActivityMessagesToIdb(page.messages, normalizedCurrentUserId);
+  const instanceId = getCurrentInstance()?.id ?? null;
+  const page = await fetchActivityMessagesPage(
+    filter,
+    normalizedCurrentUserId,
+    anchor,
+    numBefore,
+    options,
+  );
+  throwIfAborted(options?.signal);
+  await persistActivityMessagesToIdb(
+    instanceId,
+    page.messages,
+    normalizedCurrentUserId,
+    options?.signal,
+  );
+  throwIfAborted(options?.signal);
   return page;
 }

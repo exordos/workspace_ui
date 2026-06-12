@@ -2,6 +2,7 @@
  * Types for user API responses and the status-load orchestrator.
  */
 
+import type { ActiveOrgRequestContext } from "~/entities/instance/instance.model";
 import type { UserStatus } from "../user.model";
 
 export interface ZulipApiResultEnvelope {
@@ -68,6 +69,10 @@ export interface RequestUserStatusOptions {
   reason?: UserStatusRequestReason;
   /** High-priority requests drain before low-priority background loads. */
   priority?: UserStatusRequestPriority;
+  /** Internal active-organization context captured at request start. */
+  orgContext?: ActiveOrgRequestContext;
+  /** Internal instance ID captured at request start for cache writes/reads. */
+  instanceId?: string;
 }
 
 export type FetchUserStatusDetailed = (userId: number) => Promise<StatusFetchOutcome>;

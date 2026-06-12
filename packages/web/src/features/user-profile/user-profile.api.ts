@@ -16,7 +16,7 @@ import {
   uploadOwnAvatar as uploadOwnAvatarFromApi,
 } from "~/shared/api/zulip-avatar-settings";
 import { updateOwnProfileSettings } from "~/shared/api/zulip-profile-settings";
-import { fetchRealmProfileFieldDefinitions } from "~/shared/api/zulip-realm-profile-fields";
+import { fetchRealmProfileFieldDefinitionsWithSignal } from "~/shared/api/zulip-realm-profile-fields";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
 import { mapZulipProfileDataToSemanticFields } from "~/shared/lib/zulip-profile-fields-map.lib";
@@ -32,7 +32,7 @@ const log = createLogger("user-profile:api");
 
 export {
   clearRealmProfileFieldsCache,
-  fetchRealmProfileFieldDefinitions,
+  fetchRealmProfileFieldDefinitionsWithSignal as fetchRealmProfileFieldDefinitions,
 } from "~/shared/api/zulip-realm-profile-fields";
 
 interface ZulipUserResponse {
@@ -50,7 +50,17 @@ interface ZulipUserResponse {
   };
 }
 
-export async function fetchUserProfile(userId: number): Promise<UserProfileData | null> {
+function isAbortError(error: unknown): boolean {
+  return (
+    (error instanceof DOMException && error.name === "AbortError") ||
+    (error instanceof Error && error.name === "AbortError")
+  );
+}
+
+export async function fetchUserProfile(
+  userId: number,
+  options?: { signal?: AbortSignal },
+): Promise<UserProfileData | null> {
   guard.userId(userId, "fetchUserProfile");
 
   try {
@@ -58,8 +68,8 @@ export async function fetchUserProfile(userId: number): Promise<UserProfileData 
       zulipApi.get(`/users/${userId}`, {
         client_gravatar: "false",
         include_custom_profile_fields: "true",
-      }),
-      fetchRealmProfileFieldDefinitions(),
+      }, options?.signal),
+      fetchRealmProfileFieldDefinitionsWithSignal(options?.signal),
     ]);
 
     if (!res.ok) {
@@ -94,6 +104,9 @@ export async function fetchUserProfile(userId: number): Promise<UserProfileData 
       birthday: custom.birthday,
     };
   } catch (err) {
+    if (isAbortError(err) || options?.signal?.aborted) {
+      throw err;
+    }
     log.error("Error fetching user profile", { userId, error: String(err) });
     return null;
   }

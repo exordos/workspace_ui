@@ -4,7 +4,11 @@ import { useNavigate } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { fetchFeedMessages, hydrateFeedMessagesFromCache } from "~/entities/feed/feed.api";
 import { useFeedStore } from "~/entities/feed/feed.model";
-import { useInstancesStore } from "~/entities/instance/instance.model";
+import {
+  captureActiveOrgRequestContext,
+  isActiveOrgRequestContextCurrent,
+  useInstancesStore,
+} from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
 import { useOpenSearch } from "~/shared/contexts/open-search";
@@ -90,8 +94,9 @@ export const FeedPage: React.FC = () => {
       initialScrollPositionKeyRef.current = null;
       pendingScrollRestoreRef.current = null;
     },
-    hydrate: async (instanceId) => {
+    hydrate: async ({ instanceId, signal, orgContext }) => {
       const cached = await hydrateFeedMessagesFromCache(instanceId);
+      if (signal.aborted || !isActiveOrgRequestContextCurrent(orgContext)) return;
       if (cached.length > 0) {
         setMessages(cached, false, instanceId);
       }
@@ -103,10 +108,11 @@ export const FeedPage: React.FC = () => {
         hasCached && (scrollEl == null || isNearBottom(scrollEl));
       return startRequest(hasCached);
     },
-    fetch: async (_instanceId, requestVersion) => {
-      const page = await fetchFeedMessages("newest", FEED_PAGE_SIZE);
+    fetch: async ({ instanceId, orgContext, requestVersion, signal }) => {
+      const page = await fetchFeedMessages("newest", FEED_PAGE_SIZE, { signal });
+      if (signal.aborted || !isActiveOrgRequestContextCurrent(orgContext)) return;
       for (const m of page.messages) useUsersStore.getState().mergeFromMessage(m);
-      setMessagesIfActual(page.messages, page.foundOldest, requestVersion, currentInstanceId);
+      setMessagesIfActual(page.messages, page.foundOldest, requestVersion, instanceId);
     },
     onFetchError: (err, requestVersion) => {
       setError(String(err), requestVersion);
@@ -149,7 +155,7 @@ export const FeedPage: React.FC = () => {
 
   const handleLoadMore = React.useCallback(
     (preserveScroll: boolean) => {
-      if (isLoadingMore || isAllLoaded || lastMessageId == null) return;
+      if (isLoadingMore || isAllLoaded || lastMessageId == null || currentInstanceId == null) return;
 
       if (preserveScroll && listRef.current) {
         // Snapshot scroll position before prepending older messages.
@@ -160,9 +166,19 @@ export const FeedPage: React.FC = () => {
       }
 
       useFeedStore.getState().setLoadingMore(true);
-      const requestKey = `${currentInstanceId ?? "none"}:feed:${lastMessageId}:${FEED_PAGE_SIZE}`;
+      const requestInstanceId = currentInstanceId;
+      const orgContext = captureActiveOrgRequestContext();
+      const requestKey = `${requestInstanceId}:feed:${lastMessageId}:${FEED_PAGE_SIZE}`;
       void runInFlightDeduped(requestKey, () => fetchFeedMessages(lastMessageId, FEED_PAGE_SIZE))
         .then((page) => {
+          if (
+            !isActiveOrgRequestContextCurrent(orgContext) ||
+            useInstancesStore.getState().currentInstanceId !== requestInstanceId
+          ) {
+            useFeedStore.getState().setLoadingMore(false);
+            pendingScrollRestoreRef.current = null;
+            return;
+          }
           // Drop anchor message and append only unique older rows.
           const withoutAnchor = page.messages.filter((m) => m.id !== lastMessageId);
           for (const m of withoutAnchor) useUsersStore.getState().mergeFromMessage(m);

@@ -80,6 +80,7 @@ describe("fetchInboxEntries", () => {
       "newest",
       5000,
       0,
+      { signal: undefined },
     );
   });
 

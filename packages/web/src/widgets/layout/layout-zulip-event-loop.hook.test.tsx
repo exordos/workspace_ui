@@ -1,11 +1,19 @@
 import { act, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useActivityStore } from "~/entities/activity/activity.model";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useInboxStore } from "~/entities/inbox/inbox.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
+import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
+import { useNotificationSettingsStore } from "~/entities/notification-settings/notification-settings.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
+import { useMessageReadersStore } from "~/features/message-readers/message-readers.model";
+import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
+import { useUserProfileStore } from "~/features/user-profile/user-profile.model";
 import { DEFAULT_REGISTER_FETCH_EVENT_TYPES } from "~/shared/api/zulip-queue";
 import { loadUsersDirectoryRow } from "~/shared/lib/users-directory-snapshot-db";
+import { createMessage } from "~/test/factories";
 import { useLayoutZulipEventLoop } from "./layout-zulip-event-loop.hook";
 import type { ChatListBootstrapResult } from "./layout-chat-list-bootstrap.lib";
 
@@ -147,9 +155,17 @@ describe("useLayoutZulipEventLoop", () => {
     requestUserStatusMock.mockClear();
     loadDmIndexEntriesMock.mockReset();
     loadDmIndexEntriesMock.mockReturnValue([]);
+    useActivityStore.getState().clear();
     useChatListStore.getState().clear();
+    useInboxStore.getState().clear();
+    useCurrentChatMessagesStore.getState().setContext(null);
+    useCurrentChatMessagesStore.getState().setMessages([]);
+    useNotificationSettingsStore.getState().clear();
     useUsersStore.getState().clear();
     useUserGroupsStore.getState().clear();
+    useMessageReadersStore.getState().clear();
+    useMuteStore.getState().clear();
+    useUserProfileStore.getState().clear();
     useInstancesStore.setState({
       instances: [
         {
@@ -166,9 +182,17 @@ describe("useLayoutZulipEventLoop", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+    useActivityStore.getState().clear();
     useChatListStore.getState().clear();
+    useInboxStore.getState().clear();
+    useCurrentChatMessagesStore.getState().setContext(null);
+    useCurrentChatMessagesStore.getState().setMessages([]);
+    useNotificationSettingsStore.getState().clear();
     useUsersStore.getState().clear();
     useUserGroupsStore.getState().clear();
+    useMessageReadersStore.getState().clear();
+    useMuteStore.getState().clear();
+    useUserProfileStore.getState().clear();
     useInstancesStore.setState({
       instances: [],
       currentInstanceId: null,
@@ -759,5 +783,105 @@ describe("useLayoutZulipEventLoop", () => {
     });
 
     expect(useChatListStore.getState().streamMetadataHydrated).toBe(true);
+  });
+
+  it("clears messenger shell state when active instance becomes null", async () => {
+    const view = render(<Harness currentInstanceId="inst-1" />);
+
+    useUsersStore.getState().mergeUser({ user_id: 1, full_name: "Alice" });
+    useActivityStore.setState((state) => ({
+      filters: {
+        ...state.filters,
+        mentions: {
+          ...state.filters.mentions,
+          messages: [createMessage({ id: 77, content: "Mention from org A" })],
+        },
+      },
+    }));
+    useInboxStore.setState({
+      entries: [
+        {
+          key: "stream:10:bugs",
+          streamId: 10,
+          streamName: "engineering",
+          topic: "bugs",
+          senderId: null,
+          senderName: null,
+          dmSlug: null,
+          unreadCount: 1,
+          lastMessageTimestamp: 1000,
+          messageIds: [77],
+        },
+      ],
+    });
+    useChatListStore.setState({
+      currentUserId: 7,
+      streamsMap: new Map([
+        [
+          10,
+          {
+            stream_id: 10,
+            name: "engineering",
+            lastMessage: "Mention from org A",
+            time: "",
+            ts: 1000,
+            topics: new Map(),
+          },
+        ],
+      ]),
+    });
+    useCurrentChatMessagesStore.getState().setContext({
+      type: "stream",
+      streamId: 10,
+      streamName: "engineering",
+      topic: "bugs",
+      streamWideView: false,
+    });
+    useCurrentChatMessagesStore.getState().setMessages([
+      createMessage({
+        id: 88,
+        stream_id: 10,
+        subject: "bugs",
+        content: "Current chat message",
+        type: "stream",
+        display_recipient: "engineering",
+      }),
+    ]);
+    useMessageReadersStore.setState({
+      loading: false,
+      userIds: [1],
+      error: null,
+      messageId: 88,
+      requestVersion: 1,
+    });
+    useMuteStore.getState().muteStream(10);
+    useNotificationSettingsStore.getState().setFromServer({ enable_desktop_notifications: false });
+    useUserProfileStore.setState({
+      profile: {
+        userId: 1,
+        fullName: "Alice",
+        email: "alice@example.com",
+        avatarUrl: "",
+        role: 400,
+      },
+      status: "done",
+      error: null,
+      requestVersion: 1,
+    });
+
+    view.rerender(<Harness currentInstanceId={null} />);
+
+    await waitFor(() => {
+      expect(useUsersStore.getState().users.size).toBe(0);
+      expect(useActivityStore.getState().filters.mentions.messages).toEqual([]);
+      expect(useInboxStore.getState().entries).toEqual([]);
+      expect(useChatListStore.getState().streamsMap.size).toBe(0);
+      expect(useCurrentChatMessagesStore.getState().context).toBeNull();
+      expect(useCurrentChatMessagesStore.getState().messages).toEqual([]);
+      expect(useMessageReadersStore.getState().messageId).toBeNull();
+      expect(useMuteStore.getState().mutedStreamIds.size).toBe(0);
+      expect(useNotificationSettingsStore.getState().hydrated).toBe(false);
+      expect(useUserProfileStore.getState().profile).toBeNull();
+    });
   });
 });

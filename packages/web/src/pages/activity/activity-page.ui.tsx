@@ -16,7 +16,12 @@ import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { deleteDraftOnServer, updateDraftOnServer } from "~/entities/draft/draft.api";
 import { useDraftStore } from "~/entities/draft/draft.model";
 import type { Draft } from "~/entities/draft/draft.types";
-import { useInstancesStore } from "~/entities/instance/instance.model";
+import {
+  captureActiveOrgRequestContext,
+  isActiveOrgRequestInvalidated,
+  isActiveOrgRequestContextCurrent,
+  useInstancesStore,
+} from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
 import { removeMessageFlag } from "~/shared/api/zulip-messages";
@@ -52,6 +57,10 @@ const ALL_FILTERS = [
   "drafts",
 ] as const satisfies readonly ActivityPageExtendedFilter[];
 const EMPTY_ACTIVITY_MESSAGES: ZulipRawMessage[] = [];
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
+}
 
 function getActivityTitle(filter: ActivityPageExtendedFilter): string {
   const item = MY_ACTIVITY.find(
@@ -160,14 +169,24 @@ export const ActivityPage: React.FC = () => {
     }
     if (validFilter === "drafts") return;
 
+    const controller = new AbortController();
+    const orgContext = captureActiveOrgRequestContext();
+
     if (validFilter === "starred") {
       void ensureStarredLoaded({
         currentInstanceId,
         currentUserId,
         forceRefresh: false,
         pageSize: ACTIVITY_PAGE_SIZE,
+        signal: controller.signal,
+      }).catch((error) => {
+        if (!isAbortError(error)) {
+          log.error("Failed to bootstrap starred activity", { error: String(error) });
+        }
       });
-      return;
+      return () => {
+        controller.abort();
+      };
     }
 
     if (validFilter === "reactions") {
@@ -176,11 +195,17 @@ export const ActivityPage: React.FC = () => {
         currentUserId,
         forceRefresh: activityRefreshVersion > 0,
         pageSize: ACTIVITY_PAGE_SIZE,
+        signal: controller.signal,
+      }).catch((error) => {
+        if (!isAbortError(error)) {
+          log.error("Failed to bootstrap reactions activity", { error: String(error) });
+        }
       });
-      return;
+      return () => {
+        controller.abort();
+      };
     }
 
-    let cancelled = false;
     void (async () => {
       const activityFilter = validFilter;
       // Local filter bootstrap from IDB.
@@ -190,7 +215,7 @@ export const ActivityPage: React.FC = () => {
         currentUserId,
         ACTIVITY_PAGE_SIZE,
       );
-      if (cancelled) return;
+      if (controller.signal.aborted || !isActiveOrgRequestContextCurrent(orgContext)) return;
 
       const currentMessages = useActivityStore.getState().filters[activityFilter].messages;
       // Apply cached snapshot only when objectively fresher than in-memory — avoids IDB rollback.
@@ -217,13 +242,20 @@ export const ActivityPage: React.FC = () => {
             currentUserId,
             "newest",
             ACTIVITY_PAGE_SIZE,
+            { signal: controller.signal },
           ),
         );
-        if (cancelled) return;
+        if (controller.signal.aborted || !isActiveOrgRequestContextCurrent(orgContext)) return;
         for (const message of page.messages) useUsersStore.getState().mergeFromMessage(message);
         setFilterPageIfActual(activityFilter, requestVersion, page.messages, !page.foundOldest);
       } catch (err) {
-        if (cancelled) return;
+        if (
+          isAbortError(err) ||
+          controller.signal.aborted ||
+          !isActiveOrgRequestContextCurrent(orgContext)
+        ) {
+          return;
+        }
         setFilterErrorIfActual(activityFilter, requestVersion, String(err));
         log.error("Failed to load activity messages", {
           error: String(err),
@@ -233,7 +265,7 @@ export const ActivityPage: React.FC = () => {
     })().catch(() => {});
 
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, [
     activityRefreshVersion,
@@ -246,6 +278,13 @@ export const ActivityPage: React.FC = () => {
     startFilterRequest,
     validFilter,
   ]);
+
+  useEffect(() => {
+    setPendingDraftId(null);
+    setPendingUnstarIds(new Set());
+    setEditingDraft(null);
+    setEditingContent("");
+  }, [currentInstanceId]);
 
   useLayoutEffect(() => {
     if (initialScrollPositionKey == null) {
@@ -282,6 +321,7 @@ export const ActivityPage: React.FC = () => {
 
   const handleUnstarMessage = useCallback(
     async (messageId: number) => {
+      const orgContext = captureActiveOrgRequestContext();
       setPendingUnstarIds((current) => {
         const next = new Set(current);
         next.add(messageId);
@@ -289,18 +329,26 @@ export const ActivityPage: React.FC = () => {
       });
       try {
         await removeMessageFlag([messageId], "starred");
+        if (isActiveOrgRequestInvalidated(orgContext)) {
+          return;
+        }
         removeMessageFromFilter("starred", messageId);
       } catch (err) {
+        if (isActiveOrgRequestInvalidated(orgContext)) {
+          return;
+        }
         log.error("Failed to remove star in activity", {
           messageId,
           error: String(err),
         });
       } finally {
-        setPendingUnstarIds((current) => {
-          const next = new Set(current);
-          next.delete(messageId);
-          return next;
-        });
+        if (!isActiveOrgRequestInvalidated(orgContext)) {
+          setPendingUnstarIds((current) => {
+            const next = new Set(current);
+            next.delete(messageId);
+            return next;
+          });
+        }
       }
     },
     [removeMessageFromFilter],
@@ -334,9 +382,13 @@ export const ActivityPage: React.FC = () => {
       return;
     }
 
+    const orgContext = captureActiveOrgRequestContext();
     setPendingDraftId(draft.id);
     try {
       const deleted = await deleteDraftOnServer(draft.id);
+      if (isActiveOrgRequestInvalidated(orgContext)) {
+        return;
+      }
       if (!deleted) {
         log.error("Failed to delete draft", { draftId: draft.id });
         return;
@@ -348,7 +400,9 @@ export const ActivityPage: React.FC = () => {
         error: String(err),
       });
     } finally {
-      setPendingDraftId((current) => (current === draft.id ? null : current));
+      if (!isActiveOrgRequestInvalidated(orgContext)) {
+        setPendingDraftId((current) => (current === draft.id ? null : current));
+      }
     }
   }, []);
 
@@ -368,10 +422,14 @@ export const ActivityPage: React.FC = () => {
 
   const handleSaveDraftEdit = useCallback(async () => {
     if (editingDraft?.id == null) return;
+    const orgContext = captureActiveOrgRequestContext();
     if (!editingContent.trim()) {
       setPendingDraftId(editingDraft.id);
       try {
         const deleted = await deleteDraftOnServer(editingDraft.id);
+        if (isActiveOrgRequestInvalidated(orgContext)) {
+          return;
+        }
         if (!deleted) {
           log.error("Failed to delete draft from edit dialog", {
             draftId: editingDraft.id,
@@ -381,7 +439,9 @@ export const ActivityPage: React.FC = () => {
         useDraftStore.getState().removeDraftByIdentifier(editingDraft.id);
         setEditingDraft(null);
       } finally {
-        setPendingDraftId((current) => (current === editingDraft.id ? null : current));
+        if (!isActiveOrgRequestInvalidated(orgContext)) {
+          setPendingDraftId((current) => (current === editingDraft.id ? null : current));
+        }
       }
       return;
     }
@@ -398,6 +458,9 @@ export const ActivityPage: React.FC = () => {
         topic: editingDraft.topic ?? "",
         content: editingContent,
       });
+      if (isActiveOrgRequestInvalidated(orgContext)) {
+        return;
+      }
       if (!updated) {
         log.error("Failed to edit draft", { draftId: editingDraft.id });
         return;
@@ -407,7 +470,9 @@ export const ActivityPage: React.FC = () => {
       });
       setEditingDraft(null);
     } finally {
-      setPendingDraftId((current) => (current === editingDraft.id ? null : current));
+      if (!isActiveOrgRequestInvalidated(orgContext)) {
+        setPendingDraftId((current) => (current === editingDraft.id ? null : current));
+      }
     }
   }, [editingDraft, editingContent]);
 

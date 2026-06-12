@@ -9,6 +9,10 @@ import {
 } from "~/entities/activity/activity-cache.lib";
 import { fetchActivityMessagesPageWithPersist } from "~/entities/activity/activity.api";
 import { useActivityStore } from "~/entities/activity/activity.model";
+import {
+  captureActiveOrgRequestContext,
+  isActiveOrgRequestContextCurrent,
+} from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { createLogger } from "~/shared/lib/logger";
 import { runInFlightDeduped } from "~/shared/lib/request-lifecycle.lib";
@@ -22,6 +26,23 @@ export interface EnsureStarredLoadedOptions {
   currentUserId: number | null;
   forceRefresh?: boolean;
   pageSize?: number;
+  signal?: AbortSignal;
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+function throwIfAbortedOrStale(
+  signal: AbortSignal | undefined,
+  context: { instanceId: string | null; epoch: number },
+): void {
+  if (signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
+  if (!isActiveOrgRequestContextCurrent(context)) {
+    throw new DOMException("Aborted", "AbortError");
+  }
 }
 
 export async function ensureStarredLoaded(options: EnsureStarredLoadedOptions): Promise<void> {
@@ -30,11 +51,14 @@ export async function ensureStarredLoaded(options: EnsureStarredLoadedOptions): 
     currentUserId,
     forceRefresh = false,
     pageSize = STARRED_SUMMARY_PAGE_SIZE,
+    signal,
   } = options;
 
   const instanceKey = currentInstanceId ?? "none";
   const requestKey = `${instanceKey}:activity:starred:newest:${pageSize}`;
+  const orgContext = captureActiveOrgRequestContext();
   await runInFlightDeduped(requestKey, async () => {
+    throwIfAbortedOrStale(signal, orgContext);
     const beforeLoad = useActivityStore.getState();
     const hasFreshInMemoryData =
       !forceRefresh &&
@@ -53,6 +77,7 @@ export async function ensureStarredLoaded(options: EnsureStarredLoadedOptions): 
         currentUserId,
         pageSize,
       );
+      throwIfAbortedOrStale(signal, orgContext);
       const currentMessages = useActivityStore.getState().filters.starred.messages;
       shouldApplyCached =
         cached.length > 0 &&
@@ -76,7 +101,9 @@ export async function ensureStarredLoaded(options: EnsureStarredLoadedOptions): 
         currentUserId,
         "newest",
         pageSize,
+        { signal },
       );
+      throwIfAbortedOrStale(signal, orgContext);
       for (const message of page.messages) {
         useUsersStore.getState().mergeFromMessage(message);
       }
@@ -89,6 +116,9 @@ export async function ensureStarredLoaded(options: EnsureStarredLoadedOptions): 
         isCapped: hasMore,
       });
     } catch (err) {
+      if (isAbortError(err)) {
+        return;
+      }
       const error = String(err);
       useActivityStore.getState().setFilterErrorIfActual("starred", filterRequestVersion, error);
       useActivityStore.getState().setStarredSummaryErrorIfActual(summaryRequestVersion, error);

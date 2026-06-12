@@ -389,3 +389,16 @@ export function isActiveOrgRequestContextCurrent(context: ActiveOrgRequestContex
   const { currentInstanceId, activeOrgEpoch } = useInstancesStore.getState();
   return currentInstanceId === context.instanceId && activeOrgEpoch === context.epoch;
 }
+
+/**
+ * Loader coordination rules:
+ * - use requestVersion for ordering inside one active organization;
+ * - use active-org context before every organization-scoped store or IDB write;
+ * - thread AbortSignal when work is tied to component/store lifecycle or costly network I/O.
+ */
+export function isActiveOrgRequestInvalidated(
+  context: ActiveOrgRequestContext,
+  signal?: AbortSignal,
+): boolean {
+  return signal?.aborted === true || !isActiveOrgRequestContextCurrent(context);
+}
