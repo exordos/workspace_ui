@@ -236,15 +236,13 @@ export const MessageListInner: React.FC<MessageListProps> = ({
     [messages, currentUserId],
   );
 
-  const deferAutoMarkUnreadUntilUserScroll = useCallback(
-    () =>
-      shouldDeferAutoMarkUnreadUntilUserScroll({
-        firstUnreadId,
-        unreadCount,
-        userScrollSeen: userScrollSeenRef.current,
-      }),
-    [firstUnreadId, unreadCount],
-  );
+  const deferAutoMarkUnreadUntilUserScroll = useCallback(() => {
+    return shouldDeferAutoMarkUnreadUntilUserScroll({
+      firstUnreadId,
+      unreadCount,
+      userScrollSeen: userScrollSeenRef.current,
+    });
+  }, [firstUnreadId, unreadCount]);
 
   const syncWasAtBottomFromElement = useCallback(
     (el: HTMLElement) => {
@@ -715,6 +713,61 @@ export const MessageListInner: React.FC<MessageListProps> = ({
     onUnreadMessagesVisible(visible);
   }, [unreadCount, unreadAnchorId, firstUnreadId, onUnreadMessagesVisible]);
 
+  // Allows auto-read only when the loaded unread tail is fully visible and the newest edge is confirmed.
+  const flushVisibleUnreadTailIfComplete = useCallback(() => {
+    if (!deferAutoMarkUnreadUntilUserScroll()) return;
+    if (!onUnreadMessagesVisible) return;
+    if (!isTabVisible()) return;
+    if (hasNewerMessages || isLoadingNewer) return;
+
+    const candidates = unreadCandidatesRef.current;
+    if (candidates.size === 0 || candidates.size !== unreadCount) return;
+
+    const root = scrollRef.current;
+    if (root == null) return;
+
+    const metrics = summarizeScrollElement(root, SCROLL_AT_BOTTOM_THRESHOLD);
+    if (!metrics.atBottom) return;
+    if (!isLastUnreadNearViewportBottom(root)) return;
+
+    const visible = collectViewportVisibleUnreadIds(root, candidates);
+    if (visible.length !== candidates.size) return;
+
+    for (const id of visible) {
+      viewportUnreadIdsRef.current.add(id);
+    }
+
+    const ids = filterViewportUnreadIdsForReadDispatch(
+      viewportUnreadIdsRef.current,
+      messageById,
+      currentUserId ?? null,
+    );
+    if (ids.length === 0) return;
+
+    const sorted = [...ids].sort((a, b) => a - b);
+    const dispatchKey = `${scrollToBottomKey ?? "__default__"}:${sorted.join(",")}`;
+    if (bottomReadDispatchKeyRef.current === dispatchKey) return;
+    bottomReadDispatchKeyRef.current = dispatchKey;
+
+    logScrollReadFlow("read:visibleTailComplete", {
+      ...summarizeMessageIdsForFlowDebug(ids),
+      unreadCount,
+    });
+    onUnreadMessagesVisible(ids);
+    onUnreadMessagesAtBottom?.(ids);
+  }, [
+    deferAutoMarkUnreadUntilUserScroll,
+    onUnreadMessagesVisible,
+    hasNewerMessages,
+    isLoadingNewer,
+    unreadCount,
+    isLastUnreadNearViewportBottom,
+    messageById,
+    currentUserId,
+    scrollToBottomKey,
+    onUnreadMessagesAtBottom,
+  ]);
+
   const scheduleFlushSingleAnchorUnreadIfVisible = useCallback(() => {
     const runFlush = () => {
       flushSingleAnchorUnreadIfVisible();
@@ -736,6 +789,29 @@ export const MessageListInner: React.FC<MessageListProps> = ({
       requestAnimationFrame(runFlush);
     });
   }, [flushSingleAnchorUnreadIfVisible]);
+
+  // Re-checks the visible unread tail after scroll-to-unread settles to avoid acting on transient layout.
+  const scheduleFlushVisibleUnreadTailIfComplete = useCallback(() => {
+    const runFlush = () => {
+      flushVisibleUnreadTailIfComplete();
+    };
+    if (typeof performance === "undefined") {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(runFlush);
+      });
+      return;
+    }
+    const delayMs = Math.max(0, suppressReadUntilMsRef.current - performance.now());
+    if (delayMs > 0) {
+      window.setTimeout(() => {
+        requestAnimationFrame(runFlush);
+      }, delayMs);
+      return;
+    }
+    requestAnimationFrame(() => {
+      requestAnimationFrame(runFlush);
+    });
+  }, [flushVisibleUnreadTailIfComplete]);
 
   // Cache→API shrink/grow changes scroll metrics; re-anchor without duplicating initial scroll:toUnread.
   useLayoutEffect(() => {
@@ -760,6 +836,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
       setIsAtBottom(false);
     });
     scheduleFlushSingleAnchorUnreadIfVisible();
+    scheduleFlushVisibleUnreadTailIfComplete();
   }, [
     deferAutoMarkUnreadUntilUserScroll,
     focusedMessageId,
@@ -769,6 +846,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
     runProgrammaticScroll,
     logScrollMetrics,
     scheduleFlushSingleAnchorUnreadIfVisible,
+    scheduleFlushVisibleUnreadTailIfComplete,
   ]);
 
   const handleScroll = useCallback(
@@ -1175,6 +1253,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
     });
     unreadScrollKeyRef.current = unreadScrollKey;
     scheduleFlushSingleAnchorUnreadIfVisible();
+    scheduleFlushVisibleUnreadTailIfComplete();
   }, [
     focusedMessageId,
     unreadAnchorId,
@@ -1183,6 +1262,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
     runProgrammaticScroll,
     logScrollMetrics,
     scheduleFlushSingleAnchorUnreadIfVisible,
+    scheduleFlushVisibleUnreadTailIfComplete,
   ]);
 
   // User-initiated scroll-to-bottom uses smooth animation — the only intentional animation here.

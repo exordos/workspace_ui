@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
+import type * as ZulipUsersApi from "~/shared/api/zulip-users";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { resetRealmEmojisCacheForTests } from "~/shared/lib/realm-emojis-cache";
 import { createUser } from "~/test/factories";
@@ -12,7 +13,7 @@ const fetchRealmEmojisMock = vi.hoisted(() => vi.fn());
 const ensureUserStatusLoadedMock = vi.hoisted(() => vi.fn());
 
 vi.mock("~/shared/api/zulip-users", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/shared/api/zulip-users")>();
+  const actual = await importOriginal<typeof ZulipUsersApi>();
   return {
     ...actual,
     fetchRealmEmojis: (...args: unknown[]) => fetchRealmEmojisMock(...args),

@@ -1,5 +1,6 @@
 import { act, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type * as ZulipUsersApi from "~/shared/api/zulip-users";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { resetRealmEmojisCacheForTests } from "~/shared/lib/realm-emojis-cache";
 import { MessageList } from "./message-list.ui";
@@ -8,7 +9,7 @@ const fetchRealmEmojisMock = vi.hoisted(() => vi.fn());
 const scrollToBottomMock = vi.hoisted(() => vi.fn());
 
 vi.mock("~/shared/api/zulip-users", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/shared/api/zulip-users")>();
+  const actual = await importOriginal<typeof ZulipUsersApi>();
   return {
     ...actual,
     fetchRealmEmojis: (...args: unknown[]) => fetchRealmEmojisMock(...args),
@@ -42,6 +43,49 @@ function flushProgrammaticScrollFrames(): Promise<void> {
       });
     });
   });
+}
+
+async function advanceVisibleTailFlush(): Promise<void> {
+  await act(async () => {
+    vi.advanceTimersByTime(500);
+    await flushProgrammaticScrollFrames();
+  });
+}
+
+function stubVisibleTailLayout(
+  root: HTMLElement,
+  rectsByMessageId: Record<number, { top: number; bottom: number }>,
+): void {
+  const rootRect = {
+    top: 0,
+    bottom: 400,
+    left: 0,
+    right: 300,
+    width: 300,
+    height: 400,
+    x: 0,
+    y: 0,
+    toJSON: () => ({}),
+  } as DOMRect;
+  vi.spyOn(root, "getBoundingClientRect").mockReturnValue(rootRect);
+
+  for (const [messageId, rect] of Object.entries(rectsByMessageId)) {
+    const node = root.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`);
+    if (node == null) {
+      throw new Error(`expected node for message ${messageId}`);
+    }
+    vi.spyOn(node, "getBoundingClientRect").mockReturnValue({
+      top: rect.top,
+      bottom: rect.bottom,
+      left: 0,
+      right: 300,
+      width: 300,
+      height: rect.bottom - rect.top,
+      x: 0,
+      y: rect.top,
+      toJSON: () => ({}),
+    });
+  }
 }
 
 describe("MessageList unread anchor scroll", () => {
@@ -231,6 +275,7 @@ describe("MessageList unread anchor scroll", () => {
 
   it("does not mark intersection-visible unreads before user scroll", async () => {
     let intersectionCallback: IntersectionObserverCallback = () => {};
+    const observedTargets: Element[] = [];
 
     class ImmediateIntersectionObserverMock implements IntersectionObserver {
       readonly root = null;
@@ -246,20 +291,7 @@ describe("MessageList unread anchor scroll", () => {
       }
 
       observe = vi.fn((target: Element) => {
-        intersectionCallback(
-          [
-            {
-              target,
-              isIntersecting: true,
-              intersectionRatio: 0.5,
-              boundingClientRect: {} as DOMRectReadOnly,
-              intersectionRect: {} as DOMRectReadOnly,
-              rootBounds: null,
-              time: 0,
-            },
-          ],
-          this,
-        );
+        observedTargets.push(target);
       });
     }
 
@@ -293,7 +325,243 @@ describe("MessageList unread anchor scroll", () => {
       await flushProgrammaticScrollFrames();
     });
 
+    intersectionCallback(
+      observedTargets.map((target) => ({
+        target,
+        isIntersecting: true,
+        intersectionRatio: 0.5,
+        boundingClientRect: {} as DOMRectReadOnly,
+        intersectionRect: {} as DOMRectReadOnly,
+        rootBounds: null,
+        time: 0,
+      })),
+      {} as IntersectionObserver,
+    );
+
     expect(onUnreadMessagesVisible).not.toHaveBeenCalled();
+  });
+
+  it("marks fully visible unread tail without manual scroll when tail is complete", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const onUnreadMessagesVisible = vi.fn();
+      const onUnreadMessagesAtBottom = vi.fn();
+      render(
+        <MessageList
+          messages={[
+            msg(1, { sender_id: 99, flags: ["read"] }),
+            msg(2, { sender_id: 43, flags: [] }),
+            msg(3, { sender_id: 43, flags: [] }),
+          ]}
+          currentUserId={7}
+          firstUnreadId={2}
+          unreadCount={2}
+          scrollToBottomKey="visible-tail-complete"
+          onUnreadMessagesVisible={onUnreadMessagesVisible}
+          onUnreadMessagesAtBottom={onUnreadMessagesAtBottom}
+        />,
+      );
+
+      const feed = document.querySelector('[role="feed"]') as HTMLDivElement;
+      Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 2000 });
+      Object.defineProperty(feed, "clientHeight", { configurable: true, value: 400 });
+      Object.defineProperty(feed, "scrollTop", { configurable: true, writable: true, value: 1600 });
+      stubVisibleTailLayout(feed, {
+        2: { top: 260, bottom: 310 },
+        3: { top: 330, bottom: 380 },
+      });
+
+      await advanceVisibleTailFlush();
+
+      expect(onUnreadMessagesVisible).toHaveBeenCalledWith([2, 3]);
+      expect(onUnreadMessagesAtBottom).toHaveBeenCalledWith([2, 3]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not mark visible tail before newer messages boundary is confirmed", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const onUnreadMessagesVisible = vi.fn();
+      render(
+        <MessageList
+          messages={[
+            msg(1, { sender_id: 99, flags: ["read"] }),
+            msg(2, { sender_id: 43, flags: [] }),
+            msg(3, { sender_id: 43, flags: [] }),
+          ]}
+          currentUserId={7}
+          firstUnreadId={2}
+          unreadCount={2}
+          scrollToBottomKey="visible-tail-has-newer"
+          hasNewerMessages
+          onUnreadMessagesVisible={onUnreadMessagesVisible}
+        />,
+      );
+
+      const feed = document.querySelector('[role="feed"]') as HTMLDivElement;
+      Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 2000 });
+      Object.defineProperty(feed, "clientHeight", { configurable: true, value: 400 });
+      Object.defineProperty(feed, "scrollTop", { configurable: true, writable: true, value: 1600 });
+      stubVisibleTailLayout(feed, {
+        2: { top: 260, bottom: 310 },
+        3: { top: 330, bottom: 380 },
+      });
+
+      await advanceVisibleTailFlush();
+
+      expect(onUnreadMessagesVisible).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not mark visible tail while newer page is still loading", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const onUnreadMessagesVisible = vi.fn();
+      render(
+        <MessageList
+          messages={[
+            msg(1, { sender_id: 99, flags: ["read"] }),
+            msg(2, { sender_id: 43, flags: [] }),
+            msg(3, { sender_id: 43, flags: [] }),
+          ]}
+          currentUserId={7}
+          firstUnreadId={2}
+          unreadCount={2}
+          scrollToBottomKey="visible-tail-loading-newer"
+          isLoadingNewer
+          onUnreadMessagesVisible={onUnreadMessagesVisible}
+        />,
+      );
+
+      const feed = document.querySelector('[role="feed"]') as HTMLDivElement;
+      Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 2000 });
+      Object.defineProperty(feed, "clientHeight", { configurable: true, value: 400 });
+      Object.defineProperty(feed, "scrollTop", { configurable: true, writable: true, value: 1600 });
+      stubVisibleTailLayout(feed, {
+        2: { top: 260, bottom: 310 },
+        3: { top: 330, bottom: 380 },
+      });
+
+      await advanceVisibleTailFlush();
+
+      expect(onUnreadMessagesVisible).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not mark visible tail when loaded unread candidates are incomplete", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const onUnreadMessagesVisible = vi.fn();
+      render(
+        <MessageList
+          messages={[
+            msg(1, { sender_id: 99, flags: ["read"] }),
+            msg(2, { sender_id: 43, flags: [] }),
+            msg(3, { sender_id: 43, flags: [] }),
+          ]}
+          currentUserId={7}
+          firstUnreadId={2}
+          unreadCount={3}
+          scrollToBottomKey="visible-tail-incomplete-window"
+          onUnreadMessagesVisible={onUnreadMessagesVisible}
+        />,
+      );
+
+      const feed = document.querySelector('[role="feed"]') as HTMLDivElement;
+      Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 2000 });
+      Object.defineProperty(feed, "clientHeight", { configurable: true, value: 400 });
+      Object.defineProperty(feed, "scrollTop", { configurable: true, writable: true, value: 1600 });
+      stubVisibleTailLayout(feed, {
+        2: { top: 260, bottom: 310 },
+        3: { top: 330, bottom: 380 },
+      });
+
+      await advanceVisibleTailFlush();
+
+      expect(onUnreadMessagesVisible).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not mark visible tail when only part of unread candidates is visible", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const onUnreadMessagesVisible = vi.fn();
+      render(
+        <MessageList
+          messages={[
+            msg(1, { sender_id: 99, flags: ["read"] }),
+            msg(2, { sender_id: 43, flags: [] }),
+            msg(3, { sender_id: 43, flags: [] }),
+          ]}
+          currentUserId={7}
+          firstUnreadId={2}
+          unreadCount={2}
+          scrollToBottomKey="visible-tail-partial"
+          onUnreadMessagesVisible={onUnreadMessagesVisible}
+        />,
+      );
+
+      const feed = document.querySelector('[role="feed"]') as HTMLDivElement;
+      Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 2000 });
+      Object.defineProperty(feed, "clientHeight", { configurable: true, value: 400 });
+      Object.defineProperty(feed, "scrollTop", { configurable: true, writable: true, value: 1600 });
+      stubVisibleTailLayout(feed, {
+        2: { top: -30, bottom: 10 },
+        3: { top: 330, bottom: 380 },
+      });
+
+      await advanceVisibleTailFlush();
+
+      expect(onUnreadMessagesVisible).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps scroll protection for long chats when the full unread tail is not visible", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const onUnreadMessagesVisible = vi.fn();
+      render(
+        <MessageList
+          messages={[
+            msg(1, { sender_id: 99, flags: ["read"] }),
+            msg(2, { sender_id: 43, flags: [] }),
+            msg(3, { sender_id: 43, flags: [] }),
+            msg(4, { sender_id: 43, flags: [] }),
+          ]}
+          currentUserId={7}
+          firstUnreadId={2}
+          unreadCount={3}
+          scrollToBottomKey="visible-tail-long-chat"
+          onUnreadMessagesVisible={onUnreadMessagesVisible}
+        />,
+      );
+
+      const feed = document.querySelector('[role="feed"]') as HTMLDivElement;
+      Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 2600 });
+      Object.defineProperty(feed, "clientHeight", { configurable: true, value: 400 });
+      Object.defineProperty(feed, "scrollTop", { configurable: true, writable: true, value: 2200 });
+      stubVisibleTailLayout(feed, {
+        2: { top: -80, bottom: -20 },
+        3: { top: 250, bottom: 300 },
+        4: { top: 330, bottom: 380 },
+      });
+
+      await advanceVisibleTailFlush();
+
+      expect(onUnreadMessagesVisible).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("does not auto-mark unread after API shrinks list while anchor is active", async () => {
