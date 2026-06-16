@@ -72,6 +72,21 @@ describe("handleComposerWriteBodyKeyDown", () => {
     expect(applyFormattingShortcut).not.toHaveBeenCalled();
   });
 
+  it("edits last message on ArrowUp when global shortcuts are disabled", () => {
+    const onEditLastMessage = vi.fn();
+    const event = createKeyEvent("ArrowUp");
+    handleComposerWriteBodyKeyDown(
+      baseOptions({
+        event,
+        value: " \n\t ",
+        onEditLastMessage,
+      }),
+    );
+
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(onEditLastMessage).toHaveBeenCalledTimes(1);
+  });
+
   it("blurs composer on Escape when not editing", () => {
     const textarea = document.createElement("textarea");
     const blur = vi.spyOn(textarea, "blur");

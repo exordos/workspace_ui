@@ -1144,6 +1144,17 @@ describe("MessageComposer edit-last shortcut", () => {
     expect(onEditLastMessage).toHaveBeenCalledTimes(1);
   });
 
+  it("calls edit callback on ArrowUp when input contains only whitespace", () => {
+    const onEditLastMessage = vi.fn();
+    renderWithProviders(<MessageComposer onSend={vi.fn()} onEditLastMessage={onEditLastMessage} />);
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: " \n\t " } });
+    fireEvent.keyDown(textbox, { key: "ArrowUp" });
+
+    expect(onEditLastMessage).toHaveBeenCalledTimes(1);
+  });
+
   it("does not call edit callback on ArrowUp when input has text", () => {
     const onEditLastMessage = vi.fn();
     renderWithProviders(<MessageComposer onSend={vi.fn()} onEditLastMessage={onEditLastMessage} />);

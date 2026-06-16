@@ -65,7 +65,7 @@ function handleEditLastMessageShortcut(
   >,
 ): boolean {
   if (event.key !== "ArrowUp") return false;
-  if (options.showMentions || options.value.length > 0 || options.isEditing) return false;
+  if (options.showMentions || options.value.trim().length > 0 || options.isEditing) return false;
   if (event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return false;
   if (options.onEditLastMessage == null) return false;
   event.preventDefault();
@@ -193,14 +193,18 @@ export function handleComposerWriteBodyKeyDown(
 
   if (handleSendOrNewline(event, options)) return;
 
+  if (
+    handleEditLastMessageShortcut(event, {
+      value: options.value,
+      showMentions: options.showMentions,
+      isEditing: options.isEditing,
+      onEditLastMessage: options.onEditLastMessage,
+    })
+  ) {
+    return;
+  }
+
   if (!KEYBOARD_SHORTCUTS_ENABLED) return;
 
   if (handleFormattingShortcuts(event, options.applyFormattingShortcut)) return;
-
-  handleEditLastMessageShortcut(event, {
-    value: options.value,
-    showMentions: options.showMentions,
-    isEditing: options.isEditing,
-    onEditLastMessage: options.onEditLastMessage,
-  });
 }
