@@ -135,7 +135,7 @@ Every PR should meet these criteria before requesting review:
 master      ← Default branch; all PRs target here (protected)
 feature/*   ← New features (branched from master)
 fix/*       ← Bug fixes (branched from master)
-release/*   ← Release preparation
+chore/release-* ← Release preparation (version bump + CHANGELOG)
 hotfix/*    ← Emergency fixes (branched from master)
 ```
 
@@ -149,7 +149,7 @@ hotfix/*    ← Emergency fixes (branched from master)
 ```
 feature/add-message-forwarding
 fix/unread-count-decrement
-release/1.2.0
+chore/release-0.1.11
 hotfix/session-timeout-crash
 ```
 
@@ -573,15 +573,22 @@ The project follows [Semantic Versioning 2.0](https://semver.org/). All packages
 
 ### Creating a Release
 
+See **[RELEASE.md](RELEASE.md)** for the full step-by-step guide (branch workflow, CI, troubleshooting).
+
+Summary:
+
 ```bash
+# 0. Create release branch from master (naming: chore/release-X.Y.Z)
+git checkout -b chore/release-0.1.11
+
 # 1. Bump version (Lerna fixed mode — all packages/* + lerna.json + root package.json)
 npm run version:bump -- patch   # or: minor, major, or explicit 1.2.3
 
 # 2. Update CHANGELOG.md manually (if needed)
 
-# 3. Commit and merge to master via MR (direct push to master is forbidden)
+# 3. Commit and merge to master via PR (direct push to master is forbidden)
 git add -A && git commit -m "chore: release v$(npm run version:print -s)"
-# open MR → merge
+# open PR → merge (use merge commit for release branches, not squash)
 
 # 4. On master after merge: create tag and push (GitHub Release runs on tag push only)
 npm run version:tag
@@ -600,6 +607,7 @@ GitHub Actions builds desktop installers and publishes a GitHub Release when a s
 | ------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | [GitHub Issues](https://github.com/exordos/workspace_ui/issues)           | Bug reports, feature requests                                             |
 | [GitHub Discussions](https://github.com/exordos/workspace_ui/discussions) | Questions, ideas, design discussions                                      |
+| [`RELEASE.md`](RELEASE.md)                                                | Step-by-step release guide (version bump, tag, CI)                        |
 | [`docs/PROJECT_FACTS.md`](docs/PROJECT_FACTS.md)                          | Canonical counts, paths, versions                                         |
 | [`docs/`](docs/)                                                          | Technical references, architecture, integration guide                     |
 | [`AGENTS.md`](AGENTS.md)                                                  | Comprehensive architecture + coding standards for AI-assisted development |

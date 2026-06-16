@@ -92,6 +92,7 @@ workspace_ui/
 
 - `AGENTS.md` — architecture and coding standards for AI/dev workflows
 - `CONTRIBUTING.md` — contribution process and quality gates
+- `RELEASE.md` — step-by-step release guide (version bump, tag, GitHub Release)
 - `SECURITY.md` — vulnerability reporting process
 - `CHANGELOG.md` — release history
 - `CODE_OF_CONDUCT.md` — community guidelines

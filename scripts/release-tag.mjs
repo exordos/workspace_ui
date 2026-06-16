@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Creates and pushes a git tag for the current lerna fixed version (no "v" prefix).
- * Does not push branches — direct push to master is forbidden; merge via MR first.
+ * Does not push branches — direct push to master is forbidden; merge via PR first.
  *
  * Usage:
  *   node scripts/release-tag.mjs           # tag + push tag to origin
@@ -61,4 +61,4 @@ run(`git tag ${version}`, "Create tag");
 run(`git push origin ${version}`, "Push tag");
 
 console.log("\nDone. GitHub Actions will build Electron and create a GitHub Release on tag push.");
-console.log("Ensure the tagged commit is on master (merge release MR before tagging).");
+console.log("Ensure the tagged commit is on master (merge release PR before tagging).");

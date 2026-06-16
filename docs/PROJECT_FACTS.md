@@ -60,7 +60,7 @@ import { zulipFetch } from "~/shared/api/client";
 
 - Default branch: **`master`**
 - Feature/fix branches from `master` → PR targets **`master`**
-- Releases: Lerna bump → MR to `master` → tag on `master` (see `docs/adr/006-versioning.md`)
+- Releases: Lerna bump → PR to `master` → tag on `master` (see [`RELEASE.md`](../RELEASE.md) and `docs/adr/006-versioning.md`)
 
 ## Testing
 

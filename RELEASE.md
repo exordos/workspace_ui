@@ -8,13 +8,13 @@ For policy background see [`docs/adr/006-versioning.md`](docs/adr/006-versioning
 
 ```
 feature/fix branches → release branch → version bump + CHANGELOG
-       → MR to master (merge commit) → tag push → GitHub Release
+       → PR to master (merge commit) → tag push → GitHub Release
 ```
 
 | Step                   | Result                                                                   |
 | ---------------------- | ------------------------------------------------------------------------ |
 | `npm run version:bump` | Updates `lerna.json`, root `package.json`, and all `packages/*`          |
-| MR merge to `master`   | Release commit lands on default branch                                   |
+| PR merge to `master`   | Release commit lands on default branch                                   |
 | `npm run version:tag`  | Pushes semver tag (no `v` prefix)                                        |
 | GitHub Actions on tag  | Builds Electron for Linux / Windows / macOS and publishes GitHub Release |
 
@@ -123,7 +123,7 @@ Move items from `[Unreleased]` or summarize merged PRs since the previous tag:
 git log $(git describe --tags --abbrev=0)..HEAD --oneline
 ```
 
-### 4. Commit and open MR
+### 4. Commit and open PR
 
 ```bash
 git add -A
@@ -141,11 +141,11 @@ gh pr checks --watch
 gh pr merge --merge --delete-branch
 ```
 
-Direct push to `master` is forbidden — always merge via MR.
+Direct push to `master` is forbidden — always merge via PR.
 
 ### 5. Tag on master after merge
 
-After the MR is merged, on an up-to-date `master`:
+After the PR is merged, on an up-to-date `master`:
 
 ```bash
 git checkout master
@@ -223,7 +223,7 @@ https://update.workspace.genesis-core.tech/releases
 - [ ] Version bumped via `npm run version:bump`
 - [ ] `CHANGELOG.md` updated for the new version
 - [ ] Commit message: `chore: release vX.Y.Z`
-- [ ] MR merged to `master` (merge commit for release branches)
+- [ ] PR merged to `master` (merge commit for release branches)
 - [ ] `npm run version:tag` run on merged `master`
 - [ ] GitHub Actions tag workflow succeeded
 - [ ] GitHub Release published with desktop artifacts
@@ -247,13 +247,13 @@ git tag -d 0.1.11
 git push origin :refs/tags/0.1.11   # use with care
 ```
 
-### CI passed on MR but Release job did not run
+### CI passed on PR but Release job did not run
 
 The `release` job runs only when `github.ref_type == 'tag'`. Ensure you ran `npm run version:tag` after merging to `master`, not before.
 
 ### PR branch name vs actual version
 
-Branch names like `chore/release-0.1.19` are labels only. The version in `lerna.json` after `version:bump` is authoritative.
+Branch names like `chore/release-0.1.11` are labels only. The version in `lerna.json` after `version:bump` is authoritative.
 
 ---
 
