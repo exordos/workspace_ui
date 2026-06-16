@@ -1,0 +1,12 @@
+# Workspace entrypoint for local Mailcow dev.
+# Run from repo root:
+#   npm run dev:mailcow
+#   npm run dev:mailcow:down
+#
+# Requires mailcow-dockerized clone + mailcow.conf (see scripts/mailcow-bootstrap.mjs).
+# Paths inside the included compose file resolve relative to mailcow-dockerized/.
+
+name: workspace-mailcow
+
+include:
+  - path: mailcow-dockerized/docker-compose.yml

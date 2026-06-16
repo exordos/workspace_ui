@@ -40,6 +40,11 @@ Thumbs.db
 Desktop.ini
 desktop.ini
 
+# ── Mailcow (local dev clone) ─────────────────────────────
+docker/mailcow/mailcow-dockerized/
+docker/mailcow/.env
+docker/mailcow/certs/
+
 # ── Logs ─────────────────────────────────────────────────
 *.log
 npm-debug.log*

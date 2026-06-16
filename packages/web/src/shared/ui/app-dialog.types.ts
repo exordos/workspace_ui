@@ -14,6 +14,8 @@ export interface AppDialogProps {
   /** Vertical position — default `top-[20%]`, use `top-1/2 -translate-y-1/2` for centered. */
   positionClassName?: string;
   onCloseAutoFocus?: (event: Event) => void;
+  /** Top-right close (×) control — uses `common.close` for aria-label. */
+  showCloseButton?: boolean;
 }
 
 export interface AppDialogFormFooterProps {

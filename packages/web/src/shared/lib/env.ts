@@ -168,10 +168,21 @@ export const env = {
   CALENDAR_EMBED_URL: optional("VITE_CALENDAR_EMBED_URL"),
 
   /**
-   * Mail iframe URL override.
+   * Mail iframe URL override (legacy embed mode).
    * Defaults to same-origin `/embeds/mail-placeholder.html` when empty.
    */
   MAIL_EMBED_URL: optional("VITE_MAIL_EMBED_URL"),
+
+  /**
+   * Native mail client API base (mail-proxy).
+   * Dev: `/mail-api` (Vite proxies to mail-proxy). Prod: full origin URL.
+   */
+  MAIL_API_ORIGIN: (() => {
+    const configured = optional("VITE_MAIL_API_ORIGIN");
+    if (configured.length > 0) return configured;
+    if (import.meta.env.DEV && import.meta.env.MODE !== "test") return "/mail-api";
+    return "";
+  })(),
 
   /**
    * Optional default organization URL for the login page quick-fill CTA.

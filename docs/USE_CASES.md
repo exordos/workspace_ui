@@ -97,6 +97,23 @@ UC-AUTH-04:
 
 ---
 
+## 2b. Mail (Mailcow)
+
+| ID         | Use Case                                              | Actor  | Status |
+| ---------- | ----------------------------------------------------- | ------ | ------ |
+| UC-MAIL-01 | Sign in to mailbox with Mailcow credentials           | User   | `[x]`  |
+| UC-MAIL-02 | Browse folders and message list (IMAP via mail-proxy) | User   | `[x]`  |
+| UC-MAIL-03 | Read message preview (HTML sanitized)                 | User   | `[x]`  |
+| UC-MAIL-04 | Compose and send HTML email (SMTP via proxy)          | User   | `[x]`  |
+| UC-MAIL-05 | Local dev: Mailcow Docker + mail-proxy + Vite proxy   | Dev    | `[x]`  |
+| UC-MAIL-06 | Reply / reply all / forward with quoted original      | User   | `[x]`  |
+| UC-MAIL-07 | Delete (Trash) and permanent delete in Trash          | User   | `[x]`  |
+| UC-MAIL-08 | Move message to folder; create custom folder          | User   | `[x]`  |
+| UC-MAIL-09 | Star, mark unread, archive/spam shortcuts             | User   | `[x]`  |
+| UC-MAIL-10 | Sent folder append after SMTP send                    | System | `[x]`  |
+
+---
+
 ## 3. Chat List
 
 | ID         | Use Case                                                                 | Actor  | Status |

@@ -1,0 +1,471 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useInstancesStore } from "~/entities/instance/instance.model";
+import {
+  buildForwardComposeState,
+  buildNewComposeState,
+  buildReplyComposeState,
+} from "~/entities/mail/mail-compose.lib";
+import {
+  filterMailMessagesByQuery,
+  isTrashFolder,
+  resolveSpecialFolderPath,
+  sortMailFolders,
+  sortMailMessagesByUidDesc,
+} from "~/entities/mail/mail.lib";
+import { useMailStore } from "~/entities/mail/mail.model";
+import type {
+  MailComposeInitialState,
+  MailComposeMode,
+  MailComposePayload,
+  MailCreateFolderInput,
+  MailFolderAction,
+  MailMessageAction,
+} from "~/entities/mail/mail.types";
+import { onTabResume } from "~/shared/lib/visibility";
+
+export function useMailView() {
+  const instanceEmail = useInstancesStore((s) => s.getCurrentInstance()?.email ?? "");
+  const session = useMailStore((s) => s.session);
+  const signingIn = useMailStore((s) => s.signingIn);
+  const sending = useMailStore((s) => s.sending);
+  const error = useMailStore((s) => s.error);
+  const selectedFolder = useMailStore((s) => s.selectedFolder);
+  const selectedUid = useMailStore((s) => s.selectedUid);
+  const selectedMessage = useMailStore((s) => s.selectedMessage);
+  const loadingMessages = useMailStore((s) => s.loadingMessages);
+  const loadingMessage = useMailStore((s) => s.loadingMessage);
+  const foldersRaw = useMailStore((s) => s.folders);
+  const folderDelimiter = useMailStore((s) => s.folderDelimiter);
+  const messagesRaw = useMailStore((s) => s.messages);
+  const signIn = useMailStore((s) => s.signIn);
+  const signOut = useMailStore((s) => s.signOut);
+  const selectFolder = useMailStore((s) => s.selectFolder);
+  const selectMessage = useMailStore((s) => s.selectMessage);
+  const sendMessage = useMailStore((s) => s.sendMessage);
+  const deleteMessage = useMailStore((s) => s.deleteMessage);
+  const moveMessage = useMailStore((s) => s.moveMessage);
+  const setMessageFlags = useMailStore((s) => s.setMessageFlags);
+  const createFolder = useMailStore((s) => s.createFolder);
+  const renameFolder = useMailStore((s) => s.renameFolder);
+  const moveFolder = useMailStore((s) => s.moveFolder);
+  const deleteFolder = useMailStore((s) => s.deleteFolder);
+  const clearFolder = useMailStore((s) => s.clearFolder);
+  const markFolderAllRead = useMailStore((s) => s.markFolderAllRead);
+  const loadFolders = useMailStore((s) => s.loadFolders);
+
+  type FolderDialogKind = "rename" | "move" | "delete" | "clear";
+
+  const [email, setEmail] = useState(instanceEmail);
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [composeMode, setComposeMode] = useState<MailComposeMode>("new");
+  const [composeInitial, setComposeInitial] = useState<MailComposeInitialState | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [foldersCompact, setFoldersCompact] = useState(false);
+  const [moveDialogOpen, setMoveDialogOpen] = useState(false);
+  const [createFolderOpen, setCreateFolderOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [actionUid, setActionUid] = useState<number | null>(null);
+  const [creatingFolder, setCreatingFolder] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [reopenMoveAfterCreateFolder, setReopenMoveAfterCreateFolder] = useState(false);
+  const [createFolderParent, setCreateFolderParent] = useState("");
+  const [folderActionPath, setFolderActionPath] = useState<string | null>(null);
+  const [folderDialog, setFolderDialog] = useState<FolderDialogKind | null>(null);
+  const [folderActionPending, setFolderActionPending] = useState(false);
+
+  const folders = useMemo(() => sortMailFolders(foldersRaw), [foldersRaw]);
+  const folderActionTarget = useMemo(
+    () => folders.find((folder) => folder.path === folderActionPath) ?? null,
+    [folderActionPath, folders],
+  );
+  const messages = useMemo(() => sortMailMessagesByUidDesc(messagesRaw), [messagesRaw]);
+  const filteredMessages = useMemo(
+    () => filterMailMessagesByQuery(messages, searchQuery),
+    [messages, searchQuery],
+  );
+  const inTrash = useMemo(() => isTrashFolder(selectedFolder), [selectedFolder]);
+  const userEmail = session?.email ?? email;
+
+  useEffect(() => {
+    if (instanceEmail.length > 0) {
+      setEmail(instanceEmail);
+    }
+  }, [instanceEmail]);
+
+  useEffect(() => {
+    if (!session?.token) return;
+    void (async () => {
+      await loadFolders();
+      await selectFolder(useMailStore.getState().selectedFolder || "INBOX");
+    })();
+  }, [session?.token, loadFolders, selectFolder]);
+
+  useEffect(() => {
+    if (!session?.token) return;
+    return onTabResume(() => {
+      void loadFolders();
+    });
+  }, [session?.token, loadFolders]);
+
+  const openCompose = useCallback(
+    (mode: MailComposeMode, initial: MailComposeInitialState | null) => {
+      setComposeMode(mode);
+      setComposeInitial(initial);
+      setComposeOpen(true);
+    },
+    [],
+  );
+
+  const resolveActionMessage = useCallback(
+    async (uid: number) => {
+      if (selectedMessage?.uid === uid) return selectedMessage;
+      await selectMessage(uid);
+      return useMailStore.getState().selectedMessage;
+    },
+    [selectMessage, selectedMessage?.uid],
+  );
+
+  const handleMessageAction = useCallback(
+    async (uid: number, action: MailMessageAction) => {
+      setActionUid(uid);
+      switch (action) {
+        case "reply": {
+          const message = await resolveActionMessage(uid);
+          if (message == null) return;
+          openCompose("reply", buildReplyComposeState(message, "reply", userEmail));
+          return;
+        }
+        case "replyAll": {
+          const message = await resolveActionMessage(uid);
+          if (message == null) return;
+          openCompose("replyAll", buildReplyComposeState(message, "replyAll", userEmail));
+          return;
+        }
+        case "forward": {
+          const message = await resolveActionMessage(uid);
+          if (message == null) return;
+          openCompose("forward", buildForwardComposeState(message));
+          return;
+        }
+        case "toggleStar": {
+          const summary = messagesRaw.find((item) => item.uid === uid);
+          let flagged = summary?.flagged ?? false;
+          if (summary == null && selectedMessage?.uid === uid) {
+            flagged = selectedMessage.flagged;
+          }
+          await setMessageFlags(uid, {
+            ...(flagged ? { removeFlags: ["\\Flagged"] } : { addFlags: ["\\Flagged"] }),
+          });
+          return;
+        }
+        case "markUnread": {
+          await setMessageFlags(uid, { removeFlags: ["\\Seen"] });
+          if (selectedUid === uid) {
+            await selectMessage(uid, { markSeen: false });
+          }
+          return;
+        }
+        case "archive": {
+          const archivePath = resolveSpecialFolderPath(foldersRaw, "Archive");
+          if (archivePath == null) return;
+          await moveMessage(uid, archivePath);
+          return;
+        }
+        case "spam": {
+          const spamPath = resolveSpecialFolderPath(foldersRaw, "Spam");
+          if (spamPath == null) return;
+          await moveMessage(uid, spamPath);
+          return;
+        }
+        case "move": {
+          await resolveActionMessage(uid);
+          setMoveDialogOpen(true);
+          return;
+        }
+        case "delete": {
+          await resolveActionMessage(uid);
+          if (isTrashFolder(selectedFolder)) {
+            setDeleteConfirmOpen(true);
+            return;
+          }
+          await deleteMessage(uid);
+        }
+      }
+    },
+    [
+      deleteMessage,
+      foldersRaw,
+      messagesRaw,
+      moveMessage,
+      openCompose,
+      resolveActionMessage,
+      selectMessage,
+      selectedFolder,
+      selectedMessage,
+      selectedUid,
+      setMessageFlags,
+      userEmail,
+    ],
+  );
+
+  const handlePreviewAction = useCallback(
+    (action: MailMessageAction) => {
+      if (selectedUid == null) return;
+      void handleMessageAction(selectedUid, action);
+    },
+    [handleMessageAction, selectedUid],
+  );
+
+  const handleSelectFolder = useCallback(
+    (path: string) => {
+      void selectFolder(path);
+    },
+    [selectFolder],
+  );
+
+  const handleSelectMessage = useCallback(
+    (uid: number) => {
+      void selectMessage(uid);
+    },
+    [selectMessage],
+  );
+
+  const handleAuthSubmit = useCallback(
+    (password: string) => {
+      void signIn(email, password);
+    },
+    [email, signIn],
+  );
+
+  const handleComposeOpen = useCallback(() => {
+    openCompose("new", buildNewComposeState());
+  }, [openCompose]);
+
+  const handleComposeOpenChange = useCallback((open: boolean) => {
+    setComposeOpen(open);
+  }, []);
+
+  const handleComposeSend = useCallback(
+    async (payload: MailComposePayload) => {
+      try {
+        await sendMessage(payload);
+        setComposeOpen(false);
+      } catch {
+        /* error shown in store */
+      }
+    },
+    [sendMessage],
+  );
+
+  const handleMoveToFolder = useCallback(
+    async (folderPath: string) => {
+      const uid = actionUid ?? selectedUid;
+      if (uid == null) return;
+      try {
+        await moveMessage(uid, folderPath);
+        setMoveDialogOpen(false);
+      } catch {
+        /* error shown in store */
+      }
+    },
+    [actionUid, moveMessage, selectedUid],
+  );
+
+  const handleCreateFolder = useCallback(
+    async (input: MailCreateFolderInput) => {
+      setCreatingFolder(true);
+      try {
+        const path = await createFolder(input);
+        setCreateFolderOpen(false);
+        if (reopenMoveAfterCreateFolder) {
+          setMoveDialogOpen(true);
+          setReopenMoveAfterCreateFolder(false);
+        } else if (path.length > 0) {
+          await selectFolder(path);
+        }
+      } catch {
+        /* error shown in store */
+      } finally {
+        setCreatingFolder(false);
+      }
+    },
+    [createFolder, reopenMoveAfterCreateFolder, selectFolder],
+  );
+
+  const handleOpenCreateFolder = useCallback(() => {
+    setReopenMoveAfterCreateFolder(false);
+    setCreateFolderParent(selectedFolder);
+    setCreateFolderOpen(true);
+  }, [selectedFolder]);
+
+  const handleOpenCreateFolderFromMove = useCallback(() => {
+    setReopenMoveAfterCreateFolder(true);
+    setCreateFolderParent(selectedFolder);
+    setMoveDialogOpen(false);
+    setCreateFolderOpen(true);
+  }, [selectedFolder]);
+
+  const handleConfirmDelete = useCallback(async () => {
+    const uid = actionUid ?? selectedUid;
+    if (uid == null) return;
+    setDeleting(true);
+    try {
+      await deleteMessage(uid);
+      setDeleteConfirmOpen(false);
+    } catch {
+      /* error shown in store */
+    } finally {
+      setDeleting(false);
+    }
+  }, [actionUid, deleteMessage, selectedUid]);
+
+  const handleSignOut = useCallback(() => {
+    void signOut();
+  }, [signOut]);
+
+  const handleToggleFoldersCompact = useCallback(() => {
+    setFoldersCompact((value) => !value);
+  }, []);
+
+  const handleFolderAction = useCallback(
+    (path: string, action: MailFolderAction) => {
+      setFolderActionPath(path);
+      switch (action) {
+        case "markAllRead":
+          void markFolderAllRead(path);
+          return;
+        case "rename":
+          setFolderDialog("rename");
+          return;
+        case "move":
+          setFolderDialog("move");
+          return;
+        case "delete":
+          setFolderDialog("delete");
+          return;
+        case "clear":
+          setFolderDialog("clear");
+      }
+    },
+    [markFolderAllRead],
+  );
+
+  const handleRenameFolderSubmit = useCallback(
+    async (name: string) => {
+      if (folderActionPath == null) return;
+      setFolderActionPending(true);
+      try {
+        await renameFolder({ path: folderActionPath, name });
+        setFolderDialog(null);
+      } catch {
+        /* error shown in store */
+      } finally {
+        setFolderActionPending(false);
+      }
+    },
+    [folderActionPath, renameFolder],
+  );
+
+  const handleMoveFolderSubmit = useCallback(
+    async (parentPath: string) => {
+      if (folderActionPath == null) return;
+      setFolderActionPending(true);
+      try {
+        await moveFolder({ path: folderActionPath, parentPath });
+        setFolderDialog(null);
+      } catch {
+        /* error shown in store */
+      } finally {
+        setFolderActionPending(false);
+      }
+    },
+    [folderActionPath, moveFolder],
+  );
+
+  const handleConfirmDeleteFolder = useCallback(async () => {
+    if (folderActionPath == null) return;
+    setFolderActionPending(true);
+    try {
+      await deleteFolder(folderActionPath);
+      setFolderDialog(null);
+    } catch {
+      /* error shown in store */
+    } finally {
+      setFolderActionPending(false);
+    }
+  }, [deleteFolder, folderActionPath]);
+
+  const handleConfirmClearFolder = useCallback(async () => {
+    if (folderActionPath == null) return;
+    setFolderActionPending(true);
+    try {
+      await clearFolder(folderActionPath);
+      setFolderDialog(null);
+    } catch {
+      /* error shown in store */
+    } finally {
+      setFolderActionPending(false);
+    }
+  }, [clearFolder, folderActionPath]);
+
+  const handleFolderDialogOpenChange = useCallback((open: boolean) => {
+    if (!open) setFolderDialog(null);
+  }, []);
+
+  return {
+    session,
+    signingIn,
+    sending,
+    error,
+    email,
+    composeOpen,
+    composeMode,
+    composeInitial,
+    searchQuery,
+    foldersCompact,
+    folders,
+    folderDelimiter,
+    filteredMessages,
+    selectedFolder,
+    selectedUid,
+    selectedMessage,
+    loadingMessages,
+    loadingMessage,
+    inTrash,
+    moveDialogOpen,
+    createFolderOpen,
+    createFolderParent,
+    deleteConfirmOpen,
+    creatingFolder,
+    deleting,
+    folderDialog,
+    folderActionTarget,
+    folderActionPending,
+    setEmail,
+    setSearchQuery,
+    setMoveDialogOpen,
+    setCreateFolderOpen,
+    setDeleteConfirmOpen,
+    handleSelectFolder,
+    handleSelectMessage,
+    handleAuthSubmit,
+    handleComposeOpen,
+    handleComposeOpenChange,
+    handleComposeSend,
+    handlePreviewAction,
+    handleMessageAction,
+    handleMoveToFolder,
+    handleCreateFolder,
+    handleOpenCreateFolder,
+    handleOpenCreateFolderFromMove,
+    handleConfirmDelete,
+    handleSignOut,
+    handleToggleFoldersCompact,
+    handleFolderAction,
+    handleRenameFolderSubmit,
+    handleMoveFolderSubmit,
+    handleConfirmDeleteFolder,
+    handleConfirmClearFolder,
+    handleFolderDialogOpenChange,
+  };
+}

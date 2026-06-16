@@ -115,6 +115,7 @@ describe("env", () => {
       "BASE_URL",
       "CALENDAR_EMBED_URL",
       "MAIL_EMBED_URL",
+      "MAIL_API_ORIGIN",
     ] as const;
     for (const key of stringKeys) {
       expect(typeof env[key]).toBe("string");

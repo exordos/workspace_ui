@@ -36,8 +36,12 @@ interface ImportMetaEnv {
   readonly VITE_EMBED_ALLOWED_ORIGINS?: string;
   /** Calendar page embed URL override. Optional. */
   readonly VITE_CALENDAR_EMBED_URL?: string;
-  /** Mail page embed URL override. Optional. */
+  /** Mail page embed URL override (legacy). Optional. */
   readonly VITE_MAIL_EMBED_URL?: string;
+  /** Native mail API base (`/mail-api` in dev, full URL in prod). Optional. */
+  readonly VITE_MAIL_API_ORIGIN?: string;
+  /** Dev-only: mail-proxy upstream for `/mail-api` Vite proxy. Optional. */
+  readonly VITE_MAIL_PROXY_TARGET?: string;
   /** Default organization URL for the login page quick-fill button. Optional. */
   readonly VITE_DEFAULT_LOGIN_ORGANIZATION_URL?: string;
   /** Default organization display name for the login page quick-fill button. Optional. */

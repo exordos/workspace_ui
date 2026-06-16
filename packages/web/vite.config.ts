@@ -153,7 +153,20 @@ export default defineConfig(({ mode }) => {
     return `${prefix}${pathWithQuery}`;
   };
 
-  const devApiProxy =
+  const mailProxyTarget = (env.VITE_MAIL_PROXY_TARGET ?? "http://localhost:8787").replace(/\/+$/, "");
+
+  const mailApiDevProxy: Record<string, ViteProxyEntry> =
+    mode === "development" && !isElectron
+      ? {
+          "/mail-api": withDevProxyRequestLog("mail-api", mailProxyTarget, proxyDebug, {
+            target: mailProxyTarget,
+            changeOrigin: true,
+            rewrite: (pathValue) => pathValue.replace(/^\/mail-api/, ""),
+          }),
+        }
+      : {};
+
+  const workspaceDevProxy =
     workspaceOrigin &&
     ({
       "/workspace/workspace/v1": withDevProxyRequestLog(
@@ -193,6 +206,11 @@ export default defineConfig(({ mode }) => {
         changeOrigin: true,
       }),
     } satisfies Record<string, ViteProxyEntry>);
+
+  const devApiProxy =
+    Object.keys(mailApiDevProxy).length > 0 || workspaceDevProxy
+      ? { ...mailApiDevProxy, ...(workspaceDevProxy ?? {}) }
+      : undefined;
 
   const appVersion = resolveAppVersion(mode, env);
 

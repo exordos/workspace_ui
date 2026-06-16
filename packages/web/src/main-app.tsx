@@ -79,6 +79,9 @@ setStoreWiper(() => {
     store.removeInstance(current.id);
   }
   useChatListStore.getState().clear();
+  void import("~/entities/mail/mail.model").then(({ clearMailSessionOnLogout }) => {
+    clearMailSessionOnLogout();
+  });
 });
 
 setPluginDataProvider({

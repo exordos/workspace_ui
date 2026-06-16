@@ -1,5 +1,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import React from "react";
+import { t } from "~/i18n/i18n";
+import { Icon } from "~/shared/ui/icon";
 import { Spinner } from "~/shared/ui/spinner.ui";
 import type {
   AppDialogFormFooterProps,
@@ -124,6 +126,7 @@ export const AppDialog: React.FC<AppDialogProps> = ({
   maxWidthClassName = "max-w-md",
   positionClassName = "top-[20%]",
   onCloseAutoFocus,
+  showCloseButton = false,
 }) => {
   const contentClassName = `${DEFAULT_CONTENT_CLASS} ${maxWidthClassName} ${positionClassName}`;
 
@@ -134,9 +137,24 @@ export const AppDialog: React.FC<AppDialogProps> = ({
       contentClassName={contentClassName}
       onCloseAutoFocus={onCloseAutoFocus}
     >
-      <Dialog.Title className="mb-4 text-base font-semibold text-text-primary">
-        {title}
-      </Dialog.Title>
+      <div className={`flex items-start justify-between gap-3 ${showCloseButton ? "mb-4" : ""}`}>
+        <Dialog.Title
+          className={`text-base font-semibold text-text-primary ${showCloseButton ? "" : "mb-4"}`}
+        >
+          {title}
+        </Dialog.Title>
+        {showCloseButton ? (
+          <Dialog.Close asChild>
+            <button
+              type="button"
+              className="hover:bg-bg/50 shrink-0 rounded p-1 text-text-muted transition-colors hover:text-text-primary"
+              aria-label={t("common.close")}
+            >
+              <Icon name="close" size={18} />
+            </button>
+          </Dialog.Close>
+        ) : null}
+      </div>
       {description != null && description.length > 0 ? (
         <Dialog.Description className="mb-4 text-sm text-text-secondary">
           {description}

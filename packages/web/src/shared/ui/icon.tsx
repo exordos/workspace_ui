@@ -55,6 +55,7 @@ import PinIcon from "../assets/icons/pin.svg?react";
 import PlusIcon from "../assets/icons/plus.svg?react";
 import ProfileIcon from "../assets/icons/profile.svg?react";
 import ReplyIcon from "../assets/icons/reply.svg?react";
+import ReplyAllIcon from "../assets/icons/reply_all.svg?react";
 import SearchIcon from "../assets/icons/search.svg?react";
 import SelectedBookmarkIcon from "../assets/icons/selected_bookmark_icon.svg?react";
 import SendIcon from "../assets/icons/send.svg?react";
@@ -106,6 +107,7 @@ const ICONS: Record<string, IconSvgComponent> = {
   forward: ForwardIcon,
   profile: ProfileIcon,
   reply: ReplyIcon,
+  reply_all: ReplyAllIcon,
   close: CloseIcon,
   bell: BellIcon,
   bell_off: BellOffIcon,
