@@ -5,6 +5,7 @@ import {
   getMailFolderIconName,
   isMailApiConfigured,
   isMailUnauthorizedError,
+  resolveMailPreviewBody,
   sortMailFolders,
 } from "./mail.lib";
 import type { MailFolder } from "./mail.types";
@@ -40,5 +41,23 @@ describe("mail.lib", () => {
     expect(isMailUnauthorizedError(new MailApiError("Unauthorized", 401))).toBe(true);
     expect(isMailUnauthorizedError(new Error("Unauthorized"))).toBe(true);
     expect(isMailUnauthorizedError(new MailApiError("Not found", 404))).toBe(false);
+  });
+
+  it("prefers HTML for mail preview when both text and HTML parts exist", () => {
+    const result = resolveMailPreviewBody(
+      "<p>Hi</p><blockquote><p>Quoted</p></blockquote>",
+      "> Quoted plain",
+    );
+    expect(result).toEqual({
+      mode: "html",
+      html: "<p>Hi</p><blockquote><p>Quoted</p></blockquote>",
+    });
+  });
+
+  it("falls back to plain text when HTML part is missing", () => {
+    expect(resolveMailPreviewBody(null, "> Quoted plain")).toEqual({
+      mode: "plain",
+      text: "> Quoted plain",
+    });
   });
 });

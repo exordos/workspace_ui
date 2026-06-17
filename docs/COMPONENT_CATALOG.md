@@ -37,7 +37,7 @@ app/app.tsx (Router, ErrorBoundary, Suspense)
     │   │   ├── features/jitsi-call/JitsiCallModal
     │   │   └── features/media-viewer/ (fullscreen image/video)
     │   ├── pages/activity/ActivityPage (starred/mentions/reactions)
-    │   ├── pages/calendar/CalendarPage (stub)
+    │   ├── pages/calendar/CalendarPage (native SOGo CalDAV)
     │   ├── pages/mail/MailPage (native Mailcow client)
     │   ├── pages/calls/CallsPage (stub)
     │   ├── pages/inbox/InboxPage
@@ -437,13 +437,13 @@ interface MessageComposerProps {
 
 All pages are lazy-loaded via `React.lazy()` in `app/app.tsx`.
 
-| Page           | Path                                                | File                                  | Purpose                              |
-| -------------- | --------------------------------------------------- | ------------------------------------- | ------------------------------------ |
-| `ChatPage`     | `/stream/:streamSlug/topic/:topicName`, `/dm/:dmId` | `pages/chat/chat-page.ui.tsx`         | Main chat — stream, topic, or DM     |
-| `ActivityPage` | `/activity/:filter`                                 | `pages/activity/activity-page.ui.tsx` | Starred, mentions, reactions         |
-| `LoginPage`    | `/login`                                            | `pages/login/login-page.ui.tsx`       | Login form                           |
-| `CalendarPage` | `/calendar`                                         | `pages/calendar/calendar-page.ui.tsx` | Calendar stub                        |
-| `MailPage`     | `/mail`                                             | `pages/mail/mail-page.ui.tsx`         | Native mail (Mailcow via mail-proxy) |
+| Page           | Path                                                | File                                  | Purpose                                      |
+| -------------- | --------------------------------------------------- | ------------------------------------- | -------------------------------------------- |
+| `ChatPage`     | `/stream/:streamSlug/topic/:topicName`, `/dm/:dmId` | `pages/chat/chat-page.ui.tsx`         | Main chat — stream, topic, or DM             |
+| `ActivityPage` | `/activity/:filter`                                 | `pages/activity/activity-page.ui.tsx` | Starred, mentions, reactions                 |
+| `LoginPage`    | `/login`                                            | `pages/login/login-page.ui.tsx`       | Login form                                   |
+| `CalendarPage` | `/calendar`                                         | `pages/calendar/calendar-page.ui.tsx` | Native calendar (SOGo CalDAV via mail-proxy) |
+| `MailPage`     | `/mail`                                             | `pages/mail/mail-page.ui.tsx`         | Native mail (Mailcow via mail-proxy)         |
 
 **Mail UI slices**: `widgets/mail-view` (3-column inbox), `features/mail-compose` (HTML compose + reply/forward), `features/mail-message-actions` (action bar, move/create folder, delete confirm), `features/mail-sign-in`, `entities/mail`.
 | `CallsPage` | `/calls` | `pages/calls/calls-page.ui.tsx` | Calls stub |

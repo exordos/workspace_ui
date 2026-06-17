@@ -13,10 +13,13 @@
   "dependencies": {
     "cors": "2.8.5",
     "express": "5.1.0",
+    "ical.js": "2.1.0",
     "imapflow": "1.0.193",
     "libqp": "2.1.1",
     "mailparser": "3.9.6",
-    "nodemailer": "7.0.5"
+    "nodemailer": "7.0.5",
+    "rrule": "2.8.1",
+    "tsdav": "2.1.5"
   },
   "devDependencies": {
     "@types/cors": "2.8.19",

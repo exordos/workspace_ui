@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { formatMailPreviewBody } from "~/entities/mail/mail.lib";
+import { resolveMailPreviewBody } from "~/entities/mail/mail.lib";
 import { MailMessageActionBar } from "~/features/mail-message-actions/mail-message-action-bar.ui";
 import { t } from "~/i18n/i18n";
 import { formatMailMessageDetailTime } from "~/shared/lib/datetime.lib";
@@ -12,16 +12,14 @@ export const MailMessagePreview: React.FC<MailMessagePreviewProps> = ({
   inTrash,
   onAction,
 }) => {
-  const safeHtml = useMemo(() => {
+  const previewBody = useMemo(() => {
     if (message == null) return null;
-    if (message.bodyText != null && message.bodyText.trim().length > 0) return null;
-    if (message.bodyHtml == null || message.bodyHtml.trim().length === 0) return null;
-    return sanitizeHtml(message.bodyHtml);
-  }, [message]);
-
-  const plainBody = useMemo(() => {
-    if (message == null) return "";
-    return formatMailPreviewBody(message.bodyHtml, message.bodyText);
+    const resolved = resolveMailPreviewBody(message.bodyHtml, message.bodyText);
+    if (resolved == null) return null;
+    if (resolved.mode === "html") {
+      return { mode: "html" as const, html: sanitizeHtml(resolved.html) };
+    }
+    return resolved;
   }, [message]);
 
   if (loading) {
@@ -57,14 +55,14 @@ export const MailMessagePreview: React.FC<MailMessagePreviewProps> = ({
         <MailMessageActionBar message={message} inTrash={inTrash} onAction={onAction} />
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto p-4 text-sm text-text-primary">
-        {safeHtml != null ? (
+        {previewBody?.mode === "html" ? (
           <div
-            className="prose prose-sm max-w-none text-text-primary"
-            dangerouslySetInnerHTML={{ __html: safeHtml }}
+            className="mail-body max-w-none text-text-primary"
+            dangerouslySetInnerHTML={{ __html: previewBody.html }}
           />
-        ) : (
-          <p className="whitespace-pre-wrap">{plainBody}</p>
-        )}
+        ) : previewBody?.mode === "plain" ? (
+          <p className="mail-body whitespace-pre-wrap">{previewBody.text}</p>
+        ) : null}
       </div>
     </article>
   );

@@ -27,6 +27,7 @@ npm run dev:mailcow
 
 # 5. Create mailbox: Email → Mailboxes → Add mailbox
 #    Example: user@mail.example.test
+#    Protocol access: enable IMAP, SMTP, and DAV (required for native calendar)
 
 # 6. mail-proxy + web
 npm run dev:mail-proxy
@@ -90,9 +91,25 @@ MAILCOW_IMAP_HOST=127.0.0.1
 MAILCOW_IMAP_PORT=993
 MAILCOW_SMTP_HOST=127.0.0.1
 MAILCOW_SMTP_PORT=465
+MAILCOW_SOGO_URL=https://mail.example.test
+MAILCOW_CALDAV_PREFIX=/SOGo/dav
 MAILCOW_TLS_REJECT_UNAUTHORIZED=false
 MAIL_PROXY_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 ```
+
+Calendar (`/calendar`) uses the same mail-proxy Bearer session and `MAILCOW_SOGO_URL` for SOGo CalDAV.
+
+### CalDAV troubleshooting
+
+If mail sign-in works but calendar shows **401 / authentication failed**:
+
+1. **Protocol access (most common)**: Mailcow → _Edit mailbox_ → _Protocol access_ → enable **DAV** (CalDAV/CardDAV). `imap_access` and `sogo_access` can be on while `dav_access` is off — SOGo web calendar works, but CalDAV via nginx `/sogo-auth` returns 401.
+2. Open **https://mail.example.test/SOGo/so/** with the same credentials — confirms SOGo account is active.
+3. **2FA / TFA**: CalDAV cannot use a second factor. Create an **app-specific password** in Mailcow and use it for mail + calendar sign-in.
+4. Restart `mail-proxy` after changing `MAILCOW_SOGO_URL` — startup log prints `sogoUrl`.
+5. Dev TLS: keep `MAILCOW_TLS_REJECT_UNAUTHORIZED=false` for the self-signed Mailcow cert.
+
+The proxy tries both `/SOGo/dav/user%40domain/Calendar/` and `/SOGo/dav/user@domain/Calendar/` automatically.
 
 ## Files
 

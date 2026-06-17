@@ -11,7 +11,7 @@ export interface AppDialogProps {
   footer?: ReactNode;
   /** Max width utility class, e.g. `max-w-md`. */
   maxWidthClassName?: string;
-  /** Vertical position — default `top-[20%]`, use `top-1/2 -translate-y-1/2` for centered. */
+  /** Vertical position — default centered; pair with `-translate-y-1/2` when using `top-1/2`. */
   positionClassName?: string;
   onCloseAutoFocus?: (event: Event) => void;
   /** Top-right close (×) control — uses `common.close` for aria-label. */

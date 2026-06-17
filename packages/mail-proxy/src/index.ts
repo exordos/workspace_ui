@@ -6,6 +6,7 @@ import cors from "cors";
 import express from "express";
 import { mailProxyEnv } from "./mail-env.lib";
 import { mailLog } from "./mail-logger.lib";
+import { registerCalendarRoutes } from "./calendar-routes";
 import { registerMailRoutes } from "./mail-routes";
 import { startSessionCleanup } from "./mail-session.lib";
 
@@ -29,11 +30,16 @@ app.get("/health", (_req, res) => {
 });
 
 registerMailRoutes(app);
+registerCalendarRoutes(app);
 
 const stopCleanup = startSessionCleanup();
 
 const server = app.listen(mailProxyEnv.PORT, () => {
-  mailLog.info("Mail proxy listening", { port: mailProxyEnv.PORT });
+  mailLog.info("Mail proxy listening", {
+    port: mailProxyEnv.PORT,
+    sogoUrl: mailProxyEnv.SOGO_URL,
+    caldavPrefix: mailProxyEnv.CALDAV_PREFIX,
+  });
 });
 
 function shutdown(): void {

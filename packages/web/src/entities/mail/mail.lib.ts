@@ -42,10 +42,20 @@ export function isMailUnauthorizedError(error: unknown): boolean {
   return error instanceof Error && error.message.toLowerCase() === "unauthorized";
 }
 
-export function formatMailPreviewBody(bodyHtml: string | null, bodyText: string | null): string {
-  if (bodyText != null && bodyText.trim().length > 0) return bodyText;
-  if (bodyHtml != null && bodyHtml.trim().length > 0) return bodyHtml;
-  return "";
+export type MailPreviewBody = { mode: "html"; html: string } | { mode: "plain"; text: string };
+
+/** Prefer HTML part so reply quotes (blockquote, gmail_quote) render with structure. */
+export function resolveMailPreviewBody(
+  bodyHtml: string | null,
+  bodyText: string | null,
+): MailPreviewBody | null {
+  if (bodyHtml != null && bodyHtml.trim().length > 0) {
+    return { mode: "html", html: bodyHtml };
+  }
+  if (bodyText != null && bodyText.trim().length > 0) {
+    return { mode: "plain", text: bodyText };
+  }
+  return null;
 }
 
 const FOLDER_I18N_KEYS: Record<string, string> = {
