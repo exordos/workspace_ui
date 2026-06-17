@@ -79,13 +79,8 @@ interface ActivityState {
   ) => void;
   removeMessageFromFilter: (filter: ActivityFilter, messageId: number) => void;
   setFilterErrorIfActual: (filter: ActivityFilter, requestVersion: number, error: string) => void;
-  startStarredSummaryRequest: (hasCachedData: boolean) => number;
-  setStarredSummaryFromCache: (count: number, isCapped: boolean) => void;
-  setStarredSummaryFromServerIfActual: (
-    requestVersion: number,
-    payload: { count: number; isCapped: boolean },
-  ) => void;
-  setStarredSummaryErrorIfActual: (requestVersion: number, error: string) => void;
+  setStarredSummaryFromRegisterMessageIds: (messageIds: readonly number[]) => void;
+  applyStarredSummaryFlagEvent: (op: "add" | "remove", messageIds: readonly number[]) => void;
   markStarredSummaryStale: () => void;
   markStale: () => void;
   clear: () => void;
@@ -216,30 +211,14 @@ export const useActivityStore = create<ActivityState>((set) => ({
     });
   },
 
-  startStarredSummaryRequest(hasCachedData) {
-    let nextRequestVersion = 0;
-    set((state) => {
-      nextRequestVersion = state.starredSummary.requestVersion + 1;
-      return {
-        starredSummary: {
-          ...state.starredSummary,
-          requestVersion: nextRequestVersion,
-          isLoading: !hasCachedData,
-          error: null,
-          stale: false,
-        },
-      };
-    });
-    return nextRequestVersion;
-  },
-
-  setStarredSummaryFromCache(count, isCapped) {
-    logStoreAction("activity", "setStarredSummaryFromCache", { count, isCapped });
+  setStarredSummaryFromRegisterMessageIds(messageIds) {
+    const count = new Set(messageIds).size;
+    logStoreAction("activity", "setStarredSummaryFromRegisterMessageIds", { count });
     set((state) => ({
       starredSummary: {
         ...state.starredSummary,
         count,
-        isCapped,
+        isCapped: false,
         isLoading: false,
         error: null,
         lastLoadedAt: Date.now(),
@@ -248,37 +227,29 @@ export const useActivityStore = create<ActivityState>((set) => ({
     }));
   },
 
-  setStarredSummaryFromServerIfActual(requestVersion, payload) {
-    logStoreAction("activity", "setStarredSummaryFromServerIfActual", {
-      requestVersion,
-      count: payload.count,
-      isCapped: payload.isCapped,
-    });
+  applyStarredSummaryFlagEvent(op, messageIds) {
+    const count = new Set(messageIds).size;
+    logStoreAction("activity", "applyStarredSummaryFlagEvent", { op, count });
+    if (count === 0) return;
     set((state) => {
-      if (state.starredSummary.requestVersion !== requestVersion) return state;
+      if (state.starredSummary.lastLoadedAt == null || state.starredSummary.isCapped) {
+        return {
+          starredSummary: {
+            ...state.starredSummary,
+            stale: true,
+          },
+        };
+      }
       return {
         starredSummary: {
           ...state.starredSummary,
-          count: payload.count,
-          isCapped: payload.isCapped,
+          count:
+            op === "add"
+              ? state.starredSummary.count + count
+              : Math.max(0, state.starredSummary.count - count),
           isLoading: false,
           error: null,
           lastLoadedAt: Date.now(),
-          stale: false,
-        },
-      };
-    });
-  },
-
-  setStarredSummaryErrorIfActual(requestVersion, error) {
-    logStoreAction("activity", "setStarredSummaryErrorIfActual", { requestVersion, error });
-    set((state) => {
-      if (state.starredSummary.requestVersion !== requestVersion) return state;
-      return {
-        starredSummary: {
-          ...state.starredSummary,
-          isLoading: false,
-          error,
           stale: true,
         },
       };

@@ -108,6 +108,7 @@ export async function registerQueue(
     user_settings?: unknown;
     user_status?: unknown;
     unread_msgs?: unknown;
+    starred_messages?: unknown;
   } | null;
   if (data == null || typeof data !== "object") {
     throw new Error(t("app.invalidResponse"));

@@ -84,7 +84,11 @@ function buildCtx(
       setStreamDesktopNotifications: noop,
       setStreamAudibleNotifications: noop,
     },
-    activity: { markStale: noop, markStarredSummaryStale: noop },
+    activity: {
+      markStale: noop,
+      markStarredSummaryStale: noop,
+      applyStarredSummaryFlagEvent: noop,
+    },
     inbox: { markStale: noop, markAsRead: noop, clearEntries: noop },
     notifications: {
       show: vi.fn().mockResolvedValue(undefined),
@@ -134,7 +138,11 @@ function buildIntegrationCtx(): LayoutZulipEventDispatchContext {
       setStreamDesktopNotifications: noop,
       setStreamAudibleNotifications: noop,
     },
-    activity: { markStale: noop, markStarredSummaryStale: noop },
+    activity: {
+      markStale: noop,
+      markStarredSummaryStale: noop,
+      applyStarredSummaryFlagEvent: noop,
+    },
     inbox: useInboxStore.getState(),
     notifications: {
       show: vi.fn().mockResolvedValue(undefined),

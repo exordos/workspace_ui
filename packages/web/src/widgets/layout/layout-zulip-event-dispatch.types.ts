@@ -120,6 +120,7 @@ export interface LayoutMuteActions {
 export interface LayoutActivityActions {
   markStale: () => void;
   markStarredSummaryStale: () => void;
+  applyStarredSummaryFlagEvent: (op: "add" | "remove", messageIds: readonly number[]) => void;
 }
 
 export interface LayoutInboxActions {

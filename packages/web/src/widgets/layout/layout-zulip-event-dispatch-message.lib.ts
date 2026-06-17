@@ -157,7 +157,11 @@ export function handleUpdateMessageFlags(
 
   activity.markStale();
   if (flag === "starred") {
-    activity.markStarredSummaryStale();
+    if (messageIds.length > 0) {
+      activity.applyStarredSummaryFlagEvent(op, messageIds);
+    } else {
+      activity.markStarredSummaryStale();
+    }
   }
   if (flag !== "read") return;
 

@@ -61,6 +61,24 @@ describe("registerQueue", () => {
     });
   });
 
+  it("parses starred message ids from register metadata", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        queue_id: "q-starred",
+        last_event_id: 1,
+        starred_messages: [55, 56, 56, "bad", -1, 57],
+      },
+      raw: { statusText: "OK" },
+    });
+
+    const result = await registerQueue(["message", "update_message_flags"]);
+
+    expect(result.starred_message_ids).toEqual([55, 56, 57]);
+  });
+
   it("throws on error result", async () => {
     mockZulipApi.post.mockResolvedValue({
       ok: true,

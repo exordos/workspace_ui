@@ -1,6 +1,4 @@
 import { useCallback, useEffect, useRef } from "react";
-import { ensureStarredLoaded } from "~/entities/activity/activity-starred-loader.lib";
-import { useActivityStore } from "~/entities/activity/activity.model";
 import { ensureMentionsUnreadSynced } from "~/entities/chat-list/chat-list-mentions-sync.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { buildMuteSnapshotFromBootstrap } from "~/features/mute-chat/mute-chat.model";
@@ -29,8 +27,6 @@ export function useLayoutInstanceBootstrap(options: {
   loadMuteSnapshot: (bootstrap?: LayoutMuteBootstrapData) => Promise<LayoutMuteSnapshot>;
 } {
   const { currentInstanceId, currentUserStatus } = options;
-  const starredSummaryStale = useActivityStore((s) => s.starredSummary.stale);
-  const starredBootstrapInstanceRef = useRef<string | null>(null);
   const mentionsBootstrapInstanceRef = useRef<string | null>(null);
 
   // Load instance mute snapshot (muted streams/topics) for consistent UI.
@@ -45,25 +41,6 @@ export function useLayoutInstanceBootstrap(options: {
     },
     [],
   );
-
-  useEffect(() => {
-    // Shared starred bootstrap for activity store — on instance switch or stale invalidation.
-    if (!currentInstanceId || (currentUserStatus !== "ready" && currentUserStatus !== "degraded")) {
-      starredBootstrapInstanceRef.current = null;
-      return;
-    }
-
-    const instanceChanged = starredBootstrapInstanceRef.current !== currentInstanceId;
-    if (!instanceChanged && !starredSummaryStale) return;
-
-    starredBootstrapInstanceRef.current = currentInstanceId;
-    const currentUserId = useChatListStore.getState().currentUserId ?? null;
-    void ensureStarredLoaded({
-      currentInstanceId,
-      currentUserId,
-      forceRefresh: starredSummaryStale,
-    });
-  }, [currentInstanceId, currentUserStatus, starredSummaryStale]);
 
   useEffect(() => {
     if (!currentInstanceId || (currentUserStatus !== "ready" && currentUserStatus !== "degraded")) {

@@ -170,7 +170,7 @@ describe("SidebarActivity", () => {
 
   it("shows favorites badge in expanded view from starred summary", () => {
     useChatListStore.setState({ currentUserId: 7, lastAppliedMessages: [] });
-    useActivityStore.getState().setStarredSummaryFromCache(4, false);
+    useActivityStore.getState().setStarredSummaryFromRegisterMessageIds([1, 2, 3, 4]);
 
     render(
       <MemoryRouter>
@@ -252,7 +252,7 @@ describe("SidebarActivity", () => {
 
   it("shows compact favorites badge from starred summary", () => {
     useChatListStore.setState({ currentUserId: 7, lastAppliedMessages: [] });
-    useActivityStore.getState().setStarredSummaryFromCache(7, false);
+    useActivityStore.getState().setStarredSummaryFromRegisterMessageIds([1, 2, 3, 4, 5, 6, 7]);
 
     render(
       <MemoryRouter>

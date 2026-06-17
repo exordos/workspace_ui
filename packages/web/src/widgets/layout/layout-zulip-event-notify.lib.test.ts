@@ -88,7 +88,11 @@ function createContext(notifications = createNotifications()): LayoutZulipEventD
     },
     typing: { setTyping: vi.fn() },
     mute: useMuteStore.getState(),
-    activity: { markStale: vi.fn(), markStarredSummaryStale: vi.fn() },
+    activity: {
+      markStale: vi.fn(),
+      markStarredSummaryStale: vi.fn(),
+      applyStarredSummaryFlagEvent: vi.fn(),
+    },
     inbox: {
       markStale: vi.fn(),
       markAsRead: vi.fn(),

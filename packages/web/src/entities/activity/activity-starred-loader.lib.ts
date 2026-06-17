@@ -1,7 +1,7 @@
 /**
- * Shared starred bootstrap/refresh for Sidebar and ActivityPage.
+ * Shared starred bootstrap/refresh for ActivityPage.
  *
- * Single source: cache-first hydrate, deduped server refresh, and synced list + summary updates.
+ * Cache-first hydrate and deduped server refresh for starred message bodies.
  */
 import {
   hydrateActivityMessagesFromCache,
@@ -85,15 +85,12 @@ export async function ensureStarredLoaded(options: EnsureStarredLoadedOptions): 
           isActivityMessagesSnapshotFresher(cached, currentMessages));
       if (shouldApplyCached) {
         store.setFilterCache("starred", cached, true);
-        store.setStarredSummaryFromCache(cached.length, cached.length >= pageSize);
       }
     }
 
     const latest = useActivityStore.getState();
     const hasCachedData = shouldApplyCached || latest.filters.starred.messages.length > 0;
     const filterRequestVersion = latest.startFilterRequest("starred", hasCachedData);
-    const hasSummaryData = hasCachedData || latest.starredSummary.count > 0;
-    const summaryRequestVersion = latest.startStarredSummaryRequest(hasSummaryData);
 
     try {
       const page = await fetchActivityMessagesPageWithPersist(
@@ -111,17 +108,12 @@ export async function ensureStarredLoaded(options: EnsureStarredLoadedOptions): 
       useActivityStore
         .getState()
         .setFilterPageIfActual("starred", filterRequestVersion, page.messages, hasMore);
-      useActivityStore.getState().setStarredSummaryFromServerIfActual(summaryRequestVersion, {
-        count: page.messages.length,
-        isCapped: hasMore,
-      });
     } catch (err) {
       if (isAbortError(err)) {
         return;
       }
       const error = String(err);
       useActivityStore.getState().setFilterErrorIfActual("starred", filterRequestVersion, error);
-      useActivityStore.getState().setStarredSummaryErrorIfActual(summaryRequestVersion, error);
       log.error("Failed to load starred activity", { error });
     }
   });

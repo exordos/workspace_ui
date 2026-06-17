@@ -144,6 +144,8 @@ export interface RegisterQueueResult {
    * (when `message` and `update_message_flags` are in `event_types`).
    */
   unread_snapshot?: ZulipUnreadMessagesSnapshot;
+  /** Starred message ids from register metadata, used for an exact sidebar count. */
+  starred_message_ids?: number[];
 }
 
 export interface ZulipEvent {

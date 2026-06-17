@@ -148,6 +148,7 @@ export interface RegisterQueueRawData {
   user_settings?: unknown;
   user_status?: unknown;
   unread_msgs?: unknown;
+  starred_messages?: unknown;
 }
 
 export interface RegisterQueueParsedMetadata {
@@ -168,6 +169,27 @@ export interface RegisterQueueParsedMetadata {
   serverAvatarChangesDisabled: ReturnType<typeof parseAvatarChangesDisabledFlag>;
   jitsiServerUrlEffective: ReturnType<typeof parseRegisterResponseJitsiServerUrl>;
   userStatusSnapshot: ReturnType<typeof parseUserStatusSnapshot>;
+  starredMessageIds: number[] | null;
+}
+
+function parseRegisterStarredMessageIds(data: RegisterQueueRawData): number[] | null {
+  if (!Array.isArray(data.starred_messages)) {
+    return null;
+  }
+
+  const seen = new Set<number>();
+  const ids: number[] = [];
+  for (const value of data.starred_messages) {
+    if (!isPositiveInteger(value)) {
+      continue;
+    }
+    if (seen.has(value)) {
+      continue;
+    }
+    seen.add(value);
+    ids.push(value);
+  }
+  return ids;
 }
 
 export function parseRegisterQueueMetadata(
@@ -197,6 +219,7 @@ export function parseRegisterQueueMetadata(
     ),
     jitsiServerUrlEffective: parseRegisterResponseJitsiServerUrl(data),
     userStatusSnapshot: parseUserStatusSnapshot(data),
+    starredMessageIds: parseRegisterStarredMessageIds(data),
   };
 }
 
@@ -268,5 +291,6 @@ export function buildRegisterQueueResult(
       ? { userStatusSnapshot: metadata.userStatusSnapshot }
       : {}),
     ...(metadata.unreadSnapshot ? { unread_snapshot: metadata.unreadSnapshot } : {}),
+    ...(metadata.starredMessageIds ? { starred_message_ids: metadata.starredMessageIds } : {}),
   };
 }

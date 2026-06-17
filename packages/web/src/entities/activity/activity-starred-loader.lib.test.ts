@@ -1,6 +1,6 @@
 // Tests for shared starred loader.
 // Asserts that the loader:
-// 1) synchronously updates starred list and summary;
+// 1) updates starred message bodies without recalculating the register summary;
 // 2) deduplicates parallel identical loads.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useActivityStore } from "~/entities/activity/activity.model";
@@ -47,8 +47,9 @@ describe("ensureStarredLoaded", () => {
     });
   });
 
-  it("refreshes starred filter and summary from server", async () => {
+  it("refreshes starred filter without recalculating summary from server page", async () => {
     // Assert basic happy path: cache-first + server refresh.
+    useActivityStore.getState().setStarredSummaryFromRegisterMessageIds([1, 2, 3]);
     const cached = [
       createMessage({
         id: 10,
@@ -91,15 +92,33 @@ describe("ensureStarredLoaded", () => {
 
     const state = useActivityStore.getState();
     expect(state.filters.starred.messages.map((m) => m.id)).toEqual([22]);
-    expect(state.starredSummary.count).toBe(1);
-    expect(state.starredSummary.isCapped).toBe(true);
-    expect(fetchActivityMessagesPageWithPersist).toHaveBeenCalledWith(
-      "starred",
-      7,
-      "newest",
-      200,
-      { signal: undefined },
-    );
+    expect(state.starredSummary.count).toBe(3);
+    expect(state.starredSummary.isCapped).toBe(false);
+    expect(fetchActivityMessagesPageWithPersist).toHaveBeenCalledWith("starred", 7, "newest", 200, {
+      signal: undefined,
+    });
+  });
+
+  it("does not replace exact register summary with capped page size", async () => {
+    useActivityStore.getState().setStarredSummaryFromRegisterMessageIds([1, 2, 3, 4, 5]);
+    fetchActivityMessagesPageWithPersist.mockResolvedValue({
+      messages: [
+        createMessage({ id: 4, flags: ["starred"] }),
+        createMessage({ id: 5, flags: ["starred"] }),
+      ],
+      foundOldest: false,
+    });
+
+    await ensureStarredLoaded({
+      currentInstanceId: "instance-1",
+      currentUserId: 7,
+      pageSize: 2,
+    });
+
+    const state = useActivityStore.getState();
+    expect(state.filters.starred.messages.map((m) => m.id)).toEqual([4, 5]);
+    expect(state.starredSummary.count).toBe(5);
+    expect(state.starredSummary.isCapped).toBe(false);
   });
 
   it("dedupes parallel starred loads by request key", async () => {
@@ -148,7 +167,7 @@ describe("ensureStarredLoaded", () => {
     });
 
     await Promise.all([first, second]);
-    expect(useActivityStore.getState().starredSummary.count).toBe(1);
+    expect(useActivityStore.getState().starredSummary.count).toBe(0);
   });
 
   it("does not apply stale starred refresh after organization switch", async () => {
@@ -156,23 +175,27 @@ describe("ensureStarredLoaded", () => {
       messages: ReturnType<typeof createMessage>[];
       foundOldest: boolean;
     }) => void;
-    const oldFetch = new Promise<{ messages: ReturnType<typeof createMessage>[]; foundOldest: boolean }>(
-      (resolve) => {
-        resolveOldFetch = resolve;
-      },
-    );
+    const oldFetch = new Promise<{
+      messages: ReturnType<typeof createMessage>[];
+      foundOldest: boolean;
+    }>((resolve) => {
+      resolveOldFetch = resolve;
+    });
 
     let resolveNewFetch!: (value: {
       messages: ReturnType<typeof createMessage>[];
       foundOldest: boolean;
     }) => void;
-    const newFetch = new Promise<{ messages: ReturnType<typeof createMessage>[]; foundOldest: boolean }>(
-      (resolve) => {
-        resolveNewFetch = resolve;
-      },
-    );
+    const newFetch = new Promise<{
+      messages: ReturnType<typeof createMessage>[];
+      foundOldest: boolean;
+    }>((resolve) => {
+      resolveNewFetch = resolve;
+    });
 
-    fetchActivityMessagesPageWithPersist.mockReturnValueOnce(oldFetch).mockReturnValueOnce(newFetch);
+    fetchActivityMessagesPageWithPersist
+      .mockReturnValueOnce(oldFetch)
+      .mockReturnValueOnce(newFetch);
 
     useInstancesStore.setState({
       instances: [
@@ -253,8 +276,8 @@ describe("ensureStarredLoaded", () => {
     });
 
     await second;
-    expect(useActivityStore.getState().filters.starred.messages.map((message) => message.id)).toEqual(
-      [55],
-    );
+    expect(
+      useActivityStore.getState().filters.starred.messages.map((message) => message.id),
+    ).toEqual([55]);
   });
 });

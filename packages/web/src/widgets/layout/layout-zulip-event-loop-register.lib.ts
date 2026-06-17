@@ -1,3 +1,4 @@
+import { useActivityStore } from "~/entities/activity/activity.model";
 import {
   summarizeRecentPrivateConversationsForTrace,
   traceDmPreviewHydrate,
@@ -198,6 +199,11 @@ export function createLayoutBootstrapQueueRegisteredHandler(
       useInstancesStore.getState().setJitsiMeetBaseUrl(registration.jitsi_server_url_effective);
     } else {
       useInstancesStore.getState().setJitsiMeetBaseUrl(null);
+    }
+    if (registration?.starred_message_ids != null) {
+      useActivityStore
+        .getState()
+        .setStarredSummaryFromRegisterMessageIds(registration.starred_message_ids);
     }
     useUsersStore.getState().setCurrentUserChannelCapabilities({
       ...(registration?.realm_can_add_subscribers_group != null
