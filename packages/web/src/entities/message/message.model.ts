@@ -146,6 +146,91 @@ function withPendingLinkPreviewsIfPersisted(message: MockMessage): MockMessage {
   return message.id > 0 ? applyPendingLinkPreviewsToMessage(message) : message;
 }
 
+function clearMessageEditState(message: MockMessage): MockMessage {
+  const next = { ...message };
+  delete next.edit_status;
+  delete next.pending_edit_markdown;
+  delete next.previous_content;
+  delete next.previous_markdown_source;
+  delete next.edit_error;
+  return next;
+}
+
+function applyOptimisticEditToMessage(message: MockMessage, markdown: string): MockMessage {
+  const firstOptimisticEdit = message.previous_content === undefined;
+  const next: MockMessage = {
+    ...message,
+    content: markdown,
+    markdown_source: markdown,
+    edit_status: "saving",
+    pending_edit_markdown: markdown,
+    previous_content: firstOptimisticEdit ? message.content : message.previous_content,
+  };
+  if (firstOptimisticEdit) {
+    if (message.markdown_source !== undefined) {
+      next.previous_markdown_source = message.markdown_source;
+    }
+  } else if (message.previous_markdown_source !== undefined) {
+    next.previous_markdown_source = message.previous_markdown_source;
+  }
+  delete next.edit_error;
+  return filterMessageLinkPreviewsForMarkdown(next, markdown);
+}
+
+function failOptimisticEditOnMessage(message: MockMessage, error: string): MockMessage {
+  return {
+    ...message,
+    edit_status: "failed",
+    edit_error: error,
+  };
+}
+
+function cancelFailedEditOnMessage(message: MockMessage): MockMessage {
+  if (message.previous_content === undefined) {
+    return clearMessageEditState(message);
+  }
+  const restored = clearMessageEditState({
+    ...message,
+    content: message.previous_content,
+    ...(message.previous_markdown_source !== undefined
+      ? { markdown_source: message.previous_markdown_source }
+      : {}),
+  });
+  if (message.previous_markdown_source === undefined) {
+    delete restored.markdown_source;
+  }
+  return filterMessageLinkPreviewsForMarkdown(
+    restored,
+    restored.markdown_source ?? restored.content,
+  );
+}
+
+function commitOptimisticEditOnMessage(
+  message: MockMessage,
+  serverMessage: MockMessage | null | undefined,
+): MockMessage {
+  const content = serverMessage?.content ?? message.content;
+  const markdownSource = serverMessage?.markdown_source ?? message.markdown_source;
+  const next = clearMessageEditState({
+    ...message,
+    content,
+    ...(markdownSource !== undefined ? { markdown_source: markdownSource } : {}),
+  });
+  return filterMessageLinkPreviewsForMarkdown(next, markdownSource ?? content);
+}
+
+function persistMessageContent(messageId: number, content: string, markdownSource?: string): void {
+  if (!persistChatMessagesToIndexedDb()) return;
+  const inst = getCurrentInstance()?.id;
+  if (!inst) return;
+  void patchMessageContentInCache({
+    instanceId: inst,
+    messageId,
+    content,
+    ...(markdownSource !== undefined ? { markdown_source: markdownSource } : {}),
+  });
+}
+
 function schedulePersistFullChatMessages(get: () => CurrentChatMessagesState): void {
   if (!persistChatMessagesToIndexedDb()) return;
   const inst = getCurrentInstance()?.id;
@@ -493,26 +578,58 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     const markdownBody = markdownSource ?? content;
     set((state) => ({
       messages: patchMessageAtId(state.messages, messageId, (m) => {
-        const updated = {
+        const updated = clearMessageEditState({
           ...m,
           content,
           ...(markdownSource !== undefined ? { markdown_source: markdownSource } : {}),
-        };
+        });
         return filterMessageLinkPreviewsForMarkdown(updated, markdownBody);
       }),
     }));
     const state = get();
     if (!state.context) return;
-    if (persistChatMessagesToIndexedDb()) {
-      const inst = getCurrentInstance()?.id;
-      if (inst)
-        void patchMessageContentInCache({
-          instanceId: inst,
-          messageId,
-          content,
-          ...(markdownSource !== undefined ? { markdown_source: markdownSource } : {}),
-        });
+    persistMessageContent(messageId, content, markdownSource);
+  },
+
+  applyOptimisticMessageEdit(messageId, markdown) {
+    set((state) => ({
+      messages: patchMessageAtId(state.messages, messageId, (m) =>
+        applyOptimisticEditToMessage(m, markdown),
+      ),
+    }));
+    logStoreAction("message", "applyOptimisticMessageEdit", { messageId });
+  },
+
+  commitOptimisticMessageEdit(messageId, serverMessage) {
+    set((state) => ({
+      messages: patchMessageAtId(state.messages, messageId, (m) =>
+        commitOptimisticEditOnMessage(m, serverMessage),
+      ),
+    }));
+    const message = get().messages.find((candidate) => candidate.id === messageId);
+    if (message != null) {
+      persistMessageContent(messageId, message.content, message.markdown_source);
     }
+    logStoreAction("message", "commitOptimisticMessageEdit", {
+      messageId,
+      hasServerMessage: serverMessage != null,
+    });
+  },
+
+  failOptimisticMessageEdit(messageId, error) {
+    set((state) => ({
+      messages: patchMessageAtId(state.messages, messageId, (m) =>
+        failOptimisticEditOnMessage(m, error),
+      ),
+    }));
+    logStoreAction("message", "failOptimisticMessageEdit", { messageId });
+  },
+
+  cancelFailedMessageEdit(messageId) {
+    set((state) => ({
+      messages: patchMessageAtId(state.messages, messageId, cancelFailedEditOnMessage),
+    }));
+    logStoreAction("message", "cancelFailedMessageEdit", { messageId });
   },
 
   updateMessageLinkPreview(messageId, linkPreview) {

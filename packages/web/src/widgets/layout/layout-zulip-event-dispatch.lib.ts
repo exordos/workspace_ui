@@ -18,6 +18,7 @@ import {
   handleUserSettings,
   handleUserStatus,
 } from "./layout-zulip-event-dispatch-presence.lib";
+import { handleRealm } from "./layout-zulip-event-dispatch-realm.lib";
 import {
   handleStream,
   handleSubscription,
@@ -92,6 +93,11 @@ export function dispatchZulipEvent(event: ZulipEvent, ctx: LayoutZulipEventDispa
 
   if (event.type === "user_settings") {
     runDispatchHandler("dispatch:user_settings", () => handleUserSettings(event));
+    return;
+  }
+
+  if (event.type === "realm") {
+    runDispatchHandler("dispatch:realm", () => handleRealm(event));
   }
 }
 

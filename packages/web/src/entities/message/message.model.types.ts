@@ -63,6 +63,10 @@ export interface CurrentChatMessagesState {
   updateMessageReaction: (messageId: number, reaction: Reaction, op: "add" | "remove") => void;
   updateMessageFlags: (messageIds: number[], flag: string, op: "add" | "remove") => void;
   updateMessageContent: (messageId: number, content: string, markdownSource?: string) => void;
+  applyOptimisticMessageEdit: (messageId: number, markdown: string) => void;
+  commitOptimisticMessageEdit: (messageId: number, serverMessage?: MockMessage | null) => void;
+  failOptimisticMessageEdit: (messageId: number, error: string) => void;
+  cancelFailedMessageEdit: (messageId: number) => void;
   updateMessageLinkPreview: (messageId: number, linkPreview: LinkPreviewData | null) => void;
   moveStreamTopicMessages: (params: {
     streamId: number;

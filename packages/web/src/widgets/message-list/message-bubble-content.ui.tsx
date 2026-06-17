@@ -1,6 +1,9 @@
 import React from "react";
+import { t } from "~/i18n/i18n";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { MESSAGE_BUBBLE_BODY_CLASS_NAME } from "~/shared/lib/message-body-rich-text-classes";
+import { Icon } from "~/shared/ui/icon";
+import { Spinner } from "~/shared/ui/spinner.ui";
 import { MessageBubbleOwnDeliveryIndicator } from "./message-bubble-own-delivery-indicator.ui";
 import { MessageBubbleReactionsRow } from "./message-bubble-reactions-row.ui";
 import { MessageLinkPreview } from "./message-link-preview.ui";
@@ -96,6 +99,64 @@ export const MessageBubbleStandardBody = React.memo<MessageBubbleStandardBodyPro
     );
   },
 );
+
+export function resolveMessageEditStatusIndicatorNode(
+  message: MockMessage,
+  callbacks: MessageBubbleCallbacks | undefined,
+): React.ReactNode {
+  if (message.edit_status === "saving") {
+    return (
+      <span
+        data-testid={`message-edit-status-${message.id}`}
+        className="inline-flex size-3.5 items-center justify-center text-text-muted"
+        title={t("message.editSaving")}
+        aria-label={t("message.editSaving")}
+      >
+        <span className="sr-only">{t("message.editSaving")}</span>
+        <Spinner size="sm" variant="inherit" />
+      </span>
+    );
+  }
+
+  if (message.edit_status !== "failed") {
+    return null;
+  }
+
+  return (
+    <span
+      data-testid={`message-edit-status-${message.id}`}
+      className="inline-flex items-center gap-0.5"
+      title={message.edit_error ?? t("message.editFailed")}
+    >
+      <button
+        type="button"
+        className="rounded-sm text-text-muted hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
+        title={t("message.retryEdit")}
+        aria-label={t("message.retryEdit")}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          callbacks?.onRetryFailedEdit?.(message);
+        }}
+      >
+        <Icon name="send" size={14} className="shrink-0" />
+      </button>
+      <button
+        type="button"
+        className="rounded-sm text-text-muted hover:text-notice-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
+        title={t("message.cancelEdit")}
+        aria-label={t("message.cancelEdit")}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          callbacks?.onCancelFailedEdit?.(message);
+        }}
+      >
+        <Icon name="close" size={14} className="shrink-0" />
+      </button>
+    </span>
+  );
+}
 
 export function resolveOwnDeliveryIndicatorNode(
   ownDeliveryStatus: MessageBubbleOwnDeliveryStatus | null,

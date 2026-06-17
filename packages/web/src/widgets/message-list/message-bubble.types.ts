@@ -34,6 +34,10 @@ export interface MessageBubbleCallbacks {
   onRetryFailedOutgoing?: (message: MockMessage) => void;
   /** Drop a failed optimistic outgoing message from the list. */
   onRemoveFailedOutgoing?: (message: MockMessage) => void;
+  /** Retry a failed optimistic edit for an existing message. */
+  onRetryFailedEdit?: (message: MockMessage) => void;
+  /** Revert a failed optimistic edit back to the previous message body. */
+  onCancelFailedEdit?: (message: MockMessage) => void;
 }
 
 export interface MessageBubbleProps {

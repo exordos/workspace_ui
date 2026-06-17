@@ -1,5 +1,6 @@
-import React, { useCallback, useMemo, useRef } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import { useInstancesStore } from "~/entities/instance/instance.model";
+import { canStartMessageContentEdit } from "~/entities/message/message-edit-policy.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { formatMessageTimeShort } from "~/shared/lib/datetime.lib";
 import { getJitsiMeetingUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
@@ -9,6 +10,7 @@ import { useProtectedMessageHtml } from "~/shared/lib/protected-message-media.ho
 import { filterVisibleContextSections } from "./message-bubble-actions.lib";
 import {
   MessageBubbleStandardBody,
+  resolveMessageEditStatusIndicatorNode,
   resolveOwnDeliveryIndicatorNode,
 } from "./message-bubble-content.ui";
 import { MessageBubbleContextMenu } from "./message-bubble-context-menu.ui";
@@ -52,6 +54,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     const linkPreviewVisibilityRef = useRef<HTMLDivElement>(null);
     const groupedContainerRef = useRef<HTMLDivElement>(null);
     const regularContainerRef = useRef<HTMLDivElement>(null);
+    const [canEditMessageContentForMenu, setCanEditMessageContentForMenu] = useState(false);
 
     const jitsiMeetBaseUrl = useInstancesStore((s) => s.jitsiMeetBaseUrl);
     const jitsiLinkOptions = useMemo<JitsiLinkOptions>(
@@ -120,6 +123,17 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       getJitsiMeetingUrl(displayHtmlForJitsi, jitsiLinkOptions);
     const isJitsiCall = jitsiUrl != null;
     const jitsiLocationName = isJitsiCall ? resolveJitsiLocationName(message) : "";
+    const handleBeforeMenuOpen = useCallback(() => {
+      const { currentUserMessageEditPolicy } = useUsersStore.getState();
+      setCanEditMessageContentForMenu(
+        canStartMessageContentEdit(
+          message,
+          currentUserId ?? (isOwn ? message.sender_id : undefined),
+          currentUserMessageEditPolicy,
+          Math.floor(Date.now() / 1000),
+        ),
+      );
+    }, [currentUserId, isOwn, message]);
 
     const interactions = useMessageBubbleInteractions({
       message,
@@ -131,6 +145,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       mediaGallery,
       callbacks,
       onEmojiPickerOpen,
+      onBeforeMenuOpen: handleBeforeMenuOpen,
       messageBodyRef,
       linkPreviewVisibilityRef,
       groupedContainerRef,
@@ -147,11 +162,15 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     );
 
     const ownDeliveryStatus = isOwn ? resolveOwnMessageDeliveryStatus(message) : null;
-    const ownDeliveryIndicator = resolveOwnDeliveryIndicatorNode(
+    const deliveryStatusIndicator = resolveOwnDeliveryIndicatorNode(
       ownDeliveryStatus,
       message,
       callbacks,
     );
+    const editStatusIndicator = isOwn
+      ? resolveMessageEditStatusIndicatorNode(message, callbacks)
+      : null;
+    const ownDeliveryIndicator = editStatusIndicator ?? deliveryStatusIndicator;
     const bubbleSurfaceClass = "rounded-[18px]";
     const focusedBubbleBackgroundClass = !isSelected && isFocused ? "bg-card-bg-active" : null;
     const ownBubbleBackgroundClass = focusedBubbleBackgroundClass ?? "bg-msg-own-bg";
@@ -164,10 +183,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       () =>
         filterVisibleContextSections(contextSections, {
           isOwn,
+          canEditMessageContent: canEditMessageContentForMenu,
           isJitsiCall,
           callbacks,
         }),
-      [contextSections, isOwn, isJitsiCall, callbacks],
+      [contextSections, isOwn, canEditMessageContentForMenu, isJitsiCall, callbacks],
     );
 
     const contextMenu = (

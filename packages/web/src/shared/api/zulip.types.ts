@@ -118,6 +118,10 @@ export interface RegisterQueueResult {
   realm_can_resolve_topics_group?: ZulipGroupSettingValue;
   /** Present when `realm` is in `fetch_event_types` (Zulip 10+). */
   realm_can_move_messages_between_channels_group?: ZulipGroupSettingValue;
+  /** Present when `realm` is in `fetch_event_types`. */
+  realm_allow_message_editing?: boolean;
+  /** `null` means message content can be edited indefinitely. */
+  realm_message_content_edit_limit_seconds?: number | null;
   /** Present when `realm` is included in `fetch_event_types` (Zulip 9.0+). */
   server_thumbnail_formats?: ZulipServerThumbnailFormat[];
   /** Present when `realm` is included in `fetch_event_types`. */
@@ -284,6 +288,7 @@ export interface MockStream {
 }
 
 export type MockMessageDeliveryStatus = "sending" | "failed" | "sent";
+export type MockMessageEditStatus = "saving" | "failed";
 
 export interface MockMessage {
   id: number;
@@ -310,6 +315,16 @@ export interface MockMessage {
   reactions?: Reaction[];
   /** Local delivery state for optimistic outgoing messages. */
   delivery_status?: MockMessageDeliveryStatus;
+  /** Local state for optimistic edits of existing server messages. */
+  edit_status?: MockMessageEditStatus;
+  /** Markdown submitted for an optimistic edit; used for retry after failure. */
+  pending_edit_markdown?: string;
+  /** Message body before the optimistic edit; used to cancel a failed edit. */
+  previous_content?: string;
+  /** Markdown source before the optimistic edit; used to cancel a failed edit. */
+  previous_markdown_source?: string;
+  /** Last server/client error for an optimistic edit. */
+  edit_error?: string;
   /**
    * Stable client key for list reconciliation (negative id while optimistic).
    * Preserved after the server assigns a positive message id.

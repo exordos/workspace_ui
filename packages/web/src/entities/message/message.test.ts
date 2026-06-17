@@ -729,6 +729,113 @@ describe("currentChatMessagesStore", () => {
       const previews = useCurrentChatMessagesStore.getState().messages[0]!.link_previews;
       expect(previews?.map((p) => p.targetUrl)).toEqual(["https://stay.test"]);
     });
+
+    it("clears optimistic edit state when server content arrives", () => {
+      useCurrentChatMessagesStore.getState().setMessages([
+        mockMsg({
+          id: 1,
+          content: "local",
+          markdown_source: "local",
+          edit_status: "saving",
+          pending_edit_markdown: "local",
+          previous_content: "old",
+          previous_markdown_source: "old",
+          edit_error: "failed",
+        }),
+      ]);
+
+      useCurrentChatMessagesStore.getState().updateMessageContent(1, "server", "server");
+
+      const message = useCurrentChatMessagesStore.getState().messages[0]!;
+      expect(message.content).toBe("server");
+      expect(message.markdown_source).toBe("server");
+      expect(message.edit_status).toBeUndefined();
+      expect(message.pending_edit_markdown).toBeUndefined();
+      expect(message.previous_content).toBeUndefined();
+      expect(message.edit_error).toBeUndefined();
+    });
+  });
+
+  describe("optimistic message edit", () => {
+    it("applies optimistic markdown and remembers previous body", () => {
+      useCurrentChatMessagesStore
+        .getState()
+        .setMessages([mockMsg({ id: 1, content: "<p>old</p>", markdown_source: "old" })]);
+
+      useCurrentChatMessagesStore.getState().applyOptimisticMessageEdit(1, "new **body**");
+
+      const message = useCurrentChatMessagesStore.getState().messages[0]!;
+      expect(message.content).toBe("new **body**");
+      expect(message.markdown_source).toBe("new **body**");
+      expect(message.edit_status).toBe("saving");
+      expect(message.pending_edit_markdown).toBe("new **body**");
+      expect(message.previous_content).toBe("<p>old</p>");
+      expect(message.previous_markdown_source).toBe("old");
+    });
+
+    it("commits optimistic edit with server message", () => {
+      useCurrentChatMessagesStore.getState().setMessages([
+        mockMsg({
+          id: 1,
+          content: "local",
+          markdown_source: "local",
+          edit_status: "saving",
+          pending_edit_markdown: "local",
+          previous_content: "old",
+        }),
+      ]);
+
+      useCurrentChatMessagesStore
+        .getState()
+        .commitOptimisticMessageEdit(
+          1,
+          mockMsg({ id: 1, content: "<p>server</p>", markdown_source: "server" }),
+        );
+
+      const message = useCurrentChatMessagesStore.getState().messages[0]!;
+      expect(message.content).toBe("<p>server</p>");
+      expect(message.markdown_source).toBe("server");
+      expect(message.edit_status).toBeUndefined();
+      expect(message.previous_content).toBeUndefined();
+    });
+
+    it("marks optimistic edit failed while keeping edited body", () => {
+      useCurrentChatMessagesStore
+        .getState()
+        .setMessages([mockMsg({ id: 1, content: "new", edit_status: "saving" })]);
+
+      useCurrentChatMessagesStore.getState().failOptimisticMessageEdit(1, "server rejected");
+
+      const message = useCurrentChatMessagesStore.getState().messages[0]!;
+      expect(message.content).toBe("new");
+      expect(message.edit_status).toBe("failed");
+      expect(message.edit_error).toBe("server rejected");
+    });
+
+    it("cancels failed optimistic edit and restores previous body", () => {
+      useCurrentChatMessagesStore.getState().setMessages([
+        mockMsg({
+          id: 1,
+          content: "new",
+          markdown_source: "new",
+          edit_status: "failed",
+          pending_edit_markdown: "new",
+          previous_content: "<p>old</p>",
+          previous_markdown_source: "old",
+          edit_error: "server rejected",
+        }),
+      ]);
+
+      useCurrentChatMessagesStore.getState().cancelFailedMessageEdit(1);
+
+      const message = useCurrentChatMessagesStore.getState().messages[0]!;
+      expect(message.content).toBe("<p>old</p>");
+      expect(message.markdown_source).toBe("old");
+      expect(message.edit_status).toBeUndefined();
+      expect(message.pending_edit_markdown).toBeUndefined();
+      expect(message.previous_content).toBeUndefined();
+      expect(message.edit_error).toBeUndefined();
+    });
   });
 
   describe("moveStreamTopicMessages", () => {

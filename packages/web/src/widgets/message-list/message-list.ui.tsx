@@ -131,6 +131,8 @@ export const MessageListInner: React.FC<MessageListProps> = ({
             onOpenDirectMessage: callbacks.onOpenDirectMessage,
             onRetryFailedOutgoing: callbacks.onRetryFailedOutgoing,
             onRemoveFailedOutgoing: callbacks.onRemoveFailedOutgoing,
+            onRetryFailedEdit: callbacks.onRetryFailedEdit,
+            onCancelFailedEdit: callbacks.onCancelFailedEdit,
           }
         : undefined,
     [callbacks],

@@ -50,6 +50,8 @@ export function useChatMessageListCallbacks(
     setReadReceiptsOpen,
     onRetryFailedOutgoing: retryFailedOutgoing,
     onRemoveFailedOutgoing: removeFailedOutgoing,
+    onRetryFailedEdit: retryFailedEdit,
+    onCancelFailedEdit: cancelFailedEdit,
   } = params;
 
   const resolveStreamNameForPermalink = useMemo(
@@ -168,6 +170,12 @@ export function useChatMessageListCallbacks(
       onRemoveFailedOutgoing(msg) {
         removeFailedOutgoing(msg);
       },
+      onRetryFailedEdit(msg) {
+        retryFailedEdit(msg);
+      },
+      onCancelFailedEdit(msg) {
+        cancelFailedEdit(msg);
+      },
     }),
     [
       selectionMode,
@@ -199,6 +207,8 @@ export function useChatMessageListCallbacks(
       setReadReceiptsOpen,
       retryFailedOutgoing,
       removeFailedOutgoing,
+      retryFailedEdit,
+      cancelFailedEdit,
     ],
   );
 }

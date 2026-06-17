@@ -26,6 +26,8 @@ export interface MessageListCallbacks {
   onOpenDirectMessage?: (userId: number) => void;
   onRetryFailedOutgoing?: (message: MockMessage) => void;
   onRemoveFailedOutgoing?: (message: MockMessage) => void;
+  onRetryFailedEdit?: (message: MockMessage) => void;
+  onCancelFailedEdit?: (message: MockMessage) => void;
 }
 
 /** Props for grouped non-own messages (avatar column + bubbles). */

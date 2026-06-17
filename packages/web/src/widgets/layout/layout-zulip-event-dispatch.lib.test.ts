@@ -4,6 +4,7 @@ import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInboxStore } from "~/entities/inbox/inbox.model";
 import type { InboxEntry } from "~/entities/inbox/inbox.types";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
+import { useUsersStore } from "~/entities/user/user.model";
 import * as client from "~/shared/api/client";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { dispatchZulipEvent } from "./layout-zulip-event-dispatch.lib";
@@ -177,6 +178,110 @@ describe("dispatchZulipEvent", () => {
       messages: [],
       pendingOutgoingEchoKeys: [],
       isLoadingNewer: false,
+    });
+    useUsersStore.getState().clear();
+  });
+
+  describe("realm", () => {
+    it("updates message edit policy from realm update_dict event", () => {
+      const { ctx } = buildCtx();
+      dispatchZulipEvent(
+        {
+          id: 1,
+          type: "realm",
+          op: "update_dict",
+          data: {
+            allow_message_editing: false,
+            message_content_edit_limit_seconds: null,
+          },
+        },
+        ctx,
+      );
+
+      expect(useUsersStore.getState().currentUserMessageEditPolicy).toEqual({
+        allowMessageEditing: false,
+        messageContentEditLimitSeconds: null,
+      });
+    });
+
+    it("updates message edit policy from realm update event", () => {
+      const { ctx } = buildCtx();
+      dispatchZulipEvent(
+        {
+          id: 1,
+          type: "realm",
+          op: "update",
+          property: "allow_message_editing",
+          value: false,
+        },
+        ctx,
+      );
+
+      expect(useUsersStore.getState().currentUserMessageEditPolicy).toEqual({
+        allowMessageEditing: false,
+      });
+    });
+
+    it("normalizes legacy zero message edit time limit from realm update events to null", () => {
+      const { ctx } = buildCtx();
+      dispatchZulipEvent(
+        {
+          id: 1,
+          type: "realm",
+          op: "update",
+          property: "message_content_edit_limit_seconds",
+          value: 0,
+        },
+        ctx,
+      );
+
+      expect(useUsersStore.getState().currentUserMessageEditPolicy).toEqual({
+        messageContentEditLimitSeconds: null,
+      });
+    });
+
+    it("normalizes legacy zero message edit time limit from realm update_dict events to null", () => {
+      const { ctx } = buildCtx();
+      dispatchZulipEvent(
+        {
+          id: 1,
+          type: "realm",
+          op: "update_dict",
+          data: {
+            message_content_edit_limit_seconds: 0,
+          },
+        },
+        ctx,
+      );
+
+      expect(useUsersStore.getState().currentUserMessageEditPolicy).toEqual({
+        messageContentEditLimitSeconds: null,
+      });
+    });
+
+    it("ignores invalid message edit policy values from realm update_dict event", () => {
+      useUsersStore.getState().setCurrentUserMessageEditPolicy({
+        allowMessageEditing: true,
+        messageContentEditLimitSeconds: 600,
+      });
+      const { ctx } = buildCtx();
+      dispatchZulipEvent(
+        {
+          id: 1,
+          type: "realm",
+          op: "update_dict",
+          data: {
+            allow_message_editing: "no",
+            message_content_edit_limit_seconds: -1,
+          },
+        },
+        ctx,
+      );
+
+      expect(useUsersStore.getState().currentUserMessageEditPolicy).toEqual({
+        allowMessageEditing: true,
+        messageContentEditLimitSeconds: 600,
+      });
     });
   });
 

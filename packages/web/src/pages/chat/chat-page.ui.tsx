@@ -12,6 +12,7 @@ import { resolveDraftTargetIds } from "~/entities/draft/draft-chat-target.lib";
 import { createDraft, deleteDraftOnServer, updateDraftOnServer } from "~/entities/draft/draft.api";
 import { useDraftStore } from "~/entities/draft/draft.model";
 import type { DraftType } from "~/entities/draft/draft.types";
+import { canStartMessageContentEdit } from "~/entities/message/message-edit-policy.lib";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore } from "~/entities/user/user.model";
@@ -113,6 +114,7 @@ export const ChatPage: React.FC = () => {
   const dmsFromStore = useChatListStore((s) => s.dms());
   const expandStreamSlug = useSidebarConfigStore((s) => s.expandStreamSlug);
   const currentUserId = useChatListStore((s) => s.currentUserId);
+  const currentUserMessageEditPolicy = useUsersStore((s) => s.currentUserMessageEditPolicy);
   const route = useChatRouteContext({
     streamSlug,
     topicName,
@@ -219,7 +221,18 @@ export const ChatPage: React.FC = () => {
   const removeMessagesFromStore = useCurrentChatMessagesStore((s) => s.removeMessages);
   const updateMessageFlagsInStore = useCurrentChatMessagesStore((s) => s.updateMessageFlags);
   const updateMessageReactionInStore = useCurrentChatMessagesStore((s) => s.updateMessageReaction);
-  const updateMessageContentInStore = useCurrentChatMessagesStore((s) => s.updateMessageContent);
+  const applyOptimisticMessageEditInStore = useCurrentChatMessagesStore(
+    (s) => s.applyOptimisticMessageEdit,
+  );
+  const commitOptimisticMessageEditInStore = useCurrentChatMessagesStore(
+    (s) => s.commitOptimisticMessageEdit,
+  );
+  const failOptimisticMessageEditInStore = useCurrentChatMessagesStore(
+    (s) => s.failOptimisticMessageEdit,
+  );
+  const cancelFailedMessageEditInStore = useCurrentChatMessagesStore(
+    (s) => s.cancelFailedMessageEdit,
+  );
   const isLoadingMore = useCurrentChatMessagesStore((s) => s.isLoadingMore);
   const isLoadingNewer = useCurrentChatMessagesStore((s) => s.isLoadingNewer);
   const hasNewerMessages = useCurrentChatMessagesStore((s) => s.hasNewerMessages);
@@ -290,10 +303,6 @@ export const ChatPage: React.FC = () => {
           isOwn: currentUserId != null && message.sender_id === currentUserId,
         }))
         .filter((message) => message.content.length > 0),
-    [messages, currentUserId],
-  );
-  const lastOwnMessageForEdit = useMemo(
-    () => resolveLastOwnMessageForEdit(messages, currentUserId),
     [messages, currentUserId],
   );
   const aiChatContext = useMemo<AiReplyRequest["chatContext"] | undefined>(() => {
@@ -652,6 +661,17 @@ export const ChatPage: React.FC = () => {
   const requestMessageEdit = useCallback(
     (message: MockMessage) => {
       if (message.id <= 0) return;
+      if (
+        !canStartMessageContentEdit(
+          message,
+          currentUserId,
+          currentUserMessageEditPolicy,
+          Math.floor(Date.now() / 1000),
+        )
+      ) {
+        setActionError(t("message.editUnavailable"));
+        return;
+      }
       // Token prevents edit race — apply only the latest request result.
       const requestToken = editRequestTokenRef.current + 1;
       editRequestTokenRef.current = requestToken;
@@ -661,7 +681,99 @@ export const ChatPage: React.FC = () => {
         setComposerEditSession({ messageId: message.id, initialMarkdown });
       });
     },
-    [resolveEditableMessageMarkdown],
+    [currentUserId, currentUserMessageEditPolicy, resolveEditableMessageMarkdown],
+  );
+
+  const persistOptimisticMessageEdit = useCallback(
+    async (messageId: number, markdown: string) => {
+      try {
+        await updateMessage(messageId, { content: markdown });
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : t("message.saveError");
+        failOptimisticMessageEditInStore(messageId, errorMessage);
+        setActionError(errorMessage);
+        throw err;
+      }
+
+      try {
+        const fresh = await fetchMessageById(messageId);
+        commitOptimisticMessageEditInStore(messageId, fresh);
+      } catch (err) {
+        log.warn("Fetch edited message failed after successful save", {
+          messageId,
+          error: String(err),
+        });
+        commitOptimisticMessageEditInStore(messageId);
+      }
+    },
+    [commitOptimisticMessageEditInStore, failOptimisticMessageEditInStore],
+  );
+
+  const handleSubmitComposerEdit = useCallback(
+    async (messageId: number, markdown: string) => {
+      setActionError(null);
+      const message = messages.find((candidate) => candidate.id === messageId);
+      if (
+        message != null &&
+        !canStartMessageContentEdit(
+          message,
+          currentUserId,
+          currentUserMessageEditPolicy,
+          Math.floor(Date.now() / 1000),
+        )
+      ) {
+        const messageEditUnavailable = t("message.editUnavailable");
+        setActionError(messageEditUnavailable);
+        throw new Error(messageEditUnavailable);
+      }
+      applyOptimisticMessageEditInStore(messageId, markdown);
+      setComposerEditSession(null);
+      await persistOptimisticMessageEdit(messageId, markdown);
+    },
+    [
+      messages,
+      currentUserId,
+      currentUserMessageEditPolicy,
+      applyOptimisticMessageEditInStore,
+      persistOptimisticMessageEdit,
+    ],
+  );
+
+  const handleRetryFailedEdit = useCallback(
+    (message: MockMessage) => {
+      if (message.edit_status !== "failed") return;
+      const markdown = message.pending_edit_markdown?.trim();
+      if (markdown == null || markdown.length === 0) return;
+      if (
+        !canStartMessageContentEdit(
+          message,
+          currentUserId,
+          currentUserMessageEditPolicy,
+          Math.floor(Date.now() / 1000),
+        )
+      ) {
+        setActionError(t("message.editUnavailable"));
+        return;
+      }
+      setActionError(null);
+      applyOptimisticMessageEditInStore(message.id, markdown);
+      void persistOptimisticMessageEdit(message.id, markdown).catch(() => undefined);
+    },
+    [
+      currentUserId,
+      currentUserMessageEditPolicy,
+      applyOptimisticMessageEditInStore,
+      persistOptimisticMessageEdit,
+    ],
+  );
+
+  const handleCancelFailedEdit = useCallback(
+    (message: MockMessage) => {
+      if (message.edit_status !== "failed") return;
+      cancelFailedMessageEditInStore(message.id);
+      setActionError(null);
+    },
+    [cancelFailedMessageEditInStore],
   );
 
   const messageCallbacks = useChatMessageListCallbacks({
@@ -694,31 +806,20 @@ export const ChatPage: React.FC = () => {
     setReadReceiptsOpen,
     onRetryFailedOutgoing: handleRetryFailedOutgoing,
     onRemoveFailedOutgoing: handleRemoveFailedOutgoing,
+    onRetryFailedEdit: handleRetryFailedEdit,
+    onCancelFailedEdit: handleCancelFailedEdit,
   });
 
-  const handleSubmitComposerEdit = useCallback(
-    async (messageId: number, markdown: string) => {
-      setActionError(null);
-      try {
-        // Persist to server and sync local store immediately.
-        await updateMessage(messageId, { content: markdown });
-        const fresh = await fetchMessageById(messageId);
-        if (fresh) {
-          updateMessageContentInStore(fresh.id, fresh.content, fresh.markdown_source);
-        }
-        setComposerEditSession(null);
-      } catch (err) {
-        setActionError(err instanceof Error ? err.message : t("message.saveError"));
-        throw err;
-      }
-    },
-    [updateMessageContentInStore, t],
-  );
-
   const handleEditLastMessage = useCallback(() => {
+    const lastOwnMessageForEdit = resolveLastOwnMessageForEdit(
+      messages,
+      currentUserId,
+      currentUserMessageEditPolicy,
+      Math.floor(Date.now() / 1000),
+    );
     if (lastOwnMessageForEdit == null) return;
     requestMessageEdit(lastOwnMessageForEdit);
-  }, [lastOwnMessageForEdit, requestMessageEdit]);
+  }, [messages, currentUserId, currentUserMessageEditPolicy, requestMessageEdit]);
 
   const handleForwardTo = useCallback(
     (stream: string, topic: string, to?: number[]) => {

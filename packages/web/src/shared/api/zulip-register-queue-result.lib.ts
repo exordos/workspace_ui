@@ -1,3 +1,7 @@
+import {
+  parseMessageContentEditLimitSeconds,
+  parseMessageEditPolicyBoolean,
+} from "~/shared/lib/message-edit-policy-parse.lib";
 import { normalizeGroupSettingValue } from "~/shared/lib/zulip-group-setting.lib";
 import { extractUserSettingsFromRegisterData } from "~/shared/lib/zulip-notification-settings.lib";
 import { parseSubscriptions } from "./zulip-queue-parse-subscription.lib";
@@ -134,6 +138,8 @@ export interface RegisterQueueRawData {
   realm_can_add_subscribers_group?: unknown;
   realm_can_resolve_topics_group?: unknown;
   realm_can_move_messages_between_channels_group?: unknown;
+  realm_allow_message_editing?: unknown;
+  realm_message_content_edit_limit_seconds?: unknown;
   realm_user_groups?: unknown;
   server_thumbnail_formats?: unknown;
   max_avatar_file_size_mib?: unknown;
@@ -153,6 +159,8 @@ export interface RegisterQueueParsedMetadata {
   realmCanAddSubscribersGroup: ReturnType<typeof normalizeGroupSettingValue>;
   realmCanResolveTopicsGroup: ReturnType<typeof normalizeGroupSettingValue>;
   realmCanMoveMessagesBetweenChannelsGroup: ReturnType<typeof normalizeGroupSettingValue>;
+  realmAllowMessageEditing: ReturnType<typeof parseMessageEditPolicyBoolean>;
+  realmMessageContentEditLimitSeconds: ReturnType<typeof parseMessageContentEditLimitSeconds>;
   realmUserGroups: ZulipRealmUserGroup[] | null;
   serverThumbnailFormats: ReturnType<typeof parseServerThumbnailFormats>;
   maxAvatarFileSizeMib: ReturnType<typeof parseMaxAvatarFileSizeMib>;
@@ -175,6 +183,10 @@ export function parseRegisterQueueMetadata(
     realmCanResolveTopicsGroup: normalizeGroupSettingValue(data.realm_can_resolve_topics_group),
     realmCanMoveMessagesBetweenChannelsGroup: normalizeGroupSettingValue(
       data.realm_can_move_messages_between_channels_group,
+    ),
+    realmAllowMessageEditing: parseMessageEditPolicyBoolean(data.realm_allow_message_editing),
+    realmMessageContentEditLimitSeconds: parseMessageContentEditLimitSeconds(
+      data.realm_message_content_edit_limit_seconds,
     ),
     realmUserGroups: parseRealmUserGroups(data.realm_user_groups),
     serverThumbnailFormats: parseServerThumbnailFormats(data.server_thumbnail_formats),
@@ -228,6 +240,12 @@ export function buildRegisterQueueResult(
           realm_can_move_messages_between_channels_group:
             metadata.realmCanMoveMessagesBetweenChannelsGroup,
         }
+      : {}),
+    ...(metadata.realmAllowMessageEditing != null
+      ? { realm_allow_message_editing: metadata.realmAllowMessageEditing }
+      : {}),
+    ...(metadata.realmMessageContentEditLimitSeconds !== undefined
+      ? { realm_message_content_edit_limit_seconds: metadata.realmMessageContentEditLimitSeconds }
       : {}),
     ...(metadata.realmUserGroups ? { realm_user_groups: metadata.realmUserGroups } : {}),
     ...(metadata.serverThumbnailFormats

@@ -397,6 +397,78 @@ describe("registerQueue", () => {
       direct_subgroups: [14],
     });
   });
+
+  it("parses message edit policy from register payload", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        queue_id: "q-123",
+        last_event_id: -1,
+        realm_allow_message_editing: true,
+        realm_message_content_edit_limit_seconds: 600,
+      },
+      raw: { statusText: "OK" },
+    });
+
+    const result = await registerQueue(["message"]);
+    expect(result.realm_allow_message_editing).toBe(true);
+    expect(result.realm_message_content_edit_limit_seconds).toBe(600);
+  });
+
+  it("parses null message edit time limit from register payload", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        queue_id: "q-123",
+        last_event_id: -1,
+        realm_message_content_edit_limit_seconds: null,
+      },
+      raw: { statusText: "OK" },
+    });
+
+    const result = await registerQueue(["message"]);
+    expect(result.realm_message_content_edit_limit_seconds).toBeNull();
+  });
+
+  it("normalizes legacy zero message edit time limit from register payload to null", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        queue_id: "q-123",
+        last_event_id: -1,
+        realm_message_content_edit_limit_seconds: 0,
+      },
+      raw: { statusText: "OK" },
+    });
+
+    const result = await registerQueue(["message"]);
+    expect(result.realm_message_content_edit_limit_seconds).toBeNull();
+  });
+
+  it("ignores invalid message edit policy values from register payload", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        queue_id: "q-123",
+        last_event_id: -1,
+        realm_allow_message_editing: "yes",
+        realm_message_content_edit_limit_seconds: -1,
+      },
+      raw: { statusText: "OK" },
+    });
+
+    const result = await registerQueue(["message"]);
+    expect(result.realm_allow_message_editing).toBeUndefined();
+    expect(result.realm_message_content_edit_limit_seconds).toBeUndefined();
+  });
 });
 
 describe("registerQueueForCredentials", () => {

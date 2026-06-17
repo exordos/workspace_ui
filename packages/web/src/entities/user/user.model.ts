@@ -9,6 +9,7 @@ import type {
 } from "~/shared/api/zulip.types";
 import { bumpAvatarVersion } from "~/shared/lib/avatar";
 import type { ZulipCustomProfileDataMap } from "~/shared/lib/user-profile-fields.lib";
+import type { CurrentUserMessageEditPolicy } from "~/shared/types/message-edit-policy";
 
 export type PresenceStatus = "active" | "idle";
 
@@ -66,11 +67,13 @@ interface UsersState {
   users: Map<number, UserRecord>;
   emailToUserId: Map<string, number>;
   currentUserChannelCapabilities: CurrentUserChannelCapabilities;
+  currentUserMessageEditPolicy: CurrentUserMessageEditPolicy;
 
   mergeUser: (payload: Partial<UserRecord> & { user_id: number }) => void;
   mergeUsers: (list: (Partial<UserRecord> & { user_id: number })[]) => void;
   mergeFromMessage: (msg: ZulipRawMessage) => void;
   setCurrentUserChannelCapabilities: (capabilities: CurrentUserChannelCapabilities) => void;
+  setCurrentUserMessageEditPolicy: (policy: CurrentUserMessageEditPolicy) => void;
   setPresenceByEmail: (email: string, presence: UserPresence) => void;
   setPresence: (userId: number, presence: UserPresence) => void;
   setStatus: (userId: number, status: UserStatus | null, fetchedAt?: number) => void;
@@ -87,6 +90,7 @@ interface UsersState {
 const emptyUsers = (): Map<number, UserRecord> => new Map();
 const emptyEmailMap = (): Map<string, number> => new Map();
 const defaultCurrentUserChannelCapabilities = (): CurrentUserChannelCapabilities => ({});
+const defaultCurrentUserMessageEditPolicy = (): CurrentUserMessageEditPolicy => ({});
 
 let _cachedAvatarMap: Map<number, string> | null = null;
 let _cachedAvatarMapUsersRef: Map<number, UserRecord> | null = null;
@@ -113,6 +117,7 @@ export const useUsersStore = create<UsersState>((set, get) => ({
   users: emptyUsers(),
   emailToUserId: emptyEmailMap(),
   currentUserChannelCapabilities: defaultCurrentUserChannelCapabilities(),
+  currentUserMessageEditPolicy: defaultCurrentUserMessageEditPolicy(),
 
   mergeUser(payload) {
     const { user_id } = payload;
@@ -203,6 +208,10 @@ export const useUsersStore = create<UsersState>((set, get) => ({
 
   setCurrentUserChannelCapabilities(capabilities) {
     set({ currentUserChannelCapabilities: capabilities });
+  },
+
+  setCurrentUserMessageEditPolicy(policy) {
+    set({ currentUserMessageEditPolicy: policy });
   },
 
   setPresenceByEmail(email, presence) {
@@ -307,6 +316,7 @@ export const useUsersStore = create<UsersState>((set, get) => ({
       users: emptyUsers(),
       emailToUserId: emptyEmailMap(),
       currentUserChannelCapabilities: defaultCurrentUserChannelCapabilities(),
+      currentUserMessageEditPolicy: defaultCurrentUserMessageEditPolicy(),
     });
   },
 }));

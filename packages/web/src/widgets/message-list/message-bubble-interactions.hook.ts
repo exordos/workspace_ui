@@ -41,6 +41,7 @@ export interface UseMessageBubbleInteractionsParams {
   mediaGallery?: MessageMediaGallery;
   callbacks?: MessageBubbleCallbacks;
   onEmojiPickerOpen?: () => void;
+  onBeforeMenuOpen?: () => void;
   messageBodyRef: RefObject<HTMLDivElement | null>;
   linkPreviewVisibilityRef: RefObject<HTMLDivElement | null>;
   groupedContainerRef: RefObject<HTMLDivElement | null>;
@@ -77,6 +78,7 @@ export function useMessageBubbleInteractions({
   mediaGallery,
   callbacks,
   onEmojiPickerOpen,
+  onBeforeMenuOpen,
   messageBodyRef,
   linkPreviewVisibilityRef,
   groupedContainerRef,
@@ -134,20 +136,28 @@ export function useMessageBubbleInteractions({
     }
   }, []);
 
-  const openContextMenuAtCursor = useCallback((event: MouseEvent) => {
-    setContextMenuAnchor({
-      left: event.clientX + MESSAGE_CONTEXT_MENU_CURSOR_GAP_PX,
-      top: event.clientY,
-    });
-    setMenuSource("context");
+  const openMenu = useCallback(() => {
+    onBeforeMenuOpen?.();
     setMenuOpen(true);
-  }, []);
+  }, [onBeforeMenuOpen]);
+
+  const openContextMenuAtCursor = useCallback(
+    (event: MouseEvent) => {
+      setContextMenuAnchor({
+        left: event.clientX + MESSAGE_CONTEXT_MENU_CURSOR_GAP_PX,
+        top: event.clientY,
+      });
+      setMenuSource("context");
+      openMenu();
+    },
+    [openMenu],
+  );
 
   const openContextMenuFromTrigger = useCallback(() => {
     setContextMenuAnchor(null);
     setMenuSource("trigger");
-    setMenuOpen(true);
-  }, []);
+    openMenu();
+  }, [openMenu]);
 
   const handleNativeContextMenu = useCallback(
     (event: Event) => {
@@ -266,14 +276,19 @@ export function useMessageBubbleInteractions({
     [],
   );
 
-  const handleContextMenuOpenChange = useCallback((nextOpen: boolean) => {
-    if (!nextOpen) {
-      replySelectionRef.current = undefined;
-      setContextMenuAnchor(null);
-      setEmojiPickerOpen(false);
-    }
-    setMenuOpen(nextOpen);
-  }, []);
+  const handleContextMenuOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      if (!nextOpen) {
+        replySelectionRef.current = undefined;
+        setContextMenuAnchor(null);
+        setEmojiPickerOpen(false);
+        setMenuOpen(false);
+        return;
+      }
+      openMenu();
+    },
+    [openMenu],
+  );
 
   const handleMessageBodyClickEvent = useCallback(
     (event: MouseEvent) => {

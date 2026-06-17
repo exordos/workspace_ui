@@ -217,6 +217,16 @@ export function createLayoutBootstrapQueueRegisteredHandler(
           }
         : {}),
     });
+    useUsersStore.getState().setCurrentUserMessageEditPolicy({
+      ...(registration?.realm_allow_message_editing != null
+        ? { allowMessageEditing: registration.realm_allow_message_editing }
+        : {}),
+      ...(registration?.realm_message_content_edit_limit_seconds !== undefined
+        ? {
+            messageContentEditLimitSeconds: registration.realm_message_content_edit_limit_seconds,
+          }
+        : {}),
+    });
     useUserGroupsStore.getState().setGroups(registration?.realm_user_groups ?? []);
     const streamRows = toStreamMetadataRows(registration?.subscriptions ?? []);
     const chatListState = useChatListStore.getState();

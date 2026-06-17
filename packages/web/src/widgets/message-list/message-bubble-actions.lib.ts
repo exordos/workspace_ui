@@ -406,6 +406,7 @@ export function filterVisibleContextSections(
   contextSections: readonly (readonly ContextItemLabel[])[],
   options: {
     isOwn: boolean;
+    canEditMessageContent: boolean;
     isJitsiCall: boolean;
     callbacks?: MessageBubbleCallbacks;
   },
@@ -414,6 +415,9 @@ export function filterVisibleContextSections(
     .map((section) =>
       section.filter((label) => {
         if ((label === "edit" || label === "delete") && !options.isOwn) {
+          return false;
+        }
+        if (label === "edit" && !options.canEditMessageContent) {
           return false;
         }
         if (label === "openInChat" && options.callbacks?.onOpenInChat == null) {

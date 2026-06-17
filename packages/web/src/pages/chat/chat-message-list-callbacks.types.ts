@@ -45,4 +45,6 @@ export interface UseChatMessageListCallbacksParams {
   setReadReceiptsOpen: Dispatch<SetStateAction<boolean>>;
   onRetryFailedOutgoing: (message: MockMessage) => void;
   onRemoveFailedOutgoing: (message: MockMessage) => void;
+  onRetryFailedEdit: (message: MockMessage) => void;
+  onCancelFailedEdit: (message: MockMessage) => void;
 }

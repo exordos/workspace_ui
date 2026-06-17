@@ -47,6 +47,7 @@ const DEFAULT_EVENT_TYPES = [
   "update_message",
   "presence",
   "user_status",
+  "realm",
   "subscription",
   /** Stream lifecycle events so renames and deletes update UI without reload. */
   "stream",

@@ -97,6 +97,9 @@ export async function registerQueue(
     recent_private_conversations?: unknown;
     realm_can_add_subscribers_group?: unknown;
     realm_can_resolve_topics_group?: unknown;
+    realm_can_move_messages_between_channels_group?: unknown;
+    realm_allow_message_editing?: unknown;
+    realm_message_content_edit_limit_seconds?: unknown;
     realm_user_groups?: unknown;
     server_thumbnail_formats?: unknown;
     max_avatar_file_size_mib?: unknown;
@@ -177,6 +180,9 @@ export async function registerQueueForCredentials(
     recent_private_conversations?: unknown;
     realm_can_add_subscribers_group?: unknown;
     realm_can_resolve_topics_group?: unknown;
+    realm_can_move_messages_between_channels_group?: unknown;
+    realm_allow_message_editing?: unknown;
+    realm_message_content_edit_limit_seconds?: unknown;
     realm_user_groups?: unknown;
     server_thumbnail_formats?: unknown;
     max_avatar_file_size_mib?: unknown;

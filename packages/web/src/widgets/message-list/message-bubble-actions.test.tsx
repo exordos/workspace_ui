@@ -106,6 +106,7 @@ describe("MessageBubble edit/delete actions parity", () => {
     buildAuthHeaderMock.mockReset();
     emojiPickerMock.mockReset();
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it("hides edit and delete actions for non-own messages", async () => {
@@ -139,6 +140,48 @@ describe("MessageBubble edit/delete actions parity", () => {
     fireEvent.contextMenu(screen.getByTestId("message-101"));
     fireEvent.click(await screen.findByRole("menuitem", { name: /(delete|удал)/i }));
     expect(onDelete).toHaveBeenCalledWith(expect.objectContaining({ id: 101 }));
+  });
+
+  it("hides edit action when own message edit time has expired", async () => {
+    useUsersStore.getState().setCurrentUserMessageEditPolicy({
+      allowMessageEditing: true,
+      messageContentEditLimitSeconds: 60,
+    });
+
+    render(<MessageBubble message={createMessage({ timestamp: 1000 })} isOwn />);
+
+    fireEvent.contextMenu(screen.getByTestId("message-101"));
+    expect(await screen.findByRole("menuitem", { name: /(delete|удал)/i })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /(edit|редакт)/i })).not.toBeInTheDocument();
+  });
+
+  it("rechecks edit visibility when opening the message menu", async () => {
+    const nowSeconds = 1_781_620_000;
+    const dateNow = vi.spyOn(Date, "now").mockReturnValue(nowSeconds * 1000);
+    useUsersStore.getState().setCurrentUserMessageEditPolicy({
+      allowMessageEditing: true,
+      messageContentEditLimitSeconds: 60,
+    });
+
+    render(
+      <MessageBubble
+        message={createMessage({ timestamp: nowSeconds - 59 })}
+        isOwn
+        callbacks={{
+          onEdit: vi.fn(),
+          onDelete: vi.fn(),
+        }}
+      />,
+    );
+
+    dateNow.mockReturnValue((nowSeconds + 2) * 1000);
+
+    fireEvent.contextMenu(screen.getByTestId("message-101"));
+
+    expect(await screen.findByRole("menuitem", { name: /(delete|удал)/i })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /(edit|редакт)/i })).not.toBeInTheDocument();
+
+    dateNow.mockRestore();
   });
 
   it("dispatches select action from context menu", async () => {
@@ -543,6 +586,51 @@ describe("MessageBubble edit/delete actions parity", () => {
     expect(onRetry).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole("button", { name: /remove message/i }));
     expect(onRemove).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows saving indicator for optimistic message edits", () => {
+    render(
+      <MessageBubble
+        message={createMessage({
+          edit_status: "saving",
+        })}
+        isOwn
+      />,
+    );
+
+    const editStatus = screen.getByTestId("message-edit-status-101");
+    expect(editStatus).toBeInTheDocument();
+    expect(screen.getByText(/saving edit/i)).toHaveClass("sr-only");
+    expect(editStatus.querySelector(".animate-spin")).toBeInTheDocument();
+    expect(screen.queryByTitle(/sent to server/i)).not.toBeInTheDocument();
+  });
+
+  it("shows retry and cancel for failed optimistic message edits", () => {
+    const onRetry = vi.fn();
+    const onCancel = vi.fn();
+    render(
+      <MessageBubble
+        message={createMessage({
+          edit_status: "failed",
+          edit_error: "server rejected",
+        })}
+        isOwn
+        callbacks={{
+          onRetryFailedEdit: onRetry,
+          onCancelFailedEdit: onCancel,
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId("message-edit-status-101")).toHaveAttribute(
+      "title",
+      "server rejected",
+    );
+    expect(screen.queryByTitle(/sent to server/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /retry edit/i }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: /cancel edit/i }));
+    expect(onCancel).toHaveBeenCalledTimes(1);
   });
 
   it("does not leave protected video source URL in rendered HTML", () => {

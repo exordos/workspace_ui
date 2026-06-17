@@ -323,6 +323,7 @@ export function useLayoutZulipEventLoop(options: {
       return;
     }
     useUsersStore.getState().setCurrentUserChannelCapabilities({});
+    useUsersStore.getState().setCurrentUserMessageEditPolicy({});
     setConnectionPhase("connecting");
     let cancelled = false;
     let unsubManualReconnect: (() => void) | null = null;
