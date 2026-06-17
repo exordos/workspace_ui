@@ -11,6 +11,7 @@ export interface MediaItem {
   url: string;
   type: MediaType;
   previewUrl?: string;
+  downloadFileName?: string;
   alt?: string;
   width?: number;
   height?: number;

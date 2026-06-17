@@ -37,6 +37,7 @@ describe("MediaViewerOverlay", () => {
 
   afterEach(() => {
     useMediaViewerStore.getState().close();
+    delete (window as unknown as Record<string, unknown>).electronAPI;
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
@@ -126,6 +127,16 @@ describe("MediaViewerOverlay", () => {
     });
   });
 
+  it("renders raster data display URLs in the main image", () => {
+    useMediaViewerStore.getState().open([{ url: "data:image/png;base64,AAAA", type: "image" }], 0);
+
+    const { container } = render(<MediaViewerOverlay />);
+    const image = container.querySelector("img");
+
+    expect(image).not.toBeNull();
+    expect(image?.getAttribute("src")).toBe("data:image/png;base64,AAAA");
+  });
+
   it("keeps protected video src unset when authenticated fetch fails", async () => {
     const fetchMock = vi.fn(() =>
       Promise.resolve({
@@ -160,6 +171,22 @@ describe("MediaViewerOverlay", () => {
 
     expect(screen.getByRole("toolbar", { name: /media viewer/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /open in new tab/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /download/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /close/i })).toBeInTheDocument();
+  });
+
+  it("hides the open-in-new-tab control in Electron", () => {
+    Object.defineProperty(window, "electronAPI", {
+      configurable: true,
+      value: {},
+    });
+    useMediaViewerStore
+      .getState()
+      .open([{ url: "https://example.com/photo.png", type: "image" }], 0);
+
+    render(<MediaViewerOverlay />);
+
+    expect(screen.queryByRole("button", { name: /open in new tab/i })).toBeNull();
     expect(screen.getByRole("button", { name: /download/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /close/i })).toBeInTheDocument();
   });

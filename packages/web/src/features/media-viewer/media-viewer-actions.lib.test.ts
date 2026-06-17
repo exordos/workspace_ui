@@ -25,8 +25,18 @@ describe("deriveMediaFileName", () => {
     const item: MediaItem = {
       url: "https://example.com/user_uploads/2024/cat.jpg",
       type: "image",
+      downloadFileName: "image-42.jpg",
     };
     expect(deriveMediaFileName(item)).toBe("cat.jpg");
+  });
+
+  it("uses gallery download file name for generic image names", () => {
+    const item: MediaItem = {
+      url: "https://example.com/user_uploads/2024/image.png",
+      type: "image",
+      downloadFileName: "image-42-2.png",
+    };
+    expect(deriveMediaFileName(item)).toBe("image-42-2.png");
   });
 
   it("uses default name when alt and URL segment are empty", () => {
@@ -36,8 +46,10 @@ describe("deriveMediaFileName", () => {
 });
 
 describe("canUseMediaViewerDisplayUrl", () => {
-  it("accepts blob and https URLs", () => {
+  it("accepts blob, raster data, and https URLs", () => {
     expect(canUseMediaViewerDisplayUrl("blob:test")).toBe(true);
+    expect(canUseMediaViewerDisplayUrl("data:image/png;base64,AAAA")).toBe(true);
+    expect(canUseMediaViewerDisplayUrl("data:image/webp;base64,AAAA")).toBe(true);
     expect(canUseMediaViewerDisplayUrl("https://example.com/a.png")).toBe(true);
   });
 
@@ -45,6 +57,7 @@ describe("canUseMediaViewerDisplayUrl", () => {
     expect(canUseMediaViewerDisplayUrl(undefined)).toBe(false);
     expect(canUseMediaViewerDisplayUrl("")).toBe(false);
     expect(canUseMediaViewerDisplayUrl("data:image/svg+xml,test")).toBe(false);
+    expect(canUseMediaViewerDisplayUrl("data:text/html,<h1>x</h1>")).toBe(false);
     expect(canUseMediaViewerDisplayUrl("ftp://example.com/a.png")).toBe(false);
   });
 });
@@ -61,6 +74,15 @@ describe("openMediaInNewTab", () => {
   it("opens blob URLs without guard.url", () => {
     openMediaInNewTab("blob:viewer-image");
     expect(window.open).toHaveBeenCalledWith("blob:viewer-image", "_blank", "noopener,noreferrer");
+  });
+
+  it("opens raster data URLs without guard.url", () => {
+    openMediaInNewTab("data:image/png;base64,AAAA");
+    expect(window.open).toHaveBeenCalledWith(
+      "data:image/png;base64,AAAA",
+      "_blank",
+      "noopener,noreferrer",
+    );
   });
 
   it("opens https URLs after validation", () => {

@@ -8,6 +8,7 @@ const TOOLBAR_BUTTON_CLASS =
 
 export const MediaViewerToolbar: React.FC<MediaViewerToolbarProps> = ({
   actionsEnabled,
+  showOpenInNewTab,
   onOpenInNewTab,
   onDownload,
   onClose,
@@ -49,15 +50,17 @@ export const MediaViewerToolbar: React.FC<MediaViewerToolbarProps> = ({
       role="toolbar"
       aria-label={t("a11y.mediaViewer")}
     >
-      <button
-        type="button"
-        className={TOOLBAR_BUTTON_CLASS}
-        onClick={handleOpenInNewTab}
-        disabled={!actionsEnabled}
-        aria-label={t("mediaViewer.openInNewTab")}
-      >
-        <Icon name="newWindow" size={20} />
-      </button>
+      {showOpenInNewTab ? (
+        <button
+          type="button"
+          className={TOOLBAR_BUTTON_CLASS}
+          onClick={handleOpenInNewTab}
+          disabled={!actionsEnabled}
+          aria-label={t("mediaViewer.openInNewTab")}
+        >
+          <Icon name="newWindow" size={20} />
+        </button>
+      ) : null}
       <button
         type="button"
         className={TOOLBAR_BUTTON_CLASS}

@@ -26,6 +26,7 @@ const A_HREF_REGEX = /<a\b[^>]*\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi
 const AUTH_SRC_REGEX = /data-auth-src\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/gi;
 const MARKDOWN_LINK_REGEX = /!?\[([^\]]*)\]\(([^)\s]+)\)/g;
 const USER_UPLOAD_IMAGE_EXT = /\.(apng|avif|bmp|gif|jpe?g|png|svg|webp)(\?|#|$)/i;
+const MEDIA_FILE_EXTENSION_REGEX = /\.([a-z0-9]{2,5})(?:[?#]|$)/i;
 
 const GALLERY_IDENTITY_KEY_PREFIX = "identity:";
 
@@ -261,6 +262,7 @@ function registerGalleryMedia(
   indexByUrl: Map<string, number>,
   url: string,
   type: MediaItem["type"],
+  downloadFileName?: string,
 ): void {
   const lookupKey = galleryMediaLookupKey(url);
   if (lookupKey === "") return;
@@ -268,11 +270,57 @@ function registerGalleryMedia(
   let index = indexByUrl.get(lookupKey);
   if (index == null) {
     index = items.length;
-    items.push({ url: resolveGalleryItemUrl(url, lookupKey), type });
+    items.push({
+      url: resolveGalleryItemUrl(url, lookupKey),
+      type,
+      ...(downloadFileName != null && downloadFileName !== "" ? { downloadFileName } : {}),
+    });
     indexByUrl.set(lookupKey, index);
   }
 
   registerGalleryMediaLookupAliases(indexByUrl, index, url, lookupKey, type);
+}
+
+function fileExtensionFromMediaUrl(url: string, type: MediaItem["type"]): string {
+  const normalized = canonicalGalleryMediaUrl(url);
+  const match = MEDIA_FILE_EXTENSION_REGEX.exec(normalized);
+  const ext = match?.[1]?.toLowerCase();
+  if (ext != null && ext !== "") {
+    return ext === "jpeg" ? "jpg" : ext;
+  }
+  return type === "video" ? "mp4" : "png";
+}
+
+function buildGalleryDownloadFileName(
+  messageId: number,
+  sequence: number,
+  total: number,
+  type: MediaItem["type"],
+  url: string,
+): string {
+  const prefix = type === "video" ? "media" : "image";
+  const counter = total > 1 ? `-${sequence}` : "";
+  return `${prefix}-${messageId}${counter}.${fileExtensionFromMediaUrl(url, type)}`;
+}
+
+function countDistinctMessageMedia(urls: readonly string[]): number {
+  const keys = new Set<string>();
+  for (const url of urls) {
+    const key = galleryMediaLookupKey(url);
+    if (key !== "") {
+      keys.add(key);
+    }
+  }
+  return keys.size;
+}
+
+function nextMessageMediaSequence(seen: Set<string>, url: string): number | null {
+  const key = galleryMediaLookupKey(url);
+  if (key === "" || seen.has(key)) {
+    return null;
+  }
+  seen.add(key);
+  return seen.size;
 }
 
 /** Resolves canonical media URL from an inline `<video>` (auth attr, then src, then child `<source>`). */
@@ -311,20 +359,58 @@ export function buildMessageMediaGallery(messages: MockMessage[]): MessageMediaG
       ...extractUserUploadImageLinkUrls(extractionSource),
       ...extractAuthSrcUrls(extractionSource),
     ];
-    for (const url of imageUrls) {
-      registerGalleryMedia(items, indexByUrl, url, "image");
-    }
-
-    for (const url of extractMarkdownMediaUrls(extractionSource)) {
-      registerGalleryMedia(items, indexByUrl, url, isUserUploadVideoPath(url) ? "video" : "image");
-    }
-
+    const markdownMediaUrls = extractMarkdownMediaUrls(extractionSource);
+    const markdownImageUrls = markdownMediaUrls.filter((url) => !isUserUploadVideoPath(url));
+    const markdownVideoUrls = markdownMediaUrls.filter((url) => isUserUploadVideoPath(url));
     const videoUrls = [
       ...extractVideoUrls(extractionSource),
       ...extractUserUploadVideoLinkUrls(extractionSource),
     ];
+    const imageTotal = countDistinctMessageMedia([...imageUrls, ...markdownImageUrls]);
+    const videoTotal = countDistinctMessageMedia([...markdownVideoUrls, ...videoUrls]);
+    const seenImageKeys = new Set<string>();
+    const seenVideoKeys = new Set<string>();
+
+    for (const url of imageUrls) {
+      const sequence = nextMessageMediaSequence(seenImageKeys, url);
+      registerGalleryMedia(
+        items,
+        indexByUrl,
+        url,
+        "image",
+        sequence != null
+          ? buildGalleryDownloadFileName(message.id, sequence, imageTotal, "image", url)
+          : undefined,
+      );
+    }
+
+    for (const url of markdownMediaUrls) {
+      const type = isUserUploadVideoPath(url) ? "video" : "image";
+      const seenKeys = type === "video" ? seenVideoKeys : seenImageKeys;
+      const total = type === "video" ? videoTotal : imageTotal;
+      const sequence = nextMessageMediaSequence(seenKeys, url);
+      registerGalleryMedia(
+        items,
+        indexByUrl,
+        url,
+        type,
+        sequence != null
+          ? buildGalleryDownloadFileName(message.id, sequence, total, type, url)
+          : undefined,
+      );
+    }
+
     for (const url of videoUrls) {
-      registerGalleryMedia(items, indexByUrl, url, "video");
+      const sequence = nextMessageMediaSequence(seenVideoKeys, url);
+      registerGalleryMedia(
+        items,
+        indexByUrl,
+        url,
+        "video",
+        sequence != null
+          ? buildGalleryDownloadFileName(message.id, sequence, videoTotal, "video", url)
+          : undefined,
+      );
     }
   }
 

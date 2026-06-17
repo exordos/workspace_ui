@@ -1,4 +1,5 @@
 import React, { useCallback, useMemo } from "react";
+import { isElectron } from "~/shared/lib/electron";
 import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/protected-message-media";
 import { useProtectedMediaDisplayUrl } from "~/shared/lib/protected-message-media.hook";
 import {
@@ -25,6 +26,7 @@ export const MediaViewerOverlay: React.FC = () => {
   const item = items[currentIndex] ?? null;
   const displayUrl = useProtectedMediaDisplayUrl(item?.url ?? "", item?.type ?? "image");
   const hasMultipleItems = items.length > 1;
+  const showOpenInNewTab = !isElectron();
 
   const actionsEnabled = useMemo(() => canUseMediaViewerDisplayUrl(displayUrl), [displayUrl]);
   const imageSrc = useMemo(() => {
@@ -60,6 +62,7 @@ export const MediaViewerOverlay: React.FC = () => {
       <div className="relative flex min-h-0 w-full flex-1 flex-col">
         <MediaViewerToolbar
           actionsEnabled={actionsEnabled}
+          showOpenInNewTab={showOpenInNewTab}
           onOpenInNewTab={handleOpenInNewTab}
           onDownload={handleDownload}
           onClose={handleClose}

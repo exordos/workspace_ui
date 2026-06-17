@@ -75,7 +75,7 @@ describe("buildMessageMediaGallery", () => {
   it("includes user_upload image links as gallery items", () => {
     const gallery = buildMessageMediaGallery([
       msg(
-        1,
+        42,
         '<p><a href="/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png">image.png</a></p>',
       ),
     ]);
@@ -84,6 +84,23 @@ describe("buildMessageMediaGallery", () => {
     expect(gallery.items[0]?.url).toMatch(
       /\/user_uploads\/2\/ff\/aP3oHiNs40xdmpUNVol7Z5ga\/image\.png$/,
     );
+    expect(gallery.items[0]?.downloadFileName).toBe("image-42.png");
+  });
+
+  it("adds message id and per-message counter to generic image download names", () => {
+    const gallery = buildMessageMediaGallery([
+      msg(
+        42,
+        [
+          '<p><a href="/user_uploads/2/aa/one/image.png">image.png</a></p>',
+          '<p><a href="/user_uploads/2/bb/two/image.png">image.png</a></p>',
+        ].join(""),
+      ),
+    ]);
+
+    expect(gallery.items).toHaveLength(2);
+    expect(gallery.items[0]?.downloadFileName).toBe("image-42-1.png");
+    expect(gallery.items[1]?.downloadFileName).toBe("image-42-2.png");
   });
 
   it("prefers original user_upload path over thumbnail img src", () => {
