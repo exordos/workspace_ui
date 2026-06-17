@@ -712,7 +712,9 @@ export const ChatPage: React.FC = () => {
   const handleSubmitComposerEdit = useCallback(
     async (messageId: number, markdown: string) => {
       setActionError(null);
-      const message = messages.find((candidate) => candidate.id === messageId);
+      const message = useCurrentChatMessagesStore
+        .getState()
+        .messages.find((candidate) => candidate.id === messageId);
       if (
         message != null &&
         !canStartMessageContentEdit(
@@ -731,7 +733,6 @@ export const ChatPage: React.FC = () => {
       await persistOptimisticMessageEdit(messageId, markdown);
     },
     [
-      messages,
       currentUserId,
       currentUserMessageEditPolicy,
       applyOptimisticMessageEditInStore,
@@ -812,14 +813,14 @@ export const ChatPage: React.FC = () => {
 
   const handleEditLastMessage = useCallback(() => {
     const lastOwnMessageForEdit = resolveLastOwnMessageForEdit(
-      messages,
+      useCurrentChatMessagesStore.getState().messages,
       currentUserId,
       currentUserMessageEditPolicy,
       Math.floor(Date.now() / 1000),
     );
     if (lastOwnMessageForEdit == null) return;
     requestMessageEdit(lastOwnMessageForEdit);
-  }, [messages, currentUserId, currentUserMessageEditPolicy, requestMessageEdit]);
+  }, [currentUserId, currentUserMessageEditPolicy, requestMessageEdit]);
 
   const handleForwardTo = useCallback(
     (stream: string, topic: string, to?: number[]) => {
