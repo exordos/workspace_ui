@@ -175,7 +175,7 @@ describe("ChatHeader", () => {
     const header = screen.getByText("Alice").closest("header");
     const status = screen.getByText(/online|в сети/i);
 
-    expect(header).toHaveClass("rounded-t-xl");
+    expect(header).toHaveClass("rounded-xl");
     expect(header).toHaveClass("py-2");
     expect(status).toHaveClass("text-xs");
   });
