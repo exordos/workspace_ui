@@ -11,6 +11,36 @@ import type * as ReactRouterDom from "react-router-dom";
 const navigateSpy = vi.hoisted(() => vi.fn());
 const fetchInboxEntries = vi.hoisted(() => vi.fn().mockResolvedValue([]));
 const hydrateInboxEntriesFromCache = vi.hoisted(() => vi.fn().mockResolvedValue([]));
+const fetchInboxUnreadSnapshotComplete = vi.hoisted(() => vi.fn(() => true));
+const buildUnreadSnapshotFromEntries = vi.hoisted(() => (entries: readonly InboxEntry[]) => {
+  const streams = entries
+    .filter((entry) => entry.streamId != null)
+    .map((entry) => ({
+      streamId: entry.streamId!,
+      topic: entry.topic ?? "",
+      unreadMessageIds: entry.messageIds,
+    }));
+  const dms = entries
+    .filter((entry) => entry.streamId == null)
+    .map((entry) => {
+      const userIds =
+        entry.dmSlug
+          ?.split(",")
+          .map((id) => Number(id))
+          .filter((id) => Number.isFinite(id)) ?? (entry.senderId != null ? [entry.senderId] : []);
+      return {
+        userIds,
+        unreadMessageIds: entry.messageIds,
+        isGroup: userIds.length > 1,
+      };
+    });
+  return {
+    streams,
+    dms,
+    totalCount: entries.reduce((total, entry) => total + entry.unreadCount, 0),
+    mentionMessageIds: [],
+  };
+});
 
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual<typeof ReactRouterDom>("react-router-dom");
@@ -27,6 +57,23 @@ vi.mock("~/entities/inbox/inbox.api", async () => {
   return {
     ...actual,
     fetchInboxEntries,
+    fetchInboxEntriesWithSnapshot: async (
+      currentUserId?: number | null,
+      options?: unknown,
+      requestOptions?: unknown,
+    ) => {
+      const entries = (await fetchInboxEntries(
+        currentUserId,
+        options,
+        requestOptions,
+      )) as InboxEntry[];
+      return {
+        entries,
+        unreadSnapshot: buildUnreadSnapshotFromEntries(entries),
+        unreadSnapshotComplete: fetchInboxUnreadSnapshotComplete(),
+        unreadMessages: [],
+      };
+    },
     hydrateInboxEntriesFromCache,
   };
 });
@@ -53,8 +100,10 @@ describe("InboxPage styling contract", () => {
   afterEach(() => {
     navigateSpy.mockReset();
     fetchInboxEntries.mockReset();
+    fetchInboxUnreadSnapshotComplete.mockReset();
     hydrateInboxEntriesFromCache.mockReset();
     fetchInboxEntries.mockResolvedValue([]);
+    fetchInboxUnreadSnapshotComplete.mockReturnValue(true);
     hydrateInboxEntriesFromCache.mockResolvedValue([]);
     useInboxStore.getState().clear();
     useMuteStore.getState().clear();
@@ -157,6 +206,91 @@ describe("InboxPage styling contract", () => {
     );
 
     expect(screen.getByText("Cached Alice")).toBeInTheDocument();
+  });
+
+  it("syncs organization unread count from network inbox snapshot", async () => {
+    fetchInboxEntries.mockResolvedValue([
+      {
+        key: "dm:42",
+        streamId: null,
+        streamName: null,
+        topic: null,
+        senderId: 42,
+        senderName: "Alice",
+        dmSlug: "42",
+        unreadCount: 2,
+        lastMessageTimestamp: 10,
+        messageIds: [1, 2],
+      },
+      {
+        key: "stream:10:release",
+        streamId: 10,
+        streamName: "engineering",
+        topic: "release",
+        senderId: null,
+        senderName: null,
+        dmSlug: null,
+        unreadCount: 1,
+        lastMessageTimestamp: 9,
+        messageIds: [3],
+      },
+    ]);
+
+    render(
+      <MemoryRouter initialEntries={["/inbox"]}>
+        <Routes>
+          <Route path="/inbox" element={<InboxPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(useInstancesStore.getState().getInstanceUnreadCount(TEST_INSTANCE_ID)).toBe(3);
+    });
+  });
+
+  it("does not lower organization unread count from capped network inbox snapshot", async () => {
+    useInstancesStore.getState().setInstanceUnreadCount(TEST_INSTANCE_ID, 100);
+    fetchInboxUnreadSnapshotComplete.mockReturnValue(false);
+    fetchInboxEntries.mockResolvedValue([
+      {
+        key: "dm:42",
+        streamId: null,
+        streamName: null,
+        topic: null,
+        senderId: 42,
+        senderName: "Alice",
+        dmSlug: "42",
+        unreadCount: 2,
+        lastMessageTimestamp: 10,
+        messageIds: [1, 2],
+      },
+      {
+        key: "stream:10:release",
+        streamId: 10,
+        streamName: "engineering",
+        topic: "release",
+        senderId: null,
+        senderName: null,
+        dmSlug: null,
+        unreadCount: 1,
+        lastMessageTimestamp: 9,
+        messageIds: [3],
+      },
+    ]);
+
+    render(
+      <MemoryRouter initialEntries={["/inbox"]}>
+        <Routes>
+          <Route path="/inbox" element={<InboxPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Alice")).toBeInTheDocument();
+    });
+    expect(useInstancesStore.getState().getInstanceUnreadCount(TEST_INSTANCE_ID)).toBe(100);
   });
 
   it("hides cached muted stream entries even when the topic is explicitly unmuted", () => {

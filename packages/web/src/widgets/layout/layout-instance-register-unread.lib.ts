@@ -1,11 +1,7 @@
 /**
  * Caches register `unread_snapshot` per instance for multi-org badges and refresh debouncing.
  */
-import {
-  countPersonalDmUnreadFromSnapshot,
-  countMentionsUnreadFromSnapshot,
-  type ZulipUnreadMessagesSnapshot,
-} from "~/shared/api/zulip-unread.lib";
+import type { ZulipUnreadMessagesSnapshot } from "~/shared/api/zulip-unread.lib";
 
 const unreadSnapshotByInstanceId = new Map<string, ZulipUnreadMessagesSnapshot>();
 
@@ -28,20 +24,6 @@ export function getCachedRegisterUnreadSnapshot(
 
 export function clearCachedRegisterUnreadSnapshot(instanceId: string): void {
   unreadSnapshotByInstanceId.delete(instanceId);
-}
-
-/** Applies org-switcher unread totals from register snapshot (no GET /messages). */
-export function applyInstanceUnreadCountsFromRegisterSnapshot(
-  instanceId: string,
-  snapshot: ZulipUnreadMessagesSnapshot,
-  setUnreadCount: (id: string, count: number) => void,
-  setDmUnreadCount: (id: string, count: number) => void,
-): void {
-  setUnreadCount(instanceId, snapshot.totalCount);
-  const hasPersonalUnread =
-    countPersonalDmUnreadFromSnapshot(snapshot) > 0 ||
-    countMentionsUnreadFromSnapshot(snapshot) > 0;
-  setDmUnreadCount(instanceId, hasPersonalUnread ? 1 : 0);
 }
 
 export function isRegisterUnreadSnapshotUsable(

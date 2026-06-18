@@ -99,4 +99,28 @@ describe("reconcileSidebarUnreadAfterBootstrap", () => {
     });
     expect(reconcileSpy).toHaveBeenCalledTimes(1);
   });
+
+  it("does not dedupe the same snapshot across different instances", () => {
+    const snapshot = {
+      streams: [{ streamId: 1, topic: "t", unreadMessageIds: [1] }],
+      dms: [],
+      totalCount: 1,
+      mentionMessageIds: [],
+    };
+
+    reconcileSidebarUnreadAfterBootstrap({
+      cancelled: () => false,
+      instanceId: "instance-a",
+      currentUserId: 10,
+      registerSnapshot: snapshot,
+    });
+    reconcileSidebarUnreadAfterBootstrap({
+      cancelled: () => false,
+      instanceId: "instance-b",
+      currentUserId: 10,
+      registerSnapshot: snapshot,
+    });
+
+    expect(reconcileSpy).toHaveBeenCalledTimes(2);
+  });
 });

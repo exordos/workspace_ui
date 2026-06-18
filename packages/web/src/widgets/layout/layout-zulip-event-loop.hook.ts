@@ -154,6 +154,7 @@ function persistDmIndexFromStore(instanceId: string): void {
 
 function startSidebarUnreadReconcile(options: {
   cancelled: () => boolean;
+  instanceId: string | null;
   currentUserId: number | null;
   registerSnapshot?: ZulipUnreadMessagesSnapshot | null;
 }): void {
@@ -165,14 +166,17 @@ function startSidebarUnreadReconcile(options: {
 }
 
 function reconcileSidebarUnreadFromRegister(
+  instanceId: string | null,
   registration: RegisterQueueResult | undefined,
   currentUserId: number | null,
 ): void {
   reconcileSidebarUnreadAfterBootstrap({
     cancelled: () => false,
+    instanceId,
     currentUserId,
     registerSnapshot: registration?.unread_snapshot,
     logScope: "eventLoop: reconcileSidebarUnreadFromRegister",
+    syncSource: "event-loop-register",
   });
   void hydrateStreamSidebarPreviewsFromUnreadSnapshot(registration?.unread_snapshot, () => false);
 }

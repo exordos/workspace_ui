@@ -42,6 +42,7 @@ export interface StreamPreviewBootstrapSettledHandlerParams {
   bootstrapApplyOptions: unknown;
   startSidebarUnreadReconcile: (params: {
     cancelled: () => boolean;
+    instanceId: string | null;
     currentUserId: number | null;
     registerSnapshot?: ZulipUnreadMessagesSnapshot | null;
   }) => void;
@@ -165,6 +166,7 @@ export function onStreamPreviewBootstrapSettled(
   options.applyChatListBootstrapResult(options.streamBootstrap, options.bootstrapApplyOptions);
   options.startSidebarUnreadReconcile({
     cancelled: options.getCancelled,
+    instanceId: options.instanceId,
     currentUserId: options.currentUserId,
     registerSnapshot: options.registerSnapshot,
   });

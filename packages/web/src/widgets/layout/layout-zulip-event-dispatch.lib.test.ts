@@ -3,6 +3,7 @@ import { applyChatListReadDecrement } from "~/entities/chat-list/chat-list-apply
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInboxStore } from "~/entities/inbox/inbox.model";
 import type { InboxEntry } from "~/entities/inbox/inbox.types";
+import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import * as client from "~/shared/api/client";
@@ -170,6 +171,23 @@ function mockMsg(id: number, overrides: Partial<MockMessage> = {}): MockMessage 
   };
 }
 
+function setCurrentInstanceForUnreadTests(): void {
+  useInstancesStore.setState({
+    instances: [
+      {
+        id: "inst-1",
+        realm: "https://zulip.example.com",
+        email: "user@example.com",
+        apiKey: "api-key",
+      },
+    ],
+    currentInstanceId: "inst-1",
+    unreadCountsByInstance: {},
+    dmUnreadCountsByInstance: {},
+    activeOrgEpoch: 0,
+  });
+}
+
 describe("dispatchZulipEvent", () => {
   let getInstanceSpy: ReturnType<typeof vi.spyOn>;
 
@@ -188,6 +206,13 @@ describe("dispatchZulipEvent", () => {
       isLoadingNewer: false,
     });
     useUsersStore.getState().clear();
+    useInstancesStore.setState({
+      instances: [],
+      currentInstanceId: null,
+      unreadCountsByInstance: {},
+      dmUnreadCountsByInstance: {},
+      activeOrgEpoch: 0,
+    });
   });
 
   describe("realm", () => {
@@ -810,6 +835,67 @@ describe("dispatchZulipEvent", () => {
 
       expect(renameSpy).toHaveBeenCalledWith(16, "##КокоБомбони V2");
     });
+
+    it("syncs organization unread count after incoming unread message", () => {
+      setCurrentInstanceForUnreadTests();
+      useChatListStore.getState().setCurrentUserId(1);
+
+      dispatchZulipEvent(
+        {
+          id: 22,
+          type: "message",
+          flags: [],
+          message: {
+            id: 1989,
+            sender_id: 6,
+            sender_full_name: "Alice",
+            content: "new unread",
+            timestamp: 1777960630,
+            type: "stream",
+            stream_id: 16,
+            display_recipient: "engineering",
+            subject: "events",
+            flags: [],
+          },
+        },
+        buildIntegrationCtx(),
+      );
+
+      expect(useChatListStore.getState().sidebarStreamsUnread).toBe(1);
+      expect(useInstancesStore.getState().getInstanceUnreadCount("inst-1")).toBe(1);
+    });
+
+    it("keeps organization count muted-aware after incoming unread message", () => {
+      setCurrentInstanceForUnreadTests();
+      useChatListStore.getState().setCurrentUserId(1);
+      const ctx = buildIntegrationCtx();
+      ctx.mute.isStreamMuted = (streamId) => streamId === 16;
+      ctx.mute.isEffectivelyMuted = (streamId) => streamId === 16;
+
+      dispatchZulipEvent(
+        {
+          id: 23,
+          type: "message",
+          flags: [],
+          message: {
+            id: 1990,
+            sender_id: 6,
+            sender_full_name: "Alice",
+            content: "muted unread",
+            timestamp: 1777960640,
+            type: "stream",
+            stream_id: 16,
+            display_recipient: "engineering",
+            subject: "muted",
+            flags: [],
+          },
+        },
+        ctx,
+      );
+
+      expect(useChatListStore.getState().sidebarStreamsUnread).toBe(1);
+      expect(useInstancesStore.getState().getInstanceUnreadCount("inst-1")).toBe(0);
+    });
   });
 
   describe("subscription peer events", () => {
@@ -1131,6 +1217,84 @@ describe("dispatchZulipEvent", () => {
       expect(messages.find((m) => m.id === 11)?.flags).toContain("read");
     });
 
+    it("syncs organization count after read:add decrements unread", () => {
+      setCurrentInstanceForUnreadTests();
+      useChatListStore.getState().setCurrentUserId(1);
+      useChatListStore.getState().addMessage({
+        id: 12,
+        sender_id: 2,
+        sender_full_name: "Alice",
+        content: "unread",
+        timestamp: 12,
+        type: "stream",
+        stream_id: 5,
+        display_recipient: "general",
+        subject: "topic1",
+        flags: [],
+      });
+      useInboxStore.getState().setEntries([
+        {
+          key: "stream:5:topic1",
+          streamId: 5,
+          streamName: "general",
+          topic: "topic1",
+          senderId: null,
+          senderName: null,
+          dmSlug: null,
+          unreadCount: 1,
+          lastMessageTimestamp: 12,
+          messageIds: [12],
+        },
+      ]);
+      useInstancesStore.getState().setInstanceUnreadCount("inst-1", 1);
+
+      dispatchZulipEvent(
+        {
+          id: 1021,
+          type: "update_message_flags",
+          op: "add",
+          flag: "read",
+          messages: [12],
+        },
+        buildIntegrationCtx(),
+      );
+
+      expect(useChatListStore.getState().sidebarStreamsUnread).toBe(0);
+      expect(useInboxStore.getState().entries).toHaveLength(0);
+      expect(useInstancesStore.getState().getInstanceUnreadCount("inst-1")).toBe(0);
+    });
+
+    it("syncs organization count after read:remove increments unread", () => {
+      setCurrentInstanceForUnreadTests();
+      useChatListStore.getState().setCurrentUserId(1);
+      useChatListStore.getState().addMessage({
+        id: 13,
+        sender_id: 2,
+        sender_full_name: "Alice",
+        content: "read",
+        timestamp: 13,
+        type: "stream",
+        stream_id: 5,
+        display_recipient: "general",
+        subject: "topic1",
+        flags: ["read"],
+      });
+
+      dispatchZulipEvent(
+        {
+          id: 1022,
+          type: "update_message_flags",
+          op: "remove",
+          flag: "read",
+          messages: [13],
+        },
+        buildIntegrationCtx(),
+      );
+
+      expect(useChatListStore.getState().sidebarStreamsUnread).toBe(1);
+      expect(useInstancesStore.getState().getInstanceUnreadCount("inst-1")).toBe(1);
+    });
+
     it("does not mutate open chat messages when read event targets another context", () => {
       useCurrentChatMessagesStore.getState().setContext({
         type: "stream",
@@ -1170,6 +1334,7 @@ describe("dispatchZulipEvent", () => {
     });
 
     it("marks all read on markAllRead queue event (all: true, empty messages)", () => {
+      setCurrentInstanceForUnreadTests();
       useChatListStore.getState().setCurrentUserId(10);
       useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
       useChatListStore.getState().reconcileUnreadFromSnapshot(
@@ -1181,6 +1346,7 @@ describe("dispatchZulipEvent", () => {
         },
         10,
       );
+      useInstancesStore.getState().setInstanceUnreadCount("inst-1", 2);
       useCurrentChatMessagesStore
         .getState()
         .setMessages([mockMsg(100, { flags: [] }), mockMsg(101, { flags: [] })]);
@@ -1199,6 +1365,7 @@ describe("dispatchZulipEvent", () => {
 
       expect(useChatListStore.getState().sidebarStreamsUnread).toBe(0);
       expect(useChatListStore.getState().sidebarDmsUnread).toBe(0);
+      expect(useInstancesStore.getState().getInstanceUnreadCount("inst-1")).toBe(0);
       for (const message of useCurrentChatMessagesStore.getState().messages) {
         expect(message.flags).toContain("read");
       }

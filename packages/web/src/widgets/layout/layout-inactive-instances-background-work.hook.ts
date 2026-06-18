@@ -10,12 +10,12 @@ import {
   handleInactiveInstanceQueueRegistered,
 } from "./layout-inactive-instance-queue.lib";
 import {
-  applyInstanceUnreadCountsFromRegisterSnapshot,
   getCachedRegisterUnreadSnapshot,
   isRegisterUnreadSnapshotUsable,
 } from "./layout-instance-register-unread.lib";
 import { startInactiveInstanceEventStreams } from "./layout-multi-org-event-streams.lib";
 import { startInactiveInstanceUnreadPolling } from "./layout-multi-org-polling.lib";
+import { syncUnreadSurfacesFromSnapshot } from "./layout-unread-surfaces-sync.lib";
 
 export function useInactiveInstancesBackgroundWork(options: {
   instances: ZulipInstance[];
@@ -37,12 +37,14 @@ export function useInactiveInstancesBackgroundWork(options: {
       refreshUnreadForInstance: async (instance) => {
         const cached = getCachedRegisterUnreadSnapshot(instance.id);
         if (isRegisterUnreadSnapshotUsable(cached)) {
-          applyInstanceUnreadCountsFromRegisterSnapshot(
-            instance.id,
-            cached,
-            setUnreadCount,
-            setDmUnreadCount,
-          );
+          syncUnreadSurfacesFromSnapshot({
+            source: "inactive-cached-register",
+            instanceId: instance.id,
+            currentUserId: null,
+            snapshot: cached,
+            applyChatList: false,
+            applyInstanceCounts: true,
+          });
           return;
         }
         const credentials = {
@@ -89,8 +91,6 @@ export function useInactiveInstancesBackgroundWork(options: {
               stopped,
               credentials,
               instance,
-              setUnreadCount,
-              setDmUnreadCount,
               onQueueRegistered,
             });
             if (nextQueueId != null) {

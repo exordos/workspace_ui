@@ -179,10 +179,12 @@ function refreshSharedLayers(
     params.instanceId != null ? getCachedRegisterUnreadSnapshot(params.instanceId) : undefined;
   reconcileSidebarUnreadAfterBootstrap({
     cancelled: () => params.isCancelled?.() ?? false,
+    instanceId: params.instanceId ?? null,
     currentUserId: uid,
     registerSnapshot,
     logScope: "reconnect: refreshSharedLayers",
     snapshotSource: "cached-register",
+    syncSource: "reconnect",
   });
   syncMentionsUnreadAfterReconnect(params.instanceId, params.isCancelled);
 }

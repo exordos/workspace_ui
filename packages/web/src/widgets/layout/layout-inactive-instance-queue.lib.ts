@@ -3,10 +3,10 @@ import { deleteQueue } from "~/shared/api/zulip-queue";
 import type { RegisterQueueResult, ZulipCredentials } from "~/shared/api/zulip.types";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import {
-  applyInstanceUnreadCountsFromRegisterSnapshot,
   isRegisterUnreadSnapshotUsable,
   setCachedRegisterUnreadSnapshot,
 } from "./layout-instance-register-unread.lib";
+import { syncUnreadSurfacesFromSnapshot } from "./layout-unread-surfaces-sync.lib";
 
 export interface InactiveInstanceQueueRegistration {
   queueId: string;
@@ -18,21 +18,10 @@ export function handleInactiveInstanceQueueRegistered(
     stopped: boolean;
     credentials: ZulipCredentials;
     instance: ZulipInstance | undefined;
-    setUnreadCount: (instanceId: string, unreadCount: number) => void;
-    setDmUnreadCount: (instanceId: string, dmUnreadCount: number) => void;
     onQueueRegistered?: (id: string, registration?: RegisterQueueResult) => void;
   },
 ): string | null {
-  const {
-    queueId,
-    registration,
-    stopped,
-    credentials,
-    instance,
-    setUnreadCount,
-    setDmUnreadCount,
-    onQueueRegistered,
-  } = params;
+  const { queueId, registration, stopped, credentials, instance, onQueueRegistered } = params;
   if (stopped) {
     void deleteQueue(queueId, credentials).catch((err) =>
       reportUnexpectedError("layout:inactiveQueue", err, { phase: "stoppedCleanup", queueId }),
@@ -42,12 +31,14 @@ export function handleInactiveInstanceQueueRegistered(
   if (instance != null && registration?.unread_snapshot != null) {
     setCachedRegisterUnreadSnapshot(instance.id, registration.unread_snapshot);
     if (isRegisterUnreadSnapshotUsable(registration.unread_snapshot)) {
-      applyInstanceUnreadCountsFromRegisterSnapshot(
-        instance.id,
-        registration.unread_snapshot,
-        setUnreadCount,
-        setDmUnreadCount,
-      );
+      syncUnreadSurfacesFromSnapshot({
+        source: "inactive-register",
+        instanceId: instance.id,
+        currentUserId: null,
+        snapshot: registration.unread_snapshot,
+        applyChatList: false,
+        applyInstanceCounts: true,
+      });
     }
   }
   onQueueRegistered?.(queueId, registration ?? undefined);

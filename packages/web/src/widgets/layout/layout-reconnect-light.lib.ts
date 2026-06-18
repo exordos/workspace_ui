@@ -28,10 +28,12 @@ export async function refreshLayoutReconnectLight(
     instanceId != null ? getCachedRegisterUnreadSnapshot(instanceId) : undefined;
   reconcileSidebarUnreadAfterBootstrap({
     cancelled: () => options.isCancelled?.() ?? false,
+    instanceId,
     currentUserId: uid,
     registerSnapshot,
     logScope: "reconnectLight",
     snapshotSource: "cached-register",
+    syncSource: "reconnect-light",
   });
 
   if (instanceId == null) {

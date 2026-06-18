@@ -149,6 +149,7 @@ export interface LayoutBootstrapQueueRegisteredDeps {
   registerUnreadSnapshotRef: { current: ZulipUnreadMessagesSnapshot | null };
   persistDmIndexFromStore: (instanceId: string) => void;
   reconcileSidebarUnreadFromRegister: (
+    instanceId: string | null,
     registration: RegisterQueueResult | undefined,
     currentUserId: number | null,
   ) => void;
@@ -163,6 +164,7 @@ export interface LayoutBootstrapQueueRegisteredDeps {
   ) => void;
   startSidebarUnreadReconcile: (params: {
     cancelled: () => boolean;
+    instanceId: string | null;
     currentUserId: number | null;
     registerSnapshot: ZulipUnreadMessagesSnapshot | null;
   }) => void;
@@ -286,6 +288,7 @@ export function createLayoutBootstrapQueueRegisteredHandler(
     );
     deps.startSidebarUnreadReconcile({
       cancelled: deps.isCancelled,
+      instanceId: deps.currentInstanceId,
       currentUserId: useChatListStore.getState().currentUserId ?? deps.bootstrapUserId,
       registerSnapshot: deps.registerUnreadSnapshotRef.current,
     });

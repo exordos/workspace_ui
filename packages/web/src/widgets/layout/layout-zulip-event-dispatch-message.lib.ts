@@ -23,6 +23,7 @@ import {
   closeAllActiveMessageNotifications,
   closeReadMessageNotifications,
 } from "./layout-notification-tags.lib";
+import { syncUnreadSurfacesFromEventDelta } from "./layout-unread-surfaces-sync.lib";
 import { maybeNotifyNewMessage } from "./layout-zulip-event-notify.lib";
 import {
   collectUnreadLoadedMessageIds,
@@ -75,7 +76,15 @@ export function handleIncomingMessage(
     !currentChat.hasNewerMessages &&
     isMessageForContext(raw, currentChat.context, currentUserId);
   const suppressUnreadBump = isForCurrentChat && isTabVisible();
-  chatList.addMessage(raw, { suppressUnreadBump });
+  syncUnreadSurfacesFromEventDelta({
+    source: "event-message",
+    instanceId: ctx.currentInstanceId,
+    isStreamMuted: ctx.mute.isStreamMuted,
+    isEffectivelyMuted: ctx.mute.isEffectivelyMuted,
+    applyDelta: () => {
+      chatList.addMessage(raw, { suppressUnreadBump });
+    },
+  });
   // Fallback when channel rename arrives via message display_recipient instead of a stream event.
   if (
     raw.type === "stream" &&
@@ -166,8 +175,16 @@ export function handleUpdateMessageFlags(
   if (flag !== "read") return;
 
   if (markAllRead) {
-    inbox.clearEntries();
-    applyMarkAllReadFromQueueEvent(ctx, notifications);
+    syncUnreadSurfacesFromEventDelta({
+      source: "event-mark-all-read",
+      instanceId: ctx.currentInstanceId,
+      isStreamMuted: ctx.mute.isStreamMuted,
+      isEffectivelyMuted: ctx.mute.isEffectivelyMuted,
+      applyDelta: () => {
+        inbox.clearEntries();
+        applyMarkAllReadFromQueueEvent(ctx, notifications);
+      },
+    });
     return;
   }
 
@@ -180,36 +197,52 @@ export function handleUpdateMessageFlags(
   });
 
   if (op === "add") {
-    inbox.markAsRead(messageIds);
-    closeReadMessageNotifications(notifications, messageIds, ctx.currentInstanceId);
-    const chatListStore = useChatListStore.getState();
-    applyChatListReadDecrementGrouped(() => useChatListStore.getState(), chatListStore, {
-      messageIds,
-      source: "event:update_message_flags:read:add",
+    syncUnreadSurfacesFromEventDelta({
+      source: "event-read-add",
+      instanceId: ctx.currentInstanceId,
+      isStreamMuted: ctx.mute.isStreamMuted,
+      isEffectivelyMuted: ctx.mute.isEffectivelyMuted,
+      applyDelta: () => {
+        inbox.markAsRead(messageIds);
+        closeReadMessageNotifications(notifications, messageIds, ctx.currentInstanceId);
+        const chatListStore = useChatListStore.getState();
+        applyChatListReadDecrementGrouped(() => useChatListStore.getState(), chatListStore, {
+          messageIds,
+          source: "event:update_message_flags:read:add",
+        });
+        currentChat.updateMessageFlags(messageIds, "read", "add");
+      },
     });
-    currentChat.updateMessageFlags(messageIds, "read", "add");
     return;
   }
 
-  inbox.markStale();
+  syncUnreadSurfacesFromEventDelta({
+    source: "event-read-remove",
+    instanceId: ctx.currentInstanceId,
+    isStreamMuted: ctx.mute.isStreamMuted,
+    isEffectivelyMuted: ctx.mute.isEffectivelyMuted,
+    applyDelta: () => {
+      inbox.markStale();
 
-  const messageDetails = event.message_details as
-    | Record<string, ZulipMarkUnreadMessageDetail>
-    | undefined;
-  const locationRows = zulipRawMessagesFromMarkUnreadDetails(
-    messageIds,
-    messageDetails,
-    chatList.currentUserId,
-  );
-  if (locationRows.length > 0) {
-    useChatListStore.getState().upsertUnreadMessageLocations(locationRows);
-  }
+      const messageDetails = event.message_details as
+        | Record<string, ZulipMarkUnreadMessageDetail>
+        | undefined;
+      const locationRows = zulipRawMessagesFromMarkUnreadDetails(
+        messageIds,
+        messageDetails,
+        chatList.currentUserId,
+      );
+      if (locationRows.length > 0) {
+        useChatListStore.getState().upsertUnreadMessageLocations(locationRows);
+      }
 
-  logSidebarUnreadFlow("event:update_message_flags:read:remove", {
-    ...summarizeMessageIdsForFlowDebug(messageIds),
+      logSidebarUnreadFlow("event:update_message_flags:read:remove", {
+        ...summarizeMessageIdsForFlowDebug(messageIds),
+      });
+      chatList.incrementUnreadForMessages(messageIds);
+      currentChat.updateMessageFlags(messageIds, "read", "remove");
+    },
   });
-  chatList.incrementUnreadForMessages(messageIds);
-  currentChat.updateMessageFlags(messageIds, "read", "remove");
 }
 
 export function handleReaction(event: ZulipEvent, ctx: LayoutZulipEventDispatchContext): void {
