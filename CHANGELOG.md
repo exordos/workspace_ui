@@ -6,6 +6,17 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.11] — 2026-06-18
+
+### Added
+
+- Edit last message shortcut with message edit policy support (#151)
+
+### Fixed
+
+- Unread count synchronization across inbox, sidebar, and inactive instances (#178)
+- Chat read-state, media viewer, and composer UI polish (#178)
+
 ## [0.1.10] — 2026-06-16
 
 ### Added
