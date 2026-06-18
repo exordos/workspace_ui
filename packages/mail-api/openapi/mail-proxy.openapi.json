@@ -1,0 +1,908 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Mail Proxy API",
+    "version": "0.1.0",
+    "description": "REST facade over Mailcow IMAP/SMTP and SOGo CalDAV"
+  },
+  "servers": [{ "url": "/" }],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "session token"
+      }
+    },
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": { "type": "string" }
+        }
+      },
+      "HealthResponse": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": { "type": "boolean" }
+        }
+      },
+      "OkResponse": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": { "type": "boolean" }
+        }
+      },
+      "PathResponse": {
+        "type": "object",
+        "required": ["ok", "path"],
+        "properties": {
+          "ok": { "type": "boolean" },
+          "path": { "type": "string" }
+        }
+      },
+      "MailSessionRequest": {
+        "type": "object",
+        "required": ["email", "password"],
+        "properties": {
+          "email": { "type": "string", "format": "email" },
+          "password": { "type": "string" }
+        }
+      },
+      "MailSessionResponse": {
+        "type": "object",
+        "required": ["sessionToken", "expiresAt", "email"],
+        "properties": {
+          "sessionToken": { "type": "string" },
+          "expiresAt": { "type": "string", "format": "date-time" },
+          "email": { "type": "string", "format": "email" }
+        }
+      },
+      "MailFolder": {
+        "type": "object",
+        "required": ["path", "name", "unread", "total"],
+        "properties": {
+          "path": { "type": "string" },
+          "name": { "type": "string" },
+          "unread": { "type": "integer", "minimum": 0 },
+          "total": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "MailFoldersResponse": {
+        "type": "object",
+        "required": ["folders"],
+        "properties": {
+          "folders": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/MailFolder" }
+          },
+          "delimiter": { "type": "string" }
+        }
+      },
+      "CreateMailFolderRequest": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string" },
+          "parentPath": { "type": "string" },
+          "delimiter": { "type": "string" }
+        }
+      },
+      "RenameMailFolderRequest": {
+        "type": "object",
+        "required": ["path", "name"],
+        "properties": {
+          "path": { "type": "string" },
+          "name": { "type": "string" },
+          "delimiter": { "type": "string" }
+        }
+      },
+      "MoveMailFolderRequest": {
+        "type": "object",
+        "required": ["path", "parentPath"],
+        "properties": {
+          "path": { "type": "string" },
+          "parentPath": { "type": "string" },
+          "delimiter": { "type": "string" }
+        }
+      },
+      "FolderPathRequest": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+          "path": { "type": "string" }
+        }
+      },
+      "MailMessageSummary": {
+        "type": "object",
+        "required": ["uid", "from", "subject", "snippet", "date", "seen", "flagged"],
+        "properties": {
+          "uid": { "type": "integer", "minimum": 1 },
+          "from": { "type": "string" },
+          "subject": { "type": "string" },
+          "snippet": { "type": "string" },
+          "date": { "type": "string", "format": "date-time" },
+          "seen": { "type": "boolean" },
+          "flagged": { "type": "boolean" }
+        }
+      },
+      "MailMessageDetail": {
+        "allOf": [
+          { "$ref": "#/components/schemas/MailMessageSummary" },
+          {
+            "type": "object",
+            "required": ["bodyHtml", "bodyText", "messageId", "replyTo", "to", "cc", "references"],
+            "properties": {
+              "bodyHtml": { "type": "string", "nullable": true },
+              "bodyText": { "type": "string", "nullable": true },
+              "messageId": { "type": "string", "nullable": true },
+              "replyTo": { "type": "string", "nullable": true },
+              "to": { "type": "array", "items": { "type": "string" } },
+              "cc": { "type": "array", "items": { "type": "string" } },
+              "references": { "type": "string", "nullable": true }
+            }
+          }
+        ]
+      },
+      "MailMessagesResponse": {
+        "type": "object",
+        "required": ["folder", "messages", "nextCursor"],
+        "properties": {
+          "folder": { "type": "string" },
+          "messages": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/MailMessageSummary" }
+          },
+          "nextCursor": { "type": "string", "nullable": true }
+        }
+      },
+      "MailMessageResponse": {
+        "type": "object",
+        "required": ["message"],
+        "properties": {
+          "message": { "$ref": "#/components/schemas/MailMessageDetail" }
+        }
+      },
+      "MailMessageFlagsRequest": {
+        "type": "object",
+        "required": ["folder"],
+        "properties": {
+          "folder": { "type": "string" },
+          "addFlags": { "type": "array", "items": { "type": "string" } },
+          "removeFlags": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "MoveMailMessageRequest": {
+        "type": "object",
+        "required": ["fromFolder", "toFolder"],
+        "properties": {
+          "fromFolder": { "type": "string" },
+          "toFolder": { "type": "string" }
+        }
+      },
+      "SendMailRequest": {
+        "type": "object",
+        "required": ["to", "subject", "bodyHtml"],
+        "properties": {
+          "to": { "type": "string" },
+          "cc": { "type": "string" },
+          "subject": { "type": "string" },
+          "bodyHtml": { "type": "string" },
+          "bodyText": { "type": "string" },
+          "inReplyTo": { "type": "string" },
+          "references": { "type": "string" }
+        }
+      },
+      "CalendarInfo": {
+        "type": "object",
+        "required": ["id", "displayName", "color", "ctag"],
+        "properties": {
+          "id": { "type": "string" },
+          "displayName": { "type": "string" },
+          "color": { "type": "string", "nullable": true },
+          "ctag": { "type": "string", "nullable": true }
+        }
+      },
+      "CalendarAttendee": {
+        "type": "object",
+        "required": ["email", "displayName", "partstat", "role"],
+        "properties": {
+          "email": { "type": "string" },
+          "displayName": { "type": "string", "nullable": true },
+          "partstat": { "type": "string", "nullable": true },
+          "role": { "type": "string", "nullable": true }
+        }
+      },
+      "CalendarAlarm": {
+        "type": "object",
+        "required": ["triggerMinutes", "triggerAbsolute", "action"],
+        "properties": {
+          "triggerMinutes": { "type": "integer", "nullable": true },
+          "triggerAbsolute": { "type": "string", "nullable": true },
+          "action": { "type": "string" }
+        }
+      },
+      "CalendarRecurrence": {
+        "type": "object",
+        "required": ["rrule"],
+        "properties": {
+          "rrule": { "type": "string", "nullable": true }
+        }
+      },
+      "CalendarEvent": {
+        "type": "object",
+        "required": [
+          "uid",
+          "calendarId",
+          "summary",
+          "description",
+          "location",
+          "start",
+          "end",
+          "allDay",
+          "etag",
+          "recurrence",
+          "attendees",
+          "alarms",
+          "recurrenceId",
+          "isRecurringInstance"
+        ],
+        "properties": {
+          "uid": { "type": "string" },
+          "calendarId": { "type": "string" },
+          "summary": { "type": "string" },
+          "description": { "type": "string", "nullable": true },
+          "location": { "type": "string", "nullable": true },
+          "start": { "type": "string", "format": "date-time" },
+          "end": { "type": "string", "format": "date-time" },
+          "allDay": { "type": "boolean" },
+          "etag": { "type": "string", "nullable": true },
+          "recurrence": { "$ref": "#/components/schemas/CalendarRecurrence", "nullable": true },
+          "attendees": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/CalendarAttendee" }
+          },
+          "alarms": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/CalendarAlarm" }
+          },
+          "recurrenceId": { "type": "string", "nullable": true },
+          "isRecurringInstance": { "type": "boolean" }
+        }
+      },
+      "CalendarEventInput": {
+        "type": "object",
+        "required": ["calendarId", "summary", "start", "end"],
+        "properties": {
+          "calendarId": { "type": "string" },
+          "uid": { "type": "string" },
+          "summary": { "type": "string" },
+          "description": { "type": "string", "nullable": true },
+          "location": { "type": "string", "nullable": true },
+          "start": { "type": "string", "format": "date-time" },
+          "end": { "type": "string", "format": "date-time" },
+          "allDay": { "type": "boolean" },
+          "recurrence": { "$ref": "#/components/schemas/CalendarRecurrence", "nullable": true },
+          "attendees": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/CalendarAttendee" }
+          },
+          "alarms": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/CalendarAlarm" }
+          },
+          "etag": { "type": "string", "nullable": true }
+        }
+      },
+      "CalendarsResponse": {
+        "type": "object",
+        "required": ["calendars"],
+        "properties": {
+          "calendars": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/CalendarInfo" }
+          }
+        }
+      },
+      "CalendarEventsResponse": {
+        "type": "object",
+        "required": ["events"],
+        "properties": {
+          "events": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/CalendarEvent" }
+          }
+        }
+      },
+      "CalendarEventResponse": {
+        "type": "object",
+        "required": ["event"],
+        "properties": {
+          "event": { "$ref": "#/components/schemas/CalendarEvent" }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Invalid request",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Missing or invalid session",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Resource not found",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+          }
+        }
+      },
+      "TooManyRequests": {
+        "description": "Rate limit exceeded",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "getHealth",
+        "summary": "Health check",
+        "responses": {
+          "200": {
+            "description": "Service is healthy",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HealthResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/mail/session": {
+      "post": {
+        "operationId": "createMailSession",
+        "summary": "Create mail session",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/MailSessionRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Session created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MailSessionResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" }
+        }
+      },
+      "delete": {
+        "operationId": "deleteMailSession",
+        "summary": "Delete mail session",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "204": { "description": "Session deleted" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/v1/mail/folders": {
+      "get": {
+        "operationId": "listMailFolders",
+        "summary": "List mail folders",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Folder list",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MailFoldersResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "post": {
+        "operationId": "createMailFolder",
+        "summary": "Create mail folder",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateMailFolderRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Folder created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PathResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "patch": {
+        "operationId": "renameMailFolder",
+        "summary": "Rename mail folder",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RenameMailFolderRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Folder renamed",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PathResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "delete": {
+        "operationId": "deleteMailFolder",
+        "summary": "Delete mail folder",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "path", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "delimiter", "in": "query", "required": false, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/FolderPathRequest" }
+            }
+          }
+        },
+        "responses": {
+          "204": { "description": "Folder deleted" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/v1/mail/folders/move": {
+      "post": {
+        "operationId": "moveMailFolder",
+        "summary": "Move mail folder",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/MoveMailFolderRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Folder moved",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PathResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/v1/mail/folders/clear": {
+      "post": {
+        "operationId": "clearMailFolder",
+        "summary": "Clear all messages in folder",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/FolderPathRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Folder cleared",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OkResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/v1/mail/folders/mark-all-read": {
+      "post": {
+        "operationId": "markAllMailFolderRead",
+        "summary": "Mark all messages in folder as read",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/FolderPathRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Folder marked read",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OkResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/v1/mail/messages": {
+      "get": {
+        "operationId": "listMailMessages",
+        "summary": "List messages in folder",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "folder", "in": "query", "schema": { "type": "string", "default": "INBOX" } },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 }
+          },
+          { "name": "cursor", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Message list",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MailMessagesResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "post": {
+        "operationId": "sendMailMessage",
+        "summary": "Send mail message",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SendMailRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Message sent",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OkResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/v1/mail/messages/{uid}": {
+      "get": {
+        "operationId": "getMailMessage",
+        "summary": "Get message detail",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "uid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "minimum": 1 }
+          },
+          { "name": "folder", "in": "query", "schema": { "type": "string", "default": "INBOX" } },
+          { "name": "markSeen", "in": "query", "schema": { "type": "boolean", "default": true } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Message detail",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MailMessageResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "patch": {
+        "operationId": "patchMailMessageFlags",
+        "summary": "Update message flags",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "uid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "minimum": 1 }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/MailMessageFlagsRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Flags updated",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OkResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "delete": {
+        "operationId": "deleteMailMessage",
+        "summary": "Delete message",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "uid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "minimum": 1 }
+          },
+          { "name": "folder", "in": "query", "schema": { "type": "string", "default": "INBOX" } }
+        ],
+        "responses": {
+          "204": { "description": "Message deleted" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/v1/mail/messages/{uid}/move": {
+      "post": {
+        "operationId": "moveMailMessage",
+        "summary": "Move message to another folder",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "uid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "minimum": 1 }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/MoveMailMessageRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Message moved",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OkResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/v1/calendar/calendars": {
+      "get": {
+        "operationId": "listCalendars",
+        "summary": "List calendars",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Calendar list",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CalendarsResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/v1/calendar/events": {
+      "get": {
+        "operationId": "queryCalendarEvents",
+        "summary": "Query calendar events",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "calendarId",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Comma-separated calendar IDs"
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "format": "date-time" }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "format": "date-time" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Events in range",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CalendarEventsResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "post": {
+        "operationId": "createCalendarEvent",
+        "summary": "Create calendar event",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CalendarEventInput" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Event created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CalendarEventResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/v1/calendar/events/{eventUid}": {
+      "get": {
+        "operationId": "getCalendarEvent",
+        "summary": "Get calendar event",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "eventUid", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "calendarId", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Event detail",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CalendarEventResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "put": {
+        "operationId": "updateCalendarEvent",
+        "summary": "Update calendar event",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "eventUid", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CalendarEventInput" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Event updated",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CalendarEventResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "delete": {
+        "operationId": "deleteCalendarEvent",
+        "summary": "Delete calendar event",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "eventUid", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "calendarId", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "204": { "description": "Event deleted" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    }
+  }
+}

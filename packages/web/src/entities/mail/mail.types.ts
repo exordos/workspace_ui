@@ -1,29 +1,12 @@
-export interface MailFolder {
-  path: string;
-  name: string;
-  unread: number;
-  total: number;
-}
+import type {
+  MailFolder,
+  MailMessageDetail,
+  MailMessageSummary,
+  SendMailRequest,
+} from "@mail/api/mail-api.generated";
 
-export interface MailMessageSummary {
-  uid: number;
-  from: string;
-  subject: string;
-  snippet: string;
-  date: string;
-  seen: boolean;
-  flagged: boolean;
-}
-
-export interface MailMessageDetail extends MailMessageSummary {
-  bodyHtml: string | null;
-  bodyText: string | null;
-  messageId: string | null;
-  replyTo: string | null;
-  to: string[];
-  cc: string[];
-  references: string | null;
-}
+export type { MailFolder, MailMessageDetail, MailMessageSummary };
+export type MailComposePayload = SendMailRequest;
 
 export interface MailSessionInfo {
   token: string;
@@ -32,16 +15,6 @@ export interface MailSessionInfo {
 }
 
 export type MailComposeMode = "new" | "reply" | "replyAll" | "forward";
-
-export interface MailComposePayload {
-  to: string;
-  cc?: string;
-  subject: string;
-  bodyHtml: string;
-  bodyText?: string;
-  inReplyTo?: string;
-  references?: string;
-}
 
 export interface MailFlagsPatch {
   addFlags?: string[];

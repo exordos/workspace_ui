@@ -11,6 +11,7 @@ import {
   refreshZulipApiBase,
   setInstanceProvider,
 } from "~/shared/api/client";
+import { registerMailOrvalMutator } from "~/shared/api/mail-orval-mutator";
 import { clearInFlightWorkspaceFolderRequests } from "~/shared/api/workspace-client";
 import { registerWorkspaceOrvalMutator } from "~/shared/api/workspace-orval-mutator";
 import { initAnalytics } from "~/shared/lib/analytics/setup";
@@ -40,6 +41,7 @@ import "./app/focus-outline.styles.css";
 // ---------------------------------------------------------------------------
 
 registerWorkspaceOrvalMutator();
+registerMailOrvalMutator();
 
 setInstanceProvider(() => {
   const inst = useInstancesStore.getState().getCurrentInstance();

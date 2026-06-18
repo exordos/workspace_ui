@@ -29,6 +29,7 @@
     "@radix-ui/react-dialog": "1.1.16",
     "@radix-ui/react-dropdown-menu": "2.1.17",
     "@sentry/react": "10.57.0",
+    "@mail/api": "file:../mail-api",
     "@workspace/api": "file:../workspace-api",
     "buffer": "6.0.3",
     "dompurify": "3.4.9",

@@ -11,6 +11,8 @@ Single source of truth for volatile counts, paths, and workflow. Other docs shou
 | `web`           | `packages/web/`           | React SPA (Vite)                        |
 | `electron-app`  | `packages/electron/`      | Desktop shell                           |
 | `workspace-api` | `packages/workspace-api/` | Orval-generated `@workspace/api` client |
+| `mail-api`      | `packages/mail-api/`      | Orval-generated `@mail/api` client      |
+| `mail-proxy`    | `packages/mail-proxy/`    | IMAP/SMTP + CalDAV REST proxy (Mailcow) |
 
 ## Stack versions
 
@@ -44,6 +46,8 @@ Single source of truth for volatile counts, paths, and workflow. Other docs shou
 | HTTP client (middleware) | `packages/web/src/shared/api/client.ts`                               |
 | Zulip API modules        | `packages/web/src/shared/api/zulip-*.ts`                              |
 | Workspace API client     | `packages/web/src/shared/api/workspace-client.ts`                     |
+| Mail API client          | `packages/web/src/entities/mail/mail.api.ts` (Orval via `@mail/api`)  |
+| Mail proxy server        | `packages/mail-proxy/src/server/`                                     |
 | White-label config       | `packages/web/src/shared/lib/brand.ts`                                |
 | User API (split)         | `packages/web/src/entities/user/api/`                                 |
 
@@ -72,11 +76,11 @@ import { zulipFetch } from "~/shared/api/client";
 
 ## Documentation
 
-| Category                           |                                                     Count |
-| ---------------------------------- | --------------------------------------------------------: |
-| Technical references (`docs/*.md`) |                                             8 + this file |
-| ADRs (`docs/adr/`)                 | 13 (000 template + 001–010, 012–013; 011 merged into 009) |
-| Cursor rules (`.cursor/rules/`)    |                                                        50 |
+| Category                           |                                                          Count |
+| ---------------------------------- | -------------------------------------------------------------: |
+| Technical references (`docs/*.md`) |                                                  8 + this file |
+| ADRs (`docs/adr/`)                 | 14 (000 template + 001–010, 012–013, 016; 011 merged into 009) |
+| Cursor rules (`.cursor/rules/`)    |                                                             50 |
 
 ## Client legacy compatibility
 

@@ -1,0 +1,19 @@
+{
+  "name": "@mail/api",
+  "version": "0.1.9",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "exports": {
+    "./mail-api-mutator": "./src/mail-api-mutator.ts",
+    "./mail-api.generated": "./src/generated/mail-api.ts"
+  },
+  "scripts": {
+    "codegen": "orval --config orval.config.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "orval": "8.10.0",
+    "typescript": "5.6.3"
+  }
+}
