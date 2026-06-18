@@ -427,14 +427,29 @@ article,
  * Shared hover/focus contract for icon-only action buttons.
  * Keeps icon behavior consistent across the UI.
  */
+.composer-toolbar-btn {
+  @apply rounded-lg text-icon-base transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft;
+}
+
 @media (hover: hover) {
-  button:not(:disabled):not([data-icon-hover="custom"]):has(> svg):not(:has(> *:not(svg))):hover {
+  .composer-toolbar-btn:not(:disabled):hover {
     @apply text-icon-active;
     background-color: color-mix(in srgb, var(--color-icon-hover) 35%, transparent);
   }
 }
 
-button:not(:disabled):not([data-icon-hover="custom"]):has(> svg):not(:has(> *:not(svg))) {
+@media (hover: hover) {
+  button:not(:disabled):not([data-icon-hover="custom"]):not(.composer-toolbar-btn):not(
+      .composer-mode-tab-btn
+    ):has(> svg):not(:has(> *:not(svg))):hover {
+    @apply text-icon-active;
+    background-color: color-mix(in srgb, var(--color-icon-hover) 35%, transparent);
+  }
+}
+
+button:not(:disabled):not([data-icon-hover="custom"]):not(.composer-toolbar-btn):not(
+    .composer-mode-tab-btn
+  ):has(> svg):not(:has(> *:not(svg))) {
   @apply rounded-lg text-icon-base transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft;
 }
 

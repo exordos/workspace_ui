@@ -47,7 +47,12 @@ import { MessageComposerSavedSnippetsDialog } from "./message-composer-saved-sni
 import { useComposerSavedSnippetsStore } from "./message-composer-saved-snippets.model";
 import { MessageComposerSchedulePopover } from "./message-composer-schedule-popover.ui";
 import { wrapSelection } from "./message-composer-selection.lib";
-import { TOOLBAR_BTN } from "./message-composer-styles.lib";
+import {
+  TOOLBAR_AI_ICON_SIZE,
+  TOOLBAR_BTN,
+  TOOLBAR_ICON_EMPHASIS_CLASS,
+  TOOLBAR_ICON_SIZE,
+} from "./message-composer-styles.lib";
 import { FormattingToolbar } from "./message-composer-toolbar.ui";
 import { useMessageComposerUpload } from "./message-composer-upload.hook";
 import { MessageComposerWriteBody } from "./message-composer-write-body.ui";
@@ -754,7 +759,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
 
   return (
     <div
-      className={`flex-shrink-0 rounded-xl border-t border-border-subtle bg-composer-outer ${isDragOver ? "ring-2 ring-inset ring-accent" : ""}`}
+      className={`flex-shrink-0 rounded-xl bg-composer-outer ${isEditing ? "" : "border-t border-border-subtle"} ${isDragOver ? "ring-2 ring-inset ring-accent" : ""}`}
       data-focus-zone="composer"
       role="form"
       aria-label={t("a11y.messageComposer")}
@@ -813,7 +818,11 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
                       aria-label={t("a11y.attachFile")}
                       title={t("a11y.attachFile")}
                     >
-                      <Icon name="attach" size={16} />
+                      <Icon
+                        name="attach"
+                        size={TOOLBAR_ICON_SIZE}
+                        className={TOOLBAR_ICON_EMPHASIS_CLASS}
+                      />
                     </button>
                   ) : undefined
                 }
@@ -827,7 +836,11 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
                       aria-label={t("call.createCallLink")}
                       title={t("call.createCallLink")}
                     >
-                      <Icon name="phone" size={16} />
+                      <Icon
+                        name="phone"
+                        size={TOOLBAR_ICON_SIZE}
+                        className={TOOLBAR_ICON_EMPHASIS_CLASS}
+                      />
                     </button>
                   ) : undefined
                 }
@@ -842,7 +855,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
                       aria-label={t("a11y.messageMenu")}
                       title={t("a11y.messageMenu")}
                     >
-                      <Icon name="calendar" size={16} />
+                      <Icon name="calendar" size={TOOLBAR_ICON_SIZE} />
                     </button>
                   ) : undefined
                 }
@@ -857,14 +870,18 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
                       aria-label={t("composer.savedSnippets")}
                       title={t("composer.savedSnippets")}
                     >
-                      <Icon name="chat_bubble_outline" size={16} />
+                      <Icon name="chat_bubble_outline" size={TOOLBAR_ICON_SIZE} />
                     </button>
                   ) : undefined
                 }
                 aiTrigger={
                   !isEditing ? (
                     <span ref={aiButtonAnchorRef}>
-                      <AiComposerButton onClick={toggleAiUnavailablePopover} active={aiMenuOpen} />
+                      <AiComposerButton
+                        onClick={toggleAiUnavailablePopover}
+                        active={aiMenuOpen}
+                        iconSize={TOOLBAR_AI_ICON_SIZE}
+                      />
                     </span>
                   ) : undefined
                 }

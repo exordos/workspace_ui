@@ -585,6 +585,14 @@ export const ChatPage: React.FC = () => {
     clearBoundaryLoadFailed();
   }, [clearBoundaryLoadFailed]);
 
+  const handleDismissActionError = useCallback(() => {
+    setActionError(null);
+  }, []);
+
+  const handleDismissSendError = useCallback(() => {
+    setSendError(null);
+  }, []);
+
   const { canStartCall, buildCurrentCallLink, handleCallClick } = useChatPageCall({
     isDmView,
     isGroupDmView,
@@ -1151,7 +1159,12 @@ export const ChatPage: React.FC = () => {
             onCancel={handleDeleteCancel}
           />
         )}
-        <ChatPageInlineAlerts actionError={actionError} sendError={sendError} />
+        <ChatPageInlineAlerts
+          actionError={actionError}
+          sendError={sendError}
+          onDismissActionError={handleDismissActionError}
+          onDismissSendError={handleDismissSendError}
+        />
         <ChatPageFloatingToast message={toastMessage} />
         <ChatPageTypingLine
           text={typingText}

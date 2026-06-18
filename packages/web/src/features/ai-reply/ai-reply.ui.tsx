@@ -267,7 +267,11 @@ export const AiActionMenu: React.FC<AiActionMenuProps> = ({
 // AI Composer Button (trigger for the action menu)
 // ---------------------------------------------------------------------------
 
-export const AiComposerButton: React.FC<AiComposerButtonProps> = ({ onClick, active }) => (
+export const AiComposerButton: React.FC<AiComposerButtonProps> = ({
+  onClick,
+  active,
+  iconSize = 14,
+}) => (
   <button
     type="button"
     onClick={onClick}
@@ -277,6 +281,6 @@ export const AiComposerButton: React.FC<AiComposerButtonProps> = ({ onClick, act
     aria-label="AI assistant"
     title="AI assistant"
   >
-    <Icon name="sparkles" size={14} className="text-current" />
+    <Icon name="sparkles" size={iconSize} className="text-current" />
   </button>
 );

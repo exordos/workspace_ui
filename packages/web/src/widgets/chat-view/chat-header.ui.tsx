@@ -158,7 +158,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   };
 
   return (
-    <header className="flex flex-shrink-0 items-center justify-between bg-card-bg px-5 py-2">
+    <header className="flex flex-shrink-0 items-center justify-between rounded-xl bg-card-bg px-5 py-2">
       <div className="flex min-w-0 flex-1 flex-col">{renderHeaderTitle()}</div>
       <div className="flex items-center gap-1">
         {onCallClick != null && (

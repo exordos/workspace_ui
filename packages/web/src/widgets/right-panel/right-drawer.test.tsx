@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { RightDrawer } from "./right-drawer.ui";
 
 describe("RightDrawer", () => {
-  it("uses flat geometry classes for drawer shell", () => {
+  it("uses rounded shell geometry aligned with the left sidebar", () => {
     render(
       <RightDrawer onClose={vi.fn()}>
         <div>Content</div>
@@ -12,7 +12,7 @@ describe("RightDrawer", () => {
 
     const drawer = screen.getByLabelText(/info panel/i);
     expect(drawer).toHaveClass("w-panel-right");
-    expect(drawer).not.toHaveClass("rounded-xl");
+    expect(drawer).toHaveClass("rounded-xl");
     expect(drawer).toHaveClass("px-2");
     expect(drawer).toHaveClass("py-5");
     expect(drawer).toHaveClass("bg-sidebar-bg");

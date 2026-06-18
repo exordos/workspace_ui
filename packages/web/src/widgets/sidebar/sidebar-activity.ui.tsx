@@ -16,7 +16,10 @@ import type { SidebarActivityProps } from "./sidebar-activity.types";
 const compactRowClass =
   "relative flex h-8 w-8 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-sidebar-hover hover:text-text-primary";
 const compactRowActiveClass = "border border-border-subtle bg-card-bg-active text-text-primary";
-const compactBadgeClass = "absolute -right-1 -top-1";
+/** Corner overlay: stays above adjacent compact buttons on hover (see folder-rail pattern). */
+const compactBadgeClass = "pointer-events-none absolute -right-1 -top-1 z-sticky";
+/** Parent list item must stack above siblings so overflowing badges are not clipped by hover. */
+const compactListItemWithBadgeClass = "relative z-sticky";
 const expandedRowBaseClass =
   "group flex w-full items-center gap-2 rounded-lg bg-bg-elevated/60 px-2.5 py-2 text-left text-sm text-text-primary transition-colors hover:bg-card-bg";
 const expandedRowCompactClass =
@@ -117,8 +120,16 @@ export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle
             const route = "route" in item ? item.route : undefined;
             const isActive = route !== undefined && scopedPathname === route;
             const label = t(item.labelKey);
+            const hasCompactBadge =
+              (item.key === "inbox" && inboxCount > 0) ||
+              (item.key === "mentions" && mentionsCount > 0) ||
+              (item.key === "drafts" && draftsCount > 0) ||
+              (item.key === "favorites" && favoritesError == null && favoritesCount > 0);
             return (
-              <li key={`compact-${item.key}`}>
+              <li
+                key={`compact-${item.key}`}
+                className={hasCompactBadge ? compactListItemWithBadgeClass : undefined}
+              >
                 {route ? (
                   <Link
                     to={withCurrentOrgRoute(route)}

@@ -1,5 +1,6 @@
 import React from "react";
 import { t } from "~/i18n/i18n";
+import { chatBottomNoticeBarClassName } from "~/shared/lib/chat-bottom-notice-bar.lib";
 import type { ChatPageDeleteConfirmBarProps } from "./chat-page-delete-confirm-bar.types";
 
 export const ChatPageDeleteConfirmBar = React.memo(function ChatPageDeleteConfirmBar({
@@ -10,7 +11,7 @@ export const ChatPageDeleteConfirmBar = React.memo(function ChatPageDeleteConfir
 }: ChatPageDeleteConfirmBarProps) {
   return (
     <div
-      className="bg-notice-base/10 flex flex-shrink-0 items-center gap-3 border-t border-border-subtle px-4 py-2"
+      className={chatBottomNoticeBarClassName({ gap: "3" })}
       role="alertdialog"
       aria-label={t("message.deleteConfirm")}
     >

@@ -1,5 +1,6 @@
 import React, { useMemo } from "react";
 import { t } from "~/i18n/i18n";
+import { chatBottomNoticeBarClassName } from "~/shared/lib/chat-bottom-notice-bar.lib";
 import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
 import { Icon } from "~/shared/ui/icon";
 import {
@@ -35,14 +36,16 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
     return (
       <>
         {isEditing && (
-          <div className="flex items-center justify-between border-b border-border-subtle bg-bg px-4 py-2">
-            <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
-              {t("message.edit")}
-            </p>
+          <div
+            className={chatBottomNoticeBarClassName({ gap: "3", round: "top" })}
+            role="status"
+            aria-live="polite"
+          >
+            <span className="min-w-0 flex-1 text-sm text-text-primary">{t("message.edit")}</span>
             <button
               type="button"
               onClick={() => onCancelEdit?.()}
-              className="rounded px-2 py-1 text-xs text-text-muted hover:bg-bg-elevated hover:text-text-primary"
+              className="rounded-lg px-3 py-1 text-sm text-text-muted hover:text-text-primary"
             >
               {t("common.cancel")}
             </button>

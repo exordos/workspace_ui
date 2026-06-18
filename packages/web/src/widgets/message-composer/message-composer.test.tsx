@@ -9,6 +9,7 @@ import { createUser } from "~/test/factories";
 import { renderWithProviders } from "~/test/render";
 import { computeFloatingPickerPosition } from "./message-composer-picker-position.lib";
 import { resetComposerSavedSnippetsModelForTests } from "./message-composer-saved-snippets.model";
+import { TOOLBAR_ICON_SIZE } from "./message-composer-styles.lib";
 import { MessageComposer } from "./message-composer.ui";
 
 const isWebViewMock = vi.fn(() => false);
@@ -857,9 +858,11 @@ describe("MessageComposer mode tabs", () => {
 
     expect(writeIcon).not.toBeNull();
     expect(previewIcon).not.toBeNull();
-    expect(writeIcon).toHaveAttribute("width", "16");
-    expect(previewIcon).toHaveAttribute("width", "16");
+    expect(writeIcon).toHaveAttribute("width", String(TOOLBAR_ICON_SIZE));
+    expect(previewIcon).toHaveAttribute("width", String(TOOLBAR_ICON_SIZE));
     expect(previewButton).toHaveClass("text-composer-icon");
+    expect(writeButton).toHaveClass("text-icon-active");
+    expect(writeButton).not.toHaveClass("text-icon-base");
   });
 
   it("adds bottom spacing between mode tabs row and input row", () => {

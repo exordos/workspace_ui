@@ -1,7 +1,13 @@
 import React from "react";
 import { t } from "~/i18n/i18n";
 import { Icon } from "~/shared/ui/icon";
-import { MODE_TAB_ACTIVE, MODE_TAB_BTN, MODE_TAB_INACTIVE } from "./message-composer-styles.lib";
+import {
+  MODE_TAB_ACTIVE,
+  MODE_TAB_BTN,
+  MODE_TAB_INACTIVE,
+  TOOLBAR_ICON_EMPHASIS_CLASS,
+  TOOLBAR_ICON_SIZE,
+} from "./message-composer-styles.lib";
 import type { ComposerModeTabsProps } from "./message-composer.types";
 
 export const ComposerModeTabs = React.memo<ComposerModeTabsProps>(function ComposerModeTabs({
@@ -17,7 +23,11 @@ export const ComposerModeTabs = React.memo<ComposerModeTabsProps>(function Compo
         aria-label={t("composer.write")}
         title={t("composer.write")}
       >
-        <Icon name="pen" size={16} className="text-current" />
+        <Icon
+          name="pen"
+          size={TOOLBAR_ICON_SIZE}
+          className={`text-current ${TOOLBAR_ICON_EMPHASIS_CLASS}`}
+        />
       </button>
       <button
         type="button"
@@ -26,7 +36,7 @@ export const ComposerModeTabs = React.memo<ComposerModeTabsProps>(function Compo
         aria-label={t("composer.preview")}
         title={t("composer.preview")}
       >
-        <Icon name="visibility" size={16} className="text-current" />
+        <Icon name="visibility" size={TOOLBAR_ICON_SIZE} className="text-current" />
       </button>
     </div>
   );

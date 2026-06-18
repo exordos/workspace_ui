@@ -2,7 +2,16 @@ import React, { useCallback } from "react";
 import { t } from "~/i18n/i18n";
 import { Icon } from "~/shared/ui/icon";
 import { mutateSelection, wrapSelection } from "./message-composer-selection.lib";
-import { TOOLBAR_BTN, TOOLBAR_GLYPH } from "./message-composer-styles.lib";
+import {
+  TOOLBAR_BTN,
+  TOOLBAR_GLYPH,
+  TOOLBAR_ICON_EMPHASIS_CLASS,
+  TOOLBAR_ICON_SIZE,
+  TOOLBAR_LINK_ICON_SIZE,
+  TOOLBAR_MONO_COMPACT_GLYPH,
+  TOOLBAR_MONO_GLYPH,
+  TOOLBAR_QUOTE_GLYPH,
+} from "./message-composer-styles.lib";
 import type { FormattingToolbarProps } from "./message-composer.types";
 
 export const FormattingToolbar = React.memo<FormattingToolbarProps>(function FormattingToolbar({
@@ -159,7 +168,7 @@ export const FormattingToolbar = React.memo<FormattingToolbarProps>(function For
         title={t("composer.quote")}
         aria-label={t("composer.quote")}
       >
-        <span className={`${TOOLBAR_GLYPH} font-semibold`}>&gt;</span>
+        <span className={TOOLBAR_QUOTE_GLYPH}>&gt;</span>
       </button>
       <button
         type="button"
@@ -168,7 +177,7 @@ export const FormattingToolbar = React.memo<FormattingToolbarProps>(function For
         title={t("composer.bulletedList")}
         aria-label={t("composer.bulletedList")}
       >
-        <Icon name="list_bulleted" size={14} className="text-current" />
+        <Icon name="list_bulleted" size={TOOLBAR_ICON_SIZE} className="text-current" />
       </button>
       <button
         type="button"
@@ -187,7 +196,7 @@ export const FormattingToolbar = React.memo<FormattingToolbarProps>(function For
         title={t("composer.code")}
         aria-label={t("composer.code")}
       >
-        <span className="font-mono text-[11px] leading-none text-current">&lt;/&gt;</span>
+        <span className={TOOLBAR_MONO_COMPACT_GLYPH}>&lt;/&gt;</span>
       </button>
       <button
         type="button"
@@ -196,7 +205,7 @@ export const FormattingToolbar = React.memo<FormattingToolbarProps>(function For
         title={t("composer.spoiler")}
         aria-label={t("composer.spoiler")}
       >
-        <span className="font-mono text-[11px] leading-none text-current">||</span>
+        <span className={TOOLBAR_MONO_GLYPH}>||</span>
       </button>
       <button
         type="button"
@@ -205,7 +214,7 @@ export const FormattingToolbar = React.memo<FormattingToolbarProps>(function For
         title={t("composer.codeBlock")}
         aria-label={t("composer.codeBlock")}
       >
-        <span className="font-mono text-[11px] leading-none text-current">{"{ }"}</span>
+        <span className={TOOLBAR_MONO_COMPACT_GLYPH}>{"{ }"}</span>
       </button>
       <button
         type="button"
@@ -214,7 +223,11 @@ export const FormattingToolbar = React.memo<FormattingToolbarProps>(function For
         title={t("composer.link")}
         aria-label={t("composer.link")}
       >
-        <Icon name="links" size={14} className="text-current" />
+        <Icon
+          name="links"
+          size={TOOLBAR_LINK_ICON_SIZE}
+          className={`text-current ${TOOLBAR_ICON_EMPHASIS_CLASS}`}
+        />
       </button>
       {(hasMediaActions || hasAssistActions) && (
         <>

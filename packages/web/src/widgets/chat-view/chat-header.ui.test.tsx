@@ -162,7 +162,7 @@ describe("ChatHeader", () => {
     expect(screen.getByText(/3 (members?|участник|участника|участников)/i)).toBeInTheDocument();
   });
 
-  it("uses flat shell, compact metadata typography and topbar-aligned height", () => {
+  it("uses rounded top shell, compact metadata typography and topbar-aligned height", () => {
     renderWithProviders(
       <ChatHeader
         channelName="unused"
@@ -175,7 +175,7 @@ describe("ChatHeader", () => {
     const header = screen.getByText("Alice").closest("header");
     const status = screen.getByText(/online|в сети/i);
 
-    expect(header).not.toHaveClass("rounded-xl");
+    expect(header).toHaveClass("rounded-t-xl");
     expect(header).toHaveClass("py-2");
     expect(status).toHaveClass("text-xs");
   });
