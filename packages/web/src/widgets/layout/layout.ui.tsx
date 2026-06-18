@@ -5,6 +5,7 @@ import { enrichSidebarChatsWithMentionFlags } from "~/entities/chat-list/chat-li
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useHydrateDrafts } from "~/entities/draft/draft-hydration";
 import { useInstancesStore } from "~/entities/instance/instance.model";
+import { syncUnreadSurfacesFromDelta } from "~/entities/unread-sync/unread-surfaces-sync.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
@@ -197,15 +198,27 @@ export const Layout: React.FC = () => {
   const connectionHealth = useConnectionHealthSnapshot();
   useHydrateDrafts(currentInstanceId, currentUserStatus);
 
+  // Safety net: keeps the org badge correct when mute state changes outside event/local flows.
   useEffect(() => {
     if (!currentInstanceId) return;
-    setInstanceUnreadCount(currentInstanceId, unreadCountForCurrentInstance);
-  }, [currentInstanceId, unreadCountForCurrentInstance, setInstanceUnreadCount]);
-
-  useEffect(() => {
-    if (!currentInstanceId) return;
-    setInstanceDmUnreadCount(currentInstanceId, personalUnreadIndicatorActive ? 1 : 0);
-  }, [currentInstanceId, personalUnreadIndicatorActive, setInstanceDmUnreadCount]);
+    syncUnreadSurfacesFromDelta({
+      source: "layout-derived",
+      instanceId: currentInstanceId,
+      isStreamMuted,
+      isEffectivelyMuted,
+      applyDelta: () => {},
+    });
+  }, [
+    currentInstanceId,
+    unreadCountForCurrentInstance,
+    personalUnreadIndicatorActive,
+    mutedStreamIds,
+    mutedTopicKeys,
+    unmutedTopicKeys,
+    followedTopicKeys,
+    isStreamMuted,
+    isEffectivelyMuted,
+  ]);
 
   useLayoutWindowBranding({
     unreadCount: unreadCountForCurrentInstance,

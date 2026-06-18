@@ -4,6 +4,7 @@ import {
 } from "~/entities/chat-list/chat-list-apply-read-decrement.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import type { MessageLocation } from "~/entities/chat-list/chat-list.model.types";
+import type { UnreadDeltaSyncSource } from "~/entities/unread-sync/unread-surfaces-sync.lib";
 import { markMessagesAsRead } from "~/shared/api/zulip-read-state";
 import { dmRouteKey } from "~/shared/lib/dm-key";
 import { buildMessageIdMap } from "~/shared/lib/message-id-index.lib";
@@ -27,6 +28,7 @@ export type MarkAllAsReadTarget =
       topic: string;
     };
 
+// Only topic routes and DM routes support open-chat mark-all.
 export function resolveMarkAllAsReadTarget({
   isDmView,
   activeDmUserIds,
@@ -44,6 +46,7 @@ export function resolveMarkAllAsReadTarget({
   return { type: "topic", streamId: activeStreamId, topic: activeTopic };
 }
 
+// Finds unread ids that are visible in the loaded message window.
 export function collectUnreadMessageIds(
   messages: readonly {
     id: number;
@@ -55,6 +58,7 @@ export function collectUnreadMessageIds(
     .map((message) => message.id);
 }
 
+// Checks if an indexed unread message belongs to the current open chat.
 function messageLocationMatchesMarkAllTarget(
   location: MessageLocation,
   target: MarkAllAsReadTarget,
@@ -85,6 +89,7 @@ export function collectMarkAllAsReadMessageIds(
   return Array.from(ids).sort((a, b) => a - b);
 }
 
+// Used when some unread messages are not present in the local id index.
 export function markAllAsReadFallbackContext(
   target: MarkAllAsReadTarget,
   currentUserId: number | null,
@@ -104,6 +109,11 @@ export interface ApplyOpenChatMarkAllAsReadOptions {
   loadedMessages: readonly { id: number; flags?: string[] }[];
   currentUserId: number | null;
   applyOptimistic: (messageIds: number[], fallbackContext: ChatListReadFallbackContext) => void;
+  // Wraps every local unread change so the org badge is updated in the same step.
+  applyUnreadDelta: (
+    source: Extract<UnreadDeltaSyncSource, "local-chat-mark-all-read">,
+    applyDelta: () => void,
+  ) => void;
 }
 
 /** Marks all unread in the open chat via per-id flags API (never narrow). */
@@ -121,15 +131,21 @@ export async function applyOpenChatMarkAllAsRead(
 
   if (messageIds.length > 0) {
     await markMessagesAsRead(messageIds);
-    options.applyOptimistic(messageIds, fallbackContext);
   }
 
-  clearRemainingContextUnread(
-    () => useChatListStore.getState(),
-    chatListState,
-    fallbackContext,
-    "chat:markAllClearRemaining",
-  );
+  // Clear both known ids and any remaining badge inside one unread sync pass.
+  options.applyUnreadDelta("local-chat-mark-all-read", () => {
+    if (messageIds.length > 0) {
+      options.applyOptimistic(messageIds, fallbackContext);
+    }
+
+    clearRemainingContextUnread(
+      () => useChatListStore.getState(),
+      chatListState,
+      fallbackContext,
+      "chat:markAllClearRemaining",
+    );
+  });
   return true;
 }
 

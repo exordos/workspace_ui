@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInboxStore } from "~/entities/inbox/inbox.model";
+import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import type { CurrentChatContext } from "~/entities/message/message.model.types";
 import { markMessagesAsRead } from "~/shared/api/zulip-read-state";
@@ -31,6 +32,7 @@ const CURRENT_USER_ID = 7;
 const STREAM_ID = 12;
 const TOPIC = "general";
 const MESSAGE_ID = 501;
+const INSTANCE_ID = "chat-mark-read-test";
 
 function streamTopicMessage(overrides: Partial<MockMessage> = {}): MockMessage {
   return createMessage({
@@ -65,6 +67,20 @@ describe("useChatPageMarkRead", () => {
   beforeEach(() => {
     useChatListStore.getState().clear();
     useInboxStore.getState().clear();
+    useInstancesStore.setState({
+      instances: [
+        {
+          id: INSTANCE_ID,
+          realm: "https://zulip.example.com",
+          email: "user@example.com",
+          apiKey: "api-key",
+        },
+      ],
+      currentInstanceId: INSTANCE_ID,
+      unreadCountsByInstance: {},
+      dmUnreadCountsByInstance: {},
+      activeOrgEpoch: 0,
+    });
     useCurrentChatMessagesStore.getState().setContext(null);
     vi.mocked(markMessagesAsRead).mockResolvedValue(undefined);
     vi.mocked(applyOpenChatMarkAllAsRead).mockResolvedValue(true);
@@ -100,6 +116,40 @@ describe("useChatPageMarkRead", () => {
     expect(
       useChatListStore.getState().streamsMap.get(STREAM_ID)?.topics.get(TOPIC)?.unreadCount,
     ).toBe(0);
+    expect(useInstancesStore.getState().getInstanceUnreadCount(INSTANCE_ID)).toBe(0);
+  });
+
+  it("restores organization count when optimistic read fails", async () => {
+    vi.useFakeTimers();
+    vi.mocked(markMessagesAsRead).mockRejectedValueOnce(new Error("network"));
+    const message = streamTopicMessage();
+    const context: CurrentChatContext = {
+      type: "stream",
+      streamId: STREAM_ID,
+      streamName: "engineering",
+      topic: TOPIC,
+      streamWideView: false,
+    };
+    useCurrentChatMessagesStore.setState({ context, messages: [message] });
+    useChatListStore.getState().setFromMessages([message], CURRENT_USER_ID);
+    useInstancesStore.getState().setInstanceUnreadCount(INSTANCE_ID, 1);
+
+    const { result } = renderHook(() =>
+      useChatPageMarkRead(defaultParams({ messages: [message] })),
+    );
+
+    act(() => {
+      result.current.handleUnreadMessagesVisible([MESSAGE_ID]);
+    });
+
+    expect(useInstancesStore.getState().getInstanceUnreadCount(INSTANCE_ID)).toBe(0);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+
+    expect(useInstancesStore.getState().getInstanceUnreadCount(INSTANCE_ID)).toBe(1);
+    expect(useCurrentChatMessagesStore.getState().messages[0]?.flags).not.toContain("read");
   });
 
   it("incrementally updates inbox store on optimistic read", () => {

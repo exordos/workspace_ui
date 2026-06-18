@@ -13,6 +13,7 @@ import {
   isActiveOrgRequestContextCurrent,
   useInstancesStore,
 } from "~/entities/instance/instance.model";
+import { syncUnreadSurfacesFromSnapshot } from "~/entities/unread-sync/unread-surfaces-sync.lib";
 import { topicKey, useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { t } from "~/i18n/i18n";
 import { useOpenSearch } from "~/shared/contexts/open-search";
@@ -22,7 +23,6 @@ import { useCacheFirstPageLoad } from "~/shared/lib/use-cache-first-page.hook";
 import { FloatingLoadingOverlay } from "~/shared/ui/floating-loading-overlay";
 import { Icon } from "~/shared/ui/icon";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
-import { syncUnreadSurfacesFromSnapshot } from "~/widgets/layout/layout-unread-surfaces-sync.lib";
 import { buildInboxEntryRoute } from "./inbox-navigation.lib";
 
 const log = createLogger("inbox-page");
@@ -132,6 +132,7 @@ export const InboxPage: React.FC = () => {
       if (signal.aborted || !isActiveOrgRequestContextCurrent(orgContext)) return;
       setEntries(data.entries, requestVersion);
       if (data.unreadSnapshotComplete) {
+        // Only a full Inbox snapshot can safely update shared unread counters.
         syncUnreadSurfacesFromSnapshot({
           source: "inbox-fetch",
           instanceId,
@@ -140,6 +141,9 @@ export const InboxPage: React.FC = () => {
           messages: data.unreadMessages,
           applyChatList: true,
           applyInstanceCounts: true,
+          instanceCountMode: "chat-list-derived",
+          isStreamMuted,
+          isEffectivelyMuted,
         });
       }
     },

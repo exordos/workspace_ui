@@ -5,6 +5,7 @@ import { applyChatListReadDecrementGrouped } from "~/entities/chat-list/chat-lis
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { isMessageForContext, useCurrentChatMessagesStore } from "~/entities/message/message.model";
+import { syncUnreadSurfacesFromEventDelta } from "~/entities/unread-sync/unread-surfaces-sync.lib";
 import { resolveIncomingDmCallInvite } from "~/features/jitsi-call/jitsi-call-invite.lib";
 import { getCurrentInstance } from "~/shared/api/client";
 import { rawMessageToMockMessage } from "~/shared/api/zulip-messages";
@@ -23,7 +24,6 @@ import {
   closeAllActiveMessageNotifications,
   closeReadMessageNotifications,
 } from "./layout-notification-tags.lib";
-import { syncUnreadSurfacesFromEventDelta } from "./layout-unread-surfaces-sync.lib";
 import { maybeNotifyNewMessage } from "./layout-zulip-event-notify.lib";
 import {
   collectUnreadLoadedMessageIds,

@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import type * as CreateChatApiModule from "~/features/create-chat/create-chat.api";
 import { SYSTEM_ALL_FOLDER_ID } from "~/features/folder-sync/folder-sync-constants.lib";
@@ -41,6 +42,7 @@ const unpinChatInFolderMock = vi.fn();
 const getFoldersMock = vi.fn().mockResolvedValue([]);
 const addChatToFolderMock = vi.fn();
 const removeChatFromFolderMock = vi.fn();
+const INSTANCE_ID = "sidebar-test-instance";
 
 vi.mock("~/features/create-chat/create-chat.api", async (importOriginal) => {
   const actual = await importOriginal<typeof CreateChatApiModule>();
@@ -169,6 +171,13 @@ describe("Sidebar", () => {
     useTypingIndicatorStore.getState().clearAll();
     useMuteStore.getState().clear();
     usePinStore.getState().clear();
+    useInstancesStore.setState({
+      instances: [],
+      currentInstanceId: null,
+      unreadCountsByInstance: {},
+      dmUnreadCountsByInstance: {},
+      activeOrgEpoch: 0,
+    });
     useChatListStore.setState({ currentUserId: null });
     useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: [] });
     useSidebarConfigStore.getState().setSearchQuery("");
@@ -829,6 +838,20 @@ describe("Sidebar", () => {
 
   it("marks topic as read from topic context menu via narrow API", async () => {
     markTopicAsReadMock.mockResolvedValue(true);
+    useInstancesStore.setState({
+      instances: [
+        {
+          id: INSTANCE_ID,
+          realm: "https://zulip.example.com",
+          email: "user@example.com",
+          apiKey: "api-key",
+        },
+      ],
+      currentInstanceId: INSTANCE_ID,
+      unreadCountsByInstance: { [INSTANCE_ID]: 2 },
+      dmUnreadCountsByInstance: {},
+      activeOrgEpoch: 0,
+    });
     useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 11, name: "Engineering" }]);
     useChatListStore.getState().reconcileUnreadFromSnapshot(
       {
@@ -866,6 +889,60 @@ describe("Sidebar", () => {
     expect(
       useChatListStore.getState().streamsMap.get(11)?.topics.get("incident")?.unreadCount,
     ).toBe(0);
+    expect(useInstancesStore.getState().getInstanceUnreadCount(INSTANCE_ID)).toBe(0);
+  });
+
+  it("does not sync organization count when topic mark-as-read API fails", async () => {
+    markTopicAsReadMock.mockResolvedValue(false);
+    useInstancesStore.setState({
+      instances: [
+        {
+          id: INSTANCE_ID,
+          realm: "https://zulip.example.com",
+          email: "user@example.com",
+          apiKey: "api-key",
+        },
+      ],
+      currentInstanceId: INSTANCE_ID,
+      unreadCountsByInstance: { [INSTANCE_ID]: 2 },
+      dmUnreadCountsByInstance: {},
+      activeOrgEpoch: 0,
+    });
+    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 11, name: "Engineering" }]);
+    useChatListStore.getState().reconcileUnreadFromSnapshot(
+      {
+        streams: [{ streamId: 11, topic: "incident", unreadMessageIds: [1, 2] }],
+        dms: [],
+        totalCount: 2,
+        mentionMessageIds: [],
+      },
+      1,
+    );
+    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
+
+    renderWithProviders(
+      <Sidebar
+        streams={[{ stream_id: 11, name: "Engineering" }]}
+        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+        activeStreamSlug="11-engineering"
+        sidebarChats={[
+          {
+            ...STREAM_CHAT,
+            badge: 2,
+            topics: [{ subject: "incident", badge: 2, lastMessage: "Need fix" }],
+          },
+        ]}
+        sidebarDms={[]}
+      />,
+    );
+
+    fireEvent.contextMenu(screen.getByText("incident"));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /mark as read/i }));
+
+    await waitFor(() => {
+      expect(markTopicAsReadMock).toHaveBeenCalledWith(11, "incident");
+    });
+    expect(useInstancesStore.getState().getInstanceUnreadCount(INSTANCE_ID)).toBe(2);
   });
 
   it("marks topic as done from topic context menu", async () => {

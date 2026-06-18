@@ -1,4 +1,5 @@
 import type { ZulipInstance } from "~/entities/instance/instance.model";
+import { syncUnreadSurfacesFromSnapshot } from "~/entities/unread-sync/unread-surfaces-sync.lib";
 import { deleteQueue } from "~/shared/api/zulip-queue";
 import type { RegisterQueueResult, ZulipCredentials } from "~/shared/api/zulip.types";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
@@ -6,7 +7,6 @@ import {
   isRegisterUnreadSnapshotUsable,
   setCachedRegisterUnreadSnapshot,
 } from "./layout-instance-register-unread.lib";
-import { syncUnreadSurfacesFromSnapshot } from "./layout-unread-surfaces-sync.lib";
 
 export interface InactiveInstanceQueueRegistration {
   queueId: string;

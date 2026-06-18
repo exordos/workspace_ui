@@ -47,6 +47,7 @@ export function startInactiveInstanceUnreadPolling(
             fetchDmUnreadCount(instance, controller.signal),
           ]);
           if (cancelled) return;
+          // Count-only fallback for inactive orgs: no active chat-list or mute context exists here.
           if (unreadCount != null) {
             setUnreadCount(instance.id, unreadCount);
           }

@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import type { ZulipInstance } from "~/entities/instance/instance.model";
+import { syncUnreadSurfacesFromSnapshot } from "~/entities/unread-sync/unread-surfaces-sync.lib";
 import {
   fetchUnreadDmMessagesCountForCredentials,
   fetchUnreadMessagesCountForCredentials,
@@ -15,7 +16,6 @@ import {
 } from "./layout-instance-register-unread.lib";
 import { startInactiveInstanceEventStreams } from "./layout-multi-org-event-streams.lib";
 import { startInactiveInstanceUnreadPolling } from "./layout-multi-org-polling.lib";
-import { syncUnreadSurfacesFromSnapshot } from "./layout-unread-surfaces-sync.lib";
 
 export function useInactiveInstancesBackgroundWork(options: {
   instances: ZulipInstance[];

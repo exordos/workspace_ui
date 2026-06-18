@@ -1,5 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useInstancesStore } from "~/entities/instance/instance.model";
+import { syncUnreadSurfacesFromDelta } from "~/entities/unread-sync/unread-surfaces-sync.lib";
 import { markMessagesAsRead } from "~/shared/api/zulip-read-state";
 import {
   applyOpenChatMarkAllAsRead,
@@ -14,6 +16,36 @@ vi.mock("~/shared/api/zulip-read-state", () => ({
   markMessagesAsRead: vi.fn().mockResolvedValue(undefined),
 }));
 
+const INSTANCE_ID = "chat-mark-all-read-test";
+
+function resetStores(): void {
+  useChatListStore.getState().clear();
+  useInstancesStore.setState({
+    instances: [
+      {
+        id: INSTANCE_ID,
+        realm: "https://zulip.example.com",
+        email: "user@example.com",
+        apiKey: "api-key",
+      },
+    ],
+    currentInstanceId: INSTANCE_ID,
+    unreadCountsByInstance: {},
+    dmUnreadCountsByInstance: {},
+    activeOrgEpoch: 0,
+  });
+  vi.mocked(markMessagesAsRead).mockClear();
+  vi.mocked(markMessagesAsRead).mockResolvedValue(undefined);
+}
+
+function applyUnreadDelta(source: "local-chat-mark-all-read", applyDelta: () => void): void {
+  syncUnreadSurfacesFromDelta({
+    source,
+    instanceId: INSTANCE_ID,
+    applyDelta,
+  });
+}
+
 function expectTarget(
   actual: MarkAllAsReadTarget | null,
   expected: MarkAllAsReadTarget | null,
@@ -22,6 +54,10 @@ function expectTarget(
 }
 
 describe("chat-mark-all-read", () => {
+  beforeEach(() => {
+    resetStores();
+  });
+
   it("returns dm target for DM chat with valid participants", () => {
     expectTarget(
       resolveMarkAllAsReadTarget({
@@ -81,7 +117,6 @@ describe("chat-mark-all-read", () => {
   });
 
   it("collectMarkAllAsReadMessageIds merges loaded and index ids", () => {
-    useChatListStore.getState().clear();
     useChatListStore.setState({
       messageIdToLocation: new Map([[99, { type: "stream", stream_id: 10, topic: "incident" }]]),
     });
@@ -100,7 +135,6 @@ describe("chat-mark-all-read", () => {
   });
 
   it("applyOpenChatMarkAllAsRead uses per-id flags API", async () => {
-    useChatListStore.getState().clear();
     const applyOptimistic = vi.fn();
     const target: MarkAllAsReadTarget = { type: "topic", streamId: 5, topic: "bugs" };
     await applyOpenChatMarkAllAsRead({
@@ -108,6 +142,7 @@ describe("chat-mark-all-read", () => {
       loadedMessages: [{ id: 10, flags: [] }],
       currentUserId: 1,
       applyOptimistic,
+      applyUnreadDelta,
     });
     expect(markMessagesAsRead).toHaveBeenCalledWith([10]);
     expect(applyOptimistic).toHaveBeenCalledWith([10], {
@@ -115,6 +150,64 @@ describe("chat-mark-all-read", () => {
       streamId: 5,
       topic: "bugs",
     });
+  });
+
+  it("syncs organization count when mark-all only clears remaining context unread", async () => {
+    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "Engineering" }]);
+    useChatListStore.getState().reconcileUnreadFromSnapshot(
+      {
+        streams: [{ streamId: 5, topic: "bugs", unreadMessageIds: [10, 11] }],
+        dms: [],
+        totalCount: 2,
+        mentionMessageIds: [],
+      },
+      1,
+    );
+    useChatListStore.setState({ messageIdToLocation: new Map() });
+    useInstancesStore.getState().setInstanceUnreadCount(INSTANCE_ID, 2);
+
+    await applyOpenChatMarkAllAsRead({
+      target: { type: "topic", streamId: 5, topic: "bugs" },
+      loadedMessages: [],
+      currentUserId: 1,
+      applyOptimistic: vi.fn(),
+      applyUnreadDelta,
+    });
+
+    expect(markMessagesAsRead).not.toHaveBeenCalled();
+    expect(useChatListStore.getState().streamsMap.get(5)?.topics.get("bugs")?.unreadCount).toBe(0);
+    expect(useInstancesStore.getState().getInstanceUnreadCount(INSTANCE_ID)).toBe(0);
+  });
+
+  it("syncs organization count after mark-all clears unread outside loaded/index ids", async () => {
+    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "Engineering" }]);
+    useChatListStore.getState().reconcileUnreadFromSnapshot(
+      {
+        streams: [{ streamId: 5, topic: "bugs", unreadMessageIds: [10, 11] }],
+        dms: [],
+        totalCount: 2,
+        mentionMessageIds: [],
+      },
+      1,
+    );
+    useChatListStore.setState({
+      messageIdToLocation: new Map([[10, { type: "stream", stream_id: 5, topic: "bugs" }]]),
+    });
+    useInstancesStore.getState().setInstanceUnreadCount(INSTANCE_ID, 2);
+
+    await applyOpenChatMarkAllAsRead({
+      target: { type: "topic", streamId: 5, topic: "bugs" },
+      loadedMessages: [{ id: 10, flags: [] }],
+      currentUserId: 1,
+      applyOptimistic: (messageIds) => {
+        useChatListStore.getState().decrementUnreadForMessages(messageIds);
+      },
+      applyUnreadDelta,
+    });
+
+    expect(markMessagesAsRead).toHaveBeenCalledWith([10]);
+    expect(useChatListStore.getState().streamsMap.get(5)?.topics.get("bugs")?.unreadCount).toBe(0);
+    expect(useInstancesStore.getState().getInstanceUnreadCount(INSTANCE_ID)).toBe(0);
   });
 
   describe("filterMessageIdsStillUnreadForOptimisticApply", () => {

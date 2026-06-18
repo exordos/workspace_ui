@@ -3,6 +3,7 @@ import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import {
+  syncUnreadSurfacesFromDelta,
   syncUnreadSurfacesFromEventDelta,
   syncUnreadSurfacesFromSnapshot,
 } from "./layout-unread-surfaces-sync.lib";
@@ -151,6 +152,31 @@ describe("syncUnreadSurfacesFromEventDelta", () => {
     expect(useInstancesStore.getState().getInstanceUnreadCount(INSTANCE_ID)).toBe(1);
     expect(useInstancesStore.getState().getInstanceDmUnreadCount(INSTANCE_ID)).toBe(1);
   });
+
+  it("uses the same muted-aware writer for local and layout deltas", () => {
+    useChatListStore.getState().setCurrentUserId(1);
+    useChatListStore.getState().addMessage(unreadStreamMessage(10));
+    useInstancesStore.getState().setInstanceUnreadCount(INSTANCE_ID, 1);
+
+    syncUnreadSurfacesFromDelta({
+      source: "local-chat-read",
+      instanceId: INSTANCE_ID,
+      isStreamMuted: (streamId) => streamId === 5,
+      applyDelta: () => {},
+    });
+
+    expect(useChatListStore.getState().sidebarStreamsUnread).toBe(1);
+    expect(useInstancesStore.getState().getInstanceUnreadCount(INSTANCE_ID)).toBe(0);
+
+    syncUnreadSurfacesFromDelta({
+      source: "layout-derived",
+      instanceId: INSTANCE_ID,
+      isStreamMuted: (streamId) => streamId === 5,
+      applyDelta: () => {},
+    });
+
+    expect(useInstancesStore.getState().getInstanceUnreadCount(INSTANCE_ID)).toBe(0);
+  });
 });
 
 describe("syncUnreadSurfacesFromSnapshot", () => {
@@ -171,6 +197,27 @@ describe("syncUnreadSurfacesFromSnapshot", () => {
     const chatList = useChatListStore.getState();
     expect(chatList.streamsMap.get(5)?.topics.get("general")?.unreadCount).toBe(2);
     expect(useInstancesStore.getState().getInstanceUnreadCount(INSTANCE_ID)).toBe(2);
+  });
+
+  it("can derive active organization count from chat-list with mute rules", () => {
+    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "engineering" }]);
+
+    syncUnreadSurfacesFromSnapshot({
+      source: "inbox-fetch",
+      instanceId: INSTANCE_ID,
+      currentUserId: 1,
+      snapshot: {
+        streams: [{ streamId: 5, topic: "general", unreadMessageIds: [10] }],
+        dms: [],
+        totalCount: 1,
+        mentionMessageIds: [],
+      },
+      instanceCountMode: "chat-list-derived",
+      isStreamMuted: (streamId) => streamId === 5,
+    });
+
+    expect(useChatListStore.getState().sidebarStreamsUnread).toBe(1);
+    expect(useInstancesStore.getState().getInstanceUnreadCount(INSTANCE_ID)).toBe(0);
   });
 
   it("sets personal unread indicator when snapshot has personal DM unread", () => {
@@ -206,5 +253,24 @@ describe("syncUnreadSurfacesFromSnapshot", () => {
 
     expect(useChatListStore.getState().sidebarStreamsUnread).toBe(0);
     expect(useInstancesStore.getState().getInstanceUnreadCount(INSTANCE_ID)).toBe(1);
+  });
+
+  it("keeps snapshot-total as the default instance count mode", () => {
+    syncUnreadSurfacesFromSnapshot({
+      source: "inactive-register",
+      instanceId: INSTANCE_ID,
+      currentUserId: null,
+      snapshot: {
+        streams: [{ streamId: 5, topic: "general", unreadMessageIds: [10, 11] }],
+        dms: [],
+        totalCount: 2,
+        mentionMessageIds: [],
+      },
+      applyChatList: false,
+      isStreamMuted: (streamId) => streamId === 5,
+    });
+
+    expect(useChatListStore.getState().sidebarStreamsUnread).toBe(0);
+    expect(useInstancesStore.getState().getInstanceUnreadCount(INSTANCE_ID)).toBe(2);
   });
 });

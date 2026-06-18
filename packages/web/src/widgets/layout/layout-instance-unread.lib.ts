@@ -1,68 +1,20 @@
-import { effectiveDmIsGroupFromSlug } from "~/shared/lib/dm-route.lib";
-import { parseDmSlugToUserIds } from "~/widgets/sidebar/sidebar.lib";
 import {
-  computeInstanceStreamUnreadCountWithMute,
+  computeInstanceDmUnreadCount,
+  computeInstanceUnreadCount,
+  hasPersonalDmUnreadForActiveInstance,
+  hasPersonalUnreadIndicator,
+  isPersonalDmUnreadEntry,
   toSafeUnreadCount,
-} from "./layout-instance-unread-stream.lib";
-import type {
-  LayoutBuildActiveChatWindowTitleInput,
-  LayoutComputeInstanceUnreadInput,
-  LayoutDmBadgeHolder,
-} from "./layout-instance-unread.types";
+} from "~/entities/unread-sync/unread-instance-count.lib";
+import type { LayoutBuildActiveChatWindowTitleInput } from "./layout-instance-unread.types";
 
-interface LayoutMutePredicates {
-  /** True when the whole stream should be treated as muted for totals. */
-  isStreamMuted?: (streamId: number) => boolean;
-  /** True when a stream/topic should be treated as muted for totals (should include stream-level mutes). */
-  isEffectivelyMuted?: (streamId: number, topic: string) => boolean;
-}
-
-type LayoutComputeInstanceUnreadWithMuteInput = LayoutComputeInstanceUnreadInput &
-  LayoutMutePredicates;
-
-export function computeInstanceUnreadCount({
-  streams,
-  dms,
-  isStreamMuted,
-  isEffectivelyMuted,
-}: LayoutComputeInstanceUnreadWithMuteInput): number {
-  const shouldApplyMuteRules = isStreamMuted != null || isEffectivelyMuted != null;
-  const streamUnread = shouldApplyMuteRules
-    ? computeInstanceStreamUnreadCountWithMute(streams, { isStreamMuted, isEffectivelyMuted })
-    : streams.reduce((sum, stream) => sum + toSafeUnreadCount(stream.badge), 0);
-  const dmUnread = computeInstanceDmUnreadCount({ dms });
-  return streamUnread + dmUnread;
-}
-
-function resolveDmSlugUserIds(dm: LayoutDmBadgeHolder): number[] {
-  if (Array.isArray(dm.userIds) && dm.userIds.length > 0) {
-    return [...dm.userIds];
-  }
-  if (typeof dm.slug === "string" && dm.slug.length > 0) {
-    return parseDmSlugToUserIds(dm.slug);
-  }
-  return [];
-}
-
-/** Same personal-DM rule as sidebar DM list (`effectiveDmIsGroupFromSlug`). */
-export function isPersonalDmUnreadEntry(
-  dm: LayoutDmBadgeHolder,
-  currentUserId: number | null,
-): boolean {
-  return !effectiveDmIsGroupFromSlug(dm.isGroup, resolveDmSlugUserIds(dm), currentUserId);
-}
-
-/** Sums 1:1 DM unread badges for one instance (excludes group / huddle DMs). */
-export function computeInstanceDmUnreadCount({
-  dms,
-  currentUserId = null,
-}: Pick<LayoutComputeInstanceUnreadInput, "dms"> & {
-  currentUserId?: number | null;
-}): number {
-  return dms
-    .filter((dm) => isPersonalDmUnreadEntry(dm, currentUserId))
-    .reduce((sum, dm) => sum + toSafeUnreadCount(dm.badge), 0);
-}
+export {
+  computeInstanceDmUnreadCount,
+  computeInstanceUnreadCount,
+  hasPersonalDmUnreadForActiveInstance,
+  hasPersonalUnreadIndicator,
+  isPersonalDmUnreadEntry,
+};
 
 function sumUnreadCountsByInstance(
   countsByInstance: Record<string, number>,
@@ -94,19 +46,6 @@ export function computeTotalDmUnreadAcrossInstances(
   liveCurrent?: { instanceId: string; unreadCount: number } | null,
 ): number {
   return sumUnreadCountsByInstance(dmUnreadCountsByInstance, liveCurrent);
-}
-
-/** App icon dot: personal DM unread on the active org only (same source as sidebar). */
-export function hasPersonalDmUnreadForActiveInstance(currentInstanceDmUnread: number): boolean {
-  return toSafeUnreadCount(currentInstanceDmUnread) > 0;
-}
-
-/** Personal indicator: 1:1 DM unread or unread @mentions. */
-export function hasPersonalUnreadIndicator(
-  personalDmUnread: number,
-  mentionsUnread: number,
-): boolean {
-  return toSafeUnreadCount(personalDmUnread) > 0 || toSafeUnreadCount(mentionsUnread) > 0;
 }
 
 function toSafeTitleSegment(value: string | null | undefined): string | null {

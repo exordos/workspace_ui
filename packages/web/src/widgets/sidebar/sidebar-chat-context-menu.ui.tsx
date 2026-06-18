@@ -1,10 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useInstancesStore } from "~/entities/instance/instance.model";
+import { syncUnreadSurfacesFromDelta } from "~/entities/unread-sync/unread-surfaces-sync.lib";
 import {
   OPTIMISTIC_FOLDER_ASSIGNMENT_ITEM_UUID,
   type FolderAssignmentRow,
 } from "~/features/folder-sync/folder-sync-assignment.types";
 import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { applySidebarMarkChatAsRead } from "~/features/mark-chat-read/sidebar-mark-chat-read.lib";
+import type { SidebarMarkReadTarget } from "~/features/mark-chat-read/sidebar-mark-chat-read.lib";
 import { useMarkTopicResolved } from "~/features/mark-topic-resolved/mark-topic-resolved.hook";
 import { RenameStreamTopicDialog } from "~/features/mark-topic-resolved/rename-stream-topic-dialog.ui";
 import { MoveTopicToStreamDialog } from "~/features/move-topic-to-stream/move-topic-to-stream-dialog.ui";
@@ -28,6 +31,21 @@ import type { SidebarChat } from "./sidebar.types";
 
 const SIDEBAR_MENU_ITEM_CLASS =
   "data-[highlighted]:bg-sidebar-hover flex cursor-pointer select-none items-center gap-2 px-2 py-2 text-sm text-text-primary outline-none transition-colors data-[disabled]:pointer-events-none data-[disabled]:opacity-50 hover:bg-sidebar-hover focus-visible:outline-none focus-visible:outline-0 focus-visible:outline-offset-0";
+
+// After the API clears unread, recalculate the active org badge from fresh sidebar state.
+async function applySidebarMarkChatAsReadAndSync(target: SidebarMarkReadTarget): Promise<void> {
+  const ok = await applySidebarMarkChatAsRead(target);
+  if (!ok) return;
+  const instanceId = useInstancesStore.getState().currentInstanceId;
+  const mute = useMuteStore.getState();
+  syncUnreadSurfacesFromDelta({
+    source: "local-sidebar-mark-read",
+    instanceId,
+    isStreamMuted: mute.isStreamMuted,
+    isEffectivelyMuted: mute.isEffectivelyMuted,
+    applyDelta: () => {},
+  });
+}
 
 function useFolderAssignmentsSubmenu(chatId: string, menuOpen: boolean): DropdownMenuItem {
   const [assignments, setAssignments] = useState<FolderAssignmentRow[]>([]);
@@ -256,7 +274,7 @@ export const StreamContextMenu = React.memo(function StreamContextMenu({
 
   const handleMarkAsRead = useCallback(() => {
     setMenuOpen(false);
-    void applySidebarMarkChatAsRead({ type: "stream", streamId });
+    void applySidebarMarkChatAsReadAndSync({ type: "stream", streamId });
   }, [streamId]);
 
   const handlePinChat = useCallback(() => {
@@ -429,7 +447,7 @@ export const DmContextMenu = React.memo(function DmContextMenu({
         : parseDmSlugToUserIds(chat.slug);
     if (userIds.length === 0) return;
     setMenuOpen(false);
-    void applySidebarMarkChatAsRead({ type: "dm", userIds });
+    void applySidebarMarkChatAsReadAndSync({ type: "dm", userIds });
   }, [chat.slug, chat.userIds]);
 
   const handlePinChat = useCallback(() => {
@@ -595,7 +613,7 @@ export const TopicContextMenu = React.memo(function TopicContextMenu({
 
   const handleMarkAsRead = useCallback(() => {
     setMenuOpen(false);
-    void applySidebarMarkChatAsRead({ type: "topic", streamId, topic });
+    void applySidebarMarkChatAsReadAndSync({ type: "topic", streamId, topic });
   }, [streamId, topic]);
 
   const handleResolveSelect = useCallback(() => {

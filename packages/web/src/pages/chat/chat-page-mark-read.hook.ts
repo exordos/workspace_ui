@@ -11,7 +11,13 @@ import {
 } from "~/entities/chat-list/chat-list-apply-read-decrement.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInboxStore } from "~/entities/inbox/inbox.model";
+import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
+import {
+  syncUnreadSurfacesFromDelta,
+  type UnreadDeltaSyncSource,
+} from "~/entities/unread-sync/unread-surfaces-sync.lib";
+import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { markMessagesAsRead } from "~/shared/api/zulip-read-state";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { createLogger } from "~/shared/lib/logger";
@@ -70,6 +76,28 @@ export function useChatPageMarkRead({
 
   const markAsReadBatcherRef = useRef<ReturnType<typeof createMarkAsReadBatcher> | null>(null);
 
+  // Runs a local unread change and updates the organization badge right after it.
+  const syncLocalUnreadDelta = useCallback(
+    (
+      source: Extract<
+        UnreadDeltaSyncSource,
+        "local-chat-read" | "local-chat-read-rollback" | "local-chat-mark-all-read"
+      >,
+      applyDelta: () => void,
+    ) => {
+      const instanceId = useInstancesStore.getState().currentInstanceId;
+      const mute = useMuteStore.getState();
+      syncUnreadSurfacesFromDelta({
+        source,
+        instanceId,
+        isStreamMuted: mute.isStreamMuted,
+        isEffectivelyMuted: mute.isEffectivelyMuted,
+        applyDelta,
+      });
+    },
+    [],
+  );
+
   const applyReadMessagesOptimistically = useCallback(
     (messageIds: number[], fallbackContext?: ReadFallbackContext) => {
       if (messageIds.length === 0) return;
@@ -93,6 +121,7 @@ export function useChatPageMarkRead({
           });
         }
       } else {
+        // Message flags are updated first, then sidebar/inbox counters follow in the sync block.
         updateMessageFlagsInStore(unreadMessageIds, "read", "add");
       }
 
@@ -100,19 +129,21 @@ export function useChatPageMarkRead({
         fallbackContext ??
         readFallbackContextFromCurrentChat(useCurrentChatMessagesStore.getState().context);
 
-      const chatListState = useChatListStore.getState();
-      applyChatListReadDecrement(() => useChatListStore.getState(), chatListState, {
-        messageIds,
-        fallbackContext: readFallback,
-        clampWhenAlreadyRead: unreadMessageIds.length === 0,
-        source: "chat:optimisticMarkRead",
-      });
+      syncLocalUnreadDelta("local-chat-read", () => {
+        const chatListState = useChatListStore.getState();
+        applyChatListReadDecrement(() => useChatListStore.getState(), chatListState, {
+          messageIds,
+          fallbackContext: readFallback,
+          clampWhenAlreadyRead: unreadMessageIds.length === 0,
+          source: "chat:optimisticMarkRead",
+        });
 
-      if (unreadMessageIds.length > 0) {
-        useInboxStore.getState().markAsRead(unreadMessageIds);
-      }
+        if (unreadMessageIds.length > 0) {
+          useInboxStore.getState().markAsRead(unreadMessageIds);
+        }
+      });
     },
-    [updateMessageFlagsInStore],
+    [syncLocalUnreadDelta, updateMessageFlagsInStore],
   );
 
   const handleUnreadMessagesVisible = useCallback(
@@ -148,8 +179,11 @@ export function useChatPageMarkRead({
       },
       onError: (error, messageIds) => {
         if (messageIds.length > 0) {
-          updateMessageFlagsInStore(messageIds, "read", "remove");
-          useChatListStore.getState().incrementUnreadForMessages(messageIds);
+          // Rollback must also update the org badge, not only the chat-list store.
+          syncLocalUnreadDelta("local-chat-read-rollback", () => {
+            updateMessageFlagsInStore(messageIds, "read", "remove");
+            useChatListStore.getState().incrementUnreadForMessages(messageIds);
+          });
         }
         log.warn("markAsRead failed", {
           requestedCount: messageIds.length,
@@ -174,6 +208,7 @@ export function useChatPageMarkRead({
     activeStreamId,
     activeTopic,
     applyReadMessagesOptimistically,
+    syncLocalUnreadDelta,
     updateMessageFlagsInStore,
   ]);
 
@@ -191,6 +226,7 @@ export function useChatPageMarkRead({
       loadedMessages: messages,
       currentUserId,
       applyOptimistic: applyReadMessagesOptimistically,
+      applyUnreadDelta: syncLocalUnreadDelta,
     }).catch((err) => reportUnexpectedError("chat:markAllRead", err));
   }, [
     isDmView,
@@ -200,6 +236,7 @@ export function useChatPageMarkRead({
     messages,
     currentUserId,
     applyReadMessagesOptimistically,
+    syncLocalUnreadDelta,
   ]);
 
   useShortcut("mod+shift+m", handleMarkAllAsRead, {

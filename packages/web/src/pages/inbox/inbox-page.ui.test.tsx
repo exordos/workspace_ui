@@ -5,6 +5,7 @@ import { useInboxStore } from "~/entities/inbox/inbox.model";
 import type { InboxEntry } from "~/entities/inbox/inbox.types";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
+import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import { InboxPage } from "./inbox-page.ui";
 import type * as ReactRouterDom from "react-router-dom";
 
@@ -41,6 +42,43 @@ const buildUnreadSnapshotFromEntries = vi.hoisted(() => (entries: readonly Inbox
     mentionMessageIds: [],
   };
 });
+const buildUnreadMessagesFromEntries = vi.hoisted(
+  () => (entries: readonly InboxEntry[]) =>
+    entries.flatMap((entry) =>
+      entry.messageIds.map((messageId): ZulipRawMessage => {
+        if (entry.streamId != null) {
+          return {
+            id: messageId,
+            sender_id: entry.senderId ?? 42,
+            sender_full_name: entry.senderName ?? "Alice",
+            content: "",
+            timestamp: entry.lastMessageTimestamp,
+            type: "stream",
+            stream_id: entry.streamId,
+            display_recipient: entry.streamName ?? "engineering",
+            subject: entry.topic ?? "",
+            flags: [],
+          };
+        }
+        return {
+          id: messageId,
+          sender_id: entry.senderId ?? 42,
+          sender_full_name: entry.senderName ?? "Alice",
+          content: "",
+          timestamp: entry.lastMessageTimestamp,
+          type: "private",
+          display_recipient: [
+            {
+              id: entry.senderId ?? 42,
+              full_name: entry.senderName ?? "Alice",
+              email: "alice@example.com",
+            },
+          ],
+          flags: [],
+        };
+      }),
+    ),
+);
 
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual<typeof ReactRouterDom>("react-router-dom");
@@ -71,7 +109,7 @@ vi.mock("~/entities/inbox/inbox.api", async () => {
         entries,
         unreadSnapshot: buildUnreadSnapshotFromEntries(entries),
         unreadSnapshotComplete: fetchInboxUnreadSnapshotComplete(),
-        unreadMessages: [],
+        unreadMessages: buildUnreadMessagesFromEntries(entries),
       };
     },
     hydrateInboxEntriesFromCache,
