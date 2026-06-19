@@ -17,6 +17,7 @@ import {
 } from "../mocks/zulip-default-responses";
 
 const API_ROUTE = "**/api/v1/**";
+const MESSENGER_API_ROUTE = "**/api/messanger/v1/**";
 
 export interface ZulipApiFailRule {
   pattern: RegExp;
@@ -54,12 +55,14 @@ export class ZulipApiMock {
     this.persistentMessagesBody = null;
     this.fixedQueueId = null;
     await this.page.route(API_ROUTE, (route) => this.handleRoute(route));
+    await this.page.route(MESSENGER_API_ROUTE, (route) => this.handleRoute(route));
     this.installed = true;
   }
 
   async uninstall(): Promise<void> {
     if (!this.installed) return;
     await this.page.unroute(API_ROUTE);
+    await this.page.unroute(MESSENGER_API_ROUTE);
     this.installed = false;
   }
 

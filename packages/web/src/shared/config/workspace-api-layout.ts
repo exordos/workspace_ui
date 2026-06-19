@@ -10,6 +10,9 @@
 /** Zulip JSON API path on the realm host. */
 export const ZULIP_API_PATH = "/api/v1";
 
+/** Zulip JSON API path behind Workspace messenger gateway (`/api/messanger/v1/...`). */
+export const MESSENGER_ZULIP_API_PATH = "/api/messanger/v1";
+
 /** Gateway REST mount after origin (Orval `/v1/...` → `/workspace/v1/...`). */
 export const WORKSPACE_REST_API_PATH = "/workspace";
 

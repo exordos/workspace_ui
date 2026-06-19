@@ -9,6 +9,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  MESSENGER_ZULIP_API_PATH,
   WORKSPACE_API_PATH,
   WORKSPACE_GATEWAY_V1_PATH,
   WORKSPACE_REST_API_PATH,
@@ -30,6 +31,7 @@ describe("env", () => {
     expect(env).toHaveProperty("MODE");
     expect(env).toHaveProperty("WORKSPACE_API_ORIGIN");
     expect(env).toHaveProperty("ZULIP_API_PATH");
+    expect(env).toHaveProperty("MESSENGER_ZULIP_API_PATH");
     expect(env).toHaveProperty("WORKSPACE_API_PATH");
     expect(env).toHaveProperty("WORKSPACE_REST_API_PATH");
     expect(env).toHaveProperty("USER_UPLOADS_PATH_PREFIX");
@@ -74,6 +76,7 @@ describe("env", () => {
     it("re-exports layout constants", async () => {
       const { env } = await import("./env");
       expect(env.ZULIP_API_PATH).toBe(ZULIP_API_PATH);
+      expect(env.MESSENGER_ZULIP_API_PATH).toBe(MESSENGER_ZULIP_API_PATH);
       expect(env.WORKSPACE_API_PATH).toBe(WORKSPACE_API_PATH);
       expect(env.WORKSPACE_REST_API_PATH).toBe(WORKSPACE_REST_API_PATH);
       expect(env.USER_UPLOADS_PATH_PREFIX).toBe(WORKSPACE_GATEWAY_V1_PATH);
@@ -104,6 +107,7 @@ describe("env", () => {
       "MODE",
       "WORKSPACE_API_ORIGIN",
       "ZULIP_API_PATH",
+      "MESSENGER_ZULIP_API_PATH",
       "WORKSPACE_API_PATH",
       "WORKSPACE_REST_API_PATH",
       "USER_UPLOADS_PATH_PREFIX",

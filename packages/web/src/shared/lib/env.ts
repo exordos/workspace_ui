@@ -13,6 +13,7 @@
 
 import { devWorkspaceBrowserMountPath } from "~/shared/config/dev-workspace-org-proxy";
 import {
+  MESSENGER_ZULIP_API_PATH,
   WORKSPACE_API_PATH,
   WORKSPACE_GATEWAY_V1_PATH,
   WORKSPACE_REST_API_PATH,
@@ -82,6 +83,9 @@ export const env = {
 
   /** Zulip JSON API path (`/api/v1`). Fixed — `~/shared/config/workspace-api-layout`. */
   ZULIP_API_PATH,
+
+  /** Messenger gateway Zulip API path (`/api/messanger/v1`). Fixed — same module. */
+  MESSENGER_ZULIP_API_PATH,
 
   /** Workspace gateway API path (`/workspace/v1`). Fixed — same module. */
   WORKSPACE_API_PATH,

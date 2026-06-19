@@ -58,6 +58,7 @@ const BACKEND_NAVIGATE_FALLBACK_DENY_LIST: RegExp[] = [
   /^\/login(?:\/|$)/,
   /^\/complete(?:\/|$|[?#])/,
   /^\/api(?:\/|$|[?#])/,
+  /^\/api\/messanger(?:\/|$|[?#])/,
   /^\/json(?:\/|$|[?#])/,
   /^\/workspace(?:\/|$|[?#])/,
   /^\/user_avatars(?:\/|$|[?#])/,
@@ -170,6 +171,10 @@ export default defineConfig(({ mode }) => {
         target: workspaceOrigin,
         changeOrigin: true,
       }),
+      "/api/messanger": withDevProxyRequestLog("messanger-api", workspaceOrigin, proxyDebug, {
+        target: workspaceOrigin,
+        changeOrigin: true,
+      }),
       "/user_uploads": withDevProxyRequestLog("user_uploads", workspaceOrigin, proxyDebug, {
         target: workspaceOrigin,
         changeOrigin: true,
@@ -272,7 +277,8 @@ export default defineConfig(({ mode }) => {
                     },
                   },
                   {
-                    urlPattern: /^https:\/\/.*\/api\/v1\/(users|server_settings|realm)/,
+                    urlPattern:
+                      /^https:\/\/.*\/api\/(?:messanger\/v1|v1)\/(users|server_settings|realm)/,
                     handler: "NetworkFirst",
                     options: {
                       cacheName: "api-static-cache",

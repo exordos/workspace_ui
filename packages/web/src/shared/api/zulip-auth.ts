@@ -2,6 +2,7 @@
  * Zulip auth and server discovery (no active instance required for server_settings).
  */
 import { t } from "~/i18n/i18n";
+import { MESSENGER_ZULIP_API_PATH } from "~/shared/config/workspace-api-layout";
 import { getElectronAPI, isElectron } from "~/shared/lib/electron";
 import { env } from "~/shared/lib/env";
 import { loggedFetch } from "~/shared/lib/logged-fetch.lib";
@@ -28,7 +29,7 @@ interface FetchApiKeyResult {
 }
 
 /**
- * Fetches server settings (GET /api/v1/server_settings). No auth required.
+ * Fetches server settings (GET /api/messanger/v1/server_settings). No auth required.
  * Used on login page to show realm icon, name, and auth methods.
  */
 export async function fetchServerSettings(realmUrl: string): Promise<ZulipServerSettings | null> {
@@ -39,11 +40,12 @@ export async function fetchServerSettings(realmUrl: string): Promise<ZulipServer
     const parsedRealm = new URL(realmUrl.trim());
     const normalizedPath = parsedRealm.pathname
       .replace(/\/+$/, "")
+      .replace(/\/api\/messanger\/v1$/i, "")
       .replace(/\/api\/v1$/, "")
       .replace(/\/api$/, "");
     const base = `${parsedRealm.origin}${normalizedPath}`.replace(/\/+$/, "");
     if (!base) return null;
-    const url = `${base}${env.ZULIP_API_PATH}/server_settings`;
+    const url = `${base}${MESSENGER_ZULIP_API_PATH}/server_settings`;
     const res = await loggedFetch(url);
     if (!res.ok) return null;
     const data = (await res.json()) as {
