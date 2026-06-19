@@ -45,6 +45,8 @@
     "serverUrlHint": "https://chat.example.com",
     "email": "Email",
     "emailHint": "email@example.com",
+    "usernameOrEmail": "Username or email",
+    "usernameOrEmailHint": "username or email@example.com",
     "password": "Password",
     "passwordPlaceholder": "••••••••",
     "passwordHint": "Enter password",
@@ -72,7 +74,7 @@
     "pasteTokenUnsupported": "Unsupported authentication code format.",
     "organizationStepHint": "Enter your organization address first.",
     "organizationStepLoading": "Loading organization settings…",
-    "authStepHint": "Choose a sign-in method or enter your email and password.",
+    "authStepHint": "Choose a sign-in method or enter your username or email and password.",
     "organizationSettingsLoadError": "Could not load organization settings. Check the server address and try again.",
     "defaultOrganizationHint": "Or connect to our public service.",
     "defaultOrganizationName": "Exordos Core Public"

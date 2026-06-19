@@ -16,16 +16,7 @@ const VALID_SERVER_SETTINGS = {
   external_authentication_methods: [],
 };
 
-const getPasswordStepContainer = (): HTMLElement => {
-  const passwordField = screen.getByPlaceholderText("••••••••").closest("label");
-  const passwordStep = passwordField?.parentElement;
-
-  if (!(passwordStep instanceof HTMLElement)) {
-    throw new Error("Password step container not found");
-  }
-
-  return passwordStep;
-};
+const USERNAME_PLACEHOLDER = "username or email@example.com";
 
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual("react-router-dom");
@@ -75,7 +66,7 @@ describe("LoginPage", () => {
     renderWithProviders(<LoginPage />, { route: "/login" });
 
     expect(screen.getByPlaceholderText("https://chat.example.com")).toBeInTheDocument();
-    expect(screen.queryByPlaceholderText("email@example.com")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(USERNAME_PLACEHOLDER)).not.toBeInTheDocument();
     expect(screen.queryByPlaceholderText("••••••••")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /next/i })).toBeInTheDocument();
   });
@@ -135,11 +126,12 @@ describe("LoginPage", () => {
       expect(fetchServerSettings).toHaveBeenCalledWith("https://chat.example.com");
     });
 
-    expect(await screen.findByPlaceholderText("email@example.com")).toBeInTheDocument();
-    expect(getPasswordStepContainer()).toHaveClass("hidden");
+    expect(await screen.findByPlaceholderText(USERNAME_PLACEHOLDER)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("••••••••")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^login$/i })).toBeInTheDocument();
   });
 
-  it("reveals password only after username becomes a valid email", async () => {
+  it("shows username and password fields immediately on auth step", async () => {
     fetchServerSettings.mockResolvedValue(VALID_SERVER_SETTINGS);
 
     renderWithProviders(<LoginPage />, { route: "/login" });
@@ -149,20 +141,9 @@ describe("LoginPage", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /next/i }));
 
-    const usernameInput = await screen.findByPlaceholderText("email@example.com");
+    await screen.findByPlaceholderText(USERNAME_PLACEHOLDER);
 
-    expect(getPasswordStepContainer()).toHaveClass("hidden");
-
-    fireEvent.change(usernameInput, {
-      target: { value: "ab" },
-    });
-    expect(getPasswordStepContainer()).toHaveClass("hidden");
-
-    fireEvent.change(usernameInput, {
-      target: { value: "user@example.com" },
-    });
     expect(screen.getByPlaceholderText("••••••••")).toBeInTheDocument();
-    expect(getPasswordStepContainer()).not.toHaveClass("hidden");
     expect(screen.getByRole("button", { name: /^login$/i })).toBeInTheDocument();
   });
 
@@ -190,8 +171,8 @@ describe("LoginPage", () => {
       resolveSettings?.(VALID_SERVER_SETTINGS);
     });
 
-    expect(await screen.findByPlaceholderText("email@example.com")).toBeInTheDocument();
-    expect(getPasswordStepContainer()).toHaveClass("hidden");
+    expect(await screen.findByPlaceholderText(USERNAME_PLACEHOLDER)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("••••••••")).toBeInTheDocument();
   });
 
   it("shows an organization error when server settings cannot be loaded", async () => {
@@ -213,7 +194,7 @@ describe("LoginPage", () => {
         /could not load organization settings\. check the server address and try again\./i,
       ),
     ).toBeInTheDocument();
-    expect(screen.queryByLabelText(/email/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/username or email/i)).not.toBeInTheDocument();
   });
 
   it("requests server settings only after realm input blur", async () => {
@@ -253,9 +234,9 @@ describe("LoginPage", () => {
     });
 
     fireEvent.click(screen.getByRole("button", { name: /next/i }));
-    await screen.findByLabelText(/email/i);
+    await screen.findByLabelText(/username or email/i);
 
-    fireEvent.change(screen.getByLabelText(/email/i), {
+    fireEvent.change(screen.getByLabelText(/username or email/i), {
       target: { value: "user@example.com" },
     });
     fireEvent.change(screen.getByLabelText(/^password$/i), {
@@ -289,9 +270,9 @@ describe("LoginPage", () => {
     });
 
     fireEvent.click(screen.getByRole("button", { name: /next/i }));
-    await screen.findByLabelText(/email/i);
+    await screen.findByLabelText(/username or email/i);
 
-    fireEvent.change(screen.getByLabelText(/email/i), {
+    fireEvent.change(screen.getByLabelText(/username or email/i), {
       target: { value: "user@example.com" },
     });
     fireEvent.change(screen.getByLabelText(/^password$/i), {
@@ -321,9 +302,9 @@ describe("LoginPage", () => {
     });
 
     fireEvent.click(screen.getByRole("button", { name: /next/i }));
-    await screen.findByLabelText(/email/i);
+    await screen.findByLabelText(/username or email/i);
 
-    fireEvent.change(screen.getByLabelText(/email/i), {
+    fireEvent.change(screen.getByLabelText(/username or email/i), {
       target: { value: "user@example.com" },
     });
     fireEvent.change(screen.getByLabelText(/^password$/i), {
@@ -365,9 +346,9 @@ describe("LoginPage", () => {
     });
 
     fireEvent.click(screen.getByRole("button", { name: /next/i }));
-    await screen.findByLabelText(/email/i);
+    await screen.findByLabelText(/username or email/i);
 
-    fireEvent.change(screen.getByLabelText(/email/i), {
+    fireEvent.change(screen.getByLabelText(/username or email/i), {
       target: { value: "user@example.com" },
     });
     fireEvent.change(screen.getByLabelText(/^password$/i), {
@@ -409,9 +390,9 @@ describe("LoginPage", () => {
     });
 
     fireEvent.click(screen.getByRole("button", { name: /next/i }));
-    await screen.findByLabelText(/email/i);
+    await screen.findByLabelText(/username or email/i);
 
-    fireEvent.change(screen.getByLabelText(/email/i), {
+    fireEvent.change(screen.getByLabelText(/username or email/i), {
       target: { value: "user@example.com" },
     });
     fireEvent.change(screen.getByLabelText(/^password$/i), {
@@ -453,9 +434,9 @@ describe("LoginPage", () => {
     });
     await screen.findByRole("button", { name: /next/i });
     fireEvent.click(screen.getByRole("button", { name: /next/i }));
-    await screen.findByLabelText(/email/i);
+    await screen.findByLabelText(/username or email/i);
 
-    fireEvent.change(screen.getByLabelText(/email/i), {
+    fireEvent.change(screen.getByLabelText(/username or email/i), {
       target: { value: "user@example.com" },
     });
     fireEvent.change(screen.getByLabelText(/^password$/i), {
@@ -496,9 +477,9 @@ describe("LoginPage", () => {
     });
 
     fireEvent.click(screen.getByRole("button", { name: /next/i }));
-    await screen.findByLabelText(/email/i);
+    await screen.findByLabelText(/username or email/i);
 
-    fireEvent.change(screen.getByLabelText(/email/i), {
+    fireEvent.change(screen.getByLabelText(/username or email/i), {
       target: { value: "user@example.com" },
     });
     fireEvent.change(screen.getByLabelText(/^password$/i), {
