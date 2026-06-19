@@ -81,7 +81,7 @@ vi.mock("zulip-js", () => ({
 export const TEST_INSTANCE = {
   id: "test-inst",
   realm: "https://chat.example.com",
-  email: "user@example.com",
+  login: "user@example.com",
   apiKey: "test",
 };
 

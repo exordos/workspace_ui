@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
-import type { MockMessage } from "~/shared/api/messenger.types";
 import { createMessage } from "~/test/factories";
 import { resolveMessagesLoadErrorAfterInitialLoad } from "./chat-page-initial-load-outcome.lib";
 

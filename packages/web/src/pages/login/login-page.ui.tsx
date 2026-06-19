@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { useLocation, useNavigate } from "react-router-dom";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { t } from "~/i18n/i18n";
-import { fetchApiKey, fetchServerSettings } from "~/shared/api/messenger-auth";
+import { isIamOtpRequiredError, loginWithIamCredentials } from "~/shared/api/iam-auth";
+import { fetchServerSettings } from "~/shared/api/messenger-auth";
 import { normalizeRealm } from "~/shared/api/messenger-realm.internal";
 import { MessengerAuthError } from "~/shared/api/messenger.types";
 import { brand } from "~/shared/lib/brand";
@@ -58,6 +59,11 @@ export const LoginPage: React.FC = () => {
   const [realm, setRealm] = useState(() => realmPrefill ?? "");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [otp, setOtp] = useState("");
+  const [otpChallengeCredentials, setOtpChallengeCredentials] = useState<{
+    login: string;
+    password: string;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [settingsLoading, setSettingsLoading] = useState(false);
@@ -81,6 +87,11 @@ export const LoginPage: React.FC = () => {
     return sanitizeInternalRedirectTarget(`${location.pathname}${location.search}`);
   }, [location.pathname, location.search]);
   const realmTrim = realm.trim();
+  const usernameTrim = username.trim();
+  const otpRequired = Boolean(
+    otpChallengeCredentials?.login === usernameTrim &&
+    otpChallengeCredentials.password === password,
+  );
   const canContinueToAuth = realmTrim.length > 0 && isValidRealmUrl(realmTrim);
   const defaultOrganizationUrl = env.DEFAULT_LOGIN_ORGANIZATION_URL.trim();
   const defaultOrganizationName =
@@ -244,12 +255,34 @@ export const LoginPage: React.FC = () => {
     e.currentTarget.src = getOrganizationFallbackLogoUrl();
   }, []);
 
+  const handleUsernameChange = useCallback((value: string) => {
+    setUsername(value);
+    setOtpChallengeCredentials(null);
+    setOtp("");
+    setError(null);
+  }, []);
+
+  const handlePasswordChange = useCallback((value: string) => {
+    setPassword(value);
+    setOtpChallengeCredentials(null);
+    setOtp("");
+    setError(null);
+  }, []);
+
+  const handleOtpChange = useCallback((value: string) => {
+    setOtp(value);
+    setError(null);
+  }, []);
+
   const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
-    const usernameTrim = username.trim();
     if (!realmTrim || !usernameTrim || !password) {
       setError(t("auth.fillAllFields"));
+      return;
+    }
+    if (otpRequired && otp.trim().length === 0) {
+      setError(t("auth.otpRequired"));
       return;
     }
     if (!isValidRealmUrl(realmTrim)) {
@@ -258,7 +291,9 @@ export const LoginPage: React.FC = () => {
     }
     setLoading(true);
     try {
-      const result = await fetchApiKey(realmTrim, usernameTrim, password);
+      const result = await loginWithIamCredentials(realmTrim, usernameTrim, password, {
+        ...(otpRequired ? { otpCode: otp.trim() } : {}),
+      });
       const normalizedFromInput = normalizeRealm(realmTrim);
       const canonicalFromServer =
         [serverSettings?.realm_url?.trim(), serverSettings?.realm_uri?.trim()].find(
@@ -276,8 +311,13 @@ export const LoginPage: React.FC = () => {
       const workspaceOrgOrigin = workspaceOrgOriginFromLoginServerUrlInput(realmTrim);
       const addInstanceResult = addInstance({
         realm: realmToStore,
-        email: result.email,
-        apiKey: result.api_key,
+        login: usernameTrim,
+        apiKey: "",
+        authType: "iam",
+        iamAccessToken: result.access_token,
+        ...(result.refresh_token != null && result.refresh_token.length > 0
+          ? { iamRefreshToken: result.refresh_token }
+          : {}),
         realmIcon,
         ...(workspaceOrgOrigin !== "" ? { workspaceOrgOrigin } : {}),
       });
@@ -287,6 +327,15 @@ export const LoginPage: React.FC = () => {
       }
       void navigate(redirectTarget ?? "/", { replace: true });
     } catch (err) {
+      if (isIamOtpRequiredError(err)) {
+        setOtp("");
+        setOtpChallengeCredentials({
+          login: usernameTrim,
+          password,
+        });
+        setError(err.message || t("auth.otpRequired"));
+        return;
+      }
       setError(err instanceof MessengerAuthError ? err.message : t("auth.loginError"));
     } finally {
       setLoading(false);
@@ -435,11 +484,14 @@ export const LoginPage: React.FC = () => {
             <LoginPageCredentialsForm
               username={username}
               password={password}
+              otp={otp}
+              otpRequired={otpRequired}
               showPassword={showPassword}
               loading={loading}
               error={error}
-              onUsernameChange={setUsername}
-              onPasswordChange={setPassword}
+              onUsernameChange={handleUsernameChange}
+              onPasswordChange={handlePasswordChange}
+              onOtpChange={handleOtpChange}
               onToggleShowPassword={toggleShowPassword}
               onSubmit={handleSubmit}
             />

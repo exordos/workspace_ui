@@ -54,7 +54,7 @@ describe("user presence api", () => {
         {
           id: "instance-1",
           realm: "https://chat.example.com",
-          email: "user@example.com",
+          login: "user@example.com",
           apiKey: "api-key",
         },
       ],
@@ -222,7 +222,7 @@ describe("user presence api", () => {
     getCurrentInstance.mockReturnValue({
       id: "instance-session",
       realm: "https://chat.example.com",
-      email: "user@example.com",
+      login: "user@example.com",
       apiKey: "",
       authType: "session",
     });
@@ -256,7 +256,7 @@ describe("user presence api", () => {
     getCurrentInstance.mockReturnValue({
       id: "instance-empty",
       realm: "https://chat.example.com",
-      email: "user@example.com",
+      login: "user@example.com",
       apiKey: "",
     });
 
@@ -698,13 +698,13 @@ describe("user presence api", () => {
         {
           id: "instance-1",
           realm: "https://one.example.com",
-          email: "one@example.com",
+          login: "one@example.com",
           apiKey: "api-key",
         },
         {
           id: "instance-2",
           realm: "https://two.example.com",
-          email: "two@example.com",
+          login: "two@example.com",
           apiKey: "api-key",
         },
       ],

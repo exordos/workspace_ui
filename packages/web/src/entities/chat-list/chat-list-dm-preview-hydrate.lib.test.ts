@@ -46,7 +46,7 @@ function resetInstancesStore(): void {
 function seedActiveInstance(realm = "https://messenger.test"): string {
   return useInstancesStore.getState().addInstance({
     realm,
-    email: "dm@example.com",
+    login: "dm@example.com",
     apiKey: `key-${realm}`,
   }).id;
 }

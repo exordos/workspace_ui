@@ -49,7 +49,7 @@ export function useInactiveInstancesBackgroundWork(options: {
         }
         const credentials = {
           realm: instance.realm,
-          email: instance.email,
+          login: instance.login,
           apiKey: instance.apiKey,
         };
         const [unreadCount, dmUnreadCount] = await Promise.all([
@@ -68,7 +68,7 @@ export function useInactiveInstancesBackgroundWork(options: {
         let queueId: string | null = null;
         let stopped = false;
         const instance = instances.find(
-          (row) => row.realm === credentials.realm && row.email === credentials.email,
+          (row) => row.realm === credentials.realm && row.login === credentials.login,
         );
         startMessengerEventLoopForCredentials({
           credentials,
@@ -118,7 +118,7 @@ export function useInactiveInstancesBackgroundWork(options: {
         fetchUnreadMessagesCountForCredentials(
           {
             realm: instance.realm,
-            email: instance.email,
+            login: instance.login,
             apiKey: instance.apiKey,
           },
           { signal },
@@ -127,7 +127,7 @@ export function useInactiveInstancesBackgroundWork(options: {
         fetchUnreadDmMessagesCountForCredentials(
           {
             realm: instance.realm,
-            email: instance.email,
+            login: instance.login,
             apiKey: instance.apiKey,
           },
           { signal },

@@ -121,7 +121,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
     [instances, currentInstanceId],
   );
   const currentServerLabel = useMemo(
-    () => (currentInstance ? getInstanceLabel(currentInstance.realm, currentInstance.email) : ""),
+    () => (currentInstance ? getInstanceLabel(currentInstance.realm, currentInstance.login) : ""),
     [currentInstance],
   );
   const currentServerIconUrl = useMemo(
@@ -449,7 +449,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
                         {currentServerLabel}
                       </span>
                       <span className="truncate text-[11px] text-text-muted">
-                        {currentInstance.email}
+                        {currentInstance.login}
                       </span>
                     </span>
                   </span>

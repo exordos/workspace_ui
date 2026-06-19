@@ -201,7 +201,7 @@ export function getClient(): Promise<WorkspaceClient> {
   const realm = instance.realm.replace(/\/api\/v1$/, "").replace(/\/+$/, "") || instance.realm;
   const promise = messengerJsInit({
     realm,
-    username: instance.email,
+    username: instance.login,
     apiKey: instance.apiKey,
   });
   clientCache = { instanceId: instance.id, promise };

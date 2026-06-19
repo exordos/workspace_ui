@@ -108,7 +108,7 @@ function getCurrentUser(): AiUserContext {
 
   return {
     userId,
-    email: instance?.email,
+    email: instance?.login,
     fullName: user?.full_name,
     realm: instance?.realm,
   };

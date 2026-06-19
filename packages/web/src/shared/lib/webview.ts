@@ -190,7 +190,7 @@ function handleIncomingMessage(event: MessageEvent): void {
 // Auth injection from native
 // ---------------------------------------------------------------------------
 
-type AuthCallback = (credentials: { email: string; apiKey: string; realm: string }) => void;
+type AuthCallback = (credentials: { login: string; apiKey: string; realm: string }) => void;
 
 let authCallback: AuthCallback | null = null;
 
@@ -211,7 +211,7 @@ function handleAuthMessage(msg: NativeMessage): void {
   }
 
   log.info("Auth credentials received from native");
-  authCallback({ email: msg.email, apiKey: msg.apiKey, realm: msg.realm });
+  authCallback({ login: msg.email, apiKey: msg.apiKey, realm: msg.realm });
 }
 
 // ---------------------------------------------------------------------------

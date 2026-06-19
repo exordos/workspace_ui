@@ -10,7 +10,7 @@
 import { Buffer } from "buffer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-let mockInstance: { email: string; apiKey: string; realm: string } | null = null;
+let mockInstance: { login: string; apiKey: string; realm: string } | null = null;
 
 vi.mock("./logger", async (importOriginal) => {
   const { createPartialLoggerMock } = await import("~/test/logger-vitest-mock");
@@ -44,7 +44,7 @@ describe("auth-guard", () => {
     it("returns empty object when instance has no apiKey", async () => {
       mockInstance = {
         realm: "https://z.example.com",
-        email: "user@test.com",
+        login: "user@test.com",
         apiKey: "",
       };
       const { buildAuthHeader, setAuthInstanceGetter } = await import("./auth-guard");
@@ -56,7 +56,7 @@ describe("auth-guard", () => {
     it("returns Basic auth header for valid instance", async () => {
       mockInstance = {
         realm: "https://z.example.com",
-        email: "user@test.com",
+        login: "user@test.com",
         apiKey: "abc123",
       };
       const { buildAuthHeader, setAuthInstanceGetter } = await import("./auth-guard");
@@ -70,7 +70,7 @@ describe("auth-guard", () => {
     it("encodes email with special characters correctly", async () => {
       mockInstance = {
         realm: "https://z.example.com",
-        email: "user+tag@test.com",
+        login: "user+tag@test.com",
         apiKey: "k:c",
       };
       const { buildAuthHeader, setAuthInstanceGetter } = await import("./auth-guard");
@@ -95,7 +95,7 @@ describe("auth-guard", () => {
     it("returns null when instance has no apiKey", async () => {
       mockInstance = {
         realm: "https://z.example.com",
-        email: "user@test.com",
+        login: "user@test.com",
         apiKey: "",
       };
       const { getCredentials, setAuthInstanceGetter } = await import("./auth-guard");
@@ -107,7 +107,7 @@ describe("auth-guard", () => {
     it("returns realm/email/apiKey for valid instance", async () => {
       mockInstance = {
         realm: "https://z.example.com",
-        email: "user@test.com",
+        login: "user@test.com",
         apiKey: "abc123",
       };
       const { getCredentials, setAuthInstanceGetter } = await import("./auth-guard");
@@ -115,7 +115,7 @@ describe("auth-guard", () => {
 
       expect(getCredentials()).toEqual({
         realm: "https://z.example.com",
-        email: "user@test.com",
+        login: "user@test.com",
         apiKey: "abc123",
       });
     });
@@ -212,7 +212,7 @@ describe("auth-guard", () => {
     // Default timeout is 24h — session expires exactly at the boundary
     it("fires onSessionExpired after default 24h timeout", async () => {
       vi.resetModules();
-      mockInstance = { realm: "https://z.com", email: "u@t.com", apiKey: "k" };
+      mockInstance = { realm: "https://z.com", login: "u@t.com", apiKey: "k" };
       const { initAuthGuard, setAuthInstanceGetter } = await import("./auth-guard");
       setAuthInstanceGetter(() => mockInstance);
 
@@ -231,7 +231,7 @@ describe("auth-guard", () => {
     // Custom timeout allows shorter sessions for testing or high-security environments
     it("respects custom timeoutMs", async () => {
       vi.resetModules();
-      mockInstance = { realm: "https://z.com", email: "u@t.com", apiKey: "k" };
+      mockInstance = { realm: "https://z.com", login: "u@t.com", apiKey: "k" };
       const { initAuthGuard, setAuthInstanceGetter } = await import("./auth-guard");
       setAuthInstanceGetter(() => mockInstance);
 
@@ -250,7 +250,7 @@ describe("auth-guard", () => {
     // Session expiry can run pre-cleanup side effects (e.g. push unregister) before logout redirect
     it("runs onBeforeSessionExpired before onSessionExpired", async () => {
       vi.resetModules();
-      mockInstance = { realm: "https://z.com", email: "u@t.com", apiKey: "k" };
+      mockInstance = { realm: "https://z.com", login: "u@t.com", apiKey: "k" };
       const { initAuthGuard, setAuthInstanceGetter } = await import("./auth-guard");
       setAuthInstanceGetter(() => mockInstance);
 
@@ -274,7 +274,7 @@ describe("auth-guard", () => {
     // Even if pre-cleanup hook fails, logout flow must still complete
     it("still expires session when onBeforeSessionExpired rejects", async () => {
       vi.resetModules();
-      mockInstance = { realm: "https://z.com", email: "u@t.com", apiKey: "k" };
+      mockInstance = { realm: "https://z.com", login: "u@t.com", apiKey: "k" };
       const { initAuthGuard, setAuthInstanceGetter } = await import("./auth-guard");
       setAuthInstanceGetter(() => mockInstance);
 
@@ -298,7 +298,7 @@ describe("auth-guard", () => {
     // User activity (mousemove) should reset the inactivity timer
     it("resets timer on user activity", async () => {
       vi.resetModules();
-      mockInstance = { realm: "https://z.com", email: "u@t.com", apiKey: "k" };
+      mockInstance = { realm: "https://z.com", login: "u@t.com", apiKey: "k" };
       const { initAuthGuard, setAuthInstanceGetter } = await import("./auth-guard");
       setAuthInstanceGetter(() => mockInstance);
 
@@ -320,7 +320,7 @@ describe("auth-guard", () => {
     // All tracked activity events must reset the timer
     it("resets timer on keydown, click, scroll, touchstart", async () => {
       vi.resetModules();
-      mockInstance = { realm: "https://z.com", email: "u@t.com", apiKey: "k" };
+      mockInstance = { realm: "https://z.com", login: "u@t.com", apiKey: "k" };
       const { initAuthGuard, setAuthInstanceGetter } = await import("./auth-guard");
       setAuthInstanceGetter(() => mockInstance);
 
@@ -344,7 +344,7 @@ describe("auth-guard", () => {
     // Double init must be prevented — otherwise two timers would race
     it("prevents double initialization", async () => {
       vi.resetModules();
-      mockInstance = { realm: "https://z.com", email: "u@t.com", apiKey: "k" };
+      mockInstance = { realm: "https://z.com", login: "u@t.com", apiKey: "k" };
       const { initAuthGuard, setAuthInstanceGetter } = await import("./auth-guard");
       setAuthInstanceGetter(() => mockInstance);
 
@@ -364,7 +364,7 @@ describe("auth-guard", () => {
     // Cleanup must remove all event listeners and timers — prevents memory leaks
     it("cleanup removes event listeners and clears timer", async () => {
       vi.resetModules();
-      mockInstance = { realm: "https://z.com", email: "u@t.com", apiKey: "k" };
+      mockInstance = { realm: "https://z.com", login: "u@t.com", apiKey: "k" };
       const { initAuthGuard, setAuthInstanceGetter } = await import("./auth-guard");
       setAuthInstanceGetter(() => mockInstance);
 
@@ -379,7 +379,7 @@ describe("auth-guard", () => {
     // After cleanup, re-initialization should work normally (e.g. re-login)
     it("allows re-initialization after cleanup", async () => {
       vi.resetModules();
-      mockInstance = { realm: "https://z.com", email: "u@t.com", apiKey: "k" };
+      mockInstance = { realm: "https://z.com", login: "u@t.com", apiKey: "k" };
       const { initAuthGuard, setAuthInstanceGetter } = await import("./auth-guard");
       setAuthInstanceGetter(() => mockInstance);
 
@@ -396,7 +396,7 @@ describe("auth-guard", () => {
 
     it("does not expire session while tab is hidden longer than timeout", async () => {
       vi.resetModules();
-      mockInstance = { realm: "https://z.com", email: "u@t.com", apiKey: "k" };
+      mockInstance = { realm: "https://z.com", login: "u@t.com", apiKey: "k" };
       const { initAuthGuard, setAuthInstanceGetter } = await import("./auth-guard");
       setAuthInstanceGetter(() => mockInstance);
 

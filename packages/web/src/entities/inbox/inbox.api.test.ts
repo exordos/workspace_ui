@@ -214,7 +214,7 @@ describe("fetchInboxEntries", () => {
     getCurrentInstance.mockReturnValue({
       id: "instance-1",
       realm: "https://chat.example.com",
-      email: "user@example.com",
+      login: "user@example.com",
       apiKey: "api-key",
     });
     upsertChatMessages.mockResolvedValue(undefined);
@@ -275,7 +275,7 @@ describe("fetchInboxEntries", () => {
     getCurrentInstance.mockReturnValue({
       id: "instance-1",
       realm: "https://chat.example.com",
-      email: "user@example.com",
+      login: "user@example.com",
       apiKey: "api-key",
     });
     upsertChatMessages.mockRejectedValue(new Error("idb failure"));

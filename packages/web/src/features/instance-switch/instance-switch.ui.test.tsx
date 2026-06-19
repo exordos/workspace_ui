@@ -63,8 +63,8 @@ describe("InstanceSwitcher", () => {
   it("shows per-instance unread badge in dropdown", async () => {
     useInstancesStore.setState({
       instances: [
-        { id: "inst-1", realm: "https://a.example.com", email: "a@example.com", apiKey: "k1" },
-        { id: "inst-2", realm: "https://b.example.com", email: "b@example.com", apiKey: "k2" },
+        { id: "inst-1", realm: "https://a.example.com", login: "a@example.com", apiKey: "k1" },
+        { id: "inst-2", realm: "https://b.example.com", login: "b@example.com", apiKey: "k2" },
       ],
       currentInstanceId: "inst-1",
       unreadCountsByInstance: { "inst-1": 0, "inst-2": 4 },
@@ -82,8 +82,8 @@ describe("InstanceSwitcher", () => {
   it("positions dropdown unread badge in top-right corner of organization logo", async () => {
     useInstancesStore.setState({
       instances: [
-        { id: "inst-1", realm: "https://a.example.com", email: "a@example.com", apiKey: "k1" },
-        { id: "inst-2", realm: "https://b.example.com", email: "b@example.com", apiKey: "k2" },
+        { id: "inst-1", realm: "https://a.example.com", login: "a@example.com", apiKey: "k1" },
+        { id: "inst-2", realm: "https://b.example.com", login: "b@example.com", apiKey: "k2" },
       ],
       currentInstanceId: "inst-1",
       unreadCountsByInstance: { "inst-1": 0, "inst-2": 4 },
@@ -109,7 +109,7 @@ describe("InstanceSwitcher", () => {
   it("keeps add-organization action only inside dropdown", async () => {
     useInstancesStore.setState({
       instances: [
-        { id: "inst-1", realm: "https://a.example.com", email: "a@example.com", apiKey: "k1" },
+        { id: "inst-1", realm: "https://a.example.com", login: "a@example.com", apiKey: "k1" },
       ],
       currentInstanceId: "inst-1",
       unreadCountsByInstance: {},
@@ -133,18 +133,18 @@ describe("InstanceSwitcher", () => {
         {
           id: "inst-1",
           realm: "https://a.example.com",
-          email: "a@example.com",
+          login: "a@example.com",
           apiKey: "k1",
           realmIcon: "https://cdn.example.com/a.svg",
         },
         {
           id: "inst-2",
           realm: "https://b.example.com",
-          email: "b@example.com",
+          login: "b@example.com",
           apiKey: "k2",
           realmIcon: "https://cdn.example.com/b.svg",
         },
-        { id: "inst-3", realm: "https://c.example.com", email: "c@example.com", apiKey: "k3" },
+        { id: "inst-3", realm: "https://c.example.com", login: "c@example.com", apiKey: "k3" },
       ],
       currentInstanceId: "inst-1",
       unreadCountsByInstance: {},
@@ -189,8 +189,8 @@ describe("InstanceSwitcher", () => {
 
     useInstancesStore.setState({
       instances: [
-        { id: "inst-1", realm: "https://a.example.com", email: "a@example.com", apiKey: "k1" },
-        { id: "inst-2", realm: "https://b.example.com", email: "b@example.com", apiKey: "k2" },
+        { id: "inst-1", realm: "https://a.example.com", login: "a@example.com", apiKey: "k1" },
+        { id: "inst-2", realm: "https://b.example.com", login: "b@example.com", apiKey: "k2" },
       ],
       currentInstanceId: "inst-1",
       unreadCountsByInstance: {},
@@ -226,8 +226,8 @@ describe("InstanceSwitcher", () => {
   it("renders quick instance icons and switches active instance on click", () => {
     useInstancesStore.setState({
       instances: [
-        { id: "inst-1", realm: "https://a.example.com", email: "a@example.com", apiKey: "k1" },
-        { id: "inst-2", realm: "https://b.example.com", email: "b@example.com", apiKey: "k2" },
+        { id: "inst-1", realm: "https://a.example.com", login: "a@example.com", apiKey: "k1" },
+        { id: "inst-2", realm: "https://b.example.com", login: "b@example.com", apiKey: "k2" },
       ],
       currentInstanceId: "inst-1",
       unreadCountsByInstance: { "inst-1": 0, "inst-2": 0 },
@@ -244,8 +244,8 @@ describe("InstanceSwitcher", () => {
   it("navigates to target organization inbox when switching from a DM route", () => {
     useInstancesStore.setState({
       instances: [
-        { id: "inst-1", realm: "https://a.example.com", email: "a@example.com", apiKey: "k1" },
-        { id: "inst-2", realm: "https://b.example.com", email: "b@example.com", apiKey: "k2" },
+        { id: "inst-1", realm: "https://a.example.com", login: "a@example.com", apiKey: "k1" },
+        { id: "inst-2", realm: "https://b.example.com", login: "b@example.com", apiKey: "k2" },
       ],
       currentInstanceId: "inst-1",
       unreadCountsByInstance: { "inst-1": 0, "inst-2": 0 },
@@ -268,8 +268,8 @@ describe("InstanceSwitcher", () => {
   it("does not mutate current instance before route-based org sync catches up", () => {
     useInstancesStore.setState({
       instances: [
-        { id: "inst-1", realm: "https://a.example.com", email: "a@example.com", apiKey: "k1" },
-        { id: "inst-2", realm: "https://b.example.com", email: "b@example.com", apiKey: "k2" },
+        { id: "inst-1", realm: "https://a.example.com", login: "a@example.com", apiKey: "k1" },
+        { id: "inst-2", realm: "https://b.example.com", login: "b@example.com", apiKey: "k2" },
       ],
       currentInstanceId: "inst-1",
       unreadCountsByInstance: { "inst-1": 0, "inst-2": 0 },
@@ -295,7 +295,7 @@ describe("InstanceSwitcher", () => {
         {
           id: "inst-1",
           realm: "https://chat.example.com",
-          email: "a@example.com",
+          login: "a@example.com",
           apiKey: "k1",
           realmIcon: "/user_avatars/1/realm/icon.png",
         },
@@ -316,11 +316,11 @@ describe("InstanceSwitcher", () => {
         {
           id: "inst-1",
           realm: "https://a.example.com",
-          email: "a@example.com",
+          login: "a@example.com",
           apiKey: "k1",
           realmIcon: "https://cdn.example.com/realm-a.svg",
         },
-        { id: "inst-2", realm: "https://b.example.com", email: "b@example.com", apiKey: "k2" },
+        { id: "inst-2", realm: "https://b.example.com", login: "b@example.com", apiKey: "k2" },
       ],
       currentInstanceId: "inst-1",
       unreadCountsByInstance: {},
@@ -349,7 +349,7 @@ describe("InstanceSwitcher", () => {
         {
           id: "inst-1",
           realm: "https://a.example.com",
-          email: "a@example.com",
+          login: "a@example.com",
           apiKey: "k1",
           realmIcon: "https://cdn.example.com/broken-logo.svg",
         },
@@ -371,11 +371,11 @@ describe("InstanceSwitcher", () => {
   it("shows only three organizations in header and moves rest to dropdown overflow", () => {
     useInstancesStore.setState({
       instances: [
-        { id: "inst-1", realm: "https://a.example.com", email: "a@example.com", apiKey: "k1" },
-        { id: "inst-2", realm: "https://b.example.com", email: "b@example.com", apiKey: "k2" },
-        { id: "inst-3", realm: "https://c.example.com", email: "c@example.com", apiKey: "k3" },
-        { id: "inst-4", realm: "https://d.example.com", email: "d@example.com", apiKey: "k4" },
-        { id: "inst-5", realm: "https://e.example.com", email: "e@example.com", apiKey: "k5" },
+        { id: "inst-1", realm: "https://a.example.com", login: "a@example.com", apiKey: "k1" },
+        { id: "inst-2", realm: "https://b.example.com", login: "b@example.com", apiKey: "k2" },
+        { id: "inst-3", realm: "https://c.example.com", login: "c@example.com", apiKey: "k3" },
+        { id: "inst-4", realm: "https://d.example.com", login: "d@example.com", apiKey: "k4" },
+        { id: "inst-5", realm: "https://e.example.com", login: "e@example.com", apiKey: "k5" },
       ],
       currentInstanceId: "inst-1",
       unreadCountsByInstance: {},
@@ -393,10 +393,10 @@ describe("InstanceSwitcher", () => {
   it("sorts organizations by user selection order", () => {
     useInstancesStore.setState({
       instances: [
-        { id: "inst-1", realm: "https://a.example.com", email: "a@example.com", apiKey: "k1" },
-        { id: "inst-2", realm: "https://b.example.com", email: "b@example.com", apiKey: "k2" },
-        { id: "inst-3", realm: "https://c.example.com", email: "c@example.com", apiKey: "k3" },
-        { id: "inst-4", realm: "https://d.example.com", email: "d@example.com", apiKey: "k4" },
+        { id: "inst-1", realm: "https://a.example.com", login: "a@example.com", apiKey: "k1" },
+        { id: "inst-2", realm: "https://b.example.com", login: "b@example.com", apiKey: "k2" },
+        { id: "inst-3", realm: "https://c.example.com", login: "c@example.com", apiKey: "k3" },
+        { id: "inst-4", realm: "https://d.example.com", login: "d@example.com", apiKey: "k4" },
       ],
       currentInstanceId: "inst-1",
       unreadCountsByInstance: {},
@@ -415,10 +415,10 @@ describe("InstanceSwitcher", () => {
   it("promotes hidden organization into visible header when selected from dropdown", async () => {
     useInstancesStore.setState({
       instances: [
-        { id: "inst-1", realm: "https://a.example.com", email: "a@example.com", apiKey: "k1" },
-        { id: "inst-2", realm: "https://b.example.com", email: "b@example.com", apiKey: "k2" },
-        { id: "inst-3", realm: "https://c.example.com", email: "c@example.com", apiKey: "k3" },
-        { id: "inst-4", realm: "https://d.example.com", email: "d@example.com", apiKey: "k4" },
+        { id: "inst-1", realm: "https://a.example.com", login: "a@example.com", apiKey: "k1" },
+        { id: "inst-2", realm: "https://b.example.com", login: "b@example.com", apiKey: "k2" },
+        { id: "inst-3", realm: "https://c.example.com", login: "c@example.com", apiKey: "k3" },
+        { id: "inst-4", realm: "https://d.example.com", login: "d@example.com", apiKey: "k4" },
       ],
       currentInstanceId: "inst-1",
       unreadCountsByInstance: {},
@@ -441,8 +441,8 @@ describe("InstanceSwitcher", () => {
   it("highlights the active organization with an outline in header and dropdown", async () => {
     useInstancesStore.setState({
       instances: [
-        { id: "inst-1", realm: "https://a.example.com", email: "a@example.com", apiKey: "k1" },
-        { id: "inst-2", realm: "https://b.example.com", email: "b@example.com", apiKey: "k2" },
+        { id: "inst-1", realm: "https://a.example.com", login: "a@example.com", apiKey: "k1" },
+        { id: "inst-2", realm: "https://b.example.com", login: "b@example.com", apiKey: "k2" },
       ],
       currentInstanceId: "inst-1",
       unreadCountsByInstance: { "inst-1": 1, "inst-2": 0 },
@@ -479,8 +479,8 @@ describe("InstanceSwitcher", () => {
   it("shows unread badge for the current instance item when unread > 0", async () => {
     useInstancesStore.setState({
       instances: [
-        { id: "inst-1", realm: "https://a.example.com", email: "a@example.com", apiKey: "k1" },
-        { id: "inst-2", realm: "https://b.example.com", email: "b@example.com", apiKey: "k2" },
+        { id: "inst-1", realm: "https://a.example.com", login: "a@example.com", apiKey: "k1" },
+        { id: "inst-2", realm: "https://b.example.com", login: "b@example.com", apiKey: "k2" },
       ],
       currentInstanceId: "inst-1",
       unreadCountsByInstance: { "inst-1": 2, "inst-2": 0 },
@@ -499,8 +499,8 @@ describe("InstanceSwitcher", () => {
   it("updates dropdown unread badge when store count changes", async () => {
     useInstancesStore.setState({
       instances: [
-        { id: "inst-1", realm: "https://a.example.com", email: "a@example.com", apiKey: "k1" },
-        { id: "inst-2", realm: "https://b.example.com", email: "b@example.com", apiKey: "k2" },
+        { id: "inst-1", realm: "https://a.example.com", login: "a@example.com", apiKey: "k1" },
+        { id: "inst-2", realm: "https://b.example.com", login: "b@example.com", apiKey: "k2" },
       ],
       currentInstanceId: "inst-1",
       unreadCountsByInstance: { "inst-1": 0, "inst-2": 0 },

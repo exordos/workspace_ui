@@ -112,7 +112,7 @@ describe("PasteTokenPage", () => {
     await waitFor(() => {
       expect(useInstancesStore.getState().instances[0]).toMatchObject({
         realm: "https://chat.example.com",
-        email: "user@example.com",
+        login: "user@example.com",
         apiKey: runtimeApiKey,
       });
     });
@@ -151,7 +151,7 @@ describe("PasteTokenPage", () => {
     await waitFor(() => {
       expect(useInstancesStore.getState().instances[0]).toMatchObject({
         realm: "https://gw.example.com",
-        email: "user@example.com",
+        login: "user@example.com",
         apiKey: "key-123",
         realmIcon: "/user_avatars/1/realm/icon.png",
         workspaceOrgOrigin: "https://gw.example.com",
@@ -202,7 +202,7 @@ describe("PasteTokenPage", () => {
     await waitFor(() => {
       expect(useInstancesStore.getState().instances[0]).toMatchObject({
         realm: "https://chat.example.com",
-        email: "session-user@example.com",
+        login: "session-user@example.com",
         apiKey: "",
         authType: "session",
       });
@@ -269,7 +269,7 @@ describe("PasteTokenPage", () => {
     await waitFor(() => {
       expect(useInstancesStore.getState().instances[0]).toMatchObject({
         realm: "https://chat.example.com",
-        email: "session-user@example.com",
+        login: "session-user@example.com",
         apiKey: "",
         authType: "session",
       });
@@ -280,7 +280,7 @@ describe("PasteTokenPage", () => {
   it("shows duplicate account error and does not navigate after paste-token login", async () => {
     useInstancesStore.getState().addInstance({
       realm: "https://chat.example.com",
-      email: "user@example.com",
+      login: "user@example.com",
       apiKey: "existing-key",
     });
     const otp = "0123456789abcdef".repeat(4);
@@ -312,7 +312,7 @@ describe("PasteTokenPage", () => {
   it("treats OIDC gateway login as duplicate of an existing canonical realm account", async () => {
     useInstancesStore.getState().addInstance({
       realm: "https://canonical.example.com",
-      email: "user@example.com",
+      login: "user@example.com",
       apiKey: "existing-key",
       workspaceOrgOrigin: "https://gw.example.com",
     });
@@ -341,7 +341,7 @@ describe("PasteTokenPage", () => {
     expect(useInstancesStore.getState().instances).toHaveLength(1);
     expect(useInstancesStore.getState().instances[0]).toMatchObject({
       realm: "https://canonical.example.com",
-      email: "user@example.com",
+      login: "user@example.com",
       apiKey: "existing-key",
       workspaceOrgOrigin: "https://gw.example.com",
     });

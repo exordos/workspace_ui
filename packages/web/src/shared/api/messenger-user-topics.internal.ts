@@ -7,8 +7,8 @@ import type { MessengerUserTopic } from "./messenger.types";
 
 const userTopicsByInstance = new Map<string, MessengerUserTopic[]>();
 
-export function buildUserTopicsCacheKey(realm: string, email: string): string {
-  return `${normalizeRealm(realm).toLowerCase()}::${email.trim().toLowerCase()}`;
+export function buildUserTopicsCacheKey(realm: string, login: string): string {
+  return `${normalizeRealm(realm).toLowerCase()}::${login.trim().toLowerCase()}`;
 }
 
 export function setCachedUserTopicsForKey(cacheKey: string, topics: MessengerUserTopic[]): void {
@@ -20,7 +20,7 @@ export function getCurrentUserTopicsCacheKey(): string | null {
   if (!instance) {
     return null;
   }
-  return buildUserTopicsCacheKey(instance.realm, instance.email);
+  return buildUserTopicsCacheKey(instance.realm, instance.login);
 }
 
 export function getCachedUserTopicsForKey(cacheKey: string): MessengerUserTopic[] {

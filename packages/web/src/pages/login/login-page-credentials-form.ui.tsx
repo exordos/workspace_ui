@@ -7,11 +7,14 @@ import { Icon } from "~/shared/ui/icon";
 export interface LoginPageCredentialsFormProps {
   username: string;
   password: string;
+  otp: string;
+  otpRequired: boolean;
   showPassword: boolean;
   loading: boolean;
   error: string | null;
   onUsernameChange: (value: string) => void;
   onPasswordChange: (value: string) => void;
+  onOtpChange: (value: string) => void;
   onToggleShowPassword: () => void;
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
 }
@@ -20,11 +23,14 @@ export const LoginPageCredentialsForm = React.memo<LoginPageCredentialsFormProps
   function LoginPageCredentialsForm({
     username,
     password,
+    otp,
+    otpRequired,
     showPassword,
     loading,
     error,
     onUsernameChange,
     onPasswordChange,
+    onOtpChange,
     onToggleShowPassword,
     onSubmit,
   }) {
@@ -65,6 +71,22 @@ export const LoginPageCredentialsForm = React.memo<LoginPageCredentialsFormProps
             </button>
           </div>
         </FormField>
+
+        {otpRequired && (
+          <FormField label={t("auth.otpCode")} htmlFor="otp">
+            <input
+              id="otp"
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              placeholder={t("auth.otpPlaceholder")}
+              value={otp}
+              onChange={(e) => onOtpChange(e.target.value)}
+              className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2.5 text-text-primary placeholder:text-text-muted focus:border-transparent focus:outline-none focus:ring-2 focus:ring-accent"
+              disabled={loading}
+            />
+          </FormField>
+        )}
 
         {error != null && error.length > 0 && (
           <div className="border-notice-base/20 bg-notice-base/10 rounded-lg border px-3 py-2 text-sm text-notice-base">

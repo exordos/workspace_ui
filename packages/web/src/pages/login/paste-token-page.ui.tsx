@@ -83,7 +83,7 @@ export const PasteTokenPage: React.FC = () => {
       if (credentials) {
         addInstanceResult = addInstance({
           realm,
-          email: credentials.email,
+          login: credentials.email,
           apiKey: credentials.apiKey,
           authType: "api_key",
           ...orgFields,
@@ -102,7 +102,7 @@ export const PasteTokenPage: React.FC = () => {
         const exchanged = await exchangeDesktopFlowToken(realm, loginToken);
         addInstanceResult = addInstance({
           realm,
-          email: exchanged.email,
+          login: exchanged.email,
           apiKey: exchanged.authType === "api_key" ? (exchanged.apiKey ?? "") : "",
           authType: exchanged.authType,
           ...orgFields,

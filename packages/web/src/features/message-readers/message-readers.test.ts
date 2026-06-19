@@ -123,8 +123,8 @@ describe("useMessageReadersStore", () => {
   it("does not apply stale read receipts after organization switch and clear", async () => {
     useInstancesStore.setState({
       instances: [
-        { id: "inst-a", realm: "https://a.test", email: "a@test.com", apiKey: "a-key" },
-        { id: "inst-b", realm: "https://b.test", email: "b@test.com", apiKey: "b-key" },
+        { id: "inst-a", realm: "https://a.test", login: "a@test.com", apiKey: "a-key" },
+        { id: "inst-b", realm: "https://b.test", login: "b@test.com", apiKey: "b-key" },
       ],
       currentInstanceId: "inst-a",
       activeOrgEpoch: 0,

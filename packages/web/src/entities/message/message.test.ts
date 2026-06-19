@@ -45,7 +45,7 @@ describe("currentChatMessagesStore", () => {
     setInstanceProvider(() => ({
       id: "test-instance",
       realm: "https://messenger.test",
-      email: "test@messenger.test",
+      login: "test@messenger.test",
       apiKey: runtimeTestApiKey,
     }));
     resetStore();

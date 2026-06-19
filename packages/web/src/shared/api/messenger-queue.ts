@@ -209,7 +209,7 @@ export async function registerQueueForCredentials(
   const metadata = parseRegisterQueueMetadata(data);
   setCachedOwnAvatarCapabilities(toOwnAvatarCapabilities(metadata));
   setCachedUserTopicsForKey(
-    buildUserTopicsCacheKey(credentials.realm, credentials.email),
+    buildUserTopicsCacheKey(credentials.realm, credentials.login),
     metadata.userTopics ?? [],
   );
 
@@ -244,7 +244,7 @@ export async function deleteQueue(
 
     const base = getValidatedCredentialsRealm(credentials, "deleteQueue");
     const url = `${base}${env.MESSENGER_API_V1_PATH}/events`;
-    const authValue = getBasicAuthValue({ email: credentials.email, apiKey: credentials.apiKey });
+    const authValue = getBasicAuthValue({ login: credentials.login, apiKey: credentials.apiKey });
     if (!authValue) return;
     await fetch(url, {
       method: "DELETE",
@@ -286,7 +286,7 @@ async function fetchUnreadMessagesCountForCredentialsWithNarrow(
   url.searchParams.set("allow_empty_topic_name", "true");
   url.searchParams.set("client_gravatar", "true");
   const authValue = getBasicAuthValue({
-    email: credentials.email,
+    login: credentials.login,
     apiKey: credentials.apiKey,
   });
   if (authValue == null) return null;

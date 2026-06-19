@@ -126,8 +126,8 @@ export function createStream(overrides: StreamOverrides = {}) {
 
 interface InstanceOverrides {
   id?: string;
+  login?: string;
   realm?: string;
-  email?: string;
   apiKey?: string;
 }
 
@@ -135,7 +135,7 @@ export function createInstance(overrides: InstanceOverrides = {}) {
   return {
     id: overrides.id ?? `inst-${autoId()}`,
     realm: overrides.realm ?? "https://chat.example.com",
-    email: overrides.email ?? "test@example.com",
+    login: overrides.login ?? "test@example.com",
     apiKey: overrides.apiKey ?? "test-api-key-12345",
   };
 }

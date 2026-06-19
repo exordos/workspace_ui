@@ -12,14 +12,18 @@ const INSTANCES_STORAGE_KEY = "messenger-web-instances";
 const CURRENT_INSTANCE_KEY = "messenger-web-current-instance";
 const UNREAD_BY_INSTANCE_KEY = "messenger-web-instance-unread-counts";
 
-export type WorkspaceAuthType = "api_key" | "session";
+export type WorkspaceAuthType = "api_key" | "session" | "iam";
 
 export interface WorkspaceInstance {
   id: string;
   realm: string;
-  email: string;
+  login: string;
   apiKey: string;
   authType?: WorkspaceAuthType;
+  /** IAM Bearer access token (authType `iam`). */
+  iamAccessToken?: string;
+  /** IAM refresh token (authType `iam`). */
+  iamRefreshToken?: string;
   realmIcon?: string;
   /** Workspace REST origin from the server URL entered at login (not canonical organization realm). */
   workspaceOrgOrigin?: string;
@@ -48,7 +52,9 @@ function toSafeUnreadCount(value: unknown): number {
 }
 
 function normalizeAuthType(value: unknown): WorkspaceAuthType {
-  return value === "session" ? "session" : "api_key";
+  if (value === "session") return "session";
+  if (value === "iam") return "iam";
+  return "api_key";
 }
 
 function normalizeStoredInstances(value: unknown): WorkspaceInstance[] {
@@ -61,21 +67,44 @@ function normalizeStoredInstances(value: unknown): WorkspaceInstance[] {
       continue;
     }
     const record = candidate as Record<string, unknown>;
+    const loginRaw = record.login ?? record.email;
     if (
       typeof record.id !== "string" ||
       typeof record.realm !== "string" ||
-      typeof record.email !== "string" ||
+      typeof loginRaw !== "string" ||
       typeof record.apiKey !== "string"
     ) {
       continue;
     }
+    const authType = normalizeAuthType(record.authType);
+    const iamAccessTokenRaw = record.iamAccessToken;
+    const iamRefreshTokenRaw = record.iamRefreshToken;
+    let apiKey = record.apiKey;
+    let iamAccessToken = typeof iamAccessTokenRaw === "string" ? iamAccessTokenRaw.trim() : "";
+    const iamRefreshToken =
+      typeof iamRefreshTokenRaw === "string" ? iamRefreshTokenRaw.trim() : undefined;
+
+    if (authType === "iam") {
+      if (iamAccessToken === "" && apiKey.trim() !== "") {
+        iamAccessToken = apiKey.trim();
+        apiKey = "";
+      }
+      if (iamAccessToken === "") {
+        continue;
+      }
+    } else if (apiKey.trim() === "") {
+      continue;
+    }
+
     const workspaceOrgOriginRaw = record.workspaceOrgOrigin;
     normalized.push({
       id: record.id,
       realm: record.realm,
-      email: record.email,
-      apiKey: record.apiKey,
-      authType: normalizeAuthType(record.authType),
+      login: loginRaw,
+      apiKey,
+      authType,
+      iamAccessToken: authType === "iam" ? iamAccessToken : undefined,
+      iamRefreshToken: authType === "iam" ? iamRefreshToken : undefined,
       realmIcon: typeof record.realmIcon === "string" ? record.realmIcon : undefined,
       workspaceOrgOrigin:
         typeof workspaceOrgOriginRaw === "string" && workspaceOrgOriginRaw.trim() !== ""
@@ -171,31 +200,31 @@ export type AddInstanceResult =
   | { status: "added"; id: string }
   | { status: "duplicate"; id: string };
 
-function addInstanceDuplicateKey(keys: Set<string>, realmLike: string, email: string): void {
+function addInstanceDuplicateKey(keys: Set<string>, realmLike: string, login: string): void {
   const normalizedRealm = normalizeRealm(realmLike).toLowerCase();
   if (normalizedRealm.length === 0) {
     return;
   }
-  keys.add(`${normalizedRealm}::${email}`);
+  keys.add(`${normalizedRealm}::${login}`);
 }
 
 function getInstanceDuplicateKeys(
-  instance: Pick<WorkspaceInstance, "realm" | "email" | "workspaceOrgOrigin">,
+  instance: Pick<WorkspaceInstance, "realm" | "login" | "workspaceOrgOrigin">,
 ): Set<string> {
-  const email = instance.email.trim().toLowerCase();
+  const login = instance.login.trim().toLowerCase();
   const keys = new Set<string>();
-  addInstanceDuplicateKey(keys, instance.realm, email);
+  addInstanceDuplicateKey(keys, instance.realm, login);
 
   const workspaceOrgOrigin = instance.workspaceOrgOrigin?.trim() ?? "";
   if (workspaceOrgOrigin.length > 0) {
-    addInstanceDuplicateKey(keys, workspaceOrgOrigin, email);
+    addInstanceDuplicateKey(keys, workspaceOrgOrigin, login);
   }
   return keys;
 }
 
 function findDuplicateInstance(
   instances: WorkspaceInstance[],
-  candidate: Pick<WorkspaceInstance, "realm" | "email" | "workspaceOrgOrigin">,
+  candidate: Pick<WorkspaceInstance, "realm" | "login" | "workspaceOrgOrigin">,
 ): WorkspaceInstance | undefined {
   const candidateKeys = getInstanceDuplicateKeys(candidate);
   return instances.find((instance) => {

@@ -171,7 +171,7 @@ describe("useLayoutMessengerEventLoop", () => {
         {
           id: "inst-1",
           realm: "https://chat.example.com",
-          email: "test@example.com",
+          login: "test@example.com",
           apiKey: "api-key",
         },
       ],

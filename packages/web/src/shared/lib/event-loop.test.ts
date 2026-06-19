@@ -146,7 +146,7 @@ describe("startMessengerEventLoop", () => {
     });
     getEventsForCredentialsMock.mockImplementation(
       (
-        _credentials: { realm: string; email: string; apiKey: string },
+        _credentials: { realm: string; login: string; apiKey: string },
         _queueId: string,
         _lastEventId: number,
         options?: { signal?: AbortSignal },
@@ -169,7 +169,7 @@ describe("startMessengerEventLoop", () => {
     const controller = new AbortController();
     const credentials = {
       realm: "https://org-2.example.com",
-      email: "org-2@example.com",
+      login: "org-2@example.com",
       apiKey: "k2",
     };
 

@@ -166,7 +166,7 @@ export interface GetEventsResult {
 
 export interface MessengerCredentials {
   realm: string;
-  email: string;
+  login: string;
   apiKey: string;
 }
 

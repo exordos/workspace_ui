@@ -175,6 +175,10 @@ export default defineConfig(({ mode }) => {
         target: workspaceOrigin,
         changeOrigin: true,
       }),
+      "/api/core": withDevProxyRequestLog("iam-core", workspaceOrigin, proxyDebug, {
+        target: workspaceOrigin,
+        changeOrigin: true,
+      }),
       "/user_uploads": withDevProxyRequestLog("user_uploads", workspaceOrigin, proxyDebug, {
         target: workspaceOrigin,
         changeOrigin: true,

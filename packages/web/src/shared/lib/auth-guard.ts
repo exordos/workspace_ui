@@ -15,11 +15,19 @@
  */
 
 import { Buffer } from "buffer";
+import { resolveIamAccessToken } from "~/shared/lib/iam-instance.lib";
 import { createLogger, logAction } from "./logger";
 
 const log = createLogger("auth");
 
-type InstanceGetter = () => { email: string; apiKey: string; realm: string } | null;
+type InstanceGetter = () => {
+  login: string;
+  apiKey: string;
+  realm: string;
+  authType?: "api_key" | "session" | "iam";
+  iamAccessToken?: string;
+  iamRefreshToken?: string;
+} | null;
 let instanceGetter: InstanceGetter | null = null;
 
 /** Inject the instance provider to avoid circular dependency with API client. */
@@ -46,8 +54,16 @@ export function setStoreWiper(fn: () => void): void {
 // Auth header (single point of construction)
 // ---------------------------------------------------------------------------
 
-/** Build Basic auth header from current instance. Returns empty object if not logged in. */
+/** Build Authorization header from current instance. Returns empty object if not logged in. */
 export function buildAuthHeader(): Record<string, string> {
+  const instance = getCurrentInstanceForAuth();
+  if (instance?.authType === "iam") {
+    const accessToken = resolveIamAccessToken(instance);
+    if (accessToken.length > 0) {
+      return { Authorization: `Bearer ${accessToken}` };
+    }
+    return {};
+  }
   const value = getBasicAuthValue();
   if (!value) return {};
   return { Authorization: value };
@@ -57,22 +73,28 @@ export function buildAuthHeader(): Record<string, string> {
  * Returns the full "Basic <base64>" auth string for the current instance,
  * or for explicitly supplied credentials. Returns null if not logged in.
  */
-export function getBasicAuthValue(creds?: { email: string; apiKey: string }): string | null {
-  const email = creds?.email;
+export function getBasicAuthValue(creds?: { login: string; apiKey: string }): string | null {
+  const login = creds?.login;
   const apiKey = creds?.apiKey;
-  if (email != null && apiKey != null) {
-    return `Basic ${Buffer.from(`${email}:${apiKey}`).toString("base64")}`;
+  if (login != null && apiKey != null) {
+    return `Basic ${Buffer.from(`${login}:${apiKey}`).toString("base64")}`;
   }
   const instance = getCurrentInstanceForAuth();
-  if (!instance?.apiKey) return null;
-  return `Basic ${Buffer.from(`${instance.email}:${instance.apiKey}`).toString("base64")}`;
+  if (!instance?.apiKey || instance.authType === "iam") return null;
+  return `Basic ${Buffer.from(`${instance.login}:${instance.apiKey}`).toString("base64")}`;
 }
 
 /** Get raw credentials for SDK init. Returns null if not logged in. */
-export function getCredentials(): { realm: string; email: string; apiKey: string } | null {
+export function getCredentials(): { realm: string; login: string; apiKey: string } | null {
   const instance = getCurrentInstanceForAuth();
-  if (!instance?.apiKey) return null;
-  return { realm: instance.realm, email: instance.email, apiKey: instance.apiKey };
+  if (!instance) return null;
+  if (instance.authType === "iam") {
+    const accessToken = resolveIamAccessToken(instance);
+    if (accessToken.length === 0) return null;
+    return { realm: instance.realm, login: instance.login, apiKey: accessToken };
+  }
+  if (!instance.apiKey) return null;
+  return { realm: instance.realm, login: instance.login, apiKey: instance.apiKey };
 }
 
 // ---------------------------------------------------------------------------

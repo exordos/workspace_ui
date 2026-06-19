@@ -49,7 +49,7 @@ function hasUsableWorkspaceAuth(instance: ReturnType<typeof getCurrentInstance>)
   if (instance.authType === "session") {
     return true;
   }
-  return Boolean(instance.email && instance.apiKey);
+  return Boolean(instance.login && instance.apiKey);
 }
 
 function mapStatusMutationError(status: number): OwnStatusMutationErrorKind {

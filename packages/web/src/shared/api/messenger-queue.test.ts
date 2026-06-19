@@ -503,7 +503,7 @@ describe("registerQueueForCredentials", () => {
     const result = await registerQueueForCredentials(
       {
         realm: "https://other.example.com",
-        email: "other@test.com",
+        login: "other@test.com",
         apiKey: "key",
       },
       ["message", "typing"],
@@ -548,7 +548,7 @@ describe("registerQueueForCredentials", () => {
       registerQueueForCredentials(
         {
           realm: "ftp://malicious.example.com",
-          email: "other@test.com",
+          login: "other@test.com",
           apiKey: "key",
         },
         ["message"],
@@ -593,7 +593,7 @@ describe("deleteQueue", () => {
     mockFetch.mockResolvedValue(jsonResponse({ result: "success" }));
     await deleteQueue("q-123", {
       realm: "https://other.example.com",
-      email: "other@test.com",
+      login: "other@test.com",
       apiKey: "key",
     });
     expect(mockMessengerApi.delete).not.toHaveBeenCalled();
@@ -607,7 +607,7 @@ describe("deleteQueue", () => {
     await deleteQueue("   ");
     await deleteQueue("", {
       realm: "https://other.example.com",
-      email: "other@test.com",
+      login: "other@test.com",
       apiKey: "key",
     });
 
@@ -622,7 +622,7 @@ describe("deleteQueue", () => {
     await expect(
       deleteQueue("q-123", {
         realm: "ftp://malicious.example.com",
-        email: "other@test.com",
+        login: "other@test.com",
         apiKey: "key",
       }),
     ).resolves.toBeUndefined();
@@ -645,7 +645,7 @@ describe("fetchUnreadMessagesCountForCredentials", () => {
 
     const count = await fetchUnreadMessagesCountForCredentials({
       realm: "https://other.example.com",
-      email: "other@test.com",
+      login: "other@test.com",
       apiKey: "key",
     });
 
@@ -669,7 +669,7 @@ describe("fetchUnreadMessagesCountForCredentials", () => {
 
     const count = await fetchUnreadMessagesCountForCredentials({
       realm: "https://other.example.com",
-      email: "other@test.com",
+      login: "other@test.com",
       apiKey: "key",
     });
 
@@ -685,7 +685,7 @@ describe("fetchUnreadMessagesCountForCredentials", () => {
 
     const count = await fetchUnreadMessagesCountForCredentials({
       realm: "ftp://malicious.example.com",
-      email: "other@test.com",
+      login: "other@test.com",
       apiKey: "key",
     });
 
@@ -810,7 +810,7 @@ describe("getEventsForCredentials", () => {
     const result = await getEventsForCredentials(
       {
         realm: "https://other.example.com",
-        email: "other@test.com",
+        login: "other@test.com",
         apiKey: "key",
       },
       "q-xyz",
@@ -837,7 +837,7 @@ describe("getEventsForCredentials", () => {
       getEventsForCredentials(
         {
           realm: "ftp://malicious.example.com",
-          email: "other@test.com",
+          login: "other@test.com",
           apiKey: "key",
         },
         "q-xyz",
@@ -853,7 +853,7 @@ describe("getEventsForCredentials", () => {
       getEventsForCredentials(
         {
           realm: "https://other.example.com",
-          email: "other@test.com",
+          login: "other@test.com",
           apiKey: "key",
         },
         "  ",
@@ -869,7 +869,7 @@ describe("getEventsForCredentials", () => {
       getEventsForCredentials(
         {
           realm: "https://other.example.com",
-          email: "other@test.com",
+          login: "other@test.com",
           apiKey: "key",
         },
         "q-xyz",
@@ -885,7 +885,7 @@ describe("getEventsForCredentials", () => {
       getEventsForCredentials(
         {
           realm: "https://other.example.com",
-          email: "other@test.com",
+          login: "other@test.com",
           apiKey: "key",
         },
         "q-xyz",

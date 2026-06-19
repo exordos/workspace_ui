@@ -125,7 +125,7 @@ describe("InboxPage styling contract", () => {
         {
           id: TEST_INSTANCE_ID,
           realm: "https://chat.example.com",
-          email: "user@example.com",
+          login: "user@example.com",
           apiKey: "api-key",
         },
       ],
@@ -665,13 +665,13 @@ describe("InboxPage styling contract", () => {
         {
           id: "instance-1",
           realm: "https://one.example.com",
-          email: "one@example.com",
+          login: "one@example.com",
           apiKey: "api-key",
         },
         {
           id: "instance-2",
           realm: "https://two.example.com",
-          email: "two@example.com",
+          login: "two@example.com",
           apiKey: "api-key",
         },
       ],
@@ -755,13 +755,13 @@ describe("InboxPage styling contract", () => {
         {
           id: "instance-1",
           realm: "https://one.example.com",
-          email: "one@example.com",
+          login: "one@example.com",
           apiKey: "api-key",
         },
         {
           id: "instance-2",
           realm: "https://two.example.com",
-          email: "two@example.com",
+          login: "two@example.com",
           apiKey: "api-key",
         },
       ],

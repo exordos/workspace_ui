@@ -66,7 +66,7 @@ export function startInactiveInstanceEventStreams(
     const stop = startEventLoop({
       credentials: {
         realm: instance.realm,
-        email: instance.email,
+        login: instance.login,
         apiKey: instance.apiKey,
       },
       onEvent: (event) => {

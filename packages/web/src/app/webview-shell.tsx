@@ -91,11 +91,11 @@ export const WebViewShell: React.FC = () => {
   );
 
   useEffect(() => {
-    const unsub = onAuthFromNative(({ email, apiKey, realm }) => {
+    const unsub = onAuthFromNative(({ login, apiKey, realm }) => {
       const workspaceOrgOrigin = workspaceOrgOriginFromLoginServerUrlInput(realm);
       const addInstanceResult = addInstance({
         realm,
-        email,
+        login: login,
         apiKey,
         ...(workspaceOrgOrigin !== "" ? { workspaceOrgOrigin } : {}),
       });

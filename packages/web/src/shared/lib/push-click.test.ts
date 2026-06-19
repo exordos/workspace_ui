@@ -80,8 +80,8 @@ describe("buildPushClickUrl", () => {
 
 describe("findInstanceIdByRealmUri", () => {
   const instances = [
-    { id: "1", realm: "https://chat.example.com", email: "a@test.com", apiKey: "k1" },
-    { id: "2", realm: "https://chat.example.com", email: "b@test.com", apiKey: "k2" },
+    { id: "1", realm: "https://chat.example.com", login: "a@test.com", apiKey: "k1" },
+    { id: "2", realm: "https://chat.example.com", login: "b@test.com", apiKey: "k2" },
   ];
 
   it("matches exact realm url", () => {

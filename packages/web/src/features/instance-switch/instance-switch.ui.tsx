@@ -11,12 +11,12 @@ import { Badge } from "~/shared/ui/badge";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
 import { Icon } from "~/shared/ui/icon";
 
-function getInstanceLabel(realm: string, email: string): string {
+function getInstanceLabel(realm: string, login: string): string {
   try {
     const host = new URL(realm.startsWith("http") ? realm : `https://${realm}`).hostname;
-    return host || email;
+    return host || login;
   } catch {
-    return email;
+    return login;
   }
 }
 
@@ -148,7 +148,7 @@ export const InstanceSwitcher: React.FC = () => {
   const menuItems = React.useMemo<DropdownMenuItem[]>(
     () => [
       ...instances.map((inst) => {
-        const label = getInstanceLabel(inst.realm, inst.email);
+        const label = getInstanceLabel(inst.realm, inst.login);
         const unreadCount = unreadCountsByInstance[inst.id] ?? 0;
         return {
           type: "action" as const,
@@ -179,7 +179,7 @@ export const InstanceSwitcher: React.FC = () => {
               </span>
               <div className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
                 <span className="w-full truncate font-medium">{label}</span>
-                <span className="w-full truncate text-xs text-text-muted">{inst.email}</span>
+                <span className="w-full truncate text-xs text-text-muted">{inst.login}</span>
               </div>
               <button
                 type="button"
@@ -230,7 +230,7 @@ export const InstanceSwitcher: React.FC = () => {
   return (
     <div className="flex items-center gap-1.5" role="group" aria-label={t("auth.selectServer")}>
       {visibleInstances.map((inst) => {
-        const label = getInstanceLabel(inst.realm, inst.email);
+        const label = getInstanceLabel(inst.realm, inst.login);
         const unreadCount = unreadCountsByInstance[inst.id] ?? 0;
         return (
           <InstanceQuickButton

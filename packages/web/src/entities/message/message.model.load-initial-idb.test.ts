@@ -84,7 +84,7 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
     setInstanceProvider(() => ({
       id: "test-instance",
       realm: "https://messenger.test",
-      email: "test@messenger.test",
+      login: "test@messenger.test",
       apiKey: runtimeTestApiKey,
     }));
     useCurrentChatMessagesStore.setState({

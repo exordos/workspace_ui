@@ -47,9 +47,11 @@ setInstanceProvider(() => {
   return {
     id: inst.id,
     realm: inst.realm,
-    email: inst.email,
+    login: inst.login,
     apiKey: inst.apiKey,
     authType: inst.authType ?? "api_key",
+    iamAccessToken: inst.iamAccessToken,
+    iamRefreshToken: inst.iamRefreshToken,
     workspaceOrgOrigin: inst.workspaceOrgOrigin,
   };
 });
@@ -69,7 +71,14 @@ useInstancesStore.subscribe((state, prev) => {
 setAuthInstanceGetter(() => {
   const inst = useInstancesStore.getState().getCurrentInstance();
   if (!inst) return null;
-  return { email: inst.email, apiKey: inst.apiKey, realm: inst.realm };
+  return {
+    login: inst.login,
+    apiKey: inst.apiKey,
+    realm: inst.realm,
+    authType: inst.authType ?? "api_key",
+    iamAccessToken: inst.iamAccessToken,
+    iamRefreshToken: inst.iamRefreshToken,
+  };
 });
 
 setStoreWiper(() => {

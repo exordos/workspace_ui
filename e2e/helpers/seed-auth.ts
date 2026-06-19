@@ -9,7 +9,7 @@ export async function seedAuthStorage(page: Page, apiKey?: string): Promise<stri
       const instance = {
         id: instanceId,
         realm,
-        email,
+        login,
         apiKey: resolvedApiKey,
       };
       localStorage.setItem("messenger-web-instances", JSON.stringify([instance]));

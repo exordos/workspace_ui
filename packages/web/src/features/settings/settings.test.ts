@@ -19,7 +19,7 @@ function setInstanceScope(instanceIds: string[], currentInstanceId: string): voi
     instances: instanceIds.map((id) => ({
       id,
       realm: `https://${id}.example.com`,
-      email: `${id}@example.com`,
+      login: `${id}@example.com`,
       apiKey: `key-${id}`,
     })),
     currentInstanceId,

@@ -110,7 +110,7 @@ describe("useUserProfileStore", () => {
       vi.mocked(getCurrentInstance).mockReturnValue({
         id: "test-inst",
         realm: "https://z.example.com",
-        email: "a@b.com",
+        login: "a@b.com",
         apiKey: "key",
       });
       vi.mocked(messengerApi.get).mockImplementation((path: string) => {
@@ -224,8 +224,8 @@ describe("useUserProfileStore", () => {
       vi.mocked(getCurrentInstance).mockReturnValue(null);
       useInstancesStore.setState({
         instances: [
-          { id: "inst-a", realm: "https://a.test", email: "a@test.com", apiKey: "a-key" },
-          { id: "inst-b", realm: "https://b.test", email: "b@test.com", apiKey: "b-key" },
+          { id: "inst-a", realm: "https://a.test", login: "a@test.com", apiKey: "a-key" },
+          { id: "inst-b", realm: "https://b.test", login: "b@test.com", apiKey: "b-key" },
         ],
         currentInstanceId: "inst-a",
         activeOrgEpoch: 0,

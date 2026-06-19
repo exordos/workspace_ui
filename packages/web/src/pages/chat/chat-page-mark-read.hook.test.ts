@@ -72,7 +72,7 @@ describe("useChatPageMarkRead", () => {
         {
           id: INSTANCE_ID,
           realm: "https://chat.example.com",
-          email: "user@example.com",
+          login: "user@example.com",
           apiKey: "api-key",
         },
       ],

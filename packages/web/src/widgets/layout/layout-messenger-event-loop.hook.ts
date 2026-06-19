@@ -287,7 +287,7 @@ export function useLayoutMessengerEventLoop(options: {
 
   const eventLoopAbortRef = useRef<AbortController | null>(null);
   const queueIdRef = useRef<string | null>(null);
-  const instanceAtLoopStartRef = useRef<{ realm: string; email: string; apiKey: string } | null>(
+  const instanceAtLoopStartRef = useRef<{ realm: string; login: string; apiKey: string } | null>(
     null,
   );
   const internalLatestMessageIdRef = useRef<number | null>(null);
@@ -535,7 +535,7 @@ export function useLayoutMessengerEventLoop(options: {
         let uid = fromGetCurrentUser ?? useChatListStore.getState().currentUserId;
         if (uid == null) {
           const inst = useInstancesStore.getState().getCurrentInstance();
-          uid = resolveSelfUserIdFromMembers(members, inst?.email);
+          uid = resolveSelfUserIdFromMembers(members, inst?.login);
           if (uid != null) {
             bootstrapUserId = uid;
             setCurrentUserIdRef.current(uid);
@@ -691,7 +691,7 @@ export function useLayoutMessengerEventLoop(options: {
         queueIdRef.current = null;
         const inst = useInstancesStore.getState().getCurrentInstance();
         instanceAtLoopStartRef.current = inst
-          ? { realm: inst.realm, email: inst.email, apiKey: inst.apiKey }
+          ? { realm: inst.realm, login: inst.login, apiKey: inst.apiKey }
           : null;
 
         const refreshStaleData = () => {

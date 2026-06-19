@@ -177,7 +177,7 @@ function setCurrentInstanceForUnreadTests(): void {
       {
         id: "inst-1",
         realm: "https://chat.example.com",
-        email: "user@example.com",
+        login: "user@example.com",
         apiKey: "api-key",
       },
     ],

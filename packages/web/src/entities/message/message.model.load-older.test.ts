@@ -73,7 +73,7 @@ describe("loadOlderBoundaryPage", () => {
     resetInstancesStore();
     useInstancesStore.getState().addInstance({
       realm: "https://messenger.test",
-      email: "test@messenger.test",
+      login: "test@messenger.test",
       apiKey: `runtime-test-key-${Date.now()}`,
     });
     setInstanceProvider(() => useInstancesStore.getState().getCurrentInstance());
@@ -207,7 +207,7 @@ describe("loadOlderBoundaryPage", () => {
     const firstInstanceId = useInstancesStore.getState().currentInstanceId;
     const secondInstanceId = useInstancesStore.getState().addInstance({
       realm: "https://messenger-2.test",
-      email: "two@messenger.test",
+      login: "two@messenger.test",
       apiKey: "k2",
     }).id;
 
@@ -251,7 +251,7 @@ describe("loadOlderBoundaryPage", () => {
     }>();
     const secondInstanceId = useInstancesStore.getState().addInstance({
       realm: "https://messenger-2.test",
-      email: "two@messenger.test",
+      login: "two@messenger.test",
       apiKey: "k2",
     }).id;
 

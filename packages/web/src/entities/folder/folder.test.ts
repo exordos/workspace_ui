@@ -28,7 +28,7 @@ vi.mock("~/shared/api/client", () => ({
   getCurrentInstance: () => ({
     id: "test-inst",
     realm: "https://messenger.test",
-    email: "test@test.com",
+    login: "test@test.com",
     apiKey: "test",
   }),
   getWorkspaceApiBaseForCurrentInstance: () => "https://messenger.test",

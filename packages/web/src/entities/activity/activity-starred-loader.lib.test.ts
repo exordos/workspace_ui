@@ -202,13 +202,13 @@ describe("ensureStarredLoaded", () => {
         {
           id: "instance-1",
           realm: "https://one.example.com",
-          email: "one@example.com",
+          login: "one@example.com",
           apiKey: "api-key",
         },
         {
           id: "instance-2",
           realm: "https://two.example.com",
-          email: "two@example.com",
+          login: "two@example.com",
           apiKey: "api-key",
         },
       ],

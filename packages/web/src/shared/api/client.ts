@@ -23,6 +23,7 @@ import {
   reportFailure,
 } from "~/shared/lib/connection-health";
 import { env } from "~/shared/lib/env";
+import { resolveIamAccessToken } from "~/shared/lib/iam-instance.lib";
 import { logApiCall } from "~/shared/lib/logger";
 import { extractLoggableRequestParams } from "~/shared/lib/logger-request-params.lib";
 import {
@@ -43,9 +44,11 @@ import {
 export interface InstanceCredentials {
   id: string;
   realm: string;
-  email: string;
+  login: string;
   apiKey: string;
-  authType?: "api_key" | "session";
+  authType?: "api_key" | "session" | "iam";
+  iamAccessToken?: string;
+  iamRefreshToken?: string;
   /** Workspace REST origin for this org (from the server URL entered at login). */
   workspaceOrgOrigin?: string;
 }
@@ -61,10 +64,12 @@ export function getCurrentInstance(): InstanceCredentials | null {
   return instanceProvider?.() ?? null;
 }
 
-type InstanceAuthType = "api_key" | "session";
+type InstanceAuthType = "api_key" | "session" | "iam";
 
 function resolveInstanceAuthType(instance: InstanceCredentials | null): InstanceAuthType {
-  return instance?.authType === "session" ? "session" : "api_key";
+  if (instance?.authType === "session") return "session";
+  if (instance?.authType === "iam") return "iam";
+  return "api_key";
 }
 
 function normalizeInstanceRealmRoot(realmInput: string): string {
@@ -217,8 +222,14 @@ const noCacheMiddleware: Middleware = async (req, next) => {
 
 const authMiddleware: Middleware = async (req, next) => {
   const instance = getCurrentInstance();
-  if (resolveInstanceAuthType(instance) === "api_key" && instance?.email && instance?.apiKey) {
-    const authValue = getBasicAuthValue({ email: instance.email, apiKey: instance.apiKey });
+  const authType = resolveInstanceAuthType(instance);
+  if (authType === "iam" && instance) {
+    const accessToken = resolveIamAccessToken(instance);
+    if (accessToken.length > 0) {
+      req.headers.Authorization = `Bearer ${accessToken}`;
+    }
+  } else if (authType === "api_key" && instance?.login && instance?.apiKey) {
+    const authValue = getBasicAuthValue({ login: instance.login, apiKey: instance.apiKey });
     if (authValue) {
       req.headers.Authorization = authValue;
     }

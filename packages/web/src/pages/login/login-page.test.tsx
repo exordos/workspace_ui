@@ -5,7 +5,7 @@ import { renderWithProviders } from "~/test/render";
 import { LoginPage } from "./login-page.ui";
 
 const navigateSpy = vi.hoisted(() => vi.fn());
-const fetchApiKey = vi.hoisted(() => vi.fn());
+const loginWithIamCredentials = vi.hoisted(() => vi.fn());
 const fetchServerSettings = vi.hoisted(() => vi.fn());
 
 const VALID_SERVER_SETTINGS = {
@@ -26,11 +26,18 @@ vi.mock("react-router-dom", async () => {
   };
 });
 
+vi.mock("~/shared/api/iam-auth", async () => {
+  const actual = await vi.importActual("~/shared/api/iam-auth");
+  return {
+    ...actual,
+    loginWithIamCredentials,
+  };
+});
+
 vi.mock("~/shared/api/messenger-auth", async () => {
   const actual = await vi.importActual("~/shared/api/messenger-auth");
   return {
     ...actual,
-    fetchApiKey,
     fetchServerSettings,
   };
 });
@@ -46,7 +53,7 @@ describe("LoginPage", () => {
     localStorage.removeItem("messenger-web-instances");
     localStorage.removeItem("messenger-web-current-instance");
     navigateSpy.mockReset();
-    fetchApiKey.mockReset();
+    loginWithIamCredentials.mockReset();
     fetchServerSettings.mockReset();
   });
 
@@ -218,8 +225,9 @@ describe("LoginPage", () => {
 
   it("navigates to redirectTo after a successful login", async () => {
     fetchServerSettings.mockResolvedValue(VALID_SERVER_SETTINGS);
-    fetchApiKey.mockResolvedValue({
-      api_key: "key-123",
+    loginWithIamCredentials.mockResolvedValue({
+      access_token: "iam-access-token",
+      refresh_token: "iam-refresh-token",
       email: "user@example.com",
       user_id: 7,
     });
@@ -250,12 +258,18 @@ describe("LoginPage", () => {
         { replace: true },
       );
     });
+
+    const instance = useInstancesStore.getState().instances[0];
+    expect(instance?.authType).toBe("iam");
+    expect(instance?.iamAccessToken).toBe("iam-access-token");
+    expect(instance?.iamRefreshToken).toBe("iam-refresh-token");
+    expect(instance?.apiKey).toBe("");
   });
 
   it("ignores external redirectTo values and falls back to root", async () => {
     fetchServerSettings.mockResolvedValue(VALID_SERVER_SETTINGS);
-    fetchApiKey.mockResolvedValue({
-      api_key: "key-123",
+    loginWithIamCredentials.mockResolvedValue({
+      access_token: "key-123",
       email: "user@example.com",
       user_id: 7,
     });
@@ -287,8 +301,8 @@ describe("LoginPage", () => {
 
   it("uses the current /message path as an implicit redirect target", async () => {
     fetchServerSettings.mockResolvedValue(VALID_SERVER_SETTINGS);
-    fetchApiKey.mockResolvedValue({
-      api_key: "key-123",
+    loginWithIamCredentials.mockResolvedValue({
+      access_token: "key-123",
       email: "user@example.com",
       user_id: 7,
     });
@@ -328,8 +342,8 @@ describe("LoginPage", () => {
       realm_icon: "https://cdn.example.com/realm-logo.svg",
       external_authentication_methods: [],
     });
-    fetchApiKey.mockResolvedValue({
-      api_key: "key-123",
+    loginWithIamCredentials.mockResolvedValue({
+      access_token: "key-123",
       email: "user@example.com",
       user_id: 7,
     });
@@ -372,8 +386,8 @@ describe("LoginPage", () => {
       realm_icon: "/user_avatars/1/realm/icon.png",
       external_authentication_methods: [],
     });
-    fetchApiKey.mockResolvedValue({
-      api_key: "key-123",
+    loginWithIamCredentials.mockResolvedValue({
+      access_token: "key-123",
       email: "user@example.com",
       user_id: 7,
     });
@@ -416,8 +430,8 @@ describe("LoginPage", () => {
       realm_icon: "",
       external_authentication_methods: [],
     });
-    fetchApiKey.mockResolvedValue({
-      api_key: "key-123",
+    loginWithIamCredentials.mockResolvedValue({
+      access_token: "key-123",
       email: "user@example.com",
       user_id: 7,
     });
@@ -456,11 +470,11 @@ describe("LoginPage", () => {
   it("shows duplicate account error and does not navigate after credential login", async () => {
     useInstancesStore.getState().addInstance({
       realm: "https://chat.example.com",
-      email: "user@example.com",
+      login: "user@example.com",
       apiKey: "existing-key",
     });
     fetchServerSettings.mockResolvedValue(VALID_SERVER_SETTINGS);
-    fetchApiKey.mockResolvedValue({
+    loginWithIamCredentials.mockResolvedValue({
       api_key: "key-123",
       email: "USER@example.com",
       user_id: 7,

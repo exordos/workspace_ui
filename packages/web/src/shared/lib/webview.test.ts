@@ -292,7 +292,7 @@ describe("origin validation via postMessage", () => {
     window.dispatchEvent(
       new MessageEvent("message", {
         origin: "https://evil.example.com",
-        data: { type: "auth", email: "x", apiKey: "k", realm: "https://r.com" },
+        data: { type: "auth", login: "x", apiKey: "k", realm: "https://r.com" },
       }),
     );
 
@@ -410,7 +410,7 @@ describe("auth from native — realm validation", () => {
         origin: window.location.origin,
         data: {
           type: "auth",
-          email: "user@example.com",
+          login: "user@example.com",
           apiKey: "abc123",
           realm: "https://chat.example.com",
         },
@@ -450,7 +450,7 @@ describe("auth from native — realm validation", () => {
         origin: window.location.origin,
         data: {
           type: "auth",
-          email: "user@example.com",
+          login: "user@example.com",
           apiKey: "abc123",
           // eslint-disable-next-line no-script-url -- testing that javascript: URLs are rejected
           realm: "javascript:alert(1)",

@@ -250,7 +250,7 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     setInstanceProvider(() => ({
       id: "i1",
       realm: "https://messenger.test",
-      email: "u@t.com",
+      login: "u@t.com",
       apiKey: "key123",
     }));
     refreshMessengerApiBase();
@@ -282,7 +282,7 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
       setInstanceProvider(() => ({
         id: "i1",
         realm: "https://messenger.test",
-        email: "u@t.com",
+        login: "u@t.com",
         apiKey: "key123",
       }));
       refreshMessengerApiBase();
@@ -319,7 +319,7 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     setInstanceProvider(() => ({
       id: "i1",
       realm: "https://messenger.test",
-      email: "u@t.com",
+      login: "u@t.com",
       apiKey: "key123",
     }));
     refreshMessengerApiBase();
@@ -342,7 +342,7 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     setInstanceProvider(() => ({
       id: "i1",
       realm: "https://messenger.test",
-      email: "u@t.com",
+      login: "u@t.com",
       apiKey: "key123",
     }));
     refreshMessengerApiBase();
@@ -365,7 +365,7 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     setInstanceProvider(() => ({
       id: "i1",
       realm: "https://messenger.test",
-      email: "u@t.com",
+      login: "u@t.com",
       apiKey: "key123",
     }));
     refreshMessengerApiBase();
@@ -385,7 +385,7 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     setInstanceProvider(() => ({
       id: "i1",
       realm: "https://messenger.test",
-      email: "u@t.com",
+      login: "u@t.com",
       apiKey: "key123",
     }));
     refreshMessengerApiBase();
@@ -405,7 +405,7 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     setInstanceProvider(() => ({
       id: "i1",
       realm: "https://messenger.test",
-      email: "u@t.com",
+      login: "u@t.com",
       apiKey: "key123",
     }));
     refreshMessengerApiBase();
@@ -425,7 +425,7 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     setInstanceProvider(() => ({
       id: "i1",
       realm: "https://messenger.test",
-      email: "u@t.com",
+      login: "u@t.com",
       apiKey: "key123",
     }));
     refreshMessengerApiBase();
@@ -445,7 +445,7 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     setInstanceProvider(() => ({
       id: "i1",
       realm: "https://workspace.test",
-      email: "u@t.com",
+      login: "u@t.com",
       apiKey: "key123",
     }));
 
@@ -464,7 +464,7 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     setInstanceProvider(() => ({
       id: "i1",
       realm: "https://messenger.test",
-      email: "u@t.com",
+      login: "u@t.com",
       apiKey: "key123",
     }));
 
@@ -486,7 +486,7 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     setInstanceProvider(() => ({
       id: "i1",
       realm: "https://messenger.test",
-      email: "u@t.com",
+      login: "u@t.com",
       apiKey: "key123",
     }));
     refreshMessengerApiBase();
@@ -514,7 +514,7 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     setInstanceProvider(() => ({
       id: "i1",
       realm: "https://messenger.test",
-      email: "user@test.com",
+      login: "user@test.com",
       apiKey: "abc",
     }));
     refreshMessengerApiBase();
@@ -526,6 +526,28 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
     const headers = init.headers as Record<string, string>;
     expect(headers.Authorization).toMatch(/^Basic /);
+  });
+
+  it("authMiddleware injects Bearer header for IAM auth instances", async () => {
+    const { setInstanceProvider, messengerApi, refreshMessengerApiBase } = await import("./client");
+    setInstanceProvider(() => ({
+      id: "i-iam",
+      realm: "https://messenger.test",
+      login: "user@test.com",
+      apiKey: "",
+      authType: "iam",
+      iamAccessToken: "iam-access-token",
+      iamRefreshToken: "iam-refresh-token",
+    }));
+    refreshMessengerApiBase();
+
+    mockFetch.mockResolvedValueOnce(mockJsonResponse({ result: "success" }));
+
+    await messengerApi.get("/test");
+
+    const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+    const headers = init.headers as Record<string, string>;
+    expect(headers.Authorization).toBe("Bearer iam-access-token");
   });
 
   // No active instance — no auth header, to avoid sending credentials to the wrong target.
@@ -547,7 +569,7 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     setInstanceProvider(() => ({
       id: "i-session",
       realm: "https://messenger.test",
-      email: "session-user@example.com",
+      login: "session-user@example.com",
       apiKey: "",
       authType: "session",
     }));
@@ -571,7 +593,7 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     setInstanceProvider(() => ({
       id: "i-session",
       realm: "https://messenger.test",
-      email: "session-user@example.com",
+      login: "session-user@example.com",
       apiKey: "",
       authType: "session",
     }));
@@ -592,7 +614,7 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     setInstanceProvider(() => ({
       id: "i-session",
       realm: "https://messenger-web-legacy.test/json",
-      email: "session-user@example.com",
+      login: "session-user@example.com",
       apiKey: "",
       authType: "session",
     }));
@@ -641,7 +663,7 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     setInstanceProvider(() => ({
       id: "i-session",
       realm: "https://electron-messenger.test",
-      email: "session-user@example.com",
+      login: "session-user@example.com",
       apiKey: "",
       authType: "session",
     }));
@@ -672,7 +694,7 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     setInstanceProvider(() => ({
       id: "i-session",
       realm: "https://messenger.test",
-      email: "session-user@example.com",
+      login: "session-user@example.com",
       apiKey: "",
       authType: "session",
     }));
@@ -701,7 +723,7 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     setInstanceProvider(() => ({
       id: "i-session",
       realm: "https://electron-messenger.test",
-      email: "session-user@example.com",
+      login: "session-user@example.com",
       apiKey: "",
       authType: "session",
     }));
@@ -803,7 +825,7 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     setInstanceProvider(() => ({
       id: "i1",
       realm: "https://messenger.test",
-      email: "u@t.com",
+      login: "u@t.com",
       apiKey: "key123",
     }));
     refreshMessengerApiBase();
@@ -875,7 +897,7 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     setInstanceProvider(() => ({
       id: "i1",
       realm: "https://messenger.test",
-      email: "u@t.com",
+      login: "u@t.com",
       apiKey: "key123",
     }));
     setAuthErrorHandler(onAuthError);
@@ -904,7 +926,7 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     setInstanceProvider(() => ({
       id: "i1",
       realm: "https://messenger.test",
-      email: "u@t.com",
+      login: "u@t.com",
       apiKey: "key123",
     }));
     setAuthErrorHandler(onAuthError);
@@ -935,7 +957,7 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     setInstanceProvider(() => ({
       id: "i1",
       realm: "https://messenger.test",
-      email: "u@t.com",
+      login: "u@t.com",
       apiKey: "key123",
     }));
     setAuthErrorHandler(onAuthError);
@@ -963,7 +985,7 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     setInstanceProvider(() => ({
       id: "i1",
       realm: "https://messenger.test",
-      email: "u@t.com",
+      login: "u@t.com",
       apiKey: "key123",
     }));
     setAuthErrorHandler(onAuthError);
@@ -991,7 +1013,7 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     setInstanceProvider(() => ({
       id: "i1",
       realm: "https://messenger.test",
-      email: "u@t.com",
+      login: "u@t.com",
       apiKey: "key123",
     }));
     refreshMessengerApiBase();
@@ -1030,7 +1052,7 @@ describe("ApiClient middleware management", () => {
     setInstanceProvider(() => ({
       id: "i1",
       realm: "https://messenger.test",
-      email: "u@t.com",
+      login: "u@t.com",
       apiKey: "k",
     }));
     refreshMessengerApiBase();
@@ -1075,7 +1097,7 @@ describe("ApiClient middleware management", () => {
     setInstanceProvider(() => ({
       id: "i1",
       realm: "https://messenger.test",
-      email: "u@t.com",
+      login: "u@t.com",
       apiKey: "k",
     }));
     refreshMessengerApiBase();
@@ -1144,7 +1166,7 @@ describe("appendDevUserUploadsProxyHeaders", () => {
     setInstanceProvider(() => ({
       id: "i1",
       realm: "https://messenger.realm.test",
-      email: "u@t.com",
+      login: "u@t.com",
       apiKey: "k",
       workspaceOrgOrigin: "https://workspace.gateway.test",
     }));
@@ -1165,7 +1187,7 @@ describe("appendDevUserUploadsProxyHeaders", () => {
     setInstanceProvider(() => ({
       id: "i1",
       realm: "https://messenger.realm.test",
-      email: "u@t.com",
+      login: "u@t.com",
       apiKey: "k",
       workspaceOrgOrigin: "https://workspace.gateway.test",
     }));
@@ -1186,7 +1208,7 @@ describe("appendDevUserUploadsProxyHeaders", () => {
     setInstanceProvider(() => ({
       id: "i1",
       realm: "https://messenger.realm.test",
-      email: "u@t.com",
+      login: "u@t.com",
       apiKey: "k",
       workspaceOrgOrigin: "https://workspace.gateway.test",
     }));

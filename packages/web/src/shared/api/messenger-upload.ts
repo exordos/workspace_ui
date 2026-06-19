@@ -100,7 +100,7 @@ async function uploadFileViaTus(
   options?: { signal?: AbortSignal },
 ): Promise<string> {
   const authValue = getBasicAuthValue({
-    email: credentials.email,
+    login: credentials.login,
     apiKey: credentials.apiKey,
   });
   if (authValue == null) {
@@ -208,7 +208,7 @@ export async function uploadFile(file: File, options?: { signal?: AbortSignal })
 
   const credentials: MessengerCredentials = {
     realm: instance.realm,
-    email: instance.email,
+    login: instance.login,
     apiKey: instance.apiKey,
   };
 

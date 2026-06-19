@@ -25,7 +25,7 @@ describe("message-composer-saved-snippets.model", () => {
     getCurrentInstanceMock.mockReturnValue({
       id: "inst-a",
       realm: "https://example.com",
-      email: "user@example.com",
+      login: "user@example.com",
       apiKey: "api-key",
     });
     fetchSavedSnippetsMock.mockReset();

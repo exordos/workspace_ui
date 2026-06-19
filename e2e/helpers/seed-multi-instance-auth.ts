@@ -21,13 +21,13 @@ export async function seedMultiInstanceAuth(page: Page): Promise<void> {
         {
           id: primaryId,
           realm: primaryRealm,
-          email: primaryEmail,
+          login: primaryEmail,
           apiKey: `fixture-key-${primaryId}`,
         },
         {
           id: secondaryId,
           realm: secondaryRealm,
-          email: secondaryEmail,
+          login: secondaryEmail,
           apiKey: `fixture-key-${secondaryId}`,
         },
       ];

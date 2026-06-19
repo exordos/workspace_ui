@@ -48,7 +48,7 @@ describe("workspace-client", () => {
     getCurrentInstance.mockReturnValue({
       id: "instance-1",
       realm: "https://messenger.genesis-core.tech",
-      email: "user@example.com",
+      login: "user@example.com",
       apiKey: "api-key",
     });
     const { registerWorkspaceOrvalMutator } = await import("./workspace-orval-mutator");

@@ -183,7 +183,7 @@ export async function requestUserStatusWithPolicy(
   }
 
   const instance = getCurrentInstance();
-  if (!instance?.realm || !instance.email || !instance.apiKey) {
+  if (!instance?.realm || !instance.login || !instance.apiKey) {
     return;
   }
 

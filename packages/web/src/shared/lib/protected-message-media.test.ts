@@ -269,7 +269,7 @@ describe("resolveProtectedUploadFetchOptions", () => {
     vi.spyOn(apiClient, "getCurrentInstance").mockReturnValue({
       id: "api-key",
       realm: "https://chat.example.com",
-      email: "user@example.com",
+      login: "user@example.com",
       apiKey: "key",
       authType: "api_key",
     });
@@ -289,7 +289,7 @@ describe("resolveProtectedUploadFetchOptions", () => {
     vi.spyOn(apiClient, "getCurrentInstance").mockReturnValue({
       id: "session",
       realm: "https://chat.example.com",
-      email: "user@example.com",
+      login: "user@example.com",
       apiKey: "",
       authType: "session",
     });
@@ -320,7 +320,7 @@ describe("resolveProtectedUploadFetchOptions", () => {
     vi.spyOn(apiClient, "getCurrentInstance").mockReturnValue({
       id: "api-key",
       realm: "https://chat.example.com",
-      email: "user@example.com",
+      login: "user@example.com",
       apiKey: "key",
     });
     vi.stubGlobal("window", {
@@ -336,7 +336,7 @@ describe("resolveProtectedUploadFetchOptions", () => {
     vi.spyOn(apiClient, "getCurrentInstance").mockReturnValue({
       id: "session",
       realm: "https://chat.example.com",
-      email: "user@example.com",
+      login: "user@example.com",
       apiKey: "",
       authType: "session",
     });

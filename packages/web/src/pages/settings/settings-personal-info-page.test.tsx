@@ -199,7 +199,7 @@ describe("SettingsPersonalInfoPage", () => {
         {
           id: "instance-1",
           realm: "https://chat.example.com",
-          email: "alice@example.com",
+          login: "alice@example.com",
           apiKey: "api-key",
         },
       ],
@@ -237,7 +237,7 @@ describe("SettingsPersonalInfoPage", () => {
         {
           id: "instance-1",
           realm: "not-a-valid-realm",
-          email: "alice@example.com",
+          login: "alice@example.com",
           apiKey: "api-key",
         },
       ],

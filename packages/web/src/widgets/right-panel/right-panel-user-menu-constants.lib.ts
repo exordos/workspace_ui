@@ -66,11 +66,11 @@ export const STATUS_EMOJI_PRESETS = [
   { name: "spiral_calendar_pad", code: "1f5d3-fe0f", symbol: "🗓️" },
 ] as const;
 
-export function getInstanceLabel(realm: string, email: string): string {
+export function getInstanceLabel(realm: string, login: string): string {
   try {
     const host = new URL(realm.startsWith("http") ? realm : `https://${realm}`).hostname;
-    return host || email;
+    return host || login;
   } catch {
-    return email;
+    return login;
   }
 }

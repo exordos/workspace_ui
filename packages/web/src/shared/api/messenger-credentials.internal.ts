@@ -9,7 +9,7 @@ import type { MessengerCredentials } from "./messenger.types";
 
 export function getAuthValueForCredentials(credentials: MessengerCredentials): string {
   const authValue = getBasicAuthValue({
-    email: credentials.email,
+    login: credentials.login,
     apiKey: credentials.apiKey,
   });
   if (!authValue) {

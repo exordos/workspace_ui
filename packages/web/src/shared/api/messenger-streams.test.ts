@@ -102,7 +102,7 @@ describe("fetchUserTopics", () => {
   it("returns empty array when register cache is not available", async () => {
     vi.mocked(getCurrentInstance).mockReturnValue({
       ...TEST_INSTANCE,
-      email: "uncached@example.com",
+      login: "uncached@example.com",
     });
 
     await expect(fetchUserTopics()).resolves.toEqual([]);
