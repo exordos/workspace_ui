@@ -7,6 +7,7 @@ import { env } from "~/shared/lib/env";
 import { loggedFetch } from "~/shared/lib/logged-fetch.lib";
 import { createLogger, logAction } from "~/shared/lib/logger";
 import { isValidEmail, isValidRealmUrl } from "~/shared/lib/validation";
+import { parseCurrentUserFromApiData } from "./zulip-current-user.lib";
 import { normalizeRealm } from "./zulip-realm.internal";
 import {
   readSessionCsrfTokenFromDocument,
@@ -149,7 +150,13 @@ export async function fetchApiKey(
   throw new ZulipAuthError(msg || t("auth.invalidLogin"), data.code, data);
 }
 
-function normalizeExchangeCredentials(payload: unknown): { email: string; apiKey: string } | null {
+function parsePositiveUserId(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
+function normalizeExchangeCredentials(
+  payload: unknown,
+): { email: string; apiKey: string; userId?: number } | null {
   // Desktop exchange may return HTML or a redirect for cookie session, not JSON credentials.
   if (typeof payload !== "object" || payload == null) {
     return null;
@@ -162,10 +169,12 @@ function normalizeExchangeCredentials(payload: unknown): { email: string; apiKey
   if (!isValidEmail(email) || apiKey.length === 0) {
     return null;
   }
-  return { email, apiKey };
+  return { email, apiKey, userId: parsePositiveUserId(record.user_id ?? record.userId) };
 }
 
-async function fetchSessionUserEmail(baseRealm: string): Promise<string | null> {
+async function fetchSessionUserProfile(
+  baseRealm: string,
+): Promise<{ email: string; userId: number } | null> {
   try {
     // Check that the cookie session already works before saving the new instance.
     const response = await loggedFetch(`${baseRealm}/json/users/me`, {
@@ -176,9 +185,9 @@ async function fetchSessionUserEmail(baseRealm: string): Promise<string | null> 
     if (!response.ok) {
       return null;
     }
-    const data = (await response.json()) as { email?: unknown };
-    const email = typeof data.email === "string" ? data.email.trim() : "";
-    return isValidEmail(email) ? email : null;
+    const user = parseCurrentUserFromApiData(await response.json());
+    const email = user?.email.trim() ?? "";
+    return user != null && isValidEmail(email) ? { email, userId: user.user_id } : null;
   } catch {
     return null;
   }
@@ -238,11 +247,12 @@ async function exchangeDesktopFlowTokenInRenderer(
       authType: "api_key",
       email: apiCredentials.email,
       apiKey: apiCredentials.apiKey,
+      ...(apiCredentials.userId != null ? { userId: apiCredentials.userId } : {}),
     };
   }
 
-  const sessionEmail = await fetchSessionUserEmail(base);
-  if (sessionEmail == null) {
+  const sessionUser = await fetchSessionUserProfile(base);
+  if (sessionUser == null) {
     // Without a confirmed email, do not save a session auth instance.
     log.error("Renderer desktop token exchange failed during session verification");
     throw new ZulipAuthError(t("auth.pasteTokenInvalid"));
@@ -254,7 +264,8 @@ async function exchangeDesktopFlowTokenInRenderer(
   }
   return {
     authType: "session",
-    email: sessionEmail,
+    email: sessionUser.email,
+    userId: sessionUser.userId,
   };
 }
 
@@ -280,6 +291,7 @@ async function exchangeDesktopFlowTokenInElectron(
   return {
     authType: result.data.authType,
     email: result.data.email,
+    ...(result.data.userId != null ? { userId: result.data.userId } : {}),
     ...(result.data.apiKey != null ? { apiKey: result.data.apiKey } : {}),
   };
 }

@@ -33,6 +33,7 @@ export interface ZulipServerSettings {
 export interface DesktopFlowExchangeResult {
   authType: "api_key" | "session";
   email: string;
+  userId?: number;
   apiKey?: string;
 }
 

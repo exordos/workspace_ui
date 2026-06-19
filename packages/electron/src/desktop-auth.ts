@@ -10,6 +10,8 @@ export interface DesktopAuthExchangeResult {
   authType: "api_key" | "session";
   // Email is needed to save the new instance in the account list.
   email: string;
+  // Zulip user id lets the renderer bootstrap user-scoped cache immediately.
+  userId?: number;
   // Set only when the backend returned a ready Zulip API key.
   apiKey?: string;
 }
@@ -92,7 +94,17 @@ function isValidEmail(email: string): boolean {
   return email.includes("@") && email.length > 3;
 }
 
-function normalizeApiCredentials(payload: unknown): { email: string; apiKey: string } | null {
+function parsePositiveUserId(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalizeApiCredentials(
+  payload: unknown,
+): { email: string; apiKey: string; userId?: number } | null {
   // The backend can return ready API credentials instead of a cookie session.
   if (typeof payload !== "object" || payload == null) {
     return null;
@@ -105,7 +117,7 @@ function normalizeApiCredentials(payload: unknown): { email: string; apiKey: str
   if (!isValidEmail(email) || apiKey.length === 0) {
     return null;
   }
-  return { email, apiKey };
+  return { email, apiKey, userId: parsePositiveUserId(record.user_id ?? record.userId) };
 }
 
 // Closed list of Zulip cookies that really need cross-site sending in Electron.
@@ -183,9 +195,9 @@ async function relaxSessionCookieSameSite(originUrl: string): Promise<void> {
   }
 }
 
-async function fetchSessionUserEmail(
+async function fetchSessionUserProfile(
   baseRealm: string,
-): Promise<{ email: string | null; status: number }> {
+): Promise<{ email: string | null; userId: number | null; status: number }> {
   // Check the session with an endpoint that needs an already stored cookie.
   const response = await session.defaultSession.fetch(`${baseRealm}/json/users/me`, {
     method: "GET",
@@ -194,17 +206,22 @@ async function fetchSessionUserEmail(
   });
   if (!response.ok) {
     // Return the status so logs can separate 401 from other problems.
-    return { email: null, status: response.status };
+    return { email: null, userId: null, status: response.status };
   }
-  let data: { email?: unknown };
+  let data: Record<string, unknown>;
   try {
-    data = (await response.json()) as { email?: unknown };
+    const payload = await response.json();
+    data = isRecord(payload) ? payload : {};
   } catch {
-    return { email: null, status: response.status };
+    return { email: null, userId: null, status: response.status };
   }
-  const email = typeof data.email === "string" ? data.email.trim() : "";
+  const nestedUser = isRecord(data.user) ? data.user : null;
+  const emailRaw = data.email ?? nestedUser?.email;
+  const email = typeof emailRaw === "string" ? emailRaw.trim() : "";
+  const userId = parsePositiveUserId(data.user_id ?? nestedUser?.user_id);
   return {
     email: isValidEmail(email) ? email : null,
+    userId: userId ?? null,
     status: response.status,
   };
 }
@@ -257,6 +274,7 @@ export async function exchangeDesktopFlowToken(
           authType: "api_key",
           email: apiCredentials.email,
           apiKey: apiCredentials.apiKey,
+          ...(apiCredentials.userId != null ? { userId: apiCredentials.userId } : {}),
         };
       }
     } catch {
@@ -276,10 +294,10 @@ export async function exchangeDesktopFlowToken(
     );
   }
 
-  let sessionCheck: { email: string | null; status: number };
+  let sessionCheck: { email: string | null; userId: number | null; status: number };
   try {
     // After changing cookies, check right away that the session really works.
-    sessionCheck = await fetchSessionUserEmail(base);
+    sessionCheck = await fetchSessionUserProfile(base);
   } catch (error) {
     throw new DesktopAuthExchangeError(
       "DESKTOP_FLOW_EXCHANGE_NETWORK_ERROR",
@@ -287,7 +305,7 @@ export async function exchangeDesktopFlowToken(
       `Session verification failed: ${stringifyNetworkError(error)}`,
     );
   }
-  if (sessionCheck.email == null) {
+  if (sessionCheck.email == null || sessionCheck.userId == null) {
     // If email is missing, treat the cookie session as broken and do not save the instance.
     throw new DesktopAuthExchangeError("DESKTOP_FLOW_SESSION_FAILED", sessionCheck.status);
   }
@@ -295,5 +313,6 @@ export async function exchangeDesktopFlowToken(
   return {
     authType: "session",
     email: sessionCheck.email,
+    userId: sessionCheck.userId,
   };
 }

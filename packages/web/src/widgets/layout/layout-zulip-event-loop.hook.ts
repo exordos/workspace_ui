@@ -513,6 +513,9 @@ export function useLayoutZulipEventLoop(options: {
           if (user?.user_id != null) {
             bootstrapUserId = user.user_id;
             useUsersStore.getState().mergeUser(user);
+            if (currentInstanceId != null) {
+              useInstancesStore.getState().setInstanceUserId(currentInstanceId, user.user_id);
+            }
             setCurrentUserIdRef.current(user.user_id);
             scheduleDmPreviewHydration(undefined, user.user_id, undefined, "getCurrentUser");
             setBootstrapStatus("ready");
@@ -538,6 +541,9 @@ export function useLayoutZulipEventLoop(options: {
           uid = resolveSelfUserIdFromMembers(members, inst?.email);
           if (uid != null) {
             bootstrapUserId = uid;
+            if (currentInstanceId != null) {
+              useInstancesStore.getState().setInstanceUserId(currentInstanceId, uid);
+            }
             setCurrentUserIdRef.current(uid);
             scheduleDmPreviewHydration(undefined, uid, undefined, "finalizeBootstrapAuth");
             const member = findZulipMemberByUserId(members, uid);

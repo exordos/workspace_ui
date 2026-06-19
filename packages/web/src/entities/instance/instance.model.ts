@@ -19,6 +19,7 @@ export interface ZulipInstance {
   realm: string;
   email: string;
   apiKey: string;
+  userId?: number;
   authType?: ZulipAuthType;
   realmIcon?: string;
   /** Workspace REST origin from the server URL entered at login (not canonical Zulip realm). */
@@ -51,6 +52,10 @@ function normalizeAuthType(value: unknown): ZulipAuthType {
   return value === "session" ? "session" : "api_key";
 }
 
+function normalizeUserId(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
 function normalizeStoredInstances(value: unknown): ZulipInstance[] {
   if (!Array.isArray(value)) {
     return [];
@@ -75,6 +80,7 @@ function normalizeStoredInstances(value: unknown): ZulipInstance[] {
       realm: record.realm,
       email: record.email,
       apiKey: record.apiKey,
+      userId: normalizeUserId(record.userId),
       authType: normalizeAuthType(record.authType),
       realmIcon: typeof record.realmIcon === "string" ? record.realmIcon : undefined,
       workspaceOrgOrigin:
@@ -219,6 +225,7 @@ interface InstancesState extends StoredState {
   addInstance: (instance: Omit<ZulipInstance, "id">) => AddInstanceResult;
   removeInstance: (id: string) => void;
   setCurrentInstanceId: (id: string | null) => void;
+  setInstanceUserId: (id: string, userId: number) => void;
   getCurrentInstance: () => ZulipInstance | null;
   setInstanceUnreadCount: (id: string, unreadCount: number) => void;
   getInstanceUnreadCount: (id: string) => number;
@@ -250,6 +257,7 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
     const newInstance: ZulipInstance = {
       ...instance,
       id,
+      userId: normalizeUserId(instance.userId),
       authType: normalizeAuthType(instance.authType),
     };
 
@@ -257,7 +265,9 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
       const instances = [...state.instances, newInstance];
       const currentInstanceId = state.currentInstanceId ?? id;
       const activeOrgEpoch =
-        currentInstanceId === state.currentInstanceId ? state.activeOrgEpoch : state.activeOrgEpoch + 1;
+        currentInstanceId === state.currentInstanceId
+          ? state.activeOrgEpoch
+          : state.activeOrgEpoch + 1;
       const unreadCountsByInstance = { ...state.unreadCountsByInstance };
       persist(instances, currentInstanceId, unreadCountsByInstance);
       return { instances, currentInstanceId, activeOrgEpoch, unreadCountsByInstance };
@@ -282,7 +292,9 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
         currentInstanceId = instances[0]?.id ?? null;
       }
       const activeOrgEpoch =
-        currentInstanceId === state.currentInstanceId ? state.activeOrgEpoch : state.activeOrgEpoch + 1;
+        currentInstanceId === state.currentInstanceId
+          ? state.activeOrgEpoch
+          : state.activeOrgEpoch + 1;
       const unreadCountsByInstance = { ...state.unreadCountsByInstance };
       delete unreadCountsByInstance[id];
       const dmUnreadCountsByInstance = { ...state.dmUnreadCountsByInstance };
@@ -303,6 +315,24 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
       instanceId: id,
       ...(removedRealm ? { realmHost: realmHostFromRealm(removedRealm) } : {}),
     });
+  },
+
+  setInstanceUserId: (id, userId) => {
+    if (!Number.isInteger(userId) || userId <= 0) {
+      return;
+    }
+    set((state) => {
+      const index = state.instances.findIndex((instance) => instance.id === id);
+      if (index < 0 || state.instances[index]?.userId === userId) {
+        return state;
+      }
+      const instances = state.instances.map((instance) =>
+        instance.id === id ? { ...instance, userId } : instance,
+      );
+      persist(instances, state.currentInstanceId, state.unreadCountsByInstance);
+      return { instances };
+    });
+    logStoreAction("instances", "setInstanceUserId", { instanceId: id, userId });
   },
 
   setCurrentInstanceId: (id) => {

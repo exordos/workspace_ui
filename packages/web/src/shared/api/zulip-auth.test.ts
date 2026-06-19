@@ -196,6 +196,7 @@ describe("exchangeDesktopFlowToken", () => {
           result: "success",
           email: "user@example.com",
           api_key: "k123456",
+          user_id: 11,
         }),
       )
       .mockResolvedValueOnce(
@@ -213,6 +214,7 @@ describe("exchangeDesktopFlowToken", () => {
       authType: "api_key",
       email: "user@example.com",
       apiKey: "k123456",
+      userId: 11,
     });
     expect(mockFetch).toHaveBeenNthCalledWith(
       1,
@@ -229,6 +231,7 @@ describe("exchangeDesktopFlowToken", () => {
     mockFetch.mockResolvedValueOnce(jsonResponse({ result: "success" })).mockResolvedValueOnce(
       jsonResponse({
         email: "session-user@example.com",
+        user_id: 12,
       }),
     );
 
@@ -237,6 +240,7 @@ describe("exchangeDesktopFlowToken", () => {
     expect(result).toEqual({
       authType: "session",
       email: "session-user@example.com",
+      userId: 12,
     });
     expect(mockFetch).toHaveBeenNthCalledWith(
       2,
@@ -253,6 +257,7 @@ describe("exchangeDesktopFlowToken", () => {
     mockFetch.mockResolvedValueOnce(jsonResponse({ result: "success" })).mockResolvedValueOnce(
       jsonResponse({
         email: "session-user@example.com",
+        user_id: 12,
       }),
     );
 
@@ -281,6 +286,7 @@ describe("exchangeDesktopFlowToken", () => {
         data: {
           authType: "session",
           email: "session-user@example.com",
+          userId: 13,
         },
       }),
     );
@@ -291,6 +297,7 @@ describe("exchangeDesktopFlowToken", () => {
     expect(result).toEqual({
       authType: "session",
       email: "session-user@example.com",
+      userId: 13,
     });
     expect(bridgeExchange).toHaveBeenCalledWith({
       realm: "https://zulip.example.com",

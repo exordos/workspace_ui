@@ -15,6 +15,7 @@ import {
   mergeBootstrapStreamsWithPreviousMetadata,
   mergeStreamAccessMetadata,
   normalizeDmUserIds,
+  rebuildDmMetadataMapForCurrentUser,
   type ChatListDmBootstrapDisplayContext,
 } from "./chat-list-bootstrap.lib";
 
@@ -221,6 +222,43 @@ describe("buildDmMetadataUpsertPatch", () => {
   });
 });
 
+describe("rebuildDmMetadataMapForCurrentUser", () => {
+  it("rekeys and deduplicates metadata-only personal DM entries", () => {
+    const oldEntry = buildDmMetadataEntry(
+      { userIds: [20], unreadCount: 1, lastActivityTs: 1000, lastMessageId: 10 },
+      null,
+      undefined,
+      displayContext(),
+    )!.entry;
+    const canonicalEntry = buildDmMetadataEntry(
+      { userIds: [10, 20], unreadCount: 2, lastActivityTs: 2000, lastMessageId: 20 },
+      CURRENT_USER_ID,
+      undefined,
+      displayContext(),
+    )!.entry;
+
+    const rebuilt = rebuildDmMetadataMapForCurrentUser(
+      new Map([
+        ["20", oldEntry],
+        ["10,20", canonicalEntry],
+      ]),
+      CURRENT_USER_ID,
+      displayContext(),
+    );
+
+    expect([...rebuilt.keys()]).toEqual(["10,20"]);
+    expect(rebuilt.get("10,20")).toEqual(
+      expect.objectContaining({
+        id: 20,
+        isGroup: false,
+        userIds: [10, 20],
+        unreadCount: 2,
+        lastMessageId: 20,
+      }),
+    );
+  });
+});
+
 describe("buildDmMetadataRowsFromDmsMap", () => {
   it("maps existing DM entries back to metadata rows", () => {
     const entry = buildDmMetadataEntry(
@@ -320,5 +358,58 @@ describe("buildChatListHydrateFromSnapshotState", () => {
     const state = buildChatListHydrateFromSnapshotState(snapshot, 10);
     expect(state.sidebarDataHydrated).toBe(false);
     expect(state.currentUserId).toBe(10);
+  });
+
+  it("prefers fallback current user id when active instance already provided one", () => {
+    const snapshot: ChatListSnapshotSerialized = {
+      version: 1,
+      currentUserId: 10,
+      lastMessageId: null,
+      oldestMessageId: null,
+      streamsEntries: [],
+      dmsEntries: [],
+      messageIdToLocationEntries: [],
+      updatedAt: Date.now(),
+    };
+
+    const state = buildChatListHydrateFromSnapshotState(snapshot, 20);
+
+    expect(state.currentUserId).toBe(20);
+  });
+
+  it("deduplicates stale DM snapshot keys when current user is known", () => {
+    const oldEntry = buildDmMetadataEntry(
+      { userIds: [20], unreadCount: 1, lastActivityTs: 1000 },
+      null,
+      undefined,
+      displayContext(),
+    )!.entry;
+    const canonicalEntry = buildDmMetadataEntry(
+      { userIds: [10, 20], unreadCount: 1, lastActivityTs: 2000 },
+      CURRENT_USER_ID,
+      undefined,
+      displayContext(),
+    )!.entry;
+    const snapshot: ChatListSnapshotSerialized = {
+      version: 1,
+      currentUserId: CURRENT_USER_ID,
+      lastMessageId: null,
+      oldestMessageId: null,
+      streamsEntries: [],
+      dmsEntries: [
+        ["20", oldEntry],
+        ["10,20", canonicalEntry],
+      ],
+      messageIdToLocationEntries: [],
+      updatedAt: Date.now(),
+    };
+
+    const state = buildChatListHydrateFromSnapshotState(
+      snapshot,
+      CURRENT_USER_ID,
+      displayContext(),
+    );
+
+    expect([...state.dmsMap.keys()]).toEqual(["10,20"]);
   });
 });

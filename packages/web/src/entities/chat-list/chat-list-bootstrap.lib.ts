@@ -207,6 +207,61 @@ export interface ChatListDmMetadataUpsertPatch {
   changed: true;
 }
 
+function mergeDmEntryForRebuild(
+  current: DmEntryInternal | undefined,
+  incoming: DmEntryInternal,
+): DmEntryInternal {
+  if (current == null) return incoming;
+  const newer = incoming.ts >= current.ts ? incoming : current;
+  const older = newer === incoming ? current : incoming;
+  return {
+    ...newer,
+    lastMessage: newer.lastMessage || older.lastMessage,
+    time: newer.time || older.time,
+    ts: Math.max(current.ts, incoming.ts),
+    unreadCount: Math.max(current.unreadCount, incoming.unreadCount),
+    avatar_url: newer.avatar_url ?? older.avatar_url,
+    lastMessageId: newer.lastMessageId ?? older.lastMessageId,
+  };
+}
+
+export function rebuildDmMetadataMapForCurrentUser(
+  dmsMap: Map<string, DmEntryInternal>,
+  currentUserId: number | null,
+  display: ChatListDmBootstrapDisplayContext,
+): Map<string, DmEntryInternal> {
+  if (currentUserId == null || dmsMap.size === 0) {
+    return dmsMap;
+  }
+
+  const next = new Map<string, DmEntryInternal>();
+  for (const entry of dmsMap.values()) {
+    const userIds = entry.userIds ?? [entry.id];
+    const normalized = normalizeDmUserIds(userIds, currentUserId);
+    if (normalized.length === 0) continue;
+    const key = normalized.join(",");
+    const base = mergeDmEntryForRebuild(next.get(key), {
+      ...entry,
+      userIds: normalized,
+    });
+    const rebuilt = buildDmMetadataEntry(
+      {
+        userIds: normalized,
+        lastActivityTs: base.ts,
+        lastMessageId: base.lastMessageId ?? null,
+        unreadCount: base.unreadCount,
+      },
+      currentUserId,
+      base,
+      display,
+    );
+    if (rebuilt != null) {
+      next.set(rebuilt.key, rebuilt.entry);
+    }
+  }
+  return next;
+}
+
 /** Pure upsert for metadata-only DM rows; returns null when maps are unchanged. */
 export function buildDmMetadataUpsertPatch(
   rows: readonly ChatListDmMetadataRow[],
@@ -302,12 +357,18 @@ export interface ChatListHydrateFromSnapshotState {
 export function buildChatListHydrateFromSnapshotState(
   snapshot: ChatListSnapshotSerialized,
   fallbackCurrentUserId: number | null,
+  display?: ChatListDmBootstrapDisplayContext,
 ): ChatListHydrateFromSnapshotState {
   const streamsMap = new Map<number, StreamEntryInternal>();
   for (const [id, s] of snapshot.streamsEntries) {
     streamsMap.set(id, deserializeStreamEntry(s));
   }
-  const dmsMap = new Map(snapshot.dmsEntries);
+  const currentUserId = fallbackCurrentUserId ?? snapshot.currentUserId;
+  const rawDmsMap = new Map(snapshot.dmsEntries);
+  const dmsMap =
+    display != null
+      ? rebuildDmMetadataMapForCurrentUser(rawDmsMap, currentUserId, display)
+      : rawDmsMap;
   const messageIdToLocation = new Map<number, MessageLocation>(
     snapshot.messageIdToLocationEntries as [number, MessageLocation][],
   );
@@ -317,7 +378,7 @@ export function buildChatListHydrateFromSnapshotState(
     sidebarDataHydrated: streamsMap.size > 0 || dmsMap.size > 0,
     streamMetadataHydrated: false,
     messageIdToLocation,
-    currentUserId: snapshot.currentUserId ?? fallbackCurrentUserId,
+    currentUserId,
     lastAppliedMessages: null,
   };
 }

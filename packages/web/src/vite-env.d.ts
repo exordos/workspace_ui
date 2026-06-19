@@ -211,6 +211,8 @@ interface ElectronAPI {
             authType: "api_key" | "session";
             // Email is needed to create the instance in the Zustand store.
             email: string;
+            // Current Zulip user id is saved for cache bootstrap when available.
+            userId?: number;
             // Session auth has no key because auth uses cookies.
             apiKey?: string;
           };

@@ -142,6 +142,8 @@ const electronAPI = {
             authType: "api_key" | "session";
             // Email is saved in the instance list after successful login.
             email: string;
+            // Current Zulip user id is saved for cache bootstrap when available.
+            userId?: number;
             // API key exists only for api_key auth; session auth does not need it.
             apiKey?: string;
           };

@@ -484,6 +484,7 @@ describe("useLayoutZulipEventLoop", () => {
     await waitFor(() => {
       expect(startZulipEventLoopMock).toHaveBeenCalledTimes(1);
     });
+    expect(useInstancesStore.getState().instances[0]?.userId).toBe(7);
   });
 
   it("does not preload bootstrap statuses for users directory members", async () => {

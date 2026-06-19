@@ -273,6 +273,7 @@ describe("LoginPage", () => {
         { replace: true },
       );
     });
+    expect(useInstancesStore.getState().instances[0]?.userId).toBe(7);
   });
 
   it("ignores external redirectTo values and falls back to root", async () => {

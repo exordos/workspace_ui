@@ -5,7 +5,7 @@
  * localStorage so credentials survive page reload. Correctness here is critical
  * because a bug means users lose access to their accounts or leak credentials.
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   captureActiveOrgRequestContext,
   isActiveOrgRequestContextCurrent,
@@ -67,6 +67,19 @@ describe("instancesStore", () => {
 
       const state = useInstancesStore.getState();
       expect(state.instances.find((instance) => instance.id === id)?.authType).toBe("session");
+    });
+
+    it("stores user id when provided", () => {
+      const id = useInstancesStore.getState().addInstance({
+        realm: "https://z.test",
+        email: "user@example.com",
+        apiKey: "k1",
+        userId: 42,
+      }).id;
+
+      expect(
+        useInstancesStore.getState().instances.find((instance) => instance.id === id)?.userId,
+      ).toBe(42);
     });
 
     // Adding a second account must not switch away from the active one.
@@ -207,6 +220,34 @@ describe("instancesStore", () => {
 
       expect(useInstancesStore.getState().jitsiMeetBaseUrl).toBeNull();
       expect(useInstancesStore.getState().currentInstanceId).toBe(id2);
+    });
+  });
+
+  describe("setInstanceUserId", () => {
+    it("updates an existing instance user id and persists it", () => {
+      const id = useInstancesStore
+        .getState()
+        .addInstance({ realm: "https://a.test", email: "a@a.com", apiKey: "k1" }).id;
+
+      useInstancesStore.getState().setInstanceUserId(id, 77);
+
+      expect(
+        useInstancesStore.getState().instances.find((instance) => instance.id === id)?.userId,
+      ).toBe(77);
+      const stored = JSON.parse(window.localStorage.getItem(INSTANCES_KEY) ?? "[]");
+      expect(stored[0].userId).toBe(77);
+    });
+
+    it("ignores invalid user ids", () => {
+      const id = useInstancesStore
+        .getState()
+        .addInstance({ realm: "https://a.test", email: "a@a.com", apiKey: "k1" }).id;
+
+      useInstancesStore.getState().setInstanceUserId(id, 0);
+
+      expect(
+        useInstancesStore.getState().instances.find((instance) => instance.id === id)?.userId,
+      ).toBeUndefined();
     });
   });
 
@@ -397,6 +438,39 @@ describe("instancesStore", () => {
       });
       const stored = JSON.parse(window.localStorage.getItem(INSTANCES_KEY) ?? "[]");
       expect(stored[0].workspaceOrgOrigin).toBe("https://gw.example.com");
+    });
+
+    it("persists userId when present", () => {
+      useInstancesStore.getState().addInstance({
+        realm: "https://z.test",
+        email: "a@a.com",
+        apiKey: "k1",
+        userId: 42,
+      });
+      const stored = JSON.parse(window.localStorage.getItem(INSTANCES_KEY) ?? "[]");
+      expect(stored[0].userId).toBe(42);
+    });
+
+    it("ignores invalid userId from localStorage", async () => {
+      window.localStorage.setItem(
+        INSTANCES_KEY,
+        JSON.stringify([
+          {
+            id: "stored-instance",
+            realm: "https://z.test",
+            email: "a@a.com",
+            apiKey: "k1",
+            userId: 0,
+          },
+        ]),
+      );
+      window.localStorage.setItem(CURRENT_KEY, "stored-instance");
+
+      vi.resetModules();
+      const { useInstancesStore: freshStore } = await import("./instance.model");
+
+      expect(freshStore.getState().instances[0]?.userId).toBeUndefined();
+      vi.resetModules();
     });
 
     // The active instance ID is stored separately so it survives independently.

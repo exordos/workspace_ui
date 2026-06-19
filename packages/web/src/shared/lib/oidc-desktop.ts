@@ -207,7 +207,8 @@ export async function decryptDesktopFlowToken(pastedText: string, otpHex: string
 function normalizeCredentials(
   email: unknown,
   apiKey: unknown,
-): { email: string; apiKey: string } | null {
+  userId?: unknown,
+): { email: string; apiKey: string; userId?: number } | null {
   if (typeof email !== "string" || typeof apiKey !== "string") {
     return null;
   }
@@ -218,7 +219,13 @@ function normalizeCredentials(
     return null;
   }
 
-  return { email: normalizedEmail, apiKey: normalizedApiKey };
+  const normalizedUserId =
+    typeof userId === "number" && Number.isInteger(userId) && userId > 0 ? userId : undefined;
+  return {
+    email: normalizedEmail,
+    apiKey: normalizedApiKey,
+    ...(normalizedUserId != null ? { userId: normalizedUserId } : {}),
+  };
 }
 
 function normalizeTokenValue(value: unknown): string | null {
@@ -239,13 +246,13 @@ function isLikelyRawDesktopToken(value: string): boolean {
 /**
  * Attempts to parse credentials from a decrypted desktop-flow payload.
  * Supported formats:
- * - JSON: { "email": "...", "api_key": "..." } or { "email": "...", "apiKey": "..." }
- * - Query string: email=...&api_key=...
+ * - JSON: { "email": "...", "api_key": "...", "user_id": 1 } or camelCase variants
+ * - Query string: email=...&api_key=...&user_id=1
  * - Colon pair: email:apiKey
  */
 export function parseDesktopFlowCredentials(
   payload: string,
-): { email: string; apiKey: string } | null {
+): { email: string; apiKey: string; userId?: number } | null {
   const trimmed = payload.trim();
   if (!trimmed) return null;
 
@@ -253,7 +260,7 @@ export function parseDesktopFlowCredentials(
     const parsed = JSON.parse(trimmed) as Record<string, unknown>;
     const email = parsed.email;
     const apiKey = parsed.api_key ?? parsed.apiKey;
-    const normalized = normalizeCredentials(email, apiKey);
+    const normalized = normalizeCredentials(email, apiKey, parsed.user_id ?? parsed.userId);
     if (normalized) {
       return normalized;
     }
@@ -264,7 +271,9 @@ export function parseDesktopFlowCredentials(
   const params = new URLSearchParams(trimmed);
   const queryEmail = params.get("email");
   const queryApiKey = params.get("api_key") ?? params.get("apiKey");
-  const normalizedQueryCredentials = normalizeCredentials(queryEmail, queryApiKey);
+  const queryUserIdRaw = params.get("user_id") ?? params.get("userId");
+  const queryUserId = queryUserIdRaw != null ? Number(queryUserIdRaw) : undefined;
+  const normalizedQueryCredentials = normalizeCredentials(queryEmail, queryApiKey, queryUserId);
   if (normalizedQueryCredentials) {
     return normalizedQueryCredentials;
   }

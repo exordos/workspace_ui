@@ -37,11 +37,11 @@ import {
 } from "./chat-list-add-messages-batch.lib";
 import {
   buildChatListHydrateFromSnapshotState,
-  buildDmMetadataRowsFromDmsMap,
   buildDmMetadataUpsertPatch,
   buildSetFromMessagesBootstrapState,
   buildUnreadLocationMap,
   clearBootstrapErrorPatch,
+  rebuildDmMetadataMapForCurrentUser,
   type ChatListDmBootstrapDisplayContext,
   type ChatListHydrateFromSnapshotState,
   type SetFromMessagesBootstrapState,
@@ -476,7 +476,11 @@ export const useChatListStore = create<ChatListState>((set, get) => {
 
     hydrateFromIndexedDbSnapshot(snapshot: ChatListSnapshotSerialized) {
       invalidatePreviewResolveLifecycle();
-      const hydrateState = buildChatListHydrateFromSnapshotState(snapshot, get().currentUserId);
+      const hydrateState = buildChatListHydrateFromSnapshotState(
+        snapshot,
+        get().currentUserId,
+        createDmBootstrapDisplayContext(),
+      );
       _cachedStreams = null;
       _cachedStreamsMapRef = null;
       _cachedStreamsMentionIdsRef = null;
@@ -1047,8 +1051,16 @@ export const useChatListStore = create<ChatListState>((set, get) => {
           return;
         }
         if (dmsMap.size > 0) {
-          // Metadata-only sidebar: soft rebuild now that currentUserId is known for DM keys.
-          get().upsertDmMetadataRows(buildDmMetadataRowsFromDmsMap(dmsMap));
+          const rebuiltDmsMap = rebuildDmMetadataMapForCurrentUser(
+            dmsMap,
+            id,
+            createDmBootstrapDisplayContext(),
+          );
+          patchSet(
+            { dmsMap: rebuiltDmsMap, sidebarDataHydrated: true },
+            { recomputeSidebarTotals: true },
+          );
+          persistRecentDmPartnersFromMap(rebuiltDmsMap);
         }
       }
     },

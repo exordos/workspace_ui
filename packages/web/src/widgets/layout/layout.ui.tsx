@@ -27,6 +27,7 @@ import { shouldRenderChatShell } from "./layout-chat-shell.lib";
 import { LayoutConnectionBanner } from "./layout-connection-banner.ui";
 import { useConnectionHealthSnapshot } from "./layout-connection-health.hook";
 import { useLayoutConnectionRecovery } from "./layout-connection-recovery.hook";
+import { syncCurrentUserIdFromActiveInstance } from "./layout-current-user-bootstrap.lib";
 import { useLayoutEscapeNavigation } from "./layout-escape-navigation.hook";
 import { useLayoutFolderSyncOrchestration } from "./layout-folder-sync-orchestration.hook";
 import { useInactiveInstancesBackgroundWork } from "./layout-inactive-instances-background-work.hook";
@@ -188,9 +189,16 @@ export const Layout: React.FC = () => {
   });
 
   const loadBootstrapMessages = useCallback(
-    async (signal: AbortSignal, isStale: () => boolean) =>
-      runChatListBootstrap(currentInstanceId, { signal, isStale }),
-    [currentInstanceId],
+    async (signal: AbortSignal, isStale: () => boolean) => {
+      syncCurrentUserIdFromActiveInstance({
+        instances,
+        currentInstanceId,
+        currentUserId: useChatListStore.getState().currentUserId,
+        setCurrentUserId,
+      });
+      return runChatListBootstrap(currentInstanceId, { signal, isStale });
+    },
+    [currentInstanceId, instances, setCurrentUserId],
   );
 
   const online = useLayoutOnlineStatus();

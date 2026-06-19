@@ -96,7 +96,7 @@ describe("PasteTokenPage", () => {
       createdAt: Date.now(),
     });
     const encrypted = await encryptDesktopFlowPayload(
-      JSON.stringify({ email: "user@example.com", api_key: runtimeApiKey }),
+      JSON.stringify({ email: "user@example.com", api_key: runtimeApiKey, user_id: 51 }),
       otp,
     );
 
@@ -114,6 +114,7 @@ describe("PasteTokenPage", () => {
         realm: "https://chat.example.com",
         email: "user@example.com",
         apiKey: runtimeApiKey,
+        userId: 51,
       });
     });
     expect(navigateSpy).toHaveBeenCalledWith("/", { replace: true });
@@ -185,6 +186,7 @@ describe("PasteTokenPage", () => {
     exchangeDesktopFlowToken.mockResolvedValue({
       authType: "session",
       email: "session-user@example.com",
+      userId: 52,
     });
 
     renderWithProviders(<PasteTokenPage />, {
@@ -205,6 +207,7 @@ describe("PasteTokenPage", () => {
         email: "session-user@example.com",
         apiKey: "",
         authType: "session",
+        userId: 52,
       });
     });
     expect(navigateSpy).toHaveBeenCalledWith("/", { replace: true });
@@ -249,6 +252,7 @@ describe("PasteTokenPage", () => {
     exchangeDesktopFlowToken.mockResolvedValue({
       authType: "session",
       email: "session-user@example.com",
+      userId: 53,
     });
 
     renderWithProviders(<PasteTokenPage />, {
@@ -272,6 +276,7 @@ describe("PasteTokenPage", () => {
         email: "session-user@example.com",
         apiKey: "",
         authType: "session",
+        userId: 53,
       });
     });
     expect(navigateSpy).toHaveBeenCalledWith("/", { replace: true });

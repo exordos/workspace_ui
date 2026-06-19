@@ -277,6 +277,7 @@ export const LoginPage: React.FC = () => {
         realm: realmToStore,
         email: result.email,
         apiKey: result.api_key,
+        ...(result.user_id > 0 ? { userId: result.user_id } : {}),
         realmIcon,
         ...(workspaceOrgOrigin !== "" ? { workspaceOrgOrigin } : {}),
       });

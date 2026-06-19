@@ -1731,6 +1731,24 @@ describe("chatListStore", () => {
       expect(after?.isGroup).toBe(false);
       expect(after?.id).toBe(20);
     });
+
+    it("deduplicates stale metadata-only DM keys when userId arrives late", () => {
+      useUsersStore.getState().mergeUser({ user_id: 10, full_name: "Alice", email: "a@x.test" });
+      useUsersStore.getState().mergeUser({ user_id: 20, full_name: "Bob", email: "b@x.test" });
+      useChatListStore.getState().upsertDmMetadataRows([{ userIds: [20], unreadCount: 1 }]);
+      useChatListStore.getState().upsertDmMetadataRows([{ userIds: [10, 20], unreadCount: 1 }]);
+
+      expect(
+        [...useChatListStore.getState().dmsMap.keys()].sort((a, b) => a.localeCompare(b)),
+      ).toEqual(["10,20", "20"]);
+
+      useChatListStore.getState().setCurrentUserId(10);
+
+      expect([...useChatListStore.getState().dmsMap.keys()]).toEqual(["10,20"]);
+      expect(useChatListStore.getState().dmsMap.get("10,20")).toEqual(
+        expect.objectContaining({ id: 20, isGroup: false, userIds: [10, 20] }),
+      );
+    });
   });
 
   describe("metadata upserts", () => {

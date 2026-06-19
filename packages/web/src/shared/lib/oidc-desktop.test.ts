@@ -126,13 +126,17 @@ describe("oidc-desktop helpers", () => {
   });
 
   it("parses credentials from supported payload formats", () => {
-    expect(parseDesktopFlowCredentials('{"email":"user@example.com","api_key":"key-1"}')).toEqual({
+    expect(
+      parseDesktopFlowCredentials('{"email":"user@example.com","api_key":"key-1","user_id":42}'),
+    ).toEqual({
       email: "user@example.com",
       apiKey: "key-1",
+      userId: 42,
     });
-    expect(parseDesktopFlowCredentials("email=user@example.com&api_key=key-2")).toEqual({
+    expect(parseDesktopFlowCredentials("email=user@example.com&api_key=key-2&userId=43")).toEqual({
       email: "user@example.com",
       apiKey: "key-2",
+      userId: 43,
     });
     expect(parseDesktopFlowCredentials("garbage")).toBeNull();
   });
