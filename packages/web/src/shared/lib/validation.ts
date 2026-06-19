@@ -26,12 +26,20 @@ export function isValidUrl(input: string): boolean {
   }
 }
 
+function isAllowedRealmProtocol(protocol: string): boolean {
+  if (protocol === "https:") {
+    return true;
+  }
+  // Dev-only: local gateways and Zulip without TLS (never in production builds).
+  return import.meta.env.DEV && protocol === "http:";
+}
+
 export function isValidRealmUrl(input: string): boolean {
   if (!isValidUrl(input)) return false;
   try {
     const url = new URL(input);
     return (
-      url.protocol === "https:" &&
+      isAllowedRealmProtocol(url.protocol) &&
       !url.hostname.includes(" ") &&
       hasValidHostnameLabels(url.hostname)
     );

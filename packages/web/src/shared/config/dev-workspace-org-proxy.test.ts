@@ -75,10 +75,12 @@ describe("isAllowedDevWorkspaceProxyTargetOrigin", () => {
     expect(isAllowedDevWorkspaceProxyTargetOrigin("https://chat.example.com/api")).toBe(false);
   });
 
-  it("allows http only for localhost and loopback", () => {
+  it("allows http for localhost, loopback, .local, and private networks", () => {
     expect(isAllowedDevWorkspaceProxyTargetOrigin("http://localhost:9991")).toBe(true);
     expect(isAllowedDevWorkspaceProxyTargetOrigin("http://127.0.0.1:8080")).toBe(true);
     expect(isAllowedDevWorkspaceProxyTargetOrigin("http://[::1]:3000")).toBe(true);
+    expect(isAllowedDevWorkspaceProxyTargetOrigin("http://workspace.exordos.local")).toBe(true);
+    expect(isAllowedDevWorkspaceProxyTargetOrigin("http://192.168.1.50:8080")).toBe(true);
     expect(isAllowedDevWorkspaceProxyTargetOrigin("http://evil.com")).toBe(false);
   });
 

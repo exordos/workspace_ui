@@ -39,8 +39,9 @@ describe("isValidUrl", () => {
 describe("isValidRealmUrl", () => {
   // Realm must be HTTPS to protect credentials in transit
   it("accepts valid realm", () => expect(isValidRealmUrl("https://zulip.example.com")).toBe(true));
-  // HTTP realm would send API key over plaintext — must be rejected
-  it("rejects http", () => expect(isValidRealmUrl("http://zulip.example.com")).toBe(false));
+  it("allows http only in development", () => {
+    expect(isValidRealmUrl("http://zulip.example.com")).toBe(import.meta.env.DEV);
+  });
   // A URL without hostname can't point to a real server
   it("rejects no hostname", () => expect(isValidRealmUrl("https://")).toBe(false));
   // Trailing-dot hostnames are often incomplete input and produce broken API URLs.

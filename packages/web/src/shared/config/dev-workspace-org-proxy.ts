@@ -80,7 +80,18 @@ export function workspaceDevProxyUpstreamPathname(input: {
 /** Request header carrying the Zulip realm origin (https://host, optional port). */
 export const X_WORKSPACE_DEV_TARGET_ORIGIN = "X-Workspace-Dev-Target-Origin";
 
-/** True when value is https origin, or http on localhost/127.0.0.1/::1 only. */
+function isAllowedDevHttpProxyHostname(hostname: string): boolean {
+  const h = hostname.toLowerCase();
+  if (h === "localhost" || h === "127.0.0.1" || h === "[::1]") {
+    return true;
+  }
+  if (h.endsWith(".local")) {
+    return true;
+  }
+  return /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(h);
+}
+
+/** True when value is https origin, or http on dev-safe hosts (loopback, *.local, RFC1918). */
 export function isAllowedDevWorkspaceProxyTargetOrigin(raw: string): boolean {
   const trimmed = raw.trim();
   if (trimmed === "") {
@@ -105,8 +116,7 @@ export function isAllowedDevWorkspaceProxyTargetOrigin(raw: string): boolean {
     return true;
   }
   if (u.protocol === "http:") {
-    const h = u.hostname.toLowerCase();
-    return h === "localhost" || h === "127.0.0.1" || h === "[::1]";
+    return isAllowedDevHttpProxyHostname(u.hostname);
   }
   return false;
 }
