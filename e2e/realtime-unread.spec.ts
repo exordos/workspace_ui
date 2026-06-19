@@ -1,19 +1,19 @@
 /**
- * E2E: sidebar unread updates from injected Zulip message events.
+ * E2E: sidebar unread updates from injected messenger message events.
  */
 import { test, expect } from "./fixtures";
-import { E2E_USER_ID } from "./mocks/zulip-default-responses";
+import { E2E_USER_ID } from "./mocks/messenger-default-responses";
 
 test.describe("Realtime unread @mock", () => {
   test("updates sidebar preview and unread badge after injected message event", async ({
     authenticated,
-    zulipApi,
+    messengerApi,
   }) => {
     await authenticated.waitForSelector("[data-focus-zone='topbar']", { timeout: 45_000 });
 
     const sidebar = authenticated.locator("[data-focus-zone='sidebar']");
 
-    zulipApi.setNextEventsResponse({
+    messengerApi.setNextEventsResponse({
       result: "success",
       events: [
         {

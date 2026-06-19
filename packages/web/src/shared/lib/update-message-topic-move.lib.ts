@@ -1,4 +1,4 @@
-import type { ZulipEvent } from "~/shared/api/zulip.types";
+import type { MessengerEvent } from "~/shared/api/messenger.types";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 
 export interface UpdateMessageTopicMovePayload {
@@ -41,7 +41,7 @@ export function resolveTopicMoveTargetMessageIds(options: {
 }
 
 export function extractTopicMoveFromUpdateEvent(
-  event: ZulipEvent,
+  event: MessengerEvent,
 ): UpdateMessageTopicMovePayload | null {
   if (event.type !== "update_message") return null;
 

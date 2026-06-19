@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import { t } from "~/i18n/i18n";
-import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
+import { getRealmBaseUrl } from "~/shared/api/messenger-client.internal";
 import { guard } from "~/shared/lib/guards";
 import { traceLinkPreview } from "~/shared/lib/message-link-preview-trace.lib";
 import { prepareProtectedMessageHtml } from "~/shared/lib/protected-message-media";

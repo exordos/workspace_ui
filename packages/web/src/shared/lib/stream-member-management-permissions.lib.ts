@@ -1,8 +1,8 @@
 /**
- * Runtime channel action capabilities aligned with Zulip group-setting semantics.
+ * Runtime channel action capabilities aligned with messenger group-setting semantics.
  */
 import type { CurrentUserChannelCapabilities } from "~/entities/user/user.model";
-import type { ZulipGroupSettingValue } from "~/shared/api/zulip.types";
+import type { MessengerGroupSettingValue } from "~/shared/api/messenger.types";
 import { UserRole } from "~/shared/lib/roles";
 
 export interface ResolveCurrentUserChannelCapabilitiesInput {
@@ -10,10 +10,13 @@ export interface ResolveCurrentUserChannelCapabilitiesInput {
   orgRole: UserRole;
   currentUserChannelCapabilities?: CurrentUserChannelCapabilities;
   inviteOnly?: boolean;
-  canAddSubscribersGroup?: ZulipGroupSettingValue;
-  canRemoveSubscribersGroup?: ZulipGroupSettingValue;
-  canAdministerChannelGroup?: ZulipGroupSettingValue;
-  isUserInGroupSetting: (setting: ZulipGroupSettingValue | undefined, userId: number) => boolean;
+  canAddSubscribersGroup?: MessengerGroupSettingValue;
+  canRemoveSubscribersGroup?: MessengerGroupSettingValue;
+  canAdministerChannelGroup?: MessengerGroupSettingValue;
+  isUserInGroupSetting: (
+    setting: MessengerGroupSettingValue | undefined,
+    userId: number,
+  ) => boolean;
 }
 
 export interface ChannelActionCapabilities {

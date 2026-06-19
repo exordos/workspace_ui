@@ -1,5 +1,5 @@
 import { t } from "~/i18n/i18n";
-import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
+import { getRealmBaseUrl } from "~/shared/api/messenger-client.internal";
 import { resolveAvatarUrl } from "~/shared/lib/avatar";
 import { extractOrgRouteFromPathname } from "~/shared/lib/org-route";
 import type { TopBarSection, TopBarSectionNavItem } from "./top-bar.types";

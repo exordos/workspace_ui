@@ -7,7 +7,7 @@ import {
 } from "./notification-level.ui.lib";
 
 describe("notification-level.ui.lib", () => {
-  describe("topic visibility options (Zulip order)", () => {
+  describe("topic visibility options (messenger order)", () => {
     it("shows 3 segments when stream is not muted and topic is inherit", () => {
       const options = getTopicVisibilityLevelOptions(false, false);
       expect(options.map((o) => o.level)).toEqual(["muted", "inherit", "followed"]);

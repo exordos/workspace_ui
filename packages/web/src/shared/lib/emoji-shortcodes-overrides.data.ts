@@ -1,9 +1,9 @@
-/** Static Zulip emoji shortcode overrides (data-only, no runtime logic). */
+/** Static Workspace emoji shortcode overrides (data-only, no runtime logic). */
 
 /**
- * `shortcode → unicode` — Zulip aliases and legacy names for display and reaction render.
+ * `shortcode → unicode` — Workspace aliases and legacy names for display and reaction render.
  */
-export const ZULIP_SHORTCODE_TO_UNIFIED_OVERRIDES: Readonly<Record<string, string>> = {
+export const MESSENGER_SHORTCODE_TO_UNIFIED_OVERRIDES: Readonly<Record<string, string>> = {
   working_on_it: "1F6E0",
   thumbs_up: "1F44D",
   ok: "1F44C",
@@ -694,7 +694,8 @@ export const ZULIP_SHORTCODE_TO_UNIFIED_OVERRIDES: Readonly<Record<string, strin
  * `unicode → canonical shortcode` — stable `emoji_name` when sending from picker unicode.
  * Not a mirror of the shortcode→unicode map (display vs canonical name selection).
  */
-export const ZULIP_CANONICAL_SHORTCODE_BY_UNIFIED_OVERRIDES: Readonly<Record<string, string>> = {
-  "1f6e0": "working_on_it",
-  "1f44d": "thumbs_up",
-};
+export const MESSENGER_CANONICAL_SHORTCODE_BY_UNIFIED_OVERRIDES: Readonly<Record<string, string>> =
+  {
+    "1f6e0": "working_on_it",
+    "1f44d": "thumbs_up",
+  };

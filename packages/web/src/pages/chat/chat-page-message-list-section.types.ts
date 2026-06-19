@@ -1,4 +1,4 @@
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import type { MessageListCallbacks } from "~/widgets/message-list/message-list.types";
 
 export type ChatMessagesLoadErrorKind = "initial" | "refresh";

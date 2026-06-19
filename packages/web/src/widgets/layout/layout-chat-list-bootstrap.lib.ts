@@ -11,16 +11,16 @@ import {
   fetchMessagesAfterAnchor,
   fetchRecentStreamMessagesForSidebarPreview,
   fetchStreamUnreadMessagesForSidebarPreview,
-} from "~/shared/api/zulip-sidebar-preview.lib";
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+} from "~/shared/api/messenger-sidebar-preview.lib";
+import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { METADATA_STREAM_PREVIEW_MESSAGE_LIMIT } from "~/shared/config/metadata-chat-bootstrap.constants";
 import { loadChatListSnapshotRow } from "~/shared/lib/chat-list-snapshot-db";
 import {
   logChatListFlow,
-  summarizeZulipMessagesForFlowDebug,
+  summarizeMessengerMessagesForFlowDebug,
 } from "~/shared/lib/message-flow-debug.lib";
-import { buildStreamSidebarPreviewNarrow } from "~/shared/lib/zulip-stream-sidebar-preview-narrow.lib";
-import { normalizeZulipMessagesNarrowForApi } from "~/shared/lib/zulip-topic-narrow.lib";
+import { buildStreamSidebarPreviewNarrow } from "~/shared/lib/messenger-stream-sidebar-preview-narrow.lib";
+import { normalizeMessengerMessagesNarrowForApi } from "~/shared/lib/messenger-topic-narrow.lib";
 import { getInMemoryLatestMessageId, maxMessageId } from "./layout-chat-list-latest-message-id.lib";
 
 /** Stream preview batch size (metadata-first bootstrap). */
@@ -29,7 +29,7 @@ export function getStreamPreviewBatchLimit(): number {
 }
 
 export type ChatListBootstrapResult =
-  | { mode: "streamPreviews"; messages: ZulipRawMessage[]; latestMessageIdHint: number | null }
+  | { mode: "streamPreviews"; messages: WorkspaceRawMessage[]; latestMessageIdHint: number | null }
   | { mode: "none"; latestMessageIdHint: number | null };
 
 export type ChatListBootstrapKind = "cold" | "reconnect";
@@ -54,7 +54,7 @@ function isBootstrapSuperseded(options?: RunChatListBootstrapOptions): boolean {
 async function fetchStreamPreviewMessageBatch(
   hint: number | null,
   options?: RunChatListBootstrapOptions,
-): Promise<ZulipRawMessage[]> {
+): Promise<WorkspaceRawMessage[]> {
   const limit = getStreamPreviewBatchLimit();
 
   if (hint != null) {
@@ -69,7 +69,7 @@ async function fetchStreamPreviewMessageBatch(
       const delta = await fetchMessagesAfterAnchor(
         hint,
         limit,
-        normalizeZulipMessagesNarrowForApi(buildStreamSidebarPreviewNarrow(false)),
+        normalizeMessengerMessagesNarrowForApi(buildStreamSidebarPreviewNarrow(false)),
         options?.signal,
       );
       if (isBootstrapSuperseded(options)) {
@@ -146,7 +146,7 @@ export async function runChatListBootstrap(
   }
   logChatListFlow("bootstrap: streamPreviews", {
     latestMessageIdHint: hint,
-    ...summarizeZulipMessagesForFlowDebug(streamMessages),
+    ...summarizeMessengerMessagesForFlowDebug(streamMessages),
   });
   return { mode: "streamPreviews", messages: streamMessages, latestMessageIdHint: hint };
 }

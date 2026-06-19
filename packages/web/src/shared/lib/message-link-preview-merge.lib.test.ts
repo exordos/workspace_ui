@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { mergeMessagePreservingLinkPreview } from "./message-link-preview-merge.lib";
 
 function baseMessage(overrides: Partial<MockMessage> = {}): MockMessage {

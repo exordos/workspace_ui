@@ -1,5 +1,5 @@
 /**
- * Canonical base URLs for Zulip message media (`/user_uploads/`, `/external_content/`).
+ * Canonical base URLs for messenger message media (`/user_uploads/`, `/external_content/`).
  * Rewrites gateway/legacy hosts so SPA, Electron `file://`, and Vite dev-proxy behave the same.
  */
 

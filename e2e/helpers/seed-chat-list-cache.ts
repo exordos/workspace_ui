@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { E2E_INSTANCE_ID } from "../mocks/zulip-default-responses";
+import { E2E_INSTANCE_ID } from "../mocks/messenger-default-responses";
 
 /** Must match `MESSAGE_CACHE_DB_NAME` in `packages/web/src/shared/lib/message-cache-db.ts`. */
 const DB_NAME = "workspace-message-cache-v1";

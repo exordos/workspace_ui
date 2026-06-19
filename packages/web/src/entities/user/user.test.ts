@@ -3,10 +3,10 @@
  *
  * Stores user_id → {full_name, email, avatar_url, presence} mappings derived
  * from API responses and message payloads. Also maintains an email→userId index
- * for presence updates that arrive keyed by email (Zulip presence events).
+ * for presence updates that arrive keyed by email (messenger presence events).
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { useUsersStore } from "./user.model";
 
 function resetStore() {
@@ -48,7 +48,7 @@ describe("usersStore", () => {
       expect(user!.role).toBe(200);
     });
 
-    // Email index is needed because Zulip presence events arrive keyed by email.
+    // Email index is needed because Workspace presence events arrive keyed by email.
     it("builds email-to-userId index", () => {
       useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Bob", email: "bob@t.com" });
 
@@ -88,7 +88,7 @@ describe("usersStore", () => {
       expect(useUsersStore.getState().users.size).toBe(1);
     });
 
-    it("stores is_active from Zulip directory payloads", () => {
+    it("stores is_active from the messenger API directory payloads", () => {
       useUsersStore.getState().mergeUsers([{ user_id: 30, full_name: "Zed", is_active: false }]);
       expect(useUsersStore.getState().getUser(30)?.is_active).toBe(false);
     });
@@ -128,7 +128,7 @@ describe("usersStore", () => {
   describe("mergeFromMessage", () => {
     // Stream messages carry sender info — must be extracted to avoid extra API calls.
     it("extracts sender from a stream message", () => {
-      const msg: ZulipRawMessage = {
+      const msg: WorkspaceRawMessage = {
         id: 100,
         sender_id: 10,
         sender_full_name: "Charlie",
@@ -149,7 +149,7 @@ describe("usersStore", () => {
 
     // DM messages include all participants in display_recipient — extract them all.
     it("extracts recipients from a private message", () => {
-      const msg: ZulipRawMessage = {
+      const msg: WorkspaceRawMessage = {
         id: 101,
         sender_id: 10,
         sender_full_name: "Charlie",
@@ -183,7 +183,7 @@ describe("usersStore", () => {
       });
     });
 
-    // Zulip presence events are keyed by email — must resolve via the index.
+    // Workspace presence events are keyed by email — must resolve via the index.
     it("setPresenceByEmail updates presence via email index", () => {
       useUsersStore.getState().mergeUser({ user_id: 1, full_name: "Alice", email: "alice@t.com" });
       useUsersStore

@@ -14,8 +14,8 @@ import {
   isActiveOrgRequestContextCurrent,
 } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
-import { fetchMessagesByIds } from "~/shared/api/zulip-messages";
-import type { ZulipRecentPrivateConversation } from "~/shared/api/zulip.types";
+import { fetchMessagesByIds } from "~/shared/api/messenger-messages";
+import type { MessengerRecentPrivateConversation } from "~/shared/api/messenger.types";
 import { upsertDmIndexFromMessages } from "~/shared/lib/dm-index";
 import { logChatListFlow } from "~/shared/lib/message-flow-debug.lib";
 
@@ -26,7 +26,7 @@ function addPositiveMessageId(ids: Set<number>, messageId: number | null | undef
 }
 
 export function collectLastMessageIdsFromRecentPrivateConversations(
-  conversations: Record<string, ZulipRecentPrivateConversation> | undefined,
+  conversations: Record<string, MessengerRecentPrivateConversation> | undefined,
   metadataRows?: readonly ChatListDmMetadataRow[],
 ): number[] {
   const ids = new Set<number>();
@@ -42,7 +42,7 @@ export function collectLastMessageIdsFromRecentPrivateConversations(
 }
 
 export interface HydrateDmSidebarPreviewsOptions {
-  conversations: Record<string, ZulipRecentPrivateConversation> | undefined;
+  conversations: Record<string, MessengerRecentPrivateConversation> | undefined;
   currentUserId: number | null;
   metadataRows?: readonly ChatListDmMetadataRow[];
   instanceId?: string;

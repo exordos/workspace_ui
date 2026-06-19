@@ -1,4 +1,4 @@
-import type { Reaction } from "~/shared/api/zulip.types";
+import type { Reaction } from "~/shared/api/messenger.types";
 
 /**
  * Test data factories — typed builders for domain objects.
@@ -134,7 +134,7 @@ interface InstanceOverrides {
 export function createInstance(overrides: InstanceOverrides = {}) {
   return {
     id: overrides.id ?? `inst-${autoId()}`,
-    realm: overrides.realm ?? "https://zulip.example.com",
+    realm: overrides.realm ?? "https://chat.example.com",
     email: overrides.email ?? "test@example.com",
     apiKey: overrides.apiKey ?? "test-api-key-12345",
   };

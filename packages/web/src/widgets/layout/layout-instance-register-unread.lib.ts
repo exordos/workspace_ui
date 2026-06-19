@@ -1,13 +1,13 @@
 /**
  * Caches register `unread_snapshot` per instance for multi-org badges and refresh debouncing.
  */
-import type { ZulipUnreadMessagesSnapshot } from "~/shared/api/zulip-unread.lib";
+import type { MessengerUnreadMessagesSnapshot } from "~/shared/api/messenger-unread.lib";
 
-const unreadSnapshotByInstanceId = new Map<string, ZulipUnreadMessagesSnapshot>();
+const unreadSnapshotByInstanceId = new Map<string, MessengerUnreadMessagesSnapshot>();
 
 export function setCachedRegisterUnreadSnapshot(
   instanceId: string,
-  snapshot: ZulipUnreadMessagesSnapshot | undefined,
+  snapshot: MessengerUnreadMessagesSnapshot | undefined,
 ): void {
   if (snapshot == null) {
     unreadSnapshotByInstanceId.delete(instanceId);
@@ -18,7 +18,7 @@ export function setCachedRegisterUnreadSnapshot(
 
 export function getCachedRegisterUnreadSnapshot(
   instanceId: string,
-): ZulipUnreadMessagesSnapshot | undefined {
+): MessengerUnreadMessagesSnapshot | undefined {
   return unreadSnapshotByInstanceId.get(instanceId);
 }
 
@@ -27,13 +27,13 @@ export function clearCachedRegisterUnreadSnapshot(instanceId: string): void {
 }
 
 export function isRegisterUnreadSnapshotUsable(
-  snapshot: ZulipUnreadMessagesSnapshot | null | undefined,
-): snapshot is ZulipUnreadMessagesSnapshot {
+  snapshot: MessengerUnreadMessagesSnapshot | null | undefined,
+): snapshot is MessengerUnreadMessagesSnapshot {
   return snapshot != null && snapshot.oldUnreadsMissing !== true;
 }
 
 /** True when register snapshot carries no unread message ids (totalCount may still be 0). */
-export function isRegisterUnreadSnapshotEmpty(snapshot: ZulipUnreadMessagesSnapshot): boolean {
+export function isRegisterUnreadSnapshotEmpty(snapshot: MessengerUnreadMessagesSnapshot): boolean {
   if (snapshot.totalCount > 0) {
     return false;
   }
@@ -58,7 +58,7 @@ export function isRegisterUnreadSnapshotEmpty(snapshot: ZulipUnreadMessagesSnaps
  * preserving phantom inflation from duplicate queue bumps indefinitely.
  */
 export function shouldPreserveLocalUnreadOnCachedReconcile(
-  snapshot: ZulipUnreadMessagesSnapshot,
+  snapshot: MessengerUnreadMessagesSnapshot,
   localSidebarStreamsUnread: number,
   localSidebarDmsUnread: number,
   indexedUnreadCount: number,

@@ -15,7 +15,7 @@ import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { useRemoveStreamMembersStore } from "~/features/remove-stream-members/remove-stream-members.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { setLocale, t } from "~/i18n/i18n";
-import * as zulipStreams from "~/shared/api/zulip-streams";
+import * as messengerStreams from "~/shared/api/messenger-streams";
 import { RightDrawerContext } from "~/shared/contexts/right-drawer";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { resetRealmEmojisCacheForTests } from "~/shared/lib/realm-emojis-cache";
@@ -44,8 +44,8 @@ vi.mock("~/shared/lib/updater", () => ({
   useAppUpdate: useAppUpdateMock,
 }));
 
-vi.mock("~/shared/api/zulip-users", async () => {
-  const actual = await vi.importActual("~/shared/api/zulip-users");
+vi.mock("~/shared/api/messenger-users", async () => {
+  const actual = await vi.importActual("~/shared/api/messenger-users");
   return {
     ...actual,
     fetchRealmEmojis: (...args: unknown[]) => fetchRealmEmojisMock(...args),
@@ -1039,7 +1039,7 @@ describe("RightPanel truthfulness", () => {
   });
 
   it("shows delete-topic action for admin and deletes active topic from right panel", async () => {
-    const deleteTopicSpy = vi.spyOn(zulipStreams, "deleteTopic").mockResolvedValue({
+    const deleteTopicSpy = vi.spyOn(messengerStreams, "deleteTopic").mockResolvedValue({
       ok: true,
       complete: true,
       attempts: 1,
@@ -1664,7 +1664,7 @@ describe("RightPanel truthfulness", () => {
   });
 
   it("submits add-members dialog and calls stream members api", async () => {
-    const addMembersSpy = vi.spyOn(zulipStreams, "addMembersToStream").mockResolvedValue({
+    const addMembersSpy = vi.spyOn(messengerStreams, "addMembersToStream").mockResolvedValue({
       ok: true,
       addedUserIds: [88],
       alreadySubscribedUserIds: [],
@@ -1726,7 +1726,7 @@ describe("RightPanel truthfulness", () => {
   });
 
   it("does not submit add-members when canonical stream name is unavailable", () => {
-    const addMembersSpy = vi.spyOn(zulipStreams, "addMembersToStream").mockResolvedValue({
+    const addMembersSpy = vi.spyOn(messengerStreams, "addMembersToStream").mockResolvedValue({
       ok: true,
       addedUserIds: [88],
       alreadySubscribedUserIds: [],
@@ -1990,12 +1990,14 @@ describe("RightPanel truthfulness", () => {
   });
 
   it("removes stream member via hover cross and does not open profile on click", async () => {
-    const removeMembersSpy = vi.spyOn(zulipStreams, "removeMembersFromStream").mockResolvedValue({
-      ok: true,
-      removedUserIds: [77],
-      alreadyUnsubscribedUserIds: [],
-      unauthorizedStreams: [],
-    });
+    const removeMembersSpy = vi
+      .spyOn(messengerStreams, "removeMembersFromStream")
+      .mockResolvedValue({
+        ok: true,
+        removedUserIds: [77],
+        alreadyUnsubscribedUserIds: [],
+        unauthorizedStreams: [],
+      });
     const openUserProfile = vi.fn();
 
     act(() => {
@@ -2084,7 +2086,7 @@ describe("RightPanel truthfulness", () => {
   });
 
   it("shows channel edit/delete actions for admin role and submits edit changes", async () => {
-    const updateStreamSpy = vi.spyOn(zulipStreams, "updateStream").mockResolvedValue(true);
+    const updateStreamSpy = vi.spyOn(messengerStreams, "updateStream").mockResolvedValue(true);
 
     act(() => {
       useCurrentChatMessagesStore.setState({
@@ -2134,7 +2136,7 @@ describe("RightPanel truthfulness", () => {
   });
 
   it("strips one UI hash prefix from title fallback in edit channel form", async () => {
-    const updateStreamSpy = vi.spyOn(zulipStreams, "updateStream").mockResolvedValue(true);
+    const updateStreamSpy = vi.spyOn(messengerStreams, "updateStream").mockResolvedValue(true);
 
     act(() => {
       useCurrentChatMessagesStore.setState({
@@ -2257,7 +2259,7 @@ describe("RightPanel truthfulness", () => {
 
   it("optimistically archives channel and redirects immediately on archive action", async () => {
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
-    const updateStreamSpy = vi.spyOn(zulipStreams, "updateStream").mockResolvedValue(true);
+    const updateStreamSpy = vi.spyOn(messengerStreams, "updateStream").mockResolvedValue(true);
 
     act(() => {
       useChatListStore.getState().setCurrentUserId(42);
@@ -2336,7 +2338,7 @@ describe("RightPanel truthfulness", () => {
 
   it("rolls back optimistic archive on request failure", async () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
-    vi.spyOn(zulipStreams, "updateStream").mockResolvedValue(false);
+    vi.spyOn(messengerStreams, "updateStream").mockResolvedValue(false);
 
     act(() => {
       useChatListStore.getState().setCurrentUserId(42);

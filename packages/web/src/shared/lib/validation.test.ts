@@ -35,12 +35,12 @@ describe("isValidUrl", () => {
   it("rejects file:", () => expect(isValidUrl("file:///etc/passwd")).toBe(false));
 });
 
-// Realm URL validation — used when connecting to a Zulip server instance
+// Realm URL validation — used when connecting to a server instance
 describe("isValidRealmUrl", () => {
   // Realm must be HTTPS to protect credentials in transit
-  it("accepts valid realm", () => expect(isValidRealmUrl("https://zulip.example.com")).toBe(true));
+  it("accepts valid realm", () => expect(isValidRealmUrl("https://chat.example.com")).toBe(true));
   it("allows http only in development", () => {
-    expect(isValidRealmUrl("http://zulip.example.com")).toBe(import.meta.env.DEV);
+    expect(isValidRealmUrl("http://chat.example.com")).toBe(import.meta.env.DEV);
   });
   // A URL without hostname can't point to a real server
   it("rejects no hostname", () => expect(isValidRealmUrl("https://")).toBe(false));

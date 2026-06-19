@@ -1,10 +1,10 @@
 import { t } from "~/i18n/i18n";
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 
 const DEFAULT_NOTIFICATION_SENDER = "New message";
 
 export type NotificationTitleMessage = Pick<
-  ZulipRawMessage,
+  WorkspaceRawMessage,
   "display_recipient" | "sender_full_name" | "sender_id" | "stream_id" | "subject" | "type"
 > & {
   channel?: string;

@@ -5,13 +5,13 @@ import { useInboxStore } from "~/entities/inbox/inbox.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import type { CurrentChatContext } from "~/entities/message/message.model.types";
-import { markMessagesAsRead } from "~/shared/api/zulip-read-state";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import { markMessagesAsRead } from "~/shared/api/messenger-read-state";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { createMessage } from "~/test/factories";
 import { applyOpenChatMarkAllAsRead } from "./chat-mark-all-read.lib";
 import { useChatPageMarkRead } from "./chat-page-mark-read.hook";
 
-vi.mock("~/shared/api/zulip-read-state", () => ({
+vi.mock("~/shared/api/messenger-read-state", () => ({
   markMessagesAsRead: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -71,7 +71,7 @@ describe("useChatPageMarkRead", () => {
       instances: [
         {
           id: INSTANCE_ID,
-          realm: "https://zulip.example.com",
+          realm: "https://chat.example.com",
           email: "user@example.com",
           apiKey: "api-key",
         },

@@ -1,13 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useUsersStore } from "~/entities/user/user.model";
-import type { Reaction, RealmEmoji, ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { Reaction, RealmEmoji, WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { normalizeEmojiShortcodeName } from "~/shared/lib/emoji-shortcodes.lib";
 import { ensureRealmEmojisLoaded, getCachedRealmEmojis } from "~/shared/lib/realm-emojis-cache";
 import { resolveReactionTitle } from "~/widgets/message-list/message-bubble-reactions-row.lib";
 import { getActivityPeerReactionGroups } from "./activity-page.lib";
 
 export interface ActivityPeerReactionsRowProps {
-  message: ZulipRawMessage;
+  message: WorkspaceRawMessage;
   currentUserId: number | null;
 }
 

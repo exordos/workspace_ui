@@ -4,7 +4,7 @@
  * Organization logos (`realm_icon`) are used in the UI (sidebar, instance switcher).
  * Tab favicon always uses the white-label app icon (`brand.logoUrl`), not the org logo.
  *
- * Zulip `realm_icon` may be an absolute URL or a realm-relative path (e.g.
+ * Workspace `realm_icon` may be an absolute URL or a realm-relative path (e.g.
  * `/user_avatars/…/realm/icon.png`); the latter is resolved against the org URL.
  */
 import { brand } from "~/shared/lib/brand";

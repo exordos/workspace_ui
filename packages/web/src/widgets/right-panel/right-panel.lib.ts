@@ -1,8 +1,8 @@
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import type { UserRecord } from "~/entities/user/user.model";
 import type { ChatInfoMember } from "~/features/chat-info/chat-info.types";
-import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
-import type { ZulipGroupSettingValue } from "~/shared/api/zulip.types";
+import { getRealmBaseUrl } from "~/shared/api/messenger-client.internal";
+import type { MessengerGroupSettingValue } from "~/shared/api/messenger.types";
 import { resolveAvatarUrl } from "~/shared/lib/avatar";
 import { parseRole, UserRole } from "~/shared/lib/roles";
 import { isValidEmail } from "~/shared/lib/validation";
@@ -25,8 +25,11 @@ interface BuildRightPanelStreamMembersInput {
   members: readonly ChatInfoMember[];
   users: Map<number, UserRecord>;
   streamCreatorId: number | undefined;
-  canAdministerChannelGroup: ZulipGroupSettingValue | undefined;
-  isUserInGroupSetting: (setting: ZulipGroupSettingValue | undefined, userId: number) => boolean;
+  canAdministerChannelGroup: MessengerGroupSettingValue | undefined;
+  isUserInGroupSetting: (
+    setting: MessengerGroupSettingValue | undefined,
+    userId: number,
+  ) => boolean;
   memberFallbackLabel: string;
   onlineLabel: string;
   offlineLabel: string;

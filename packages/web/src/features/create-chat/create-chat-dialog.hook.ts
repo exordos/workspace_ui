@@ -3,8 +3,8 @@ import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
-import { fetchStreams, fetchSubscriptions } from "~/shared/api/zulip-streams";
-import type { MockStream, ZulipSubscription } from "~/shared/api/zulip.types";
+import { fetchStreams, fetchSubscriptions } from "~/shared/api/messenger-streams";
+import type { MockStream, MessengerSubscription } from "~/shared/api/messenger.types";
 import { createLogger } from "~/shared/lib/logger";
 import { buildAnnouncementOnlyCanSendGroup } from "~/shared/lib/user-group-policy";
 import { buildUserPickerOptions, type UserPickerOption } from "~/shared/lib/user-picker";
@@ -158,7 +158,7 @@ export function useCreateChatDialog(options: {
   const [channelsSubscriptionFilter, setChannelsSubscriptionFilter] =
     useState<BrowseChannelSubscriptionFilter>("unsubscribed");
   const [browseStreams, setBrowseStreams] = useState<MockStream[]>([]);
-  const [browseSubscriptions, setBrowseSubscriptions] = useState<ZulipSubscription[]>([]);
+  const [browseSubscriptions, setBrowseSubscriptions] = useState<MessengerSubscription[]>([]);
   const [channelsLoading, setChannelsLoading] = useState(false);
   const [channelsError, setChannelsError] = useState(false);
   const [subscribePendingStreamIds, setSubscribePendingStreamIds] = useState<number[]>([]);

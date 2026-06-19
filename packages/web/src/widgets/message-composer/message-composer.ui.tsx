@@ -2,7 +2,7 @@ import React, { useState, useRef, useMemo, useCallback, useLayoutEffect } from "
 import { AiComposerButton } from "~/features/ai-reply/ai-reply.ui";
 import type { MentionSuggestion } from "~/features/mention-suggest/mention-suggest.types";
 import { t } from "~/i18n/i18n";
-import type { SavedSnippet } from "~/shared/api/zulip.types";
+import type { SavedSnippet } from "~/shared/api/messenger.types";
 import { COMPOSER_FORMATTING_TOOLBAR_ALWAYS_VISIBLE } from "~/shared/config/constants";
 import { ensureRealmEmojisLoaded, getCachedRealmEmojis } from "~/shared/lib/realm-emojis-cache";
 import { useViewportKeyboard } from "~/shared/lib/touch";
@@ -68,7 +68,7 @@ import type { EmojiClickData } from "emoji-picker-react";
 
 export type { ReplyQuote } from "./message-composer.types";
 
-// TODO: Re-enable after scheduled send uses Zulip's server API and persists the target chat.
+// TODO: Re-enable after scheduled send uses the messenger API's server API and persists the target chat.
 const ENABLE_SCHEDULED_SEND_UI = false;
 
 export const MessageComposerInner: React.FC<MessageComposerProps> = ({

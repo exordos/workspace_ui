@@ -4,8 +4,8 @@
  * Usage:
  *   import { test, expect } from "./fixtures";
  *
- *   test("with mock API", async ({ authenticated, zulipApi }) => {
- *     zulipApi.abortMatching(/\/events/, 1);
+ *   test("with mock API", async ({ authenticated, messengerApi }) => {
+ *     messengerApi.abortMatching(/\/events/, 1);
  *     // ...
  *   });
  */
@@ -14,12 +14,12 @@ import { test as base, expect as baseExpect, type Page } from "@playwright/test"
 import { clearAppStorage } from "./helpers/clear-app-storage";
 import { openStreamChatWithComposer } from "./helpers/navigate-messenger";
 import { WorkspaceApiMock } from "./helpers/workspace-api-mock";
-import { ZulipApiMock } from "./helpers/zulip-api-mock";
+import { MessengerApiMock } from "./helpers/messenger-api-mock";
 import { seedAuthStorage } from "./helpers/seed-auth";
 
 interface TestFixtures {
   loginAs: (email: string, password: string, realm: string) => Promise<void>;
-  zulipApi: ZulipApiMock;
+  messengerApi: MessengerApiMock;
   guestPage: Page;
   authenticatedMocked: Page;
   authenticated: Page;
@@ -27,7 +27,7 @@ interface TestFixtures {
 
 const LOGIN_BUTTON = /login|log in|войти/i;
 const LOGIN_NEXT_BUTTON = /next|далее/i;
-const LOGIN_SERVER_FIELD = /адрес сервера|server url|zulip/i;
+const LOGIN_SERVER_FIELD = /адрес сервера|server url|messenger/i;
 export { LOGIN_BUTTON, LOGIN_NEXT_BUTTON, LOGIN_SERVER_FIELD };
 
 export async function expectLoginOrganizationStep(
@@ -79,8 +79,8 @@ export const test = base.extend<TestFixtures>({
     await use(fn);
   },
 
-  zulipApi: async ({ page }, use) => {
-    const mock = new ZulipApiMock(page);
+  messengerApi: async ({ page }, use) => {
+    const mock = new MessengerApiMock(page);
     await mock.install();
     await use(mock);
     await mock.uninstall();
@@ -91,7 +91,7 @@ export const test = base.extend<TestFixtures>({
     await use(page);
   },
 
-  authenticatedMocked: async ({ page, zulipApi: _zulipApi }, use) => {
+  authenticatedMocked: async ({ page, messengerApi: _messengerApi }, use) => {
     await seedAuthStorage(page);
     await openAuthenticatedShell(page);
     await use(page);

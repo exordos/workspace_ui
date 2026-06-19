@@ -1,6 +1,6 @@
 /**
  * DM route parsing helpers: normalize user ids from the URL vs current user, and infer whether
- * the active route is a Zulip huddle (3+ people) vs 1:1. Used by chat page and layout drawer.
+ * the active route is a Workspace huddle (3+ people) vs 1:1. Used by chat page and layout drawer.
  */
 
 export function normalizeDmRouteUserIds(
@@ -18,7 +18,7 @@ export function normalizeDmRouteUserIds(
 }
 
 /**
- * Zulip huddle: 3+ people. After `normalizeDmRouteUserIds`, 1:1 has exactly one "other" id when
+ * Workspace huddle: 3+ people. After `normalizeDmRouteUserIds`, 1:1 has exactly one "other" id when
  * `currentUserId` is known. Without `currentUserId`, a slug lists all participants — 1:1 has 2 ids,
  * huddle has 3+.
  */

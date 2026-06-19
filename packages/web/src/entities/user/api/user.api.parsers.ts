@@ -4,22 +4,22 @@
 
 import type { UserStatus, UserStatusReactionType } from "../user.model";
 import type {
-  ZulipApiResultEnvelope,
-  ZulipGetUserStatusPayload,
-  ZulipUpdateOwnStatusResponse,
+  MessengerApiResultEnvelope,
+  WorkspaceGetUserStatusPayload,
+  WorkspaceUpdateOwnStatusResponse,
 } from "./user.api.types";
 
 function isReactionType(value: string | undefined): value is UserStatusReactionType {
   return value === "unicode_emoji" || value === "realm_emoji" || value === "zulip_extra_emoji";
 }
 
-/** True when Zulip returned BAD_REQUEST for an invalid/deactivated user id. */
-export function isBadRequestError(data: ZulipApiResultEnvelope): boolean {
+/** True when Workspace returned BAD_REQUEST for an invalid/deactivated user id. */
+export function isBadRequestError(data: MessengerApiResultEnvelope): boolean {
   return data.code === "BAD_REQUEST";
 }
 
 export function normalizeGetUserStatusPayload(
-  payload: ZulipGetUserStatusPayload | null | undefined,
+  payload: WorkspaceGetUserStatusPayload | null | undefined,
 ): UserStatus | null {
   if (payload == null) {
     return null;
@@ -44,7 +44,9 @@ export function normalizeGetUserStatusPayload(
   };
 }
 
-export function normalizeOwnStatusResponse(data: ZulipUpdateOwnStatusResponse): UserStatus | null {
+export function normalizeOwnStatusResponse(
+  data: WorkspaceUpdateOwnStatusResponse,
+): UserStatus | null {
   if (data.result === "error") {
     return null;
   }

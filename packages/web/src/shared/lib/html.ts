@@ -1,5 +1,5 @@
 /**
- * Sanitizes Zulip message HTML (DOMPurify allowlist, realm media URL rewrite, safe link targets).
+ * Sanitizes messenger message HTML (DOMPurify allowlist, realm media URL rewrite, safe link targets).
  *
  * Usage:
  *   import { sanitizeHtml, stripHtml } from "~/shared/lib/html";
@@ -10,14 +10,14 @@
 import DOMPurify from "dompurify";
 import { env } from "~/shared/lib/env";
 import {
+  getMessageImagesBaseUrl,
+  getMessageRealmBaseUrl,
+} from "~/shared/lib/messenger-message-media-base.lib";
+import {
   isExternalContentPath,
   isUserUploadsPath,
   rewriteProtectedMessageMediaUrlToCanonical,
 } from "~/shared/lib/user-uploads-url.lib";
-import {
-  getMessageImagesBaseUrl,
-  getMessageRealmBaseUrl,
-} from "~/shared/lib/zulip-message-media-base.lib";
 
 interface MessageMediaBaseUrls {
   realmBase?: string;
@@ -133,11 +133,7 @@ const MESSAGE_ADD_ATTR = [
   "data-user-group-id",
 ];
 
-const MESSAGE_FORBID_ATTR = [
-  "data-auth-src",
-  "data-auth-poster",
-  "data-auth-background-image",
-];
+const MESSAGE_FORBID_ATTR = ["data-auth-src", "data-auth-poster", "data-auth-background-image"];
 
 export function resolveMessageMediaUrl(src: string, baseUrl: string): string {
   const trimmedBase = baseUrl.trim();

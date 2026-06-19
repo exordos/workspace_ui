@@ -16,7 +16,7 @@ import { StreamNotificationLevelSwitch } from "~/features/mute-chat/stream-notif
 import type { StreamNotificationLevel } from "~/features/mute-chat/stream-notification-level.lib";
 import { useRemoveStreamMembersStore } from "~/features/remove-stream-members/remove-stream-members.model";
 import { t } from "~/i18n/i18n";
-import { deleteTopic, updateStream } from "~/shared/api/zulip-streams";
+import { deleteTopic, updateStream } from "~/shared/api/messenger-streams";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { createLogger } from "~/shared/lib/logger";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";

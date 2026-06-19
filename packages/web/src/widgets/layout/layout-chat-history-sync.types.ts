@@ -1,8 +1,8 @@
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 
 export interface LoadDeepHistoryMessagesOptions {
-  initialMessages: readonly ZulipRawMessage[];
-  fetchOlderMessages: (anchorId: number, numBefore: number) => Promise<ZulipRawMessage[]>;
+  initialMessages: readonly WorkspaceRawMessage[];
+  fetchOlderMessages: (anchorId: number, numBefore: number) => Promise<WorkspaceRawMessage[]>;
   pageSize?: number;
   maxBatches?: number;
 }

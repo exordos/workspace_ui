@@ -1,7 +1,7 @@
 /**
  * Pure helpers for IndexedDB message window policy (gap checks, retention math).
  *
- * Zulip message ids are monotonic but not necessarily consecutive integers; use these
+ * messenger message ids are monotonic but not necessarily consecutive integers; use these
  * helpers only for test scenarios with known consecutive ids or ordering checks.
  */
 

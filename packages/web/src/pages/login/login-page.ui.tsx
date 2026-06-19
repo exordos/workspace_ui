@@ -2,9 +2,10 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { useLocation, useNavigate } from "react-router-dom";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { t } from "~/i18n/i18n";
-import { fetchApiKey, fetchServerSettings } from "~/shared/api/zulip-auth";
-import { normalizeRealm } from "~/shared/api/zulip-realm.internal";
-import { ZulipAuthError } from "~/shared/api/zulip.types";
+import { fetchApiKey, fetchServerSettings } from "~/shared/api/messenger-auth";
+import { normalizeRealm } from "~/shared/api/messenger-realm.internal";
+import { MessengerAuthError } from "~/shared/api/messenger.types";
+import { brand } from "~/shared/lib/brand";
 import { env } from "~/shared/lib/env";
 import {
   buildDesktopFlowLoginUrl,
@@ -31,7 +32,7 @@ interface LoginServerSettings {
   realm_name: string;
   /** Resolved for login preview (may be empty when same-origin is blocked in the browser). */
   realm_icon: string;
-  /** Raw `realm_icon` from Zulip server_settings (path or absolute URL). */
+  /** Raw `realm_icon` from server_settings (path or absolute URL). */
   realm_icon_raw: string;
   realm_uri: string;
   realm_url: string;
@@ -286,7 +287,7 @@ export const LoginPage: React.FC = () => {
       }
       void navigate(redirectTarget ?? "/", { replace: true });
     } catch (err) {
-      setError(err instanceof ZulipAuthError ? err.message : t("auth.loginError"));
+      setError(err instanceof MessengerAuthError ? err.message : t("auth.loginError"));
     } finally {
       setLoading(false);
     }
@@ -341,7 +342,9 @@ export const LoginPage: React.FC = () => {
     setShowPassword((p) => !p);
   }, []);
 
-  const title = isAddServer ? t("auth.addServerZulip") : t("auth.connectToZulip");
+  const title = isAddServer
+    ? t("auth.addServer")
+    : t("auth.connectToServer", { appName: brand.appShortName });
   const description =
     step === "organization" ? t("auth.organizationStepHint") : t("auth.authStepHint");
 
@@ -374,14 +377,14 @@ export const LoginPage: React.FC = () => {
 
         {step === "organization" ? (
           <form onSubmit={handleContinueToAuthStep} className="flex flex-col gap-4">
-            <FormField label={t("auth.zulipServerUrl")} htmlFor="realm">
+            <FormField label={t("auth.serverUrl")} htmlFor="realm">
               <input
                 id="realm"
                 type="url"
                 inputMode="url"
                 autoComplete="url"
                 required
-                placeholder={t("auth.zulipServerUrlHint")}
+                placeholder={t("auth.serverUrlHint")}
                 value={realm}
                 onChange={(e) => handleRealmChange(e.target.value)}
                 onBlur={handleRealmBlur}

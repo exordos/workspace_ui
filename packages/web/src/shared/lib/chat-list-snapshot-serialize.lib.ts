@@ -11,7 +11,7 @@ export type ChatListSnapshotMessageLocation =
 export interface ChatListSnapshotSerialized {
   version: 1;
   currentUserId: number | null;
-  /** Max Zulip message id seen in the last full/delta bootstrap (for incremental fetch). */
+  /** Max messenger message id seen in the last full/delta bootstrap (for incremental fetch). */
   lastMessageId: number | null;
   /** Min message id from last bootstrap window (optional, for debugging). */
   oldestMessageId: number | null;

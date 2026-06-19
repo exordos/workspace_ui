@@ -7,8 +7,8 @@ import {
   fetchDmMessages,
   fetchMessages,
   fetchMessagesWithNarrow,
-} from "~/shared/api/zulip-messages";
-import type { MockMessage } from "~/shared/api/zulip.types";
+} from "~/shared/api/messenger-messages";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import {
   getChatMessagesAscending,
   getChatMeta,
@@ -17,14 +17,14 @@ import {
   upsertChatMessages,
 } from "~/shared/lib/message-cache-db";
 import { chatKeyFromContext, chatKeyFromMockMessage } from "~/shared/lib/message-cache-keys.lib";
-import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import {
-  ZULIP_DM_ANCHOR_NUM_AFTER,
-  ZULIP_DM_ANCHOR_NUM_BEFORE,
-  ZULIP_STREAM_ANCHOR_NUM_AFTER,
-  ZULIP_STREAM_ANCHOR_NUM_BEFORE,
-  zulipMessageCacheWindowN,
-} from "~/shared/lib/zulip-message-window.lib";
+  MESSENGER_DM_ANCHOR_NUM_AFTER,
+  MESSENGER_DM_ANCHOR_NUM_BEFORE,
+  MESSENGER_STREAM_ANCHOR_NUM_AFTER,
+  MESSENGER_STREAM_ANCHOR_NUM_BEFORE,
+  messengerMessageCacheWindowN,
+} from "~/shared/lib/messenger-message-window.lib";
+import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { upsertMessagesByChatPartitions } from "./message-cache-partition.lib";
 import { parseDmKeyToUserIds } from "./message-chat-context.lib";
 import { deriveFocusedPaginationFlags } from "./message-pagination-helpers.lib";
@@ -80,10 +80,10 @@ async function readCachedMessagesByMode(options: {
       () => [] as MockMessage[],
     );
     // Match API bootstrap window size so wide cache and network slices stay aligned.
-    const sliced = cached.slice(-ZULIP_STREAM_ANCHOR_NUM_BEFORE);
+    const sliced = cached.slice(-MESSENGER_STREAM_ANCHOR_NUM_BEFORE);
     return {
       messages: sliced,
-      hasOlderMessages: sliced.length >= ZULIP_STREAM_ANCHOR_NUM_BEFORE,
+      hasOlderMessages: sliced.length >= MESSENGER_STREAM_ANCHOR_NUM_BEFORE,
       hasNewerMessages: false,
     };
   }
@@ -115,8 +115,8 @@ async function fetchNetworkMessagesByMode(options: {
       return fetchMessagesWithNarrow(
         [{ operator: "dm", operand: parseDmKeyToUserIds(context.dmKey, currentUserId) }],
         focusedMessageId,
-        ZULIP_DM_ANCHOR_NUM_BEFORE,
-        ZULIP_DM_ANCHOR_NUM_AFTER,
+        MESSENGER_DM_ANCHOR_NUM_BEFORE,
+        MESSENGER_DM_ANCHOR_NUM_AFTER,
         { signal, applyMarkdown: false },
       );
     }
@@ -134,8 +134,8 @@ async function fetchNetworkMessagesByMode(options: {
     return fetchMessagesWithNarrow(
       narrow,
       focusedMessageId,
-      ZULIP_STREAM_ANCHOR_NUM_BEFORE,
-      ZULIP_STREAM_ANCHOR_NUM_AFTER,
+      MESSENGER_STREAM_ANCHOR_NUM_BEFORE,
+      MESSENGER_STREAM_ANCHOR_NUM_AFTER,
       { signal, applyMarkdown: false },
     );
   }
@@ -216,7 +216,7 @@ async function persistNetworkMessagesByMode(options: {
     instanceId,
     chatKey: chatKeyForMeta,
     messages,
-    windowSizeN: zulipMessageCacheWindowN(nextContext),
+    windowSizeN: messengerMessageCacheWindowN(nextContext),
   });
 }
 

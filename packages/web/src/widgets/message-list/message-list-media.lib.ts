@@ -1,10 +1,11 @@
 import type { MediaItem } from "~/features/media-viewer/media-viewer.types";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { normalizeUserUploadImageIdentity } from "~/shared/lib/message-inline-user-upload-image.lib";
 import {
   isLikelyRenderedMessageHtml,
   messageBodyToUnsanitizedDisplayHtml,
 } from "~/shared/lib/message-markdown-display.lib";
+import { getMessageRealmBaseUrl } from "~/shared/lib/messenger-message-media-base.lib";
 import { AUTH_MEDIA_SRC_DATA_ATTR } from "~/shared/lib/protected-message-media";
 import {
   fromUserUploadThumbnailUrl,
@@ -17,7 +18,6 @@ import {
   collapseDuplicateWorkspaceV1InUrl,
   extractProtectedMessageMediaPathAndQuery,
 } from "~/shared/lib/user-uploads-url.lib";
-import { getMessageRealmBaseUrl } from "~/shared/lib/zulip-message-media-base.lib";
 
 const IMG_SRC_REGEX = /<img\b[^>]*\bsrc\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/gi;
 const VIDEO_SRC_REGEX = /<video\b[^>]*\bsrc\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/gi;

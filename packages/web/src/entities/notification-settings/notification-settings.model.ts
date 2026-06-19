@@ -1,18 +1,18 @@
 /**
- * Zulip server-backed notification settings (per active organization).
+ * server-backed notification settings (per active organization).
  */
 
 import { create } from "zustand";
 import { logStoreAction } from "~/shared/lib/logger";
 import {
-  DEFAULT_ZULIP_NOTIFICATION_SETTINGS,
-  parseZulipNotificationSettings,
-  patchZulipNotificationSettings,
-  type ZulipNotificationSettings,
-} from "~/shared/lib/zulip-notification-settings.lib";
+  DEFAULT_MESSENGER_NOTIFICATION_SETTINGS,
+  parseWorkspaceNotificationSettings,
+  patchWorkspaceNotificationSettings,
+  type WorkspaceNotificationSettings,
+} from "~/shared/lib/messenger-notification-settings.lib";
 
 interface NotificationSettingsState {
-  settings: ZulipNotificationSettings;
+  settings: WorkspaceNotificationSettings;
   hydrated: boolean;
   setFromServer: (raw: Record<string, unknown> | null | undefined) => void;
   patchSetting: (property: string, value: unknown) => void;
@@ -20,11 +20,11 @@ interface NotificationSettingsState {
 }
 
 export const useNotificationSettingsStore = create<NotificationSettingsState>((set, get) => ({
-  settings: { ...DEFAULT_ZULIP_NOTIFICATION_SETTINGS },
+  settings: { ...DEFAULT_MESSENGER_NOTIFICATION_SETTINGS },
   hydrated: false,
 
   setFromServer(raw) {
-    const parsed = parseZulipNotificationSettings(raw ?? undefined);
+    const parsed = parseWorkspaceNotificationSettings(raw ?? undefined);
     logStoreAction("notificationSettings", "setFromServer", {
       enableDesktop: parsed.enableDesktopNotifications,
       enableStreamDesktop: parsed.enableStreamDesktopNotifications,
@@ -33,15 +33,15 @@ export const useNotificationSettingsStore = create<NotificationSettingsState>((s
   },
 
   patchSetting(property, value) {
-    const next = patchZulipNotificationSettings(get().settings, property, value);
+    const next = patchWorkspaceNotificationSettings(get().settings, property, value);
     logStoreAction("notificationSettings", "patchSetting", { property });
     set({ settings: next, hydrated: true });
   },
 
   clear() {
     logStoreAction("notificationSettings", "clear", {});
-    set({ settings: { ...DEFAULT_ZULIP_NOTIFICATION_SETTINGS }, hydrated: false });
+    set({ settings: { ...DEFAULT_MESSENGER_NOTIFICATION_SETTINGS }, hydrated: false });
   },
 }));
 
-export type { ZulipNotificationSettings };
+export type { WorkspaceNotificationSettings };

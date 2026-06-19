@@ -3,7 +3,7 @@ import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useNotificationSettingsStore } from "~/entities/notification-settings/notification-settings.model";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
-import { normalizeRealm } from "~/shared/api/zulip-realm.internal";
+import { normalizeRealm } from "~/shared/api/messenger-realm.internal";
 import {
   registerNotifiedMessageId,
   wasRecentlyNotified,

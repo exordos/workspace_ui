@@ -1,7 +1,7 @@
 /**
- * User profile API — fetches detailed profile data from Zulip.
+ * User profile API — fetches detailed profile data from the messenger API.
  *
- * Zulip API: GET /users/{user_id}
+ * Messenger API: GET /users/{user_id}
  */
 
 import {
@@ -9,17 +9,17 @@ import {
   updateOwnStatus as updateOwnStatusFromUsersApi,
 } from "~/entities/user/api/user.api";
 import type { OwnStatusMutationResult } from "~/entities/user/api/user.api.types";
-import { zulipApi } from "~/shared/api/client";
+import { messengerApi } from "~/shared/api/client";
 import {
   getOwnAvatarCapabilities as getOwnAvatarCapabilitiesFromApi,
   removeOwnAvatar as removeOwnAvatarFromApi,
   uploadOwnAvatar as uploadOwnAvatarFromApi,
-} from "~/shared/api/zulip-avatar-settings";
-import { updateOwnProfileSettings } from "~/shared/api/zulip-profile-settings";
-import { fetchRealmProfileFieldDefinitionsWithSignal } from "~/shared/api/zulip-realm-profile-fields";
+} from "~/shared/api/messenger-avatar-settings";
+import { updateOwnProfileSettings } from "~/shared/api/messenger-profile-settings";
+import { fetchRealmProfileFieldDefinitionsWithSignal } from "~/shared/api/messenger-realm-profile-fields";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
-import { mapZulipProfileDataToSemanticFields } from "~/shared/lib/zulip-profile-fields-map.lib";
+import { mapMessengerProfileDataToSemanticFields } from "~/shared/lib/messenger-profile-fields-map.lib";
 import type {
   OwnAvatarCapabilities,
   OwnAvatarMutationResult,
@@ -33,9 +33,9 @@ const log = createLogger("user-profile:api");
 export {
   clearRealmProfileFieldsCache,
   fetchRealmProfileFieldDefinitionsWithSignal as fetchRealmProfileFieldDefinitions,
-} from "~/shared/api/zulip-realm-profile-fields";
+} from "~/shared/api/messenger-realm-profile-fields";
 
-interface ZulipUserResponse {
+interface MessengerUserResponse {
   user: {
     user_id: number;
     full_name: string;
@@ -43,7 +43,7 @@ interface ZulipUserResponse {
     avatar_url: string;
     role: number;
     is_bot?: boolean;
-    is_active?: boolean; // Zulip JSON
+    is_active?: boolean; // Workspace JSON
     date_joined?: string;
     timezone?: string;
     profile_data?: Record<string, { value?: string; rendered_value?: string }>;
@@ -65,10 +65,14 @@ export async function fetchUserProfile(
 
   try {
     const [res, realmFields] = await Promise.all([
-      zulipApi.get(`/users/${userId}`, {
-        client_gravatar: "false",
-        include_custom_profile_fields: "true",
-      }, options?.signal),
+      messengerApi.get(
+        `/users/${userId}`,
+        {
+          client_gravatar: "false",
+          include_custom_profile_fields: "true",
+        },
+        options?.signal,
+      ),
       fetchRealmProfileFieldDefinitionsWithSignal(options?.signal),
     ]);
 
@@ -77,11 +81,11 @@ export async function fetchUserProfile(
       return null;
     }
 
-    const data = res.data as ZulipUserResponse;
+    const data = res.data as MessengerUserResponse;
     const user = data.user;
     const profile = user.profile_data;
 
-    const custom = mapZulipProfileDataToSemanticFields(profile, realmFields, {
+    const custom = mapMessengerProfileDataToSemanticFields(profile, realmFields, {
       useLegacyFixedFieldIds: realmFields == null,
     });
 

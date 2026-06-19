@@ -30,7 +30,7 @@ function isAllowedRealmProtocol(protocol: string): boolean {
   if (protocol === "https:") {
     return true;
   }
-  // Dev-only: local gateways and Zulip without TLS (never in production builds).
+  // Dev-only: local gateways and Workspace without TLS (never in production builds).
   return import.meta.env.DEV && protocol === "http:";
 }
 

@@ -1,4 +1,4 @@
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { buildDmRouteSlugFromRecipients } from "~/shared/lib/dm-route-slug.lib";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { encodeTopicForRoute, normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
@@ -46,7 +46,7 @@ function normalizeNonEmpty(value: string | undefined): string | undefined {
   return normalized.length > 0 ? normalized : undefined;
 }
 
-function parseNearMessageIdFromZulipHash(hash: string): number | undefined {
+function parseNearMessageIdFromWorkspaceHash(hash: string): number | undefined {
   const normalizedHash = hash.startsWith("#") ? hash.slice(1) : hash;
   if (!normalizedHash.startsWith("narrow/")) {
     return undefined;
@@ -97,7 +97,7 @@ export function buildMessageRedirectRoute(messageId: number, realmUri?: string):
   return realmUri ? `${base}?realm=${encodeURIComponent(realmUri)}` : base;
 }
 
-export function buildMessageRedirectRouteFromZulipPermalink(permalink: string): string | null {
+export function buildMessageRedirectRouteFromWorkspacePermalink(permalink: string): string | null {
   const normalizedPermalink = permalink.trim();
   if (normalizedPermalink.length === 0) {
     return null;
@@ -109,7 +109,7 @@ export function buildMessageRedirectRouteFromZulipPermalink(permalink: string): 
     return null;
   }
 
-  const nearMessageId = parseNearMessageIdFromZulipHash(parsedUrl.hash);
+  const nearMessageId = parseNearMessageIdFromWorkspaceHash(parsedUrl.hash);
   if (nearMessageId == null) {
     return null;
   }

@@ -1,9 +1,13 @@
-import type { ZulipInstance } from "~/entities/instance/instance.model";
-import type { RegisterQueueResult, ZulipCredentials, ZulipEvent } from "~/shared/api/zulip.types";
+import type { WorkspaceInstance } from "~/entities/instance/instance.model";
+import type {
+  RegisterQueueResult,
+  MessengerCredentials,
+  MessengerEvent,
+} from "~/shared/api/messenger.types";
 
 export interface StartCredentialEventLoopOptions {
-  credentials: ZulipCredentials;
-  onEvent: (event: ZulipEvent) => void;
+  credentials: MessengerCredentials;
+  onEvent: (event: MessengerEvent) => void;
   onBadQueue?: () => void;
   /** Called after the event queue is registered or re-registered successfully. */
   onQueueReady?: () => void;
@@ -13,11 +17,11 @@ export interface StartCredentialEventLoopOptions {
 export type StartCredentialEventLoopFn = (options: StartCredentialEventLoopOptions) => () => void;
 
 export interface StartInactiveInstanceEventStreamsOptions {
-  instances: readonly ZulipInstance[];
+  instances: readonly WorkspaceInstance[];
   currentInstanceId: string | null;
   enabled: boolean;
   online: boolean;
-  refreshUnreadForInstance: (instance: ZulipInstance) => Promise<void> | void;
+  refreshUnreadForInstance: (instance: WorkspaceInstance) => Promise<void> | void;
   startEventLoop: StartCredentialEventLoopFn;
   onError?: (instanceId: string, error: unknown) => void;
   debounceMs?: number;

@@ -77,7 +77,7 @@ describe("collectDiagnosticsPageSnapshot", () => {
       usersCount: 10,
       currentChatMessagesCount: 5,
       currentInstanceId: "inst-1",
-      currentRealm: "https://zulip.example.com",
+      currentRealm: "https://chat.example.com",
       currentEmail: "user@example.com",
       instancesCount: 1,
       unreadCountsByInstance: { "inst-1": 3 },

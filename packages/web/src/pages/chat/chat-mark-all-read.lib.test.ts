@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { syncUnreadSurfacesFromDelta } from "~/entities/unread-sync/unread-surfaces-sync.lib";
-import { markMessagesAsRead } from "~/shared/api/zulip-read-state";
+import { markMessagesAsRead } from "~/shared/api/messenger-read-state";
 import {
   applyOpenChatMarkAllAsRead,
   collectMarkAllAsReadMessageIds,
@@ -12,7 +12,7 @@ import {
   type MarkAllAsReadTarget,
 } from "./chat-mark-all-read.lib";
 
-vi.mock("~/shared/api/zulip-read-state", () => ({
+vi.mock("~/shared/api/messenger-read-state", () => ({
   markMessagesAsRead: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -24,7 +24,7 @@ function resetStores(): void {
     instances: [
       {
         id: INSTANCE_ID,
-        realm: "https://zulip.example.com",
+        realm: "https://chat.example.com",
         email: "user@example.com",
         apiKey: "api-key",
       },

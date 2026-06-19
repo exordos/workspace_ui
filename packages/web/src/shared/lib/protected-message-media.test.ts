@@ -14,8 +14,8 @@ import {
   resolveProtectedUploadFetchOptions,
 } from "~/shared/lib/protected-message-media";
 
-vi.mock("~/shared/api/zulip-client.internal", () => ({
-  getRealmBaseUrl: () => "https://zulip.example.com",
+vi.mock("~/shared/api/messenger-client.internal", () => ({
+  getRealmBaseUrl: () => "https://chat.example.com",
 }));
 
 vi.mock("~/shared/lib/env", async (importOriginal) => {
@@ -55,7 +55,7 @@ describe("isAuthMediaPlaceholderAttr", () => {
 
   it("returns false for blob or http URLs", () => {
     expect(isAuthMediaPlaceholderAttr("blob:http://localhost/x")).toBe(false);
-    expect(isAuthMediaPlaceholderAttr("https://zulip.test/user_uploads/1/a.png")).toBe(false);
+    expect(isAuthMediaPlaceholderAttr("https://messenger.test/user_uploads/1/a.png")).toBe(false);
   });
 });
 
@@ -84,8 +84,8 @@ describe("protected media URL trust", () => {
 
     expect(isProtectedUserUploadUrl("/user_uploads/1/a.png")).toBe(true);
     expect(isProtectedUserUploadUrl("https://app.example.com/user_uploads/1/a.png")).toBe(true);
-    expect(isProtectedUserUploadUrl("https://zulip.example.com/user_uploads/1/a.png")).toBe(true);
-    expect(isProtectedMessageMediaUrl("https://zulip.example.com/external_content/a.png")).toBe(
+    expect(isProtectedUserUploadUrl("https://chat.example.com/user_uploads/1/a.png")).toBe(true);
+    expect(isProtectedMessageMediaUrl("https://chat.example.com/external_content/a.png")).toBe(
       true,
     );
   });
@@ -145,11 +145,11 @@ describe("prepareProtectedMessageHtml", () => {
     const video = template.content.querySelector("video");
     const source = template.content.querySelector("source");
     expect(video?.getAttribute("data-auth-poster")).toBe(
-      "https://zulip.example.com/external_content/poster.png",
+      "https://chat.example.com/external_content/poster.png",
     );
     expect(video?.getAttribute("poster")).toBeNull();
     expect(source?.getAttribute("data-auth-src")).toBe(
-      "https://zulip.example.com/user_uploads/1/private.mp4",
+      "https://chat.example.com/user_uploads/1/private.mp4",
     );
     expect(source?.getAttribute("src")).toBeNull();
     expectNoLiveProtectedAttrs(out);
@@ -184,7 +184,7 @@ describe("prepareProtectedMessageHtml", () => {
     expect(out).toContain('<span style="font-weight:700">Preview</span>');
   });
 
-  it("extracts protected Zulip embed background images into a dedicated auth data attr", () => {
+  it("extracts protected Workspace embed background images into a dedicated auth data attr", () => {
     const html =
       '<div class="message_embed"><a class="message_embed_image" href="https://habr.com/ru/articles/1024154/" style="background-image: url(&quot;/external_content/hash/preview.jpeg&quot;)"></a></div>';
     const out = prepareProtectedMessageHtml(html);
@@ -202,14 +202,14 @@ describe("prepareProtectedMessageHtml", () => {
 describe("buildProtectedUploadFetchUrl", () => {
   it("builds a canonical user_uploads fetch URL", () => {
     const url = buildProtectedUploadFetchUrl("https://sys.platform.test/user_uploads/1/a.png");
-    expect(url).toBe("https://zulip.example.com/user_uploads/1/a.png");
+    expect(url).toBe("https://chat.example.com/user_uploads/1/a.png");
   });
 
   it("uses the realm origin for external_content fetch URLs", () => {
     const url = buildProtectedUploadFetchUrl(
       "https://sys.platform.test/external_content/preview.png",
     );
-    expect(url).toBe("https://zulip.example.com/external_content/preview.png");
+    expect(url).toBe("https://chat.example.com/external_content/preview.png");
   });
 });
 
@@ -268,7 +268,7 @@ describe("resolveProtectedUploadFetchOptions", () => {
   it("sends Authorization on cross-origin candidate (credentials omit, headers kept)", () => {
     vi.spyOn(apiClient, "getCurrentInstance").mockReturnValue({
       id: "api-key",
-      realm: "https://zulip.example.com",
+      realm: "https://chat.example.com",
       email: "user@example.com",
       apiKey: "key",
       authType: "api_key",
@@ -278,7 +278,7 @@ describe("resolveProtectedUploadFetchOptions", () => {
     });
     const headers = { Authorization: "Basic abc" };
     const init = resolveProtectedUploadFetchOptions(
-      "https://zulip.example.com/user_uploads/1/a.png",
+      "https://chat.example.com/user_uploads/1/a.png",
       headers,
     );
     expect(init.credentials).toBe("omit");
@@ -288,7 +288,7 @@ describe("resolveProtectedUploadFetchOptions", () => {
   it("uses include credentials for cross-origin session auth without Basic header", () => {
     vi.spyOn(apiClient, "getCurrentInstance").mockReturnValue({
       id: "session",
-      realm: "https://zulip.example.com",
+      realm: "https://chat.example.com",
       email: "user@example.com",
       apiKey: "",
       authType: "session",
@@ -297,7 +297,7 @@ describe("resolveProtectedUploadFetchOptions", () => {
       location: { origin: "file://" },
     });
     const init = resolveProtectedUploadFetchOptions(
-      "https://zulip.example.com/user_uploads/thumbnail/1/a.png/840x560.webp",
+      "https://chat.example.com/user_uploads/thumbnail/1/a.png/840x560.webp",
       {},
     );
     expect(init.credentials).toBe("include");
@@ -310,7 +310,7 @@ describe("resolveProtectedUploadFetchOptions", () => {
       location: { origin: "https://app.example.com" },
     });
     const init = resolveProtectedUploadFetchOptions(
-      "https://zulip.example.com/user_uploads/1/a.png",
+      "https://chat.example.com/user_uploads/1/a.png",
       {},
     );
     expect(init.credentials).toBe("include");
@@ -319,12 +319,12 @@ describe("resolveProtectedUploadFetchOptions", () => {
   it("uses include credentials for same-origin candidate", () => {
     vi.spyOn(apiClient, "getCurrentInstance").mockReturnValue({
       id: "api-key",
-      realm: "https://zulip.example.com",
+      realm: "https://chat.example.com",
       email: "user@example.com",
       apiKey: "key",
     });
     vi.stubGlobal("window", {
-      location: { origin: "https://zulip.example.com" },
+      location: { origin: "https://chat.example.com" },
     });
     const headers = { Authorization: "Basic abc" };
     const init = resolveProtectedUploadFetchOptions("/user_uploads/1/a.png", headers);
@@ -335,13 +335,13 @@ describe("resolveProtectedUploadFetchOptions", () => {
   it("uses include credentials for same-origin session auth", () => {
     vi.spyOn(apiClient, "getCurrentInstance").mockReturnValue({
       id: "session",
-      realm: "https://zulip.example.com",
+      realm: "https://chat.example.com",
       email: "user@example.com",
       apiKey: "",
       authType: "session",
     });
     vi.stubGlobal("window", {
-      location: { origin: "https://zulip.example.com" },
+      location: { origin: "https://chat.example.com" },
     });
     const init = resolveProtectedUploadFetchOptions("/user_uploads/1/a.png", {});
     expect(init.credentials).toBe("include");

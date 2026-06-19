@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { sendMessage } from "~/shared/api/zulip-messages";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import { sendMessage } from "~/shared/api/messenger-messages";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { createMessage } from "~/test/factories";
 import { executeChatPageSend } from "./chat-page-send-handler.lib";
 import { useChatPageSendMessage } from "./chat-page-send-message.hook";
@@ -10,7 +10,7 @@ vi.mock("./chat-page-send-handler.lib", () => ({
   executeChatPageSend: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("~/shared/api/zulip-messages", () => ({
+vi.mock("~/shared/api/messenger-messages", () => ({
   sendMessage: vi.fn(),
 }));
 
@@ -66,7 +66,7 @@ describe("useChatPageSendMessage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(executeChatPageSend).mockResolvedValue(undefined);
-    vi.mocked(sendMessage).mockResolvedValue(createMessage({ id: 99 }) as MockMessage);
+    vi.mocked(sendMessage).mockResolvedValue(createMessage({ id: 99 }));
   });
 
   it("delegates handleSend to executeChatPageSend", async () => {
@@ -108,7 +108,7 @@ describe("useChatPageSendMessage", () => {
     const { result } = renderHook(() => useChatPageSendMessage(params));
 
     act(() => {
-      result.current.handleRemoveFailedOutgoing(createMessage({ id: 5 }) as MockMessage);
+      result.current.handleRemoveFailedOutgoing(createMessage({ id: 5 }));
     });
 
     expect(params.removeMessage).not.toHaveBeenCalled();

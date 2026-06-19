@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { resolveNotificationSoundPreset } from "./notification-sound-preset.lib";
 
 describe("notification-sound-preset", () => {
-  it("maps Zulip ding to default preset", () => {
+  it("maps Workspace ding to default preset", () => {
     expect(resolveNotificationSoundPreset("ding", "glass")).toBe("default");
   });
 

@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
-import { fetchUnreadMentionsPage } from "~/shared/api/zulip-messages";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import { fetchUnreadMentionsPage } from "~/shared/api/messenger-messages";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { ensureMentionsUnreadSynced } from "./chat-list-mentions-sync.lib";
 
-vi.mock("~/shared/api/zulip-messages", () => ({
+vi.mock("~/shared/api/messenger-messages", () => ({
   fetchUnreadMentionsPage: vi.fn(),
   MENTIONS_UNREAD_SYNC_PAGE_SIZE: 200,
 }));

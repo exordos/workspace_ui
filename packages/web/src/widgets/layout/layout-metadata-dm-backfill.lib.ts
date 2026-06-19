@@ -1,6 +1,6 @@
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useUsersStore } from "~/entities/user/user.model";
-import { fetchDirectMessagesPage } from "~/shared/api/zulip-sidebar-preview.lib";
+import { fetchDirectMessagesPage } from "~/shared/api/messenger-sidebar-preview.lib";
 import { upsertDmIndexFromMessages } from "~/shared/lib/dm-index";
 
 function ingestDmBackfillPage(

@@ -7,7 +7,7 @@ const markDmAsReadMock = vi.fn();
 const markStreamAsReadMock = vi.fn();
 const markTopicAsReadMock = vi.fn();
 
-vi.mock("~/shared/api/zulip-read-state", () => ({
+vi.mock("~/shared/api/messenger-read-state", () => ({
   markDmAsRead: (...args: unknown[]) => markDmAsReadMock(...args),
   markStreamAsRead: (...args: unknown[]) => markStreamAsReadMock(...args),
   markTopicAsRead: (...args: unknown[]) => markTopicAsReadMock(...args),

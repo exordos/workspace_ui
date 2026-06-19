@@ -4,7 +4,7 @@ export const EMPTY_TOPIC_ROUTE_TOKEN = "__empty__";
 export const ESCAPED_EMPTY_TOPIC_ROUTE_TOKEN = "~__empty__";
 
 /**
- * Legacy / display names that some Zulip realms (or older clients) use instead of an empty subject.
+ * Legacy / display names that some organization realms (or older clients) use instead of an empty subject.
  * Must stay distinct from a literal topic named `general` — only multi-word / UI labels here.
  */
 const DEFAULT_TOPIC_ALIASES = new Set(["general chat", "общий чат", "(no topic)"]);

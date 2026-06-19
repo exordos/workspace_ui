@@ -3,7 +3,7 @@
  *
  * Avoids full `messages.map` on single-id realtime updates (reactions, flags, edits).
  */
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 
 export function patchMessageAtId(
   messages: readonly MockMessage[],

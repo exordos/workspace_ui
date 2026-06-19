@@ -1,7 +1,7 @@
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { isTopicResolved, toResolvedTopicName } from "~/shared/lib/topic-resolve";
 
-/** Maps user input to the Zulip topic string, preserving resolved checkmark when applicable. */
+/** Maps user input to the Workspace topic string, preserving resolved checkmark when applicable. */
 export function resolveRenamedTopicName(
   currentTopic: string,
   nextNameInput: string,

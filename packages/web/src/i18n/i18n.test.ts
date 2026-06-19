@@ -14,7 +14,7 @@ import { t, setLocale, getLocale, getSupportedLocales, useTranslation } from "./
 describe("i18n", () => {
   beforeEach(() => {
     for (const key of [
-      "zulip-web-current-instance",
+      "messenger-web-current-instance",
       "workspace-locale",
       "workspace-locale:org-1",
       "workspace-locale:org-2",
@@ -109,7 +109,7 @@ describe("i18n", () => {
     });
 
     it("stores locale scoped to active organization", () => {
-      localStorage.setItem("zulip-web-current-instance", "org-1");
+      localStorage.setItem("messenger-web-current-instance", "org-1");
       setLocale("ru");
       expect(localStorage.getItem("workspace-locale:org-1")).toBe("ru");
     });
@@ -150,7 +150,7 @@ describe("i18n", () => {
     });
 
     it("loads locale from organization-scoped storage on init", async () => {
-      localStorage.setItem("zulip-web-current-instance", "org-2");
+      localStorage.setItem("messenger-web-current-instance", "org-2");
       localStorage.setItem("workspace-locale:org-2", "ru");
 
       vi.resetModules();

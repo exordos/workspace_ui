@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useUsersStore } from "~/entities/user/user.model";
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { buildSidebarFromMessages, messageToDmEntry, messageToStreamEntry } from "./chat-list.lib";
 
-function dmMessage(overrides: Partial<ZulipRawMessage> = {}): ZulipRawMessage {
+function dmMessage(overrides: Partial<WorkspaceRawMessage> = {}): WorkspaceRawMessage {
   return {
     id: 1,
     sender_id: 20,
@@ -145,7 +145,7 @@ describe("messageToStreamEntry", () => {
 
 describe("buildSidebarFromMessages", () => {
   it("aggregates unread per topic and dm in a single messages pass", () => {
-    const messages: ZulipRawMessage[] = [
+    const messages: WorkspaceRawMessage[] = [
       {
         id: 1,
         sender_id: 20,

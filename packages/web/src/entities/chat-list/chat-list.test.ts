@@ -2,15 +2,15 @@
 /**
  * Tests for chatListStore — the central store that manages sidebar chat entries.
  *
- * This store converts raw Zulip messages into structured stream and DM entries,
+ * This store converts raw messenger messages into structured stream and DM entries,
  * tracks unread counts via badge, maintains a messageId→location index for O(1)
  * lookups, and keeps entries sorted by most-recent-message timestamp.
  * Correctness here is critical because the sidebar is the primary navigation surface.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setLocale } from "~/i18n/i18n";
-import { fetchMessagesWithNarrow, rawMessageToMockMessage } from "~/shared/api/zulip-messages";
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import { fetchMessagesWithNarrow, rawMessageToMockMessage } from "~/shared/api/messenger-messages";
+import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import type { ChatListSnapshotSerialized } from "~/shared/lib/chat-list-snapshot-serialize.lib";
 import { sortChatsByLastMessage } from "~/shared/lib/chat-sorting";
 import { useUsersStore } from "../user/user.model";
@@ -18,7 +18,7 @@ import { buildChatListSnapshotSerialized } from "./chat-list-snapshot.lib";
 import { getStreamTopicMessageIds } from "./chat-list-stream-topic-index.lib";
 import { useChatListStore } from "./chat-list.model";
 
-vi.mock("~/shared/api/zulip-messages", async (importOriginal) => {
+vi.mock("~/shared/api/messenger-messages", async (importOriginal) => {
   const actual = await importOriginal<
     Record<string, unknown> & {
       fetchMessagesWithNarrow: typeof fetchMessagesWithNarrow;
@@ -53,7 +53,7 @@ function resetStores() {
   useUsersStore.getState().clear();
 }
 
-function streamMsg(overrides: Partial<ZulipRawMessage> = {}): ZulipRawMessage {
+function streamMsg(overrides: Partial<WorkspaceRawMessage> = {}): WorkspaceRawMessage {
   return {
     id: 1,
     sender_id: 10,
@@ -69,7 +69,7 @@ function streamMsg(overrides: Partial<ZulipRawMessage> = {}): ZulipRawMessage {
   };
 }
 
-function dmMsg(overrides: Partial<ZulipRawMessage> = {}): ZulipRawMessage {
+function dmMsg(overrides: Partial<WorkspaceRawMessage> = {}): WorkspaceRawMessage {
   return {
     id: 50,
     sender_id: 10,

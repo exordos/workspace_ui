@@ -3,11 +3,15 @@
  *
  * Cache paints the first frame quickly; server refresh remains the source of truth.
  */
-import type { ActivityFilter, MockMessage, ZulipRawMessage } from "~/shared/api/zulip.types";
+import type {
+  ActivityFilter,
+  MockMessage,
+  WorkspaceRawMessage,
+} from "~/shared/api/messenger.types";
 import { getInstanceMessagesAscending } from "~/shared/lib/message-cache-db";
 import { mockMessageToRawMessage } from "~/shared/lib/message-mock-to-raw.lib";
 
-function getActivityMessagesNewestTimestamp(messages: readonly ZulipRawMessage[]): number {
+function getActivityMessagesNewestTimestamp(messages: readonly WorkspaceRawMessage[]): number {
   if (messages.length === 0) return 0;
   let newest = messages[0]?.timestamp ?? 0;
   for (const message of messages) {
@@ -18,7 +22,7 @@ function getActivityMessagesNewestTimestamp(messages: readonly ZulipRawMessage[]
   return newest;
 }
 
-function getActivityMessagesMaxMessageId(messages: readonly ZulipRawMessage[]): number {
+function getActivityMessagesMaxMessageId(messages: readonly WorkspaceRawMessage[]): number {
   let maxId = 0;
   for (const message of messages) {
     if (message.id > maxId) {
@@ -29,8 +33,8 @@ function getActivityMessagesMaxMessageId(messages: readonly ZulipRawMessage[]): 
 }
 
 export function isActivityMessagesSnapshotFresher(
-  candidate: readonly ZulipRawMessage[],
-  current: readonly ZulipRawMessage[],
+  candidate: readonly WorkspaceRawMessage[],
+  current: readonly WorkspaceRawMessage[],
 ): boolean {
   if (candidate.length === 0) return false;
   if (current.length === 0) return true;
@@ -65,7 +69,7 @@ export function matchesActivityFilter(
   if (currentUserId == null) {
     return false;
   }
-  // Zulip reactions view: own messages that have at least one emoji reaction.
+  // Workspace reactions view: own messages that have at least one emoji reaction.
   return message.sender_id === currentUserId && (message.reactions?.length ?? 0) > 0;
 }
 
@@ -75,7 +79,7 @@ export async function hydrateActivityMessagesFromCache(
   filter: ActivityFilter,
   currentUserId: number | null,
   limit = 200,
-): Promise<ZulipRawMessage[]> {
+): Promise<WorkspaceRawMessage[]> {
   if (instanceId == null) return [];
   const all = await getInstanceMessagesAscending(instanceId);
   const filtered = all.filter((message) => matchesActivityFilter(message, filter, currentUserId));

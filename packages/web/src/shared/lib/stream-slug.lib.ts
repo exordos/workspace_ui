@@ -1,5 +1,5 @@
 /**
- * Builds `/stream/:streamSlug` segment in Zulip client format: `{id}-{normalized-name}`.
+ * Builds `/stream/:streamSlug` segment in Workspace client format: `{id}-{normalized-name}`.
  */
 export function buildStreamSlug(streamId: number, streamName: string): string {
   const lower = streamName.trim().toLowerCase();

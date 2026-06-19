@@ -1,8 +1,8 @@
 /**
- * Persists GET /users directory (per Zulip instance) in IndexedDB for instant hydrate
+ * Persists GET /users directory (per organization instance) in IndexedDB for instant hydrate
  * after reload; network fetch still replaces/merges fresh data.
  */
-import type { ZulipUserMember } from "~/shared/api/zulip.types";
+import type { MessengerUserMember } from "~/shared/api/messenger.types";
 import { openMessageCacheDb } from "~/shared/lib/message-cache-db";
 
 const STORE_USERS_DIRECTORY = "usersDirectory";
@@ -17,7 +17,7 @@ export interface UsersDirectorySnapshotRow {
   instanceId: string;
   version: UsersDirectorySnapshotVersion;
   savedAt: number;
-  members: ZulipUserMember[];
+  members: MessengerUserMember[];
 }
 
 export async function persistUsersDirectoryRow(row: UsersDirectorySnapshotRow): Promise<void> {

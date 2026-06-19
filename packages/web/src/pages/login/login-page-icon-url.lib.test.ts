@@ -8,7 +8,7 @@ describe("resolveLoginIconUrl", () => {
   });
 
   it("returns empty for empty icon", () => {
-    expect(resolveLoginIconUrl("https://zulip.example.com", "  ")).toBe("");
+    expect(resolveLoginIconUrl("https://chat.example.com", "  ")).toBe("");
   });
 
   it("returns empty for invalid realm base", () => {

@@ -37,7 +37,7 @@ slice-name/
 | `entities/feed/` | api, model, types, index | Activity feed store |
 | `entities/folder/` | api, index | Folder API integration |
 | `entities/inbox/` | model, index | Unread inbox aggregation |
-| `entities/instance/` | model, index | Zulip instance management + persistence |
+| `entities/instance/` | model, index | organization instance management + persistence |
 | `entities/message/` | model, index | Messages store + current chat state |
 | `entities/sticker/` | api, model, types, test, index | Sticker packs, API, types |
 | `entities/theme/` | model, index | Theme mode + palette store |
@@ -50,7 +50,7 @@ slice-name/
 | `features/ai-reply/` | api, model, types, ui, test, index | AI-generated reply suggestions |
 | `features/chat-info/` | model, ui, index | Chat info panel (DM + channel details) |
 | `features/create-chat/` | ui, index | Create DM / group / channel dialogs |
-| `features/instance-switch/` | ui, index | Multi-instance Zulip switcher UI |
+| `features/instance-switch/` | ui, index | Multi-instance organization switcher UI |
 | `features/jitsi-call/` | ui, index | Jitsi Meet video call modal + PiP |
 | `features/manage-folders/` | ui, index | Folder CRUD + chat assignment |
 | `features/media-viewer/` | model, index | Image/video viewer overlay |

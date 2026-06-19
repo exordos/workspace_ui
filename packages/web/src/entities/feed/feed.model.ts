@@ -5,7 +5,7 @@
  */
 
 import { create } from "zustand";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { logStoreAction } from "~/shared/lib/logger";
 
 interface FeedState {

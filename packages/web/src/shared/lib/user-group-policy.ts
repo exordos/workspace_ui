@@ -1,4 +1,4 @@
-import type { ZulipGroupSettingValue } from "~/shared/api/zulip.types";
+import type { MessengerGroupSettingValue } from "~/shared/api/messenger.types";
 
 interface AnnouncementOnlyGroupRecord {
   id: number;
@@ -25,7 +25,7 @@ function normalizeSubgroupIds(ids: readonly number[]): number[] {
 
 export function buildAnnouncementOnlyCanSendGroup(
   input: BuildAnnouncementOnlyCanSendGroupInput,
-): ZulipGroupSettingValue | null {
+): MessengerGroupSettingValue | null {
   const subgroupIds = normalizeSubgroupIds(
     Array.from(input.userGroups.values())
       .filter(

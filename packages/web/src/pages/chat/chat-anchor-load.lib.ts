@@ -1,4 +1,4 @@
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { dmRouteKey } from "~/shared/lib/dm-key";
 import {
   chatKeyFromMockMessage,

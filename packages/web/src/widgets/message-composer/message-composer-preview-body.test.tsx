@@ -2,8 +2,8 @@ import { render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MessageComposerPreviewBody } from "./message-composer-preview-body.ui";
 
-vi.mock("~/shared/api/zulip-client.internal", () => ({
-  getRealmBaseUrl: () => "https://zulip.example.com",
+vi.mock("~/shared/api/messenger-client.internal", () => ({
+  getRealmBaseUrl: () => "https://chat.example.com",
 }));
 
 vi.mock("~/shared/lib/env", async (importOriginal) => {
@@ -58,12 +58,12 @@ describe("MessageComposerPreviewBody", () => {
     expect(source?.hasAttribute("sizes")).toBe(false);
   });
 
-  it("loads Zulip embed background previews through authenticated fetch without keeping the raw style", async () => {
+  it("loads Workspace embed background previews through authenticated fetch without keeping the raw style", async () => {
     const fetchMock = vi.fn((input: string | URL) => {
       const value = String(input);
       if (
         value === "/external_content/hash/preview.jpeg" ||
-        value === "https://zulip.example.com/external_content/hash/preview.jpeg"
+        value === "https://chat.example.com/external_content/hash/preview.jpeg"
       ) {
         return Promise.resolve({
           ok: true,

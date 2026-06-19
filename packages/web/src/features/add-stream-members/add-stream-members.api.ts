@@ -2,7 +2,7 @@ import {
   addMembersToStream,
   type AddStreamMembersParams,
   type AddStreamMembersResult,
-} from "~/shared/api/zulip-streams";
+} from "~/shared/api/messenger-streams";
 
 export async function addStreamMembers(
   params: AddStreamMembersParams,

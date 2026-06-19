@@ -36,7 +36,7 @@ Before touching code, answer these questions IN YOUR RESPONSE:
    - Widget? (new UI block) → `widgets/<name>/`
    - Page? (new route) → `pages/<name>/`
    - Shared? (reusable utility) → `shared/lib/`, `shared/ui/`
-4. **API** — which Zulip/Workspace endpoints are needed
+4. **API** — which Workspace endpoints are needed
 5. **State** — what data goes in Zustand, what stays in component state
 6. **Test plan** — what to test (store actions, API, UI behavior)
 
@@ -44,7 +44,7 @@ Before touching code, answer these questions IN YOUR RESPONSE:
 
 - Search for existing code that does something similar
 - Check if an FSD slice already exists: `ls src/entities/ src/features/`
-- Check if the API endpoint is already wrapped: grep for the path in `lib/zulipClient.ts`
+- Check if the API endpoint is already wrapped: grep for the path in `shared/api/messenger-client.internal.ts`
 
 ## Phase 2: Types + Store (TDD)
 
@@ -102,7 +102,7 @@ const server = setupServer(
 entities/<name>/<name>.api.ts
 ```
 
-Use `zulipApi.get()` / `.post()` from `~/shared/api/client`. Add to barrel.
+Use `messengerApi.get()` / `.post()` from `~/shared/api/client`. Add to barrel.
 
 ## Phase 4: UI Components
 

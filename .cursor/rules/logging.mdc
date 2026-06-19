@@ -44,7 +44,7 @@ logger.debug("Request", { headers: { Authorization: authHeader } });
 
 // ✅ SAFE (auto-redacted, but still — avoid passing secrets)
 logger.info("Login", { realm: instance.realm, email: instance.email });
-logger.error("Auth failed", { status: 401, realm: "zulip.example.com" });
+logger.error("Auth failed", { status: 401, realm: "chat.example.com" });
 logger.debug("Request", { method: "GET", path: "/api/v1/messages" });
 ```
 

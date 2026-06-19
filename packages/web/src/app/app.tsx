@@ -10,7 +10,7 @@ import { initFocusManagement, focusMainContent } from "~/shared/lib/focus";
 import { useSwipe } from "~/shared/lib/gestures";
 import { useNavigationHistory, initMouseNavigation } from "~/shared/lib/navigation-history";
 import {
-  buildOrgRouteIdForZulipInstance,
+  buildOrgRouteIdForWorkspaceInstance,
   extractOrgRouteFromPathname,
   isOrgRoutePublicPath,
   replaceOrgRouteInPath,
@@ -45,7 +45,7 @@ const App: React.FC = () => {
     [instances, currentInstanceId],
   );
   const currentOrgRouteId = useMemo(
-    () => (currentInstance ? buildOrgRouteIdForZulipInstance(currentInstance) : null),
+    () => (currentInstance ? buildOrgRouteIdForWorkspaceInstance(currentInstance) : null),
     [currentInstance],
   );
   const defaultInboxRoute = useMemo(
@@ -108,7 +108,7 @@ const App: React.FC = () => {
   useEffect(() => {
     setCurrentOrgRouteIdResolver(() => {
       const current = useInstancesStore.getState().getCurrentInstance();
-      return current ? buildOrgRouteIdForZulipInstance(current) : null;
+      return current ? buildOrgRouteIdForWorkspaceInstance(current) : null;
     });
 
     return () => {
@@ -151,7 +151,7 @@ const App: React.FC = () => {
     }
 
     const matchedInstance = instances.find(
-      (instance) => buildOrgRouteIdForZulipInstance(instance) === orgId,
+      (instance) => buildOrgRouteIdForWorkspaceInstance(instance) === orgId,
     );
     if (matchedInstance == null) {
       const fallbackPath = replaceOrgRouteInPath(fullPath, currentOrgRouteId);

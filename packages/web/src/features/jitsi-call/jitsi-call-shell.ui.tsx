@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useState } from "react";
 import { t } from "~/i18n/i18n";
-import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
+import { getRealmBaseUrl } from "~/shared/api/messenger-client.internal";
 import { CALL_INCOMING_MODAL_VARIANT } from "~/shared/config/constants";
 import { resolveAvatarUrl } from "~/shared/lib/avatar";
 import { IncomingCallCompact } from "./jitsi-call-incoming-compact.ui";

@@ -24,8 +24,8 @@ import {
 } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
-import { removeMessageFlag } from "~/shared/api/zulip-messages";
-import type { ActivityFilter, ZulipRawMessage } from "~/shared/api/zulip.types";
+import { removeMessageFlag } from "~/shared/api/messenger-messages";
+import type { ActivityFilter, WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { formatActivityItemTime } from "~/shared/lib/datetime.lib";
 import { createLogger } from "~/shared/lib/logger";
@@ -56,7 +56,7 @@ const ALL_FILTERS = [
   ...ACTIVITY_FILTERS,
   "drafts",
 ] as const satisfies readonly ActivityPageExtendedFilter[];
-const EMPTY_ACTIVITY_MESSAGES: ZulipRawMessage[] = [];
+const EMPTY_ACTIVITY_MESSAGES: WorkspaceRawMessage[] = [];
 
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
@@ -300,7 +300,7 @@ export const ActivityPage: React.FC = () => {
   }, [initialScrollPositionKey, listLength, loading]);
 
   const handleMessageClick = useCallback(
-    (m: ZulipRawMessage, mode: "open" | "forward" = "open") => {
+    (m: WorkspaceRawMessage, mode: "open" | "forward" = "open") => {
       const route = buildNavigableRouteFromMessage(
         {
           id: m.id,

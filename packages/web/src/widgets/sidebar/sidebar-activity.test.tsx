@@ -470,7 +470,7 @@ describe("SidebarActivity", () => {
     useChatListStore.setState({ currentUserId: 7, lastAppliedMessages: [] });
 
     render(
-      <MemoryRouter initialEntries={["/org/acme.zulip.com/activity/starred"]}>
+      <MemoryRouter initialEntries={["/org/acme.messenger.com/activity/starred"]}>
         <SidebarActivity open={false} onToggle={() => {}} />
       </MemoryRouter>,
     );

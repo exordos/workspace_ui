@@ -6,7 +6,7 @@ import {
   useInstancesStore,
 } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
-import { fetchUser } from "~/shared/api/zulip-users";
+import { fetchUser } from "~/shared/api/messenger-users";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 
 export function useChatPartnerProfileHydration(options: {

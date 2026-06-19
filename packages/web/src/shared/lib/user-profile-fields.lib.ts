@@ -1,5 +1,5 @@
 /**
- * Zulip custom profile fields (`profile_data` on GET /users).
+ * Workspace custom profile fields (`profile_data` on GET /users).
  *
  * Converts server `value` / `rendered_value` pairs into safe display lines
  * (sanitized HTML or plain text). Field order follows numeric id when possible.
@@ -7,20 +7,22 @@
  */
 
 import { sanitizeHtml } from "~/shared/lib/html";
-import { parseZulipPersonPickerUserIds } from "~/shared/lib/user-profile-picker-parse.lib";
 import {
   realmCustomProfileFieldIsManager,
   type RealmProfileFieldDefinition,
-} from "~/shared/lib/zulip-profile-fields-map.lib";
+} from "~/shared/lib/messenger-profile-fields-map.lib";
+import { parseWorkspacePersonPickerUserIds } from "~/shared/lib/user-profile-picker-parse.lib";
 
-export { parseZulipPersonPickerUserIds } from "~/shared/lib/user-profile-picker-parse.lib";
+export { parseWorkspacePersonPickerUserIds } from "~/shared/lib/user-profile-picker-parse.lib";
 
-export interface ZulipCustomProfileFieldEntry {
+export interface WorkspaceCustomProfileFieldEntry {
   value?: string;
   rendered_value?: string;
 }
 
-export type ZulipCustomProfileDataMap = Readonly<Record<string, ZulipCustomProfileFieldEntry>>;
+export type WorkspaceCustomProfileDataMap = Readonly<
+  Record<string, WorkspaceCustomProfileFieldEntry>
+>;
 
 export interface CustomProfileFieldLine {
   fieldKey: string;
@@ -28,14 +30,14 @@ export interface CustomProfileFieldLine {
   html: string | null;
   /** Plain `value` when there is no usable rendered HTML. */
   plainText: string | null;
-  /** Zulip person-picker / user-mention in manager field — link to this user's profile. */
+  /** Workspace person-picker / user-mention in manager field — link to this user's profile. */
   managerProfileUserId?: number;
   /** Label if the users store has not loaded the manager's name yet. */
   managerDisplayFallback?: string;
 }
 
-/** Extracts `data-user-id` from Zulip-rendered profile HTML (e.g. user mentions). */
-export function extractUserIdsFromZulipProfileHtml(html: string): number[] {
+/** Extracts `data-user-id` from the messenger API-rendered profile HTML (e.g. user mentions). */
+export function extractUserIdsFromMessengerProfileHtml(html: string): number[] {
   const ids: number[] = [];
   const re = /data-user-id="(\d+)"/gi;
   let m: RegExpExecArray | null;
@@ -75,13 +77,13 @@ function findRealmFieldDefinition(
 
 function buildManagerProfileFieldLine(
   fieldKey: string,
-  entry: ZulipCustomProfileFieldEntry,
+  entry: WorkspaceCustomProfileFieldEntry,
   plain: string | undefined,
 ): CustomProfileFieldLine | null {
   const rendered = entry.rendered_value?.trim();
-  let pickerIds = parseZulipPersonPickerUserIds(entry.value);
+  let pickerIds = parseWorkspacePersonPickerUserIds(entry.value);
   if (pickerIds.length === 0 && rendered != null && rendered.length > 0) {
-    pickerIds = extractUserIdsFromZulipProfileHtml(rendered);
+    pickerIds = extractUserIdsFromMessengerProfileHtml(rendered);
   }
   if (pickerIds.length === 0) return null;
   const uid = pickerIds[0]!;
@@ -96,7 +98,7 @@ function buildManagerProfileFieldLine(
 
 function buildRenderedOrPlainProfileFieldLine(
   fieldKey: string,
-  entry: ZulipCustomProfileFieldEntry,
+  entry: WorkspaceCustomProfileFieldEntry,
   baseUrl: string | undefined,
 ): CustomProfileFieldLine | null {
   const rendered = entry.rendered_value?.trim();
@@ -115,7 +117,7 @@ function buildRenderedOrPlainProfileFieldLine(
 
 function buildCustomProfileFieldLine(
   fieldKey: string,
-  entry: ZulipCustomProfileFieldEntry,
+  entry: WorkspaceCustomProfileFieldEntry,
   baseUrl: string | undefined,
   fieldDefinitions: readonly RealmProfileFieldDefinition[] | null | undefined,
 ): CustomProfileFieldLine | null {
@@ -129,7 +131,7 @@ function buildCustomProfileFieldLine(
 
 /** Builds ordered display lines for custom profile data (GET /users `profile_data`). */
 export function getCustomProfileFieldLines(
-  profileData: ZulipCustomProfileDataMap | undefined | null,
+  profileData: WorkspaceCustomProfileDataMap | undefined | null,
   baseUrl?: string,
   fieldDefinitions?: readonly RealmProfileFieldDefinition[] | null,
 ): CustomProfileFieldLine[] {
@@ -147,8 +149,8 @@ export function getCustomProfileFieldLines(
 
 /** Deep equality for chat-info member profile payloads (stable key order). */
 export function areCustomProfileDataEqual(
-  a: ZulipCustomProfileDataMap | undefined | null,
-  b: ZulipCustomProfileDataMap | undefined | null,
+  a: WorkspaceCustomProfileDataMap | undefined | null,
+  b: WorkspaceCustomProfileDataMap | undefined | null,
 ): boolean {
   if (a === b) return true;
   if (a == null) return b == null;

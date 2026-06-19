@@ -5,19 +5,19 @@
 import type { ActiveOrgRequestContext } from "~/entities/instance/instance.model";
 import type { UserStatus } from "../user.model";
 
-export interface ZulipApiResultEnvelope {
+export interface MessengerApiResultEnvelope {
   result?: "success" | "error";
   msg?: string;
   code?: string;
 }
 
-export interface ZulipStatusEmojiDisplayInfo {
+export interface WorkspaceStatusEmojiDisplayInfo {
   emoji_name?: string;
   emoji_code?: string;
   reaction_type?: string;
 }
 
-export interface ZulipGetUserStatusPayload {
+export interface WorkspaceGetUserStatusPayload {
   status_text?: string;
   emoji_name?: string;
   emoji_code?: string;
@@ -25,15 +25,18 @@ export interface ZulipGetUserStatusPayload {
   away?: boolean;
 }
 
-export interface ZulipGetUserStatusResponse extends ZulipApiResultEnvelope {
-  status?: ZulipGetUserStatusPayload | null;
+export interface WorkspaceGetUserStatusResponse extends MessengerApiResultEnvelope {
+  status?: WorkspaceGetUserStatusPayload | null;
 }
 
-export interface ZulipUpdateOwnStatusResponse extends ZulipApiResultEnvelope {
+export interface WorkspaceUpdateOwnStatusResponse extends MessengerApiResultEnvelope {
   status_text?: string;
   status_emoji?: string;
   away?: boolean;
-  status_emoji_display_info?: ZulipStatusEmojiDisplayInfo | ZulipStatusEmojiDisplayInfo[] | null;
+  status_emoji_display_info?:
+    | WorkspaceStatusEmojiDisplayInfo
+    | WorkspaceStatusEmojiDisplayInfo[]
+    | null;
 }
 
 export type OwnStatusMutationErrorKind = "forbidden" | "invalid" | "unsupported" | "transient";

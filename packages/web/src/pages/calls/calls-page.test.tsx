@@ -16,9 +16,9 @@ vi.mock("react-router-dom", async () => {
   };
 });
 
-vi.mock("~/shared/api/zulip-messages", async () => {
-  const actual = await vi.importActual<typeof import("~/shared/api/zulip-messages")>(
-    "~/shared/api/zulip-messages",
+vi.mock("~/shared/api/messenger-messages", async () => {
+  const actual = await vi.importActual<typeof import("~/shared/api/messenger-messages")>(
+    "~/shared/api/messenger-messages",
   );
   return {
     ...actual,

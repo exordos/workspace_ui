@@ -1,5 +1,5 @@
-import { fetchStreamMembers, fetchStreams } from "~/shared/api/zulip-streams";
-import type { MockStream } from "~/shared/api/zulip.types";
+import { fetchStreamMembers, fetchStreams } from "~/shared/api/messenger-streams";
+import type { MockStream } from "~/shared/api/messenger.types";
 
 // chat-info data layer: eager members/metadata load, TTL cache, in-flight dedupe, invalidation.
 interface CacheEntry<T> {

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  buildOrgRouteIdForZulipInstance,
+  buildOrgRouteIdForWorkspaceInstance,
   buildOrgRouteIdFromRealm,
   extractOrgRouteFromPathname,
   isOrgRoutePublicPath,
@@ -26,8 +26,8 @@ describe("org-route", () => {
 
   it("prefers workspace org origin over canonical realm for org route id", () => {
     expect(
-      buildOrgRouteIdForZulipInstance({
-        realm: "https://zulip.example.com",
+      buildOrgRouteIdForWorkspaceInstance({
+        realm: "https://chat.example.com",
         workspaceOrgOrigin: "https://gw.example.com",
       }),
     ).toBe("gw.example.com");
@@ -35,7 +35,7 @@ describe("org-route", () => {
 
   it("falls back to realm when workspace org origin is missing", () => {
     expect(
-      buildOrgRouteIdForZulipInstance({
+      buildOrgRouteIdForWorkspaceInstance({
         realm: "https://chat.example.com",
       }),
     ).toBe("chat.example.com");

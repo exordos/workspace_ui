@@ -1,5 +1,5 @@
 /**
- * Shared sidebar unread decrement when messages are marked read (API, optimistic, or Zulip events).
+ * Shared sidebar unread decrement when messages are marked read (API, optimistic, or messenger events).
  */
 import type { CurrentChatContext } from "~/entities/message/message.model";
 import {
@@ -32,7 +32,7 @@ export interface ChatListUnreadDecrementState {
 }
 
 export interface ApplyChatListReadDecrementOptions {
-  /** Message ids reported read (API batch, Zulip event, or optimistic). */
+  /** Message ids reported read (API batch, messenger event, or optimistic). */
   messageIds: readonly number[];
   fallbackContext?: ChatListReadFallbackContext;
   /**

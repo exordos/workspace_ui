@@ -16,7 +16,7 @@
     <key>com.apple.security.cs.disable-library-validation</key>
     <true/>
 
-    <!-- Network: outbound connections (Zulip API, FCM, Jitsi, auto-update) -->
+    <!-- Network: outbound connections (Messenger API, FCM, Jitsi, auto-update) -->
     <key>com.apple.security.network.client</key>
     <true/>
 

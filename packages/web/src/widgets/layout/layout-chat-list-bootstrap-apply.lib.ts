@@ -3,11 +3,11 @@ import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import type { ChatListDmMetadataRow } from "~/entities/chat-list/chat-list.model.types";
 import { useInboxStore } from "~/entities/inbox/inbox.model";
 import { useUsersStore } from "~/entities/user/user.model";
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { loadDmIndexEntries, type DmIndexEntry } from "~/shared/lib/dm-index";
 import {
   logChatListFlow,
-  summarizeZulipMessagesForFlowDebug,
+  summarizeMessengerMessagesForFlowDebug,
 } from "~/shared/lib/message-flow-debug.lib";
 import { getNewestMessageId } from "./layout-chat-history-sync.lib";
 import type { ChatListBootstrapResult } from "./layout-chat-list-bootstrap.lib";
@@ -23,7 +23,7 @@ function toDmMetadataRowsFromIndex(entries: readonly DmIndexEntry[]): ChatListDm
 
 export interface ApplyChatListBootstrapResultOptions {
   currentInstanceId: string | null;
-  setFromMessages: (messages: ZulipRawMessage[], currentUserId: number | null) => void;
+  setFromMessages: (messages: WorkspaceRawMessage[], currentUserId: number | null) => void;
   latestMessageIdRef?: { current: number | null };
   /** When true, skips DM index restore (caller already hydrated once). */
   skipDmIndexHydrate?: boolean;
@@ -50,7 +50,7 @@ export function applyChatListBootstrapResult(
   logChatListFlow("bootstrapApply: start", {
     instanceId: currentInstanceId,
     bootstrapMode: result.mode,
-    bootstrapMessages: summarizeZulipMessagesForFlowDebug(
+    bootstrapMessages: summarizeMessengerMessagesForFlowDebug(
       result.mode === "streamPreviews" ? result.messages : [],
     ),
     latestMessageIdHint: result.latestMessageIdHint,

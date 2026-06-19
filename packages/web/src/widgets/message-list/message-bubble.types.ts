@@ -4,7 +4,7 @@ import type {
   MockMessageDeliveryStatus,
   Reaction,
   RealmEmoji,
-} from "~/shared/api/zulip.types";
+} from "~/shared/api/messenger.types";
 import type { MessageMediaGallery } from "./message-list-media.lib";
 
 /** Download chip state for user-upload attachment links in the bubble. */

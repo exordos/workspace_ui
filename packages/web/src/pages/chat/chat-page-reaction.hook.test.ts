@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatPageReaction } from "./chat-page-reaction.hook";
 
-vi.mock("~/shared/api/zulip-messages", () => ({
+vi.mock("~/shared/api/messenger-messages", () => ({
   addReaction: vi.fn().mockResolvedValue(undefined),
   removeReaction: vi.fn().mockResolvedValue(undefined),
 }));
@@ -11,7 +11,7 @@ vi.mock("~/i18n/i18n", () => ({
   t: (key: string) => key,
 }));
 
-import { addReaction, removeReaction } from "~/shared/api/zulip-messages";
+import { addReaction, removeReaction } from "~/shared/api/messenger-messages";
 
 const payload = {
   emojiName: "thumbs_up",

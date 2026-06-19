@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import type { ChatListSnapshotSerialized } from "~/shared/lib/chat-list-snapshot-serialize.lib";
 import { serializeStreamEntry } from "~/shared/lib/chat-list-snapshot-serialize.lib";
 import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
@@ -20,7 +20,7 @@ import {
 
 const CURRENT_USER_ID = 10;
 
-function streamMsg(overrides: Partial<ZulipRawMessage> = {}): ZulipRawMessage {
+function streamMsg(overrides: Partial<WorkspaceRawMessage> = {}): WorkspaceRawMessage {
   return {
     id: 1,
     sender_id: CURRENT_USER_ID,
@@ -36,7 +36,7 @@ function streamMsg(overrides: Partial<ZulipRawMessage> = {}): ZulipRawMessage {
   };
 }
 
-function dmMsg(overrides: Partial<ZulipRawMessage> = {}): ZulipRawMessage {
+function dmMsg(overrides: Partial<WorkspaceRawMessage> = {}): WorkspaceRawMessage {
   return {
     id: 50,
     sender_id: CURRENT_USER_ID,

@@ -1,10 +1,10 @@
 /**
- * Maps Zulip server notification_sound names to local audio presets.
+ * Maps server notification_sound names to local audio presets.
  */
 
 import type { NotificationSound } from "~/features/settings/settings.types";
 
-const ZULIP_SOUND_TO_PRESET: Readonly<Record<string, NotificationSound>> = {
+const MESSENGER_SOUND_TO_PRESET: Readonly<Record<string, NotificationSound>> = {
   ding: "default",
   ping: "subtle",
   click: "digital",
@@ -29,7 +29,7 @@ export function resolveNotificationSoundPreset(
   if (LOCAL_PRESETS.has(serverSound as NotificationSound)) {
     return serverSound as NotificationSound;
   }
-  const mapped = ZULIP_SOUND_TO_PRESET[serverSound];
+  const mapped = MESSENGER_SOUND_TO_PRESET[serverSound];
   if (mapped != null) {
     return mapped;
   }

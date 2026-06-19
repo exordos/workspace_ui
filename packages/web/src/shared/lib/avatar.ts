@@ -1,7 +1,7 @@
 /**
  * Avatar URL resolution with cache-busting.
  *
- * Consolidates avatar URL handling: resolves relative Zulip paths to absolute URLs
+ * Consolidates avatar URL handling: resolves relative Workspace paths to absolute URLs
  * and appends a version query param that changes on bulk user refresh, forcing
  * browser revalidation of potentially stale avatar images.
  *
@@ -22,7 +22,7 @@ export function getAvatarVersion(): number {
 }
 
 /**
- * Resolves a potentially relative Zulip avatar URL to an absolute URL with cache-busting.
+ * Resolves a potentially relative Workspace avatar URL to an absolute URL with cache-busting.
  * Returns undefined if the input is empty/null.
  */
 export function resolveAvatarUrl(

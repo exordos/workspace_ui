@@ -5,8 +5,8 @@
 import {
   getCurrentInstance,
   refreshWorkspaceApiBase,
-  refreshZulipApiBase,
-  zulipApi,
+  refreshMessengerApiBase,
+  messengerApi,
 } from "~/shared/api/client";
 import { createLogger } from "~/shared/lib/logger";
 import { requestUserStatusWithPolicy } from "./user.api.orchestrator";
@@ -21,8 +21,8 @@ import type {
   OwnStatusMutationResult,
   RequestUserStatusOptions,
   StatusFetchOutcome,
-  ZulipGetUserStatusResponse,
-  ZulipUpdateOwnStatusResponse,
+  WorkspaceGetUserStatusResponse,
+  WorkspaceUpdateOwnStatusResponse,
 } from "./user.api.types";
 
 export type {
@@ -42,7 +42,7 @@ export interface UpdateOwnStatusParams {
 
 const log = createLogger("user:api");
 
-function hasUsableZulipAuth(instance: ReturnType<typeof getCurrentInstance>): boolean {
+function hasUsableWorkspaceAuth(instance: ReturnType<typeof getCurrentInstance>): boolean {
   if (!instance?.realm) {
     return false;
   }
@@ -60,7 +60,7 @@ function mapStatusMutationError(status: number): OwnStatusMutationErrorKind {
 }
 
 function readStatusMutationErrorMessage(
-  data: ZulipUpdateOwnStatusResponse,
+  data: WorkspaceUpdateOwnStatusResponse,
   status: number,
   fallback: string,
 ): string {
@@ -79,14 +79,14 @@ function readStatusMutationErrorMessage(
 /** pingOnly=true sends keep-alive without changing the reported activity status. */
 export async function reportPresence(status: "active" | "idle", pingOnly = false): Promise<void> {
   const instance = getCurrentInstance();
-  if (!hasUsableZulipAuth(instance)) {
+  if (!hasUsableWorkspaceAuth(instance)) {
     return;
   }
 
   try {
-    refreshZulipApiBase();
+    refreshMessengerApiBase();
     refreshWorkspaceApiBase();
-    await zulipApi.post("/users/me/presence", {
+    await messengerApi.post("/users/me/presence", {
       status: pingOnly ? "idle" : status,
       client: "workspace-web",
       ...(pingOnly ? { ping_only: "true" } : {}),
@@ -98,15 +98,15 @@ export async function reportPresence(status: "active" | "idle", pingOnly = false
 
 async function fetchUserStatusDetailed(userId: number): Promise<StatusFetchOutcome> {
   const instance = getCurrentInstance();
-  if (!hasUsableZulipAuth(instance)) {
+  if (!hasUsableWorkspaceAuth(instance)) {
     return { kind: "transient_error", status: null };
   }
 
   try {
-    refreshZulipApiBase();
+    refreshMessengerApiBase();
     refreshWorkspaceApiBase();
-    const response = await zulipApi.get(`/users/${userId}/status`);
-    const data = (response.data ?? {}) as ZulipGetUserStatusResponse;
+    const response = await messengerApi.get(`/users/${userId}/status`);
+    const data = (response.data ?? {}) as WorkspaceGetUserStatusResponse;
 
     if (!response.ok) {
       if (response.status === 400 || isBadRequestError(data)) {
@@ -125,7 +125,7 @@ async function fetchUserStatusDetailed(userId: number): Promise<StatusFetchOutco
       return { kind: "transient_error", status: null };
     }
 
-    // Zulip contract: payload lives under `status`, not at the top level.
+    // Workspace contract: payload lives under `status`, not at the top level.
     if (!("status" in data)) {
       log.warn("User status payload has unexpected shape", { userId });
       return { kind: "transient_error", status: null };
@@ -150,14 +150,14 @@ export async function fetchUserStatus(userId: number): Promise<UserStatus | null
 /** Reads the authenticated user's status using the full custom-status model. */
 export async function fetchOwnStatus(): Promise<UserStatus | null> {
   const instance = getCurrentInstance();
-  if (!hasUsableZulipAuth(instance)) {
+  if (!hasUsableWorkspaceAuth(instance)) {
     return null;
   }
 
   try {
-    refreshZulipApiBase();
+    refreshMessengerApiBase();
     refreshWorkspaceApiBase();
-    const response = await zulipApi.get("/users/me/status");
+    const response = await messengerApi.get("/users/me/status");
     if (!response.ok) {
       log.warn("Own status request failed", { status: response.status });
       return null;
@@ -174,7 +174,7 @@ export async function updateOwnStatus(
   params: UpdateOwnStatusParams,
 ): Promise<OwnStatusMutationResult> {
   const instance = getCurrentInstance();
-  if (!hasUsableZulipAuth(instance)) {
+  if (!hasUsableWorkspaceAuth(instance)) {
     return {
       ok: false,
       status: 0,
@@ -190,7 +190,7 @@ export async function updateOwnStatus(
   const away = params.away === true;
 
   try {
-    refreshZulipApiBase();
+    refreshMessengerApiBase();
     refreshWorkspaceApiBase();
     const payload: Record<string, string> = {
       status_text: text,
@@ -203,8 +203,8 @@ export async function updateOwnStatus(
     if (emojiName && reactionType != null) {
       payload.reaction_type = reactionType;
     }
-    const response = await zulipApi.post("/users/me/status", payload);
-    const data = (response.data ?? {}) as ZulipUpdateOwnStatusResponse;
+    const response = await messengerApi.post("/users/me/status", payload);
+    const data = (response.data ?? {}) as WorkspaceUpdateOwnStatusResponse;
 
     if (!response.ok || data.result === "error") {
       return {
@@ -222,7 +222,7 @@ export async function updateOwnStatus(
       return { ok: true, status: normalized };
     }
 
-    // Some Zulip versions return an empty body on success — fall back to the submitted values.
+    // Some Workspace versions return an empty body on success — fall back to the submitted values.
     if (!text && !emojiName && !away) {
       return { ok: true, status: null };
     }

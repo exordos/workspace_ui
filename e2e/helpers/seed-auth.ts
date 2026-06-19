@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { E2E_EMAIL, E2E_INSTANCE_ID, E2E_REALM } from "../mocks/zulip-default-responses";
+import { E2E_EMAIL, E2E_INSTANCE_ID, E2E_REALM } from "../mocks/messenger-default-responses";
 
 export async function seedAuthStorage(page: Page, apiKey?: string): Promise<string> {
   const key = apiKey ?? `fixture-key-${Date.now()}`;
@@ -12,8 +12,8 @@ export async function seedAuthStorage(page: Page, apiKey?: string): Promise<stri
         email,
         apiKey: resolvedApiKey,
       };
-      localStorage.setItem("zulip-web-instances", JSON.stringify([instance]));
-      localStorage.setItem("zulip-web-current-instance", instanceId);
+      localStorage.setItem("messenger-web-instances", JSON.stringify([instance]));
+      localStorage.setItem("messenger-web-current-instance", instanceId);
       localStorage.setItem(`workspace-theme-mode:${instanceId}`, "dark");
       localStorage.setItem(`workspace-palette:${instanceId}`, "orange-warm");
     },

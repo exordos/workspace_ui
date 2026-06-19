@@ -2,7 +2,7 @@
  * Organization-scoped routing helpers.
  *
  * Builds deterministic `/org/:orgId` segments from the Workspace gateway origin
- * saved at login (`workspaceOrgOrigin`) when present; otherwise from Zulip realm.
+ * saved at login (`workspaceOrgOrigin`) when present; otherwise from organization realm.
  * Helpers prefix or replace `/org/:orgId` in internal routes while preserving query/hash.
  */
 
@@ -85,9 +85,9 @@ export interface OrgRouteInstanceInput {
 }
 
 /**
- * Org route id for multi-tab routing: prefer login gateway origin over canonical Zulip realm.
+ * Org route id for multi-tab routing: prefer login gateway origin over canonical organization realm.
  */
-export function buildOrgRouteIdForZulipInstance(instance: OrgRouteInstanceInput): string {
+export function buildOrgRouteIdForWorkspaceInstance(instance: OrgRouteInstanceInput): string {
   const fromLogin = instance.workspaceOrgOrigin?.trim() ?? "";
   if (fromLogin.length > 0) {
     return buildOrgRouteIdFromRealm(fromLogin);

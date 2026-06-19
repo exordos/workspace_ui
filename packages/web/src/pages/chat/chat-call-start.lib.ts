@@ -1,4 +1,4 @@
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { canStartCallFromHeader, type CallMessageTargetParams } from "./chat-call.lib";
 
 export interface StartCallFromHeaderInput {

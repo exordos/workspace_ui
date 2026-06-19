@@ -18,8 +18,8 @@ import {
   type UnreadDeltaSyncSource,
 } from "~/entities/unread-sync/unread-surfaces-sync.lib";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
-import { markMessagesAsRead } from "~/shared/api/zulip-read-state";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import { markMessagesAsRead } from "~/shared/api/messenger-read-state";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { createLogger } from "~/shared/lib/logger";
 import {
   createMessageIdSet,

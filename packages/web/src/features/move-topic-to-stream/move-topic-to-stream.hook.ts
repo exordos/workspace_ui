@@ -40,7 +40,7 @@ export function useMoveTopicToStream(options: UseMoveTopicToStreamOptions) {
   const streamSlug =
     effectiveStreamName.length > 0 ? buildStreamSlug(streamId, effectiveStreamName) : null;
 
-  // Permission groups deferred — Zulip API remains the final arbiter on submit.
+  // Permission groups deferred — Messenger API remains the final arbiter on submit.
   const canMove = topicTrimmed.length > 0 && streamSlug != null && currentUserId != null;
 
   const targetStreamOptions = useMemo(

@@ -1,12 +1,12 @@
 /**
- * Workspace REST API origin helpers: login URL → origin, and Zulip realm → origin.
+ * Workspace REST API origin helpers: login URL → origin, and organization realm → origin.
  *
  * Login stores the origin of the URL the user typed (`workspaceOrgOriginFromLoginServerUrlInput`).
- * When that field is missing (legacy data), `workspaceOrgApiOriginFromZulipRealmRoot`
- * falls back to the canonical Zulip realm origin instead of inventing a sibling host.
+ * When that field is missing (legacy data), `workspaceOrgApiOriginFromRealmRoot`
+ * falls back to the canonical organization realm origin instead of inventing a sibling host.
  */
 
-/** Workspace API origin from the server URL the user typed at login (before Zulip canonical realm). */
+/** Workspace API origin from the server URL the user typed at login (before Workspace canonical realm). */
 export function workspaceOrgOriginFromLoginServerUrlInput(serverUrlInput: string): string {
   const base = serverUrlInput
     .trim()
@@ -26,7 +26,7 @@ export function workspaceOrgOriginFromLoginServerUrlInput(serverUrlInput: string
 }
 
 /** Workspace HTTP API origin for legacy API calls with no stored Workspace origin. */
-export function workspaceOrgApiOriginFromZulipRealmRoot(realmRoot: string): string {
+export function workspaceOrgApiOriginFromRealmRoot(realmRoot: string): string {
   const trimmed = realmRoot.trim().replace(/\/+$/, "");
   if (trimmed === "") {
     return trimmed;

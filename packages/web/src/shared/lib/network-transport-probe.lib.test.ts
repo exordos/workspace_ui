@@ -9,7 +9,7 @@ vi.mock("~/shared/api/client", () => ({
 
 describe("probeApiTransport", () => {
   beforeEach(() => {
-    getCurrentInstance.mockReturnValue({ realm: "https://zulip.example.com" });
+    getCurrentInstance.mockReturnValue({ realm: "https://chat.example.com" });
   });
 
   afterEach(() => {

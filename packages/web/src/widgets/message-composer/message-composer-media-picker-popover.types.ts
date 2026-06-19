@@ -1,4 +1,4 @@
-import type { RealmEmoji } from "~/shared/api/zulip.types";
+import type { RealmEmoji } from "~/shared/api/messenger.types";
 import type { MediaPickerTab } from "./message-composer.types";
 import type { EmojiClickData } from "emoji-picker-react";
 import type { CSSProperties } from "react";

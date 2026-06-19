@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceFolder } from "./workspace-client";
 
 const getCurrentInstance = vi.fn();
-const getWorkspaceApiBaseForCurrentInstance = vi.fn(() => "https://zulip.genesis-core.tech");
+const getWorkspaceApiBaseForCurrentInstance = vi.fn(() => "https://messenger.genesis-core.tech");
 let workspaceBaseUrl = "/workspace";
 
 const workspaceApi = {
@@ -47,7 +47,7 @@ describe("workspace-client", () => {
     workspaceBaseUrl = "/workspace";
     getCurrentInstance.mockReturnValue({
       id: "instance-1",
-      realm: "https://zulip.genesis-core.tech",
+      realm: "https://messenger.genesis-core.tech",
       email: "user@example.com",
       apiKey: "api-key",
     });
@@ -70,7 +70,7 @@ describe("workspace-client", () => {
 
     expect(getWorkspaceApiBaseForCurrentInstance).toHaveBeenCalled();
     expect(workspaceApi.getWithBase).toHaveBeenCalledWith(
-      "https://zulip.genesis-core.tech",
+      "https://messenger.genesis-core.tech",
       "/v1/folders/",
       undefined,
       undefined,

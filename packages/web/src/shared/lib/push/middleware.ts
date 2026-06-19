@@ -8,7 +8,7 @@
  * Architecture:
  *
  *   Raw FCM payload
- *     → [decryption middleware]     — decrypt E2EE payload (Zulip 11+)
+ *     → [decryption middleware]     — decrypt E2EE payload (messenger 11+)
  *     → [validation middleware]     — reject malformed / spoofed payloads
  *     → [deduplication middleware]  — drop already-processed message IDs
  *     → [enrichment middleware]     — resolve sender name / avatar from store
@@ -161,7 +161,7 @@ export const pushPipeline = new PushPipeline();
 /**
  * Decryption middleware — placeholder for E2EE push payloads.
  *
- * Zulip 11+ can send encrypted push notifications. The encryption scheme
+ * Workspace 11+ can send encrypted push notifications. The encryption scheme
  * and key exchange mechanism are TBD. This middleware slot is where
  * decryption will happen.
  *
@@ -196,7 +196,7 @@ export const decryptionMiddleware: PushMiddleware = async (ctx, next) => {
 
 /**
  * Parsing middleware — converts raw data fields into PushMessagePayload.
- * This is the default parser for Zulip-format push payloads.
+ * This is the default parser for the messenger API-format push payloads.
  */
 export const parsingMiddleware: PushMiddleware = async (ctx, next) => {
   if (ctx.payload) {

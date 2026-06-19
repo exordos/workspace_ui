@@ -1,10 +1,10 @@
 /** Types for the chat-list Zustand store — state and public actions consumed by layout/widgets. */
-import type { ZulipUnreadMessagesSnapshot } from "~/shared/api/zulip-unread.lib";
+import type { MessengerUnreadMessagesSnapshot } from "~/shared/api/messenger-unread.lib";
 import type {
   MockMessage,
-  ZulipGroupSettingValue,
-  ZulipRawMessage,
-} from "~/shared/api/zulip.types";
+  MessengerGroupSettingValue,
+  WorkspaceRawMessage,
+} from "~/shared/api/messenger.types";
 import type { ChatListSnapshotSerialized } from "~/shared/lib/chat-list-snapshot-serialize.lib";
 import type {
   SidebarChat,
@@ -19,11 +19,11 @@ export interface ChatListStreamMetadataRow {
   isArchived?: boolean;
   creatorId?: number;
   inviteOnly?: boolean;
-  canAddSubscribersGroup?: ZulipGroupSettingValue;
-  canRemoveSubscribersGroup?: ZulipGroupSettingValue;
-  canAdministerChannelGroup?: ZulipGroupSettingValue;
-  canResolveTopicsGroup?: ZulipGroupSettingValue;
-  canMoveMessagesOutOfChannelGroup?: ZulipGroupSettingValue;
+  canAddSubscribersGroup?: MessengerGroupSettingValue;
+  canRemoveSubscribersGroup?: MessengerGroupSettingValue;
+  canAdministerChannelGroup?: MessengerGroupSettingValue;
+  canResolveTopicsGroup?: MessengerGroupSettingValue;
+  canMoveMessagesOutOfChannelGroup?: MessengerGroupSettingValue;
 }
 
 export interface ChatListDmMetadataRow {
@@ -65,7 +65,7 @@ export interface ChatListState {
   /** True after authoritative subscriptions metadata is applied (bootstrap/register). */
   streamMetadataHydrated: boolean;
   currentUserId: number | null;
-  lastAppliedMessages: ZulipRawMessage[] | null;
+  lastAppliedMessages: WorkspaceRawMessage[] | null;
   messageIdToLocation: Map<number, MessageLocation>;
   /** Inverted index streamId+topic → message ids; patched incrementally on location changes. */
   streamTopicMessageIds: Map<string, number[]>;
@@ -85,17 +85,17 @@ export interface ChatListState {
   bootstrapError: string | null;
   setBootstrapError: (error: string | null) => void;
   clearBootstrapError: () => void;
-  setFromMessages: (messages: ZulipRawMessage[], currentUserId: number | null) => void;
+  setFromMessages: (messages: WorkspaceRawMessage[], currentUserId: number | null) => void;
   /** Restore sidebar maps from IndexedDB snapshot (no raw `lastAppliedMessages`). */
   hydrateFromIndexedDbSnapshot: (snapshot: ChatListSnapshotSerialized) => void;
   /** Authoritative unread reconcile from server snapshot (e.g. `is:unread`). */
   reconcileUnreadFromMessages: (
-    messages: readonly ZulipRawMessage[],
+    messages: readonly WorkspaceRawMessage[],
     currentUserId: number | null,
   ) => void;
   /** Authoritative unread reconcile from register `unread_msgs` buckets. */
   reconcileUnreadFromSnapshot: (
-    snapshot: ZulipUnreadMessagesSnapshot,
+    snapshot: MessengerUnreadMessagesSnapshot,
     currentUserId: number | null,
   ) => void;
   /** Authoritative replace of unread mention ids/count from GET is:mentioned+is:unread. */
@@ -106,18 +106,18 @@ export interface ChatListState {
   /** Register fallback for mention ids until first API sync. */
   reconcileMentionsFromRegisterIds: (messageIds: readonly number[]) => void;
   decrementMentionsForReadMessages: (messageIds: readonly number[]) => void;
-  addMessage: (message: ZulipRawMessage, options?: { suppressUnreadBump?: boolean }) => void;
-  addMessages: (messages: ZulipRawMessage[]) => void;
+  addMessage: (message: WorkspaceRawMessage, options?: { suppressUnreadBump?: boolean }) => void;
+  addMessages: (messages: WorkspaceRawMessage[]) => void;
   /**
    * Adds `messageIdToLocation` entries for unread messages without touching previews/unread totals.
    * Needed so `update_message_flags(read)` can decrement totals for messages that were loaded in the open chat
    * but not previously indexed by sidebar bootstrap/lazy hydrate.
    */
-  upsertUnreadMessageLocations: (messages: ZulipRawMessage[]) => void;
+  upsertUnreadMessageLocations: (messages: WorkspaceRawMessage[]) => void;
   /** Indexes mention message locations from API sync (stream/topic/DM rows for sidebar @ badge). */
   upsertMentionMessageLocations: (messages: readonly MockMessage[]) => void;
   /** Stream/topic preview only — does not bump unread (metadata-first stream batch). */
-  applyStreamSidebarPreviewsFromMessages: (messages: ZulipRawMessage[]) => void;
+  applyStreamSidebarPreviewsFromMessages: (messages: WorkspaceRawMessage[]) => void;
   /** Ensures topic shells exist for a stream (used when expanding channel in sidebar). */
   upsertStreamTopicShells: (streamId: number, topics: string[]) => void;
   /** Adds channels from subscriptions metadata even when no messages for them are in memory. */

@@ -1,7 +1,7 @@
 /**
  * Build / bounds helpers for persisting chat-list projection to IndexedDB.
  */
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import type {
   ChatListSnapshotSerialized,
   ChatListSnapshotMessageLocation,
@@ -9,7 +9,7 @@ import type {
 import { serializeStreamEntry } from "~/shared/lib/chat-list-snapshot-serialize.lib";
 import type { ChatListState } from "./chat-list.model.types";
 
-export function computeMessageIdBounds(messages: readonly ZulipRawMessage[]): {
+export function computeMessageIdBounds(messages: readonly WorkspaceRawMessage[]): {
   lastMessageId: number | null;
   oldestMessageId: number | null;
 } {

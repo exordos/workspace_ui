@@ -7,7 +7,7 @@ import {
 const fetchMessageRenderedHtmlByIdMock = vi.hoisted(() => vi.fn());
 const renderMessageContentMock = vi.hoisted(() => vi.fn());
 
-vi.mock("~/shared/api/zulip-messages", () => ({
+vi.mock("~/shared/api/messenger-messages", () => ({
   fetchMessageRenderedHtmlById: (...args: unknown[]) => fetchMessageRenderedHtmlByIdMock(...args),
   renderMessageContent: (...args: unknown[]) => renderMessageContentMock(...args),
 }));
@@ -126,7 +126,7 @@ describe("fetchLinkPreviewsFromMessageMarkdown", () => {
     expect(items[1]?.data?.title).toBe("Other");
   });
 
-  it("matches embed when Zulip canonical URL differs from text URL", async () => {
+  it("matches embed when Workspace canonical URL differs from text URL", async () => {
     fetchMessageRenderedHtmlByIdMock.mockResolvedValue(`
       <div class="message_embed">
         <a class="message_embed_image" href="https://example.com/page/"></a>

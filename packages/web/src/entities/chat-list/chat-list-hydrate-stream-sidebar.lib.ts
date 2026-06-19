@@ -1,18 +1,18 @@
 /**
  * Lazy per-channel sidebar topic hydrate: fetch recent stream messages and merge previews only.
  */
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import {
   captureActiveOrgRequestContext,
   isActiveOrgRequestContextCurrent,
   type ActiveOrgRequestContext,
 } from "~/entities/instance/instance.model";
-import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import {
   fetchLatestMessagesForSidebarTopics,
   fetchStreamChannelMessagesForSidebarTopics,
-} from "~/shared/api/zulip-sidebar-preview.lib";
-import { fetchStreamTopicNames } from "~/shared/api/zulip-streams";
-import type { ZulipUnreadMessagesSnapshot } from "~/shared/api/zulip-unread.lib";
+} from "~/shared/api/messenger-sidebar-preview.lib";
+import { fetchStreamTopicNames } from "~/shared/api/messenger-streams";
+import type { MessengerUnreadMessagesSnapshot } from "~/shared/api/messenger-unread.lib";
 import { guard } from "~/shared/lib/guards";
 import { logChatListFlow } from "~/shared/lib/message-flow-debug.lib";
 
@@ -288,7 +288,7 @@ export function requestStreamSidebarTopicListHydrate(streamId: number): Promise<
 
 /** Enqueues lazy topic hydrate for register-reported unread on channels still missing topic rows. */
 export function queuePriorityStreamSidebarTopicsHydrate(
-  unreadSnapshot?: ZulipUnreadMessagesSnapshot | null,
+  unreadSnapshot?: MessengerUnreadMessagesSnapshot | null,
 ): void {
   if (unreadSnapshot != null) {
     const { streamsMap } = useChatListStore.getState();

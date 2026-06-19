@@ -145,7 +145,7 @@ Cleanup should:
 
 The canonical shell cleanup entrypoint lives in:
 
-- `packages/web/src/widgets/layout/layout-zulip-event-loop.hook.ts`
+- `packages/web/src/widgets/layout/layout-messenger-event-loop.hook.ts`
 
 ## When Each Tool Is Mandatory
 

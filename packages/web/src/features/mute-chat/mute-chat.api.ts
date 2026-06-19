@@ -1,11 +1,11 @@
 /**
- * Mute/unmute API — calls Zulip endpoints for stream and topic muting.
+ * Mute/unmute API — calls Workspace endpoints for stream and topic muting.
  *
  * Stream mute: POST /users/me/subscriptions/properties
  * Topic mute: POST /user_topics
  */
 
-import { zulipApi } from "~/shared/api/client";
+import { messengerApi } from "~/shared/api/client";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
@@ -24,7 +24,7 @@ interface SubscriptionPropertyRow {
 async function postSubscriptionProperties(rows: SubscriptionPropertyRow[]): Promise<boolean> {
   if (rows.length === 0) return true;
   try {
-    const res = await zulipApi.post("/users/me/subscriptions/properties", {
+    const res = await messengerApi.post("/users/me/subscriptions/properties", {
       subscription_data: JSON.stringify(rows),
     });
     if (res.ok) return true;
@@ -79,7 +79,7 @@ export async function setStreamAudibleNotifications(
   return ok;
 }
 
-/** Applies Zulip channel notification level in one request (mute + desktop). */
+/** Applies Workspace channel notification level in one request (mute + desktop). */
 export async function setStreamNotificationLevel(
   streamId: number,
   level: NotificationLevel,
@@ -128,7 +128,7 @@ export async function setTopicVisibility(
   const normalizedTopic = normalizeTopicForIdentity(topic);
 
   try {
-    const res = await zulipApi.post("/user_topics", {
+    const res = await messengerApi.post("/user_topics", {
       stream_id: String(streamId),
       topic: normalizedTopic,
       visibility_policy: String(policy),
@@ -172,7 +172,7 @@ function topicVisibilityLevelToPolicy(level: TopicVisibilityLevel): VisibilityPo
   }
 }
 
-/** Sets Zulip user_topics.visibility_policy (0–3). */
+/** Sets Workspace user_topics.visibility_policy (0–3). */
 export async function setTopicVisibilityLevel(
   streamId: number,
   topic: string,

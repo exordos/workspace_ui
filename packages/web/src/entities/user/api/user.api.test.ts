@@ -6,7 +6,7 @@ const {
   mockGet,
   mockPost,
   getCurrentInstance,
-  refreshZulipApiBase,
+  refreshMessengerApiBase,
   refreshWorkspaceApiBase,
   mockGetUserStatusCacheRow,
   mockPutUserStatusCacheRow,
@@ -14,19 +14,19 @@ const {
   mockGet: vi.fn(),
   mockPost: vi.fn(),
   getCurrentInstance: vi.fn(),
-  refreshZulipApiBase: vi.fn(),
+  refreshMessengerApiBase: vi.fn(),
   refreshWorkspaceApiBase: vi.fn(),
   mockGetUserStatusCacheRow: vi.fn(),
   mockPutUserStatusCacheRow: vi.fn(),
 }));
 
 vi.mock("~/shared/api/client", () => ({
-  zulipApi: {
+  messengerApi: {
     get: (...args: unknown[]) => mockGet(...args),
     post: (...args: unknown[]) => mockPost(...args),
   },
   getCurrentInstance,
-  refreshZulipApiBase,
+  refreshMessengerApiBase,
   refreshWorkspaceApiBase,
 }));
 
@@ -53,7 +53,7 @@ describe("user presence api", () => {
       instances: [
         {
           id: "instance-1",
-          realm: "https://zulip.example.com",
+          realm: "https://chat.example.com",
           email: "user@example.com",
           apiKey: "api-key",
         },
@@ -65,7 +65,7 @@ describe("user presence api", () => {
     mockGet.mockReset();
     mockPost.mockReset();
     getCurrentInstance.mockReset();
-    refreshZulipApiBase.mockReset();
+    refreshMessengerApiBase.mockReset();
     mockGetUserStatusCacheRow.mockReset();
     mockGetUserStatusCacheRow.mockResolvedValue(null);
     mockPutUserStatusCacheRow.mockReset();
@@ -86,7 +86,7 @@ describe("user presence api", () => {
     await reportPresence("active");
 
     expect(mockPost).not.toHaveBeenCalled();
-    expect(refreshZulipApiBase).not.toHaveBeenCalled();
+    expect(refreshMessengerApiBase).not.toHaveBeenCalled();
   });
 
   it("reports active presence by default", async () => {
@@ -95,7 +95,7 @@ describe("user presence api", () => {
 
     await reportPresence("active");
 
-    expect(refreshZulipApiBase).toHaveBeenCalledTimes(1);
+    expect(refreshMessengerApiBase).toHaveBeenCalledTimes(1);
     expect(mockPost).toHaveBeenCalledWith("/users/me/presence", {
       status: "active",
       client: "workspace-web",
@@ -108,7 +108,7 @@ describe("user presence api", () => {
 
     await reportPresence("active", true);
 
-    expect(refreshZulipApiBase).toHaveBeenCalledTimes(1);
+    expect(refreshMessengerApiBase).toHaveBeenCalledTimes(1);
     expect(mockPost).toHaveBeenCalledWith("/users/me/presence", {
       status: "idle",
       client: "workspace-web",
@@ -221,7 +221,7 @@ describe("user presence api", () => {
     const { updateOwnStatus } = await import("./user.api");
     getCurrentInstance.mockReturnValue({
       id: "instance-session",
-      realm: "https://zulip.example.com",
+      realm: "https://chat.example.com",
       email: "user@example.com",
       apiKey: "",
       authType: "session",
@@ -255,7 +255,7 @@ describe("user presence api", () => {
     const { updateOwnStatus } = await import("./user.api");
     getCurrentInstance.mockReturnValue({
       id: "instance-empty",
-      realm: "https://zulip.example.com",
+      realm: "https://chat.example.com",
       email: "user@example.com",
       apiKey: "",
     });
@@ -274,7 +274,7 @@ describe("user presence api", () => {
     });
   });
 
-  it("falls back to submitted status metadata when Zulip returns a minimal success body", async () => {
+  it("falls back to submitted status metadata when Workspace returns a minimal success body", async () => {
     const { updateOwnStatus } = await import("./user.api");
     mockPost.mockResolvedValue({
       ok: true,

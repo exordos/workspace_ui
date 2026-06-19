@@ -3,9 +3,9 @@ import { useInstancesStore } from "~/entities/instance/instance.model";
 import {
   countMentionsUnreadFromSnapshot,
   countPersonalDmUnreadFromSnapshot,
-  type ZulipUnreadMessagesSnapshot,
-} from "~/shared/api/zulip-unread.lib";
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+  type MessengerUnreadMessagesSnapshot,
+} from "~/shared/api/messenger-unread.lib";
+import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import {
   logSidebarUnreadFlow,
   summarizeSidebarUnreadTotals,
@@ -29,8 +29,8 @@ export interface SyncUnreadSurfacesFromSnapshotOptions {
   source: UnreadSurfaceSyncSource;
   instanceId: string | null;
   currentUserId: number | null;
-  snapshot: ZulipUnreadMessagesSnapshot;
-  messages?: readonly ZulipRawMessage[];
+  snapshot: MessengerUnreadMessagesSnapshot;
+  messages?: readonly WorkspaceRawMessage[];
   applyChatList?: boolean;
   applyInstanceCounts?: boolean;
   // Active org should use chat-list-derived, so muted topics do not raise the org badge.
@@ -65,7 +65,7 @@ export interface SyncUnreadSurfacesFromDeltaOptions {
   isEffectivelyMuted?: (streamId: number, topic: string) => boolean;
 }
 
-function hasPersonalUnreadFromSnapshot(snapshot: ZulipUnreadMessagesSnapshot): boolean {
+function hasPersonalUnreadFromSnapshot(snapshot: MessengerUnreadMessagesSnapshot): boolean {
   return (
     countPersonalDmUnreadFromSnapshot(snapshot) > 0 || countMentionsUnreadFromSnapshot(snapshot) > 0
   );
@@ -74,7 +74,7 @@ function hasPersonalUnreadFromSnapshot(snapshot: ZulipUnreadMessagesSnapshot): b
 // Used for inactive orgs where we only trust the server total.
 function writeInstanceCountsFromSnapshot(
   instanceId: string,
-  snapshot: ZulipUnreadMessagesSnapshot,
+  snapshot: MessengerUnreadMessagesSnapshot,
 ): void {
   const instances = useInstancesStore.getState();
   instances.setInstanceUnreadCount(instanceId, snapshot.totalCount);

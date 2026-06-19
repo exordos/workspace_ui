@@ -1,15 +1,15 @@
 /**
  * Long-poll iteration helpers for `event-loop.ts` (keeps `runLoop` cognitive complexity low).
  */
-import type { ZulipEvent } from "~/shared/api/zulip.types";
+import type { MessengerEvent } from "~/shared/api/messenger.types";
 import {
   isLikelyNetworkError,
   noteApiTransportFailure,
   noteApiTransportSuccess,
 } from "~/shared/lib/connection-health";
 import { createLogger } from "~/shared/lib/logger";
+import { shouldReRegisterEventQueueFromPollResponse } from "~/shared/lib/messenger-event-queue-errors.lib";
 import { isOnline, waitForOnline } from "~/shared/lib/network";
-import { shouldReRegisterEventQueueFromPollResponse } from "~/shared/lib/zulip-event-queue-errors.lib";
 
 const log = createLogger("realtime");
 
@@ -72,7 +72,7 @@ export function resolveEventPollCatchDisposition(
   return "re_register";
 }
 
-export interface PollZulipEventsOptions {
+export interface PollMessengerEventsOptions {
   signal?: AbortSignal;
   queueId: string;
   lastEventId: number;
@@ -81,14 +81,14 @@ export interface PollZulipEventsOptions {
     queueId: string,
     lastEventId: number,
     options: { timeoutSec?: number; signal?: AbortSignal },
-  ) => Promise<{ events?: ZulipEvent[] }>;
+  ) => Promise<{ events?: MessengerEvent[] }>;
   setActivePollAbort: (controller: AbortController | null) => void;
   abortActivePoll: () => void;
 }
 
-export async function pollZulipEventsOnce(
-  options: PollZulipEventsOptions,
-): Promise<{ events?: ZulipEvent[] }> {
+export async function pollMessengerEventsOnce(
+  options: PollMessengerEventsOptions,
+): Promise<{ events?: MessengerEvent[] }> {
   const {
     signal,
     queueId,
@@ -119,9 +119,9 @@ export async function pollZulipEventsOnce(
 }
 
 export async function applySuccessfulPollResult(options: {
-  result: { events?: ZulipEvent[] };
+  result: { events?: MessengerEvent[] };
   onReRegister: () => Promise<void>;
-  onEvents: (events: ZulipEvent[]) => void;
+  onEvents: (events: MessengerEvent[]) => void;
   resetRetryCount: () => void;
 }): Promise<"continue" | "handled"> {
   if (shouldReRegisterEventQueueFromPollResponse(options.result)) {
@@ -142,11 +142,11 @@ export interface RunEventLoopPollCycleOptions {
   getQueueId: () => string | null;
   lastEventId: number;
   longpollTimeoutSec: number;
-  getEvents: PollZulipEventsOptions["getEvents"];
-  setActivePollAbort: PollZulipEventsOptions["setActivePollAbort"];
-  abortActivePoll: PollZulipEventsOptions["abortActivePoll"];
+  getEvents: PollMessengerEventsOptions["getEvents"];
+  setActivePollAbort: PollMessengerEventsOptions["setActivePollAbort"];
+  abortActivePoll: PollMessengerEventsOptions["abortActivePoll"];
   onReRegister: () => Promise<void>;
-  onEvents: (events: ZulipEvent[]) => void;
+  onEvents: (events: MessengerEvent[]) => void;
   resetRetryCount: () => void;
   clearQueueId: () => void;
   wake: () => void;
@@ -161,7 +161,7 @@ export async function runEventLoopPollCycle(
   if (activeQueueId == null) return "continue";
 
   try {
-    const result = await pollZulipEventsOnce({
+    const result = await pollMessengerEventsOnce({
       signal: options.signal,
       queueId: activeQueueId,
       lastEventId: options.lastEventId,

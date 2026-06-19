@@ -3,7 +3,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useFeedStore } from "~/entities/feed/feed.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { createMessage } from "~/test/factories";
 import { FeedPage } from "./feed-page.ui";
 import type * as ReactRouterDom from "react-router-dom";
@@ -91,7 +91,7 @@ describe("FeedPage forward action", () => {
       instances: [
         {
           id: "instance-1",
-          realm: "https://zulip.example.com",
+          realm: "https://chat.example.com",
           email: "user@example.com",
           apiKey: "api-key",
         },
@@ -140,7 +140,7 @@ describe("FeedPage forward action", () => {
       instances: [
         {
           id: "instance-1",
-          realm: "https://zulip.example.com",
+          realm: "https://chat.example.com",
           email: "user@example.com",
           apiKey: "api-key",
         },
@@ -225,7 +225,7 @@ describe("FeedPage forward action", () => {
         instances: [
           {
             id: "instance-1",
-            realm: "https://zulip.example.com",
+            realm: "https://chat.example.com",
             email: "user@example.com",
             apiKey: "api-key",
           },
@@ -252,7 +252,7 @@ describe("FeedPage forward action", () => {
       instances: [
         {
           id: "instance-1",
-          realm: "https://zulip.example.com",
+          realm: "https://chat.example.com",
           email: "user@example.com",
           apiKey: "api-key",
         },
@@ -303,7 +303,7 @@ describe("FeedPage forward action", () => {
       instances: [
         {
           id: "instance-1",
-          realm: "https://zulip.example.com",
+          realm: "https://chat.example.com",
           email: "user@example.com",
           apiKey: "api-key",
         },
@@ -326,7 +326,7 @@ describe("FeedPage forward action", () => {
           type: "stream",
           display_recipient: "engineering",
           channel: "engineering",
-        }) as MockMessage,
+        }),
       ],
       isInitialLoading: false,
       isRefreshing: false,
@@ -382,7 +382,7 @@ describe("FeedPage forward action", () => {
         instances: [
           {
             id: "instance-1",
-            realm: "https://zulip.example.com",
+            realm: "https://chat.example.com",
             email: "user@example.com",
             apiKey: "api-key",
           },
@@ -457,7 +457,7 @@ describe("FeedPage forward action", () => {
         instances: [
           {
             id: "instance-1",
-            realm: "https://zulip.example.com",
+            realm: "https://chat.example.com",
             email: "user@example.com",
             apiKey: "api-key",
           },
@@ -525,10 +525,7 @@ describe("FeedPage forward action", () => {
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([]);
 
-    let resolveNextOrgFetch!: (value: {
-      messages: MockMessage[];
-      foundOldest: boolean;
-    }) => void;
+    let resolveNextOrgFetch!: (value: { messages: MockMessage[]; foundOldest: boolean }) => void;
     const nextOrgFetch = new Promise<{ messages: MockMessage[]; foundOldest: boolean }>(
       (resolve) => {
         resolveNextOrgFetch = resolve;
@@ -581,7 +578,7 @@ describe("FeedPage forward action", () => {
           type: "stream",
           display_recipient: "engineering",
           channel: "engineering",
-        }) as MockMessage,
+        }),
       ]);
       await staleHydrate;
     });
@@ -602,7 +599,7 @@ describe("FeedPage forward action", () => {
             type: "stream",
             display_recipient: "support",
             channel: "support",
-          }) as MockMessage,
+          }),
         ],
         foundOldest: true,
       });
@@ -683,7 +680,7 @@ describe("FeedPage forward action", () => {
             type: "stream",
             display_recipient: "engineering",
             channel: "engineering",
-          }) as MockMessage,
+          }),
         ],
         foundOldest: true,
       });
@@ -706,7 +703,7 @@ describe("FeedPage forward action", () => {
             type: "stream",
             display_recipient: "support",
             channel: "support",
-          }) as MockMessage,
+          }),
         ],
         foundOldest: true,
       });
@@ -762,7 +759,7 @@ describe("FeedPage forward action", () => {
           type: "stream",
           display_recipient: "engineering",
           channel: "engineering",
-        }) as MockMessage,
+        }),
       ],
       isInitialLoading: false,
       isRefreshing: false,
@@ -813,7 +810,7 @@ describe("FeedPage forward action", () => {
             type: "stream",
             display_recipient: "engineering",
             channel: "engineering",
-          }) as MockMessage,
+          }),
           createMessage({
             id: 100,
             sender_id: 42,
@@ -825,7 +822,7 @@ describe("FeedPage forward action", () => {
             type: "stream",
             display_recipient: "engineering",
             channel: "engineering",
-          }) as MockMessage,
+          }),
         ],
         foundOldest: true,
       });

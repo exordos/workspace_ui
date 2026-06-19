@@ -1,8 +1,8 @@
 /**
  * Channel metadata sections for the browse-channels detail panel.
  */
-import type { ZulipGroupSettingValue } from "~/shared/api/zulip.types";
-import { formatGroupSettingDisplay } from "~/shared/lib/zulip-group-setting-display.lib";
+import type { MessengerGroupSettingValue } from "~/shared/api/messenger.types";
+import { formatGroupSettingDisplay } from "~/shared/lib/messenger-group-setting-display.lib";
 
 export interface BrowseChannelDetailInput {
   streamId: number;
@@ -23,12 +23,12 @@ export interface BrowseChannelDetailInput {
   messageRetentionDays: number | null;
   desktopNotifications: boolean | null;
   audibleNotifications: boolean | null;
-  canSubscribeGroup?: ZulipGroupSettingValue;
-  canAddSubscribersGroup?: ZulipGroupSettingValue;
-  canRemoveSubscribersGroup?: ZulipGroupSettingValue;
-  canAdministerChannelGroup?: ZulipGroupSettingValue;
-  canResolveTopicsGroup?: ZulipGroupSettingValue;
-  canMoveMessagesOutOfChannelGroup?: ZulipGroupSettingValue;
+  canSubscribeGroup?: MessengerGroupSettingValue;
+  canAddSubscribersGroup?: MessengerGroupSettingValue;
+  canRemoveSubscribersGroup?: MessengerGroupSettingValue;
+  canAdministerChannelGroup?: MessengerGroupSettingValue;
+  canResolveTopicsGroup?: MessengerGroupSettingValue;
+  canMoveMessagesOutOfChannelGroup?: MessengerGroupSettingValue;
 }
 
 export interface BrowseChannelDetailField {
@@ -57,7 +57,7 @@ export interface BrowseChannelDetailLabels {
   resolveNotifications: (isMuted: boolean) => string;
   resolveNotificationOverride: (value: boolean | null) => string | null;
   resolveCount: (count: number | null, unknownLabel: string) => string;
-  resolveGroupSetting: (value: ZulipGroupSettingValue | undefined) => string | null;
+  resolveGroupSetting: (value: MessengerGroupSettingValue | undefined) => string | null;
   resolveWebPublic: () => string;
   unknownLabel: string;
 }
@@ -280,7 +280,7 @@ export function createBrowseChannelDetailLabels(options: {
   locale: string;
 }): BrowseChannelDetailLabels {
   const { t, resolveGroupName, resolveUserName, locale } = options;
-  const formatGroup = (value: ZulipGroupSettingValue | undefined) =>
+  const formatGroup = (value: MessengerGroupSettingValue | undefined) =>
     formatGroupSettingDisplay(value, {
       resolveGroupName,
       unknownGroupLabel: t("channel.browseUnknownGroup"),

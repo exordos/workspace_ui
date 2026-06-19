@@ -1,8 +1,8 @@
 /**
- * Pure helpers for matching Zulip messages to the active chat route (stream/topic or DM).
+ * Pure helpers for matching messenger messages to the active chat route (stream/topic or DM).
  * Used by the message store and real-time dispatch; must stay aligned with `message-cache-keys.lib`.
  */
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
 import { normalizeStreamTopicForMessageCache } from "~/shared/lib/message-cache-keys.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
@@ -57,7 +57,7 @@ export function isMessageForContext(
 }
 
 export function contextFromMessage(
-  msg: ZulipRawMessage,
+  msg: WorkspaceRawMessage,
   currentUserId: number | null,
 ): CurrentChatContext | null {
   if (msg.type === "stream" && msg.stream_id != null) {

@@ -1,7 +1,7 @@
-import type { ZulipInstance } from "~/entities/instance/instance.model";
+import type { WorkspaceInstance } from "~/entities/instance/instance.model";
 import { syncUnreadSurfacesFromSnapshot } from "~/entities/unread-sync/unread-surfaces-sync.lib";
-import { deleteQueue } from "~/shared/api/zulip-queue";
-import type { RegisterQueueResult, ZulipCredentials } from "~/shared/api/zulip.types";
+import { deleteQueue } from "~/shared/api/messenger-queue";
+import type { RegisterQueueResult, MessengerCredentials } from "~/shared/api/messenger.types";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import {
   isRegisterUnreadSnapshotUsable,
@@ -16,8 +16,8 @@ export interface InactiveInstanceQueueRegistration {
 export function handleInactiveInstanceQueueRegistered(
   params: InactiveInstanceQueueRegistration & {
     stopped: boolean;
-    credentials: ZulipCredentials;
-    instance: ZulipInstance | undefined;
+    credentials: MessengerCredentials;
+    instance: WorkspaceInstance | undefined;
     onQueueRegistered?: (id: string, registration?: RegisterQueueResult) => void;
   },
 ): string | null {
@@ -47,7 +47,7 @@ export function handleInactiveInstanceQueueRegistered(
 
 export function abortInactiveInstanceQueueOnTeardown(
   queueId: string | null,
-  credentials: ZulipCredentials,
+  credentials: MessengerCredentials,
   controller: AbortController,
 ): void {
   if (queueId != null) {

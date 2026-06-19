@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchActivityMessagesPage } from "~/shared/api/zulip-messages";
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import { fetchActivityMessagesPage } from "~/shared/api/messenger-messages";
+import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { createMessage } from "~/test/factories";
 import { fetchActivityMessagesPageWithPersist } from "./activity.api";
 
@@ -8,9 +8,9 @@ const upsertChatMessages = vi.hoisted(() => vi.fn());
 const getCurrentInstance = vi.hoisted(() => vi.fn());
 const persistChatMessagesToIndexedDb = vi.hoisted(() => vi.fn());
 
-vi.mock("~/shared/api/zulip-messages", async () => {
-  const actual = await vi.importActual<typeof import("~/shared/api/zulip-messages")>(
-    "~/shared/api/zulip-messages",
+vi.mock("~/shared/api/messenger-messages", async () => {
+  const actual = await vi.importActual<typeof import("~/shared/api/messenger-messages")>(
+    "~/shared/api/messenger-messages",
   );
   return {
     ...actual,
@@ -55,12 +55,12 @@ afterEach(() => {
   persistChatMessagesToIndexedDb.mockReturnValue(false);
 });
 
-function streamMessage(overrides: Parameters<typeof createMessage>[0] = {}): ZulipRawMessage {
-  return createMessage(overrides) as ZulipRawMessage;
+function streamMessage(overrides: Parameters<typeof createMessage>[0] = {}): WorkspaceRawMessage {
+  return createMessage(overrides);
 }
 
-function dmMessage(overrides: Parameters<typeof createMessage>[0] = {}): ZulipRawMessage {
-  const message = createMessage(overrides) as ZulipRawMessage;
+function dmMessage(overrides: Parameters<typeof createMessage>[0] = {}): WorkspaceRawMessage {
+  const message = createMessage(overrides) as WorkspaceRawMessage;
   message.stream_id = null;
   message.display_recipient = overrides.display_recipient ?? [
     { id: 7, full_name: "Me" },
@@ -75,7 +75,7 @@ describe("fetchActivityMessagesPageWithPersist", () => {
     persistChatMessagesToIndexedDb.mockReturnValue(true);
     getCurrentInstance.mockReturnValue({
       id: "instance-1",
-      realm: "https://zulip.example.com",
+      realm: "https://chat.example.com",
       email: "user@example.com",
       apiKey: "api-key",
     });
@@ -133,7 +133,7 @@ describe("fetchActivityMessagesPageWithPersist", () => {
     persistChatMessagesToIndexedDb.mockReturnValue(true);
     getCurrentInstance.mockReturnValue({
       id: "instance-1",
-      realm: "https://zulip.example.com",
+      realm: "https://chat.example.com",
       email: "user@example.com",
       apiKey: "api-key",
     });

@@ -28,7 +28,7 @@ describe("emoji-shortcodes.lib", () => {
     expect(normalizeEmojiShortcodeName(":+1:")).toBe("+1");
   });
 
-  it("resolves zulip alias to the same unicode as emojibase alias", () => {
+  it("resolves messenger alias to the same unicode as emojibase alias", () => {
     expect(resolveShortcodeToUnicode("working_on_it")).toBe(
       resolveShortcodeToUnicode("hammer_and_wrench"),
     );
@@ -36,13 +36,13 @@ describe("emoji-shortcodes.lib", () => {
     expectEmojiSemanticEqual(resolveShortcodeToUnicode(":ok:"), "👌");
   });
 
-  it("resolves canonical shortcode from unicode with zulip-first override", () => {
+  it("resolves canonical shortcode from unicode with messenger-first override", () => {
     expect(resolveUnicodeToCanonicalShortcode("1f6e0-fe0f")).toBe("working_on_it");
     expect(resolveUnicodeToCanonicalShortcode("1f44d")).toBe("thumbs_up");
     expect(resolveUnicodeToCanonicalShortcode("1f62e")).toBe("open_mouth");
   });
 
-  it("resolves fallback zulip aliases from emoji-picker list", () => {
+  it("resolves fallback messenger aliases from emoji-picker list", () => {
     expectEmojiSemanticEqual(resolveShortcodeToUnicode("grinning_face_with_smiling_eyes"), "😄");
     expectEmojiSemanticEqual(resolveShortcodeToUnicode("rolling_on_the_floor_laughing"), "🤣");
     expectEmojiSemanticEqual(resolveShortcodeToUnicode("slight_smile"), "🙂");

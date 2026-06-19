@@ -91,7 +91,7 @@ Avatar URLs include a version parameter `?_av={version}` that increments on:
 import { resolveAvatarUrl } from "~/shared/lib/avatar";
 
 const url = resolveAvatarUrl(user.avatar_url);
-// → "https://zulip.example.com/avatar/user@email?_av=3"
+// → "https://chat.example.com/avatar/user@email?_av=3"
 ```
 
 **Rule: Always use `resolveAvatarUrl()` for avatars. Never construct avatar URLs manually.**

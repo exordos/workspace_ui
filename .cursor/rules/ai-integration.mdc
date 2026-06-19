@@ -80,4 +80,4 @@ When adding new AI-relevant features:
 2. Notify `notifyAiNewMessage()` / `notifyAiStateChange()` from event handlers
 3. Use `commands.register()` for AI-triggered actions
 4. NEVER expose write access to stores directly — only through defined actions
-5. Sanitize message content before exposing (it's HTML from Zulip)
+5. Sanitize message content before exposing (it's HTML from the messenger API)

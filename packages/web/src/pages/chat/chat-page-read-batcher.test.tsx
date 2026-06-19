@@ -5,12 +5,12 @@ import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import type { CurrentChatContext } from "~/entities/message/message.model.types";
 import { useUsersStore } from "~/entities/user/user.model";
-import type * as ZulipClientInternal from "~/shared/api/zulip-client.internal";
-import type * as ZulipMessagesApi from "~/shared/api/zulip-messages";
-import { markMessagesAsRead } from "~/shared/api/zulip-read-state";
-import type * as ZulipReadStateApi from "~/shared/api/zulip-read-state";
-import type * as ZulipUploadApi from "~/shared/api/zulip-upload";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type * as WorkspaceClientInternal from "~/shared/api/messenger-client.internal";
+import type * as MessengerMessagesApi from "~/shared/api/messenger-messages";
+import { markMessagesAsRead } from "~/shared/api/messenger-read-state";
+import type * as MessengerReadStateApi from "~/shared/api/messenger-read-state";
+import type * as MessengerUploadApi from "~/shared/api/messenger-upload";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { createMessage } from "~/test/factories";
 import { ChatPage } from "./chat-page.ui";
 import type { ChatPageComposerSectionProps } from "./chat-page-composer-section.types";
@@ -23,10 +23,10 @@ const captured = vi.hoisted(() => ({
   messageListProps: null as ChatPageMessageListSectionProps | null,
 }));
 
-const zulipMocks = vi.hoisted(() => ({
+const messengerMocks = vi.hoisted(() => ({
   deleteMessage: vi.fn(),
   fetchMessageById: vi.fn(),
-  getRealmBaseUrl: vi.fn(() => "https://zulip.example.com"),
+  getRealmBaseUrl: vi.fn(() => "https://chat.example.com"),
   markDmAsRead: vi.fn(),
   markMessagesAsRead: vi.fn(),
   markTopicAsRead: vi.fn(),
@@ -35,40 +35,40 @@ const zulipMocks = vi.hoisted(() => ({
   uploadFile: vi.fn(),
 }));
 
-vi.mock("~/shared/api/zulip-messages", async (importOriginal) => {
-  const actual = await importOriginal<typeof ZulipMessagesApi>();
+vi.mock("~/shared/api/messenger-messages", async (importOriginal) => {
+  const actual = await importOriginal<typeof MessengerMessagesApi>();
   return {
     ...actual,
-    deleteMessage: zulipMocks.deleteMessage,
-    fetchMessageById: zulipMocks.fetchMessageById,
-    sendMessage: zulipMocks.sendMessage,
-    updateMessage: zulipMocks.updateMessage,
+    deleteMessage: messengerMocks.deleteMessage,
+    fetchMessageById: messengerMocks.fetchMessageById,
+    sendMessage: messengerMocks.sendMessage,
+    updateMessage: messengerMocks.updateMessage,
   };
 });
 
-vi.mock("~/shared/api/zulip-read-state", async (importOriginal) => {
-  const actual = await importOriginal<typeof ZulipReadStateApi>();
+vi.mock("~/shared/api/messenger-read-state", async (importOriginal) => {
+  const actual = await importOriginal<typeof MessengerReadStateApi>();
   return {
     ...actual,
-    markDmAsRead: zulipMocks.markDmAsRead,
-    markMessagesAsRead: zulipMocks.markMessagesAsRead,
-    markTopicAsRead: zulipMocks.markTopicAsRead,
+    markDmAsRead: messengerMocks.markDmAsRead,
+    markMessagesAsRead: messengerMocks.markMessagesAsRead,
+    markTopicAsRead: messengerMocks.markTopicAsRead,
   };
 });
 
-vi.mock("~/shared/api/zulip-client.internal", async (importOriginal) => {
-  const actual = await importOriginal<typeof ZulipClientInternal>();
+vi.mock("~/shared/api/messenger-client.internal", async (importOriginal) => {
+  const actual = await importOriginal<typeof WorkspaceClientInternal>();
   return {
     ...actual,
-    getRealmBaseUrl: zulipMocks.getRealmBaseUrl,
+    getRealmBaseUrl: messengerMocks.getRealmBaseUrl,
   };
 });
 
-vi.mock("~/shared/api/zulip-upload", async (importOriginal) => {
-  const actual = await importOriginal<typeof ZulipUploadApi>();
+vi.mock("~/shared/api/messenger-upload", async (importOriginal) => {
+  const actual = await importOriginal<typeof MessengerUploadApi>();
   return {
     ...actual,
-    uploadFile: zulipMocks.uploadFile,
+    uploadFile: messengerMocks.uploadFile,
   };
 });
 
@@ -334,7 +334,7 @@ describe("ChatPage mark-as-read batching", () => {
       captured.messageListProps?.callbacks.onMessageEdit?.(expiredMessage);
     });
 
-    expect(zulipMocks.fetchMessageById).not.toHaveBeenCalled();
+    expect(messengerMocks.fetchMessageById).not.toHaveBeenCalled();
     expect(captured.composerProps?.editSession).toBeNull();
     await waitFor(() => {
       expect(captured.inlineAlertsProps?.actionError).toBe("This message can no longer be edited");
@@ -460,7 +460,7 @@ describe("ChatPage mark-as-read batching", () => {
     await expect(captured.composerProps?.onSubmitEdit(MESSAGE_ID, "fixed")).rejects.toThrow(
       "This message can no longer be edited",
     );
-    expect(zulipMocks.updateMessage).not.toHaveBeenCalled();
+    expect(messengerMocks.updateMessage).not.toHaveBeenCalled();
     expect(captured.composerProps?.editSession).toEqual({
       messageId: MESSAGE_ID,
       initialMarkdown: "typo",
@@ -496,7 +496,7 @@ describe("ChatPage mark-as-read batching", () => {
       return Promise.resolve();
     });
 
-    zulipMocks.updateMessage.mockRejectedValue(serverError);
+    messengerMocks.updateMessage.mockRejectedValue(serverError);
     useChatListStore.getState().setFromMessages([editableMessage], CURRENT_USER_ID);
     useUsersStore.getState().setCurrentUserMessageEditPolicy({
       allowMessageEditing: true,
@@ -513,7 +513,7 @@ describe("ChatPage mark-as-read batching", () => {
     await expect(captured.composerProps?.onSubmitEdit(MESSAGE_ID, "fixed")).rejects.toThrow(
       serverError,
     );
-    expect(zulipMocks.updateMessage).toHaveBeenCalledWith(MESSAGE_ID, { content: "fixed" });
+    expect(messengerMocks.updateMessage).toHaveBeenCalledWith(MESSAGE_ID, { content: "fixed" });
     await waitFor(() => {
       expect(captured.inlineAlertsProps?.actionError).toBe("Server says edit is closed");
     });
@@ -556,8 +556,8 @@ describe("ChatPage mark-as-read batching", () => {
       return Promise.resolve();
     });
 
-    zulipMocks.updateMessage.mockReturnValue(updateDeferred.promise);
-    zulipMocks.fetchMessageById.mockResolvedValue({
+    messengerMocks.updateMessage.mockReturnValue(updateDeferred.promise);
+    messengerMocks.fetchMessageById.mockResolvedValue({
       ...editableMessage,
       content: "<p>fixed</p>",
       markdown_source: "fixed",
@@ -636,9 +636,9 @@ describe("ChatPage mark-as-read batching", () => {
     });
     const serverError = new Error("Server says edit is closed");
 
-    zulipMocks.updateMessage.mockRejectedValueOnce(serverError);
-    zulipMocks.updateMessage.mockResolvedValueOnce(undefined);
-    zulipMocks.fetchMessageById.mockResolvedValue({
+    messengerMocks.updateMessage.mockRejectedValueOnce(serverError);
+    messengerMocks.updateMessage.mockResolvedValueOnce(undefined);
+    messengerMocks.fetchMessageById.mockResolvedValue({
       ...editableMessage,
       content: "<p>fixed</p>",
       markdown_source: "fixed",
@@ -671,7 +671,7 @@ describe("ChatPage mark-as-read batching", () => {
     });
 
     await waitFor(() => {
-      expect(zulipMocks.updateMessage).toHaveBeenCalledTimes(2);
+      expect(messengerMocks.updateMessage).toHaveBeenCalledTimes(2);
       expect(captured.messageListProps?.messages[0]?.edit_status).toBeUndefined();
       expect(captured.messageListProps?.messages[0]?.content).toBe("<p>fixed</p>");
     });

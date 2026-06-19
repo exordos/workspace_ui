@@ -7,7 +7,7 @@ Complete documentation for all API functions in the FSD architecture.
 ## Architecture
 
 ```
-shared/api/client.ts              Low-level Zulip fetch helpers + middleware pipeline
+shared/api/client.ts              Low-level Workspace fetch helpers + middleware pipeline
 shared/api/workspace-client.ts    Workspace API request helper
 entities/<name>/<name>.api.ts      Entity-level API functions (user, folder, sticker, draft, inbox, feed)
 features/<name>/<name>.api.ts      Feature-level API functions (ai-reply, mute-chat, pin-chat, create-chat,
@@ -16,32 +16,32 @@ features/<name>/<name>.api.ts      Feature-level API functions (ai-reply, mute-c
 
 ### Authentication
 
-All Zulip API calls use **HTTP Basic Auth**: `Authorization: Basic base64(email:apiKey)`.
+All Messenger API calls use **HTTP Basic Auth**: `Authorization: Basic base64(email:apiKey)`.
 Credentials are taken from `useInstancesStore.getState().getCurrentInstance()`.
 
 Two approaches:
 
-1. **Middleware client** (`shared/api/client.ts`) — `zulipFetch/zulipPost/zulipPatch/zulipDelete` with middleware pipeline (auth, logging, retry)
+1. **Middleware client** (`shared/api/client.ts`) — `messengerFetch/messengerPost/messengerPatch/messengerDelete` with middleware pipeline (auth, logging, retry)
 2. **Workspace API** (`shared/api/workspace-client.ts`) — `request()` for Workspace backend
 
 New code should use the functions from `shared/api/` directly, or entity-level API functions from `entities/*/`.
 
 ---
 
-## shared/api/client.ts — Zulip API Helpers
+## shared/api/client.ts — Messenger API Helpers
 
-**Import**: `import { zulipFetch, zulipPost, zulipPatch, zulipDelete } from '~/shared/api/client'`
+**Import**: `import { messengerFetch, messengerPost, messengerPatch, messengerDelete } from '~/shared/api/client'`
 
 These low-level helpers construct the full URL, attach Basic Auth headers, and handle form encoding for POST/PATCH/DELETE.
 
-| Function                        | Purpose                                        |
-| ------------------------------- | ---------------------------------------------- |
-| `zulipFetch(endpoint, params?)` | GET request to `/api/v1/{endpoint}`            |
-| `zulipPost(endpoint, data?)`    | POST with `application/x-www-form-urlencoded`  |
-| `zulipPatch(endpoint, data?)`   | PATCH with `application/x-www-form-urlencoded` |
-| `zulipDelete(endpoint, data?)`  | DELETE with optional body                      |
+| Function                            | Purpose                                        |
+| ----------------------------------- | ---------------------------------------------- |
+| `messengerFetch(endpoint, params?)` | GET request to `/api/v1/{endpoint}`            |
+| `messengerPost(endpoint, data?)`    | POST with `application/x-www-form-urlencoded`  |
+| `messengerPatch(endpoint, data?)`   | PATCH with `application/x-www-form-urlencoded` |
+| `messengerDelete(endpoint, data?)`  | DELETE with optional body                      |
 
-Also includes middleware pipeline: `zulipApi.get/post/patch/delete` with auth, logging, and retry middleware.
+Also includes middleware pipeline: `messengerApi.get/post/patch/delete` with auth, logging, and retry middleware.
 
 ---
 
@@ -51,7 +51,7 @@ Also includes middleware pipeline: `zulipApi.get/post/patch/delete` with auth, l
 
 **Base URL**: `VITE_WORKSPACE_API_BASE_URL` or `/workspace-api/api/v1` (dev proxy) / `{VITE_WORKSPACE_API_ORIGIN}/api/v1` (prod)
 
-**Auth**: Basic (same as Zulip — email:apiKey from instancesStore)
+**Auth**: Basic (same as Workspace — email:apiKey from instancesStore)
 
 | Function                     | Purpose                               |
 | ---------------------------- | ------------------------------------- |
@@ -69,7 +69,7 @@ Also includes middleware pipeline: `zulipApi.get/post/patch/delete` with auth, l
 | -------------------------------------- | ------------------------- | -------------------------------------------- | ------- |
 | `reportPresence(status, newUserInput)` | `POST /users/me/presence` | `status` ("active"/"idle"), `new_user_input` | `void`  |
 
-> Core Zulip HTTP helpers live in `packages/web/src/shared/api/zulip-*.ts` and are consumed by entity/feature APIs.
+> Core Workspace HTTP helpers live in `packages/web/src/shared/api/messenger-*.ts` and are consumed by entity/feature APIs.
 
 ### entities/folder/folder.api.ts
 
@@ -281,16 +281,16 @@ interface AiSuggestion {
 
 ---
 
-## Zulip API modules (`shared/api/zulip-*.ts`)
+## Messenger API modules (`shared/api/messenger-*.ts`)
 
-Legacy monolithic `lib/zulipClient.ts` was removed. Zulip REST calls are split across modules such as:
+Legacy monolithic `lib/messenger-client.ts` was removed. Messenger REST calls are split across modules such as:
 
-| Module                     | Examples                                   |
-| -------------------------- | ------------------------------------------ |
-| `zulip-messages.ts`        | fetch/send/update/delete messages, flags   |
-| `zulip-queue.ts`           | `registerQueue`, `getEvents`               |
-| `zulip-streams.ts`         | streams, topics, subscriptions             |
-| `zulip-client.internal.ts` | shared fetch helpers used by modules above |
+| Module                         | Examples                                   |
+| ------------------------------ | ------------------------------------------ |
+| `messenger-messages.ts`        | fetch/send/update/delete messages, flags   |
+| `messenger-queue.ts`           | `registerQueue`, `getEvents`               |
+| `messenger-streams.ts`         | streams, topics, subscriptions             |
+| `messenger-client.internal.ts` | shared fetch helpers used by modules above |
 
 Import the specific module you need, or use entity/feature `*.api.ts` wrappers.
 
@@ -309,14 +309,14 @@ const DEFAULT_LONGPOLL_TIMEOUT_SEC = 90;
 ### Interface
 
 ```typescript
-interface StartZulipEventLoopOptions {
-  onEvent: (event: ZulipEvent) => void;
+interface StartMessengerEventLoopOptions {
+  onEvent: (event: MessengerEvent) => void;
   onBadQueue?: () => void;
   signal?: AbortSignal;
   eventTypes?: string[];
 }
 
-function startZulipEventLoop(options: StartZulipEventLoopOptions): void;
+function startMessengerEventLoop(options: StartMessengerEventLoopOptions): void;
 ```
 
 ### Algorithm
@@ -331,10 +331,10 @@ function startZulipEventLoop(options: StartZulipEventLoopOptions): void;
 
 ### Event Handling
 
-Events are dispatched in `widgets/layout/layout-zulip-event-dispatch*.lib.ts` (message, subscription, presence, typing, etc.) — not inline in the event loop module.
+Events are dispatched in `widgets/layout/layout-messenger-event-dispatch*.lib.ts` (message, subscription, presence, typing, etc.) — not inline in the event loop module.
 
 ```
-onEvent(event) → layout-zulip-event-dispatch.lib.ts
+onEvent(event) → layout-messenger-event-dispatch.lib.ts
   ├── message / update_message / delete_message → message + chat-list stores
   ├── update_message_flags → unread counts + message flags
   ├── subscription / user_settings / … → chat-list, folder-sync, user stores

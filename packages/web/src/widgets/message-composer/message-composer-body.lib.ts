@@ -2,21 +2,21 @@
  * Outgoing message body and attachment label helpers for the composer.
  */
 import { t } from "~/i18n/i18n";
-import { buildZulipQuoteBlock } from "~/shared/lib/message-zulip-quote.lib";
-import { buildZulipQuoteHeader } from "~/shared/lib/zulip-quote-header.lib";
+import { buildWorkspaceQuoteBlock } from "~/shared/lib/message-quote.lib";
+import { buildWorkspaceQuoteHeader } from "~/shared/lib/messenger-quote-header.lib";
 import type { ReplyQuote } from "./message-composer.types";
 
-/** Zulip-style reply: silent user mention, optional “wrote” permalink link, and fenced `quote` block. */
+/** messenger-style reply: silent user mention, optional “wrote” permalink link, and fenced `quote` block. */
 export function buildOutgoingMessageBody(value: string, replyQuote?: ReplyQuote | null): string {
   let body = value.trim();
   if (replyQuote) {
-    const header = buildZulipQuoteHeader({
+    const header = buildWorkspaceQuoteHeader({
       senderName: replyQuote.sender_full_name,
       senderId: replyQuote.sender_id,
       wroteLabel: t("message.replyQuoteWrote"),
       permalinkUrl: replyQuote.permalinkUrl,
     });
-    body = buildZulipQuoteBlock(header, replyQuote.content) + body;
+    body = buildWorkspaceQuoteBlock(header, replyQuote.content) + body;
   }
   return body;
 }

@@ -1,7 +1,7 @@
 /**
  * Merges realm stream list with user subscriptions for the browse-channels tab.
  */
-import type { ZulipGroupSettingValue } from "~/shared/api/zulip.types";
+import type { MessengerGroupSettingValue } from "~/shared/api/messenger.types";
 
 export type BrowseChannelSubscriptionFilter = "unsubscribed" | "subscribed" | "all";
 
@@ -26,12 +26,12 @@ export interface BrowseChannelRow {
   messageRetentionDays: number | null;
   desktopNotifications: boolean | null;
   audibleNotifications: boolean | null;
-  canSubscribeGroup?: ZulipGroupSettingValue;
-  canAddSubscribersGroup?: ZulipGroupSettingValue;
-  canRemoveSubscribersGroup?: ZulipGroupSettingValue;
-  canAdministerChannelGroup?: ZulipGroupSettingValue;
-  canResolveTopicsGroup?: ZulipGroupSettingValue;
-  canMoveMessagesOutOfChannelGroup?: ZulipGroupSettingValue;
+  canSubscribeGroup?: MessengerGroupSettingValue;
+  canAddSubscribersGroup?: MessengerGroupSettingValue;
+  canRemoveSubscribersGroup?: MessengerGroupSettingValue;
+  canAdministerChannelGroup?: MessengerGroupSettingValue;
+  canResolveTopicsGroup?: MessengerGroupSettingValue;
+  canMoveMessagesOutOfChannelGroup?: MessengerGroupSettingValue;
 }
 
 export interface BrowseChannelStreamLike {
@@ -51,12 +51,12 @@ export interface BrowseChannelStreamLike {
   is_default?: boolean;
   is_recently_active?: boolean;
   message_retention_days?: number | null;
-  can_subscribe_group?: ZulipGroupSettingValue;
-  can_add_subscribers_group?: ZulipGroupSettingValue;
-  can_remove_subscribers_group?: ZulipGroupSettingValue;
-  can_administer_channel_group?: ZulipGroupSettingValue;
-  can_resolve_topics_group?: ZulipGroupSettingValue;
-  can_move_messages_out_of_channel_group?: ZulipGroupSettingValue;
+  can_subscribe_group?: MessengerGroupSettingValue;
+  can_add_subscribers_group?: MessengerGroupSettingValue;
+  can_remove_subscribers_group?: MessengerGroupSettingValue;
+  can_administer_channel_group?: MessengerGroupSettingValue;
+  can_resolve_topics_group?: MessengerGroupSettingValue;
+  can_move_messages_out_of_channel_group?: MessengerGroupSettingValue;
 }
 
 export interface BrowseChannelSubscriptionLike {
@@ -67,11 +67,11 @@ export interface BrowseChannelSubscriptionLike {
   creator_id?: number;
   desktop_notifications?: boolean | null;
   audible_notifications?: boolean | null;
-  can_add_subscribers_group?: ZulipGroupSettingValue;
-  can_remove_subscribers_group?: ZulipGroupSettingValue;
-  can_administer_channel_group?: ZulipGroupSettingValue;
-  can_resolve_topics_group?: ZulipGroupSettingValue;
-  can_move_messages_out_of_channel_group?: ZulipGroupSettingValue;
+  can_add_subscribers_group?: MessengerGroupSettingValue;
+  can_remove_subscribers_group?: MessengerGroupSettingValue;
+  can_administer_channel_group?: MessengerGroupSettingValue;
+  can_resolve_topics_group?: MessengerGroupSettingValue;
+  can_move_messages_out_of_channel_group?: MessengerGroupSettingValue;
 }
 
 export interface BuildBrowseChannelRowsInput {
@@ -123,9 +123,9 @@ function mergeCreatorId(
 }
 
 function pickGroupField(
-  subscriptionValue: ZulipGroupSettingValue | undefined,
-  streamValue: ZulipGroupSettingValue | undefined,
-): ZulipGroupSettingValue | undefined {
+  subscriptionValue: MessengerGroupSettingValue | undefined,
+  streamValue: MessengerGroupSettingValue | undefined,
+): MessengerGroupSettingValue | undefined {
   return subscriptionValue ?? streamValue;
 }
 
@@ -178,9 +178,9 @@ function appendBrowseChannelGroupFields(
   let result = row;
   for (const field of BROWSE_CHANNEL_GROUP_FIELDS) {
     const subscriptionValue = field.subscriptionKey
-      ? (subscription?.[field.subscriptionKey] as ZulipGroupSettingValue | undefined)
+      ? (subscription?.[field.subscriptionKey] as MessengerGroupSettingValue | undefined)
       : undefined;
-    const streamValue = stream[field.streamKey] as ZulipGroupSettingValue | undefined;
+    const streamValue = stream[field.streamKey] as MessengerGroupSettingValue | undefined;
     const merged = pickGroupField(subscriptionValue, streamValue);
     if (merged != null) {
       result = { ...result, [field.rowKey]: merged };

@@ -1,14 +1,14 @@
 import {
-  buildMessageRedirectRoute,
-  buildMessageRedirectRouteFromZulipPermalink,
-} from "~/shared/lib/push-click";
-import {
   buildMessageFocusSearch,
-  buildRouteFromZulipNarrowPermalink,
+  buildRouteFromMessengerNarrowPermalink,
   isSameChatAsNarrowPermalink,
   isSameRealmAsPermalink,
-  parseZulipNarrowPermalink,
-} from "~/shared/lib/zulip-narrow-permalink.lib";
+  parseMessengerNarrowPermalink,
+} from "~/shared/lib/messenger-narrow-permalink.lib";
+import {
+  buildMessageRedirectRoute,
+  buildMessageRedirectRouteFromWorkspacePermalink,
+} from "~/shared/lib/push-click";
 
 export type QuotePermalinkNavigationTarget =
   | { kind: "path"; path: string; replace?: boolean }
@@ -32,9 +32,9 @@ export interface ResolveQuotePermalinkNavigationParams {
 export function resolveQuotePermalinkNavigation(
   params: ResolveQuotePermalinkNavigationParams,
 ): QuotePermalinkNavigationTarget | null {
-  const parsed = parseZulipNarrowPermalink(params.href);
+  const parsed = parseMessengerNarrowPermalink(params.href);
   if (parsed == null) {
-    const redirectRoute = buildMessageRedirectRouteFromZulipPermalink(params.href);
+    const redirectRoute = buildMessageRedirectRouteFromWorkspacePermalink(params.href);
     return redirectRoute != null ? { kind: "path", path: redirectRoute } : null;
   }
 
@@ -63,7 +63,7 @@ export function resolveQuotePermalinkNavigation(
     };
   }
 
-  const directRoute = buildRouteFromZulipNarrowPermalink({
+  const directRoute = buildRouteFromMessengerNarrowPermalink({
     parsed,
     currentUserId: params.currentUserId,
     resolveStreamName: params.resolveStreamName,

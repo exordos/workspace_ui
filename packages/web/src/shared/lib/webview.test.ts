@@ -412,7 +412,7 @@ describe("auth from native — realm validation", () => {
           type: "auth",
           email: "user@example.com",
           apiKey: "abc123",
-          realm: "https://zulip.example.com",
+          realm: "https://chat.example.com",
         },
       }),
     );
@@ -420,7 +420,7 @@ describe("auth from native — realm validation", () => {
     expect(callback).toHaveBeenCalledWith(
       expect.objectContaining({
         email: "user@example.com",
-        realm: "https://zulip.example.com",
+        realm: "https://chat.example.com",
       }),
     );
     unsub();

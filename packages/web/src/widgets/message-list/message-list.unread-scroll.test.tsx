@@ -1,15 +1,15 @@
 import { act, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type * as ZulipUsersApi from "~/shared/api/zulip-users";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type * as MessengerUsersApi from "~/shared/api/messenger-users";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { resetRealmEmojisCacheForTests } from "~/shared/lib/realm-emojis-cache";
 import { MessageList } from "./message-list.ui";
 
 const fetchRealmEmojisMock = vi.hoisted(() => vi.fn());
 const scrollToBottomMock = vi.hoisted(() => vi.fn());
 
-vi.mock("~/shared/api/zulip-users", async (importOriginal) => {
-  const actual = await importOriginal<typeof ZulipUsersApi>();
+vi.mock("~/shared/api/messenger-users", async (importOriginal) => {
+  const actual = await importOriginal<typeof MessengerUsersApi>();
   return {
     ...actual,
     fetchRealmEmojis: (...args: unknown[]) => fetchRealmEmojisMock(...args),

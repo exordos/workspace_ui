@@ -27,11 +27,11 @@ vi.mock("~/shared/api/client", () => ({
   workspaceApi,
   getCurrentInstance: () => ({
     id: "test-inst",
-    realm: "https://zulip.test",
+    realm: "https://messenger.test",
     email: "test@test.com",
     apiKey: "test",
   }),
-  getWorkspaceApiBaseForCurrentInstance: () => "https://zulip.test",
+  getWorkspaceApiBaseForCurrentInstance: () => "https://messenger.test",
   setInstanceProvider: vi.fn(),
 }));
 
@@ -200,7 +200,7 @@ describe("getFolders", () => {
     await getFolders();
 
     expect(workspaceApi.getWithBase).toHaveBeenCalledWith(
-      "https://zulip.test",
+      "https://messenger.test",
       "/v1/folders/",
       undefined,
       undefined,

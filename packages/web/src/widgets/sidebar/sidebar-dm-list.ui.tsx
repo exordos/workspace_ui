@@ -6,7 +6,7 @@ import { useUsersStore } from "~/entities/user/user.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indicator.model";
 import { t } from "~/i18n/i18n";
-import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
+import { getRealmBaseUrl } from "~/shared/api/messenger-client.internal";
 import { resolveAvatarUrl } from "~/shared/lib/avatar";
 import { effectiveDmIsGroupFromSlug } from "~/shared/lib/dm-route.lib";
 import { getPresenceState, sidebarRowClass } from "~/shared/lib/format";

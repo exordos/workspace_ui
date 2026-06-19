@@ -81,13 +81,13 @@ body {
   height: 100%;
 }
 
-/* ── Zulip quote blocks (reply / forward) ─────────────── */
+/* ── messenger quote blocks (reply / forward) ─────────────── */
 
-.message-body .zulip-quote-block {
+.message-body .messenger-quote-block {
   margin: 4px 0;
 }
 
-.message-body .zulip-quote-header {
+.message-body .messenger-quote-header {
   color: var(--color-text-muted);
   font-size: 0.75rem;
   font-style: normal;
@@ -95,11 +95,11 @@ body {
   margin-bottom: 2px;
 }
 
-.message-body .zulip-quote-header .user-mention {
+.message-body .messenger-quote-header .user-mention {
   font-weight: 600;
 }
 
-.message-body .zulip-quote-body {
+.message-body .messenger-quote-body {
   border-left: 2px solid var(--color-border-subtle);
   color: var(--color-text-muted);
   font-style: normal;
@@ -107,12 +107,12 @@ body {
   padding-left: 8px;
 }
 
-.message-body .zulip-quote-block .zulip-quote-block {
+.message-body .messenger-quote-block .messenger-quote-block {
   margin-left: 8px;
 }
 
-/* Markdown `>` blockquotes only — Zulip quote bodies keep text-primary above */
-.message-body blockquote:not(.zulip-quote-body) {
+/* Markdown `>` blockquotes only — messenger quote bodies keep text-primary above */
+.message-body blockquote:not(.messenger-quote-body) {
   border-left: 2px solid var(--color-border-subtle);
   color: var(--color-text-muted);
   font-style: italic;
@@ -120,7 +120,7 @@ body {
   padding-left: 8px;
 }
 
-/* ── Zulip spoiler blocks ─────────────────────────────── */
+/* ── Workspace spoiler blocks ─────────────────────────────── */
 
 .message-body .spoiler-block {
   border: 1px solid var(--color-border-subtle);
@@ -216,7 +216,7 @@ body {
   box-sizing: border-box;
 }
 
-/* ── Zulip link previews ──────────────────────────────── */
+/* ── Workspace link previews ──────────────────────────────── */
 
 .message-body .message_embed {
   display: flex;

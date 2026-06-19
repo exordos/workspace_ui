@@ -34,7 +34,7 @@ describe("parseChatContextFromPathname", () => {
   it("parses DM under /org/:orgId/dm/:dmId", () => {
     const streamsMap = new Map<number, { name: string }>();
     const parsed = parseChatContextFromPathname({
-      pathname: "/org/zulip.example.com/dm/358-507",
+      pathname: "/org/chat.example.com/dm/358-507",
       streamsMap,
       currentUserId: 100,
     });

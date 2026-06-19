@@ -1,7 +1,7 @@
 /**
  * Resolves per-channel stream notification overrides against global user settings.
  *
- * Zulip subscription `desktop_notifications` / `audible_notifications`:
+ * Workspace subscription `desktop_notifications` / `audible_notifications`:
  * - `true` — force on for this channel
  * - `false` — force off
  * - `null` / missing — inherit global `enable_stream_*` settings

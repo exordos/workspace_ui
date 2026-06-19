@@ -1,4 +1,4 @@
-import type { MockMessage, Reaction } from "~/shared/api/zulip.types";
+import type { MockMessage, Reaction } from "~/shared/api/messenger.types";
 
 export function messageReactionMatches(
   reaction: Reaction,

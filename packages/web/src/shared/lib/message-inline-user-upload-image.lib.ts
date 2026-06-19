@@ -1,5 +1,5 @@
 /**
- * Dedupes Zulip rendered HTML where the same user-upload image appears as a text link and
+ * Dedupes Workspace rendered HTML where the same user-upload image appears as a text link and
  * inside `.message_inline_image`. Client markdown inlining must not add a second preview.
  */
 
@@ -114,7 +114,7 @@ export function collectMessageInlineImageIdentitiesFromContainer(
   return identities;
 }
 
-/** Collects upload image identities already rendered inside Zulip `.message_inline_image` blocks. */
+/** Collects upload image identities already rendered inside Workspace `.message_inline_image` blocks. */
 export function collectMessageInlineImageIdentities(html: string): Set<string> {
   const identities = new Set<string>();
   if (typeof document === "undefined" || !html.includes(USER_UPLOADS_SEGMENT)) {

@@ -12,12 +12,12 @@ vi.mock("./create-chat.api", () => ({
   unsubscribeChannel: vi.fn(),
 }));
 
-vi.mock("~/shared/api/zulip-streams", () => ({
+vi.mock("~/shared/api/messenger-streams", () => ({
   fetchStreams: vi.fn(),
   fetchSubscriptions: vi.fn(),
 }));
 
-import { fetchStreams, fetchSubscriptions } from "~/shared/api/zulip-streams";
+import { fetchStreams, fetchSubscriptions } from "~/shared/api/messenger-streams";
 
 describe("CreateChatDialog", () => {
   beforeEach(() => {

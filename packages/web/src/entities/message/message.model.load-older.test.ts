@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { setInstanceProvider } from "~/shared/api/client";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { useCurrentChatMessagesStore, type CurrentChatContext } from "./message.model";
 
 const mockFetchMessagesWithNarrowPage = vi.hoisted(() => vi.fn());
@@ -12,8 +12,8 @@ const mockUpdateChatMetaPatch = vi.hoisted(() => vi.fn());
 const mockUpsertChatMessages = vi.hoisted(() => vi.fn());
 const mockPersistChatMessagesToIndexedDb = vi.hoisted(() => vi.fn(() => false));
 
-vi.mock("~/shared/api/zulip-messages", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/shared/api/zulip-messages")>();
+vi.mock("~/shared/api/messenger-messages", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("~/shared/api/messenger-messages")>();
   return {
     ...actual,
     fetchMessagesWithNarrowPage: mockFetchMessagesWithNarrowPage,
@@ -72,8 +72,8 @@ describe("loadOlderBoundaryPage", () => {
   beforeEach(() => {
     resetInstancesStore();
     useInstancesStore.getState().addInstance({
-      realm: "https://zulip.test",
-      email: "test@zulip.test",
+      realm: "https://messenger.test",
+      email: "test@messenger.test",
       apiKey: `runtime-test-key-${Date.now()}`,
     });
     setInstanceProvider(() => useInstancesStore.getState().getCurrentInstance());
@@ -206,8 +206,8 @@ describe("loadOlderBoundaryPage", () => {
     }>();
     const firstInstanceId = useInstancesStore.getState().currentInstanceId;
     const secondInstanceId = useInstancesStore.getState().addInstance({
-      realm: "https://zulip-2.test",
-      email: "two@zulip.test",
+      realm: "https://messenger-2.test",
+      email: "two@messenger.test",
       apiKey: "k2",
     }).id;
 
@@ -250,8 +250,8 @@ describe("loadOlderBoundaryPage", () => {
       foundNewest: boolean;
     }>();
     const secondInstanceId = useInstancesStore.getState().addInstance({
-      realm: "https://zulip-2.test",
-      email: "two@zulip.test",
+      realm: "https://messenger-2.test",
+      email: "two@messenger.test",
       apiKey: "k2",
     }).id;
 

@@ -1,5 +1,5 @@
 /**
- * Persists folder rail list per Zulip instance in IndexedDB (hydrate + write-through).
+ * Persists folder rail list per organization instance in IndexedDB (hydrate + write-through).
  */
 import type { WorkspaceFolderForRail } from "~/shared/api/workspace-client";
 import { openMessageCacheDb } from "~/shared/lib/message-cache-db";

@@ -27,7 +27,7 @@ shared/ui/
 
 ## Message Format
 
-Stickers are sent as regular Zulip messages with a special markdown format:
+Stickers are sent as regular messenger messages with a special markdown format:
 
 ```
 [sticker:pack_id:sticker_id](https://cdn.example.com/stickers/pack/sticker.webp)

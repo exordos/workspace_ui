@@ -2,7 +2,7 @@ import React from "react";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import type { UserRecord } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { getPresenceState } from "~/shared/lib/format";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
 import { Avatar } from "~/shared/ui/avatar";

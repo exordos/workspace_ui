@@ -5,14 +5,14 @@
  * capped GET /messages batches (~5k messages vs 100k+ unread on server).
  */
 import { messageToStreamEntry } from "~/entities/chat-list/chat-list.lib";
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import { streamTopicCompositeKey } from "./chat-list-stream-topic-index.lib";
 
 export function filterStreamMessagesForSidebar(
-  messages: readonly ZulipRawMessage[],
-): ZulipRawMessage[] {
+  messages: readonly WorkspaceRawMessage[],
+): WorkspaceRawMessage[] {
   return messages.filter((m) => m.type === "stream" && m.stream_id != null);
 }
 
@@ -20,7 +20,7 @@ export function filterStreamMessagesForSidebar(
 export function shouldApplyStreamTopicPreviewFromFetchedMessage(
   existingStream: StreamEntryInternal | undefined,
   existingTopic: { ts: number; lastMessage: string; lastMessageId?: number } | undefined,
-  message: ZulipRawMessage,
+  message: WorkspaceRawMessage,
   previewText: string,
 ): boolean {
   if (message.timestamp > (existingStream?.ts ?? 0)) {
@@ -99,9 +99,9 @@ function mergeStreamPreviewEntry(
  */
 export function mergeStreamSidebarPreviewsFromMessages(
   streamsMap: Map<number, StreamEntryInternal>,
-  messages: readonly ZulipRawMessage[],
+  messages: readonly WorkspaceRawMessage[],
 ): Map<number, StreamEntryInternal> {
-  const streamTopicLatest = new Map<string, ZulipRawMessage>();
+  const streamTopicLatest = new Map<string, WorkspaceRawMessage>();
   for (const m of messages) {
     if (m.type !== "stream" || m.stream_id == null) continue;
     const topic = normalizeTopicForIdentity(m.subject ?? "");

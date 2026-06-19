@@ -47,7 +47,7 @@ export function resolveLiveAuthVar(key: string, fileEnv: LiveAuthEnv): string | 
 
 const FILE_ENV = loadLiveAuthEnvFromFile();
 
-export const LIVE_REALM = resolveLiveAuthVar("TEST_USER_ZULIP_SERVER", FILE_ENV);
+export const LIVE_REALM = resolveLiveAuthVar("TEST_USER_SERVER", FILE_ENV);
 export const LIVE_EMAIL = resolveLiveAuthVar("TEST_USER_EMAIL", FILE_ENV);
 export const LIVE_PASSWORD = resolveLiveAuthVar("TEST_USER_PASSWORD", FILE_ENV);
 

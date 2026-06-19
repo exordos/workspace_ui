@@ -1,5 +1,5 @@
 /**
- * Long-poll event loop for Zulip Real-Time Events API.
+ * Long-poll event loop for Workspace messenger real-time events API.
  *
  * Network awareness:
  * - Detects offline state, pauses retries (no wasted requests)
@@ -14,8 +14,12 @@ import {
   getEventsForCredentials,
   registerQueue,
   registerQueueForCredentials,
-} from "~/shared/api/zulip-queue";
-import type { RegisterQueueResult, ZulipCredentials, ZulipEvent } from "~/shared/api/zulip.types";
+} from "~/shared/api/messenger-queue";
+import type {
+  RegisterQueueResult,
+  MessengerCredentials,
+  MessengerEvent,
+} from "~/shared/api/messenger.types";
 import {
   isLikelyNetworkError,
   noteApiTransportFailure,
@@ -29,12 +33,12 @@ import {
 } from "~/shared/lib/event-loop-handlers/event-loop-poll.lib";
 import { attachEventLoopLifecycle } from "~/shared/lib/event-loop-lifecycle.lib";
 import { createLogger } from "~/shared/lib/logger";
+import {
+  clearMessengerEventQueueId,
+  setMessengerEventQueueId,
+} from "~/shared/lib/messenger-event-queue-registry.lib";
 import { isOnline, waitForOnline } from "~/shared/lib/network";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
-import {
-  clearZulipEventQueueId,
-  setZulipEventQueueId,
-} from "~/shared/lib/zulip-event-queue-registry.lib";
 
 const log = createLogger("realtime");
 
@@ -59,8 +63,8 @@ const RETRY_PAUSE_MS = 2000;
 const MAX_RETRY_PAUSE_MS = 30000;
 const DEFAULT_LONGPOLL_TIMEOUT_SEC = 90;
 
-export interface StartZulipEventLoopOptions {
-  onEvent: (event: ZulipEvent) => void;
+export interface StartMessengerEventLoopOptions {
+  onEvent: (event: MessengerEvent) => void;
   onBadQueue?: () => void;
   /** Called after the event queue is registered or re-registered successfully. */
   onQueueReady?: () => void;
@@ -75,8 +79,8 @@ export interface StartZulipEventLoopOptions {
   fetchEventTypes?: string[];
 }
 
-export interface StartZulipEventLoopForCredentialsOptions extends StartZulipEventLoopOptions {
-  credentials: ZulipCredentials;
+export interface StartMessengerEventLoopForCredentialsOptions extends StartMessengerEventLoopOptions {
+  credentials: MessengerCredentials;
 }
 
 interface EventLoopTransport {
@@ -91,9 +95,9 @@ interface EventLoopTransport {
   ) => ReturnType<typeof getEvents>;
 }
 
-function startZulipEventLoopWithTransport(
+function startMessengerEventLoopWithTransport(
   transport: EventLoopTransport,
-  options: StartZulipEventLoopOptions,
+  options: StartMessengerEventLoopOptions,
 ): void {
   const {
     onEvent,
@@ -118,18 +122,18 @@ function startZulipEventLoopWithTransport(
   function setQueueId(nextQueueId: string): void {
     queueState.id = nextQueueId;
     if (registryInstanceId.length > 0) {
-      setZulipEventQueueId(registryInstanceId, nextQueueId);
+      setMessengerEventQueueId(registryInstanceId, nextQueueId);
     }
   }
 
   function clearQueueId(): void {
     queueState.id = null;
     if (registryInstanceId.length > 0) {
-      clearZulipEventQueueId(registryInstanceId);
+      clearMessengerEventQueueId(registryInstanceId);
     }
   }
 
-  function handleEvent(event: ZulipEvent): void {
+  function handleEvent(event: MessengerEvent): void {
     lastEventId = Math.max(lastEventId, event.id);
     if (event.type === "heartbeat") return;
     recordDiagnosticRealtimeEvent(event.type);
@@ -320,8 +324,8 @@ function startZulipEventLoopWithTransport(
     });
 }
 
-export function startZulipEventLoop(options: StartZulipEventLoopOptions): void {
-  startZulipEventLoopWithTransport(
+export function startMessengerEventLoop(options: StartMessengerEventLoopOptions): void {
+  startMessengerEventLoopWithTransport(
     {
       registerQueue: (eventTypes, fetchEventTypes) => registerQueue(eventTypes, fetchEventTypes),
       getEvents: (queueId, lastEventId, requestOptions) =>
@@ -331,11 +335,11 @@ export function startZulipEventLoop(options: StartZulipEventLoopOptions): void {
   );
 }
 
-export function startZulipEventLoopForCredentials(
-  options: StartZulipEventLoopForCredentialsOptions,
+export function startMessengerEventLoopForCredentials(
+  options: StartMessengerEventLoopForCredentialsOptions,
 ): void {
   const { credentials, ...loopOptions } = options;
-  startZulipEventLoopWithTransport(
+  startMessengerEventLoopWithTransport(
     {
       registerQueue: (eventTypes, fetchEventTypes) =>
         registerQueueForCredentials(credentials, eventTypes, fetchEventTypes),

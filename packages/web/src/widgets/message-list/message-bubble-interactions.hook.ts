@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { useDownloadStore } from "~/entities/download/download.model";
-import type { MessageReactionPayload, MockMessage } from "~/shared/api/zulip.types";
+import type { MessageReactionPayload, MockMessage } from "~/shared/api/messenger.types";
 import { extractUserUploadPath } from "./message-attachment-download.lib";
 import {
   captureReplySelectionForContextMenu,

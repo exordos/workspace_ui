@@ -1,4 +1,4 @@
-import type { RealmEmoji } from "~/shared/api/zulip.types";
+import type { RealmEmoji } from "~/shared/api/messenger.types";
 import { normalizeEmojiShortcodeName } from "~/shared/lib/emoji-shortcodes.lib";
 import { getCachedRealmEmojis } from "~/shared/lib/realm-emojis-cache";
 import type { UserStatus } from "./user.model";

@@ -6,8 +6,8 @@
  * logic, sorting, and error handling.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchMessagesWithNarrowPage } from "~/shared/api/zulip-messages";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import { fetchMessagesWithNarrowPage } from "~/shared/api/messenger-messages";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { createMessage } from "~/test/factories";
 import { fetchInboxEntries, fetchInboxEntriesWithSnapshot } from "./inbox.api";
 
@@ -15,7 +15,7 @@ const upsertChatMessages = vi.hoisted(() => vi.fn());
 const getCurrentInstance = vi.hoisted(() => vi.fn());
 const persistChatMessagesToIndexedDb = vi.hoisted(() => vi.fn());
 
-vi.mock("~/shared/api/zulip-messages", () => ({
+vi.mock("~/shared/api/messenger-messages", () => ({
   fetchMessagesWithNarrowPage: vi.fn(),
 }));
 
@@ -57,7 +57,7 @@ afterEach(() => {
 });
 
 function msg(overrides: Parameters<typeof createMessage>[0] = {}): MockMessage {
-  return createMessage(overrides) as MockMessage;
+  return createMessage(overrides);
 }
 
 function dmMsg(overrides: Parameters<typeof createMessage>[0] = {}): MockMessage {
@@ -213,7 +213,7 @@ describe("fetchInboxEntries", () => {
     persistChatMessagesToIndexedDb.mockReturnValue(true);
     getCurrentInstance.mockReturnValue({
       id: "instance-1",
-      realm: "https://zulip.example.com",
+      realm: "https://chat.example.com",
       email: "user@example.com",
       apiKey: "api-key",
     });
@@ -274,7 +274,7 @@ describe("fetchInboxEntries", () => {
     persistChatMessagesToIndexedDb.mockReturnValue(true);
     getCurrentInstance.mockReturnValue({
       id: "instance-1",
-      realm: "https://zulip.example.com",
+      realm: "https://chat.example.com",
       email: "user@example.com",
       apiKey: "api-key",
     });

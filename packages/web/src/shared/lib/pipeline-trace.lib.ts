@@ -11,7 +11,7 @@
  */
 
 import type { MessageLocation } from "~/entities/chat-list/chat-list.model.types";
-import type { ZulipRecentPrivateConversation } from "~/shared/api/zulip.types";
+import type { MessengerRecentPrivateConversation } from "~/shared/api/messenger.types";
 import { createLogger } from "~/shared/lib/logger";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import type { DmEntryInternal, StreamEntryInternal } from "~/shared/types/sidebar-chat";
@@ -175,7 +175,7 @@ export function logFolderFlow(phase: string, data?: Record<string, unknown>): vo
 }
 
 /** Min/max message id and count for chat-list / API traces (no message content). */
-export function summarizeZulipMessagesForFlowDebug(messages: readonly { id: number }[]): {
+export function summarizeMessengerMessagesForFlowDebug(messages: readonly { id: number }[]): {
   count: number;
   minId: number | null;
   maxId: number | null;
@@ -290,7 +290,7 @@ export function sidebarUnreadLogContextFromChatContext(
 }
 
 export function summarizeRecentPrivateConversationsForTrace(
-  conversations: Record<string, ZulipRecentPrivateConversation> | undefined,
+  conversations: Record<string, MessengerRecentPrivateConversation> | undefined,
 ): Record<string, unknown> {
   if (conversations == null) {
     return { present: false };

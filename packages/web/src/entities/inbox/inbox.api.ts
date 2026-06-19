@@ -4,17 +4,17 @@
 
 import { persistChatMessagesToIndexedDb } from "~/entities/message/message-local-cache.lib";
 import { getCurrentInstance } from "~/shared/api/client";
-import { fetchMessagesWithNarrowPage } from "~/shared/api/zulip-messages";
+import { fetchMessagesWithNarrowPage } from "~/shared/api/messenger-messages";
 import {
   parseUnreadMessagesSnapshot,
-  type ZulipUnreadMessagesSnapshot,
-} from "~/shared/api/zulip-unread.lib";
-import type { MockMessage, ZulipRawMessage } from "~/shared/api/zulip.types";
+  type MessengerUnreadMessagesSnapshot,
+} from "~/shared/api/messenger-unread.lib";
+import type { MockMessage, WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { createLogger, logApiCall } from "~/shared/lib/logger";
 import { getInstanceMessagesAscending, upsertChatMessages } from "~/shared/lib/message-cache-db";
 import { chatKeyFromMockMessage } from "~/shared/lib/message-cache-keys.lib";
 import { mockMessageToRawMessage } from "~/shared/lib/message-mock-to-raw.lib";
-import { zulipMessageCacheWindowNForChatKey } from "~/shared/lib/zulip-message-window.lib";
+import { messengerMessageCacheWindowNForChatKey } from "~/shared/lib/messenger-message-window.lib";
 import { buildInboxEntries } from "./inbox.lib";
 import type { InboxMuteFilterOptions } from "./inbox.lib";
 import type { InboxEntry } from "./inbox.types";
@@ -23,12 +23,12 @@ const log = createLogger("inbox:api");
 
 export interface FetchInboxEntriesWithSnapshotResult {
   entries: InboxEntry[];
-  unreadSnapshot: ZulipUnreadMessagesSnapshot;
+  unreadSnapshot: MessengerUnreadMessagesSnapshot;
   unreadSnapshotComplete: boolean;
-  unreadMessages: ZulipRawMessage[];
+  unreadMessages: WorkspaceRawMessage[];
 }
 
-const EMPTY_UNREAD_SNAPSHOT: ZulipUnreadMessagesSnapshot = {
+const EMPTY_UNREAD_SNAPSHOT: MessengerUnreadMessagesSnapshot = {
   streams: [],
   dms: [],
   totalCount: 0,
@@ -75,7 +75,7 @@ async function persistUnreadMessagesToIdb(
           instanceId,
           chatKey,
           messages: chatMessages,
-          windowSizeN: zulipMessageCacheWindowNForChatKey(chatKey),
+          windowSizeN: messengerMessageCacheWindowNForChatKey(chatKey),
         }),
       ]).then(([result]) => result),
     );
@@ -107,9 +107,9 @@ function collectMentionMessageIds(
 
 function buildUnreadSnapshotFromInboxMessages(
   messages: readonly MockMessage[],
-  rawMessages: readonly ZulipRawMessage[],
+  rawMessages: readonly WorkspaceRawMessage[],
   currentUserId: number | null,
-): ZulipUnreadMessagesSnapshot {
+): MessengerUnreadMessagesSnapshot {
   const snapshot = parseUnreadMessagesSnapshot({ messages: rawMessages }) ?? EMPTY_UNREAD_SNAPSHOT;
   return {
     ...snapshot,

@@ -79,7 +79,7 @@ async function readJsonResponse(response, label) {
     payload.result === "error"
   ) {
     const message =
-      typeof payload.msg === "string" ? payload.msg : `${label} returned Zulip error result`;
+      typeof payload.msg === "string" ? payload.msg : `${label} returned messenger error result`;
     throw new Error(message);
   }
 
@@ -138,20 +138,20 @@ function selectStream(subscriptions, streamHint) {
 async function main() {
   if (hasFlag("--help")) {
     console.log("Usage: node scripts/seed-feed-message.mjs [--stream <name|id>] [--topic <topic>] [--content <text>]");
-    console.log("Reads TEST_USER_ZULIP_SERVER / TEST_USER_EMAIL / TEST_USER_PASSWORD from packages/web/.env.");
+    console.log("Reads TEST_USER_SERVER / TEST_USER_EMAIL / TEST_USER_PASSWORD from packages/web/.env.");
     return;
   }
 
   const envPath = resolve(process.cwd(), "packages/web/.env");
   const fileEnv = loadEnvFromFile(envPath);
 
-  const realmRaw = resolveVar("TEST_USER_ZULIP_SERVER", fileEnv);
+  const realmRaw = resolveVar("TEST_USER_SERVER", fileEnv);
   const email = resolveVar("TEST_USER_EMAIL", fileEnv);
   const password = resolveVar("TEST_USER_PASSWORD", fileEnv);
 
   if (!realmRaw || !email || !password) {
     throw new Error(
-      "Missing TEST_USER_* credentials. Expected TEST_USER_ZULIP_SERVER, TEST_USER_EMAIL, TEST_USER_PASSWORD in packages/web/.env or process env.",
+      "Missing TEST_USER_* credentials. Expected TEST_USER_SERVER, TEST_USER_EMAIL, TEST_USER_PASSWORD in packages/web/.env or process env.",
     );
   }
 

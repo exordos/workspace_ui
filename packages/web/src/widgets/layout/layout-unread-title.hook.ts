@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { resolvePersonalDmSidebarTitle } from "~/entities/chat-list/chat-list-format.lib";
-import type { ZulipInstance } from "~/entities/instance/instance.model";
+import type { WorkspaceInstance } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { computeIsGroupDmView, normalizeDmRouteUserIds } from "~/shared/lib/dm-route.lib";
 import type { SidebarChat } from "~/shared/types/sidebar-chat";
@@ -14,7 +14,7 @@ import {
 type DmSidebarChat = Extract<SidebarChat, { type: "dm" }>;
 
 export function useLayoutUnreadAndTitle(options: {
-  instances: ZulipInstance[];
+  instances: WorkspaceInstance[];
   currentInstanceId: string | null;
   streams: StreamWithLast[];
   dms: SidebarChat[];

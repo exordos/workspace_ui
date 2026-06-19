@@ -90,7 +90,7 @@ describe("App default routing", () => {
       instances: [
         {
           id: "inst-1",
-          realm: "https://zulip.example.com",
+          realm: "https://chat.example.com",
           email: "user@example.com",
           apiKey: "api-key",
         },
@@ -110,7 +110,7 @@ describe("App default routing", () => {
       instances: [
         {
           id: "inst-1",
-          realm: "https://zulip.example.com",
+          realm: "https://chat.example.com",
           email: "user@example.com",
           apiKey: "api-key",
         },
@@ -130,7 +130,7 @@ describe("App default routing", () => {
       instances: [
         {
           id: "inst-1",
-          realm: "https://zulip.example.com",
+          realm: "https://chat.example.com",
           email: "user@example.com",
           apiKey: "api-key",
         },
@@ -140,7 +140,7 @@ describe("App default routing", () => {
     });
 
     renderWithProviders(<App />, {
-      route: "/org/zulip.example.com/settings/personal-info",
+      route: "/org/chat.example.com/settings/personal-info",
     });
 
     expect(await screen.findByText("settings-personal-info-page")).toBeInTheDocument();

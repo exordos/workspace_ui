@@ -13,11 +13,11 @@
 
 import { devWorkspaceBrowserMountPath } from "~/shared/config/dev-workspace-org-proxy";
 import {
-  MESSENGER_ZULIP_API_PATH,
+  MESSENGER_API_PATH,
   WORKSPACE_API_PATH,
   WORKSPACE_GATEWAY_V1_PATH,
   WORKSPACE_REST_API_PATH,
-  ZULIP_API_PATH,
+  MESSENGER_API_V1_PATH,
 } from "~/shared/config/workspace-api-layout";
 
 function optional(key: string, fallback = ""): string {
@@ -57,9 +57,9 @@ function parseBooleanEnvFlag(value: string, fallback: boolean): boolean {
 
 const WORKSPACE_API_ORIGIN_RAW = optional("VITE_WORKSPACE_API_ORIGIN", "");
 
-/** Rare: Zulip webroot is bare origin but uploads are only under {@link WORKSPACE_GATEWAY_V1_PATH}. */
-const USER_UPLOADS_PREFIX_ON_ZULIP_REALM = parseBooleanEnvFlag(
-  optional("VITE_USER_UPLOADS_PREFIX_ON_ZULIP_REALM", ""),
+/** Rare: organization webroot is bare origin but uploads are only under {@link WORKSPACE_GATEWAY_V1_PATH}. */
+const USER_UPLOADS_PREFIX_ON_REALM = parseBooleanEnvFlag(
+  optional("VITE_USER_UPLOADS_PREFIX_ON_REALM", ""),
   false,
 );
 
@@ -74,18 +74,18 @@ export const env = {
   MODE: import.meta.env.MODE,
 
   /**
-   * Optional default Workspace/Zulip API origin (e.g. `https://zulip.example.com`).
+   * Optional default Workspace/Messenger API origin (e.g. `https://chat.example.com`).
    * Dev: optional static Vite `server.proxy` target; multi-org uses instance + `X-Workspace-Dev-Target-Origin`
    * for `/workspace` and `/user_uploads` fetches.
    * Prod: use with `VITE_WORKSPACE_API_BASE_URL` or instance-derived bases when empty.
    */
   WORKSPACE_API_ORIGIN: cleanOrigin(WORKSPACE_API_ORIGIN_RAW),
 
-  /** Zulip JSON API path (`/api/v1`). Fixed — `~/shared/config/workspace-api-layout`. */
-  ZULIP_API_PATH,
+  /** Messenger JSON API path (`/api/v1`). Fixed — `~/shared/config/workspace-api-layout`. */
+  MESSENGER_API_V1_PATH,
 
-  /** Messenger gateway Zulip API path (`/api/messanger/v1`). Fixed — same module. */
-  MESSENGER_ZULIP_API_PATH,
+  /** Messenger gateway Messenger API path (`/api/messanger/v1`). Fixed — same module. */
+  MESSENGER_API_PATH,
 
   /** Workspace gateway API path (`/workspace/v1`). Fixed — same module. */
   WORKSPACE_API_PATH,
@@ -100,15 +100,15 @@ export const env = {
 
   /**
    * When true, append {@link WORKSPACE_GATEWAY_V1_PATH} even if the realm base equals the upload site
-   * origin (no gateway tail was stripped). Default false — canonical Zulip serves `/user_uploads/`
+   * origin (no gateway tail was stripped). Default false — canonical messenger host serves `/user_uploads/`
    * at the realm root.
    */
-  USER_UPLOADS_PREFIX_ON_ZULIP_REALM: USER_UPLOADS_PREFIX_ON_ZULIP_REALM,
+  USER_UPLOADS_PREFIX_ON_REALM: USER_UPLOADS_PREFIX_ON_REALM,
 
   /**
    * Workspace REST API base (Orval paths are `/v1/...`).
    * Default: dev `/workspace`, prod `origin` — no extra suffix so URLs are `{base}/v1/...` (→ `/workspace/v1/...`).
-   * Zulip uploads still use {@link WORKSPACE_API_PATH}. Override: `VITE_WORKSPACE_API_BASE_URL` only.
+   * messenger uploads still use {@link WORKSPACE_API_PATH}. Override: `VITE_WORKSPACE_API_BASE_URL` only.
    */
   WORKSPACE_API_BASE: (() => {
     const override = optional("VITE_WORKSPACE_API_BASE_URL");
@@ -123,7 +123,7 @@ export const env = {
 
   /**
    * Workspace uploads origin for absolute URLs in messages.
-   * e.g. `https://zulip.example.com/api/v1`
+   * e.g. `https://chat.example.com/api/v1`
    */
   WORKSPACE_UPLOADS_ORIGIN: (() => {
     const origin = cleanOrigin(WORKSPACE_API_ORIGIN_RAW);
@@ -133,7 +133,7 @@ export const env = {
   /**
    * Jitsi Meet domain without protocol (e.g. `meet.example.com`).
    * Build-time fallback when the server does not return a Jitsi URL in `POST /api/v1/register`.
-   * Runtime resolution: Zulip register `jitsi_server_url` / realm+server fields → this env →
+   * Runtime resolution: messenger register `jitsi_server_url` / realm+server fields → this env →
    * link detection still accepts public `meet.jit.si` (see `~/shared/lib/jitsi`).
    */
   JITSI_MEET_DOMAIN: optional("VITE_JITSI_MEET_DOMAIN"),

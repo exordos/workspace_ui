@@ -1,5 +1,5 @@
 /**
- * Inline `<video>` preview for Zulip user-upload links (markdown and server HTML).
+ * Inline `<video>` preview for the messenger API user-upload links (markdown and server HTML).
  */
 import {
   isUserUploadVideoPath,

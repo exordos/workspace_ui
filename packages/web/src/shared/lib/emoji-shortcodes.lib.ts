@@ -1,7 +1,7 @@
 import emojibaseShortcodes from "emojibase-data/en/shortcodes/emojibase.json";
 import {
-  ZULIP_CANONICAL_SHORTCODE_BY_UNIFIED_OVERRIDES,
-  ZULIP_SHORTCODE_TO_UNIFIED_OVERRIDES,
+  MESSENGER_CANONICAL_SHORTCODE_BY_UNIFIED_OVERRIDES,
+  MESSENGER_SHORTCODE_TO_UNIFIED_OVERRIDES,
 } from "~/shared/lib/emoji-shortcodes-overrides.data";
 
 /** Runtime emoji shortcode resolution: normalization, indices, and lookup. */
@@ -118,21 +118,21 @@ function applyDatasetShortcodes(
   }
 }
 
-function applyZulipShortcodeOverrides(aliasToCodepoints: Map<string, Set<string>>): void {
-  for (const [aliasRaw, unifiedRaw] of Object.entries(ZULIP_SHORTCODE_TO_UNIFIED_OVERRIDES)) {
+function applyWorkspaceShortcodeOverrides(aliasToCodepoints: Map<string, Set<string>>): void {
+  for (const [aliasRaw, unifiedRaw] of Object.entries(MESSENGER_SHORTCODE_TO_UNIFIED_OVERRIDES)) {
     const alias = normalizeEmojiShortcodeName(aliasRaw);
     const unified = normalizeUnifiedCodeForLookup(unifiedRaw);
     if (alias.length === 0 || unified.length === 0) {
       continue;
     }
-    // Zulip-specific aliases must take precedence over emojibase defaults.
+    // Workspace-specific aliases must take precedence over emojibase defaults.
     aliasToCodepoints.set(alias, new Set([unified]));
   }
 }
 
-function applyZulipCanonicalOverrides(canonicalShortcodeByUnified: Map<string, string>): void {
+function applyWorkspaceCanonicalOverrides(canonicalShortcodeByUnified: Map<string, string>): void {
   for (const [unifiedRaw, aliasRaw] of Object.entries(
-    ZULIP_CANONICAL_SHORTCODE_BY_UNIFIED_OVERRIDES,
+    MESSENGER_CANONICAL_SHORTCODE_BY_UNIFIED_OVERRIDES,
   )) {
     const unified = normalizeUnifiedCodeForLookup(unifiedRaw);
     const alias = normalizeEmojiShortcodeName(aliasRaw);
@@ -188,8 +188,8 @@ function buildShortcodeIndices(): ShortcodeIndices {
   const aliasToCodepoints = new Map<string, Set<string>>();
   const canonicalShortcodeByUnified = new Map<string, string>();
   applyDatasetShortcodes(aliasToCodepoints, canonicalShortcodeByUnified);
-  applyZulipShortcodeOverrides(aliasToCodepoints);
-  applyZulipCanonicalOverrides(canonicalShortcodeByUnified);
+  applyWorkspaceShortcodeOverrides(aliasToCodepoints);
+  applyWorkspaceCanonicalOverrides(canonicalShortcodeByUnified);
 
   return {
     unicodeByShortcode: buildUnicodeByShortcode(aliasToCodepoints),

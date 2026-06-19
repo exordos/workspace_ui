@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { IncomingDmCallInvite } from "./jitsi-call.model";
 
-vi.mock("~/shared/api/zulip-client.internal", () => ({
+vi.mock("~/shared/api/messenger-client.internal", () => ({
   getRealmBaseUrl: () => "https://realm.test",
 }));
 
@@ -19,7 +19,7 @@ vi.mock("./jitsi-call.ui", () => ({
 function buildInvite(messageId = 777): IncomingDmCallInvite {
   return {
     messageId,
-    meetingUrl: "https://meet.jit.si/zulip-dm-room-777",
+    meetingUrl: "https://meet.jit.si/messenger-dm-room-777",
     callerName: "Fox",
     locationName: "Fox",
     avatarUrl: undefined,

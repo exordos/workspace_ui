@@ -1,7 +1,7 @@
 /**
  * Filters stored link previews when message body changes.
  */
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { linkPreviewsFromMessage } from "~/shared/lib/message-link-preview-list.lib";
 import { linkPreviewUrlKey } from "~/shared/lib/message-link-preview-url-match.lib";
 import { extractLinkPreviewUrls } from "~/shared/lib/message-link-preview-urls.lib";

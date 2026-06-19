@@ -3,7 +3,7 @@ import { useCallback, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useMentionSuggestStore } from "~/features/mention-suggest/mention-suggest.model";
-import type * as ZulipMessagesApi from "~/shared/api/zulip-messages";
+import type * as MessengerMessagesApi from "~/shared/api/messenger-messages";
 import { resetRealmEmojisCacheForTests } from "~/shared/lib/realm-emojis-cache";
 import { createUser } from "~/test/factories";
 import { renderWithProviders } from "~/test/render";
@@ -41,8 +41,10 @@ vi.mock("~/shared/lib/touch", async () => {
   };
 });
 
-vi.mock("~/shared/api/zulip-messages", async () => {
-  const actual = await vi.importActual<typeof ZulipMessagesApi>("~/shared/api/zulip-messages");
+vi.mock("~/shared/api/messenger-messages", async () => {
+  const actual = await vi.importActual<typeof MessengerMessagesApi>(
+    "~/shared/api/messenger-messages",
+  );
   return {
     ...actual,
     renderMessageContent: (...args: unknown[]) => renderMessageContentMock(...args),
@@ -51,8 +53,8 @@ vi.mock("~/shared/api/zulip-messages", async () => {
   };
 });
 
-vi.mock("~/shared/api/zulip-users", async () => {
-  const actual = await vi.importActual("~/shared/api/zulip-users");
+vi.mock("~/shared/api/messenger-users", async () => {
+  const actual = await vi.importActual("~/shared/api/messenger-users");
   return {
     ...actual,
     fetchRealmEmojis: (...args: unknown[]) => fetchRealmEmojisMock(...args),
@@ -741,7 +743,7 @@ describe("MessageComposer formatting shortcuts", () => {
 });
 
 describe("MessageComposer preview mode", () => {
-  it("renders markdown preview via Zulip render API and keeps draft intact", async () => {
+  it("renders markdown preview via Workspace render API and keeps draft intact", async () => {
     renderMessageContentMock.mockResolvedValue("<p><strong>Hello</strong> world</p>");
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 

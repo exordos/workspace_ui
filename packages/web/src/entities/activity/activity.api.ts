@@ -3,16 +3,19 @@
  */
 import { persistChatMessagesToIndexedDb } from "~/entities/message/message-local-cache.lib";
 import { getCurrentInstance } from "~/shared/api/client";
-import { fetchActivityMessagesPage, rawMessageToMockMessage } from "~/shared/api/zulip-messages";
+import {
+  fetchActivityMessagesPage,
+  rawMessageToMockMessage,
+} from "~/shared/api/messenger-messages";
 import type {
   ActivityFilter,
   ActivityMessagesPageResult,
-  ZulipRawMessage,
-} from "~/shared/api/zulip.types";
+  WorkspaceRawMessage,
+} from "~/shared/api/messenger.types";
 import { createLogger } from "~/shared/lib/logger";
 import { upsertChatMessages } from "~/shared/lib/message-cache-db";
 import { chatKeyFromMockMessage } from "~/shared/lib/message-cache-keys.lib";
-import { zulipMessageCacheWindowNForChatKey } from "~/shared/lib/zulip-message-window.lib";
+import { messengerMessageCacheWindowNForChatKey } from "~/shared/lib/messenger-message-window.lib";
 
 const log = createLogger("activity:api");
 
@@ -24,7 +27,7 @@ function throwIfAborted(signal?: AbortSignal): void {
 
 async function persistActivityMessagesToIdb(
   instanceId: string | null,
-  messages: readonly ZulipRawMessage[],
+  messages: readonly WorkspaceRawMessage[],
   currentUserId: number | null,
   signal?: AbortSignal,
 ): Promise<void> {
@@ -56,7 +59,7 @@ async function persistActivityMessagesToIdb(
           instanceId,
           chatKey,
           messages: chatMessages,
-          windowSizeN: zulipMessageCacheWindowNForChatKey(chatKey),
+          windowSizeN: messengerMessageCacheWindowNForChatKey(chatKey),
         }),
       ]).then(([result]) => result),
     );

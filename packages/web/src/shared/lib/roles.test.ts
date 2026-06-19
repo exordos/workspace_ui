@@ -1,7 +1,7 @@
 /**
  * Tests for the role-based access control (RBAC) module.
  *
- * This module maps Zulip's numeric role codes to a typed hierarchy
+ * This module maps the messenger API's numeric role codes to a typed hierarchy
  * (Owner > Admin > Moderator > Member > Guest) and enforces permissions
  * for message editing, deletion, moderation, and org settings.
  * Incorrect permission checks could allow unauthorized actions or
@@ -24,10 +24,10 @@ import {
   getAllRoles,
 } from "./roles";
 
-// parseRole converts Zulip API numeric codes (100, 200, ...) to typed UserRole enum
+// parseRole converts Messenger API numeric codes (100, 200, ...) to typed UserRole enum
 describe("parseRole", () => {
-  // Zulip uses non-obvious codes: 100=Owner, 200=Admin (not the other way around!)
-  it("maps Zulip API codes correctly", () => {
+  // Workspace uses non-obvious codes: 100=Owner, 200=Admin (not the other way around!)
+  it("maps Messenger API codes correctly", () => {
     expect(parseRole(100)).toBe(UserRole.Owner);
     expect(parseRole(200)).toBe(UserRole.Admin);
     expect(parseRole(300)).toBe(UserRole.Moderator);

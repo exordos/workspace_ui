@@ -1,6 +1,6 @@
 import React from "react";
 import { t } from "~/i18n/i18n";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { MESSAGE_BUBBLE_BODY_CLASS_NAME } from "~/shared/lib/message-body-rich-text-classes";
 import { Icon } from "~/shared/ui/icon";
 import { Spinner } from "~/shared/ui/spinner.ui";

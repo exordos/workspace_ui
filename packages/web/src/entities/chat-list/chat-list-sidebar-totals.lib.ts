@@ -3,7 +3,7 @@
  *
  * Computed when maps change, not on every unrelated store field update.
  */
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import type { DmEntryInternal, StreamEntryInternal } from "~/shared/types/sidebar-chat";
 
 export interface SidebarUnreadMutePredicates {
@@ -64,7 +64,7 @@ export function applySidebarUnreadDeltas(
 }
 
 export function countMentionsUnread(
-  messages: readonly ZulipRawMessage[] | null,
+  messages: readonly WorkspaceRawMessage[] | null,
   currentUserId: number | null,
 ): number {
   if (messages == null) return 0;

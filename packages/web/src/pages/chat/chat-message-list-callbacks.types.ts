@@ -1,11 +1,11 @@
-import type { MessageReactionPayload, MockMessage } from "~/shared/api/zulip.types";
+import type { MessageReactionPayload, MockMessage } from "~/shared/api/messenger.types";
 import type { Dispatch, SetStateAction } from "react";
 import type { NavigateFunction } from "react-router-dom";
 
 export interface UseChatMessageListCallbacksParams {
   selectionMode: boolean;
   currentUserId: number | null;
-  /** Active Zulip realm base URL for reply-quote permalinks */
+  /** Active organization realm base URL for reply-quote permalinks */
   realmBaseUrl: string;
   streams: { stream_id: number; name: string }[];
   locationPathname: string;

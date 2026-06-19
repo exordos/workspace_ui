@@ -2,7 +2,7 @@ import React from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { t } from "~/i18n/i18n";
-import { buildOrgRouteIdForZulipInstance, withOrgRoutePrefix } from "~/shared/lib/org-route";
+import { buildOrgRouteIdForWorkspaceInstance, withOrgRoutePrefix } from "~/shared/lib/org-route";
 import {
   getOrganizationFallbackLogoUrl,
   getOrganizationLogoSrc,
@@ -124,7 +124,7 @@ export const InstanceSwitcher: React.FC = () => {
       // Chat context (DM/stream/topic) is org-scoped — always navigate to inbox after switch.
       const inboxPath = withOrgRoutePrefix(
         "/inbox",
-        buildOrgRouteIdForZulipInstance(selectedInstance),
+        buildOrgRouteIdForWorkspaceInstance(selectedInstance),
       );
       const currentPath = `${location.pathname}${location.search}${location.hash}`;
       // Route is the org-context source of truth: fix instance desync in place, or navigate first.

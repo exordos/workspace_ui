@@ -2,7 +2,7 @@
  * Message Readers store — manages read receipt state for the "Read By" modal.
  *
  * Lifecycle: idle → loading → done / error.
- * Populated via fetchReadReceipts (Zulip API), cleared on modal dismiss.
+ * Populated via fetchReadReceipts (Messenger API), cleared on modal dismiss.
  */
 
 import { create } from "zustand";

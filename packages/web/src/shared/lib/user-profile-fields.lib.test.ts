@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
+import type { RealmProfileFieldDefinition } from "~/shared/lib/messenger-profile-fields-map.lib";
 import {
   areCustomProfileDataEqual,
   getCustomProfileFieldLines,
-  parseZulipPersonPickerUserIds,
+  parseWorkspacePersonPickerUserIds,
 } from "~/shared/lib/user-profile-fields.lib";
-import type { RealmProfileFieldDefinition } from "~/shared/lib/zulip-profile-fields-map.lib";
 
 describe("getCustomProfileFieldLines", () => {
   it("returns empty for nullish input", () => {
@@ -77,13 +77,13 @@ describe("getCustomProfileFieldLines", () => {
   });
 });
 
-describe("parseZulipPersonPickerUserIds", () => {
-  it("parses JSON array string from Zulip API", () => {
-    expect(parseZulipPersonPickerUserIds("[11]")).toEqual([11]);
+describe("parseWorkspacePersonPickerUserIds", () => {
+  it("parses JSON array string from Messenger API", () => {
+    expect(parseWorkspacePersonPickerUserIds("[11]")).toEqual([11]);
   });
 
   it("parses plain numeric string", () => {
-    expect(parseZulipPersonPickerUserIds(" 42 ")).toEqual([42]);
+    expect(parseWorkspacePersonPickerUserIds(" 42 ")).toEqual([42]);
   });
 });
 

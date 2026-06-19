@@ -1,5 +1,5 @@
 /**
- * Presence tracker — reports local user activity to the Zulip server.
+ * Presence tracker — reports local user activity to the server.
  *
  * Detects user activity (mouse, keyboard, touch, scroll) and reports
  * presence status to the server via POST /users/me/presence.
@@ -163,7 +163,7 @@ export function useLocalPresence(): LocalPresenceStatus {
 
 /**
  * Set the function that reports presence to the server.
- * Called by the event loop / layout after Zulip API is available.
+ * Called by the event loop / layout after Messenger API is available.
  *
  * @param fn Called with "active" or "idle" every REPORT_INTERVAL_MS and on status change.
  */

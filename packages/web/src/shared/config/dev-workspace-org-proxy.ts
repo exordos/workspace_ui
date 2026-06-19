@@ -2,7 +2,7 @@
  * Dev-only dynamic Workspace API proxy (Vite + browser client).
  *
  * In dev, Workspace REST uses {@link X_WORKSPACE_DEV_TARGET_ORIGIN} with the workspace org target;
- * `/user_uploads` fetches use the same header with the **Zulip realm** origin (files live on the
+ * `/user_uploads` fetches use the same header with the **organization realm** origin (files live on the
  * realm host). Vite middleware forwards `/user_uploads/...` without a gateway prefix; the static
  * proxy is the fallback. If
  * `WORKSPACE_API_BASE` is an absolute URL, the client falls back to
@@ -77,7 +77,7 @@ export function workspaceDevProxyUpstreamPathname(input: {
   return `${suffix}${rel}`;
 }
 
-/** Request header carrying the Zulip realm origin (https://host, optional port). */
+/** Request header carrying the organization realm origin (https://host, optional port). */
 export const X_WORKSPACE_DEV_TARGET_ORIGIN = "X-Workspace-Dev-Target-Origin";
 
 function isAllowedDevHttpProxyHostname(hostname: string): boolean {

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, type RefObject } from "react";
 import { useLinkPreviewStore } from "~/entities/link-preview/link-preview.model";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { useIntersectedOnce } from "~/shared/lib/intersected-once.hook";
 import { linkPreviewContentFingerprint } from "~/shared/lib/message-link-preview-fingerprint.lib";
 import { linkPreviewsFromMessage } from "~/shared/lib/message-link-preview-list.lib";

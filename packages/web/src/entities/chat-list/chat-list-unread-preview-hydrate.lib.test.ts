@@ -1,16 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useInstancesStore } from "~/entities/instance/instance.model";
-import { fetchMessagesByIds } from "~/shared/api/zulip-messages";
-import type { ZulipUnreadMessagesSnapshot } from "~/shared/api/zulip-unread.lib";
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import { fetchMessagesByIds } from "~/shared/api/messenger-messages";
+import type { MessengerUnreadMessagesSnapshot } from "~/shared/api/messenger-unread.lib";
+import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import {
   hydrateStreamSidebarPreviewsFromUnreadSnapshot,
   resolveLatestUnreadMessageIdsForMissingPreviews,
 } from "./chat-list-unread-preview-hydrate.lib";
 import { useChatListStore } from "./chat-list.model";
 
-vi.mock("~/shared/api/zulip-messages", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/shared/api/zulip-messages")>();
+vi.mock("~/shared/api/messenger-messages", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("~/shared/api/messenger-messages")>();
   return {
     ...actual,
     fetchMessagesByIds: vi.fn(),
@@ -30,7 +30,7 @@ function resetInstancesStore(): void {
   });
 }
 
-function seedActiveInstance(realm = "https://zulip.test"): string {
+function seedActiveInstance(realm = "https://messenger.test"): string {
   return useInstancesStore.getState().addInstance({
     realm,
     email: "sidebar@example.com",
@@ -38,7 +38,7 @@ function seedActiveInstance(realm = "https://zulip.test"): string {
   }).id;
 }
 
-function streamMsg(overrides: Partial<ZulipRawMessage> = {}): ZulipRawMessage {
+function streamMsg(overrides: Partial<WorkspaceRawMessage> = {}): WorkspaceRawMessage {
   return {
     id: 1,
     sender_id: 10,
@@ -68,7 +68,7 @@ describe("resolveLatestUnreadMessageIdsForMissingPreviews", () => {
 
   it("picks max unread id per bucket and dedupes ids", () => {
     useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
-    const snapshot: ZulipUnreadMessagesSnapshot = {
+    const snapshot: MessengerUnreadMessagesSnapshot = {
       streams: [
         { streamId: 5, topic: "alpha", unreadMessageIds: [1, 5, 3] },
         { streamId: 5, topic: "beta", unreadMessageIds: [5, 2] },
@@ -94,7 +94,7 @@ describe("resolveLatestUnreadMessageIdsForMissingPreviews", () => {
         streamMsg({ id: 10, subject: "alpha", content: "ok" }),
       ]);
 
-    const snapshot: ZulipUnreadMessagesSnapshot = {
+    const snapshot: MessengerUnreadMessagesSnapshot = {
       streams: [{ streamId: 5, topic: "alpha", unreadMessageIds: [99] }],
       dms: [],
       totalCount: 1,
@@ -126,7 +126,7 @@ describe("hydrateStreamSidebarPreviewsFromUnreadSnapshot", () => {
   it("fetches latest unread ids and applies stream/topic preview merge", async () => {
     useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
 
-    const snapshot: ZulipUnreadMessagesSnapshot = {
+    const snapshot: MessengerUnreadMessagesSnapshot = {
       streams: [{ streamId: 5, topic: "alpha", unreadMessageIds: [301, 302] }],
       dms: [],
       totalCount: 2,
@@ -156,14 +156,14 @@ describe("hydrateStreamSidebarPreviewsFromUnreadSnapshot", () => {
 
   it("dedupes concurrent hydrate calls", async () => {
     useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
-    const snapshot: ZulipUnreadMessagesSnapshot = {
+    const snapshot: MessengerUnreadMessagesSnapshot = {
       streams: [{ streamId: 5, topic: "alpha", unreadMessageIds: [301] }],
       dms: [],
       totalCount: 1,
       mentionMessageIds: [],
     };
 
-    let resolveFetch!: (value: ZulipRawMessage[]) => void;
+    let resolveFetch!: (value: WorkspaceRawMessage[]) => void;
     fetchMessagesByIdsMock.mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -192,13 +192,13 @@ describe("hydrateStreamSidebarPreviewsFromUnreadSnapshot", () => {
 
   it("drops stale unread preview hydrate after organization switch", async () => {
     useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
-    const snapshot: ZulipUnreadMessagesSnapshot = {
+    const snapshot: MessengerUnreadMessagesSnapshot = {
       streams: [{ streamId: 5, topic: "alpha", unreadMessageIds: [301] }],
       dms: [],
       totalCount: 1,
       mentionMessageIds: [],
     };
-    let resolveFetch!: (value: ZulipRawMessage[]) => void;
+    let resolveFetch!: (value: WorkspaceRawMessage[]) => void;
     fetchMessagesByIdsMock.mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -207,7 +207,7 @@ describe("hydrateStreamSidebarPreviewsFromUnreadSnapshot", () => {
     );
 
     const first = hydrateStreamSidebarPreviewsFromUnreadSnapshot(snapshot);
-    const secondInstanceId = seedActiveInstance("https://zulip-2.test");
+    const secondInstanceId = seedActiveInstance("https://messenger-2.test");
     useInstancesStore.getState().setCurrentInstanceId(secondInstanceId);
     useChatListStore.getState().clear();
     useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
@@ -228,14 +228,14 @@ describe("hydrateStreamSidebarPreviewsFromUnreadSnapshot", () => {
 
   it("does not dedupe unread preview hydrate across organizations", async () => {
     useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
-    const snapshot: ZulipUnreadMessagesSnapshot = {
+    const snapshot: MessengerUnreadMessagesSnapshot = {
       streams: [{ streamId: 5, topic: "alpha", unreadMessageIds: [301] }],
       dms: [],
       totalCount: 1,
       mentionMessageIds: [],
     };
-    let resolveFirst!: (value: ZulipRawMessage[]) => void;
-    let resolveSecond!: (value: ZulipRawMessage[]) => void;
+    let resolveFirst!: (value: WorkspaceRawMessage[]) => void;
+    let resolveSecond!: (value: WorkspaceRawMessage[]) => void;
     fetchMessagesByIdsMock
       .mockImplementationOnce(
         () =>
@@ -252,7 +252,7 @@ describe("hydrateStreamSidebarPreviewsFromUnreadSnapshot", () => {
 
     const first = hydrateStreamSidebarPreviewsFromUnreadSnapshot(snapshot);
 
-    const secondInstanceId = seedActiveInstance("https://zulip-2.test");
+    const secondInstanceId = seedActiveInstance("https://messenger-2.test");
     useInstancesStore.getState().setCurrentInstanceId(secondInstanceId);
     useChatListStore.getState().clear();
     useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);

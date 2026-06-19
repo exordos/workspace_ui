@@ -3,7 +3,7 @@
  */
 
 import type { Draft } from "~/entities/draft/draft.types";
-import type { Reaction } from "~/shared/api/zulip.types";
+import type { Reaction } from "~/shared/api/messenger.types";
 import { formatStreamTopicLabel } from "~/shared/lib/topic-display.lib";
 import {
   groupReactions,

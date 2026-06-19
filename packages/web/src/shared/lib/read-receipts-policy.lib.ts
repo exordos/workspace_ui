@@ -1,5 +1,5 @@
 /**
- * Pure predicates for when chat read receipts may advance (Zulip flags API).
+ * Pure predicates for when chat read receipts may advance (messenger flags API).
  *
  * Used by the message list (viewport) and chat page (bulk narrow). Tab
  * visibility is handled separately via `isTabVisible()` in UI layers.

@@ -5,7 +5,7 @@
 // Tests cover middleware composition, auth injection, retry logic,
 // HTTP methods, JSON handling, and runtime middleware management.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ZULIP_API_FETCH_TIMEOUT_MS } from "../config/constants";
+import { MESSENGER_API_FETCH_TIMEOUT_MS } from "../config/constants";
 import { wipeCredentials } from "../lib/auth-guard";
 import type { Middleware, ApiRequest, ApiResponse, NextFn } from "./client";
 
@@ -18,7 +18,7 @@ vi.mock("../lib/env", () => ({
   env: {
     WORKSPACE_API_BASE: "https://workspace.test/api/v1",
     WORKSPACE_REST_API_PATH: "",
-    ZULIP_API_PATH: "/api/v1",
+    MESSENGER_API_V1_PATH: "/api/v1",
   },
 }));
 
@@ -218,12 +218,12 @@ describe("Middleware pipeline", () => {
 });
 
 // ---------------------------------------------------------------------------
-// ApiClient integration: test exported singletons `zulipApi` and `workspaceApi`
+// ApiClient integration: test exported singletons `messengerApi` and `workspaceApi`
 // with real middleware over stubbed fetch.
 // ---------------------------------------------------------------------------
 
 // Verify HTTP methods, auth injection, retry behavior, and error handling.
-describe("ApiClient (via zulipApi / workspaceApi)", () => {
+describe("ApiClient (via messengerApi / workspaceApi)", () => {
   let mockFetch: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
@@ -246,18 +246,18 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
 
   // `GET` must encode params in the query string and parse the JSON response.
   it("GET sends method and URL, returns parsed JSON", async () => {
-    const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
+    const { setInstanceProvider, messengerApi, refreshMessengerApiBase } = await import("./client");
     setInstanceProvider(() => ({
       id: "i1",
-      realm: "https://zulip.test",
+      realm: "https://messenger.test",
       email: "u@t.com",
       apiKey: "key123",
     }));
-    refreshZulipApiBase();
+    refreshMessengerApiBase();
 
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ result: "success", messages: [] }));
 
-    const res = await zulipApi.get("/messages", { anchor: "newest" });
+    const res = await messengerApi.get("/messages", { anchor: "newest" });
 
     expect(mockFetch).toHaveBeenCalledOnce();
     const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
@@ -273,18 +273,19 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
     expect(res.data).toEqual({ result: "success", messages: [] });
   });
 
-  // A hung Zulip response must not block the UI indefinitely.
-  it("zulipApi aborts a hung fetch after ZULIP_API_FETCH_TIMEOUT_MS", async () => {
+  // A hung Workspace response must not block the UI indefinitely.
+  it("messengerApi aborts a hung fetch after MESSENGER_API_FETCH_TIMEOUT_MS", async () => {
     vi.useFakeTimers();
     try {
-      const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
+      const { setInstanceProvider, messengerApi, refreshMessengerApiBase } =
+        await import("./client");
       setInstanceProvider(() => ({
         id: "i1",
-        realm: "https://zulip.test",
+        realm: "https://messenger.test",
         email: "u@t.com",
         apiKey: "key123",
       }));
-      refreshZulipApiBase();
+      refreshMessengerApiBase();
 
       mockFetch.mockImplementation((_url: string, init?: RequestInit) => {
         return new Promise<Response>((_resolve, reject) => {
@@ -299,9 +300,9 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
         });
       });
 
-      const pending = zulipApi.get("/messages", { anchor: "newest" });
+      const pending = messengerApi.get("/messages", { anchor: "newest" });
       const assertRejected = expect(pending).rejects.toMatchObject({ name: "AbortError" });
-      await vi.advanceTimersByTimeAsync(ZULIP_API_FETCH_TIMEOUT_MS);
+      await vi.advanceTimersByTimeAsync(MESSENGER_API_FETCH_TIMEOUT_MS);
       await assertRejected;
       expect(mockFetch).toHaveBeenCalledOnce();
       const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
@@ -313,42 +314,42 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
 
   // Long-poll `GET /events` stays open on the server,
   // so a generic REST deadline must not apply here.
-  it("zulipApi GET /events skips wall-clock fetch timeout", async () => {
-    const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
+  it("messengerApi GET /events skips wall-clock fetch timeout", async () => {
+    const { setInstanceProvider, messengerApi, refreshMessengerApiBase } = await import("./client");
     setInstanceProvider(() => ({
       id: "i1",
-      realm: "https://zulip.test",
+      realm: "https://messenger.test",
       email: "u@t.com",
       apiKey: "key123",
     }));
-    refreshZulipApiBase();
+    refreshMessengerApiBase();
 
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ result: "success", events: [] }));
-    await zulipApi.get("/events", { queue_id: "q-1", last_event_id: "0" });
+    await messengerApi.get("/events", { queue_id: "q-1", last_event_id: "0" });
     const [, initNoCaller] = mockFetch.mock.calls[0] as [string, RequestInit];
     expect(initNoCaller.signal).toBeUndefined();
 
     const user = new AbortController();
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ result: "success", events: [] }));
-    await zulipApi.get("/events", { queue_id: "q-1", last_event_id: "1" }, user.signal);
+    await messengerApi.get("/events", { queue_id: "q-1", last_event_id: "1" }, user.signal);
     const [, initWithCaller] = mockFetch.mock.calls[1] as [string, RequestInit];
     expect(initWithCaller.signal).toBe(user.signal);
   });
 
-  // `POST` must use `application/x-www-form-urlencoded` per Zulip API convention.
+  // `POST` must use `application/x-www-form-urlencoded` per Messenger API convention.
   it("POST sends form-encoded body", async () => {
-    const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
+    const { setInstanceProvider, messengerApi, refreshMessengerApiBase } = await import("./client");
     setInstanceProvider(() => ({
       id: "i1",
-      realm: "https://zulip.test",
+      realm: "https://messenger.test",
       email: "u@t.com",
       apiKey: "key123",
     }));
-    refreshZulipApiBase();
+    refreshMessengerApiBase();
 
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ result: "success", id: 42 }));
 
-    const res = await zulipApi.post("/messages", { type: "stream", content: "hello" });
+    const res = await messengerApi.post("/messages", { type: "stream", content: "hello" });
 
     const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
     expect(init.method).toBe("POST");
@@ -360,18 +361,18 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
 
   // `PATCH` uses the same form-encoded format as `POST`.
   it("PATCH sends form-encoded body", async () => {
-    const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
+    const { setInstanceProvider, messengerApi, refreshMessengerApiBase } = await import("./client");
     setInstanceProvider(() => ({
       id: "i1",
-      realm: "https://zulip.test",
+      realm: "https://messenger.test",
       email: "u@t.com",
       apiKey: "key123",
     }));
-    refreshZulipApiBase();
+    refreshMessengerApiBase();
 
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ result: "success" }));
 
-    await zulipApi.patch("/settings", { full_name: "Test" });
+    await messengerApi.patch("/settings", { full_name: "Test" });
 
     const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
     expect(init.method).toBe("PATCH");
@@ -380,18 +381,18 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
 
   // `DELETE` without body must not set `Content-Type` to avoid confusing the server.
   it("DELETE without body sends no Content-Type", async () => {
-    const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
+    const { setInstanceProvider, messengerApi, refreshMessengerApiBase } = await import("./client");
     setInstanceProvider(() => ({
       id: "i1",
-      realm: "https://zulip.test",
+      realm: "https://messenger.test",
       email: "u@t.com",
       apiKey: "key123",
     }));
-    refreshZulipApiBase();
+    refreshMessengerApiBase();
 
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ result: "success" }));
 
-    await zulipApi.delete("/messages/42");
+    await messengerApi.delete("/messages/42");
 
     const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
     expect(init.method).toBe("DELETE");
@@ -400,18 +401,18 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
 
   // `DELETE` with body (e.g. `/drafts`) must send form-encoded data.
   it("DELETE with body sends form-encoded", async () => {
-    const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
+    const { setInstanceProvider, messengerApi, refreshMessengerApiBase } = await import("./client");
     setInstanceProvider(() => ({
       id: "i1",
-      realm: "https://zulip.test",
+      realm: "https://messenger.test",
       email: "u@t.com",
       apiKey: "key123",
     }));
-    refreshZulipApiBase();
+    refreshMessengerApiBase();
 
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ result: "success" }));
 
-    await zulipApi.delete("/drafts/1", { draft_id: "1" });
+    await messengerApi.delete("/drafts/1", { draft_id: "1" });
 
     const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
     expect(init.method).toBe("DELETE");
@@ -420,18 +421,18 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
 
   // `postJson` is for endpoints that expect a JSON body.
   it("postJson sends JSON body with application/json content type", async () => {
-    const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
+    const { setInstanceProvider, messengerApi, refreshMessengerApiBase } = await import("./client");
     setInstanceProvider(() => ({
       id: "i1",
-      realm: "https://zulip.test",
+      realm: "https://messenger.test",
       email: "u@t.com",
       apiKey: "key123",
     }));
-    refreshZulipApiBase();
+    refreshMessengerApiBase();
 
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true }));
 
-    await zulipApi.postJson("/custom", { key: "value" });
+    await messengerApi.postJson("/custom", { key: "value" });
 
     const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
     expect(init.headers).toHaveProperty("Content-Type", "application/json");
@@ -462,7 +463,7 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
     const { setInstanceProvider, workspaceApi } = await import("./client");
     setInstanceProvider(() => ({
       id: "i1",
-      realm: "https://zulip.test",
+      realm: "https://messenger.test",
       email: "u@t.com",
       apiKey: "key123",
     }));
@@ -481,14 +482,14 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
 
   // `postFormData` must not break multipart headers set by the browser.
   it("postFormData sends FormData body without explicit Content-Type", async () => {
-    const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
+    const { setInstanceProvider, messengerApi, refreshMessengerApiBase } = await import("./client");
     setInstanceProvider(() => ({
       id: "i1",
-      realm: "https://zulip.test",
+      realm: "https://messenger.test",
       email: "u@t.com",
       apiKey: "key123",
     }));
-    refreshZulipApiBase();
+    refreshMessengerApiBase();
 
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true }));
 
@@ -496,7 +497,7 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
     form.append("file", new File(["data"], "test.txt"));
 
     await (
-      zulipApi as typeof zulipApi & {
+      messengerApi as typeof messengerApi & {
         postFormData: (path: string, form: FormData) => Promise<unknown>;
       }
     ).postFormData("/user_uploads", form);
@@ -509,18 +510,18 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
 
   // Auth middleware must inject Basic credentials for the active instance.
   it("authMiddleware injects Basic auth header from current instance", async () => {
-    const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
+    const { setInstanceProvider, messengerApi, refreshMessengerApiBase } = await import("./client");
     setInstanceProvider(() => ({
       id: "i1",
-      realm: "https://zulip.test",
+      realm: "https://messenger.test",
       email: "user@test.com",
       apiKey: "abc",
     }));
-    refreshZulipApiBase();
+    refreshMessengerApiBase();
 
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ result: "success" }));
 
-    await zulipApi.get("/test");
+    await messengerApi.get("/test");
 
     const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
     const headers = init.headers as Record<string, string>;
@@ -542,19 +543,19 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
   });
 
   it("uses /json API path and cookie credentials for session auth instances", async () => {
-    const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
+    const { setInstanceProvider, messengerApi, refreshMessengerApiBase } = await import("./client");
     setInstanceProvider(() => ({
       id: "i-session",
-      realm: "https://zulip.test",
+      realm: "https://messenger.test",
       email: "session-user@example.com",
       apiKey: "",
       authType: "session",
     }));
-    refreshZulipApiBase();
+    refreshMessengerApiBase();
 
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ result: "success" }));
 
-    await zulipApi.get("/messages");
+    await messengerApi.get("/messages");
 
     const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
     expect(url).toContain("/json/messages");
@@ -564,21 +565,21 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
   });
 
   it("adds cached csrf header for session auth register requests", async () => {
-    const { setCachedSessionCsrfToken } = await import("./zulip-session-csrf.internal");
-    const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
-    setCachedSessionCsrfToken("https://zulip.test", "cached-oidc-csrf-token");
+    const { setCachedSessionCsrfToken } = await import("./messenger-session-csrf.internal");
+    const { setInstanceProvider, messengerApi, refreshMessengerApiBase } = await import("./client");
+    setCachedSessionCsrfToken("https://messenger.test", "cached-oidc-csrf-token");
     setInstanceProvider(() => ({
       id: "i-session",
-      realm: "https://zulip.test",
+      realm: "https://messenger.test",
       email: "session-user@example.com",
       apiKey: "",
       authType: "session",
     }));
-    refreshZulipApiBase();
+    refreshMessengerApiBase();
 
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ result: "success" }));
 
-    await zulipApi.post("/register", { event_types: JSON.stringify(["message"]) });
+    await messengerApi.post("/register", { event_types: JSON.stringify(["message"]) });
 
     const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
     const headers = init.headers as Record<string, string>;
@@ -587,15 +588,15 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
   });
 
   it("fetches csrf token from web legacy HTML for session auth register requests", async () => {
-    const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
+    const { setInstanceProvider, messengerApi, refreshMessengerApiBase } = await import("./client");
     setInstanceProvider(() => ({
       id: "i-session",
-      realm: "https://zulip-web-legacy.test/json",
+      realm: "https://messenger-web-legacy.test/json",
       email: "session-user@example.com",
       apiKey: "",
       authType: "session",
     }));
-    refreshZulipApiBase();
+    refreshMessengerApiBase();
 
     mockFetch
       .mockResolvedValueOnce(
@@ -606,10 +607,10 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
       )
       .mockResolvedValueOnce(mockJsonResponse({ result: "success" }));
 
-    await zulipApi.post("/register", { event_types: JSON.stringify(["message"]) });
+    await messengerApi.post("/register", { event_types: JSON.stringify(["message"]) });
 
     const [legacyUrl, legacyInit] = mockFetch.mock.calls[0] as [string, RequestInit];
-    expect(legacyUrl).toBe("https://zulip-web-legacy.test/legacy");
+    expect(legacyUrl).toBe("https://messenger-web-legacy.test/legacy");
     expect(legacyInit).toEqual(
       expect.objectContaining({
         method: "GET",
@@ -624,7 +625,7 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
   });
 
   it("reads csrf token from Electron bridge when session cookie is not visible to document", async () => {
-    const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
+    const { setInstanceProvider, messengerApi, refreshMessengerApiBase } = await import("./client");
     document.cookie = "__Host-csrftoken=; Max-Age=0";
     document.cookie = "csrftoken=; Max-Age=0";
     document.cookie = "csrf=; Max-Age=0";
@@ -639,38 +640,38 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
     });
     setInstanceProvider(() => ({
       id: "i-session",
-      realm: "https://electron-zulip.test",
+      realm: "https://electron-messenger.test",
       email: "session-user@example.com",
       apiKey: "",
       authType: "session",
     }));
-    refreshZulipApiBase();
+    refreshMessengerApiBase();
 
     mockFetch
       .mockResolvedValueOnce(new Response("<html></html>", { status: 200 }))
       .mockResolvedValueOnce(mockJsonResponse({ result: "success" }));
 
-    await zulipApi.post("/register", { event_types: JSON.stringify(["message"]) });
+    await messengerApi.post("/register", { event_types: JSON.stringify(["message"]) });
 
     const [legacyUrl, legacyInit] = mockFetch.mock.calls[0] as [string, RequestInit];
-    expect(legacyUrl).toBe("https://electron-zulip.test/legacy");
+    expect(legacyUrl).toBe("https://electron-messenger.test/legacy");
     expect(legacyInit.credentials).toBe("include");
     const [, init] = mockFetch.mock.calls[1] as [string, RequestInit];
     const headers = init.headers as Record<string, string>;
     expect(electronApi.auth.getCsrfToken).toHaveBeenCalledWith({
-      realm: "https://electron-zulip.test",
+      realm: "https://electron-messenger.test",
     });
     expect(headers["X-CSRFToken"]).toBe("electron-csrf-token");
     expect(init.credentials).toBe("include");
   });
 
   it("does not add cached csrf header to workspace postJson requests", async () => {
-    const { setCachedSessionCsrfToken } = await import("./zulip-session-csrf.internal");
+    const { setCachedSessionCsrfToken } = await import("./messenger-session-csrf.internal");
     const { setInstanceProvider, workspaceApi } = await import("./client");
-    setCachedSessionCsrfToken("https://zulip.test", "cached-oidc-csrf-token");
+    setCachedSessionCsrfToken("https://messenger.test", "cached-oidc-csrf-token");
     setInstanceProvider(() => ({
       id: "i-session",
-      realm: "https://zulip.test",
+      realm: "https://messenger.test",
       email: "session-user@example.com",
       apiKey: "",
       authType: "session",
@@ -699,7 +700,7 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
     });
     setInstanceProvider(() => ({
       id: "i-session",
-      realm: "https://electron-zulip.test",
+      realm: "https://electron-messenger.test",
       email: "session-user@example.com",
       apiKey: "",
       authType: "session",
@@ -798,20 +799,20 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
 
   // 4xx errors are client errors — retry won't help, exit immediately.
   it("non-retryable 4xx status is returned immediately without retry", async () => {
-    const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
+    const { setInstanceProvider, messengerApi, refreshMessengerApiBase } = await import("./client");
     setInstanceProvider(() => ({
       id: "i1",
-      realm: "https://zulip.test",
+      realm: "https://messenger.test",
       email: "u@t.com",
       apiKey: "key123",
     }));
-    refreshZulipApiBase();
+    refreshMessengerApiBase();
 
     mockFetch.mockResolvedValueOnce(
       new Response(JSON.stringify({ msg: "Not found" }), { status: 404 }),
     );
 
-    const res = await zulipApi.get("/nonexistent");
+    const res = await messengerApi.get("/nonexistent");
 
     expect(res.status).toBe(404);
     expect(res.ok).toBe(false);
@@ -835,9 +836,9 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
 
   // Trailing slashes on base URL cause double slashes in the path — trim them.
   it("setBaseUrl trims trailing slashes", async () => {
-    const { zulipApi } = await import("./client");
-    zulipApi.setBaseUrl("https://example.com///");
-    expect(zulipApi.getBaseUrl()).toBe("https://example.com");
+    const { messengerApi } = await import("./client");
+    messengerApi.setBaseUrl("https://example.com///");
+    expect(messengerApi.getBaseUrl()).toBe("https://example.com");
   });
 
   // Network errors like `TypeError: Failed to fetch` are retryable —
@@ -867,18 +868,18 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
   });
 
   it("wipes credentials and calls auth-error handler on protected 401", async () => {
-    const { setInstanceProvider, zulipApi, refreshZulipApiBase, setAuthErrorHandler } =
+    const { setInstanceProvider, messengerApi, refreshMessengerApiBase, setAuthErrorHandler } =
       await import("./client");
     const onAuthError = vi.fn();
 
     setInstanceProvider(() => ({
       id: "i1",
-      realm: "https://zulip.test",
+      realm: "https://messenger.test",
       email: "u@t.com",
       apiKey: "key123",
     }));
     setAuthErrorHandler(onAuthError);
-    refreshZulipApiBase();
+    refreshMessengerApiBase();
 
     mockFetch.mockResolvedValueOnce(
       new Response(JSON.stringify({ msg: "Unauthorized" }), {
@@ -887,7 +888,7 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
       }),
     );
 
-    const res = await zulipApi.get("/messages");
+    const res = await messengerApi.get("/messages");
 
     expect(res.status).toBe(401);
     expect(vi.mocked(wipeCredentials)).toHaveBeenCalledTimes(1);
@@ -896,18 +897,18 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
   });
 
   it("does not trigger auth-error handling for excluded auth paths", async () => {
-    const { setInstanceProvider, zulipApi, refreshZulipApiBase, setAuthErrorHandler } =
+    const { setInstanceProvider, messengerApi, refreshMessengerApiBase, setAuthErrorHandler } =
       await import("./client");
     const onAuthError = vi.fn();
 
     setInstanceProvider(() => ({
       id: "i1",
-      realm: "https://zulip.test",
+      realm: "https://messenger.test",
       email: "u@t.com",
       apiKey: "key123",
     }));
     setAuthErrorHandler(onAuthError);
-    refreshZulipApiBase();
+    refreshMessengerApiBase();
 
     mockFetch.mockResolvedValueOnce(
       new Response(JSON.stringify({ msg: "Unauthorized" }), {
@@ -916,7 +917,7 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
       }),
     );
 
-    const res = await zulipApi.post("/fetch_api_key", {
+    const res = await messengerApi.post("/fetch_api_key", {
       username: "u@t.com",
       password: "pass",
     });
@@ -933,7 +934,7 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
 
     setInstanceProvider(() => ({
       id: "i1",
-      realm: "https://zulip.test",
+      realm: "https://messenger.test",
       email: "u@t.com",
       apiKey: "key123",
     }));
@@ -961,7 +962,7 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
 
     setInstanceProvider(() => ({
       id: "i1",
-      realm: "https://zulip.test",
+      realm: "https://messenger.test",
       email: "u@t.com",
       apiKey: "key123",
     }));
@@ -974,7 +975,10 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
       }),
     );
 
-    const res = await workspaceApi.getWithBase("https://zulip.test", "/v1/folders/folder-1/items/");
+    const res = await workspaceApi.getWithBase(
+      "https://messenger.test",
+      "/v1/folders/folder-1/items/",
+    );
 
     expect(res.status).toBe(401);
     expect(vi.mocked(wipeCredentials)).not.toHaveBeenCalled();
@@ -983,18 +987,18 @@ describe("ApiClient (via zulipApi / workspaceApi)", () => {
   });
 
   it("handles non-JSON response body gracefully", async () => {
-    const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
+    const { setInstanceProvider, messengerApi, refreshMessengerApiBase } = await import("./client");
     setInstanceProvider(() => ({
       id: "i1",
-      realm: "https://zulip.test",
+      realm: "https://messenger.test",
       email: "u@t.com",
       apiKey: "key123",
     }));
-    refreshZulipApiBase();
+    refreshMessengerApiBase();
 
     mockFetch.mockResolvedValueOnce(new Response("plain text", { status: 200 }));
 
-    const res = await zulipApi.get("/health");
+    const res = await messengerApi.get("/health");
 
     expect(res.ok).toBe(true);
     expect(res.data).toBeNull();
@@ -1022,14 +1026,14 @@ describe("ApiClient middleware management", () => {
   // `use()` lets plugins add middleware at runtime —
   // they must actually intercept requests.
   it("use() appends a custom middleware that intercepts requests", async () => {
-    const { setInstanceProvider, zulipApi, refreshZulipApiBase } = await import("./client");
+    const { setInstanceProvider, messengerApi, refreshMessengerApiBase } = await import("./client");
     setInstanceProvider(() => ({
       id: "i1",
-      realm: "https://zulip.test",
+      realm: "https://messenger.test",
       email: "u@t.com",
       apiKey: "k",
     }));
-    refreshZulipApiBase();
+    refreshMessengerApiBase();
 
     let intercepted = false;
     const customMw: Middleware = async (req, next) => {
@@ -1038,11 +1042,11 @@ describe("ApiClient middleware management", () => {
       return next(req);
     };
 
-    zulipApi.use(customMw);
+    messengerApi.use(customMw);
 
     mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }));
 
-    await zulipApi.get("/test");
+    await messengerApi.get("/test");
 
     expect(intercepted).toBe(true);
     const headers = (mockFetch.mock.calls[0] as [string, RequestInit])[1].headers as Record<
@@ -1051,12 +1055,12 @@ describe("ApiClient middleware management", () => {
     >;
     expect(headers["X-Custom"]).toBe("yes");
 
-    zulipApi.removeMiddleware(customMw);
+    messengerApi.removeMiddleware(customMw);
   });
 
   // After removal, middleware must not intercept subsequent requests.
   it("removeMiddleware() removes a previously added middleware", async () => {
-    const { zulipApi } = await import("./client");
+    const { messengerApi } = await import("./client");
 
     let called = false;
     const mw: Middleware = async (req, next) => {
@@ -1064,48 +1068,50 @@ describe("ApiClient middleware management", () => {
       return next(req);
     };
 
-    zulipApi.use(mw);
-    zulipApi.removeMiddleware(mw);
+    messengerApi.use(mw);
+    messengerApi.removeMiddleware(mw);
 
-    const { setInstanceProvider, refreshZulipApiBase } = await import("./client");
+    const { setInstanceProvider, refreshMessengerApiBase } = await import("./client");
     setInstanceProvider(() => ({
       id: "i1",
-      realm: "https://zulip.test",
+      realm: "https://messenger.test",
       email: "u@t.com",
       apiKey: "k",
     }));
-    refreshZulipApiBase();
+    refreshMessengerApiBase();
 
     mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }));
 
-    await zulipApi.get("/test");
+    await messengerApi.get("/test");
 
     expect(called).toBe(false);
   });
 });
 
-describe("zulipRateLimitGateMiddleware", () => {
+describe("messengerRateLimitGateMiddleware", () => {
   beforeEach(async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-15T12:00:00.000Z"));
-    const { resetZulipRateLimitGateForTests } = await import("~/shared/lib/zulip-rate-limit-gate");
-    resetZulipRateLimitGateForTests();
+    const { resetWorkspaceRateLimitGateForTests } =
+      await import("~/shared/lib/messenger-rate-limit-gate");
+    resetWorkspaceRateLimitGateForTests();
   });
 
   afterEach(async () => {
     vi.useRealTimers();
-    const { resetZulipRateLimitGateForTests } = await import("~/shared/lib/zulip-rate-limit-gate");
-    resetZulipRateLimitGateForTests();
+    const { resetWorkspaceRateLimitGateForTests } =
+      await import("~/shared/lib/messenger-rate-limit-gate");
+    resetWorkspaceRateLimitGateForTests();
   });
 
   it("waits before calling next again after a JSON RATE_LIMIT_HIT response", async () => {
-    const { zulipRateLimitGateMiddleware } = await import("./client");
+    const { messengerRateLimitGateMiddleware } = await import("./client");
     const fetchFn = vi.fn().mockResolvedValue(
       createMockResponse({
         data: { result: "error", code: "RATE_LIMIT_HIT", msg: "limit", "retry-after": 0.5 },
       }),
     );
-    const chain = buildChain([zulipRateLimitGateMiddleware], fetchFn);
+    const chain = buildChain([messengerRateLimitGateMiddleware], fetchFn);
 
     await chain(makeReq());
     expect(fetchFn).toHaveBeenCalledTimes(1);
@@ -1132,12 +1138,12 @@ describe("appendDevUserUploadsProxyHeaders", () => {
     expect(appendDevUserUploadsProxyHeaders("/user_uploads/1/a.png", headers)).toBe(headers);
   });
 
-  it("uses Zulip realm origin as target, not workspace gateway", async () => {
+  it("uses organization realm origin as target, not workspace gateway", async () => {
     vi.stubGlobal("window", { location: { origin: "http://localhost:5173" } });
     const { appendDevUserUploadsProxyHeaders, setInstanceProvider } = await import("./client");
     setInstanceProvider(() => ({
       id: "i1",
-      realm: "https://zulip.realm.test",
+      realm: "https://messenger.realm.test",
       email: "u@t.com",
       apiKey: "k",
       workspaceOrgOrigin: "https://workspace.gateway.test",
@@ -1149,7 +1155,7 @@ describe("appendDevUserUploadsProxyHeaders", () => {
       expect(out["X-Workspace-Dev-Target-Origin"]).toBeUndefined();
       return;
     }
-    expect(out["X-Workspace-Dev-Target-Origin"]).toBe("https://zulip.realm.test");
+    expect(out["X-Workspace-Dev-Target-Origin"]).toBe("https://messenger.realm.test");
     setInstanceProvider(() => null);
   });
 
@@ -1158,7 +1164,7 @@ describe("appendDevUserUploadsProxyHeaders", () => {
     const { appendDevRealmMediaProxyHeaders, setInstanceProvider } = await import("./client");
     setInstanceProvider(() => ({
       id: "i1",
-      realm: "https://zulip.realm.test",
+      realm: "https://messenger.realm.test",
       email: "u@t.com",
       apiKey: "k",
       workspaceOrgOrigin: "https://workspace.gateway.test",
@@ -1170,7 +1176,7 @@ describe("appendDevUserUploadsProxyHeaders", () => {
       expect(out["X-Workspace-Dev-Target-Origin"]).toBeUndefined();
       return;
     }
-    expect(out["X-Workspace-Dev-Target-Origin"]).toBe("https://zulip.realm.test");
+    expect(out["X-Workspace-Dev-Target-Origin"]).toBe("https://messenger.realm.test");
     setInstanceProvider(() => null);
   });
 
@@ -1179,7 +1185,7 @@ describe("appendDevUserUploadsProxyHeaders", () => {
     const { appendDevRealmMediaProxyHeaders, setInstanceProvider } = await import("./client");
     setInstanceProvider(() => ({
       id: "i1",
-      realm: "https://zulip.realm.test",
+      realm: "https://messenger.realm.test",
       email: "u@t.com",
       apiKey: "k",
       workspaceOrgOrigin: "https://workspace.gateway.test",
@@ -1191,7 +1197,7 @@ describe("appendDevUserUploadsProxyHeaders", () => {
       expect(out["X-Workspace-Dev-Target-Origin"]).toBeUndefined();
       return;
     }
-    expect(out["X-Workspace-Dev-Target-Origin"]).toBe("https://zulip.realm.test");
+    expect(out["X-Workspace-Dev-Target-Origin"]).toBe("https://messenger.realm.test");
     setInstanceProvider(() => null);
   });
 });

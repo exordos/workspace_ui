@@ -3,7 +3,7 @@
  *
  * Extracts, parses, and builds Jitsi meeting URLs.
  * Resolution order for "this organization's" Jitsi host: optional {@link JitsiLinkOptions.serverBaseUrl}
- * (from Zulip `POST /register`) then `VITE_JITSI_MEET_DOMAIN` via constants; public `meet.jit.si` is always
+ * (from the messenger API `POST /register`) then `VITE_JITSI_MEET_DOMAIN` via constants; public `meet.jit.si` is always
  * accepted for link detection and parsing.
  *
  * Usage:
@@ -11,9 +11,9 @@
  */
 import { JITSI_MEET_BASE_URL, JITSI_MEET_DOMAIN } from "~/shared/config/constants";
 
-/** Optional overrides from Zulip register (per realm), see module header. */
+/** Optional overrides from messenger register (per realm), see module header. */
 export interface JitsiLinkOptions {
-  /** Effective Jitsi base URL (`https://host`, no trailing slash), e.g. from Zulip register. */
+  /** Effective Jitsi base URL (`https://host`, no trailing slash), e.g. from messenger register. */
   serverBaseUrl?: string | null;
 }
 
@@ -49,7 +49,7 @@ function getEffectiveJitsiBaseAndDomain(options?: JitsiLinkOptions): {
   return { baseUrl: "", domain: "" };
 }
 
-/** Extracts the first Jitsi meeting URL from text (configured host, Zulip register host, or meet.jit.si). */
+/** Extracts the first Jitsi meeting URL from text (configured host, messenger register host, or meet.jit.si). */
 export function getJitsiMeetingUrl(content: string, options?: JitsiLinkOptions): string | null {
   const { baseUrl, domain } = getEffectiveJitsiBaseAndDomain(options);
   const trimmed = content.trim();

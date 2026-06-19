@@ -1,4 +1,4 @@
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import type { GroupedReaction } from "./message-bubble-emoji.lib";
 import type { MessageBubbleCallbacks } from "./message-bubble.types";
 

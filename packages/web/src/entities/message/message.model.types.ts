@@ -1,4 +1,4 @@
-import type { MockMessage, Reaction } from "~/shared/api/zulip.types";
+import type { MockMessage, Reaction } from "~/shared/api/messenger.types";
 import type { LinkPreviewData } from "~/shared/lib/message-link-preview.types";
 
 export type DmMessagesAppliedSource = "cache" | "api";

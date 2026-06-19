@@ -1,25 +1,25 @@
 ---
-description: Zulip role model and permissions system
+description: messenger role model and permissions system
 globs: "packages/web/src/**/*.{ts,tsx}"
 alwaysApply: false
 ---
 
 # Roles & Permissions
 
-## Zulip Role Hierarchy
+## Messenger role Hierarchy
 
 ```
 Owner (100) > Admin (200) > Moderator (300) > Member (400) > Guest (600)
 ```
 
-**NOTE**: Zulip API codes 100=Owner, 200=Admin (not the other way around!).
+**NOTE**: Messenger API codes 100=Owner, 200=Admin (not the other way around!).
 
 ## Usage
 
 ```typescript
 import { UserRole, parseRole, hasPermission, canEditMessage, canDeleteMessage, getRoleLabel, getRoleColor } from "~/shared/lib/roles";
 
-// Parse from Zulip API response
+// Parse from Messenger API response
 const role = parseRole(user.role); // 200 → UserRole.Admin
 
 // Check static org-level permission
@@ -62,7 +62,7 @@ getRoleColor(role);  // "text-indicator-pink" (Tailwind class)
 - Admin panels → wrap in `if (hasRole(userRole, UserRole.Admin))`
 - Channel actions (`edit`, `archive`, `subscribe others`, `unsubscribe others`) are runtime capabilities.
 - For channel actions, prefer server-derived capability helpers over static role maps.
-- For modern Zulip add-members UI, derive from `realm_can_add_subscribers_group`,
+- For modern messenger add-members UI, derive from `realm_can_add_subscribers_group`,
   `can_add_subscribers_group`, `can_administer_channel_group`, and channel privacy.
 
 ### When fetching data from the API

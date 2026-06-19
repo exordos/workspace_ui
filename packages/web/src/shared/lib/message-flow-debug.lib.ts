@@ -8,6 +8,6 @@ export {
   summarizeChatContextForLog,
   summarizeMessageIdsForFlowDebug,
   summarizeScrollElement,
-  summarizeZulipMessagesForFlowDebug,
+  summarizeMessengerMessagesForFlowDebug,
   type ScrollElementMetrics,
 } from "~/shared/lib/pipeline-trace.lib";

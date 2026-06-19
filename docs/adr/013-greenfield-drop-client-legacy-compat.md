@@ -25,9 +25,9 @@ This service now starts from scratch (greenfield). Backward compatibility with p
    Pros: simpler codepaths, fewer tests, clearer contracts, faster iteration.  
    Cons: breaking change for existing installations (requires resetting browser storage).
 
-3. **Drop everything including server (Zulip) API fallbacks**  
+3. **Drop everything including server (Workspace) API fallbacks**  
    Pros: smallest client code.  
-   Cons: forces a minimum Zulip version contract and may break multi-server support.
+   Cons: forces a minimum Workspace version contract and may break multi-server support.
 
 ## Decision
 
@@ -35,7 +35,7 @@ We choose **Option 2**:
 
 - Remove client-side backward compatibility for persisted browser state (localStorage + IndexedDB),
   legacy routes, and legacy folder/pin identifiers.
-- **Keep** server-side (Zulip API) fallbacks and parsing, because they are not client-data
+- **Keep** server-side (Messenger API) fallbacks and parsing, because they are not client-data
   migrations and still provide value when connecting to different server versions.
 
 ## Consequences

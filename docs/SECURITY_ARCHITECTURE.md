@@ -9,24 +9,24 @@
 
 | Asset                   | Location                         | Threat                                  |
 | ----------------------- | -------------------------------- | --------------------------------------- |
-| Zulip API key           | `localStorage` (plain)           | XSS reads token → full account takeover |
+| Messenger API key       | `localStorage` (plain)           | XSS reads token → full account takeover |
 | Message content         | Zustand store (memory)           | XSS reads messages → data exfiltration  |
 | User credentials        | Login form → POST → never stored | MITM intercepts → credential theft      |
-| Push notification token | `localStorage` + Zulip server    | Token theft → impersonation             |
-| File uploads            | API multipart → Zulip server     | Malicious file → server-side exploit    |
+| Push notification token | `localStorage` + server          | Token theft → impersonation             |
+| File uploads            | API multipart → server           | Malicious file → server-side exploit    |
 
 ### Attack Surfaces
 
-| Surface            | Vectors                                      | Mitigations                                            |
-| ------------------ | -------------------------------------------- | ------------------------------------------------------ |
-| Zulip message HTML | XSS via `<script>`, event handlers, SVG, CSS | DOMPurify whitelist + CSP + ESLint                     |
-| User-entered URLs  | `javascript:`, `data:`, protocol injection   | `isValidUrl()` + `guard.url()` + `isSafeExternalUrl()` |
-| Deep links         | `workspace://javascript:...` route injection | `isSafeDeeplinkRoute()` in Electron main               |
-| Electron IPC       | Malicious renderer → main process            | Input validation on every handler                      |
-| Push payloads      | Spoofed / tampered notifications             | Middleware pipeline: decrypt → validate → dedup        |
-| WebView bridge     | Malicious native → web injection             | `postMessage` type checking, auth via bridge only      |
-| Dependencies       | Supply chain (npm)                           | `npm audit`, Dependabot, pinned versions               |
-| Build artifacts    | Source maps, debug info                      | Source maps for Sentry only, not served to users       |
+| Surface                | Vectors                                      | Mitigations                                            |
+| ---------------------- | -------------------------------------------- | ------------------------------------------------------ |
+| messenger message HTML | XSS via `<script>`, event handlers, SVG, CSS | DOMPurify whitelist + CSP + ESLint                     |
+| User-entered URLs      | `javascript:`, `data:`, protocol injection   | `isValidUrl()` + `guard.url()` + `isSafeExternalUrl()` |
+| Deep links             | `workspace://javascript:...` route injection | `isSafeDeeplinkRoute()` in Electron main               |
+| Electron IPC           | Malicious renderer → main process            | Input validation on every handler                      |
+| Push payloads          | Spoofed / tampered notifications             | Middleware pipeline: decrypt → validate → dedup        |
+| WebView bridge         | Malicious native → web injection             | `postMessage` type checking, auth via bridge only      |
+| Dependencies           | Supply chain (npm)                           | `npm audit`, Dependabot, pinned versions               |
+| Build artifacts        | Source maps, debug info                      | Source maps for Sentry only, not served to users       |
 
 ## Security Layers
 
@@ -83,7 +83,7 @@
 
 | Module          | Path                            | Purpose                                       |
 | --------------- | ------------------------------- | --------------------------------------------- |
-| HTML sanitizer  | `shared/lib/html.ts`            | DOMPurify whitelist for Zulip HTML            |
+| HTML sanitizer  | `shared/lib/html.ts`            | DOMPurify whitelist for messenger HTML        |
 | Input validator | `shared/lib/validation.ts`      | URL, email, file, filename validation         |
 | Auth guard      | `shared/lib/auth-guard.ts`      | Auth header, credential wipe, session timeout |
 | Logger          | `shared/lib/logger.ts`          | Auto-redaction of 15 sensitive key patterns   |

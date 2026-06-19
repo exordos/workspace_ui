@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { buildNotificationTitleContextFromMessage } from "./layout-notification-title.lib";
 import {
   buildNotificationAggregateTag,
@@ -9,7 +9,7 @@ import {
   upsertNotificationAggregate,
 } from "./notification-aggregate-registry.lib";
 
-function createStreamMessage(overrides: Partial<ZulipRawMessage> = {}): ZulipRawMessage {
+function createStreamMessage(overrides: Partial<WorkspaceRawMessage> = {}): WorkspaceRawMessage {
   return {
     id: 55,
     sender_id: 42,
@@ -25,7 +25,7 @@ function createStreamMessage(overrides: Partial<ZulipRawMessage> = {}): ZulipRaw
   };
 }
 
-function createDmMessage(overrides: Partial<ZulipRawMessage> = {}): ZulipRawMessage {
+function createDmMessage(overrides: Partial<WorkspaceRawMessage> = {}): WorkspaceRawMessage {
   return {
     id: 77,
     sender_id: 42,

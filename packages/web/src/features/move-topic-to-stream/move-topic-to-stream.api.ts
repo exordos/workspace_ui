@@ -1,4 +1,4 @@
-import { moveStreamTopicToChannel } from "~/shared/api/zulip-read-state";
+import { moveStreamTopicToChannel } from "~/shared/api/messenger-read-state";
 
 export async function moveTopicToChannel(
   sourceStreamId: number,

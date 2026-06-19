@@ -9,7 +9,7 @@ export interface ReplyQuote {
   content: string;
   sender_full_name: string;
   sender_id: number;
-  /** Full Zulip web URL (`https://realm/#narrow/.../near/id`); omit link text if null */
+  /** Full Workspace web URL (`https://realm/#narrow/.../near/id`); omit link text if null */
   permalinkUrl: string | null;
 }
 

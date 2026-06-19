@@ -1,4 +1,4 @@
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import type { CurrentUserMessageEditPolicy } from "~/shared/types/message-edit-policy";
 
 export function canStartMessageContentEdit(

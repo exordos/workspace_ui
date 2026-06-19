@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback } from "react";
 import { t } from "~/i18n/i18n";
-import type { MockMessage, Reaction, RealmEmoji } from "~/shared/api/zulip.types";
+import type { MockMessage, Reaction, RealmEmoji } from "~/shared/api/messenger.types";
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
 import { countUnreadMessagesBelowViewport } from "~/shared/lib/count-unread-below-viewport.lib";
 import { normalizeEmojiShortcodeName } from "~/shared/lib/emoji-shortcodes.lib";

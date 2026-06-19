@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { E2E_REALM } from "../mocks/zulip-default-responses";
+import { E2E_REALM } from "../mocks/messenger-default-responses";
 
 export function e2eOrgBasePath(): string {
   const hostname = new URL(E2E_REALM).hostname;

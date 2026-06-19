@@ -1,12 +1,12 @@
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import type { LoadDeepHistoryMessagesOptions } from "./layout-chat-history-sync.types";
 
 const DEFAULT_PAGE_SIZE = 5000;
 const DEFAULT_MAX_BATCHES = 5;
 
-function mergeUniqueById(messages: readonly ZulipRawMessage[]): ZulipRawMessage[] {
+function mergeUniqueById(messages: readonly WorkspaceRawMessage[]): WorkspaceRawMessage[] {
   const seenIds = new Set<number>();
-  const uniqueMessages: ZulipRawMessage[] = [];
+  const uniqueMessages: WorkspaceRawMessage[] = [];
 
   for (const message of messages) {
     if (seenIds.has(message.id)) continue;
@@ -25,7 +25,7 @@ function mergeUniqueById(messages: readonly ZulipRawMessage[]): ZulipRawMessage[
  */
 export async function loadDeepHistoryMessages(
   options: LoadDeepHistoryMessagesOptions,
-): Promise<ZulipRawMessage[]> {
+): Promise<WorkspaceRawMessage[]> {
   const { initialMessages, fetchOlderMessages } = options;
   const pageSize = options.pageSize ?? DEFAULT_PAGE_SIZE;
   const maxBatches = options.maxBatches ?? DEFAULT_MAX_BATCHES;
@@ -55,7 +55,7 @@ export async function loadDeepHistoryMessages(
   return messages;
 }
 
-export function getNewestMessageId(messages: readonly ZulipRawMessage[]): number | null {
+export function getNewestMessageId(messages: readonly WorkspaceRawMessage[]): number | null {
   const lastMessage = messages[messages.length - 1];
   return lastMessage?.id ?? null;
 }

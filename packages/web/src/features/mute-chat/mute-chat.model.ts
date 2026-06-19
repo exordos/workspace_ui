@@ -6,7 +6,7 @@
  */
 
 import { create } from "zustand";
-import type { ZulipSubscription } from "~/shared/api/zulip.types";
+import type { MessengerSubscription } from "~/shared/api/messenger.types";
 import { logStoreAction } from "~/shared/lib/logger";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import {
@@ -27,7 +27,7 @@ function applySubscriptionNotificationOverrides(
   streamDesktopNotifyDisabledIds: Set<number>,
   streamAudibleNotifyEnabledIds: Set<number>,
   streamAudibleNotifyDisabledIds: Set<number>,
-  subscription: ZulipSubscription,
+  subscription: MessengerSubscription,
 ): void {
   const streamId = subscription.stream_id;
   if (subscription.desktop_notifications === true) {
@@ -380,9 +380,9 @@ export const useMuteStore = create<MuteStoreState>((set, get) => ({
   },
 }));
 
-/** Builds mute-store snapshot fields from Zulip subscriptions and user topics. */
+/** Builds mute-store snapshot fields from the messenger API subscriptions and user topics. */
 export function buildMuteSnapshotFromBootstrap(options: {
-  subscriptions?: readonly ZulipSubscription[];
+  subscriptions?: readonly MessengerSubscription[];
   userTopics?: readonly { stream_id: number; topic_name: string; visibility_policy: number }[];
 }): {
   mutedStreamIds: number[];

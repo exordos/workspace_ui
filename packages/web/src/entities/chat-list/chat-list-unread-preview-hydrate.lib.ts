@@ -5,15 +5,15 @@
  * For chats whose latest activity is older than the global 5000-message preview window,
  * sidebar rows can show unread badges while lacking preview text and timestamps used for sorting.
  *
- * This module batch-fetches the latest unread message per stream/topic via Zulip 10+ `message_ids`
+ * This module batch-fetches the latest unread message per stream/topic via Workspace 10+ `message_ids`
  * and merges preview metadata without affecting unread totals.
  */
 import {
   captureActiveOrgRequestContext,
   isActiveOrgRequestContextCurrent,
 } from "~/entities/instance/instance.model";
-import { fetchMessagesByIds } from "~/shared/api/zulip-messages";
-import type { ZulipUnreadMessagesSnapshot } from "~/shared/api/zulip-unread.lib";
+import { fetchMessagesByIds } from "~/shared/api/messenger-messages";
+import type { MessengerUnreadMessagesSnapshot } from "~/shared/api/messenger-unread.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import { filterStreamMessagesForSidebar } from "./chat-list-stream-preview-from-messages.lib";
@@ -51,7 +51,7 @@ function shouldHydrateBucketPreview(
 }
 
 export function resolveLatestUnreadMessageIdsForMissingPreviews(
-  snapshot: ZulipUnreadMessagesSnapshot,
+  snapshot: MessengerUnreadMessagesSnapshot,
   streamsMap: Map<number, StreamEntryInternal>,
 ): number[] {
   const ids = new Set<number>();
@@ -85,7 +85,7 @@ function isCancelledOrStale(
  * Dedupes concurrent calls to avoid repeated batch fetches during fast remounts.
  */
 export function hydrateStreamSidebarPreviewsFromUnreadSnapshot(
-  snapshot: ZulipUnreadMessagesSnapshot | null | undefined,
+  snapshot: MessengerUnreadMessagesSnapshot | null | undefined,
   cancelled?: () => boolean,
 ): Promise<void> {
   if (snapshot == null) return Promise.resolve();

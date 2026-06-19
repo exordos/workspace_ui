@@ -90,16 +90,16 @@ describe("rewriteUserUploadMediaUrlToCanonical", () => {
     expect(
       rewriteUserUploadMediaUrlToCanonical(
         "https://sys.platform.genesis-core.team/user_uploads/1/a.png",
-        "https://zulip.genesis-core.team",
+        "https://messenger.genesis-core.team",
       ),
-    ).toBe("https://zulip.genesis-core.team/user_uploads/1/a.png");
+    ).toBe("https://messenger.genesis-core.team/user_uploads/1/a.png");
   });
 
   it("preserves non-upload absolute URLs", () => {
     expect(
       rewriteUserUploadMediaUrlToCanonical(
         "https://cdn.example.com/static/logo.png",
-        "https://zulip.genesis-core.team",
+        "https://messenger.genesis-core.team",
       ),
     ).toBe("https://cdn.example.com/static/logo.png");
   });
@@ -119,8 +119,8 @@ describe("rewriteProtectedMessageMediaUrlToCanonical", () => {
     expect(
       rewriteProtectedMessageMediaUrlToCanonical(
         "https://sys.platform.genesis-core.team/external_content/preview.png",
-        "https://zulip.genesis-core.team",
+        "https://messenger.genesis-core.team",
       ),
-    ).toBe("https://zulip.genesis-core.team/external_content/preview.png");
+    ).toBe("https://messenger.genesis-core.team/external_content/preview.png");
   });
 });

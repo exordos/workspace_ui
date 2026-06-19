@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { resolveLastOwnMessageForEdit } from "./chat-edit-last-message.lib";
 
 function createMessage(id: number, senderId: number, content = `m${id}`): MockMessage {

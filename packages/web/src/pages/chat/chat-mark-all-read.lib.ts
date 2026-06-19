@@ -5,7 +5,7 @@ import {
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import type { MessageLocation } from "~/entities/chat-list/chat-list.model.types";
 import type { UnreadDeltaSyncSource } from "~/entities/unread-sync/unread-surfaces-sync.lib";
-import { markMessagesAsRead } from "~/shared/api/zulip-read-state";
+import { markMessagesAsRead } from "~/shared/api/messenger-read-state";
 import { dmRouteKey } from "~/shared/lib/dm-key";
 import { buildMessageIdMap } from "~/shared/lib/message-id-index.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";

@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { resolveIncomingDmCallInvite } from "./jitsi-call-invite.lib";
 
-function buildPrivateMessage(overrides: Partial<ZulipRawMessage> = {}): ZulipRawMessage {
+function buildPrivateMessage(overrides: Partial<WorkspaceRawMessage> = {}): WorkspaceRawMessage {
   return {
     id: 77,
     sender_id: 24,
     sender_full_name: "Slon",
-    content: "https://meet.jit.si/zulip-dm-slon-123",
+    content: "https://meet.jit.si/messenger-dm-slon-123",
     timestamp: 1_700_000_000,
     type: "private",
     display_recipient: [
@@ -26,7 +26,7 @@ describe("resolveIncomingDmCallInvite", () => {
 
     expect(invite).toEqual({
       messageId: 77,
-      meetingUrl: "https://meet.jit.si/zulip-dm-slon-123",
+      meetingUrl: "https://meet.jit.si/messenger-dm-slon-123",
       callerName: "Slon",
       locationName: "Slon",
       avatarUrl: "/avatar/slon.png",
@@ -56,7 +56,7 @@ describe("resolveIncomingDmCallInvite", () => {
     expect(resolveIncomingDmCallInvite(message, 25)).toBeNull();
 
     const streamRoom = buildPrivateMessage({
-      content: "https://meet.jit.si/zulip-stream-general-1",
+      content: "https://meet.jit.si/messenger-stream-general-1",
     });
     expect(resolveIncomingDmCallInvite(streamRoom, 25)).toBeNull();
   });

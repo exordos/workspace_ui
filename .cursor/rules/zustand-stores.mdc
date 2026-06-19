@@ -10,7 +10,7 @@ alwaysApply: false
 
 | Entity | Store file | Responsibility |
 |--------|-----------|---------------|
-| `entities/instance/` | `instance.model.ts` | Zulip instances (realm, email, apiKey), persisted in localStorage |
+| `entities/instance/` | `instance.model.ts` | organization instances (realm, email, apiKey), persisted in localStorage |
 | `entities/chat-list/` | `chat-list.model.ts` | Streams, DMs, topics, unread counts — derived from messages |
 | `entities/message/` | `message.model.ts` | Messages for active chat context |
 | `entities/user/` | `user.model.ts` | User profiles, presence, avatar URLs |

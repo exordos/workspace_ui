@@ -8,11 +8,11 @@ export interface ChatHeaderDmPartner {
   presenceState: "active" | "idle" | "offline" | null;
   /** "last seen N ago" text when offline */
   lastSeen?: string;
-  /** Custom Zulip status (emoji + text). */
+  /** Custom Workspace status (emoji + text). */
   customStatus?: string;
-  /** Raw custom Zulip status for rich custom emoji rendering. */
+  /** Raw custom Workspace status for rich custom emoji rendering. */
   status?: UserStatus | null;
-  /** When true, Zulip directory reports the partner account as deactivated (`is_active === false`). */
+  /** When true, Workspace directory reports the partner account as deactivated (`is_active === false`). */
   isAccountDeactivated?: boolean;
   /** Shows transient typing status in DM header when true. */
   isTyping?: boolean;

@@ -3,14 +3,14 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setInstanceProvider } from "~/shared/api/client";
-import { type MockMessage } from "~/shared/api/zulip.types";
+import { type MockMessage } from "~/shared/api/messenger.types";
 // eslint-disable-next-line import-x/order -- inline type + lib import; false positive
 import {
-  ZULIP_DM_ANCHOR_NUM_AFTER,
-  ZULIP_DM_ANCHOR_NUM_BEFORE,
-  ZULIP_STREAM_ANCHOR_NUM_AFTER,
-  ZULIP_STREAM_ANCHOR_NUM_BEFORE,
-} from "~/shared/lib/zulip-message-window.lib";
+  MESSENGER_DM_ANCHOR_NUM_AFTER,
+  MESSENGER_DM_ANCHOR_NUM_BEFORE,
+  MESSENGER_STREAM_ANCHOR_NUM_AFTER,
+  MESSENGER_STREAM_ANCHOR_NUM_BEFORE,
+} from "~/shared/lib/messenger-message-window.lib";
 const {
   mockGetChatMessagesAscending,
   mockGetStreamMessagesAscending,
@@ -53,8 +53,8 @@ vi.mock("~/shared/lib/message-cache-db", async (importOriginal) => {
   };
 });
 
-vi.mock("~/shared/api/zulip-messages", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/shared/api/zulip-messages")>();
+vi.mock("~/shared/api/messenger-messages", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("~/shared/api/messenger-messages")>();
   return {
     ...actual,
     fetchMessages: mockFetchMessages,
@@ -83,8 +83,8 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
     const runtimeTestApiKey = `runtime-test-key-${Date.now()}`;
     setInstanceProvider(() => ({
       id: "test-instance",
-      realm: "https://zulip.test",
-      email: "test@zulip.test",
+      realm: "https://messenger.test",
+      email: "test@messenger.test",
       apiKey: runtimeTestApiKey,
     }));
     useCurrentChatMessagesStore.setState({
@@ -145,7 +145,7 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
     expect(mockUpsertChatMessages).toHaveBeenCalledWith(
       expect.objectContaining({
         messages: boot,
-        windowSizeN: ZULIP_STREAM_ANCHOR_NUM_BEFORE,
+        windowSizeN: MESSENGER_STREAM_ANCHOR_NUM_BEFORE,
       }),
     );
   });
@@ -282,8 +282,8 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
         { operator: "topic", operand: "topic1" },
       ],
       50,
-      ZULIP_STREAM_ANCHOR_NUM_BEFORE,
-      ZULIP_STREAM_ANCHOR_NUM_AFTER,
+      MESSENGER_STREAM_ANCHOR_NUM_BEFORE,
+      MESSENGER_STREAM_ANCHOR_NUM_AFTER,
       expect.objectContaining({ signal: expect.any(AbortSignal), applyMarkdown: false }),
     );
   });
@@ -305,8 +305,8 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
     expect(mockFetchMessagesWithNarrow).toHaveBeenCalledWith(
       [{ operator: "dm", operand: [42] }],
       50,
-      ZULIP_DM_ANCHOR_NUM_BEFORE,
-      ZULIP_DM_ANCHOR_NUM_AFTER,
+      MESSENGER_DM_ANCHOR_NUM_BEFORE,
+      MESSENGER_DM_ANCHOR_NUM_AFTER,
       expect.objectContaining({ signal: expect.any(AbortSignal), applyMarkdown: false }),
     );
   });

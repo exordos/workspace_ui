@@ -52,7 +52,7 @@ For network errors, it should check `isOnline()` before retrying.
 ## For AI Agent
 
 When making API calls:
-- Use `zulipApi`/`workspaceApi` — retries are handled by middleware
+- Use `messengerApi`/`workspaceApi` — retries are handled by middleware
 - For custom fetch calls: wrap in `try/catch`, check `network.isOnline()` before retry
 - For periodic polling: use `createResilientInterval()` from visibility + check `isOnline()`
 - Show offline indicator in UI when `!network.isOnline()`

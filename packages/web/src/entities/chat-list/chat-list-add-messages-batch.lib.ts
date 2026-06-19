@@ -1,7 +1,7 @@
 /**
- * Batch merge of Zulip messages into chat-list maps (locations, unread bumps, previews).
+ * Batch merge of messenger messages into chat-list maps (locations, unread bumps, previews).
  */
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import type { DmEntryInternal, StreamEntryInternal } from "~/shared/types/sidebar-chat";
@@ -17,7 +17,7 @@ import type { ChatListState, MessageLocation } from "./chat-list.model.types";
 /** Metadata/IDB rows can carry lastActivityTs + lastMessageId without preview text — still merge fetched bodies. */
 export function shouldApplyDmPreviewFromFetchedMessage(
   existing: DmEntryInternal,
-  message: ZulipRawMessage,
+  message: WorkspaceRawMessage,
   previewText: string,
 ): boolean {
   if (message.timestamp > existing.ts) {
@@ -31,7 +31,7 @@ export function shouldApplyDmPreviewFromFetchedMessage(
 
 function bumpStreamTopicUnreadFromMessage(
   streamsMap: Map<number, StreamEntryInternal>,
-  message: ZulipRawMessage,
+  message: WorkspaceRawMessage,
   _currentUserId: number | null,
 ): Map<number, StreamEntryInternal> {
   const result = messageToStreamEntry(message);
@@ -80,7 +80,7 @@ function bumpStreamTopicUnreadFromMessage(
 
 function bumpDmUnreadFromMessage(
   dmsMap: Map<string, DmEntryInternal>,
-  message: ZulipRawMessage,
+  message: WorkspaceRawMessage,
   currentUserId: number | null,
   avatarMap: Map<number, string>,
 ): Map<string, DmEntryInternal> {
@@ -105,7 +105,7 @@ function bumpDmUnreadFromMessage(
 
 function indexBatchMessagesAndUnreadBumps(
   state: ChatListState,
-  messages: ZulipRawMessage[],
+  messages: WorkspaceRawMessage[],
   currentUserId: number | null,
   avatarMap: Map<number, string>,
 ): {
@@ -153,7 +153,7 @@ function indexBatchMessagesAndUnreadBumps(
 
 function mergeStreamTopicPreviewsFromLatest(
   streamsMap: Map<number, StreamEntryInternal>,
-  streamTopicLatest: Map<string, ZulipRawMessage>,
+  streamTopicLatest: Map<string, WorkspaceRawMessage>,
 ): Map<number, StreamEntryInternal> {
   let nextStreams = streamsMap;
   for (const m of streamTopicLatest.values()) {
@@ -192,7 +192,7 @@ function mergeStreamTopicPreviewsFromLatest(
 
 function mergeDmPreviewsFromLatest(
   dmsMap: Map<string, DmEntryInternal>,
-  dmLatest: Map<string, ZulipRawMessage>,
+  dmLatest: Map<string, WorkspaceRawMessage>,
   currentUserId: number | null,
   avatarMap: Map<number, string>,
 ): Map<string, DmEntryInternal> {
@@ -228,11 +228,11 @@ function mergeDmPreviewsFromLatest(
 }
 
 export interface ApplyAddMessagesBatchParams {
-  messages: ZulipRawMessage[];
+  messages: WorkspaceRawMessage[];
   currentUserId: number | null;
   avatarMap: Map<number, string>;
-  streamTopicLatest: Map<string, ZulipRawMessage>;
-  dmLatest: Map<string, ZulipRawMessage>;
+  streamTopicLatest: Map<string, WorkspaceRawMessage>;
+  dmLatest: Map<string, WorkspaceRawMessage>;
 }
 
 export function applyAddMessagesBatchPatch(
@@ -267,9 +267,9 @@ export function applyAddMessagesBatchPatch(
 }
 
 export function buildStreamTopicLatestMap(
-  messages: ZulipRawMessage[],
-): Map<string, ZulipRawMessage> {
-  const streamTopicLatest = new Map<string, ZulipRawMessage>();
+  messages: WorkspaceRawMessage[],
+): Map<string, WorkspaceRawMessage> {
+  const streamTopicLatest = new Map<string, WorkspaceRawMessage>();
   for (const m of messages) {
     if (m.type === "stream" && m.stream_id != null) {
       const topic = normalizeTopicForIdentity(m.subject ?? "");
@@ -284,10 +284,10 @@ export function buildStreamTopicLatestMap(
 }
 
 export function buildDmLatestMap(
-  messages: ZulipRawMessage[],
+  messages: WorkspaceRawMessage[],
   currentUserId: number | null,
-): Map<string, ZulipRawMessage> {
-  const dmLatest = new Map<string, ZulipRawMessage>();
+): Map<string, WorkspaceRawMessage> {
+  const dmLatest = new Map<string, WorkspaceRawMessage>();
   for (const m of messages) {
     if (m.type === "private" && Array.isArray(m.display_recipient)) {
       const key = dmConversationKey(m.display_recipient, currentUserId);

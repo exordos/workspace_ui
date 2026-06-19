@@ -38,10 +38,10 @@ export const JITSI_PARTICIPANTS_POLL_MS = 5000;
 export const FOLDER_SYNC_POLL_INTERVAL_MS = 5 * 60_000;
 
 /**
- * Hard cap for each Zulip HTTP request (until response headers + JSON body read via fetch).
+ * Hard cap for each Workspace HTTP request (until response headers + JSON body read via fetch).
  * Retries receive a fresh timeout window. Does not apply to GET long-poll `.../events`.
  */
-export const ZULIP_API_FETCH_TIMEOUT_MS = 60_000;
+export const MESSENGER_API_FETCH_TIMEOUT_MS = 60_000;
 
 // ---
 // Layout
@@ -72,7 +72,7 @@ export const APP_SHELL_MIN_WIDTH_PX = 360;
 // Messenger defaults
 // ---
 
-/** Default Zulip stream slug used when no last-opened messenger chat is saved. */
+/** Default Workspace stream slug used when no last-opened messenger chat is saved. */
 export const DEFAULT_MESSENGER_STREAM_SLUG = "general";
 
 /** Debounce for persisting the last opened messenger chat to localStorage. */

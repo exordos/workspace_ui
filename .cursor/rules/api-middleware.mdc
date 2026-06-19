@@ -21,13 +21,13 @@ Middleware is a function `(req, next) => Promise<ApiResponse>`. Onion model: eac
 ## API Client
 
 ```typescript
-import { zulipApi, workspaceApi } from "~/shared/api/client";
+import { messengerApi, workspaceApi } from "~/shared/api/client";
 
-// Zulip API (auth is automatic)
-const res = await zulipApi.get("/messages", { anchor: "newest", num_before: "100" });
-await zulipApi.post("/messages", { type: "stream", content: "hello" });
-await zulipApi.patch("/messages/123", { content: "updated" });
-await zulipApi.delete("/messages/123");
+// Messenger API (auth is automatic)
+const res = await messengerApi.get("/messages", { anchor: "newest", num_before: "100" });
+await messengerApi.post("/messages", { type: "stream", content: "hello" });
+await messengerApi.patch("/messages/123", { content: "updated" });
+await messengerApi.delete("/messages/123");
 
 // Workspace API
 const folders = await workspaceApi.get("/folders/");
@@ -46,7 +46,7 @@ await workspaceApi.postJson("/folders/", { title: "New" });
 
 ```typescript
 import type { Middleware } from "~/shared/api/client";
-import { zulipApi } from "~/shared/api/client";
+import { messengerApi } from "~/shared/api/client";
 
 // CSRF token middleware
 const csrfMiddleware: Middleware = async (req, next) => {
@@ -87,8 +87,8 @@ const errorTransform: Middleware = async (req, next) => {
 };
 
 // Register
-zulipApi.use(csrfMiddleware);
-zulipApi.useBefore(authMiddleware, rateLimitMiddleware);
+messengerApi.use(csrfMiddleware);
+messengerApi.useBefore(authMiddleware, rateLimitMiddleware);
 ```
 
 ## Request/Response types
@@ -114,29 +114,29 @@ interface ApiResponse {
 }
 ```
 
-## Zulip split modules
+## Messenger split modules
 
-There is no `zulip.ts` barrel — import from the concrete module:
+There is no `messenger.ts` barrel — import from the concrete module:
 
 | Import from | Module |
 |-------------|--------|
-| Types, `ZulipAuthError` | `./zulip.types` |
-| Auth, server settings | `./zulip-auth` |
-| Realm / client helpers | `./zulip-client.internal` (or other `zulip-*.internal.ts`) |
-| Queue, events | `./zulip-queue` |
-| Read/mark/topic resolve | `./zulip-read-state` |
-| Users | `./zulip-users` |
-| Streams | `./zulip-streams` |
-| Messages, reactions | `./zulip-messages` |
-| Sidebar preview / DM backfill | `./zulip-sidebar-preview.lib` |
-| Upload | `./zulip-upload` |
+| Types, `MessengerAuthError` | `./messenger.types` |
+| Auth, server settings | `./messenger-auth` |
+| Realm / client helpers | `./messenger-client.internal` (or other `messenger-*.internal.ts`) |
+| Queue, events | `./messenger-queue` |
+| Read/mark/topic resolve | `./messenger-read-state` |
+| Users | `./messenger-users` |
+| Streams | `./messenger-streams` |
+| Messages, reactions | `./messenger-messages` |
+| Sidebar preview / DM backfill | `./messenger-sidebar-preview.lib` |
+| Upload | `./messenger-upload` |
 
-Tests should mock the same module path the code under test imports (e.g. `~/shared/api/zulip-messages`).
+Tests should mock the same module path the code under test imports (e.g. `~/shared/api/messenger-messages`).
 
 ## For AI Agent
 
-- New API calls: use `zulipApi.get/post/patch/delete`
-- Custom interceptors: create a `Middleware` function + `zulipApi.use()`
+- New API calls: use `messengerApi.get/post/patch/delete`
+- Custom interceptors: create a `Middleware` function + `messengerApi.use()`
 - `req.meta` — for passing data between middleware (e.g. `req.meta.skipRetry = true`)
 - DO NOT duplicate auth/URL logic — everything goes through the middleware pipeline
-- New Zulip API usage and tests: import from concrete `zulip-*.ts` modules only
+- New Messenger API usage and tests: import from concrete `messenger-*.ts` modules only

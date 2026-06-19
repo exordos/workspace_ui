@@ -43,7 +43,7 @@ describe("resolveReplyQuoteContent", () => {
     ).toBe("ывпывп");
   });
 
-  it("keeps Zulip angle-bracket link markdown when used as markdown_source", () => {
+  it("keeps Workspace angle-bracket link markdown when used as markdown_source", () => {
     expect(
       resolveReplyQuoteContent({
         content: "<p>x</p>",

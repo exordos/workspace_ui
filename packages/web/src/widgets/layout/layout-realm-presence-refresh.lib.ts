@@ -1,6 +1,6 @@
-import { fetchRealmPresence } from "~/shared/api/zulip-users";
+import { fetchRealmPresence } from "~/shared/api/messenger-users";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
-import { applyRealmPresenceResponseToUsers } from "./layout-zulip-presence-apply.lib";
+import { applyRealmPresenceResponseToUsers } from "./layout-messenger-presence-apply.lib";
 
 export interface RefreshRealmPresenceOptions {
   isCancelled?: () => boolean;

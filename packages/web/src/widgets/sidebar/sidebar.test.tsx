@@ -15,8 +15,8 @@ import { useSettingsStore } from "~/features/settings/settings.model";
 import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indicator.model";
 import { buildDmTypingChatKey } from "~/features/typing-indicator/typing-key";
 import { t } from "~/i18n/i18n";
+import type * as MessengerReadStateModule from "~/shared/api/messenger-read-state";
 import type * as WorkspaceApiModule from "~/shared/api/workspace-client";
-import type * as ZulipReadStateModule from "~/shared/api/zulip-read-state";
 import { setCurrentOrgRouteIdResolver } from "~/shared/lib/org-route";
 import type { SidebarChat } from "~/shared/types/sidebar-chat";
 import { createUser } from "~/test/factories";
@@ -53,8 +53,8 @@ vi.mock("~/features/create-chat/create-chat.api", async (importOriginal) => {
   };
 });
 
-vi.mock("~/shared/api/zulip-read-state", async (importOriginal) => {
-  const actual = await importOriginal<typeof ZulipReadStateModule>();
+vi.mock("~/shared/api/messenger-read-state", async (importOriginal) => {
+  const actual = await importOriginal<typeof MessengerReadStateModule>();
   return {
     ...actual,
     markDmAsRead: (...args: unknown[]) => markDmAsReadMock(...args),
@@ -842,7 +842,7 @@ describe("Sidebar", () => {
       instances: [
         {
           id: INSTANCE_ID,
-          realm: "https://zulip.example.com",
+          realm: "https://chat.example.com",
           email: "user@example.com",
           apiKey: "api-key",
         },
@@ -898,7 +898,7 @@ describe("Sidebar", () => {
       instances: [
         {
           id: INSTANCE_ID,
-          realm: "https://zulip.example.com",
+          realm: "https://chat.example.com",
           email: "user@example.com",
           apiKey: "api-key",
         },
@@ -1343,7 +1343,7 @@ describe("Sidebar", () => {
     });
   });
 
-  it("opens stream new-topic dialog with zulip topic settings from context menu action", async () => {
+  it("opens stream new-topic dialog with messenger topic settings from context menu action", async () => {
     renderWithProviders(
       <Sidebar
         streams={[]}

@@ -118,9 +118,9 @@ describe("safe access", () => {
   });
 });
 
-// Domain guards validate Zulip-specific data before it reaches stores or API calls.
+// Domain guards validate Workspace-specific data before it reaches stores or API calls.
 describe("domain guards", () => {
-  // userId must be a positive integer — Zulip uses sequential integer IDs.
+  // userId must be a positive integer — Workspace uses sequential integer IDs.
   it("guard.userId accepts valid IDs", () => {
     expect(guard.userId(42)).toBe(42);
     expect(guard.userId(1)).toBe(1);

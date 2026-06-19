@@ -119,7 +119,7 @@ export const useAddStreamMembersStore = create<AddStreamMembersState>((set, get)
 
     const selectedIds = normalizeUserIds(state.selectedIds);
     const existingSet = new Set(state.existingMemberIds);
-    // Skip already-subscribed members only; Zulip API allows self-add.
+    // Skip already-subscribed members only; Messenger API allows self-add.
     const filteredIds = selectedIds.filter((userId) => !existingSet.has(userId));
 
     if (filteredIds.length === 0) {

@@ -130,7 +130,7 @@ const electronAPI = {
       ipcRenderer.invoke("auth:getCsrfToken", payload),
     // The renderer cannot access Electron session directly; it only asks the main process to exchange.
     exchangeDesktopFlowToken: (payload: {
-      // Realm tells the main process which Zulip server should exchange the token.
+      // Realm tells the main process which server should exchange the token.
       realm: string;
       // Token comes from desktop-flow and is only valid during exchange.
       token: string;

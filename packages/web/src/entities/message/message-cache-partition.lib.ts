@@ -3,14 +3,14 @@
  *
  * Wide API responses span multiple topics; IDB stores each topic under its own chat key.
  */
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import {
   upsertChatMessages,
   updateChatMetaPatch,
   type ChatMetaRow,
 } from "~/shared/lib/message-cache-db";
 import { chatKeyFromMockMessage } from "~/shared/lib/message-cache-keys.lib";
-import { zulipMessageCacheWindowNForChatKey } from "~/shared/lib/zulip-message-window.lib";
+import { messengerMessageCacheWindowNForChatKey } from "~/shared/lib/messenger-message-window.lib";
 
 export function groupMessagesByChatKey(
   messages: readonly MockMessage[],
@@ -79,7 +79,7 @@ export async function upsertMessagesByChatPartitions(options: {
         instanceId: options.instanceId,
         chatKey,
         messages: chatMessages,
-        windowSizeN: zulipMessageCacheWindowNForChatKey(chatKey),
+        windowSizeN: messengerMessageCacheWindowNForChatKey(chatKey),
       });
     }),
   );

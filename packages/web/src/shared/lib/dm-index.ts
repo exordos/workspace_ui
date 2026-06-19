@@ -1,4 +1,4 @@
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
 
 /** Compact localStorage DM index to restore dialog list without deep message loads. */
@@ -123,7 +123,7 @@ export function upsertDmIndexEntries(instanceId: string, entries: readonly DmInd
 /** Updates the index from message payloads without rebuilding the full chat list. */
 export function upsertDmIndexFromMessages(
   instanceId: string,
-  messages: readonly ZulipRawMessage[],
+  messages: readonly WorkspaceRawMessage[],
   currentUserId: number | null,
 ): void {
   const rows: DmIndexEntry[] = [];

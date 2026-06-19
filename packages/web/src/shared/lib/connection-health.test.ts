@@ -15,12 +15,12 @@ import {
   setConnectionPhase,
   subscribeConnectionHealth,
 } from "./connection-health";
-import { resetZulipRateLimitGateForTests } from "./zulip-rate-limit-gate";
+import { resetWorkspaceRateLimitGateForTests } from "./messenger-rate-limit-gate";
 
 const isOnlineMock = vi.fn();
 const onStatusChangeMock = vi.fn();
 const onReconnectMock = vi.fn();
-const waitUntilZulipRateLimitReleasedMock = vi.fn();
+const waitUntilMessengerRateLimitReleasedMock = vi.fn();
 
 vi.mock("./logger", () => ({
   createLogger: () => ({
@@ -37,13 +37,13 @@ vi.mock("./network", () => ({
   onReconnect: (...args: unknown[]) => onReconnectMock(...args),
 }));
 
-vi.mock("./zulip-rate-limit-gate", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./zulip-rate-limit-gate")>();
+vi.mock("./messenger-rate-limit-gate", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./messenger-rate-limit-gate")>();
   return {
     ...actual,
-    waitUntilZulipRateLimitReleased: (...args: unknown[]) =>
-      waitUntilZulipRateLimitReleasedMock(...args),
-    subscribeZulipRateLimitGate: () => () => {},
+    waitUntilMessengerRateLimitReleased: (...args: unknown[]) =>
+      waitUntilMessengerRateLimitReleasedMock(...args),
+    subscribeWorkspaceRateLimitGate: () => () => {},
   };
 });
 
@@ -56,10 +56,10 @@ vi.mock("./network-transport-probe.lib", () => ({
 describe("connection-health", () => {
   beforeEach(() => {
     resetConnectionHealthForTests();
-    resetZulipRateLimitGateForTests();
+    resetWorkspaceRateLimitGateForTests();
     isOnlineMock.mockReturnValue(true);
     probeApiTransportMock.mockResolvedValue(true);
-    waitUntilZulipRateLimitReleasedMock.mockResolvedValue(undefined);
+    waitUntilMessengerRateLimitReleasedMock.mockResolvedValue(undefined);
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-03-14T12:00:00.000Z"));
   });
@@ -67,7 +67,7 @@ describe("connection-health", () => {
   afterEach(() => {
     vi.useRealTimers();
     resetConnectionHealthForTests();
-    resetZulipRateLimitGateForTests();
+    resetWorkspaceRateLimitGateForTests();
   });
 
   it("reportSuccess clears failure metadata", () => {

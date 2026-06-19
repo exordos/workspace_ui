@@ -1,13 +1,13 @@
 /**
- * Zulip notification levels for channels (subscription) and topics (visibility_policy).
+ * Workspace notification levels for channels (subscription) and topics (visibility_policy).
  *
  * Channels use NotificationLevel (3 UI states).
- * Topics use TopicVisibilityLevel (4 Zulip visibility_policy values).
+ * Topics use TopicVisibilityLevel (4 Workspace visibility_policy values).
  */
 
 export type NotificationLevel = "default" | "muted" | "subscribed";
 
-/** Maps 1:1 to Zulip user_topics.visibility_policy. */
+/** Maps 1:1 to the messenger API user_topics.visibility_policy. */
 export type TopicVisibilityLevel = "inherit" | "muted" | "unmuted" | "followed";
 
 /** @deprecated Use NotificationLevel — kept for channel call sites. */
@@ -22,7 +22,7 @@ export function deriveStreamNotificationLevel(
   return "default";
 }
 
-/** Explicit topic override only (matches Zulip visibility_policy, not effective mute). */
+/** Explicit topic override only (matches Workspace visibility_policy, not effective mute). */
 export function deriveTopicVisibilityLevel(
   isTopicFollowed: boolean,
   isTopicMuted: boolean,

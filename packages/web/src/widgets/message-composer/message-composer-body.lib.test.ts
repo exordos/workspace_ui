@@ -15,7 +15,7 @@ describe("message-composer-body.lib", () => {
       expect(buildOutgoingMessageBody("  hello  ")).toBe("hello");
     });
 
-    it("prepends Zulip-style reply quote with silent mention, link, and quote fence", () => {
+    it("prepends messenger-style reply quote with silent mention, link, and quote fence", () => {
       const body = buildOutgoingMessageBody("text", {
         id: 1,
         content: "q",

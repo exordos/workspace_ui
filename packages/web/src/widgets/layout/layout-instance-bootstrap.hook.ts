@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { ensureMentionsUnreadSynced } from "~/entities/chat-list/chat-list-mentions-sync.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { buildMuteSnapshotFromBootstrap } from "~/features/mute-chat/mute-chat.model";
-import type { ZulipSubscription, ZulipUserTopic } from "~/shared/api/zulip.types";
+import type { MessengerSubscription, MessengerUserTopic } from "~/shared/api/messenger.types";
 
 export interface LayoutMuteSnapshot {
   mutedStreamIds: number[];
@@ -16,8 +16,8 @@ export interface LayoutMuteSnapshot {
 }
 
 export interface LayoutMuteBootstrapData {
-  subscriptions?: ZulipSubscription[];
-  userTopics?: ZulipUserTopic[];
+  subscriptions?: MessengerSubscription[];
+  userTopics?: MessengerUserTopic[];
 }
 
 export function useLayoutInstanceBootstrap(options: {

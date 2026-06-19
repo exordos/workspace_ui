@@ -4,13 +4,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
-import { clearRealmProfileFieldsCache } from "~/shared/api/zulip-realm-profile-fields";
+import { clearRealmProfileFieldsCache } from "~/shared/api/messenger-realm-profile-fields";
 import { useUserProfileStore } from "./user-profile.model";
 
 const requestUserStatusMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 
 vi.mock("~/shared/api/client", () => ({
-  zulipApi: {
+  messengerApi: {
     get: vi.fn(),
   },
   getCurrentInstance: vi.fn(() => null),
@@ -20,7 +20,7 @@ vi.mock("~/entities/user/api/user.api", () => ({
   requestUserStatus: requestUserStatusMock,
 }));
 
-const MOCK_ZULIP_USER = {
+const MOCK_MESSENGER_USER = {
   user: {
     user_id: 42,
     full_name: "Alice Wonderland",
@@ -59,11 +59,11 @@ describe("useUserProfileStore", () => {
 
   describe("loadProfile", () => {
     it("loads profile on success", async () => {
-      const { zulipApi } = await import("~/shared/api/client");
-      vi.mocked(zulipApi.get).mockResolvedValue({
+      const { messengerApi } = await import("~/shared/api/client");
+      vi.mocked(messengerApi.get).mockResolvedValue({
         ok: true,
         status: 200,
-        data: MOCK_ZULIP_USER,
+        data: MOCK_MESSENGER_USER,
         headers: new Headers(),
         raw: new Response(),
         durationMs: 50,
@@ -71,7 +71,7 @@ describe("useUserProfileStore", () => {
 
       await useUserProfileStore.getState().loadProfile(42);
 
-      expect(zulipApi.get).toHaveBeenCalledWith(
+      expect(messengerApi.get).toHaveBeenCalledWith(
         "/users/42",
         {
           client_gravatar: "false",
@@ -106,14 +106,14 @@ describe("useUserProfileStore", () => {
     });
 
     it("maps profile_data using realm field definitions when instance is active", async () => {
-      const { zulipApi, getCurrentInstance } = await import("~/shared/api/client");
+      const { messengerApi, getCurrentInstance } = await import("~/shared/api/client");
       vi.mocked(getCurrentInstance).mockReturnValue({
         id: "test-inst",
         realm: "https://z.example.com",
         email: "a@b.com",
         apiKey: "key",
       });
-      vi.mocked(zulipApi.get).mockImplementation((path: string) => {
+      vi.mocked(messengerApi.get).mockImplementation((path: string) => {
         if (path === "/realm/profile_fields") {
           return Promise.resolve({
             ok: true,
@@ -159,8 +159,8 @@ describe("useUserProfileStore", () => {
     });
 
     it("sets error on failed response", async () => {
-      const { zulipApi } = await import("~/shared/api/client");
-      vi.mocked(zulipApi.get).mockResolvedValue({
+      const { messengerApi } = await import("~/shared/api/client");
+      vi.mocked(messengerApi.get).mockResolvedValue({
         ok: false,
         status: 404,
         data: null,
@@ -178,8 +178,8 @@ describe("useUserProfileStore", () => {
     });
 
     it("sets error on network exception", async () => {
-      const { zulipApi } = await import("~/shared/api/client");
-      vi.mocked(zulipApi.get).mockRejectedValue(new Error("timeout"));
+      const { messengerApi } = await import("~/shared/api/client");
+      vi.mocked(messengerApi.get).mockRejectedValue(new Error("timeout"));
 
       await useUserProfileStore.getState().loadProfile(42);
 
@@ -188,8 +188,8 @@ describe("useUserProfileStore", () => {
     });
 
     it("handles missing optional profile fields", async () => {
-      const { zulipApi } = await import("~/shared/api/client");
-      vi.mocked(zulipApi.get).mockResolvedValue({
+      const { messengerApi } = await import("~/shared/api/client");
+      vi.mocked(messengerApi.get).mockResolvedValue({
         ok: true,
         status: 200,
         data: {
@@ -220,7 +220,7 @@ describe("useUserProfileStore", () => {
     });
 
     it("does not apply stale profile after organization switch and clear", async () => {
-      const { zulipApi, getCurrentInstance } = await import("~/shared/api/client");
+      const { messengerApi, getCurrentInstance } = await import("~/shared/api/client");
       vi.mocked(getCurrentInstance).mockReturnValue(null);
       useInstancesStore.setState({
         instances: [
@@ -232,18 +232,16 @@ describe("useUserProfileStore", () => {
       });
 
       let resolveResponse:
-        | ((
-            value: {
-              ok: true;
-              status: number;
-              data: typeof MOCK_ZULIP_USER;
-              headers: Headers;
-              raw: Response;
-              durationMs: number;
-            },
-          ) => void)
+        | ((value: {
+            ok: true;
+            status: number;
+            data: typeof MOCK_MESSENGER_USER;
+            headers: Headers;
+            raw: Response;
+            durationMs: number;
+          }) => void)
         | undefined;
-      vi.mocked(zulipApi.get).mockImplementationOnce(
+      vi.mocked(messengerApi.get).mockImplementationOnce(
         () =>
           new Promise((resolve) => {
             resolveResponse = resolve;
@@ -258,7 +256,7 @@ describe("useUserProfileStore", () => {
       resolveResponse!({
         ok: true,
         status: 200,
-        data: MOCK_ZULIP_USER,
+        data: MOCK_MESSENGER_USER,
         headers: new Headers(),
         raw: new Response(),
         durationMs: 50,
@@ -277,11 +275,11 @@ describe("useUserProfileStore", () => {
 
   describe("clear", () => {
     it("resets profile and status", async () => {
-      const { zulipApi } = await import("~/shared/api/client");
-      vi.mocked(zulipApi.get).mockResolvedValue({
+      const { messengerApi } = await import("~/shared/api/client");
+      vi.mocked(messengerApi.get).mockResolvedValue({
         ok: true,
         status: 200,
-        data: MOCK_ZULIP_USER,
+        data: MOCK_MESSENGER_USER,
         headers: new Headers(),
         raw: new Response(),
         durationMs: 50,
@@ -299,14 +297,14 @@ describe("useUserProfileStore", () => {
 
   describe("status transitions", () => {
     it("transitions through loading to done", async () => {
-      const { zulipApi } = await import("~/shared/api/client");
+      const { messengerApi } = await import("~/shared/api/client");
       const statuses: string[] = [];
       const unsub = useUserProfileStore.subscribe((s) => statuses.push(s.status));
 
-      vi.mocked(zulipApi.get).mockResolvedValue({
+      vi.mocked(messengerApi.get).mockResolvedValue({
         ok: true,
         status: 200,
-        data: MOCK_ZULIP_USER,
+        data: MOCK_MESSENGER_USER,
         headers: new Headers(),
         raw: new Response(),
         durationMs: 50,
@@ -320,11 +318,11 @@ describe("useUserProfileStore", () => {
     });
 
     it("transitions through loading to error on failure", async () => {
-      const { zulipApi } = await import("~/shared/api/client");
+      const { messengerApi } = await import("~/shared/api/client");
       const statuses: string[] = [];
       const unsub = useUserProfileStore.subscribe((s) => statuses.push(s.status));
 
-      vi.mocked(zulipApi.get).mockResolvedValue({
+      vi.mocked(messengerApi.get).mockResolvedValue({
         ok: false,
         status: 500,
         data: null,

@@ -2,8 +2,8 @@
  * Centralized realm (custom org) emoji load and in-memory cache.
  * Deduplicates parallel fetches and exposes a test reset hook.
  */
-import { fetchRealmEmojis } from "~/shared/api/zulip-users";
-import type { RealmEmoji } from "~/shared/api/zulip.types";
+import { fetchRealmEmojis } from "~/shared/api/messenger-users";
+import type { RealmEmoji } from "~/shared/api/messenger.types";
 
 const EMPTY_REALM_EMOJIS: RealmEmoji[] = [];
 

@@ -1,7 +1,7 @@
 /**
- * Typing indicator API — sends start/stop typing notifications to Zulip.
+ * Typing indicator API — sends start/stop typing notifications to the messenger API.
  *
- * Zulip API: POST /typing
+ * Messenger API: POST /typing
  *   op: "start" | "stop"
  *   type: "direct" | "stream"
  *
@@ -9,14 +9,14 @@
  * For streams: stream_id + topic
  */
 
-import { zulipApi } from "~/shared/api/client";
+import { messengerApi } from "~/shared/api/client";
 import { createLogger } from "~/shared/lib/logger";
 
 const log = createLogger("typing-api");
 
 export async function sendTypingStart(userIds: number[]): Promise<void> {
   try {
-    await zulipApi.post("/typing", {
+    await messengerApi.post("/typing", {
       op: "start",
       to: JSON.stringify(userIds),
       type: "direct",
@@ -30,7 +30,7 @@ export async function sendTypingStart(userIds: number[]): Promise<void> {
 
 export async function sendTypingStop(userIds: number[]): Promise<void> {
   try {
-    await zulipApi.post("/typing", {
+    await messengerApi.post("/typing", {
       op: "stop",
       to: JSON.stringify(userIds),
       type: "direct",
@@ -44,7 +44,7 @@ export async function sendTypingStop(userIds: number[]): Promise<void> {
 
 export async function sendStreamTypingStart(streamId: number, topic: string): Promise<void> {
   try {
-    await zulipApi.post("/typing", {
+    await messengerApi.post("/typing", {
       op: "start",
       type: "stream",
       stream_id: String(streamId),
@@ -59,7 +59,7 @@ export async function sendStreamTypingStart(streamId: number, topic: string): Pr
 
 export async function sendStreamTypingStop(streamId: number, topic: string): Promise<void> {
   try {
-    await zulipApi.post("/typing", {
+    await messengerApi.post("/typing", {
       op: "stop",
       type: "stream",
       stream_id: String(streamId),

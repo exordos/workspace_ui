@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useUsersStore } from "~/entities/user/user.model";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 
 const isHydrateInFlightMock = vi.hoisted(() => vi.fn((_streamId: number) => false));
 
@@ -20,8 +20,9 @@ import {
 } from "./chat-list-sync-stream-from-window.lib";
 import { useChatListStore } from "./chat-list.model";
 
-vi.mock("~/shared/api/zulip-sidebar-preview.lib", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/shared/api/zulip-sidebar-preview.lib")>();
+vi.mock("~/shared/api/messenger-sidebar-preview.lib", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("~/shared/api/messenger-sidebar-preview.lib")>();
   return {
     ...actual,
     fetchStreamChannelMessagesForSidebarTopics: vi.fn(() => new Promise(() => {})),

@@ -1,9 +1,9 @@
 /**
- * Feed data layer — IDB bootstrap for instant UI and Zulip server refresh for authoritative data.
+ * Feed data layer — IDB bootstrap for instant UI and server refresh for authoritative data.
  */
 
-import { fetchAllMessagesPage } from "~/shared/api/zulip-messages";
-import type { MessagesPageResult, MockMessage } from "~/shared/api/zulip.types";
+import { fetchAllMessagesPage } from "~/shared/api/messenger-messages";
+import type { MessagesPageResult, MockMessage } from "~/shared/api/messenger.types";
 import { createLogger, logApiCall } from "~/shared/lib/logger";
 import { getInstanceMessagesAscending } from "~/shared/lib/message-cache-db";
 

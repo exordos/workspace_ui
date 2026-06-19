@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useInstancesStore } from "~/entities/instance/instance.model";
-import type * as ZulipAuthModule from "~/shared/api/zulip-auth";
+import type * as WorkspaceAuthModule from "~/shared/api/messenger-auth";
 import { saveDesktopFlowState } from "~/shared/lib/oidc-desktop";
 import { renderWithProviders } from "~/test/render";
 import { PasteTokenPage } from "./paste-token-page.ui";
@@ -19,8 +19,8 @@ vi.mock("react-router-dom", async () => {
   };
 });
 
-vi.mock("~/shared/api/zulip-auth", async () => {
-  const actual = await vi.importActual<typeof ZulipAuthModule>("~/shared/api/zulip-auth");
+vi.mock("~/shared/api/messenger-auth", async () => {
+  const actual = await vi.importActual<typeof WorkspaceAuthModule>("~/shared/api/messenger-auth");
   return {
     ...actual,
     exchangeDesktopFlowToken,
@@ -82,8 +82,8 @@ describe("PasteTokenPage", () => {
     exchangeDesktopFlowToken.mockReset();
     fetchServerSettings.mockReset();
     useInstancesStore.setState({ instances: [], currentInstanceId: null });
-    localStorage.removeItem("zulip-web-instances");
-    localStorage.removeItem("zulip-web-current-instance");
+    localStorage.removeItem("messenger-web-instances");
+    localStorage.removeItem("messenger-web-current-instance");
     sessionStorage.clear();
   });
 

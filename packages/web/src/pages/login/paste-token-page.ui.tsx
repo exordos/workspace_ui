@@ -2,8 +2,8 @@ import React, { useCallback, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useInstancesStore, type AddInstanceResult } from "~/entities/instance/instance.model";
 import { t } from "~/i18n/i18n";
-import { exchangeDesktopFlowToken, fetchServerSettings } from "~/shared/api/zulip-auth";
-import { normalizeRealm } from "~/shared/api/zulip-realm.internal";
+import { exchangeDesktopFlowToken, fetchServerSettings } from "~/shared/api/messenger-auth";
+import { normalizeRealm } from "~/shared/api/messenger-realm.internal";
 import { readText } from "~/shared/lib/clipboard";
 import {
   clearDesktopFlowState,

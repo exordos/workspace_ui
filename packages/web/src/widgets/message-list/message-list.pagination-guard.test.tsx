@@ -1,13 +1,13 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { resetRealmEmojisCacheForTests } from "~/shared/lib/realm-emojis-cache";
 import { MessageList } from "./message-list.ui";
 
 const fetchRealmEmojisMock = vi.hoisted(() => vi.fn());
 
-vi.mock("~/shared/api/zulip-users", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/shared/api/zulip-users")>();
+vi.mock("~/shared/api/messenger-users", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("~/shared/api/messenger-users")>();
   return {
     ...actual,
     fetchRealmEmojis: (...args: unknown[]) => fetchRealmEmojisMock(...args),

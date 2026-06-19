@@ -3,10 +3,10 @@
  *
  * Supports two delivery channels:
  * 1. Firebase Cloud Messaging (FCM) — standard web push via VAPID
- * 2. Zulip Push Service — registers FCM token with Zulip server for server-sent pushes
+ * 2. Workspace Push Service — registers FCM token with server for server-sent pushes
  *
  * Both channels can work together: FCM handles delivery,
- * Zulip server decides WHEN to send (new message, mention, DM).
+ * server decides WHEN to send (new message, mention, DM).
  */
 
 // ---------------------------------------------------------------------------
@@ -14,9 +14,9 @@
 // ---------------------------------------------------------------------------
 
 export interface PushMessagePayload {
-  /** Zulip event type: "message", "remove", "test" */
+  /** messenger event type: "message", "remove", "test" */
   event: "message" | "remove" | "test";
-  /** Zulip server realm URL */
+  /** server realm URL */
   realm_uri?: string;
   /** Message data (for "message" event) */
   message?: {

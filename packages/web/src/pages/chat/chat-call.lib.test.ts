@@ -84,7 +84,7 @@ describe("buildCallRoomName", () => {
         chatLabel: "Design Sync",
         nowMs: 123,
       }),
-    ).toBe("zulip-dm-design-sync-123");
+    ).toBe("messenger-dm-design-sync-123");
   });
 
   it("builds stream room name from stream and topic labels", () => {
@@ -99,7 +99,7 @@ describe("buildCallRoomName", () => {
         currentUserId: 42,
         nowMs: 77,
       }),
-    ).toBe("zulip-stream-engineering-team-sprint-demo-77");
+    ).toBe("messenger-stream-engineering-team-sprint-demo-77");
   });
 
   it("keeps unicode letters readable in room names", () => {
@@ -110,7 +110,7 @@ describe("buildCallRoomName", () => {
         chatLabel: "Команда разработки",
         nowMs: 55,
       }),
-    ).toBe("zulip-dm-команда-разработки-55");
+    ).toBe("messenger-dm-команда-разработки-55");
   });
 
   it("falls back to participant ids when chat label is unavailable", () => {
@@ -120,7 +120,7 @@ describe("buildCallRoomName", () => {
         currentUserId: null,
         nowMs: 987,
       }),
-    ).toBe("zulip-dm-7-42-987");
+    ).toBe("messenger-dm-7-42-987");
   });
 });
 

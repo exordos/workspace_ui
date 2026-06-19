@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  workspaceOrgApiOriginFromZulipRealmRoot,
+  workspaceOrgApiOriginFromRealmRoot,
   workspaceOrgOriginFromLoginServerUrlInput,
 } from "./workspace-org-origin.lib";
 
@@ -24,34 +24,32 @@ describe("workspaceOrgOriginFromLoginServerUrlInput", () => {
   });
 });
 
-describe("workspaceOrgApiOriginFromZulipRealmRoot", () => {
-  it("keeps zulip subdomain on the original realm origin", () => {
-    expect(workspaceOrgApiOriginFromZulipRealmRoot("https://zulip.genesis-core.team")).toBe(
-      "https://zulip.genesis-core.team",
+describe("workspaceOrgApiOriginFromRealmRoot", () => {
+  it("keeps messenger subdomain on the original realm origin", () => {
+    expect(workspaceOrgApiOriginFromRealmRoot("https://messenger.genesis-core.team")).toBe(
+      "https://messenger.genesis-core.team",
     );
   });
 
   it("normalizes hostname case without changing the host", () => {
-    expect(workspaceOrgApiOriginFromZulipRealmRoot("https://ZULIP.genesis-core.team")).toBe(
-      "https://zulip.genesis-core.team",
+    expect(workspaceOrgApiOriginFromRealmRoot("https://WORKSPACE.genesis-core.team")).toBe(
+      "https://workspace.genesis-core.team",
     );
   });
 
   it("preserves non-default port on the original realm origin", () => {
-    expect(workspaceOrgApiOriginFromZulipRealmRoot("https://zulip.genesis-core.team:8443")).toBe(
-      "https://zulip.genesis-core.team:8443",
+    expect(workspaceOrgApiOriginFromRealmRoot("https://messenger.genesis-core.team:8443")).toBe(
+      "https://messenger.genesis-core.team:8443",
     );
   });
 
-  it("leaves non-zulip hosts unchanged", () => {
-    expect(workspaceOrgApiOriginFromZulipRealmRoot("https://chat.example.com")).toBe(
+  it("leaves non-messenger hosts unchanged", () => {
+    expect(workspaceOrgApiOriginFromRealmRoot("https://chat.example.com")).toBe(
       "https://chat.example.com",
     );
   });
 
   it("returns trimmed input when URL cannot be parsed", () => {
-    expect(workspaceOrgApiOriginFromZulipRealmRoot("https://not a host")).toBe(
-      "https://not a host",
-    );
+    expect(workspaceOrgApiOriginFromRealmRoot("https://not a host")).toBe("https://not a host");
   });
 });

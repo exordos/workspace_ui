@@ -1,5 +1,5 @@
 /**
- * IndexedDB persistence for avatar image blobs (per Zulip instance, LRU eviction).
+ * IndexedDB persistence for avatar image blobs (per organization instance, LRU eviction).
  *
  * Uses the shared `workspace-message-cache-v1` database (store `avatarBlobs`).
  *

@@ -16,7 +16,7 @@ describe("isLikelyRenderedMessageHtml", () => {
     expect(isLikelyRenderedMessageHtml("<p>hello</p>")).toBe(true);
   });
 
-  it("returns false for Zulip angle-bracket link markdown", () => {
+  it("returns false for the messenger API angle-bracket link markdown", () => {
     expect(isLikelyRenderedMessageHtml("<https://example.com>")).toBe(false);
   });
 });
@@ -36,7 +36,7 @@ describe("renderMarkdownFallbackHtml", () => {
     expect(html).toContain("secret");
   });
 
-  it("renders zulip fenced spoiler markdown with block header/content structure", () => {
+  it("renders messenger fenced spoiler markdown with block header/content structure", () => {
     const html = renderMarkdownFallbackHtml("```spoiler Header\ninside text\n```");
     expect(html).toContain('class="spoiler-block"');
     expect(html).toContain('class="spoiler-header"');
@@ -53,7 +53,7 @@ describe("renderMarkdownFallbackHtml", () => {
   });
 });
 
-describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
+describe("messageBodyToUnsanitizedDisplayHtml + messenger mentions", () => {
   it("injects user-mention span for @**Name** when resolver matches", () => {
     const html = messageBodyToUnsanitizedDisplayHtml("Hello @**John**", {
       resolveUserMention: (name) => (name === "John" ? 99 : null),
@@ -92,7 +92,7 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
     expect(html).toBe(rendered);
   });
 
-  it("keeps zulip spoiler block structure for bubble accordion UI", () => {
+  it("keeps messenger spoiler block structure for bubble accordion UI", () => {
     const html = messageBodyToUnsanitizedDisplayHtml(
       [
         '<div class="spoiler-block">',
@@ -153,7 +153,7 @@ describe("prepareProtectedMessageHtml message rendering pipeline", () => {
     expect(html).not.toContain(":smile:");
   });
 
-  it("resolves frequently used zulip-style shortcodes from emojibase dataset", () => {
+  it("resolves frequently used messenger-style shortcodes from emojibase dataset", () => {
     const html = renderPreparedMessageHtml("A :open_mouth: B :+1:");
     expect(html).toContain("😮");
     expect(html).toContain("👍");
@@ -161,7 +161,7 @@ describe("prepareProtectedMessageHtml message rendering pipeline", () => {
     expect(html).not.toContain(":+1:");
   });
 
-  it("resolves zulip alias overrides for unicode emoji shortcodes", () => {
+  it("resolves messenger alias overrides for unicode emoji shortcodes", () => {
     const html = renderPreparedMessageHtml("A :working_on_it: B :hammer_and_wrench:");
     expect(html).toContain("🛠");
     expect(html).not.toContain(":working_on_it:");
@@ -214,15 +214,15 @@ describe("prepareProtectedMessageHtml message rendering pipeline", () => {
     expect(html).toContain("😄");
   });
 
-  it("does not add a second img when Zulip HTML already has message_inline_image", () => {
-    const zulipHtml = [
+  it("does not add a second img when messenger HTML already has message_inline_image", () => {
+    const messengerHtml = [
       '<p><a href="/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png">image.png</a></p>',
       '<div class="message_inline_image">',
       '<a href="/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png">',
       '<img src="/user_uploads/thumbnail/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png/840x560.webp" alt="image.png">',
       "</a></div>",
     ].join("");
-    const html = renderPreparedMessageHtml(zulipHtml);
+    const html = renderPreparedMessageHtml(messengerHtml);
     const imgCount = (html.match(/<img\b/gi) ?? []).length;
     expect(imgCount).toBe(1);
     expect(html).toContain("message_inline_image");
@@ -262,7 +262,7 @@ describe("prepareProtectedMessageHtml message rendering pipeline", () => {
     expect(html).toContain('type="video/webm"');
   });
 
-  it("inlines video links in pre-rendered Zulip HTML bodies", () => {
+  it("inlines video links in pre-rendered messenger HTML bodies", () => {
     const html = renderPreparedMessageHtml(
       '<p><a href="https://sys.example.com/user_uploads/2/52/id/file.webm" target="_blank">file.webm</a></p>',
     );
@@ -271,14 +271,14 @@ describe("prepareProtectedMessageHtml message rendering pipeline", () => {
     expect(html).not.toContain(">file.webm</a>");
   });
 
-  it("renders Zulip quote fence as nested quote block with header mention", () => {
+  it("renders messenger quote fence as nested quote block with header mention", () => {
     const html = messageBodyToUnsanitizedDisplayHtml(
       "@_**Alice|42** [wrote](https://z.example.com/near/1):\n```quote\nHi there\n```\n\nMy reply",
       { resolveUserMention: () => null },
     );
-    expect(html).toContain('class="zulip-quote-block"');
-    expect(html).toContain('class="zulip-quote-header"');
-    expect(html).toContain('class="zulip-quote-body"');
+    expect(html).toContain('class="messenger-quote-block"');
+    expect(html).toContain('class="messenger-quote-header"');
+    expect(html).toContain('class="messenger-quote-body"');
     expect(html).toContain('data-user-id="42"');
     expect(html).toContain("wrote");
     expect(html).toContain("Hi there");
@@ -293,12 +293,12 @@ describe("prepareProtectedMessageHtml message rendering pipeline", () => {
       { resolveUserMention: () => null },
     );
 
-    expect(html).toContain('class="zulip-quote-body"');
+    expect(html).toContain('class="messenger-quote-body"');
     expect(html).toContain("<p>$&amp; $` $&#39; $$ $1</p>");
     expect(html).toContain("<br>Tail</p>");
   });
 
-  it("wraps server-rendered blockquote after wrote header in zulip-quote-block", () => {
+  it("wraps server-rendered blockquote after wrote header in messenger-quote-block", () => {
     const html = renderPreparedMessageHtml(
       [
         '<p><span class="user-mention" data-user-id="42">@Alice</span>',
@@ -307,9 +307,9 @@ describe("prepareProtectedMessageHtml message rendering pipeline", () => {
         "<p>Reply</p>",
       ].join(""),
     );
-    expect(html).toContain('class="zulip-quote-block"');
-    expect(html).toContain('class="zulip-quote-header"');
-    expect(html).toContain('class="zulip-quote-body"');
+    expect(html).toContain('class="messenger-quote-block"');
+    expect(html).toContain('class="messenger-quote-header"');
+    expect(html).toContain('class="messenger-quote-body"');
     expect(html).toContain("Quoted text");
   });
 
@@ -329,16 +329,16 @@ describe("prepareProtectedMessageHtml message rendering pipeline", () => {
       ].join(""),
     );
 
-    expect(html).toContain('class="zulip-quote-block"');
-    expect(html).toContain('class="zulip-quote-body"');
+    expect(html).toContain('class="messenger-quote-block"');
+    expect(html).toContain('class="messenger-quote-body"');
     expect(html).toContain(
       'data-auth-src="https://sys.example.com/workspace/v1/user_uploads/thumbnail/',
     );
     expect(html).toContain('class="message-media-preview"');
     expect(html).not.toMatch(new RegExp(`>${uploadUrl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}<`));
     expect((html.match(/<img\b/gi) ?? []).length).toBe(1);
-    expect(html).toMatch(/zulip-quote-body[\s\S]*message-media-preview/);
-    expect(html).not.toMatch(/zulip-quote-block[\s\S]*message_inline_image/);
+    expect(html).toMatch(/messenger-quote-body[\s\S]*message-media-preview/);
+    expect(html).not.toMatch(/messenger-quote-block[\s\S]*message_inline_image/);
   });
 
   it("inlines user_upload image link inside markdown quote fence", () => {
@@ -348,12 +348,12 @@ describe("prepareProtectedMessageHtml message rendering pipeline", () => {
       { resolveUserMention: () => null },
     );
 
-    expect(html).toContain('class="zulip-quote-body"');
+    expect(html).toContain('class="messenger-quote-body"');
     expect(html).toContain('class="message-media-preview"');
     expect(html).toContain(
       'data-auth-src="https://sys.example.com/workspace/v1/user_uploads/thumbnail/',
     );
-    expect(html).toMatch(/zulip-quote-body[\s\S]*<img[^>]*message-media-preview/);
+    expect(html).toMatch(/messenger-quote-body[\s\S]*<img[^>]*message-media-preview/);
     expect((html.match(/<img\b/gi) ?? []).length).toBe(1);
   });
 

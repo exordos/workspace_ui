@@ -1,7 +1,7 @@
 /**
  * Message Readers ("Read By" modal) type definitions.
  *
- * Zulip API: GET /messages/{id}/read_receipts → { user_ids: number[] }
+ * Messenger API: GET /messages/{id}/read_receipts → { user_ids: number[] }
  * Displays which users have read a particular message.
  */
 

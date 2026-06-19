@@ -2,7 +2,7 @@
  * Client-side unread badges for Folder Rail icons.
  *
  * Sums `SidebarChat.badge` per folder using the same projection as the sidebar chat list,
- * so rail counts stay in sync with Zulip chat-list updates (not only Workspace folder poll).
+ * so rail counts stay in sync with the messenger API chat-list updates (not only Workspace folder poll).
  */
 import type { FolderItemForClient, WorkspaceFolderForRail } from "~/shared/api/workspace-client";
 import type { SidebarChat, StreamEntryInternal } from "~/shared/types/sidebar-chat";

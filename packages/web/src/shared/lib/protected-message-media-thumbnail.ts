@@ -1,5 +1,5 @@
 /**
- * Zulip user-upload thumbnail URLs (server-generated WebP previews).
+ * Workspace user-upload thumbnail URLs (server-generated WebP previews).
  *
  * Full: `{prefix}/user_uploads/{id}/{shard}/{name}.png`
  * Thumb: `{prefix}/user_uploads/thumbnail/{id}/{shard}/{name}.png/840x560.webp`

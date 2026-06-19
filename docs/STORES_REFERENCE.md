@@ -75,26 +75,26 @@ Persistence: none of the stores use Zustand `persist` middleware. All persistenc
 **Path**: `entities/instance/instance.model.ts`
 **Import**: `import { useInstancesStore } from '~/entities/instance/instance.model'`
 
-Manages Zulip instances (servers). Persisted to `localStorage`.
+Manages organization instances (servers). Persisted to `localStorage`.
 
 ### Interfaces
 
 ```typescript
-interface ZulipInstance {
+interface WorkspaceInstance {
   id: string; // generated: `${Date.now()}-${random}`
-  realm: string; // server base URL (e.g. "https://zulip.example.com")
+  realm: string; // server base URL (e.g. "https://chat.example.com")
   email: string; // email for auth
   apiKey: string; // API key
 }
 
 interface InstancesState {
-  instances: ZulipInstance[];
+  instances: WorkspaceInstance[];
   currentInstanceId: string | null;
 
-  addInstance: (instance: Omit<ZulipInstance, "id">) => string; // returns generated id
+  addInstance: (instance: Omit<WorkspaceInstance, "id">) => string; // returns generated id
   removeInstance: (id: string) => void;
   setCurrentInstanceId: (id: string | null) => void;
-  getCurrentInstance: () => ZulipInstance | null;
+  getCurrentInstance: () => WorkspaceInstance | null;
 }
 ```
 
@@ -109,8 +109,8 @@ interface InstancesState {
 
 ### localStorage Keys
 
-- `"zulip-web-instances"` — JSON array of instances
-- `"zulip-web-current-instance"` — ID of current instance
+- `"messenger-web-instances"` — JSON array of instances
+- `"messenger-web-current-instance"` — ID of current instance
 
 ---
 
@@ -132,12 +132,12 @@ interface ChatListState {
   streamsMap: Map<number, StreamEntryInternal>;
   dmsMap: Map<string, DmEntryInternal>;
   currentUserId: number | null;
-  lastAppliedMessages: ZulipRawMessage[] | null;
+  lastAppliedMessages: WorkspaceRawMessage[] | null;
   messageIdToLocation: Map<number, MessageLocation>;
 
-  setFromMessages: (messages: ZulipRawMessage[], currentUserId: number | null) => void;
-  addMessage: (message: ZulipRawMessage) => void;
-  addMessages: (messages: ZulipRawMessage[]) => void;
+  setFromMessages: (messages: WorkspaceRawMessage[], currentUserId: number | null) => void;
+  addMessage: (message: WorkspaceRawMessage) => void;
+  addMessages: (messages: WorkspaceRawMessage[]) => void;
   setCurrentUserId: (id: number | null) => void;
   clear: () => void;
   decrementUnreadForMessages: (messageIds: number[]) => void;
@@ -240,7 +240,7 @@ interface UsersState {
 
   mergeUser: (payload: Partial<UserRecord> & { user_id: number }) => void;
   mergeUsers: (list: Array<Partial<UserRecord> & { user_id: number }>) => void;
-  mergeFromMessage: (msg: ZulipRawMessage) => void;
+  mergeFromMessage: (msg: WorkspaceRawMessage) => void;
   setPresenceByEmail: (email: string, presence: UserPresence) => void;
   setPresence: (userId: number, presence: UserPresence) => void;
   getUser: (userId: number) => UserRecord | undefined;
@@ -356,7 +356,7 @@ interface StickerState {
 **Path**: `entities/draft/draft.model.ts`
 **Import**: `import { useDraftStore } from '~/entities/draft/draft.model'`
 
-Draft messages synced with Zulip Drafts API.
+Draft messages synced with the messenger API Drafts API.
 
 ### Interfaces
 
@@ -992,7 +992,7 @@ interface TypingIndicatorState {
 | `getTypingUsers` | Returns typing users for chat key; returns `EMPTY_USERS` when none      |
 | `clearAll`       | Clears all typing state and timers                                      |
 
-API: `sendTypingStart`, `sendTypingStop` from `typing-indicator.api.ts` — send typing events to Zulip server.
+API: `sendTypingStart`, `sendTypingStop` from `typing-indicator.api.ts` — send typing events to server.
 
 ---
 
@@ -1016,7 +1016,7 @@ interface SidebarConfigState {
 
 ### localStorage Key
 
-- `"zulip-web-sidebar-config"` — JSON object with `activityOpen` and extensible fields
+- `"messenger-web-sidebar-config"` — JSON object with `activityOpen` and extensible fields
 
 ### Accessing a Store Outside React (in actions, effects, callbacks)
 

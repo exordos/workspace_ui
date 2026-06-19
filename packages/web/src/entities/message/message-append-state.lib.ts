@@ -1,4 +1,4 @@
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { mergeMessagePreservingLinkPreview } from "~/shared/lib/message-link-preview-merge.lib";
 import { applyPendingLinkPreviewsToMessage } from "~/shared/lib/message-link-preview-pending.lib";
 import { buildSendingEchoKeyIndex } from "./message-outgoing-echo-index.lib";

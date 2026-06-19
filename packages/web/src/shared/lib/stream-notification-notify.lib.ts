@@ -6,7 +6,7 @@ import {
   resolveStreamAllMessagesAudibleEnabled,
   resolveStreamAllMessagesNotifyEnabled,
 } from "./stream-notification-resolve.lib";
-import type { ZulipNotificationSettings } from "./zulip-notification-settings.lib";
+import type { WorkspaceNotificationSettings } from "./messenger-notification-settings.lib";
 
 export interface StreamNotificationOverrideReader {
   isStreamMuted?: (streamId: number) => boolean;
@@ -16,7 +16,7 @@ export interface StreamNotificationOverrideReader {
 
 export function buildStreamMessageNotificationFlags(
   streamId: number,
-  settings: ZulipNotificationSettings,
+  settings: WorkspaceNotificationSettings,
   overrides: StreamNotificationOverrideReader,
 ): {
   streamAllMessagesNotifyEnabled: boolean;

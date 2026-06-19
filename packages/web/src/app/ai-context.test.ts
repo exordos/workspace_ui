@@ -221,7 +221,7 @@ describe("ai-context", () => {
       vi.mocked(useInstancesStore.getState).mockReturnValue({
         getCurrentInstance: vi.fn(() => ({
           email: "alice@example.com",
-          realm: "https://zulip.example.com",
+          realm: "https://chat.example.com",
         })),
       } as never);
 
@@ -230,7 +230,7 @@ describe("ai-context", () => {
       expect(result.userId).toBe(42);
       expect(result.email).toBe("alice@example.com");
       expect(result.fullName).toBe("Alice Test");
-      expect(result.realm).toBe("https://zulip.example.com");
+      expect(result.realm).toBe("https://chat.example.com");
     });
 
     // Profile may load async — AI should still get available data
@@ -246,7 +246,7 @@ describe("ai-context", () => {
       vi.mocked(useInstancesStore.getState).mockReturnValue({
         getCurrentInstance: vi.fn(() => ({
           email: "user@example.com",
-          realm: "https://zulip.example.com",
+          realm: "https://chat.example.com",
         })),
       } as never);
 

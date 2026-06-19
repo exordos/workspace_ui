@@ -8,7 +8,7 @@ import { useThemeStore } from "~/entities/theme/theme.model";
 import { reportPresence } from "~/entities/user/api/user.api";
 import {
   refreshWorkspaceApiBase,
-  refreshZulipApiBase,
+  refreshMessengerApiBase,
   setInstanceProvider,
 } from "~/shared/api/client";
 import { clearInFlightWorkspaceFolderRequests } from "~/shared/api/workspace-client";
@@ -55,7 +55,7 @@ setInstanceProvider(() => {
 });
 
 function syncApiBasesAfterInstanceChange(): void {
-  refreshZulipApiBase();
+  refreshMessengerApiBase();
   refreshWorkspaceApiBase();
 }
 

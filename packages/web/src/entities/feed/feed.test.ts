@@ -5,16 +5,16 @@
  * Messages are fetched oldest-first with anchor-based pagination.
  */
 import { afterEach, describe, expect, it } from "vitest";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { createMessage, createMessages } from "~/test/factories";
 import { useFeedStore } from "./feed.model";
 
 function msg(overrides: Parameters<typeof createMessage>[0] = {}): MockMessage {
-  return createMessage(overrides) as MockMessage;
+  return createMessage(overrides);
 }
 
 function msgs(count: number, base: Parameters<typeof createMessage>[0] = {}): MockMessage[] {
-  return createMessages(count, base) as MockMessage[];
+  return createMessages(count, base);
 }
 
 // ---------------------------------------------------------------------------

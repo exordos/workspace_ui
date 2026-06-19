@@ -33,7 +33,7 @@ shared      Design system, utilities, configs, icons
 - `pages` — routes, compose widgets and features.
 - `app` — entry point, router, providers, event loop.
 
-> The `processes` layer (cross-cutting scenarios) is merged with `app`. The Zulip real-time event loop lives in `shared/lib/event-loop.ts` and is started from `widgets/layout/layout-zulip-event-loop.hook.ts`.
+> The `processes` layer (cross-cutting scenarios) is merged with `app`. The Workspace real-time event loop lives in `shared/lib/event-loop.ts` and is started from `widgets/layout/layout-messenger-event-loop.hook.ts`.
 
 ---
 
@@ -54,7 +54,7 @@ packages/web/src/
 ├── entities/               # 17 domain stores + API segments
 ├── shared/
 │   ├── ui/                 # Design-system primitives
-│   ├── api/                # client.ts, workspace-client.ts, zulip-*.ts
+│   ├── api/                # client.ts, workspace-client.ts, messenger-*.ts
 │   ├── lib/                # event-loop.ts, brand.ts, guards.ts, themes/, push/, …
 │   └── config/
 ├── i18n/
@@ -96,68 +96,68 @@ All four phases are complete. Ongoing slices (folder-sync, stream-members, etc.)
 
 ## Mapping: Legacy → FSD
 
-| Legacy Path                          | FSD Layer         | FSD Path                                                                       |
-| ------------------------------------ | ----------------- | ------------------------------------------------------------------------------ |
-| `components/Layout.tsx`              | widgets           | `widgets/layout/`                                                              |
-| `components/ChatPage.tsx`            | pages             | `pages/chat/`                                                                  |
-| `components/ActivityPage.tsx`        | pages             | `pages/activity/`                                                              |
-| `components/LoginPage.tsx`           | pages             | `pages/login/`                                                                 |
-| `components/ChatHeader.tsx`          | widgets           | `widgets/chat-view/`                                                           |
-| `components/MessageList.tsx`         | widgets           | `widgets/message-list/`                                                        |
-| `components/ui/MessageBubble.tsx`    | widgets           | `widgets/message-list/`                                                        |
-| `components/ui/MessageComposer.tsx`  | widgets           | `widgets/message-composer/`                                                    |
-| `components/ui/Sidebar/`             | widgets           | `widgets/sidebar/`                                                             |
-| `components/ui/TopBar.tsx`           | widgets           | `widgets/top-bar/`                                                             |
-| `components/ui/FolderRail.tsx`       | widgets           | `widgets/folder-rail/`                                                         |
-| `components/ui/RightPanel.tsx`       | widgets           | `widgets/right-panel/`                                                         |
-| `components/ui/RightDrawer.tsx`      | widgets           | `widgets/right-panel/`                                                         |
-| `components/SearchModal.tsx`         | widgets           | `widgets/search-modal/`                                                        |
-| `components/ProfileDrawer.tsx`       | widgets           | `widgets/right-panel/` (profile in right drawer)                               |
-| `components/InstanceSwitcher.tsx`    | features          | `features/instance-switch/`                                                    |
-| `components/JitsiCallModal.tsx`      | features          | `features/jitsi-call/`                                                         |
-| `components/ui/Avatar.tsx`           | shared            | `shared/ui/avatar.tsx`                                                         |
-| `components/ui/Badge.tsx`            | shared            | `shared/ui/badge.tsx`                                                          |
-| `components/ui/Button.tsx`           | shared            | `shared/ui/button.tsx`                                                         |
-| `components/ui/Icon.tsx`             | shared            | `shared/ui/icon.tsx`                                                           |
-| `components/ui/ScrollArea.tsx`       | shared            | `shared/ui/scroll-area.tsx`                                                    |
-| `components/ui/CallBubble.tsx`       | shared            | `shared/ui/call-bubble.tsx`                                                    |
-| `components/ErrorBoundary.tsx`       | shared            | `shared/ui/error-boundary.tsx`                                                 |
-| `stores/chatListStore.ts`            | entities          | `entities/chat-list/chat-list.model.ts`                                        |
-| `stores/currentChatMessagesStore.ts` | entities          | `entities/message/message.model.ts`                                            |
-| `stores/usersStore.ts`               | entities          | `entities/user/user.model.ts`                                                  |
-| `stores/instancesStore.ts`           | entities          | `entities/instance/instance.model.ts`                                          |
-| `stores/themeStore.ts`               | entities          | `entities/theme/theme.model.ts`                                                |
-| `stores/callParticipantsStore.ts`    | entities          | `entities/call/call.model.ts`                                                  |
-| `stores/sidebarConfigStore.ts`       | widgets           | `widgets/sidebar/sidebar-config.model.ts`                                      |
-| `lib/zulipClient.ts`                 | shared + entities | Removed — `shared/api/zulip-*.ts` + `entities/*/api`                           |
-| `lib/zulipRealtime.ts`               | shared + widgets  | `shared/lib/event-loop.ts` + `widgets/layout/layout-zulip-event-loop*.hook.ts` |
-| `lib/api/workspaceClient.ts`         | shared + entities | Base fetch → `shared/api/`, folder API → `entities/folder/`                    |
-| `lib/constants.ts`                   | shared            | `shared/config/constants.ts`                                                   |
-| `lib/format.ts`                      | shared            | `shared/lib/format.ts`                                                         |
-| `lib/html.ts`                        | shared            | `shared/lib/html.ts`                                                           |
-| `lib/jitsi.ts`                       | shared            | `shared/lib/jitsi.ts`                                                          |
-| `contexts/`                          | app               | `app/contexts/`                                                                |
-| `styles/index.css`                   | app               | `app/app.styles.css`                                                           |
-| `assets/icons/`                      | shared            | `shared/assets/icons/`                                                         |
-| `App.tsx`                            | app               | `app/app.tsx`                                                                  |
-| — (new)                              | entities          | `entities/sticker/`                                                            |
-| — (new)                              | entities          | `entities/draft/`                                                              |
-| — (new)                              | entities          | `entities/inbox/`                                                              |
-| — (new)                              | entities          | `entities/feed/`                                                               |
-| — (new)                              | features          | `features/sticker-picker/`                                                     |
-| — (new)                              | features          | `features/ai-reply/`                                                           |
-| — (new)                              | features          | `features/mute-chat/`                                                          |
-| — (new)                              | features          | `features/pin-chat/`                                                           |
-| — (new)                              | features          | `features/create-chat/`                                                        |
-| — (new)                              | features          | `features/manage-folders/`                                                     |
-| — (new)                              | features          | `features/media-viewer/`                                                       |
-| — (new)                              | features          | `features/mention-suggest/`                                                    |
-| — (new)                              | features          | `features/message-readers/`                                                    |
-| — (new)                              | features          | `features/settings/`                                                           |
-| — (new)                              | features          | `features/theme-picker/`                                                       |
-| — (new)                              | features          | `features/user-profile/`                                                       |
-| — (new)                              | features          | `features/chat-info/`                                                          |
-| — (new)                              | features          | `features/typing-indicator/`                                                   |
+| Legacy Path                          | FSD Layer         | FSD Path                                                                           |
+| ------------------------------------ | ----------------- | ---------------------------------------------------------------------------------- |
+| `components/Layout.tsx`              | widgets           | `widgets/layout/`                                                                  |
+| `components/ChatPage.tsx`            | pages             | `pages/chat/`                                                                      |
+| `components/ActivityPage.tsx`        | pages             | `pages/activity/`                                                                  |
+| `components/LoginPage.tsx`           | pages             | `pages/login/`                                                                     |
+| `components/ChatHeader.tsx`          | widgets           | `widgets/chat-view/`                                                               |
+| `components/MessageList.tsx`         | widgets           | `widgets/message-list/`                                                            |
+| `components/ui/MessageBubble.tsx`    | widgets           | `widgets/message-list/`                                                            |
+| `components/ui/MessageComposer.tsx`  | widgets           | `widgets/message-composer/`                                                        |
+| `components/ui/Sidebar/`             | widgets           | `widgets/sidebar/`                                                                 |
+| `components/ui/TopBar.tsx`           | widgets           | `widgets/top-bar/`                                                                 |
+| `components/ui/FolderRail.tsx`       | widgets           | `widgets/folder-rail/`                                                             |
+| `components/ui/RightPanel.tsx`       | widgets           | `widgets/right-panel/`                                                             |
+| `components/ui/RightDrawer.tsx`      | widgets           | `widgets/right-panel/`                                                             |
+| `components/SearchModal.tsx`         | widgets           | `widgets/search-modal/`                                                            |
+| `components/ProfileDrawer.tsx`       | widgets           | `widgets/right-panel/` (profile in right drawer)                                   |
+| `components/InstanceSwitcher.tsx`    | features          | `features/instance-switch/`                                                        |
+| `components/JitsiCallModal.tsx`      | features          | `features/jitsi-call/`                                                             |
+| `components/ui/Avatar.tsx`           | shared            | `shared/ui/avatar.tsx`                                                             |
+| `components/ui/Badge.tsx`            | shared            | `shared/ui/badge.tsx`                                                              |
+| `components/ui/Button.tsx`           | shared            | `shared/ui/button.tsx`                                                             |
+| `components/ui/Icon.tsx`             | shared            | `shared/ui/icon.tsx`                                                               |
+| `components/ui/ScrollArea.tsx`       | shared            | `shared/ui/scroll-area.tsx`                                                        |
+| `components/ui/CallBubble.tsx`       | shared            | `shared/ui/call-bubble.tsx`                                                        |
+| `components/ErrorBoundary.tsx`       | shared            | `shared/ui/error-boundary.tsx`                                                     |
+| `stores/chatListStore.ts`            | entities          | `entities/chat-list/chat-list.model.ts`                                            |
+| `stores/currentChatMessagesStore.ts` | entities          | `entities/message/message.model.ts`                                                |
+| `stores/usersStore.ts`               | entities          | `entities/user/user.model.ts`                                                      |
+| `stores/instancesStore.ts`           | entities          | `entities/instance/instance.model.ts`                                              |
+| `stores/themeStore.ts`               | entities          | `entities/theme/theme.model.ts`                                                    |
+| `stores/callParticipantsStore.ts`    | entities          | `entities/call/call.model.ts`                                                      |
+| `stores/sidebarConfigStore.ts`       | widgets           | `widgets/sidebar/sidebar-config.model.ts`                                          |
+| `lib/messenger-client.ts`            | shared + entities | Removed — `shared/api/messenger-*.ts` + `entities/*/api`                           |
+| `lib/messenger-realtime.ts`          | shared + widgets  | `shared/lib/event-loop.ts` + `widgets/layout/layout-messenger-event-loop*.hook.ts` |
+| `lib/api/workspaceClient.ts`         | shared + entities | Base fetch → `shared/api/`, folder API → `entities/folder/`                        |
+| `lib/constants.ts`                   | shared            | `shared/config/constants.ts`                                                       |
+| `lib/format.ts`                      | shared            | `shared/lib/format.ts`                                                             |
+| `lib/html.ts`                        | shared            | `shared/lib/html.ts`                                                               |
+| `lib/jitsi.ts`                       | shared            | `shared/lib/jitsi.ts`                                                              |
+| `contexts/`                          | app               | `app/contexts/`                                                                    |
+| `styles/index.css`                   | app               | `app/app.styles.css`                                                               |
+| `assets/icons/`                      | shared            | `shared/assets/icons/`                                                             |
+| `App.tsx`                            | app               | `app/app.tsx`                                                                      |
+| — (new)                              | entities          | `entities/sticker/`                                                                |
+| — (new)                              | entities          | `entities/draft/`                                                                  |
+| — (new)                              | entities          | `entities/inbox/`                                                                  |
+| — (new)                              | entities          | `entities/feed/`                                                                   |
+| — (new)                              | features          | `features/sticker-picker/`                                                         |
+| — (new)                              | features          | `features/ai-reply/`                                                               |
+| — (new)                              | features          | `features/mute-chat/`                                                              |
+| — (new)                              | features          | `features/pin-chat/`                                                               |
+| — (new)                              | features          | `features/create-chat/`                                                            |
+| — (new)                              | features          | `features/manage-folders/`                                                         |
+| — (new)                              | features          | `features/media-viewer/`                                                           |
+| — (new)                              | features          | `features/mention-suggest/`                                                        |
+| — (new)                              | features          | `features/message-readers/`                                                        |
+| — (new)                              | features          | `features/settings/`                                                               |
+| — (new)                              | features          | `features/theme-picker/`                                                           |
+| — (new)                              | features          | `features/user-profile/`                                                           |
+| — (new)                              | features          | `features/chat-info/`                                                              |
+| — (new)                              | features          | `features/typing-indicator/`                                                       |
 
 ---
 
@@ -165,8 +165,8 @@ All four phases are complete. Ongoing slices (folder-sync, stream-members, etc.)
 
 ```
 ┌────────────┐    ┌──────────────┐    ┌─────────────────┐
-│  React     │───►│  shared/api/ │───►│  Zulip Server   │
-│  Component │    │  zulipFetch  │    │  /api/v1/*       │
+│  React     │───►│  shared/api/ │───►│  Workspace Server   │
+│  Component │    │  messengerFetch  │    │  /api/v1/*       │
 │            │    │  Basic Auth  │    │                  │
 │  useStore  │    │  (email:key) │    ├─────────────────┤
 │  selector  │    └──────────────┘    │  Workspace API  │
@@ -179,11 +179,11 @@ All four phases are complete. Ongoing slices (folder-sync, stream-members, etc.)
 Key points:
 
 - Credentials (`email`, `apiKey`) are stored in `instancesStore` (persisted to `localStorage`).
-- `shared/api/client.ts` — low-level helpers (`zulipFetch`, `zulipPost`, `zulipPatch`, `zulipDelete`) + middleware pipeline (auth, logging, retry). Reads credentials from `instancesStore.getState()`.
+- `shared/api/client.ts` — low-level helpers (`messengerFetch`, `messengerPost`, `messengerPatch`, `messengerDelete`) + middleware pipeline (auth, logging, retry). Reads credentials from `instancesStore.getState()`.
 - `shared/api/workspace-client.ts` — Workspace API `request()` helper with Basic Auth.
 - `entities/*/api.ts` — entity-level API functions, uses helpers from `shared/api/`.
 - `features/ai-reply/ai-reply.api.ts` — AI provider factory (mock + HTTP).
-- Real-time event loop (`shared/lib/event-loop.ts`, started from `widgets/layout/layout-zulip-event-loop.hook.ts`) — registers queue, long-polls, dispatches events via layout dispatch libs.
+- Real-time event loop (`shared/lib/event-loop.ts`, started from `widgets/layout/layout-messenger-event-loop.hook.ts`) — registers queue, long-polls, dispatches events via layout dispatch libs.
 
 ---
 

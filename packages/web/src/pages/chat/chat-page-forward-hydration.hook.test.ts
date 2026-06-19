@@ -3,7 +3,7 @@ import { readFallbackContextFromCurrentChat } from "~/entities/chat-list/chat-li
 
 /**
  * Characterization tests for chat-page-forward-hydration hook behavior
- * without importing the full zulip-messages dependency graph (OOM in Vitest).
+ * without importing the full messenger-messages dependency graph (OOM in Vitest).
  */
 describe("chat-page-forward-hydration (characterization)", () => {
   it("documents forward hydration resolves stream context for open chat", () => {

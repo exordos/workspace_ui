@@ -2,7 +2,7 @@
  * Notification policy — pure decision helpers.
  *
  * Legacy `shouldNotify` kept for simple mute/self checks.
- * Desktop decisions use `shouldDesktopNotify` from zulip-desktop-notifications.lib.ts.
+ * Desktop decisions use `shouldDesktopNotify` from messenger-desktop-notifications.lib.ts.
  *
  * Usage:
  *   import { shouldNotify } from "~/shared/lib/notifications-policy";
@@ -24,4 +24,4 @@ export {
   type NotificationMessageTrigger,
   type ShouldDesktopNotifyInput,
   type ShouldDesktopNotifyResult,
-} from "./zulip-desktop-notifications.lib";
+} from "./messenger-desktop-notifications.lib";

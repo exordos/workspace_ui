@@ -2,7 +2,7 @@
  * Syncs DM sidebar preview from messages loaded in the open chat window (initial load / reconnect).
  */
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { upsertDmIndexFromMessages } from "~/shared/lib/dm-index";
 import { dmConversationKey } from "~/shared/lib/dm-key";
 import { logChatListFlow } from "~/shared/lib/message-flow-debug.lib";

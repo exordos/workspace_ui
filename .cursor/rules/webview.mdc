@@ -70,7 +70,7 @@ bridge.requestAuth();                    // request credentials from native app
 
 Native app sends via postMessage:
 ```json
-{ "type": "auth", "email": "user@example.com", "apiKey": "abc123", "realm": "https://zulip.example.com" }
+{ "type": "auth", "email": "user@example.com", "apiKey": "abc123", "realm": "https://chat.example.com" }
 ```
 
 Web app receives:

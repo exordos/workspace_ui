@@ -8,7 +8,7 @@
  * - Summarize thread
  *
  * Provider-agnostic: works with any LLM backend (OpenAI, Anthropic,
- * self-hosted, Zulip-integrated). The backend is not yet available —
+ * self-hosted, Workspace-integrated). The backend is not yet available —
  * these types define the contract.
  */
 

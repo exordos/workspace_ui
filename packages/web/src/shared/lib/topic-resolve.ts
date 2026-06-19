@@ -1,7 +1,7 @@
 /**
- * Topic resolution helpers for Zulip-style "done" topics.
+ * Topic resolution helpers for messenger-style "done" topics.
  *
- * Zulip marks resolved topics by prefixing topic names with a checkmark.
+ * Workspace marks resolved topics by prefixing topic names with a checkmark.
  * These helpers keep that transformation consistent across UI and API calls.
  *
  * Usage:

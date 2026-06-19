@@ -1,17 +1,17 @@
 /**
- * Authorized fetch helpers for Zulip protected message media.
+ * Authorized fetch helpers for the messenger API protected message media.
  *
  * Live DOM must not keep protected URLs in `src`/`poster`/etc.; candidates live in `data-auth-*`
  * until `fetch → blob/data:` assigns display URLs.
  */
 import hljs from "highlight.js/lib/common";
 import { appendDevRealmMediaProxyHeaders, getCurrentInstance } from "~/shared/api/client";
-import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
+import { getRealmBaseUrl } from "~/shared/api/messenger-client.internal";
 import {
   appendUserUploadsPathPrefix,
   normalizeRealmSiteOriginForUploads,
   shouldApplyUserUploadsPathPrefixForRealmBase,
-} from "~/shared/api/zulip-realm.internal";
+} from "~/shared/api/messenger-realm.internal";
 import { env } from "~/shared/lib/env";
 import { sanitizeHtml } from "~/shared/lib/html";
 import { MESSAGE_MEDIA_PREVIEW_CLASS_NAME } from "~/shared/lib/message-body-rich-text-classes";
@@ -59,7 +59,7 @@ const LANGUAGE_ALIASES: Record<string, string> = {
   ts: "typescript",
   tsx: "typescript",
 };
-const DEFAULT_ZULIP_SPOILER_HEADER = "Spoiler";
+const DEFAULT_SPOILER_HEADER = "Spoiler";
 
 function resolveLanguageFromClassName(className: string): string | null {
   const match = LANGUAGE_CLASS_PATTERN.exec(className);
@@ -562,7 +562,7 @@ function applySyntaxHighlightingInContainer(container: ParentNode): void {
   }
 }
 
-function normalizeZulipSpoilerBlocksInContainer(container: ParentNode): void {
+function normalizeWorkspaceSpoilerBlocksInContainer(container: ParentNode): void {
   const spoilerBlocks = container.querySelectorAll<HTMLElement>(".spoiler-block");
   for (const block of spoilerBlocks) {
     const header = block.querySelector<HTMLElement>(".spoiler-header");
@@ -572,22 +572,22 @@ function normalizeZulipSpoilerBlocksInContainer(container: ParentNode): void {
     if (header == null) {
       const fallbackHeader = document.createElement("div");
       fallbackHeader.classList.add("spoiler-header");
-      fallbackHeader.textContent = DEFAULT_ZULIP_SPOILER_HEADER;
+      fallbackHeader.textContent = DEFAULT_SPOILER_HEADER;
       block.insertBefore(fallbackHeader, content);
       continue;
     }
 
     if ((header.textContent ?? "").trim().length === 0) {
-      header.textContent = DEFAULT_ZULIP_SPOILER_HEADER;
+      header.textContent = DEFAULT_SPOILER_HEADER;
     }
   }
 }
 
-function normalizeZulipQuoteBlocksInContainer(container: ParentNode): void {
+function normalizeWorkspaceQuoteBlocksInContainer(container: ParentNode): void {
   const blockquotes = container.querySelectorAll<HTMLElement>("blockquote");
   for (const blockquote of blockquotes) {
-    if (blockquote.classList.contains("zulip-quote-body")) continue;
-    if (blockquote.closest(".zulip-quote-block") != null) continue;
+    if (blockquote.classList.contains("messenger-quote-body")) continue;
+    if (blockquote.closest(".messenger-quote-block") != null) continue;
 
     const previous = blockquote.previousElementSibling;
     if (previous == null) continue;
@@ -597,13 +597,13 @@ function normalizeZulipQuoteBlocksInContainer(container: ParentNode): void {
     if (!hasMention && wroteLink == null) continue;
 
     const quoteBlock = document.createElement("div");
-    quoteBlock.className = "zulip-quote-block";
+    quoteBlock.className = "messenger-quote-block";
 
     const header = document.createElement("div");
-    header.className = "zulip-quote-header";
+    header.className = "messenger-quote-header";
     header.innerHTML = previous.innerHTML;
 
-    blockquote.classList.add("zulip-quote-body");
+    blockquote.classList.add("messenger-quote-body");
     previous.replaceWith(quoteBlock);
     quoteBlock.appendChild(header);
     quoteBlock.appendChild(blockquote);
@@ -648,8 +648,8 @@ function resolveMessageInlineImageBlockIdentity(block: Element): string | null {
 }
 
 function removeDuplicateQuoteBlockInlineImages(container: ParentNode): void {
-  for (const quoteBlock of container.querySelectorAll<HTMLElement>(".zulip-quote-block")) {
-    const quoteBody = quoteBlock.querySelector(".zulip-quote-body");
+  for (const quoteBlock of container.querySelectorAll<HTMLElement>(".messenger-quote-block")) {
+    const quoteBody = quoteBlock.querySelector(".messenger-quote-body");
     if (quoteBody == null) continue;
 
     const inlinedIdentities = new Set<string>();
@@ -680,7 +680,7 @@ function inlineUserUploadImageLinksInContainer(container: ParentNode): void {
     if (href == null || href.length === 0) continue;
     if (!isUserUploadImagePath(href)) continue;
     if (link.querySelector("img") != null) continue;
-    const inQuoteBody = link.closest(".zulip-quote-body") != null;
+    const inQuoteBody = link.closest(".messenger-quote-body") != null;
     if (!inQuoteBody && shouldSkipInliningUserUploadImageLink(href, inlineIdentities)) continue;
 
     const title = (link.textContent ?? "").trim();
@@ -704,8 +704,8 @@ function enrichSanitizedMessageHtml(
   renderEmojiShortcodesInContainer(container, {
     resolveCustomEmojiShortcodeImageUrl: options?.resolveCustomEmojiShortcodeImageUrl,
   });
-  normalizeZulipSpoilerBlocksInContainer(container);
-  normalizeZulipQuoteBlocksInContainer(container);
+  normalizeWorkspaceSpoilerBlocksInContainer(container);
+  normalizeWorkspaceQuoteBlocksInContainer(container);
   inlineUserUploadImageLinksInContainer(container);
   upgradeUserUploadVideoLinksInContainer(container);
 }

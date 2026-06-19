@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { formatJitsiRoomDisplayName, resolveJitsiLocationName } from "./message-jitsi-location.lib";
 
 function createMessage(overrides: Partial<MockMessage>): MockMessage {
@@ -20,7 +20,7 @@ describe("message-jitsi-location", () => {
     expect(formatJitsiRoomDisplayName("https://meet.jit.si/hello_world")).toBe("hello world");
   });
 
-  it("formats room name for Zulip register Jitsi host via options", () => {
+  it("formats room name for messenger register Jitsi host via options", () => {
     expect(
       formatJitsiRoomDisplayName("https://corp-jitsi.example.com/team_sync", {
         serverBaseUrl: "https://corp-jitsi.example.com",

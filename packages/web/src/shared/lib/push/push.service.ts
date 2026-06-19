@@ -1,11 +1,11 @@
 /**
- * Push notification system — manages FCM + Zulip server registration.
+ * Push notification system — manages FCM + server registration.
  *
  * Flow:
  * 1. User grants notification permission
  * 2. FCM provider acquires push token from Firebase
- * 3. Token is registered with Zulip server via API
- * 4. Zulip server sends push notifications → FCM → Service Worker → app
+ * 3. Token is registered with server via API
+ * 4. server sends push notifications → FCM → Service Worker → app
  * 5. Foreground: onMessage handler shows in-app notification
  * 6. Background: Service Worker shows system notification
  *
@@ -22,9 +22,9 @@ import { analytics, AnalyticsEvent } from "../analytics/analytics";
 import { isElectron } from "../electron";
 import { createLogger, logAction } from "../logger";
 import { createFcmProvider } from "./fcm";
+import { registerPushToken, unregisterPushToken } from "./messenger";
 import { installDefaultMiddlewares } from "./middleware";
 import { registerPushTokenWithRetry } from "./push-register-retry.lib";
-import { registerPushToken, unregisterPushToken } from "./zulip";
 import type { PushMessagePayload, PushProvider, PushState, PushPermission } from "./types";
 
 export type { PushMessagePayload, PushState, PushPermission } from "./types";

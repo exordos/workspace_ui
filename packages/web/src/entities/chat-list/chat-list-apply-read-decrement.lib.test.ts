@@ -10,7 +10,9 @@ import { useChatListStore } from "./chat-list.model";
 
 const OTHER_SENDER_ID = 20;
 
-function streamMsg(overrides: Partial<import("~/shared/api/zulip.types").ZulipRawMessage> = {}) {
+function streamMsg(
+  overrides: Partial<import("~/shared/api/messenger.types").WorkspaceRawMessage> = {},
+) {
   return {
     id: 1,
     sender_id: OTHER_SENDER_ID,
@@ -105,7 +107,7 @@ describe("applyChatListReadDecrement", () => {
     const dmMsg = (
       id: number,
       flags: string[] = [],
-    ): import("~/shared/api/zulip.types").ZulipRawMessage => ({
+    ): import("~/shared/api/messenger.types").WorkspaceRawMessage => ({
       id,
       sender_id: OTHER_SENDER_ID,
       sender_full_name: "Peer",

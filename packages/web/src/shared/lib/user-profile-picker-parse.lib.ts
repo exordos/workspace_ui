@@ -1,5 +1,5 @@
 /**
- * Parses Zulip person-picker profile field values into numeric user ids.
+ * Parses Workspace person-picker profile field values into numeric user ids.
  */
 
 function parsePersonPickerIdsFromJson(text: string): number[] {
@@ -32,8 +32,8 @@ function parsePersonPickerIdFromDigits(text: string): number | null {
   return id > 0 ? id : null;
 }
 
-/** Parses Zulip person-picker `value` (e.g. `"[42]"` per GET /users examples) or plain numeric id. */
-export function parseZulipPersonPickerUserIds(value: string | undefined | null): number[] {
+/** Parses Workspace person-picker `value` (e.g. `"[42]"` per GET /users examples) or plain numeric id. */
+export function parseWorkspacePersonPickerUserIds(value: string | undefined | null): number[] {
   if (value == null) return [];
   const trimmed = value.trim();
   if (trimmed.length === 0) return [];

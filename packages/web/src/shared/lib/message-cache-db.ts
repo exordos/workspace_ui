@@ -1,12 +1,12 @@
 /**
  * IndexedDB message cache for cold-start bootstrap and per-chat retention.
  */
-import type { MockMessage, Reaction } from "~/shared/api/zulip.types";
+import type { MockMessage, Reaction } from "~/shared/api/messenger.types";
 import { runMessageCacheDbUpgrade } from "~/shared/lib/message-cache-db-upgrade.lib";
 import { instanceChatKey } from "~/shared/lib/message-cache-keys.lib";
+import { MESSENGER_DM_INITIAL_WINDOW_TOTAL } from "~/shared/lib/messenger-message-window.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { resolveTopicMoveTargetMessageIds } from "~/shared/lib/update-message-topic-move.lib";
-import { ZULIP_DM_INITIAL_WINDOW_TOTAL } from "~/shared/lib/zulip-message-window.lib";
 
 function idbError(reason: unknown): Error {
   return reason instanceof Error ? reason : new Error("indexedDB error", { cause: reason });
@@ -23,11 +23,11 @@ export const MESSAGE_CACHE_DB_VERSION = DB_VERSION;
 
 const IDB_DELETE_BLOCKED_TIMEOUT_MS = 3_000;
 
-export const MESSAGE_CACHE_DEFAULT_WINDOW_SIZE = ZULIP_DM_INITIAL_WINDOW_TOTAL;
+export const MESSAGE_CACHE_DEFAULT_WINDOW_SIZE = MESSENGER_DM_INITIAL_WINDOW_TOTAL;
 
 const STORE_MESSAGES = "messages";
 const STORE_CHAT_META = "chatMeta";
-/** Persisted avatar image blobs per Zulip instance (LRU eviction). */
+/** Persisted avatar image blobs per organization instance (LRU eviction). */
 export const STORE_AVATAR_BLOBS = "avatarBlobs";
 
 export interface MessageCacheRow {

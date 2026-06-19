@@ -1,7 +1,7 @@
 /**
  * Buffers link previews from `rendering_only` events that arrive before the message row exists.
  */
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { upsertLinkPreviewOnMessage } from "~/shared/lib/message-link-preview-list.lib";
 import { linkPreviewUrlKey } from "~/shared/lib/message-link-preview-url-match.lib";
 import { extractLinkPreviewUrls } from "~/shared/lib/message-link-preview-urls.lib";

@@ -1,4 +1,4 @@
-import type { RealmEmoji } from "~/shared/api/zulip.types";
+import type { RealmEmoji } from "~/shared/api/messenger.types";
 import type { ContextItemLabel } from "./message-bubble-context.lib";
 import type { EmojiClickData } from "emoji-picker-react";
 

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { SavedSnippet } from "~/shared/api/zulip.types";
+import type { SavedSnippet } from "~/shared/api/messenger.types";
 import {
   resetComposerSavedSnippetsModelForTests,
   useComposerSavedSnippetsStore,
@@ -13,7 +13,7 @@ vi.mock("~/shared/api/client", () => ({
   getCurrentInstance: (...args: unknown[]) => getCurrentInstanceMock(...args),
 }));
 
-vi.mock("~/shared/api/zulip-messages", () => ({
+vi.mock("~/shared/api/messenger-messages", () => ({
   fetchSavedSnippets: (...args: unknown[]) => fetchSavedSnippetsMock(...args),
   createSavedSnippet: (...args: unknown[]) => createSavedSnippetMock(...args),
 }));

@@ -376,7 +376,7 @@ describe("logAction", () => {
   });
 });
 
-// logEvent traces real-time events from the Zulip long-polling event loop
+// logEvent traces real-time events from the messenger long-polling event loop
 describe("logEvent", () => {
   beforeEach(() => {
     clearLogHistory();

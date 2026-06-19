@@ -1,10 +1,10 @@
 /**
- * Message Readers API — fetches read receipts from Zulip.
+ * Message Readers API — fetches read receipts from the messenger API.
  *
- * Zulip API: GET /messages/{id}/read_receipts → { user_ids: number[] }
+ * Messenger API: GET /messages/{id}/read_receipts → { user_ids: number[] }
  */
 
-import { zulipApi } from "~/shared/api/client";
+import { messengerApi } from "~/shared/api/client";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
 import type { ReadReceiptsResponse } from "./message-readers.types";
@@ -17,7 +17,11 @@ export async function fetchReadReceipts(
 ): Promise<ReadReceiptsResponse> {
   guard.messageId(messageId, "fetchReadReceipts");
 
-  const res = await zulipApi.get(`/messages/${messageId}/read_receipts`, undefined, options?.signal);
+  const res = await messengerApi.get(
+    `/messages/${messageId}/read_receipts`,
+    undefined,
+    options?.signal,
+  );
 
   if (!res.ok) {
     const msg = `Failed to fetch read receipts for message ${messageId}: HTTP ${res.status}`;

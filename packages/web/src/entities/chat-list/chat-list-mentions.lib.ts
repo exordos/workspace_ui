@@ -1,9 +1,9 @@
 /**
  * Unread @mention tracking for sidebar badge and personal indicator.
  */
-import type { MockMessage, ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { MockMessage, WorkspaceRawMessage } from "~/shared/api/messenger.types";
 
-export type MentionFlagMessage = Pick<ZulipRawMessage, "id" | "sender_id" | "flags">;
+export type MentionFlagMessage = Pick<WorkspaceRawMessage, "id" | "sender_id" | "flags">;
 
 export function isUnreadMentionFromOthers(
   m: MentionFlagMessage,

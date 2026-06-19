@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { loadDeepHistoryMessages } from "./layout-chat-history-sync.lib";
 
-function createMessage(id: number): ZulipRawMessage {
+function createMessage(id: number): WorkspaceRawMessage {
   return {
     id,
     sender_id: 1,

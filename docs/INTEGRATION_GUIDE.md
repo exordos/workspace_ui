@@ -17,7 +17,7 @@ packages/web/src/
 ├── entities/            ← 17 business entities (stores + API)
 ├── shared/              ← Design system, utilities, API helpers, icons
 │   ├── ui/
-│   ├── api/             ← client.ts, workspace-client.ts, zulip-*.ts
+│   ├── api/             ← client.ts, workspace-client.ts, messenger-*.ts
 │   ├── lib/             ← event-loop.ts, brand.ts, guards.ts, …
 │   └── config/
 └── i18n/
@@ -37,18 +37,18 @@ Before adding any organization-scoped async loader or mutation, read [ORG_SCOPED
 
 ```typescript
 // entities/draft/draft.api.ts
-import { zulipFetch, zulipPost, zulipDelete } from "~/shared/api/client";
+import { messengerFetch, messengerPost, messengerDelete } from "~/shared/api/client";
 import type { Draft, DraftInput } from "./draft.types";
 
 export async function fetchDrafts(): Promise<Draft[]> {
-  const res = await zulipFetch("drafts");
+  const res = await messengerFetch("drafts");
   if (!res.ok) throw new Error(`Failed: ${res.status}`);
   const data = await res.json();
   return data.drafts;
 }
 
 export async function createDraft(draft: DraftInput): Promise<{ ids: number[] }> {
-  const res = await zulipPost("drafts", {
+  const res = await messengerPost("drafts", {
     drafts: JSON.stringify([draft]),
   });
   if (!res.ok) throw new Error(`Failed: ${res.status}`);
@@ -56,7 +56,7 @@ export async function createDraft(draft: DraftInput): Promise<{ ids: number[] }>
 }
 
 export async function deleteDraft(id: number): Promise<void> {
-  const res = await zulipDelete(`drafts/${id}`);
+  const res = await messengerDelete(`drafts/${id}`);
   if (!res.ok) throw new Error(`Failed: ${res.status}`);
 }
 ```
@@ -216,9 +216,9 @@ Add a section button if a top-level tab is needed.
 
 ### 9. Real-time Events
 
-**Where**: `widgets/layout/layout-zulip-event-dispatch.lib.ts` (extend dispatch for new event types)
+**Where**: `widgets/layout/layout-messenger-event-dispatch.lib.ts` (extend dispatch for new event types)
 
-The loop itself lives in `shared/lib/event-loop.ts` and is started from `widgets/layout/layout-zulip-event-loop.hook.ts`.
+The loop itself lives in `shared/lib/event-loop.ts` and is started from `widgets/layout/layout-messenger-event-loop.hook.ts`.
 
 ### 10. Theme / Styles
 
@@ -320,6 +320,6 @@ When implementing each feature, verify:
 | Component             | `const Component: React.FC = () => { ... }`                  |
 | Resource cleanup      | `useEffect` cleanup function                                 |
 | Async cancellation    | `AbortController` + cleanup                                  |
-| API calls             | `zulipFetch/zulipPost` from `~/shared/api`                   |
+| API calls             | `messengerFetch/messengerPost` from `~/shared/api`           |
 | Cross-slice usage     | Import concrete `*.model.ts` / `*.api.ts` / `*.ui.tsx` paths |
 | UI primitives         | Radix UI + Tailwind + `~/shared/ui`                          |

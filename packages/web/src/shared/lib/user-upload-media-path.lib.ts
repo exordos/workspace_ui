@@ -1,5 +1,5 @@
 /**
- * Classifies Zulip user-upload paths by media kind (image vs video).
+ * Classifies Workspace user-upload paths by media kind (image vs video).
  * Used by message galleries, right-panel counters, and attachment handling.
  */
 

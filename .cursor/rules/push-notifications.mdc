@@ -1,5 +1,5 @@
 ---
-description: Push notifications via Firebase Cloud Messaging + Zulip server
+description: Push notifications via Firebase Cloud Messaging + Workspace server
 globs: "packages/web/src/**/*.{ts,tsx}"
 alwaysApply: false
 ---
@@ -10,7 +10,7 @@ alwaysApply: false
 
 ```
 ┌─────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│  Zulip      │───►│  Zulip Push      │───►│  Firebase FCM   │
+│  Workspace  │───►│  Workspace Push  │───►│  Firebase FCM   │
 │  Server     │    │  Notification    │    │  (Google)       │
 │             │    │  Service         │    │                 │
 │  new msg,   │    │  (bouncer)       │    │  Routes to      │
@@ -36,7 +36,7 @@ alwaysApply: false
 | `shared/lib/push/types.ts` | Types: PushProvider, PushMessagePayload, PushState |
 | `shared/lib/push/middleware.ts` | Middleware pipeline: decrypt → parse → validate → dedup |
 | `shared/lib/push/fcm.ts` | Firebase Cloud Messaging provider |
-| `shared/lib/push/zulip.ts` | FCM token registration on Zulip server |
+| `shared/lib/push/messenger.ts` | FCM token registration on Workspace server |
 | `shared/lib/push/index.ts` | Public API: pushService, initPush, usePushState, pushPipeline |
 
 ## Middleware Pipeline
@@ -71,11 +71,11 @@ pushPipeline.use(muteFilter);
 
 ### Decryption (E2EE — when backend is ready)
 
-Zulip 11+ supports E2EE push notifications. The `decryptionMiddleware` slot is reserved for this. When the backend encryption scheme is decided:
+server 11+ supports E2EE push notifications. The `decryptionMiddleware` slot is reserved for this. When the backend encryption scheme is decided:
 
 1. Implement `decrypt(encryptedPayload, scheme, key)` inside `decryptionMiddleware`
 2. Key exchange: the device's push encryption key is registered via `POST /register_client_device`
-3. Supported schemes (future): `aes-256-gcm`, `xchacha20-poly1305`, or Zulip's custom scheme
+3. Supported schemes (future): `aes-256-gcm`, `xchacha20-poly1305`, or server custom scheme
 4. Until implemented, encrypted payloads without a fallback `event` field are safely dropped
 
 ```ts
@@ -135,7 +135,7 @@ function PushStatus() {
 3. On consent → `pushService.register()`:
    - FCM SDK is initialized lazily (`import("firebase/app")`)
    - FCM token is obtained from Google
-   - Token is registered on Zulip server: `POST /users/me/android_gcm_reg_id`
+   - Token is registered on Workspace server: `POST /users/me/android_gcm_reg_id`
    - Token is saved in `localStorage` for rotation
 4. On logout → `pushService.unregister()` — revokes token from server
 
@@ -153,10 +153,10 @@ function PushStatus() {
 - Passes payload to `pushService.onMessage()` handlers
 - Typically shows in-app toast (not a system notification)
 
-## Zulip Push Service
+## Workspace push service
 
-For self-hosted Zulip servers:
-- Server must be registered with Zulip Mobile Push Notification Service
+For self-hosted Workspace servers:
+- Server must be registered with Workspace mobile push Notification Service
 - In `settings.py`: `ZULIP_SERVICE_PUSH_NOTIFICATIONS = True`
 - Server proxies push via bouncer → FCM → client
 

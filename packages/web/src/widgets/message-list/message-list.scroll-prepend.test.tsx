@@ -1,6 +1,6 @@
 import { act, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { MessageList } from "./message-list.ui";
 
 vi.mock("~/shared/lib/scroll-position.lib", async (importOriginal) => {

@@ -4,11 +4,11 @@ export interface LinkPreviewData {
   targetUrl: string;
   title?: string;
   description?: string;
-  /** Realm-relative `/external_content/...` thumbnail from Zulip. */
+  /** Realm-relative `/external_content/...` thumbnail from the messenger API. */
   thumbnailPath?: string;
 }
 
-/** One URL slot after fetch (data null when Zulip returned no embed for that link). */
+/** One URL slot after fetch (data null when Workspace returned no embed for that link). */
 export interface LinkPreviewResolvedItem {
   targetUrl: string;
   data: LinkPreviewData | null;

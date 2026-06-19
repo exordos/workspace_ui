@@ -2,8 +2,8 @@
  * E2E: connection banner, offline mode, API failures, event-queue re-register.
  */
 import { test, expect } from "./fixtures";
-import { badEventQueueIdError } from "./helpers/zulip-api-mock";
-import { reconnectSidebarDeltaMessages } from "./mocks/zulip-default-responses";
+import { badEventQueueIdError } from "./helpers/messenger-api-mock";
+import { reconnectSidebarDeltaMessages } from "./mocks/messenger-default-responses";
 import { failWorkspaceApi } from "./helpers/fail-workspace-api";
 import { setBrowserOffline, setBrowserOnline } from "./helpers/network";
 import { seedAuthStorage } from "./helpers/seed-auth";
@@ -15,10 +15,10 @@ test.describe("Connection resilience @mock", () => {
 
   test("shows blocked screen when bootstrap API fails without cache", async ({
     page,
-    zulipApi,
+    messengerApi,
   }) => {
     // 400 avoids client retry backoff on 503 (bootstrap would stay on fullscreen loader too long).
-    zulipApi.statusMatching(/\/api\/v1\//, 400, 100);
+    messengerApi.statusMatching(/\/api\/v1\//, 400, 100);
     await failWorkspaceApi(page);
     await seedAuthStorage(page);
     await page.reload();
@@ -31,14 +31,14 @@ test.describe("Connection resilience @mock", () => {
 
   test("shows degraded banner with cached sidebar when bootstrap fails", async ({
     page,
-    zulipApi,
+    messengerApi,
   }) => {
     await seedAuthStorage(page);
     await page.reload();
     await page.waitForSelector("[data-focus-zone='topbar']", { timeout: 45_000 });
     await seedChatListIndexedDb(page);
 
-    zulipApi.statusMatching(/\/api\/v1\//, 400, 100);
+    messengerApi.statusMatching(/\/api\/v1\//, 400, 100);
     await failWorkspaceApi(page);
     await page.reload();
     await page.waitForSelector("[data-focus-zone='topbar']", { timeout: 45_000 });
@@ -51,29 +51,29 @@ test.describe("Connection resilience @mock", () => {
     await banner.expectDegradedMessage();
   });
 
-  test("shows degraded banner when events request aborts", async ({ authenticated, zulipApi }) => {
-    const initialRegisters = zulipApi.getRegisterCallCount();
-    zulipApi.abortMatching(/\/events/, 3);
+  test("shows degraded banner when events request aborts", async ({ authenticated, messengerApi }) => {
+    const initialRegisters = messengerApi.getRegisterCallCount();
+    messengerApi.abortMatching(/\/events/, 3);
 
     const banner = new ConnectionBannerPage(authenticated);
     await banner.expectVisible({ timeout: 15_000 });
     await banner.expectDegradedMessage();
     await expect(banner.reloadButton).toBeVisible();
-    expect(zulipApi.getRegisterCallCount()).toBeGreaterThanOrEqual(initialRegisters);
+    expect(messengerApi.getRegisterCallCount()).toBeGreaterThanOrEqual(initialRegisters);
   });
 
-  test("hides banner after API recovers", async ({ authenticated, zulipApi }) => {
-    zulipApi.abortMatching(/\/events/, 2);
+  test("hides banner after API recovers", async ({ authenticated, messengerApi }) => {
+    messengerApi.abortMatching(/\/events/, 2);
     const banner = new ConnectionBannerPage(authenticated);
     await banner.expectVisible({ timeout: 15_000 });
 
-    zulipApi.restoreDefaults();
+    messengerApi.restoreDefaults();
     await banner.expectHidden({ timeout: 20_000 });
   });
 
   test("shows offline banner during initial bootstrap when offline on load", async ({
     page,
-    zulipApi: _zulipApi,
+    messengerApi: _messengerApi,
   }) => {
     await page.addInitScript(() => {
       Object.defineProperty(window.navigator, "onLine", {
@@ -99,14 +99,14 @@ test.describe("Connection resilience @mock", () => {
   test("refreshes sidebar preview after network reconnect", async ({
     authenticated,
     context,
-    zulipApi,
+    messengerApi,
   }) => {
     await seedChatListIndexedDb(authenticated);
     await authenticated.reload();
     await authenticated.waitForSelector("[data-focus-zone='topbar']", { timeout: 45_000 });
     await expect(authenticated.getByText("Cached hello")).toBeVisible({ timeout: 15_000 });
 
-    zulipApi.setPersistentMessagesResponse(reconnectSidebarDeltaMessages());
+    messengerApi.setPersistentMessagesResponse(reconnectSidebarDeltaMessages());
     await setBrowserOffline(context);
     await setBrowserOnline(context);
     // Full reconnect stages stream previews until the next queue register (rare in mock E2E).
@@ -128,26 +128,26 @@ test.describe("Connection resilience @mock", () => {
     await banner.expectHidden({ timeout: 20_000 });
   });
 
-  test("re-registers queue after BAD_EVENT_QUEUE_ID on events", async ({ page, zulipApi }) => {
-    zulipApi.setFixedQueueId("e2e-queue-initial");
-    zulipApi.setNextEventsResponse(badEventQueueIdError("e2e-queue-initial"));
+  test("re-registers queue after BAD_EVENT_QUEUE_ID on events", async ({ page, messengerApi }) => {
+    messengerApi.setFixedQueueId("e2e-queue-initial");
+    messengerApi.setNextEventsResponse(badEventQueueIdError("e2e-queue-initial"));
     await seedAuthStorage(page);
     await page.reload();
     await page.waitForSelector("[data-focus-zone='topbar']", { timeout: 30_000 });
 
-    await expect.poll(() => zulipApi.getRegisterCallCount(), { timeout: 20_000 }).toBeGreaterThanOrEqual(
+    await expect.poll(() => messengerApi.getRegisterCallCount(), { timeout: 20_000 }).toBeGreaterThanOrEqual(
       2,
     );
   });
 
-  test("re-registers queue when events response omits result", async ({ page, zulipApi }) => {
-    const registersBefore = zulipApi.getRegisterCallCount();
-    zulipApi.setNextEventsResponse({ events: [] });
+  test("re-registers queue when events response omits result", async ({ page, messengerApi }) => {
+    const registersBefore = messengerApi.getRegisterCallCount();
+    messengerApi.setNextEventsResponse({ events: [] });
     await seedAuthStorage(page);
     await page.reload();
     await page.waitForSelector("[data-focus-zone='topbar']", { timeout: 30_000 });
 
-    await expect.poll(() => zulipApi.getRegisterCallCount(), { timeout: 20_000 }).toBeGreaterThan(
+    await expect.poll(() => messengerApi.getRegisterCallCount(), { timeout: 20_000 }).toBeGreaterThan(
       registersBefore + 1,
     );
   });

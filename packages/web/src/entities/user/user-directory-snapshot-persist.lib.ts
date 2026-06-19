@@ -1,22 +1,22 @@
 /**
  * Maps GET /users payloads to IndexedDB rows (directory fields only; no presence/status).
  */
-import type { ZulipUserMember } from "~/shared/api/zulip.types";
+import type { MessengerUserMember } from "~/shared/api/messenger.types";
 import { persistUsersDirectoryRow } from "~/shared/lib/users-directory-snapshot-db";
 
 /** Non-empty API response only — empty array must not overwrite a good on-disk snapshot. */
-export function shouldPersistUsersDirectorySnapshot(members: ZulipUserMember[]): boolean {
+export function shouldPersistUsersDirectorySnapshot(members: MessengerUserMember[]): boolean {
   return members.length > 0;
 }
 
-/** Strips volatile store-only fields; keeps Zulip directory shape for mergeUsers. */
+/** Strips volatile store-only fields; keeps Workspace directory shape for mergeUsers. */
 export function serializeDirectoryMembersForSnapshot(
-  members: ZulipUserMember[],
-): ZulipUserMember[] {
-  const out: ZulipUserMember[] = [];
+  members: MessengerUserMember[],
+): MessengerUserMember[] {
+  const out: MessengerUserMember[] = [];
   for (const m of members) {
     if (m.user_id == null) continue;
-    const row: ZulipUserMember = {
+    const row: MessengerUserMember = {
       user_id: m.user_id,
       full_name: m.full_name,
       email: m.email,
@@ -34,7 +34,7 @@ export function serializeDirectoryMembersForSnapshot(
 
 export async function persistUsersDirectoryToIndexedDb(
   instanceId: string,
-  members: ZulipUserMember[],
+  members: MessengerUserMember[],
 ): Promise<void> {
   if (!shouldPersistUsersDirectorySnapshot(members)) return;
   await persistUsersDirectoryRow({

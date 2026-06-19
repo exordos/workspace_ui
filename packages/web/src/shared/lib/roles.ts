@@ -2,9 +2,9 @@ import { t } from "~/i18n/i18n";
 import { assertNever } from "./guards";
 
 /**
- * Zulip role model and permissions system.
+ * messenger role model and permissions system.
  *
- * Roles hierarchy (Zulip API numeric codes):
+ * Roles hierarchy (Messenger API numeric codes):
  *   Owner (100) > Admin (200) > Moderator (300) > Member (400) > Guest (600)
  *
  * Usage:

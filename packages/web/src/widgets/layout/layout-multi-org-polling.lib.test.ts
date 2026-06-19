@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ZulipInstance } from "~/entities/instance/instance.model";
+import type { WorkspaceInstance } from "~/entities/instance/instance.model";
 import { startInactiveInstanceUnreadPolling } from "./layout-multi-org-polling.lib";
 
-const INSTANCES: ZulipInstance[] = [
+const INSTANCES: WorkspaceInstance[] = [
   { id: "inst-1", realm: "https://a.example.com", email: "a@example.com", apiKey: "k1" },
   { id: "inst-2", realm: "https://b.example.com", email: "b@example.com", apiKey: "k2" },
   { id: "inst-3", realm: "https://c.example.com", email: "c@example.com", apiKey: "k3" },
@@ -83,7 +83,7 @@ describe("startInactiveInstanceUnreadPolling", () => {
 
   it("aborts in-flight polling on cleanup", async () => {
     const aborted = vi.fn();
-    const fetchUnreadCount = vi.fn((_instance: ZulipInstance, signal: AbortSignal) => {
+    const fetchUnreadCount = vi.fn((_instance: WorkspaceInstance, signal: AbortSignal) => {
       return new Promise<number | null>((resolve) => {
         signal.addEventListener("abort", () => {
           aborted();

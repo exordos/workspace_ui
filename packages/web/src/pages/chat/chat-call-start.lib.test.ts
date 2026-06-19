@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { startCallFromHeader } from "./chat-call-start.lib";
 import type { CallMessageTargetParams } from "./chat-call.lib";
 

@@ -1,6 +1,6 @@
 // Tests for HTML processing module: `stripHtml` and `sanitizeHtml`.
 //
-// These tests are critical for XSS protection. All HTML from the Zulip API
+// These tests are critical for XSS protection. All HTML from the Messenger API
 // passes through `sanitizeHtml` before render via `dangerouslySetInnerHTML`.
 // A bug here could execute arbitrary JS in the user's session.
 import { describe, expect, it, vi } from "vitest";
@@ -12,9 +12,9 @@ vi.mock("~/shared/lib/env", () => ({
   },
 }));
 
-vi.mock("~/shared/lib/zulip-message-media-base.lib", () => ({
-  getMessageImagesBaseUrl: vi.fn(() => "https://zulip.example.com/workspace/v1"),
-  getMessageRealmBaseUrl: vi.fn(() => "https://zulip.example.com"),
+vi.mock("~/shared/lib/messenger-message-media-base.lib", () => ({
+  getMessageImagesBaseUrl: vi.fn(() => "https://chat.example.com/workspace/v1"),
+  getMessageRealmBaseUrl: vi.fn(() => "https://chat.example.com"),
 }));
 
 // `stripHtml` extracts plain text from messages, e.g. for notifications and previews.
@@ -48,21 +48,21 @@ describe("stripHtml", () => {
 describe("resolveMessageMediaUrl", () => {
   it("prefixes relative paths with base", () => {
     expect(
-      resolveMessageMediaUrl("/user_uploads/1/a.png", "https://zulip.example.com/workspace/v1"),
-    ).toBe("https://zulip.example.com/workspace/v1/user_uploads/1/a.png");
+      resolveMessageMediaUrl("/user_uploads/1/a.png", "https://chat.example.com/workspace/v1"),
+    ).toBe("https://chat.example.com/workspace/v1/user_uploads/1/a.png");
   });
 
   it("leaves blob URLs unchanged", () => {
     expect(
-      resolveMessageMediaUrl("blob:https://app.example.com/uuid", "https://zulip.example.com"),
+      resolveMessageMediaUrl("blob:https://app.example.com/uuid", "https://chat.example.com"),
     ).toBe("blob:https://app.example.com/uuid");
   });
 
   it("leaves absolute and data URLs unchanged", () => {
     expect(
-      resolveMessageMediaUrl("https://cdn.example.com/x.png", "https://zulip.example.com"),
+      resolveMessageMediaUrl("https://cdn.example.com/x.png", "https://chat.example.com"),
     ).toBe("https://cdn.example.com/x.png");
-    expect(resolveMessageMediaUrl("data:image/png;base64,AA", "https://zulip.example.com")).toBe(
+    expect(resolveMessageMediaUrl("data:image/png;base64,AA", "https://chat.example.com")).toBe(
       "data:image/png;base64,AA",
     );
   });
@@ -72,7 +72,7 @@ describe("resolveMessageMediaUrl", () => {
   });
 });
 
-// `sanitizeHtml` — primary XSS protection layer for all HTML from Zulip.
+// `sanitizeHtml` — primary XSS protection layer for all HTML from the messenger API.
 describe("sanitizeHtml", () => {
   // Safe tags like `p`, `strong`, `em` must be kept for formatting.
   it("allows safe tags", () => {
@@ -109,7 +109,7 @@ describe("sanitizeHtml", () => {
     expect(result).toContain('href="https://example.com/path"');
   });
 
-  // `img src` must be kept — Zulip messages often include inline images.
+  // `img src` must be kept — messenger messages often include inline images.
   it("keeps img src attribute", () => {
     const html = '<img src="https://example.com/img.png" alt="test">';
     expect(sanitizeHtml(html)).toContain('src="https://example.com/img.png"');
@@ -122,11 +122,11 @@ describe("sanitizeHtml", () => {
     expect(result).toContain('height="560"');
   });
 
-  // Zulip serves user uploads as relative paths — rewrite to absolute URLs.
+  // Workspace serves user uploads as relative paths — rewrite to absolute URLs.
   it("rewrites relative img src when baseUrl provided", () => {
     const html = '<img src="/user_uploads/1/img.png">';
-    const result = sanitizeHtml(html, "https://zulip.example.com/workspace/v1");
-    expect(result).toContain('src="https://zulip.example.com/workspace/v1/user_uploads/1/img.png"');
+    const result = sanitizeHtml(html, "https://chat.example.com/workspace/v1");
+    expect(result).toContain('src="https://chat.example.com/workspace/v1/user_uploads/1/img.png"');
   });
 
   // In Electron on `file://`, `sanitizeHtml` may run without `baseUrl`,
@@ -134,47 +134,47 @@ describe("sanitizeHtml", () => {
   it("rewrites relative user_uploads when baseUrl omitted (realm media base fallback)", () => {
     const html = '<img src="/user_uploads/1/img.png" alt="">';
     const result = sanitizeHtml(html);
-    expect(result).toContain('src="https://zulip.example.com/workspace/v1/user_uploads/1/img.png"');
+    expect(result).toContain('src="https://chat.example.com/workspace/v1/user_uploads/1/img.png"');
   });
 
   // Already-absolute external CDN URLs must not change.
   it("does not rewrite absolute img src", () => {
     const html = '<img src="https://cdn.example.com/img.png">';
-    const result = sanitizeHtml(html, "https://zulip.example.com");
+    const result = sanitizeHtml(html, "https://chat.example.com");
     expect(result).toContain('src="https://cdn.example.com/img.png"');
   });
 
   it("rewrites absolute user_uploads img src to canonical base", () => {
     const html = '<img src="https://sys.platform.genesis-core.team/user_uploads/1/x.png" alt="">';
-    const result = sanitizeHtml(html, "https://zulip.example.com/workspace/v1");
-    expect(result).toContain('src="https://zulip.example.com/workspace/v1/user_uploads/1/x.png"');
+    const result = sanitizeHtml(html, "https://chat.example.com/workspace/v1");
+    expect(result).toContain('src="https://chat.example.com/workspace/v1/user_uploads/1/x.png"');
   });
 
   it("rewrites user_uploads link href to canonical base", () => {
     const html = '<a href="https://sys.platform.genesis-core.team/user_uploads/1/x.png">file</a>';
-    const result = sanitizeHtml(html, "https://zulip.example.com/workspace/v1");
-    expect(result).toContain('href="https://zulip.example.com/workspace/v1/user_uploads/1/x.png"');
+    const result = sanitizeHtml(html, "https://chat.example.com/workspace/v1");
+    expect(result).toContain('href="https://chat.example.com/workspace/v1/user_uploads/1/x.png"');
   });
 
   it("rewrites relative external_content media when baseUrl omitted", () => {
     const html = '<img src="/external_content/preview.png" alt="preview">';
     const result = sanitizeHtml(html);
-    expect(result).toContain('src="https://zulip.example.com/external_content/preview.png"');
+    expect(result).toContain('src="https://chat.example.com/external_content/preview.png"');
   });
 
   it("rewrites absolute external_content URLs to the canonical realm origin", () => {
     const html =
       '<img src="https://sys.platform.genesis-core.team/external_content/preview.png" alt="">';
-    const result = sanitizeHtml(html, "https://zulip.example.com/workspace/v1");
-    expect(result).toContain('src="https://zulip.example.com/external_content/preview.png"');
+    const result = sanitizeHtml(html, "https://chat.example.com/workspace/v1");
+    expect(result).toContain('src="https://chat.example.com/external_content/preview.png"');
   });
 
-  it("preserves audio preview markup and Zulip preview metadata attrs", () => {
+  it("preserves audio preview markup and Workspace preview metadata attrs", () => {
     const html =
       '<audio controls src="/external_content/audio.mp3" title="Preview" data-original-url="https://example.com/audio.mp3" data-original-dimensions="320x180" data-original-content-type="audio/mpeg"></audio>';
-    const result = sanitizeHtml(html, "https://zulip.example.com/workspace/v1");
+    const result = sanitizeHtml(html, "https://chat.example.com/workspace/v1");
     expect(result).toContain("<audio");
-    expect(result).toContain('src="https://zulip.example.com/external_content/audio.mp3"');
+    expect(result).toContain('src="https://chat.example.com/external_content/audio.mp3"');
     expect(result).toContain('title="Preview"');
     expect(result).toContain('data-original-url="https://example.com/audio.mp3"');
     expect(result).toContain('data-original-dimensions="320x180"');
@@ -184,7 +184,7 @@ describe("sanitizeHtml", () => {
   it("preserves picture/source markup for protected media preprocessing", () => {
     const html =
       '<picture><source srcset="/external_content/a.webp 1x, /external_content/b.webp 2x" sizes="100vw"><img alt="preview"></picture>';
-    const result = sanitizeHtml(html, "https://zulip.example.com/workspace/v1");
+    const result = sanitizeHtml(html, "https://chat.example.com/workspace/v1");
     expect(result).toContain("<picture>");
     expect(result).toContain("<source");
     expect(result).toContain('srcset="/external_content/a.webp 1x, /external_content/b.webp 2x"');
@@ -202,7 +202,7 @@ describe("sanitizeHtml", () => {
     expect(sanitizeHtml(html)).toBe("<p>safe</p>");
   });
 
-  // Zulip @mention spans carry `data-user-id` for client mention UX.
+  // Workspace @mention spans carry `data-user-id` for client mention UX.
   it("preserves user-mention data-user-id on span", () => {
     const html = '<p><span class="user-mention" data-user-id="31">@Alice</span></p>';
     const result = sanitizeHtml(html);
@@ -219,12 +219,12 @@ describe("sanitizeHtml", () => {
 
   it("strips internal protected-media data attributes from sanitized fragments", () => {
     const fragment = sanitizeHtmlToFragment(
-      '<img src="https://zulip.example.com/external_content/a.png" data-auth-src="https://attacker.example/src">',
-      "https://zulip.example.com",
+      '<img src="https://chat.example.com/external_content/a.png" data-auth-src="https://attacker.example/src">',
+      "https://chat.example.com",
     );
     const image = fragment?.querySelector("img");
     expect(image?.hasAttribute("data-auth-src")).toBe(false);
-    expect(image?.getAttribute("src")).toBe("https://zulip.example.com/external_content/a.png");
+    expect(image?.getAttribute("src")).toBe("https://chat.example.com/external_content/a.png");
   });
 
   it("preserves del tags for markdown strikethrough", () => {
@@ -236,8 +236,8 @@ describe("sanitizeHtml", () => {
 
   it("preserves video inside user_upload anchor links", () => {
     const html =
-      '<p><a href="https://zulip.example.com/user_uploads/1/clip.webm"><video controls=""><source src="https://zulip.example.com/user_uploads/1/clip.webm" type="video/webm"></source></video></a></p>';
-    const result = sanitizeHtml(html, "https://zulip.example.com");
+      '<p><a href="https://chat.example.com/user_uploads/1/clip.webm"><video controls=""><source src="https://chat.example.com/user_uploads/1/clip.webm" type="video/webm"></source></video></a></p>';
+    const result = sanitizeHtml(html, "https://chat.example.com");
     expect(result).toContain("<video");
     expect(result).toContain('type="video/webm"');
   });

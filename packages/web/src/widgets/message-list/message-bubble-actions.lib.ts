@@ -1,7 +1,7 @@
 import type { DownloadProgress } from "~/entities/download/download.types";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
 import type { MediaItem } from "~/features/media-viewer/media-viewer.types";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { buildAuthHeader } from "~/shared/lib/auth-guard";
 import {
   AUTH_IMAGE_PLACEHOLDER_SRC,

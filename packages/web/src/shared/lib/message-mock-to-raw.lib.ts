@@ -1,9 +1,9 @@
 /**
- * Converts {@link MockMessage} (UI / IDB) to {@link ZulipRawMessage} for chat-list and activity stores.
+ * Converts {@link MockMessage} (UI / IDB) to {@link WorkspaceRawMessage} for chat-list and activity stores.
  */
-import type { MockMessage, ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { MockMessage, WorkspaceRawMessage } from "~/shared/api/messenger.types";
 
-export function mockMessageToRawMessage(message: MockMessage): ZulipRawMessage {
+export function mockMessageToRawMessage(message: MockMessage): WorkspaceRawMessage {
   const displayRecipient =
     message.display_recipient ?? (message.stream_id != null ? (message.channel ?? "") : undefined);
   const isPrivate =

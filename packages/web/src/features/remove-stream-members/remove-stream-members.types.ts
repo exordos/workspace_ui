@@ -2,7 +2,7 @@
 import type {
   RemoveStreamMembersParams,
   RemoveStreamMembersResult,
-} from "~/shared/api/zulip-streams";
+} from "~/shared/api/messenger-streams";
 
 export type { RemoveStreamMembersParams, RemoveStreamMembersResult };
 

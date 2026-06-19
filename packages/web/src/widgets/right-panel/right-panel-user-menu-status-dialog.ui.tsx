@@ -3,7 +3,7 @@ import EmojiPicker, { EmojiStyle, type EmojiClickData } from "emoji-picker-react
 import React from "react";
 import type { UserStatusEmojiDisplay } from "~/entities/user/user-status.lib";
 import type { UserStatusReactionType } from "~/entities/user/user.model";
-import type { RealmEmoji } from "~/shared/api/zulip.types";
+import type { RealmEmoji } from "~/shared/api/messenger.types";
 import {
   AppDialogShell,
   APP_DIALOG_CONTENT_BASE_CLASS,

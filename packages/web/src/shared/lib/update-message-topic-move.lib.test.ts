@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ZulipEvent } from "~/shared/api/zulip.types";
+import type { MessengerEvent } from "~/shared/api/messenger.types";
 import {
   extractTopicMoveFromUpdateEvent,
   resolveTopicMoveTargetMessageIds,
@@ -7,7 +7,7 @@ import {
 
 describe("update-message-topic-move.lib", () => {
   it("extracts normalized topic move payload for valid update_message", () => {
-    const event: ZulipEvent = {
+    const event: MessengerEvent = {
       id: 1,
       type: "update_message",
       stream_id: 42,
@@ -27,21 +27,21 @@ describe("update-message-topic-move.lib", () => {
   });
 
   it("returns null when required rename payload fields are missing", () => {
-    const missingStreamId: ZulipEvent = {
+    const missingStreamId: MessengerEvent = {
       id: 2,
       type: "update_message",
       orig_subject: "incident",
       subject: "resolved incident",
       message_id: 1,
     };
-    const missingOrigSubject: ZulipEvent = {
+    const missingOrigSubject: MessengerEvent = {
       id: 3,
       type: "update_message",
       stream_id: 42,
       subject: "resolved incident",
       message_id: 1,
     };
-    const missingSubject: ZulipEvent = {
+    const missingSubject: MessengerEvent = {
       id: 4,
       type: "update_message",
       stream_id: 42,
@@ -55,7 +55,7 @@ describe("update-message-topic-move.lib", () => {
   });
 
   it("returns null when topics are equal after normalization", () => {
-    const event: ZulipEvent = {
+    const event: MessengerEvent = {
       id: 5,
       type: "update_message",
       stream_id: 42,
@@ -69,7 +69,7 @@ describe("update-message-topic-move.lib", () => {
   });
 
   it("filters invalid message_ids and omits empty list", () => {
-    const event: ZulipEvent = {
+    const event: MessengerEvent = {
       id: 6,
       type: "update_message",
       stream_id: 42,

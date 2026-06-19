@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useCallParticipantsStore } from "~/entities/call/call.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import {
   MESSAGE_BUBBLE_BODY_CLASS_NAME,
   MESSAGE_MEDIA_PREVIEW_CLASS_NAME,
@@ -38,7 +38,7 @@ vi.mock("emoji-picker-react", () => ({
   },
 }));
 
-vi.mock("~/shared/api/zulip-client.internal", () => ({
+vi.mock("~/shared/api/messenger-client.internal", () => ({
   getRealmBaseUrl: () => "https://uploads.example.com",
 }));
 
@@ -691,7 +691,7 @@ describe("MessageBubble edit/delete actions parity", () => {
     expect(image).toHaveClass(MESSAGE_MEDIA_PREVIEW_CLASS_NAME);
   });
 
-  it("renders a single inline image for Zulip HTML with message_inline_image and filename link", () => {
+  it("renders a single inline image for messenger HTML with message_inline_image and filename link", () => {
     const { container } = render(
       <MessageBubble
         message={createMessage({
@@ -766,7 +766,7 @@ describe("MessageBubble edit/delete actions parity", () => {
     expect(videoSource?.getAttribute("data-auth-src")).toContain("/user_uploads/1/private.mp4");
   });
 
-  it("keeps Zulip embed background image off the live DOM until authenticated fetch resolves", () => {
+  it("keeps Workspace embed background image off the live DOM until authenticated fetch resolves", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(() => new Promise(() => {})),
@@ -934,7 +934,7 @@ describe("MessageBubble edit/delete actions parity", () => {
     );
   });
 
-  it("loads Zulip embed background preview through authenticated fetch and applies only blob style", async () => {
+  it("loads Workspace embed background preview through authenticated fetch and applies only blob style", async () => {
     const fetchMock = vi.fn((input: string | URL) => {
       const s = String(input);
       if (
@@ -1004,7 +1004,7 @@ describe("MessageBubble edit/delete actions parity", () => {
     const { container } = render(
       <MessageBubble
         message={createMessage({
-          content: `<p>image</p><img src="https://zulip.genesis-core.tech/user_uploads/thumbnail/2/ee/H37di7GmS3N2EkehVcH83MaM/image.png/840x560.webp" alt="private image" />`,
+          content: `<p>image</p><img src="https://messenger.genesis-core.tech/user_uploads/thumbnail/2/ee/H37di7GmS3N2EkehVcH83MaM/image.png/840x560.webp" alt="private image" />`,
         })}
         isOwn={false}
       />,
@@ -1087,7 +1087,7 @@ describe("MessageBubble edit/delete actions parity", () => {
     expect(source?.getAttribute("data-auth-src")).toContain("/user_uploads/1/private.mp4");
   });
 
-  it("keeps Zulip embed background image empty when protected fetch fails", async () => {
+  it("keeps Workspace embed background image empty when protected fetch fails", async () => {
     const fetchMock = vi.fn(() =>
       Promise.resolve({
         ok: false,
@@ -1257,7 +1257,7 @@ describe("MessageBubble edit/delete actions parity", () => {
     );
   });
 
-  it("delegates zulip permalink clicks to callback navigation handler", async () => {
+  it("delegates messenger permalink clicks to callback navigation handler", async () => {
     const onPermalinkClick = vi.fn(() => true);
 
     render(
@@ -1265,7 +1265,7 @@ describe("MessageBubble edit/delete actions parity", () => {
         message={createMessage({
           id: 108,
           content:
-            "@_**Alice|77** [wrote](https://zulip.example.com/#narrow/dm/42-dm/near/987):\n```quote\nHi\n```",
+            "@_**Alice|77** [wrote](https://chat.example.com/#narrow/dm/42-dm/near/987):\n```quote\nHi\n```",
         })}
         isOwn={false}
         callbacks={{ onPermalinkClick }}
@@ -1275,7 +1275,7 @@ describe("MessageBubble edit/delete actions parity", () => {
     const link = await screen.findByRole("link", { name: "wrote" });
     fireEvent.click(link);
     expect(onPermalinkClick).toHaveBeenCalledWith(
-      "https://zulip.example.com/#narrow/dm/42-dm/near/987",
+      "https://chat.example.com/#narrow/dm/42-dm/near/987",
     );
   });
 });

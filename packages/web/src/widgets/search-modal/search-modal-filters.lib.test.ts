@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { UserRecord } from "~/entities/user/user.model";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { filterSearchMessages } from "./search-modal-filters.lib";
 
 function msg(overrides: Partial<MockMessage> & Pick<MockMessage, "id">): MockMessage {

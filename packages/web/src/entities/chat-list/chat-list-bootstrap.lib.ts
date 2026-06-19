@@ -2,7 +2,7 @@
  * Pure helpers for chat-list sidebar bootstrap: IndexedDB hydrate, message rebuild,
  * metadata-only DM rows, and bootstrap error state patches.
  */
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import {
   deserializeStreamEntry,
   type ChatListSnapshotSerialized,
@@ -27,7 +27,7 @@ export function clearBootstrapErrorPatch(): { bootstrapError: null } {
 
 /** Builds message id → sidebar location index from a bootstrap message batch. */
 export function buildMessageIdToLocation(
-  messages: readonly ZulipRawMessage[],
+  messages: readonly WorkspaceRawMessage[],
   currentUserId: number | null,
 ): Map<number, MessageLocation> {
   const map = new Map<number, MessageLocation>();
@@ -45,7 +45,7 @@ export function buildMessageIdToLocation(
 
 /** Unread-only location map for bootstrap unread reconcile from message snapshots. */
 export function buildUnreadLocationMap(
-  messages: readonly ZulipRawMessage[],
+  messages: readonly WorkspaceRawMessage[],
   currentUserId: number | null,
 ): Map<number, MessageLocation> {
   const map = new Map<number, MessageLocation>();
@@ -253,14 +253,14 @@ export interface SetFromMessagesBootstrapState {
   dmsMap: Map<string, DmEntryInternal>;
   sidebarDataHydrated: true;
   currentUserId: number | null;
-  lastAppliedMessages: ZulipRawMessage[];
+  lastAppliedMessages: WorkspaceRawMessage[];
   messageIdToLocation: Map<number, MessageLocation>;
   bootstrapError: null;
 }
 
 /** Builds store fields for full sidebar rebuild from a message history batch. */
 export function buildSetFromMessagesBootstrapState(
-  messages: ZulipRawMessage[],
+  messages: WorkspaceRawMessage[],
   currentUserId: number | null,
   previousStreamsMap: Map<number, StreamEntryInternal>,
   avatarMap: Map<number, string | undefined>,

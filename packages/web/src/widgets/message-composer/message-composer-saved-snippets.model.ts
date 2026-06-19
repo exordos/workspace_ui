@@ -4,8 +4,8 @@
  */
 import { create } from "zustand";
 import { getCurrentInstance } from "~/shared/api/client";
-import { createSavedSnippet, fetchSavedSnippets } from "~/shared/api/zulip-messages";
-import type { SavedSnippet } from "~/shared/api/zulip.types";
+import { createSavedSnippet, fetchSavedSnippets } from "~/shared/api/messenger-messages";
+import type { SavedSnippet } from "~/shared/api/messenger.types";
 import { logStoreAction } from "~/shared/lib/logger";
 
 export const SAVED_SNIPPETS_TTL_MS = 60_000;

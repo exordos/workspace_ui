@@ -1,7 +1,7 @@
 /**
- * Tests for the Draft API — Zulip Drafts endpoint functions.
+ * Tests for the Draft API — Workspace Drafts endpoint functions.
  *
- * Each function uses zulipApi (middleware client) for HTTP calls
+ * Each function uses messengerApi (middleware client) for HTTP calls
  * and guard.* for input validation. Tests cover success paths,
  * error handling, and guard validation.
  */
@@ -15,7 +15,7 @@ const mockPatch = vi.fn();
 const mockDelete = vi.fn();
 
 vi.mock("~/shared/api/client", () => ({
-  zulipApi: {
+  messengerApi: {
     get: (...args: unknown[]) => mockGet(...args),
     post: (...args: unknown[]) => mockPost(...args),
     patch: (...args: unknown[]) => mockPatch(...args),

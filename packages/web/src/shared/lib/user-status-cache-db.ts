@@ -1,5 +1,5 @@
 /**
- * Persists GET /users/{id}/status results (per Zulip instance + user) in IndexedDB
+ * Persists GET /users/{id}/status results (per organization instance + user) in IndexedDB
  * for hydrate after reload and TTL coordination via user.api.orchestrator.
  *
  * Payload shape matches UserStatus in entities/user (serializable subset for IDB).
@@ -15,7 +15,7 @@ function idbError(reason: unknown): Error {
   return reason instanceof Error ? reason : new Error("indexedDB error", { cause: reason });
 }
 
-/** Serializable custom status snapshot (aligned with Zulip GET /users/{id}/status). */
+/** Serializable custom status snapshot (aligned with the messenger API GET /users/{id}/status). */
 export interface UserStatusCachePayload {
   text: string;
   emojiName?: string;

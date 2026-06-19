@@ -1,18 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "~/i18n/i18n";
-import { fetchRealmProfileFieldDefinitions } from "~/shared/api/zulip-realm-profile-fields";
+import { fetchRealmProfileFieldDefinitions } from "~/shared/api/messenger-realm-profile-fields";
 import { sanitizeHtml } from "~/shared/lib/html";
+import type { RealmProfileFieldDefinition } from "~/shared/lib/messenger-profile-fields-map.lib";
 import {
   getCustomProfileFieldLines,
   type CustomProfileFieldLine,
-  type ZulipCustomProfileDataMap,
+  type WorkspaceCustomProfileDataMap,
 } from "~/shared/lib/user-profile-fields.lib";
-import type { RealmProfileFieldDefinition } from "~/shared/lib/zulip-profile-fields-map.lib";
 import { SectionLabel } from "~/shared/ui/section-label.ui";
 import { useUsersStore } from "./user.model";
 
 export interface ProfileCustomFieldsBlockProps {
-  profileData?: ZulipCustomProfileDataMap | null;
+  profileData?: WorkspaceCustomProfileDataMap | null;
   baseUrl?: string;
   className?: string;
   /** Tighter typography for popovers and dense lists. */
@@ -93,7 +93,7 @@ function renderLineContent(
 }
 
 /**
- * Renders Zulip `profile_data` custom fields (sanitized HTML, plain text, or manager → profile link).
+ * Renders Workspace `profile_data` custom fields (sanitized HTML, plain text, or manager → profile link).
  */
 export const ProfileCustomFieldsBlock = React.memo(function ProfileCustomFieldsBlock({
   profileData,

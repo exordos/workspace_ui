@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { createMessage } from "~/test/factories";
 import { resolveMessagesLoadErrorAfterInitialLoad } from "./chat-page-initial-load-outcome.lib";
 
@@ -24,7 +24,7 @@ describe("resolveMessagesLoadErrorAfterInitialLoad", () => {
   it("returns refresh when cache was hydrated before API failure", () => {
     useCurrentChatMessagesStore.setState({
       initialLoadError: "Network error",
-      messages: [createMessage({ id: 1 }) as MockMessage],
+      messages: [createMessage({ id: 1 })],
     });
     expect(resolveMessagesLoadErrorAfterInitialLoad(true)).toBe("refresh");
   });

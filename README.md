@@ -1,6 +1,6 @@
 # Workspace UI
 
-Open-source corporate messenger built on the [Zulip](https://zulip.com/) API.
+Open-source corporate messenger built on the [Workspace](https://messenger.com/) API.
 
 Single React codebase, multiple targets:
 
@@ -67,7 +67,7 @@ app -> pages -> widgets -> features -> entities -> shared
 Core flow:
 
 1. `main.tsx` mounts the app shell and routes
-2. `widgets/layout/layout-zulip-event-loop.hook.ts` + `shared/lib/event-loop.ts` start Zulip event queue polling
+2. `widgets/layout/layout-messenger-event-loop.hook.ts` + `shared/lib/event-loop.ts` start messenger event queue polling
 3. `shared/api/client.ts` handles auth/logging/retry middleware
 4. Entity stores (`entities/*`) provide domain state
 5. UI subscribes through minimal selectors

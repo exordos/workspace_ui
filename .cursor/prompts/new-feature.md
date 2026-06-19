@@ -10,7 +10,7 @@ Implement the "<FEATURE_NAME>" feature.
 - UC1: <user can...>
 - UC2: <user can...>
 
-## Zulip API Endpoints
+## Messenger API Endpoints
 - GET /api/v1/<endpoint> — <what it returns>
 - POST /api/v1/<endpoint> — <what it does>
 

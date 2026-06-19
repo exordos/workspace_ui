@@ -1,4 +1,4 @@
-import type { ZulipEvent } from "~/shared/api/zulip.types";
+import type { MessengerEvent } from "~/shared/api/messenger.types";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { resolveTopicMoveTargetMessageIds } from "~/shared/lib/update-message-topic-move.lib";
 
@@ -25,7 +25,7 @@ function parsePositiveIntegerArray(value: unknown): number[] | null {
 
 /** Parses cross-channel topic move from update_message when new_stream_id is present. */
 export function extractStreamMoveFromUpdateEvent(
-  event: ZulipEvent,
+  event: MessengerEvent,
 ): UpdateMessageStreamMovePayload | null {
   if (event.type !== "update_message") return null;
 

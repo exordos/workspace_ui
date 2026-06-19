@@ -2,7 +2,7 @@ import React from "react";
 import { UserStatusLabel } from "~/entities/user/user-status-label.ui";
 import { useUsersStore, type UserStatus } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";

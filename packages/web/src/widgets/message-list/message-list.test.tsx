@@ -3,8 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
-import type * as ZulipUsersApi from "~/shared/api/zulip-users";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type * as MessengerUsersApi from "~/shared/api/messenger-users";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { resetRealmEmojisCacheForTests } from "~/shared/lib/realm-emojis-cache";
 import { createUser } from "~/test/factories";
 import { MessageList } from "./message-list.ui";
@@ -12,8 +12,8 @@ import { MessageList } from "./message-list.ui";
 const fetchRealmEmojisMock = vi.hoisted(() => vi.fn());
 const ensureUserStatusLoadedMock = vi.hoisted(() => vi.fn());
 
-vi.mock("~/shared/api/zulip-users", async (importOriginal) => {
-  const actual = await importOriginal<typeof ZulipUsersApi>();
+vi.mock("~/shared/api/messenger-users", async (importOriginal) => {
+  const actual = await importOriginal<typeof MessengerUsersApi>();
   return {
     ...actual,
     fetchRealmEmojis: (...args: unknown[]) => fetchRealmEmojisMock(...args),
@@ -273,7 +273,7 @@ describe("MessageList focused message behavior", () => {
     expect(invokeDmCall).toHaveBeenCalledWith(99);
   });
 
-  it("opens user mention card when body is Zulip Markdown @**Name**", async () => {
+  it("opens user mention card when body is Workspace Markdown @**Name**", async () => {
     const onOpenDirectMessage = vi.fn();
     useUsersStore.getState().mergeUser(
       createUser({

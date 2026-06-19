@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { fetchMessageById } from "~/shared/api/zulip-messages";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import { fetchMessageById } from "~/shared/api/messenger-messages";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 
 export function useChatForwardHydration(options: {

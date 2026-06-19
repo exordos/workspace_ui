@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { applyChatListBootstrapResult } from "./layout-chat-list-bootstrap-apply.lib";
 
 const setFromMessagesMock = vi.fn();
@@ -47,7 +47,7 @@ describe("applyChatListBootstrapResult", () => {
   it("applies streamPreviews via applyStreamSidebarPreviewsFromMessages", () => {
     const messages = [
       { id: 30, sender_id: 1, type: "stream", stream_id: 9, content: "ch", timestamp: 3 },
-    ] as ZulipRawMessage[];
+    ] as WorkspaceRawMessage[];
 
     applyChatListBootstrapResult(
       { mode: "streamPreviews", messages, latestMessageIdHint: null },

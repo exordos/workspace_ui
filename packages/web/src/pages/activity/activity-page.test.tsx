@@ -7,7 +7,7 @@ import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useDraftStore } from "~/entities/draft/draft.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { createMessage, createUser } from "~/test/factories";
 import { ActivityPage } from "./activity-page.ui";
 import type * as ReactRouterDom from "react-router-dom";
@@ -52,9 +52,9 @@ vi.mock("~/entities/activity/activity-cache.lib", async () => {
   };
 });
 
-vi.mock("~/shared/api/zulip-messages", async () => {
-  const actual = await vi.importActual<typeof import("~/shared/api/zulip-messages")>(
-    "~/shared/api/zulip-messages",
+vi.mock("~/shared/api/messenger-messages", async () => {
+  const actual = await vi.importActual<typeof import("~/shared/api/messenger-messages")>(
+    "~/shared/api/messenger-messages",
   );
   return {
     ...actual,
@@ -323,7 +323,7 @@ describe("ActivityPage drafts routing", () => {
       timestamp: 1,
       type: "stream",
       display_recipient: "engineering",
-    }) as ZulipRawMessage;
+    }) as WorkspaceRawMessage;
     useActivityStore.getState().setFilterCache("mentions", [cachedMention], true);
     fetchActivityMessagesPageWithPersist.mockResolvedValue({
       messages: [cachedMention],
@@ -352,7 +352,7 @@ describe("ActivityPage drafts routing", () => {
       timestamp: 300,
       type: "stream",
       display_recipient: "engineering",
-    }) as ZulipRawMessage;
+    }) as WorkspaceRawMessage;
     const oldReaction = createMessage({
       id: 10,
       sender_id: 42,
@@ -363,7 +363,7 @@ describe("ActivityPage drafts routing", () => {
       timestamp: 100,
       type: "stream",
       display_recipient: "engineering",
-    }) as ZulipRawMessage;
+    }) as WorkspaceRawMessage;
 
     useChatListStore.setState({ currentUserId: 42 });
     useActivityStore.getState().setFilterCache("reactions", [freshReaction], true);
@@ -406,7 +406,7 @@ describe("ActivityPage drafts routing", () => {
       timestamp: 100,
       type: "stream",
       display_recipient: "engineering",
-    }) as ZulipRawMessage;
+    }) as WorkspaceRawMessage;
     const freshReaction = createMessage({
       id: 30,
       sender_id: 42,
@@ -417,7 +417,7 @@ describe("ActivityPage drafts routing", () => {
       timestamp: 300,
       type: "stream",
       display_recipient: "engineering",
-    }) as ZulipRawMessage;
+    }) as WorkspaceRawMessage;
 
     useChatListStore.setState({ currentUserId: 42 });
     useActivityStore.getState().setFilterCache("reactions", [oldReaction], true);
@@ -1217,16 +1217,16 @@ describe("ActivityPage drafts routing", () => {
   });
 
   it("does not apply cached mentions from the previous organization after switch", async () => {
-    let resolveHydrate!: (messages: ZulipRawMessage[]) => void;
-    const staleHydrate = new Promise<ZulipRawMessage[]>((resolve) => {
+    let resolveHydrate!: (messages: WorkspaceRawMessage[]) => void;
+    const staleHydrate = new Promise<WorkspaceRawMessage[]>((resolve) => {
       resolveHydrate = resolve;
     });
 
     let resolveNextOrgFetch!: (value: {
-      messages: ZulipRawMessage[];
+      messages: WorkspaceRawMessage[];
       foundOldest: boolean;
     }) => void;
-    const nextOrgFetch = new Promise<{ messages: ZulipRawMessage[]; foundOldest: boolean }>(
+    const nextOrgFetch = new Promise<{ messages: WorkspaceRawMessage[]; foundOldest: boolean }>(
       (resolve) => {
         resolveNextOrgFetch = resolve;
       },
@@ -1317,15 +1317,21 @@ describe("ActivityPage drafts routing", () => {
   });
 
   it("does not apply stale mentions refresh after organization switch", async () => {
-    let resolveOldFetch!: (value: { messages: ZulipRawMessage[]; foundOldest: boolean }) => void;
-    const oldFetch = new Promise<{ messages: ZulipRawMessage[]; foundOldest: boolean }>(
+    let resolveOldFetch!: (value: {
+      messages: WorkspaceRawMessage[];
+      foundOldest: boolean;
+    }) => void;
+    const oldFetch = new Promise<{ messages: WorkspaceRawMessage[]; foundOldest: boolean }>(
       (resolve) => {
         resolveOldFetch = resolve;
       },
     );
 
-    let resolveNewFetch!: (value: { messages: ZulipRawMessage[]; foundOldest: boolean }) => void;
-    const newFetch = new Promise<{ messages: ZulipRawMessage[]; foundOldest: boolean }>(
+    let resolveNewFetch!: (value: {
+      messages: WorkspaceRawMessage[];
+      foundOldest: boolean;
+    }) => void;
+    const newFetch = new Promise<{ messages: WorkspaceRawMessage[]; foundOldest: boolean }>(
       (resolve) => {
         resolveNewFetch = resolve;
       },

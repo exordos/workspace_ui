@@ -1,5 +1,5 @@
 /**
- * Exponential backoff retry for Zulip push token registration.
+ * Exponential backoff retry for messenger push token registration.
  */
 
 const DEFAULT_RETRY_DELAYS_MS = [1000, 2000, 4000] as const;

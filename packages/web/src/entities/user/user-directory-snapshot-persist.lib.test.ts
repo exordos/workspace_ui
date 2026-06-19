@@ -4,7 +4,7 @@ import {
   serializeDirectoryMembersForSnapshot,
   shouldPersistUsersDirectorySnapshot,
 } from "~/entities/user/user-directory-snapshot-persist.lib";
-import type { ZulipUserMember } from "~/shared/api/zulip.types";
+import type { MessengerUserMember } from "~/shared/api/messenger.types";
 import * as usersDirectoryDb from "~/shared/lib/users-directory-snapshot-db";
 
 describe("shouldPersistUsersDirectorySnapshot", () => {
@@ -19,7 +19,7 @@ describe("shouldPersistUsersDirectorySnapshot", () => {
 
 describe("serializeDirectoryMembersForSnapshot", () => {
   it("drops entries without user_id", () => {
-    const input = [{ user_id: 1, full_name: "A" }, { full_name: "orphan" } as ZulipUserMember];
+    const input = [{ user_id: 1, full_name: "A" }, { full_name: "orphan" } as MessengerUserMember];
     expect(serializeDirectoryMembersForSnapshot(input)).toEqual([{ user_id: 1, full_name: "A" }]);
   });
 

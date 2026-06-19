@@ -4,7 +4,7 @@ import { useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import {
-  buildOrgRouteIdForZulipInstance,
+  buildOrgRouteIdForWorkspaceInstance,
   extractOrgRouteFromPathname,
 } from "~/shared/lib/org-route";
 import { renderWithProviders } from "~/test/render";
@@ -25,7 +25,7 @@ function OrgRouteInstanceSyncProbe() {
     const { orgId } = extractOrgRouteFromPathname(location.pathname);
     if (orgId == null) return;
     const matchedInstance = instances.find(
-      (instance) => buildOrgRouteIdForZulipInstance(instance) === orgId,
+      (instance) => buildOrgRouteIdForWorkspaceInstance(instance) === orgId,
     );
     if (matchedInstance == null) return;
     if (matchedInstance.id !== currentInstanceId) {
@@ -71,7 +71,7 @@ describe("InstanceSwitcher", () => {
     });
 
     renderInstanceSwitcher();
-    fireEvent.pointerDown(screen.getByRole("button", { name: /select zulip server/i }), {
+    fireEvent.pointerDown(screen.getByRole("button", { name: /select server/i }), {
       button: 0,
       ctrlKey: false,
     });
@@ -90,7 +90,7 @@ describe("InstanceSwitcher", () => {
     });
 
     renderInstanceSwitcher();
-    fireEvent.pointerDown(screen.getByRole("button", { name: /select zulip server/i }), {
+    fireEvent.pointerDown(screen.getByRole("button", { name: /select server/i }), {
       button: 0,
       ctrlKey: false,
     });
@@ -119,7 +119,7 @@ describe("InstanceSwitcher", () => {
 
     expect(screen.queryByRole("button", { name: /add server/i })).not.toBeInTheDocument();
 
-    fireEvent.pointerDown(screen.getByRole("button", { name: /select zulip server/i }), {
+    fireEvent.pointerDown(screen.getByRole("button", { name: /select server/i }), {
       button: 0,
       ctrlKey: false,
     });
@@ -151,7 +151,7 @@ describe("InstanceSwitcher", () => {
     });
 
     renderInstanceSwitcher();
-    fireEvent.pointerDown(screen.getByRole("button", { name: /select zulip server/i }), {
+    fireEvent.pointerDown(screen.getByRole("button", { name: /select server/i }), {
       button: 0,
       ctrlKey: false,
     });
@@ -197,7 +197,7 @@ describe("InstanceSwitcher", () => {
     });
 
     renderInstanceSwitcher();
-    fireEvent.pointerDown(screen.getByRole("button", { name: /select zulip server/i }), {
+    fireEvent.pointerDown(screen.getByRole("button", { name: /select server/i }), {
       button: 0,
       ctrlKey: false,
     });
@@ -425,7 +425,7 @@ describe("InstanceSwitcher", () => {
     });
 
     const { container } = renderInstanceSwitcher();
-    fireEvent.pointerDown(screen.getByRole("button", { name: /select zulip server/i }), {
+    fireEvent.pointerDown(screen.getByRole("button", { name: /select server/i }), {
       button: 0,
       ctrlKey: false,
     });
@@ -457,7 +457,7 @@ describe("InstanceSwitcher", () => {
     expect(screen.getByTestId("instance-frame-inst-1")).toHaveClass("ring-2");
     expect(screen.getByTestId("instance-frame-inst-1")).toHaveClass("ring-inset");
 
-    const selectorButton = screen.getByRole("button", { name: /select zulip server/i });
+    const selectorButton = screen.getByRole("button", { name: /select server/i });
     expect(selectorButton).toBeInTheDocument();
     expect(selectorButton).not.toHaveClass("border");
 
@@ -487,7 +487,7 @@ describe("InstanceSwitcher", () => {
     });
 
     renderInstanceSwitcher();
-    fireEvent.pointerDown(screen.getByRole("button", { name: /select zulip server/i }), {
+    fireEvent.pointerDown(screen.getByRole("button", { name: /select server/i }), {
       button: 0,
       ctrlKey: false,
     });
@@ -507,7 +507,7 @@ describe("InstanceSwitcher", () => {
     });
 
     renderInstanceSwitcher();
-    fireEvent.pointerDown(screen.getByRole("button", { name: /select zulip server/i }), {
+    fireEvent.pointerDown(screen.getByRole("button", { name: /select server/i }), {
       button: 0,
       ctrlKey: false,
     });

@@ -1,7 +1,7 @@
 /**
- * Builds unread reconcile maps from Zulip register `unread_msgs` buckets.
+ * Builds unread reconcile maps from messenger register `unread_msgs` buckets.
  */
-import type { ZulipUnreadMessagesSnapshot } from "~/shared/api/zulip-unread.lib";
+import type { MessengerUnreadMessagesSnapshot } from "~/shared/api/messenger-unread.lib";
 import { dmConversationKey } from "~/shared/lib/dm-key";
 import { streamTopicCompositeKey } from "./chat-list-stream-topic-index.lib";
 import type { MessageLocation } from "./chat-list.model.types";
@@ -14,7 +14,7 @@ function dmKeyFromUnreadBucketUserIds(userIds: number[], currentUserId: number |
 }
 
 export function buildUnreadReconcileMapsFromRegisterSnapshot(
-  snapshot: ZulipUnreadMessagesSnapshot,
+  snapshot: MessengerUnreadMessagesSnapshot,
   currentUserId: number | null,
 ): {
   unreadStreamCounts: Map<string, number>;

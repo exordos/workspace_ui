@@ -5,8 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MediaViewerOverlay } from "./media-viewer-overlay.ui";
 import { useMediaViewerStore } from "./media-viewer.model";
 
-vi.mock("~/shared/api/zulip-client.internal", () => ({
-  getRealmBaseUrl: () => "https://zulip.example.com",
+vi.mock("~/shared/api/messenger-client.internal", () => ({
+  getRealmBaseUrl: () => "https://chat.example.com",
 }));
 
 vi.mock("~/shared/lib/env", async (importOriginal) => {
@@ -54,7 +54,7 @@ describe("MediaViewerOverlay", () => {
   it("loads protected image items through authenticated fetch without mounting the raw protected src", async () => {
     const fetchMock = vi.fn((input: string | URL) => {
       const value = String(input);
-      if (value === "https://zulip.example.com/external_content/preview.png") {
+      if (value === "https://chat.example.com/external_content/preview.png") {
         return Promise.resolve({
           ok: true,
           blob: () => Promise.resolve(new Blob(["ok"])),
@@ -70,7 +70,7 @@ describe("MediaViewerOverlay", () => {
 
     useMediaViewerStore
       .getState()
-      .open([{ url: "https://zulip.example.com/external_content/preview.png", type: "image" }], 0);
+      .open([{ url: "https://chat.example.com/external_content/preview.png", type: "image" }], 0);
 
     const { container } = render(<MediaViewerOverlay />);
     const image = container.querySelector("img");
@@ -82,7 +82,7 @@ describe("MediaViewerOverlay", () => {
       expect(image?.getAttribute("src")).toBe("blob:test-viewer-image");
     });
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://zulip.example.com/external_content/preview.png",
+      "https://chat.example.com/external_content/preview.png",
       expect.objectContaining({
         headers: { Authorization: "Basic test" },
       }),
@@ -103,7 +103,7 @@ describe("MediaViewerOverlay", () => {
     useMediaViewerStore.getState().open(
       [
         {
-          url: "https://zulip.example.com/user_uploads/1/private.png",
+          url: "https://chat.example.com/user_uploads/1/private.png",
           type: "image",
           previewUrl: "blob:test-viewer-preview",
         },
@@ -148,7 +148,7 @@ describe("MediaViewerOverlay", () => {
 
     useMediaViewerStore
       .getState()
-      .open([{ url: "https://zulip.example.com/user_uploads/1/private.mp4", type: "video" }], 0);
+      .open([{ url: "https://chat.example.com/user_uploads/1/private.mp4", type: "video" }], 0);
 
     const { container } = render(<MediaViewerOverlay />);
     const video = container.querySelector("video");
@@ -223,7 +223,7 @@ describe("MediaViewerOverlay", () => {
   it("disables open and download until protected image display URL is ready", async () => {
     const fetchMock = vi.fn((input: string | URL) => {
       const value = String(input);
-      if (value === "https://zulip.example.com/external_content/preview.png") {
+      if (value === "https://chat.example.com/external_content/preview.png") {
         return Promise.resolve({
           ok: true,
           blob: () => Promise.resolve(new Blob(["ok"])),
@@ -239,7 +239,7 @@ describe("MediaViewerOverlay", () => {
 
     useMediaViewerStore
       .getState()
-      .open([{ url: "https://zulip.example.com/external_content/preview.png", type: "image" }], 0);
+      .open([{ url: "https://chat.example.com/external_content/preview.png", type: "image" }], 0);
 
     render(<MediaViewerOverlay />);
 

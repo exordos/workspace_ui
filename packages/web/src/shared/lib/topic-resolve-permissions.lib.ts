@@ -1,10 +1,10 @@
 /**
  * Resolves whether the current user may mark stream topics as done/un-done.
  *
- * Zulip uses realm/channel `can_resolve_topics_group` settings (not org role alone).
+ * Workspace uses realm/channel `can_resolve_topics_group` settings (not org role alone).
  * When register metadata is missing, falls back to Member+ so the API can enforce policy.
  */
-import type { ZulipGroupSettingValue } from "~/shared/api/zulip.types";
+import type { MessengerGroupSettingValue } from "~/shared/api/messenger.types";
 import { hasRole, parseRole, UserRole } from "~/shared/lib/roles";
 
 export type TopicResolvePermissionSource =
@@ -19,9 +19,12 @@ export type TopicResolvePermissionSource =
 export interface ResolveCanResolveTopicsInput {
   currentUserId: number | null;
   roleCode: number | undefined;
-  realmCanResolveTopicsGroup?: ZulipGroupSettingValue;
-  streamCanResolveTopicsGroup?: ZulipGroupSettingValue;
-  isUserInGroupSetting: (setting: ZulipGroupSettingValue | undefined, userId: number) => boolean;
+  realmCanResolveTopicsGroup?: MessengerGroupSettingValue;
+  streamCanResolveTopicsGroup?: MessengerGroupSettingValue;
+  isUserInGroupSetting: (
+    setting: MessengerGroupSettingValue | undefined,
+    userId: number,
+  ) => boolean;
 }
 
 export interface ResolveCanResolveTopicsResult {

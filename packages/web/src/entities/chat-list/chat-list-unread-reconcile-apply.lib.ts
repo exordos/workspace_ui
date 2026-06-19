@@ -1,7 +1,7 @@
 /**
  * Applies unread reconcile maps to chat-list store state (counts, previews, locations).
  */
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import type { DmEntryInternal, StreamEntryInternal } from "~/shared/types/sidebar-chat";
@@ -56,7 +56,7 @@ export function collectDmKeysForUnreadReconcile(
 }
 
 export function isMessageNewer(
-  message: ZulipRawMessage,
+  message: WorkspaceRawMessage,
   existingTs: number,
   existingLastMessageId?: number | null,
 ): boolean {
@@ -70,10 +70,10 @@ export function isMessageNewer(
 }
 
 export function buildLatestUnreadStreamMessageMap(
-  messages: readonly ZulipRawMessage[],
+  messages: readonly WorkspaceRawMessage[],
   currentUserId: number | null,
-): Map<string, ZulipRawMessage> {
-  const map = new Map<string, ZulipRawMessage>();
+): Map<string, WorkspaceRawMessage> {
+  const map = new Map<string, WorkspaceRawMessage>();
   for (const message of messages) {
     if (!isUnreadFromOthers(message, currentUserId)) continue;
     if (message.type !== "stream" || message.stream_id == null) continue;
@@ -88,10 +88,10 @@ export function buildLatestUnreadStreamMessageMap(
 }
 
 export function buildLatestUnreadDmMessageMap(
-  messages: readonly ZulipRawMessage[],
+  messages: readonly WorkspaceRawMessage[],
   currentUserId: number | null,
-): Map<string, ZulipRawMessage> {
-  const map = new Map<string, ZulipRawMessage>();
+): Map<string, WorkspaceRawMessage> {
+  const map = new Map<string, WorkspaceRawMessage>();
   for (const message of messages) {
     if (!isUnreadFromOthers(message, currentUserId)) continue;
     if (message.type !== "private" || !Array.isArray(message.display_recipient)) continue;
@@ -170,9 +170,9 @@ export function applyStreamTopicUnreadPatches(
 }
 
 export function groupLatestUnreadStreamMessagesByStream(
-  latestUnreadStreams: ReadonlyMap<string, ZulipRawMessage>,
-): Map<number, ZulipRawMessage[]> {
-  const byStream = new Map<number, ZulipRawMessage[]>();
+  latestUnreadStreams: ReadonlyMap<string, WorkspaceRawMessage>,
+): Map<number, WorkspaceRawMessage[]> {
+  const byStream = new Map<number, WorkspaceRawMessage[]>();
   for (const message of latestUnreadStreams.values()) {
     if (message.stream_id == null) continue;
     const streamId = message.stream_id;
@@ -188,7 +188,7 @@ export function groupLatestUnreadStreamMessagesByStream(
 
 export function applyLatestUnreadStreamMetadata(
   streamsMap: Map<number, StreamEntryInternal>,
-  latestByStream: Map<number, ZulipRawMessage[]>,
+  latestByStream: Map<number, WorkspaceRawMessage[]>,
   unreadStreamCounts: ReadonlyMap<string, number>,
 ): { streamsMap: Map<number, StreamEntryInternal>; changed: boolean } {
   let nextStreams = streamsMap;
@@ -304,7 +304,7 @@ function reconcileDmUnreadCounts(
 
 function reconcileLatestDmUnreadPreviews(
   dmsMap: Map<string, DmEntryInternal>,
-  latestUnreadDms: Map<string, ZulipRawMessage>,
+  latestUnreadDms: Map<string, WorkspaceRawMessage>,
   unreadDmCounts: Map<string, number>,
   effectiveUserId: number | null,
   avatarMap: Map<number, string>,
@@ -394,8 +394,8 @@ export interface ApplyReconcileUnreadMapsParams {
   unreadStreamCounts: Map<string, number>;
   unreadDmCounts: Map<string, number>;
   unreadLocationMap: Map<number, MessageLocation>;
-  latestUnreadStreams: Map<string, ZulipRawMessage>;
-  latestUnreadDms: Map<string, ZulipRawMessage>;
+  latestUnreadStreams: Map<string, WorkspaceRawMessage>;
+  latestUnreadDms: Map<string, WorkspaceRawMessage>;
   effectiveUserId: number | null;
   avatarMap: Map<number, string>;
 }

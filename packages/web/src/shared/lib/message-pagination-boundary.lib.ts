@@ -1,5 +1,5 @@
 /**
- * Pure helpers for chat boundary pagination after a Zulip messages page fetch.
+ * Pure helpers for chat boundary pagination after a messenger messages page fetch.
  *
  * Used by the current-chat messages store for IndexedDB and in-memory paths
  * so flags stay consistent with `found_oldest` / `found_newest` and local dedup.

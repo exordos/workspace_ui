@@ -38,6 +38,8 @@ import {
 import { useLayoutLastMessengerRoutePersistence } from "./layout-last-messenger-route.hook";
 import { LayoutLoadingGate } from "./layout-loading-gate.ui";
 import { useLayoutMentionsSyncPolling } from "./layout-mentions-sync-polling.hook";
+import { useLayoutMessengerEventLoop } from "./layout-messenger-event-loop.hook";
+import { useWorkspaceRateLimitCountdownSeconds } from "./layout-messenger-rate-limit-banner.hook";
 import { useLayoutMuteSnapshotSync } from "./layout-mute-snapshot-sync.hook";
 import { LayoutNotificationPermissionBanner } from "./layout-notification-permission-banner.ui";
 import { useLayoutNotificationPermission } from "./layout-notification-permission.hook";
@@ -53,8 +55,6 @@ import { useSyncChatContextFromLocation } from "./layout-sync-chat-context.hook"
 import { useLayoutUnreadAndTitle } from "./layout-unread-title.hook";
 import { isLayoutUserConnectionReady } from "./layout-user-connection-status.types";
 import { useLayoutWindowBranding } from "./layout-window-branding.hook";
-import { useLayoutZulipEventLoop } from "./layout-zulip-event-loop.hook";
-import { useZulipRateLimitCountdownSeconds } from "./layout-zulip-rate-limit-banner.hook";
 import type { LayoutUserConnectionStatus } from "./layout-user-connection-status.types";
 
 export const Layout: React.FC = () => {
@@ -194,7 +194,7 @@ export const Layout: React.FC = () => {
   );
 
   const online = useLayoutOnlineStatus();
-  const rateLimitSeconds = useZulipRateLimitCountdownSeconds(online);
+  const rateLimitSeconds = useWorkspaceRateLimitCountdownSeconds(online);
   const connectionHealth = useConnectionHealthSnapshot();
   useHydrateDrafts(currentInstanceId, currentUserStatus);
 
@@ -283,7 +283,7 @@ export const Layout: React.FC = () => {
     focusedMessageId,
   });
 
-  useLayoutZulipEventLoop({
+  useLayoutMessengerEventLoop({
     currentInstanceId,
     latestMessageIdRef,
     focusedMessageId,

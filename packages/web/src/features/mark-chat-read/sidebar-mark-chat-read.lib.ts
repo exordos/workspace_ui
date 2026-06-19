@@ -8,7 +8,7 @@ import {
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInboxStore } from "~/entities/inbox/inbox.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
-import { markDmAsRead, markStreamAsRead, markTopicAsRead } from "~/shared/api/zulip-read-state";
+import { markDmAsRead, markStreamAsRead, markTopicAsRead } from "~/shared/api/messenger-read-state";
 import { dmConversationKey } from "~/shared/lib/dm-key";
 import { logSidebarUnreadFlow } from "~/shared/lib/sidebar-unread-debug.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";

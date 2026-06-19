@@ -1,11 +1,11 @@
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { getJitsiMeetingUrl, parseJitsiUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
 import { parseJitsiMeetingUrlLoose } from "./jitsi-call-url.lib";
 import type { IncomingDmCallInvite } from "./jitsi-call.model";
 
-const DM_ROOM_PREFIX = "zulip-dm-";
+const DM_ROOM_PREFIX = "messenger-dm-";
 
-function isOneToOneDmForCurrentUser(message: ZulipRawMessage, currentUserId: number): boolean {
+function isOneToOneDmForCurrentUser(message: WorkspaceRawMessage, currentUserId: number): boolean {
   if (!Array.isArray(message.display_recipient)) return false;
   const participantIds = message.display_recipient
     .map((recipient) => recipient.id)
@@ -19,7 +19,7 @@ function isOneToOneDmForCurrentUser(message: ZulipRawMessage, currentUserId: num
  * Returns null when the event is not an incoming call scenario.
  */
 export function resolveIncomingDmCallInvite(
-  message: ZulipRawMessage,
+  message: WorkspaceRawMessage,
   currentUserId: number | null,
   jitsiLinkOptions?: JitsiLinkOptions,
 ): IncomingDmCallInvite | null {

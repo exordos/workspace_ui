@@ -30,7 +30,7 @@ describe("auth-guard", () => {
     vi.resetModules();
   });
 
-  // buildAuthHeader constructs the Authorization header for every Zulip API request
+  // buildAuthHeader constructs the Authorization header for every Messenger API request
   describe("buildAuthHeader", () => {
     // No instance = not logged in — return empty object so fetch proceeds without auth
     it("returns empty object when no instance exists", async () => {
@@ -138,35 +138,35 @@ describe("auth-guard", () => {
 
     // Without an injected store wiper, wipeCredentials must still remove persisted auth keys
     it("removes localStorage keys when no store wiper is registered", async () => {
-      localStorage.setItem("zulip-web-instances", '[{"id":"1"}]');
-      localStorage.setItem("zulip-web-current-instance", "1");
+      localStorage.setItem("messenger-web-instances", '[{"id":"1"}]');
+      localStorage.setItem("messenger-web-current-instance", "1");
 
       const { wipeCredentials, setAuthInstanceGetter } = await import("./auth-guard");
       setAuthInstanceGetter(() => mockInstance);
       wipeCredentials();
 
-      expect(localStorage.getItem("zulip-web-instances")).toBeNull();
-      expect(localStorage.getItem("zulip-web-current-instance")).toBeNull();
+      expect(localStorage.getItem("messenger-web-instances")).toBeNull();
+      expect(localStorage.getItem("messenger-web-current-instance")).toBeNull();
     });
 
     // When the app layer injects store cleanup, it owns instance persistence semantics.
     // wipeCredentials must not wipe those keys after the store wiper rewrites them.
     it("does not clobber store-managed instance persistence after wiping current credentials", async () => {
-      localStorage.setItem("zulip-web-instances", '[{"id":"1"}]');
-      localStorage.setItem("zulip-web-current-instance", "1");
+      localStorage.setItem("messenger-web-instances", '[{"id":"1"}]');
+      localStorage.setItem("messenger-web-current-instance", "1");
 
       const { wipeCredentials, setStoreWiper, setAuthInstanceGetter } =
         await import("./auth-guard");
       setAuthInstanceGetter(() => mockInstance);
       setStoreWiper(() => {
-        localStorage.setItem("zulip-web-instances", '[{"id":"2"}]');
-        localStorage.setItem("zulip-web-current-instance", "2");
+        localStorage.setItem("messenger-web-instances", '[{"id":"2"}]');
+        localStorage.setItem("messenger-web-current-instance", "2");
       });
 
       wipeCredentials();
 
-      expect(localStorage.getItem("zulip-web-instances")).toBe('[{"id":"2"}]');
-      expect(localStorage.getItem("zulip-web-current-instance")).toBe("2");
+      expect(localStorage.getItem("messenger-web-instances")).toBe('[{"id":"2"}]');
+      expect(localStorage.getItem("messenger-web-current-instance")).toBe("2");
     });
 
     // In some environments (iframe, private mode), localStorage throws — must handle gracefully

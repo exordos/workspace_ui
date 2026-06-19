@@ -10,7 +10,7 @@ export interface DesktopAuthExchangeResult {
   authType: "api_key" | "session";
   // Email is needed to save the new instance in the account list.
   email: string;
-  // Set only when the backend returned a ready Zulip API key.
+  // Set only when the backend returned a ready Messenger API key.
   apiKey?: string;
 }
 
@@ -108,8 +108,8 @@ function normalizeApiCredentials(payload: unknown): { email: string; apiKey: str
   return { email, apiKey };
 }
 
-// Closed list of Zulip cookies that really need cross-site sending in Electron.
-const ZULIP_AUTH_COOKIES_TO_RELAX = new Set([
+// Closed list of Workspace cookies that really need cross-site sending in Electron.
+const MESSENGER_AUTH_COOKIES_TO_RELAX = new Set([
   "sessionid",
   "__Host-sessionid",
   "csrftoken",
@@ -117,12 +117,12 @@ const ZULIP_AUTH_COOKIES_TO_RELAX = new Set([
   "csrf",
 ]);
 
-function shouldRelaxZulipAuthCookieSameSite(name: string): boolean {
+function shouldRelaxWorkspaceAuthCookieSameSite(name: string): boolean {
   // Do not match by substring: analytics_session and similar cookies must not be relaxed by accident.
-  return ZULIP_AUTH_COOKIES_TO_RELAX.has(name);
+  return MESSENGER_AUTH_COOKIES_TO_RELAX.has(name);
 }
 
-const ZULIP_CSRF_COOKIE_NAMES = ["__Host-csrftoken", "csrftoken"] as const;
+const MESSENGER_CSRF_COOKIE_NAMES = ["__Host-csrftoken", "csrftoken"] as const;
 
 export async function getSessionCsrfTokenForRealm(realmInput: string): Promise<string | null> {
   const base = normalizeRealm(realmInput);
@@ -132,7 +132,7 @@ export async function getSessionCsrfTokenForRealm(realmInput: string): Promise<s
   const baseWithProtocol = ensureHttpsProtocol(base);
   const originUrl = `${new URL(baseWithProtocol).origin}/`;
   const cookies = await session.defaultSession.cookies.get({ url: originUrl });
-  for (const cookieName of ZULIP_CSRF_COOKIE_NAMES) {
+  for (const cookieName of MESSENGER_CSRF_COOKIE_NAMES) {
     const cookie = cookies.find((row) => row.name === cookieName);
     if (cookie != null && cookie.value.length > 0) {
       return cookie.value;
@@ -146,7 +146,7 @@ async function relaxSessionCookieSameSite(originUrl: string): Promise<void> {
   const cookies = await session.defaultSession.cookies.get({ url: originUrl });
   for (const cookie of cookies) {
     // Leave unknown cookies as they are: they stay in the jar, but their SameSite is not changed.
-    if (!shouldRelaxZulipAuthCookieSameSite(cookie.name)) {
+    if (!shouldRelaxWorkspaceAuthCookieSameSite(cookie.name)) {
       continue;
     }
     // If the cookie already works for the Electron renderer, do not touch it again.
@@ -266,7 +266,7 @@ export async function exchangeDesktopFlowToken(
 
   const originUrl = `${new URL(base).origin}/`;
   try {
-    // Zulip session cookies are usually SameSite=Lax; desktop file:// needs them relaxed explicitly.
+    // Workspace session cookies are usually SameSite=Lax; desktop file:// needs them relaxed explicitly.
     await relaxSessionCookieSameSite(originUrl);
   } catch (error) {
     throw new DesktopAuthExchangeError(

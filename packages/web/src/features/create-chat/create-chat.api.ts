@@ -1,5 +1,5 @@
 /**
- * Create chat API — Zulip endpoints for starting new conversations.
+ * Create chat API — Workspace endpoints for starting new conversations.
  *
  * DM: just navigate to /dm/<userId> — no explicit "create" API needed.
  * Group: same — navigate to /dm/<id1>,<id2>,... with first message.
@@ -8,10 +8,10 @@
  * Also: channel listing and unsubscribe for management flows.
  */
 
-import { zulipApi } from "~/shared/api/client";
-import { unarchiveStream } from "~/shared/api/zulip-streams";
-import type { UnarchiveStreamResult } from "~/shared/api/zulip-streams";
-import type { ZulipGroupSettingValue } from "~/shared/api/zulip.types";
+import { messengerApi } from "~/shared/api/client";
+import { unarchiveStream } from "~/shared/api/messenger-streams";
+import type { UnarchiveStreamResult } from "~/shared/api/messenger-streams";
+import type { MessengerGroupSettingValue } from "~/shared/api/messenger.types";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
 
@@ -20,7 +20,7 @@ const log = createLogger("create-chat:api");
 /**
  * Create a new channel (stream) and subscribe the current user + selected subscribers.
  *
- * Zulip API: POST /channels/create
+ * Messenger API: POST /channels/create
  */
 export async function createChannel(params: {
   name: string;
@@ -28,7 +28,7 @@ export async function createChannel(params: {
   subscribers: number[];
   inviteOnly?: boolean;
   announce?: boolean;
-  canSendMessageGroup?: ZulipGroupSettingValue;
+  canSendMessageGroup?: MessengerGroupSettingValue;
 }): Promise<{ streamId: number } | null> {
   guard.nonEmpty(params.name, "channel name");
   for (const uid of params.subscribers) {
@@ -65,7 +65,7 @@ export async function createChannel(params: {
           : JSON.stringify(params.canSendMessageGroup);
     }
 
-    const res = await zulipApi.post("/channels/create", body);
+    const res = await messengerApi.post("/channels/create", body);
 
     if (res.ok) {
       log.info("Channel created", { name: params.name });
@@ -83,7 +83,7 @@ export async function createChannel(params: {
   }
 }
 
-/** Unarchive channel result (thin wrapper over Zulip PATCH). */
+/** Unarchive channel result (thin wrapper over Workspace PATCH). */
 export type UnarchiveChannelResult = UnarchiveStreamResult;
 
 /**
@@ -110,11 +110,11 @@ export interface SubscribedChannel {
 /**
  * Fetch all channels the current user is subscribed to.
  *
- * Zulip API: GET /users/me/subscriptions
+ * Messenger API: GET /users/me/subscriptions
  */
 export async function fetchSubscribedChannels(): Promise<SubscribedChannel[]> {
   try {
-    const res = await zulipApi.get("/users/me/subscriptions");
+    const res = await messengerApi.get("/users/me/subscriptions");
 
     if (!res.ok) {
       log.warn("Failed to fetch subscribed channels", { status: res.status });
@@ -157,7 +157,7 @@ export interface SubscribeCurrentUserToStreamResult {
 /**
  * Subscribes the current user to an existing channel.
  *
- * Zulip API: POST /users/me/subscriptions (no principals — caller is subscribed).
+ * Messenger API: POST /users/me/subscriptions (no principals — caller is subscribed).
  */
 export async function subscribeCurrentUserToStream(
   streamName: string,
@@ -169,7 +169,7 @@ export async function subscribeCurrentUserToStream(
   guard.userId(userId, "subscribeCurrentUserToStream.userId");
 
   try {
-    const res = await zulipApi.post("/users/me/subscriptions", {
+    const res = await messengerApi.post("/users/me/subscriptions", {
       subscriptions: JSON.stringify([{ name: normalizedName }]),
     });
 
@@ -199,13 +199,13 @@ export async function subscribeCurrentUserToStream(
 /**
  * Unsubscribe the current user from a channel.
  *
- * Zulip API: DELETE /users/me/subscriptions with subscriptions body.
+ * Messenger API: DELETE /users/me/subscriptions with subscriptions body.
  */
 export async function unsubscribeChannel(streamName: string): Promise<boolean> {
   guard.nonEmpty(streamName, "stream name");
 
   try {
-    const res = await zulipApi.delete("/users/me/subscriptions", {
+    const res = await messengerApi.delete("/users/me/subscriptions", {
       subscriptions: JSON.stringify([streamName]),
     });
 

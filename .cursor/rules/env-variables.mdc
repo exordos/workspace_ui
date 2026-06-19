@@ -18,7 +18,7 @@ env.WORKSPACE_API_BASE // dev: `/workspace{rest}`; prod: origin + rest or overri
 env.JITSI_MEET_DOMAIN
 env.JITSI_MEET_BASE_URL
 env.WORKSPACE_UPLOADS_ORIGIN
-env.ZULIP_API_PATH
+env.MESSENGER_API_V1_PATH
 env.WORKSPACE_API_PATH
 env.CDN_URL
 env.BASE_URL
@@ -39,7 +39,7 @@ env.PROD
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `VITE_WORKSPACE_API_ORIGIN` | No | Optional default API/realm host; multi-org uses instance + `X-Workspace-Dev-Target-Origin` in dev |
-| `ZULIP_API_PATH` / `WORKSPACE_API_PATH` / `WORKSPACE_REST_API_PATH` / `WORKSPACE_GATEWAY_V1_PATH` | — | Fixed in `~/shared/config/workspace-api-layout.ts`; exposed on `env`, not `VITE_*` |
+| `MESSENGER_API_V1_PATH` / `WORKSPACE_API_PATH` / `WORKSPACE_REST_API_PATH` / `WORKSPACE_GATEWAY_V1_PATH` | — | Fixed in `~/shared/config/workspace-api-layout.ts`; exposed on `env`, not `VITE_*` |
 | `VITE_JITSI_MEET_DOMAIN` | No | Jitsi Meet domain (without protocol) |
 | `VITE_WORKSPACE_API_BASE_URL` | No | Override Workspace REST base |
 | `VITE_CDN_URL` | No | CDN origin for static assets |

@@ -1,5 +1,5 @@
 /**
- * Canonical URL keys for matching message text URLs to Zulip embed targets.
+ * Canonical URL keys for matching message text URLs to the messenger API embed targets.
  */
 import type { LinkPreviewData } from "~/shared/lib/message-link-preview.types";
 

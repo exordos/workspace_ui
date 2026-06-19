@@ -3,7 +3,7 @@ import type {
   MockMessage,
   Reaction,
   RealmEmoji,
-} from "~/shared/api/zulip.types";
+} from "~/shared/api/messenger.types";
 import type { MessageBubbleCallbacks } from "./message-bubble.types";
 import type { MessageMediaGallery } from "./message-list-media.lib";
 

@@ -45,7 +45,7 @@ vi.mock("~/entities/chat-list/chat-list-mentions-sync.lib", () => ({
   ensureMentionsUnreadSynced: (...args: unknown[]) => ensureMentionsUnreadSyncedMock(...args),
 }));
 
-vi.mock("~/shared/api/zulip-users", () => ({
+vi.mock("~/shared/api/messenger-users", () => ({
   fetchRealmPresence: () => fetchRealmPresenceMock(),
 }));
 

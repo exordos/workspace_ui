@@ -1,5 +1,5 @@
 /**
- * OIDC desktop continuation helpers for Zulip external auth flow.
+ * OIDC desktop continuation helpers for the messenger API external auth flow.
  *
  * This module handles:
  * - OTP generation for desktop_flow_otp
@@ -12,7 +12,7 @@ import { isValidEmail } from "~/shared/lib/validation";
 
 const log = createLogger("oidc-desktop");
 
-const FLOW_STORAGE_KEY = "zulip-web-oidc-desktop-flow";
+const FLOW_STORAGE_KEY = "messenger-web-oidc-desktop-flow";
 const FLOW_TTL_MS = 10 * 60 * 1000;
 const OTP_BYTE_LENGTH = 32;
 const IV_BYTE_LENGTH = 12;

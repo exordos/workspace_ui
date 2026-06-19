@@ -1,5 +1,5 @@
 /**
- * Decides when Layout should run folder-sync bootstrap for the active Zulip instance.
+ * Decides when Layout should run folder-sync bootstrap for the active organization instance.
  *
  * Folders use Workspace REST credentials from the instance store and do not depend on the
  * chat-list bootstrap finishing; gating only on `currentUserStatus === "ready"` delays rail

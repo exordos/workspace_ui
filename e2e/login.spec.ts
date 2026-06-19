@@ -6,7 +6,7 @@ import {
   LOGIN_SERVER_FIELD,
   expectLoginOrganizationStep,
 } from "./fixtures";
-import { E2E_EMAIL, E2E_REALM } from "./mocks/zulip-default-responses";
+import { E2E_EMAIL, E2E_REALM } from "./mocks/messenger-default-responses";
 
 test.describe("Login page", () => {
   test("shows login form when no instances", async ({ guestPage }) => {
@@ -16,7 +16,7 @@ test.describe("Login page", () => {
 
   test("has realm, email, and password fields across login steps", async ({
     guestPage,
-    zulipApi: _zulipApi,
+    messengerApi: _messengerApi,
   }) => {
     await guestPage.goto("/");
     await guestPage.getByLabel(LOGIN_SERVER_FIELD).fill(E2E_REALM);
@@ -29,7 +29,7 @@ test.describe("Login page", () => {
 
   test("login button is present after entering email", async ({
     guestPage,
-    zulipApi: _zulipApi,
+    messengerApi: _messengerApi,
   }) => {
     await guestPage.goto("/");
     await guestPage.getByLabel(LOGIN_SERVER_FIELD).fill(E2E_REALM);

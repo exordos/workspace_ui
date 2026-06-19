@@ -1,4 +1,4 @@
-// Tests for Zulip user group store.
+// Tests for the messenger API user group store.
 // Covers membership logic for nested groups and group-setting values.
 import { afterEach, describe, expect, it } from "vitest";
 import { useUserGroupsStore } from "./user-group.model";

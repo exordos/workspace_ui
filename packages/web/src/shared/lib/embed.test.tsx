@@ -60,7 +60,7 @@ describe("getAllowedOrigins", () => {
     expect(Array.isArray(getAllowedOrigins())).toBe(true);
   });
 
-  // When configured, the workspace/zulip origin must be in the list
+  // When configured, the workspace/messenger origin must be in the list
   it("includes workspace origin if set", () => {
     const origins = getAllowedOrigins();
     if (origins.length === 0) {

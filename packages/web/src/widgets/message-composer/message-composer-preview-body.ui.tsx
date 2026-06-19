@@ -1,6 +1,6 @@
 import React, { useMemo, useRef } from "react";
 import { t } from "~/i18n/i18n";
-import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
+import { getRealmBaseUrl } from "~/shared/api/messenger-client.internal";
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
 import { MESSAGE_COMPOSER_PREVIEW_BODY_CLASS_NAME } from "~/shared/lib/message-body-rich-text-classes";
 import { prepareProtectedMessageHtml } from "~/shared/lib/protected-message-media";

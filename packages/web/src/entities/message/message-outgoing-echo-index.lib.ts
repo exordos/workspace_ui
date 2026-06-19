@@ -1,7 +1,7 @@
 /**
  * Index pending outgoing messages by local echo key for O(1) realtime echo replacement.
  */
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 
 export function buildSendingEchoKeyIndex(messages: readonly MockMessage[]): Map<number, number> {
   const index = new Map<number, number>();

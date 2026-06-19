@@ -1,5 +1,5 @@
 /**
- * Draft API — Zulip Drafts endpoints.
+ * Draft API — Workspace Drafts endpoints.
  *
  * GET /drafts — fetch all drafts
  * POST /drafts — create draft(s)
@@ -7,7 +7,7 @@
  * DELETE /drafts/{id} — delete a draft
  */
 
-import { zulipApi } from "~/shared/api/client";
+import { messengerApi } from "~/shared/api/client";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
 import type { Draft, DraftInput } from "./draft.types";
@@ -16,7 +16,7 @@ const log = createLogger("draft:api");
 
 export async function fetchDrafts(): Promise<Draft[]> {
   try {
-    const res = await zulipApi.get("/drafts");
+    const res = await messengerApi.get("/drafts");
     if (!res.ok) {
       log.warn("Fetch drafts failed", { status: res.status });
       throw new Error(`Fetch drafts failed with status ${res.status}`);
@@ -57,7 +57,7 @@ export async function createDraft(input: DraftInput): Promise<number | null> {
   }
 
   try {
-    const res = await zulipApi.post("/drafts", {
+    const res = await messengerApi.post("/drafts", {
       drafts: JSON.stringify([
         {
           type: input.type,
@@ -92,7 +92,7 @@ export async function updateDraftOnServer(id: number, input: DraftInput): Promis
   }
 
   try {
-    const res = await zulipApi.patch(`/drafts/${id}`, {
+    const res = await messengerApi.patch(`/drafts/${id}`, {
       draft: JSON.stringify({
         type: input.type,
         to: input.to,
@@ -111,7 +111,7 @@ export async function deleteDraftOnServer(id: number): Promise<boolean> {
   guard.messageId(id, "deleteDraftOnServer");
 
   try {
-    const res = await zulipApi.delete(`/drafts/${id}`);
+    const res = await messengerApi.delete(`/drafts/${id}`);
     return res.ok;
   } catch (err) {
     log.error("Delete draft error", { id, error: String(err) });

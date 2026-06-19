@@ -9,7 +9,7 @@ const fetchApiKey = vi.hoisted(() => vi.fn());
 const fetchServerSettings = vi.hoisted(() => vi.fn());
 
 const VALID_SERVER_SETTINGS = {
-  realm_name: "Example Zulip",
+  realm_name: "Example Workspace",
   realm_uri: "https://chat.example.com",
   realm_url: "https://chat.example.com",
   realm_icon: "",
@@ -35,8 +35,8 @@ vi.mock("react-router-dom", async () => {
   };
 });
 
-vi.mock("~/shared/api/zulip-auth", async () => {
-  const actual = await vi.importActual("~/shared/api/zulip-auth");
+vi.mock("~/shared/api/messenger-auth", async () => {
+  const actual = await vi.importActual("~/shared/api/messenger-auth");
   return {
     ...actual,
     fetchApiKey,
@@ -52,8 +52,8 @@ describe("LoginPage", () => {
 
   afterEach(() => {
     useInstancesStore.setState({ instances: [], currentInstanceId: null });
-    localStorage.removeItem("zulip-web-instances");
-    localStorage.removeItem("zulip-web-current-instance");
+    localStorage.removeItem("messenger-web-instances");
+    localStorage.removeItem("messenger-web-current-instance");
     navigateSpy.mockReset();
     fetchApiKey.mockReset();
     fetchServerSettings.mockReset();
@@ -67,9 +67,7 @@ describe("LoginPage", () => {
     });
 
     return waitFor(() => {
-      expect(screen.getByLabelText(/zulip server address/i)).toHaveValue(
-        "https://chat.example.com",
-      );
+      expect(screen.getByLabelText(/server address/i)).toHaveValue("https://chat.example.com");
     });
   });
 
@@ -86,7 +84,7 @@ describe("LoginPage", () => {
     renderWithProviders(<LoginPage />, { route: "/login" });
 
     const continueButton = screen.getByRole("button", { name: /next/i });
-    const realmInput = screen.getByLabelText(/zulip server address/i);
+    const realmInput = screen.getByLabelText(/server address/i);
 
     expect(continueButton).toBeDisabled();
 
@@ -108,7 +106,7 @@ describe("LoginPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /exordos core public/i }));
 
-    expect(screen.getByLabelText(/zulip server address/i)).toHaveValue(
+    expect(screen.getByLabelText(/server address/i)).toHaveValue(
       "https://public.Exordos.example.com",
     );
     expect(screen.getByRole("button", { name: /next/i })).toBeEnabled();
@@ -128,7 +126,7 @@ describe("LoginPage", () => {
 
     renderWithProviders(<LoginPage />, { route: "/login" });
 
-    fireEvent.change(screen.getByLabelText(/zulip server address/i), {
+    fireEvent.change(screen.getByLabelText(/server address/i), {
       target: { value: "https://chat.example.com" },
     });
     fireEvent.click(screen.getByRole("button", { name: /next/i }));
@@ -146,7 +144,7 @@ describe("LoginPage", () => {
 
     renderWithProviders(<LoginPage />, { route: "/login" });
 
-    fireEvent.change(screen.getByLabelText(/zulip server address/i), {
+    fireEvent.change(screen.getByLabelText(/server address/i), {
       target: { value: "https://chat.example.com" },
     });
     fireEvent.click(screen.getByRole("button", { name: /next/i }));
@@ -179,7 +177,7 @@ describe("LoginPage", () => {
 
     renderWithProviders(<LoginPage />, { route: "/login" });
 
-    const realmInput = screen.getByLabelText(/zulip server address/i);
+    const realmInput = screen.getByLabelText(/server address/i);
     fireEvent.change(realmInput, {
       target: { value: "https://chat.example.com" },
     });
@@ -201,7 +199,7 @@ describe("LoginPage", () => {
 
     renderWithProviders(<LoginPage />, { route: "/login" });
 
-    fireEvent.change(screen.getByLabelText(/zulip server address/i), {
+    fireEvent.change(screen.getByLabelText(/server address/i), {
       target: { value: "https://chat.example.com" },
     });
     fireEvent.click(screen.getByRole("button", { name: /next/i }));
@@ -223,7 +221,7 @@ describe("LoginPage", () => {
 
     renderWithProviders(<LoginPage />, { route: "/login" });
 
-    const realmInput = screen.getByLabelText(/zulip server address/i);
+    const realmInput = screen.getByLabelText(/server address/i);
     fireEvent.change(realmInput, {
       target: { value: "https://sys.pla" },
     });
@@ -251,9 +249,7 @@ describe("LoginPage", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/zulip server address/i)).toHaveValue(
-        "https://chat.example.com",
-      );
+      expect(screen.getByLabelText(/server address/i)).toHaveValue("https://chat.example.com");
     });
 
     fireEvent.click(screen.getByRole("button", { name: /next/i }));
@@ -289,9 +285,7 @@ describe("LoginPage", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/zulip server address/i)).toHaveValue(
-        "https://chat.example.com",
-      );
+      expect(screen.getByLabelText(/server address/i)).toHaveValue("https://chat.example.com");
     });
 
     fireEvent.click(screen.getByRole("button", { name: /next/i }));
@@ -323,9 +317,7 @@ describe("LoginPage", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/zulip server address/i)).toHaveValue(
-        "https://chat.example.com",
-      );
+      expect(screen.getByLabelText(/server address/i)).toHaveValue("https://chat.example.com");
     });
 
     fireEvent.click(screen.getByRole("button", { name: /next/i }));
@@ -349,7 +341,7 @@ describe("LoginPage", () => {
 
   it("stores realm icon in instance data after successful login", async () => {
     fetchServerSettings.mockResolvedValue({
-      realm_name: "Example Zulip",
+      realm_name: "Example Workspace",
       realm_uri: "",
       realm_url: "",
       realm_icon: "https://cdn.example.com/realm-logo.svg",
@@ -365,11 +357,11 @@ describe("LoginPage", () => {
       route: "/login?realm=https%3A%2F%2Fchat.example.com",
     });
 
-    const realmInput = await screen.findByLabelText(/zulip server address/i);
+    const realmInput = await screen.findByLabelText(/server address/i);
     fireEvent.blur(realmInput);
 
     await waitFor(() => {
-      expect(screen.getByText("Example Zulip")).toBeInTheDocument();
+      expect(screen.getByText("Example Workspace")).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole("button", { name: /next/i }));
@@ -393,7 +385,7 @@ describe("LoginPage", () => {
 
   it("stores raw relative realm_icon path for post-login logo resolution", async () => {
     fetchServerSettings.mockResolvedValue({
-      realm_name: "Example Zulip",
+      realm_name: "Example Workspace",
       realm_uri: "",
       realm_url: "",
       realm_icon: "/user_avatars/1/realm/icon.png",
@@ -409,11 +401,11 @@ describe("LoginPage", () => {
       route: "/login?realm=https%3A%2F%2Fchat.example.com",
     });
 
-    const realmInput = await screen.findByLabelText(/zulip server address/i);
+    const realmInput = await screen.findByLabelText(/server address/i);
     fireEvent.blur(realmInput);
 
     await waitFor(() => {
-      expect(screen.getByText("Example Zulip")).toBeInTheDocument();
+      expect(screen.getByText("Example Workspace")).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole("button", { name: /next/i }));
@@ -453,7 +445,7 @@ describe("LoginPage", () => {
       route: "/login?realm=https%3A%2F%2Fgw.example.com",
     });
 
-    const realmInput = await screen.findByLabelText(/zulip server address/i);
+    const realmInput = await screen.findByLabelText(/server address/i);
     fireEvent.blur(realmInput);
 
     await waitFor(() => {
@@ -497,7 +489,7 @@ describe("LoginPage", () => {
       route: "/login?realm=https%3A%2F%2Fchat.example.com%2Fapi%2Fv1",
     });
 
-    const realmInput = await screen.findByLabelText(/zulip server address/i);
+    const realmInput = await screen.findByLabelText(/server address/i);
     fireEvent.blur(realmInput);
     await waitFor(() => {
       expect(fetchServerSettings).toHaveBeenCalledWith("https://chat.example.com/api/v1");
@@ -522,7 +514,7 @@ describe("LoginPage", () => {
 
   it("shows fallback organization logo when realm icon is absent", async () => {
     fetchServerSettings.mockResolvedValue({
-      realm_name: "Example Zulip",
+      realm_name: "Example Workspace",
       realm_uri: "",
       realm_url: "",
       realm_icon: "",
@@ -533,11 +525,11 @@ describe("LoginPage", () => {
       route: "/login?realm=https%3A%2F%2Fchat.example.com",
     });
 
-    const realmInput = await screen.findByLabelText(/zulip server address/i);
+    const realmInput = await screen.findByLabelText(/server address/i);
     fireEvent.blur(realmInput);
 
     await waitFor(() => {
-      expect(screen.getByText("Example Zulip")).toBeInTheDocument();
+      expect(screen.getByText("Example Workspace")).toBeInTheDocument();
     });
     await screen.findByRole("button", { name: /next/i });
 
@@ -609,7 +601,7 @@ describe("LoginPage", () => {
       route: "/login?realm=https%3A%2F%2Fchat.example.com",
     });
 
-    const realmInput = await screen.findByLabelText(/zulip server address/i);
+    const realmInput = await screen.findByLabelText(/server address/i);
     fireEvent.blur(realmInput);
     await screen.findByRole("button", { name: /next/i });
     fireEvent.click(screen.getByRole("button", { name: /next/i }));

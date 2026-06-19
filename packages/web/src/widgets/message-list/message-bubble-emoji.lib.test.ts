@@ -1,6 +1,6 @@
 import { SkinTones } from "emoji-picker-react";
 import { describe, expect, it } from "vitest";
-import type { Reaction } from "~/shared/api/zulip.types";
+import type { Reaction } from "~/shared/api/messenger.types";
 import {
   getReactionDisplayChar,
   isOneToOneDirectMessage,
@@ -99,7 +99,7 @@ describe("reactionPayloadFromEmojiClickData", () => {
     });
   });
 
-  it("derives canonical zulip shortcode from unified unicode, not picker keywords", () => {
+  it("derives canonical messenger shortcode from unified unicode, not picker keywords", () => {
     const payload = reactionPayloadFromEmojiClickData({
       activeSkinTone: SkinTones.NEUTRAL,
       unified: "1f6e0-fe0f",

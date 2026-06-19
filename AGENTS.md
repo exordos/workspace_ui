@@ -2,42 +2,42 @@
 
 ## Project Overview
 
-Workspace UI is an open-source corporate messenger built on the Zulip API, shipping as a desktop app (Electron), web app (SPA), PWA, and native mobile WebView — all from a single React 19 codebase. The architecture follows Feature-Sliced Design (FSD) with strict 6-layer isolation, 50 Cursor rules governing code quality, and a defensive programming model using runtime guards, invariants, and exhaustive type checking. The project supports white-label rebranding via environment variables, full i18n (English default + Russian), and two theme palettes with dark/light modes.
+Workspace UI is an open-source corporate messenger built on the Messenger API, shipping as a desktop app (Electron), web app (SPA), PWA, and native mobile WebView — all from a single React 19 codebase. The architecture follows Feature-Sliced Design (FSD) with strict 6-layer isolation, 50 Cursor rules governing code quality, and a defensive programming model using runtime guards, invariants, and exhaustive type checking. The project supports white-label rebranding via environment variables, full i18n (English default + Russian), and two theme palettes with dark/light modes.
 
 > **Canonical counts and paths:** [docs/PROJECT_FACTS.md](docs/PROJECT_FACTS.md)
 
 ## Tech Stack
 
-| Layer             | Technology                 | Details                                                              |
-| ----------------- | -------------------------- | -------------------------------------------------------------------- |
-| Language          | TypeScript 5.9             | `strict`, `noUncheckedIndexedAccess`, `verbatimModuleSyntax`, ES2022 |
-| Framework         | React 19                   | Functional components, hooks, Suspense, `React.lazy`                 |
-| Build             | Vite 8                     | SWC transpiler, tree-shaking, source maps, 400KB chunk budget        |
-| Styling           | Tailwind CSS 3.4           | CSS custom properties, 42 semantic design tokens, 4px grid           |
-| State             | Zustand 4.5                | 17 entity stores + feature/widget stores, cached selectors           |
-| Routing           | react-router-dom 7         | Lazy-loaded routes, nested layouts                                   |
-| UI Primitives     | Radix UI                   | dialog, dropdown-menu, scroll-area, tabs, tooltip                    |
-| API               | Zulip REST + Workspace API | Middleware pipeline: auth → logging → retry → parse                  |
-| Real-time         | Long-polling event loop    | `shared/lib/event-loop.ts`, background-tab resilient                 |
-| Video Calls       | Jitsi Meet React SDK       | PiP mode, call participants store                                    |
-| Push              | Firebase Cloud Messaging   | `shared/lib/push/`, Zulip token sync                                 |
-| Desktop           | Electron 42                | electron-builder, macOS code signing + notarization                  |
-| PWA               | vite-plugin-pwa + Workbox  | Install prompt, app badge, offline caching                           |
-| i18n              | Custom lightweight engine  | en (default) + ru, 3 Russian plural forms, interpolation             |
-| Unit Testing      | Vitest 4                   | 3800+ tests, 380+ test files, Jest-compatible API                    |
-| Component Testing | @testing-library/react     | + user-event for realistic interactions                              |
-| API Mocking       | MSW 2                      | Service worker interceptors                                          |
-| E2E Testing       | Playwright 1.60            | 15 specs, Chromium                                                   |
-| Linting           | ESLint 9                   | Flat config, type-checked, jsx-a11y, import-x                        |
-| Formatting        | Prettier                   | Enforced via pre-commit hook                                         |
-| Commit Lint       | commitlint                 | Conventional Commits format                                          |
-| Error Tracking    | Sentry 10                  | Opt-in via `VITE_SENTRY_DSN`, PII redaction                          |
-| Analytics         | GA4 + Yandex Metrica       | Opt-in, PII auto-stripped                                            |
-| Logging           | Custom structured logger   | Scoped, 15 auto-redaction patterns                                   |
-| CI                | GitHub Actions + GitLab CI | Dual pipeline                                                        |
-| Monorepo          | Lerna 9 + npm workspaces   | 3 packages: web, electron-app, workspace-api                         |
-| Icons             | vite-plugin-svgr           | 68 SVG icons as React components                                     |
-| Sanitization      | DOMPurify                  | HTML whitelist for Zulip content                                     |
+| Layer             | Technology                     | Details                                                              |
+| ----------------- | ------------------------------ | -------------------------------------------------------------------- |
+| Language          | TypeScript 5.9                 | `strict`, `noUncheckedIndexedAccess`, `verbatimModuleSyntax`, ES2022 |
+| Framework         | React 19                       | Functional components, hooks, Suspense, `React.lazy`                 |
+| Build             | Vite 8                         | SWC transpiler, tree-shaking, source maps, 400KB chunk budget        |
+| Styling           | Tailwind CSS 3.4               | CSS custom properties, 42 semantic design tokens, 4px grid           |
+| State             | Zustand 4.5                    | 17 entity stores + feature/widget stores, cached selectors           |
+| Routing           | react-router-dom 7             | Lazy-loaded routes, nested layouts                                   |
+| UI Primitives     | Radix UI                       | dialog, dropdown-menu, scroll-area, tabs, tooltip                    |
+| API               | Messenger REST + Workspace API | Middleware pipeline: auth → logging → retry → parse                  |
+| Real-time         | Long-polling event loop        | `shared/lib/event-loop.ts`, background-tab resilient                 |
+| Video Calls       | Jitsi Meet React SDK           | PiP mode, call participants store                                    |
+| Push              | Firebase Cloud Messaging       | `shared/lib/push/`, messenger token sync                             |
+| Desktop           | Electron 42                    | electron-builder, macOS code signing + notarization                  |
+| PWA               | vite-plugin-pwa + Workbox      | Install prompt, app badge, offline caching                           |
+| i18n              | Custom lightweight engine      | en (default) + ru, 3 Russian plural forms, interpolation             |
+| Unit Testing      | Vitest 4                       | 3800+ tests, 380+ test files, Jest-compatible API                    |
+| Component Testing | @testing-library/react         | + user-event for realistic interactions                              |
+| API Mocking       | MSW 2                          | Service worker interceptors                                          |
+| E2E Testing       | Playwright 1.60                | 15 specs, Chromium                                                   |
+| Linting           | ESLint 9                       | Flat config, type-checked, jsx-a11y, import-x                        |
+| Formatting        | Prettier                       | Enforced via pre-commit hook                                         |
+| Commit Lint       | commitlint                     | Conventional Commits format                                          |
+| Error Tracking    | Sentry 10                      | Opt-in via `VITE_SENTRY_DSN`, PII redaction                          |
+| Analytics         | GA4 + Yandex Metrica           | Opt-in, PII auto-stripped                                            |
+| Logging           | Custom structured logger       | Scoped, 15 auto-redaction patterns                                   |
+| CI                | GitHub Actions + GitLab CI     | Dual pipeline                                                        |
+| Monorepo          | Lerna 9 + npm workspaces       | 3 packages: web, electron-app, workspace-api                         |
+| Icons             | vite-plugin-svgr               | 68 SVG icons as React components                                     |
+| Sanitization      | DOMPurify                      | HTML whitelist for messenger content                                 |
 
 ## Architecture
 
@@ -82,7 +82,7 @@ packages/web/src/
 ### Data Flow
 
 1. `main.tsx` → `app/app.tsx` — mounts router, providers, layout
-2. `widgets/layout/layout-zulip-event-loop.hook.ts` + `shared/lib/event-loop.ts` — registers Zulip event queue, starts long-polling
+2. `widgets/layout/layout-messenger-event-loop.hook.ts` + `shared/lib/event-loop.ts` — registers messenger event queue, starts long-polling
 3. `shared/api/client.ts` — all HTTP goes through middleware pipeline (auth → logging → retry)
 4. Entity stores (`entities/*/`) — single source of truth, cached selectors
 5. Components subscribe via `useStore((s) => s.field)` — minimal selectors only
@@ -105,40 +105,40 @@ Import rule: use **concrete segment files** (no barrel `index.ts` re-exports). E
 
 ### Shared Utilities (`shared/lib/`)
 
-| Module                 | File                    | Purpose                                                         |
-| ---------------------- | ----------------------- | --------------------------------------------------------------- |
-| **env**                | `env.ts`                | Centralized env vars — single access point for all `VITE_*`     |
-| **brand**              | `brand.ts`              | White-label config — NEVER hardcode "Workspace"                 |
-| **logger**             | `logger.ts`             | Structured scoped logging, 15 auto-redaction patterns           |
-| **guards**             | `guards.ts`             | Runtime invariants, domain guards, type guards, `safeCatch`     |
-| **roles**              | `roles.ts`              | Zulip 5-level hierarchy + 20 granular `hasPermission()` checks  |
-| **shortcuts**          | `shortcuts.ts`          | 25 keyboard shortcuts with context scoping                      |
-| **validation**         | `validation.ts`         | URL, email, file upload, filename sanitization, MIME detection  |
-| **html**               | (in shared/lib/)        | DOMPurify HTML sanitization for Zulip message content           |
-| **format**             | `format.ts`             | Date/time/size formatting utilities                             |
-| **auth-guard**         | `auth-guard.ts`         | `buildAuthHeader()`, session timeout (24h), `wipeCredentials()` |
-| **perf**               | `perf.ts`               | Timers, Web Vitals, performance marks, long task detection      |
-| **visibility**         | `visibility.ts`         | Background tab resilience, event loop resume on visibility      |
-| **network**            | `network.ts`            | Online/offline detection, auto-reconnect                        |
-| **presence**           | `presence.ts`           | User presence tracking with heartbeat                           |
-| **sentry**             | `sentry.ts`             | Error tracking (opt-in via `VITE_SENTRY_DSN`), PII redaction    |
-| **notifications**      | `notifications.ts`      | Unified: Electron IPC / Web Notifications API                   |
-| **updater**            | `updater.ts`            | Unified: Electron auto-updater / PWA SW update                  |
-| **os-integration**     | `os-integration.ts`     | Badge count, progress bar, tray icon, login items               |
-| **electron**           | `electron.ts`           | Electron detection + IPC bridge                                 |
-| **pwa**                | `pwa.ts`                | PWA install prompt + detection                                  |
-| **webview**            | `webview.ts`            | WebView bridge for native iOS/Android                           |
-| **deeplinks**          | `deeplinks.ts`          | URL builders, `workspace://` protocol                           |
-| **embed**              | `embed.tsx`             | Secure iframe embedding with origin allowlist                   |
-| **ai-context**         | `ai-context.ts`         | `window.__ai__` context bridge for AI agents                    |
-| **devtools**           | `devtools.ts`           | `window.__dev__` console tools (dev only)                       |
-| **touch**              | `touch.ts`              | Touch gesture handling                                          |
-| **gestures**           | `gestures.ts`           | Gesture recognition utilities                                   |
-| **focus**              | `focus.ts`              | Focus management utilities                                      |
-| **call-state**         | `call-state.ts`         | Call state management                                           |
-| **jitsi**              | `jitsi.ts`              | Jitsi Meet integration utilities                                |
-| **avatar**             | `avatar.ts`             | Avatar URL generation                                           |
-| **navigation-history** | `navigation-history.ts` | Navigation history tracking                                     |
+| Module                 | File                    | Purpose                                                            |
+| ---------------------- | ----------------------- | ------------------------------------------------------------------ |
+| **env**                | `env.ts`                | Centralized env vars — single access point for all `VITE_*`        |
+| **brand**              | `brand.ts`              | White-label config — NEVER hardcode "Workspace"                    |
+| **logger**             | `logger.ts`             | Structured scoped logging, 15 auto-redaction patterns              |
+| **guards**             | `guards.ts`             | Runtime invariants, domain guards, type guards, `safeCatch`        |
+| **roles**              | `roles.ts`              | Workspace 5-level hierarchy + 20 granular `hasPermission()` checks |
+| **shortcuts**          | `shortcuts.ts`          | 25 keyboard shortcuts with context scoping                         |
+| **validation**         | `validation.ts`         | URL, email, file upload, filename sanitization, MIME detection     |
+| **html**               | (in shared/lib/)        | DOMPurify HTML sanitization for messenger message content          |
+| **format**             | `format.ts`             | Date/time/size formatting utilities                                |
+| **auth-guard**         | `auth-guard.ts`         | `buildAuthHeader()`, session timeout (24h), `wipeCredentials()`    |
+| **perf**               | `perf.ts`               | Timers, Web Vitals, performance marks, long task detection         |
+| **visibility**         | `visibility.ts`         | Background tab resilience, event loop resume on visibility         |
+| **network**            | `network.ts`            | Online/offline detection, auto-reconnect                           |
+| **presence**           | `presence.ts`           | User presence tracking with heartbeat                              |
+| **sentry**             | `sentry.ts`             | Error tracking (opt-in via `VITE_SENTRY_DSN`), PII redaction       |
+| **notifications**      | `notifications.ts`      | Unified: Electron IPC / Web Notifications API                      |
+| **updater**            | `updater.ts`            | Unified: Electron auto-updater / PWA SW update                     |
+| **os-integration**     | `os-integration.ts`     | Badge count, progress bar, tray icon, login items                  |
+| **electron**           | `electron.ts`           | Electron detection + IPC bridge                                    |
+| **pwa**                | `pwa.ts`                | PWA install prompt + detection                                     |
+| **webview**            | `webview.ts`            | WebView bridge for native iOS/Android                              |
+| **deeplinks**          | `deeplinks.ts`          | URL builders, `workspace://` protocol                              |
+| **embed**              | `embed.tsx`             | Secure iframe embedding with origin allowlist                      |
+| **ai-context**         | `ai-context.ts`         | `window.__ai__` context bridge for AI agents                       |
+| **devtools**           | `devtools.ts`           | `window.__dev__` console tools (dev only)                          |
+| **touch**              | `touch.ts`              | Touch gesture handling                                             |
+| **gestures**           | `gestures.ts`           | Gesture recognition utilities                                      |
+| **focus**              | `focus.ts`              | Focus management utilities                                         |
+| **call-state**         | `call-state.ts`         | Call state management                                              |
+| **jitsi**              | `jitsi.ts`              | Jitsi Meet integration utilities                                   |
+| **avatar**             | `avatar.ts`             | Avatar URL generation                                              |
+| **navigation-history** | `navigation-history.ts` | Navigation history tracking                                        |
 
 ### Shared Subsystems (`shared/lib/`)
 
@@ -147,7 +147,7 @@ Import rule: use **concrete segment files** (no barrel `index.ts` re-exports). E
 | **themes**    | `themes/`    | Palette engine: Orange Warm + Blue Cold, 42 tokens, runtime switching |
 | **analytics** | `analytics/` | GA4 + Yandex Metrica, page views, custom events, consent              |
 | **plugins**   | `plugins/`   | Plugin registry, lifecycle hooks, dynamic loading, typed API          |
-| **push**      | `push/`      | FCM push notifications, Zulip token registration, middleware          |
+| **push**      | `push/`      | FCM push notifications, messenger token registration, middleware      |
 
 ### Shared API (`shared/api/`)
 
@@ -465,18 +465,18 @@ npm run version:tag  # Push release tag only (after MR merge to master)
 
 ### Architectural Decision Records (`docs/adr/`)
 
-| ADR                                                    | Decision                                    |
-| ------------------------------------------------------ | ------------------------------------------- |
-| `docs/adr/000-template.md`                             | ADR template                                |
-| `docs/adr/001-react-zustand-tailwind.md`               | React + Zustand + Tailwind stack choice     |
-| `docs/adr/002-electron-pwa-dual-target.md`             | Electron + PWA dual target                  |
-| `docs/adr/003-fsd-architecture.md`                     | FSD architecture adoption                   |
-| `docs/adr/004-dual-ci.md`                              | Dual CI (GitHub Actions + GitLab)           |
-| `docs/adr/005-white-label.md`                          | White-label strategy                        |
-| `docs/adr/006-versioning.md`                           | Semantic Versioning with synced monorepo    |
-| `docs/adr/007-open-source.md`                          | Open source (Apache 2.0)                    |
-| `docs/adr/008-workspace-http-path-defaults.md`         | Gateway vs vanilla Zulip HTTP path defaults |
-| `docs/adr/009-internal-libraries-inventory.md`         | Internal lib extraction + CC ratchet log    |
-| `docs/adr/010-indexeddb-subsystem.md`                  | IndexedDB subsystem (deferred)              |
-| `docs/adr/012-temporary-code-smell-audit.md`           | ESLint smell ratchet baseline               |
-| `docs/adr/013-greenfield-drop-client-legacy-compat.md` | Drop client legacy compat                   |
+| ADR                                                    | Decision                                            |
+| ------------------------------------------------------ | --------------------------------------------------- |
+| `docs/adr/000-template.md`                             | ADR template                                        |
+| `docs/adr/001-react-zustand-tailwind.md`               | React + Zustand + Tailwind stack choice             |
+| `docs/adr/002-electron-pwa-dual-target.md`             | Electron + PWA dual target                          |
+| `docs/adr/003-fsd-architecture.md`                     | FSD architecture adoption                           |
+| `docs/adr/004-dual-ci.md`                              | Dual CI (GitHub Actions + GitLab)                   |
+| `docs/adr/005-white-label.md`                          | White-label strategy                                |
+| `docs/adr/006-versioning.md`                           | Semantic Versioning with synced monorepo            |
+| `docs/adr/007-open-source.md`                          | Open source (Apache 2.0)                            |
+| `docs/adr/008-workspace-http-path-defaults.md`         | Gateway vs legacy messenger host HTTP path defaults |
+| `docs/adr/009-internal-libraries-inventory.md`         | Internal lib extraction + CC ratchet log            |
+| `docs/adr/010-indexeddb-subsystem.md`                  | IndexedDB subsystem (deferred)                      |
+| `docs/adr/012-temporary-code-smell-audit.md`           | ESLint smell ratchet baseline                       |
+| `docs/adr/013-greenfield-drop-client-legacy-compat.md` | Drop client legacy compat                           |

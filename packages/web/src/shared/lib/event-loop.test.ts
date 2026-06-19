@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { startZulipEventLoop, startZulipEventLoopForCredentials } from "./event-loop";
+import { startMessengerEventLoop, startMessengerEventLoopForCredentials } from "./event-loop";
+import * as messengerEventQueueRegistry from "./messenger-event-queue-registry.lib";
 import { reportUnexpectedError } from "./unexpected-error.lib";
-import * as zulipEventQueueRegistry from "./zulip-event-queue-registry.lib";
 
 const registerQueueMock = vi.fn();
 const getEventsMock = vi.fn();
@@ -17,7 +17,7 @@ const unsubResumeMock = vi.fn();
 const unsubReconnectMock = vi.fn();
 const unsubStatusMock = vi.fn();
 
-vi.mock("~/shared/api/zulip-queue", () => ({
+vi.mock("~/shared/api/messenger-queue", () => ({
   registerQueue: (...args: unknown[]) => registerQueueMock(...args),
   getEvents: (...args: unknown[]) => getEventsMock(...args),
   registerQueueForCredentials: (...args: unknown[]) => registerQueueForCredentialsMock(...args),
@@ -48,7 +48,7 @@ vi.mock("~/shared/lib/unexpected-error.lib", () => ({
   reportUnexpectedError: vi.fn(),
 }));
 
-describe("startZulipEventLoop", () => {
+describe("startMessengerEventLoop", () => {
   afterEach(() => {
     vi.clearAllMocks();
   });
@@ -79,7 +79,7 @@ describe("startZulipEventLoop", () => {
     const addSpy = vi.spyOn(controller.signal, "addEventListener");
     const removeSpy = vi.spyOn(controller.signal, "removeEventListener");
 
-    startZulipEventLoop({
+    startMessengerEventLoop({
       signal: controller.signal,
       onEvent: vi.fn(),
     });
@@ -117,11 +117,11 @@ describe("startZulipEventLoop", () => {
     waitForOnlineMock.mockResolvedValue(undefined);
     isOnlineMock.mockReturnValue(true);
 
-    const setQueueSpy = vi.spyOn(zulipEventQueueRegistry, "setZulipEventQueueId");
-    const clearQueueSpy = vi.spyOn(zulipEventQueueRegistry, "clearZulipEventQueueId");
+    const setQueueSpy = vi.spyOn(messengerEventQueueRegistry, "setMessengerEventQueueId");
+    const clearQueueSpy = vi.spyOn(messengerEventQueueRegistry, "clearMessengerEventQueueId");
 
     const controller = new AbortController();
-    startZulipEventLoop({
+    startMessengerEventLoop({
       instanceId: "inst-registry",
       signal: controller.signal,
       onEvent: vi.fn(),
@@ -173,7 +173,7 @@ describe("startZulipEventLoop", () => {
       apiKey: "k2",
     };
 
-    startZulipEventLoopForCredentials({
+    startMessengerEventLoopForCredentials({
       credentials,
       signal: controller.signal,
       onEvent: vi.fn(),
@@ -225,7 +225,7 @@ describe("startZulipEventLoop", () => {
     isOnlineMock.mockReturnValue(true);
 
     const controller = new AbortController();
-    startZulipEventLoop({
+    startMessengerEventLoop({
       signal: controller.signal,
       onEvent: vi.fn(),
       onQueueRegistered,
@@ -276,7 +276,7 @@ describe("startZulipEventLoop", () => {
     isOnlineMock.mockReturnValue(true);
 
     const controller = new AbortController();
-    startZulipEventLoop({
+    startMessengerEventLoop({
       signal: controller.signal,
       onEvent: vi.fn(),
       onBadQueue,
@@ -330,7 +330,7 @@ describe("startZulipEventLoop", () => {
     isOnlineMock.mockReturnValue(true);
 
     const controller = new AbortController();
-    startZulipEventLoop({
+    startMessengerEventLoop({
       signal: controller.signal,
       onEvent: vi.fn(),
     });
@@ -384,7 +384,7 @@ describe("startZulipEventLoop", () => {
       );
 
     const controller = new AbortController();
-    startZulipEventLoop({
+    startMessengerEventLoop({
       signal: controller.signal,
       onEvent: vi.fn(),
     });
@@ -440,7 +440,7 @@ describe("startZulipEventLoop", () => {
     isOnlineMock.mockReturnValue(true);
 
     const controller = new AbortController();
-    startZulipEventLoop({
+    startMessengerEventLoop({
       signal: controller.signal,
       onEvent,
       onBadQueue,
@@ -510,7 +510,7 @@ describe("startZulipEventLoop", () => {
       );
 
     const controller = new AbortController();
-    startZulipEventLoop({
+    startMessengerEventLoop({
       signal: controller.signal,
       onEvent: vi.fn(),
     });
@@ -561,7 +561,7 @@ describe("startZulipEventLoop", () => {
     isOnlineMock.mockReturnValue(true);
 
     const controller = new AbortController();
-    startZulipEventLoop({
+    startMessengerEventLoop({
       signal: controller.signal,
       onEvent: vi.fn(),
     });

@@ -1,20 +1,21 @@
 /**
  * Chat list store — manages sidebar chat entries (streams, DMs, topics).
  *
- * Built from raw Zulip messages; incrementally updated via real-time events.
+ * Built from raw messenger messages; incrementally updated via real-time events.
  * Tracks unread counts per topic/DM and a message-to-location index for flag/delete handling.
  */
 import { create } from "zustand";
 import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import type { ChatListSnapshotSerialized } from "~/shared/lib/chat-list-snapshot-serialize.lib";
 import { dmConversationKey } from "~/shared/lib/dm-key";
 import { logStoreAction } from "~/shared/lib/logger";
 import {
   logChatListFlow,
-  summarizeZulipMessagesForFlowDebug,
+  summarizeMessengerMessagesForFlowDebug,
 } from "~/shared/lib/message-flow-debug.lib";
+import { areGroupSettingValuesEqual } from "~/shared/lib/messenger-group-setting.lib";
 import { saveRecentDmPartners } from "~/shared/lib/recent-dms";
 import {
   logSidebarUnreadFlow,
@@ -23,7 +24,6 @@ import {
 } from "~/shared/lib/sidebar-unread-debug.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { resolveTopicMoveTargetMessageIds } from "~/shared/lib/update-message-topic-move.lib";
-import { areGroupSettingValuesEqual } from "~/shared/lib/zulip-group-setting.lib";
 import type {
   SidebarChat,
   StreamWithLast,
@@ -397,8 +397,8 @@ export const useChatListStore = create<ChatListState>((set, get) => {
     unreadStreamCounts: Map<string, number>,
     unreadDmCounts: Map<string, number>,
     unreadLocationMap: Map<number, MessageLocation>,
-    latestUnreadStreams: Map<string, ZulipRawMessage>,
-    latestUnreadDms: Map<string, ZulipRawMessage>,
+    latestUnreadStreams: Map<string, WorkspaceRawMessage>,
+    latestUnreadDms: Map<string, WorkspaceRawMessage>,
     effectiveUserId: number | null,
   ) => {
     const totalsBefore = summarizeSidebarUnreadTotals(get());
@@ -464,7 +464,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
         getAvatarMap(),
       );
       logChatListFlow("store: setFromMessages (full rebuild from messages)", {
-        ...summarizeZulipMessagesForFlowDebug(messages),
+        ...summarizeMessengerMessagesForFlowDebug(messages),
         currentUserId: effectiveUserId,
         streamsMapSize: bootstrapState.streamsMap.size,
         dmsMapSize: bootstrapState.dmsMap.size,
@@ -802,7 +802,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
 
     addMessages(messages) {
       logChatListFlow("store: addMessages (merge batch)", {
-        ...summarizeZulipMessagesForFlowDebug(messages),
+        ...summarizeMessengerMessagesForFlowDebug(messages),
         rawCount: messages.length,
         currentUserId: get().currentUserId,
         streamsMapSizeBefore: get().streamsMap.size,
@@ -889,7 +889,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
       logChatListFlow("store: applyStreamSidebarPreviewsFromMessages", {
         inputCount: messages.length,
         streamCount: streamMessages.length,
-        ...summarizeZulipMessagesForFlowDebug(streamMessages),
+        ...summarizeMessengerMessagesForFlowDebug(streamMessages),
       });
       patchSet(
         (state) => {

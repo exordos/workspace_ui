@@ -1,0 +1,17 @@
+interface BuildWorkspaceQuoteHeaderOptions {
+  senderName: string;
+  senderId: number;
+  wroteLabel: string;
+  permalinkUrl?: string | null;
+}
+
+/** messenger-style quote header: silent mention + optional "wrote" permalink suffix. */
+export function buildWorkspaceQuoteHeader(options: BuildWorkspaceQuoteHeaderOptions): string {
+  const { senderName, senderId, wroteLabel, permalinkUrl } = options;
+  const normalizedPermalink = permalinkUrl?.trim();
+  const permalinkSuffix =
+    normalizedPermalink != null && normalizedPermalink.length > 0
+      ? ` [${wroteLabel}](${normalizedPermalink})`
+      : "";
+  return `@_**${senderName}|${senderId}**${permalinkSuffix}:`;
+}

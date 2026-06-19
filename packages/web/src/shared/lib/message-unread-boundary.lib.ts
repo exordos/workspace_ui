@@ -1,4 +1,4 @@
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 
 /** True when the message is unread and not sent by the current user. */
 export function isUnreadMessageFromOthers(

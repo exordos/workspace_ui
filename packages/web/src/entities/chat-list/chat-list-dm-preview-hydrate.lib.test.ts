@@ -1,17 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
-import { fetchMessagesByIds } from "~/shared/api/zulip-messages";
-import type { ZulipRecentPrivateConversation, ZulipRawMessage } from "~/shared/api/zulip.types";
+import { fetchMessagesByIds } from "~/shared/api/messenger-messages";
+import type {
+  MessengerRecentPrivateConversation,
+  WorkspaceRawMessage,
+} from "~/shared/api/messenger.types";
 import { upsertDmIndexFromMessages } from "~/shared/lib/dm-index";
-import { useChatListStore } from "./chat-list.model";
 import {
   collectLastMessageIdsFromRecentPrivateConversations,
   hydrateDmSidebarPreviewsFromRecentConversations,
 } from "./chat-list-dm-preview-hydrate.lib";
+import { useChatListStore } from "./chat-list.model";
 
-vi.mock("~/shared/api/zulip-messages", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/shared/api/zulip-messages")>();
+vi.mock("~/shared/api/messenger-messages", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("~/shared/api/messenger-messages")>();
   return {
     ...actual,
     fetchMessagesByIds: vi.fn(),
@@ -40,7 +43,7 @@ function resetInstancesStore(): void {
   });
 }
 
-function seedActiveInstance(realm = "https://zulip.test"): string {
+function seedActiveInstance(realm = "https://messenger.test"): string {
   return useInstancesStore.getState().addInstance({
     realm,
     email: "dm@example.com",
@@ -48,7 +51,7 @@ function seedActiveInstance(realm = "https://zulip.test"): string {
   }).id;
 }
 
-function dmMessage(overrides: Partial<ZulipRawMessage> = {}): ZulipRawMessage {
+function dmMessage(overrides: Partial<WorkspaceRawMessage> = {}): WorkspaceRawMessage {
   return {
     id: 100,
     sender_id: 20,
@@ -67,7 +70,7 @@ function dmMessage(overrides: Partial<ZulipRawMessage> = {}): ZulipRawMessage {
 
 describe("collectLastMessageIdsFromRecentPrivateConversations", () => {
   it("returns unique positive max_message_id values", () => {
-    const conversations: Record<string, ZulipRecentPrivateConversation> = {
+    const conversations: Record<string, MessengerRecentPrivateConversation> = {
       a: { user_ids: [7, 20], max_message_id: 100, unread_message_ids: [] },
       b: { user_ids: [7, 30], max_message_id: 100, unread_message_ids: [1] },
       c: { user_ids: [7, 40], max_message_id: 200, unread_message_ids: [] },
@@ -90,7 +93,7 @@ describe("collectLastMessageIdsFromRecentPrivateConversations", () => {
   });
 
   it("ignores null, zero, and missing conversations", () => {
-    const conversations: Record<string, ZulipRecentPrivateConversation> = {
+    const conversations: Record<string, MessengerRecentPrivateConversation> = {
       a: { user_ids: [7, 20], max_message_id: null, unread_message_ids: [] },
       b: { user_ids: [7, 30], max_message_id: 0, unread_message_ids: [] },
     };
@@ -137,7 +140,7 @@ describe("hydrateDmSidebarPreviewsFromRecentConversations", () => {
   });
 
   it("drops stale DM preview results after organization switch", async () => {
-    let resolveFetch!: (value: ZulipRawMessage[]) => void;
+    let resolveFetch!: (value: WorkspaceRawMessage[]) => void;
     fetchMessagesByIdsMock.mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -153,7 +156,7 @@ describe("hydrateDmSidebarPreviewsFromRecentConversations", () => {
       instanceId: useInstancesStore.getState().currentInstanceId ?? undefined,
     });
 
-    const secondInstanceId = seedActiveInstance("https://zulip-2.test");
+    const secondInstanceId = seedActiveInstance("https://messenger-2.test");
     useInstancesStore.getState().setCurrentInstanceId(secondInstanceId);
     useChatListStore.getState().clear();
 

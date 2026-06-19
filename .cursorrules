@@ -1,6 +1,6 @@
 # Workspace UI — Cursor Agent Instructions
 
-You are working on **Workspace UI**, an open-source corporate messenger built on the Zulip API.
+You are working on **Workspace UI**, an open-source corporate messenger built on the Messenger API.
 The codebase uses **Feature-Sliced Design (FSD)** architecture.
 
 ## Quick Facts

@@ -1,4 +1,4 @@
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { parseJitsiUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
 
 /** Human-readable room title from a Jitsi meeting URL (for call bubbles). */

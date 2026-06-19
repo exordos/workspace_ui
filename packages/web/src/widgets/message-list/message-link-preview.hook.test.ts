@@ -1,7 +1,7 @@
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useLinkPreviewStore } from "~/entities/link-preview/link-preview.model";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { useMessageLinkPreview } from "./message-link-preview.hook";
 import type { RefObject } from "react";
 

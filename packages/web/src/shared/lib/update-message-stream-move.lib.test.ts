@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { ZulipEvent } from "~/shared/api/zulip.types";
+import type { MessengerEvent } from "~/shared/api/messenger.types";
 import { extractStreamMoveFromUpdateEvent } from "./update-message-stream-move.lib";
 
 describe("update-message-stream-move.lib", () => {
   it("extracts cross-channel move payload when new_stream_id differs from stream_id", () => {
-    const event: ZulipEvent = {
+    const event: MessengerEvent = {
       id: 1,
       type: "update_message",
       stream_id: 10,

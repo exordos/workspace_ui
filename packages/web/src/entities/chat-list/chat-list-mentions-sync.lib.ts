@@ -7,7 +7,7 @@ import { useUsersStore } from "~/entities/user/user.model";
 import {
   fetchUnreadMentionsPage,
   MENTIONS_UNREAD_SYNC_PAGE_SIZE,
-} from "~/shared/api/zulip-messages";
+} from "~/shared/api/messenger-messages";
 import { createLogger } from "~/shared/lib/logger";
 import { runInFlightDeduped } from "~/shared/lib/request-lifecycle.lib";
 

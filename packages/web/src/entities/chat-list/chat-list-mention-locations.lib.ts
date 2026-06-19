@@ -1,12 +1,12 @@
 /**
  * Maps unread @mention message ids to sidebar stream/topic/DM rows via messageIdToLocation.
  */
-import type { MockMessage, ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { MockMessage, WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import type { MessageLocation } from "./chat-list.model.types";
 
-export type MentionFlagMessage = Pick<ZulipRawMessage, "id" | "sender_id" | "flags">;
+export type MentionFlagMessage = Pick<WorkspaceRawMessage, "id" | "sender_id" | "flags">;
 
 export interface MentionLocationFlags {
   streamIds: ReadonlySet<number>;
@@ -72,7 +72,7 @@ export function messageLocationFromMockMessage(
 }
 
 export function messageLocationFromRawMessage(
-  message: Pick<ZulipRawMessage, "id" | "type" | "stream_id" | "subject" | "display_recipient">,
+  message: Pick<WorkspaceRawMessage, "id" | "type" | "stream_id" | "subject" | "display_recipient">,
   currentUserId: number | null,
 ): MessageLocation | null {
   if (message.type === "stream" && message.stream_id != null) {

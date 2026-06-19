@@ -3,7 +3,7 @@
  *
  * Covers payload type shapes, the pushService facade (permission, registration,
  * message subscription), the initPush bootstrap, the usePushState hook export,
- * Zulip push token registration, and the FCM provider factory. In test
+ * messenger push token registration, and the FCM provider factory. In test
  * environment, most browser APIs are unavailable so tests focus on API shape
  * and safe fallback behavior.
  */
@@ -17,7 +17,7 @@ describe("push notification types", () => {
   it("PushMessagePayload message event has correct shape", () => {
     const payload: PushMessagePayload = {
       event: "message",
-      realm_uri: "https://zulip.example.com",
+      realm_uri: "https://chat.example.com",
       message: {
         id: 1,
         sender_id: 42,
@@ -46,7 +46,7 @@ describe("push notification types", () => {
   it("PushMessagePayload test event is minimal", () => {
     const payload: PushMessagePayload = {
       event: "test",
-      realm_uri: "https://zulip.example.com",
+      realm_uri: "https://chat.example.com",
     };
     expect(payload.event).toBe("test");
   });
@@ -143,15 +143,15 @@ describe("usePushState", () => {
   });
 });
 
-// Zulip push registration sends the device token to the server for routing.
-describe("zulip push registration", () => {
+// messenger push registration sends the device token to the server for routing.
+describe("messenger push registration", () => {
   it("registerPushToken is exported", async () => {
-    const { registerPushToken } = await import("./zulip");
+    const { registerPushToken } = await import("./messenger");
     expect(typeof registerPushToken).toBe("function");
   });
 
   it("unregisterPushToken is exported", async () => {
-    const { unregisterPushToken } = await import("./zulip");
+    const { unregisterPushToken } = await import("./messenger");
     expect(typeof unregisterPushToken).toBe("function");
   });
 });

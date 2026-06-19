@@ -3,7 +3,7 @@
  * panel user card, chat-info sync, presence fallbacks, resolved panel title.
  */
 import { useMemo } from "react";
-import type { ZulipInstance } from "~/entities/instance/instance.model";
+import type { WorkspaceInstance } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
 import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
@@ -18,7 +18,7 @@ import { useLayoutUserProfileAutoload } from "./layout-user-profile-autoload.hoo
 import { useLayoutUserStatusFallback } from "./layout-user-status-fallback.hook";
 
 export interface UseLayoutRightPanelShellParams {
-  instances: readonly ZulipInstance[];
+  instances: readonly WorkspaceInstance[];
   currentInstanceId: string | null;
   currentUserStatus: "idle" | "loading" | "ready" | "degraded" | "blocked";
   streamsFromStore: StreamWithLast[];

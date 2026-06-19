@@ -1,7 +1,7 @@
 /**
  * User profile type definitions.
  *
- * Maps Zulip's user object to a richer profile view with optional
+ * Maps the messenger API's user object to a richer profile view with optional
  * fields for job title, manager, birthday, local time, phone, and timezone.
  */
 

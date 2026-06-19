@@ -8,7 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setInstanceProvider } from "~/shared/api/client";
-import type { MockMessage, Reaction, ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { MockMessage, Reaction, WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import {
   useCurrentChatMessagesStore,
   isMessageForContext,
@@ -44,8 +44,8 @@ describe("currentChatMessagesStore", () => {
     const runtimeTestApiKey = `runtime-test-key-${Date.now()}`;
     setInstanceProvider(() => ({
       id: "test-instance",
-      realm: "https://zulip.test",
-      email: "test@zulip.test",
+      realm: "https://messenger.test",
+      email: "test@messenger.test",
       apiKey: runtimeTestApiKey,
     }));
     resetStore();
@@ -562,7 +562,7 @@ describe("currentChatMessagesStore", () => {
     });
   });
 
-  // updateMessageFlags handles "read", "starred", etc. flag events from Zulip.
+  // updateMessageFlags handles "read", "starred", etc. flag events from the messenger API.
   describe("updateMessageFlags", () => {
     // Adding a flag must only affect targeted messages, not all messages.
     it("adds a flag to specified messages", () => {
@@ -1085,12 +1085,12 @@ describe("isMessageForContext", () => {
   });
 });
 
-// contextFromMessage converts a raw Zulip message into a CurrentChatContext
+// contextFromMessage converts a raw messenger message into a CurrentChatContext
 // for navigation — e.g. clicking a notification opens the right conversation.
 describe("contextFromMessage", () => {
   // Stream messages produce a context with streamId, streamName, and topic.
   it("creates stream context from a stream message", () => {
-    const msg: ZulipRawMessage = {
+    const msg: WorkspaceRawMessage = {
       id: 1,
       sender_id: 10,
       content: "test",
@@ -1112,7 +1112,7 @@ describe("contextFromMessage", () => {
 
   // Empty subject must remain empty in route context identity.
   it("keeps empty topic for stream messages with empty subject", () => {
-    const msg: ZulipRawMessage = {
+    const msg: WorkspaceRawMessage = {
       id: 1,
       sender_id: 10,
       content: "test",
@@ -1132,7 +1132,7 @@ describe("contextFromMessage", () => {
 
   // Private messages produce a DM context with a sorted participant key.
   it("creates DM context from a private message", () => {
-    const msg: ZulipRawMessage = {
+    const msg: WorkspaceRawMessage = {
       id: 2,
       sender_id: 10,
       content: "hi",
@@ -1148,9 +1148,9 @@ describe("contextFromMessage", () => {
     expect(ctx).toEqual({ type: "dm", dmKey: "10,20" });
   });
 
-  // Unknown message types (e.g. future Zulip extensions) must return null safely.
+  // Unknown message types (e.g. future Workspace extensions) must return null safely.
   it("returns null for a message with no valid type", () => {
-    const msg: ZulipRawMessage = {
+    const msg: WorkspaceRawMessage = {
       id: 3,
       sender_id: 10,
       content: "?",
@@ -1163,7 +1163,7 @@ describe("contextFromMessage", () => {
 
   // Malformed stream messages (null stream_id) must be safely rejected.
   it("returns null for stream message with null stream_id", () => {
-    const msg: ZulipRawMessage = {
+    const msg: WorkspaceRawMessage = {
       id: 4,
       sender_id: 10,
       content: "?",

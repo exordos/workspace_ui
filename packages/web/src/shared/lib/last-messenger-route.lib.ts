@@ -1,5 +1,5 @@
 /**
- * Persists the last opened messenger chat (stream/DM route) per Zulip instance.
+ * Persists the last opened messenger chat (stream/DM route) per organization instance.
  *
  * Used when returning to the messenger section from the tray, top bar, or shortcuts.
  */

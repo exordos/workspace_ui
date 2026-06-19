@@ -3,7 +3,7 @@ import { UserStatusLabel } from "~/entities/user/user-status-label.ui";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
-import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
+import { getRealmBaseUrl } from "~/shared/api/messenger-client.internal";
 import { resolveAvatarUrl } from "~/shared/lib/avatar";
 import { getPresenceState } from "~/shared/lib/format";
 import { Avatar } from "~/shared/ui/avatar";

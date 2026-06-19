@@ -1,7 +1,7 @@
 /**
- * Preserves client-side link previews when Zulip message rows are merged/replaced.
+ * Preserves client-side link previews when messenger message rows are merged/replaced.
  */
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { linkPreviewsFromMessage } from "~/shared/lib/message-link-preview-list.lib";
 import { traceLinkPreview } from "~/shared/lib/message-link-preview-trace.lib";
 import { linkPreviewUrlKey } from "~/shared/lib/message-link-preview-url-match.lib";

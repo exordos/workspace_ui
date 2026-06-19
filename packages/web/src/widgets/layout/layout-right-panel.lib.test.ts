@@ -146,7 +146,7 @@ describe("buildRightPanelUserInfo", () => {
       dmChat: undefined,
       rightDrawerTargetUserId: 42,
       userStatusLabel: undefined,
-      currentInstanceRealm: "https://zulip.example.com",
+      currentInstanceRealm: "https://chat.example.com",
       media: undefined,
       commonGroups: undefined,
     });
@@ -169,7 +169,7 @@ describe("buildRightPanelUserInfo", () => {
       dmChat: undefined,
       rightDrawerTargetUserId: 42,
       userStatusLabel: undefined,
-      currentInstanceRealm: "https://zulip.example.com",
+      currentInstanceRealm: "https://chat.example.com",
       media: undefined,
       commonGroups: undefined,
     });

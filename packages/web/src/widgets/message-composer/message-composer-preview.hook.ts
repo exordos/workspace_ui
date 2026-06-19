@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { t } from "~/i18n/i18n";
-import { renderMessageContent } from "~/shared/api/zulip-messages";
+import { renderMessageContent } from "~/shared/api/messenger-messages";
 import { messageBodyToUnsanitizedDisplayHtml } from "~/shared/lib/message-markdown-display.lib";
 
 export function useMessageComposerPreview(options: {

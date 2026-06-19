@@ -162,12 +162,12 @@ describe("downloadMediaItem", () => {
     vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
 
     const item: MediaItem = {
-      url: "https://zulip.example.com/external_content/preview.png",
+      url: "https://chat.example.com/external_content/preview.png",
       type: "image",
     };
     const ok = await downloadMediaItem(
       item,
-      "https://zulip.example.com/external_content/preview.png",
+      "https://chat.example.com/external_content/preview.png",
     );
 
     expect(ok).toBe(true);

@@ -49,7 +49,7 @@ export interface TopicNotificationLevelMenuPickerProps {
   onError?: (retry: () => void) => void;
 }
 
-/** visibility_policy picker — context menu only (3 or 4 segments like Zulip). */
+/** visibility_policy picker — context menu only (3 or 4 segments like Workspace). */
 export const TopicNotificationLevelMenuPicker = React.memo<TopicNotificationLevelMenuPickerProps>(
   ({ streamId, topic, onError }) => {
     const { visibilityLevel, streamMuted, topicExplicitlyUnmuted, pending, applyLevel } =

@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useSidebarConfigStore } from "./sidebar-config.model";
 
-const STORAGE_KEY = "zulip-web-sidebar-config";
+const STORAGE_KEY = "messenger-web-sidebar-config";
 
 function resetStore() {
   window.localStorage.clear();
@@ -149,7 +149,7 @@ describe("sidebarConfigStore", () => {
       setInstanceScope(["org-a"], "org-a");
       useSidebarConfigStore.getState().expandStreamSlug("11-engineering");
 
-      const scopedRaw = window.localStorage.getItem("zulip-web-sidebar-config:org-a");
+      const scopedRaw = window.localStorage.getItem("messenger-web-sidebar-config:org-a");
       expect(scopedRaw).not.toBeNull();
       const stored = JSON.parse(scopedRaw!);
       expect(stored.expandedStreamSlugs).toEqual(["11-engineering"]);
@@ -158,11 +158,11 @@ describe("sidebarConfigStore", () => {
 
     it("loads sidebar config for the newly selected organization", () => {
       window.localStorage.setItem(
-        "zulip-web-sidebar-config:org-a",
+        "messenger-web-sidebar-config:org-a",
         JSON.stringify({ activityOpen: true, expandedStreamSlugs: ["11-engineering"] }),
       );
       window.localStorage.setItem(
-        "zulip-web-sidebar-config:org-b",
+        "messenger-web-sidebar-config:org-b",
         JSON.stringify({ activityOpen: false, expandedStreamSlugs: ["22-product"] }),
       );
 
@@ -175,7 +175,7 @@ describe("sidebarConfigStore", () => {
 
     it("ignores legacy single-slug shape from localStorage", () => {
       window.localStorage.setItem(
-        "zulip-web-sidebar-config:org-a",
+        "messenger-web-sidebar-config:org-a",
         JSON.stringify({ activityOpen: true, expandedStreamSlug: "11-engineering" }),
       );
 

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import {
   closeAllActiveMessageNotifications,
   closeReadMessageNotifications,
@@ -40,7 +40,7 @@ function createNotifications(): {
   };
 }
 
-function createStreamMessage(overrides: Partial<ZulipRawMessage> = {}): ZulipRawMessage {
+function createStreamMessage(overrides: Partial<WorkspaceRawMessage> = {}): WorkspaceRawMessage {
   return {
     id: 55,
     sender_id: 42,

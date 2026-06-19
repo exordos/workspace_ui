@@ -1,11 +1,11 @@
 /**
  * Builds the text inserted into the composer when replying to a message (markdown / plain, not rendered HTML).
  */
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { stripHtml } from "~/shared/lib/html";
 import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
 
-/** True when the string starts like rendered HTML, not Zulip `<https://…>` autolinks. */
+/** True when the string starts like rendered HTML, not Workspace `<https://…>` autolinks. */
 function looksLikeLeadingHtmlMarkup(s: string): boolean {
   const t = s.trimStart();
   if (!t.startsWith("<")) return false;

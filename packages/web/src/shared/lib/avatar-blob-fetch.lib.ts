@@ -1,5 +1,5 @@
 /**
- * Fetches avatar images with auth headers for private Zulip realms / gateways.
+ * Fetches avatar images with auth headers for private organization realms / gateways.
  * Uses same-origin relative paths in dev (Vite realm proxy) — mirrors protected-message-media.
  *
  * Usage:

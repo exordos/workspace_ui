@@ -2,11 +2,11 @@
  * Activity store — per-filter message caches, starred summary, and requestVersion race guards.
  */
 import { create } from "zustand";
-import type { ActivityFilter, ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { ActivityFilter, WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { logStoreAction } from "~/shared/lib/logger";
 
 export interface ActivityFilterState {
-  messages: ZulipRawMessage[];
+  messages: WorkspaceRawMessage[];
   hasMore: boolean;
   isInitialLoading: boolean;
   isRefreshing: boolean;
@@ -25,7 +25,7 @@ export interface StarredSummaryState {
   stale: boolean;
 }
 
-const EMPTY_MESSAGES: ZulipRawMessage[] = [];
+const EMPTY_MESSAGES: WorkspaceRawMessage[] = [];
 
 function createInitialFilterState(): ActivityFilterState {
   return {
@@ -63,18 +63,22 @@ interface ActivityState {
   staleVersion: number;
   filters: Record<ActivityFilter, ActivityFilterState>;
   starredSummary: StarredSummaryState;
-  setFilterCache: (filter: ActivityFilter, messages: ZulipRawMessage[], hasMore: boolean) => void;
+  setFilterCache: (
+    filter: ActivityFilter,
+    messages: WorkspaceRawMessage[],
+    hasMore: boolean,
+  ) => void;
   startFilterRequest: (filter: ActivityFilter, hasCachedData: boolean) => number;
   setFilterPageIfActual: (
     filter: ActivityFilter,
     requestVersion: number,
-    messages: ZulipRawMessage[],
+    messages: WorkspaceRawMessage[],
     hasMore: boolean,
   ) => void;
   appendOlderIfActual: (
     filter: ActivityFilter,
     requestVersion: number,
-    messages: ZulipRawMessage[],
+    messages: WorkspaceRawMessage[],
     hasMore: boolean,
   ) => void;
   removeMessageFromFilter: (filter: ActivityFilter, messageId: number) => void;

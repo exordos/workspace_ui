@@ -6,7 +6,7 @@
  * Usage:
  *   import { chatKeyFromContext, instanceChatKey } from "~/shared/lib/message-cache-keys.lib";
  */
-import type { MockMessage, ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { MockMessage, WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 
@@ -15,7 +15,7 @@ export type MessageCacheChatContext =
   | { type: "stream"; streamId: number; topic: string }
   | { type: "dm"; dmKey: string };
 
-/** Align with `chatKeyFromRawMessage` / Zulip topic identity normalization. */
+/** Align with `chatKeyFromRawMessage` / Workspace topic identity normalization. */
 export function normalizeStreamTopicForMessageCache(topic: string): string {
   return normalizeTopicForIdentity(topic);
 }
@@ -29,7 +29,7 @@ export function chatKeyFromContext(context: MessageCacheChatContext): string {
 }
 
 export function chatKeyFromRawMessage(
-  raw: ZulipRawMessage,
+  raw: WorkspaceRawMessage,
   currentUserId: number | null,
 ): string | null {
   if (raw.type === "stream" && raw.stream_id != null) {

@@ -53,7 +53,7 @@ if (result.code === "BAD_EVENT_QUEUE_ID") {
 
 | Situation | Comment needed? | Example |
 |----------|----------------|--------|
-| Non-obvious business logic | ✅ Yes | `// Zulip API: 100=Owner, 200=Admin (not the other way around!)` |
+| Non-obvious business logic | ✅ Yes | `// Messenger API: 100=Owner, 200=Admin (not the other way around!)` |
 | Workaround or hack | ✅ Yes | `// Workaround: tinyexec exports .mjs but package.json declares .js` |
 | Why a specific approach was chosen | ✅ Yes | `// Long-poll fetch is not throttled in background tabs (unlike setTimeout)` |
 | Edge case handling | ✅ Yes | `// DM key may be invalid if userId is not yet loaded` |
@@ -88,7 +88,7 @@ const name = user.full_name;
 For **public API** functions in `shared/lib/`:
 
 ```typescript
-/** Sanitizes HTML from Zulip messages. Strips unsafe tags, rewrites relative image URLs. */
+/** Sanitizes HTML from the messenger API messages. Strips unsafe tags, rewrites relative image URLs. */
 export function sanitizeHtml(html: string, baseUrl?: string): string {
 ```
 
@@ -103,7 +103,7 @@ One line if the function is simple. Multi-line JSDoc if:
  * Automatically re-registers on BAD_EVENT_QUEUE_ID.
  * Loop runs until signal.abort() is called.
  */
-export function startZulipEventLoop(options: StartZulipEventLoopOptions): void {
+export function startMessengerEventLoop(options: StartMessengerEventLoopOptions): void {
 ```
 
 ## Language (mandatory)
@@ -127,7 +127,7 @@ export function startZulipEventLoop(options: StartZulipEventLoopOptions): void {
 **Exceptions (not code comments):**
 
 - User-facing UI strings — use `t("key")` in [`i18n/locales/`](packages/web/src/i18n/locales/) (Russian allowed in `ru.json`)
-- String literals that match external data (Zulip error messages, regex for locale-specific field names, test fixtures)
+- String literals that match external data (messenger error messages, regex for locale-specific field names, test fixtures)
 - Optional translator notes in i18n JSON files
 
 When editing existing code, translate any non-English comment you touch or that remains in the file.

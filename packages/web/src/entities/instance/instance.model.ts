@@ -1,32 +1,32 @@
 /**
- * Instances store — manages Zulip server connections.
+ * Instances store — manages server connections.
  *
  * Persists realm URLs, credentials, and active instance selection to localStorage.
  */
 import { create } from "zustand";
-import { normalizeRealm } from "~/shared/api/zulip-realm.internal";
+import { normalizeRealm } from "~/shared/api/messenger-realm.internal";
 import { clearAvatarBlobCacheForInstance } from "~/shared/lib/avatar-blob-cache-db";
 import { logAction, logStoreAction } from "~/shared/lib/logger";
 
-const INSTANCES_STORAGE_KEY = "zulip-web-instances";
-const CURRENT_INSTANCE_KEY = "zulip-web-current-instance";
-const UNREAD_BY_INSTANCE_KEY = "zulip-web-instance-unread-counts";
+const INSTANCES_STORAGE_KEY = "messenger-web-instances";
+const CURRENT_INSTANCE_KEY = "messenger-web-current-instance";
+const UNREAD_BY_INSTANCE_KEY = "messenger-web-instance-unread-counts";
 
-export type ZulipAuthType = "api_key" | "session";
+export type WorkspaceAuthType = "api_key" | "session";
 
-export interface ZulipInstance {
+export interface WorkspaceInstance {
   id: string;
   realm: string;
   email: string;
   apiKey: string;
-  authType?: ZulipAuthType;
+  authType?: WorkspaceAuthType;
   realmIcon?: string;
-  /** Workspace REST origin from the server URL entered at login (not canonical Zulip realm). */
+  /** Workspace REST origin from the server URL entered at login (not canonical organization realm). */
   workspaceOrgOrigin?: string;
 }
 
 interface StoredState {
-  instances: ZulipInstance[];
+  instances: WorkspaceInstance[];
   currentInstanceId: string | null;
   unreadCountsByInstance: Record<string, number>;
 }
@@ -47,15 +47,15 @@ function toSafeUnreadCount(value: unknown): number {
   return Math.max(0, Math.trunc(value));
 }
 
-function normalizeAuthType(value: unknown): ZulipAuthType {
+function normalizeAuthType(value: unknown): WorkspaceAuthType {
   return value === "session" ? "session" : "api_key";
 }
 
-function normalizeStoredInstances(value: unknown): ZulipInstance[] {
+function normalizeStoredInstances(value: unknown): WorkspaceInstance[] {
   if (!Array.isArray(value)) {
     return [];
   }
-  const normalized: ZulipInstance[] = [];
+  const normalized: WorkspaceInstance[] = [];
   for (const candidate of value) {
     if (typeof candidate !== "object" || candidate == null) {
       continue;
@@ -87,7 +87,7 @@ function normalizeStoredInstances(value: unknown): ZulipInstance[] {
 }
 
 function filterUnreadCountsByInstances(
-  instances: ZulipInstance[],
+  instances: WorkspaceInstance[],
   unreadCountsByInstance: Record<string, unknown>,
 ): Record<string, number> {
   const knownIds = new Set(instances.map((instance) => instance.id));
@@ -128,7 +128,7 @@ function loadFromStorage(): StoredState {
 }
 
 function persist(
-  instances: ZulipInstance[],
+  instances: WorkspaceInstance[],
   currentInstanceId: string | null,
   unreadCountsByInstance: Record<string, number>,
 ) {
@@ -180,7 +180,7 @@ function addInstanceDuplicateKey(keys: Set<string>, realmLike: string, email: st
 }
 
 function getInstanceDuplicateKeys(
-  instance: Pick<ZulipInstance, "realm" | "email" | "workspaceOrgOrigin">,
+  instance: Pick<WorkspaceInstance, "realm" | "email" | "workspaceOrgOrigin">,
 ): Set<string> {
   const email = instance.email.trim().toLowerCase();
   const keys = new Set<string>();
@@ -194,9 +194,9 @@ function getInstanceDuplicateKeys(
 }
 
 function findDuplicateInstance(
-  instances: ZulipInstance[],
-  candidate: Pick<ZulipInstance, "realm" | "email" | "workspaceOrgOrigin">,
-): ZulipInstance | undefined {
+  instances: WorkspaceInstance[],
+  candidate: Pick<WorkspaceInstance, "realm" | "email" | "workspaceOrgOrigin">,
+): WorkspaceInstance | undefined {
   const candidateKeys = getInstanceDuplicateKeys(candidate);
   return instances.find((instance) => {
     const instanceKeys = getInstanceDuplicateKeys(instance);
@@ -213,13 +213,13 @@ interface InstancesState extends StoredState {
   activeOrgEpoch: number;
   /** DM unread per instance (in-memory; used for dock/tray/favicon badges). */
   dmUnreadCountsByInstance: Record<string, number>;
-  /** Effective Jitsi base URL from last Zulip register for the active instance (not persisted). */
+  /** Effective Jitsi base URL from last messenger register for the active instance (not persisted). */
   jitsiMeetBaseUrl: string | null;
   setJitsiMeetBaseUrl: (url: string | null) => void;
-  addInstance: (instance: Omit<ZulipInstance, "id">) => AddInstanceResult;
+  addInstance: (instance: Omit<WorkspaceInstance, "id">) => AddInstanceResult;
   removeInstance: (id: string) => void;
   setCurrentInstanceId: (id: string | null) => void;
-  getCurrentInstance: () => ZulipInstance | null;
+  getCurrentInstance: () => WorkspaceInstance | null;
   setInstanceUnreadCount: (id: string, unreadCount: number) => void;
   getInstanceUnreadCount: (id: string) => number;
   setInstanceDmUnreadCount: (id: string, dmUnreadCount: number) => void;
@@ -247,7 +247,7 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
     }
 
     const id = generateId();
-    const newInstance: ZulipInstance = {
+    const newInstance: WorkspaceInstance = {
       ...instance,
       id,
       authType: normalizeAuthType(instance.authType),
@@ -257,7 +257,9 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
       const instances = [...state.instances, newInstance];
       const currentInstanceId = state.currentInstanceId ?? id;
       const activeOrgEpoch =
-        currentInstanceId === state.currentInstanceId ? state.activeOrgEpoch : state.activeOrgEpoch + 1;
+        currentInstanceId === state.currentInstanceId
+          ? state.activeOrgEpoch
+          : state.activeOrgEpoch + 1;
       const unreadCountsByInstance = { ...state.unreadCountsByInstance };
       persist(instances, currentInstanceId, unreadCountsByInstance);
       return { instances, currentInstanceId, activeOrgEpoch, unreadCountsByInstance };
@@ -282,7 +284,9 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
         currentInstanceId = instances[0]?.id ?? null;
       }
       const activeOrgEpoch =
-        currentInstanceId === state.currentInstanceId ? state.activeOrgEpoch : state.activeOrgEpoch + 1;
+        currentInstanceId === state.currentInstanceId
+          ? state.activeOrgEpoch
+          : state.activeOrgEpoch + 1;
       const unreadCountsByInstance = { ...state.unreadCountsByInstance };
       delete unreadCountsByInstance[id];
       const dmUnreadCountsByInstance = { ...state.dmUnreadCountsByInstance };

@@ -36,16 +36,16 @@ Single source of truth for volatile counts, paths, and workflow. Other docs shou
 
 ## Key module paths
 
-| Concern                  | Path                                                                  |
-| ------------------------ | --------------------------------------------------------------------- |
-| Zulip event loop         | `packages/web/src/shared/lib/event-loop.ts`                           |
-| Event loop startup       | `packages/web/src/widgets/layout/layout-zulip-event-loop.hook.ts`     |
-| Event dispatch           | `packages/web/src/widgets/layout/layout-zulip-event-dispatch*.lib.ts` |
-| HTTP client (middleware) | `packages/web/src/shared/api/client.ts`                               |
-| Zulip API modules        | `packages/web/src/shared/api/zulip-*.ts`                              |
-| Workspace API client     | `packages/web/src/shared/api/workspace-client.ts`                     |
-| White-label config       | `packages/web/src/shared/lib/brand.ts`                                |
-| User API (split)         | `packages/web/src/entities/user/api/`                                 |
+| Concern                  | Path                                                                      |
+| ------------------------ | ------------------------------------------------------------------------- |
+| messenger event loop     | `packages/web/src/shared/lib/event-loop.ts`                               |
+| Event loop startup       | `packages/web/src/widgets/layout/layout-messenger-event-loop.hook.ts`     |
+| Event dispatch           | `packages/web/src/widgets/layout/layout-messenger-event-dispatch*.lib.ts` |
+| HTTP client (middleware) | `packages/web/src/shared/api/client.ts`                                   |
+| Messenger API modules    | `packages/web/src/shared/api/messenger-*.ts`                              |
+| Workspace API client     | `packages/web/src/shared/api/workspace-client.ts`                         |
+| White-label config       | `packages/web/src/shared/lib/brand.ts`                                    |
+| User API (split)         | `packages/web/src/entities/user/api/`                                     |
 
 ## Import policy
 
@@ -53,7 +53,7 @@ Import **concrete segment files** (`*.model.ts`, `*.api.ts`, `*.ui.tsx`). Do not
 
 ```typescript
 import { useUsersStore } from "~/entities/user/user.model";
-import { zulipFetch } from "~/shared/api/client";
+import { messengerFetch } from "~/shared/api/client";
 ```
 
 ## Git workflow

@@ -1,5 +1,5 @@
 /**
- * Fetches link preview metadata from Zulip-rendered HTML (`.message_embed`).
+ * Fetches link preview metadata from the messenger API-rendered HTML (`.message_embed`).
  *
  * Persisted messages: GET `/messages/{id}?apply_markdown=true` (includes server unfurl).
  * Ephemeral content: POST `/messages/render` (composer-style, often without embed).
@@ -10,7 +10,10 @@
  *     parseAllMessageEmbedsFromRenderedHtml,
  *   } from "~/shared/lib/message-link-preview-fetch.lib";
  */
-import { fetchMessageRenderedHtmlById, renderMessageContent } from "~/shared/api/zulip-messages";
+import {
+  fetchMessageRenderedHtmlById,
+  renderMessageContent,
+} from "~/shared/api/messenger-messages";
 import { guard } from "~/shared/lib/guards";
 import { sanitizeHtmlToFragment } from "~/shared/lib/html";
 import { createLogger } from "~/shared/lib/logger";
@@ -86,7 +89,7 @@ function parseEmbedElement(embed: Element): LinkPreviewData | null {
   };
 }
 
-/** Parses every `.message_embed` block in Zulip-rendered HTML (deduped by target URL). */
+/** Parses every `.message_embed` block in Workspace-rendered HTML (deduped by target URL). */
 export function parseAllMessageEmbedsFromRenderedHtml(html: string): LinkPreviewData[] {
   const trimmed = html.trim();
   if (trimmed.length === 0 || typeof document === "undefined") {

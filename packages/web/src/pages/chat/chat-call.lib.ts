@@ -106,12 +106,12 @@ export function buildCallRoomName(input: BuildCallRoomNameInput): string {
     const participantFallback =
       sortedParticipantIds.length > 0 ? sortedParticipantIds.join("-") : "chat";
     const dmRoomPart = chatLabelPart ?? participantFallback;
-    return `zulip-dm-${dmRoomPart}-${nowMs}`;
+    return `messenger-dm-${dmRoomPart}-${nowMs}`;
   }
 
   const streamPart = sanitizeRoomSegment(input.target.stream);
   const topicPart = sanitizeRoomSegment(input.target.subject);
-  return `zulip-stream-${streamPart}-${topicPart}-${nowMs}`;
+  return `messenger-stream-${streamPart}-${topicPart}-${nowMs}`;
 }
 
 export function canStartCallFromHeader(input: CanStartCallFromHeaderInput): boolean {

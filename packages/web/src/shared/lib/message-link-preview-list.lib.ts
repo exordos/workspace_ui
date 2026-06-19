@@ -1,7 +1,7 @@
 /**
  * Helpers for multiple link previews per message.
  */
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { linkPreviewUrlKey } from "~/shared/lib/message-link-preview-url-match.lib";
 import type { LinkPreviewData } from "~/shared/lib/message-link-preview.types";
 

@@ -13,13 +13,13 @@ import type { DiagnosticVitalEntry } from "~/shared/lib/diagnostics-vitals.lib";
 import { isElectron } from "~/shared/lib/electron";
 import { env } from "~/shared/lib/env";
 import type { LogEntry } from "~/shared/lib/logger";
+import { getMessengerEventQueueIdForCurrentInstance } from "~/shared/lib/messenger-event-queue-registry.lib";
 import { isOnline } from "~/shared/lib/network";
 import { getIdleTimeMs, getLocalPresenceStatus } from "~/shared/lib/presence";
 import type { PushState } from "~/shared/lib/push/types";
 import { getRuntime, isPwa } from "~/shared/lib/pwa";
 import { isTabVisible } from "~/shared/lib/visibility";
 import { getWebViewPlatform, isWebView } from "~/shared/lib/webview";
-import { getZulipEventQueueIdForCurrentInstance } from "~/shared/lib/zulip-event-queue-registry.lib";
 
 export type DiagnosticsOverallStatus = "healthy" | "degraded" | "offline";
 
@@ -246,7 +246,7 @@ export function collectDiagnosticsPageSnapshot(
     connection,
     rateLimitBlockedUntil: input.rateLimitBlockedUntil,
     realtime: {
-      eventQueueId: getZulipEventQueueIdForCurrentInstance() ?? null,
+      eventQueueId: getMessengerEventQueueIdForCurrentInstance() ?? null,
       online,
       tabVisible: isTabVisible(),
       stats: input.realtimeStats,

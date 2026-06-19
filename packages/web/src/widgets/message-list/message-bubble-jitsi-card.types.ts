@@ -1,4 +1,4 @@
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import type { JitsiLinkOptions } from "~/shared/lib/jitsi";
 import type { MessageBubbleCallbacks } from "./message-bubble.types";
 import type { ReactNode } from "react";

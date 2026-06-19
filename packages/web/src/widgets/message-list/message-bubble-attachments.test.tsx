@@ -1,14 +1,14 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useDownloadStore } from "~/entities/download/download.model";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import type * as AuthGuardModule from "~/shared/lib/auth-guard";
 import { MessageBubble } from "./message-bubble.ui";
 import type * as AttachmentDownloadModule from "./message-attachment-download.lib";
 
 const downloadUserUploadAttachmentMock = vi.fn();
 
-vi.mock("~/shared/api/zulip-client.internal", () => ({
+vi.mock("~/shared/api/messenger-client.internal", () => ({
   getRealmBaseUrl: () => "https://uploads.example.com",
 }));
 

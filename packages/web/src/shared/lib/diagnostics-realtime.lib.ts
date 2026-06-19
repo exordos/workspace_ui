@@ -12,7 +12,7 @@ let eventsReceivedCount = 0;
 let lastEventAt: number | null = null;
 let lastEventType: string | null = null;
 
-/** Called from the Zulip event loop on each received event. */
+/** Called from the messenger event loop on each received event. */
 export function recordDiagnosticRealtimeEvent(eventType: string): void {
   eventsReceivedCount += 1;
   lastEventAt = Date.now();

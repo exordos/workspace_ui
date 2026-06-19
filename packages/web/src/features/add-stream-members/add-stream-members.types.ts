@@ -1,4 +1,7 @@
-import type { AddStreamMembersParams, AddStreamMembersResult } from "~/shared/api/zulip-streams";
+import type {
+  AddStreamMembersParams,
+  AddStreamMembersResult,
+} from "~/shared/api/messenger-streams";
 import type { UserPickerOption } from "~/shared/lib/user-picker";
 
 export type { AddStreamMembersParams, AddStreamMembersResult, UserPickerOption };

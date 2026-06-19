@@ -12,16 +12,16 @@ import { useMessageReadersStore } from "./message-readers.model";
 vi.mock("~/shared/api/client", () => {
   const get = vi.fn();
   return {
-    zulipApi: { get },
+    messengerApi: { get },
     workspaceApi: { get: vi.fn() },
-    refreshZulipApiBase: vi.fn(),
+    refreshMessengerApiBase: vi.fn(),
     refreshWorkspaceApiBase: vi.fn(),
   };
 });
 
-async function getZulipMock() {
+async function getWorkspaceMock() {
   const mod = await import("~/shared/api/client");
-  return mod.zulipApi.get as ReturnType<typeof vi.fn>;
+  return mod.messengerApi.get as ReturnType<typeof vi.fn>;
 }
 
 // ---------------------------------------------------------------------------
@@ -32,7 +32,7 @@ describe("useMessageReadersStore", () => {
   afterEach(async () => {
     useMessageReadersStore.getState().clear();
     useInstancesStore.setState({ instances: [], currentInstanceId: null, activeOrgEpoch: 0 });
-    const mock = await getZulipMock();
+    const mock = await getWorkspaceMock();
     mock.mockReset();
   });
 
@@ -45,7 +45,7 @@ describe("useMessageReadersStore", () => {
   });
 
   it("sets loading state when fetching", async () => {
-    const mock = await getZulipMock();
+    const mock = await getWorkspaceMock();
     mock.mockResolvedValue({
       ok: true,
       status: 200,
@@ -64,7 +64,7 @@ describe("useMessageReadersStore", () => {
   });
 
   it("handles API error gracefully", async () => {
-    const mock = await getZulipMock();
+    const mock = await getWorkspaceMock();
     mock.mockResolvedValue({
       ok: false,
       status: 404,
@@ -79,7 +79,7 @@ describe("useMessageReadersStore", () => {
   });
 
   it("handles network error gracefully", async () => {
-    const mock = await getZulipMock();
+    const mock = await getWorkspaceMock();
     mock.mockRejectedValue(new Error("Network failure"));
 
     await useMessageReadersStore.getState().fetchReadReceipts(42);
@@ -107,7 +107,7 @@ describe("useMessageReadersStore", () => {
   it("replaces previous results on new fetch", async () => {
     useMessageReadersStore.setState({ userIds: [10, 20], messageId: 1 });
 
-    const mock = await getZulipMock();
+    const mock = await getWorkspaceMock();
     mock.mockResolvedValue({
       ok: true,
       status: 200,
@@ -130,7 +130,7 @@ describe("useMessageReadersStore", () => {
       activeOrgEpoch: 0,
     });
 
-    const mock = await getZulipMock();
+    const mock = await getWorkspaceMock();
     let resolveResponse:
       | ((value: { ok: true; status: number; data: { user_ids: number[] } }) => void)
       | undefined;
@@ -168,12 +168,12 @@ describe("useMessageReadersStore", () => {
 
 describe("fetchReadReceipts", () => {
   afterEach(async () => {
-    const mock = await getZulipMock();
+    const mock = await getWorkspaceMock();
     mock.mockReset();
   });
 
   it("returns user_ids on success", async () => {
-    const mock = await getZulipMock();
+    const mock = await getWorkspaceMock();
     mock.mockResolvedValue({
       ok: true,
       status: 200,
@@ -186,7 +186,7 @@ describe("fetchReadReceipts", () => {
   });
 
   it("throws on non-ok response", async () => {
-    const mock = await getZulipMock();
+    const mock = await getWorkspaceMock();
     mock.mockResolvedValue({
       ok: false,
       status: 403,

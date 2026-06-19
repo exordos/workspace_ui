@@ -1,11 +1,11 @@
 import { useEffect } from "react";
-import type { ZulipInstance } from "~/entities/instance/instance.model";
+import type { WorkspaceInstance } from "~/entities/instance/instance.model";
 import { syncUnreadSurfacesFromSnapshot } from "~/entities/unread-sync/unread-surfaces-sync.lib";
 import {
   fetchUnreadDmMessagesCountForCredentials,
   fetchUnreadMessagesCountForCredentials,
-} from "~/shared/api/zulip-queue";
-import { startZulipEventLoopForCredentials } from "~/shared/lib/event-loop";
+} from "~/shared/api/messenger-queue";
+import { startMessengerEventLoopForCredentials } from "~/shared/lib/event-loop";
 import {
   abortInactiveInstanceQueueOnTeardown,
   handleInactiveInstanceQueueRegistered,
@@ -18,7 +18,7 @@ import { startInactiveInstanceEventStreams } from "./layout-multi-org-event-stre
 import { startInactiveInstanceUnreadPolling } from "./layout-multi-org-polling.lib";
 
 export function useInactiveInstancesBackgroundWork(options: {
-  instances: ZulipInstance[];
+  instances: WorkspaceInstance[];
   currentInstanceId: string | null;
   enabled: boolean;
   online: boolean;
@@ -70,7 +70,7 @@ export function useInactiveInstancesBackgroundWork(options: {
         const instance = instances.find(
           (row) => row.realm === credentials.realm && row.email === credentials.email,
         );
-        startZulipEventLoopForCredentials({
+        startMessengerEventLoopForCredentials({
           credentials,
           instanceId: instance?.id,
           signal: controller.signal,

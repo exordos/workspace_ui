@@ -1,8 +1,11 @@
 /**
- * Zulip realm user groups store — membership checks for channel-level group-setting permissions.
+ * organization realm user groups store — membership checks for channel-level group-setting permissions.
  */
 import { create } from "zustand";
-import type { ZulipGroupSettingValue, ZulipRealmUserGroup } from "~/shared/api/zulip.types";
+import type {
+  MessengerGroupSettingValue,
+  MessengerRealmUserGroup,
+} from "~/shared/api/messenger.types";
 import { logStoreAction } from "~/shared/lib/logger";
 
 export interface UserGroupRecord {
@@ -15,10 +18,13 @@ export interface UserGroupRecord {
 
 interface UserGroupsState {
   groups: Map<number, UserGroupRecord>;
-  setGroups: (groups: ZulipRealmUserGroup[]) => void;
+  setGroups: (groups: MessengerRealmUserGroup[]) => void;
   clear: () => void;
   isUserInGroup: (groupId: number, userId: number) => boolean;
-  isUserInGroupSetting: (setting: ZulipGroupSettingValue | undefined, userId: number) => boolean;
+  isUserInGroupSetting: (
+    setting: MessengerGroupSettingValue | undefined,
+    userId: number,
+  ) => boolean;
 }
 
 function normalizeIds(ids: readonly number[]): number[] {

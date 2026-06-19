@@ -1,5 +1,5 @@
 /**
- * Network + tab lifecycle subscriptions for the Zulip event loop.
+ * Network + tab lifecycle subscriptions for the messenger event loop.
  */
 import { onReconnect, onStatusChange } from "~/shared/lib/network";
 import { onTabResume } from "~/shared/lib/visibility";

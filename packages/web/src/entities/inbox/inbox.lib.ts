@@ -2,7 +2,7 @@
  * Inbox aggregation — group unread messages into entries, section grouping, and snapshot freshness checks.
  */
 
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { dmRouteKey } from "~/shared/lib/dm-key";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import type { InboxEntry, InboxMarkReadTarget } from "./inbox.types";

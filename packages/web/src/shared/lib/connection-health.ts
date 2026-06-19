@@ -2,16 +2,16 @@
  * Connection health state for API resilience UI and coordinated reconnect.
  *
  * Tracks offline/degraded/rate-limited phases and serializes bootstrap retry attempts
- * with exponential backoff and Zulip rate-limit gate awareness.
+ * with exponential backoff and Workspace rate-limit gate awareness.
  */
 import { createLogger } from "~/shared/lib/logger";
+import {
+  getWorkspaceRateLimitBlockedUntil,
+  subscribeWorkspaceRateLimitGate,
+  waitUntilMessengerRateLimitReleased,
+} from "~/shared/lib/messenger-rate-limit-gate";
 import { isOnline, onReconnect, onStatusChange } from "~/shared/lib/network";
 import { probeApiTransport } from "~/shared/lib/network-transport-probe.lib";
-import {
-  getZulipRateLimitBlockedUntil,
-  subscribeZulipRateLimitGate,
-  waitUntilZulipRateLimitReleased,
-} from "~/shared/lib/zulip-rate-limit-gate";
 
 const log = createLogger("connection-health");
 
@@ -194,7 +194,7 @@ function notify(): void {
 }
 
 function syncRateLimitFromGate(): void {
-  const until = getZulipRateLimitBlockedUntil();
+  const until = getWorkspaceRateLimitBlockedUntil();
   const now = Date.now();
   if (until > now) {
     const retryAfterMs = until - now;
@@ -265,7 +265,7 @@ async function runReconnectAttempt(): Promise<void> {
   }
 
   syncRateLimitFromGate();
-  const rateLimitMs = Math.max(0, getZulipRateLimitBlockedUntil() - Date.now());
+  const rateLimitMs = Math.max(0, getWorkspaceRateLimitBlockedUntil() - Date.now());
   const backoffMs = getBackoffMs(reconnectBackoffAttempt);
   const waitMs = Math.max(backoffMs, rateLimitMs);
 
@@ -290,7 +290,7 @@ async function runReconnectAttempt(): Promise<void> {
   }
 
   try {
-    await waitUntilZulipRateLimitReleased(signal);
+    await waitUntilMessengerRateLimitReleased(signal);
     const ok = await fn();
     if (ok) {
       reportSuccess();
@@ -448,7 +448,7 @@ export function initConnectionHealth(): () => void {
     handleBrowserNetworkOnline();
   });
 
-  const unsubRateLimit = subscribeZulipRateLimitGate(() => {
+  const unsubRateLimit = subscribeWorkspaceRateLimitGate(() => {
     syncRateLimitFromGate();
     notify();
   });

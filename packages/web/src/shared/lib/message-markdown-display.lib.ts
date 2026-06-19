@@ -1,5 +1,5 @@
 /**
- * Client-side message body display: detect Zulip-rendered HTML vs Markdown, render Markdown
+ * Client-side message body display: detect Workspace-rendered HTML vs Markdown, render Markdown
  * with `marked` + syntax highlighting, produce plain-text previews.
  *
  * Used when GET /messages uses `apply_markdown=false` (body is Markdown) and for composer
@@ -16,10 +16,10 @@
 import { Marked, type Token, type TokenizerAndRendererExtension, type Tokens } from "marked";
 import { stripHtml } from "~/shared/lib/html";
 import {
-  injectZulipMentionPlaceholders,
-  restoreZulipMentionPlaceholders,
-} from "~/shared/lib/message-zulip-mentions.lib";
-import { renderZulipQuoteBlocksInMarkdown } from "~/shared/lib/message-zulip-quote.lib";
+  injectWorkspaceMentionPlaceholders,
+  restoreWorkspaceMentionPlaceholders,
+} from "~/shared/lib/message-mentions.lib";
+import { renderWorkspaceQuoteBlocksInMarkdown } from "~/shared/lib/message-quote.lib";
 
 interface InlineSpoilerToken extends Tokens.Generic {
   type: "inline_spoiler";
@@ -27,8 +27,8 @@ interface InlineSpoilerToken extends Tokens.Generic {
   tokens: Token[];
 }
 
-interface ZulipBlockSpoilerToken extends Tokens.Generic {
-  type: "zulip_block_spoiler";
+interface WorkspaceBlockSpoilerToken extends Tokens.Generic {
+  type: "messenger_block_spoiler";
   header: string;
   headerTokens: Token[];
   text: string;
@@ -36,8 +36,8 @@ interface ZulipBlockSpoilerToken extends Tokens.Generic {
 }
 
 const INLINE_SPOILER_TOKEN_TYPE = "inline_spoiler";
-const ZULIP_BLOCK_SPOILER_TOKEN_TYPE = "zulip_block_spoiler";
-const DEFAULT_ZULIP_SPOILER_HEADER = "Spoiler";
+const MESSENGER_BLOCK_SPOILER_TOKEN_TYPE = "messenger_block_spoiler";
+const DEFAULT_SPOILER_HEADER = "Spoiler";
 const QUOTE_PLACEHOLDER_START = "\uE100";
 const QUOTE_PLACEHOLDER_END = "\uE101";
 
@@ -58,8 +58,11 @@ function renderInlineSpoilerToken(this: MarkedSpoilerRendererContext, token: Tok
   return `<span class="inline-spoiler" data-inline-spoiler="true">${inlineHtml}</span>`;
 }
 
-function renderZulipBlockSpoilerToken(this: MarkedSpoilerRendererContext, token: Token): string {
-  const spoilerToken = token as ZulipBlockSpoilerToken;
+function renderWorkspaceBlockSpoilerToken(
+  this: MarkedSpoilerRendererContext,
+  token: Token,
+): string {
+  const spoilerToken = token as WorkspaceBlockSpoilerToken;
   const blockHtml = this.parser.parse(spoilerToken.tokens);
   const headerHtml = this.parser.parseInline(spoilerToken.headerTokens);
   return `<div class="spoiler-block"><div class="spoiler-header">${headerHtml}</div><div class="spoiler-content">${blockHtml}</div></div>`;
@@ -89,10 +92,10 @@ const INLINE_SPOILER_EXTENSION: TokenizerAndRendererExtension = {
   renderer: renderInlineSpoilerToken,
 };
 
-/** Zulip block spoiler markdown → bubble accordion markup. */
-const ZULIP_BLOCK_SPOILER_EXTENSION: TokenizerAndRendererExtension = {
+/** Workspace block spoiler markdown → bubble accordion markup. */
+const MESSENGER_BLOCK_SPOILER_EXTENSION: TokenizerAndRendererExtension = {
   level: "block",
-  name: ZULIP_BLOCK_SPOILER_TOKEN_TYPE,
+  name: MESSENGER_BLOCK_SPOILER_TOKEN_TYPE,
   start(src) {
     const index = src.indexOf("```spoiler");
     return index >= 0 ? index : undefined;
@@ -104,9 +107,9 @@ const ZULIP_BLOCK_SPOILER_EXTENSION: TokenizerAndRendererExtension = {
     const raw = match[0];
     const header = (match[1] ?? "").trim();
     const text = match[2] ?? "";
-    const headerMarkdown = header.length > 0 ? header : DEFAULT_ZULIP_SPOILER_HEADER;
+    const headerMarkdown = header.length > 0 ? header : DEFAULT_SPOILER_HEADER;
     return {
-      type: ZULIP_BLOCK_SPOILER_TOKEN_TYPE,
+      type: MESSENGER_BLOCK_SPOILER_TOKEN_TYPE,
       raw,
       header,
       headerTokens: this.lexer.inlineTokens(headerMarkdown),
@@ -115,11 +118,11 @@ const ZULIP_BLOCK_SPOILER_EXTENSION: TokenizerAndRendererExtension = {
     };
   },
   childTokens: ["tokens", "headerTokens"],
-  renderer: renderZulipBlockSpoilerToken,
+  renderer: renderWorkspaceBlockSpoilerToken,
 };
 
 const markdownRenderer = new Marked({
-  extensions: [ZULIP_BLOCK_SPOILER_EXTENSION, INLINE_SPOILER_EXTENSION],
+  extensions: [MESSENGER_BLOCK_SPOILER_EXTENSION, INLINE_SPOILER_EXTENSION],
   renderer: {
     html({ text }) {
       return escapeInlineHtmlText(text);
@@ -127,7 +130,7 @@ const markdownRenderer = new Marked({
   },
 });
 
-/** True when the string looks like HTML from Zulip, not raw `<https://…>` autolink markdown. */
+/** True when the string looks like HTML from the messenger API, not raw `<https://…>` autolink markdown. */
 export function isLikelyRenderedMessageHtml(s: string): boolean {
   const t = s.trimStart();
   if (t.length === 0) return false;
@@ -168,7 +171,7 @@ function restoreQuotePlaceholders(html: string, renderedQuotes: readonly string[
 export interface MessageBodyDisplayOptions {
   /** Resolves `@**DisplayName**` to a user id for client-side mention spans. Wildcards (`@**all**`, …) do not use this. */
   resolveUserMention?: (displayName: string) => number | null;
-  /** True when the body definitely came from Zulip markdown mode (`apply_markdown=false`). */
+  /** True when the body definitely came from the messenger API markdown mode (`apply_markdown=false`). */
   treatAsMarkdown?: boolean;
   /**
    * Server-rendered HTML paired with `markdown_source`. When present and HTML-like, skips markdown compile.
@@ -196,10 +199,10 @@ export function messageBodyToUnsanitizedDisplayHtml(
     return t;
   }
   let mdInput = t;
-  let mentionTokens: ReturnType<typeof injectZulipMentionPlaceholders>["tokens"] | undefined;
+  let mentionTokens: ReturnType<typeof injectWorkspaceMentionPlaceholders>["tokens"] | undefined;
   const renderedQuotes: string[] = [];
   if (options?.resolveUserMention != null) {
-    const prepared = injectZulipMentionPlaceholders(t, options.resolveUserMention);
+    const prepared = injectWorkspaceMentionPlaceholders(t, options.resolveUserMention);
     if (prepared.tokens.length > 0) {
       mdInput = prepared.markdown;
       mentionTokens = prepared.tokens;
@@ -208,23 +211,23 @@ export function messageBodyToUnsanitizedDisplayHtml(
 
   const restoreMentions = (fragmentHtml: string): string => {
     if (mentionTokens == null || mentionTokens.length === 0) return fragmentHtml;
-    return restoreZulipMentionPlaceholders(fragmentHtml, mentionTokens);
+    return restoreWorkspaceMentionPlaceholders(fragmentHtml, mentionTokens);
   };
 
   const renderQuoteHeader = (headerLine: string): string =>
     restoreMentions(unwrapSingleParagraph(renderMarkdownFallbackHtml(headerLine)));
 
   const renderQuoteInner = (inner: string): string => {
-    const withNestedQuotes = renderZulipQuoteBlocksInMarkdown(
+    const withNestedQuotes = renderWorkspaceQuoteBlocksInMarkdown(
       inner,
       renderQuoteInner,
       renderQuoteHeader,
       ({ headerLine, bodyHtml }) => {
-        const quoteHtml = `<div class="zulip-quote-block">${
+        const quoteHtml = `<div class="messenger-quote-block">${
           headerLine != null && headerLine.length > 0
-            ? `<div class="zulip-quote-header">${renderQuoteHeader(headerLine)}</div>`
+            ? `<div class="messenger-quote-header">${renderQuoteHeader(headerLine)}</div>`
             : ""
-        }<blockquote class="zulip-quote-body">${bodyHtml}</blockquote></div>`;
+        }<blockquote class="messenger-quote-body">${bodyHtml}</blockquote></div>`;
         const placeholder = buildQuotePlaceholder(renderedQuotes.length);
         renderedQuotes.push(quoteHtml);
         return placeholder;
@@ -236,16 +239,16 @@ export function messageBodyToUnsanitizedDisplayHtml(
     );
   };
 
-  const withQuotes = renderZulipQuoteBlocksInMarkdown(
+  const withQuotes = renderWorkspaceQuoteBlocksInMarkdown(
     mdInput,
     renderQuoteInner,
     renderQuoteHeader,
     ({ headerLine, bodyHtml }) => {
-      const quoteHtml = `<div class="zulip-quote-block">${
+      const quoteHtml = `<div class="messenger-quote-block">${
         headerLine != null && headerLine.length > 0
-          ? `<div class="zulip-quote-header">${renderQuoteHeader(headerLine)}</div>`
+          ? `<div class="messenger-quote-header">${renderQuoteHeader(headerLine)}</div>`
           : ""
-      }<blockquote class="zulip-quote-body">${bodyHtml}</blockquote></div>`;
+      }<blockquote class="messenger-quote-body">${bodyHtml}</blockquote></div>`;
       const placeholder = buildQuotePlaceholder(renderedQuotes.length);
       renderedQuotes.push(quoteHtml);
       return placeholder;

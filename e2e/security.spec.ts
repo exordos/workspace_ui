@@ -42,7 +42,7 @@ test.describe("Auth Guard", () => {
   test("no credentials in localStorage after clear", async ({ page }) => {
     await page.goto("/");
     const hasApiKey = await page.evaluate(() => {
-      const data = localStorage.getItem("zulip-web-instances");
+      const data = localStorage.getItem("messenger-web-instances");
       return data?.includes("apiKey") ?? false;
     });
     expect(hasApiKey).toBe(false);

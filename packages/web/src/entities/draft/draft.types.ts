@@ -1,7 +1,7 @@
 /**
  * Draft entity type definitions.
  *
- * Drafts are saved locally and synced with the Zulip Drafts API.
+ * Drafts are saved locally and synced with the Workspace Drafts API.
  * Each draft has a type (stream or DM), target, and content.
  */
 

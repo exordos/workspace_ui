@@ -1,11 +1,11 @@
 import type { Page } from "@playwright/test";
-import { E2E_EMAIL, E2E_INSTANCE_ID, E2E_REALM } from "../mocks/zulip-default-responses";
+import { E2E_EMAIL, E2E_INSTANCE_ID, E2E_REALM } from "../mocks/messenger-default-responses";
 
 export const E2E_INSTANCE_2_ID = "test-2";
-export const E2E_REALM_2 = "https://zulip2.test.local";
+export const E2E_REALM_2 = "https://workspace2.test.local";
 export const E2E_EMAIL_2 = "other@example.com";
 
-/** Seeds two Zulip instances in localStorage for instance-switch E2E. */
+/** Seeds two organization instances in localStorage for instance-switch E2E. */
 export async function seedMultiInstanceAuth(page: Page): Promise<void> {
   await page.goto("/");
   await page.evaluate(
@@ -31,8 +31,8 @@ export async function seedMultiInstanceAuth(page: Page): Promise<void> {
           apiKey: `fixture-key-${secondaryId}`,
         },
       ];
-      localStorage.setItem("zulip-web-instances", JSON.stringify(instances));
-      localStorage.setItem("zulip-web-current-instance", primaryId);
+      localStorage.setItem("messenger-web-instances", JSON.stringify(instances));
+      localStorage.setItem("messenger-web-current-instance", primaryId);
       for (const instance of instances) {
         localStorage.setItem(`workspace-theme-mode:${instance.id}`, "dark");
         localStorage.setItem(`workspace-palette:${instance.id}`, "orange-warm");

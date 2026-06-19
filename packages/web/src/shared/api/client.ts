@@ -2,13 +2,13 @@
  * HTTP client with a middleware pipeline (auth, logging, retry, timeouts).
  *
  * Usage:
- *   import { zulipApi, workspaceApi } from "~/shared/api/client";
- *   const res = await zulipApi.get("/messages", { anchor: "newest" });
- *   await zulipApi.post("/messages", { type: "stream", content: "hi" });
- *   zulipApi.use(myMiddleware);
+ *   import { messengerApi, workspaceApi } from "~/shared/api/client";
+ *   const res = await messengerApi.get("/messages", { anchor: "newest" });
+ *   await messengerApi.post("/messages", { type: "stream", content: "hi" });
+ *   messengerApi.use(myMiddleware);
  */
 
-import { ZULIP_API_FETCH_TIMEOUT_MS } from "~/shared/config/constants";
+import { MESSENGER_API_FETCH_TIMEOUT_MS } from "~/shared/config/constants";
 import {
   DEV_WORKSPACE_ORG_PROXY_PATH_PREFIX,
   X_WORKSPACE_DEV_TARGET_ORIGIN,
@@ -25,16 +25,16 @@ import {
 import { env } from "~/shared/lib/env";
 import { logApiCall } from "~/shared/lib/logger";
 import { extractLoggableRequestParams } from "~/shared/lib/logger-request-params.lib";
-import { workspaceOrgApiOriginFromZulipRealmRoot } from "~/shared/lib/workspace-org-origin.lib";
 import {
-  ingestZulipRateLimitFromApiResponse,
-  waitUntilZulipRateLimitReleased,
-} from "~/shared/lib/zulip-rate-limit-gate";
+  ingestMessengerRateLimitFromApiResponse,
+  waitUntilMessengerRateLimitReleased,
+} from "~/shared/lib/messenger-rate-limit-gate";
+import { workspaceOrgApiOriginFromRealmRoot } from "~/shared/lib/workspace-org-origin.lib";
 import {
   getCachedSessionCsrfToken,
   getOrFetchWebSessionCsrfToken,
   readSessionCsrfTokenFromDocument,
-} from "./zulip-session-csrf.internal";
+} from "./messenger-session-csrf.internal";
 
 // ---
 // Instance credentials provider (injected from `app` to avoid shared → entities import)
@@ -69,7 +69,7 @@ function resolveInstanceAuthType(instance: InstanceCredentials | null): Instance
 
 function normalizeInstanceRealmRoot(realmInput: string): string {
   const trimmed = realmInput.trim().replace(/\/+$/, "");
-  const escapedConfiguredApiPath = env.ZULIP_API_PATH.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escapedConfiguredApiPath = env.MESSENGER_API_V1_PATH.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return trimmed
     .replace(new RegExp(`${escapedConfiguredApiPath}$`), "")
     .replace(/\/api\/v1$/, "")
@@ -83,11 +83,11 @@ function workspaceOrgApiOriginForWorkspaceRest(instance: InstanceCredentials): s
   if (stored !== "" && isAllowedDevWorkspaceProxyTargetOrigin(stored)) {
     return new URL(stored).origin;
   }
-  return workspaceOrgApiOriginFromZulipRealmRoot(normalizeInstanceRealmRoot(instance.realm));
+  return workspaceOrgApiOriginFromRealmRoot(normalizeInstanceRealmRoot(instance.realm));
 }
 
-/** DEV: Zulip realm origin that serves `/user_uploads`, not the Workspace gateway. */
-function zulipRealmOriginForDevUserUploads(instance: InstanceCredentials): string {
+/** DEV: organization realm origin that serves `/user_uploads`, not the Workspace gateway. */
+function realmOriginForDevUserUploads(instance: InstanceCredentials): string {
   const root = normalizeInstanceRealmRoot(instance.realm);
   if (root === "") {
     return "";
@@ -108,7 +108,7 @@ export function getDevUserUploadsProxyTargetOrigin(): string | null {
   if (instance == null) {
     return null;
   }
-  const realmOrigin = zulipRealmOriginForDevUserUploads(instance);
+  const realmOrigin = realmOriginForDevUserUploads(instance);
   if (realmOrigin === "") {
     return null;
   }
@@ -242,7 +242,7 @@ async function readElectronCsrfToken(realm: string): Promise<string | null> {
   }
 }
 
-const zulipSessionCsrfMiddleware: Middleware = async (req, next) => {
+const messengerSessionCsrfMiddleware: Middleware = async (req, next) => {
   const instance = getCurrentInstance();
   if (resolveInstanceAuthType(instance) !== "session" || req.method === "GET") {
     return next(req);
@@ -408,10 +408,10 @@ const retryMiddleware: Middleware = async (req, next) => {
   throw lastError;
 };
 
-const zulipRateLimitGateMiddleware: Middleware = async (req, next) => {
-  await waitUntilZulipRateLimitReleased(req.signal);
+const messengerRateLimitGateMiddleware: Middleware = async (req, next) => {
+  await waitUntilMessengerRateLimitReleased(req.signal);
   const res = await next(req);
-  ingestZulipRateLimitFromApiResponse(res.status, res.data, res.headers);
+  ingestMessengerRateLimitFromApiResponse(res.status, res.data, res.headers);
   return res;
 };
 
@@ -426,7 +426,7 @@ function shouldSkipAuth401Handling(req: ApiRequest): boolean {
     ) {
       return true;
     }
-    // Workspace REST 401 often means gateway policy or disabled feature, not bad Zulip creds.
+    // Workspace REST 401 often means gateway policy or disabled feature, not bad Workspace creds.
     if (/\/v1\/(?:folders|services)(?:\/|$)/.test(path)) {
       return true;
     }
@@ -464,8 +464,8 @@ function createLinkedAbortSignal(
   };
 }
 
-/** Zulip event long-poll must not use the generic REST timeout (server holds the connection). */
-function isZulipEventsLongPollGet(req: ApiRequest): boolean {
+/** messenger event long-poll must not use the generic REST timeout (server holds the connection). */
+function isMessengerEventsLongPollGet(req: ApiRequest): boolean {
   if (req.method !== "GET") {
     return false;
   }
@@ -476,12 +476,12 @@ function isZulipEventsLongPollGet(req: ApiRequest): boolean {
   }
 }
 
-/** Applies `ZULIP_API_FETCH_TIMEOUT_MS` per retry attempt (runs after retry middleware). */
-const zulipRequestTimeoutMiddleware: Middleware = async (req, next) => {
-  if (isZulipEventsLongPollGet(req)) {
+/** Applies `MESSENGER_API_FETCH_TIMEOUT_MS` per retry attempt (runs after retry middleware). */
+const messengerRequestTimeoutMiddleware: Middleware = async (req, next) => {
+  if (isMessengerEventsLongPollGet(req)) {
     return next(req);
   }
-  const { signal, cleanup } = createLinkedAbortSignal(req.signal, ZULIP_API_FETCH_TIMEOUT_MS);
+  const { signal, cleanup } = createLinkedAbortSignal(req.signal, MESSENGER_API_FETCH_TIMEOUT_MS);
   try {
     return await next({ ...req, signal });
   } finally {
@@ -813,7 +813,7 @@ function getDevWorkspaceProxyBase(): string {
   return base.replace(/\/+$/, "");
 }
 
-/** Workspace REST `/v1/...` base for the active org (Workspace API origin, not always Zulip realm). */
+/** Workspace REST `/v1/...` base for the active org (Workspace API origin, not always organization realm). */
 export function getWorkspaceApiBaseForCurrentInstance(): string {
   const instance = getCurrentInstance();
 
@@ -829,26 +829,26 @@ export function getWorkspaceApiBaseForCurrentInstance(): string {
   return `${orgOrigin}${workspaceRestPathSuffix()}`;
 }
 
-function getZulipBaseUrl(): string {
+function getMessengerBaseUrl(): string {
   const instance = getCurrentInstance();
   if (!instance) return "";
   const authType = resolveInstanceAuthType(instance);
-  const apiPath = authType === "session" ? "/json" : env.ZULIP_API_PATH;
+  const apiPath = authType === "session" ? "/json" : env.MESSENGER_API_V1_PATH;
   const realm = normalizeInstanceRealmRoot(instance.realm);
   return `${realm}${apiPath}`;
 }
 
-export const zulipApi = new ApiClient("");
-zulipApi.useBefore(loggingMiddleware, zulipSessionCsrfMiddleware);
-zulipApi.useBefore(retryMiddleware, zulipRateLimitGateMiddleware);
-zulipApi.useBefore(authErrorMiddleware, zulipRequestTimeoutMiddleware);
+export const messengerApi = new ApiClient("");
+messengerApi.useBefore(loggingMiddleware, messengerSessionCsrfMiddleware);
+messengerApi.useBefore(retryMiddleware, messengerRateLimitGateMiddleware);
+messengerApi.useBefore(authErrorMiddleware, messengerRequestTimeoutMiddleware);
 
 export const workspaceApi = new ApiClient(env.WORKSPACE_API_BASE);
 
 workspaceApi.useBefore(loggingMiddleware, devWorkspaceOrgTargetHeaderMiddleware);
 
-export function refreshZulipApiBase(): void {
-  zulipApi.setBaseUrl(getZulipBaseUrl());
+export function refreshMessengerApiBase(): void {
+  messengerApi.setBaseUrl(getMessengerBaseUrl());
 }
 
 /** DEV: routes Workspace REST through Vite proxy for the selected instance. */
@@ -867,10 +867,10 @@ export {
   connectionHealthMiddleware,
   noCacheMiddleware,
   authMiddleware,
-  zulipSessionCsrfMiddleware,
+  messengerSessionCsrfMiddleware,
   loggingMiddleware,
   retryMiddleware,
-  zulipRateLimitGateMiddleware,
+  messengerRateLimitGateMiddleware,
   authErrorMiddleware,
   type ApiClient,
 };

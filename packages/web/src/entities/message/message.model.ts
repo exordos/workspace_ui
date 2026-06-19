@@ -11,8 +11,8 @@ import {
 } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { getCurrentInstance } from "~/shared/api/client";
-import { fetchMessagesWithNarrowPage } from "~/shared/api/zulip-messages";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import { fetchMessagesWithNarrowPage } from "~/shared/api/messenger-messages";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { createLogger, logStoreAction } from "~/shared/lib/logger";
 import {
   deleteMessagesByIds,
@@ -35,9 +35,9 @@ import {
   resolveHasOlderAfterLoadOlderPage,
   resolveOldestMessageId,
 } from "~/shared/lib/message-pagination-boundary.lib";
+import { messengerMessageCacheWindowN } from "~/shared/lib/messenger-message-window.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { resolveTopicMoveTargetMessageIds } from "~/shared/lib/update-message-topic-move.lib";
-import { zulipMessageCacheWindowN } from "~/shared/lib/zulip-message-window.lib";
 import {
   computeAppendMessageStateUpdate,
   type MessageAppendIdbPlan,
@@ -246,7 +246,7 @@ function schedulePersistFullChatMessages(get: () => CurrentChatMessagesState): v
     });
     return;
   }
-  const windowN = zulipMessageCacheWindowN(ctx);
+  const windowN = messengerMessageCacheWindowN(ctx);
   void upsertChatMessages({
     instanceId: inst,
     chatKey: chatKeyFromContext(ctx),
@@ -391,7 +391,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         instanceId: inst,
         chatKey: resolvePersistChatKeyForMessage(state.context, idbPlan.message),
         message: idbPlan.message,
-        windowSizeN: zulipMessageCacheWindowN(state.context),
+        windowSizeN: messengerMessageCacheWindowN(state.context),
       });
     } else if (idbPlan.kind === "mergeReplace") {
       if (idbPlan.removeId < 0) {
@@ -401,7 +401,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         instanceId: inst,
         chatKey: resolvePersistChatKeyForMessage(state.context, idbPlan.message),
         message: idbPlan.message,
-        windowSizeN: zulipMessageCacheWindowN(state.context),
+        windowSizeN: messengerMessageCacheWindowN(state.context),
       });
     }
   },
@@ -498,7 +498,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         instanceId: inst,
         chatKey: resolvePersistChatKeyForMessage(state.context, idbPlan.message),
         message: idbPlan.message,
-        windowSizeN: zulipMessageCacheWindowN(state.context),
+        windowSizeN: messengerMessageCacheWindowN(state.context),
       });
     }
   },
@@ -1076,7 +1076,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
             messages: fresh,
           });
         } else {
-          const windowN = zulipMessageCacheWindowN(ctx);
+          const windowN = messengerMessageCacheWindowN(ctx);
           await upsertChatMessages({
             instanceId: inst,
             chatKey,
@@ -1202,7 +1202,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
             messages: fresh,
           });
         } else {
-          const windowN = zulipMessageCacheWindowN(ctx);
+          const windowN = messengerMessageCacheWindowN(ctx);
           await upsertChatMessages({
             instanceId: inst,
             chatKey,

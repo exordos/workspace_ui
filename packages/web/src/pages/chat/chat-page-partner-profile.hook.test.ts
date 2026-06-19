@@ -8,7 +8,7 @@ import { useChatPartnerProfileHydration } from "./chat-page-partner-profile.hook
 
 const fetchUser = vi.hoisted(() => vi.fn());
 
-vi.mock("~/shared/api/zulip-users", () => ({
+vi.mock("~/shared/api/messenger-users", () => ({
   fetchUser,
 }));
 
@@ -32,15 +32,13 @@ describe("useChatPartnerProfileHydration", () => {
     });
 
     let resolveUser:
-      | ((
-          value: {
-            user_id: number;
-            full_name: string;
-            email: string;
-            avatar_url: string;
-            is_active: boolean;
-          },
-        ) => void)
+      | ((value: {
+          user_id: number;
+          full_name: string;
+          email: string;
+          avatar_url: string;
+          is_active: boolean;
+        }) => void)
       | undefined;
     fetchUser.mockImplementation(() => Promise.resolve(null));
     fetchUser.mockImplementationOnce(

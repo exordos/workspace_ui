@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import { createMessage } from "~/test/factories";
 
-function streamMessage(overrides: Parameters<typeof createMessage>[0] = {}): ZulipRawMessage {
-  return createMessage(overrides) as ZulipRawMessage;
+function streamMessage(overrides: Parameters<typeof createMessage>[0] = {}): WorkspaceRawMessage {
+  return createMessage(overrides);
 }
 import {
   filterStreamMessagesForSidebar,

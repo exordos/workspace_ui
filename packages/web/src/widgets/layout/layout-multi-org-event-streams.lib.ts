@@ -1,5 +1,5 @@
-import type { ZulipInstance } from "~/entities/instance/instance.model";
-import type { ZulipEvent } from "~/shared/api/zulip.types";
+import type { WorkspaceInstance } from "~/entities/instance/instance.model";
+import type { MessengerEvent } from "~/shared/api/messenger.types";
 import { MULTI_ORG_UNREAD_REFRESH_DEBOUNCE_MS } from "~/shared/config/constants";
 import type { StartInactiveInstanceEventStreamsOptions } from "./layout-multi-org-event-streams.types";
 
@@ -8,7 +8,7 @@ export type {
   StartCredentialEventLoopOptions,
 } from "./layout-multi-org-event-streams.types";
 
-function shouldRefreshUnreadForEvent(event: ZulipEvent): boolean {
+function shouldRefreshUnreadForEvent(event: MessengerEvent): boolean {
   return (
     event.type === "message" ||
     event.type === "update_message_flags" ||
@@ -45,7 +45,7 @@ export function startInactiveInstanceEventStreams(
   const refreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
   let cancelled = false;
 
-  const scheduleRefresh = (instance: ZulipInstance) => {
+  const scheduleRefresh = (instance: WorkspaceInstance) => {
     if (cancelled) return;
     const existingTimer = refreshTimers.get(instance.id);
     if (existingTimer != null) {

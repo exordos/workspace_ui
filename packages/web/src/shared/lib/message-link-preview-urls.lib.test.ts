@@ -51,16 +51,18 @@ describe("extractFirstLinkPreviewUrl", () => {
   });
 
   it("skips user_upload paths", () => {
-    expect(extractFirstLinkPreviewUrl("https://zulip.test/user_uploads/1/file.pdf")).toBeNull();
+    expect(extractFirstLinkPreviewUrl("https://messenger.test/user_uploads/1/file.pdf")).toBeNull();
   });
 
-  it("skips Zulip REST API URLs in message text", () => {
+  it("skips Messenger REST API URLs in message text", () => {
     expect(
-      extractFirstLinkPreviewUrl("https://zulip.tokens.team/api/v1/users?client_gravatar=false"),
+      extractFirstLinkPreviewUrl(
+        "https://messenger.tokens.team/api/v1/users?client_gravatar=false",
+      ),
     ).toBeNull();
   });
 
-  it("skips zulip narrow permalinks", () => {
+  it("skips messenger narrow permalinks", () => {
     expect(
       extractFirstLinkPreviewUrl("https://chat.example.com/#narrow/channel/1-general"),
     ).toBeNull();
@@ -74,8 +76,8 @@ describe("extractFirstLinkPreviewUrl", () => {
     expect(extractFirstLinkPreviewUrl("join https://meet.jit.si/MyRoom123")).toBeNull();
   });
 
-  it("skips URLs inside Zulip quote fences", () => {
-    const markdown = `@_**Alice|42** [wrote](https://zulip.example.com/#narrow/dm/42/near/1):
+  it("skips URLs inside messenger quote fences", () => {
+    const markdown = `@_**Alice|42** [wrote](https://chat.example.com/#narrow/dm/42/near/1):
 \`\`\`quote
 https://quoted.example.com/page
 \`\`\`
@@ -85,7 +87,7 @@ https://quoted.example.com/page
   });
 
   it("returns URL outside quote but not URL inside quote", () => {
-    const markdown = `@_**Alice|42** [wrote](https://zulip.example.com/#narrow/dm/42/near/1):
+    const markdown = `@_**Alice|42** [wrote](https://chat.example.com/#narrow/dm/42/near/1):
 \`\`\`quote
 https://quoted.example.com
 \`\`\`

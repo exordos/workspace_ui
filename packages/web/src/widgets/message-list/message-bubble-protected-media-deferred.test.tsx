@@ -1,12 +1,12 @@
 import { render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { createMessage } from "~/test/factories";
 import { MessageBubble } from "./message-bubble.ui";
 
 const buildAuthHeaderMock = vi.fn(() => ({}));
 
-vi.mock("~/shared/api/zulip-client.internal", () => ({
+vi.mock("~/shared/api/messenger-client.internal", () => ({
   getRealmBaseUrl: () => "https://uploads.example.com",
 }));
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { resolveQuotePermalinkNavigation } from "./chat-message-permalink-navigation.lib";
 
 const baseParams = {
-  realmBaseUrl: "https://zulip.example.com",
+  realmBaseUrl: "https://chat.example.com",
   locationPathname: "/dm/23",
   locationSearch: "",
   isDmView: true,
@@ -19,7 +19,7 @@ describe("resolveQuotePermalinkNavigation", () => {
     expect(
       resolveQuotePermalinkNavigation({
         ...baseParams,
-        href: "https://zulip.example.com/#narrow/dm/23-dm/near/3373",
+        href: "https://chat.example.com/#narrow/dm/23-dm/near/3373",
       }),
     ).toEqual({
       kind: "inPlace",
@@ -60,7 +60,7 @@ describe("resolveQuotePermalinkNavigation", () => {
         ...baseParams,
         locationPathname: "/dm/23",
         isDmView: true,
-        href: "https://zulip.example.com/#narrow/channel/10-Engineering/topic/Bugs/near/15",
+        href: "https://chat.example.com/#narrow/channel/10-Engineering/topic/Bugs/near/15",
         resolveStreamName: (streamId) => (streamId === 10 ? "Engineering" : undefined),
       }),
     ).toEqual({
@@ -74,11 +74,11 @@ describe("resolveQuotePermalinkNavigation", () => {
       resolveQuotePermalinkNavigation({
         ...baseParams,
         realmBaseUrl: "https://chat.example.com",
-        href: "https://zulip.example.com/#narrow/dm/23-dm/near/3373",
+        href: "https://other.example.com/#narrow/dm/23-dm/near/3373",
       }),
     ).toEqual({
       kind: "path",
-      path: "/message/3373?realm=https%3A%2F%2Fzulip.example.com",
+      path: "/message/3373?realm=https%3A%2F%2Fother.example.com",
     });
   });
 
@@ -98,7 +98,7 @@ describe("resolveQuotePermalinkNavigation", () => {
     expect(
       resolveQuotePermalinkNavigation({
         ...baseParams,
-        href: "https://zulip.example.com/#narrow/channel/1-a",
+        href: "https://chat.example.com/#narrow/channel/1-a",
       }),
     ).toBeNull();
   });

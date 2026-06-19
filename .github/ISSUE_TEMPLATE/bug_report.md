@@ -29,7 +29,7 @@ What actually happened.
 - **OS**: Windows 11 / macOS / Ubuntu / Fedora
 - **Runtime**: Electron / Browser (Chrome/Edge) / PWA
 - **App version**: (Settings → App version)
-- **Zulip server version**: (if relevant)
+- **server version**: (if relevant)
 
 ## Screenshots
 

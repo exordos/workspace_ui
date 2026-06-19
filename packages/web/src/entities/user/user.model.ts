@@ -4,11 +4,11 @@
 import { create } from "zustand";
 import type {
   AvatarUrlByUserId,
-  ZulipGroupSettingValue,
-  ZulipRawMessage,
-} from "~/shared/api/zulip.types";
+  MessengerGroupSettingValue,
+  WorkspaceRawMessage,
+} from "~/shared/api/messenger.types";
 import { bumpAvatarVersion } from "~/shared/lib/avatar";
-import type { ZulipCustomProfileDataMap } from "~/shared/lib/user-profile-fields.lib";
+import type { WorkspaceCustomProfileDataMap } from "~/shared/lib/user-profile-fields.lib";
 import type { CurrentUserMessageEditPolicy } from "~/shared/types/message-edit-policy";
 
 export type PresenceStatus = "active" | "idle";
@@ -44,10 +44,10 @@ export interface UserRecord {
   /** Backoff / negative-cache window — skip network until this timestamp. */
   statusNextRetryAt?: number;
   statusErrorKind?: UserStatusErrorKind;
-  /** Zulip directory: `false` when the account is deactivated. */
+  /** Workspace directory: `false` when the account is deactivated. */
   is_active?: boolean;
-  /** Zulip GET /users `profile_data` (custom profile fields). */
-  profile_data?: ZulipCustomProfileDataMap;
+  /** Workspace GET /users `profile_data` (custom profile fields). */
+  profile_data?: WorkspaceCustomProfileDataMap;
 }
 
 export interface UserStatusFetchMeta {
@@ -58,9 +58,9 @@ export interface UserStatusFetchMeta {
 }
 
 export interface CurrentUserChannelCapabilities {
-  realmCanAddSubscribersGroup?: ZulipGroupSettingValue;
-  realmCanResolveTopicsGroup?: ZulipGroupSettingValue;
-  realmCanMoveMessagesBetweenChannelsGroup?: ZulipGroupSettingValue;
+  realmCanAddSubscribersGroup?: MessengerGroupSettingValue;
+  realmCanResolveTopicsGroup?: MessengerGroupSettingValue;
+  realmCanMoveMessagesBetweenChannelsGroup?: MessengerGroupSettingValue;
 }
 
 interface UsersState {
@@ -71,7 +71,7 @@ interface UsersState {
 
   mergeUser: (payload: Partial<UserRecord> & { user_id: number }) => void;
   mergeUsers: (list: (Partial<UserRecord> & { user_id: number })[]) => void;
-  mergeFromMessage: (msg: ZulipRawMessage) => void;
+  mergeFromMessage: (msg: WorkspaceRawMessage) => void;
   setCurrentUserChannelCapabilities: (capabilities: CurrentUserChannelCapabilities) => void;
   setCurrentUserMessageEditPolicy: (policy: CurrentUserMessageEditPolicy) => void;
   setPresenceByEmail: (email: string, presence: UserPresence) => void;

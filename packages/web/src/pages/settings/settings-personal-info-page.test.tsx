@@ -32,7 +32,7 @@ vi.mock("~/entities/user/api/user.api", () => ({
   updateOwnStatus: (...args: unknown[]) => updateOwnStatusMock(...args),
 }));
 
-vi.mock("~/shared/api/zulip-client.internal", () => ({
+vi.mock("~/shared/api/messenger-client.internal", () => ({
   getRealmBaseUrl: getRealmBaseUrlMock,
 }));
 
@@ -75,7 +75,7 @@ describe("SettingsPersonalInfoPage", () => {
       avatarUrl: "/avatar/default.png",
     });
     getRealmBaseUrlMock.mockReset();
-    getRealmBaseUrlMock.mockReturnValue("https://zulip.example.com");
+    getRealmBaseUrlMock.mockReturnValue("https://chat.example.com");
     createObjectURLMock.mockReset();
     revokeObjectURLMock.mockReset();
     bumpAvatarVersionMock.mockReset();
@@ -198,7 +198,7 @@ describe("SettingsPersonalInfoPage", () => {
       instances: [
         {
           id: "instance-1",
-          realm: "https://zulip.example.com",
+          realm: "https://chat.example.com",
           email: "alice@example.com",
           apiKey: "api-key",
         },
@@ -212,7 +212,7 @@ describe("SettingsPersonalInfoPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /share profile/i }));
 
     await waitFor(() =>
-      expect(writeTextMock).toHaveBeenCalledWith("https://zulip.example.com/#user/42"),
+      expect(writeTextMock).toHaveBeenCalledWith("https://chat.example.com/#user/42"),
     );
     expect(screen.getByText(/profile link copied/i)).toBeInTheDocument();
   });
@@ -236,7 +236,7 @@ describe("SettingsPersonalInfoPage", () => {
       instances: [
         {
           id: "instance-1",
-          realm: "http://zulip.example.com",
+          realm: "not-a-valid-realm",
           email: "alice@example.com",
           apiKey: "api-key",
         },
@@ -690,9 +690,7 @@ describe("SettingsPersonalInfoPage", () => {
     await waitFor(() => {
       const avatarImage = document.querySelector("img");
       expect(avatarImage).not.toBeNull();
-      expect(avatarImage?.getAttribute("src")).toContain(
-        "https://zulip.example.com/avatar/old.png",
-      );
+      expect(avatarImage?.getAttribute("src")).toContain("https://chat.example.com/avatar/old.png");
       expect(avatarImage?.getAttribute("src")).toContain("_av=");
     });
   });
@@ -760,7 +758,7 @@ describe("SettingsPersonalInfoPage", () => {
     expect(updateOwnProfileMock).not.toHaveBeenCalled();
     expect(updateOwnStatusMock).not.toHaveBeenCalled();
     const avatarImage = document.querySelector("img");
-    expect(avatarImage?.getAttribute("src")).toContain("https://zulip.example.com/avatar/old.png");
+    expect(avatarImage?.getAttribute("src")).toContain("https://chat.example.com/avatar/old.png");
   });
 
   it("applies pending avatar upload on save before profile/status", async () => {

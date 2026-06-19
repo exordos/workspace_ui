@@ -54,7 +54,7 @@ import { createMessage, createUser, createStream, createInstance } from "~/test/
 const msg = createMessage({ content: "Hello", sender_id: 42 });
 const user = createUser({ full_name: "Alice" });
 const stream = createStream({ name: "engineering" });
-const instance = createInstance({ realm: "https://zulip.example.com" });
+const instance = createInstance({ realm: "https://chat.example.com" });
 ```
 
 Factories create valid objects with sensible defaults. Override only what matters for the test.

@@ -1,7 +1,7 @@
 /**
- * Emoji display helpers for message reactions (Zulip emoji_name / emoji_code).
+ * Emoji display helpers for message reactions (messenger emoji_name / emoji_code).
  */
-import type { MessageReactionPayload, MockMessage, Reaction } from "~/shared/api/zulip.types";
+import type { MessageReactionPayload, MockMessage, Reaction } from "~/shared/api/messenger.types";
 import {
   normalizeEmojiShortcodeName,
   resolveShortcodeToUnicode,
@@ -54,7 +54,7 @@ function hasEmojiPresentationSelector(value: string): boolean {
 }
 
 /**
- * True for a Zulip 1:1 DM (`private` with exactly two recipients). Group huddles have three or more.
+ * True for a Workspace 1:1 DM (`private` with exactly two recipients). Group huddles have three or more.
  * Aligned with `messageToDmEntry` in `entities/chat-list/chat-list.lib.ts`.
  */
 export function isOneToOneDirectMessage(message: MockMessage): boolean {

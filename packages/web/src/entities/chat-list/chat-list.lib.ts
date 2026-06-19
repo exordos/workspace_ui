@@ -1,6 +1,6 @@
 /**
  * Chat-list building helpers — pure functions that transform
- * Zulip raw messages into sidebar-ready structures.
+ * Workspace raw messages into sidebar-ready structures.
  */
 import {
   GROUP_DM_ID_OFFSET,
@@ -13,7 +13,7 @@ import {
 } from "~/entities/chat-list/chat-list-format.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import type {
@@ -39,12 +39,12 @@ interface StreamTopicEntry {
   lastMessageId?: number;
 }
 
-export function isUnread(m: ZulipRawMessage): boolean {
+export function isUnread(m: WorkspaceRawMessage): boolean {
   return !m.flags?.includes("read");
 }
 
 /** Unread for sidebar/UX: message lacks "read" and is not from the current user. */
-export function isUnreadFromOthers(m: ZulipRawMessage, currentUserId: number | null): boolean {
+export function isUnreadFromOthers(m: WorkspaceRawMessage, currentUserId: number | null): boolean {
   if (!isUnread(m)) return false;
   if (currentUserId != null && m.sender_id === currentUserId) return false;
   return true;
@@ -52,7 +52,7 @@ export function isUnreadFromOthers(m: ZulipRawMessage, currentUserId: number | n
 
 export { isUnreadMentionFromOthers } from "./chat-list-mentions.lib";
 
-export function messageToStreamEntry(m: ZulipRawMessage): {
+export function messageToStreamEntry(m: WorkspaceRawMessage): {
   stream: Omit<StreamEntryInternal, "topics"> & { topics: Map<string, StreamTopicEntry> };
   topic: StreamTopicEntry;
 } | null {
@@ -94,7 +94,7 @@ interface DmRecipientRow {
   avatar_url?: string;
 }
 
-/** Zulip: two recipients => 1:1 DM; when current user is unknown, infer peer from sender. */
+/** Workspace: two recipients => 1:1 DM; when current user is unknown, infer peer from sender. */
 function resolveDmOtherUsers(
   recipients: DmRecipientRow[],
   currentUserId: number | null,
@@ -145,7 +145,7 @@ function resolveDmEntryIdentity(
   otherUsers: DmRecipientRow[],
   key: string,
   currentUserId: number | null,
-  message: ZulipRawMessage,
+  message: WorkspaceRawMessage,
   getAvatar: (userId: number) => string | undefined,
 ): { id: number; userIds?: number[]; avatar_url?: string } | null {
   if (isGroup) {
@@ -185,7 +185,7 @@ function buildDmEntrySlug(
 }
 
 export function messageToDmEntry(
-  m: ZulipRawMessage,
+  m: WorkspaceRawMessage,
   currentUserId: number | null,
   avatarUrlByUserId?: Map<number, string>,
 ): DmEntryInternal | null {
@@ -258,7 +258,7 @@ function applyUnreadCountsToSidebarMaps(
 }
 
 function accumulateSidebarUnreadFromMessage(
-  m: ZulipRawMessage,
+  m: WorkspaceRawMessage,
   currentUserId: number | null,
   streamUnread: Map<string, number>,
   dmUnread: Map<string, number>,
@@ -277,7 +277,7 @@ function accumulateSidebarUnreadFromMessage(
 }
 
 function upsertStreamFromMessage(
-  m: ZulipRawMessage,
+  m: WorkspaceRawMessage,
   streamsByKey: Map<number, StreamEntryInternal>,
 ): boolean {
   const streamResult = messageToStreamEntry(m);
@@ -321,7 +321,7 @@ function upsertStreamFromMessage(
 }
 
 function upsertDmFromMessage(
-  m: ZulipRawMessage,
+  m: WorkspaceRawMessage,
   currentUserId: number | null,
   avatarUrlByUserId: Map<number, string> | undefined,
   dmsByKey: Map<string, DmEntryInternal>,
@@ -387,12 +387,12 @@ function mapInternalDmToSidebar(x: DmEntryInternal): Extract<SidebarChat, { type
 }
 
 /**
- * Builds lists of streams with topics and DMs with slug from latest Zulip messages.
+ * Builds lists of streams with topics and DMs with slug from latest messenger messages.
  * Streams by stream_id, topics by subject; stream last message date — max across any topic.
  * Unread: messages without 'read' in flags; counter per stream/topic and per DM.
  */
 export function buildSidebarFromMessages(
-  messages: ZulipRawMessage[],
+  messages: WorkspaceRawMessage[],
   currentUserId: number | null,
   avatarUrlByUserId?: Map<number, string>,
 ): {

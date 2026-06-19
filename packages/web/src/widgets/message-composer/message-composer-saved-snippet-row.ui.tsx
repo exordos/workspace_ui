@@ -1,5 +1,5 @@
 import React from "react";
-import type { SavedSnippet } from "~/shared/api/zulip.types";
+import type { SavedSnippet } from "~/shared/api/messenger.types";
 
 export const SavedSnippetRow = React.memo(function SavedSnippetRow({
   snippet,

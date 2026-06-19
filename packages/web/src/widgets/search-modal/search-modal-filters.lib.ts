@@ -1,5 +1,5 @@
 import type { UserRecord } from "~/entities/user/user.model";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 
 export function filterSearchMessages(
   results: MockMessage[],

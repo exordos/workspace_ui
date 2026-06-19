@@ -62,4 +62,4 @@ Out of scope:
 - Denial of service (rate limiting is server-side)
 - Social engineering
 - Physical access attacks
-- Issues in third-party Zulip server software
+- Issues in third-party server software

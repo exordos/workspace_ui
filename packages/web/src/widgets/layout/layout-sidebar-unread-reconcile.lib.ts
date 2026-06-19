@@ -7,7 +7,7 @@ import {
   type UnreadSurfaceSyncSource,
 } from "~/entities/unread-sync/unread-surfaces-sync.lib";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
-import type { ZulipUnreadMessagesSnapshot } from "~/shared/api/zulip-unread.lib";
+import type { MessengerUnreadMessagesSnapshot } from "~/shared/api/messenger-unread.lib";
 import { logChatListFlow } from "~/shared/lib/message-flow-debug.lib";
 import {
   logSidebarUnreadFlow,
@@ -19,7 +19,7 @@ import {
 } from "./layout-instance-register-unread.lib";
 const lastReconciledSnapshotKeyByInstanceId = new Map<string, string>();
 
-function buildUnreadSnapshotDedupeKey(snapshot: ZulipUnreadMessagesSnapshot): string {
+function buildUnreadSnapshotDedupeKey(snapshot: MessengerUnreadMessagesSnapshot): string {
   const streamPart = snapshot.streams
     .map(
       (bucket) => `${bucket.streamId}:${bucket.topic}:${(bucket.unreadMessageIds ?? []).join(",")}`,
@@ -49,7 +49,7 @@ export interface ReconcileSidebarUnreadAfterBootstrapOptions {
   cancelled: () => boolean;
   instanceId?: string | null;
   currentUserId: number | null;
-  registerSnapshot?: ZulipUnreadMessagesSnapshot | null;
+  registerSnapshot?: MessengerUnreadMessagesSnapshot | null;
   logScope?: string;
   /**
    * `cached-register` — tab resume / light reconnect (do not apply empty snapshot over local badges).

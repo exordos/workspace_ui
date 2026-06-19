@@ -1,4 +1,4 @@
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { isUnreadMessageFromOthers } from "./message-unread-boundary.lib";
 
 /** True when the message bubble starts at or below the scroll root bottom edge. */

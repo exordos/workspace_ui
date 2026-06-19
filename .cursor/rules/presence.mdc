@@ -13,7 +13,7 @@ shared/lib/presence.ts       ← local activity tracker (idle detection, reporti
 shared/lib/format.ts         ← formatLastSeen(), getPresenceState(), isPresenceOnline()
 shared/ui/presence-indicator  ← visual indicator (green/yellow/gray)
 entities/user/user.model.ts  ← UserPresence in store (per-user)
-entities/user/user.api.ts    ← POST /users/me/presence (report to Zulip)
+entities/user/user.api.ts    ← POST /users/me/presence (report to messenger API)
 widgets/layout/              ← polling fetchRealmPresence() every 90s
 ```
 

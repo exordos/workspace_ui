@@ -4,7 +4,7 @@ import { SYSTEM_ALL_FOLDER_ID } from "~/features/folder-sync/folder-sync-constan
 import { buildOrgScopedStorageKey } from "~/shared/lib/org-scoped-storage";
 import type { SidebarConfig, SidebarConfigState, SidebarUiState } from "./sidebar-config.types";
 
-const SIDEBAR_CONFIG_STORAGE_KEY = "zulip-web-sidebar-config";
+const SIDEBAR_CONFIG_STORAGE_KEY = "messenger-web-sidebar-config";
 
 const DEFAULT_CONFIG: SidebarConfig = {
   activityOpen: false,

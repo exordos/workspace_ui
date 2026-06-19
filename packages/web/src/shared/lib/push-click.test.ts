@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildMessageRedirectRouteFromZulipPermalink,
+  buildMessageRedirectRouteFromWorkspacePermalink,
   buildPushClickUrl,
   buildRouteFromMessage,
   findInstanceIdByRealmUri,
@@ -80,16 +80,16 @@ describe("buildPushClickUrl", () => {
 
 describe("findInstanceIdByRealmUri", () => {
   const instances = [
-    { id: "1", realm: "https://zulip.example.com", email: "a@test.com", apiKey: "k1" },
+    { id: "1", realm: "https://chat.example.com", email: "a@test.com", apiKey: "k1" },
     { id: "2", realm: "https://chat.example.com", email: "b@test.com", apiKey: "k2" },
   ];
 
   it("matches exact realm url", () => {
-    expect(findInstanceIdByRealmUri(instances, "https://zulip.example.com")).toBe("1");
+    expect(findInstanceIdByRealmUri(instances, "https://chat.example.com")).toBe("1");
   });
 
   it("matches normalized realm url with api suffix and trailing slash", () => {
-    expect(findInstanceIdByRealmUri(instances, "https://zulip.example.com/api/v1/")).toBe("1");
+    expect(findInstanceIdByRealmUri(instances, "https://chat.example.com/api/v1/")).toBe("1");
   });
 
   it("returns null when no realm matches", () => {
@@ -169,8 +169,8 @@ describe("buildRouteFromMessage", () => {
 describe("buildMessageRedirectRoute", () => {
   it("builds a redirect route with encoded realm query", async () => {
     const { buildMessageRedirectRoute } = await import("./push-click");
-    expect(buildMessageRedirectRoute(123, "https://zulip.example.com")).toBe(
-      "/message/123?realm=https%3A%2F%2Fzulip.example.com",
+    expect(buildMessageRedirectRoute(123, "https://chat.example.com")).toBe(
+      "/message/123?realm=https%3A%2F%2Fchat.example.com",
     );
   });
 
@@ -180,24 +180,26 @@ describe("buildMessageRedirectRoute", () => {
   });
 });
 
-describe("buildMessageRedirectRouteFromZulipPermalink", () => {
-  it("maps absolute Zulip narrow permalink to internal message redirect route", () => {
+describe("buildMessageRedirectRouteFromWorkspacePermalink", () => {
+  it("maps absolute messenger narrow permalink to internal message redirect route", () => {
     expect(
-      buildMessageRedirectRouteFromZulipPermalink(
-        "https://zulip.example.com/#narrow/channel/33-InternalServicesDev/topic/Workspace/near/5743236",
+      buildMessageRedirectRouteFromWorkspacePermalink(
+        "https://chat.example.com/#narrow/channel/33-InternalServicesDev/topic/Workspace/near/5743236",
       ),
-    ).toBe("/message/5743236?realm=https%3A%2F%2Fzulip.example.com");
+    ).toBe("/message/5743236?realm=https%3A%2F%2Fchat.example.com");
   });
 
   it("maps hash-only narrow permalink to current-instance redirect route", () => {
-    expect(buildMessageRedirectRouteFromZulipPermalink("#narrow/dm/7,42-dm/near/123")).toBe(
+    expect(buildMessageRedirectRouteFromWorkspacePermalink("#narrow/dm/7,42-dm/near/123")).toBe(
       "/message/123",
     );
   });
 
   it("returns null for non-message permalinks", () => {
     expect(
-      buildMessageRedirectRouteFromZulipPermalink("https://zulip.example.com/#narrow/channel/1-a"),
+      buildMessageRedirectRouteFromWorkspacePermalink(
+        "https://chat.example.com/#narrow/channel/1-a",
+      ),
     ).toBeNull();
   });
 });
@@ -271,10 +273,10 @@ describe("buildRouteFromPushNotificationClick", () => {
     expect(
       buildRouteFromPushNotificationClick({
         messageId: "321",
-        realmUri: "https://zulip.example.com",
+        realmUri: "https://chat.example.com",
         messageType: "stream",
       }),
-    ).toBe("/message/321?realm=https%3A%2F%2Fzulip.example.com");
+    ).toBe("/message/321?realm=https%3A%2F%2Fchat.example.com");
   });
 
   it("ignores non-decimal messageId and falls back to stream route", () => {

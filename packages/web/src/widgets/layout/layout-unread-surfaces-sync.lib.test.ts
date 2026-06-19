@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import {
   syncUnreadSurfacesFromDelta,
   syncUnreadSurfacesFromEventDelta,
@@ -10,7 +10,7 @@ import {
 
 const INSTANCE_ID = "instance-sync-test";
 
-function unreadStreamMessage(id: number): ZulipRawMessage {
+function unreadStreamMessage(id: number): WorkspaceRawMessage {
   return {
     id,
     sender_id: 2,
@@ -25,7 +25,7 @@ function unreadStreamMessage(id: number): ZulipRawMessage {
   };
 }
 
-function unreadDmMessage(id: number): ZulipRawMessage {
+function unreadDmMessage(id: number): WorkspaceRawMessage {
   return {
     id,
     sender_id: 2,
@@ -47,7 +47,7 @@ beforeEach(() => {
     instances: [
       {
         id: INSTANCE_ID,
-        realm: "https://zulip.example.com",
+        realm: "https://chat.example.com",
         email: "user@example.com",
         apiKey: "api-key",
       },

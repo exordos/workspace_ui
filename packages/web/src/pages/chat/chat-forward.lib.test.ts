@@ -10,7 +10,7 @@ import {
 } from "./chat-forward.lib";
 
 const permalinkOptions = {
-  realmBaseUrl: "https://zulip.example.com",
+  realmBaseUrl: "https://chat.example.com",
   wroteLabel: "wrote",
   resolveStreamName: (streamId: number) => (streamId === 33 ? "InternalServicesDev" : "general"),
 };
@@ -37,7 +37,7 @@ describe("buildForwardQuote", () => {
         permalinkOptions,
       ),
     ).toBe(
-      "@_**Alice|42** [wrote](https://zulip.example.com/#narrow/dm/7,42-dm/near/1):\n```quote\nHello\n```\n\n",
+      "@_**Alice|42** [wrote](https://chat.example.com/#narrow/dm/7,42-dm/near/1):\n```quote\nHello\n```\n\n",
     );
   });
 
@@ -71,7 +71,7 @@ describe("buildForwardQuote", () => {
         permalinkOptions,
       ),
     ).toBe(
-      "@_**Alice|42** [wrote](https://zulip.example.com/#narrow/dm/7,42-dm/near/10):\n```quote\nFirst\n```\n\n\n\n@_**Bob|55** [wrote](https://zulip.example.com/#narrow/channel/33-InternalServicesDev/topic/Workspace/near/11):\n```quote\nSecond\n```\n\n",
+      "@_**Alice|42** [wrote](https://chat.example.com/#narrow/dm/7,42-dm/near/10):\n```quote\nFirst\n```\n\n\n\n@_**Bob|55** [wrote](https://chat.example.com/#narrow/channel/33-InternalServicesDev/topic/Workspace/near/11):\n```quote\nSecond\n```\n\n",
     );
   });
 
@@ -93,7 +93,7 @@ describe("buildForwardQuote", () => {
         permalinkOptions,
       ),
     ).toBe(
-      "@_**Alice|42** [wrote](https://zulip.example.com/#narrow/dm/42-dm/near/1):\n```quote\nSelected excerpt\n```\n\n",
+      "@_**Alice|42** [wrote](https://chat.example.com/#narrow/dm/42-dm/near/1):\n```quote\nSelected excerpt\n```\n\n",
     );
   });
 
@@ -135,12 +135,12 @@ describe("buildForwardQuote", () => {
         permalinkOptions,
       ),
     ).toBe(
-      "@_**Alice|42** [wrote](https://zulip.example.com/#narrow/dm/42-dm/near/1):\n```quote\nHello world\n```\n\n",
+      "@_**Alice|42** [wrote](https://chat.example.com/#narrow/dm/42-dm/near/1):\n```quote\nHello world\n```\n\n",
     );
   });
 
   it("preserves nested reply quote inside forward payload from markdown_source", () => {
-    const nestedMarkdown = `@_**corle|21** [wrote](https://zulip.example.com/#narrow/dm/21-dm/near/1000):
+    const nestedMarkdown = `@_**corle|21** [wrote](https://chat.example.com/#narrow/dm/21-dm/near/1000):
 \`\`\`quote
 и тут тоже
 
@@ -165,7 +165,7 @@ describe("buildForwardQuote", () => {
     );
 
     expect(result).toContain("@_**corle|21**");
-    expect(result).toContain("[wrote](https://zulip.example.com/#narrow/dm/21-dm/near/1000)");
+    expect(result).toContain("[wrote](https://chat.example.com/#narrow/dm/21-dm/near/1000)");
     expect(result).toContain("````quote\n@_**corle|21**");
     expect(result).toContain("```quote\nи тут тоже");
     expect(result).toContain("дай ссылку на то как приложуху поставить");
@@ -190,7 +190,7 @@ describe("buildForwardQuote", () => {
         permalinkOptions,
       ),
     ).toBe(
-      "@_**Alice|42** [wrote](https://zulip.example.com/#narrow/dm/42-dm/near/1):\n```quote\n**Hi**\n```\n\n",
+      "@_**Alice|42** [wrote](https://chat.example.com/#narrow/dm/42-dm/near/1):\n```quote\n**Hi**\n```\n\n",
     );
   });
 
@@ -224,7 +224,7 @@ describe("buildForwardQuote", () => {
         permalinkOptions,
       ),
     ).toBe(
-      "@_**Alice|42** [wrote](https://zulip.example.com/#narrow/dm/7,42-dm/near/10):\n```quote\nFirst\n```\n\n\n\n@_**Bob|55** [wrote](https://zulip.example.com/#narrow/channel/33-InternalServicesDev/topic/Workspace/near/11):\n```quote\nSecond\n```\n\n",
+      "@_**Alice|42** [wrote](https://chat.example.com/#narrow/dm/7,42-dm/near/10):\n```quote\nFirst\n```\n\n\n\n@_**Bob|55** [wrote](https://chat.example.com/#narrow/channel/33-InternalServicesDev/topic/Workspace/near/11):\n```quote\nSecond\n```\n\n",
     );
   });
 

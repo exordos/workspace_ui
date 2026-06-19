@@ -9,7 +9,7 @@ alwaysApply: true
 
 ### HTML Sanitization
 
-MANDATORY before rendering HTML from Zulip:
+MANDATORY before rendering HTML from the messenger API:
 
 ```typescript
 import { sanitizeHtml } from "~/shared/lib/html";
@@ -81,7 +81,7 @@ Activity tracking: mousemove, keydown, click, scroll, touch.
 
 API Key is stored in localStorage as plain text. If an XSS attack executes JS code, it can read the apiKey. Mitigation:
 - **CSP** blocks script injection
-- **DOMPurify** sanitizes all HTML from Zulip
+- **DOMPurify** sanitizes all HTML from the messenger API
 - **ESLint** forbids eval/new Function/script URL
 - **Session timeout** limits session lifetime
 - **Sentry/Logger** redact credentials

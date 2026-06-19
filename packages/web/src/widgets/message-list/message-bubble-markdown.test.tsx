@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useCallParticipantsStore } from "~/entities/call/call.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { createUser } from "~/test/factories";
 import { MessageBubble } from "./message-bubble.ui";
 import { buildMessageMediaGallery } from "./message-list-media.lib";
@@ -232,7 +232,7 @@ describe("MessageBubble markdown body", () => {
     mediaViewerOpenSpy.mockRestore();
   });
 
-  it("opens full user_upload image URL when clicking thumbnail-based Zulip HTML image", () => {
+  it("opens full user_upload image URL when clicking thumbnail-based messenger HTML image", () => {
     useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
     const mediaViewerOpenSpy = vi.spyOn(useMediaViewerStore.getState(), "open");
     const content = [
@@ -352,10 +352,10 @@ describe("MessageBubble markdown body", () => {
     expect(spoiler?.classList.contains("open")).toBe(false);
   });
 
-  it("renders zulip spoiler block as accordion with visible header", () => {
+  it("renders messenger spoiler block as accordion with visible header", () => {
     useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
 
-    const zulipSpoilerHtml = [
+    const messengerSpoilerHtml = [
       '<div class="spoiler-block">',
       '<div class="spoiler-header">Server Header</div>',
       '<div class="spoiler-content"><p>Server Hidden</p></div>',
@@ -363,7 +363,7 @@ describe("MessageBubble markdown body", () => {
     ].join("");
 
     const { container } = render(
-      <MessageBubble message={createMessage({ content: zulipSpoilerHtml })} isOwn={false} />,
+      <MessageBubble message={createMessage({ content: messengerSpoilerHtml })} isOwn={false} />,
     );
 
     const body = container.querySelector(".message-body");
@@ -383,7 +383,7 @@ describe("MessageBubble markdown body", () => {
     expect(spoilerBlock?.classList.contains("open")).toBe(false);
   });
 
-  it("renders zulip markdown fenced spoiler with header and toggles by header click", () => {
+  it("renders messenger markdown fenced spoiler with header and toggles by header click", () => {
     useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
 
     const markdown = "```spoiler Hidden Header\nосновной текст спойлера\n```";
@@ -405,19 +405,19 @@ describe("MessageBubble markdown body", () => {
     expect(spoilerBlock?.classList.contains("open")).toBe(true);
   });
 
-  it("renders Zulip reply quote as nested quote block instead of code fence", () => {
+  it("renders Workspace reply quote as nested quote block instead of code fence", () => {
     useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
 
     const markdown =
-      "@_**Alice|77** [wrote](https://zulip.example.com/#narrow/dm/near/1):\n```quote\nQuoted text\n```\n\nMy reply";
+      "@_**Alice|77** [wrote](https://chat.example.com/#narrow/dm/near/1):\n```quote\nQuoted text\n```\n\nMy reply";
     const { container } = render(
       <MessageBubble message={createMessage({ content: markdown })} isOwn={false} />,
     );
 
     const body = container.querySelector(".message-body");
-    expect(body?.querySelector(".zulip-quote-block")).toBeTruthy();
-    expect(body?.querySelector(".zulip-quote-header")).toBeTruthy();
-    expect(body?.querySelector(".zulip-quote-body")).toBeTruthy();
+    expect(body?.querySelector(".messenger-quote-block")).toBeTruthy();
+    expect(body?.querySelector(".messenger-quote-header")).toBeTruthy();
+    expect(body?.querySelector(".messenger-quote-body")).toBeTruthy();
     expect(body?.textContent).toContain("Quoted text");
     expect(body?.textContent).toContain("My reply");
     expect(body?.innerHTML).not.toContain("language-quote");
@@ -428,9 +428,9 @@ describe("MessageBubble markdown body", () => {
 
     const uploadPath = "/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png";
     const uploadUrl = `https://sys.example.com${uploadPath}`;
-    const zulipHtml = [
+    const messengerHtml = [
       '<p><span class="user-mention" data-user-id="77">@Alice</span>',
-      ' <a href="https://zulip.example.com/near/1">wrote</a>:</p>',
+      ' <a href="https://chat.example.com/near/1">wrote</a>:</p>',
       `<blockquote><p><a href="${uploadPath}">${uploadUrl}</a></p></blockquote>`,
       '<div class="message_inline_image">',
       `<a href="${uploadPath}">`,
@@ -440,10 +440,10 @@ describe("MessageBubble markdown body", () => {
     ].join("");
 
     const { container } = render(
-      <MessageBubble message={createMessage({ content: zulipHtml })} isOwn={false} />,
+      <MessageBubble message={createMessage({ content: messengerHtml })} isOwn={false} />,
     );
 
-    const quoteBody = container.querySelector(".zulip-quote-body");
+    const quoteBody = container.querySelector(".messenger-quote-body");
     expect(quoteBody).toBeTruthy();
     expect(quoteBody?.querySelector("img.message-media-preview")).toBeTruthy();
     expect(quoteBody?.textContent).not.toContain(uploadUrl);

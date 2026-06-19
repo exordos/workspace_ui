@@ -1,10 +1,10 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { sendMessage } from "~/shared/api/zulip-messages";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import { sendMessage } from "~/shared/api/messenger-messages";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { createMessage } from "~/test/factories";
 import { executeChatPageSend, type ChatPageSendHandlerDeps } from "./chat-page-send-handler.lib";
 
-vi.mock("~/shared/api/zulip-messages", () => ({
+vi.mock("~/shared/api/messenger-messages", () => ({
   sendMessage: vi.fn(),
 }));
 
@@ -58,10 +58,10 @@ function createDeps(overrides: Partial<ChatPageSendHandlerDeps> = {}): ChatPageS
 describe("executeChatPageSend", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(sendMessage).mockResolvedValue(createMessage({ id: 99 }) as MockMessage);
+    vi.mocked(sendMessage).mockResolvedValue(createMessage({ id: 99 }));
   });
 
-  it("sends the system general chat as an empty Zulip subject", async () => {
+  it("sends the system general chat as an empty Workspace subject", async () => {
     const deps = createDeps();
 
     await executeChatPageSend(deps, "hello");

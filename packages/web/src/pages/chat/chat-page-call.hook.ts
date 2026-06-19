@@ -5,8 +5,8 @@ import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
 import { useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { t } from "~/i18n/i18n";
-import { sendMessage } from "~/shared/api/zulip-messages";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import { sendMessage } from "~/shared/api/messenger-messages";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { buildJitsiMeetingUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
 import { startCallFromHeader } from "./chat-call-start.lib";
 import {

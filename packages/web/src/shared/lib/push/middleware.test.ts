@@ -111,7 +111,7 @@ describe("PushPipeline", () => {
 describe("parsingMiddleware", () => {
   afterEach(() => pushPipeline.clear());
 
-  // Standard Zulip "message" event should parse all fields correctly
+  // Standard Workspace "message" event should parse all fields correctly
   it("parses message event", async () => {
     pushPipeline.use(parsingMiddleware);
     const result = await pushPipeline.process(
@@ -153,12 +153,12 @@ describe("parsingMiddleware", () => {
     const result = await pushPipeline.process(
       createEnvelope({
         event: "test",
-        realm_uri: "https://zulip.example.com",
+        realm_uri: "https://chat.example.com",
       }),
     );
 
     expect(result?.event).toBe("test");
-    expect(result?.realm_uri).toBe("https://zulip.example.com");
+    expect(result?.realm_uri).toBe("https://chat.example.com");
   });
 
   // Falls back to "message" when no event field is present

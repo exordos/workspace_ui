@@ -4,7 +4,7 @@
 import { isStreamSidebarTopicsHydrateInFlight } from "~/entities/chat-list/chat-list-hydrate-stream-sidebar.lib";
 import { filterStreamMessagesForSidebar } from "~/entities/chat-list/chat-list-stream-preview-from-messages.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { logChatListFlow } from "~/shared/lib/message-flow-debug.lib";
 import { mockMessageToRawMessage } from "~/shared/lib/message-mock-to-raw.lib";
 

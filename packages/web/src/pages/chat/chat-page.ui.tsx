@@ -30,9 +30,9 @@ import {
   buildStreamTypingChatKey,
 } from "~/features/typing-indicator/typing-key";
 import { t } from "~/i18n/i18n";
-import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
-import { fetchMessageById, updateMessage, deleteMessage } from "~/shared/api/zulip-messages";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import { getRealmBaseUrl } from "~/shared/api/messenger-client.internal";
+import { fetchMessageById, updateMessage, deleteMessage } from "~/shared/api/messenger-messages";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { getPresenceState, formatLastSeen } from "~/shared/lib/format";

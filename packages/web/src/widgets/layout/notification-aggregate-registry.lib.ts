@@ -1,4 +1,4 @@
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { chatKeyFromRawMessage } from "~/shared/lib/message-cache-keys.lib";
 import {
   buildNotificationAggregateTag,
@@ -32,7 +32,7 @@ const aggregatesByTag = new Map<string, NotificationAggregateEntry>();
 const messageIdToAggregateTag = new Map<string, string>();
 
 export function buildNotificationBucketKeyFromMessage(
-  message: ZulipRawMessage,
+  message: WorkspaceRawMessage,
   currentUserId: number | null,
   currentInstanceId: string | null,
 ): string | null {
@@ -83,7 +83,7 @@ function buildSnapshot(
 }
 
 export function upsertNotificationAggregate(input: {
-  message: ZulipRawMessage;
+  message: WorkspaceRawMessage;
   currentUserId: number | null;
   currentInstanceId: string | null;
   body: string;

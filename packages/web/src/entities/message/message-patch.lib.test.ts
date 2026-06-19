@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { createMessage } from "~/test/factories";
 import { patchMessageAtId, patchMessagesFlags } from "./message-patch.lib";
 

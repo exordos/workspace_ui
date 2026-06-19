@@ -4,12 +4,12 @@
 import { useMemo } from "react";
 import { useMessageReadersStore } from "~/features/message-readers/message-readers.model";
 import { t } from "~/i18n/i18n";
-import { addMessageFlag, removeMessageFlag } from "~/shared/api/zulip-messages";
+import { addMessageFlag, removeMessageFlag } from "~/shared/api/messenger-messages";
 import { writeText } from "~/shared/lib/clipboard";
 import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
+import { buildMessengerMessageWebPermalink } from "~/shared/lib/messenger-web-permalink.lib";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
-import { buildZulipMessageWebPermalink } from "~/shared/lib/zulip-web-permalink.lib";
 import type { MessageListCallbacks } from "~/widgets/message-list/message-list.types";
 import { slugForStream } from "~/widgets/sidebar/sidebar.lib";
 import { buildReplyPermalinkStreamNameResolver } from "./chat-message-list-stream-name.lib";
@@ -64,7 +64,7 @@ export function useChatMessageListCallbacks(
       onMessageReply(msg, selectedText) {
         const permalinkUrl =
           realmBaseUrl.trim().length > 0
-            ? buildZulipMessageWebPermalink(realmBaseUrl, msg, resolveStreamNameForPermalink)
+            ? buildMessengerMessageWebPermalink(realmBaseUrl, msg, resolveStreamNameForPermalink)
             : null;
         setReplyQuote({
           id: msg.id,

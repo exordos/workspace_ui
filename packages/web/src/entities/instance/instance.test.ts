@@ -1,5 +1,5 @@
 /**
- * Tests for instancesStore — manages Zulip server instances (multi-account support).
+ * Tests for instancesStore — manages server instances (multi-account support).
  *
  * Each instance holds realm URL, email, and API key. The store persists to
  * localStorage so credentials survive page reload. Correctness here is critical
@@ -12,9 +12,9 @@ import {
   useInstancesStore,
 } from "./instance.model";
 
-const INSTANCES_KEY = "zulip-web-instances";
-const CURRENT_KEY = "zulip-web-current-instance";
-const UNREAD_BY_INSTANCE_KEY = "zulip-web-instance-unread-counts";
+const INSTANCES_KEY = "messenger-web-instances";
+const CURRENT_KEY = "messenger-web-current-instance";
+const UNREAD_BY_INSTANCE_KEY = "messenger-web-instance-unread-counts";
 
 function resetStore() {
   useInstancesStore.setState({

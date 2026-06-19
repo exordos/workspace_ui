@@ -3,7 +3,7 @@ import {
   removeMembersFromStream,
   type RemoveStreamMembersParams,
   type RemoveStreamMembersResult,
-} from "~/shared/api/zulip-streams";
+} from "~/shared/api/messenger-streams";
 
 export async function removeStreamMembers(
   params: RemoveStreamMembersParams,

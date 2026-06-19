@@ -1,9 +1,9 @@
-import type { MockMessage } from "~/shared/api/zulip.types";
-import { buildZulipQuoteBlock } from "~/shared/lib/message-zulip-quote.lib";
+import type { MockMessage } from "~/shared/api/messenger.types";
+import { buildWorkspaceQuoteBlock } from "~/shared/lib/message-quote.lib";
+import { buildWorkspaceQuoteHeader } from "~/shared/lib/messenger-quote-header.lib";
+import { buildMessengerMessageWebPermalink } from "~/shared/lib/messenger-web-permalink.lib";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { encodeTopicForRoute, normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
-import { buildZulipQuoteHeader } from "~/shared/lib/zulip-quote-header.lib";
-import { buildZulipMessageWebPermalink } from "~/shared/lib/zulip-web-permalink.lib";
 import { slugForStream } from "~/widgets/sidebar/sidebar.lib";
 import { resolveReplyQuoteContent } from "./chat-reply-quote.lib";
 
@@ -47,17 +47,17 @@ function buildSingleForwardQuote(
 ): string {
   const permalinkUrl =
     permalinkOptions != null && permalinkOptions.realmBaseUrl.trim().length > 0
-      ? buildZulipMessageWebPermalink(permalinkOptions.realmBaseUrl, message, (streamId) =>
+      ? buildMessengerMessageWebPermalink(permalinkOptions.realmBaseUrl, message, (streamId) =>
           permalinkOptions.resolveStreamName(streamId, message),
         )
       : null;
-  const header = buildZulipQuoteHeader({
+  const header = buildWorkspaceQuoteHeader({
     senderName: message.sender_full_name,
     senderId: message.sender_id,
     wroteLabel: permalinkOptions?.wroteLabel ?? "wrote",
     permalinkUrl,
   });
-  return buildZulipQuoteBlock(header, content);
+  return buildWorkspaceQuoteBlock(header, content);
 }
 
 export function buildForwardQuote(

@@ -3,8 +3,8 @@
  */
 import { useCallback } from "react";
 import { t } from "~/i18n/i18n";
-import { addReaction, removeReaction } from "~/shared/api/zulip-messages";
-import type { MessageReactionPayload, Reaction } from "~/shared/api/zulip.types";
+import { addReaction, removeReaction } from "~/shared/api/messenger-messages";
+import type { MessageReactionPayload, Reaction } from "~/shared/api/messenger.types";
 
 export interface UseChatPageReactionParams {
   currentUserId: number | null;

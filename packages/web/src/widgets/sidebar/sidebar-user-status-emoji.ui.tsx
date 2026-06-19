@@ -1,6 +1,6 @@
 /**
  * Renders the custom status emoji glyph next to a chat title (DM sidebar rows).
- * Does not render status text — only the emoji picture/character from Zulip payload.
+ * Does not render status text — only the emoji picture/character from the messenger API payload.
  */
 import React from "react";
 import { useUserStatusEmojiDisplay } from "~/entities/user/user-status.hooks";

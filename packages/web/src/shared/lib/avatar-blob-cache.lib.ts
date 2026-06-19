@@ -2,7 +2,7 @@
  * Pure policy helpers for persisting avatar image blobs in IndexedDB.
  *
  * Cache keys strip the `_av` busting query param so bumpAvatarVersion does not
- * duplicate rows. Eviction is LRU by lastAccessedAt per Zulip instance.
+ * duplicate rows. Eviction is LRU by lastAccessedAt per organization instance.
  *
  * Usage:
  *   import { buildAvatarBlobCacheKey, pickAvatarBlobEvictionIds } from "~/shared/lib/avatar-blob-cache.lib";

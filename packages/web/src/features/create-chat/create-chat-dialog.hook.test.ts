@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
-import { fetchStreams, fetchSubscriptions } from "~/shared/api/zulip-streams";
+import { fetchStreams, fetchSubscriptions } from "~/shared/api/messenger-streams";
 import { useCreateChatDialog } from "./create-chat-dialog.hook";
 import {
   createChannel,
@@ -19,7 +19,7 @@ vi.mock("./create-chat.api", () => ({
   unsubscribeChannel: vi.fn(),
 }));
 
-vi.mock("~/shared/api/zulip-streams", () => ({
+vi.mock("~/shared/api/messenger-streams", () => ({
   fetchStreams: vi.fn(),
   fetchSubscriptions: vi.fn(),
 }));

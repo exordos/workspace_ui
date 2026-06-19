@@ -49,10 +49,10 @@ const PACK_1: StickerPack = {
 };
 
 // ---------------------------------------------------------------------------
-// Markdown helpers — encode/decode stickers into Zulip-compatible markdown.
+// Markdown helpers — encode/decode stickers into messenger-compatible markdown.
 // ---------------------------------------------------------------------------
 
-// buildStickerMarkdown produces the wire format sent to the Zulip API.
+// buildStickerMarkdown produces the wire format sent to the Messenger API.
 describe("buildStickerMarkdown", () => {
   // Must produce the exact format the parser expects on the receiving end.
   it("builds correct markdown", () => {

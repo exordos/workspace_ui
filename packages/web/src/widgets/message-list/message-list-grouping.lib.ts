@@ -1,4 +1,4 @@
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 
 /** Splits the message array into groups of consecutive messages from the same sender. */
 export function getSenderGroups(items: MockMessage[]): MockMessage[][] {

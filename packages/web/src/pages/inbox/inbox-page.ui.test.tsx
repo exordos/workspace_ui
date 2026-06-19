@@ -5,7 +5,7 @@ import { useInboxStore } from "~/entities/inbox/inbox.model";
 import type { InboxEntry } from "~/entities/inbox/inbox.types";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { InboxPage } from "./inbox-page.ui";
 import type * as ReactRouterDom from "react-router-dom";
 
@@ -45,7 +45,7 @@ const buildUnreadSnapshotFromEntries = vi.hoisted(() => (entries: readonly Inbox
 const buildUnreadMessagesFromEntries = vi.hoisted(
   () => (entries: readonly InboxEntry[]) =>
     entries.flatMap((entry) =>
-      entry.messageIds.map((messageId): ZulipRawMessage => {
+      entry.messageIds.map((messageId): WorkspaceRawMessage => {
         if (entry.streamId != null) {
           return {
             id: messageId,
@@ -124,7 +124,7 @@ describe("InboxPage styling contract", () => {
       instances: [
         {
           id: TEST_INSTANCE_ID,
-          realm: "https://zulip.example.com",
+          realm: "https://chat.example.com",
           email: "user@example.com",
           apiKey: "api-key",
         },

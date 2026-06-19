@@ -1,11 +1,11 @@
 /**
  * Resolves whether the current user may move a stream topic to another channel.
  *
- * Zulip uses realm `can_move_messages_between_channels_group` and per-channel
+ * Workspace uses realm `can_move_messages_between_channels_group` and per-channel
  * `can_move_messages_out_of_channel_group`. When register metadata is missing,
  * falls back to Moderator+ (`message:move`) so the API can enforce policy.
  */
-import type { ZulipGroupSettingValue } from "~/shared/api/zulip.types";
+import type { MessengerGroupSettingValue } from "~/shared/api/messenger.types";
 import { hasPermission, hasRole, parseRole, UserRole } from "~/shared/lib/roles";
 
 export type TopicMovePermissionSource =
@@ -19,9 +19,12 @@ export type TopicMovePermissionSource =
 export interface ResolveCanMoveTopicToChannelInput {
   currentUserId: number | null;
   roleCode: number | undefined;
-  realmCanMoveMessagesBetweenChannelsGroup?: ZulipGroupSettingValue;
-  streamCanMoveMessagesOutOfChannelGroup?: ZulipGroupSettingValue;
-  isUserInGroupSetting: (setting: ZulipGroupSettingValue | undefined, userId: number) => boolean;
+  realmCanMoveMessagesBetweenChannelsGroup?: MessengerGroupSettingValue;
+  streamCanMoveMessagesOutOfChannelGroup?: MessengerGroupSettingValue;
+  isUserInGroupSetting: (
+    setting: MessengerGroupSettingValue | undefined,
+    userId: number,
+  ) => boolean;
 }
 
 export interface ResolveCanMoveTopicToChannelResult {

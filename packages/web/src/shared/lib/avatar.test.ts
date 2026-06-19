@@ -1,7 +1,7 @@
 /**
  * Tests for avatar URL resolution and cache-busting.
  *
- * resolveAvatarUrl converts relative Zulip avatar paths to absolute URLs
+ * resolveAvatarUrl converts relative Workspace avatar paths to absolute URLs
  * with a version query parameter. A broken resolver causes missing avatars
  * or stale cached images after user profile updates.
  */
@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import { resolveAvatarUrl, bumpAvatarVersion, getAvatarVersion } from "./avatar";
 
 describe("resolveAvatarUrl", () => {
-  const REALM = "https://zulip.example.com";
+  const REALM = "https://chat.example.com";
 
   it("returns undefined for null input", () => {
     expect(resolveAvatarUrl(null, REALM)).toBeUndefined();
@@ -29,13 +29,13 @@ describe("resolveAvatarUrl", () => {
 
   it("resolves a relative path with leading slash", () => {
     const url = resolveAvatarUrl("/avatar/42.png", REALM);
-    expect(url).toContain("https://zulip.example.com/avatar/42.png");
+    expect(url).toContain("https://chat.example.com/avatar/42.png");
     expect(url).toContain("_av=");
   });
 
   it("resolves a relative path without leading slash", () => {
     const url = resolveAvatarUrl("avatar/42.png", REALM);
-    expect(url).toContain("https://zulip.example.com/avatar/42.png");
+    expect(url).toContain("https://chat.example.com/avatar/42.png");
   });
 
   it("handles absolute http URLs by keeping them intact", () => {
@@ -65,8 +65,8 @@ describe("resolveAvatarUrl", () => {
   });
 
   it("strips trailing slashes from realmBaseUrl", () => {
-    const url = resolveAvatarUrl("/avatar/42.png", "https://zulip.example.com///");
-    expect(url).toContain("https://zulip.example.com/avatar/42.png");
+    const url = resolveAvatarUrl("/avatar/42.png", "https://chat.example.com///");
+    expect(url).toContain("https://chat.example.com/avatar/42.png");
   });
 
   it("appends _av with ? separator when URL has no query", () => {
@@ -81,7 +81,7 @@ describe("resolveAvatarUrl", () => {
 
   it("trims whitespace from the input URL", () => {
     const url = resolveAvatarUrl("  /avatar/42.png  ", REALM);
-    expect(url).toContain("https://zulip.example.com/avatar/42.png");
+    expect(url).toContain("https://chat.example.com/avatar/42.png");
   });
 });
 

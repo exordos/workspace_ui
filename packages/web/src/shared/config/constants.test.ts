@@ -56,7 +56,7 @@ describe("constants", () => {
     }
   });
 
-  // API origin is used as the base for all Zulip/Workspace API requests
+  // API origin is used as the base for all Workspace/Workspace API requests
   it("WORKSPACE_ORIGIN is a string", () => {
     expect(typeof WORKSPACE_ORIGIN).toBe("string");
   });

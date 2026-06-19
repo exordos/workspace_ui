@@ -3,9 +3,9 @@ import { useInstancesStore } from "~/entities/instance/instance.model";
 import {
   fetchLatestMessagesForSidebarTopics,
   fetchStreamChannelMessagesForSidebarTopics,
-} from "~/shared/api/zulip-sidebar-preview.lib";
-import { fetchStreamTopicNames } from "~/shared/api/zulip-streams";
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+} from "~/shared/api/messenger-sidebar-preview.lib";
+import { fetchStreamTopicNames } from "~/shared/api/messenger-streams";
+import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import {
   clearStreamSidebarHydrateState,
   isStreamSidebarTopicsHydrateInFlight,
@@ -16,8 +16,9 @@ import {
 } from "./chat-list-hydrate-stream-sidebar.lib";
 import { useChatListStore } from "./chat-list.model";
 
-vi.mock("~/shared/api/zulip-sidebar-preview.lib", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/shared/api/zulip-sidebar-preview.lib")>();
+vi.mock("~/shared/api/messenger-sidebar-preview.lib", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("~/shared/api/messenger-sidebar-preview.lib")>();
   return {
     ...actual,
     fetchLatestMessagesForSidebarTopics: vi.fn(),
@@ -25,8 +26,8 @@ vi.mock("~/shared/api/zulip-sidebar-preview.lib", async (importOriginal) => {
   };
 });
 
-vi.mock("~/shared/api/zulip-streams", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/shared/api/zulip-streams")>();
+vi.mock("~/shared/api/messenger-streams", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("~/shared/api/messenger-streams")>();
   return {
     ...actual,
     fetchStreamTopicNames: vi.fn(),
@@ -48,7 +49,7 @@ function resetInstancesStore(): void {
   });
 }
 
-function seedActiveInstance(realm = "https://zulip.test"): string {
+function seedActiveInstance(realm = "https://messenger.test"): string {
   return useInstancesStore.getState().addInstance({
     realm,
     email: `${realm}@example.com`,
@@ -62,7 +63,7 @@ async function flushMicrotasks(turns = 5): Promise<void> {
   }
 }
 
-function streamMsg(overrides: Partial<ZulipRawMessage> = {}): ZulipRawMessage {
+function streamMsg(overrides: Partial<WorkspaceRawMessage> = {}): WorkspaceRawMessage {
   return {
     id: 1,
     sender_id: 10,
@@ -108,7 +109,7 @@ describe("requestStreamSidebarTopicsHydrate", () => {
 
   it("dedupes concurrent hydrate for the same stream", async () => {
     useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
-    let resolveFetch!: (value: ZulipRawMessage[]) => void;
+    let resolveFetch!: (value: WorkspaceRawMessage[]) => void;
     fetchStreamChannelMock.mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -324,7 +325,7 @@ describe("requestStreamSidebarTopicPreviewBackfill", () => {
 
   it("drops stale hydrate results after sidebar state cleanup", async () => {
     useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
-    let resolveFetch!: (value: ZulipRawMessage[]) => void;
+    let resolveFetch!: (value: WorkspaceRawMessage[]) => void;
     fetchStreamChannelMock.mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -344,8 +345,8 @@ describe("requestStreamSidebarTopicPreviewBackfill", () => {
 
   it("does not dedupe hydrate requests across different organizations", async () => {
     useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
-    let firstResolve!: (value: ZulipRawMessage[]) => void;
-    let secondResolve!: (value: ZulipRawMessage[]) => void;
+    let firstResolve!: (value: WorkspaceRawMessage[]) => void;
+    let secondResolve!: (value: WorkspaceRawMessage[]) => void;
     fetchStreamChannelMock
       .mockImplementationOnce(
         () =>
@@ -365,7 +366,7 @@ describe("requestStreamSidebarTopicPreviewBackfill", () => {
 
     clearStreamSidebarHydrateState();
     useChatListStore.getState().clear();
-    const secondInstanceId = seedActiveInstance("https://zulip-2.test");
+    const secondInstanceId = seedActiveInstance("https://messenger-2.test");
     useInstancesStore.getState().setCurrentInstanceId(secondInstanceId);
     useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
 

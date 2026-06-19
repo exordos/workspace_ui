@@ -12,7 +12,7 @@ import {
 } from "./src/shared/config/workspace-api-layout";
 import { applyBrandEnvDefaults } from "./src/shared/lib/brand-defaults.lib";
 import { buildPermissionsPolicyHeader } from "./src/shared/lib/permissions-policy";
-import { workspaceOrgApiOriginFromZulipRealmRoot } from "./src/shared/lib/workspace-org-origin.lib";
+import { workspaceOrgApiOriginFromRealmRoot } from "./src/shared/lib/workspace-org-origin.lib";
 import { installDevWorkspaceOrgProxyMiddleware } from "./vite-dev-workspace-org-proxy";
 
 const webPackageVersion = (
@@ -120,7 +120,7 @@ function deriveLegacyWorkspaceOrigin(
   }
 
   const normalizedWorkspaceOrigin = workspaceOrigin.replace(/\/+$/, "");
-  return workspaceOrgApiOriginFromZulipRealmRoot(normalizedWorkspaceOrigin);
+  return workspaceOrgApiOriginFromRealmRoot(normalizedWorkspaceOrigin);
 }
 
 export default defineConfig(({ mode }) => {
