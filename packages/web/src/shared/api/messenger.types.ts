@@ -176,6 +176,8 @@ export interface WorkspaceCurrentUser {
   email: string;
   /** organization realm role code (100=owner, 200=admin, 300=moderator, 400=member, 600=guest). */
   role?: number;
+  /** IAM identity UUID (distinct from messenger `user_id`). */
+  iam_user_uuid?: string;
 }
 
 /** Map of user_id to relative avatar_url path. */

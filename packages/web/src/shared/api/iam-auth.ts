@@ -5,11 +5,10 @@
  * Returns the IAM access token for Bearer auth — no Zulip api_key exchange.
  */
 import { t } from "~/i18n/i18n";
-import { normalizeRealm } from "~/shared/api/messenger-realm.internal";
 import { MessengerAuthError } from "~/shared/api/messenger.types";
+import { resolveIamApiOrigin } from "~/shared/lib/iam-instance.lib";
 import { loggedFetch } from "~/shared/lib/logged-fetch.lib";
 import { logAction } from "~/shared/lib/logger";
-import { workspaceOrgOriginFromLoginServerUrlInput } from "~/shared/lib/workspace-org-origin.lib";
 
 const IAM_DEFAULT_CLIENT = "default";
 const IAM_GRANT_TYPE_PASSWORD_LOGIN = "login+password";
@@ -45,15 +44,7 @@ export class IamOtpRequiredError extends Error {
 }
 
 function resolveIamOrigin(serverUrlInput: string): string {
-  const fromLogin = workspaceOrgOriginFromLoginServerUrlInput(serverUrlInput);
-  if (fromLogin !== "") {
-    return fromLogin;
-  }
-  try {
-    return new URL(normalizeRealm(serverUrlInput)).origin;
-  } catch {
-    return "";
-  }
+  return resolveIamApiOrigin({ realm: serverUrlInput });
 }
 
 function buildIamTokenUrl(iamOrigin: string): string {

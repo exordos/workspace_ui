@@ -35,6 +35,8 @@ export interface UserRecord {
   user_id: number;
   full_name: string;
   email?: string;
+  /** IAM identity UUID when auth is IAM-backed (distinct from messenger `user_id`). */
+  iam_user_uuid?: string;
   avatar_url?: string | null;
   role?: number;
   presence?: UserPresence;
@@ -100,6 +102,7 @@ function normalizeUser(payload: Partial<UserRecord> & { user_id: number }): User
     user_id: payload.user_id,
     full_name: payload.full_name ?? "",
     email: payload.email,
+    iam_user_uuid: payload.iam_user_uuid,
     avatar_url: payload.avatar_url,
     role: payload.role,
     presence: payload.presence,

@@ -1,7 +1,6 @@
 /**
  * Tests for Messenger API (messenger-users module).
  */
-import "./messenger.test.setup";
 import { describe, expect, it } from "vitest";
 import {
   fetchRealmPresence,
@@ -10,13 +9,20 @@ import {
   fetchUsersAvatarMap,
   getCurrentUser,
 } from "./messenger-users";
-import { getMockRefreshMessengerApiBase, getMockMessengerApi } from "./messenger.test.setup";
+import {
+  getMockGetCurrentInstance,
+  getMockRefreshMessengerApiBase,
+  getMockMessengerApi,
+  TEST_INSTANCE,
+} from "./messenger.test.setup";
 
 const mockMessengerApi = getMockMessengerApi();
 const mockRefreshMessengerApiBase = getMockRefreshMessengerApiBase();
+const mockGetCurrentInstance = getMockGetCurrentInstance();
 
 describe("getCurrentUser", () => {
   it("delegates through messengerApi.get and refreshes base URL first", async () => {
+    mockGetCurrentInstance.mockReturnValue(TEST_INSTANCE);
     mockMessengerApi.get.mockResolvedValue({
       ok: true,
       status: 200,
@@ -90,6 +96,47 @@ describe("getCurrentUser", () => {
     });
     const result = await getCurrentUser();
     expect(result).toEqual({ user_id: 55, full_name: "Nested", email: "nested@test.com" });
+  });
+
+  it("uses IAM /actions/me when authType is iam", async () => {
+    mockGetCurrentInstance.mockReturnValue({
+      ...TEST_INSTANCE,
+      apiKey: "",
+      authType: "iam",
+      iamAccessToken: "iam-token",
+      workspaceOrgOrigin: "https://chat.example.com",
+    });
+    mockMessengerApi.getWithBase.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        user: {
+          uuid: "00000000-0000-0000-0000-000000000001",
+          first_name: "Admin",
+          last_name: "User",
+          email: "admin@example.com",
+        },
+        organization: [],
+        project_id: null,
+      },
+      raw: { statusText: "OK" },
+    });
+
+    const result = await getCurrentUser();
+
+    expect(result).toEqual({
+      user_id: 9,
+      full_name: "Admin User",
+      email: "admin@example.com",
+      iam_user_uuid: "00000000-0000-0000-0000-000000000001",
+    });
+    expect(mockMessengerApi.get).not.toHaveBeenCalled();
+    expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
+      "https://chat.example.com",
+      "/api/core/v1/iam/clients/00000000-0000-0000-0000-000000000000/actions/me",
+      undefined,
+      undefined,
+    );
   });
 });
 

@@ -25,6 +25,7 @@ const mockGetCurrentInstance = vi.hoisted(() => vi.fn());
 
 const mockMessengerApi = vi.hoisted(() => ({
   get: vi.fn(),
+  getWithBase: vi.fn(),
   post: vi.fn(),
   postFormData: vi.fn(),
   patch: vi.fn(),
@@ -107,6 +108,7 @@ beforeEach(() => {
   mockWorkspaceClient.messages.retrieve.mockReset();
   mockWorkspaceClient.messages.send.mockReset();
   mockMessengerApi.get.mockReset();
+  mockMessengerApi.getWithBase.mockReset();
   mockMessengerApi.post.mockReset();
   mockMessengerApi.postFormData.mockReset();
   mockMessengerApi.patch.mockReset();

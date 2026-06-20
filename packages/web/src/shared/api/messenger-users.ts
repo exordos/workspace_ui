@@ -2,6 +2,8 @@
  * Workspace users and presence API.
  */
 import { guard } from "~/shared/lib/guards";
+import { getCurrentInstance } from "./client";
+import { getIamCurrentUser } from "./iam-api";
 import { parseCurrentUserFromApiData } from "./messenger-current-user.lib";
 import { messengerPipelineGet } from "./messenger-pipeline.internal";
 import { normalizeRealmEmojiMap } from "./messenger-realm-emoji.lib";
@@ -14,6 +16,10 @@ import type {
 } from "./messenger.types";
 
 export async function getCurrentUser(): Promise<WorkspaceCurrentUser | null> {
+  const instance = getCurrentInstance();
+  if (instance?.authType === "iam") {
+    return getIamCurrentUser();
+  }
   const res = await messengerPipelineGet("/users/me");
   if (!res?.ok) {
     return null;
