@@ -15,7 +15,10 @@ import {
 } from "~/shared/lib/message-flow-debug.lib";
 import { MESSENGER_STREAM_CHAT_NUM_AFTER } from "~/shared/lib/messenger-message-window.lib";
 import { buildStreamSidebarPreviewNarrow } from "~/shared/lib/messenger-stream-sidebar-preview-narrow.lib";
-import { normalizeMessengerMessagesNarrowForApi } from "~/shared/lib/messenger-topic-narrow.lib";
+import {
+  normalizeMessengerMessagesNarrowForApi,
+  type MessengerMessagesNarrowClause,
+} from "~/shared/lib/messenger-topic-narrow.lib";
 import { messengerPipelineGet } from "./messenger-pipeline.internal";
 import { validateNonNegativeInteger } from "./messenger-validation.internal";
 import type { DirectMessagesPageResult, WorkspaceRawMessage } from "./messenger.types";
@@ -25,7 +28,7 @@ interface MessageWindowOptions {
   numBefore: number;
   numAfter: number;
   includeAnchor?: boolean;
-  narrow?: { operator: string; operand: string | number | number[] }[];
+  narrow?: MessengerMessagesNarrowClause[];
   applyMarkdown?: boolean;
   signal?: AbortSignal;
   /** When set and chat-list pipeline trace is enabled, logs GET /messages for sidebar bootstrap. */

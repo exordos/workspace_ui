@@ -3,6 +3,7 @@
  * Internal module for shared/api and `messenger-*` modules.
  */
 import { t } from "~/i18n/i18n";
+import type { MessengerMessagesNarrowClause } from "~/shared/lib/messenger-topic-narrow.lib";
 import { getCurrentInstance } from "./client";
 import { messengerPipelineGet, messengerPipelinePost } from "./messenger-pipeline.internal";
 import { normalizeRealm as normalizeRealmUrl } from "./messenger-realm.internal";
@@ -18,7 +19,7 @@ export interface WorkspaceClient {
   };
   messages: {
     retrieve: (params: {
-      narrow?: { operator: string; operand: string | number | number[] }[];
+      narrow?: MessengerMessagesNarrowClause[];
       anchor?: string | number;
       num_before?: number;
       num_after?: number;

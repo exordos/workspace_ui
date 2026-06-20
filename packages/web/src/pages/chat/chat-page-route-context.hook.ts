@@ -73,14 +73,14 @@ export function useChatRouteContext(options: {
   }, [dmIdParam]);
 
   const activeDmUserIds = useMemo(() => {
-    if (rawDmUserIds != null && rawDmUserIds.length > 0) {
-      return normalizeDmRouteUserIds(rawDmUserIds, currentUserId);
+    if (dmChat?.userUuid != null && dmChat.userUuid.trim().length > 0) {
+      return [dmChat.userUuid];
     }
     if (dmChat?.userIds != null && dmChat.userIds.length > 0) {
       return dmChat.userIds;
     }
-    if (dmChat?.userUuid != null && dmChat.userUuid.trim().length > 0) {
-      return [dmChat.userUuid];
+    if (rawDmUserIds != null && rawDmUserIds.length > 0) {
+      return normalizeDmRouteUserIds(rawDmUserIds, currentUserId);
     }
     return null;
   }, [rawDmUserIds, currentUserId, dmChat?.userIds, dmChat?.userUuid]);

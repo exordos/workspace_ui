@@ -6,7 +6,13 @@ import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
 import { normalizeStreamTopicForMessageCache } from "~/shared/lib/message-cache-keys.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
-import type { UserId } from "~/shared/lib/user-id.lib";
+import {
+  isIamUserUuid,
+  isUserIdentityReady,
+  type UserId,
+  userIdsEqual,
+  userIdStorageKey,
+} from "~/shared/lib/user-id.lib";
 import type { CurrentChatContext } from "./message.model.types";
 
 /** True when route points to the same stream/topic or DM as the current store context (re-sync without navigation). */
@@ -78,7 +84,7 @@ export function contextFromMessage(
 export function buildMessageFetchNarrow(
   context: CurrentChatContext,
   currentUserId: UserId | null,
-): { operator: string; operand: string | number | number[] }[] {
+): { operator: string; operand: string | number | UserId[] }[] {
   if (context.type === "stream") {
     if (context.streamWideView) {
       return [{ operator: "stream", operand: context.streamName }];
@@ -91,13 +97,24 @@ export function buildMessageFetchNarrow(
   return [{ operator: "dm", operand: parseDmKeyToUserIds(context.dmKey, currentUserId) }];
 }
 
-export function parseDmKeyToUserIds(dmKey: string, currentUserId: UserId | null): number[] {
-  const parts = dmKey
-    .split(",")
-    .map((p) => Number(p))
-    .filter((n) => Number.isSafeInteger(n) && n > 0);
-  const uniqueValidIds = Array.from(new Set(parts));
-  if (typeof currentUserId !== "number") return uniqueValidIds;
-  const withoutCurrentUser = uniqueValidIds.filter((id) => id !== currentUserId);
+export function parseDmKeyToUserIds(dmKey: string, currentUserId: UserId | null): UserId[] {
+  const uniqueByKey = new Map<string, UserId>();
+  for (const part of dmKey.split(",")) {
+    const trimmed = part.trim();
+    if (trimmed.length === 0) continue;
+    if (isIamUserUuid(trimmed)) {
+      uniqueByKey.set(userIdStorageKey(trimmed), trimmed.toLowerCase());
+      continue;
+    }
+    const parsed = Number(trimmed);
+    if (Number.isSafeInteger(parsed) && parsed > 0) {
+      uniqueByKey.set(userIdStorageKey(parsed), parsed);
+    }
+  }
+  const uniqueValidIds = Array.from(uniqueByKey.values());
+  if (currentUserId == null || !isUserIdentityReady(currentUserId)) {
+    return uniqueValidIds;
+  }
+  const withoutCurrentUser = uniqueValidIds.filter((id) => !userIdsEqual(id, currentUserId));
   return withoutCurrentUser.length > 0 ? withoutCurrentUser : uniqueValidIds;
 }

@@ -15,7 +15,7 @@ export interface ParsedMessengerNarrowPermalink {
   messageId: number;
   kind: MessengerNarrowPermalinkKind;
   /** Present for DM permalinks with participant slug. */
-  dmParticipantIds?: number[];
+  dmParticipantIds?: UserId[];
   /** Present for stream permalinks. */
   streamId?: number;
   topic?: string;

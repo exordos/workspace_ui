@@ -1,5 +1,6 @@
 import { isSystemRailFolderId } from "~/features/folder-sync/folder-sync-constants.lib";
 import { resolveCanonicalStreamName } from "~/shared/lib/stream-name.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import type { SidebarChat, StreamWithLast } from "~/shared/types/sidebar-chat";
 
 export { dmConversationKey } from "~/shared/lib/dm-key";
@@ -198,7 +199,7 @@ export function resolveStreamRouteFromSlug(
 }
 
 /** @deprecated Import `parseDmRouteParticipantIds` from `~/shared/lib/dm-route-slug.lib`. */
-export function parseDmSlugToUserIds(dmSlug: string): number[] {
+export function parseDmSlugToUserIds(dmSlug: string): UserId[] {
   return parseDmRouteParticipantIds(dmSlug);
 }
 

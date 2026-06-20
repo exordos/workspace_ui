@@ -195,7 +195,8 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                         type="button"
                         key={u.userId}
                         className={CREATE_CHAT_LIST_ROW_CLASS}
-                        onClick={() => onNavigateDm(vm.buildDmSlug(u.userId, u.fullName))}
+                        disabled={vm.startingDmUserId === u.userId}
+                        onClick={() => void vm.onStartDirectMessage(u.userId, u.fullName)}
                       >
                         <PresenceIndicator status={u.presence} size="sm" />
                         <span className="min-w-0 flex-1">

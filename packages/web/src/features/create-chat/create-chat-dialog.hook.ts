@@ -24,6 +24,7 @@ import {
 import { buildDmSlug, resolveNextTabFromKey, type CreateChatTab } from "./create-chat-dialog.lib";
 import {
   createChannel,
+  startDirectMessage,
   subscribeCurrentUserToStream,
   unarchiveChannel,
   unsubscribeChannel,
@@ -103,6 +104,8 @@ export interface UseCreateChatDialogResult {
   subscribeInlineError: string | null;
 
   buildDmSlug: (userId: UserId, fullName: string) => string;
+  startingDmUserId: UserId | null;
+  onStartDirectMessage: (userId: UserId, fullName: string) => Promise<void>;
 }
 
 export function useCreateChatDialog(options: {
@@ -111,7 +114,7 @@ export function useCreateChatDialog(options: {
   onNavigateStream: (streamId: number, streamName: string) => void;
   onChannelCreated: () => void;
 }): UseCreateChatDialogResult {
-  const { open, onChannelCreated } = options;
+  const { open, onChannelCreated, onNavigateDm } = options;
 
   const [tab, setTab] = useState<CreateChatTab>("dm");
   const tabBaseId = useId();
@@ -150,6 +153,7 @@ export function useCreateChatDialog(options: {
   const [channelAnnounce, setChannelAnnounce] = useState(false);
   const [channelAnnouncementOnly, setChannelAnnouncementOnly] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [startingDmUserId, setStartingDmUserId] = useState<UserId | null>(null);
   const [unarchiveInlineError, setUnarchiveInlineError] =
     useState<UnarchiveInlineErrorState | null>(null);
   const [unarchivePendingStreamIds, setUnarchivePendingStreamIds] = useState<number[]>([]);
@@ -466,6 +470,41 @@ export function useCreateChatDialog(options: {
     return buildDmSlug(userId, fullName);
   }, []);
 
+  const onStartDirectMessage = useCallback(
+    async (userId: UserId, fullName: string) => {
+      if (startingDmUserId != null) {
+        return;
+      }
+      setStartingDmUserId(userId);
+      try {
+        const result = await startDirectMessage(userId, fullName);
+        if (result == null) {
+          log.warn("create-chat: direct message start failed");
+          return;
+        }
+        if (result.kind === "gateway") {
+          useChatListStore.getState().upsertDmMetadataRows([
+            {
+              streamUuid: result.streamUuid,
+              userUuid: result.userUuid,
+              name: result.name,
+              userIds: [],
+            },
+          ]);
+          onNavigateDm(result.streamUuid);
+          return;
+        }
+        onNavigateDm(result.slug);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        log.error("create-chat: direct message start threw", { error: message });
+      } finally {
+        setStartingDmUserId(null);
+      }
+    },
+    [onNavigateDm, startingDmUserId],
+  );
+
   const onUnarchiveArchivedChannel = useCallback(async (streamId: number) => {
     setUnarchiveInlineError(null);
     setUnarchivePendingStreamIds((prev) => (prev.includes(streamId) ? prev : [...prev, streamId]));
@@ -610,5 +649,7 @@ export function useCreateChatDialog(options: {
     subscribePendingStreamIds,
     subscribeInlineError,
     buildDmSlug: buildDmSlugFn,
+    startingDmUserId,
+    onStartDirectMessage,
   };
 }

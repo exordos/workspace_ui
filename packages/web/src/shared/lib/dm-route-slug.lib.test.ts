@@ -17,6 +17,16 @@ describe("parseDmRouteParticipantIds", () => {
   it("parses comma-separated group slug", () => {
     expect(parseDmRouteParticipantIds("7-bob,8-carol")).toEqual([7, 8]);
   });
+
+  it("parses IAM UUID slug with display name suffix", () => {
+    const peerUuid = "00000000-0000-0000-0000-000000000002";
+    expect(parseDmRouteParticipantIds(`${peerUuid}-alice-smith`)).toEqual([peerUuid]);
+  });
+
+  it("parses bare IAM UUID route segment", () => {
+    const peerUuid = "00000000-0000-0000-0000-000000000003";
+    expect(parseDmRouteParticipantIds(peerUuid)).toEqual([peerUuid]);
+  });
 });
 
 describe("buildDmRouteSlugFromRecipients", () => {

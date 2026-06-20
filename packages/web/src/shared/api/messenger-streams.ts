@@ -16,6 +16,11 @@ import {
   messengerPipelinePost,
   messengerPipelinePatch,
 } from "./messenger-pipeline.internal";
+import {
+  buildCreatePrivateMessageStreamBody,
+  buildCreateStreamBindingBody,
+  parseCreatedWorkspaceStream,
+} from "./messenger-private-stream-create.lib";
 import type { MockStream, MessengerMeStream, MessengerSubscription } from "./messenger.types";
 
 const log = createLogger("messenger-streams");
@@ -251,6 +256,101 @@ export async function fetchMyStreams(): Promise<MessengerMeStream[]> {
   return extractMeStreamItems(res.data)
     .map((row) => parseMeStream(row))
     .filter((row): row is MessengerMeStream => row != null);
+}
+
+export interface DirectMessageStreamRef {
+  streamUuid: string;
+  userUuid: string;
+  name: string;
+}
+
+/** Finds an existing 1:1 private stream row for a peer IAM UUID. */
+export function findPrivateStreamForUserUuid(
+  streams: readonly MessengerMeStream[],
+  peerUserUuid: string,
+): MessengerMeStream | undefined {
+  const normalizedPeer = peerUserUuid.trim().toLowerCase();
+  return streams.find(
+    (stream) => stream.private && stream.user_uuid?.toLowerCase() === normalizedPeer,
+  );
+}
+
+/** Creates a 1:1 private stream via gateway `POST /streams/`. */
+export async function createPrivateMessageStream(options: {
+  userUuid: UserId;
+  displayName: string;
+}): Promise<DirectMessageStreamRef | null> {
+  const peerUuid = guard.userIdentity(options.userUuid, "createPrivateMessageStream.userUuid");
+  if (typeof peerUuid !== "string") {
+    return null;
+  }
+
+  try {
+    const base = getMessengerGatewayApiBaseForCurrentInstance();
+    const res = await messengerApi.postJsonWithBase(
+      base,
+      "/streams/",
+      buildCreatePrivateMessageStreamBody({
+        peerUserUuid: peerUuid,
+        peerDisplayName: options.displayName,
+      }),
+    );
+    if (!res.ok) {
+      log.warn("Private stream creation failed", { status: res.status });
+      return null;
+    }
+    const created = parseCreatedWorkspaceStream(res.data);
+    if (created == null) {
+      log.warn("Private stream creation returned invalid payload");
+      return null;
+    }
+
+    const bindingRes = await messengerApi.postJsonWithBase(
+      base,
+      "/stream_bindings/",
+      buildCreateStreamBindingBody({
+        streamUuid: created.streamUuid,
+        peerUserUuid: peerUuid,
+      }),
+    );
+    if (!bindingRes.ok) {
+      log.warn("Private stream peer binding failed", {
+        status: bindingRes.status,
+        streamUuid: created.streamUuid,
+      });
+      return null;
+    }
+
+    log.info("Private stream created", { streamUuid: created.streamUuid });
+    return {
+      streamUuid: created.streamUuid,
+      userUuid: peerUuid,
+      name: created.name,
+    };
+  } catch (err) {
+    log.error("Private stream creation error", { error: String(err) });
+    return null;
+  }
+}
+
+/** Returns existing private stream or creates one through the messenger gateway. */
+export async function resolveOrCreateDirectMessageStream(
+  peerUserId: UserId,
+  peerDisplayName: string,
+): Promise<DirectMessageStreamRef | null> {
+  const peerUuid = guard.userIdentity(peerUserId, "resolveOrCreateDirectMessageStream.peerUserId");
+  if (typeof peerUuid !== "string") {
+    return null;
+  }
+  const existing = findPrivateStreamForUserUuid(await fetchMyStreams(), peerUuid);
+  if (existing?.user_uuid != null) {
+    return {
+      streamUuid: existing.stream_uuid,
+      userUuid: existing.user_uuid,
+      name: existing.name,
+    };
+  }
+  return createPrivateMessageStream({ userUuid: peerUuid, displayName: peerDisplayName });
 }
 
 function subscriptionFromMeStream(stream: MessengerMeStream): MessengerSubscription | null {

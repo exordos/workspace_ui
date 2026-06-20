@@ -8,6 +8,7 @@ import { getCurrentInstance } from "./client";
 import { fetchUserTopics, registerQueue } from "./messenger-queue";
 import {
   addMembersToStream,
+  createPrivateMessageStream,
   deleteTopic,
   deleteStream,
   fetchStreamMembers,
@@ -15,7 +16,9 @@ import {
   fetchStreams,
   fetchSubscriptions,
   fetchTopics,
+  findPrivateStreamForUserUuid,
   removeMembersFromStream,
+  resolveOrCreateDirectMessageStream,
   unarchiveStream,
   updateStream,
 } from "./messenger-streams";
@@ -92,6 +95,174 @@ describe("fetchSubscriptions", () => {
     });
 
     await expect(fetchSubscriptions()).resolves.toEqual([]);
+  });
+});
+
+const PEER_UUID = "00000000-0000-0000-0000-000000000002";
+const STREAM_UUID = "b4460c02-d693-4564-8804-98059613b86e";
+
+describe("createPrivateMessageStream", () => {
+  it("posts stream then peer binding without user_uuid on stream create", async () => {
+    mockMessengerApi.postJsonWithBase
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        data: {
+          uuid: STREAM_UUID,
+          name: "Alice Smith",
+          description: "",
+          invite_only: false,
+          announce: false,
+          private: true,
+        },
+        raw: { statusText: "Created" },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        data: {
+          uuid: "2dce03ca-d6d9-4fdb-82cb-7ec05fa7a8e9",
+          stream_uuid: STREAM_UUID,
+          user_uuid: PEER_UUID,
+          role: "owner",
+        },
+        raw: { statusText: "Created" },
+      });
+
+    await expect(
+      createPrivateMessageStream({ userUuid: PEER_UUID, displayName: "Alice Smith" }),
+    ).resolves.toEqual({
+      streamUuid: STREAM_UUID,
+      userUuid: PEER_UUID,
+      name: "Alice Smith",
+    });
+
+    expect(mockMessengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
+      1,
+      "/api/messanger/v1",
+      "/streams/",
+      {
+        private: true,
+        name: "Alice Smith",
+        description: "",
+        source_name: "native",
+        source: { kind: "native" },
+      },
+    );
+    expect(mockMessengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
+      2,
+      "/api/messanger/v1",
+      "/stream_bindings/",
+      {
+        stream_uuid: STREAM_UUID,
+        user_uuid: PEER_UUID,
+        role: "owner",
+      },
+    );
+  });
+
+  it("returns null when peer binding fails after stream create", async () => {
+    mockMessengerApi.postJsonWithBase
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        data: {
+          uuid: STREAM_UUID,
+          name: "Alice Smith",
+          description: "",
+          private: true,
+        },
+        raw: { statusText: "Created" },
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        data: { msg: "binding failed" },
+        raw: { statusText: "Bad Request" },
+      });
+
+    await expect(
+      createPrivateMessageStream({ userUuid: PEER_UUID, displayName: "Alice Smith" }),
+    ).resolves.toBeNull();
+  });
+});
+
+describe("resolveOrCreateDirectMessageStream", () => {
+  it("reuses existing private stream from /me/streams/", async () => {
+    mockMyStreamsResponse([
+      {
+        uuid: "1bce03ca-d6d9-4fdb-82cb-7ec05fa7a8e9",
+        name: "Alice Smith",
+        description: "",
+        stream_uuid: STREAM_UUID,
+        user_uuid: PEER_UUID,
+        invite_only: false,
+        announce: false,
+        private: true,
+      },
+    ]);
+
+    await expect(resolveOrCreateDirectMessageStream(PEER_UUID, "Alice Smith")).resolves.toEqual({
+      streamUuid: STREAM_UUID,
+      userUuid: PEER_UUID,
+      name: "Alice Smith",
+    });
+    expect(mockMessengerApi.postJsonWithBase).not.toHaveBeenCalled();
+  });
+
+  it("creates private stream when none exists for peer", async () => {
+    mockMyStreamsResponse([]);
+    mockMessengerApi.postJsonWithBase
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        data: {
+          uuid: STREAM_UUID,
+          name: "Alice Smith",
+          description: "",
+          private: true,
+        },
+        raw: { statusText: "Created" },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        data: {
+          uuid: "2dce03ca-d6d9-4fdb-82cb-7ec05fa7a8e9",
+          stream_uuid: STREAM_UUID,
+          user_uuid: PEER_UUID,
+          role: "owner",
+        },
+        raw: { statusText: "Created" },
+      });
+
+    await expect(resolveOrCreateDirectMessageStream(PEER_UUID, "Alice Smith")).resolves.toEqual({
+      streamUuid: STREAM_UUID,
+      userUuid: PEER_UUID,
+      name: "Alice Smith",
+    });
+    expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("findPrivateStreamForUserUuid", () => {
+  it("matches private stream rows by user_uuid", () => {
+    const match = findPrivateStreamForUserUuid(
+      [
+        {
+          uuid: "1bce03ca-d6d9-4fdb-82cb-7ec05fa7a8e9",
+          name: "Alice Smith",
+          description: "",
+          stream_uuid: STREAM_UUID,
+          user_uuid: PEER_UUID,
+          invite_only: false,
+          announce: false,
+          private: true,
+        },
+      ],
+      PEER_UUID,
+    );
+    expect(match?.stream_uuid).toBe(STREAM_UUID);
   });
 });
 

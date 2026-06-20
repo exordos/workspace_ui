@@ -2,10 +2,13 @@
  * DM URL slug helpers — canonical participant ids and sidebar-compatible slugs.
  */
 import { dmRouteKey } from "~/shared/lib/dm-key";
-import type { UserId } from "~/shared/lib/user-id.lib";
+import { compareUserIds, isIamUserUuid, type UserId, userIdsEqual } from "~/shared/lib/user-id.lib";
 
 const DM_SLUG_CACHE_LIMIT = 200;
-const dmSlugUserIdsCache = new Map<string, number[]>();
+const dmSlugUserIdsCache = new Map<string, UserId[]>();
+
+const IAM_UUID_SLUG_PREFIX_RE =
+  /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:-.*)?$/i;
 
 function slugifyDmParticipantName(name: string): string {
   const lower = name.trim().toLowerCase();
@@ -13,24 +16,48 @@ function slugifyDmParticipantName(name: string): string {
   return safe.replace(/^-|-$/g, "") || "user";
 }
 
-/** Parse DM slug from URL: "422-vasya" -> [422], "422-vasya,507-petya" -> [422, 507]. */
-export function parseDmRouteParticipantIds(dmSlug: string): number[] {
+function parseIamUuidFromSlugSegment(trimmed: string): string | null {
+  const uuidMatch = IAM_UUID_SLUG_PREFIX_RE.exec(trimmed);
+  if (uuidMatch?.[1] != null && isIamUserUuid(uuidMatch[1])) {
+    return uuidMatch[1].toLowerCase();
+  }
+  return isIamUserUuid(trimmed) ? trimmed.toLowerCase() : null;
+}
+
+function parseSingleDmRouteSegment(segment: string): UserId | null {
+  const trimmed = segment.trim();
+  if (trimmed.length === 0) return null;
+
+  const iamUuid = parseIamUuidFromSlugSegment(trimmed);
+  if (iamUuid != null) {
+    return iamUuid;
+  }
+
+  const DECIMAL_INTEGER_RE = /^\d+$/;
+  const dashIndex = trimmed.indexOf("-");
+  const numericPrefix = (dashIndex >= 0 ? trimmed.slice(0, dashIndex) : trimmed).trim();
+  if (DECIMAL_INTEGER_RE.test(numericPrefix)) {
+    const parsed = Number(numericPrefix);
+    if (Number.isSafeInteger(parsed) && parsed > 0) return parsed;
+  }
+  if (DECIMAL_INTEGER_RE.test(trimmed)) {
+    const parsed = Number(trimmed);
+    if (Number.isSafeInteger(parsed) && parsed > 0) return parsed;
+  }
+  return null;
+}
+
+/** Parse DM slug from URL: "422-vasya" -> [422], "uuid-alice" -> [uuid]. */
+export function parseDmRouteParticipantIds(dmSlug: string): UserId[] {
   const cached = dmSlugUserIdsCache.get(dmSlug);
   if (cached != null) {
     return cached;
   }
 
-  const DECIMAL_INTEGER_RE = /^\d+$/;
   const parsedUserIds = dmSlug
     .split(",")
-    .map((part) => part.split("-")[0]?.trim() ?? "")
-    .map((rawUserId) => {
-      if (!DECIMAL_INTEGER_RE.test(rawUserId)) return null;
-      const parsed = Number(rawUserId);
-      if (!Number.isSafeInteger(parsed) || parsed <= 0) return null;
-      return parsed;
-    })
-    .filter((userId): userId is number => userId !== null);
+    .map(parseSingleDmRouteSegment)
+    .filter((userId): userId is UserId => userId != null);
 
   if (dmSlugUserIdsCache.size >= DM_SLUG_CACHE_LIMIT) {
     dmSlugUserIdsCache.clear();
@@ -41,15 +68,15 @@ export function parseDmRouteParticipantIds(dmSlug: string): number[] {
 
 /** Builds `/dm/:slug` segment aligned with sidebar DM entries (`id-name` or group list). */
 export function buildDmRouteSlugFromRecipients(
-  recipients: readonly { id: number; full_name?: string }[],
+  recipients: readonly { id: UserId; full_name?: string }[],
   currentUserId: UserId | null,
 ): string | null {
   if (recipients.length === 0) return null;
 
-  const sorted = [...recipients].sort((a, b) => a.id - b.id);
+  const sorted = [...recipients].sort((left, right) => compareUserIds(left.id, right.id));
   const others =
-    typeof currentUserId === "number"
-      ? sorted.filter((recipient) => recipient.id !== currentUserId)
+    currentUserId != null
+      ? sorted.filter((recipient) => !userIdsEqual(recipient.id, currentUserId))
       : sorted;
   const targets = others.length > 0 ? others : sorted;
 

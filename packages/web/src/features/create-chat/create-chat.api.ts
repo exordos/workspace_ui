@@ -1,27 +1,57 @@
 /**
  * Create chat API — Workspace endpoints for starting new conversations.
  *
- * DM: just navigate to /dm/<userId> — no explicit "create" API needed.
- * Group: same — navigate to /dm/<id1>,<id2>,... with first message.
+ * DM (IAM): resolve or create private stream via gateway POST /streams/, then navigate to /dm/:streamUuid.
+ * DM (legacy numeric): navigate to /dm/<userId>-<name> — no explicit create API.
  * Channel: POST /channels/create to create and subscribe.
  * Unarchive: PATCH /streams/{stream_id} with is_archived=false (delegates to shared unarchiveStream).
  * Also: channel listing and unsubscribe for management flows.
  */
 
 import { messengerApi } from "~/shared/api/client";
-import { unarchiveStream } from "~/shared/api/messenger-streams";
-import type { UnarchiveStreamResult } from "~/shared/api/messenger-streams";
+import {
+  resolveOrCreateDirectMessageStream,
+  type DirectMessageStreamRef,
+  unarchiveStream,
+  type UnarchiveStreamResult,
+} from "~/shared/api/messenger-streams";
 import type { MessengerGroupSettingValue } from "~/shared/api/messenger.types";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
 import {
   compareUserIds,
+  isIamUserUuid,
   isUserIdentityReady,
   type UserId,
   userIdStorageKey,
 } from "~/shared/lib/user-id.lib";
+import { buildDmSlug } from "./create-chat-dialog.lib";
 
 const log = createLogger("create-chat:api");
+
+export type StartDirectMessageResult =
+  | ({ kind: "gateway" } & DirectMessageStreamRef)
+  | { kind: "legacy"; slug: string };
+
+/**
+ * Starts a 1:1 DM: gateway private stream for IAM UUID peers, legacy slug navigation otherwise.
+ */
+export async function startDirectMessage(
+  peerUserId: UserId,
+  peerFullName: string,
+): Promise<StartDirectMessageResult | null> {
+  if (!isUserIdentityReady(peerUserId)) {
+    return null;
+  }
+  if (isIamUserUuid(peerUserId)) {
+    const stream = await resolveOrCreateDirectMessageStream(peerUserId, peerFullName);
+    if (stream == null) {
+      return null;
+    }
+    return { kind: "gateway", ...stream };
+  }
+  return { kind: "legacy", slug: buildDmSlug(peerUserId, peerFullName) };
+}
 
 /**
  * Create a new channel (stream) and subscribe the current user + selected subscribers.

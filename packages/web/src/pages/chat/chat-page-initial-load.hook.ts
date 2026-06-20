@@ -245,9 +245,7 @@ export function useChatPageInitialLoad(
     if (!dmIdParam || dmIdParam === "") return;
 
     const routeUserIds = parseDmSlugToUserIds(dmIdParam);
-    const userIds = Array.from(new Set(routeUserIds)).filter(
-      (userId) => Number.isSafeInteger(userId) && userId > 0,
-    );
+    const userIds = normalizeDmRouteUserIds(routeUserIds, currentUserId);
     const { hasOlderMessages, hasNewerMessages } = useCurrentChatMessagesStore.getState();
     if (
       shouldSkipFocusedAnchorInitialLoad({

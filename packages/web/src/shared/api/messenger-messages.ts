@@ -13,6 +13,7 @@ import {
 import {
   normalizeMessengerMessagesNarrowForApi,
   messengerTopicNarrowOperandForApi,
+  type MessengerMessagesNarrowClause,
 } from "~/shared/lib/messenger-topic-narrow.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
@@ -414,7 +415,7 @@ export async function fetchMessages(
 
 /** Loads messages by narrow with configurable anchor and window sizes. */
 export async function fetchMessagesWithNarrow(
-  narrow: { operator: string; operand: string | number | number[] }[],
+  narrow: MessengerMessagesNarrowClause[],
   anchor: string | number = "newest",
   numBefore = MESSENGER_STREAM_ANCHOR_NUM_BEFORE,
   numAfter = MESSENGER_STREAM_CHAT_NUM_AFTER,
@@ -425,7 +426,7 @@ export async function fetchMessagesWithNarrow(
 }
 
 async function fetchMessagesWithNarrowPageViaPipeline(args: {
-  apiNarrow: { operator: string; operand: string | number | number[] }[];
+  apiNarrow: MessengerMessagesNarrowClause[];
   validatedAnchor: string | number;
   validatedNumBefore: number;
   validatedNumAfter: number;
@@ -456,7 +457,7 @@ async function fetchMessagesWithNarrowPageViaPipeline(args: {
 
 /** Loads a narrow message page including pagination metadata. */
 export async function fetchMessagesWithNarrowPage(
-  narrow: { operator: string; operand: string | number | number[] }[],
+  narrow: MessengerMessagesNarrowClause[],
   anchor: string | number = "newest",
   numBefore = MESSENGER_STREAM_ANCHOR_NUM_BEFORE,
   numAfter = MESSENGER_STREAM_CHAT_NUM_AFTER,
@@ -565,22 +566,24 @@ export async function fetchAllMessagesPage(
 interface DmNarrow {
   negated: false;
   operator: "dm";
-  operand: number[];
+  operand: UserId[];
 }
 
 const GROUP_DM_ID_OFFSET = 2_000_000;
 
 /** Loads DM messages (1:1 or group); for 1:1 pass the peer `userId`. */
 export async function fetchDmMessages(
-  userIds: number | number[],
+  userIds: UserId | UserId[],
   options?: { signal?: AbortSignal },
 ): Promise<MockMessage[]> {
   const rawIds = Array.isArray(userIds) ? userIds : [userIds];
   if (rawIds.length === 0) return [];
   const ids = rawIds.map((userId, index) =>
-    guard.userId(userId, `fetchDmMessages.userIds[${index}]`),
+    guard.userIdentity(userId, `fetchDmMessages.userIds[${index}]`),
   );
-  if (ids.some((id) => id >= GROUP_DM_ID_OFFSET)) return [];
+  if (ids.some((id) => typeof id === "number" && id >= GROUP_DM_ID_OFFSET)) {
+    return [];
+  }
   if (options?.signal?.aborted) {
     throw new DOMException("Aborted", "AbortError");
   }

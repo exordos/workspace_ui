@@ -8,6 +8,7 @@
  *   import { messengerTopicNarrowOperandForApi, normalizeMessengerMessagesNarrowForApi } from "~/shared/lib/messenger-topic-narrow.lib";
  */
 import { topicToApiOperand } from "~/shared/lib/topic-identity.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 
 export function messengerTopicNarrowOperandForApi(topic: string): string {
   return topicToApiOperand(topic);
@@ -15,7 +16,7 @@ export function messengerTopicNarrowOperandForApi(topic: string): string {
 
 export interface MessengerMessagesNarrowClause {
   operator: string;
-  operand: string | number | number[];
+  operand: string | number | UserId[];
   negated?: boolean;
 }
 
