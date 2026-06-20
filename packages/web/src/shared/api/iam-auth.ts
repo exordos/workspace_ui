@@ -12,6 +12,7 @@ import { logAction } from "~/shared/lib/logger";
 
 const IAM_DEFAULT_CLIENT = "default";
 const IAM_GRANT_TYPE_PASSWORD_LOGIN = "login+password";
+const IAM_GRANT_TYPE_REFRESH_TOKEN = "refresh_token";
 const IAM_TOKEN_SCOPE = "openid email profile project:default";
 const IAM_TOKEN_TTL_SECONDS = 60 * 60;
 const IAM_REFRESH_TOKEN_TTL_SECONDS = 2 * 24 * 60 * 60;
@@ -32,6 +33,11 @@ export interface IamLoginResult {
   email: string;
   user_id: number;
   refresh_token?: string;
+}
+
+export interface IamRefreshedTokenResult {
+  accessToken: string;
+  refreshToken?: string;
 }
 
 export interface IamLoginOptions {
@@ -60,6 +66,13 @@ function createPasswordLoginGrantPayload(login: string, password: string): strin
   payload.set("scope", IAM_TOKEN_SCOPE);
   payload.set("ttl", String(IAM_TOKEN_TTL_SECONDS));
   payload.set("refresh_ttl", String(IAM_REFRESH_TOKEN_TTL_SECONDS));
+  return payload.toString();
+}
+
+function createRefreshGrantPayload(refreshToken: string): string {
+  const payload = new URLSearchParams();
+  payload.set("grant_type", IAM_GRANT_TYPE_REFRESH_TOKEN);
+  payload.set("refresh_token", refreshToken.trim());
   return payload.toString();
 }
 
@@ -253,4 +266,57 @@ export async function loginWithIamCredentials(
 
 export function isIamOtpRequiredError(err: unknown): err is IamOtpRequiredError {
   return err instanceof IamOtpRequiredError;
+}
+
+/** Exchanges a refresh token for a new IAM access token (same contract as exordos_ecosystem/web). */
+export async function refreshIamAccessToken(
+  iamOrigin: string,
+  refreshToken: string,
+): Promise<IamRefreshedTokenResult> {
+  const normalizedOrigin = iamOrigin.trim().replace(/\/+$/, "");
+  const normalizedRefreshToken = refreshToken.trim();
+  if (normalizedOrigin === "" || normalizedRefreshToken.length === 0) {
+    throw new MessengerAuthError(t("auth.loginError"));
+  }
+
+  const url = buildIamTokenUrl(normalizedOrigin);
+  let res: Response;
+  try {
+    res = await loggedFetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "application/json",
+      },
+      body: createRefreshGrantPayload(normalizedRefreshToken),
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : t("app.networkError");
+    throw new MessengerAuthError(t("app.connectFailed", { message }));
+  }
+
+  let data: IamTokenResponse & Record<string, unknown>;
+  try {
+    data = (await res.json()) as IamTokenResponse & Record<string, unknown>;
+  } catch {
+    throw new MessengerAuthError(t("app.invalidResponse"));
+  }
+
+  const accessToken = data.access_token?.trim() ?? "";
+  if (res.ok && accessToken.length > 0) {
+    logAction("iam_token_refreshed", { realmHost: new URL(normalizedOrigin).hostname });
+    return {
+      accessToken,
+      ...(typeof data.refresh_token === "string" && data.refresh_token.trim() !== ""
+        ? { refreshToken: data.refresh_token.trim() }
+        : {}),
+    };
+  }
+
+  const msg = normalizeErrorMessage(
+    data,
+    res.ok ? t("app.unknownError") : t("app.errorStatus", { status: String(res.status) }),
+  );
+  logAction("iam_token_refresh_failed", { status: res.status });
+  throw new MessengerAuthError(msg || t("auth.loginError"));
 }

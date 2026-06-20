@@ -436,6 +436,24 @@ describe("instancesStore", () => {
       });
     });
 
+    it("updates IAM tokens for an existing instance", () => {
+      const { id } = useInstancesStore.getState().addInstance({
+        realm: "https://z.test",
+        login: "a@a.com",
+        apiKey: "",
+        authType: "iam",
+        iamAccessToken: "access-token",
+        iamRefreshToken: "refresh-token",
+      });
+      useInstancesStore.getState().updateInstanceIamTokens(id, {
+        accessToken: "new-access-token",
+        refreshToken: "new-refresh-token",
+      });
+      const instance = useInstancesStore.getState().instances.find((item) => item.id === id);
+      expect(instance?.iamAccessToken).toBe("new-access-token");
+      expect(instance?.iamRefreshToken).toBe("new-refresh-token");
+    });
+
     // The active instance ID is stored separately so it survives independently.
     it("persists current instance id to localStorage", () => {
       const id = useInstancesStore

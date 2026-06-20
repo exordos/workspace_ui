@@ -11,6 +11,7 @@ import {
   refreshMessengerApiBase,
   setInstanceProvider,
 } from "~/shared/api/client";
+import { setIamTokenUpdater } from "~/shared/api/iam-refresh-session.lib";
 import { clearInFlightWorkspaceFolderRequests } from "~/shared/api/workspace-client";
 import { registerWorkspaceOrvalMutator } from "~/shared/api/workspace-orval-mutator";
 import { initAnalytics } from "~/shared/lib/analytics/setup";
@@ -54,6 +55,13 @@ setInstanceProvider(() => {
     iamRefreshToken: inst.iamRefreshToken,
     workspaceOrgOrigin: inst.workspaceOrgOrigin,
   };
+});
+
+setIamTokenUpdater(({ instanceId, accessToken, refreshToken }) => {
+  useInstancesStore.getState().updateInstanceIamTokens(instanceId, {
+    accessToken,
+    ...(refreshToken != null && refreshToken.length > 0 ? { refreshToken } : {}),
+  });
 });
 
 function syncApiBasesAfterInstanceChange(): void {

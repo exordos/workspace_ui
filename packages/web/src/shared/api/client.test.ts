@@ -918,6 +918,76 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     setAuthErrorHandler(null);
   });
 
+  it("refreshes IAM access token and retries request on 401", async () => {
+    const { resetIamRefreshSessionForTests } = await import("./iam-refresh-session.lib");
+    const { setInstanceProvider, messengerApi, refreshMessengerApiBase, setAuthErrorHandler } =
+      await import("./client");
+    const onAuthError = vi.fn();
+    const onTokenUpdate = vi.fn();
+
+    resetIamRefreshSessionForTests();
+    const { setIamTokenUpdater } = await import("./iam-refresh-session.lib");
+    setIamTokenUpdater(onTokenUpdate);
+
+    setInstanceProvider(() => ({
+      id: "i-iam",
+      realm: "https://chat.example.com",
+      login: "u@t.com",
+      apiKey: "",
+      authType: "iam",
+      iamAccessToken: "expired-access-token",
+      iamRefreshToken: "refresh-token",
+    }));
+    setAuthErrorHandler(onAuthError);
+    refreshMessengerApiBase();
+
+    const refreshedAccessToken = "refreshed-access-token";
+    mockFetch
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ msg: "Unauthorized" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            access_token: refreshedAccessToken,
+            refresh_token: "next-refresh-token",
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ result: "success", messages: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+
+    const res = await messengerApi.get("/messages");
+
+    expect(res.status).toBe(200);
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+    expect(onTokenUpdate).toHaveBeenCalledWith({
+      instanceId: "i-iam",
+      accessToken: refreshedAccessToken,
+      refreshToken: "next-refresh-token",
+    });
+    const retryInit = mockFetch.mock.calls[2]?.[1] as RequestInit | undefined;
+    expect(retryInit?.headers).toMatchObject({
+      Authorization: `Bearer ${refreshedAccessToken}`,
+    });
+    expect(vi.mocked(wipeCredentials)).not.toHaveBeenCalled();
+    expect(onAuthError).not.toHaveBeenCalled();
+    setAuthErrorHandler(null);
+    setIamTokenUpdater(null);
+    resetIamRefreshSessionForTests();
+  });
+
   it("does not trigger auth-error handling for excluded auth paths", async () => {
     const { setInstanceProvider, messengerApi, refreshMessengerApiBase, setAuthErrorHandler } =
       await import("./client");

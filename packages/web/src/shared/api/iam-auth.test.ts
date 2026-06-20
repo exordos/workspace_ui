@@ -106,3 +106,41 @@ describe("loginWithIamCredentials", () => {
     );
   });
 });
+
+describe("refreshIamAccessToken", () => {
+  beforeEach(() => {
+    mockFetch.mockReset();
+  });
+
+  it("returns a new access token using refresh_token grant", async () => {
+    const accessToken = jwtWithClaims({ email: "user@example.com", sub: "42" });
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({
+        access_token: accessToken,
+        refresh_token: "next-refresh-token",
+        token_type: "Bearer",
+      }),
+    );
+
+    const { refreshIamAccessToken } = await import("./iam-auth");
+    const result = await refreshIamAccessToken(IAM_ORIGIN, "old-refresh-token");
+
+    expect(result).toEqual({
+      accessToken,
+      refreshToken: "next-refresh-token",
+    });
+    const [, init] = mockFetch.mock.calls[0]!;
+    const params = new URLSearchParams(init?.body as string);
+    expect(params.get("grant_type")).toBe("refresh_token");
+    expect(params.get("refresh_token")).toBe("old-refresh-token");
+  });
+
+  it("throws MessengerAuthError when refresh fails", async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse({ message: "Invalid refresh token" }, 401));
+
+    const { refreshIamAccessToken } = await import("./iam-auth");
+    await expect(refreshIamAccessToken(IAM_ORIGIN, "bad-refresh")).rejects.toThrow(
+      MessengerAuthError,
+    );
+  });
+});

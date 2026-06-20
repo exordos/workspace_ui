@@ -249,6 +249,10 @@ interface InstancesState extends StoredState {
   removeInstance: (id: string) => void;
   setCurrentInstanceId: (id: string | null) => void;
   getCurrentInstance: () => WorkspaceInstance | null;
+  updateInstanceIamTokens: (
+    id: string,
+    tokens: { accessToken: string; refreshToken?: string },
+  ) => void;
   setInstanceUnreadCount: (id: string, unreadCount: number) => void;
   getInstanceUnreadCount: (id: string) => number;
   setInstanceDmUnreadCount: (id: string, dmUnreadCount: number) => void;
@@ -373,6 +377,38 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
     const { instances, currentInstanceId } = get();
     if (!currentInstanceId) return null;
     return instances.find((i) => i.id === currentInstanceId) ?? null;
+  },
+
+  updateInstanceIamTokens: (id, tokens) => {
+    set((state) => {
+      const index = state.instances.findIndex((instance) => instance.id === id);
+      if (index < 0) return state;
+
+      const current = state.instances[index]!;
+      if (current.authType !== "iam") return state;
+
+      const accessToken = tokens.accessToken.trim();
+      if (accessToken.length === 0) return state;
+
+      const refreshToken =
+        tokens.refreshToken != null && tokens.refreshToken.trim() !== ""
+          ? tokens.refreshToken.trim()
+          : current.iamRefreshToken;
+
+      if (current.iamAccessToken === accessToken && current.iamRefreshToken === refreshToken) {
+        return state;
+      }
+
+      const instances = [...state.instances];
+      instances[index] = {
+        ...current,
+        iamAccessToken: accessToken,
+        iamRefreshToken: refreshToken,
+      };
+      persist(instances, state.currentInstanceId, state.unreadCountsByInstance);
+      logStoreAction("instances", "updateInstanceIamTokens", { instanceId: id });
+      return { instances };
+    });
   },
 
   setInstanceUnreadCount: (id, unreadCount) => {

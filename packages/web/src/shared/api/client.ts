@@ -32,6 +32,7 @@ import {
   waitUntilMessengerRateLimitReleased,
 } from "~/shared/lib/messenger-rate-limit-gate";
 import { workspaceOrgApiOriginFromRealmRoot } from "~/shared/lib/workspace-org-origin.lib";
+import { refreshStoredIamAccessToken } from "./iam-refresh-session.lib";
 import {
   getCachedSessionCsrfToken,
   getOrFetchWebSessionCsrfToken,
@@ -434,7 +435,8 @@ function shouldSkipAuth401Handling(req: ApiRequest): boolean {
     if (
       /\/fetch_api_key\/?$/.test(path) ||
       /\/server_settings\/?$/.test(path) ||
-      /\/accounts\/login\/?$/.test(path)
+      /\/accounts\/login\/?$/.test(path) ||
+      /\/actions\/get_token\/invoke\/?$/.test(path)
     ) {
       return true;
     }
@@ -513,8 +515,32 @@ const authErrorMiddleware: Middleware = async (req, next) => {
   if (shouldSkipAuth401Handling(req)) {
     return res;
   }
-  if (getCurrentInstance() == null) {
+  const instance = getCurrentInstance();
+  if (instance == null) {
     return res;
+  }
+
+  const authType = resolveInstanceAuthType(instance);
+  const alreadyRetried = req.meta.iamAuthRetried === true;
+  if (authType === "iam" && !alreadyRetried) {
+    const refreshToken = instance.iamRefreshToken?.trim() ?? "";
+    if (refreshToken.length > 0) {
+      const refreshed = await refreshStoredIamAccessToken({
+        iamOrigin: resolveIamApiOrigin(instance),
+        refreshToken,
+        instanceId: instance.id,
+      });
+      if (refreshed != null) {
+        return next({
+          ...req,
+          meta: { ...req.meta, iamAuthRetried: true },
+          headers: {
+            ...req.headers,
+            Authorization: `Bearer ${refreshed.accessToken}`,
+          },
+        });
+      }
+    }
   }
 
   const now = Date.now();
