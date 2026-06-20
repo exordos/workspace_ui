@@ -16,6 +16,7 @@ import {
   isAllowedDevWorkspaceProxyTargetOrigin,
   workspaceRestApiPathSuffix,
 } from "~/shared/config/dev-workspace-org-proxy";
+import { MESSENGER_API_PATH } from "~/shared/config/workspace-api-layout";
 import { getBasicAuthValue, wipeCredentials } from "~/shared/lib/auth-guard";
 import {
   noteApiTransportFailure,
@@ -23,7 +24,7 @@ import {
   reportFailure,
 } from "~/shared/lib/connection-health";
 import { env } from "~/shared/lib/env";
-import { resolveIamAccessToken } from "~/shared/lib/iam-instance.lib";
+import { resolveIamAccessToken, resolveIamApiOrigin } from "~/shared/lib/iam-instance.lib";
 import { logApiCall } from "~/shared/lib/logger";
 import { extractLoggableRequestParams } from "~/shared/lib/logger-request-params.lib";
 import {
@@ -441,6 +442,10 @@ function shouldSkipAuth401Handling(req: ApiRequest): boolean {
     if (/\/v1\/(?:folders|services)(?:\/|$)/.test(path)) {
       return true;
     }
+    // Messenger gateway folder API uses IAM Bearer; 401 must not wipe the session.
+    if (/\/api\/messanger\/v1\/folders(?:\/|$)/.test(path)) {
+      return true;
+    }
     return false;
   } catch {
     return false;
@@ -822,6 +827,19 @@ function getDevWorkspaceProxyBase(): string {
     );
   }
   return base.replace(/\/+$/, "");
+}
+
+/** Messenger gateway REST base (`/api/messanger/v1`) for the active org. */
+export function getMessengerGatewayApiBaseForCurrentInstance(): string {
+  const instance = getCurrentInstance();
+  if (instance == null || import.meta.env.DEV) {
+    return MESSENGER_API_PATH;
+  }
+  const orgOrigin = resolveIamApiOrigin(instance).replace(/\/+$/, "");
+  if (orgOrigin === "") {
+    return MESSENGER_API_PATH;
+  }
+  return `${orgOrigin}${MESSENGER_API_PATH}`;
 }
 
 /** Workspace REST `/v1/...` base for the active org (Workspace API origin, not always organization realm). */

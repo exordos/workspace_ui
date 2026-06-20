@@ -33,12 +33,35 @@ const workspaceApi = {
   }),
   getBaseUrl: vi.fn(() => workspaceBaseUrl),
 };
-type WorkspaceGetResponse = Awaited<ReturnType<typeof workspaceApi.get>>;
+const messengerApi = {
+  get: vi.fn(),
+  getWithBase: vi.fn(
+    (_base: string, path: string, params?: Record<string, string>, signal?: AbortSignal) =>
+      messengerApi.get(path, params, signal),
+  ),
+  postJsonWithBase: vi.fn((_base: string, path: string, body: unknown) =>
+    messengerApi.postJson(path, body),
+  ),
+  postJson: vi.fn(),
+  putJsonWithBase: vi.fn((_base: string, path: string, body: unknown) =>
+    messengerApi.putJson(path, body),
+  ),
+  putJson: vi.fn(),
+  deleteWithBase: vi.fn((_base: string, path: string, body?: Record<string, string>) =>
+    messengerApi.delete(path, body),
+  ),
+  delete: vi.fn(),
+  setBaseUrl: vi.fn(),
+  getBaseUrl: vi.fn(() => "/api/messanger/v1"),
+};
+type MessengerGetResponse = Awaited<ReturnType<typeof messengerApi.get>>;
 
 vi.mock("./client", () => ({
   workspaceApi,
+  messengerApi,
   getCurrentInstance,
   getWorkspaceApiBaseForCurrentInstance,
+  getMessengerGatewayApiBaseForCurrentInstance: () => "/api/messanger/v1",
 }));
 
 describe("workspace-client", () => {
@@ -59,8 +82,8 @@ describe("workspace-client", () => {
     vi.clearAllMocks();
   });
 
-  it("delegates folder listing to workspaceApi.getWithBase using org workspace base", async () => {
-    workspaceApi.get.mockResolvedValue({
+  it("delegates folder listing to messengerApi.getWithBase using messenger gateway base", async () => {
+    messengerApi.get.mockResolvedValue({
       ok: true,
       data: [{ uuid: "f1", title: "Work", unread_messages: [] }],
     });
@@ -68,17 +91,16 @@ describe("workspace-client", () => {
     const { getFolders } = await import("./workspace-client");
     await getFolders();
 
-    expect(getWorkspaceApiBaseForCurrentInstance).toHaveBeenCalled();
-    expect(workspaceApi.getWithBase).toHaveBeenCalledWith(
-      "https://messenger.genesis-core.tech",
-      "/v1/folders/",
+    expect(messengerApi.getWithBase).toHaveBeenCalledWith(
+      "/api/messanger/v1",
+      "/folders/",
       undefined,
       undefined,
     );
   });
 
   it("getFolders keeps folders when unread_messages is omitted or null", async () => {
-    workspaceApi.get.mockResolvedValue({
+    messengerApi.get.mockResolvedValue({
       ok: true,
       data: [
         {
@@ -174,9 +196,9 @@ describe("workspace-client", () => {
   });
 
   it("coalesces identical in-flight folder requests by path", async () => {
-    let resolveGet: (value: WorkspaceGetResponse) => void = () => {};
-    workspaceApi.get.mockImplementation(() => {
-      return new Promise<WorkspaceGetResponse>((resolve) => {
+    let resolveGet: (value: MessengerGetResponse) => void = () => {};
+    messengerApi.get.mockImplementation(() => {
+      return new Promise<MessengerGetResponse>((resolve) => {
         resolveGet = resolve;
       });
     });
@@ -185,7 +207,7 @@ describe("workspace-client", () => {
     const firstRequest = getFolders();
     const secondRequest = getFolders();
 
-    expect(workspaceApi.getWithBase).toHaveBeenCalledTimes(1);
+    expect(messengerApi.getWithBase).toHaveBeenCalledTimes(1);
 
     resolveGet({
       ok: true,
@@ -310,24 +332,24 @@ describe("workspace-client", () => {
     expect(items[0]?.chatId).toBe("stream:11:general");
   });
 
-  it("delegates folder assignment to workspaceApi.postJson", async () => {
-    workspaceApi.postJson.mockResolvedValue({ ok: true, data: {} });
+  it("delegates folder assignment to messengerApi.postJsonWithBase", async () => {
+    messengerApi.postJson.mockResolvedValue({ ok: true, data: {} });
 
     const { addChatToFolder } = await import("./workspace-client");
     await expect(addChatToFolder("folder-1", "dm:42")).resolves.toBe(true);
 
-    expect(workspaceApi.postJson).toHaveBeenCalledWith(
-      "/v1/folders/folder-1/items/",
+    expect(messengerApi.postJsonWithBase).toHaveBeenCalledWith(
+      "/api/messanger/v1",
+      "/folders/folder-1/items/",
       expect.objectContaining({
         chat_id: 42,
         chat_type: "private",
       }),
     );
-    expect(workspaceApi.setBaseUrl).not.toHaveBeenCalled();
   });
 
   it("does not retry folder assignment on path errors", async () => {
-    workspaceApi.postJson.mockResolvedValue({
+    messengerApi.postJson.mockResolvedValue({
       ok: false,
       status: 404,
       data: {},
@@ -336,38 +358,37 @@ describe("workspace-client", () => {
     const { addChatToFolder } = await import("./workspace-client");
     await expect(addChatToFolder("folder-1", "stream:1:general")).resolves.toBe(false);
 
-    expect(workspaceApi.postJson).toHaveBeenCalledTimes(1);
-    expect(workspaceApi.postJson).toHaveBeenCalledWith(
-      "/v1/folders/folder-1/items/",
+    expect(messengerApi.postJsonWithBase).toHaveBeenCalledTimes(1);
+    expect(messengerApi.postJsonWithBase).toHaveBeenCalledWith(
+      "/api/messanger/v1",
+      "/folders/folder-1/items/",
       expect.objectContaining({
         chat_id: 1,
         chat_type: "stream",
       }),
     );
-    expect(workspaceApi.setBaseUrl).not.toHaveBeenCalled();
   });
 
   it("returns false when chat id cannot be mapped to API integer", async () => {
     const { addChatToFolder } = await import("./workspace-client");
     await expect(addChatToFolder("folder-1", "dm:abc")).resolves.toBe(false);
-    expect(workspaceApi.postJson).not.toHaveBeenCalled();
+    expect(messengerApi.postJsonWithBase).not.toHaveBeenCalled();
   });
 
-  it("delegates folder item removal to workspaceApi.delete", async () => {
-    workspaceApi.delete.mockResolvedValue({ ok: true, data: null });
+  it("delegates folder item removal to messengerApi.deleteWithBase", async () => {
+    messengerApi.delete.mockResolvedValue({ ok: true, data: null });
 
     const { removeChatFromFolder } = await import("./workspace-client");
     await expect(removeChatFromFolder("folder-1", "item-1")).resolves.toBe(true);
 
-    expect(workspaceApi.delete).toHaveBeenCalledWith(
-      "/v1/folders/folder-1/items/item-1",
-      undefined,
+    expect(messengerApi.deleteWithBase).toHaveBeenCalledWith(
+      "/api/messanger/v1",
+      "/folders/folder-1/items/item-1",
     );
-    expect(workspaceApi.setBaseUrl).not.toHaveBeenCalled();
   });
 
-  it("delegates folder item reorder updates to get then putJson", async () => {
-    workspaceApi.get.mockResolvedValue({
+  it("delegates folder item reorder updates to get then putJsonWithBase", async () => {
+    messengerApi.get.mockResolvedValue({
       ok: true,
       status: 200,
       raw: { statusText: "OK" },
@@ -381,24 +402,25 @@ describe("workspace-client", () => {
         updated_at: "2026-03-14T01:00:00Z",
       },
     });
-    workspaceApi.putJson.mockResolvedValue({ ok: true, data: {} });
+    messengerApi.putJson.mockResolvedValue({ ok: true, data: {} });
 
     const { updateFolderItemOrder } = await import("./workspace-client");
     await expect(updateFolderItemOrder("folder-1", "item-1", 3)).resolves.toBe(true);
 
-    expect(workspaceApi.get).toHaveBeenCalledWith(
-      "/v1/folders/folder-1/items/item-1",
+    expect(messengerApi.getWithBase).toHaveBeenCalledWith(
+      "/api/messanger/v1",
+      "/folders/folder-1/items/item-1",
       undefined,
       undefined,
     );
-    expect(workspaceApi.putJson).toHaveBeenCalledWith(
-      "/v1/folders/folder-1/items/item-1",
+    expect(messengerApi.putJsonWithBase).toHaveBeenCalledWith(
+      "/api/messanger/v1",
+      "/folders/folder-1/items/item-1",
       expect.objectContaining({
         order_index: 3,
         chat_id: 42,
       }),
     );
-    expect(workspaceApi.setBaseUrl).not.toHaveBeenCalled();
   });
 
   it("returns false for addChatToFolder when folder or chat id is blank", async () => {
@@ -406,7 +428,7 @@ describe("workspace-client", () => {
 
     await expect(addChatToFolder("", "dm:42")).resolves.toBe(false);
     await expect(addChatToFolder("folder-1", "   ")).resolves.toBe(false);
-    expect(workspaceApi.postJson).not.toHaveBeenCalled();
+    expect(messengerApi.postJsonWithBase).not.toHaveBeenCalled();
   });
 
   it("returns false for removeChatFromFolder when folder or item id is blank", async () => {
@@ -414,7 +436,7 @@ describe("workspace-client", () => {
 
     await expect(removeChatFromFolder(" ", "item-1")).resolves.toBe(false);
     await expect(removeChatFromFolder("folder-1", "")).resolves.toBe(false);
-    expect(workspaceApi.delete).not.toHaveBeenCalled();
+    expect(messengerApi.deleteWithBase).not.toHaveBeenCalled();
   });
 
   it("returns false for updateFolderItemOrder when ids or order are invalid", async () => {
@@ -424,6 +446,6 @@ describe("workspace-client", () => {
     await expect(updateFolderItemOrder("folder-1", " ", 0)).resolves.toBe(false);
     await expect(updateFolderItemOrder("folder-1", "item-1", -1)).resolves.toBe(false);
     await expect(updateFolderItemOrder("folder-1", "item-1", 1.5)).resolves.toBe(false);
-    expect(workspaceApi.putJson).not.toHaveBeenCalled();
+    expect(messengerApi.putJsonWithBase).not.toHaveBeenCalled();
   });
 });

@@ -14,7 +14,7 @@ test.describe("Folder assign rollback @mock", () => {
     const chatPreview = authenticated.getByText("Cached hello");
     await expect(chatPreview).toBeVisible({ timeout: 15_000 });
 
-    await page.route(/\/workspace\/v1\/folders\/.*\/items\/?$/, async (route) => {
+    await page.route(/\/api\/messanger\/v1\/folders\/.*\/items\/?$/, async (route) => {
       if (route.request().method() === "POST") {
         await route.fulfill({
           status: 500,

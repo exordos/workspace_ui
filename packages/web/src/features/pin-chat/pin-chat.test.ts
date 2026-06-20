@@ -8,17 +8,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { usePinStore } from "./pin-chat.model";
 
 vi.mock("~/shared/api/client", () => {
-  const api = { post: vi.fn() };
+  const api = { postWithBase: vi.fn() };
   return {
-    refreshWorkspaceApiBase: vi.fn(),
-    getWorkspaceApiBaseForCurrentInstance: vi.fn(() => "https://test.example.com"),
-    workspaceApi: {
-      post: api.post,
-      postWithBase: vi.fn(
-        (_base: string, path: string, body: Record<string, string>, signal?: AbortSignal) =>
-          api.post(path, body, signal),
-      ),
+    messengerApi: {
+      postWithBase: api.postWithBase,
     },
+    getMessengerGatewayApiBaseForCurrentInstance: vi.fn(() => "/api/messanger/v1"),
   };
 });
 
@@ -192,16 +187,10 @@ describe("usePinStore", () => {
   });
 });
 
-// Pin/unpin API — calls Workspace API for folder-scoped pinning.
+// Pin/unpin API — calls messenger gateway folder endpoints for folder-scoped pinning.
 describe("pin-chat API", () => {
-  beforeEach(async () => {
-    vi.clearAllMocks();
-    const { registerWorkspaceOrvalMutator } = await import("~/shared/api/workspace-orval-mutator");
-    registerWorkspaceOrvalMutator();
-  });
-
   afterEach(() => {
-    vi.restoreAllMocks();
+    vi.clearAllMocks();
   });
 
   const mockOk = {
@@ -224,31 +213,32 @@ describe("pin-chat API", () => {
 
   describe("pinChatInFolder", () => {
     it("calls correct endpoint and returns true on success", async () => {
-      const { workspaceApi } = await import("~/shared/api/client");
-      vi.mocked(workspaceApi.post).mockResolvedValue(mockOk);
+      const { messengerApi } = await import("~/shared/api/client");
+      vi.mocked(messengerApi.postWithBase).mockResolvedValue(mockOk);
 
       const { pinChatInFolder } = await import("./pin-chat.api");
       const result = await pinChatInFolder("folder-abc", "item-xyz");
 
       expect(result).toBe(true);
-      expect(workspaceApi.post).toHaveBeenCalledWith(
-        "/v1/folders/folder-abc/items/item-xyz/actions/pin/invoke",
+      expect(messengerApi.postWithBase).toHaveBeenCalledWith(
+        "/api/messanger/v1",
+        "/folders/folder-abc/items/item-xyz/actions/pin/invoke",
         {},
         undefined,
       );
     });
 
     it("returns false on API failure", async () => {
-      const { workspaceApi } = await import("~/shared/api/client");
-      vi.mocked(workspaceApi.post).mockResolvedValue(mockFail);
+      const { messengerApi } = await import("~/shared/api/client");
+      vi.mocked(messengerApi.postWithBase).mockResolvedValue(mockFail);
 
       const { pinChatInFolder } = await import("./pin-chat.api");
       expect(await pinChatInFolder("f1", "i1")).toBe(false);
     });
 
     it("returns false on network error", async () => {
-      const { workspaceApi } = await import("~/shared/api/client");
-      vi.mocked(workspaceApi.post).mockRejectedValue(new Error("Connection refused"));
+      const { messengerApi } = await import("~/shared/api/client");
+      vi.mocked(messengerApi.postWithBase).mockRejectedValue(new Error("Connection refused"));
 
       const { pinChatInFolder } = await import("./pin-chat.api");
       expect(await pinChatInFolder("f1", "i1")).toBe(false);
@@ -272,31 +262,32 @@ describe("pin-chat API", () => {
 
   describe("unpinChatInFolder", () => {
     it("calls correct endpoint and returns true on success", async () => {
-      const { workspaceApi } = await import("~/shared/api/client");
-      vi.mocked(workspaceApi.post).mockResolvedValue(mockOk);
+      const { messengerApi } = await import("~/shared/api/client");
+      vi.mocked(messengerApi.postWithBase).mockResolvedValue(mockOk);
 
       const { unpinChatInFolder } = await import("./pin-chat.api");
       const result = await unpinChatInFolder("folder-abc", "item-xyz");
 
       expect(result).toBe(true);
-      expect(workspaceApi.post).toHaveBeenCalledWith(
-        "/v1/folders/folder-abc/items/item-xyz/actions/unpin/invoke",
+      expect(messengerApi.postWithBase).toHaveBeenCalledWith(
+        "/api/messanger/v1",
+        "/folders/folder-abc/items/item-xyz/actions/unpin/invoke",
         {},
         undefined,
       );
     });
 
     it("returns false on API failure", async () => {
-      const { workspaceApi } = await import("~/shared/api/client");
-      vi.mocked(workspaceApi.post).mockResolvedValue(mockFail);
+      const { messengerApi } = await import("~/shared/api/client");
+      vi.mocked(messengerApi.postWithBase).mockResolvedValue(mockFail);
 
       const { unpinChatInFolder } = await import("./pin-chat.api");
       expect(await unpinChatInFolder("f1", "i1")).toBe(false);
     });
 
     it("returns false on network error", async () => {
-      const { workspaceApi } = await import("~/shared/api/client");
-      vi.mocked(workspaceApi.post).mockRejectedValue(new Error("Timeout"));
+      const { messengerApi } = await import("~/shared/api/client");
+      vi.mocked(messengerApi.postWithBase).mockRejectedValue(new Error("Timeout"));
 
       const { unpinChatInFolder } = await import("./pin-chat.api");
       expect(await unpinChatInFolder("f1", "i1")).toBe(false);

@@ -4,12 +4,16 @@
  * Covers the pure mapping utility mapWorkspaceFoldersToRail and the
  * async getFolders function with mocked workspace API transport.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceFolder } from "~/shared/api/workspace-client";
 import { getFolders, mapWorkspaceFoldersToRail } from "~/shared/api/workspace-client";
 
-const { workspaceApi } = vi.hoisted(() => {
+const { workspaceApi, messengerApi } = vi.hoisted(() => {
   const get = vi.fn();
+  const getWithBase = vi.fn(
+    (_base: string, path: string, params?: Record<string, string>, signal?: AbortSignal) =>
+      get(path, params, signal),
+  );
   return {
     workspaceApi: {
       get,
@@ -20,18 +24,28 @@ const { workspaceApi } = vi.hoisted(() => {
       getBaseUrl: vi.fn(() => "/api/v1"),
       setBaseUrl: vi.fn(),
     },
+    messengerApi: {
+      get,
+      getWithBase,
+      getBaseUrl: vi.fn(() => "/api/v1"),
+      setBaseUrl: vi.fn(),
+    },
   };
 });
 
 vi.mock("~/shared/api/client", () => ({
   workspaceApi,
+  messengerApi,
   getCurrentInstance: () => ({
     id: "test-inst",
     realm: "https://messenger.test",
     login: "test@test.com",
     apiKey: "test",
+    authType: "iam",
+    iamAccessToken: "iam-token",
   }),
   getWorkspaceApiBaseForCurrentInstance: () => "https://messenger.test",
+  getMessengerGatewayApiBaseForCurrentInstance: () => "/api/messanger/v1",
   setInstanceProvider: vi.fn(),
 }));
 
@@ -135,18 +149,13 @@ describe("mapWorkspaceFoldersToRail", () => {
 
 // Async fetch with mocked globals.
 describe("getFolders", () => {
-  beforeEach(async () => {
-    const { registerWorkspaceOrvalMutator } = await import("~/shared/api/workspace-orval-mutator");
-    registerWorkspaceOrvalMutator();
-  });
-
   afterEach(() => {
     vi.clearAllMocks();
   });
 
-  it("returns folders on successful workspace API response", async () => {
+  it("returns folders on successful messenger gateway response", async () => {
     const mockFolders = [makeFolderPayload({ uuid: "f1", title: "Work" })];
-    workspaceApi.get.mockResolvedValue({
+    messengerApi.getWithBase.mockResolvedValue({
       ok: true,
       status: 200,
       data: mockFolders,
@@ -161,7 +170,7 @@ describe("getFolders", () => {
   });
 
   it("returns empty array when response is not an array", async () => {
-    workspaceApi.get.mockResolvedValue({
+    messengerApi.getWithBase.mockResolvedValue({
       ok: true,
       status: 200,
       data: { error: "unexpected format" },
@@ -173,7 +182,7 @@ describe("getFolders", () => {
   });
 
   it("throws on non-ok response", async () => {
-    workspaceApi.get.mockResolvedValue({
+    messengerApi.getWithBase.mockResolvedValue({
       ok: false,
       status: 500,
       data: null,
@@ -184,13 +193,13 @@ describe("getFolders", () => {
   });
 
   it("throws on network error", async () => {
-    workspaceApi.get.mockRejectedValue(new Error("Network failure"));
+    messengerApi.getWithBase.mockRejectedValue(new Error("Network failure"));
 
     await expect(getFolders()).rejects.toThrow("Network failure");
   });
 
-  it("delegates to workspaceApi.getWithBase with org workspace base and folders path", async () => {
-    workspaceApi.get.mockResolvedValue({
+  it("delegates to messengerApi.getWithBase with messenger gateway base and folders path", async () => {
+    messengerApi.getWithBase.mockResolvedValue({
       ok: true,
       status: 200,
       data: [],
@@ -199,9 +208,9 @@ describe("getFolders", () => {
 
     await getFolders();
 
-    expect(workspaceApi.getWithBase).toHaveBeenCalledWith(
-      "https://messenger.test",
-      "/v1/folders/",
+    expect(messengerApi.getWithBase).toHaveBeenCalledWith(
+      "/api/messanger/v1",
+      "/folders/",
       undefined,
       undefined,
     );

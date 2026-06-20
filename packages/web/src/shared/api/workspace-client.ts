@@ -9,18 +9,19 @@
  * Usage:
  *   import { getFolders, mapWorkspaceFoldersToRail } from "~/shared/api/workspace-client";
  */
-import {
-  createV1FoldersFolderUuidItems,
-  deleteV1FoldersFolderUuidItemsFolderItemUuid,
-  filterV1Folders,
-  filterV1Services,
-  FolderItemCreateChatType,
-  getV1FoldersFolderUuidItemsFolderItemUuid,
-  updateV1FoldersFolderUuidItemsFolderItemUuid,
-} from "@workspace/api/workspace-api.generated";
+import { filterV1Services, FolderItemCreateChatType } from "@workspace/api/workspace-api.generated";
+import { MESSENGER_API_PATH } from "~/shared/config/workspace-api-layout";
 import { guard, invariant } from "~/shared/lib/guards";
 import { isValidUrl } from "~/shared/lib/validation";
 import { getCurrentInstance } from "./client";
+import {
+  messengerFolderItemPath,
+  messengerFolderItemsPath,
+  messengerFoldersDelete,
+  messengerFoldersGet,
+  messengerFoldersPostJson,
+  messengerFoldersPutJson,
+} from "./messenger-folders.internal";
 import type {
   FilterV1Folders200Item,
   FilterV1Folders200ItemItemsItem,
@@ -31,7 +32,9 @@ import type {
 
 const inFlightWorkspaceGets = new Map<string, Promise<unknown>>();
 
-/** Folder row from `GET /v1/folders/` (nested items included). */
+const MESSENGER_FOLDERS_LIST_PATH = "/folders/";
+
+/** Folder row from `GET /api/messanger/v1/folders/` (nested items included). */
 export type WorkspaceFolder = FilterV1Folders200Item;
 
 type WorkspaceFolderSystemType = "created" | "all";
@@ -183,8 +186,9 @@ export async function getWorkspaceServices(): Promise<WorkspaceServiceForClient[
 
 /** Fetches all workspace folders (items nested in each folder row). */
 export async function getFolders(): Promise<WorkspaceFolder[]> {
-  return workspaceGetDeduped("/v1/folders/", async () => {
-    const data = await filterV1Folders();
+  const requestPath = `${MESSENGER_API_PATH}${MESSENGER_FOLDERS_LIST_PATH}`;
+  return workspaceGetDeduped(requestPath, async () => {
+    const data = await messengerFoldersGet<unknown>(MESSENGER_FOLDERS_LIST_PATH);
     return Array.isArray(data) ? data.filter(isWorkspaceFolder) : [];
   });
 }
@@ -394,7 +398,10 @@ export async function addChatToFolder(folderUuid: string, chatId: string): Promi
       return false;
     }
     const chatType = inferChatTypeForCreate(safeChatId);
-    await createV1FoldersFolderUuidItems(safeFolderUuid, folderItemCreateStub(chatIdNum, chatType));
+    await messengerFoldersPostJson(
+      messengerFolderItemsPath(safeFolderUuid),
+      folderItemCreateStub(chatIdNum, chatType),
+    );
     return true;
   } catch {
     return false;
@@ -406,7 +413,7 @@ export async function removeChatFromFolder(folderUuid: string, itemUuid: string)
   try {
     const safeFolderUuid = validateFolderUuid(folderUuid);
     const safeItemUuid = validateFolderItemUuid(itemUuid);
-    await deleteV1FoldersFolderUuidItemsFolderItemUuid(safeFolderUuid, safeItemUuid);
+    await messengerFoldersDelete(messengerFolderItemPath(safeFolderUuid, safeItemUuid));
     return true;
   } catch {
     return false;
@@ -423,9 +430,11 @@ export async function updateFolderItemOrder(
     const safeFolderUuid = validateFolderUuid(folderUuid);
     const safeItemUuid = validateFolderItemUuid(itemUuid);
     const safeOrderIndex = validateOrderIndex(orderIndex);
-    const current = await getV1FoldersFolderUuidItemsFolderItemUuid(safeFolderUuid, safeItemUuid);
+    const current = await messengerFoldersGet<FilterV1Folders200ItemItemsItem>(
+      messengerFolderItemPath(safeFolderUuid, safeItemUuid),
+    );
     const updatedAt = new Date().toISOString();
-    await updateV1FoldersFolderUuidItemsFolderItemUuid(safeFolderUuid, safeItemUuid, {
+    await messengerFoldersPutJson(messengerFolderItemPath(safeFolderUuid, safeItemUuid), {
       ...current,
       order_index: safeOrderIndex,
       updated_at: updatedAt,

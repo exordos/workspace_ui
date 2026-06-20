@@ -1,41 +1,19 @@
 /**
- * Tests for the folder management feature — workspace folder API integration.
+ * Tests for the folder management feature — messenger gateway folder API integration.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("~/shared/api/client", () => {
-  const api = {
-    get: vi.fn(),
-    postJson: vi.fn(),
-    putJson: vi.fn(),
-    delete: vi.fn(),
-  };
-  return {
-    workspaceApi: {
-      ...api,
-      getWithBase: vi.fn(
-        (_base: string, path: string, params?: Record<string, string>, signal?: AbortSignal) =>
-          api.get(path, params, signal),
-      ),
-      postJsonWithBase: vi.fn((_base: string, path: string, body: unknown) =>
-        api.postJson(path, body),
-      ),
-      putJsonWithBase: vi.fn((_base: string, path: string, body: unknown) =>
-        api.putJson(path, body),
-      ),
-      deleteWithBase: vi.fn((_base: string, path: string, body?: Record<string, string>) =>
-        api.delete(path, body),
-      ),
-    },
-    getWorkspaceApiBaseForCurrentInstance: vi.fn(() => "https://test.example.com"),
-    refreshWorkspaceApiBase: vi.fn(),
-  };
-});
+const messengerApi = vi.hoisted(() => ({
+  getWithBase: vi.fn(),
+  postJsonWithBase: vi.fn(),
+  putJsonWithBase: vi.fn(),
+  deleteWithBase: vi.fn(),
+}));
 
-beforeEach(async () => {
-  const { registerWorkspaceOrvalMutator } = await import("~/shared/api/workspace-orval-mutator");
-  registerWorkspaceOrvalMutator();
-});
+vi.mock("~/shared/api/client", () => ({
+  messengerApi,
+  getMessengerGatewayApiBaseForCurrentInstance: vi.fn(() => "/api/messanger/v1"),
+}));
 
 const folderResponse = {
   ok: true as const,
@@ -70,19 +48,13 @@ const folderGetResponse = {
 };
 
 describe("manage-folders API", () => {
-  beforeEach(async () => {
-    const { registerWorkspaceOrvalMutator } = await import("~/shared/api/workspace-orval-mutator");
-    registerWorkspaceOrvalMutator();
-  });
-
   afterEach(() => {
-    vi.restoreAllMocks();
+    vi.clearAllMocks();
   });
 
   describe("createFolder", () => {
-    it("calls postJson with correct payload and maps response", async () => {
-      const { workspaceApi } = await import("~/shared/api/client");
-      vi.mocked(workspaceApi.postJson).mockResolvedValue(folderResponse);
+    it("calls postJsonWithBase with correct payload and maps response", async () => {
+      vi.mocked(messengerApi.postJsonWithBase).mockResolvedValue(folderResponse);
 
       const { createFolder } = await import("./manage-folders.api");
       const result = await createFolder({ title: "Engineering" });
@@ -94,8 +66,9 @@ describe("manage-folders API", () => {
         createdAt: "2026-01-01T00:00:00Z",
         updatedAt: "2026-01-01T00:00:00Z",
       });
-      expect(workspaceApi.postJson).toHaveBeenCalledWith(
-        "/v1/folders/",
+      expect(messengerApi.postJsonWithBase).toHaveBeenCalledWith(
+        "/api/messanger/v1",
+        "/folders/",
         expect.objectContaining({
           title: "Engineering",
           background_color_value: 0,
@@ -104,14 +77,14 @@ describe("manage-folders API", () => {
     });
 
     it("passes backgroundColor when provided", async () => {
-      const { workspaceApi } = await import("~/shared/api/client");
-      vi.mocked(workspaceApi.postJson).mockResolvedValue(folderResponse);
+      vi.mocked(messengerApi.postJsonWithBase).mockResolvedValue(folderResponse);
 
       const { createFolder } = await import("./manage-folders.api");
       await createFolder({ title: "Red Folder", backgroundColor: 0xff0000 });
 
-      expect(workspaceApi.postJson).toHaveBeenCalledWith(
-        "/v1/folders/",
+      expect(messengerApi.postJsonWithBase).toHaveBeenCalledWith(
+        "/api/messanger/v1",
+        "/folders/",
         expect.objectContaining({
           title: "Red Folder",
           background_color_value: 0xff0000,
@@ -120,20 +93,18 @@ describe("manage-folders API", () => {
     });
 
     it("returns null on API failure", async () => {
-      const { workspaceApi } = await import("~/shared/api/client");
-      vi.mocked(workspaceApi.postJson).mockResolvedValue({
+      vi.mocked(messengerApi.postJsonWithBase).mockResolvedValue({
         ok: false,
         status: 400,
         data: null,
-      } as never);
+      });
 
       const { createFolder } = await import("./manage-folders.api");
       expect(await createFolder({ title: "Test" })).toBeNull();
     });
 
     it("returns null on network error", async () => {
-      const { workspaceApi } = await import("~/shared/api/client");
-      vi.mocked(workspaceApi.postJson).mockRejectedValue(new Error("Offline"));
+      vi.mocked(messengerApi.postJsonWithBase).mockRejectedValue(new Error("Offline"));
 
       const { createFolder } = await import("./manage-folders.api");
       expect(await createFolder({ title: "Test" })).toBeNull();
@@ -147,16 +118,21 @@ describe("manage-folders API", () => {
 
   describe("updateFolder", () => {
     it("sends only provided fields in update payload", async () => {
-      const { workspaceApi } = await import("~/shared/api/client");
-      vi.mocked(workspaceApi.get).mockResolvedValue(folderGetResponse);
-      vi.mocked(workspaceApi.putJson).mockResolvedValue(folderResponse);
+      vi.mocked(messengerApi.getWithBase).mockResolvedValue(folderGetResponse);
+      vi.mocked(messengerApi.putJsonWithBase).mockResolvedValue(folderResponse);
 
       const { updateFolder } = await import("./manage-folders.api");
       await updateFolder("folder-1", { title: "Renamed" });
 
-      expect(workspaceApi.get).toHaveBeenCalledWith("/v1/folders/folder-1", undefined, undefined);
-      expect(workspaceApi.putJson).toHaveBeenCalledWith(
-        "/v1/folders/folder-1",
+      expect(messengerApi.getWithBase).toHaveBeenCalledWith(
+        "/api/messanger/v1",
+        "/folders/folder-1",
+        undefined,
+        undefined,
+      );
+      expect(messengerApi.putJsonWithBase).toHaveBeenCalledWith(
+        "/api/messanger/v1",
+        "/folders/folder-1",
         expect.objectContaining({
           title: "Renamed",
         }),
@@ -164,32 +140,31 @@ describe("manage-folders API", () => {
     });
 
     it("omits read-only timestamps from update payload", async () => {
-      const { workspaceApi } = await import("~/shared/api/client");
-      vi.mocked(workspaceApi.get).mockResolvedValue(folderGetResponse);
-      vi.mocked(workspaceApi.putJson).mockResolvedValue(folderResponse);
-      vi.mocked(workspaceApi.putJson).mockClear();
+      vi.mocked(messengerApi.getWithBase).mockResolvedValue(folderGetResponse);
+      vi.mocked(messengerApi.putJsonWithBase).mockResolvedValue(folderResponse);
+      vi.mocked(messengerApi.putJsonWithBase).mockClear();
 
       const { updateFolder } = await import("./manage-folders.api");
       await updateFolder("folder-1", { title: "Renamed" });
 
-      const putJson = vi.mocked(workspaceApi.putJson);
-      expect(putJson).toHaveBeenCalledTimes(1);
-      const body = putJson.mock.calls[0]![1] as Record<string, unknown>;
+      const putJsonWithBase = vi.mocked(messengerApi.putJsonWithBase);
+      expect(putJsonWithBase).toHaveBeenCalledTimes(1);
+      const body = putJsonWithBase.mock.calls[0]![2] as Record<string, unknown>;
       expect(body).not.toHaveProperty("updated_at");
       expect(body).not.toHaveProperty("created_at");
       expect(body).not.toHaveProperty("unread_messages");
     });
 
     it("sends backgroundColor when provided", async () => {
-      const { workspaceApi } = await import("~/shared/api/client");
-      vi.mocked(workspaceApi.get).mockResolvedValue(folderGetResponse);
-      vi.mocked(workspaceApi.putJson).mockResolvedValue(folderResponse);
+      vi.mocked(messengerApi.getWithBase).mockResolvedValue(folderGetResponse);
+      vi.mocked(messengerApi.putJsonWithBase).mockResolvedValue(folderResponse);
 
       const { updateFolder } = await import("./manage-folders.api");
       await updateFolder("folder-1", { backgroundColor: 0x00ff00 });
 
-      expect(workspaceApi.putJson).toHaveBeenCalledWith(
-        "/v1/folders/folder-1",
+      expect(messengerApi.putJsonWithBase).toHaveBeenCalledWith(
+        "/api/messanger/v1",
+        "/folders/folder-1",
         expect.objectContaining({
           background_color_value: 0x00ff00,
         }),
@@ -197,9 +172,8 @@ describe("manage-folders API", () => {
     });
 
     it("maps response to FolderItem", async () => {
-      const { workspaceApi } = await import("~/shared/api/client");
-      vi.mocked(workspaceApi.get).mockResolvedValue(folderGetResponse);
-      vi.mocked(workspaceApi.putJson).mockResolvedValue(folderResponse);
+      vi.mocked(messengerApi.getWithBase).mockResolvedValue(folderGetResponse);
+      vi.mocked(messengerApi.putJsonWithBase).mockResolvedValue(folderResponse);
 
       const { updateFolder } = await import("./manage-folders.api");
       const result = await updateFolder("folder-1", { title: "X" });
@@ -214,22 +188,20 @@ describe("manage-folders API", () => {
     });
 
     it("returns null on API failure", async () => {
-      const { workspaceApi } = await import("~/shared/api/client");
-      vi.mocked(workspaceApi.get).mockResolvedValue(folderGetResponse);
-      vi.mocked(workspaceApi.putJson).mockResolvedValue({
+      vi.mocked(messengerApi.getWithBase).mockResolvedValue(folderGetResponse);
+      vi.mocked(messengerApi.putJsonWithBase).mockResolvedValue({
         ok: false,
         status: 404,
         data: null,
-      } as never);
+      });
 
       const { updateFolder } = await import("./manage-folders.api");
       expect(await updateFolder("folder-1", { title: "X" })).toBeNull();
     });
 
     it("returns null on network error", async () => {
-      const { workspaceApi } = await import("~/shared/api/client");
-      vi.mocked(workspaceApi.get).mockResolvedValue(folderGetResponse);
-      vi.mocked(workspaceApi.putJson).mockRejectedValue(new Error("Timeout"));
+      vi.mocked(messengerApi.getWithBase).mockResolvedValue(folderGetResponse);
+      vi.mocked(messengerApi.putJsonWithBase).mockRejectedValue(new Error("Timeout"));
 
       const { updateFolder } = await import("./manage-folders.api");
       expect(await updateFolder("folder-1", { title: "X" })).toBeNull();
@@ -243,8 +215,7 @@ describe("manage-folders API", () => {
 
   describe("deleteFolder", () => {
     it("calls delete endpoint and returns true on success", async () => {
-      const { workspaceApi } = await import("~/shared/api/client");
-      vi.mocked(workspaceApi.delete).mockResolvedValue({
+      vi.mocked(messengerApi.deleteWithBase).mockResolvedValue({
         ok: true,
         status: 204,
         data: null,
@@ -257,12 +228,14 @@ describe("manage-folders API", () => {
       const result = await deleteFolder("folder-1");
 
       expect(result).toBe(true);
-      expect(workspaceApi.delete).toHaveBeenCalledWith("/v1/folders/folder-1", undefined);
+      expect(messengerApi.deleteWithBase).toHaveBeenCalledWith(
+        "/api/messanger/v1",
+        "/folders/folder-1",
+      );
     });
 
     it("returns false on API failure", async () => {
-      const { workspaceApi } = await import("~/shared/api/client");
-      vi.mocked(workspaceApi.delete).mockResolvedValue({
+      vi.mocked(messengerApi.deleteWithBase).mockResolvedValue({
         ok: false,
         status: 404,
         data: null,
@@ -276,8 +249,7 @@ describe("manage-folders API", () => {
     });
 
     it("returns false on network error", async () => {
-      const { workspaceApi } = await import("~/shared/api/client");
-      vi.mocked(workspaceApi.delete).mockRejectedValue(new Error("DNS error"));
+      vi.mocked(messengerApi.deleteWithBase).mockRejectedValue(new Error("DNS error"));
 
       const { deleteFolder } = await import("./manage-folders.api");
       expect(await deleteFolder("folder-1")).toBe(false);

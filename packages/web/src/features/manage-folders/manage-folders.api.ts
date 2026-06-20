@@ -1,15 +1,17 @@
 /**
- * Folder CRUD API — Workspace API endpoints for folder management.
+ * Folder CRUD API — messenger gateway endpoints for folder management.
  *
- * OpenAPI: `POST /v1/folders/`, `PUT /v1/folders/{uuid}`, `DELETE /v1/folders/{uuid}`.
+ * `POST /api/messanger/v1/folders/`, `PUT /api/messanger/v1/folders/{uuid}`,
+ * `DELETE /api/messanger/v1/folders/{uuid}`.
  */
 
 import {
-  createV1Folders,
-  deleteV1FoldersFolderUuid,
-  getV1FoldersFolderUuid,
-  updateV1FoldersFolderUuid,
-} from "@workspace/api/workspace-api.generated";
+  messengerFolderPath,
+  messengerFoldersDelete,
+  messengerFoldersGet,
+  messengerFoldersPostJson,
+  messengerFoldersPutJson,
+} from "~/shared/api/messenger-folders.internal";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
 import type { CreateFolderInput, FolderItem, UpdateFolderInput } from "./manage-folders.types";
@@ -47,7 +49,7 @@ export async function createFolder(input: CreateFolderInput): Promise<FolderItem
       title: input.title,
       background_color_value: input.backgroundColor ?? 0,
     };
-    const raw = await createV1Folders(folderCreate);
+    const raw = await messengerFoldersPostJson<FolderCreate>("/folders/", folderCreate);
     log.info("Folder created", { title: input.title });
     return mapToFolderItem(raw);
   } catch (err) {
@@ -63,12 +65,17 @@ export async function updateFolder(
   guard.nonEmpty(folderId, "folder id");
 
   try {
-    const current = await getV1FoldersFolderUuid(folderId);
+    const current = await messengerFoldersGet<FolderUpdate & { title: string }>(
+      messengerFolderPath(folderId),
+    );
     const folderUpdate = {
       title: input.title ?? current.title,
       background_color_value: input.backgroundColor ?? current.background_color_value ?? 0,
     } as FolderUpdate;
-    const raw = await updateV1FoldersFolderUuid(folderId, folderUpdate);
+    const raw = await messengerFoldersPutJson<FolderCreate>(
+      messengerFolderPath(folderId),
+      folderUpdate,
+    );
     log.info("Folder updated", { folderId });
     return mapToFolderItem(raw);
   } catch (err) {
@@ -81,7 +88,7 @@ export async function deleteFolder(folderId: string): Promise<boolean> {
   guard.nonEmpty(folderId, "folder id");
 
   try {
-    await deleteV1FoldersFolderUuid(folderId);
+    await messengerFoldersDelete(messengerFolderPath(folderId));
     log.info("Folder deleted", { folderId });
     return true;
   } catch (err) {

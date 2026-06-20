@@ -15,6 +15,7 @@ import {
   usersMeSuccess,
   usersSuccess,
 } from "../mocks/messenger-default-responses";
+import { foldersSuccess } from "../mocks/workspace-default-responses";
 
 const API_ROUTE = "**/api/v1/**";
 const MESSENGER_API_ROUTE = "**/api/messanger/v1/**";
@@ -143,6 +144,85 @@ export class MessengerApiMock {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify(serverSettingsSuccess()),
+      });
+      return;
+    }
+
+    if (path.endsWith("/folders/") && method === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(foldersSuccess()),
+      });
+      return;
+    }
+
+    if (path.endsWith("/folders/") && method === "POST") {
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          uuid: "e2e-folder-new",
+          title: "New folder",
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-01T00:00:00Z",
+          background_color_value: 0,
+          system_type: "created",
+          unread_messages: [],
+          items: [],
+        }),
+      });
+      return;
+    }
+
+    if (/\/folders\/[^/]+\/items\/[^/]+\/actions\/(?:pin|unpin)\/invoke\/?$/.test(path) && method === "POST") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ result: "success" }),
+      });
+      return;
+    }
+
+    if (path.includes("/folders/") && path.includes("/items/") && method === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([]),
+      });
+      return;
+    }
+
+    if (path.includes("/folders/") && path.includes("/items/") && method === "POST") {
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          uuid: "e2e-folder-item-new",
+          chat_id: 1,
+          chat_type: "private",
+          order_index: 0,
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-01T00:00:00Z",
+        }),
+      });
+      return;
+    }
+
+    if (path.includes("/folders/") && path.includes("/items/") && (method === "PUT" || method === "DELETE")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ result: "success" }),
+      });
+      return;
+    }
+
+    if (/\/folders\/[^/]+\/?$/.test(path) && (method === "PUT" || method === "DELETE" || method === "GET")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(foldersSuccess()[0]),
       });
       return;
     }

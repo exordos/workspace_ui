@@ -1,14 +1,15 @@
 /**
- * Pin/unpin API — calls Workspace API for chat pinning.
+ * Pin/unpin API — calls messenger gateway folder endpoints for chat pinning.
  *
  * Pins are folder-scoped: a chat is pinned within a specific folder.
  */
 
-import {
-  pinV1FoldersFolderUuidItemsFolderItemUuidActionsPinInvoke,
-  unpinV1FoldersFolderUuidItemsFolderItemUuidActionsUnpinInvoke,
-} from "@workspace/api/workspace-api.generated";
 import { isPersistedFolderItemUuid } from "~/features/folder-sync/folder-sync-assignment.lib";
+import {
+  messengerFolderItemPinPath,
+  messengerFolderItemUnpinPath,
+  messengerFoldersPostInvoke,
+} from "~/shared/api/messenger-folders.internal";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
 
@@ -29,7 +30,7 @@ export async function pinChatInFolder(
   }
 
   try {
-    await pinV1FoldersFolderUuidItemsFolderItemUuidActionsPinInvoke(folderUuid, folderItemUuid);
+    await messengerFoldersPostInvoke(messengerFolderItemPinPath(folderUuid, folderItemUuid));
     return true;
   } catch (err) {
     log.error("Pin error", { error: String(err) });
@@ -52,7 +53,7 @@ export async function unpinChatInFolder(
   }
 
   try {
-    await unpinV1FoldersFolderUuidItemsFolderItemUuidActionsUnpinInvoke(folderUuid, folderItemUuid);
+    await messengerFoldersPostInvoke(messengerFolderItemUnpinPath(folderUuid, folderItemUuid));
     return true;
   } catch (err) {
     log.error("Unpin error", { error: String(err) });

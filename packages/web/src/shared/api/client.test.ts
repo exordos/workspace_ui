@@ -1008,6 +1008,35 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     setAuthErrorHandler(null);
   });
 
+  it("does not wipe credentials on GET messenger gateway /folders/ 401", async () => {
+    const { setInstanceProvider, messengerApi, setAuthErrorHandler } = await import("./client");
+    const onAuthError = vi.fn();
+
+    setInstanceProvider(() => ({
+      id: "i-iam",
+      realm: "https://messenger.test",
+      login: "u@t.com",
+      apiKey: "",
+      authType: "iam",
+      iamAccessToken: "iam-access-token",
+    }));
+    setAuthErrorHandler(onAuthError);
+
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ detail: "Unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const res = await messengerApi.getWithBase("/api/messanger/v1", "/folders/");
+
+    expect(res.status).toBe(401);
+    expect(vi.mocked(wipeCredentials)).not.toHaveBeenCalled();
+    expect(onAuthError).not.toHaveBeenCalled();
+    setAuthErrorHandler(null);
+  });
+
   it("handles non-JSON response body gracefully", async () => {
     const { setInstanceProvider, messengerApi, refreshMessengerApiBase } = await import("./client");
     setInstanceProvider(() => ({
